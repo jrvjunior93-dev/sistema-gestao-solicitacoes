@@ -8,6 +8,10 @@ const {
   validateCompraEncerrarSemPedidoBody,
   validateCompraEnviarBody
 } = require('../src/validators/operationalValidators');
+const {
+  validateCompraItemDecisionParams,
+  validateNumericIdParams
+} = require('../src/validators/securityValidators');
 const { ALL_PERMISSION_KEYS } = require('../src/constants/moduloPermissoes');
 const {
   calcularDisponibilidadeFornecedorItem,
@@ -19,8 +23,127 @@ const {
   resolverCondicaoPagamentoPedido
 } = require('../src/services/pedidoCompraDocumentoUtils');
 const {
-  calcularRateiosMonetarios
-} = require('../src/services/pedidoCompraService');
+  calcularValorMercadoriasCotacao,
+  obterQuantidadeBaseFinanceiraCotacao,
+  obterItensCotaveis
+} = require('../src/services/comprasCotacao');
+
+function validarAprovacaoGeoDosItensCotaveis() {
+  const montarItem = (id, status_aprovacao) => ({
+    id, status_aprovacao, quantidade: 1, insumo: { nome: `Item ${id}` }, apropriacoes: []
+  });
+  const itens = obterItensCotaveis({
+    itens: [
+      montarItem(1, 'PENDENTE'),
+      montarItem(2, 'APROVADO'),
+      montarItem(3, 'REJEITADO'),
+      montarItem(4, null)
+    ],
+    itensManuais: [
+      { id: 5, status_aprovacao: 'PENDENTE', nome_manual: 'Manual pendente', quantidade: 1, apropriacoes: [] },
+      { id: 6, status_aprovacao: 'APROVADO', nome_manual: 'Manual aprovado', quantidade: 1, apropriacoes: [] }
+    ]
+  });
+  assert.deepStrictEqual(itens.map((item) => [item.item_tipo, item.id]), [
+    ['CADASTRADO', 2], ['CADASTRADO', 4], ['MANUAL', 6]
+  ], 'Compras deve receber somente itens aprovados pelo GEO, preservando itens legados sem status.');
+}
+
+function validarDecisaoGeoEmLoteEEncaminhamento() {
+  const etapasSource = fs.readFileSync(
+    path.join(__dirname, '../src/controllers/SolicitacaoCompraEtapasController.js'), 'utf8'
+  );
+  const compraSource = fs.readFileSync(
+    path.join(__dirname, '../src/controllers/SolicitacaoCompraController.js'), 'utf8'
+  );
+  const solicitacaoSource = fs.readFileSync(
+    path.join(__dirname, '../src/controllers/SolicitacaoController.js'), 'utf8'
+  );
+  const routesSource = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
+  const detalheSource = fs.readFileSync(
+    path.join(__dirname, '../../frontend/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx'), 'utf8'
+  );
+  assert(
+    etapasSource.includes('async aprovarItensEmLote(req, res)') &&
+      etapasSource.includes('lock: transaction.LOCK.UPDATE') &&
+      routesSource.includes("'/solicitacoes/:id/compra-itens/aprovacao-lote'"),
+    'Aprovacao em lote precisa estar exposta e protegida por transacao.'
+  );
+  assert(
+    compraSource.includes("status_aprovacao: 'APROVADO'") &&
+      compraSource.includes('totalRejeitadosImplicitamente = itensPendentes.length + itensManuaisPendentes.length') &&
+      compraSource.includes("acao: 'ITENS_COMPRA_REJEITADOS_GEO_IMPLICITO'") &&
+      compraSource.includes("PedidoCompraItem.findOne({ where: { [Op.or]: filtrosSemDecisao }, transaction })"),
+    'Encaminhamento deve exigir aprovacao explicita, rejeitar implicitamente os demais e proteger itens ja cotados/comprados.'
+  );
+  assert(
+    solicitacaoSource.includes('Para solicitacao de compra, aprove ou rejeite os itens no GEO') &&
+      detalheSource.includes('Selecionar todos') && detalheSource.includes('Aprovar selecionados') &&
+      detalheSource.includes('dados.revisao_geo_pendente && !item.status_aprovacao'),
+    'Detalhe da solicitacao deve exigir revisao dos itens legados sem decisao e permitir selecao em lote.'
+  );
+}
+
+function validarRotasDeDecisaoERecebimentoPorItem() {
+  assert.deepStrictEqual(
+    validateCompraItemDecisionParams({ id: '2135', tipo: 'cadastrado', itemId: '88' }),
+    { id: '2135', tipo: 'CADASTRADO', itemId: '88' }
+  );
+  assert.deepStrictEqual(
+    validateNumericIdParams(['id', 'pedidoId', 'itemId'])({ id: '2135', pedidoId: '42', itemId: '88' }),
+    { id: '2135', pedidoId: '42', itemId: '88' }
+  );
+  assert.throws(() => validateCompraItemDecisionParams({ id: '2135', tipo: 'OUTRO', itemId: '88' }), /invalido/);
+  assert.throws(() => validateCompraItemDecisionParams({ id: '2135', tipo: 'MANUAL', itemId: 'x' }), /invalido/);
+  assert.throws(() => validateCompraItemDecisionParams({ id: '2135', tipo: 'MANUAL', itemId: '88', admin: true }), /nao permitidos/);
+  assert.throws(() => validateNumericIdParams(['id', 'pedidoId', 'itemId'])({ id: '2135', pedidoId: '42' }), /obrigatorio/);
+
+  const routes = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
+  const layout = fs.readFileSync(path.join(__dirname, '../../frontend/src/layout/Layout.jsx'), 'utf8');
+  assert(routes.includes("params: validateCompraItemDecisionParams }), SolicitacaoCompraEtapasController.decidirItem") &&
+    routes.includes("params: validateNumericIdParams(['id', 'pedidoId', 'itemId'], 'Recebimento de item')"),
+  'Decisao e recebimento devem validar todos os parametros presentes na rota.');
+  assert(layout.includes('!podeVerComunicacao') && layout.includes('canAccessComunicacao(user)'),
+    'O cabecalho nao deve consultar o resumo de conversas sem permissao.');
+}
+
+function validarBaseFinanceiraDaCotacao() {
+  assert.strictEqual(
+    calcularValorMercadoriasCotacao({
+      quantidadeSolicitada: 10,
+      quantidadeDisponivel: 50,
+      precoUnitario: 20
+    }),
+    200,
+    'Quantidade disponivel nao pode alterar o valor das mercadorias cotadas.'
+  );
+  assert.strictEqual(
+    obterQuantidadeBaseFinanceiraCotacao({
+      quantidadeSolicitada: 10,
+      quantidadeDisponivel: 4,
+      escopoDisponibilidade: 'OFERTA_SALDO'
+    }),
+    4,
+    'Oferta adicional para saldo deve manter como base somente a quantidade da nova oferta.'
+  );
+
+  const publicPageSource = fs.readFileSync(
+    path.join(__dirname, '../../frontend/src/modules/solicitacao-compra/pages/CotacaoFornecedorPublica.jsx'),
+    'utf8'
+  );
+  const internalPageSource = fs.readFileSync(
+    path.join(__dirname, '../../frontend/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx'),
+    'utf8'
+  );
+  assert(
+    publicPageSource.includes('numeroCotacao(item?.preco) * numeroCotacao(item?.quantidade)'),
+    'Cotacao publica deve calcular mercadorias pela quantidade solicitada.'
+  );
+  assert(
+    internalPageSource.includes(': parseNumeroCompraDigitado(item?.quantidade_solicitada);'),
+    'Edicao interna deve calcular mercadorias pela quantidade solicitada.'
+  );
+}
 
 function itemSelecionado() {
   return {
@@ -135,7 +258,7 @@ function validarPrazoGeralRespostaInterna() {
     frete_valor: '150,00',
     frete_data_vencimento: '2026-08-10',
     frete_transportador_nome: 'Transportador opcional',
-    frete_transportador_cpf_cnpj: '12.345.678/0001-90',
+    frete_transportador_cpf_cnpj: '11.222.333/0001-81',
     finalizar: true
   });
 
@@ -184,24 +307,6 @@ function validarFretePorItemRespostaInterna() {
   assert.strictEqual(resultado.frete_valor, 0);
   assert.strictEqual(resultado.itens[0].frete_valor, 18.9);
   assert.strictEqual(resultado.itens[1].frete_valor, 0);
-}
-
-function validarFreteGlobalAcimaDoValorDasMercadorias() {
-  const bases = [632.76, 112.72, 159.5, 198.56];
-  const freteCotado = 2370;
-  const rateios = calcularRateiosMonetarios(freteCotado, bases, {
-    limitarAoTotalBase: false
-  });
-
-  assert.deepStrictEqual(rateios, [1358.94, 242.08, 342.55, 426.43]);
-  assert.strictEqual(Number(rateios.reduce((total, valor) => total + valor, 0).toFixed(2)), freteCotado);
-
-  const descontoLimitado = calcularRateiosMonetarios(freteCotado, bases);
-  assert.strictEqual(
-    Number(descontoLimitado.reduce((total, valor) => total + valor, 0).toFixed(2)),
-    1103.54,
-    'Descontos continuam limitados ao total das mercadorias.'
-  );
 }
 
 function validarContratoFretePorItemETotais() {
@@ -495,6 +600,10 @@ function validarMultiplosArquivosRespostaCotacao() {
 }
 
 validarItensPorFornecedor();
+validarAprovacaoGeoDosItensCotaveis();
+validarDecisaoGeoEmLoteEEncaminhamento();
+validarRotasDeDecisaoERecebimentoPorItem();
+validarBaseFinanceiraDaCotacao();
 validarItensGlobaisLegados();
 validarFechamentoParcial();
 validarFechamentoExcedenteAuditavel();
@@ -502,7 +611,6 @@ validarEncerramentoSemPedido();
 validarPermissaoEncerramentoSemPedido();
 validarPrazoGeralRespostaInterna();
 validarFretePorItemRespostaInterna();
-validarFreteGlobalAcimaDoValorDasMercadorias();
 validarContratoFretePorItemETotais();
 validarCompatibilidadeDataChegadaLegada();
 validarDisponibilidadeHistoricaPorFornecedorItem();

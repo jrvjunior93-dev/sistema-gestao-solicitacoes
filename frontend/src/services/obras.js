@@ -1,4 +1,5 @@
 import { API_URL, authHeaders, fileUrl } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
 export async function getObras(params = {}) {
   const query = new URLSearchParams(params).toString();
@@ -13,7 +14,7 @@ export async function getObras(params = {}) {
 function handleJsonResponse(response, fallbackMessage) {
   return response.text().then((text) => {
     if (!response.ok) {
-      throw new Error(text || fallbackMessage);
+      throw new Error(mensagemDeErro(text, fallbackMessage, response.status));
     }
 
     return text ? JSON.parse(text) : null;
@@ -70,7 +71,7 @@ export async function criarObra(data) {
 
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(text || 'Erro ao criar obra');
+    throw new Error(mensagemDeErro(text, 'Erro ao criar obra', res.status));
   }
   return text ? JSON.parse(text) : {};
 }
@@ -84,7 +85,7 @@ export async function atualizarObra(id, data) {
 
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(text || 'Erro ao atualizar obra');
+    throw new Error(mensagemDeErro(text, 'Erro ao atualizar obra', res.status));
   }
   return text ? JSON.parse(text) : {};
 }

@@ -1,22 +1,52 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   HiOutlineArrowDownTray,
-  HiOutlineBars3,
   HiOutlineEye,
   HiOutlineMagnifyingGlass,
   HiOutlineXMark
 } from 'react-icons/hi2';
+import StatusBadge from '../components/StatusBadge';
 import {
   getCategoriasFinanceiras,
   getContasBancarias,
   getRelatorioAnaliticoFinanceiro
 } from '../services/financeiro';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  CelulaDupla,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  Avisos,
+  useAvisos
+} from '../components/padrao';
 import { getMinhasObras } from '../services/obras';
 import { buscarParceiros } from '../services/parceiros';
+import DateInputBR from '../components/DateInputBR';
 
-const STORAGE_KEY = 'fluxy.financeiro.relatorioAnalitico.columns';
+// Uma chave só para a tabela: a TabelaPadrao guarda nela a escolha de
+// colunas (visíveis + ordem) e as larguras. Substitui a chave antiga
+// "fluxy.financeiro.relatorioAnalitico.columns", que a tela mantinha à mão.
+const STORAGE_KEY = 'tabela:financeiro-relatorio-analitico';
+
+/*
+  TETO DE LINHAS — e o motivo do aviso que o consolidado passou a dar.
+
+  A tela pede `limit: 500`. O backend aplica esse teto na CONSULTA (titulos
+  ordenados por vencimento ASC, com as baixas em join) e so DEPOIS soma o
+  resumo sobre o que sobrou. Passando de 500 linhas, "Saldo" e "Quitacao"
+  deixam de ser o total do recorte e viram o total das 500 primeiras — sem
+  nada na tela dizendo isso.
+
+  Corrigir o NUMERO e trabalho de backend (agregar sobre o recorte inteiro,
+  nao sobre a pagina). O que da para consertar aqui e o rotulo parar de
+  mentir sobre o que ele e — o mesmo caminho que a FinanceiroTitulos tomou
+  com "Valor desta pagina".
+*/
+const TETO_LINHAS = 500;
 
 const DEFAULT_FILTERS = {
   tipo: '',
@@ -31,46 +61,8 @@ const DEFAULT_FILTERS = {
   data_final: '',
   vencimento_inicial: '',
   vencimento_final: '',
-  limit: '500'
+  limit: String(TETO_LINHAS)
 };
-
-const COLUMN_DEFINITIONS = [
-  { id: 'titulo_codigo', label: 'Titulo', kind: 'text', sticky: true },
-  { id: 'tipo', label: 'Tipo', kind: 'text' },
-  { id: 'status_titulo', label: 'Status titulo', kind: 'status' },
-  { id: 'status_movimento', label: 'Status baixa', kind: 'status' },
-  { id: 'parceiro_nome', label: 'Parceiro', kind: 'text' },
-  { id: 'parceiro_cpf_cnpj', label: 'CPF/CNPJ', kind: 'text' },
-  { id: 'obra_nome', label: 'Obra', kind: 'text' },
-  { id: 'categoria_nome', label: 'Categoria', kind: 'text' },
-  { id: 'numero_documento', label: 'Documento', kind: 'text' },
-  { id: 'data_emissao', label: 'Emissao', kind: 'date' },
-  { id: 'data_vencimento', label: 'Vencimento', kind: 'date' },
-  { id: 'data_movimento', label: 'Data baixa', kind: 'date' },
-  { id: 'conta_bancaria_nome', label: 'Conta', kind: 'text' },
-  { id: 'valor_original', label: 'Valor original', kind: 'currency' },
-  { id: 'valor_saldo', label: 'Saldo', kind: 'currency' },
-  { id: 'valor_baixado', label: 'Valor baixado', kind: 'currency' },
-  { id: 'valor_movimento', label: 'Valor movimento', kind: 'currency' },
-  { id: 'juros', label: 'Juros', kind: 'currency' },
-  { id: 'multa', label: 'Multa', kind: 'currency' },
-  { id: 'desconto', label: 'Desconto', kind: 'currency' },
-  { id: 'valor_quitacao', label: 'Quitacao', kind: 'currency' },
-  { id: 'usuario_baixa', label: 'Usuario baixa', kind: 'text' },
-  { id: 'origem', label: 'Origem', kind: 'text' }
-];
-
-function getColumnWidth(column) {
-  if (column.id === 'titulo_codigo') return 122;
-  if (column.id === 'parceiro_nome') return 220;
-  if (column.id === 'obra_nome') return 200;
-  if (column.id === 'categoria_nome') return 190;
-  if (column.id === 'numero_documento') return 140;
-  if (column.kind === 'currency') return 142;
-  if (column.kind === 'date') return 122;
-  if (column.kind === 'status') return 128;
-  return 150;
-}
 
 function compact(params = {}) {
   return Object.fromEntries(
@@ -89,34 +81,24 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
-function formatCell(row, column) {
-  const value = row[column.id];
-  if (column.kind === 'currency') return formatCurrency(value);
-  if (column.kind === 'date') return formatDate(value);
-  return value || '-';
-}
+/*
+  R25 — as dez classes de paleta crua que pintavam status (sky/emerald/amber/
+  rose/slate com degrau numerico) sairam. O status agora usa o StatusBadge do
+  sistema, que ja carrega token de cor, o piso de contraste do ThemeContext e
+  um ICONE junto — cor sozinha nao comunica para daltonicos, e era isso que a
+  versao anterior fazia.
 
-function loadColumns() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const parsed = stored ? JSON.parse(stored) : null;
-    if (!Array.isArray(parsed)) return COLUMN_DEFINITIONS.map((item) => item.id);
-    const allowed = new Set(COLUMN_DEFINITIONS.map((item) => item.id));
-    const normalized = parsed.filter((id) => allowed.has(id));
-    const missing = COLUMN_DEFINITIONS.map((item) => item.id).filter((id) => !normalized.includes(id));
-    return [...normalized, ...missing];
-  } catch (error) {
-    return COLUMN_DEFINITIONS.map((item) => item.id);
-  }
-}
-
-function statusClass(value) {
+  O `kind` e explicito porque a familia derivada do texto nao acerta os dois
+  status desta tela: SEM_BAIXA nao e "sem" nada de ruim (e ausencia de baixa,
+  atencao) e PREVISAO e informacao, nao alerta.
+*/
+function familiaDoStatus(value) {
   const normalized = String(value || '').toUpperCase();
-  if (normalized === 'PREVISAO') return 'app-status-pill bg-sky-100 text-sky-700';
-  if (['QUITADO', 'ATIVO'].includes(normalized)) return 'app-status-pill bg-emerald-100 text-emerald-700';
-  if (['PARCIAL', 'SEM_BAIXA'].includes(normalized)) return 'app-status-pill bg-amber-100 text-amber-700';
-  if (['ESTORNADO', 'CANCELADO'].includes(normalized)) return 'app-status-pill bg-rose-100 text-rose-700';
-  return 'app-status-pill bg-slate-100 text-slate-700';
+  if (normalized === 'PREVISAO') return 'info';
+  if (['QUITADO', 'ATIVO'].includes(normalized)) return 'success';
+  if (['PARCIAL', 'SEM_BAIXA'].includes(normalized)) return 'warning';
+  if (['ESTORNADO', 'CANCELADO'].includes(normalized)) return 'neutral';
+  return 'info';
 }
 
 function toCsvValue(value) {
@@ -127,6 +109,120 @@ function toCsvValue(value) {
   return text;
 }
 
+// Leitores de célula: o mesmo valor serve para a grade e para o CSV.
+const campoTexto = (id) => (row) => row[id] || '-';
+const campoData = (id) => (row) => formatDate(row[id]);
+const campoValor = (id) => (row) => formatCurrency(row[id]);
+
+/* COLUNAS DO RELATÓRIO — a escolha (quais e em que ordem) é do usuário,
+   pelo painel "Colunas" da TabelaPadrao. `texto` é o que vai para o CSV
+   quando a célula da grade é um elemento (link, pílula de status). */
+const COLUNAS = [
+  {
+    id: 'titulo_codigo',
+    titulo: 'Título',
+    // R17: o código do título é o que nomeia a linha do relatório.
+    tipo: 'identidade',
+    noCard: 'titulo',
+    texto: campoTexto('titulo_codigo'),
+    /*
+      T6 — mesmo remendo da ContratosRelatorioOperacional (hoje): esta
+      coluna é `identidade`, entra no piso de 160px quando as outras vinte
+      e uma colunas somam mais que o contêiner, e "TIT-MTJLBFMT4DL0-V1..."
+      é o formato real do código — mais largo que o piso. Sem `title` em
+      nenhum ANCESTRAL o `td` recorta com `overflow: hidden` e a T6 reprova.
+      A CelulaDupla trunca no span e leva o texto completo no `title` do
+      wrapper. O `title` explícito é necessário porque `principal` aqui é
+      o <Link>, não a string — o title default da CelulaDupla faria
+      `${principal}` virar "[object Object]".
+    */
+    render: (row) => (
+      <CelulaDupla
+        principal={(
+          <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/financeiro/titulos/${row.titulo_id}`}>
+            {row.titulo_codigo || '-'}
+          </Link>
+        )}
+        title={row.titulo_codigo || '-'}
+      />
+    )
+  },
+  { id: 'tipo', titulo: 'Tipo', tipo: 'texto', render: campoTexto('tipo') },
+  {
+    id: 'status_titulo',
+    titulo: 'Status título',
+    tipo: 'status',
+    texto: campoTexto('status_titulo'),
+    render: (row) => (row.status_titulo
+      ? <StatusBadge status={row.status_titulo} kind={familiaDoStatus(row.status_titulo)} />
+      : '-')
+  },
+  {
+    id: 'status_movimento',
+    titulo: 'Status baixa',
+    tipo: 'status',
+    texto: campoTexto('status_movimento'),
+    render: (row) => (row.status_movimento
+      ? <StatusBadge status={row.status_movimento} kind={familiaDoStatus(row.status_movimento)} />
+      : '-')
+  },
+  /*
+    T6 — as cinco colunas de texto abaixo (parceiro, obra, categoria, conta
+    e usuario da baixa) correm o MESMO risco do título: são `tipo: 'texto'`,
+    também nascem em 180px e cedem ao piso de 160px quando a soma das vinte
+    e uma colunas estoura o contêiner (o relatório tem colunas
+    configuráveis — a pessoa pode deixar as vinte e uma visíveis ao mesmo
+    tempo). Razão social de parceiro, nome de obra/categoria/conta e nome de
+    usuário são texto LIVRE cadastrado por quem usa o sistema, sem teto de
+    tamanho — nenhuma garantia de caber em 160px. `tipo`/`origem` ficam de
+    fora: vocabulário fechado e curto (PAGAR/RECEBER, RH_DP/COMERCIAL...),
+    não haveria o que truncar.
+  */
+  { id: 'parceiro_nome', titulo: 'Parceiro', tipo: 'texto', texto: campoTexto('parceiro_nome'), render: (row) => <CelulaDupla principal={row.parceiro_nome || '-'} /> },
+  { id: 'parceiro_cpf_cnpj', titulo: 'CPF/CNPJ', tipo: 'codigo', render: campoTexto('parceiro_cpf_cnpj') },
+  { id: 'obra_nome', titulo: 'Obra', tipo: 'texto', texto: campoTexto('obra_nome'), render: (row) => <CelulaDupla principal={row.obra_nome || '-'} /> },
+  { id: 'categoria_nome', titulo: 'Categoria', tipo: 'texto', texto: campoTexto('categoria_nome'), render: (row) => <CelulaDupla principal={row.categoria_nome || '-'} /> },
+  { id: 'numero_documento', titulo: 'Documento', tipo: 'codigo', render: campoTexto('numero_documento') },
+  { id: 'data_emissao', titulo: 'Emissão', tipo: 'data', render: campoData('data_emissao') },
+  { id: 'data_vencimento', titulo: 'Vencimento', tipo: 'data', render: campoData('data_vencimento') },
+  { id: 'data_movimento', titulo: 'Data baixa', tipo: 'data', render: campoData('data_movimento') },
+  { id: 'conta_bancaria_nome', titulo: 'Conta', tipo: 'texto', texto: campoTexto('conta_bancaria_nome'), render: (row) => <CelulaDupla principal={row.conta_bancaria_nome || '-'} /> },
+  { id: 'valor_original', titulo: 'Valor original', tipo: 'valor', render: campoValor('valor_original') },
+  { id: 'valor_saldo', titulo: 'Saldo', tipo: 'valor', render: campoValor('valor_saldo') },
+  { id: 'valor_baixado', titulo: 'Valor baixado', tipo: 'valor', render: campoValor('valor_baixado') },
+  { id: 'valor_movimento', titulo: 'Valor movimento', tipo: 'valor', render: campoValor('valor_movimento') },
+  { id: 'juros', titulo: 'Juros', tipo: 'valor', render: campoValor('juros') },
+  { id: 'multa', titulo: 'Multa', tipo: 'valor', render: campoValor('multa') },
+  { id: 'desconto', titulo: 'Desconto', tipo: 'valor', render: campoValor('desconto') },
+  { id: 'valor_quitacao', titulo: 'Quitacao', tipo: 'valor', render: campoValor('valor_quitacao') },
+  { id: 'usuario_baixa', titulo: 'Usuário baixa', tipo: 'texto', texto: campoTexto('usuario_baixa'), render: (row) => <CelulaDupla principal={row.usuario_baixa || '-'} /> },
+  { id: 'origem', titulo: 'Origem', tipo: 'texto', render: campoTexto('origem') }
+];
+
+/* O CSV exporta EXATAMENTE o que está na grade — quais colunas e em que
+   ordem. Quem manda nisso agora é o painel da TabelaPadrao, que grava a
+   escolha em `<storageKey>:colunas`; o componente não devolve a escolha
+   para a tela, então a leitura acontece aqui, no clique (sempre o valor
+   mais recente, sem estado duplicado). Sem preferência salva, vale a
+   ordem declarada. */
+function colunasVisiveis() {
+  const ids = COLUNAS.map((coluna) => coluna.id);
+  let pref = null;
+  try {
+    pref = JSON.parse(localStorage.getItem(`${STORAGE_KEY}:colunas`) || 'null');
+  } catch (error) {
+    pref = null;
+  }
+  if (!pref) return COLUNAS;
+  const salva = Array.isArray(pref.ordem) ? pref.ordem.filter((id) => ids.includes(id)) : [];
+  const ordem = [...salva, ...ids.filter((id) => !salva.includes(id))];
+  const visiveis = Array.isArray(pref.visiveis) ? pref.visiveis : null;
+  const ocultas = Array.isArray(pref.ocultas) ? pref.ocultas : [];
+  return ordem
+    .filter((id) => (visiveis ? visiveis.includes(id) || !ocultas.includes(id) : true))
+    .map((id) => COLUNAS.find((coluna) => coluna.id === id));
+}
+
 export default function FinanceiroRelatorioAnalitico() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS);
@@ -135,12 +231,9 @@ export default function FinanceiroRelatorioAnalitico() {
   const [parceiros, setParceiros] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [contas, setContas] = useState([]);
-  const [columnOrder, setColumnOrder] = useState(loadColumns);
-  const [visibleColumns, setVisibleColumns] = useState(() => new Set(COLUMN_DEFINITIONS.map((item) => item.id)));
-  const [draggingColumn, setDraggingColumn] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
-  const [error, setError] = useState('');
+  const { avisos, avisar, fechar, limpar } = useAvisos();
 
   useEffect(() => {
     let active = true;
@@ -169,13 +262,10 @@ export default function FinanceiroRelatorioAnalitico() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(columnOrder));
-  }, [columnOrder]);
-
-  useEffect(() => {
     let active = true;
     setLoading(true);
-    setError('');
+    // Equivalente ao `setError('')` que existia aqui.
+    limpar();
 
     getRelatorioAnaliticoFinanceiro(compact(appliedFilters))
       .then((data) => {
@@ -187,7 +277,8 @@ export default function FinanceiroRelatorioAnalitico() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(err?.message || 'Erro ao carregar relatorio analitico');
+        // R3/R19: faixa do sistema, nunca caixa do navegador.
+        avisar.erro(err?.message || 'Erro ao carregar relatorio analitico');
         setRelatorio({ resumo: {}, linhas: [] });
       })
       .finally(() => {
@@ -197,23 +288,7 @@ export default function FinanceiroRelatorioAnalitico() {
     return () => {
       active = false;
     };
-  }, [appliedFilters]);
-
-  const columns = useMemo(() => {
-    const map = new Map(COLUMN_DEFINITIONS.map((item) => [item.id, item]));
-    return columnOrder.map((id) => map.get(id)).filter(Boolean).filter((column) => visibleColumns.has(column.id));
-  }, [columnOrder, visibleColumns]);
-  const tableColumns = useMemo(
-    () => [
-      ...columns.map((column) => ({
-        key: column.id,
-        width: getColumnWidth(column),
-        minWidth: column.kind === 'currency' ? 118 : 96
-      })),
-      { key: 'acoes', width: 84, minWidth: 72 }
-    ],
-    [columns]
-  );
+  }, [appliedFilters, avisar, limpar]);
 
   function setFilter(name, value) {
     setFilters((current) => ({
@@ -224,7 +299,11 @@ export default function FinanceiroRelatorioAnalitico() {
 
   function aplicarFiltros(event) {
     event.preventDefault();
-    setAppliedFilters({ ...filters });
+    // A MESMA referencia, nao uma copia: `rascunho` compara `filters` com
+    // `appliedFilters` por identidade. Com `{ ...filters }` a marca ficaria
+    // eternamente "em rascunho" depois da primeira consulta — o aviso
+    // passaria a mentir no sentido contrario.
+    setAppliedFilters(filters);
   }
 
   function limparFiltros() {
@@ -232,37 +311,13 @@ export default function FinanceiroRelatorioAnalitico() {
     setAppliedFilters(DEFAULT_FILTERS);
   }
 
-  function handleDrop(targetColumnId) {
-    if (!draggingColumn || draggingColumn === targetColumnId) {
-      setDraggingColumn(null);
-      return;
-    }
-
-    setColumnOrder((current) => {
-      const next = current.filter((id) => id !== draggingColumn);
-      const targetIndex = next.indexOf(targetColumnId);
-      next.splice(targetIndex >= 0 ? targetIndex : next.length, 0, draggingColumn);
-      return next;
-    });
-    setDraggingColumn(null);
-  }
-
-  function toggleColumn(columnId) {
-    setVisibleColumns((current) => {
-      const next = new Set(current);
-      if (next.has(columnId) && next.size > 1) {
-        next.delete(columnId);
-      } else {
-        next.add(columnId);
-      }
-      return next;
-    });
-  }
-
   function exportarCsv() {
-    const header = columns.map((column) => toCsvValue(column.label)).join(';');
+    const escolhidas = colunasVisiveis();
+    const header = escolhidas.map((column) => toCsvValue(column.titulo)).join(';');
     const rows = relatorio.linhas.map((row) => (
-      columns.map((column) => toCsvValue(formatCell(row, column))).join(';')
+      escolhidas
+        .map((column) => toCsvValue((column.texto || column.render)(row)))
+        .join(';')
     ));
     const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -273,23 +328,65 @@ export default function FinanceiroRelatorioAnalitico() {
     URL.revokeObjectURL(url);
   }
 
-  return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header-row">
-        <div>
-          <h1 className="page-title">Relatorio Analitico Financeiro</h1>
-          <p className="page-subtitle">Monte a visao por titulo, baixa, conta e parceiro. Arraste as colunas para reorganizar.</p>
-        </div>
-        <div className="app-page-actions">
-          <Link to="/financeiro/relatorios" className="btn btn-outline btn-sm">Voltar para relatorios</Link>
-          <button type="button" className="btn btn-outline btn-sm" onClick={exportarCsv} disabled={!relatorio.linhas.length}>
-            <HiOutlineArrowDownTray className="h-4 w-4" />
-            CSV
-          </button>
-        </div>
-      </div>
+  const cortadoNoTeto = relatorio.linhas.length >= TETO_LINHAS;
+  const rascunho = filters !== appliedFilters;
+  const apoioDaFaixa = [
+    'Monte a visao por titulo, baixa, conta e parceiro; o painel "Colunas" escolhe e reordena os campos.',
+    rascunho ? 'O recorte marcado so vale ao consultar.' : null,
+    cortadoNoTeto ? `Consulta cortada no teto de ${TETO_LINHAS} linhas.` : null
+  ].filter(Boolean).join(' ');
 
-      <form className="card sol-surface-card" onSubmit={aplicarFiltros}>
+  return (
+    <Pagina>
+      {/*
+        R13/C1/C2 — a linha de titulo era solta (rolava para fora) e o apoio
+        vinha num paragrafo que a R5 proibe. Agora sao faixa fixa, titulo em
+        22px e apoio numa linha so, dentro da propria superficie.
+
+        D3/C5 — tres pesos visiveis: "Consultar" primario solido, "CSV" e
+        "Limpar" em contorno. Nao ha acao destrutiva nesta tela.
+
+        R23 — REGIME DECLARADO: **EXCECAO (consulta cara), com botao
+        explicito**. Sao 12 dimensoes de recorte que o usuario combina, sobre
+        uma consulta que junta titulo com baixa, conta e parceiro — muito
+        acima do teto de 3 requisicoes da regra. A marca fica em RASCUNHO ate
+        o clique, o botao diz o que faz ("Consultar") e o apoio da faixa
+        AVISA que a marca ainda nao vale.
+      */}
+      <PageHeader
+        titulo="Relatório Analítico Financeiro"
+        contagem={loading ? 'Carregando…' : `${relatorio.linhas.length} linha(s)`}
+        descricao={apoioDaFaixa}
+        acaoPrincipal={{
+          rotulo: loading ? 'Consultando...' : 'Consultar',
+          onClick: aplicarFiltros,
+          desabilitada: loading,
+          icone: <HiOutlineMagnifyingGlass className="h-4 w-4" />
+        }}
+        secundarias={[
+          {
+            rotulo: 'CSV',
+            onClick: exportarCsv,
+            desabilitada: !relatorio.linhas.length,
+            title: 'Exportar as colunas visiveis em CSV',
+            icone: <HiOutlineArrowDownTray className="h-4 w-4" />
+          },
+          {
+            rotulo: 'Limpar',
+            onClick: limparFiltros,
+            icone: <HiOutlineXMark className="h-4 w-4" />
+          }
+        ]}
+      />
+
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      <BlocoConteudo
+        titulo="Recorte do relatório"
+        descricao="A grade abaixo so muda ao consultar."
+        variante="secundario"
+      >
+      <form onSubmit={aplicarFiltros}>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
           <label className="app-filter-field xl:col-span-2">
             <span className="app-filter-label">Tipo</span>
@@ -300,10 +397,10 @@ export default function FinanceiroRelatorioAnalitico() {
             </select>
           </label>
           <label className="app-filter-field xl:col-span-2">
-            <span className="app-filter-label">Status titulo</span>
+            <span className="app-filter-label">Status título</span>
             <select className="input w-full input-sm" value={filters.status_titulo} onChange={(event) => setFilter('status_titulo', event.target.value)}>
               <option value="">Todos</option>
-              <option value="PREVISAO">Previsao</option>
+              <option value="PREVISAO">Previsão</option>
               <option value="ABERTO">Aberto</option>
               <option value="PARCIAL">Parcial</option>
               <option value="QUITADO">Quitado</option>
@@ -322,23 +419,23 @@ export default function FinanceiroRelatorioAnalitico() {
           </label>
           <label className="app-filter-field xl:col-span-6">
             <span className="app-filter-label">Busca</span>
-            <input className="input w-full input-sm" value={filters.q} onChange={(event) => setFilter('q', event.target.value)} placeholder="Titulo, parceiro, documento ou obra" />
+            <input className="input w-full input-sm" value={filters.q} onChange={(event) => setFilter('q', event.target.value)} placeholder="Título, parceiro, documento ou obra" />
           </label>
           <label className="app-filter-field xl:col-span-2">
             <span className="app-filter-label">Baixa inicial</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_inicial} onChange={(event) => setFilter('data_inicial', event.target.value)} />
+            <DateInputBR className="input w-full input-sm" value={filters.data_inicial} onChange={(event) => setFilter('data_inicial', event.target.value)} />
           </label>
           <label className="app-filter-field xl:col-span-2">
             <span className="app-filter-label">Baixa final</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_final} onChange={(event) => setFilter('data_final', event.target.value)} />
+            <DateInputBR className="input w-full input-sm" value={filters.data_final} onChange={(event) => setFilter('data_final', event.target.value)} />
           </label>
           <label className="app-filter-field xl:col-span-2">
             <span className="app-filter-label">Venc. inicial</span>
-            <input className="input w-full input-sm" type="date" value={filters.vencimento_inicial} onChange={(event) => setFilter('vencimento_inicial', event.target.value)} />
+            <DateInputBR className="input w-full input-sm" value={filters.vencimento_inicial} onChange={(event) => setFilter('vencimento_inicial', event.target.value)} />
           </label>
           <label className="app-filter-field xl:col-span-2">
             <span className="app-filter-label">Venc. final</span>
-            <input className="input w-full input-sm" type="date" value={filters.vencimento_final} onChange={(event) => setFilter('vencimento_final', event.target.value)} />
+            <DateInputBR className="input w-full input-sm" value={filters.vencimento_final} onChange={(event) => setFilter('vencimento_final', event.target.value)} />
           </label>
           <label className="app-filter-field xl:col-span-4">
             <span className="app-filter-label">Obra</span>
@@ -369,125 +466,76 @@ export default function FinanceiroRelatorioAnalitico() {
             </select>
           </label>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--c-border)] pt-3">
-          <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>
-            <HiOutlineXMark className="h-4 w-4" />
-            Limpar
-          </button>
-          <button type="submit" className="btn btn-primary btn-sm">
-            <HiOutlineMagnifyingGlass className="h-4 w-4" />
-            Consultar
-          </button>
-        </div>
+        {rascunho ? (
+          <p className="mt-4 border-t border-[var(--c-border)] pt-4 text-xs text-[var(--c-muted)]">
+            Recorte em rascunho — clique em Consultar para a grade mudar.
+          </p>
+        ) : null}
+        {/* R15 — atalho de teclado COM caminho visivel equivalente: sem um
+            submit dentro do formulario o navegador para de consultar com
+            Enter. O botao visivel e o "Consultar" da faixa fixa; este so
+            preserva o Enter, e por isso nao aparece (R16: um dono por
+            responsabilidade). */}
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1}>Consultar</button>
       </form>
+      </BlocoConteudo>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <div className="card sol-surface-card"><span className="app-summary-label">Linhas</span><strong className="app-summary-value">{relatorio.resumo?.quantidade_linhas || 0}</strong></div>
-        <div className="card sol-surface-card"><span className="app-summary-label">Titulos</span><strong className="app-summary-value">{relatorio.resumo?.titulos || 0}</strong></div>
-        <div className="card sol-surface-card"><span className="app-summary-label">Saldo</span><strong className="app-summary-value">{formatCurrency(relatorio.resumo?.total_saldo)}</strong></div>
-        <div className="card sol-surface-card"><span className="app-summary-label">Quitacao</span><strong className="app-summary-value">{formatCurrency(relatorio.resumo?.total_quitacao)}</strong></div>
-      </div>
+      {/*
+        B2 — UM bloco primario, e ele responde a pergunta da tela: quanto o
+        recorte montado soma.
 
-      {error ? <div className="app-alert app-alert--error">{error}</div> : null}
+        B3 — a contagem de linhas ja esta na faixa fixa, entao o cartao
+        "Linhas" saiu. O que sobrou aqui e informacao que a faixa nao da.
 
-      <section className="card sol-surface-card">
-        <div className="border-b border-[var(--c-border)] px-4 py-3">
-          <h2 className="text-sm font-semibold text-[var(--c-text)]">Colunas</h2>
-          <p className="text-xs text-[var(--c-muted)]">Arraste os chips para mudar a ordem. Desmarque campos que nao quer na grade ou exportacao.</p>
-        </div>
-        <div className="flex flex-wrap gap-2 px-4 py-3">
-          {columnOrder.map((columnId) => {
-            const column = COLUMN_DEFINITIONS.find((item) => item.id === columnId);
-            if (!column) return null;
-            const active = visibleColumns.has(column.id);
-            return (
-              <button
-                key={column.id}
-                type="button"
-                draggable
-                onDragStart={() => setDraggingColumn(column.id)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => handleDrop(column.id)}
-                onClick={() => toggleColumn(column.id)}
-                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  active
-                    ? 'border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-text)]'
-                    : 'border-dashed border-[var(--c-border)] text-[var(--c-muted)]'
-                }`}
-                title="Clique para mostrar/ocultar. Arraste para reposicionar."
-              >
-                <HiOutlineBars3 className="h-3.5 w-3.5" />
-                {column.label}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+        ROTULOS HONESTOS, e e correcao de SIGNIFICADO, nao de forma: quando a
+        consulta volta no teto, "Saldo" e "Quitacao" NAO sao o total do
+        recorte — sao o total das linhas trazidas. O numero em si e agregado
+        no backend sobre a consulta ja cortada e nao da para consertar daqui
+        (registrado no relatorio); o que da para consertar e ele parar de
+        afirmar o que nao e.
+      */}
+      <BlocoConteudo
+        titulo={cortadoNoTeto ? 'Total das linhas trazidas' : 'Total do recorte'}
+        descricao={cortadoNoTeto
+          ? `Atencao: a consulta voltou no teto de ${TETO_LINHAS} linhas. Os valores abaixo somam apenas essas linhas — estreite o recorte para ler o total verdadeiro.`
+          : 'Somado sobre todas as linhas do recorte consultado.'}
+        variante="primario"
+        cor="var(--module-financeiro)"
+      >
+        <StatGrid colunas={3}>
+          <StatTile
+            label="Títulos"
+            valor={String(relatorio.resumo?.titulos || 0)}
+            sub={`${relatorio.resumo?.quantidade_linhas || 0} linha(s) de título e baixa`}
+          />
+          <StatTile
+            label={cortadoNoTeto ? 'Saldo nas linhas trazidas' : 'Saldo do recorte'}
+            valor={formatCurrency(relatorio.resumo?.total_saldo)}
+          />
+          <StatTile
+            label={cortadoNoTeto ? 'Quitacao nas linhas trazidas' : 'Quitacao do recorte'}
+            valor={formatCurrency(relatorio.resumo?.total_quitacao)}
+          />
+        </StatGrid>
+      </BlocoConteudo>
 
-      <section className="card sol-surface-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <ResizableTable
-            className="w-full text-xs"
-            columns={tableColumns}
-            storageKey="fluxy.financeiro.relatorioAnalitico.columnWidths"
-          >
-            <thead>
-              <tr className="border-b border-[var(--c-border)] bg-[var(--c-bg)]">
-                {columns.map((column) => (
-                  <ResizableTh
-                    key={column.id}
-                    columnKey={column.id}
-                    draggable
-                    onDragStart={() => setDraggingColumn(column.id)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={() => handleDrop(column.id)}
-                    className="cursor-move px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--c-muted)] whitespace-nowrap"
-                    title="Arraste para reposicionar"
-                  >
-                    {column.label}
-                  </ResizableTh>
-                ))}
-                <ResizableTh
-                  columnKey="acoes"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--c-muted)] whitespace-nowrap"
-                >
-                  Acoes
-                </ResizableTh>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-border)]">
-              {loading ? (
-                <tr><td colSpan={columns.length + 1} className="px-3 py-8 text-center text-[var(--c-muted)]">Carregando relatorio...</td></tr>
-              ) : null}
-              {!loading && relatorio.linhas.length === 0 ? (
-                <tr><td colSpan={columns.length + 1} className="px-3 py-8 text-center text-[var(--c-muted)]">Nenhuma linha encontrada.</td></tr>
-              ) : null}
-              {!loading && relatorio.linhas.map((row) => (
-                <tr key={row.id} className="align-top hover:bg-[var(--c-bg)]">
-                  {columns.map((column) => (
-                    <td key={`${row.id}-${column.id}`} className="px-3 py-2 whitespace-nowrap">
-                      {column.kind === 'status' ? (
-                        <span className={statusClass(row[column.id])}>{row[column.id] || '-'}</span>
-                      ) : column.id === 'titulo_codigo' ? (
-                        <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/financeiro/titulos/${row.titulo_id}`}>
-                          {formatCell(row, column)}
-                        </Link>
-                      ) : (
-                        formatCell(row, column)
-                      )}
-                    </td>
-                  ))}
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <Link className="btn btn-outline btn-sm" to={`/financeiro/titulos/${row.titulo_id}`} title="Abrir titulo">
-                      <HiOutlineEye className="h-4 w-4" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </ResizableTable>
-        </div>
-      </section>
-    </div>
+      <BlocoConteudo variante="secundario" className="app-table-shell">
+        <TabelaPadrao
+          colunas={COLUNAS}
+          itens={relatorio.linhas}
+          carregando={loading}
+          colunasConfiguraveis
+          storageKey={STORAGE_KEY}
+          rotuloRolagem="Relatorio analitico financeiro"
+          vazio="Nenhuma linha encontrada."
+          larguraAcoes={120}
+          acoesLinha={(row) => (
+            <Link className="btn btn-outline btn-sm" to={`/financeiro/titulos/${row.titulo_id}`} title="Abrir título">
+              <HiOutlineEye className="h-4 w-4" />
+            </Link>
+          )}
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

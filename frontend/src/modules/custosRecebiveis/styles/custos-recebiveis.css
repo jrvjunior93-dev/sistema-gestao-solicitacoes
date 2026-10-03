@@ -21,47 +21,30 @@
   font: inherit;
 }
 
-.cr-page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 2px 2px 0;
+/* C1 (matriz) — A FAIXA COMPACTA E UMA LINHA SO.
+
+   O contador de prazos chega ao `PageHeader` como `children`, e o componente
+   os desenha DEPOIS da `.app-page-header-row`. Como a faixa e
+   `flex-direction: column`, ele virava uma SEGUNDA linha: 118px de altura
+   compacta, num espaco que a R13 reserva para uma linha. Aqui a faixa desta
+   tela passa a ser uma linha horizontal — titulo e apoio a esquerda, acoes e
+   o sinal de prazos a direita, que e onde a faixa padrao poe o que precisa
+   acompanhar a rolagem. Nenhuma medida nova: so a DIRECAO muda, o vao entre
+   os dois continua sendo o `gap` que a propria faixa ja declara. Com isso a
+   altura compacta passa a ser a mesma de qualquer faixa padrao com um botao
+   de contorno — o contador (40px) e mais baixo que o botao. */
+.cr-page .app-page-header {
+  flex-direction: row;
+  align-items: center;
 }
 
-.cr-page-header > div {
+.cr-page .app-page-header > .app-page-header-row {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.cr-page-header > div > span {
-  color: var(--cr-accent);
-  font-size: 0.72rem;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.cr-page-header h1 {
-  margin: 3px 0 0;
-  color: var(--c-text);
-  font-size: clamp(1.45rem, 2vw, 2rem);
-  font-weight: 800;
-  line-height: 1.1;
-}
-
-.cr-page-header p {
-  max-width: 780px;
-  margin: 6px 0 0;
-  color: var(--c-muted);
-  font-size: 0.86rem;
-  line-height: 1.45;
-}
-
-.cr-page-header__actions {
-  display: flex;
+.cr-page .app-page-header > .cr-obligation-counter {
   flex: 0 0 auto;
-  align-items: stretch;
-  gap: 0.5rem;
 }
 
 .cr-obligation-counter {
@@ -80,9 +63,14 @@
 }
 
 .cr-obligation-counter svg { grid-row: 1 / span 2; color: var(--cr-accent); }
-.cr-obligation-counter span { font-size: 0.63rem; font-weight: 800; text-transform: uppercase; }
-.cr-obligation-counter strong { font-size: 0.7rem; }
-.cr-obligation-counter small { grid-column: 2 / span 2; color: var(--cr-muted); font-size: 0.61rem; }
+/* R30 (05/09) — os TRES textos deste botao caiam abaixo do piso (10,08 ·
+   11,20 · 9,76px) e a hierarquia era feita SO por tamanho. No degrau unico
+   de 12px ela passa a ser feita por peso, caixa e cor, que e o que a R30
+   manda: rotulo = versal + 800 + apagado; numero = negrito, cor plena (ou
+   a cor de vencido); contexto = peso normal, apagado. Nada saiu. */
+.cr-obligation-counter span { color: var(--cr-muted); font-size: var(--fonte-detalhe); font-weight: 800; text-transform: uppercase; }
+.cr-obligation-counter strong { font-size: var(--fonte-detalhe); }
+.cr-obligation-counter small { grid-column: 2 / span 2; color: var(--cr-muted); font-size: var(--fonte-detalhe); }
 .cr-obligation-counter[data-overdue="true"] { border-color: color-mix(in srgb, var(--cr-danger) 44%, var(--cr-border)); }
 .cr-obligation-counter[data-overdue="true"] strong,
 .cr-obligation-counter[data-overdue="true"] svg { color: var(--cr-danger); }
@@ -91,7 +79,7 @@
   display: flex;
   gap: 4px;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: clip;
   border-bottom: 1px solid var(--ui-border);
   scrollbar-width: thin;
 }
@@ -108,7 +96,7 @@
   border: 0;
   background: transparent;
   color: var(--c-muted);
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   cursor: pointer;
 }
@@ -136,7 +124,7 @@
 
 .cr-context-bar {
   position: sticky;
-  z-index: 8;
+  z-index: var(--z-presa-no-bloco);
   top: 8px;
   display: grid;
   grid-template-columns: minmax(280px, 1.5fr) minmax(190px, 0.65fr) minmax(240px, 0.85fr);
@@ -158,12 +146,39 @@
     minmax(220px, 0.75fr);
 }
 
+.cr-context-bar--executive.cr-context-bar--with-actions {
+  grid-template-columns:
+    minmax(260px, 1.25fr)
+    minmax(160px, 0.55fr)
+    minmax(230px, 0.8fr)
+    minmax(190px, 0.65fr)
+    auto;
+}
+
+.cr-context-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.cr-context-actions .btn {
+  min-height: 2.55rem;
+  white-space: nowrap;
+}
+
 .cr-competence-filter {
   position: relative;
   min-width: 0;
 }
 
-.cr-competence-filter > summary {
+/* 05/09 — o "Competências dos cards" deixou de ser `<details>` nativo
+   (não fechava clicando fora nem com Esc) e virou botão + estado. O
+   desenho é o mesmo: só mudou o gancho de `summary` para a classe e de
+   `[open]` para `[data-aberto]`. */
+.cr-competence-filter > .cr-competence-filter__resumo {
+  width: 100%;
+  font: inherit;
+  text-align: left;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   min-height: 39px;
@@ -178,34 +193,30 @@
   list-style: none;
 }
 
-.cr-competence-filter > summary::-webkit-details-marker {
-  display: none;
-}
-
-.cr-competence-filter > summary:focus-visible {
+.cr-competence-filter > .cr-competence-filter__resumo:focus-visible {
   border-color: var(--cr-accent);
   outline: 2px solid color-mix(in srgb, var(--cr-accent) 24%, transparent);
   outline-offset: 1px;
 }
 
-.cr-competence-filter > summary strong {
+.cr-competence-filter > .cr-competence-filter__resumo strong {
   overflow: hidden;
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cr-competence-filter > summary svg:last-child {
+.cr-competence-filter > .cr-competence-filter__resumo svg:last-child {
   transition: transform 160ms ease;
 }
 
-.cr-competence-filter[open] > summary svg:last-child {
+.cr-competence-filter[data-aberto="true"] > .cr-competence-filter__resumo svg:last-child {
   transform: rotate(180deg);
 }
 
 .cr-competence-filter__panel {
   position: absolute;
-  z-index: 40;
+  z-index: var(--z-dropdown);
   top: calc(100% + 6px);
   right: 0;
   display: grid;
@@ -231,7 +242,7 @@
   background: var(--ui-canvas);
   color: var(--cr-accent);
   font: inherit;
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   cursor: pointer;
 }
@@ -259,7 +270,7 @@
   padding: 5px 8px;
   border-bottom: 1px solid var(--ui-border);
   color: var(--c-text);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   cursor: pointer;
 }
 
@@ -301,7 +312,7 @@
 
 .cr-field > span {
   color: var(--c-muted);
-  font-size: 0.67rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 750;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -336,7 +347,7 @@
 
 .cr-field small {
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-input-icon {
@@ -368,7 +379,7 @@
 
 .cr-context-summary span {
   color: var(--c-muted);
-  font-size: 0.67rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 750;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -383,18 +394,21 @@
 
 .cr-context-summary strong {
   color: var(--c-text);
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-context-summary small {
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-section,
 .cr-workspace {
   min-width: 0;
-  overflow: hidden;
+  /* R18: `overflow: hidden` cria contexto de rolagem e mata o
+     position:sticky do cabeçalho e da coluna fixa da tabela que mora aqui
+     dentro — e mata em silêncio. `clip` corta igual, sem scrollport. */
+  overflow: clip;
   border: 1px solid var(--ui-border);
   border-radius: 13px;
   background: var(--ui-surface);
@@ -427,11 +441,11 @@
 
 .cr-section-heading h2,
 .cr-workspace-heading h2 {
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
 }
 
 .cr-block-heading h3 {
-  font-size: 0.88rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-section-heading p,
@@ -439,7 +453,7 @@
 .cr-block-heading p {
   margin: 3px 0 0;
   color: var(--c-muted);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.4;
 }
 
@@ -450,64 +464,22 @@
   margin-bottom: 13px;
 }
 
-.cr-table-shell {
-  min-width: 0;
-  overflow-x: auto;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-}
+/*
+  R30 (05/09) — O CASO EM QUE A REGRA MAIS DESTROI INFORMACAO, E COMO ELE FOI
+  RESOLVIDO SEM PERDER NENHUM DOS TRES NIVEIS.
 
-.cr-table-shell table {
-  width: 100%;
-  min-width: 960px;
-  border-collapse: collapse;
-  color: var(--c-text);
-  font-size: 0.78rem;
-}
+  Dentro do `td` havia TRES niveis distinguidos SO por tamanho: o valor
+  (`strong`, 12,48px), o complemento (`span`, 11,52px) e o rodape da celula
+  (`small`, 10,56px). Os dois ultimos estao abaixo do piso, entao os dois vao
+  para 12px — e ai, com a mesma cor apagada e o mesmo peso, eles viravam UM
+  nivel so.
 
-.cr-table-shell th {
-  padding: 9px 11px;
-  background: var(--ui-canvas);
-  color: var(--c-muted);
-  font-size: 0.67rem;
-  font-weight: 760;
-  letter-spacing: 0.045em;
-  text-align: left;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.cr-table-shell td {
-  padding: 10px 11px;
-  border-top: 1px solid var(--ui-border);
-  vertical-align: middle;
-}
-
-.cr-table-shell tbody tr:hover {
-  background: color-mix(in srgb, var(--cr-accent) 4%, var(--ui-surface));
-}
-
-.cr-table-shell td > strong,
-.cr-table-shell td > span {
-  display: block;
-}
-
-.cr-table-shell td > span {
-  margin-top: 2px;
-  color: var(--c-muted);
-  font-size: 0.72rem;
-}
-
-.cr-table-shell td > small {
-  display: block;
-  margin-top: 3px;
-  color: var(--c-muted);
-  font-size: 0.66rem;
-}
-
-.cr-table-shell tr[data-sum="true"] {
-  background: color-mix(in srgb, var(--cr-accent) 5%, var(--ui-surface));
-}
+  O que separa os tres agora, sem tamanho: `strong` e negrito na cor plena;
+  `span` e peso 600 na cor apagada; `small` e peso normal, apagado e um passo
+  mais discreto ainda (opacidade). Sao tres degraus de PESO dentro de um
+  degrau de tamanho — que e exatamente o que a R30 pede quando diz que a
+  escala e a hierarquia e que peso e cor fazem o resto do trabalho.
+*/
 
 .cr-status-pill,
 .cr-classification-pill {
@@ -516,7 +488,7 @@
   min-height: 24px;
   padding: 3px 8px;
   border-radius: 999px;
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   line-height: 1;
   white-space: nowrap;
@@ -560,57 +532,8 @@
 .cr-result-count {
   padding: 9px 2px 0;
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   text-align: right;
-}
-
-.cr-mobile-list {
-  display: none;
-}
-
-.cr-mobile-record {
-  display: grid;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-canvas);
-}
-
-.cr-mobile-record-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px 12px;
-  margin: 0;
-}
-
-.cr-mobile-record-grid div {
-  min-width: 0;
-}
-
-.cr-mobile-record-grid dt,
-.cr-mobile-macro span {
-  color: var(--c-muted);
-  font-size: 0.64rem;
-  font-weight: 760;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.cr-mobile-record-grid dd,
-.cr-mobile-macro strong {
-  margin: 2px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--c-text);
-  font-size: 0.76rem;
-  font-weight: 650;
-}
-
-.cr-mobile-macro {
-  display: grid;
-  gap: 2px;
-  padding-top: 10px;
-  border-top: 1px solid var(--ui-border);
 }
 
 .cr-empty-state {
@@ -621,7 +544,7 @@
   gap: 7px;
   padding: 22px;
   color: var(--c-muted);
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   text-align: center;
 }
 
@@ -632,7 +555,7 @@
 
 .cr-empty-state strong {
   color: var(--c-text);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-feedback {
@@ -645,7 +568,7 @@
   border-radius: 9px;
   background: var(--ui-canvas);
   color: var(--c-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-feedback > div {
@@ -683,7 +606,7 @@
 
 .cr-workspace-heading > div:first-child > span {
   color: var(--cr-accent);
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -702,7 +625,7 @@
   align-items: center;
   gap: 5px;
   color: var(--cr-success);
-  font-size: 0.65rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 680;
 }
 
@@ -723,7 +646,7 @@
   border: 0;
   background: transparent;
   color: var(--c-muted);
-  font-size: 0.64rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 680;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -768,7 +691,7 @@
 
 .cr-plan-state > span {
   color: var(--c-muted);
-  font-size: 0.64rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -776,7 +699,7 @@
 
 .cr-plan-state > strong {
   color: var(--c-text);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-plan-metrics {
@@ -796,7 +719,7 @@
 
 .cr-plan-metric > span {
   color: var(--c-muted);
-  font-size: 0.65rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -804,12 +727,12 @@
 
 .cr-plan-metric > strong {
   color: var(--c-text);
-  font-size: 1.03rem;
+  font-size: var(--fonte-bloco);
 }
 
 .cr-plan-metric > small {
   color: var(--c-muted);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-plan-metric[data-tone="warning"] > strong {
@@ -855,12 +778,12 @@
 
 .cr-publish-strip strong {
   color: var(--c-text);
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-publish-strip span {
   color: var(--c-muted);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.35;
 }
 
@@ -918,19 +841,23 @@
 }
 
 .cr-macro-row strong {
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-macro-row span {
   overflow: hidden;
   color: var(--c-muted);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   text-overflow: ellipsis;
 }
 
+/* R30 (05/09): `strong` (codigo) e `b` (valor) ficaram no mesmo degrau de
+   12px. O que os separa nao e tamanho — e coluna e forma: o valor e numero
+   tabular, alinhado, e o codigo e texto. */
 .cr-macro-row b {
   flex: 0 0 auto;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -1009,18 +936,18 @@
 
 .cr-preview-heading strong {
   color: var(--c-text);
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-preview-heading span {
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-preview-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--ui-border);
   border-radius: 9px;
   background: var(--ui-border);
@@ -1036,14 +963,14 @@
 
 .cr-preview-metrics span {
   color: var(--c-muted);
-  font-size: 0.64rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   text-transform: uppercase;
 }
 
 .cr-preview-metrics strong {
   color: var(--c-text);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-validation-errors {
@@ -1061,7 +988,7 @@
   gap: 10px;
   padding: 7px 9px;
   border-bottom: 1px solid var(--ui-border);
-  font-size: 0.71rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-validation-errors-heading {
@@ -1082,21 +1009,11 @@
   display: flex;
   gap: 8px;
   color: var(--cr-warning);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-validation-warnings span {
   color: var(--c-muted);
-}
-
-.cr-dashboard-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.65fr);
-  gap: 12px;
-}
-
-.cr-dashboard-card {
-  min-height: 360px;
 }
 
 .cr-heading-icon {
@@ -1109,7 +1026,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   background: var(--ui-border);
@@ -1126,7 +1043,7 @@
 .cr-kpi-strip span,
 .cr-review-summary span {
   color: var(--c-muted);
-  font-size: 0.67rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 750;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -1135,16 +1052,12 @@
 .cr-kpi-strip strong,
 .cr-review-summary strong {
   color: var(--c-text);
-  font-size: 1.05rem;
+  font-size: var(--fonte-bloco);
 }
 
 .cr-kpi-strip--receivables {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 12px;
-}
-
-.cr-kpi-strip--dashboard {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .cr-kpi-strip [data-tone="actual"] strong,
@@ -1157,51 +1070,9 @@
   color: var(--accent-red, #c73847);
 }
 
-.cr-macro-progress-list,
-.cr-stage-list {
-  display: grid;
-  gap: 0;
-  margin-top: 12px;
-  border-top: 1px solid var(--ui-border);
-}
-
-.cr-macro-progress-row {
-  display: grid;
-  grid-template-columns: minmax(150px, 0.8fr) minmax(160px, 1fr) 72px;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 2px;
-  border-bottom: 1px solid var(--ui-border);
-}
-
-.cr-macro-progress-row > div:first-child {
-  display: grid;
-  gap: 2px;
-}
-
-.cr-macro-progress-row strong {
-  color: var(--c-text);
-  font-size: 0.76rem;
-}
-
-.cr-macro-progress-row span {
-  color: var(--c-muted);
-  font-size: 0.68rem;
-}
-
-.cr-macro-progress-row b {
-  color: var(--c-muted);
-  font-size: 0.7rem;
-  text-align: right;
-}
-
-.cr-macro-progress-row b[data-state="ESTOURO"] {
-  color: var(--accent-red, #c73847);
-}
-
 .cr-progress-track {
   height: 7px;
-  overflow: hidden;
+  overflow: clip;
   border-radius: 999px;
   background: color-mix(in srgb, var(--c-muted) 14%, transparent);
 }
@@ -1219,71 +1090,20 @@
   background: var(--accent-red, #c73847);
 }
 
-.cr-stage-row {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 11px 2px;
-  border: 0;
-  border-bottom: 1px solid var(--ui-border);
-  background: transparent;
-  color: var(--c-text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.cr-stage-row:hover {
-  background: color-mix(in srgb, var(--cr-accent) 4%, transparent);
-}
-
-.cr-stage-row > div {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.cr-stage-row strong {
-  overflow: hidden;
-  font-size: 0.76rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cr-stage-row > div > span {
-  color: var(--c-muted);
-  font-size: 0.68rem;
-}
-
-.cr-summary-inline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px 14px;
-  color: var(--c-muted);
-  font-size: 0.72rem;
-}
-
-.cr-summary-inline strong {
-  margin-left: 4px;
-  color: var(--c-text);
-}
-
 .cr-ops-dashboard {
   display: grid;
   gap: 12px;
 }
 
-.cr-ops-overview {
-  display: grid;
-  gap: 14px;
-}
+/* `.cr-ops-overview` saiu junto com a classe: a carteira consolidada agora e
+   um `BlocoConteudo`, e o vao entre cabecalho e corpo do bloco e o do
+   componente padrao (`.app-bloco-corpo`), nao um gap de 14px so desta tela. */
 
 .cr-scope-kicker {
   display: block;
   margin-bottom: 3px;
   color: var(--cr-accent);
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -1292,7 +1112,7 @@
 .cr-ops-ledger {
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   background: var(--ui-border);
@@ -1312,7 +1132,7 @@
   padding: 8px 11px;
   border-bottom: 1px solid var(--ui-border);
   color: var(--c-text);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
 }
 
@@ -1340,7 +1160,7 @@
 
 .cr-ops-metric > span {
   color: var(--c-muted);
-  font-size: 0.63rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 780;
   letter-spacing: 0.035em;
   text-transform: uppercase;
@@ -1349,7 +1169,7 @@
 .cr-ops-metric > strong {
   max-width: 100%;
   color: var(--c-text);
-  font-size: clamp(0.82rem, 1.05vw, 1.04rem);
+  font-size: var(--fonte-bloco);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   overflow-wrap: normal;
@@ -1359,7 +1179,7 @@
 
 .cr-ops-metric > small {
   color: var(--c-muted);
-  font-size: 0.64rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-ops-metric[data-tone="actual"] > strong,
@@ -1373,6 +1193,10 @@
 
 .cr-ops-metric[data-tone="warning"] > strong {
   color: var(--cr-warning);
+}
+
+.cr-ops-metric[data-tone="context"] > strong {
+  color: var(--cr-accent);
 }
 
 .cr-dashboard-trends {
@@ -1399,7 +1223,7 @@
   align-items: center;
   gap: 7px;
   color: var(--c-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-trend-heading svg {
@@ -1418,7 +1242,7 @@
   align-items: center;
   gap: 4px;
   color: var(--c-muted);
-  font-size: 0.62rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-trend-legend span::before {
@@ -1448,14 +1272,14 @@
 
 .cr-trend-row > span {
   color: var(--c-muted);
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 720;
   text-transform: capitalize;
 }
 
 .cr-trend-row > strong {
   color: var(--c-text);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   text-align: right;
 }
 
@@ -1485,7 +1309,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--cr-warning) 13%, transparent);
   color: var(--cr-warning);
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 780;
 }
 
@@ -1539,13 +1363,13 @@
 }
 
 .cr-attention-row strong {
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-attention-row span,
 .cr-attention-row small {
   color: var(--c-muted);
-  font-size: 0.67rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-empty-state--positive {
@@ -1578,12 +1402,12 @@
 
 .cr-macro-ops-row__name strong {
   color: var(--c-text);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-macro-ops-row__name span {
   color: var(--c-muted);
-  font-size: 0.65rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-macro-ops-row__numbers {
@@ -1596,12 +1420,12 @@
   display: grid;
   gap: 2px;
   color: var(--c-muted);
-  font-size: 0.62rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-macro-ops-row__numbers strong {
   color: var(--c-text);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-macro-ops-row__numbers strong[data-negative="true"] {
@@ -1617,18 +1441,13 @@
 
 .cr-macro-ops-row__progress b {
   color: var(--c-muted);
-  font-size: 0.67rem;
+  font-size: var(--fonte-detalhe);
   text-align: right;
 }
 
 .cr-macro-ops-row[data-state="ESTOURO"] .cr-macro-ops-row__progress b,
 .cr-macro-ops-row[data-state="SEM_PREVISAO"] .cr-macro-ops-row__progress b {
   color: var(--accent-red, #c73847);
-}
-
-.cr-table-shell td[data-negative="true"] {
-  color: var(--accent-red, #c73847);
-  font-weight: 700;
 }
 
 .cr-status-pill[data-status="FINALIZADA"],
@@ -1677,12 +1496,12 @@
 
 .cr-lock-banner strong {
   color: var(--c-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-lock-banner span {
   color: var(--c-muted);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-stepper {
@@ -1719,7 +1538,7 @@
   place-items: center;
   border-radius: 999px;
   background: color-mix(in srgb, var(--c-muted) 12%, transparent);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-stepper button.is-active b {
@@ -1729,7 +1548,7 @@
 
 .cr-stepper span {
   overflow: hidden;
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1740,26 +1559,6 @@
   display: grid;
   gap: 13px;
   padding: 14px;
-}
-
-.cr-planning-table table {
-  min-width: 780px;
-}
-
-.cr-planning-table input:not([type="checkbox"]) {
-  width: 100%;
-  min-width: 105px;
-  min-height: 34px;
-  padding: 6px 8px;
-  border: 1px solid var(--ui-border);
-  border-radius: 7px;
-  background: var(--ui-surface);
-  color: var(--c-text);
-}
-
-.cr-planning-table input:disabled {
-  opacity: 0.72;
-  background: var(--ui-canvas);
 }
 
 .cr-panel-actions,
@@ -1773,12 +1572,12 @@
 .cr-panel-actions {
   padding-top: 2px;
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-panel-actions strong {
   color: var(--c-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-step-actions {
@@ -1789,12 +1588,12 @@
 
 .cr-step-actions > span {
   color: var(--c-muted);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-automatic-source {
   color: var(--c-muted);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 650;
   text-align: right;
 }
@@ -1816,7 +1615,7 @@
 }
 
 .cr-measurement-panel {
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--ui-border);
   border-radius: 10px;
 }
@@ -1825,14 +1624,9 @@
   padding: 11px 12px;
   background: var(--ui-canvas);
   color: var(--c-text);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 740;
   cursor: pointer;
-}
-
-.cr-measurement-panel > .cr-table-shell {
-  border-width: 1px 0 0;
-  border-radius: 0;
 }
 
 .cr-measurement-panel > .cr-panel-actions {
@@ -1842,33 +1636,6 @@
 
 .cr-review-summary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.cr-review-checklist {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-canvas);
-  color: var(--cr-accent);
-}
-
-.cr-review-checklist > div {
-  display: grid;
-  gap: 3px;
-}
-
-.cr-review-checklist strong {
-  color: var(--c-text);
-  font-size: 0.8rem;
-}
-
-.cr-review-checklist span {
-  color: var(--c-muted);
-  font-size: 0.72rem;
-  line-height: 1.4;
 }
 
 .cr-reopen-box {
@@ -1888,10 +1655,6 @@
   padding-top: 4px;
 }
 
-.cr-expiry-field {
-  max-width: 320px;
-}
-
 .cr-reopening-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1909,12 +1672,12 @@
 
 .cr-reopening-row strong {
   color: var(--c-text);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-reopening-row span {
   color: var(--c-muted);
-  font-size: 0.69rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-reopening-row > div:last-child {
@@ -1944,7 +1707,7 @@
 .cr-section-header > span,
 .cr-section-header > div > span {
   color: var(--cr-accent);
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -1953,7 +1716,7 @@
 .cr-section-header h2 {
   margin: 1px 0 0;
   color: var(--c-text);
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
   font-weight: 760;
 }
 
@@ -1961,112 +1724,8 @@
   max-width: 840px;
   margin: 3px 0 0;
   color: var(--c-muted);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.4;
-}
-
-.cr-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 9px;
-  margin: 12px 0;
-}
-
-.cr-summary-grid article {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-  padding: 11px 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-canvas);
-}
-
-.cr-summary-grid article[data-tone="warning"] {
-  border-color: color-mix(in srgb, var(--cr-warning) 38%, var(--ui-border));
-  background: color-mix(in srgb, var(--cr-warning) 6%, var(--ui-surface));
-}
-
-.cr-summary-grid article > span {
-  color: var(--c-muted);
-  font-size: 0.65rem;
-  font-weight: 760;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-.cr-summary-grid article > strong {
-  overflow: hidden;
-  color: var(--c-text);
-  font-size: 1.05rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cr-summary-grid article > small {
-  color: var(--c-muted);
-  font-size: 0.68rem;
-}
-
-.cr-table-wrap {
-  min-width: 0;
-  overflow-x: auto;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-}
-
-.cr-table {
-  width: 100%;
-  min-width: 980px;
-  border-collapse: collapse;
-  color: var(--c-text);
-  font-size: 0.75rem;
-}
-
-.cr-table th {
-  padding: 9px 10px;
-  background: var(--ui-canvas);
-  color: var(--c-muted);
-  font-size: 0.65rem;
-  font-weight: 760;
-  letter-spacing: 0.04em;
-  text-align: left;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.cr-table td {
-  padding: 9px 10px;
-  border-top: 1px solid var(--ui-border);
-  vertical-align: middle;
-}
-
-.cr-table td > strong,
-.cr-table td > small {
-  display: block;
-}
-
-.cr-table td > small {
-  max-width: 320px;
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--c-muted);
-  font-size: 0.67rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cr-table .is-number {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.cr-table tr.is-muted-row {
-  opacity: 0.66;
-}
-
-.cr-table tr[data-contextual="true"] {
-  background: color-mix(in srgb, var(--c-muted) 4%, var(--ui-surface));
 }
 
 .cr-status-pill[data-status="COMPROMETIDO"] {
@@ -2092,27 +1751,6 @@
 .cr-status-pill[data-status="ESTORNADO"] {
   background: color-mix(in srgb, var(--accent-red, #c73847) 12%, transparent);
   color: var(--accent-red, #c73847);
-}
-
-.cr-operational-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  margin-top: 10px;
-  color: var(--c-muted);
-  font-size: 0.7rem;
-  line-height: 1.4;
-}
-
-.cr-operational-note svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-  color: var(--cr-warning);
-}
-
-.cr-operational-note code {
-  color: var(--c-text);
-  font-weight: 700;
 }
 
 .cr-export-toolbar {
@@ -2161,29 +1799,35 @@
 }
 
 .cr-report-list strong {
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-report-list small {
   color: var(--c-muted);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.35;
 }
 
 .cr-modal-backdrop {
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-modal);
   inset: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 18px;
   background: color-mix(in srgb, #071226 58%, transparent);
 }
 
 .cr-modal {
   width: min(100%, 720px);
+  min-width: 0;
+  max-width: 100%;
   max-height: min(86vh, 720px);
-  overflow-y: auto;
+  justify-self: center;
+  overflow: auto;
   border: 1px solid var(--ui-border);
   border-radius: 13px;
   background: var(--ui-surface);
@@ -2201,7 +1845,7 @@
 
 .cr-modal > header span {
   color: var(--cr-accent);
-  font-size: 0.65rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -2210,13 +1854,13 @@
 .cr-modal > header h2 {
   margin: 2px 0 0;
   color: var(--c-text);
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
 }
 
 .cr-modal > header p {
   margin: 3px 0 0;
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-modal form {
@@ -2260,7 +1904,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   margin-bottom: 12px;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   background: var(--ui-border);
@@ -2276,7 +1920,7 @@
 
 .cr-obligation-summary span {
   color: var(--c-muted);
-  font-size: 0.64rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -2285,7 +1929,7 @@
 .cr-obligation-summary strong {
   overflow: hidden;
   color: var(--c-text);
-  font-size: 0.88rem;
+  font-size: var(--fonte-corpo);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2354,13 +1998,13 @@
 .cr-obligation-card__title strong,
 .cr-bypass-record strong {
   color: var(--c-text);
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-obligation-card__body > span,
 .cr-bypass-record span {
   color: var(--c-text);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-obligation-card__body small,
@@ -2368,7 +2012,7 @@
 .cr-server-time,
 .cr-helper-copy {
   color: var(--c-muted);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.4;
 }
 
@@ -2380,7 +2024,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--cr-warning) 14%, transparent);
   color: var(--cr-warning);
-  font-size: 0.63rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 780;
 }
 
@@ -2484,13 +2128,13 @@
 .cr-governance-form__title strong,
 .cr-governance-register__heading strong {
   color: var(--c-text);
-  font-size: 0.86rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-governance-form__title span,
 .cr-governance-register__heading span {
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-form-pair {
@@ -2545,7 +2189,7 @@
 .cr-governance-warning strong,
 .cr-responsibility-row strong {
   color: var(--c-text);
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
 }
 
 .cr-governance-warning span,
@@ -2553,7 +2197,7 @@
 .cr-responsibility-row small {
   overflow-wrap: anywhere;
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-governance-history {
@@ -2565,7 +2209,7 @@
 .cr-governance-history summary {
   padding: 12px 0 4px;
   color: var(--c-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   cursor: pointer;
 }
@@ -2583,7 +2227,7 @@
   padding: 8px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--ui-border) 28%, transparent);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-audit-search {
@@ -2609,7 +2253,7 @@
 
 .cr-audit-row time {
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2621,13 +2265,13 @@
 
 .cr-audit-row strong {
   color: var(--c-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-audit-row span {
   overflow-wrap: anywhere;
   color: var(--c-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 @media (max-width: 1100px) {
@@ -2646,12 +2290,7 @@
     grid-template-columns: 1fr;
   }
 
-  .cr-dashboard-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .cr-kpi-strip--receivables,
-  .cr-kpi-strip--dashboard {
+  .cr-kpi-strip--receivables {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2692,10 +2331,6 @@
     border-left: 0;
   }
 
-  .cr-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .cr-export-toolbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2710,19 +2345,14 @@
     gap: 11px;
   }
 
-  .cr-page-header,
   .cr-section-heading,
-  .cr-workspace-heading {
+.cr-workspace-heading {
     flex-direction: column;
   }
 
-  .cr-page-header__actions { width: 100%; }
-  .cr-page-header__actions > * { flex: 1 1 auto; justify-content: center; }
-
-  .cr-page-header > .btn,
   .cr-section-heading > .btn,
-  .cr-workspace-actions,
-  .cr-workspace-actions > .btn {
+.cr-workspace-actions,
+.cr-workspace-actions > .btn {
     width: 100%;
   }
 
@@ -2785,15 +2415,6 @@
     padding: 12px;
   }
 
-  .cr-desktop-table {
-    display: none;
-  }
-
-  .cr-mobile-list {
-    display: grid;
-    gap: 9px;
-  }
-
   .cr-result-count {
     text-align: left;
   }
@@ -2828,57 +2449,6 @@
 
   .cr-section-header--actions > .btn {
     width: 100%;
-  }
-
-  .cr-table--realized {
-    min-width: 0;
-  }
-
-  .cr-table--realized thead {
-    display: none;
-  }
-
-  .cr-table--realized tbody,
-  .cr-table--realized tr,
-  .cr-table--realized td {
-    display: block;
-    width: 100%;
-  }
-
-  .cr-table--realized tr {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding: 10px;
-    border-top: 1px solid var(--ui-border);
-  }
-
-  .cr-table--realized tr:first-child {
-    border-top: 0;
-  }
-
-  .cr-table--realized td {
-    display: grid;
-    gap: 2px;
-    padding: 7px;
-    border: 0;
-    text-align: left;
-  }
-
-  .cr-table--realized td::before {
-    color: var(--c-muted);
-    content: attr(data-label);
-    font-size: 0.62rem;
-    font-weight: 760;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .cr-table--realized td[colspan] {
-    grid-column: 1 / -1;
-  }
-
-  .cr-table--realized td[colspan]::before {
-    content: none;
   }
 
   .cr-obligation-card {
@@ -2950,8 +2520,7 @@
   }
 
   .cr-plan-metrics,
-  .cr-preview-metrics,
-  .cr-mobile-record-grid {
+.cr-preview-metrics {
     grid-template-columns: 1fr;
   }
 
@@ -2965,10 +2534,6 @@
   .cr-kpi-strip,
   .cr-review-summary {
     grid-template-columns: 1fr;
-  }
-
-  .cr-macro-progress-row {
-    grid-template-columns: 1fr auto;
   }
 
   .cr-progress-track {
@@ -2994,11 +2559,6 @@
   .cr-reopening-row > div:last-child {
     display: grid;
     grid-template-columns: 1fr 1fr;
-  }
-
-  .cr-summary-grid,
-  .cr-table--realized tr {
-    grid-template-columns: 1fr;
   }
 
   .cr-modal-backdrop {
@@ -3055,7 +2615,7 @@
   border-radius: 0.5rem;
   background: transparent;
   color: var(--cr-muted);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   white-space: nowrap;
   cursor: pointer;
@@ -3070,25 +2630,6 @@
 
 .cr-months-workspace {
   overflow: visible;
-}
-
-.cr-new-month-bar {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.85rem 1rem;
-  border-block: 1px solid var(--cr-border);
-  background: color-mix(in srgb, var(--cr-primary) 4%, var(--cr-surface));
-}
-
-.cr-new-month-bar .cr-field {
-  width: min(22rem, 100%);
-}
-
-.cr-new-month-bar > div {
-  display: flex;
-  gap: 0.5rem;
 }
 
 .cr-month-grid,
@@ -3115,17 +2656,69 @@
   border-radius: 999px;
   color: var(--cr-primary);
   background: color-mix(in srgb, var(--cr-primary) 9%, transparent);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 780;
   white-space: nowrap;
+}
+
+.cr-reopening-modal__header,
+.cr-reopening-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-color: var(--cr-border);
+}
+
+.cr-reopening-modal__header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--cr-border);
+}
+
+.cr-reopening-modal__header h2,
+.cr-reopening-modal__header p {
+  margin: 0;
+}
+
+.cr-reopening-modal__header h2 {
+  color: var(--cr-text);
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+}
+
+.cr-reopening-modal__header p,
+.cr-reopening-modal__body > p {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-reopening-modal__header p {
+  margin-top: 3px;
+}
+
+.cr-reopening-modal__body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.cr-reopening-modal__body > p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.cr-reopening-modal__footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--cr-border);
 }
 
 .cr-period-card {
   container-type: inline-size;
   display: grid;
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--cr-border);
+  overflow: clip;
+  border: 1px solid var(--cr-border-strong);
   border-radius: 11px;
   background: var(--cr-surface);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--cr-ink) 7%, transparent);
@@ -3152,7 +2745,7 @@
 
 .cr-period-card__header span:not(.cr-status-pill) {
   color: var(--cr-muted);
-  font-size: 0.65rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 780;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -3162,37 +2755,71 @@
   margin: 0;
   overflow: hidden;
   color: var(--cr-text);
-  font-size: 0.94rem;
+  font-size: var(--fonte-corpo);
   font-weight: 850;
   line-height: 1.25;
   text-overflow: ellipsis;
 }
 
+/* Hierarquia do card de mes (Fase 6): o desvio de custo e o numero
+   principal; os demais ficam numa grade secundaria compacta. */
+.cr-period-card__lead {
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cr-border);
+}
+
+.cr-period-card__lead > span,
+.cr-period-card__lead small {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.cr-period-card__lead strong {
+  overflow-wrap: anywhere;
+  color: var(--cr-text);
+  font-size: var(--fonte-destaque);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.cr-period-card__lead strong[data-empty="true"] {
+  color: var(--cr-muted);
+  font-size: var(--fonte-bloco);
+  font-weight: 700;
+}
+
+.cr-period-card__lead[data-tone="negative"] strong {
+  color: var(--cr-danger);
+}
+
+.cr-period-card__lead[data-tone="positive"] strong {
+  color: var(--cr-success);
+}
+
+.cr-period-card__lead[data-tone="context"] strong {
+  color: var(--cr-primary);
+}
+
 .cr-period-card__metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
   margin: 0;
+  padding: 12px 16px;
 }
 
 .cr-period-card__metric {
   min-width: 0;
-  padding: 10px 14px;
-  border-right: 1px solid var(--cr-border);
-  border-bottom: 1px solid var(--cr-border);
-}
-
-.cr-period-card__metric:nth-child(2n) {
-  border-right: 0;
-}
-
-.cr-period-card__metric:nth-last-child(-n + 2) {
-  border-bottom: 0;
 }
 
 .cr-period-card__metric dt {
   color: var(--cr-muted);
-  font-size: 0.64rem;
-  font-weight: 760;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -3200,19 +2827,25 @@
   margin: 4px 0 0;
   overflow: hidden;
   color: var(--cr-text);
-  font-size: clamp(0.8rem, 1.8cqi, 0.94rem);
-  font-weight: 850;
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@container (max-width: 24rem) {
+  .cr-period-card__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .cr-period-card__metric[data-tone="positive"] dd {
   color: var(--cr-success);
 }
 
-.cr-period-card__metric[data-tone="negative"] dd,
-.cr-planning-table td[data-tone="negative"] {
+.cr-period-card__metric[data-tone="negative"] dd {
   color: var(--cr-danger);
 }
 
@@ -3246,7 +2879,7 @@
   border-radius: 999px;
   color: var(--cr-muted);
   background: color-mix(in srgb, var(--cr-muted) 10%, transparent);
-  font-size: 0.61rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 740;
 }
 
@@ -3258,6 +2891,11 @@
 .cr-period-card__signals span[data-tone="warning"] {
   color: var(--cr-warning);
   background: color-mix(in srgb, var(--cr-warning) 11%, transparent);
+}
+
+.cr-period-card__signals span[data-tone="positive"] {
+  color: var(--cr-success);
+  background: color-mix(in srgb, var(--cr-success) 10%, transparent);
 }
 
 .cr-period-card__footer .btn {
@@ -3300,80 +2938,17 @@
   color: var(--cr-primary);
 }
 
+.cr-icon-button:disabled {
+  transform: none;
+  border-color: var(--cr-border);
+  background: color-mix(in srgb, var(--cr-muted) 5%, var(--cr-surface));
+  color: color-mix(in srgb, var(--cr-muted) 62%, transparent);
+  cursor: not-allowed;
+}
+
 .cr-icon-button:focus-visible {
   outline: 2px solid var(--cr-primary);
   outline-offset: 2px;
-}
-
-.cr-item-picker {
-  position: relative;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--cr-border);
-}
-
-.cr-item-picker .cr-field {
-  max-width: 52rem;
-}
-
-.cr-search-input {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.45rem;
-}
-
-.cr-item-picker-results {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% - 0.35rem);
-  left: 1rem;
-  width: min(52rem, calc(100% - 2rem));
-  max-height: 19rem;
-  overflow-y: auto;
-  border: 1px solid var(--cr-border-strong);
-  border-radius: 0.65rem;
-  background: var(--cr-surface);
-  box-shadow: 0 0.85rem 2.4rem color-mix(in srgb, var(--cr-ink) 14%, transparent);
-}
-
-.cr-item-picker-results button {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  width: 100%;
-  gap: 0.2rem 1rem;
-  padding: 0.7rem 0.8rem;
-  border: 0;
-  border-bottom: 1px solid var(--cr-border);
-  background: transparent;
-  color: var(--cr-text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.cr-item-picker-results button:hover,
-.cr-item-picker-results button:focus-visible {
-  background: color-mix(in srgb, var(--cr-primary) 7%, var(--cr-surface));
-  outline: none;
-}
-
-.cr-item-picker-results button:last-child {
-  border-bottom: 0;
-}
-
-.cr-item-picker-results small {
-  color: var(--cr-muted);
-}
-
-.cr-item-picker-feedback {
-  padding: 0.8rem;
-  color: var(--cr-muted);
-  font-size: 0.74rem;
-  text-align: left;
-}
-
-.cr-item-picker-results svg {
-  grid-row: 1 / span 2;
-  grid-column: 2;
-  align-self: center;
 }
 
 .cr-icon-action {
@@ -3388,12 +2963,6 @@
   cursor: pointer;
 }
 
-.cr-table-empty {
-  padding: 1.35rem !important;
-  color: var(--cr-muted);
-  text-align: center;
-}
-
 .cr-measurement-panel td:last-child {
   min-width: 10rem;
 }
@@ -3403,6 +2972,15 @@
 }
 
 @media (max-width: 760px) {
+  /* No 390 nao ha largura para titulo, acoes e o sinal de prazos na mesma
+     linha: a faixa volta a empilhar. A C1 mede a altura compacta no desktop;
+     o que o mobile (X2) cobra e que a faixa gruda e nao some, e isso
+     continua valendo empilhado. */
+  .cr-page .app-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .cr-competence-filter__panel {
     position: static;
     width: 100%;
@@ -3419,13 +2997,8 @@
     width: 100%;
   }
 
-  .cr-new-month-bar,
   .cr-period-card__footer {
     align-items: stretch;
-  }
-
-  .cr-new-month-bar {
-    flex-direction: column;
   }
 
   .cr-period-card__footer {
@@ -3436,18 +3009,8 @@
     align-self: flex-end;
   }
 
-  .cr-new-month-bar .cr-field,
-  .cr-new-month-bar > div,
-  .cr-new-month-bar .btn,
   .cr-period-card__footer .btn {
     width: 100%;
-  }
-
-  .cr-item-picker-results {
-    position: static;
-    width: 100%;
-    margin-top: 0.5rem;
-    box-shadow: none;
   }
 
   .cr-ops-ledger,
@@ -3514,7 +3077,7 @@
 .cr-cost-ledger__summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--cr-border);
   border-radius: 12px;
   background: color-mix(in srgb, var(--cr-surface) 94%, var(--cr-primary) 6%);
@@ -3538,7 +3101,7 @@
 
 .cr-cost-ledger__summary span {
   margin-bottom: 5px;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -3547,13 +3110,13 @@
 .cr-cost-ledger__summary strong {
   display: block;
   color: var(--cr-ink);
-  font-size: clamp(1rem, 1.45vw, 1.28rem);
+  font-size: var(--fonte-bloco);
   line-height: 1.2;
 }
 
 .cr-cost-ledger__summary small {
   margin-top: 5px;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.35;
 }
 
@@ -3602,7 +3165,7 @@
   color: var(--cr-muted);
   background: transparent;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 750;
   cursor: pointer;
   transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
@@ -3619,7 +3182,7 @@
   border-radius: 999px;
   color: inherit;
   background: color-mix(in srgb, currentColor 9%, transparent);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   text-align: center;
 }
 
@@ -3683,7 +3246,7 @@
   gap: 12px;
   min-height: 22px;
   color: var(--cr-muted);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-cost-ledger__result span {
@@ -3691,56 +3254,39 @@
   font-weight: 800;
 }
 
-.cr-table--cost-ledger {
-  min-width: 1120px;
-}
-
-.cr-table--cost-ledger tbody tr[data-in-competence="true"] {
-  background: color-mix(in srgb, var(--cr-primary) 3.5%, var(--cr-surface));
-}
-
-.cr-table--cost-ledger tbody tr[data-inactive="true"] {
-  opacity: 0.62;
-}
-
-.cr-table--cost-ledger td {
-  vertical-align: top;
-}
-
-.cr-table--cost-ledger td > strong,
-.cr-table--cost-ledger td > small {
-  display: block;
-}
-
-.cr-table--cost-ledger .cr-cost-ledger__macro-row td {
-  background: color-mix(in srgb, var(--cr-primary) 7%, var(--cr-surface));
-  border-top: 1px solid color-mix(in srgb, var(--cr-primary) 20%, var(--cr-border));
-  padding-block: 0.65rem;
-}
-
-.cr-cost-ledger__macro-row td,
-.cr-cost-ledger__macro-row td > span {
+/* Linha de grupo por etapa macro: quem a desenha agora é o `agruparPor` da
+   TabelaPadrao (.app-tabela-grupo); aqui fica só o arranjo do conteúdo —
+   código + descrição à esquerda, contagem e total à direita. */
+.cr-cost-ledger__macro-title,
+.cr-cost-ledger__macro-title > span {
   align-items: center;
   display: flex;
   justify-content: space-between;
 }
 
-.cr-cost-ledger__macro-row td > span {
+.cr-cost-ledger__macro-title {
+  width: 100%;
+}
+
+.cr-cost-ledger__macro-title > span {
   gap: 0.5rem;
   justify-content: flex-start;
 }
 
-.cr-cost-ledger__macro-row td > small {
+.cr-cost-ledger__macro-title > small {
   color: var(--cr-muted);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   margin: 0;
 }
 
-.cr-table--cost-ledger td > small {
-  max-width: 290px;
+/* Título sem efeito no custo: a opacidade da linha inteira (que dependia de
+   um data-attr próprio na <tr>) virou marca de TEXTO na célula de situação
+   — legível também para quem não distingue o tom esmaecido. */
+.cr-cost-ledger__inactive-mark {
+  display: block;
   margin-top: 3px;
   color: var(--cr-muted);
-  line-height: 1.3;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-status-pill[data-status="ABERTO"],
@@ -3802,20 +3348,20 @@
 }
 
 .cr-cost-ledger__technical > summary span {
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
 }
 
 .cr-cost-ledger__technical > summary small {
   margin-top: 2px;
   color: var(--cr-muted);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 500;
 }
 
 .cr-cost-ledger__technical > summary > strong {
   color: var(--cr-warning);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-cost-ledger__technical-body {
@@ -3837,12 +3383,12 @@
 .cr-cost-ledger__technical-actions p {
   margin: 0;
   color: var(--cr-muted);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-cost-ledger__mapping-list {
   display: grid;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--cr-border);
   border-radius: 9px;
 }
@@ -3868,13 +3414,13 @@
 .cr-cost-ledger__mapping-list small {
   margin-top: 2px;
   color: var(--cr-muted);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-cost-ledger__technical-empty {
   padding: 12px;
   color: var(--cr-muted);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   text-align: center;
 }
 
@@ -3951,40 +3497,6 @@
 /* Novo mês: edição operacional por etapa macro. */
 .cr-macro-planning-panel { gap: 1rem; }
 
-.cr-planning-total-banner {
-  display: grid;
-  grid-template-columns: minmax(10rem, auto) 1fr;
-  gap: 0.18rem 1rem;
-  align-items: baseline;
-  padding: 0.75rem 0.9rem;
-  border: 1px solid color-mix(in srgb, var(--cr-accent) 26%, var(--cr-border));
-  border-radius: 0.65rem;
-  background: color-mix(in srgb, var(--cr-accent) 5%, var(--cr-surface));
-}
-
-.cr-planning-total-banner > span {
-  color: var(--cr-muted);
-  font-size: 0.72rem;
-  font-weight: 750;
-}
-
-.cr-planning-total-banner > strong { color: var(--cr-text); font-size: 1.15rem; }
-.cr-planning-total-banner > small {
-  grid-column: 1 / -1;
-  color: var(--cr-muted);
-  font-size: 0.68rem;
-}
-
-.cr-macro-planning-list { display: grid; gap: 0.85rem; }
-
-.cr-macro-planning-block {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--cr-border);
-  border-radius: 0.72rem;
-  background: var(--cr-surface);
-}
-
 .cr-macro-planning-heading {
   display: flex;
   align-items: center;
@@ -4010,47 +3522,24 @@
   border: 1px solid color-mix(in srgb, var(--cr-accent) 24%, var(--cr-border));
   border-radius: 999px;
   color: var(--cr-accent);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-macro-planning-heading > div > div { display: grid; min-width: 0; gap: 0.1rem; }
 .cr-macro-planning-heading strong {
   overflow: hidden;
   color: var(--cr-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cr-macro-planning-heading span { color: var(--cr-muted); font-size: 0.66rem; }
+.cr-macro-planning-heading span { color: var(--cr-muted); font-size: var(--fonte-detalhe); }
 .cr-macro-planning-heading .btn {
   min-height: 2rem;
   flex: 0 0 auto;
   padding: 0.4rem 0.65rem;
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
 }
-
-.cr-macro-subitems-table,
-.cr-forecast-measurement-table { border-width: 1px 0 0; border-radius: 0; }
-.cr-macro-subitems-table table { min-width: 760px; }
-.cr-macro-subitems-table th:first-child,
-.cr-macro-subitems-table td:first-child { width: 42%; }
-.cr-macro-subitems-table tr[data-invalid="true"] { background: color-mix(in srgb, var(--cr-danger) 6%, var(--cr-surface)); }
-.cr-macro-subitems-table td small { display: block; max-width: 28rem; margin-top: 0.25rem; color: var(--cr-danger); font-size: 0.62rem; }
-.cr-forecast-measurement-table table { min-width: 1180px; }
-.cr-forecast-measurement-table th:first-child,
-.cr-forecast-measurement-table td:first-child { min-width: 15rem; }
-
-.cr-macro-total {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.55rem 0.85rem;
-  background: color-mix(in srgb, var(--cr-text) 92%, var(--cr-accent));
-  color: var(--cr-surface);
-  font-size: 0.7rem;
-}
-.cr-macro-total strong { font-size: 0.76rem; }
 
 .cr-macro-subitem-picker {
   display: grid;
@@ -4062,7 +3551,7 @@
 .cr-macro-subitem-picker > strong {
   padding: 0.15rem 0 0.55rem;
   color: var(--cr-muted);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   letter-spacing: 0.045em;
   text-transform: uppercase;
 }
@@ -4086,7 +3575,7 @@
   border-radius: 0.5rem;
   background: var(--cr-surface);
   color: var(--cr-text);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
 }
 .cr-macro-picker-search input:focus {
   border-color: var(--cr-accent);
@@ -4119,9 +3608,9 @@
   background: color-mix(in srgb, var(--cr-accent) 6%, var(--cr-surface));
   outline: none;
 }
-.cr-macro-picker-results button span { font-size: 0.74rem; font-weight: 720; }
+.cr-macro-picker-results button span { font-size: var(--fonte-detalhe); font-weight: 720; }
 .cr-macro-picker-results button small,
-.cr-macro-picker-empty { color: var(--cr-muted); font-size: 0.66rem; }
+.cr-macro-picker-empty { color: var(--cr-muted); font-size: var(--fonte-detalhe); }
 .cr-macro-picker-results button svg {
   grid-row: 1 / span 2;
   grid-column: 2;
@@ -4149,16 +3638,20 @@
 .cr-planning-sheet-actions .btn {
   min-height: 2.15rem;
   padding: 0.42rem 0.68rem;
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-import-modal-backdrop {
+  --cr-import-modal-gap: clamp(0.5rem, 2vw, 1.5rem);
   position: fixed;
-  z-index: 1100;
+  z-index: var(--z-modal-acima);
   inset: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
-  padding: clamp(0.5rem, 2vw, 1.5rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--cr-import-modal-gap);
   background: color-mix(in srgb, var(--cr-text) 58%, transparent);
 }
 
@@ -4166,8 +3659,11 @@
   display: flex;
   flex-direction: column;
   width: min(92rem, 100%);
-  max-height: calc(100vh - 2rem);
-  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  max-height: calc(100dvh - (var(--cr-import-modal-gap) * 2));
+  justify-self: center;
+  overflow: clip;
   border: 1px solid var(--cr-border);
   border-radius: 0.85rem;
   background: var(--cr-surface);
@@ -4194,7 +3690,7 @@
 
 .cr-import-modal__header span {
   color: var(--cr-accent);
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -4207,12 +3703,12 @@
 
 .cr-import-modal__header h2 {
   color: var(--cr-text);
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
 }
 
 .cr-import-modal__header p {
   color: var(--cr-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .cr-import-modal__metrics {
@@ -4230,8 +3726,8 @@
 }
 
 .cr-import-modal__metrics > div:last-child { border-right: 0; }
-.cr-import-modal__metrics span { color: var(--cr-muted); font-size: 0.65rem; font-weight: 750; text-transform: uppercase; }
-.cr-import-modal__metrics strong { color: var(--cr-text); font-size: 0.9rem; }
+.cr-import-modal__metrics span { color: var(--cr-muted); font-size: var(--fonte-detalhe); font-weight: 750; text-transform: uppercase; }
+.cr-import-modal__metrics strong { color: var(--cr-text); font-size: var(--fonte-corpo); }
 .cr-import-modal__metrics [data-tone="error"] strong { color: var(--cr-danger); }
 .cr-import-modal__metrics [data-tone="success"] strong { color: var(--cr-success); }
 
@@ -4246,7 +3742,7 @@
 }
 
 .cr-import-modal__add label { gap: 0.3rem; }
-.cr-import-modal__add label > span { color: var(--cr-muted); font-size: 0.66rem; font-weight: 750; text-transform: uppercase; }
+.cr-import-modal__add label > span { color: var(--cr-muted); font-size: var(--fonte-detalhe); font-weight: 750; text-transform: uppercase; }
 .cr-import-modal__add label > div { position: relative; grid-template-columns: auto 1fr; align-items: center; }
 .cr-import-modal__add label svg { position: absolute; left: 0.7rem; color: var(--cr-muted); }
 .cr-import-modal__add input {
@@ -4260,7 +3756,7 @@
 
 .cr-import-modal__catalog {
   position: absolute;
-  z-index: 2;
+  z-index: var(--z-conteudo-acima);
   right: 1rem;
   left: 1rem;
   display: grid;
@@ -4286,10 +3782,10 @@
 }
 
 .cr-import-modal__catalog button:hover { background: color-mix(in srgb, var(--cr-accent) 6%, var(--cr-surface)); }
-.cr-import-modal__catalog button span { font-size: 0.73rem; font-weight: 750; }
-.cr-import-modal__catalog button small { color: var(--cr-muted); font-size: 0.65rem; }
+.cr-import-modal__catalog button span { font-size: var(--fonte-detalhe); font-weight: 750; }
+.cr-import-modal__catalog button small { color: var(--cr-muted); font-size: var(--fonte-detalhe); }
 .cr-import-modal__catalog button svg { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: var(--cr-accent); }
-.cr-import-modal__catalog > span { padding: 0.65rem; color: var(--cr-muted); font-size: 0.7rem; }
+.cr-import-modal__catalog > span { padding: 0.65rem; color: var(--cr-muted); font-size: var(--fonte-detalhe); }
 
 .cr-import-modal > .cr-feedback { margin: 0.7rem 1rem 0; }
 
@@ -4306,13 +3802,13 @@
   gap: 0.4rem;
   padding: 0.55rem 0.7rem;
   color: var(--cr-danger);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 750;
   cursor: pointer;
 }
 
 .cr-import-modal__errors > div { display: grid; max-height: 6rem; overflow-y: auto; padding: 0 0.7rem 0.6rem; }
-.cr-import-modal__errors span { color: var(--cr-muted); font-size: 0.68rem; }
+.cr-import-modal__errors span { color: var(--cr-muted); font-size: var(--fonte-detalhe); }
 
 .cr-import-modal__table {
   flex: 1 1 auto;
@@ -4328,13 +3824,13 @@
 .cr-import-modal__table td > strong,
 .cr-import-modal__table td > span,
 .cr-import-modal__table td > small { display: block; }
-.cr-import-modal__table td > span { margin-top: 0.15rem; color: var(--cr-muted); font-size: 0.66rem; }
-.cr-import-modal__table td > small { max-width: 15rem; margin-top: 0.25rem; color: var(--cr-danger); font-size: 0.63rem; }
+.cr-import-modal__table td > span { margin-top: 0.15rem; color: var(--cr-muted); font-size: var(--fonte-detalhe); }
+.cr-import-modal__table td > small { max-width: 15rem; margin-top: 0.25rem; color: var(--cr-danger); font-size: var(--fonte-detalhe); }
 .cr-import-modal__table input { min-width: 7rem; }
 
 .cr-import-modal__footer {
   position: relative;
-  z-index: 3;
+  z-index: var(--z-conteudo-topo);
   border-top: 1px solid var(--cr-border);
   background: color-mix(in srgb, var(--cr-text) 2.5%, var(--cr-surface));
 }
@@ -4345,7 +3841,7 @@
   gap: 0.5rem;
 }
 
-.cr-import-modal__footer > div:first-child { color: var(--cr-warning); font-size: 0.72rem; }
+.cr-import-modal__footer > div:first-child { color: var(--cr-warning); font-size: var(--fonte-detalhe); }
 .cr-import-modal__footer > div:first-child[data-state="valid"] { color: var(--cr-success); }
 
 @media (max-width: 760px) {
@@ -4368,15 +3864,9 @@
 @media (max-width: 760px) {
   .cr-macro-planning-heading { align-items: stretch; flex-direction: column; }
   .cr-macro-planning-heading .btn { width: 100%; }
-  .cr-planning-total-banner { grid-template-columns: 1fr; }
-  .cr-planning-total-banner > small { grid-column: auto; }
 }
 
 /* Fluxo operacional do engenheiro: escopo, planejamento e leitura mensal. */
-.cr-works-table table { min-width: 930px; }
-.cr-works-table th:nth-child(1) { min-width: 240px; }
-.cr-works-table th:nth-child(4) { min-width: 170px; }
-.cr-cell-currency { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .cr-operational-period {
   display: grid;
@@ -4384,33 +3874,10 @@
   gap: 8px;
 }
 
-.cr-planning-deadline {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  margin: 12px;
-  padding: 11px 12px;
-  border: 1px solid color-mix(in srgb, var(--cr-accent) 32%, var(--cr-border));
-  border-radius: 10px;
-  color: var(--cr-text);
-  background: color-mix(in srgb, var(--cr-accent) 5%, var(--cr-surface));
-}
-
-.cr-planning-deadline > svg { color: var(--cr-accent); }
-.cr-planning-deadline > div { display: grid; min-width: 0; gap: 2px; }
-.cr-planning-deadline strong { font-size: 0.78rem; }
-.cr-planning-deadline span { color: var(--cr-muted); font-size: 0.69rem; }
-.cr-planning-deadline[data-overdue="true"] {
-  border-color: color-mix(in srgb, var(--cr-danger) 35%, var(--cr-border));
-  background: color-mix(in srgb, var(--cr-danger) 5%, var(--cr-surface));
-}
-.cr-planning-deadline[data-overdue="true"] > svg { color: var(--cr-danger); }
-
 .cr-month-detail-surface {
   display: grid;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--cr-border);
   border-radius: 12px;
   background: var(--cr-surface);
@@ -4419,7 +3886,7 @@
 
 .cr-month-detail-surface__header {
   position: sticky;
-  z-index: 6;
+  z-index: var(--z-presa-no-bloco);
   top: 0;
   display: flex;
   align-items: center;
@@ -4435,13 +3902,13 @@
 .cr-month-detail-surface__header span {
   overflow: hidden;
   color: var(--cr-muted);
-  font-size: 0.65rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
 }
-.cr-month-detail-surface__header h2 { margin: 0; color: var(--cr-text); font-size: 1rem; }
+.cr-month-detail-surface__header h2 { margin: 0; color: var(--cr-text); font-size: var(--fonte-bloco); }
 .cr-month-detail-surface__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 
 .cr-month-detail-tabs {
@@ -4463,7 +3930,7 @@
   background: transparent;
   color: var(--cr-muted);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 760;
   white-space: nowrap;
   cursor: pointer;
@@ -4473,7 +3940,7 @@
 .cr-month-detail-tabs button:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: -2px; }
 
 .cr-month-read-groups { display: grid; gap: 12px; padding: 12px; }
-.cr-month-read-group { min-width: 0; overflow: hidden; border: 1px solid var(--cr-border); border-radius: 10px; }
+.cr-month-read-group { min-width: 0; overflow: clip; border: 1px solid var(--cr-border); border-radius: 10px; }
 .cr-month-read-group > header {
   display: flex;
   align-items: center;
@@ -4482,26 +3949,29 @@
   padding: 9px 12px;
   color: var(--cr-text);
   background: color-mix(in srgb, var(--cr-primary) 5%, var(--cr-surface));
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 .cr-month-read-group > header span { color: var(--cr-primary); font-weight: 820; font-variant-numeric: tabular-nums; }
-.cr-month-read-group .cr-table-shell { border: 0; border-radius: 0; }
+
 .cr-month-read-group table { min-width: 880px; }
 .cr-month-read-empty { min-height: 180px; }
 .cr-month-detail-surface > .cr-section { margin: 12px; }
 
 @media (max-width: 1180px) {
-  .cr-context-bar--executive {
+  .cr-context-bar--executive,
+  .cr-context-bar--executive.cr-context-bar--with-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .cr-context-summary { min-height: 100%; }
+  .cr-context-actions { justify-content: flex-start; }
 }
 
 @media (max-width: 760px) {
-  .cr-context-bar--executive { grid-template-columns: 1fr; }
+  .cr-context-bar--executive,
+  .cr-context-bar--executive.cr-context-bar--with-actions { grid-template-columns: 1fr; }
+  .cr-context-actions .btn { width: 100%; }
   .cr-operational-period { grid-template-columns: 1fr 1fr; }
-  .cr-planning-deadline { grid-template-columns: auto minmax(0, 1fr); }
-  .cr-planning-deadline .btn { grid-column: 1 / -1; width: 100%; justify-content: center; }
+
   .cr-month-detail-surface {
     min-height: calc(100dvh - 96px);
     border-inline: 0;
@@ -4526,6 +3996,384 @@
     flex-basis: 2.75rem;
   }
 
-  .cr-month-detail-tabs button,
-  .cr-work-access-card .btn { min-height: 44px; }
+  .cr-month-detail-tabs button { min-height: 44px; }
+}
+
+/* ============================================================================
+   Reforma Custos e Recebiveis — Fase 1 (29/09/2026)
+   Cards de obra do engenheiro, faixa de prazos da obra e acoes de icone do
+   card de mes (44px, estado indisponivel legivel a distancia, tooltip).
+============================================================================ */
+.cr-obra-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: 12px;
+}
+
+.cr-obra-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--cr-border);
+  border-left: 4px solid var(--cr-border-strong);
+  border-radius: 11px;
+  background: var(--cr-surface);
+  color: var(--cr-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.cr-obra-card:hover {
+  border-color: color-mix(in srgb, var(--cr-primary) 45%, var(--cr-border));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--cr-ink) 10%, transparent);
+}
+
+.cr-obra-card:focus-visible {
+  outline: 2px solid var(--cr-primary);
+  outline-offset: 2px;
+}
+
+.cr-obra-card[data-status="VENCIDA"],
+.cr-obra-card[data-status="TRAVADA"] { border-left-color: var(--cr-danger); }
+.cr-obra-card[data-status="PRAZO_PROXIMO"] { border-left-color: var(--cr-warning); }
+.cr-obra-card[data-status="ABERTO"] { border-left-color: var(--cr-accent); }
+.cr-obra-card[data-status="CUMPRIDA"] { border-left-color: var(--cr-success); }
+
+.cr-obra-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cr-obra-card__header > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cr-obra-card__header small {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.cr-obra-card__header strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cr-obra-card__header .cr-status-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cr-obra-card__avisos {
+  display: grid;
+  gap: 6px;
+}
+
+.cr-obra-card__aviso {
+  display: grid;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cr-muted) 8%, transparent);
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.cr-obra-card__aviso small {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.cr-obra-card__aviso[data-tone="info"] { color: var(--cr-accent); background: color-mix(in srgb, var(--cr-accent) 8%, transparent); }
+.cr-obra-card__aviso[data-tone="positive"] { color: var(--cr-success); background: color-mix(in srgb, var(--cr-success) 8%, transparent); }
+.cr-obra-card__aviso[data-tone="warning"] { color: var(--cr-warning); background: color-mix(in srgb, var(--cr-warning) 12%, transparent); }
+.cr-obra-card__aviso[data-tone="negative"] { color: var(--cr-danger); background: color-mix(in srgb, var(--cr-danger) 10%, transparent); }
+
+.cr-obra-card__sem-prazo {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-status-pill[data-status="ABERTO"] {
+  color: var(--cr-accent);
+  background: color-mix(in srgb, var(--cr-accent) 10%, transparent);
+}
+
+.cr-status-pill[data-status="TRAVADA"],
+.cr-status-pill[data-status="PRAZO_PROXIMO"] {
+  font-weight: 800;
+}
+
+.cr-status-pill[data-status="TRAVADA"] {
+  color: var(--cr-danger);
+  background: color-mix(in srgb, var(--cr-danger) 12%, transparent);
+}
+
+.cr-status-pill[data-status="PRAZO_PROXIMO"] {
+  color: var(--cr-warning);
+  background: color-mix(in srgb, var(--cr-warning) 12%, transparent);
+}
+
+.cr-workspace-heading__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cr-workspace-heading__title > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cr-workspace-heading__title span {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.cr-deadline-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--cr-border);
+}
+
+.cr-deadline-strip__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Acoes de icone (CrIconAction e o voltar da obra): 44px, icone 22px.
+   Disponivel = contorno e icone na cor de acao; indisponivel = tracejado,
+   sem fundo e icone apagado. Escopo restrito: os demais .cr-icon-button do
+   modulo (fechar modal, voltar do detalhe) ficam como estavam. */
+.cr-icon-tip .cr-icon-button,
+.cr-workspace-heading__title .cr-icon-button,
+.cr-month-detail-surface__actions .cr-icon-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-basis: 2.75rem;
+  border-color: color-mix(in srgb, var(--cr-primary) 40%, var(--cr-border));
+  color: var(--cr-primary);
+}
+
+.cr-icon-tip .cr-icon-button svg,
+.cr-workspace-heading__title .cr-icon-button svg,
+.cr-month-detail-surface__actions .cr-icon-button svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.cr-icon-button[aria-disabled="true"],
+.cr-icon-button[aria-disabled="true"]:hover {
+  transform: none;
+  border-style: dashed;
+  border-color: var(--cr-border);
+  background: transparent;
+  color: color-mix(in srgb, var(--cr-muted) 45%, transparent);
+  cursor: not-allowed;
+}
+
+/* Tooltip do CrIconAction (29/09): sai por portal no `body` e e posto pelo
+   `usePosicaoFlutuante` (position fixed, dentro da janela). O card corta o
+   que passa da borda (`overflow: clip` + `container-type`), por isso o balao
+   nao mora mais dentro dele. Largura maxima de 240px: texto longo quebra em
+   2-3 linhas em vez de sair da tela. */
+.tooltip-content.cr-icon-tip__float {
+  z-index: var(--z-dropdown-portal);
+  bottom: auto;
+  width: max-content;
+  max-width: none;
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
+.tooltip-content.cr-icon-tip__float .cr-icon-tip__text {
+  display: block;
+  color: inherit;
+  width: max-content;
+  max-width: 15rem;
+  overflow-wrap: break-word;
+}
+
+/* Rodape do card de mes: as acoes nunca encolhem; sem espaco ao lado das
+   etiquetas, descem para a propria linha, alinhadas a direita. */
+.cr-period-card__footer {
+  flex-wrap: wrap;
+}
+
+.cr-period-card__actions {
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* ---- Fase 2 (29/09): prazos por obra, dilatacao ---- */
+.cr-prazos-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--cr-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cr-primary) 3%, var(--cr-surface));
+}
+
+.cr-prazos-form__acoes,
+.cr-dias-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cr-prazos-form__acoes {
+  justify-content: flex-end;
+}
+
+.cr-deadline-strip__status {
+  align-self: center;
+  color: var(--cr-warning);
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+}
+
+.cr-dilatacao-historico {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cr-border);
+}
+
+.cr-dilatacao-historico > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.cr-dilatacao-historico > header span {
+  color: var(--cr-muted);
+  font-size: var(--fonte-corpo);
+}
+
+.cr-dilatacao-historico > header .btn {
+  margin-left: auto;
+}
+
+.cr-dilatacao-historico__meses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cr-dilatacao-historico__meses li {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cr-muted) 8%, transparent);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-dilatacao-historico__meses strong {
+  font-size: var(--fonte-corpo);
+}
+
+.cr-dilatacao-historico__meses strong::first-letter {
+  text-transform: uppercase;
+}
+
+/* ---- Cabecalho do editor do mes (29/09) ----
+   O que esta sendo feito e o mes sao a linha principal (titulo da tela,
+   22px); a obra vem logo abaixo em titulo de bloco (18px); planilha e
+   situacao ficam como apoio. */
+.cr-page .cr-editor-heading {
+  align-items: center;
+}
+
+.cr-page .cr-editor-heading__title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cr-page .cr-workspace-heading.cr-editor-heading h2 {
+  font-size: var(--fonte-pagina);
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.cr-page .cr-workspace-heading.cr-editor-heading .cr-editor-heading__obra {
+  margin: 0;
+  color: var(--c-text);
+  font-size: var(--fonte-bloco);
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cr-page .cr-workspace-heading.cr-editor-heading > div:first-child > .cr-editor-heading__meta {
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Faixa de prazos da obra (29/09): cada botao mostra, abaixo do rotulo, o
+   mes que ele abre ("agosto/26"). O botao continua o mesmo; so ganha a
+   segunda linha, menor. */
+.cr-deadline-strip__actions .cr-deadline-btn__text {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  line-height: 1.2;
+}
+
+.cr-deadline-strip__actions .cr-deadline-btn__text small {
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* Aviso de etapa concluida na lista de meses (29/09): icone e texto juntos,
+   alinhados a esquerda, com o mesmo recuo da grade de meses. */
+.cr-page .cr-feedback.cr-month-notice {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 12px 12px 0;
+  font-size: var(--fonte-corpo);
+}
+
+.cr-page .cr-feedback.cr-month-notice svg {
+  flex: 0 0 auto;
+  color: var(--cr-success);
 }

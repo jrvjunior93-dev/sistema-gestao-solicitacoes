@@ -18,7 +18,7 @@ O FLUXY nasceu dentro de uma operacao real de construcao civil. A solicitacao e 
 - frontend: React, Vite, React Router e Tailwind CSS;
 - arquivos: Amazon S3 com URLs assinadas;
 - producao: EC2, PM2, Nginx e Vercel;
-- mobile: Expo/React Native;
+- mobile: aplicativo Expo/React Native em `mobile/` e empacotamento Capacitor do frontend web quando aplicavel;
 - testes de interface: Playwright.
 
 ## Execucao local
@@ -36,17 +36,22 @@ npm install
 npm run dev
 ```
 
-Use `backend/.env.example` como referencia para o ambiente. O backend executa migrations pendentes na inicializacao e nao depende de `sync({ alter: true })`.
+Use `backend/.env.example` como referencia para o ambiente. O backend apenas confere, em
+modo somente leitura, se existem migrations pendentes e falha fechado quando o schema esta
+desatualizado. A aplicacao de migrations e um passo operacional explicito, protegido por
+`ALLOW_SCHEMA_MIGRATIONS=true`; o runtime normal nao usa `sync({ alter: true })`.
 
 ## Documentacao
 
 A entrada oficial e [docs/README.md](docs/README.md). Antes de alterar um fluxo, leia tambem:
 
-1. `docs/arquitetura/MAPA_MODULOS.md`;
-2. `docs/arquitetura/PROPRIEDADE_DADOS.md`;
-3. `docs/arquitetura/FLUXOS_ENTRE_MODULOS.md`;
-4. o `README.md` canonico do modulo afetado;
-5. `AGENTS.md`.
+1. [`LEIA-PRIMEIRO.md`](LEIA-PRIMEIRO.md);
+2. [`docs/contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md`](docs/contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md);
+3. `docs/arquitetura/MAPA_MODULOS.md`;
+4. `docs/arquitetura/PROPRIEDADE_DADOS.md`;
+5. `docs/arquitetura/FLUXOS_ENTRE_MODULOS.md`;
+6. o `README.md` canonico do modulo afetado;
+7. `AGENTS.md` e os arquivos de ownership quando houver mais de um agente.
 
 ## Regras estruturais
 

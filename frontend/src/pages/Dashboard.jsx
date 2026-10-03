@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
   HiOutlineBanknotes,
@@ -7,11 +7,79 @@ import {
   HiOutlineExclamationTriangle,
   HiOutlineSparkles
 } from 'react-icons/hi2';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  CelulaDupla
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { API_URL, authHeaders } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import Alert from '../components/ui/Alert';
 import EmptyState from '../components/ui/EmptyState';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import { getAllDestinations } from '../navigation/navigationConfig';
+
+/*
+  FONTE UNICA DE NAVEGACAO (05/09) — apontado pelo trinco.
+
+  O Dashboard passou a ter QUATRO destinos absolutos escritos a mao, e a
+  regra registrada em 03/09 e clara: arquivo fora de `src/navigation/` que
+  lista tres ou mais destinos e um INDICE, e indice e papel da fonte unica.
+  O custo ja foi medido antes — destino renomeado na fonte continuava velho
+  no indice paralelo, e ninguem via ate alguem clicar.
+
+  `rotaDe` resolve pelo ID do destino e FALHA ALTO se o id nao existir: um
+  destino removido da fonte tem de quebrar aqui, na hora, e nao virar um
+  link para lugar nenhum. Ele resolve no modulo, uma vez, porque o catalogo
+  nao muda em runtime.
+*/
+const DESTINOS = Object.fromEntries(getAllDestinations().map((d) => [d.id, d.to]));
+
+function rotaDe(id) {
+  const rota = DESTINOS[id];
+  if (!rota) throw new Error(`Destino "${id}" nao existe no navigationConfig — a fonte unica mudou e o Dashboard nao acompanhou.`);
+  return rota;
+}
+
+// =====================================================================
+// DASHBOARD — a TELA DE ENTRADA do sistema
+// ---------------------------------------------------------------------
+// É a primeira coisa que todo mundo vê, e por isso a migração foi feita
+// sem inventar nada: mesma rota, mesma chamada (`/dashboard/executivo`),
+// mesmos números, mesmos destinos. O que mudou é onde cada coisa mora.
+//
+// COR — dois achados que NUNCA apareceram na tela (nenhum erro, nenhum
+// aviso, build verde):
+//
+// 1. `dashboard-insight-card--{tone}` NÃO EXISTE no CSS. Só o modificador
+//    do ÍCONE (`dashboard-insight-icon--{tone}`) está declarado. O cartão
+//    de insight recebia a classe de tom e ela não pintava nada — a
+//    distinção entre "pagamento vencido" (vermelho) e "operação sob
+//    controle" (verde) só chegava pelo ícone.
+// 2. `.dashboard-bar-fill` (index.css, arquivo compartilhado) pinta a
+//    barra com `linear-gradient(90deg, #3f628f, #4b7fd9, #0f766e)` e
+//    sombra `rgba(63,98,143,.18)` — TRÊS hexadecimais crus, sem par no
+//    tema escuro e fora do piso de contraste do ThemeContext (R24/R25).
+//    A tela deixou de usar a classe: a barra agora é `--ui-border` de
+//    trilho e `--c-primary` de preenchimento, os dois tokens.
+//
+// R25 na própria tela: o mapa `tones` do DecisionItem tinha DEZ classes
+// de paleta crua (`border-red-200 bg-red-50 text-red-700` e irmãs) e a
+// pílula usava `.dashboard-decision-badge`, cuja fonte é 0.68rem ≈ 11px
+// — abaixo do piso de 12px da escala (R10). Virou StatusBadge.
+//
+// SÉRIE, NÃO COMPONENTE (R8): dentro desta tela, "a receber" é SEMPRE
+// success e "a pagar" é SEMPRE danger — no ladrilho, na lista e na
+// tabela. Os KPIs DERIVADOS (saldo aberto, resultado do mês) mantêm o
+// mesmo par de tons do original: positivo em verde/azul, negativo em
+// vermelho/âmbar. É estado semântico do número, não identidade de série.
+// =====================================================================
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -46,7 +114,7 @@ function formatDateTime(value) {
 function normalizeStatus(value) {
   return String(value || '')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/\s+/g, '_')
     .toUpperCase();
 }
@@ -58,70 +126,32 @@ function statusLabel(value) {
     .replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
 }
 
-function MetricTile({ label, value, detail, href, tone = 'blue' }) {
-  const toneClass = `dashboard-metric-card--${tone}`;
-  const content = (
-    <div className={`dashboard-metric-card ${toneClass}`}>
-      <div className="dashboard-metric-orb" />
-      <p className="dashboard-metric-label">{label}</p>
-      <strong className="dashboard-metric-value">{value}</strong>
-      {detail ? <p className="dashboard-metric-detail">{detail}</p> : null}
-    </div>
-  );
-
-  if (!href) return content;
-
+/*
+  LADRILHO DE DADO ÚNICO É `StatTile` — o `MetricTile` local (com o orbe
+  decorativo, `min-height: 126px` e `border-radius: 18px` do CSS antigo)
+  saiu. O ladrilho que APONTA para algum lugar continua clicável inteiro:
+  o `<Link>` só embrulha o ladrilho, com a classe do sistema que dá o
+  sinal visível de hover (R15) — a navegação a partir do dado que a
+  origina é exatamente onde a regra de 04/09 manda o link morar.
+*/
+function Ladrilho({ label, valor, sub, tom, href }) {
+  const ladrilho = <StatTile label={label} valor={valor} sub={sub} tom={tom} />;
+  if (!href) return ladrilho;
   return (
-    <Link to={href} className="dashboard-metric-link">
-      {content}
+    <Link to={href} className="dashboard-metric-link" title={`Abrir ${label}`}>
+      {ladrilho}
     </Link>
   );
 }
 
-function DecisionItem({ tone = 'slate', title, detail, value, href }) {
-  const tones = {
-    red: 'border-red-200 bg-red-50 text-red-700',
-    amber: 'border-amber-200 bg-amber-50 text-amber-700',
-    blue: 'border-blue-200 bg-blue-50 text-blue-700',
-    green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    slate: 'border-slate-200 bg-slate-50 text-slate-700'
-  };
-
-  const content = (
-    <div className={`dashboard-decision-card dashboard-decision-card--${tone}`}>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`dashboard-decision-badge ${tones[tone] || tones.slate}`}>
-            {tone === 'red' ? 'Critico' : tone === 'amber' ? 'Atencao' : 'Acao'}
-          </span>
-          <p className="font-semibold text-[var(--c-text)]">{title}</p>
-        </div>
-        {detail ? <p className="mt-1 text-sm leading-5 text-[var(--c-muted)]">{detail}</p> : null}
-      </div>
-      {value ? <strong className="dashboard-decision-value">{value}</strong> : null}
-    </div>
-  );
-
-  if (!href) return content;
-
-  return <Link to={href} className="block">{content}</Link>;
-}
-
-function Section({ title, subtitle, action, children }) {
-  return (
-    <section className="dashboard-section-card">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h2 className="dashboard-section-title">{title}</h2>
-          {subtitle ? <p className="mt-1 text-sm text-[var(--c-muted)]">{subtitle}</p> : null}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
+/*
+  BARRA DE PROPORÇÃO — mesmo idioma das outras telas reformadas
+  (FiscalOperationalReport, RhDpRelatorioOperacional): trilho em
+  `--ui-border`, preenchimento em `--c-primary`, e `overflow-clip` para
+  recortar a forma da barra. R18: `overflow-hidden` aqui criaria um
+  scrollport e mataria o `position: sticky` de qualquer coisa dentro —
+  `clip` corta igual sem criar contexto de rolagem.
+*/
 function BarList({ items, labelKey, valueKey, valueFormatter = formatNumber, limit = 6 }) {
   const normalized = (Array.isArray(items) ? items : [])
     .map((item) => ({ ...item, value: Number(item?.[valueKey] || 0) }))
@@ -139,49 +169,19 @@ function BarList({ items, labelKey, valueKey, valueFormatter = formatNumber, lim
       {normalized.map((item, index) => {
         const percent = max ? Math.max(8, (item.value / max) * 100) : 0;
         return (
-          <div key={`${item[labelKey]}-${index}`} className="grid gap-1.5">
+          <div key={`${item[labelKey]}-${index}`} className="grid gap-1">
             <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="truncate font-medium text-[var(--c-text)]">{item[labelKey] || '-'}</span>
-              <span className="shrink-0 font-semibold text-[var(--c-muted)]">{valueFormatter(item.value)}</span>
+              <span className="truncate font-medium text-[var(--c-text)]" title={String(item[labelKey] ?? '')}>
+                {item[labelKey] || '-'}
+              </span>
+              <span className="shrink-0 font-semibold text-[var(--c-text)]">{valueFormatter(item.value)}</span>
             </div>
-            <div className="dashboard-bar-track">
-              <div
-                className="dashboard-bar-fill"
-                style={{ width: `${percent}%` }}
-              />
+            <div className="h-2 overflow-clip rounded-full bg-[var(--ui-border)]">
+              <div className="h-full rounded-full bg-[var(--c-primary)]" style={{ width: `${percent}%` }} />
             </div>
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function FinanceRow({ title, subtitle, amount, tone = 'slate', href }) {
-  const content = (
-    <div className={`dashboard-list-row dashboard-list-row--${tone}`}>
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-[var(--c-text)]">{title || '-'}</p>
-        {subtitle ? <p className="mt-0.5 text-sm text-[var(--c-muted)]">{subtitle}</p> : null}
-      </div>
-      <strong className="dashboard-list-amount">{amount}</strong>
-    </div>
-  );
-
-  if (!href) return content;
-  return <Link to={href} className="dashboard-row-link">{content}</Link>;
-}
-
-function InsightItem({ title, message, tone = 'blue' }) {
-  return (
-    <div className={`dashboard-insight-card dashboard-insight-card--${tone}`}>
-      <div className={`dashboard-insight-icon dashboard-insight-icon--${tone}`}>
-        {tone === 'red' ? <HiOutlineExclamationTriangle className="h-5 w-5" /> : <HiOutlineSparkles className="h-5 w-5" />}
-      </div>
-      <div>
-        <p className="dashboard-insight-title">{title}</p>
-        <p className="dashboard-insight-copy">{message}</p>
-      </div>
     </div>
   );
 }
@@ -251,6 +251,7 @@ function normalizeDashboardResponse(json) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const perfil = String(user?.perfil || '').toUpperCase();
   const [dados, setDados] = useState(createDefaultDashboardState);
   const [loading, setLoading] = useState(true);
@@ -330,7 +331,9 @@ export default function Dashboard() {
 
     if (dados.visao.financeiro && financeiro.pagar_vencido > 0) {
       items.push({
-        tone: 'red',
+        id: 'pagar-vencido',
+        tom: 'danger',
+        prioridade: 'Critico',
         title: 'Regularizar pagamentos vencidos',
         detail: `${financeiro.quantidade_pagar_vencido} titulo(s) vencido(s) podem gerar bloqueio operacional ou juros.`,
         value: formatCurrency(financeiro.pagar_vencido),
@@ -340,7 +343,9 @@ export default function Dashboard() {
 
     if (dados.visao.financeiro && financeiro.receber_vencido > 0) {
       items.push({
-        tone: 'amber',
+        id: 'receber-vencido',
+        tom: 'warning',
+        prioridade: 'Atencao',
         title: 'Priorizar cobranca de recebiveis atrasados',
         detail: `${financeiro.quantidade_receber_vencido} titulo(s) vencido(s) impactam caixa previsto.`,
         value: formatCurrency(financeiro.receber_vencido),
@@ -350,7 +355,9 @@ export default function Dashboard() {
 
     if (dados.visao.financeiro && financeiro.conciliacao_pendente_quantidade > 0) {
       items.push({
-        tone: 'blue',
+        id: 'conciliacao',
+        tom: 'info',
+        prioridade: 'Acao',
         title: 'Concluir conciliacao bancaria',
         detail: 'Movimentos pendentes reduzem confianca nos saldos e relatorios.',
         value: `${financeiro.conciliacao_pendente_quantidade} pend.`,
@@ -360,7 +367,9 @@ export default function Dashboard() {
 
     if (dados.visao.financeiro && saldoAberto < 0) {
       items.push({
-        tone: 'red',
+        id: 'saldo-negativo',
+        tom: 'danger',
+        prioridade: 'Critico',
         title: 'Saldo aberto projetado negativo',
         detail: 'Ha mais compromissos em aberto do que recebiveis cadastrados.',
         value: formatCurrency(saldoAberto),
@@ -370,7 +379,9 @@ export default function Dashboard() {
 
     if (dados.visao.solicitacoes && solicitacoesPendentes > 0) {
       items.push({
-        tone: 'amber',
+        id: 'solicitacoes-pendentes',
+        tom: 'warning',
+        prioridade: 'Atencao',
         title: 'Destravar solicitacoes aguardando acao',
         detail: 'Fila pendente ou em analise pode atrasar compras, pagamentos e execucao.',
         value: formatNumber(solicitacoesPendentes),
@@ -394,7 +405,7 @@ export default function Dashboard() {
     if (dados.visao.financeiro) {
       if (financeiro.pagar_vencido > 0) {
         items.push({
-          tone: 'red',
+          tom: 'danger',
           title: 'Pagamentos vencidos exigem acao',
           message: `${formatCurrency(financeiro.pagar_vencido)} em contas a pagar vencidas precisam ser regularizados.`
         });
@@ -402,7 +413,7 @@ export default function Dashboard() {
 
       if (financeiro.receber_vencido > 0) {
         items.push({
-          tone: 'amber',
+          tom: 'warning',
           title: 'Recebiveis vencidos impactam caixa',
           message: `${formatCurrency(financeiro.receber_vencido)} em contas a receber vencidas pedem cobranca ativa.`
         });
@@ -410,7 +421,7 @@ export default function Dashboard() {
 
       if (financeiro.conciliacao_pendente_quantidade > 0) {
         items.push({
-          tone: 'amber',
+          tom: 'warning',
           title: 'Conferir conciliacao bancaria',
           message: `${financeiro.conciliacao_pendente_quantidade} pendencia(s) podem distorcer leitura de caixa e relatorios.`
         });
@@ -418,7 +429,7 @@ export default function Dashboard() {
 
       if (saldoAberto >= 0) {
         items.push({
-          tone: 'green',
+          tom: 'success',
           title: 'Saldo projetado segue positivo',
           message: `Ha ${formatCurrency(saldoAberto)} de folga entre receber e pagar em aberto no recorte atual.`
         });
@@ -427,7 +438,7 @@ export default function Dashboard() {
 
     if (dados.visao.solicitacoes && solicitacoesPendentes > 0) {
       items.push({
-        tone: 'blue',
+        tom: 'info',
         title: 'Fila operacional com demanda ativa',
         message: `${formatNumber(solicitacoesPendentes)} solicitacao(oes) seguem pendentes ou em analise e podem travar fluxo interno.`
       });
@@ -435,7 +446,7 @@ export default function Dashboard() {
 
     if (!items.length) {
       items.push({
-        tone: 'green',
+        tom: 'success',
         title: 'Operacao sob controle',
         message: 'Os dados atuais nao apontam gargalos criticos para leitura executiva imediata.'
       });
@@ -449,8 +460,8 @@ export default function Dashboard() {
 
     if (dados.visao.solicitacoes) {
       actions.push({
-        to: '/solicitacoes',
-        label: 'Abrir solicitacoes',
+        to: rotaDe('solicitacoes-lista'),
+        label: 'Abrir solicitações',
         icon: HiOutlineClipboardDocumentList
       });
     }
@@ -465,8 +476,8 @@ export default function Dashboard() {
 
     if (dados.visao.financeiro && financeiro.conciliacao_pendente_quantidade > 0) {
       actions.push({
-        to: '/financeiro/conciliacao',
-        label: 'Revisar conciliacao',
+        to: rotaDe('fin-conciliacao'),
+        label: 'Revisar conciliação',
         icon: HiOutlineArrowPath
       });
     }
@@ -474,298 +485,451 @@ export default function Dashboard() {
     return actions.slice(0, 3);
   }, [dados.visao, financeiro.conciliacao_pendente_quantidade]);
 
+  /* ------------------------------ TABELAS ------------------------------ */
+
+  const colunasDecisoes = [
+    {
+      id: 'prioridade',
+      titulo: 'Prioridade',
+      tipo: 'status',
+      render: (item) => <StatusBadge status={item.prioridade} kind={item.tom} />
+    },
+    {
+      id: 'acao',
+      titulo: 'O que fazer',
+      tipo: 'texto',
+      noCard: 'titulo',
+      render: (item) => <CelulaDupla principal={item.title} sub={item.detail} />
+    },
+    {
+      id: 'valor',
+      titulo: 'Exposição',
+      tipo: 'valor',
+      render: (item) => item.value
+    }
+  ];
+
+  const colunasVencimentos = [
+    {
+      id: 'titulo',
+      titulo: 'Título',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => (
+        <CelulaDupla
+          principal={item.descricao || `Titulo #${item.id}`}
+          sub={`${item.tipo || '-'} - ${item.parceiro_nome || '-'}`}
+        />
+      )
+    },
+    {
+      id: 'vencimento',
+      titulo: 'Vencimento',
+      tipo: 'data',
+      render: (item) => formatDate(item.data_vencimento)
+    },
+    {
+      id: 'saldo',
+      titulo: 'Saldo',
+      tipo: 'valor',
+      render: (item) => formatCurrency(item.valor_saldo)
+    }
+  ];
+
+  const colunasObras = [
+    {
+      id: 'obra',
+      titulo: 'Obra',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => item.obra_nome || '-'
+    },
+    { id: 'pagar', titulo: 'A pagar aberto', tipo: 'valor', render: (item) => formatCurrency(item.pagar_aberto) },
+    { id: 'receber', titulo: 'A receber aberto', tipo: 'valor', render: (item) => formatCurrency(item.receber_aberto) },
+    { id: 'saldo', titulo: 'Saldo projetado', tipo: 'valor', render: (item) => formatCurrency(item.saldo_projetado) }
+  ];
+
+  const colunasContas = [
+    {
+      id: 'conta',
+      titulo: 'Conta bancária',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => item.conta_bancaria_nome || '-'
+    },
+    { id: 'pendentes', titulo: 'Pendências', tipo: 'numero', render: (item) => formatNumber(item.pendentes) },
+    { id: 'valor', titulo: 'Valor pendente', tipo: 'valor', render: (item) => formatCurrency(item.valor_total) }
+  ];
+
+  const colunasParceiros = [
+    {
+      id: 'parceiro',
+      titulo: 'Parceiro',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => item.parceiro_nome || '-'
+    },
+    { id: 'pagar', titulo: 'A pagar aberto', tipo: 'valor', render: (item) => formatCurrency(item.pagar_aberto) },
+    { id: 'receber', titulo: 'A receber aberto', tipo: 'valor', render: (item) => formatCurrency(item.receber_aberto) },
+    {
+      id: 'combinado',
+      titulo: 'Exposição combinada',
+      tipo: 'valor',
+      // Conta exatamente como contava antes (pagar + receber). O nome da
+      // coluna passou a dizer o que a soma É — o rótulo anterior ("saldo
+      // aberto combinado") prometia saldo, e saldo seria a diferença.
+      render: (item) => formatCurrency(Number(item.pagar_aberto || 0) + Number(item.receber_aberto || 0))
+    }
+  ];
+
   if (loading) {
     return (
-      <div className="page dashboard solicitacoes-page space-y-5 md:space-y-6">
-        <section className="dashboard-hero-card">
-          <div className="flex flex-col gap-4">
-            <LoadingSkeleton className="h-4 w-32 rounded-xl" />
-            <LoadingSkeleton className="h-11 w-72 rounded-2xl" />
-            <LoadingSkeleton lines={2} lastLineClassName="w-2/3" />
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="dashboard-metric-card">
-              <LoadingSkeleton className="h-4 w-28 rounded-xl" />
-              <LoadingSkeleton className="mt-5 h-10 w-2/3 rounded-2xl" />
-              <LoadingSkeleton lines={2} lastLineClassName="w-1/2" />
-            </div>
-          ))}
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-          {Array.from({ length: 2 }).map((_, index) => (
-            <div key={index} className="dashboard-section-card">
-              <LoadingSkeleton className="h-5 w-40 rounded-xl" />
-              <LoadingSkeleton lines={4} lastLineClassName="w-3/5" />
-            </div>
-          ))}
-        </section>
-      </div>
+      <Pagina>
+        <PageHeader titulo="Painel" descricao="Carregando os indicadores do painel..." />
+        <BlocoConteudo titulo="Carregando">
+          <LoadingSkeleton lines={4} />
+        </BlocoConteudo>
+      </Pagina>
     );
   }
 
   if (erro) {
     return (
-      <div className="page">
-        <h1 className="page-title">Dashboard</h1>
-        <Alert type="error" title="Nao foi possivel carregar o painel" message={erro} />
-      </div>
+      <Pagina>
+        <PageHeader titulo={titulo} descricao="Painel indisponível no momento." />
+        <BlocoConteudo titulo="Painel indisponível">
+          {/* CONDIÇÃO, não evento: a faixa descreve por que não há painel.
+              Fechá-la não traria os dados de volta — por isso é um Alert
+              fixo no fluxo, e não um aviso dispensável (useAvisos). */}
+          <Alert type="error" title="Não foi possível carregar o painel" message={erro} />
+          <div className="app-actionbar">
+            <button type="button" className="btn btn-primary" onClick={() => carregarDashboard()} disabled={refreshing}>
+              {refreshing ? 'Atualizando...' : 'Tentar de novo'}
+            </button>
+          </div>
+        </BlocoConteudo>
+      </Pagina>
     );
   }
 
   return (
-    <div className="page dashboard solicitacoes-page space-y-5 md:space-y-6">
-      <header className="dashboard-hero-card">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="dashboard-hero-kicker">Centro de decisao</p>
-            <h1 className="dashboard-hero-title">{titulo}</h1>
-            <p className="dashboard-hero-copy">
-              Leitura objetiva dos pontos que pedem acao: vencidos, caixa aberto, conciliacao, fila operacional e exposicao por obra.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="dashboard-hero-chip">
-              Atualizado {formatDateTime(updatedAt)}
-            </span>
-            <button type="button" className="btn btn-outline" onClick={() => carregarDashboard()} disabled={refreshing}>
-              {refreshing ? 'Atualizando...' : 'Atualizar'}
-            </button>
-          </div>
-        </div>
+    <Pagina>
+      {/*
+        C2 × B3 (critério de 05/09): a FAIXA fica com o TOTAL — quantos
+        pontos pedem ação agora — e os blocos ficam com os RECORTES. A
+        pílula "{n} ponto(s)" que vivia no cabeçalho do bloco "Fila de
+        decisão" mostrava esse MESMO número e saiu por isso: não tinha
+        recorte próprio para mostrar. O número não sumiu da tela; subiu
+        para a faixa, que é a que acompanha a pessoa ao rolar.
 
-        {quickActions.length ? (
-          <div className="dashboard-hero-actions">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <Link key={action.to} to={action.to} className="btn btn-secondary btn-sm">
-                  <Icon className="h-4 w-4" />
-                  {action.label}
-                </Link>
-              );
-            })}
-          </div>
-        ) : null}
-      </header>
+        "Atualizar" é ação SOBRE ESTA TELA (recarrega os indicadores), por
+        isso é a ação principal da faixa. Os atalhos de módulo NÃO vieram
+        para cá: caminho para outra tela não é ação (R11/C6) — eles moram
+        no corpo, no bloco "Ir direto para", que é o papel de hub desta
+        página.
+      */}
+      <PageHeader
+        titulo={titulo}
+        contagem={`${decisoes.length} ponto(s) de decisão`}
+        descricao={`Centro de decisão · atualizado ${formatDateTime(updatedAt)}`}
+        acaoPrincipal={{
+          rotulo: refreshing ? 'Atualizando...' : 'Atualizar',
+          onClick: () => carregarDashboard(),
+          desabilitada: refreshing
+        }}
+      />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 6 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:dashboard" larguraPadrao="total">
         {dados.visao.financeiro && (
-          <>
-            <MetricTile
-              label="Saldo aberto projetado"
-              value={formatCurrency(saldoAberto)}
-              detail="Receber em aberto menos pagar em aberto"
-              tone={saldoAberto >= 0 ? 'green' : 'red'}
-              href="/financeiro/relatorios"
-            />
-            <MetricTile
-              label="Resultado do mes"
-              value={formatCurrency(resultadoMes)}
-              detail="Recebido no mes menos pago no mes"
-              tone={resultadoMes >= 0 ? 'blue' : 'amber'}
-              href="/financeiro/relatorios"
-            />
-            <MetricTile
-              label="A pagar vencido"
-              value={formatCurrency(financeiro.pagar_vencido)}
-              detail={`${financeiro.quantidade_pagar_vencido} titulo(s) a pagar vencido(s)`}
-              tone={financeiro.pagar_vencido > 0 ? 'red' : 'green'}
-              href="/financeiro/titulos"
-            />
-            <MetricTile
-              label="A receber vencido"
-              value={formatCurrency(financeiro.receber_vencido)}
-              detail={`${financeiro.quantidade_receber_vencido} titulo(s) a receber vencido(s)`}
-              tone={financeiro.receber_vencido > 0 ? 'amber' : 'green'}
-              href="/financeiro/titulos"
-            />
-            <MetricTile
-              label="Conciliacao pendente"
-              value={formatNumber(financeiro.conciliacao_pendente_quantidade)}
-              detail={formatCurrency(financeiro.conciliacao_pendente_valor)}
-              tone={financeiro.conciliacao_pendente_quantidade > 0 ? 'amber' : 'green'}
-              href="/financeiro/conciliacao"
-            />
-          </>
+          <BlocoConteudo
+            titulo="Caixa e pendências"
+            descricao="Os números que decidem o dia. Cada ladrilho abre a tela onde a ação acontece."
+          >
+            <StatGrid colunas={4}>
+              <Ladrilho
+                label="Saldo aberto projetado"
+                valor={formatCurrency(saldoAberto)}
+                sub="Receber em aberto menos pagar em aberto"
+                tom={saldoAberto >= 0 ? 'success' : 'danger'}
+                href={rotaDe('fin-relatorios')}
+              />
+              <Ladrilho
+                label="Resultado do mês"
+                valor={formatCurrency(resultadoMes)}
+                sub="Recebido no mês menos pago no mês"
+                tom={resultadoMes >= 0 ? 'info' : 'warning'}
+                href={rotaDe('fin-relatorios')}
+              />
+              <Ladrilho
+                label="A pagar vencido"
+                valor={formatCurrency(financeiro.pagar_vencido)}
+                sub={`${financeiro.quantidade_pagar_vencido} título(s) a pagar vencido(s)`}
+                tom={financeiro.pagar_vencido > 0 ? 'danger' : 'success'}
+                /* `/financeiro/titulos` sem filtro NAO e destino do menu: o
+                   menu oferece "Contas a Pagar" e "a Receber" separados
+                   (decisao registrada em 04/09). Unico destino escrito a mao
+                   aqui, e por isso — abaixo do limite de tres do trinco. */
+                href="/financeiro/titulos"
+              />
+              <Ladrilho
+                label="A receber vencido"
+                valor={formatCurrency(financeiro.receber_vencido)}
+                sub={`${financeiro.quantidade_receber_vencido} título(s) a receber vencido(s)`}
+                tom={financeiro.receber_vencido > 0 ? 'warning' : 'success'}
+                href="/financeiro/titulos"
+              />
+              <Ladrilho
+                label="Conciliação pendente"
+                valor={formatNumber(financeiro.conciliacao_pendente_quantidade)}
+                sub={formatCurrency(financeiro.conciliacao_pendente_valor)}
+                tom={financeiro.conciliacao_pendente_quantidade > 0 ? 'warning' : 'success'}
+                href={rotaDe('fin-conciliacao')}
+              />
+            </StatGrid>
+          </BlocoConteudo>
         )}
 
         {dados.visao.solicitacoes && !dados.visao.financeiro && (
-          <>
-            <MetricTile label="Solicitacoes abertas" value={formatNumber(dados.total)} detail="Total operacional visivel" tone="blue" href="/solicitacoes" />
-            <MetricTile label="Aguardando acao" value={formatNumber(solicitacoesPendentes)} detail="Pendentes e em analise" tone={solicitacoesPendentes > 0 ? 'amber' : 'green'} href="/solicitacoes" />
-            <MetricTile label="Valor em solicitacoes" value={formatCurrency(totalSolicitacoesValor)} detail="Base informada nos registros" tone="slate" href="/solicitacoes" />
-            <MetricTile label="Areas com demanda" value={formatNumber(topAreas.length)} detail="Setores com solicitacoes abertas" tone="blue" />
-          </>
+          <BlocoConteudo
+            titulo="Operação do setor"
+            descricao="Volume visível para o seu escopo. Cada ladrilho abre a lista de solicitações."
+          >
+            <StatGrid colunas={4}>
+              <Ladrilho label="Solicitações abertas" valor={formatNumber(dados.total)} sub="Total operacional visível" tom="info" href={rotaDe('solicitacoes-lista')} />
+              <Ladrilho label="Aguardando ação" valor={formatNumber(solicitacoesPendentes)} sub="Pendentes e em analise" tom={solicitacoesPendentes > 0 ? 'warning' : 'success'} href={rotaDe('solicitacoes-lista')} />
+              <Ladrilho label="Valor em solicitações" valor={formatCurrency(totalSolicitacoesValor)} sub="Base informada nos registros" href={rotaDe('solicitacoes-lista')} />
+              <Ladrilho label="Áreas com demanda" valor={formatNumber(topAreas.length)} sub="Setores com solicitações abertas" />
+            </StatGrid>
+          </BlocoConteudo>
         )}
-      </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <Section
-          title="Fila de decisao"
-          subtitle="Lista priorizada por risco financeiro e operacional. Comece por aqui."
-          action={<span className="rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-muted)]">{decisoes.length} ponto(s)</span>}
+        {/* B2: UM bloco principal por tela, e nesta é a fila de decisão — a
+            pergunta central do painel é "por onde começo?". */}
+        <BlocoConteudo
+          titulo="Fila de decisão"
+          variante="primario"
+          cor="var(--sem-danger)"
+          descricao="Lista priorizada por risco financeiro e operacional. Leitura objetiva dos pontos que pedem ação: vencidos, caixa aberto, conciliação, fila operacional e exposição por obra. Comece por aqui."
         >
           {decisoes.length ? (
-            <div className="grid gap-3">
-              {decisoes.map((item) => <DecisionItem key={item.title} {...item} />)}
-            </div>
+            <TabelaPadrao
+              colunas={colunasDecisoes}
+              itens={decisoes}
+              getId={(item) => item.id}
+              storageKey="tabela:dashboard:decisoes"
+              rotuloRolagem="Fila de decisao"
+              semIdentidade
+              larguraAcoes={140}
+              // A1: linha acionável com caminho por teclado (tabIndex +
+              // Enter/Espaço do componente) E um link focável na linha.
+              aoClicarLinha={(item) => item.href && navigate(item.href)}
+              acoesLinha={(item) => (
+                <Link to={item.href} className="btn btn-outline btn-sm">
+                  Abrir
+                </Link>
+              )}
+              vazio={{
+                title: 'Sem acao critica agora',
+                message: 'Nao ha alertas executivos relevantes com os dados atuais.'
+              }}
+            />
           ) : (
-            <EmptyState title="Sem acao critica agora" message="Nao ha alertas executivos relevantes com os dados atuais." />
+            <EmptyState title="Sem ação critica agora" message="Nao ha alertas executivos relevantes com os dados atuais." />
           )}
-        </Section>
+        </BlocoConteudo>
+
+        {quickActions.length ? (
+          /* "Onde a NAVEGAÇÃO mora" (04/09): caminho para OUTRA tela não vai
+             na barra de ações nem no menu "⋯" — vai no hub. Esta página é o
+             hub de entrada do sistema, então os atalhos moram no corpo. */
+          <BlocoConteudo titulo="Ir direto para" descricao="Atalhos para as telas onde a ação acontece.">
+            <div className="app-actionbar">
+              {quickActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <Link key={action.to} to={action.to} className="btn btn-outline">
+                    <Icon aria-hidden="true" />
+                    {action.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </BlocoConteudo>
+        ) : null}
 
         {dados.visao.financeiro && (
-          <Section title="Pulso financeiro" subtitle="Compara compromissos, recebiveis e movimento liquidado no mes.">
-            <div className="grid gap-3">
-              <FinanceRow
-                title="A receber em aberto"
-                subtitle={`${financeiro.quantidade_receber_aberto} titulo(s) a receber`}
-                amount={formatCurrency(financeiro.total_receber_aberto)}
-                tone="green"
+          <BlocoConteudo
+            titulo="Pulso financeiro"
+            descricao="Compara compromissos, recebíveis e movimento liquidado no mês. A receber e sempre verde e a pagar sempre vermelho, aqui e nas tabelas abaixo (R8: a cor e da série, não do componente)."
+          >
+            <StatGrid colunas={4}>
+              <Ladrilho
+                label="A receber em aberto"
+                valor={formatCurrency(financeiro.total_receber_aberto)}
+                sub={`${financeiro.quantidade_receber_aberto} título(s) a receber`}
+                tom="success"
                 href="/financeiro/titulos"
               />
-              <FinanceRow
-                title="A pagar em aberto"
-                subtitle={`${financeiro.quantidade_pagar_aberto} titulo(s) a pagar`}
-                amount={formatCurrency(financeiro.total_pagar_aberto)}
-                tone="red"
+              <Ladrilho
+                label="A pagar em aberto"
+                valor={formatCurrency(financeiro.total_pagar_aberto)}
+                sub={`${financeiro.quantidade_pagar_aberto} título(s) a pagar`}
+                tom="danger"
                 href="/financeiro/titulos"
               />
-              <FinanceRow
-                title="Recebido no mes"
-                subtitle="Entradas baixadas no periodo atual"
-                amount={formatCurrency(financeiro.movimentado_mes_receber)}
-                tone="green"
+              <Ladrilho
+                label="Recebido no mês"
+                valor={formatCurrency(financeiro.movimentado_mes_receber)}
+                sub="Entradas baixadas no período atual"
+                tom="success"
               />
-              <FinanceRow
-                title="Pago no mes"
-                subtitle="Saidas baixadas no periodo atual"
-                amount={formatCurrency(financeiro.movimentado_mes_pagar)}
-                tone="red"
+              <Ladrilho
+                label="Pago no mês"
+                valor={formatCurrency(financeiro.movimentado_mes_pagar)}
+                sub="Saídas baixadas no período atual"
+                tom="danger"
               />
-            </div>
-          </Section>
+            </StatGrid>
+          </BlocoConteudo>
         )}
-      </section>
 
-      <Section
-        title="Insights do Fluxy"
-        subtitle="Leituras objetivas geradas no frontend a partir dos indicadores ja carregados."
-      >
-        <div className="grid gap-3 lg:grid-cols-2">
-          {insights.map((item) => (
-            <InsightItem
-              key={`${item.title}-${item.message}`}
-              title={item.title}
-              message={item.message}
-              tone={item.tone}
-            />
-          ))}
-        </div>
-      </Section>
+        <BlocoConteudo
+          titulo="Insights do Fluxy"
+          descricao="Leituras objetivas geradas no frontend a partir dos indicadores já carregados."
+        >
+          <StatGrid colunas={2}>
+            {insights.map((item) => (
+              <StatTile
+                key={`${item.title}-${item.message}`}
+                label={item.title}
+                valor={item.message}
+                tom={item.tom}
+                icone={item.tom === 'danger'
+                  ? <HiOutlineExclamationTriangle aria-hidden="true" />
+                  : <HiOutlineSparkles aria-hidden="true" />}
+              />
+            ))}
+          </StatGrid>
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
 
       {dados.visao.financeiro && (
-        <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <Section title="Proximos vencimentos" subtitle="Agenda curta para antecipar cobranca e pagamento.">
-            {financeiro.proximosVencimentos.length ? (
-              <div className="grid gap-3">
-                {financeiro.proximosVencimentos.map((item) => (
-                  <FinanceRow
-                    key={item.id}
-                    title={item.descricao || `Titulo #${item.id}`}
-                    subtitle={`${item.tipo || '-'} - ${item.parceiro_nome || '-'} - ${formatDate(item.data_vencimento)}`}
-                    amount={formatCurrency(item.valor_saldo)}
-                    tone={String(item.tipo || '').toUpperCase() === 'RECEBER' ? 'green' : 'red'}
-                    href={`/financeiro/titulos/${item.id}`}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="Sem vencimentos proximos" message="Nenhum titulo em aberto na agenda curta." />
-            )}
-          </Section>
+        <>
+          <BlocoConteudo
+            titulo="Próximos vencimentos"
+            contagem={`${financeiro.proximosVencimentos.length} título(s) na agenda curta`}
+            descricao="Agenda curta para antecipar cobrança e pagamento."
+          >
+            <TabelaPadrao
+              colunas={colunasVencimentos}
+              itens={financeiro.proximosVencimentos}
+              getId={(item) => item.id}
+              storageKey="tabela:dashboard:vencimentos"
+              rotuloRolagem="Proximos vencimentos"
+              larguraAcoes={140}
+              aoClicarLinha={(item) => navigate(`/financeiro/titulos/${item.id}`)}
+              acoesLinha={(item) => (
+                <Link to={`/financeiro/titulos/${item.id}`} className="btn btn-outline btn-sm">
+                  Abrir título
+                </Link>
+              )}
+              vazio={{
+                title: 'Sem vencimentos proximos',
+                message: 'Nenhum titulo em aberto na agenda curta.'
+              }}
+            />
+          </BlocoConteudo>
 
-          <Section title="Exposicao por obra" subtitle="Obras que mais podem alterar o caixa aberto.">
-            {financeiro.porObra.length ? (
-              <div className="grid gap-3">
-                {financeiro.porObra.map((item) => (
-                  <FinanceRow
-                    key={item.obra_id}
-                    title={item.obra_nome}
-                    subtitle={`Pagar ${formatCurrency(item.pagar_aberto)} - Receber ${formatCurrency(item.receber_aberto)}`}
-                    amount={formatCurrency(item.saldo_projetado)}
-                    tone={Number(item.saldo_projetado || 0) >= 0 ? 'green' : 'red'}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="Sem exposicao por obra" message="Nao ha titulos abertos vinculados a obras visiveis." />
-            )}
-          </Section>
-        </section>
+          <BlocoConteudo
+            titulo="Exposição por obra"
+            contagem={`${financeiro.porObra.length} obra(s)`}
+            descricao="Obras que mais podem alterar o caixa aberto. Pagar e receber deixaram de viver numa frase de apoio e viraram colunas próprias, com valor que nunca trunca."
+          >
+            <TabelaPadrao
+              colunas={colunasObras}
+              itens={financeiro.porObra}
+              getId={(item) => item.obra_id}
+              storageKey="tabela:dashboard:obras"
+              rotuloRolagem="Exposicao por obra"
+              vazio={{
+                title: 'Sem exposicao por obra',
+                message: 'Nao ha titulos abertos vinculados a obras visiveis.'
+              }}
+            />
+          </BlocoConteudo>
+
+          <BlocoConteudo
+            titulo="Conciliação por conta"
+            contagem={`${financeiro.conciliacaoPorConta.length} conta(s) com pendência`}
+            descricao="Contas com maior volume pendente de classificação."
+          >
+            <TabelaPadrao
+              colunas={colunasContas}
+              itens={financeiro.conciliacaoPorConta}
+              getId={(item) => item.conta_bancaria_id || item.conta_bancaria_nome}
+              storageKey="tabela:dashboard:conciliacao"
+              rotuloRolagem="Conciliacao por conta"
+              larguraAcoes={180}
+              aoClicarLinha={() => navigate(rotaDe('fin-conciliacao'))}
+              acoesLinha={() => (
+                <Link to={rotaDe('fin-conciliacao')} className="btn btn-outline btn-sm">
+                  Abrir conciliação
+                </Link>
+              )}
+              vazio={{
+                title: 'Conciliacao em dia',
+                message: 'Nenhuma pendencia bancaria encontrada.'
+              }}
+            />
+          </BlocoConteudo>
+
+          <BlocoConteudo
+            titulo="Maiores exposições por parceiro"
+            contagem={`${financeiro.porParceiro.length} parceiro(s)`}
+            descricao="Parceiros com maior volume aberto combinado."
+          >
+            <TabelaPadrao
+              colunas={colunasParceiros}
+              itens={financeiro.porParceiro}
+              getId={(item) => item.parceiro_id}
+              storageKey="tabela:dashboard:parceiros"
+              rotuloRolagem="Exposicao por parceiro"
+              vazio={{
+                title: 'Sem exposicao por parceiro',
+                message: 'Nao ha saldos financeiros abertos por parceiro.'
+              }}
+            />
+          </BlocoConteudo>
+        </>
       )}
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        {dados.visao.solicitacoes && (
-          <Section title="Carga operacional por area" subtitle="Onde a operacao esta concentrada agora.">
-            <BarList items={topAreas} labelKey="area" valueKey="total" />
-          </Section>
-        )}
-
-        {dados.visao.solicitacoes && (
-          <Section title="Status das solicitacoes" subtitle="Distribuicao atual para destravar gargalos.">
-            <BarList items={topStatus} labelKey="status" valueKey="total" />
-          </Section>
-        )}
-
-        {dados.visao.financeiro && (
-          <Section
-            title="Conciliacao por conta"
-            subtitle="Contas com maior volume pendente de classificacao."
-            action={<Link to="/financeiro/conciliacao" className="btn btn-outline btn-sm">Abrir conciliacao</Link>}
+      {dados.visao.solicitacoes && (
+        <>
+          <BlocoConteudo
+            titulo="Carga operacional por área"
+            contagem={`${topAreas.length} área(s) com demanda`}
+            descricao="Onde a operação esta concentrada agora."
           >
-            {financeiro.conciliacaoPorConta.length ? (
-              <div className="grid gap-3">
-                {financeiro.conciliacaoPorConta.map((item) => (
-                  <FinanceRow
-                    key={item.conta_bancaria_id || item.conta_bancaria_nome}
-                    title={item.conta_bancaria_nome}
-                    subtitle={`${item.pendentes} pendencia(s)`}
-                    amount={formatCurrency(item.valor_total)}
-                    tone="amber"
-                    href="/financeiro/conciliacao"
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="Conciliacao em dia" message="Nenhuma pendencia bancaria encontrada." />
-            )}
-          </Section>
-        )}
+            <BarList items={topAreas} labelKey="area" valueKey="total" />
+          </BlocoConteudo>
 
-        {dados.visao.financeiro && (
-          <Section title="Maiores exposicoes por parceiro" subtitle="Parceiros com maior saldo aberto combinado.">
-            {financeiro.porParceiro.length ? (
-              <div className="grid gap-3">
-                {financeiro.porParceiro.map((item) => (
-                  <FinanceRow
-                    key={item.parceiro_id}
-                    title={item.parceiro_nome}
-                    subtitle={`Pagar ${formatCurrency(item.pagar_aberto)} - Receber ${formatCurrency(item.receber_aberto)}`}
-                    amount={formatCurrency(Number(item.pagar_aberto || 0) + Number(item.receber_aberto || 0))}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="Sem exposicao por parceiro" message="Nao ha saldos financeiros abertos por parceiro." />
-            )}
-          </Section>
-        )}
-      </section>
-    </div>
+          <BlocoConteudo
+            titulo="Status das solicitações"
+            contagem={`${topStatus.length} status com registro`}
+            descricao="Distribuição atual para destravar gargalos."
+          >
+            <BarList items={topStatus} labelKey="status" valueKey="total" />
+          </BlocoConteudo>
+        </>
+      )}
+    </Pagina>
   );
 }

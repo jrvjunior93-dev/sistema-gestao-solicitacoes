@@ -1,0 +1,31 @@
+# Handoff — Apropriacoes: importacao e Gestao de Obras
+
+- Data: 2026-08-25
+- Origem somente leitura: `C:\Fluxy`, commits `b55cb98c` e `8b387dca`
+- Escopo concluido:
+  - importacao de apropriacoes preserva o numero real da celula XLSX, independentemente da formatacao exibida;
+  - parser monetario aceita formatos brasileiros, ponto decimal e separador de milhar;
+  - Dashboard da Gestao de Obras escolhe uma unica fonte de apropriacao por lancamento, na ordem: rateio do titulo, rateio da solicitacao, apropriacao do titulo, apropriacao da solicitacao e sem apropriacao;
+  - distribuicao por valor, percentual ou quantidade fecha em centavos e nao duplica titulo com solicitacao;
+  - 14 valores auditados da obra `id=4`, codigo `8`, foram corrigidos no banco local de `R$ 3.711,28` para `R$ 3.711.272,76` pela rotina transacional e idempotente.
+- Arquivos de codigo:
+  - `backend/src/controllers/ApropriacaoController.js`
+  - `backend/src/utils/excelWorkbook.js`
+  - `backend/src/utils/valorMonetario.js`
+  - `backend/src/services/obraGestaoService.js`
+  - `backend/src/services/obraGestaoApropriacaoService.js`
+  - `backend/scripts/validarImportacaoApropriacoes.js`
+  - `backend/scripts/corrigirOrcamentoApropriacoesObra4.js`
+  - `backend/scripts/validarObraGestaoApropriacoes.js`
+  - `backend/package.json`
+- Validacoes:
+  - `node --check` em todos os arquivos JavaScript alterados ou criados;
+  - `npm run test:importacao-apropriacoes`;
+  - `npm run test:obra-gestao-apropriacoes`;
+  - simulacao posterior da correcao: zero linhas pendentes e diferenca zero;
+  - leitura real de `obterGestaoObra(4)`: totais das 28 categorias iguais aos KPIs;
+  - leitura real de `obterGestaoObra(39)`: fonte `RATEIO_TITULO` identificada nos titulos rateados.
+- Riscos conhecidos:
+  - titulos rateados entre obras continuam limitados pela obra principal carregada na tela, conforme o comportamento da origem;
+  - custos historicos sem vinculo permanecem em `SEM_APROPRIACAO`;
+  - o backend local em execucao nao foi reiniciado.

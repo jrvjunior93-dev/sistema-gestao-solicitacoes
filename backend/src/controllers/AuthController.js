@@ -5,7 +5,7 @@ const { registrarEventoSeguranca } = require('../services/securityLogService');
 const { getModuloConfig } = require('../services/moduleConfigService');
 const {
   canAccessFinanceiro,
-  getAreasPermissoesForUser,
+  getAreaPermissionStateForUser,
   getRhDpCapabilitiesForUser
 } = require('../services/authorizationService');
 const { marcarAtividadeUsuario } = require('../services/userActivityService');
@@ -27,6 +27,12 @@ const {
   verifyTotpCode
 } = require('../services/mfaService');
 const { isMfaRequiredProfile } = require('../services/mfaPolicyService');
+const {
+  lerSegredoTotp,
+  segredoIlegivel,
+  SEGREDO_ILEGIVEL: SEGREDO_ILEGIVEL_TEMP,
+  MENSAGEM_ILEGIVEL
+} = require('../services/mfaSecretService');
 const { listarSetoresDoUsuario } = require('../services/usuariosSetores');
 const { obterAcessoPrioridadeDiretoriaPorUsuario } = require('../services/prioridadeDiretoriaAcesso');
 const { obterSetoresVisiveisUsuario } = require('../services/setoresVisiveisUsuarioService');
@@ -37,6 +43,16 @@ const {
 const {
   calcularEstadoGuardUsuario
 } = require('../modules/custosRecebiveis/services/obrigacaoService');
+const {
+  obrasTravadasDoUsuario
+} = require('../modules/custosRecebiveis/services/bloqueioObraService');
+const { obterTelaInicialValidada } = require('../services/telaInicialService');
+const {
+  buildDevUserSwitchSessionState,
+  isDevUserSwitchRuntimeEnabled,
+  isSuperadmin
+} = require('../services/devUserSwitchService');
+const { capabilitiesForUser: getPaymentOwnerApprovalCapabilities } = require('../services/pagamentoAutorizacaoService');
 
 const SETOR_ATTRIBUTES = [
   'id',
@@ -70,7 +86,8 @@ async function buildSessionUser(user) {
   const modules = await getModuloConfig();
   const financeiroLiberado = await canAccessFinanceiro(user);
   const capacidadesRhDp = await getRhDpCapabilitiesForUser(user);
-  const areasPermissoes = await getAreasPermissoesForUser(user);
+  const areasPermissionState = await getAreaPermissionStateForUser(user);
+  const areasPermissoes = areasPermissionState.bypass ? [] : areasPermissionState.permissions;
   const prioridadeDiretoriaAcesso = await obterAcessoPrioridadeDiretoriaPorUsuario(user.id);
   const mfaRequiredByPolicy = isMfaRequiredProfile(user);
   const mfaEnabled = Boolean(user.mfa_totp_enabled);
@@ -81,7 +98,8 @@ async function buildSessionUser(user) {
   ));
   const userForGuard = {
     ...(user?.get ? user.get({ plain: true }) : user),
-    areas_permissoes: areasPermissoes
+    areas_permissoes: areasPermissoes,
+    areas_permissoes_configuradas: Boolean(areasPermissionState.configured)
   };
   let custosRecebiveisPendencia = null;
   try {
@@ -89,6 +107,8 @@ async function buildSessionUser(user) {
       moduleEnabled: custosRecebiveisEnabled,
       persistir: custosRecebiveisEnabled
     });
+    // Bloqueio por OBRA (29/09/2026): a sessao leva as obras travadas do
+    // usuario (faixa de aviso no topo); o bloqueio global deixa de existir.
   } catch (error) {
     console.error('Falha segura ao calcular pendencia de Custos e Recebiveis:', error.message);
     custosRecebiveisPendencia = {
@@ -99,8 +119,24 @@ async function buildSessionUser(user) {
       indisponivel: true
     };
   }
+  // Bloqueio por OBRA (29/09/2026): a sessao leva as obras travadas do usuario
+  // (faixa de aviso no topo). Calculado a parte: se o resumo de obrigacoes
+  // falhar, a faixa continua refletindo o bloqueio.
+  let obrasTravadas = [];
+  if (custosRecebiveisEnabled) {
+    try {
+      obrasTravadas = await obrasTravadasDoUsuario(userForGuard, { moduleEnabled: true, semCache: true });
+    } catch (error) {
+      console.error('Falha segura ao calcular obras travadas:', error.message);
+    }
+  }
+  custosRecebiveisPendencia = {
+    ...custosRecebiveisPendencia,
+    bloqueado: false,
+    obras_travadas: obrasTravadas
+  };
 
-  return {
+  const sessionUser = {
     id: user.id,
     nome: user.nome,
     email: user.email,
@@ -113,6 +149,7 @@ async function buildSessionUser(user) {
     rh_dp_capacidades: capacidadesRhDp.filter((item) => item.startsWith('rh_dp_')),
     integracao_sienge_capacidades: capacidadesRhDp.filter((item) => item.startsWith('integracao_sienge_')),
     areas_permissoes: areasPermissoes,
+    areas_permissoes_configuradas: Boolean(areasPermissionState.configured),
     prioridade_diretoria_acesso: prioridadeDiretoriaAcesso,
     pode_criar_solicitacao_compra: Boolean(user.pode_criar_solicitacao_compra),
     pode_enviar_qualquer_setor: Boolean(user.pode_enviar_qualquer_setor),
@@ -122,6 +159,17 @@ async function buildSessionUser(user) {
     mfa_setup_pending: mfaRequiredByPolicy && !mfaEnabled,
     custos_recebiveis_pendencia: custosRecebiveisPendencia
   };
+
+  sessionUser.autorizacao_pagamentos = await getPaymentOwnerApprovalCapabilities(userForGuard);
+
+  sessionUser.dev_user_switch_enabled = isDevUserSwitchRuntimeEnabled() && isSuperadmin(user);
+
+  // Tela inicial escolhida pelo usuário, validada no backend contra as
+  // permissões ATUAIS (mesma fonte única do frontend). Inválida = null
+  // (o login cai na Home) e a preferência já foi limpa pelo serviço.
+  sessionUser.tela_inicial = await obterTelaInicialValidada(sessionUser);
+
+  return sessionUser;
 }
 
 function buildAuthPayload(user) {
@@ -157,11 +205,17 @@ async function issueAuthenticatedSession(req, res, user, options = {}) {
   return {
     token,
     session_expires_at: decodeTokenExpiry(token),
-    user: await buildSessionUser(user)
+    user: await buildSessionUser(user),
+    dev_user_switch: await buildDevUserSwitchSessionState({ currentUser: user })
   };
 }
 
 module.exports = {
+  // Reutilizado pelo TelaInicialController: monta o MESMO objeto de
+  // sessão que o frontend recebe, para validar permissão de tela com
+  // entradas idênticas às da fonte única.
+  buildSessionUser,
+
   async login(req, res) {
     try {
       const emailNormalizado = String(req.body?.email || '').trim().toLowerCase();
@@ -213,7 +267,29 @@ module.exports = {
       }
 
       const mfaRequiredByPolicy = isMfaRequiredProfile(user);
-      const mfaEnabled = Boolean(user.mfa_totp_enabled && user.mfa_totp_secret);
+
+      // A ordem importa: o segredo so e lido quando o MFA esta LIGADO para o usuario. Com o MFA
+      // desligado o segredo e irrelevante, e ler antes faria um valor guardado (que pode nem
+      // decifrar) barrar quem nem usa segundo fator.
+      //
+      // Ligado o MFA, segredo que nao decifra NAO pode virar "usuario sem MFA": isso transformaria
+      // uma falha de chave em bypass do segundo fator. Recusa com motivo — e sem o motivo, isto
+      // aparecia como 500 opaco no login, que foi como o defeito chegou.
+      const segredoTotp = user.mfa_totp_enabled ? lerSegredoTotp(user) : null;
+      if (segredoIlegivel(segredoTotp)) {
+        await registrarEventoSeguranca({
+          req,
+          usuarioId: user.id,
+          tipoEvento: 'AUTH_MFA_SECRET_UNREADABLE',
+          recursoTipo: 'AUTH',
+          recursoId: user.id,
+          status: 'DENIED',
+          descricao: 'Segredo TOTP nao pode ser decifrado com a chave atual'
+        });
+        return res.status(503).json({ error: MENSAGEM_ILEGIVEL, code: 'MFA_SECRET_UNREADABLE' });
+      }
+
+      const mfaEnabled = Boolean(user.mfa_totp_enabled && segredoTotp);
 
       if (mfaEnabled) {
         await registrarEventoSeguranca({
@@ -281,14 +357,21 @@ module.exports = {
         ]
       });
 
-      if (!user || user.ativo === false || !user.mfa_totp_enabled || !user.mfa_totp_secret) {
+      if (!user || user.ativo === false || !user.mfa_totp_enabled) {
+        return res.status(401).json({ error: 'MFA nao esta disponivel para este usuario.' });
+      }
+      const segredoDesafio = lerSegredoTotp(user);
+      if (segredoIlegivel(segredoDesafio)) {
+        return res.status(503).json({ error: MENSAGEM_ILEGIVEL, code: 'MFA_SECRET_UNREADABLE' });
+      }
+      if (!segredoDesafio) {
         return res.status(401).json({ error: 'MFA nao esta disponivel para este usuario.' });
       }
       if (Number(decoded.token_version || 0) !== Number(user.token_version || 0)) {
         return res.status(401).json({ error: 'Desafio MFA revogado. Inicie o login novamente.' });
       }
 
-      if (!verifyTotpCode(user.mfa_totp_secret, codigo)) {
+      if (!verifyTotpCode(segredoDesafio, codigo)) {
         await registrarEventoSeguranca({
           req,
           usuarioId: user.id,
@@ -363,7 +446,12 @@ module.exports = {
 
       return res.json({
         user: await buildSessionUser(req.user),
-        session_expires_at: Number(req.auth?.exp || 0) > 0 ? Number(req.auth.exp) * 1000 : null
+        session_expires_at: Number(req.auth?.exp || 0) > 0 ? Number(req.auth.exp) * 1000 : null,
+        dev_user_switch: await buildDevUserSwitchSessionState({
+          currentUser: req.user,
+          auth: req.auth,
+          actor: req.dev_user_switch?.actor
+        })
       });
     } catch (err) {
       console.error(err);
@@ -373,18 +461,20 @@ module.exports = {
 
   async logout(req, res) {
     try {
-      if (req.user?.id) {
+      if (req.user?.id && !req.dev_user_switch) {
         await User.increment('token_version', { by: 1, where: { id: req.user.id } });
       }
       clearAuthCookies(res);
       await registrarEventoSeguranca({
         req,
-        usuarioId: req.user?.id || null,
+        usuarioId: req.dev_user_switch?.actor_id || req.user?.id || null,
         tipoEvento: 'AUTH_LOGOUT',
         recursoTipo: 'AUTH',
         recursoId: req.user?.id || null,
         status: 'SUCCESS',
-        descricao: 'Logout efetuado com sucesso'
+        descricao: req.dev_user_switch
+          ? 'Logout efetuado durante sessao de teste de usuario'
+          : 'Logout efetuado com sucesso'
       });
       return res.json({ ok: true });
     } catch (err) {
@@ -400,8 +490,17 @@ module.exports = {
         return res.status(404).json({ error: 'Usuario nao encontrado.' });
       }
 
-      if (user.mfa_totp_enabled && user.mfa_totp_secret) {
-        return res.status(409).json({ error: 'MFA ja esta habilitado para este usuario.' });
+      // So interessa quando o MFA esta LIGADO: com ele desligado, configurar de novo e o fluxo
+      // normal. Ligado, um segredo ilegivel nao pode passar por "nao configurado" — isso deixaria
+      // reconfigurar o MFA sem provar posse do fator anterior.
+      if (user.mfa_totp_enabled) {
+        const segredoAtual = lerSegredoTotp(user);
+        if (segredoIlegivel(segredoAtual)) {
+          return res.status(503).json({ error: MENSAGEM_ILEGIVEL, code: 'MFA_SECRET_UNREADABLE' });
+        }
+        if (segredoAtual) {
+          return res.status(409).json({ error: 'MFA ja esta habilitado para este usuario.' });
+        }
       }
 
       const secret = generateTotpSecret();
@@ -425,17 +524,25 @@ module.exports = {
         return res.status(404).json({ error: 'Usuario nao encontrado.' });
       }
 
-      if (!user.mfa_totp_temp_secret) {
+      // Mesma guarda do segredo definitivo: o temporario tambem e um campo decifrado, e um valor
+      // ilegivel aqui derrubaria a confirmacao com 500 em vez de dizer o que houve.
+      const segredoTemporario = (() => {
+        try { return user.mfa_totp_temp_secret; } catch { return SEGREDO_ILEGIVEL_TEMP; }
+      })();
+      if (segredoTemporario === SEGREDO_ILEGIVEL_TEMP) {
+        return res.status(503).json({ error: MENSAGEM_ILEGIVEL, code: 'MFA_SECRET_UNREADABLE' });
+      }
+      if (!segredoTemporario) {
         return res.status(400).json({ error: 'Nenhuma configuracao MFA pendente para este usuario.' });
       }
 
-      if (!verifyTotpCode(user.mfa_totp_temp_secret, req.body?.codigo)) {
+      if (!verifyTotpCode(segredoTemporario, req.body?.codigo)) {
         return res.status(401).json({ error: 'Codigo de autenticacao invalido.' });
       }
 
       await user.update({
         mfa_totp_enabled: true,
-        mfa_totp_secret: user.mfa_totp_temp_secret,
+        mfa_totp_secret: segredoTemporario,
         mfa_totp_temp_secret: null,
         mfa_totp_last_verified_at: new Date(),
         token_version: Number(user.token_version || 0) + 1
@@ -475,7 +582,14 @@ module.exports = {
         return res.status(404).json({ error: 'Usuario nao encontrado.' });
       }
 
-      if (!user.mfa_totp_enabled || !user.mfa_totp_secret) {
+      if (!user.mfa_totp_enabled) {
+        return res.status(400).json({ error: 'MFA nao esta habilitado para este usuario.' });
+      }
+      const segredoParaDesligar = lerSegredoTotp(user);
+      if (segredoIlegivel(segredoParaDesligar)) {
+        return res.status(503).json({ error: MENSAGEM_ILEGIVEL, code: 'MFA_SECRET_UNREADABLE' });
+      }
+      if (!segredoParaDesligar) {
         return res.status(400).json({ error: 'MFA nao esta habilitado para este usuario.' });
       }
 
@@ -483,7 +597,7 @@ module.exports = {
         return res.status(403).json({ error: 'Este perfil exige MFA obrigatorio e nao pode desabilitar essa protecao.' });
       }
 
-      if (!verifyTotpCode(user.mfa_totp_secret, req.body?.codigo)) {
+      if (!verifyTotpCode(segredoParaDesligar, req.body?.codigo)) {
         return res.status(401).json({ error: 'Codigo de autenticacao invalido.' });
       }
 

@@ -1,23 +1,20 @@
 import { API_URL, authHeaders } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
+/* A escolha da mensagem é do `erroDeResposta` — ver a nota lá. Aqui o
+   corpo cru virava a mensagem quando a resposta não era JSON. */
 async function tratarResposta(res, fallback) {
   if (res.ok) {
     return res.status === 204 ? true : res.json();
   }
 
-  let mensagem = fallback;
+  let corpo = '';
   try {
-    const json = await res.json();
-    mensagem = json?.error || mensagem;
+    corpo = await res.text();
   } catch {
-    try {
-      const text = await res.text();
-      if (text) mensagem = text;
-    } catch {
-      // mantem fallback
-    }
+    /* resposta sem corpo legível: fica a frase do serviço */
   }
-  throw new Error(mensagem);
+  throw new Error(mensagemDeErro(corpo, fallback, res.status));
 }
 
 function montarQuery(params = {}) {

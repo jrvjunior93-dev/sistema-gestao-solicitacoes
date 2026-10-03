@@ -60,14 +60,40 @@ function montarMapaAlocacoesAtivasPorFornecedorItem(alocacoes = []) {
   return mapa;
 }
 
+function montarMapaAlocacoesAtivasPorResposta(alocacoes = []) {
+  const mapa = new Map();
+
+  for (const alocacao of alocacoes || []) {
+    if (normalizeText(alocacao?.status) !== 'ATIVA') continue;
+    const respostaItemId = Number(alocacao?.resposta_item_id || 0);
+    if (!respostaItemId) continue;
+    mapa.set(
+      respostaItemId,
+      roundQty((mapa.get(respostaItemId) || 0) + asNumber(alocacao.quantidade_alocada))
+    );
+  }
+
+  return mapa;
+}
+
+function isOfertaSaldo(registro) {
+  return normalizeText(registro?.escopo_disponibilidade) === 'OFERTA_SALDO';
+}
+
 function calcularDisponibilidadeFornecedorItem({
   fornecedorCompraId,
   item,
   quantidadeDisponivel,
-  mapaAlocacoesFornecedorItem
+  mapaAlocacoesFornecedorItem,
+  mapaAlocacoesResposta
 }) {
   const key = buildCompraFornecedorItemKey(fornecedorCompraId, item);
-  const quantidadeAlocada = roundQty(mapaAlocacoesFornecedorItem?.get(key) || 0);
+  const respostaItemId = Number(item?.id || item?.resposta_item_id || 0);
+  const quantidadeAlocada = roundQty(
+    isOfertaSaldo(item)
+      ? (respostaItemId ? mapaAlocacoesResposta?.get(respostaItemId) || 0 : 0)
+      : mapaAlocacoesFornecedorItem?.get(key) || 0
+  );
   const quantidadeTotalDisponivel = roundQty(quantidadeDisponivel);
 
   return {
@@ -82,7 +108,8 @@ function calcularNovaDisponibilidadeLiberada({
   fornecedorCompraId,
   respostasAnteriores = [],
   respostasNovas = [],
-  mapaAlocacoesFornecedorItem
+  mapaAlocacoesFornecedorItem,
+  mapaAlocacoesResposta
 }) {
   const disponibilidadesAnteriores = new Map();
   const itens = [];
@@ -94,7 +121,8 @@ function calcularNovaDisponibilidadeLiberada({
         fornecedorCompraId,
         item: resposta,
         quantidadeDisponivel: resposta.quantidade_disponivel,
-        mapaAlocacoesFornecedorItem
+        mapaAlocacoesFornecedorItem,
+        mapaAlocacoesResposta
       })
     );
   }
@@ -106,7 +134,8 @@ function calcularNovaDisponibilidadeLiberada({
       fornecedorCompraId,
       item: resposta,
       quantidadeDisponivel: resposta.quantidade_disponivel,
-      mapaAlocacoesFornecedorItem
+      mapaAlocacoesFornecedorItem,
+      mapaAlocacoesResposta
     });
     const quantidadeLiberada = roundQty(Math.max(0, atual.saldo_disponivel - anterior.saldo_disponivel));
     if (quantidadeLiberada <= 0) continue;
@@ -132,6 +161,8 @@ module.exports = {
   calcularDisponibilidadeFornecedorItem,
   calcularNovaDisponibilidadeLiberada,
   montarMapaAlocacoesAtivasPorFornecedorItem,
+  montarMapaAlocacoesAtivasPorResposta,
   montarMapaAlocacoesAtivasPorItem,
+  isOfertaSaldo,
   roundQty
 };

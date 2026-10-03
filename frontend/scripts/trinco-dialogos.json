@@ -1,0 +1,14 @@
+{
+  "regra": "R19",
+  "criado_em": "2026-09-02",
+  "porque": "Passivo herdado de window.alert()/confirm()/prompt() congelado na data em que a R19 nasceu. A regra vale para o sistema inteiro desde ja: arquivo novo ou contagem que sobe REPROVA. Este numero so pode diminuir - cada leva zera os arquivos que tocar.",
+  "total_em": 544,
+  "arquivos": {
+    "src/components/financeiro/BaixaCompostaModal.jsx": 1,
+    "src/components/lista-avancada/ListaAvancada.jsx": 3,
+    "src/components/NotificacoesBell.jsx": 1,
+    "src/contexts/AuthContext.jsx": 2,
+    "src/navigation/AtalhosTopbar.jsx": 1,
+    "src/pages/AprovacaoDiretoria.jsx": 3
+  }
+}

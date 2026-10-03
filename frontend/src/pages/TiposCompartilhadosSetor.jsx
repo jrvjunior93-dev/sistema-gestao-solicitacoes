@@ -5,6 +5,7 @@ import {
   getTiposCompartilhadosSetor,
   salvarTiposCompartilhadosSetor
 } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, BlocoConteudo, CampoForm, Avisos, useAvisos } from '../components/padrao';
 
 function normalizarSetorToken(setor) {
   return String(setor?.codigo || setor?.nome || setor?.id || '').trim().toUpperCase();
@@ -17,6 +18,8 @@ export default function TiposCompartilhadosSetor() {
   const [setorOrigem, setSetorOrigem] = useState('');
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  // R3/R19: aviso do sistema no lugar da caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function carregar() {
@@ -39,7 +42,7 @@ export default function TiposCompartilhadosSetor() {
         if (ordenados.length > 0) setSetorOrigem(normalizarSetorToken(ordenados[0]));
       } catch (error) {
         console.error(error);
-        alert('Erro ao carregar configuracao de tipos compartilhados.');
+        avisar.erro('Erro ao carregar configuração de tipos compartilhados.');
       } finally {
         setLoading(false);
       }
@@ -84,80 +87,102 @@ export default function TiposCompartilhadosSetor() {
     try {
       setSalvando(true);
       await salvarTiposCompartilhadosSetor({ regras });
-      alert('Configuracao salva com sucesso.');
+      avisar.sucesso('Configuração salva com sucesso.');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao salvar configuracao.');
+      avisar.erro(error?.message || 'Erro ao salvar configuracao.');
     } finally {
       setSalvando(false);
     }
   }
 
-  if (loading) return <p>Carregando configuracoes...</p>;
+  if (loading) {
+    return (
+      <Pagina className="max-w-6xl mx-auto">
+        <p className="text-sm" style={{ color: 'var(--c-muted)' }}>Carregando configurações...</p>
+      </Pagina>
+    );
+  }
 
   return (
-    <div className="page max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="page-title">Tipos Compartilhados entre Setores</h1>
-        <p className="page-subtitle">
-          Permite que outros setores enxerguem tipos especificos sem alterar a area responsavel da solicitacao.
-        </p>
-      </div>
+    <Pagina className="max-w-6xl mx-auto">
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Tipos Compartilhados entre Setores"
+        contagem={`${tiposOrdenados.length} tipo(s)`}
+        descricao="Permite que outros setores enxerguem tipos específicos sem alterar a área responsável da solicitação."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar configuracao',
+          onClick: salvar,
+          desabilitada: salvando
+        }}
+      />
 
-      <div className="card space-y-5">
-        <label className="form-field max-w-md">
-          <span className="form-label">Setor de origem</span>
-          <select className="input" value={setorOrigem} onChange={event => setSetorOrigem(event.target.value)}>
-            {setores.map(setor => {
-              const token = normalizarSetorToken(setor);
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      <BlocoConteudo
+        titulo="Compartilhamento por tipo"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        <div className="space-y-6">
+          <div className="max-w-md">
+            <CampoForm label="Setor de origem">
+              <select className="input w-full" value={setorOrigem} onChange={event => setSetorOrigem(event.target.value)}>
+                {setores.map(setor => {
+                  const token = normalizarSetorToken(setor);
+                  return (
+                    <option key={setor.id} value={token}>
+                      {setor.nome} ({token})
+                    </option>
+                  );
+                })}
+              </select>
+            </CampoForm>
+          </div>
+
+          <div className="divide-y divide-[var(--c-border)] rounded-2xl border border-[var(--c-border)] overflow-hidden">
+            {tiposOrdenados.map(tipo => {
+              const selecionados = new Set(Array.isArray(regraAtual?.[String(tipo.id)]) ? regraAtual[String(tipo.id)] : []);
+
               return (
-                <option key={setor.id} value={token}>
-                  {setor.nome} ({token})
-                </option>
+                <section key={tipo.id} className="grid grid-cols-1 gap-4 bg-[var(--ui-surface)] p-4 lg:grid-cols-[260px_1fr]">
+                  <div>
+                    <h3 className="font-semibold text-[var(--c-text)]">
+                      {tipo.nome}
+                      {selecionados.size > 0 && (
+                        <span className="ml-2 text-xs font-normal text-[var(--c-muted)]">
+                          {selecionados.size} setor(es)
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-[var(--c-muted)]">Marque os setores adicionais que poderao visualizar.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {setores
+                      .filter(setor => normalizarSetorToken(setor) !== setorOrigem)
+                      .map(setor => {
+                        const token = normalizarSetorToken(setor);
+                        return (
+                          <label key={`${tipo.id}-${setor.id}`} className="flex items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selecionados.has(token)}
+                              onChange={() => alternar(tipo.id, token)}
+                            />
+                            <span>{setor.nome} ({token})</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                </section>
               );
             })}
-          </select>
-        </label>
-
-        <div className="divide-y divide-[var(--c-border)] rounded-2xl border border-[var(--c-border)] overflow-hidden">
-          {tiposOrdenados.map(tipo => {
-            const selecionados = new Set(Array.isArray(regraAtual?.[String(tipo.id)]) ? regraAtual[String(tipo.id)] : []);
-
-            return (
-              <section key={tipo.id} className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 bg-[var(--c-card)] p-4">
-                <div>
-                  <h2 className="font-semibold text-[var(--c-text)]">{tipo.nome}</h2>
-                  <p className="text-xs text-[var(--c-muted)]">Marque os setores adicionais que poderao visualizar.</p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                  {setores
-                    .filter(setor => normalizarSetorToken(setor) !== setorOrigem)
-                    .map(setor => {
-                      const token = normalizarSetorToken(setor);
-                      return (
-                        <label key={`${tipo.id}-${setor.id}`} className="flex items-center gap-2 rounded-xl border border-[var(--c-border)] px-3 py-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={selecionados.has(token)}
-                            onChange={() => alternar(tipo.id, token)}
-                          />
-                          <span>{setor.nome} ({token})</span>
-                        </label>
-                      );
-                    })}
-                </div>
-              </section>
-            );
-          })}
+          </div>
         </div>
-
-        <div className="flex justify-end">
-          <button type="button" className="btn btn-primary" onClick={salvar} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar configuracao'}
-          </button>
-        </div>
-      </div>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

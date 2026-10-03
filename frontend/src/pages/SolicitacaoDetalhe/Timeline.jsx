@@ -1,22 +1,88 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PreviewAnexoModal from './PreviewAnexoModal';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
+import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../components/padrao';
+
+/**
+ * HISTORICO DA SOLICITACAO — a linha do tempo de tudo o que aconteceu.
+ *
+ * O que a rodada de 05/09 mudou (reorganizacao pura: nenhum evento, campo ou botao saiu):
+ *
+ * - **Regra de organizacao do cliente**: historico e registro vem POR ULTIMO. A partir de
+ *   21/09 todos os cards do detalhe nascem RECOLHIDOS. O proprio card e o unico dono desse
+ *   estado; o arranjo externo nao cria uma segunda camada de recolhimento.
+ *
+ * - **A ORDEM E ESCOLHA, NAO TEXTO** (07/09). O apoio do bloco dizia "Mais recentes primeiro." /
+ *   "Ordem cronologica...": um INDICADOR no lugar da COISA. O seletor existia, mas morava na barra
+ *   de personalizacao — atras do "..." da faixa e do "Personalizar layout", dois cliques longe de
+ *   quem so queria inverter a leitura. Ele vem para os `controles` do proprio bloco, ao lado do
+ *   titulo, onde o texto estava. Grava onde ja gravava (`historico_ordem`), continua valendo por
+ *   usuario e em qualquer aparelho, e vale SO para o historico da solicitacao.
+ * - **R19**: os cinco `alert()` e os dois `window.confirm()` sairam. Aviso vira `useAvisos`
+ *   (faixa dentro do bloco, com tom semantico) e confirmacao vira `useConfirmacao`.
+ * - **R21**: o retorno de `confirmar()` e DESESTRUTURADO (`const { ok }`) — o objeto e sempre
+ *   truthy, e ler ele como booleano faria o "Cancelar" REMOVER o anexo.
+ * - **R26**: o alvo da remocao (id do historico / o proprio registro) e fixado numa `const` ANTES
+ *   do `await`. O `window.confirm` congelava a pagina e o defeito era impossivel; o modal do
+ *   sistema nao congela — o historico pode ser recarregado pelo `onAnexoRemovido` de outro bloco
+ *   enquanto a pergunta esta aberta.
+ * - **R25**: `text-blue-700` do botao "Remover" era paleta crua (sem par no tema escuro, sem o
+ *   piso de contraste do ThemeContext) — virou token.
+ *
+ * ## Por que o historico NAO virou `TabelaPadrao`
+ *
+ * Uma linha daqui nao tem nome proprio: e data + ator + acao, e cada evento carrega uma forma
+ * diferente (transicao de status, atribuicao de responsavel, comentario com texto livre, anexo com
+ * Visualizar/Download/Remover, pedido de compra com dois botoes de PDF). Numa tabela isso viraria
+ * uma coluna "conteudo" que muda de natureza a cada linha — e ainda perderia a leitura cronologica
+ * com a rolagem posicionada no evento mais recente, que e o modo como esta lista e lida. Nao ha
+ * `<table>` crua aqui (o que a R1 reprova); e uma lista vertical, que continua sendo a forma certa.
+ * Se um dia virar tabela, ela nasce com `semIdentidade` declarado — pelo motivo acima.
+ */
 
 export default function Timeline({
   historicos,
   canRemoveAnexo = false,
   canRemoveComentario = false,
-  onAnexoRemovido
+  onAnexoRemovido,
+  // Preferência do usuário: 'asc' (mais antigos primeiro, rolagem no fim
+  // — padrão) ou 'desc' (mais recentes primeiro).
+  ordem = 'asc',
+  // Sem ouvinte não há escolha a oferecer: o seletor não é desenhado e o
+  // bloco fica exatamente como era. Botão que não tem para onde mandar o
+  // clique é enfeite — a mesma regra do par `recolhido`/`aoAlternarRecolhido`.
+  aoMudarOrdem
 }) {
   const [preview, setPreview] = useState(null);
+  const listaRef = useRef(null);
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const acoesOcultas = new Set([
     'PENDENCIA_FINANCEIRA_MARCADA',
     'PENDENCIA_FINANCEIRA_REGULARIZADA',
     'COMENTARIO_REMOVIDO'
   ]);
-  const historicosVisiveis = Array.isArray(historicos)
-    ? historicos.filter((h) => !acoesOcultas.has(String(h?.acao || '').trim().toUpperCase()))
-    : [];
+  // Ordem CRONOLÓGICA, como conversa: mais antigo em cima, mais recente
+  // embaixo — a rolagem começa posicionada no fim (o mais novo).
+  const historicosVisiveis = (Array.isArray(historicos) ? historicos : [])
+    .filter((h) => !acoesOcultas.has(String(h?.acao || '').trim().toUpperCase()))
+    .slice()
+    .sort((a, b) => {
+      const dataA = new Date(a?.createdAt || 0).getTime();
+      const dataB = new Date(b?.createdAt || 0).getTime();
+      const cmp = dataA !== dataB
+        ? dataA - dataB
+        : Number(a?.id || 0) - Number(b?.id || 0);
+      return ordem === 'desc' ? -cmp : cmp;
+    });
+
+  const totalVisiveis = historicosVisiveis.length;
+  useEffect(() => {
+    const el = listaRef.current;
+    if (!el) return;
+    // asc = conversa: rolagem começa no fim (mais recente).
+    el.scrollTop = ordem === 'desc' ? 0 : el.scrollHeight;
+  }, [totalVisiveis, ordem]);
 
   function normalizarUrlArquivo(url) {
     const valor = String(url || '');
@@ -83,7 +149,7 @@ export default function Timeline({
       document.body.removeChild(link);
     } catch (error) {
       console.error(error);
-      alert('Erro ao baixar arquivo');
+      avisar.erro('Erro ao baixar arquivo');
     }
   }
 
@@ -118,7 +184,7 @@ export default function Timeline({
       });
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao abrir pedido de compra');
+      avisar.erro(error?.message || 'Erro ao abrir pedido de compra');
     }
   }
 
@@ -140,16 +206,27 @@ export default function Timeline({
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao baixar pedido de compra');
+      avisar.erro(error?.message || 'Erro ao baixar pedido de compra');
     }
   }
 
   async function removerAnexo(historicoId) {
-    const confirmar = window.confirm('Deseja remover este anexo do historico?');
-    if (!confirmar) return;
+    // R26: o alvo e fixado ANTES do `await` da confirmacao. A pergunta e a
+    // remocao falam do MESMO registro, mesmo que o historico se recarregue
+    // com o modal aberto (o modal do sistema nao congela a pagina).
+    const alvo = historicoId;
+    // R21: DESESTRUTURADO. `confirmar()` devolve { ok, texto } e objeto e
+    // sempre truthy — ler como booleano faria "Cancelar" remover o anexo.
+    const { ok } = await confirmar({
+      titulo: 'Remover anexo',
+      mensagem: 'Remover este anexo do histórico? Esta ação não pode ser desfeita.',
+      rotuloConfirmar: 'Remover anexo',
+      destrutiva: true
+    });
+    if (!ok) return;
 
     try {
-      const res = await fetch(`${API_URL}/anexos/historico/${historicoId}`, {
+      const res = await fetch(`${API_URL}/anexos/historico/${alvo}`, {
         method: 'DELETE',
         headers: authHeaders()
       });
@@ -164,17 +241,25 @@ export default function Timeline({
       }
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao remover anexo');
+      avisar.erro(error?.message || 'Erro ao remover anexo');
     }
   }
 
   async function removerComentario(historico) {
+    // R26: id e solicitacao sao lidos AGORA, antes do `await`, e sao esses os
+    // valores usados na chamada — nunca relidos do estado depois da resposta.
     const historicoId = historico?.id;
     const solicitacaoId = historico?.solicitacao_id;
     if (!historicoId || !solicitacaoId) return;
 
-    const confirmar = window.confirm('Deseja remover este comentario do historico?');
-    if (!confirmar) return;
+    // R21: DESESTRUTURADO — ver o comentario em removerAnexo.
+    const { ok } = await confirmar({
+      titulo: 'Remover comentário',
+      mensagem: 'Remover este comentário do histórico? Esta ação não pode ser desfeita.',
+      rotuloConfirmar: 'Remover comentario',
+      destrutiva: true
+    });
+    if (!ok) return;
 
     try {
       const res = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/comentarios/${historicoId}`, {
@@ -192,15 +277,41 @@ export default function Timeline({
       }
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao remover comentario');
+      avisar.erro(error?.message || 'Erro ao remover comentario');
     }
   }
 
   return (
-    <div className="sol-detail-card">
-      <h2 className="sol-detail-card-title">Historico</h2>
+    <BlocoConteudo
+      titulo="Histórico"
+      contagem={`${totalVisiveis} evento(s)`}
+      recolhivel
+      recolhidoPadrao
+      alternarAoClicar
+      controles={typeof aoMudarOrdem === 'function' ? (
+        <label className="sol-detail-historico-ordem">
+          Ordem:
+          {/* Seletor de CONTEXTO da apresentação, não filtro de lista — R12.
+              Fica nos `controles` (e não em `acoes`) porque ali ele está FORA
+              do botão de recolher: clicar no seletor escolhe a ordem, não
+              fecha o bloco. */}
+          <select
+            value={ordem === 'desc' ? 'desc' : 'asc'}
+            onChange={(evento) => aoMudarOrdem(evento.target.value)}
+            aria-label="Ordem do histórico"
+          >
+            <option value="asc">mais antigos primeiro</option>
+            <option value="desc">mais recentes primeiro</option>
+          </select>
+        </label>
+      ) : undefined}
+    >
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+      {/* R18: a lista rola com `overflow-y: auto`. `hidden` num ancestral
+          criaria scrollport e mataria qualquer `position: sticky` da pagina
+          em silencio — nada no console, nada no build. */}
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1" ref={listaRef}>
         {historicosVisiveis.map(h => {
           let meta = null;
           try {
@@ -210,12 +321,13 @@ export default function Timeline({
           }
 
           const acaoLabel = {
+            JUSTIFICATIVA_REGISTRADA: 'Justificativa registrada',
             NUMERO_PEDIDO_ATUALIZADO: 'Número do pedido atualizado',
             PEDIDO_COMPRA_GERADO: 'Pedido de compra gerado',
             PEDIDO_COMPRA_STATUS_ALTERADO: 'Status do pedido de compra alterado',
             PEDIDO_COMPRA_ENCERRADO: 'Pedido de compra encerrado/cancelado',
             RESPONSAVEL_REMOVIDO: 'Responsavel removido',
-            DATA_VENCIMENTO_ATUALIZADA: 'Data de vencimento atualizada'
+            DATA_VENCIMENTO_ATUALIZADA: 'Data Resposta/Pagamento atualizada'
           }[h.acao] || h.acao;
           const atorNome = meta?.ator_nome || null;
           const responsavelNome = meta?.responsavel_nome || h.usuario?.nome || null;
@@ -258,10 +370,10 @@ export default function Timeline({
                 <button
                   type="button"
                   className="text-xs font-semibold mt-1"
-                  style={{ color: 'var(--c-danger, #dc2626)' }}
+                  style={{ color: 'var(--c-danger)' }}
                   onClick={() => removerComentario(h)}
                 >
-                  Remover comentario
+                  Remover comentário
                 </button>
               )}
 
@@ -318,7 +430,7 @@ export default function Timeline({
                   {canRemoveAnexo && (
                     <button
                       type="button"
-                      className="text-blue-700 text-sm"
+                      className="text-sm text-[var(--c-danger)]"
                       onClick={() => removerAnexo(h.id)}
                     >
                       Remover
@@ -341,6 +453,8 @@ export default function Timeline({
           onClose={fecharPreview}
         />
       )}
-    </div>
+
+      {elementoConfirmacao}
+    </BlocoConteudo>
   );
 }

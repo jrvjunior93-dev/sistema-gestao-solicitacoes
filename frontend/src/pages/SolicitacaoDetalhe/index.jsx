@@ -1,21 +1,49 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { HiOutlineArrowLeft, HiChevronRight } from 'react-icons/hi2';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLiveUpdateSubscription } from '../../contexts/LiveUpdatesContext';
 
-import Header from './Header';
+import Header, { apoioDoRegistro, formatarValorSolicitacao } from './Header';
+import ApropriacoesDoContrato from './ApropriacoesDoContrato';
+import AditivosDoContrato from './AditivosDoContrato';
 import Timeline from './Timeline';
-import Comentarios from './Comentarios';
-import Anexos from './Anexos';
-import Pedido from './Pedido';
+import Conversa from './Conversa';
 import FinanceiroCard from './FinanceiroCard';
-import Pagamentos from './Pagamentos';
+import AcoesContrato from './AcoesContrato';
+import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
+import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
+import ObraCadastroModal from '../../components/obras/ObraCadastroModal';
+import CompraEtapas from './CompraEtapas';
+import { getContratoParcelas } from '../../services/contratos';
+import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import ModalAlterarStatus from './ModalAlterarStatus';
+import { getAcoesPrincipais, resolverAcaoPrincipal } from '../../services/acoesPrincipais';
+import { BLOCOS_DETALHE, resolverLayoutDetalhe } from './blocosDetalhe';
+import { getListaPreferencias, salvarListaPreferencias } from '../../services/listasPreferencias';
 import ModalEnviarSetor from '../Solicitacoes/ModalEnviarSetor';
 import ApropriacaoAutocomplete from '../../components/ui/ApropriacaoAutocomplete';
+import TratamentoItemManual from '../../modules/solicitacao-compra/components/TratamentoItemManual';
+import StatusBadge from '../../components/StatusBadge';
+import { formatarDataLocalPtBr } from '../../utils/dateLocal';
+import { getTipoSolicitacaoBehavior } from '../../utils/tipoSolicitacao';
+import OverlayModal from '../../components/ui/OverlayModal';
+import {
+  Avisos,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  CampoForm,
+  FormSecao,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../../components/padrao';
 import {
   aprovarDiretoriaSolicitacao,
+  aprovarSolicitacaoPorTipo,
   atualizarApropriacoesSolicitacao,
   atualizarPendenciaFinanceiraSolicitacao,
   getSolicitacaoById,
@@ -23,7 +51,9 @@ import {
 } from '../../services/solicitacoes';
 import {
   atualizarApropriacoesItemSolicitacaoCompra,
-  obterCompraDiretaPorSolicitacao
+  atualizarQuantidadeItemSolicitacaoCompra,
+  cadastrarUnidadeItemSolicitacaoCompra,
+  obterSolicitacaoCompraPorSolicitacao
 } from '../../services/compras';
 import { listarApropriacoes } from '../../services/apropriacoes';
 import {
@@ -37,15 +67,63 @@ import {
 import { isGeoSetor, solicitacaoEstaNoSetorDoUsuario, userHasSetorCapability } from '../../utils/setor';
 import {
   canAccessFinanceiro,
+  canAlterarQuantidadeSolicitacaoCompra,
+  canCatalogarItensManuaisCompras,
+  canCreateCompraSolicitacao,
   canDeleteSolicitacaoAnexo,
+  canManageCadastroObras,
+  canAnexarEspelhoComprasPedidos,
   canEditarApropriacoesItemCompraDireta,
+  canEditarApropriacoesItemSolicitacaoCompra,
   canEditarApropriacoesSolicitacao,
+  canEditarItensSolicitacaoCompra,
   canViewSolicitacaoFinanceiro,
   hasConfiguredAreaPermissions,
   hasEnabledModule,
   hasPermissao
 } from '../../utils/acessoProduto';
-import { useSafeNavigateBack } from '../../utils/navigation';
+
+/*
+  DETALHE DA SOLICITAÇÃO — migração de 05/09 para os componentes padrão.
+
+  A pergunta central da tela é "em que pé está esta solicitação e o que eu
+  faço com ela agora?". A ordem segue essa pergunta (regra de organização
+  do cliente):
+
+    1. faixa fixa  — identificação do registro, valor e as ações (R13/C3/C4/C5);
+    2. pedido de retorno e falha de contrato — o que TRAVA a decisão vem antes de tudo;
+    3. ladrilhos de situação — status, setor, prazo, última atualização;
+    4. dados do registro — o bloco principal, em largura total;
+    5. blocos de trabalho — contrato, financeiro, apropriações;
+    6. histórico, conversa e auditoria — registros, POR ÚLTIMO.
+
+  Todos os cards nascem recolhidos (decisão do cliente, 21/09) e o espaço
+  livre do próprio card abre ou fecha o conteúdo. Botões, links e campos
+  continuam executando somente a ação deles.
+
+  Reorganização é PURA: mesma rota, mesmos handlers, mesmas chamadas de
+  serviço. Nenhum campo, botão ou bloco saiu — o que mudou foi ordem, peso
+  e o componente que desenha.
+
+  ## Consentimento (a razão pela qual esta tela é a mais delicada do módulo)
+
+  Aqui se aprova pela diretoria, se muda o status (inclusive CANCELADO), se
+  envia para outro setor e se reescreve o rateio contábil. As três regras
+  que valem em TODO handler assíncrono deste arquivo:
+
+  - `const { ok } = await confirmar(...)` DESESTRUTURADO. O hook devolve
+    `{ ok, texto }` e objeto é SEMPRE verdadeiro: `const ok = await` faz o
+    botão "Cancelar" PROSSEGUIR com a ação, calado (R21).
+  - o alvo é fixado numa `const` ANTES do `await` (R26). O modal do sistema
+    NÃO congela a página, e esta tela recarrega sozinha por evento
+    (`useLiveUpdateSubscription`): ler `solicitacao` depois da confirmação
+    pode agir sobre um registro diferente do que a pessoa leu na pergunta.
+  - a mensagem NOMEIA o registro e a consequência, e cita o valor quando há
+    dinheiro envolvido. "Confirmar?" sobre "esta solicitação" não é
+    consentimento informado.
+
+  As 19 caixas do navegador (`alert`) saíram para `Avisos`/`useAvisos` (R19).
+*/
 
 function parseNumeroLocal(valor) {
   if (valor === null || valor === undefined || valor === '') return 0;
@@ -62,6 +140,55 @@ function parseNumeroLocal(valor) {
 function formatarMoedaLocal(valor) {
   const numero = Number(valor || 0);
   return numero.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function lerMetadataHistorico(historico) {
+  try {
+    return typeof historico?.metadata === 'string'
+      ? JSON.parse(historico.metadata)
+      : historico?.metadata || {};
+  } catch {
+    return {};
+  }
+}
+
+function montarHistoricosComJustificativa(solicitacao) {
+  const historicos = Array.isArray(solicitacao?.historicos)
+    ? solicitacao.historicos
+    : [];
+  const justificativa = String(solicitacao?.justificativa || '').trim();
+  if (!justificativa) return historicos;
+
+  const jaRegistrada = historicos.some((historico) => (
+    String(historico?.acao || '').trim().toUpperCase() === 'JUSTIFICATIVA_REGISTRADA'
+  ));
+  if (jaRegistrada) return historicos;
+
+  // Compatibilidade com solicitações abertas antes de a justificativa ganhar evento próprio.
+  // O valor já existe na solicitação: a linha virtual muda apenas o local de leitura e evita
+  // exigir migration ou duplicar registros no banco para todo o acervo anterior.
+  const criacao = historicos.find((historico) => (
+    ['SOLICITACAO_CRIADA', 'CRIADA'].includes(String(historico?.acao || '').trim().toUpperCase())
+  ));
+  const instanteBase = new Date(criacao?.createdAt || solicitacao?.createdAt || 0).getTime();
+  const createdAt = Number.isFinite(instanteBase) && instanteBase > 0
+    ? new Date(instanteBase + 1).toISOString()
+    : solicitacao?.createdAt;
+
+  return [
+    ...historicos,
+    {
+      id: -Math.abs(Number(solicitacao?.id) || 1),
+      solicitacao_id: solicitacao?.id,
+      usuario_responsavel_id: criacao?.usuario_responsavel_id || solicitacao?.criado_por || null,
+      usuario: criacao?.usuario || solicitacao?.criador || null,
+      setor: criacao?.setor || solicitacao?.area_responsavel || null,
+      acao: 'JUSTIFICATIVA_REGISTRADA',
+      descricao: `Justificativa: ${justificativa}`,
+      createdAt,
+      metadata: JSON.stringify({ origem: 'SOLICITACAO_LEGADA' })
+    }
+  ];
 }
 
 function formatarNumeroEntrada(valor) {
@@ -102,11 +229,70 @@ function normalizarRateiosSolicitacao(solicitacao) {
   }];
 }
 
+function montarResumoApropriacoesSolicitacao(solicitacao) {
+  const rateios = Array.isArray(solicitacao?.apropriacoes) ? solicitacao.apropriacoes : [];
+  if (rateios.length) {
+    return rateios.map((item) => {
+      const apropriacao = item?.apropriacao || null;
+      const nome = apropriacao?.descricao || apropriacao?.nome || apropriacao?.codigo || 'Apropriação';
+      const percentual = parseNumeroLocal(item?.percentual);
+      const valor = parseNumeroLocal(item?.valor);
+      const criterio = percentual
+        ? `${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%`
+        : valor
+          ? formatarMoedaLocal(valor)
+          : '';
+      return criterio ? `${nome} · ${criterio}` : nome;
+    });
+  }
+
+  if (solicitacao?.apropriacao) {
+    return [
+      solicitacao.apropriacao.descricao
+      || solicitacao.apropriacao.nome
+      || solicitacao.apropriacao.codigo
+      || 'Apropriação principal'
+    ];
+  }
+
+  return [];
+}
+
+function mapearItemManualCompraDireta(item) {
+  const insumoOficial = item?.insumoCatalogado || null;
+  const descricaoOficial = String(insumoOficial?.descricao || '').trim()
+    || insumoOficial?.nome
+    || item?.nome_manual
+    || item?.descricao
+    || `Item manual #${item?.id || ''}`;
+  const unidadeOficial = insumoOficial?.unidade?.sigla
+    || insumoOficial?.unidade?.nome
+    || insumoOficial?.unidade_manual
+    || item?.unidade_sigla_manual
+    || item?.unidade_sigla
+    || '';
+
+  return {
+    ...item,
+    item_tipo: 'MANUAL',
+    descricao: descricaoOficial,
+    unidade_label: unidadeOficial,
+    nome: insumoOficial?.nome || item?.nome_manual || descricaoOficial,
+    unidade: unidadeOficial || '-',
+    especificacao: insumoOficial?.descricao || item?.especificacao || '-',
+    descricao_original: item?.nome_manual || item?.descricao || '',
+    especificacao_original: item?.especificacao || ''
+  };
+}
+
 export default function SolicitacaoDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const navigateBack = useSafeNavigateBack('/solicitacoes');
   const { user } = useAuth();
+  // Declarados no topo: `carregar` (function declaration, içada) usa
+  // `avisar` no catch, e todo handler de consentimento usa `confirmar`.
+  const { avisos, avisar, fechar: fecharAviso } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   const setorTokens = [
     String(user?.setor?.codigo || '').toUpperCase(),
@@ -115,6 +301,8 @@ export default function SolicitacaoDetalhe() {
   ];
 
   const isSetorGeo = setorTokens.some(isGeoSetor);
+  const isSetorObra = userHasSetorCapability(user, 'eh_setor_obra');
+  const isSetorCompras = userHasSetorCapability(user, 'eh_setor_compras');
   const isSetorFinanceiro = setorTokens.includes('FINANCEIRO') || userHasSetorCapability(user, 'eh_setor_financeiro');
   const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
   const podeAcessarModuloFinanceiro = canAccessFinanceiro(user);
@@ -123,15 +311,85 @@ export default function SolicitacaoDetalhe() {
   const podeAlterarStatusQualquerSetor =
     hasConfiguredAreaPermissions(user) &&
     hasPermissao(user, 'solicitacoes.acoes.alterar_status_qualquer_setor');
-  const podeInformarPagamento = isSuperadmin || isSetorFinanceiro;
+  useEffect(() => {
+    let ativo = true;
+    getAcoesPrincipais()
+      .then((lista) => {
+        if (ativo) setMapeamentosAcaoPrincipal(lista);
+      })
+      .catch(() => {});
+    // O detalhe usa um único padrão global; somente a preferência individual
+    // pode reorganizá-lo. Isso evita que o mesmo tipo mude de lugar por setor.
+    getListaPreferencias('detalhe-solicitacao')
+      .then((prefs) => {
+        const temAlgo = prefs && (
+          Array.isArray(prefs.ordem) || Array.isArray(prefs.recolhidos)
+          || Array.isArray(prefs.removidos) || prefs.larguras || prefs.historico_ordem
+        );
+        if (ativo && temAlgo) setPrefsLayoutUsuario(prefs);
+      })
+      .catch(() => {});
+    return () => {
+      ativo = false;
+    };
+  }, []);
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
   const moduloComprasHabilitado = hasEnabledModule(user, 'COMPRAS');
-  const podeEditarApropriacoes = moduloComprasHabilitado && canEditarApropriacoesSolicitacao(user);
+  // Apropriações da solicitação pertencem ao módulo Solicitações. Vincular essa
+  // permissão ao módulo Compras ocultava o card de tipos como Despesa Eventual.
+  const podeEditarApropriacoes = canEditarApropriacoesSolicitacao(user);
   const podeEditarItensCompraDiretaBase = moduloComprasHabilitado && canEditarApropriacoesItemCompraDireta(user);
+  const podeEditarApropriacoesItensSolicitacaoCompraBase = moduloComprasHabilitado
+    && canEditarApropriacoesItemSolicitacaoCompra(user);
+  const podeCadastrarUnidadeItemSolicitacaoCompraBase = moduloComprasHabilitado
+    && canEditarItensSolicitacaoCompra(user);
+  const podeEditarItensSolicitacaoCompraBase = moduloComprasHabilitado && (
+    canAlterarQuantidadeSolicitacaoCompra(user) || podeEditarApropriacoesItensSolicitacaoCompraBase
+  );
+  const podeCatalogarItensManuaisCompra = moduloComprasHabilitado && canCatalogarItensManuaisCompras(user);
 
   const [solicitacao, setSolicitacao] = useState(null);
+  // PI-16: o contrato do fluxo novo vive DENTRO desta solicitacao. O estado dele decide o que a
+  // barra de acoes oferece — e e o contrato quem tem a maquina de estados; a solicitacao espelha.
+  const [contratoDoFluxo, setContratoDoFluxo] = useState(null);
+  // Por que o contrato nao carregou. Vazio quando carregou ou quando a solicitacao nem tem contrato.
+  const [falhaContrato, setFalhaContrato] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalStatus, setModalStatus] = useState(false);
+  const [modalCadastroObraAberto, setModalCadastroObraAberto] = useState(false);
+  const [aprovandoSolicitacao, setAprovandoSolicitacao] = useState(false);
+  const [statusDependenciasVersao, setStatusDependenciasVersao] = useState(0);
+  // Mapeamento configurável setor+estado → ação em destaque (Configurações
+  // → Ação principal por setor). Vazio/indisponível = layout atual.
+  const [mapeamentosAcaoPrincipal, setMapeamentosAcaoPrincipal] = useState([]);
+  // Camada individual sobre o padrão global do detalhe.
+  const [prefsLayoutUsuario, setPrefsLayoutUsuario] = useState(null);
+  const [personalizando, setPersonalizando] = useState(false);
+  /*
+    O "ADICIONAR BLOCO" ERA CÓPIA LITERAL DO DA HOME — E A CÓPIA TROUXE O
+    DESENHO SEM TRAZER O FECHAMENTO (medido e corrigido em 05/09: aqui o
+    `useFecharAoSair` nunca tinha sido ligado, e o painel só fechava
+    clicando de novo no próprio botão; `Esc` não fazia nada).
+
+    A correção não mora mais nesta tela: o painel, o ref e o hook foram
+    junto com o resto do mecanismo para o `BlocosPersonalizaveis`. É a
+    razão de a extração valer a pena — o defeito da cópia existia porque
+    havia cópia, e agora só há um lugar onde ele pode voltar a existir.
+  */
+  // Abaixo de 768px o detalhe vira ABAS, com a ação principal fixa no topo.
+  const [isMobileDetalhe, setIsMobileDetalhe] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  ));
+  const [abaMobile, setAbaMobile] = useState('detalhes');
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const listener = (event) => setIsMobileDetalhe(event.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, []);
+  // Auditoria de prazo/documentos é de uso raro: colapsada num botão e
+  // abaixo de Financeiro/Pagamentos/Histórico.
+  const [auditoriaAberta, setAuditoriaAberta] = useState(false);
   const [modalEnviarSetor, setModalEnviarSetor] = useState(false);
   const [pendenciaFinanceira, setPendenciaFinanceira] = useState({
     marcar: false,
@@ -148,10 +406,15 @@ export default function SolicitacaoDetalhe() {
   const [modalCompraDiretaAberto, setModalCompraDiretaAberto] = useState(false);
   const [compraDiretaDetalhe, setCompraDiretaDetalhe] = useState(null);
   const [carregandoCompraDireta, setCarregandoCompraDireta] = useState(false);
+  const [erroItensCompraDireta, setErroItensCompraDireta] = useState('');
+  const abrindoItensCompraRef = useRef(false);
   const [itemCompraDiretaSelecionado, setItemCompraDiretaSelecionado] = useState(null);
   const [rateiosCompraDireta, setRateiosCompraDireta] = useState([]);
   const [motivoCompraDireta, setMotivoCompraDireta] = useState('');
+  const [quantidadeItemCompra, setQuantidadeItemCompra] = useState('');
+  const [motivoQuantidadeItemCompra, setMotivoQuantidadeItemCompra] = useState('');
   const [salvandoCompraDireta, setSalvandoCompraDireta] = useState(false);
+  const [acaoItemCompraDireta, setAcaoItemCompraDireta] = useState('APROPRIAR');
   const localMutationsRef = useRef(new Map());
 
   const tipoSolicitacaoNormalizado = normalizarTextoBusca(
@@ -161,8 +424,47 @@ export default function SolicitacaoDetalhe() {
     solicitacao?.descricao_tipo
   );
   const isCompraDiretaSolicitacao = tipoSolicitacaoNormalizado.includes('COMPRA DIRETA');
-  const podeEditarApropriacoesSolicitacaoNormal = podeEditarApropriacoes && !isCompraDiretaSolicitacao;
-  const podeEditarItensCompraDireta = podeEditarItensCompraDiretaBase && isCompraDiretaSolicitacao;
+  const isSolicitacaoCompra = isCompraDiretaSolicitacao || tipoSolicitacaoNormalizado.includes('SOLICITACAO DE COMPRA');
+  const isRecargaCartaoSolicitacao = tipoSolicitacaoNormalizado.includes('RECARGA DE CARTAO');
+  const isCadastroObraSolicitacao = getTipoSolicitacaoBehavior(solicitacao?.tipo).usa_fluxo_cadastro_obra === true;
+  const dadosCadastroObra = solicitacao?.dadosCadastroObra || null;
+  const podeCadastrarObraDaSolicitacao = isCadastroObraSolicitacao
+    && !dadosCadastroObra?.obra_cadastrada_id
+    && canManageCadastroObras(user);
+  // Numa solicitacao de Abertura de Contrato o rateio que vale e o do CONTRATO
+  // (`contrato_apropriacoes`). O card da solicitacao grava em `solicitacao_apropriacoes`, que ali
+  // ninguem consome — deixa-lo aberto convidava a criar uma segunda verdade sobre o mesmo contrato.
+  const solicitacaoEhContrato = Boolean(contratoDoFluxo);
+  const contextoInteracao = solicitacao?.contexto_interacao || null;
+  const podeInteragirSolicitacao = contextoInteracao
+    ? contextoInteracao.pode_interagir === true
+    : Boolean(solicitacao?.area_responsavel && solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user));
+  const podeEditarApropriacoesSolicitacaoNormal = podeEditarApropriacoes
+    && podeInteragirSolicitacao
+    && !isSolicitacaoCompra
+    && !solicitacaoEhContrato;
+  const podeEditarApropriacoesItemCompra = podeInteragirSolicitacao && isSolicitacaoCompra && (
+    isCompraDiretaSolicitacao
+      ? podeEditarItensCompraDiretaBase
+      : podeEditarApropriacoesItensSolicitacaoCompraBase
+  );
+  const podeCadastrarUnidadeItemCompra = podeInteragirSolicitacao && isSolicitacaoCompra && (
+    isCompraDiretaSolicitacao
+      ? podeEditarItensCompraDiretaBase
+      : podeCadastrarUnidadeItemSolicitacaoCompraBase
+  );
+  const podeEditarQuantidadeItemCompra = podeInteragirSolicitacao
+    && isSolicitacaoCompra
+    && !isCompraDiretaSolicitacao
+    && moduloComprasHabilitado
+    && canAlterarQuantidadeSolicitacaoCompra(user);
+  const podeGerenciarItensCompra = isSolicitacaoCompra && podeInteragirSolicitacao && (
+    (isCompraDiretaSolicitacao ? podeEditarItensCompraDiretaBase : podeEditarItensSolicitacaoCompraBase)
+    || podeCatalogarItensManuaisCompra
+  );
+  const contratoSomenteLeitura = contratoDoFluxo && !podeInteragirSolicitacao
+    ? { ...contratoDoFluxo, permissoes: {} }
+    : contratoDoFluxo;
 
   const perfil = String(user?.perfil || '').trim().toUpperCase();
   const setorUsuario = user?.setor?.codigo || user?.area || user?.setor?.nome || '';
@@ -178,8 +480,35 @@ export default function SolicitacaoDetalhe() {
   }, [id]);
 
   useEffect(() => {
+    if (!isCompraDiretaSolicitacao || !solicitacao?.id) {
+      setCompraDiretaDetalhe(null);
+      setErroItensCompraDireta('');
+      return undefined;
+    }
+
+    let ativo = true;
+    setCarregandoCompraDireta(true);
+    setErroItensCompraDireta('');
+    obterSolicitacaoCompraPorSolicitacao(solicitacao.id)
+      .then((dados) => {
+        if (ativo) setCompraDiretaDetalhe(dados || null);
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setCompraDiretaDetalhe(null);
+        setErroItensCompraDireta(error?.code === 'COMPRA_LEGADA_SEM_ITENS_ESTRUTURADOS'
+          ? 'Esta compra direta foi criada antes do cadastro individual de itens.'
+          : error?.message || 'Não foi possível carregar os itens da compra direta.');
+      })
+      .finally(() => {
+        if (ativo) setCarregandoCompraDireta(false);
+      });
+    return () => { ativo = false; };
+  }, [isCompraDiretaSolicitacao, solicitacao?.id]);
+
+  useEffect(() => {
     const obraId = solicitacao?.obra_id || solicitacao?.obra?.id;
-    if (!obraId || (!podeEditarApropriacoesSolicitacaoNormal && !podeEditarItensCompraDireta)) {
+    if (!obraId || (!podeEditarApropriacoesSolicitacaoNormal && !podeEditarApropriacoesItemCompra)) {
       setApropriacoesCatalogo([]);
       return;
     }
@@ -205,7 +534,7 @@ export default function SolicitacaoDetalhe() {
     solicitacao?.obra_id,
     solicitacao?.obra?.id,
     podeEditarApropriacoesSolicitacaoNormal,
-    podeEditarItensCompraDireta
+    podeEditarApropriacoesItemCompra
   ]);
 
   useEffect(() => {
@@ -261,6 +590,31 @@ export default function SolicitacaoDetalhe() {
 
       const data = await getSolicitacaoById(id);
       setSolicitacao(data);
+
+      // PI-16: carrega o contrato quando esta solicitacao E a solicitacao DELE.
+      //
+      // A guarda do `solicitacao_id` importa: uma solicitacao de medicao ou de aditivo do fluxo
+      // ANTIGO tambem aponta para um contrato (`contrato_id`), e sem a guarda ela mostraria a
+      // barra de acoes de um contrato que nao e dela.
+      //
+      // O erro nao derruba a tela — a solicitacao abre de qualquer jeito —, mas ele APARECE.
+      // Engolir esta falha ja custou duas investigacoes: sem o contrato, somem de uma vez as
+      // previsoes e o botao Aprovar, e a tela nao dava nenhuma pista do motivo (na pratica, um
+      // 403 de escopo de obra). Quem olha precisa ler "acesso negado", nao encarar o vazio.
+      if (data?.contrato_id) {
+        try {
+          const doContrato = await getContratoParcelas(data.contrato_id);
+          const c = doContrato?.contrato;
+          setContratoDoFluxo(c?.fluxo_novo && String(c.solicitacao_id) === String(data.id) ? c : null);
+          setFalhaContrato('');
+        } catch (erroContrato) {
+          setContratoDoFluxo(null);
+          setFalhaContrato(erroContrato?.message || 'Nao foi possivel carregar o contrato desta solicitacao.');
+        }
+      } else {
+        setContratoDoFluxo(null);
+        setFalhaContrato('');
+      }
     } catch (err) {
       console.error(err);
       const status = Number(err?.status || 0);
@@ -270,7 +624,7 @@ export default function SolicitacaoDetalhe() {
         return;
       }
       if (!silent) {
-        alert(err?.message || 'Erro ao carregar solicitacao');
+        avisar.erro(err?.message || 'Erro ao carregar solicitacao');
       }
     } finally {
       if (!silent) {
@@ -279,43 +633,126 @@ export default function SolicitacaoDetalhe() {
     }
   }
 
+  /*
+    ALTERAR STATUS — a ação que também CANCELA a solicitação.
+
+    A CONFIRMAÇÃO NÃO MORA AQUI, e é decisão, não esquecimento: quem
+    pergunta é o `ModalAlterarStatus`, que já foi migrado e já desestrutura
+    o retorno (`const { ok } = await confirmar(...)`) e já fixa o status
+    escolhido numa `const` antes do `await`. Uma segunda confirmação neste
+    handler faria a pessoa responder duas caixas para o mesmo ato — e duas
+    perguntas sobre a mesma coisa é o defeito que a R16 chama de dois donos
+    para a mesma responsabilidade.
+
+    O que a mensagem de lá NÃO faz é nomear o registro: ela diz "esta
+    solicitacao" porque o componente só recebe `setor`, `aberto`, `onClose`
+    e `onSalvar` — o código e o valor não chegam até ele. Está no relatório
+    como proposta de prop, não corrigido aqui (o arquivo é de outro agente).
+
+    R26 continua valendo deste lado: `alvo` e `statusAlvo` são fixados
+    antes de qualquer `await`, e a gravação usa a MESMA referência. A tela
+    recarrega sozinha por evento (LiveUpdates) — reler `solicitacao` depois
+    do await gravaria num registro que não é o que a pessoa autorizou.
+  */
   async function salvarStatus(novoStatus) {
+    const alvo = solicitacao;
+    const statusAlvo = String(novoStatus || '').trim();
+    if (!alvo?.id || !statusAlvo) return;
+
     try {
-      await updateStatusSolicitacao(solicitacao.id, novoStatus);
-      registrarMutacaoLocal(solicitacao.id);
+      await updateStatusSolicitacao(alvo.id, statusAlvo);
+      registrarMutacaoLocal(alvo.id);
       setModalStatus(false);
       await carregar({ silent: true });
-      alert('Status alterado com sucesso.');
+      // Recarga e Financeiro carregam dados por endpoints proprios. A solicitacao principal ja
+      // atualizou, mas esses paineis precisam remontar para refletir no mesmo instante a troca
+      // PREVISAO -> ABERTO (ou o cancelamento), sem depender de F5.
+      setStatusDependenciasVersao((versao) => versao + 1);
+      avisar.sucesso(`Status da solicitação ${alvo.codigo} alterado para ${statusAlvo}.`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao atualizar status');
+      avisar.erro(error?.message || 'Erro ao atualizar status');
     }
   }
 
+  /*
+    APROVAR PELA DIRETORIA — libera a solicitação para o próximo setor.
+
+    Não havia confirmação nenhuma: um clique aprovava e encaminhava. A
+    mensagem nomeia o registro, o VALOR aprovado e o destino, porque é o
+    conjunto disso que a pessoa está autorizando.
+  */
   async function aprovarDiretoria() {
+    const alvo = solicitacao;
+    if (!alvo?.id) return;
+    const destino = alvo.setor_destino_aprovacao
+      || alvo.setor_destino_pos_aprovacao
+      || 'a área responsável';
+
+    const { ok } = await confirmar({
+      titulo: 'Aprovar pela diretoria',
+      mensagem: `Aprovar a solicitação ${alvo.codigo} (${alvo.tipo?.nome || 'sem tipo'}), no valor de `
+        + `${formatarMoedaLocal(alvo.valor)}, e enviá-la para ${destino}? `
+        + 'A aprovação fica registrada em seu nome no histórico.',
+      rotuloConfirmar: 'Aprovar e enviar'
+    });
+    if (!ok) return;
+
     try {
-      await aprovarDiretoriaSolicitacao(solicitacao.id);
-      registrarMutacaoLocal(solicitacao.id);
+      await aprovarDiretoriaSolicitacao(alvo.id);
+      registrarMutacaoLocal(alvo.id);
       await carregar({ silent: true });
-      alert('Solicitacao aprovada pela diretoria.');
+      avisar.sucesso(`Solicitação ${alvo.codigo} aprovada pela diretoria e enviada para ${destino}.`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao aprovar solicitacao pela diretoria');
+      avisar.erro(error?.message || 'Erro ao aprovar solicitacao pela diretoria');
+    }
+  }
+
+  async function aprovarPorTipo() {
+    const alvo = solicitacao;
+    const fluxo = alvo?.aprovacao_por_tipo;
+    if (!alvo?.id || !fluxo?.setor_destino || !fluxo?.status_destino) return;
+
+    const destino = fluxo.setor_destino_nome || fluxo.setor_destino;
+    const status = fluxo.status_destino_nome || fluxo.status_destino;
+    const { ok } = await confirmar({
+      titulo: 'Aprovar solicitação',
+      mensagem: `Aprovar a solicitação ${alvo.codigo} (${alvo.tipo?.nome || 'sem tipo'}) em ${destino} com o status ${status}? Ela só seguirá ao Financeiro quando um título entrar na fila de pagamentos.`,
+      rotuloConfirmar: 'Aprovar solicitação'
+    });
+    if (!ok) return;
+
+    try {
+      setAprovandoSolicitacao(true);
+      await aprovarSolicitacaoPorTipo(alvo.id);
+      registrarMutacaoLocal(alvo.id);
+      await carregar({ silent: true });
+      avisar.sucesso(`Solicitação ${alvo.codigo} aprovada em ${destino} com status ${status}.`);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao aprovar a solicitação.');
+    } finally {
+      setAprovandoSolicitacao(false);
     }
   }
 
   async function salvarPendenciaFinanceira() {
+    // R26: registro e conteúdo do formulário fixados antes do await.
+    const alvo = solicitacao;
+    const pendenciaAlvo = pendenciaFinanceira;
+    if (!alvo?.id) return;
     try {
       setSalvandoPendenciaFinanceira(true);
-      await atualizarPendenciaFinanceiraSolicitacao(solicitacao.id, pendenciaFinanceira);
-      registrarMutacaoLocal(solicitacao.id);
+      await atualizarPendenciaFinanceiraSolicitacao(alvo.id, pendenciaAlvo);
+      registrarMutacaoLocal(alvo.id);
       await carregar({ silent: true });
-      alert(pendenciaFinanceira.marcar
-        ? 'Pendencia registrada para auditoria.'
-        : 'Pendencia marcada como regularizada.');
+      avisar.sucesso(pendenciaAlvo.marcar
+        ? `Pendência registrada para auditoria na solicitação ${alvo.codigo}.`
+        : `Pendência da solicitação ${alvo.codigo} marcada como regularizada.`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao registrar pendencia financeira');
+      avisar.erro(error?.message || 'Erro ao registrar pendencia financeira');
     } finally {
       setSalvandoPendenciaFinanceira(false);
     }
@@ -372,7 +809,7 @@ export default function SolicitacaoDetalhe() {
 
   async function salvarApropriacoesSolicitacao() {
     if (!String(motivoApropriacoes || '').trim()) {
-      alert('Informe o motivo da alteracao das apropriacoes.');
+      avisar.alerta('Informe o motivo da alteração das apropriações.');
       return;
     }
 
@@ -389,70 +826,97 @@ export default function SolicitacaoDetalhe() {
       }));
 
     if (rateiosValidos.some((item) => !item.apropriacao_id)) {
-      alert('Preencha todas as apropriacoes do rateio.');
+      avisar.alerta('Preencha todas as apropriações do rateio.');
       return;
     }
 
     const resumo = resumoRateioApropriacao();
     if (resumo.usaPercentual && resumo.usaValor) {
-      alert('Use somente percentual ou somente valor em R$ no rateio.');
+      avisar.alerta('Use somente percentual ou somente valor em R$ no rateio.');
       return;
     }
 
+    // R26: registro e payload fixados ANTES da confirmação — o modal não
+    // congela a tela e o LiveUpdates pode trocar `solicitacao` no meio.
+    const alvo = solicitacao;
+    const motivoAlvo = motivoApropriacoes.trim();
+    const principalAlvo = apropriacaoPrincipalId ? Number(apropriacaoPrincipalId) : null;
+    if (!alvo?.id) return;
+
+    const { ok } = await confirmar({
+      titulo: 'Alterar apropriações',
+      mensagem: `Regravar o rateio contábil da solicitação ${alvo.codigo}, no valor de `
+        + `${formatarMoedaLocal(alvo.valor)}, em ${rateiosValidos.length} `
+        + `apropriaç${rateiosValidos.length === 1 ? 'ão' : 'ões'}? `
+        + 'O rateio anterior é substituído; a troca fica no histórico com o motivo informado.',
+      rotuloConfirmar: 'Regravar rateio'
+    });
+    if (!ok) return;
+
     try {
       setSalvandoApropriacoes(true);
-      await atualizarApropriacoesSolicitacao(solicitacao.id, {
-        apropriacao_id: apropriacaoPrincipalId ? Number(apropriacaoPrincipalId) : null,
+      await atualizarApropriacoesSolicitacao(alvo.id, {
+        apropriacao_id: principalAlvo,
         apropriacoes_rateio: rateiosValidos,
-        motivo: motivoApropriacoes.trim()
+        motivo: motivoAlvo
       });
-      registrarMutacaoLocal(solicitacao.id);
+      registrarMutacaoLocal(alvo.id);
       setModalApropriacoesAberto(false);
       await carregar({ silent: true });
-      alert('Apropriacoes atualizadas com sucesso.');
+      avisar.sucesso(`Apropriações da solicitação ${alvo.codigo} atualizadas.`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao atualizar apropriacoes');
+      avisar.erro(error?.message || 'Erro ao atualizar apropriacoes');
     } finally {
       setSalvandoApropriacoes(false);
     }
   }
 
-  function montarItensCompraDireta() {
-    const itens = Array.isArray(compraDiretaDetalhe?.itens) ? compraDiretaDetalhe.itens : [];
-    const itensManuais = Array.isArray(compraDiretaDetalhe?.itensManuais) ? compraDiretaDetalhe.itensManuais : [];
+  function montarItensCompraDireta(detalhe = compraDiretaDetalhe) {
+    const itens = Array.isArray(detalhe?.itens) ? detalhe.itens : [];
+    const itensManuais = Array.isArray(detalhe?.itensManuais) ? detalhe.itensManuais : [];
 
     return [
       ...itens.map((item) => ({
         ...item,
         item_tipo: 'CADASTRADO',
         descricao: item?.insumo?.nome || item?.descricao || `Item #${item?.id || ''}`,
-        unidade_label: item?.unidade?.sigla || item?.unidade?.nome || item?.unidade_sigla || ''
+        unidade_label: item?.unidade_sigla_manual || item?.unidade?.sigla || item?.unidade?.nome || item?.unidade_sigla || ''
       })),
-      ...itensManuais.map((item) => ({
-        ...item,
-        item_tipo: 'MANUAL',
-        descricao: item?.nome_manual || item?.descricao || `Item manual #${item?.id || ''}`,
-        unidade_label: item?.unidade_sigla_manual || item?.unidade_sigla || ''
-      }))
+      ...itensManuais.map(mapearItemManualCompraDireta)
     ];
   }
 
-  async function abrirModalCompraDireta() {
-    if (!solicitacao?.id) return;
+  async function abrirGerenciamentoItensCompra(itemAlvo = null) {
+    if (!solicitacao?.id || abrindoItensCompraRef.current) return;
+    abrindoItensCompraRef.current = true;
 
     try {
       setCarregandoCompraDireta(true);
       setItemCompraDiretaSelecionado(null);
       setRateiosCompraDireta([]);
       setMotivoCompraDireta('');
-      const data = await obterCompraDiretaPorSolicitacao(solicitacao.id);
+      setQuantidadeItemCompra('');
+      setMotivoQuantidadeItemCompra('');
+      setAcaoItemCompraDireta(podeCatalogarItensManuaisCompra ? 'CATALOGAR' : 'APROPRIAR');
+      const data = await obterSolicitacaoCompraPorSolicitacao(solicitacao.id);
       setCompraDiretaDetalhe(data || null);
+      if (itemAlvo?.item_tipo) {
+        const item = montarItensCompraDireta(data).find((atual) =>
+          atual.item_tipo === itemAlvo.item_tipo && Number(atual.id) === Number(itemAlvo.id));
+        if (!item) throw new Error('Item não encontrado. Atualize a solicitação e tente novamente.');
+        selecionarItemCompraDireta(item);
+      }
       setModalCompraDiretaAberto(true);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar itens da compra direta');
+      avisar.erro(
+        error?.code === 'COMPRA_LEGADA_SEM_ITENS_ESTRUTURADOS'
+          ? 'Esta solicitação é legada e não possui itens cadastrados individualmente. Por isso, não é possível gerenciá-los nesta tela.'
+          : error?.message || 'Erro ao carregar itens da solicitação de compra'
+      );
     } finally {
+      abrindoItensCompraRef.current = false;
       setCarregandoCompraDireta(false);
     }
   }
@@ -463,6 +927,9 @@ export default function SolicitacaoDetalhe() {
     setItemCompraDiretaSelecionado(null);
     setRateiosCompraDireta([]);
     setMotivoCompraDireta('');
+    setQuantidadeItemCompra('');
+    setMotivoQuantidadeItemCompra('');
+    setAcaoItemCompraDireta(podeCatalogarItensManuaisCompra ? 'CATALOGAR' : 'APROPRIAR');
   }
 
   function selecionarItemCompraDireta(item) {
@@ -470,6 +937,108 @@ export default function SolicitacaoDetalhe() {
     setItemCompraDiretaSelecionado(item);
     setRateiosCompraDireta(rateios.length ? rateios : [criarRateioBase(item?.quantidade)]);
     setMotivoCompraDireta('');
+    setQuantidadeItemCompra(String(item?.quantidade ?? '').replace('.', ','));
+    setMotivoQuantidadeItemCompra('');
+    setAcaoItemCompraDireta(
+      item?.item_tipo === 'MANUAL' && podeCatalogarItensManuaisCompra
+        ? 'CATALOGAR'
+        : 'APROPRIAR'
+    );
+  }
+
+  async function recarregarCompraDiretaAposCatalogacao() {
+    if (!solicitacao?.id) return;
+
+    try {
+      const data = await obterSolicitacaoCompraPorSolicitacao(solicitacao.id);
+      setCompraDiretaDetalhe(data || null);
+      const itemAtualizado = (data?.itensManuais || []).find(
+        (item) => Number(item.id) === Number(itemCompraDiretaSelecionado?.id)
+      );
+      if (itemAtualizado) {
+        selecionarItemCompraDireta(mapearItemManualCompraDireta(itemAtualizado));
+      }
+      registrarMutacaoLocal(solicitacao.id);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'O item foi catalogado, mas a lista não pôde ser atualizada. Reabra o gerenciamento de itens.');
+    }
+  }
+
+  async function cadastrarUnidadeCompraDireta() {
+    const compraAlvo = Number(compraDiretaDetalhe?.id || 0);
+    const itemAlvo = itemCompraDiretaSelecionado;
+    const unidadeLivre = String(itemAlvo?.unidade_sigla_manual || '').trim();
+    if (!compraAlvo || itemAlvo?.item_tipo !== 'CADASTRADO' || !unidadeLivre) return;
+
+    const { ok } = await confirmar({
+      titulo: 'Cadastrar unidade de medida',
+      mensagem: `Cadastrar "${unidadeLivre}" no catálogo de unidades e vinculá-la somente a este item? A unidade padrão do insumo não será alterada.`,
+      rotuloConfirmar: 'Cadastrar UN'
+    });
+    if (!ok) return;
+
+    try {
+      setSalvandoCompraDireta(true);
+      const data = await cadastrarUnidadeItemSolicitacaoCompra(compraAlvo, itemAlvo.id);
+      setCompraDiretaDetalhe(data || null);
+      const itemAtualizado = (data?.itens || []).find((item) => Number(item.id) === Number(itemAlvo.id));
+      if (itemAtualizado) {
+        selecionarItemCompraDireta({
+          ...itemAtualizado,
+          item_tipo: 'CADASTRADO',
+          descricao: itemAtualizado?.insumo?.nome || itemAtualizado?.descricao || `Item #${itemAtualizado.id}`,
+          unidade_label: itemAtualizado?.unidade?.sigla || itemAtualizado?.unidade?.nome || ''
+        });
+      }
+      registrarMutacaoLocal(solicitacao?.id);
+      avisar.sucesso(`UN ${unidadeLivre} cadastrada e vinculada ao item.`);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao cadastrar a unidade informada no item');
+    } finally {
+      setSalvandoCompraDireta(false);
+    }
+  }
+
+  async function salvarQuantidadeItemCompra() {
+    const compraAlvo = Number(compraDiretaDetalhe?.id || 0);
+    const itemAlvo = itemCompraDiretaSelecionado;
+    if (!compraAlvo || !itemAlvo?.id || !podeEditarQuantidadeItemCompra) return;
+
+    const quantidade = Number(String(quantidadeItemCompra || '').trim().replace(/\./g, '').replace(',', '.'));
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      avisar.alerta('Informe uma quantidade válida maior que zero.');
+      return;
+    }
+
+    const motivo = String(motivoQuantidadeItemCompra || '').trim();
+    if (!motivo) {
+      avisar.alerta('Informe o motivo da alteração da quantidade.');
+      return;
+    }
+
+    try {
+      setSalvandoCompraDireta(true);
+      const data = await atualizarQuantidadeItemSolicitacaoCompra(compraAlvo, itemAlvo.id, {
+        item_tipo: itemAlvo.item_tipo,
+        quantidade,
+        motivo
+      });
+      setCompraDiretaDetalhe(data || null);
+      const itemAtualizado = montarItensCompraDireta(data).find(
+        (item) => item.item_tipo === itemAlvo.item_tipo && Number(item.id) === Number(itemAlvo.id)
+      );
+      selecionarItemCompraDireta(itemAtualizado || { ...itemAlvo, quantidade });
+      setAcaoItemCompraDireta('APROPRIAR');
+      registrarMutacaoLocal(solicitacao?.id);
+      avisar.sucesso('Quantidade atualizada. Revise e salve as apropriações deste item antes de continuar.');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao atualizar a quantidade do item');
+    } finally {
+      setSalvandoCompraDireta(false);
+    }
   }
 
   function atualizarRateioCompraDireta(index, campo, valor) {
@@ -490,7 +1059,7 @@ export default function SolicitacaoDetalhe() {
 
   async function salvarApropriacoesCompraDireta() {
     if (!compraDiretaDetalhe?.id || !itemCompraDiretaSelecionado?.id) {
-      alert('Selecione um item para alterar.');
+      avisar.alerta('Selecione um item para alterar.');
       return;
     }
 
@@ -501,27 +1070,45 @@ export default function SolicitacaoDetalhe() {
     const validacao = validarRateiosItem(itemComRateios);
 
     if (!validacao.ok) {
-      alert(validacao.mensagem);
+      avisar.alerta(validacao.mensagem);
       return;
     }
 
     const motivo = String(motivoCompraDireta || '').trim();
     if (!motivo) {
-      alert('Informe o motivo da alteracao.');
+      avisar.alerta('Informe o motivo da alteração.');
       return;
     }
+
+    // R26: o ITEM é fixado antes da confirmação. A lista lateral do modal
+    // continua clicável enquanto a pergunta está aberta — sem fixar, dava
+    // para perguntar sobre um item e gravar em outro.
+    const compraAlvo = compraDiretaDetalhe.id;
+    const itemAlvo = itemCompraDiretaSelecionado;
+    const rateiosAlvo = normalizarRateiosEntrada(itemComRateios).map((rateio) => ({
+      apropriacao_id: Number(rateio.apropriacao_id),
+      quantidade_apropriada: parseQuantidade(rateio.quantidade_apropriada)
+    }));
+
+    const { ok } = await confirmar({
+      titulo: 'Alterar apropriações do item',
+      mensagem: `Regravar as apropriações do item "${itemAlvo.descricao}" `
+        + `(${itemAlvo.quantidade || '-'} ${itemAlvo.unidade_label || ''}) da ${isCompraDiretaSolicitacao ? 'compra direta' : 'solicitação de compra'} vinculada à `
+        + `solicitação ${solicitacao?.codigo || ''} em ${rateiosAlvo.length} `
+        + `apropriaç${rateiosAlvo.length === 1 ? 'ão' : 'ões'}? `
+        + 'As apropriações anteriores deste item são substituídas, com auditoria.',
+      rotuloConfirmar: 'Regravar apropriações'
+    });
+    if (!ok) return;
 
     try {
       setSalvandoCompraDireta(true);
       const data = await atualizarApropriacoesItemSolicitacaoCompra(
-        compraDiretaDetalhe.id,
-        itemCompraDiretaSelecionado.id,
+        compraAlvo,
+        itemAlvo.id,
         {
-          item_tipo: itemCompraDiretaSelecionado.item_tipo,
-          apropriacoes: normalizarRateiosEntrada(itemComRateios).map((rateio) => ({
-            apropriacao_id: Number(rateio.apropriacao_id),
-            quantidade_apropriada: parseQuantidade(rateio.quantidade_apropriada)
-          })),
+          item_tipo: itemAlvo.item_tipo,
+          apropriacoes: rateiosAlvo,
           motivo
         }
       );
@@ -530,11 +1117,11 @@ export default function SolicitacaoDetalhe() {
       setItemCompraDiretaSelecionado(null);
       setRateiosCompraDireta([]);
       setMotivoCompraDireta('');
-      registrarMutacaoLocal(solicitacao.id);
-      alert('Apropriacoes do item atualizadas com auditoria.');
+      registrarMutacaoLocal(solicitacao?.id);
+      avisar.sucesso(`Apropriações do item "${itemAlvo.descricao}" atualizadas com auditoria.`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao atualizar apropriacoes do item');
+      avisar.erro(error?.message || 'Erro ao atualizar apropriacoes do item');
     } finally {
       setSalvandoCompraDireta(false);
     }
@@ -563,10 +1150,23 @@ export default function SolicitacaoDetalhe() {
     fallbackMs: 45 * 1000
   });
 
-  if (loading) return <p>Carregando...</p>;
+  // B5: nem o "Carregando" fica solto sobre o canvas — a tela já nasce com
+  // faixa fixa e superfície, e a seta de voltar existe antes do dado chegar.
+  if (loading) {
+    return (
+      <Pagina className="sol-detail-page">
+        <PageHeader
+          titulo="Solicitação"
+          descricao="Carregando o registro..."
+          voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
+        />
+        <Avisos avisos={avisos} aoFechar={fecharAviso} />
+        <BlocoConteudo>Carregando...</BlocoConteudo>
+      </Pagina>
+    );
+  }
   if (!solicitacao) return null;
 
-  const isSetorObra = userHasSetorCapability(user, 'eh_setor_obra');
   const usaFluxoAprovacaoDiretoria = Boolean(
     solicitacao.usa_fluxo_aprovacao_diretoria ??
     (
@@ -576,14 +1176,21 @@ export default function SolicitacaoDetalhe() {
     )
   );
   const podeAprovarDiretoria = Boolean(
-    solicitacao.acao_aprovar_diretoria_disponivel ??
-    (
-      solicitacao.fluxo_aprovacao_diretoria &&
-      !solicitacao.aprovada_diretoria_em &&
-      (isSuperadmin || solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user))
+    podeInteragirSolicitacao && (
+      solicitacao.acao_aprovar_diretoria_disponivel ??
+      (
+        solicitacao.fluxo_aprovacao_diretoria &&
+        !solicitacao.aprovada_diretoria_em &&
+        (isSuperadmin || solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user))
+      )
     )
   );
+  const podeAprovarPorTipo = Boolean(
+    solicitacao.acao_aprovar_tipo_disponivel &&
+    !(solicitacao.solicitacao_compra_id && !solicitacao.compra_direta)
+  );
   const podeEnviarSetor =
+    podeInteragirSolicitacao &&
     !usaFluxoAprovacaoDiretoria &&
     !isSetorObra &&
     (
@@ -592,114 +1199,483 @@ export default function SolicitacaoDetalhe() {
       solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user)
     );
   const podeAlterarStatus =
-    isSuperadmin ||
-    podeAlterarStatusQualquerSetor ||
-    solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user);
-  const podeMarcarPendenciaFinanceira = isSuperadmin || isSetorGeo || isSetorFinanceiro;
+    podeInteragirSolicitacao && (
+      isSuperadmin ||
+      podeAlterarStatusQualquerSetor ||
+      solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user)
+    );
+  const podeMarcarPendenciaFinanceira = podeInteragirSolicitacao && (isSuperadmin || isSetorGeo || isSetorFinanceiro);
 
   const atualizadoEm = new Date(solicitacao.updatedAt || solicitacao.createdAt).toLocaleString('pt-BR');
 
-  return (
-    <div className="sol-detail-page max-w-6xl mx-auto space-y-6">
-      <div className="sol-detail-nav">
-        <button
-          onClick={() => navigateBack('/solicitacoes')}
-          className="sol-detail-back-btn"
-          type="button"
-        >
-          <HiOutlineArrowLeft className="sol-detail-back-icon" />
-          <span>Voltar para solicitacoes</span>
-        </button>
+  // Setor do último STATUS_ALTERADO — o badge diz de qual setor é o estado.
+  const historicosDoRegistro = Array.isArray(solicitacao.historicos) ? solicitacao.historicos : [];
+  const criacaoCompraDireta = historicosDoRegistro.find((historico) =>
+    historico?.acao === 'CRIADA' && lerMetadataHistorico(historico).origem === 'COMPRA_DIRETA');
+  const metadataCriacaoCompraDireta = lerMetadataHistorico(criacaoCompraDireta);
+  const formasCompraDireta = Array.isArray(solicitacao.compra_direta?.formas_pagamento_json)
+    ? solicitacao.compra_direta.formas_pagamento_json
+    : Array.isArray(metadataCriacaoCompraDireta.formas_pagamento)
+      ? metadataCriacaoCompraDireta.formas_pagamento : [];
+  const boletosCompraDireta = historicosDoRegistro.flatMap((historico) => {
+    if (historico?.acao !== 'ANEXO_ADICIONADO') return [];
+    const metadata = lerMetadataHistorico(historico);
+    if (!['BOLETO', 'FRETE_BOLETO'].includes(metadata.tipo_documento) || !metadata.caminho) return [];
+    return [{ id: historico.id, nome: historico.descricao || 'Boleto', caminho: metadata.caminho, tipo: metadata.tipo_documento }];
+  });
+  const linhasPagamentoCompraDireta = isCompraDiretaSolicitacao ? [
+    ...(formasCompraDireta.length ? formasCompraDireta.map((forma) => {
+      const formaTexto = normalizarTextoBusca(`${forma.nome || ''} ${forma.codigo || ''}`);
+      const boleto = Boolean(forma.boleto || forma.gera_boleto || formaTexto.includes('boleto'));
+      const pix = formaTexto.includes('pix');
+      return {
+        id: `compra-${forma.id}`,
+        tipo: 'Compra',
+        credor: solicitacao.parceiro?.nome || '-',
+        formas: `${forma.nome || forma.codigo || `#${forma.id}`}${forma.valor != null ? ` · ${formatarMoedaLocal(forma.valor)}` : ''}`,
+        favorecido: boleto ? '-' : forma.favorecido_nome || solicitacao.favorecido?.nome || '-',
+        chave: pix ? forma.chave_pix || solicitacao.favorecido_chave_pix || '-' : '-',
+        dados: !boleto && !pix
+          ? forma.dados_pagamento || solicitacao.compra_direta?.dados_pagamento || metadataCriacaoCompraDireta.dados_pagamento || '-'
+          : '-',
+        boletos: boleto ? boletosCompraDireta.filter((item) => item.tipo === 'BOLETO') : []
+      };
+    }) : [{
+      id: 'compra-legado', tipo: 'Compra', credor: solicitacao.parceiro?.nome || '-',
+      formas: '-', favorecido: solicitacao.favorecido?.nome || '-',
+      chave: solicitacao.favorecido_chave_pix || '-',
+      dados: solicitacao.compra_direta?.dados_pagamento || metadataCriacaoCompraDireta.dados_pagamento || '-',
+      boletos: boletosCompraDireta.filter((item) => item.tipo === 'BOLETO')
+    }]),
+    ...(String(solicitacao.compra_direta?.frete_tipo || '').toUpperCase() === 'TERCEIRO' ? [{
+      id: 'frete', tipo: 'Frete a terceiro',
+      credor: solicitacao.compra_direta?.freteCredor?.nome || '-',
+      formas: solicitacao.compra_direta?.freteFormaPagamento?.nome || '-',
+      favorecido: solicitacao.compra_direta?.freteFavorecido?.nome || '-',
+      chave: solicitacao.compra_direta?.frete_favorecido_chave_pix || '-',
+      dados: solicitacao.compra_direta?.frete_dados_pagamento || '-',
+      boletos: boletosCompraDireta.filter((item) => item.tipo === 'FRETE_BOLETO')
+    }] : [])
+  ] : [];
 
-        <div className="sol-detail-nav-right">
-          <div className="sol-detail-breadcrumb">
-            <span>Solicitacoes</span>
-            <HiChevronRight className="sol-detail-breadcrumb-sep" />
-            <span className="sol-detail-breadcrumb-current">{solicitacao.codigo}</span>
-          </div>
-          <span className="sol-detail-updated-at">Atualizado em {atualizadoEm}</span>
-        </div>
-      </div>
+  async function abrirBoletoCompraDireta(boleto) {
+    try {
+      let url = fileUrl(boleto.caminho);
+      if (String(boleto.caminho).startsWith('http')) {
+        const params = new URLSearchParams({ url: String(boleto.caminho).replace(/%(?![0-9A-Fa-f]{2})/g, '%25'), historico_id: String(boleto.id) });
+        const response = await fetch(`${API_URL}/anexos/presign?${params}`, { headers: authHeaders() });
+        if (!response.ok) throw new Error('Não foi possível abrir o boleto.');
+        url = (await response.json()).url;
+      }
+      if (!url) throw new Error('Boleto indisponível.');
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível abrir o boleto.');
+    }
+  }
+  const ultimoHistoricoStatus = [...historicosDoRegistro]
+    .filter((item) => item?.acao === 'STATUS_ALTERADO')
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  const setorStatusAtual = ultimoHistoricoStatus?.setor || solicitacao.area_responsavel || null;
 
-      <Header
-        solicitacao={solicitacao}
-        onAlterarStatus={() => setModalStatus(true)}
-        onEnviarSetor={() => setModalEnviarSetor(true)}
-        mostrarAlterarStatus={podeAlterarStatus}
-        mostrarEnviarSetor={podeEnviarSetor}
-        mostrarContratoInfo={moduloContratosHabilitado}
-        mostrarApropriacaoInfo={moduloComprasHabilitado}
-      />
+  // C4: o título da faixa é a IDENTIFICAÇÃO do registro — código E tipo.
+  // Número sem nome é defeito; o número do contrato entra quando existe.
+  const numeroContratoCabecalho = String(
+    solicitacao.codigo_contrato || solicitacao.contrato?.codigo || ''
+  ).trim().replace(/^CT-\s*/i, '');
+  const tituloRegistro = [
+    solicitacao.codigo || `#${solicitacao.id}`,
+    solicitacao.tipo?.nome || 'Solicitação',
+    contratoDoFluxo && numeroContratoCabecalho && numeroContratoCabecalho !== '-'
+      ? numeroContratoCabecalho
+      : null
+  ].filter(Boolean).join(' · ');
+  const apoioRegistro = apoioDoRegistro(solicitacao, contratoDoFluxo);
 
-      {podeEditarApropriacoesSolicitacaoNormal && (
-        <div className="card flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-[var(--c-text)]">Apropriacoes da solicitacao</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Ajuste a apropriacao principal ou o rateio do contrato com motivo e auditoria.
-            </p>
-          </div>
+  // Ação principal por setor+estado — compartilhada pelo cabeçalho e pela
+  // barra fixa do mobile. Catálogo restrito a handlers que JÁ existem.
+  const rolarAte = (idAlvo) => () => {
+    document.getElementById(idAlvo)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const catalogoAcoes = {
+    alterar_status: { rotulo: 'Alterar status', disponivel: podeAlterarStatus, executar: () => setModalStatus(true) },
+    enviar_setor: { rotulo: 'Enviar para outro setor', disponivel: podeEnviarSetor, executar: () => setModalEnviarSetor(true) },
+    aprovar_diretoria: { rotulo: 'Aprovar e enviar', disponivel: podeAprovarDiretoria, executar: aprovarDiretoria },
+    aprovar_solicitacao: { rotulo: 'Aprovar solicitação', disponivel: podeAprovarPorTipo, executar: aprovarPorTipo },
+    gerar_titulo: { rotulo: 'Criar título', disponivel: isFinanceiro && podeAcessarModuloFinanceiro, executar: rolarAte('sol-detail-financeiro') },
+    // O card Pagamentos saiu do detalhe (a função vive no card Financeiro);
+    // "informar_pagamento" leva ao mesmo destino para mapeamentos antigos.
+    informar_pagamento: { rotulo: 'Informar pagamento', disponivel: isFinanceiro && podeAcessarModuloFinanceiro, executar: rolarAte('sol-detail-financeiro') },
+    registrar_medicao: { rotulo: 'Registrar medição', disponivel: solicitacaoEhContrato, executar: rolarAte('sol-detail-contrato-acoes') }
+  };
+  const acaoPrincipalResolvida = (() => {
+    const mapeada = resolverAcaoPrincipal(
+      mapeamentosAcaoPrincipal,
+      solicitacao.area_responsavel,
+      solicitacao.status_global
+    );
+    if (!mapeada) return null;
+    const acao = catalogoAcoes[mapeada.acao];
+    if (!acao || !acao.disponivel) return null;
+    return { acao: mapeada.acao, rotulo: mapeada.rotulo || acao.rotulo, executar: acao.executar };
+  })();
+  const acaoPrincipalCabecalho = acaoPrincipalResolvida || (
+    podeAprovarPorTipo
+      ? { acao: 'aprovar_solicitacao', rotulo: aprovandoSolicitacao ? 'Aprovando...' : 'Aprovar solicitação', executar: aprovarPorTipo }
+      : null
+  );
+
+  /*
+    BARRA DE AÇÕES DA FAIXA (C5/C6): um primário sólido, secundários em
+    contorno, nada de navegação para outra tela. As três ações são as
+    mesmas de antes — "Alterar status", "Enviar para outro setor" e a ação
+    mapeada por setor+estado. Quando há ação mapeada, ela é a primária e as
+    outras duas viram secundárias (antes iam para um menu "⋯" escrito à mão
+    dentro do Header).
+  */
+  const acoesSecundarias = [
+    podeAlterarStatus && acaoPrincipalResolvida?.acao !== 'alterar_status'
+      ? { rotulo: 'Alterar status', onClick: () => setModalStatus(true) }
+      : null,
+    podeEnviarSetor && acaoPrincipalResolvida?.acao !== 'enviar_setor'
+      ? { rotulo: 'Enviar para outro setor', onClick: () => setModalEnviarSetor(true) }
+      : null,
+    !acaoPrincipalResolvida && podeAprovarDiretoria
+      ? { rotulo: 'Aprovar e enviar', onClick: aprovarDiretoria }
+      : null,
+    podeAprovarPorTipo && acaoPrincipalCabecalho?.acao !== 'aprovar_solicitacao'
+      ? { rotulo: aprovandoSolicitacao ? 'Aprovando...' : 'Aprovar solicitação', onClick: aprovarPorTipo, desabilitada: aprovandoSolicitacao }
+      : null
+  ].filter(Boolean);
+
+  // ----- LAYOUT CONFIGURÁVEL: resolução usuário → padrão global --------
+  const {
+    ordem: ordemResolvida,
+    ocultos: blocosOcultos,
+    larguras: largurasBlocos,
+    historicoOrdem
+  } = resolverLayoutDetalhe({ prefsUsuario: prefsLayoutUsuario });
+
+  // O catálogo já declara a sequência operacional completa. Uma ordem
+  // individual, quando existir, continua prevalecendo sobre ela.
+  const ordemBlocos = ordemResolvida;
+
+  /*
+    Um único dono do abrir/recolher: o próprio `BlocoConteudo`. O arranjo
+    personalizável continua cuidando de ordem, largura e visibilidade, mas
+    não esconde o card por uma segunda camada. Isso também neutraliza
+    preferências antigas de `recolhidos`, que exigiriam dois cliques para
+    chegar ao conteúdo depois do novo padrão fechado.
+  */
+  const blocosRecolhidos = new Set();
+
+  const temCamadaUsuario = (novo) => Boolean(
+    novo && (
+      novo.ordem?.length || novo.recolhidos?.length || novo.removidos?.length
+      || novo.adicionados?.length
+      || Object.keys(novo.larguras || {}).length || novo.historico_ordem === 'desc'
+    )
+  );
+  const persistirLayoutUsuario = (novo) => {
+    setPrefsLayoutUsuario(temCamadaUsuario(novo) ? novo : null);
+    salvarListaPreferencias('detalhe-solicitacao', novo || {}).catch(() => {});
+  };
+  // Sempre grava a camada completa — mudar uma coisa não perde as outras.
+  const camadaAtual = () => ({
+    ordem: prefsLayoutUsuario?.ordem?.length ? ordemBlocos : [],
+    recolhidos: [],
+    removidos: Array.from(blocosOcultos),
+    larguras: { ...(prefsLayoutUsuario?.larguras || {}) },
+    historico_ordem: historicoOrdem
+  });
+  /*
+    AS SEIS FUNÇÕES DE MUTAÇÃO SAÍRAM DAQUI (05/09).
+
+    `moverBloco`, `alternarBlocoRecolhido`, `removerBloco`,
+    `readicionarBloco`, `definirLarguraBloco` e o `restaurarPadraoGlobal`
+    existiam palavra por palavra na Home também. Elas agora vivem UMA vez,
+    no `BlocosPersonalizaveis`, que devolve a camada de BLOCOS inteira; o
+    que sobrou aqui é o que é DO DETALHE e não é bloco — a ordem do
+    histórico, que continua a viajar na mesma preferência.
+  */
+  const persistirArranjoBlocos = (camada) => {
+    persistirLayoutUsuario(camada ? { ...camada, historico_ordem: historicoOrdem } : null);
+  };
+  const definirOrdemHistorico = (ordem) => {
+    persistirLayoutUsuario({ ...camadaAtual(), historico_ordem: ordem === 'desc' ? 'desc' : 'asc' });
+  };
+  const restaurarPadraoGlobal = () => {
+    persistirLayoutUsuario(null);
+  };
+
+  const aoRecarregarSilencioso = () => {
+    registrarMutacaoLocal(id);
+    void carregar({ silent: true });
+  };
+
+  // Cada bloco: condições de permissão/tipo continuam decidindo se PODE
+  // aparecer; a configuração decide onde e se aparece quando pode.
+  const resumoApropriacoesSolicitacao = montarResumoApropriacoesSolicitacao(solicitacao);
+  const conteudoBlocos = {
+    apropriacoes: podeEditarApropriacoesSolicitacaoNormal ? (
+      <BlocoConteudo
+        titulo="Apropriações da solicitação"
+        variante="secundario"
+        descricao="Confira a distribuição atual e ajuste a apropriação com motivo e auditoria."
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
+        acoes={(
           <button type="button" className="btn btn-outline btn-sm" onClick={abrirModalApropriacoes}>
-            Editar apropriacoes
+            Editar apropriações
           </button>
-        </div>
-      )}
-
-      {podeEditarItensCompraDireta && (
-        <div className="card flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-[var(--c-text)]">Apropriacoes dos itens da compra direta</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Ajuste item por item da compra direta com motivo e auditoria, sem alterar a solicitacao normal.
-            </p>
+        )}
+      >
+        {resumoApropriacoesSolicitacao.length ? (
+          <div className="flex flex-wrap gap-2" aria-label="Apropriações atuais da solicitação">
+            {resumoApropriacoesSolicitacao.map((linha, index) => (
+              <span
+                key={`${linha}-${index}`}
+                className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm"
+              >
+                {linha}
+              </span>
+            ))}
           </div>
+        ) : (
+          <span className="text-sm text-[var(--c-muted)]">Nenhuma apropriação informada.</span>
+        )}
+      </BlocoConteudo>
+    ) : null,
+
+    itens_compra_direta: isSolicitacaoCompra && !isCompraDiretaSolicitacao && solicitacao.solicitacao_compra_id ? (
+      <CompraEtapas
+        user={user}
+        itensRevisao={compraDiretaDetalhe}
+        solicitacaoId={solicitacao.id}
+        podeDecidir={podeInteragirSolicitacao && (isSetorGeo || isSuperadmin)}
+        podeReceber={isSetorObra || isSuperadmin}
+        podeProgramarEntrega={isSetorCompras || isSuperadmin}
+        podeAnexar={podeInteragirSolicitacao && (isSetorCompras || isSuperadmin) && canAnexarEspelhoComprasPedidos(user)}
+        mostrarCotacao={(isSetorCompras || isSuperadmin) && moduloComprasHabilitado}
+        podeGerenciarCotacao={podeInteragirSolicitacao}
+        podeCriarNovaSolicitacao={canCreateCompraSolicitacao(user)}
+        onGerenciarItens={podeGerenciarItensCompra ? abrirGerenciamentoItensCompra : null}
+        onUpdated={aoRecarregarSilencioso}
+      />
+    ) : isCompraDiretaSolicitacao ? (
+      <BlocoConteudo
+        titulo="Itens da compra direta"
+        variante="secundario"
+        descricao={`${montarItensCompraDireta().length} item(ns) cadastrado(s) nesta compra direta.`}
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
+        acoes={podeGerenciarItensCompra ? (
           <button
             type="button"
             className="btn btn-outline btn-sm"
-            onClick={abrirModalCompraDireta}
+            onClick={abrirGerenciamentoItensCompra}
             disabled={carregandoCompraDireta}
           >
-            {carregandoCompraDireta ? 'Carregando...' : 'Editar itens'}
+            {carregandoCompraDireta ? 'Carregando itens...' : 'Gerenciar todos os itens'}
           </button>
+        ) : null}
+      >
+        {erroItensCompraDireta ? (
+          <p className="text-sm text-[var(--c-muted)]">{erroItensCompraDireta}</p>
+        ) : (
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'item', titulo: 'Item', tipo: 'identidade', noCard: 'titulo',
+                render: (item) => <span className="flex flex-wrap items-center gap-2 font-medium">
+                  <span>{item.descricao}</span>
+                  {item.item_tipo === 'MANUAL' && <span
+                    className="rounded-full border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-2 py-1 text-xs font-semibold text-[var(--sem-warning)]">
+                    Item manual
+                  </span>}
+                </span>
+              },
+              {
+                id: 'quantidade', titulo: 'Quantidade', tipo: 'numero',
+                render: (item) => `${item.quantidade ?? '-'} ${item.unidade_label || ''}`
+              },
+              ...(String(compraDiretaDetalhe?.frete_modo || solicitacao.compra_direta?.frete_modo || '').toUpperCase() === 'POR_ITEM' ? [{
+                id: 'frete_valor', titulo: 'Frete', tipo: 'valor',
+                render: (item) => formatarMoedaLocal(item.frete_valor || 0)
+              }] : []),
+              {
+                id: 'origem', titulo: 'Origem', tipo: 'texto',
+                render: (item) => item.item_tipo === 'MANUAL' ? 'Manual' : 'Cadastro de insumos'
+              },
+              {
+                id: 'apropriacao', titulo: 'Apropriação', tipo: 'texto',
+                render: (item) => montarLinhasResumoApropriacao(item, apropriacoesCatalogo).join(' | ') || '-'
+              }
+            ]}
+            itens={montarItensCompraDireta()}
+            getId={(item) => `${item.item_tipo}-${item.id}`}
+            urgencia={(item) => item.item_tipo === 'MANUAL' ? 'warning' : null}
+            acoesLinha={podeGerenciarItensCompra ? (item) => (
+              <button type="button" className="btn btn-outline btn-sm"
+                onClick={() => abrirGerenciamentoItensCompra(item)} disabled={carregandoCompraDireta}>
+                Editar
+              </button>
+            ) : undefined}
+            carregando={carregandoCompraDireta}
+            storageKey="tabela:solicitacao-detalhe:itens-compra-direta"
+            vazio="Nenhum item estruturado nesta compra direta."
+            rotuloRolagem="Itens da compra direta"
+          />
+        )}
+        <div className="mt-4 border-t border-[var(--c-border)] pt-4">
+          <h3 className="mb-2 text-sm font-semibold">Dados de pagamento da compra</h3>
+          <TabelaPadrao
+            colunas={[
+              { id: 'tipo', titulo: 'Origem', tipo: 'identidade', noCard: 'titulo', render: (item) => item.tipo },
+              { id: 'credor', titulo: 'Credor', tipo: 'texto', render: (item) => item.credor },
+              { id: 'formas', titulo: 'Forma / valor', tipo: 'texto', render: (item) => <span className="break-words">{item.formas}</span> },
+              { id: 'favorecido', titulo: 'Favorecido', tipo: 'texto', render: (item) => item.favorecido },
+              { id: 'chave', titulo: 'Chave PIX', tipo: 'texto', render: (item) => <span className="break-all">{item.chave}</span> },
+              { id: 'dados', titulo: 'Dados para pagamento', tipo: 'texto', render: (item) => <span className="whitespace-pre-wrap break-words">{item.dados}</span> },
+              { id: 'boleto', titulo: 'Boleto', tipo: 'acao', render: (item) => item.boletos.length
+                ? <div className="flex flex-col items-start gap-1">{item.boletos.map((boleto) => (
+                    <button key={boleto.id} type="button" className="btn btn-outline btn-sm max-w-48 truncate"
+                      title={boleto.nome} onClick={() => abrirBoletoCompraDireta(boleto)}>{boleto.nome}</button>
+                  ))}</div> : '-' }
+            ]}
+            itens={linhasPagamentoCompraDireta}
+            getId={(item) => item.id}
+            storageKey="tabela:solicitacao-detalhe:pagamento-compra-direta"
+            rotuloRolagem="Dados de pagamento da compra direta"
+          />
         </div>
-      )}
+      </BlocoConteudo>
+    ) : null,
 
-      {podeAprovarDiretoria && (
-        <div className="card flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-[var(--c-text)]">Aprovacao por diretoria</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Ao aprovar, a solicitacao segue para {solicitacao.setor_destino_aprovacao || solicitacao.setor_destino_pos_aprovacao || 'a area responsavel'}.
-            </p>
+    rateio_contrato: solicitacaoEhContrato ? (
+      <ApropriacoesDoContrato
+        contrato={contratoDoFluxo}
+        podeEditar={podeInteragirSolicitacao && podeEditarApropriacoes}
+        onMudou={aoRecarregarSilencioso}
+      />
+    ) : null,
+
+    // ITEM 26 (23/08): os termos aditivos, com Aprovar, Rejeitar e Cancelar. Fica ANTES da barra
+    // de acoes do contrato porque um aditivo pendente e uma decisao que trava o contrato: quem
+    // abre a tela precisa ver que ha algo esperando por ele. O card se oculta sozinho quando o
+    // contrato nao tem aditivo, que e a maioria.
+    aditivos_contrato: solicitacaoEhContrato ? (
+      <AditivosDoContrato
+        contrato={contratoSomenteLeitura}
+        onMudou={aoRecarregarSilencioso}
+      />
+    ) : null,
+
+    acoes_contrato: (solicitacaoEhContrato || falhaContrato) ? (
+      <>
+        {falhaContrato && (
+          <div className="app-alert app-alert--warning" data-testid="falha-contrato">
+            {falhaContrato} As previsoes de parcela e as acoes do contrato dependem deste acesso.
           </div>
+        )}
+        <div id="sol-detail-contrato-acoes">
+          <AcoesContrato contrato={contratoSomenteLeitura} onMudou={aoRecarregarSilencioso} />
+        </div>
+      </>
+    ) : null,
+
+    aprovacao_diretoria: podeAprovarDiretoria ? (
+      <BlocoConteudo
+        titulo="Aprovação por diretoria"
+        variante="secundario"
+        descricao={`Ao aprovar, a solicitação segue para ${solicitacao.setor_destino_aprovacao || solicitacao.setor_destino_pos_aprovacao || 'a area responsavel'}.`}
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
+        acoes={(
           <button type="button" className="btn btn-primary btn-sm" onClick={aprovarDiretoria}>
             Aprovar e enviar
           </button>
-        </div>
-      )}
+        )}
+      />
+    ) : null,
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Timeline
-          historicos={solicitacao.historicos || []}
-          canRemoveAnexo={canDeleteSolicitacaoAnexo(user)}
-          canRemoveComentario={String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN'}
-          onAnexoRemovido={() => {
+    historico: (
+      <Timeline
+        ordem={historicoOrdem}
+        aoMudarOrdem={definirOrdemHistorico}
+        historicos={montarHistoricosComJustificativa(solicitacao)}
+        canRemoveAnexo={podeInteragirSolicitacao && canDeleteSolicitacaoAnexo(user)}
+        canRemoveComentario={podeInteragirSolicitacao && String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN'}
+        onAnexoRemovido={aoRecarregarSilencioso}
+      />
+    ),
+
+    financeiro: isFinanceiro ? (
+      <div id="sol-detail-financeiro">
+        <FinanceiroCard
+          key={`financeiro-${id}-${statusDependenciasVersao}`}
+          solicitacao={solicitacao}
+          podeAcessarModuloFinanceiro={podeAcessarModuloFinanceiro}
+          podeVisualizarTitulos={isFinanceiro}
+          somenteLeitura={isSetorObra}
+          onSolicitacaoAtualizada={() => {
             registrarMutacaoLocal(id);
-            void carregar({ silent: true });
+            return carregar({ silent: true });
           }}
+          onTituloCriado={aoRecarregarSilencioso}
         />
+      </div>
+    ) : null,
 
-        <div className="space-y-6">
-          {podeMarcarPendenciaFinanceira && (
-            <div className="card space-y-4">
-              <div>
-                <h2 className="text-base font-semibold text-[var(--c-text)]">Auditoria de prazo e documentos</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Registre solicitacoes enviadas fora do prazo ou sem nota/boleto para medir regularizacao por usuario.
-                </p>
-              </div>
+    // Comentar e anexar num ato só (dá para anexar sem escrever).
+    conversa: (
+      <Conversa
+        solicitacaoId={id}
+        podeInteragir={podeInteragirSolicitacao}
+        podeAnexar={podeInteragirSolicitacao}
+        motivoBloqueio={contextoInteracao?.motivo_bloqueio}
+        onSucesso={aoRecarregarSilencioso}
+      />
+    ),
 
-              <label className="flex items-center gap-2 text-sm font-semibold text-[var(--c-text)]">
+    auditoria: podeMarcarPendenciaFinanceira ? (
+      !auditoriaAberta ? (
+        <button
+          type="button"
+          className="btn btn-outline btn-sm self-start"
+          onClick={() => setAuditoriaAberta(true)}
+        >
+          Registrar pendência de auditoria
+        </button>
+      ) : (
+        <BlocoConteudo
+          titulo="Auditoria de prazo e documentos"
+          variante="secundario"
+          descricao="Registre solicitações enviadas fora do prazo ou sem nota/boleto para medir regularizacao por usuário."
+          recolhivel
+          recolhidoPadrao
+          alternarAoClicar
+          acoes={(
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setAuditoriaAberta(false)}>
+              Recolher auditoria
+            </button>
+          )}
+        >
+          <FormSecao colunas={2}>
+            {/* `CampoForm` já é um <label>: aninhar outro aqui produziria
+                label dentro de label (HTML inválido, e o clique deixaria de
+                alcançar a caixa). O <span> é só o arranjo. */}
+            <CampoForm label="Pendência" linha>
+              <span className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   checked={pendenciaFinanceira.marcar}
@@ -708,108 +1684,336 @@ export default function SolicitacaoDetalhe() {
                     marcar: event.target.checked
                   }))}
                 />
-                Marcar pendencia para auditoria
-              </label>
+                Marcar pendência para auditoria
+              </span>
+            </CampoForm>
 
-              <div className="grid md:grid-cols-2 gap-3">
-                <label className="block text-sm text-[var(--c-muted)]">
-                  Tipo
-                  <select
-                    className="input mt-1"
-                    value={pendenciaFinanceira.tipo}
-                    onChange={(event) => setPendenciaFinanceira((prev) => ({
-                      ...prev,
-                      tipo: event.target.value
-                    }))}
-                    disabled={!pendenciaFinanceira.marcar}
-                  >
-                    <option value="FORA_DO_PRAZO">Enviada fora do prazo</option>
-                    <option value="SEM_NOTA">Sem nota ate o vencimento</option>
-                    <option value="SEM_BOLETO">Sem boleto ate o vencimento</option>
-                    <option value="SEM_NOTA_E_BOLETO">Sem nota e boleto</option>
-                    <option value="OUTRO">Outro</option>
-                  </select>
-                </label>
+            <CampoForm label="Tipo">
+              {/* Entrada de dado, não filtro — uso que a R12 mantém legítimo. */}
+              <select
+                className="input"
+                value={pendenciaFinanceira.tipo}
+                onChange={(event) => setPendenciaFinanceira((prev) => ({
+                  ...prev,
+                  tipo: event.target.value
+                }))}
+                disabled={!pendenciaFinanceira.marcar}
+              >
+                <option value="FORA_DO_PRAZO">Enviada fora do prazo</option>
+                <option value="SEM_NOTA">Sem nota até o vencimento</option>
+                <option value="SEM_BOLETO">Sem boleto até o vencimento</option>
+                <option value="SEM_NOTA_E_BOLETO">Sem nota e boleto</option>
+                <option value="OUTRO">Outro</option>
+              </select>
+            </CampoForm>
 
-                <label className="block text-sm text-[var(--c-muted)]">
-                  Observacao
-                  <textarea
-                    className="input mt-1 min-h-[88px]"
-                    value={pendenciaFinanceira.observacao}
-                    onChange={(event) => setPendenciaFinanceira((prev) => ({
-                      ...prev,
-                      observacao: event.target.value
-                    }))}
-                    placeholder="Ex.: nota enviada apos vencimento, boleto ausente, prazo regularizado..."
-                  />
-                </label>
-              </div>
+            <CampoForm label="Observação" tipo="observacao">
+              <textarea
+                className="input"
+                value={pendenciaFinanceira.observacao}
+                onChange={(event) => setPendenciaFinanceira((prev) => ({
+                  ...prev,
+                  observacao: event.target.value
+                }))}
+                placeholder="Ex.: nota enviada após vencimento, boleto ausente, prazo regularizado..."
+              />
+            </CampoForm>
+          </FormSecao>
 
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={salvarPendenciaFinanceira}
-                  disabled={salvandoPendenciaFinanceira}
-                >
-                  {salvandoPendenciaFinanceira ? 'Salvando...' : 'Salvar auditoria'}
-                </button>
-              </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={salvarPendenciaFinanceira}
+              disabled={salvandoPendenciaFinanceira}
+            >
+              {salvandoPendenciaFinanceira ? 'Salvando...' : 'Salvar auditoria'}
+            </button>
+          </div>
+        </BlocoConteudo>
+      )
+    ) : null
+  };
+
+  const blocosVisiveis = ordemBlocos
+    .filter((blocoId) => !blocosOcultos.has(blocoId))
+    .map((blocoId) => ({ id: blocoId, conteudo: conteudoBlocos[blocoId] }))
+    .filter((bloco) => bloco.conteudo);
+
+  const ABA_DO_BLOCO = {
+    apropriacoes: 'detalhes',
+    itens_compra_direta: 'detalhes',
+    rateio_contrato: 'detalhes',
+    aditivos_contrato: 'detalhes',
+    acoes_contrato: 'detalhes',
+    aprovacao_diretoria: 'detalhes',
+    conversa: 'conversa',
+    financeiro: 'financeiro',
+    auditoria: 'financeiro',
+    historico: 'historico'
+  };
+  const ABAS_MOBILE = [
+    { id: 'detalhes', rotulo: 'Detalhes' },
+    { id: 'conversa', rotulo: 'Conversa' },
+    { id: 'financeiro', rotulo: 'Financeiro' },
+    { id: 'historico', rotulo: 'Histórico' }
+  ];
+
+  /*
+    O DESENHO DO ARRANJO TAMBÉM SAIU (05/09): a barra por bloco, o
+    popover "Adicionar bloco", os segmentos de largura e o bloco recolhido
+    virando uma linha "— mostrar" eram markup copiado entre esta tela e a
+    Home. Agora é o `BlocosPersonalizaveis` quem desenha, com as classes
+    DESTA tela (`classes` abaixo) para o `columns: 2` do detalhe continuar
+    o que sempre foi — a grade neutra do componente é a da Home.
+  */
+  const catalogoBlocos = BLOCOS_DETALHE.map((bloco) => ({
+    ...bloco,
+    conteudo: conteudoBlocos[bloco.id]
+  }));
+  const arranjoBlocos = {
+    ordem: ordemBlocos,
+    ocultos: blocosOcultos,
+    recolhidos: blocosRecolhidos,
+    larguras: largurasBlocos
+  };
+
+  const resumoRateio = resumoRateioApropriacao();
+
+  return (
+    <Pagina className="sol-detail-page">
+      {/*
+        C3 (R11 revisto, 02/09): tela de DETALHE tem a seta de voltar à
+        esquerda SEMPRE. C4: o título é a identificação do registro
+        (código · tipo · nº do contrato), não um número solto.
+        R5/C2: a contagem da faixa é o VALOR — o número que decide, e o
+        único que acompanha a pessoa na rolagem. Por isso ele saiu da
+        grade de campos: total mora na faixa, recorte mora no bloco (B3).
+      */}
+      <PageHeader
+        titulo={tituloRegistro}
+        contagem={formatarValorSolicitacao(solicitacao.valor) || undefined}
+        descricao={apoioRegistro || undefined}
+        voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
+        acaoPrincipal={acaoPrincipalCabecalho
+          ? {
+            rotulo: acaoPrincipalCabecalho.rotulo,
+            onClick: acaoPrincipalCabecalho.executar,
+            desabilitada: aprovandoSolicitacao && acaoPrincipalCabecalho.acao === 'aprovar_solicitacao'
+          }
+          : undefined}
+        /*
+          "PERSONALIZAR LAYOUT" SAIU DO "⋯" (decisão do cliente, 07/09).
+
+          Ela era o único item do menu desta tela: um botão que só revelava
+          outro botão. O menu saiu do sistema e ela é secundária VISÍVEL da
+          faixa, ao lado das outras. Medido a 1920, 1366 e 390 no pior caso
+          desta tela (principal + duas secundárias + esta): uma linha nas
+          duas primeiras larguras, duas a 390, sem rótulo cortado.
+
+          `pressionada` vai junto porque a ação tem ESTADO (liga/desliga o
+          modo) — sem ela, quem usa leitor de tela deixa de saber se o modo
+          está ligado. Continua fora do celular: lá o modo não arranja nada
+          (largura e arrasto são do desktop).
+        */
+        secundarias={[
+          ...acoesSecundarias,
+          !isMobileDetalhe ? {
+            rotulo: personalizando ? 'Concluir personalização' : 'Personalizar layout',
+            pressionada: personalizando,
+            onClick: () => setPersonalizando((atual) => !atual)
+          } : null
+        ].filter(Boolean)}
+      />
+
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
+
+      {/* O que TRAVA a decisão vem antes de qualquer dado: pedido de
+          retorno da Obra e falha de acesso ao contrato. */}
+      <RetornoSolicitacaoBar
+        solicitacao={solicitacao}
+        onMudou={() => carregar({ silent: true })}
+      />
+
+      {/* A resposta imediata: em que pé está, com quem, para quando.
+          Os três ladrilhos vinham do cabeçalho antigo (Status, Setor,
+          Data Resposta/Pagamento) e da linha de breadcrumb ("Atualizado
+          em"), que era texto solto sobre o canvas — B5. */}
+      <BlocoConteudo titulo="Resumo da solicitação" variante="secundario" recolhivel recolhidoPadrao alternarAoClicar>
+      <StatGrid colunas={4}>
+        <StatTile
+          label="Status"
+          valor={<StatusBadge status={solicitacao.status_global} setor={setorStatusAtual} />}
+        />
+        <StatTile label="Setor responsável" valor={solicitacao.area_responsavel || '—'} />
+        <StatTile
+          label={isCadastroObraSolicitacao ? 'Data de Resposta' : 'Data Resposta/Pagamento'}
+          valor={formatarDataLocalPtBr(solicitacao.data_vencimento) || '—'}
+        />
+        <StatTile label="Atualizado em" valor={atualizadoEm} />
+      </StatGrid>
+      </BlocoConteudo>
+
+      {/* Bloco principal, largura total: o que ESTE registro é. */}
+      <Header
+        solicitacao={solicitacao}
+        contratoDoFluxo={contratoDoFluxo}
+        mostrarContratoInfo={moduloContratosHabilitado}
+      />
+
+      {isCadastroObraSolicitacao && dadosCadastroObra && (
+        <BlocoConteudo
+          titulo="Cadastro da obra"
+          variante="secundario"
+          descricao={dadosCadastroObra.obraCadastrada
+            ? `Obra ${dadosCadastroObra.obraCadastrada.codigo} cadastrada a partir desta solicitação.`
+            : 'Dados aprovados para gerar o cadastro operacional da obra.'}
+          acoes={podeCadastrarObraDaSolicitacao ? (
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setModalCadastroObraAberto(true)}>
+              Cadastrar obra
+            </button>
+          ) : null}
+        >
+          <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div><span className="block text-xs text-[var(--c-muted)]">Tipo</span><strong>{dadosCadastroObra.tipo_obra || '—'}</strong></div>
+            <div><span className="block text-xs text-[var(--c-muted)]">Fase</span><strong>{dadosCadastroObra.fase_obra === 'OBRA_INICIADA' ? 'Obra iniciada' : 'Pré-Obra'}</strong></div>
+            <div><span className="block text-xs text-[var(--c-muted)]">Valor da obra</span><strong>{formatarMoedaLocal(dadosCadastroObra.valor_obra)}</strong></div>
+            <div><span className="block text-xs text-[var(--c-muted)]">Responsável técnico</span><strong>{dadosCadastroObra.responsavel_tecnico || dadosCadastroObra.responsavelTecnico?.nome || '—'}</strong></div>
+            <div className="sm:col-span-2 lg:col-span-3"><span className="block text-xs text-[var(--c-muted)]">Endereço</span><strong>{dadosCadastroObra.endereco || '—'}</strong></div>
+            <div>
+              <span className="block text-xs text-[var(--c-muted)]">Documentação</span>
+              <strong className={dadosCadastroObra.documentacao_pendente ? 'text-[var(--sem-warning)]' : 'text-[var(--sem-success)]'}>
+                {dadosCadastroObra.documentacao_pendente ? 'Pendente' : 'Regular'}
+              </strong>
             </div>
+            <div className="sm:col-span-2 lg:col-span-4">
+              <span className="block text-xs text-[var(--c-muted)]">Usuários com acesso à obra</span>
+              <strong>
+                {(solicitacao.pessoasCadastroObra || [])
+                  .map((item) => item?.usuario?.nome)
+                  .filter(Boolean)
+                  .join(', ') || '—'}
+              </strong>
+            </div>
+          </div>
+        </BlocoConteudo>
+      )}
+
+      <ObraCadastroModal
+        aberto={modalCadastroObraAberto}
+        onFechar={() => setModalCadastroObraAberto(false)}
+        solicitacaoId={solicitacao.id}
+        dadosIniciais={{
+          ...(dadosCadastroObra || {}),
+          nome: solicitacao.descricao || '',
+          responsavel_tecnico: dadosCadastroObra?.responsavel_tecnico
+            || dadosCadastroObra?.responsavelTecnico?.nome
+            || ''
+        }}
+        onCriada={() => carregar({ silent: true })}
+      />
+
+      {isRecargaCartaoSolicitacao && (
+        <RecargaCartaoDetalhe
+          key={`recarga-${id}-${statusDependenciasVersao}`}
+          solicitacaoId={id}
+          podeInteragir={podeInteragirSolicitacao}
+        />
+      )}
+
+      {/* Barra fixa do mobile: a ação principal sempre visível. */}
+      {isMobileDetalhe && (acaoPrincipalResolvida || podeAlterarStatus) && (
+        <div className="sol-detail-acao-fixa">
+          {acaoPrincipalResolvida ? (
+            <button type="button" className="btn btn-primary w-full" onClick={acaoPrincipalResolvida.executar}>
+              {acaoPrincipalResolvida.rotulo}
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary w-full" onClick={() => setModalStatus(true)}>
+              Alterar status
+            </button>
           )}
-
-          {isFinanceiro && (
-            <FinanceiroCard
-              solicitacao={solicitacao}
-              podeAcessarModuloFinanceiro={podeAcessarModuloFinanceiro}
-              onSolicitacaoAtualizada={() => {
-                registrarMutacaoLocal(id);
-                return carregar({ silent: true });
-              }}
-              onTituloCriado={() => {
-                registrarMutacaoLocal(id);
-                void carregar({ silent: true });
-              }}
-            />
-          )}
-
-          <Pagamentos
-            solicitacao={solicitacao}
-            podeInformarPagamento={podeInformarPagamento}
-            onSucesso={async () => {
-              registrarMutacaoLocal(id);
-              await carregar({ silent: true });
-            }}
-          />
-
-          <Comentarios
-            solicitacaoId={id}
-            onSucesso={() => {
-              registrarMutacaoLocal(id);
-              void carregar({ silent: true });
-            }}
-          />
-
-          {isSetorGeo && (
-            <Pedido
-              solicitacaoId={id}
-              numeroPedido={solicitacao.numero_pedido}
-              onSucesso={() => {
-                registrarMutacaoLocal(id);
-                void carregar({ silent: true });
-              }}
-            />
-          )}
-
-          <Anexos
-            solicitacaoId={id}
-            onSucesso={() => {
-              registrarMutacaoLocal(id);
-              void carregar({ silent: true });
-            }}
-          />
         </div>
-      </div>
+      )}
+
+      {isMobileDetalhe ? (
+        <>
+          <div className="sol-detail-abas" role="tablist" aria-label="Seções do detalhe">
+            {ABAS_MOBILE.map((aba) => (
+              <button
+                key={aba.id}
+                type="button"
+                role="tab"
+                aria-selected={abaMobile === aba.id}
+                className={`sol-detail-aba ${abaMobile === aba.id ? 'ativa' : ''}`}
+                onClick={() => setAbaMobile(aba.id)}
+              >
+                {aba.rotulo}
+              </button>
+            ))}
+          </div>
+          {/* No celular o catálogo entregue ao componente é só o da ABA: o
+              arranjo continua sendo o mesmo (a ordem e os blocos mantidos
+              valem aqui), mas quem não é desta aba não entra no desenho. */}
+          <BlocosPersonalizaveis
+            blocos={catalogoBlocos.filter((bloco) => ABA_DO_BLOCO[bloco.id] === abaMobile)}
+            arranjo={arranjoBlocos}
+            preferenciasBrutas={prefsLayoutUsuario}
+            aoMudarArranjo={persistirArranjoBlocos}
+            aoRestaurar={restaurarPadraoGlobal}
+            larguraPadrao="total"
+            permiteRecolher={false}
+            personalizando={false}
+            classes={{
+              arranjo: 'sol-detail-arranjo',
+              colunas: 'sol-detail-blocos sol-detail-blocos--mobile',
+              segmentoTotal: 'sol-detail-segmento-total',
+              bloco: 'sol-detail-bloco'
+            }}
+          />
+          {blocosVisiveis.filter((bloco) => ABA_DO_BLOCO[bloco.id] === abaMobile).length === 0 && (
+            <BlocoConteudo variante="secundario">
+              Nada nesta aba para esta solicitação.
+            </BlocoConteudo>
+          )}
+        </>
+      ) : (
+        <BlocosPersonalizaveis
+          blocos={catalogoBlocos}
+          arranjo={arranjoBlocos}
+          preferenciasBrutas={prefsLayoutUsuario}
+          aoMudarArranjo={persistirArranjoBlocos}
+          aoRestaurar={restaurarPadraoGlobal}
+          larguraPadrao="total"
+          permiteRecolher={false}
+          rotuloRestaurar="Restaurar padrão global"
+          /* O modo é ligado pelo botão "Personalizar layout" da faixa (ação
+             SOBRE ESTA TELA — R11/C6), então ele é controlado daqui e a
+             entrada própria do componente não aparece: dois botões para a
+             mesma coisa seriam dois donos. */
+          personalizando={personalizando}
+          aoAlternarPersonalizando={(ligado) => setPersonalizando(ligado)}
+          /*
+            A ORDEM DO HISTÓRICO SAIU DAQUI (07/09).
+
+            Ela morava nesta barra porque é preferência DESTA tela e não é
+            bloco. Só que esta barra só existe em modo de personalização —
+            que por sua vez nascia atrás do "⋯" da faixa. Eram dois cliques
+            e um modo inteiro para inverter a leitura de uma lista.
+
+            Agora ela é `controles` do próprio bloco Histórico
+            (`Timeline.jsx`), ao lado do título, no lugar onde antes havia
+            só o TEXTO dizendo a ordem. Um dono, no bloco que ela governa —
+            manter uma cópia aqui seria o segundo dono.
+          */
+          classes={{
+            arranjo: 'sol-detail-arranjo',
+            colunas: 'sol-detail-blocos',
+            segmentoTotal: 'sol-detail-segmento-total',
+            bloco: 'sol-detail-bloco'
+          }}
+        />
+      )}
 
       <ModalAlterarStatus
         aberto={modalStatus}
@@ -829,141 +2033,178 @@ export default function SolicitacaoDetalhe() {
         />
       )}
 
+      {/*
+        R27: a casca é o `OverlayModal` — corpo rolante e rodapé fixo são
+        do componente. O painel escrito à mão tinha `overflow-hidden` (R18)
+        e larguras em pixel na classe (R10); o rodapé com "Salvar
+        apropriações" dependia de a tela lembrar de rolar o corpo.
+      */}
       {modalApropriacoesAberto && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
-          <div className="flex max-h-[94vh] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl bg-[var(--c-surface)] p-5 shadow-2xl sm:p-6">
-            <div className="mb-4 flex shrink-0 items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Editar apropriacoes</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  A alteracao nao muda a visibilidade da solicitacao e fica registrada no historico.
-                </p>
-              </div>
+        <OverlayModal
+          largura="var(--modal-max-w-xl, 1120px)"
+          rotulo="Editar apropriações"
+          onFechar={fecharModalApropriacoes}
+        >
+          <div
+            data-modal="cabecalho"
+            className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3"
+          >
+            <h2 className="app-bloco-titulo">Editar apropriações</h2>
+            <span className="app-bloco-acoes">
               <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalApropriacoes}>
                 Fechar
               </button>
-            </div>
+            </span>
+          </div>
+          <div className="min-w-0 space-y-4 p-4" data-testid="editar-apropriacoes-corpo">
+            <p
+              className="app-bloco-lead"
+              title="A alteração não muda a visibilidade da solicitação e fica registrada no histórico."
+            >
+              A alteração não muda a visibilidade da solicitação e fica registrada no histórico.
+            </p>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-              <label className="block text-sm font-semibold text-[var(--c-text)]">
-                Apropriacao principal
+            <FormSecao colunas={2}>
+              <CampoForm label="Apropriação principal" linha>
                 <ApropriacaoAutocomplete
                   value={apropriacaoPrincipalId}
                   options={apropriacoesCatalogo}
                   onChange={setApropriacaoPrincipalId}
-                  placeholder="Digite para buscar a apropriacao"
-                  className="mt-1"
+                  placeholder="Digite para buscar a apropriação"
                 />
-              </label>
+              </CampoForm>
+            </FormSecao>
 
-              <div className="rounded-2xl border border-[var(--c-border)] p-4">
-                <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="font-semibold text-[var(--c-text)]">Rateio do contrato</h3>
-                    <p className="text-sm text-[var(--c-muted)]">
-                      Use percentual ou valor em R$. Nao misture os dois criterios na mesma alteracao.
-                    </p>
-                  </div>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioApropriacao}>
-                    Adicionar linha
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {rateiosApropriacao.map((rateio, index) => (
-                    <div
-                      key={`rateio-solicitacao-${index}`}
-                      className="grid gap-2 rounded-xl border border-[var(--c-border)] p-3 md:grid-cols-[1fr_112px_132px_auto]"
+            <BlocoConteudo
+              titulo="Rateio do contrato"
+              variante="secundario"
+              descricao="Use percentual ou valor em R$. Não misture os dois critérios na mesma alteração."
+              acoes={(
+                <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioApropriacao}>
+                  Adicionar linha
+                </button>
+              )}
+            >
+              {rateiosApropriacao.map((rateio, index) => (
+                <FormSecao key={`rateio-solicitacao-${index}`} colunas={4}>
+                  <CampoForm label="Apropriação">
+                    <ApropriacaoAutocomplete
+                      value={rateio.apropriacao_id}
+                      options={apropriacoesCatalogo}
+                      onChange={(valor) => atualizarRateioApropriacao(index, 'apropriacao_id', valor)}
+                      placeholder="Buscar apropriação"
+                    />
+                  </CampoForm>
+                  <CampoForm label="Percentual">
+                    <input
+                      className="input"
+                      value={rateio.percentual}
+                      onChange={(event) => atualizarRateioApropriacao(index, 'percentual', event.target.value)}
+                      placeholder="%"
+                      inputMode="decimal"
+                    />
+                  </CampoForm>
+                  <CampoForm label="Valor R$">
+                    <input
+                      className="input input-moeda"
+                      value={rateio.valor}
+                      onChange={(event) => atualizarRateioApropriacao(index, 'valor', event.target.value)}
+                      placeholder="Valor R$"
+                      inputMode="decimal"
+                    />
+                  </CampoForm>
+                  <CampoForm label="Ações">
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => removerRateioApropriacao(index)}
+                      disabled={rateiosApropriacao.length <= 1}
                     >
-                      <ApropriacaoAutocomplete
-                        value={rateio.apropriacao_id}
-                        options={apropriacoesCatalogo}
-                        onChange={(valor) => atualizarRateioApropriacao(index, 'apropriacao_id', valor)}
-                        placeholder="Buscar apropriacao"
-                      />
-                      <input
-                        className="input"
-                        value={rateio.percentual}
-                        onChange={(event) => atualizarRateioApropriacao(index, 'percentual', event.target.value)}
-                        placeholder="%"
-                        inputMode="decimal"
-                      />
-                      <input
-                        className="input"
-                        value={rateio.valor}
-                        onChange={(event) => atualizarRateioApropriacao(index, 'valor', event.target.value)}
-                        placeholder="Valor R$"
-                        inputMode="decimal"
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => removerRateioApropriacao(index)}
-                        disabled={rateiosApropriacao.length <= 1}
-                      >
-                        Remover
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                      Remover
+                    </button>
+                  </CampoForm>
+                </FormSecao>
+              ))}
 
-                <div className="mt-3 grid gap-2 text-sm text-[var(--c-muted)] md:grid-cols-3">
-                  <span>Percentual informado: <strong>{resumoRateioApropriacao().percentual.toFixed(4)}%</strong></span>
-                  <span>Valor informado: <strong>{formatarMoedaLocal(resumoRateioApropriacao().valor)}</strong></span>
-                  <span>Valor da solicitacao: <strong>{formatarMoedaLocal(solicitacao?.valor)}</strong></span>
-                </div>
-              </div>
+              <StatGrid colunas={3}>
+                <StatTile label="Percentual informado" valor={`${resumoRateio.percentual.toFixed(4)}%`} />
+                <StatTile label="Valor informado" valor={formatarMoedaLocal(resumoRateio.valor)} />
+                <StatTile label="Valor da solicitação" valor={formatarMoedaLocal(solicitacao?.valor)} />
+              </StatGrid>
+            </BlocoConteudo>
 
-              <label className="block text-sm font-semibold text-[var(--c-text)]">
-                Motivo da alteracao *
+            <FormSecao colunas={2}>
+              <CampoForm label="Motivo da alteração" obrigatorio tipo="observacao">
                 <textarea
-                  className="input mt-1 min-h-[96px]"
+                  className="input"
                   value={motivoApropriacoes}
                   onChange={(event) => setMotivoApropriacoes(event.target.value)}
-                  placeholder="Explique por que a apropriacao foi alterada."
+                  placeholder="Explique por que a apropriação foi alterada."
                 />
-              </label>
-            </div>
-
-            <div className="mt-5 flex shrink-0 justify-end gap-2">
-              <button type="button" className="btn btn-outline" onClick={fecharModalApropriacoes}>
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={salvarApropriacoesSolicitacao}
-                disabled={salvandoApropriacoes}
-              >
-                {salvandoApropriacoes ? 'Salvando...' : 'Salvar apropriacoes'}
-              </button>
-            </div>
+              </CampoForm>
+            </FormSecao>
           </div>
-        </div>
+
+          <div
+            data-modal="rodape"
+            className="app-actionbar justify-end border-t border-[var(--c-border)] px-4 py-3"
+          >
+            <button type="button" className="btn btn-outline" onClick={fecharModalApropriacoes}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={salvarApropriacoesSolicitacao}
+              disabled={salvandoApropriacoes}
+            >
+              {salvandoApropriacoes ? 'Salvando...' : 'Salvar apropriacoes'}
+            </button>
+          </div>
+        </OverlayModal>
       )}
 
       {modalCompraDiretaAberto && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-[var(--c-surface)] p-5 shadow-2xl">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Editar itens da compra direta</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Escolha um item e ajuste as apropriacoes vinculadas a ele. A alteracao fica registrada com auditoria.
-                </p>
-              </div>
+        <OverlayModal
+          rotulo={isCompraDiretaSolicitacao ? 'Itens da compra direta' : 'Itens da solicitação de compra'}
+          largura="var(--modal-max-w-2xl, 90rem)"
+          onFechar={fecharModalCompraDireta}
+        >
+          <div
+            data-modal="cabecalho"
+            className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3 sm:px-6"
+          >
+            <h2 className="app-bloco-titulo">
+              {isCompraDiretaSolicitacao ? 'Itens da compra direta' : 'Itens da solicitação de compra'}
+            </h2>
+            <span className="app-bloco-acoes">
               <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalCompraDireta}>
                 Fechar
               </button>
-            </div>
+            </span>
+          </div>
+          {/*
+            O OverlayModal separa cabecalho e corpo para manter a rolagem.
+            Este modal nasceu antes dessa separacao e dependia do padding do
+            card externo; depois da padronizacao, lista e painel ficaram
+            colados nas bordas e o workspace encolhia ate parecer cortado.
+          */}
+          <div className="h-[76dvh] min-w-0 p-4 sm:p-6">
+            <p
+              className="app-bloco-lead app-bloco-lead--integral"
+              title="Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações."
+            >
+              Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações.
+            </p>
 
-            <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-[var(--c-text)]">Itens</h3>
+            <div className="mt-4 flex min-h-full min-w-0 flex-col gap-4 md:flex-row md:items-stretch">
+              {/* A medida do painel lateral mora na classe, não na tela (R10). */}
+              <div className="app-painel-lateral flex min-h-0 flex-col gap-2">
+                <h3 className="app-bloco-titulo">Itens</h3>
                 {montarItensCompraDireta().length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[var(--c-border)] p-4 text-sm text-[var(--c-muted)]">
-                    Nenhum item localizado para esta compra direta.
-                  </div>
+                  <BlocoConteudo variante="secundario">
+                    Nenhum item localizado para esta solicitação de compra.
+                  </BlocoConteudo>
                 ) : (
                   montarItensCompraDireta().map((item) => {
                     const selecionado =
@@ -975,110 +2216,236 @@ export default function SolicitacaoDetalhe() {
                       <button
                         key={`${item.item_tipo}-${item.id}`}
                         type="button"
-                        className={`w-full rounded-xl border p-3 text-left text-sm transition ${
-                          selecionado
-                            ? 'border-[var(--c-primary)] bg-[var(--c-primary-soft)]'
-                            : 'border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-primary)]'
-                        }`}
+                        className={`btn w-full shrink-0 justify-start text-left ${selecionado ? 'btn-primary' : 'btn-outline'}`}
+                        aria-pressed={selecionado}
                         onClick={() => selecionarItemCompraDireta(item)}
                       >
-                        <div className="font-semibold text-[var(--c-text)]">{item.descricao}</div>
-                        <div className="mt-1 text-xs text-[var(--c-muted)]">
-                          Qtd.: {item.quantidade || '-'} {item.unidade_label || ''}
-                        </div>
-                        <div className="mt-1 line-clamp-2 text-xs text-[var(--c-muted)]">
-                          {resumoApropriacao}
-                        </div>
+                        <span className="flex min-w-0 flex-col gap-1">
+                          <span className="break-words font-semibold">{item.descricao}</span>
+                          <span className="text-xs text-muted">
+                            Qtd.: {item.quantidade || '-'} {item.unidade_label || ''}
+                          </span>
+                          <span className="text-xs text-muted">
+                            {item.item_tipo === 'MANUAL'
+                              ? (item.insumo_catalogado_id ? 'Manual · catalogado' : 'Manual · pendente de cadastro')
+                              : (item.unidade_sigla_manual ? 'Cadastro oficial · UN pendente' : 'Cadastro oficial')}
+                          </span>
+                          <span className="break-words text-xs text-muted">{resumoApropriacao}</span>
+                        </span>
                       </button>
                     );
                   })
                 )}
               </div>
 
-              <div className="rounded-2xl border border-[var(--c-border)] p-4">
-                {!itemCompraDiretaSelecionado ? (
-                  <div className="flex min-h-[260px] items-center justify-center rounded-xl border border-dashed border-[var(--c-border)] p-4 text-center text-sm text-[var(--c-muted)]">
-                    Selecione um item para editar as apropriacoes.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="font-semibold text-[var(--c-text)]">{itemCompraDiretaSelecionado.descricao}</h3>
-                      <p className="text-sm text-[var(--c-muted)]">
-                        Quantidade total: {itemCompraDiretaSelecionado.quantidade || '-'} {itemCompraDiretaSelecionado.unidade_label || ''}
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      {rateiosCompraDireta.map((rateio, index) => (
-                        <div
-                          key={`rateio-compra-direta-${index}`}
-                          className="grid gap-2 rounded-xl border border-[var(--c-border)] p-3 md:grid-cols-[1fr_140px_auto]"
+              <div className="min-w-0 flex-1">
+              {!itemCompraDiretaSelecionado ? (
+                <BlocoConteudo variante="secundario">
+                  Selecione um item para ver as ações disponíveis.
+                </BlocoConteudo>
+              ) : (
+                <BlocoConteudo
+                  titulo={itemCompraDiretaSelecionado.descricao}
+                  variante="secundario"
+                  descricao={`Quantidade total: ${itemCompraDiretaSelecionado.quantidade || '-'} ${itemCompraDiretaSelecionado.unidade_label || ''}`}
+                  acoes={(
+                    <span className="flex flex-wrap gap-2" role="group" aria-label="Ação do item selecionado">
+                      {itemCompraDiretaSelecionado.item_tipo === 'MANUAL' && podeCatalogarItensManuaisCompra ? (
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${acaoItemCompraDireta === 'CATALOGAR' ? 'btn-primary' : 'btn-outline'}`}
+                          onClick={() => setAcaoItemCompraDireta('CATALOGAR')}
+                          aria-pressed={acaoItemCompraDireta === 'CATALOGAR'}
                         >
-                          <ApropriacaoAutocomplete
-                            value={rateio.apropriacao_id}
-                            options={apropriacoesCatalogo}
-                            onChange={(valor) => atualizarRateioCompraDireta(index, 'apropriacao_id', valor)}
-                            placeholder="Buscar apropriacao"
-                          />
-                          <input
-                            className="input"
-                            value={rateio.quantidade_apropriada}
-                            onChange={(event) => atualizarRateioCompraDireta(index, 'quantidade_apropriada', event.target.value)}
-                            placeholder="Qtd."
-                            inputMode="decimal"
-                          />
+                          Catalogar item
+                        </button>
+                      ) : null}
+                      {podeEditarQuantidadeItemCompra ? (
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${acaoItemCompraDireta === 'QUANTIDADE' ? 'btn-primary' : 'btn-outline'}`}
+                          onClick={() => setAcaoItemCompraDireta('QUANTIDADE')}
+                          aria-pressed={acaoItemCompraDireta === 'QUANTIDADE'}
+                        >
+                          Editar quantidade
+                        </button>
+                      ) : null}
+                      {podeEditarApropriacoesItemCompra ? (
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${acaoItemCompraDireta === 'APROPRIAR' ? 'btn-primary' : 'btn-outline'}`}
+                          onClick={() => setAcaoItemCompraDireta('APROPRIAR')}
+                          aria-pressed={acaoItemCompraDireta === 'APROPRIAR'}
+                        >
+                          Editar apropriações
+                        </button>
+                      ) : null}
+                      {itemCompraDiretaSelecionado.item_tipo === 'CADASTRADO'
+                        && itemCompraDiretaSelecionado.unidade_sigla_manual
+                        && podeCadastrarUnidadeItemCompra ? (
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
-                            onClick={() => removerRateioCompraDireta(index)}
-                            disabled={rateiosCompraDireta.length <= 1}
+                            onClick={cadastrarUnidadeCompraDireta}
+                            disabled={salvandoCompraDireta}
                           >
-                            Remover
+                            {salvandoCompraDireta
+                              ? 'Cadastrando UN...'
+                              : `Cadastrar UN ${itemCompraDiretaSelecionado.unidade_sigla_manual}`}
                           </button>
-                        </div>
-                      ))}
-                    </div>
+                        ) : null}
+                    </span>
+                  )}
+                >
+                  {/*
+                    ESCOPO DE MÓDULO APLICADO À MÃO, e preservado de propósito.
 
-                    <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioCompraDireta}>
-                      Adicionar linha
-                    </button>
-
-                    <label className="block text-sm font-semibold text-[var(--c-text)]">
-                      Motivo da alteracao *
-                      <textarea
-                        className="input mt-1 min-h-[88px]"
-                        value={motivoCompraDireta}
-                        onChange={(event) => setMotivoCompraDireta(event.target.value)}
-                        placeholder="Explique por que a apropriacao do item foi alterada."
+                    `compras-responsive-scope` faz a folha
+                    `modules/solicitacao-compra/compras-responsive.css` (global,
+                    entra pelo main.jsx) redefinir 12 classes da TOPBAR e 15
+                    classes genéricas `app-*` dentro deste pedaço da tela. Tirar
+                    daqui mudaria o arranjo do `TratamentoItemManual`, que foi
+                    desenhado dentro dele. A folha declara, no próprio topo, que
+                    as sobrescritas de `topbar-*`/`app-*` só saem junto com a
+                    rodada de Compras (docs/PENDENCIAS-REGISTRADAS.md).
+                  */}
+                  {acaoItemCompraDireta === 'CATALOGAR' && itemCompraDiretaSelecionado.item_tipo === 'MANUAL' && podeCatalogarItensManuaisCompra ? (
+                    <div className="compras-responsive-scope">
+                      <TratamentoItemManual
+                        item={itemCompraDiretaSelecionado}
+                        solicitacaoId={compraDiretaDetalhe.id}
+                        onCatalogado={() => { void recarregarCompraDiretaAposCatalogacao(); }}
                       />
-                    </label>
-
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => selecionarItemCompraDireta(itemCompraDiretaSelecionado)}
-                        disabled={salvandoCompraDireta}
-                      >
-                        Desfazer
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={salvarApropriacoesCompraDireta}
-                        disabled={salvandoCompraDireta}
-                      >
-                        {salvandoCompraDireta ? 'Salvando...' : 'Salvar item'}
-                      </button>
                     </div>
-                  </div>
-                )}
+                  ) : null}
+
+                  {acaoItemCompraDireta === 'CATALOGAR' && itemCompraDiretaSelecionado.item_tipo !== 'MANUAL' ? (
+                    <p className="text-sm text-muted">
+                      Este item já pertence ao cadastro oficial de insumos e não precisa ser catalogado.
+                    </p>
+                  ) : null}
+
+                  {acaoItemCompraDireta === 'QUANTIDADE' && podeEditarQuantidadeItemCompra ? (
+                    <>
+                      <FormSecao colunas={2}>
+                        <CampoForm label="Nova quantidade" obrigatorio>
+                          <input
+                            className="input"
+                            value={quantidadeItemCompra}
+                            onChange={(event) => setQuantidadeItemCompra(event.target.value)}
+                            inputMode="decimal"
+                            placeholder="Quantidade maior que zero"
+                          />
+                        </CampoForm>
+                        <CampoForm label="Motivo da alteração" obrigatorio tipo="observacao">
+                          <textarea
+                            className="input"
+                            value={motivoQuantidadeItemCompra}
+                            onChange={(event) => setMotivoQuantidadeItemCompra(event.target.value)}
+                            placeholder="Explique por que a quantidade solicitada foi alterada."
+                          />
+                        </CampoForm>
+                      </FormSecao>
+                      <p className="text-sm text-muted">
+                        Depois de salvar a quantidade, revise obrigatoriamente as apropriações do item.
+                      </p>
+                      <div className="app-actionbar">
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={salvarQuantidadeItemCompra}
+                          disabled={salvandoCompraDireta}
+                        >
+                          {salvandoCompraDireta ? 'Salvando quantidade...' : 'Salvar quantidade'}
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {acaoItemCompraDireta === 'APROPRIAR' && podeEditarApropriacoesItemCompra ? (
+                    <>
+                      {rateiosCompraDireta.map((rateio, index) => (
+                        <FormSecao key={`rateio-compra-direta-${index}`} colunas={4}>
+                          <CampoForm label="Apropriação" span={2}>
+                            <ApropriacaoAutocomplete
+                              value={rateio.apropriacao_id}
+                              options={apropriacoesCatalogo}
+                              onChange={(valor) => atualizarRateioCompraDireta(index, 'apropriacao_id', valor)}
+                              placeholder="Buscar apropriação"
+                            />
+                          </CampoForm>
+                          <CampoForm label="Quantidade">
+                            <input
+                              className="input"
+                              value={rateio.quantidade_apropriada}
+                              onChange={(event) => atualizarRateioCompraDireta(index, 'quantidade_apropriada', event.target.value)}
+                              placeholder="Qtd."
+                              inputMode="decimal"
+                            />
+                          </CampoForm>
+                          <CampoForm label="&nbsp;">
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => removerRateioCompraDireta(index)}
+                              disabled={rateiosCompraDireta.length <= 1}
+                            >
+                              Remover
+                            </button>
+                          </CampoForm>
+                        </FormSecao>
+                      ))}
+
+                      <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioCompraDireta}>
+                        Adicionar linha
+                      </button>
+
+                      <FormSecao colunas={2}>
+                        <CampoForm label="Motivo da alteração" obrigatorio tipo="observacao">
+                          <textarea
+                            className="input"
+                            value={motivoCompraDireta}
+                            onChange={(event) => setMotivoCompraDireta(event.target.value)}
+                            placeholder="Explique por que a apropriação do item foi alterada."
+                          />
+                        </CampoForm>
+                      </FormSecao>
+
+                      <div className="app-actionbar">
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => selecionarItemCompraDireta(itemCompraDiretaSelecionado)}
+                          disabled={salvandoCompraDireta}
+                        >
+                          Desfazer alterações
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={salvarApropriacoesCompraDireta}
+                          disabled={salvandoCompraDireta}
+                        >
+                          {salvandoCompraDireta ? 'Salvando apropriações...' : 'Salvar apropriações'}
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {itemCompraDiretaSelecionado.item_tipo !== 'MANUAL' && !podeEditarApropriacoesItemCompra ? (
+                    <p className="text-sm text-muted">
+                      Este item já está cadastrado. Sua permissão atual é exclusiva para tratar itens manuais.
+                    </p>
+                  ) : null}
+                </BlocoConteudo>
+              )}
               </div>
             </div>
           </div>
-        </div>
+        </OverlayModal>
       )}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

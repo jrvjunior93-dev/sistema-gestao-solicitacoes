@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  CelulaDupla,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../components/padrao';
 import { listarAuditoriaItensPedidoCompra } from '../services/compras';
 import { getMinhasObras } from '../services/obras';
 
@@ -11,18 +24,20 @@ const DEFAULT_FILTERS = {
   q: ''
 };
 
+// Sem a linha "Todas as acoes": no padrao de marcacao (R12) "todas" e a
+// AUSENCIA de marca, e a etiqueta some junto. Uma opcao chamada "todas"
+// dentro do menu voltaria a ser o select disfarcado.
 const ACTION_OPTIONS = [
-  { value: '', label: 'Todas as acoes' },
   { value: 'AJUSTE_MANUAL', label: 'Ajuste manual' },
   { value: 'ITEM_ADICIONADO', label: 'Item adicionado' },
   { value: 'ITEM_ADICIONADO_FORNECEDOR', label: 'Item adicionado do fornecedor' },
   { value: 'ITEM_ADICIONADO_MANUAL', label: 'Item adicionado manualmente' },
-  { value: 'GERADO_DA_COTACAO', label: 'Gerado da cotacao' },
+  { value: 'GERADO_DA_COTACAO', label: 'Gerado da cotação' },
   { value: 'REMOVIDO', label: 'Item removido' }
 ];
 
 const ACTION_LABELS = Object.fromEntries(
-  ACTION_OPTIONS.filter((item) => item.value).map((item) => [item.value, item.label])
+  ACTION_OPTIONS.map((item) => [item.value, item.label])
 );
 
 function formatMoney(value) {
@@ -101,14 +116,16 @@ function buildSearchParams(filters) {
   return params;
 }
 
+// M1/R10: o tom da acao vem do token semantico (badge-info/muted/success),
+// nunca de paleta escrita no className — cor de tela nao acompanha tema.
 function actionClassName(value) {
   switch (String(value || '').toUpperCase()) {
     case 'AJUSTE_MANUAL':
-      return 'app-status-pill bg-blue-100 text-blue-700';
+      return 'badge badge-info';
     case 'REMOVIDO':
-      return 'app-status-pill bg-slate-100 text-slate-700';
+      return 'badge badge-muted';
     default:
-      return 'app-status-pill bg-emerald-100 text-emerald-700';
+      return 'badge badge-success';
   }
 }
 
@@ -128,6 +145,18 @@ function formatFieldValue(field, value) {
   return String(value);
 }
 
+/*
+  Rótulo humano do campo. O resumo saía com o nome da COLUNA DO BANCO —
+  "quantidade_pedido: - -> 10 | preco_unitario: - -> R$ 5,00". Além de
+  comprido (300px numa coluna de 156px, o que reprovou a T7), é linguagem
+  de tabela, não de quem lê auditoria de compra.
+*/
+const ROTULO_CAMPO = {
+  quantidade_pedido: 'Quantidade',
+  preco_unitario: 'Preço unitário',
+  observacoes: 'Observações'
+};
+
 function buildChangeSummary(registro) {
   const anteriores = parseJson(registro?.dados_anteriores);
   const novos = parseJson(registro?.dados_novos);
@@ -136,17 +165,25 @@ function buildChangeSummary(registro) {
   ['quantidade_pedido', 'preco_unitario', 'observacoes'].forEach((field) => {
     const before = anteriores?.[field];
     const after = novos?.[field];
+    const rotulo = ROTULO_CAMPO[field] || field;
 
     if (before == null && after == null) {
       return;
     }
 
     if (before === after) {
-      parts.push(`${field}: ${formatFieldValue(field, after)}`);
+      parts.push(`${rotulo}: ${formatFieldValue(field, after)}`);
       return;
     }
 
-    parts.push(`${field}: ${formatFieldValue(field, before)} -> ${formatFieldValue(field, after)}`);
+    // Campo que não existia antes é DEFINIÇÃO, não alteração: escrever
+    // "- → 10" faz o leitor procurar um valor anterior que nunca houve.
+    if (before == null || before === '') {
+      parts.push(`${rotulo} definida como ${formatFieldValue(field, after)}`);
+      return;
+    }
+
+    parts.push(`${rotulo}: ${formatFieldValue(field, before)} → ${formatFieldValue(field, after)}`);
   });
 
   if (!parts.length && novos?.resposta_item_id) {
@@ -174,6 +211,47 @@ function normalizeAuditErrorMessage(error) {
   return message || 'Erro ao carregar auditoria de compras';
 }
 
+/**
+ * UMA ROTA SO, DESDE 04/09: `/compras/relatorios/auditoria`.
+ *
+ * Ate aqui duas rotas serviam este mesmo componente — esta e a
+ * `/relatorios/administrativos`, destino do botao de auditoria do
+ * PedidoCompraDetalhe. Passavam pelos MESMOS guardas, carregavam os MESMOS
+ * dados e a tela nunca leu a rota: nada aqui supoe "vim de Compras", e os
+ * parametros (`pedido_id`, `item_id`) viajam por query string, iguais nas
+ * duas. Cobertura identica, e so uma delas tinha porta — a outra saiu, e o
+ * botao do pedido passou a apontar para esta.
+ *
+ * Duas rotas para o mesmo caso nao e redundancia inofensiva: dobra o que
+ * precisa ser medido, e a que ninguem lembra e a que apodrece.
+ *
+ * A faixa anuncia o ASSUNTO — auditoria dos itens de pedidos de compra —
+ * porque a entrada e um card dentro do hub de Relatorios de Compras, e o
+ * breadcrumb nao carrega esse nome sozinho.
+ */
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'q', rotulo: 'Busca', obrigatorio: true },
+  { id: 'pedido_id', rotulo: 'Pedido' },
+  { id: 'item_id', rotulo: 'Item' },
+  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'acao', rotulo: 'Ação' }
+];
+
 export default function RelatoriosAdministrativos() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filtros, setFiltros] = useState(() => readFilters(searchParams));
@@ -181,6 +259,7 @@ export default function RelatoriosAdministrativos() {
   const [registros, setRegistros] = useState([]);
   const [loading, setLoading] = useState(false);
   const [erroCarregamento, setErroCarregamento] = useState('');
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     let ativo = true;
@@ -220,7 +299,12 @@ export default function RelatoriosAdministrativos() {
         console.error(error);
         if (ativo) {
           setRegistros([]);
-          setErroCarregamento(normalizeAuditErrorMessage(error));
+          const mensagem = normalizeAuditErrorMessage(error);
+          setErroCarregamento(mensagem);
+          // R3: a falha da consulta e EVENTO — faixa do sistema, com o tom
+          // semantico e fechavel. O cartao vazio abaixo continua sendo a
+          // CONDICAO (fecha e o problema continua), e por isso nao vira aviso.
+          avisar.erro(mensagem);
         }
       } finally {
         if (ativo) {
@@ -234,7 +318,7 @@ export default function RelatoriosAdministrativos() {
     return () => {
       ativo = false;
     };
-  }, [searchParams]);
+  }, [searchParams, avisar]);
 
   const resumo = useMemo(() => {
     const pedidos = new Set();
@@ -257,8 +341,86 @@ export default function RelatoriosAdministrativos() {
     };
   }, [registros]);
 
-  function aplicarFiltros(event) {
-    event.preventDefault();
+  /*
+    R12/R15: obra e acao sao recortes ENUMERAVEIS, entao viram marcacao com
+    etiqueta removivel. `unico: true` nas duas porque o servico recebe UM
+    valor por chave (`obra_id=`, `acao=`): a marca fica REDONDA e marcar
+    outra substitui, em vez de prometer soma que o endpoint nao aceita.
+  */
+  const dimensoes = useMemo(() => [
+    {
+      id: 'obra_id',
+      rotulo: 'Obra',
+      unico: true,
+      opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
+    },
+    {
+      id: 'acao',
+      rotulo: 'Ação',
+      unico: true,
+      opcoes: ACTION_OPTIONS.map((opcao) => ({ valor: opcao.value, rotulo: opcao.label }))
+    }
+  ], [obras]);
+
+  const ativos = useMemo(() => ({
+    obra_id: new Set(filtros.obra_id ? [String(filtros.obra_id)] : []),
+    acao: new Set(filtros.acao ? [String(filtros.acao)] : [])
+  }), [filtros]);
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      /* O valor que o SISTEMA propõe não conta como preenchido: se contasse,
+         o padrão revelaria de volta, a cada recarga, exatamente o filtro que
+         a pessoa escondeu. */
+      const padrao = String(DEFAULT_FILTERS[filtro.id] ?? '');
+      const rascunho = String(filtros[filtro.id] ?? '');
+      const emCurso = String(searchParams.get(filtro.id) ?? '');
+      return (rascunho !== '' && rascunho !== padrao) || (emCurso !== '' && emCurso !== padrao);
+    }).map((filtro) => filtro.id),
+    [filtros, searchParams]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:relatorios-administrativos', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      atualizarFiltro(id, DEFAULT_FILTERS[id] ?? '');
+      // A consulta em curso mora na URL: sem tirar a chave dali, o recorte
+      // seguiria valendo com o campo já fora da faixa.
+      if (searchParams.get(id)) {
+        const proximos = new URLSearchParams(searchParams);
+        proximos.delete(id);
+        setSearchParams(proximos);
+      }
+    }
+  });
+
+  function atualizarFiltro(campo, valor) {
+    setFiltros((atual) => ({ ...atual, [campo]: valor }));
+  }
+
+  function alternarFiltro(dimensao, valor) {
+    setFiltros((atual) => ({
+      ...atual,
+      [dimensao]: String(atual[dimensao]) === String(valor) ? '' : String(valor)
+    }));
+  }
+
+  function aplicarFiltros() {
     setSearchParams(buildSearchParams(filtros));
   }
 
@@ -268,216 +430,202 @@ export default function RelatoriosAdministrativos() {
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Relatorios Administrativos</h1>
-            <p className="page-subtitle">
-              Painel central do ADMINISTRADOR para auditoria e relatorios da operacao. A primeira entrega concentra a
-              auditoria dos itens de pedidos de compra.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/pedidos-compra" className="btn btn-outline">
-              Voltar aos pedidos
-            </Link>
-          </div>
-        </div>
-      </div>
+    <Pagina>
+      {/*
+        C2/R5: titulo em 22px e o apoio em UMA linha, na propria faixa.
+        R23 (excecao declarada): quatro recortes combinaveis — obra, acao,
+        pedido e item — passam do criterio de "consulta cara", entao a marca
+        e RASCUNHO ate o clique em Buscar. A regra exige que a tela AVISE
+        isso; sem o aviso a etiqueta apareceria antes de a lista mudar.
+        D6/R11: o "Voltar aos pedidos" saiu — era navegacao disfarcada de
+        acao na barra do cabecalho de uma LISTAGEM.
+      */}
+      {/*
+        C2: numa listagem, o apoio da faixa tem de dizer QUANTO veio — sem
+        isso o usuário só descobre o tamanho do resultado rolando. Aqui vale
+        dobrado, porque o recorte só é aplicado no clique em Buscar (R23):
+        a contagem é o retorno visível de que a busca rodou.
+      */}
+      <PageHeader
+        titulo="Relatórios Administrativos"
+        contagem={`${registros.length} ${registros.length === 1 ? 'item' : 'itens'}`}
+        descricao="Auditoria dos itens de pedidos de compra: marque o recorte e clique em Buscar."
+        acaoPrincipal={{
+          rotulo: loading ? 'Buscando...' : 'Buscar',
+          onClick: aplicarFiltros,
+          desabilitada: loading
+        }}
+        secundarias={[{ rotulo: 'Limpar filtros', onClick: limparFiltros }]}
+      />
 
-      <div className="mt-4 card sol-surface-card solicitacoes-filtros app-filters-card">
-        <div className="sol-filtros-head">
-          <div>
-            <h2 className="font-semibold text-[var(--c-text)]">Auditoria de compras</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Consulte alteracoes por obra, pedido, item, acao ou qualquer termo do historico registrado.
-            </p>
-          </div>
-        </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-        <form className="grid gap-4" onSubmit={aplicarFiltros}>
-          <div className="app-filters-grid">
-            <label className="app-filter-field">
-              <span className="app-filter-label">Obra</span>
-              <select
-                className="input"
-                value={filtros.obra_id}
-                onChange={(event) => setFiltros((current) => ({ ...current, obra_id: event.target.value }))}
-              >
-                <option value="">Todas as obras</option>
-                {obras.map((obra) => (
-                  <option key={obra.id} value={obra.id}>
-                    {obra.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
+      {/* Bloco 1 — ACAO: montar o recorte. */}
+      <BlocoConteudo variante="secundario">
+        {/*
+          F1/R16: UMA busca, ocupando a largura da faixa. Pedido e item sao
+          identificadores digitados (nao ha lista fechada), entao vao em
+          `campos`; obra e acao ficam na marcacao.
+        */}
+        <BarraFiltros
+          busca={visibilidadeFiltros.ehVisivel('q') ? {
+            valor: filtros.q,
+            aoMudar: (valor) => atualizarFiltro('q', valor),
+            placeholder: 'Pedido, item, obra, usuário ou descrição'
+          } : null}
+          campos={[
+            {
+              id: 'pedido_id',
+              rotulo: 'Pedido',
+              tipo: 'number',
+              valor: filtros.pedido_id,
+              aoMudar: (valor) => atualizarFiltro('pedido_id', valor)
+            },
+            {
+              id: 'item_id',
+              rotulo: 'Item',
+              tipo: 'number',
+              valor: filtros.item_id,
+              aoMudar: (valor) => atualizarFiltro('item_id', valor)
+            }
+          ].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={ativos}
+          aoAlternar={alternarFiltro}
+          /* R16: UM dono para "limpar" — o botao do cabecalho. O "Limpar
+             tudo" da barra seria o segundo, com o mesmo efeito. As etiquetas
+             seguem removiveis uma a uma (F3). */
+          visibilidade={visibilidadeFiltros}
+        />
+      </BlocoConteudo>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Pedido</span>
-              <input
-                className="input"
-                inputMode="numeric"
-                placeholder="Ex.: 12"
-                value={filtros.pedido_id}
-                onChange={(event) => setFiltros((current) => ({ ...current, pedido_id: event.target.value }))}
-              />
-            </label>
+      {/* Bloco 2 — CONTEXTO: o que o recorte devolveu. */}
+      <StatGrid>
+        <StatTile label="Registros" valor={resumo.total} sub="Movimentações listadas" />
+        <StatTile label="Pedidos afetados" valor={resumo.pedidos} sub="Pedidos com log visível" />
+        <StatTile label="Itens afetados" valor={resumo.itens} sub="Itens com histórico no filtro" />
+        <StatTile
+          label="Última movimentação"
+          valor={formatDateTime(resumo.ultimaMovimentacao)}
+          sub="Ordenacao decrescente por data"
+        />
+      </StatGrid>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Item</span>
-              <input
-                className="input"
-                inputMode="numeric"
-                placeholder="Ex.: 381"
-                value={filtros.item_id}
-                onChange={(event) => setFiltros((current) => ({ ...current, item_id: event.target.value }))}
-              />
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Acao</span>
-              <select
-                className="input"
-                value={filtros.acao}
-                onChange={(event) => setFiltros((current) => ({ ...current, acao: event.target.value }))}
-              >
-                {ACTION_OPTIONS.map((option) => (
-                  <option key={option.value || 'ALL'} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Busca geral</span>
-              <input
-                className="input"
-                placeholder="Pedido, item, obra, usuario ou descricao"
-                value={filtros.q}
-                onChange={(event) => setFiltros((current) => ({ ...current, q: event.target.value }))}
-              />
-            </label>
-          </div>
-
-          <div className="app-page-actions justify-end">
-            <button type="button" className="btn btn-outline" onClick={limparFiltros}>
-              Limpar filtros
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Buscando...' : 'Buscar'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <div className="mt-4 app-summary-grid">
-        <div className="app-summary-card">
-          <span className="app-summary-label">Registros</span>
-          <strong className="app-summary-value">{resumo.total}</strong>
-          <span className="app-summary-subvalue">Movimentacoes listadas</span>
-        </div>
-        <div className="app-summary-card">
-          <span className="app-summary-label">Pedidos afetados</span>
-          <strong className="app-summary-value">{resumo.pedidos}</strong>
-          <span className="app-summary-subvalue">Pedidos com log visivel</span>
-        </div>
-        <div className="app-summary-card">
-          <span className="app-summary-label">Itens afetados</span>
-          <strong className="app-summary-value">{resumo.itens}</strong>
-          <span className="app-summary-subvalue">Itens com historico no filtro</span>
-        </div>
-        <div className="app-summary-card">
-          <span className="app-summary-label">Ultima movimentacao</span>
-          <strong className="app-summary-value text-base">{formatDateTime(resumo.ultimaMovimentacao)}</strong>
-          <span className="app-summary-subvalue">Ordenacao decrescente por data</span>
-        </div>
-      </div>
-
-      <div className="mt-4 card sol-surface-card">
-        <div className="card-header flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Historico de alteracoes</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Esta area sera expandida para relatorios operacionais, de compras e financeiros sem misturar o fluxo
-              transacional das telas operacionais.
-            </p>
-          </div>
-          <span className="text-sm text-[var(--c-muted)]">{registros.length} registro(s)</span>
-        </div>
-
-        {erroCarregamento ? (
-          <div className="app-alert mb-4">
-            {erroCarregamento}
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="app-empty-card">Carregando...</div>
-        ) : erroCarregamento ? (
+      {/* Bloco 3 — HISTORICO, por ultimo (ordem de blocos decidida pelo cliente). */}
+      <BlocoConteudo
+        titulo="Histórico de alterações"
+        descricao="Esta área será expandida para relatórios operacionais, de compras e financeiros sem misturar o fluxo transacional das telas operacionais."
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {erroCarregamento && !loading ? (
           <div className="app-empty-card">
             A tela esta pronta, mas a consulta depende do backend com a rota de auditoria ativa.
           </div>
-        ) : registros.length === 0 ? (
-          <div className="app-empty-card">Nenhum registro de auditoria encontrado para os filtros informados.</div>
         ) : (
-          <div className="app-table-shell overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Acao</th>
-                  <th>Pedido / obra</th>
-                  <th>Item</th>
-                  <th>Usuario</th>
-                  <th>Detalhes</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {registros.map((registro) => (
-                  <tr key={registro.id}>
-                    <td className="whitespace-nowrap">{formatDateTime(registro.createdAt)}</td>
-                    <td className="whitespace-nowrap">
-                      <span className={actionClassName(registro.acao)}>{formatActionLabel(registro.acao)}</span>
-                    </td>
-                    <td>
-                      <div className="font-medium">{registro.pedido?.codigo || '-'}</div>
-                      <div className="text-xs text-[var(--c-muted)]">
-                        {registro.pedido?.obra?.nome || '-'}
-                        {registro.pedido?.obra?.codigo ? ` - ${registro.pedido.obra.codigo}` : ''}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="font-medium">{registro.item?.descricao || '-'}</div>
-                      <div className="text-xs text-[var(--c-muted)]">
-                        {registro.item?.origem || '-'}
-                        {registro.item?.unidade ? ` - ${registro.item.unidade}` : ''}
-                      </div>
-                    </td>
-                    <td>{registro.usuario?.nome || 'Sistema'}</td>
-                    <td className="max-w-[420px] whitespace-normal">
-                      <div>{registro.descricao || '-'}</div>
-                      <div className="mt-1 text-xs text-[var(--c-muted)]">{buildChangeSummary(registro)}</div>
-                    </td>
-                    <td className="whitespace-nowrap">
-                      {registro.pedido?.id ? (
-                        <Link to={`/pedidos-compra/${registro.pedido.id}`} className="btn btn-outline">
-                          Abrir pedido
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-[var(--c-muted)]">Sem pedido</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'data',
+                titulo: 'Data',
+                tipo: 'data',
+                render: (registro) => formatDateTime(registro.createdAt)
+              },
+              {
+                id: 'acao',
+                titulo: 'Ação',
+                tipo: 'badge',
+                render: (registro) => (
+                  <span className={actionClassName(registro.acao)}>{formatActionLabel(registro.acao)}</span>
+                )
+              },
+              {
+                id: 'pedido',
+                titulo: 'Pedido / obra',
+                // R17: o pedido (com a obra) nomeia o registro auditado.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (registro) => (
+                  <CelulaDupla
+                    principal={registro.pedido?.codigo || '-'}
+                    sub={`${registro.pedido?.obra?.nome || '-'}${registro.pedido?.obra?.codigo ? ` - ${registro.pedido.obra.codigo}` : ''}`}
+                  />
+                )
+              },
+              {
+                id: 'item',
+                titulo: 'Item',
+                tipo: 'texto',
+                render: (registro) => (
+                  <CelulaDupla
+                    principal={registro.item?.descricao || '-'}
+                    sub={`${registro.item?.origem || '-'}${registro.item?.unidade ? ` - ${registro.item.unidade}` : ''}`}
+                  />
+                )
+              },
+              {
+                id: 'usuario',
+                titulo: 'Usuário',
+                tipo: 'texto',
+                render: (registro) => registro.usuario?.nome || 'Sistema'
+              },
+              {
+                id: 'detalhes',
+                titulo: 'Detalhes',
+                tipo: 'texto',
+                /*
+                  A coluna que ABSORVE a sobra. É a mais longa da tabela e
+                  era a que menos espaço recebia: 156px para 300px de
+                  conteúdo. T4 manda a sobra ir para a coluna de conteúdo.
+
+                  O RESUMO DA ALTERAÇÃO SAIU DA CÉLULA (04/09). Ele vinha na
+                  sublinha, que é `nowrap` com reticências, e a sublinha
+                  contém DINHEIRO: "Preço unitário: R$ 2,00 → R$ 4,00" foi
+                  cortado no preview com 454px de largura para 495px de
+                  conteúdo. Valor monetário com reticências é o defeito que
+                  a T7 existe para pegar.
+
+                  Alargar a coluna não resolve: o resumo lista quantos
+                  campos a alteração tocar e não tem tamanho máximo. Deixar
+                  quebrar em duas linhas também não — valor partido em duas
+                  linhas é o outro lado da mesma T7 (o olho lê dois números
+                  onde há um).
+
+                  Resumo de alteração é DETALHE DO REGISTRO, não rótulo de
+                  célula. Foi para a linha expansível, onde tem largura da
+                  tabela inteira e pode ocupar as linhas que precisar.
+                */
+                flex: 3,
+                render: (registro) => registro.descricao || '-'
+              }
+            ]}
+            itens={registros}
+            getId={(registro) => registro.id}
+            carregando={loading}
+            /* O resumo completo da alteração — com os valores por extenso,
+               sem reticências (T7). */
+            linhaExpansivel={(registro) => {
+              const resumo = buildChangeSummary(registro);
+              return resumo ? <p className="app-note">{resumo}</p> : null;
+            }}
+            storageKey="tabela:relatorios-administrativos:auditoria"
+            rotuloRolagem="Historico de alteracoes"
+            vazio="Nenhum registro de auditoria encontrado para os filtros informados."
+            /* A1: a acao da linha e um link focavel — quem nao usa mouse
+               chega nela pelo teclado sem depender do clique na linha. */
+            acoesLinha={(registro) => (
+              registro.pedido?.id ? (
+                <Link to={`/pedidos-compra/${registro.pedido.id}`} className="btn btn-outline">
+                  Abrir pedido
+                </Link>
+              ) : (
+                <span className="text-xs text-[var(--c-muted)]">Sem pedido</span>
+              )
+            )}
+            larguraAcoes={160}
+          />
         )}
-      </div>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

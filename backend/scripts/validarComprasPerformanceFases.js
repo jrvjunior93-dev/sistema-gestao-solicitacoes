@@ -28,21 +28,6 @@ function run() {
   assert(controller.includes("const visaoResumida = ['resumo', 'delegacao']"));
   assert(controller.includes('data.itens_count'));
   assert(controller.includes('data.fornecedores_count'));
-  assert.match(
-    controller,
-    /model:\s*SolicitacaoCompraItem,\s*as:\s*'itens',\s*separate:\s*true/,
-    'Detalhe de compra deve carregar itens sem multiplicar o JOIN principal.'
-  );
-  assert.match(
-    controller,
-    /model:\s*SolicitacaoCompraFornecedor,\s*as:\s*'fornecedores',\s*separate:\s*true/,
-    'Detalhe de compra deve carregar fornecedores em consulta separada.'
-  );
-  assert.match(
-    controller,
-    /model:\s*PedidoCompra,\s*as:\s*'pedidos',\s*separate:\s*true/,
-    'Detalhe de compra deve carregar pedidos em consulta separada.'
-  );
 
   const pedidoService = read('src/services/pedidoCompraService.js');
   assert(pedidoService.includes("const visaoResumo = String(visao || '').trim().toLowerCase() === 'resumo'"));

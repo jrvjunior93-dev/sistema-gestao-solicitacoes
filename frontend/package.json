@@ -4,16 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:cadastro-obra-formulario": "node scripts/validarAberturaCadastroObra.mjs",
+    "test:pedido-entregas": "node scripts/validarPedidoEntregaUI.mjs",
+    "test:apropriacao-compra": "node scripts/validarModalApropriacaoCompra.mjs",
     "test:apropriacoes-gestao": "node scripts/validarGestaoApropriacoesSincronizacao.mjs",
     "dev": "vite",
+    "gerar:navegacao": "node scripts/gerarCatalogoNavegacaoBackend.mjs",
+    "prebuild": "npm run gerar:navegacao",
     "build": "vite build",
-    "test:responsive": "node scripts/validarResponsividadeFrontend.mjs",
+    "test:responsive": "node scripts/validarResponsividadeFrontend.mjs && node scripts/validarNavegacao.mjs && node scripts/validarAbasInternas.mjs && node scripts/varreduraCancelamento.mjs && npm run provas",
+    "verificar": "node scripts/validarLayout.mjs && node scripts/varreduraAlcance.mjs && npm run build && npm run test:responsive",
     "preview": "vite preview",
     "mobile:sync": "npm run build && npx cap sync",
     "mobile:android:add": "npx cap add android",
     "mobile:android:open": "npx cap open android",
     "mobile:ios:add": "npx cap add ios",
-    "mobile:ios:open": "npx cap open ios"
+    "mobile:ios:open": "npx cap open ios",
+    "test:navegacao": "node scripts/validarNavegacao.mjs && node scripts/validarAbasInternas.mjs",
+    "test:reaproveitamento-compra": "node scripts/validarReaproveitamentoCompra.mjs",
+    "provas": "node scripts/provas/acentoNoCodigo.mjs && node scripts/provas/ordemDeDeclaracao.mjs && node scripts/provas/larguraDeColuna.mjs && node scripts/provas/contagemDeLinhas.mjs && node scripts/provas/contrasteDosTokens.mjs && node scripts/provas/regrasMordem.mjs && node scripts/provas/itensDaDoDMordem.mjs && node scripts/provas/itensDoRunnerMordem.mjs && node scripts/provas/tokensExistem.mjs && node scripts/provas/filtrosVisiveisMordem.mjs && node scripts/provas/paginaCabeNoCelular.mjs && node scripts/qa-preview/provaLarguraCabe.mjs && node scripts/qa-preview/provaEtiquetaCabe.mjs && node scripts/qa-preview/provaVisaoAtivaAparece.mjs && node scripts/provas/erroNaoVazaCru.mjs && node scripts/qa-preview/provaCamadasCabem.mjs && node scripts/qa-preview/provaModaisCabem.mjs && node scripts/qa-preview/provaBarraDoTopo.mjs && node scripts/qa-preview/provaTextoInteiroAparece.mjs && node scripts/provas/escSemCliqueFora.mjs && node scripts/provas/modalPortalNaoPropaga.mjs",
+    "cancelamento": "node scripts/varreduraCancelamento.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",
@@ -21,6 +31,7 @@
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.0",
+    "@simplewebauthn/browser": "13.3.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^5.5.0",
@@ -29,6 +40,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
+    "playwright": "^1.55.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.1",
     "vite": "^5.0.10"

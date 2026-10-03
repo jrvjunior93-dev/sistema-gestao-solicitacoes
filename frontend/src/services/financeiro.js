@@ -1,21 +1,14 @@
 import { API_URL, authHeaders } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
+/* A escolha da mensagem é do `erroDeResposta` — uma regra, um arquivo.
+   Aqui ficava a mesma dança de try/JSON.parse/SyntaxError repetida em 30
+   serviços, e o `text ||` do final era o que despejava HTML de servidor na
+   tela (achado A2). */
 async function parseJson(response, fallbackMessage) {
   const text = await response.text();
   if (!response.ok) {
-    if (!text) {
-      throw new Error(fallbackMessage);
-    }
-
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || fallbackMessage);
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(text || fallbackMessage);
-      }
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, fallbackMessage, response.status));
   }
 
   return text ? JSON.parse(text) : null;
@@ -35,6 +28,164 @@ export async function getTitulosFinanceiros(params = {}) {
   return parseJson(response, 'Erro ao buscar titulos financeiros');
 }
 
+export async function getStatusInternosContasPagar() {
+  const response = await fetch(`${API_URL}/financeiro/status-internos-pagar`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar status internos do Contas a Pagar');
+}
+
+export async function criarStatusInternoContasPagar(nome) {
+  const response = await fetch(`${API_URL}/financeiro/status-internos-pagar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ nome })
+  });
+  return parseJson(response, 'Erro ao criar status interno do Contas a Pagar');
+}
+
+export async function atribuirStatusInternoContasPagar(tituloIds, status) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/status-interno-pagar`, {
+    method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ titulo_ids: tituloIds, status_interno_pagar: status || null })
+  });
+  return parseJson(response, 'Erro ao alterar status interno dos títulos');
+}
+
+export async function previewNegociacaoTitulos(payload) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/negociacoes/preview`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload)
+  });
+  return parseJson(response, 'Não foi possível preparar a negociação.');
+}
+
+export async function confirmarNegociacaoTitulos(payload, chave) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/negociacoes/confirmar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': chave }),
+    body: JSON.stringify(payload)
+  });
+  return parseJson(response, 'Não foi possível confirmar a negociação. Verifique antes de tentar novamente.');
+}
+
+export async function getNegociacaoTitulo(id) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/${id}/negociacao`, { headers: authHeaders(), cache: 'no-store' });
+  return parseJson(response, 'Não foi possível consultar a negociação.');
+}
+
+function buildFilaPagamentosQuery(params = {}) {
+  return new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  ).toString();
+}
+
+export async function getFilaPagamentos(params = {}) {
+  const query = buildFilaPagamentosQuery(params);
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos${query ? `?${query}` : ''}`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar a fila de pagamentos');
+}
+
+export async function getContasFilaPagamentos() {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/contas`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar as contas pagadoras');
+}
+
+export async function anexarComprovanteFilaPagamento(filaId, arquivo) {
+  const form = new FormData();
+  form.append('file', arquivo);
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}/comprovante`, {
+    method: 'POST', headers: authHeaders(), body: form
+  });
+  return parseJson(response, 'Erro ao anexar comprovante de pagamento');
+}
+
+export async function getComprovanteFilaPagamento(filaId, comprovanteId = null) {
+  const sufixo = comprovanteId ? `/comprovantes/${comprovanteId}` : '/comprovante';
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}${sufixo}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao abrir comprovante de pagamento');
+}
+
+export async function getArquivosSolicitacaoFila(id) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/solicitacoes/${id}/arquivos`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar os arquivos da solicitação');
+}
+
+function buildComprovantesFormData(files, vinculos) {
+  const form = new FormData();
+  Array.from(files || []).forEach((file) => form.append('files', file));
+  if (vinculos) form.append('vinculos', JSON.stringify(vinculos));
+  return form;
+}
+
+export async function previewComprovantesFilaPagamentos(files) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/comprovantes/preview`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: buildComprovantesFormData(files)
+  });
+  return parseJson(response, 'Erro ao ler comprovantes PDF');
+}
+
+export async function vincularComprovantesFilaPagamentos(files, vinculos) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/comprovantes/vincular`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: buildComprovantesFormData(files, vinculos)
+  });
+  return parseJson(response, 'Erro ao vincular comprovantes PDF');
+}
+
+export async function enviarTitulosFilaPagamentos(tituloIds, idempotencyKey) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ titulo_ids: tituloIds, idempotency_key: idempotencyKey })
+  });
+  return parseJson(response, 'Erro ao enviar os titulos para pagamento');
+}
+
+export async function registrarBaixasFilaPagamentos(itens, idempotencyKey) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/baixar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ itens, idempotency_key: idempotencyKey })
+  });
+  return parseJson(response, 'Erro ao registrar as baixas da fila');
+}
+
+export async function aprovarDivergenciasFilaPagamentos(filaIds, justificativa, idempotencyKey) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/aprovar-divergencias`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ fila_ids: filaIds, justificativa, idempotency_key: idempotencyKey })
+  });
+  return parseJson(response, 'Erro ao aprovar as divergencias da fila');
+}
+
+export async function informarNaoPagamentoFila(id, motivo) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${id}/resultado`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ status: 'NAO_PAGO', motivo })
+  });
+  return parseJson(response, 'Erro ao informar que o titulo nao foi pago');
+}
+
+export async function resolverFilaPagamento(id, acao, motivo = '') {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${id}/resolver`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ acao, motivo })
+  });
+  return parseJson(response, 'Erro ao resolver a pendencia de pagamento');
+}
+
 export async function gerarRelatorioTitulosFinanceirosPdf(params = {}) {
   const query = new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
@@ -49,15 +200,7 @@ export async function gerarRelatorioTitulosFinanceirosPdf(params = {}) {
 
   if (!response.ok) {
     const text = await response.text();
-    if (text) {
-      try {
-        const payload = JSON.parse(text);
-        throw new Error(payload?.error || 'Erro ao gerar relatorio de titulos financeiros');
-      } catch (error) {
-        if (!(error instanceof SyntaxError)) throw error;
-      }
-    }
-    throw new Error(text || 'Erro ao gerar relatorio de titulos financeiros');
+    throw new Error(mensagemDeErro(text, 'Erro ao gerar relatorio de titulos financeiros', response.status));
   }
 
   const disposition = response.headers.get('content-disposition') || '';
@@ -479,6 +622,15 @@ export async function confirmarConciliacaoTarifaBancaria(id, data) {
   return parseJson(response, 'Erro ao conciliar tarifa bancaria');
 }
 
+export async function confirmarConciliacaoRendimentoBancario(id, data) {
+  const response = await fetch(`${API_URL}/financeiro/conciliacoes/${id}/confirmar-rendimento`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao conciliar rendimento da conta');
+}
+
 export async function getTarifasEstornoConciliacao(id) {
   const response = await fetch(`${API_URL}/financeiro/conciliacoes/${id}/tarifas-estorno`, {
     headers: authHeaders()
@@ -571,6 +723,15 @@ export async function getCaixasFinanceiros(params = {}) {
   return parseJson(response, 'Erro ao buscar caixas financeiros');
 }
 
+export async function getPainelDiarioCaixas(dataReferencia) {
+  const query = dataReferencia ? `?data_referencia=${encodeURIComponent(dataReferencia)}` : '';
+  const response = await fetch(`${API_URL}/financeiro/caixas-painel-diario${query}`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar o painel diario de contas');
+}
+
 export async function getCaixaFinanceiro(id) {
   const response = await fetch(`${API_URL}/financeiro/caixas/${id}`, {
     headers: authHeaders(),
@@ -581,10 +742,14 @@ export async function getCaixaFinanceiro(id) {
 }
 
 export async function abrirCaixaFinanceiro(data) {
+  const body = new FormData();
+  Object.entries(data || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') body.append(key, value);
+  });
   const response = await fetch(`${API_URL}/financeiro/caixas/abrir`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(data)
+    headers: authHeaders(),
+    body
   });
 
   return parseJson(response, 'Erro ao abrir caixa financeiro');
@@ -609,11 +774,24 @@ export async function fecharCaixaFinanceiro(id, data) {
   return parseJson(response, 'Erro ao fechar caixa financeiro');
 }
 
-export async function registrarMovimentoCaixaFinanceiro(id, data) {
-  const response = await fetch(`${API_URL}/financeiro/caixas/${id}/movimentos`, {
+export async function decidirDivergenciaCaixaFinanceiro(id, data) {
+  const response = await fetch(`${API_URL}/financeiro/caixas/${id}/decidir-divergencia`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao decidir divergencia do caixa');
+}
+
+export async function registrarMovimentoCaixaFinanceiro(id, data) {
+  const body = new FormData();
+  Object.entries(data || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') body.append(key, value);
+  });
+  const response = await fetch(`${API_URL}/financeiro/caixas/${id}/movimentos`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body
   });
 
   return parseJson(response, 'Erro ao registrar movimento de caixa');
@@ -702,13 +880,7 @@ export async function exportarModeloImportacaoTitulosPagar() {
 
   if (!response.ok) {
     const text = await response.text();
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || 'Erro ao exportar modelo de contas a pagar');
-    } catch (error) {
-      if (error instanceof SyntaxError) throw new Error(text || 'Erro ao exportar modelo de contas a pagar');
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, 'Erro ao exportar modelo de contas a pagar', response.status));
   }
 
   const blob = await response.blob();
@@ -844,15 +1016,7 @@ export async function baixarPdfBoletoTitulo(id, { amostra = false } = {}) {
 
   if (!response.ok) {
     const text = await response.text();
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || 'Erro ao baixar PDF do boleto');
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(text || 'Erro ao baixar PDF do boleto');
-      }
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, 'Erro ao baixar PDF do boleto', response.status));
   }
 
   const blob = await response.blob();
@@ -901,15 +1065,7 @@ export async function gerarBoletoCaixaRemessa({ convenioId, tituloIds = [], bole
 
   if (!response.ok) {
     const text = await response.text();
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || 'Erro ao gerar remessa Caixa');
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(text || 'Erro ao gerar remessa Caixa');
-      }
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, 'Erro ao gerar remessa Caixa', response.status));
   }
 
   const blob = await response.blob();
@@ -930,15 +1086,7 @@ export async function baixarBoletoCaixaRemessa(id) {
 
   if (!response.ok) {
     const text = await response.text();
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || 'Erro ao baixar remessa Caixa');
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(text || 'Erro ao baixar remessa Caixa');
-      }
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, 'Erro ao baixar remessa Caixa', response.status));
   }
 
   const blob = await response.blob();
@@ -959,15 +1107,7 @@ export async function baixarBoletoCaixaHomologacaoCsv(id) {
 
   if (!response.ok) {
     const text = await response.text();
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || 'Erro ao baixar relatorio de homologacao Caixa');
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(text || 'Erro ao baixar relatorio de homologacao Caixa');
-      }
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, 'Erro ao baixar relatorio de homologacao Caixa', response.status));
   }
 
   const blob = await response.blob();
@@ -986,15 +1126,7 @@ export async function baixarBoletoCaixaHomologacaoPacote(id) {
 
   if (!response.ok) {
     const text = await response.text();
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || 'Erro ao baixar pacote de homologacao Caixa');
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(text || 'Erro ao baixar pacote de homologacao Caixa');
-      }
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, 'Erro ao baixar pacote de homologacao Caixa', response.status));
   }
 
   const blob = await response.blob();
@@ -1132,10 +1264,13 @@ export async function criarClienteChequeTerceiro(data) {
   return parseJson(response, 'Erro ao cadastrar cliente');
 }
 
-export async function movimentarChequeTerceiro(id, data) {
+export async function movimentarChequeTerceiro(id, data, idempotencyKey = null) {
   const response = await fetch(`${API_URL}/financeiro/cheques-terceiros/${id}/movimentar`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {})
+    }),
     body: JSON.stringify(data)
   });
   return parseJson(response, 'Erro ao movimentar cheque de terceiro');
@@ -1401,8 +1536,11 @@ export async function atualizarCategoriaFinanceira(id, data) {
   return parseJson(response, 'Erro ao atualizar categoria financeira');
 }
 
-export async function getResultadoObras() {
-  const response = await fetch(`${API_URL}/financeiro/relatorios/resultado-obras`, {
+export async function getResultadoObras(params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  ).toString();
+  const response = await fetch(`${API_URL}/financeiro/relatorios/resultado-obras${query ? `?${query}` : ''}`, {
     headers: authHeaders()
   });
 
@@ -1415,6 +1553,17 @@ export async function getResultadoCentrosCusto() {
   });
 
   return parseJson(response, 'Erro ao buscar resultado de centros de custo');
+}
+
+export async function getDistribuicaoCentrosCusto(params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  ).toString();
+  const response = await fetch(
+    `${API_URL}/financeiro/relatorios/centros-custo/distribuicao-obras${query ? `?${query}` : ''}`,
+    { headers: authHeaders() }
+  );
+  return parseJson(response, 'Erro ao buscar a distribuicao gerencial dos centros de custo');
 }
 
 export async function getDreFinanceira(params = {}) {
@@ -1884,4 +2033,21 @@ export function ignorarFinanceiroDda(id, motivo) {
     method: 'POST',
     body: JSON.stringify({ motivo })
   }, 'Erro ao ignorar documento DDA');
+}
+
+/**
+ * Os arquivos de uma linha do relatorio Financeiro de Obras (item 22, 23/08).
+ *
+ * Recebe o TITULO, e nao a solicitacao: a rota e estreita de proposito, para nao virar um caminho
+ * lateral para ler anexo de qualquer solicitacao. E cobra a permissao do RELATORIO — quem le o
+ * relatorio pode nao ter acesso ao modulo de solicitacoes.
+ */
+export async function getArquivosDoTitulo(tituloId) {
+  const res = await fetch(
+    `${API_URL}/financeiro/relatorios/financeiro-obras/titulos/${tituloId}/arquivos`,
+    { headers: authHeaders() }
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || 'Erro ao buscar os arquivos do titulo');
+  return json;
 }

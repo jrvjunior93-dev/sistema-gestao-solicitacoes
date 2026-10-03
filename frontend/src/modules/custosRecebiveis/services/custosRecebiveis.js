@@ -1,27 +1,46 @@
 import { API_URL, authHeaders } from '../../../services/api';
 
+/*
+  Corpo que não é JSON (página HTML de 502/404 do proxy ou do servidor) nunca
+  vira mensagem de erro: vale um texto legível pelo status. Quando o corpo é
+  JSON, `error`, `code` e `details` seguem como o servidor mandou.
+*/
+export function mensagemPadraoStatus(status, fallbackMessage) {
+  if (Number(status) === 404) return 'Consulta indisponível no servidor no momento.';
+  if (Number(status) >= 500) return 'O servidor não respondeu. Tente de novo em instantes.';
+  return fallbackMessage;
+}
+
 async function parseResponse(response, fallbackMessage) {
   const text = await response.text();
   let payload = null;
+  let bodyIsJson = false;
   if (text) {
     try {
       payload = JSON.parse(text);
+      bodyIsJson = true;
     } catch {
-      payload = { error: text };
+      payload = response.ok ? { error: text } : null;
     }
   }
 
   if (!response.ok) {
-    const error = new Error(payload?.error || fallbackMessage);
+    const serverMessage = bodyIsJson && typeof payload?.error === 'string'
+      && payload.error.trim() && !payload.error.trim().startsWith('<')
+      ? payload.error
+      : '';
+    const error = new Error(
+      serverMessage || (bodyIsJson ? fallbackMessage : mensagemPadraoStatus(response.status, fallbackMessage))
+    );
     error.status = response.status;
-    error.code = payload?.code || null;
-    error.details = payload?.details || null;
+    error.code = (bodyIsJson && payload?.code) || null;
+    error.details = (bodyIsJson && payload?.details) || null;
     throw error;
   }
   return payload;
 }
 
-export async function listarCustosRecebiveisObras(params = {}) {
+export async function listarCustosRecebiveisObras(params = {}, options = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== null && value !== undefined && String(value).trim() !== '') {
@@ -30,7 +49,8 @@ export async function listarCustosRecebiveisObras(params = {}) {
   });
   const suffix = query.toString() ? `?${query.toString()}` : '';
   const response = await fetch(`${API_URL}/custos-recebiveis/obras${suffix}`, {
-    headers: authHeaders()
+    headers: authHeaders(),
+    signal: options.signal
   });
   return parseResponse(response, 'Erro ao listar obras de Custos e Recebíveis');
 }
@@ -503,4 +523,144 @@ export async function listarAuditoriaCustosRecebiveis(obraId, params = {}) {
     { headers: authHeaders() }
   );
   return parseResponse(response, 'Erro ao consultar auditoria');
+}
+
+/* ---- Reforma 29/09/2026, Fase 2: prazos por obra, dilatação e sem medição ---- */
+
+export async function listarPrazosObras() {
+  const response = await fetch(`${API_URL}/custos-recebiveis/prazos`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar prazos das obras');
+}
+
+export async function salvarPrazosObra(obraId, payload) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/obras/${obraId}/prazos`, {
+    method: 'PUT',
+    headers: jsonHeaders(),
+    body: JSON.stringify(payload)
+  });
+  return parseResponse(response, 'Erro ao salvar prazos da obra');
+}
+
+export async function listarDilatacoes(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && String(value).trim() !== '') query.set(key, value);
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const response = await fetch(`${API_URL}/custos-recebiveis/dilatacoes${suffix}`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar dilatações de prazo');
+}
+
+export async function solicitarDilatacao(obraId, competencia, dias, motivo) {
+  const response = await fetch(
+    `${API_URL}/custos-recebiveis/obras/${obraId}/competencias/${competencia}/dilatacoes`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({ dias, motivo })
+    }
+  );
+  return parseResponse(response, 'Erro ao solicitar dilatação de prazo');
+}
+
+export async function decidirDilatacao(dilatacaoId, decisao, observacao = '') {
+  const response = await fetch(`${API_URL}/custos-recebiveis/dilatacoes/${dilatacaoId}/decidir`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ decisao, observacao: observacao || null })
+  });
+  return parseResponse(response, 'Erro ao decidir dilatação de prazo');
+}
+
+export async function registrarSemMedicaoCompetencia(obraId, competencia, justificativa) {
+  const response = await fetch(
+    `${API_URL}/custos-recebiveis/obras/${obraId}/competencias/${competencia}/medicao`,
+    {
+      method: 'POST',
+      headers: jsonHeaders({ 'Idempotency-Key': newIdempotencyKey('cr-sem-medicao') }),
+      body: JSON.stringify({ itens: [], sem_medicao: true, justificativa_sem_medicao: justificativa })
+    }
+  );
+  return parseResponse(response, 'Erro ao registrar mês sem medição aprovada');
+}
+
+/* ---- Reforma 29/09/2026, Fase 4: consultas gerais da tela do administrador ---- */
+
+function buildQuery(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && String(value).trim() !== '') query.set(key, value);
+  });
+  const suffix = query.toString();
+  return suffix ? `?${suffix}` : '';
+}
+
+/*
+  Rota que o servidor ainda não oferece (backend ainda não publicado): o
+  Express responde 404 sem `code`. O 404 de negócio (registro não achado)
+  sempre traz `code`, e esse continua sendo erro de verdade.
+*/
+export function consultaIndisponivel(error) {
+  return Number(error?.status) === 404 && !error?.code;
+}
+
+// Mensagem que pode ir para a tela: nunca HTML nem texto técnico cru.
+export function mensagemLegivel(error, fallback) {
+  if (consultaIndisponivel(error)) return 'Consulta indisponível no servidor no momento.';
+  const message = String(error?.message || '').trim();
+  if (!message || message.startsWith('<') || message.length > 300) return fallback;
+  return message;
+}
+
+export async function listarDecisoesPendentes(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/decisoes/pendentes${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
+  return parseResponse(response, 'Erro ao consultar decisões pendentes');
+}
+
+export async function listarReaberturas(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/reaberturas${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
+  return parseResponse(response, 'Erro ao consultar reaberturas');
+}
+
+/*
+  Decidir reabertura (aprovar ou negar): a rota `/aprovar` aceita as duas
+  decisões. Idempotente no servidor — pedido já decidido volta com
+  `idempotente: true`.
+*/
+export async function decidirReabertura(reaberturaId, decisao, justificativa = '') {
+  const texto = String(justificativa || '').trim();
+  const response = await fetch(`${API_URL}/custos-recebiveis/reaberturas/${reaberturaId}/aprovar`, {
+    method: 'POST',
+    headers: jsonHeaders({ 'Idempotency-Key': newIdempotencyKey('cr-reabertura-decisao') }),
+    body: JSON.stringify(texto ? { decisao, justificativa: texto } : { decisao })
+  });
+  return parseResponse(response, 'Erro ao decidir reabertura');
+}
+
+export async function listarAuditoriaGeral(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/auditoria${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
+  return parseResponse(response, 'Erro ao consultar auditoria');
+}
+
+export async function listarPlanosResumo() {
+  const response = await fetch(`${API_URL}/custos-recebiveis/planos`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar planilhas das obras');
+}
+
+export async function listarResponsaveisGeral() {
+  const response = await fetch(`${API_URL}/custos-recebiveis/responsaveis`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar responsáveis das obras');
+}
+
+export async function listarObrigacoes(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/obrigacoes${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
+  return parseResponse(response, 'Erro ao consultar obrigações');
 }

@@ -1,22 +1,35 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  HiOutlineArrowPath,
-  HiOutlineBanknotes,
-  HiOutlineCalendarDays,
-  HiOutlineCheckCircle,
-  HiOutlineCreditCard,
-  HiOutlineEye
-} from 'react-icons/hi2';
+import { HiOutlineArrowPath, HiOutlineEye } from 'react-icons/hi2';
 import {
   getCartoesFinanceiros,
   getFaturasCartaoFinanceiro
 } from '../services/financeiro';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BarraFiltros,
+  alternarValorFiltro,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  Avisos,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../components/padrao';
 
-const DEFAULT_FILTERS = {
-  status: 'ABERTA',
-  cartao_id: ''
-};
+const STATUS = [
+  { valor: 'ABERTA', rotulo: 'Abertas' },
+  { valor: 'FECHADA', rotulo: 'Fechadas' },
+  { valor: 'PARCIAL', rotulo: 'Parciais' },
+  { valor: 'PAGA', rotulo: 'Pagas' },
+  { valor: 'CANCELADA', rotulo: 'Canceladas' }
+];
+
+// O recorte inicial da tela: fatura aberta é o que o financeiro precisa ver
+// primeiro. Continua sendo UMA marca só, removível na própria etiqueta.
+const FILTROS_INICIAIS = { status: new Set(['ABERTA']), cartao_id: new Set() };
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -32,19 +45,17 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
-function compact(params = {}) {
-  return Object.fromEntries(
-    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
-  );
-}
-
-function statusClass(status) {
+/* R25 — o tom do status vem da classe do sistema (`badge-*`, que aponta
+   para --sem-*), nunca de paleta crua do Tailwind: `bg-emerald-100` e
+   `text-slate-700` não têm par no tema escuro nem passam pelo piso de
+   contraste do ThemeContext (R24). */
+function statusBadgeClasse(status) {
   const normalized = String(status || '').toUpperCase();
-  if (normalized === 'PAGA') return 'app-status-pill bg-emerald-100 text-emerald-700';
-  if (normalized === 'FECHADA') return 'app-status-pill bg-blue-100 text-blue-700';
-  if (normalized === 'PARCIAL') return 'app-status-pill bg-amber-100 text-amber-700';
-  if (normalized === 'CANCELADA') return 'app-status-pill bg-rose-100 text-rose-700';
-  return 'app-status-pill bg-slate-100 text-slate-700';
+  if (normalized === 'PAGA') return 'badge badge-success';
+  if (normalized === 'FECHADA') return 'badge badge-info';
+  if (normalized === 'PARCIAL') return 'badge badge-warning';
+  if (normalized === 'CANCELADA') return 'badge badge-danger';
+  return 'badge badge-muted';
 }
 
 function cartaoLabel(cartao) {
@@ -69,14 +80,73 @@ function getValorAberto(fatura) {
   }, 0);
 }
 
+// A dimensão é de valor ÚNICO no serviço (`status=`, `cartao_id=`): o
+// conjunto marcado vira o parâmetro, e conjunto vazio significa "todos".
+function umValor(conjunto) {
+  const [primeiro] = [...(conjunto || [])];
+  return primeiro || '';
+}
+
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'busca', rotulo: 'Busca', obrigatorio: true },
+  { id: 'status', rotulo: 'Status' },
+  { id: 'cartao_id', rotulo: 'Cartão' }
+];
+
 export default function FinanceiroFaturasCartao() {
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS);
+  const [filtrosAtivos, setFiltrosAtivos] = useState(FILTROS_INICIAIS);
+  const [busca, setBusca] = useState('');
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      if (filtro.id === 'busca') return busca.trim() !== '';
+      const atual = [...(filtrosAtivos[filtro.id] || [])].sort().join(',');
+      const padrao = [...(FILTROS_INICIAIS[filtro.id] || [])].sort().join(',');
+      return atual !== '' && atual !== padrao;
+    }).map((filtro) => filtro.id),
+    [busca, filtrosAtivos]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:faturas-cartao', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => setFiltrosAtivos((atual) => ({ ...atual, [id]: new Set() }))
+  });
   const [faturas, setFaturas] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
-  const [error, setError] = useState('');
+  const [recarga, setRecarga] = useState(0);
+  const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
 
   useEffect(() => {
     let active = true;
@@ -99,20 +169,28 @@ export default function FinanceiroFaturasCartao() {
     };
   }, []);
 
+  const status = umValor(filtrosAtivos.status);
+  const cartaoId = umValor(filtrosAtivos.cartao_id);
+
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError('');
 
-    getFaturasCartaoFinanceiro(compact(appliedFilters))
+    // R23 — UMA requisição por recorte: o filtro aplica ao MARCAR, sem botão
+    // de confirmação. A exceção da consulta cara (4+ dimensões ou 2s) não se
+    // aplica aqui: são duas dimensões e uma chamada.
+    const params = {};
+    if (status) params.status = status;
+    if (cartaoId) params.cartao_id = cartaoId;
+
+    getFaturasCartaoFinanceiro(params)
       .then((data) => {
         if (!active) return;
-        const list = Array.isArray(data) ? data : [];
-        setFaturas(list);
+        setFaturas(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
         if (!active) return;
-        setError(err?.message || 'Erro ao carregar faturas de cartao');
+        avisar.erro(err?.message || 'Erro ao carregar faturas de cartao');
         setFaturas([]);
       })
       .finally(() => {
@@ -122,197 +200,167 @@ export default function FinanceiroFaturasCartao() {
     return () => {
       active = false;
     };
-  }, [appliedFilters]);
+  }, [status, cartaoId, recarga, avisar]);
 
-  const resumo = useMemo(() => faturas.reduce((acc, fatura) => {
-    acc.quantidade += 1;
+  // A busca é textual e local ao recorte carregado — R23 não pede botão
+  // para ela, e o serviço de faturas não recebe termo de busca.
+  const faturasVisiveis = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return faturas;
+    return faturas.filter((fatura) => [
+      fatura.competencia,
+      cartaoLabel(fatura.cartao),
+      contaLabel(fatura.cartao?.contaBancaria)
+    ].join(' ').toLowerCase().includes(termo));
+  }, [faturas, busca]);
+
+  const resumo = useMemo(() => faturasVisiveis.reduce((acc, fatura) => {
     acc.valor_total += Number(fatura.valor_total || 0);
     acc.valor_aberto += getValorAberto(fatura);
     if (String(fatura.status || '').toUpperCase() === 'PAGA') acc.pagas += 1;
+    else acc.emAberto += 1;
     return acc;
   }, {
-    quantidade: 0,
     valor_total: 0,
     valor_aberto: 0,
-    pagas: 0
-  }), [faturas]);
+    pagas: 0,
+    emAberto: 0
+  }), [faturasVisiveis]);
 
-  function setFilter(name, value) {
-    setFilters((current) => ({
-      ...current,
-      [name]: value
-    }));
-  }
+  const opcoesCartao = useMemo(
+    () => cartoes.map((cartao) => ({ valor: String(cartao.id), rotulo: cartaoLabel(cartao) })),
+    [cartoes]
+  );
 
-  function aplicarFiltros(event) {
-    event.preventDefault();
-    setAppliedFilters({ ...filters });
-  }
-
-  function limparFiltros() {
-    setFilters(DEFAULT_FILTERS);
-    setAppliedFilters(DEFAULT_FILTERS);
+  function alternarFiltro(dimensao, valor, opcoes) {
+    setFiltrosAtivos((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes));
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header-row">
-        <div>
-          <h1 className="page-title">Faturas de Cartao</h1>
-          <p className="page-subtitle">
-            Controle as faturas de cartao de credito, confira os titulos vinculados e registre a baixa na conta bancaria real.
-          </p>
-        </div>
-        <div className="app-page-actions">
-          <Link to="/financeiro/titulos" className="btn btn-outline btn-sm">Titulos</Link>
-          <Link to="/financeiro/cadastros" className="btn btn-outline btn-sm">Cartoes</Link>
-        </div>
-      </div>
+    <Pagina>
+      {/* R13/C1/C2/R5 — faixa fixa do sistema: título em 22px, contagem e
+          apoio numa linha só; o parágrafo de apoio solto abaixo do título
+          saiu (a prop `descricao` faz o papel dele, dentro da faixa).
+          R11/C6 — os links "Titulos" e "Cartoes" que moravam na barra de
+          ações eram NAVEGAÇÃO disfarçada de ação; menu, breadcrumb e Ctrl+K
+          já levam lá. */}
+      <PageHeader
+        titulo="Faturas de Cartão"
+        contagem={`${faturasVisiveis.length} fatura(s)`}
+        descricao="Faturas de cartão de crédito, títulos vinculados e baixa na conta bancária real."
+        secundarias={[
+          {
+            rotulo: 'Atualizar',
+            onClick: () => { limparAvisos(); setRecarga((n) => n + 1); },
+            desabilitada: loading,
+            icone: <HiOutlineArrowPath aria-hidden="true" />
+          }
+        ]}
+      />
 
-      <form className="card sol-surface-card" onSubmit={aplicarFiltros}>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
-          <label className="app-filter-field xl:col-span-3">
-            <span className="app-filter-label">Status</span>
-            <select className="input w-full input-sm" value={filters.status} onChange={(event) => setFilter('status', event.target.value)}>
-              <option value="">Todos</option>
-              <option value="ABERTA">Abertas</option>
-              <option value="FECHADA">Fechadas</option>
-              <option value="PARCIAL">Parciais</option>
-              <option value="PAGA">Pagas</option>
-              <option value="CANCELADA">Canceladas</option>
-            </select>
-          </label>
-          <label className="app-filter-field xl:col-span-5">
-            <span className="app-filter-label">Cartao</span>
-            <select className="input w-full input-sm" value={filters.cartao_id} onChange={(event) => setFilter('cartao_id', event.target.value)} disabled={loadingOptions}>
-              <option value="">Todos os cartoes</option>
-              {cartoes.map((cartao) => (
-                <option key={cartao.id} value={cartao.id}>{cartaoLabel(cartao)}</option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-end gap-2 xl:col-span-4">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
-              {loading ? 'Carregando...' : 'Atualizar'}
-            </button>
-            <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>Limpar</button>
-          </div>
-        </div>
-      </form>
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
-      {error && <div className="alert-error">{error}</div>}
+      {/* M2/R10 — o ladrilho do sistema no lugar dos quatro cartões cujo
+          número e cujo ícone traziam tamanho medido à mão, fora da escala.
+          B3: a CONTAGEM de faturas já vive na faixa fixa; aqui entram só os
+          números que ela não diz. */}
+      <StatGrid colunas={4}>
+        <StatTile label="Valor total" valor={formatCurrency(resumo.valor_total)} />
+        <StatTile
+          label="Saldo em aberto"
+          valor={formatCurrency(resumo.valor_aberto)}
+          tom={resumo.valor_aberto > 0 ? 'warning' : undefined}
+        />
+        <StatTile label="Faturas pagas" valor={String(resumo.pagas)} tom="success" />
+        <StatTile label="Faturas em aberto" valor={String(resumo.emAberto)} />
+      </StatGrid>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div className="card sol-surface-card">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Faturas</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{resumo.quantidade}</p>
-            </div>
-            <HiOutlineCreditCard className="h-5 w-5 text-[var(--c-muted)]" />
-          </div>
-        </div>
-        <div className="card sol-surface-card">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor total</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{formatCurrency(resumo.valor_total)}</p>
-            </div>
-            <HiOutlineBanknotes className="h-5 w-5 text-[var(--c-muted)]" />
-          </div>
-        </div>
-        <div className="card sol-surface-card">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Saldo em aberto</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{formatCurrency(resumo.valor_aberto)}</p>
-            </div>
-            <HiOutlineCalendarDays className="h-5 w-5 text-[var(--c-muted)]" />
-          </div>
-        </div>
-        <div className="card sol-surface-card">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Pagas</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{resumo.pagas}</p>
-            </div>
-            <HiOutlineCheckCircle className="h-5 w-5 text-[var(--c-muted)]" />
-          </div>
-        </div>
-      </div>
+      <BlocoConteudo
+        titulo="Faturas encontradas"
+        /* B2: o bloco que carrega o conteúdo da tela é o primário. */
+        variante="primario"
+        descricao="Abra uma fatura para conferir os títulos vinculados e registrar o pagamento."
+      >
+        {/* R12/F1/F2 — busca única ocupando a faixa e filtros por MARCAÇÃO,
+            com etiqueta removível. Os dois <select> de escolha única saíram;
+            as dimensões são `unico` porque o serviço só aceita um valor. */}
+        <BarraFiltros
+          busca={visibilidadeFiltros.ehVisivel('busca') ? {
+            valor: busca,
+            aoMudar: setBusca,
+            placeholder: 'Competência, cartão ou conta'
+          } : null}
+          filtros={[
+            { id: 'status', rotulo: 'Status', unico: true, opcoes: STATUS },
+            {
+              id: 'cartao_id',
+              rotulo: 'Cartão',
+              unico: true,
+              opcoes: loadingOptions ? [] : opcoesCartao
+            }
+          ].filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={filtrosAtivos}
+          aoAlternar={alternarFiltro}
+          aoLimpar={() => { setFiltrosAtivos({ status: new Set(), cartao_id: new Set() }); setBusca(''); }}
+          visibilidade={visibilidadeFiltros}
+        />
 
-      <div>
-        <section className="card sol-surface-card">
-          <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-[var(--c-text)]">Faturas encontradas</h2>
-              <p className="text-sm text-[var(--c-muted)]">Abra uma fatura para conferir os titulos vinculados e registrar pagamento.</p>
-            </div>
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setAppliedFilters({ ...filters })} disabled={loading}>
-              <HiOutlineArrowPath className="h-4 w-4" /> Atualizar
-            </button>
-          </div>
-
-          <div className="app-dense-table-wrapper">
-            <table className="app-dense-data-table faturas-cartao-table">
-              <colgroup>
-                <col className="app-dense-col-title" />
-                <col className="app-dense-col-title" />
-                <col className="app-dense-col-date" />
-                <col className="app-dense-col-status" />
-                <col className="app-dense-col-money" />
-                <col className="app-dense-col-number" />
-                <col className="app-dense-col-actions" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Fatura</th>
-                  <th>Cartao</th>
-                  <th>Vencimento</th>
-                  <th>Status</th>
-                  <th>Valor</th>
-                  <th>Titulos</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="7">Carregando faturas...</td></tr>
-                ) : faturas.length === 0 ? (
-                  <tr><td colSpan="7">Nenhuma fatura encontrada.</td></tr>
-                ) : faturas.map((fatura) => (
-                  <tr key={fatura.id}>
-                    <td>
-                      <div className="font-semibold text-[var(--c-text)]">{fatura.competencia || `#${fatura.id}`}</div>
-                      <div className="text-xs text-[var(--c-muted)]">
-                        {formatDate(fatura.data_inicio)} a {formatDate(fatura.data_fechamento)}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="text-sm text-[var(--c-text)]">{cartaoLabel(fatura.cartao)}</div>
-                      <div className="text-xs text-[var(--c-muted)]">{contaLabel(fatura.cartao?.contaBancaria)}</div>
-                    </td>
-                    <td>{formatDate(fatura.data_vencimento)}</td>
-                    <td><span className={statusClass(fatura.status)}>{fatura.status || 'ABERTA'}</span></td>
-                    <td className="font-semibold">{formatCurrency(fatura.valor_total)}</td>
-                    <td>{(fatura.titulos || []).length}</td>
-                    <td>
-                      <Link
-                        className="app-dense-icon-action"
-                        to={`/financeiro/faturas-cartao/${fatura.id}`}
-                        title="Abrir detalhes"
-                        aria-label={`Abrir detalhes da fatura ${fatura.competencia || fatura.id}`}
-                      >
-                        <HiOutlineEye />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    </div>
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'fatura',
+              titulo: 'Fatura',
+              tipo: 'codigo',
+              render: (fatura) => (
+                <div>
+                  <div className="font-semibold text-[var(--c-text)]">{fatura.competencia || `#${fatura.id}`}</div>
+                  <div className="text-xs text-[var(--c-muted)]">
+                    {formatDate(fatura.data_inicio)} a {formatDate(fatura.data_fechamento)}
+                  </div>
+                </div>
+              )
+            },
+            {
+              id: 'cartao',
+              titulo: 'Cartão',
+              // R17: o cartao NOMEIA a fatura.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (fatura) => (
+                <div>
+                  <div className="text-sm text-[var(--c-text)]">{cartaoLabel(fatura.cartao)}</div>
+                  <div className="text-xs text-[var(--c-muted)]">{contaLabel(fatura.cartao?.contaBancaria)}</div>
+                </div>
+              )
+            },
+            { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', render: (fatura) => formatDate(fatura.data_vencimento) },
+            {
+              id: 'status',
+              titulo: 'Status',
+              tipo: 'status',
+              render: (fatura) => <span className={statusBadgeClasse(fatura.status)}>{fatura.status || 'ABERTA'}</span>
+            },
+            { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (fatura) => <span className="font-semibold">{formatCurrency(fatura.valor_total)}</span> },
+            { id: 'titulos', titulo: 'Títulos', tipo: 'numero', render: (fatura) => (fatura.titulos || []).length }
+          ]}
+          itens={faturasVisiveis}
+          carregando={loading}
+          vazio="Nenhuma fatura encontrada."
+          storageKey="tabela:faturas-cartao"
+          rotuloRolagem="Faturas de cartao encontradas"
+          larguraAcoes={120}
+          acoesLinha={(fatura) => (
+            <Link
+              className="btn btn-outline btn-sm"
+              to={`/financeiro/faturas-cartao/${fatura.id}`}
+              title="Abrir detalhes"
+              aria-label={`Abrir detalhes da fatura ${fatura.competencia || fatura.id}`}
+            >
+              <HiOutlineEye aria-hidden="true" />
+            </Link>
+          )}
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

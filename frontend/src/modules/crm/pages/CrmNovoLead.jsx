@@ -1,7 +1,17 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { criarLead } from '../../../services/crm';
-import { maskCpfCnpj, maskPhone, normalizeCurrencyTyping, onlyDigits } from '../../../utils/formatters';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  FormSecao,
+  CampoForm,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import { getCpfCnpjError, maskCpfCnpj, maskPhone, normalizeCurrencyTyping, onlyDigits } from '../../../utils/formatters';
 
 const SOURCE_OPTIONS = [
   { value: 'MANUAL', label: 'Manual' },
@@ -14,6 +24,8 @@ const SOURCE_OPTIONS = [
 
 export default function CrmNovoLead() {
   const navigate = useNavigate();
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     nome: '',
@@ -37,7 +49,16 @@ export default function CrmNovoLead() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.nome.trim()) return alert('Nome e obrigatorio');
+    if (!form.nome.trim()) {
+      // R19/R3: era `alert('Nome e obrigatorio')` — a caixa do navegador.
+      avisar.alerta('Informe o nome do lead para continuar.');
+      return;
+    }
+    const documentoErro = getCpfCnpjError(form.documento);
+    if (documentoErro) {
+      avisar.alerta(documentoErro);
+      return;
+    }
     try {
       setSaving(true);
       const lead = await criarLead({
@@ -48,11 +69,31 @@ export default function CrmNovoLead() {
       navigate(`/crm/leads/${lead.id}`);
     } catch (err) {
       if (err.status === 409) {
-        if (confirm(`${err.message}\n\nDeseja abrir o lead existente?`)) {
-          navigate(`/crm/leads/${err.duplicateId || ''}`);
+        /*
+          R21 + R26 — o duplicado era perguntado com `confirm()` e o destino
+          era lido DEPOIS da resposta (`err.duplicateId || ''`), o que
+          mandava para `/crm/leads/` quando o id não vinha: a pessoa
+          autorizava "abrir o lead existente" e caía noutro lugar.
+          Agora o id é FIXADO antes do `await`, o retorno é DESESTRUTURADO
+          (objeto é sempre truthy — sem isso o "Cancelar" navegaria), e sem
+          id não se navega: diz-se o que houve.
+        */
+        const idExistente = err.duplicateId;
+        const mensagemDuplicado = err.message || 'Ja existe um lead com estes dados.';
+        if (!idExistente) {
+          avisar.alerta(`${mensagemDuplicado} Nao foi possivel identificar o lead existente para abrir.`);
+          return;
         }
+        const { ok } = await confirmar({
+          titulo: 'Lead já cadastrado',
+          mensagem: `${mensagemDuplicado} Deseja abrir o lead existente?`,
+          rotuloConfirmar: 'Abrir lead existente',
+          rotuloCancelar: 'Continuar editando'
+        });
+        if (!ok) return;
+        navigate(`/crm/leads/${idExistente}`);
       } else {
-        alert(err.message || 'Erro ao criar lead');
+        avisar.erro(err.message || 'Erro ao criar lead');
       }
     } finally {
       setSaving(false);
@@ -60,114 +101,166 @@ export default function CrmNovoLead() {
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Novo Lead</h1>
-            <p className="page-subtitle">Cadastro manual de lead para o CRM.</p>
-          </div>
-          <Link to="/crm/leads" className="btn btn-secondary text-sm">Cancelar</Link>
-        </div>
-      </div>
+    <Pagina>
+      {/*
+        C3/R11 — tela de REGISTRO: a seta de voltar à esquerda é a
+        affordance primária de retorno e substitui o link "Cancelar" que
+        ficava solto na faixa. A saída continua existindo também no rodapé
+        do formulário, ao lado do botão que grava.
+      */}
+      <PageHeader
+        titulo="Novo lead"
+        descricao="Cadastro manual de lead para o CRM."
+        voltar={{ to: '/crm/leads', title: 'Voltar para leads' }}
+      />
 
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-        <div className="card sol-surface-card p-5">
-          <h2 className="font-semibold text-main mb-3">Dados do Lead</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className="app-filter-field sm:col-span-2">
-              <span className="app-filter-label">Nome <span className="text-red-500">*</span></span>
-              <input className="input" value={form.nome} onChange={set('nome')} placeholder="Nome completo" required />
-            </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Telefone</span>
-              <input className="input" value={form.telefone} onChange={(e) => setForm((current) => ({ ...current, telefone: maskPhone(e.target.value) }))} placeholder="(99) 99999-9999" />
-            </label>
+      {/*
+        R9 (revista em 04/09) — FORMULÁRIO INLINE, e não em modal. O
+        critério não é a frequência: é o que a tela existe para fazer. Esta
+        tela TEM ROTA PRÓPRIA (`/crm/leads/novo`) e existe para cadastrar um
+        lead — pelo teste da regra, tirando o formulário não sobra tela
+        nenhuma. Modal aqui seria atrito puro. Não mover para OverlayModal.
+      */}
+      <form onSubmit={handleSubmit}>
+        <BlocoConteudo titulo="Dados do lead" variante="primario" cor="var(--c-primary)">
+          <FormSecao legenda="Identificação" colunas={2}>
+            <CampoForm label="Nome" obrigatorio span={2}>
+              <input
+                className="input w-full"
+                value={form.nome}
+                onChange={set('nome')}
+                placeholder="Nome completo"
+                required
+              />
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">E-mail</span>
-              <input className="input" type="email" value={form.email} onChange={set('email')} placeholder="email@exemplo.com" />
-            </label>
+            <CampoForm label="Telefone">
+              <input
+                className="input w-full"
+                value={form.telefone}
+                onChange={(e) => setForm((current) => ({ ...current, telefone: maskPhone(e.target.value) }))}
+                placeholder="(99) 99999-9999"
+              />
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">CPF / CNPJ</span>
-              <input className="input" value={form.documento} onChange={(e) => setForm((current) => ({ ...current, documento: maskCpfCnpj(e.target.value) }))} placeholder="Documento" />
-            </label>
+            <CampoForm label="E-mail">
+              <input
+                className="input w-full"
+                type="email"
+                value={form.email}
+                onChange={set('email')}
+                placeholder="email@exemplo.com"
+              />
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Temperatura</span>
-              <select className="input" value={form.temperatura} onChange={set('temperatura')}>
+            <CampoForm label="CPF / CNPJ">
+              <input
+                className="input w-full"
+                value={form.documento}
+                onChange={(e) => setForm((current) => ({ ...current, documento: maskCpfCnpj(e.target.value) }))}
+                placeholder="Documento"
+              />
+            </CampoForm>
+
+            {/* R12: select de FORMULÁRIO (entrada de dado) — legítimo. */}
+            <CampoForm label="Temperatura">
+              <select className="input w-full" value={form.temperatura} onChange={set('temperatura')}>
                 <option value="FRIO">Frio</option>
                 <option value="MORNO">Morno</option>
                 <option value="QUENTE">Quente</option>
               </select>
-            </label>
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Cidade</span>
-              <input className="input" value={form.cidade} onChange={set('cidade')} placeholder="Cidade" />
-            </label>
+            <CampoForm label="Cidade">
+              <input className="input w-full" value={form.cidade} onChange={set('cidade')} placeholder="Cidade" />
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Estado</span>
-              <input className="input" maxLength={2} value={form.estado} onChange={(e) => setForm((current) => ({ ...current, estado: e.target.value.toUpperCase() }))} placeholder="ES" />
-            </label>
-          </div>
-        </div>
+            <CampoForm label="Estado">
+              <input
+                className="input w-full"
+                maxLength={2}
+                value={form.estado}
+                onChange={(e) => setForm((current) => ({ ...current, estado: e.target.value.toUpperCase() }))}
+                placeholder="ES"
+              />
+            </CampoForm>
+          </FormSecao>
 
-        <div className="card sol-surface-card p-5">
-          <h2 className="font-semibold text-main mb-3">Interesse e Origem</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className="app-filter-field">
-              <span className="app-filter-label">Empreendimento de interesse</span>
-              <input className="input" value={form.empreendimento_interesse} onChange={set('empreendimento_interesse')} placeholder="Ex: Residencial Horizonte" />
-            </label>
+          <FormSecao legenda="Interesse e origem" colunas={2}>
+            <CampoForm label="Empreendimento de interesse">
+              <input
+                className="input w-full"
+                value={form.empreendimento_interesse}
+                onChange={set('empreendimento_interesse')}
+                placeholder="Ex: Residencial Horizonte"
+              />
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Produto de interesse</span>
-              <input className="input" value={form.produto_interesse} onChange={set('produto_interesse')} placeholder="Ex: Apartamento 2 quartos" />
-            </label>
+            <CampoForm label="Produto de interesse">
+              <input
+                className="input w-full"
+                value={form.produto_interesse}
+                onChange={set('produto_interesse')}
+                placeholder="Ex: Apartamento 2 quartos"
+              />
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Faixa de valor</span>
-              <input className="input" inputMode="decimal" value={form.faixa_valor} onChange={(e) => setForm((current) => ({ ...current, faixa_valor: normalizeCurrencyTyping(e.target.value) }))} placeholder="Ex: R$ 300.000,00" />
-            </label>
+            <CampoForm label="Faixa de valor">
+              {/* R6: campo de dinheiro usa .input-moeda (piso de 180px, alinhado
+                  à direita e tabular) — a medida mora na classe, não na tela. */}
+              <input
+                className="input input-moeda"
+                inputMode="decimal"
+                value={form.faixa_valor}
+                onChange={(e) => setForm((current) => ({ ...current, faixa_valor: normalizeCurrencyTyping(e.target.value) }))}
+                placeholder="Ex: R$ 300.000,00"
+              />
+            </CampoForm>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Origem</span>
-              <select className="input" value={form.source_type} onChange={set('source_type')}>
+            <CampoForm label="Origem">
+              <select className="input w-full" value={form.source_type} onChange={set('source_type')}>
                 {SOURCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-            </label>
+            </CampoForm>
 
             {['META_ADS', 'GOOGLE_ADS', 'SITE'].includes(form.source_type) && (
-              <label className="app-filter-field sm:col-span-2">
-                <span className="app-filter-label">Nome da campanha / fonte</span>
-                <input className="input" value={form.source_name} onChange={set('source_name')} placeholder="Nome da campanha" />
-              </label>
+              <CampoForm label="Nome da campanha / fonte" span={2}>
+                <input
+                  className="input w-full"
+                  value={form.source_name}
+                  onChange={set('source_name')}
+                  placeholder="Nome da campanha"
+                />
+              </CampoForm>
             )}
+          </FormSecao>
+
+          <FormSecao legenda="Observações" colunas={2}>
+            <CampoForm label="Informações adicionais" tipo="texto-longo" span={2}>
+              <textarea
+                className="input w-full"
+                rows={4}
+                value={form.observacoes}
+                onChange={set('observacoes')}
+                placeholder="Informações adicionais sobre o lead..."
+              />
+            </CampoForm>
+          </FormSecao>
+
+          <div className="app-actionbar">
+            <button type="button" className="btn btn-outline" onClick={() => navigate('/crm/leads')}>
+              Cancelar
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Salvando...' : 'Criar lead'}
+            </button>
           </div>
-        </div>
-
-        <div className="card sol-surface-card p-5">
-          <h2 className="font-semibold text-main mb-3">Observacoes</h2>
-          <textarea
-            className="input w-full"
-            rows={4}
-            value={form.observacoes}
-            onChange={set('observacoes')}
-            placeholder="Informacoes adicionais sobre o lead..."
-          />
-        </div>
-
-        <div className="flex justify-end gap-3 pb-6">
-          <Link to="/crm/leads" className="btn btn-secondary">Cancelar</Link>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Salvando...' : 'Criar Lead'}
-          </button>
-        </div>
+        </BlocoConteudo>
       </form>
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

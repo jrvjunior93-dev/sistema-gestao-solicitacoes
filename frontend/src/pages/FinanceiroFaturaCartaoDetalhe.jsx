@@ -1,16 +1,24 @@
+import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import {
-  HiOutlineArrowLeft,
-  HiOutlineBanknotes,
-  HiOutlineCheckCircle,
-  HiOutlineCreditCard
-} from 'react-icons/hi2';
+import { useParams } from 'react-router-dom';
 import {
   baixarFaturaCartaoFinanceiro,
   getContasBancarias,
   getFaturaCartaoFinanceiro
 } from '../services/financeiro';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  FormSecao,
+  CampoForm,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -30,13 +38,24 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
-function statusClass(status) {
+/* R25 — o tom vem da classe do sistema (`badge-*` → --sem-*), nunca de
+   paleta crua do Tailwind: `bg-emerald-100`/`text-slate-700` não têm par no
+   tema escuro nem passam pelo piso de contraste do ThemeContext (R24). */
+function statusBadgeClasse(status) {
   const normalized = String(status || '').toUpperCase();
-  if (normalized === 'PAGA' || normalized === 'QUITADO') return 'app-status-pill bg-emerald-100 text-emerald-700';
-  if (normalized === 'FECHADA' || normalized === 'ABERTO') return 'app-status-pill bg-blue-100 text-blue-700';
-  if (normalized === 'PARCIAL') return 'app-status-pill bg-amber-100 text-amber-700';
-  if (normalized === 'CANCELADA' || normalized === 'CANCELADO') return 'app-status-pill bg-rose-100 text-rose-700';
-  return 'app-status-pill bg-slate-100 text-slate-700';
+  if (normalized === 'PAGA' || normalized === 'QUITADO') return 'badge badge-success';
+  if (normalized === 'FECHADA' || normalized === 'ABERTO') return 'badge badge-info';
+  if (normalized === 'PARCIAL') return 'badge badge-warning';
+  if (normalized === 'CANCELADA' || normalized === 'CANCELADO') return 'badge badge-danger';
+  return 'badge badge-muted';
+}
+
+function statusTom(status) {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'PAGA') return 'success';
+  if (normalized === 'PARCIAL') return 'warning';
+  if (normalized === 'CANCELADA') return 'danger';
+  return undefined;
 }
 
 function cartaoLabel(cartao) {
@@ -67,14 +86,13 @@ function countTitulosAbertos(fatura) {
 
 export default function FinanceiroFaturaCartaoDetalhe() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [fatura, setFatura] = useState(null);
   const [contas, setContas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const { avisos, avisar, fechar: fecharAviso } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [baixaForm, setBaixaForm] = useState({
     conta_bancaria_id: '',
     data_pagamento: today(),
@@ -84,7 +102,6 @@ export default function FinanceiroFaturaCartaoDetalhe() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError('');
 
     getFaturaCartaoFinanceiro(id)
       .then((data) => {
@@ -98,7 +115,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
         }));
       })
       .catch((err) => {
-        if (active) setError(err?.message || 'Erro ao carregar fatura de cartao');
+        if (active) avisar.erro(err?.message || 'Erro ao carregar fatura de cartao');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -107,7 +124,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, avisar]);
 
   useEffect(() => {
     let active = true;
@@ -138,152 +155,107 @@ export default function FinanceiroFaturaCartaoDetalhe() {
 
   async function baixarFatura(event) {
     event.preventDefault();
-    if (!fatura) return;
+    if (!fatura || processing) return;
+
+    /*
+      R26 (04/09) — a referência é FIXADA antes do `await`. O modal do
+      sistema não bloqueia a tela como o `prompt` bloqueava: entre a
+      pergunta e a ação a fatura em `state` pode ser trocada por uma
+      recarga. `faturaAlvo` e `dados` são o que a pessoa leu e autorizou, e
+      são o que a ação usa — mesma fatura, mesma conta, mesmo valor.
+
+      DoD (classe "consentimento"): o valor citado na mensagem
+      (`faturaAlvo.valor_total`) e a conta citada são exatamente os que vão
+      no payload; nada é relido depois da confirmação.
+    */
+    const faturaAlvo = fatura;
+    const dados = { ...baixaForm };
+    const contaAlvo = contas.find((conta) => String(conta.id) === String(dados.conta_bancaria_id));
+
+    const { ok } = await confirmar({
+      titulo: 'Registrar o pagamento desta fatura?',
+      mensagem: `${formatCurrency(faturaAlvo.valor_total)} da fatura ${faturaAlvo.competencia || `#${faturaAlvo.id}`} sairão de ${contaLabel(contaAlvo)} em ${formatDate(dados.data_pagamento)}, e a conta de controle do cartão recebe o crédito de compensação. Esta tela não desfaz a baixa: para voltar atrás é preciso estornar pela tela de baixas.`,
+      rotuloConfirmar: 'Baixar fatura'
+    });
+    if (!ok) return;
 
     try {
       setProcessing(true);
-      setError('');
-      setMessage('');
-      const data = await baixarFaturaCartaoFinanceiro(fatura.id, baixaForm);
+      const data = await baixarFaturaCartaoFinanceiro(faturaAlvo.id, dados);
       setFatura(data);
-      setMessage('Pagamento da fatura registrado. A conta real recebeu a saida e a conta do cartao recebeu o credito de compensacao.');
+      avisar.sucesso('Pagamento da fatura registrado. A conta real recebeu a saída e a conta do cartão recebeu o crédito de compensação.');
     } catch (err) {
-      setError(err?.message || 'Erro ao baixar fatura de cartao');
+      avisar.erro(err?.message || 'Erro ao baixar fatura de cartao');
     } finally {
       setProcessing(false);
     }
   }
 
   const status = String(fatura?.status || '').toUpperCase();
-  const canBaixar = fatura && ['ABERTA', 'FECHADA', 'PARCIAL'].includes(status) && resumo.total > 0;
+  const canBaixar = Boolean(fatura) && ['ABERTA', 'FECHADA', 'PARCIAL'].includes(status) && resumo.total > 0;
+  const periodo = fatura
+    ? `${cartaoLabel(fatura.cartao)} · ${formatDate(fatura.data_inicio)} a ${formatDate(fatura.data_fechamento)} · vence em ${formatDate(fatura.data_vencimento)}`
+    : 'Carregando fatura…';
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header-row">
-        <div>
-          <button type="button" className="btn btn-outline btn-sm mb-3" onClick={() => navigate('/financeiro/faturas-cartao')}>
-            <HiOutlineArrowLeft className="h-4 w-4" /> Voltar
-          </button>
-          <h1 className="page-title">Detalhes da Fatura</h1>
-          <p className="page-subtitle">Confira os titulos vinculados e registre o pagamento da fatura na conta bancaria real.</p>
-        </div>
-        <div className="app-page-actions">
-          <Link to="/financeiro/faturas-cartao" className="btn btn-outline btn-sm">Faturas</Link>
-          <Link to="/financeiro/titulos" className="btn btn-outline btn-sm">Titulos</Link>
-        </div>
-      </div>
+    <Pagina>
+      {/* C3/C4/R11 — tela de DETALHE: a seta de voltar à esquerda é a
+          affordance primária de retorno e FICA; o botão "Voltar" solto e os
+          links "Faturas"/"Titulos" na barra de ações eram navegação
+          disfarçada de ação (C6) e saíram. O título carrega a IDENTIDADE do
+          registro (competência), não "Detalhes da Fatura". */}
+      <PageHeader
+        titulo={fatura ? `Fatura ${fatura.competencia || `#${fatura.id}`}` : 'Fatura de cartão'}
+        contagem={fatura ? `${resumo.titulos} título(s)` : ''}
+        descricao={periodo}
+        voltar={{ to: '/financeiro/faturas-cartao', title: 'Voltar para faturas de cartão' }}
+      />
 
-      {error && <div className="alert-error">{error}</div>}
-      {message && <div className="alert-success">{message}</div>}
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       {loading ? (
-        <div className="card sol-surface-card">Carregando fatura...</div>
+        <BlocoConteudo>
+          <p className="text-sm text-[var(--c-muted)]">Carregando fatura…</p>
+        </BlocoConteudo>
       ) : !fatura ? (
-        <div className="app-empty-card">Fatura nao encontrada.</div>
+        <BlocoConteudo>
+          <p className="text-sm text-[var(--c-muted)]">Fatura não encontrada.</p>
+        </BlocoConteudo>
       ) : (
-        <div className="space-y-4">
-          <section className="card sol-surface-card">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Fatura</p>
-                <h2 className="mt-1 text-2xl font-semibold text-[var(--c-text)]">{fatura.competencia || `#${fatura.id}`}</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  {cartaoLabel(fatura.cartao)} - periodo {formatDate(fatura.data_inicio)} a {formatDate(fatura.data_fechamento)} - vence em {formatDate(fatura.data_vencimento)}
-                </p>
-              </div>
-              <span className={statusClass(fatura.status)}>{fatura.status || 'ABERTA'}</span>
-            </div>
-          </section>
+        <>
+          {/* M2/R10 — ladrilho do sistema no lugar dos cartões cujo número e
+              cujo ícone traziam tamanho medido à mão, fora da escala. B3: a
+              contagem de títulos já vive na faixa fixa e não se repete. */}
+          <StatGrid colunas={4}>
+            <StatTile label="Situação" valor={fatura.status || 'ABERTA'} tom={statusTom(fatura.status)} />
+            <StatTile label="Valor total" valor={formatCurrency(resumo.total)} />
+            <StatTile
+              label="Saldo aberto"
+              valor={formatCurrency(resumo.aberto)}
+              tom={resumo.aberto > 0 ? 'warning' : 'success'}
+            />
+            <StatTile label="Títulos em aberto" valor={String(resumo.titulosAbertos)} />
+          </StatGrid>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="card sol-surface-card">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor total</p>
-                  <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{formatCurrency(resumo.total)}</p>
-                </div>
-                <HiOutlineCreditCard className="h-5 w-5 text-[var(--c-muted)]" />
-              </div>
-            </div>
-            <div className="card sol-surface-card">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Saldo aberto</p>
-                  <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{formatCurrency(resumo.aberto)}</p>
-                </div>
-                <HiOutlineBanknotes className="h-5 w-5 text-[var(--c-muted)]" />
-              </div>
-            </div>
-            <div className="card sol-surface-card">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Titulos</p>
-                <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{resumo.titulos}</p>
-              </div>
-            </div>
-            <div className="card sol-surface-card">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Abertos</p>
-                  <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{resumo.titulosAbertos}</p>
-                </div>
-                <HiOutlineCheckCircle className="h-5 w-5 text-[var(--c-muted)]" />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="card sol-surface-card">
-              <div className="mb-3">
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Titulos da fatura</h2>
-                <p className="text-sm text-[var(--c-muted)]">Lista completa dos titulos vinculados a esta fatura.</p>
-              </div>
-
-              <div className="app-table-shell overflow-x-auto">
-                <table className="table min-w-full">
-                  <thead>
-                    <tr>
-                      <th>Titulo</th>
-                      <th>Parceiro</th>
-                      <th>Vencimento</th>
-                      <th>Status</th>
-                      <th>Valor</th>
-                      <th>Saldo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(fatura.titulos || []).length === 0 ? (
-                      <tr><td colSpan="6">Nenhum titulo vinculado a esta fatura.</td></tr>
-                    ) : fatura.titulos.map((titulo) => (
-                      <tr key={titulo.id}>
-                        <td>
-                          <div className="font-semibold text-[var(--c-text)]">{titulo.codigo || `Titulo #${titulo.id}`}</div>
-                          <div className="max-w-xl text-xs text-[var(--c-muted)]">{titulo.descricao || 'Sem descricao'}</div>
-                        </td>
-                        <td>{titulo.parceiro?.nome || 'Parceiro nao informado'}</td>
-                        <td>{formatDate(titulo.data_vencimento)}</td>
-                        <td><span className={statusClass(titulo.status)}>{titulo.status || 'ABERTO'}</span></td>
-                        <td className="font-semibold">{formatCurrency(titulo.valor_original)}</td>
-                        <td>{formatCurrency(titulo.valor_saldo)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <aside className="card sol-surface-card">
-              {canBaixar ? (
-                <form className="space-y-3" onSubmit={baixarFatura}>
-                  <div>
-                    <h2 className="text-lg font-semibold text-[var(--c-text)]">Baixar fatura</h2>
-                    <p className="text-sm text-[var(--c-muted)]">
-                      A baixa registra a saida na conta real e credita a conta de controle do cartao.
-                    </p>
-                  </div>
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Conta bancaria</span>
+          {/* B2 — UM bloco principal com barra de cor: é a baixa que responde
+              a pergunta central da tela, e ela fica ANTES da lista para não
+              ficar abaixo de uma fatura com dezenas de títulos (D4). */}
+          {canBaixar ? (
+            <BlocoConteudo
+              titulo="Baixar fatura"
+              variante="primario"
+              cor="var(--module-financeiro)"
+              descricao="A baixa registra a saída na conta real e credita a conta de controle do cartão."
+            >
+              <form onSubmit={baixarFatura}>
+                {/* R2/R7 — campos da mesma linha com a mesma altura e o mesmo
+                    alinhamento: quem mede é o form-grid do FormSecao, não a
+                    tela. As classes `app-filter-field` (faixa de filtro) num
+                    formulário de entrada saíram. */}
+                <FormSecao colunas={2}>
+                  <CampoForm label="Conta bancária" obrigatorio>
                     <select
-                      className="input w-full input-sm"
+                      className="input"
                       value={baixaForm.conta_bancaria_id}
                       onChange={(event) => setBaixaForm((current) => ({ ...current, conta_bancaria_id: event.target.value }))}
                       disabled={loadingOptions}
@@ -294,39 +266,86 @@ export default function FinanceiroFaturaCartaoDetalhe() {
                         <option key={conta.id} value={conta.id}>{contaLabel(conta)}</option>
                       ))}
                     </select>
-                  </label>
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Data de pagamento</span>
-                    <input
-                      className="input w-full input-sm"
-                      type="date"
+                  </CampoForm>
+                  <CampoForm label="Data de pagamento" obrigatorio>
+                    <DateInputBR
+                      className="input"
                       value={baixaForm.data_pagamento}
                       onChange={(event) => setBaixaForm((current) => ({ ...current, data_pagamento: event.target.value }))}
                       required
                     />
-                  </label>
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Observacoes</span>
+                  </CampoForm>
+                  <CampoForm label="Observações" tipo="texto-longo">
                     <textarea
-                      className="input min-h-[88px] w-full"
+                      className="input"
+                      rows={3}
                       value={baixaForm.observacoes}
                       onChange={(event) => setBaixaForm((current) => ({ ...current, observacoes: event.target.value }))}
                       placeholder="Opcional"
                     />
-                  </label>
-                  <button type="submit" className="btn btn-primary w-full" disabled={processing}>
-                    {processing ? 'Baixando...' : 'Baixar fatura'}
+                  </CampoForm>
+                </FormSecao>
+                {/* C5/D3 — UM primário sólido, e ele diz o que vai acontecer. */}
+                <div className="app-actionbar">
+                  <button type="submit" className="btn btn-primary" disabled={processing}>
+                    {processing ? 'Baixando…' : 'Baixar fatura'}
                   </button>
-                </form>
-              ) : (
-                <div className="app-note">
-                  Esta fatura nao possui valor aberto para pagamento ou ja foi baixada.
                 </div>
-              )}
-            </aside>
-          </div>
-        </div>
+              </form>
+            </BlocoConteudo>
+          ) : (
+            <BlocoConteudo titulo="Baixar fatura" variante="secundario">
+              <p className="text-sm text-[var(--c-muted)]">
+                Esta fatura não possui valor aberto para pagamento ou já foi baixada.
+              </p>
+            </BlocoConteudo>
+          )}
+
+          <BlocoConteudo
+            titulo="Títulos da fatura"
+            descricao="Lista completa dos títulos vinculados a esta fatura."
+          >
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'titulo',
+                  titulo: 'Título',
+                  tipo: 'codigo',
+                  render: (titulo) => (
+                    <div>
+                      <div className="font-semibold text-[var(--c-text)]">{titulo.codigo || `Titulo #${titulo.id}`}</div>
+                      <div className="text-xs text-[var(--c-muted)]">{titulo.descricao || 'Sem descricao'}</div>
+                    </div>
+                  )
+                },
+                {
+                  id: 'parceiro',
+                  titulo: 'Parceiro',
+                  // R17: o parceiro NOMEIA o titulo da fatura.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (titulo) => titulo.parceiro?.nome || 'Parceiro nao informado'
+                },
+                { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', render: (titulo) => formatDate(titulo.data_vencimento) },
+                {
+                  id: 'status',
+                  titulo: 'Status',
+                  tipo: 'status',
+                  render: (titulo) => <span className={statusBadgeClasse(titulo.status)}>{titulo.status || 'ABERTO'}</span>
+                },
+                { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (titulo) => <span className="font-semibold">{formatCurrency(titulo.valor_original)}</span> },
+                { id: 'saldo', titulo: 'Saldo', tipo: 'valor', render: (titulo) => formatCurrency(titulo.valor_saldo) }
+              ]}
+              itens={fatura.titulos || []}
+              vazio="Nenhum título vinculado a esta fatura."
+              storageKey="tabela:fatura-cartao-detalhe:titulos"
+              rotuloRolagem="Titulos da fatura"
+            />
+          </BlocoConteudo>
+        </>
       )}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

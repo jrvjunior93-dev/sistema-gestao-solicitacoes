@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Avisos,
+  BlocoConteudo,
+  CampoForm,
+  FormSecao,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
+import {
   createFiscalAccountingBatch,
   generateFiscalAccountingBatch,
   getFiscalAccountingBatch,
@@ -17,6 +31,40 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString('pt-BR');
 }
 
+function periodoDoLote(batch) {
+  if (!batch) return '-';
+  return `${String(batch.reference_month).padStart(2, '0')}/${batch.reference_year}`;
+}
+
+/*
+  R25 — o status do lote é chave técnica em inglês; a classificação
+  automática do StatusBadge lê vocabulário em português e cairia em "info"
+  para todos eles. Mapa EXPLÍCITO, com o significado contábil de cada
+  estado: rascunho ainda dá para refazer, gerado já produziu arquivo,
+  enviado é o ponto sem volta, cancelado é encerrado.
+*/
+const FAMILIA_STATUS_LOTE = {
+  draft: 'warning',
+  generated: 'info',
+  sent: 'success',
+  cancelled: 'neutral'
+};
+
+const ROTULO_STATUS_LOTE = {
+  draft: 'Rascunho',
+  generated: 'Gerado',
+  sent: 'Enviado',
+  cancelled: 'Cancelado'
+};
+
+function familiaStatusLote(status) {
+  return FAMILIA_STATUS_LOTE[String(status || '').toLowerCase()] || 'info';
+}
+
+function rotuloStatusLote(status) {
+  return ROTULO_STATUS_LOTE[String(status || '').toLowerCase()] || status || '-';
+}
+
 export default function FiscalAccountingBatches() {
   const today = useMemo(() => new Date(), []);
   const [companies, setCompanies] = useState([]);
@@ -32,12 +80,11 @@ export default function FiscalAccountingBatches() {
   const [generating, setGenerating] = useState(false);
   const [openingZip, setOpeningZip] = useState(false);
   const [opening, setOpening] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   const load = async () => {
     setLoading(true);
-    setError('');
     try {
       const [batchesResult, companiesResult] = await Promise.all([
         getFiscalAccountingBatches(),
@@ -51,7 +98,7 @@ export default function FiscalAccountingBatches() {
         fiscal_company_id: current.fiscal_company_id || String(nextCompanies[0]?.id || '')
       }));
     } catch (err) {
-      setError(err.message || 'Erro ao buscar lotes contabeis fiscais');
+      avisar.erro(err.message || 'Erro ao buscar lotes contabeis fiscais');
     } finally {
       setLoading(false);
     }
@@ -65,231 +112,363 @@ export default function FiscalAccountingBatches() {
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const submit = async (event) => {
     event.preventDefault();
     setCreating(true);
-    setError('');
-    setMessage('');
     try {
       const result = await createFiscalAccountingBatch({
         fiscal_company_id: form.fiscal_company_id,
         reference_month: form.reference_month,
         reference_year: form.reference_year
       });
-      setMessage(result?.message || 'Lote contabil fiscal processado.');
+      /*
+        DEFEITO DE SIGNIFICADO CONSERTADO: o backend devolve `created: false`
+        com a mensagem "Ja existe um lote contabil fiscal para esta empresa e
+        periodo" — nada foi criado. A tela pintava essa resposta na MESMA
+        faixa verde de sucesso do lote recém-criado, e quem lia "processado"
+        acreditava ter gerado o rascunho do período. Agora o tom segue o que
+        de fato aconteceu.
+      */
+      if (result?.created) {
+        avisar.sucesso(result?.message || 'Lote contabil fiscal criado em modo rascunho.');
+      } else {
+        avisar.alerta(result?.message || 'Ja existe um lote contabil fiscal para esta empresa e periodo — nenhum lote novo foi criado.');
+      }
       setSelectedBatch(result?.batch || null);
       await load();
     } catch (err) {
-      setError(err.message || 'Erro ao criar lote contabil fiscal');
+      avisar.erro(err.message || 'Erro ao criar lote contabil fiscal');
     } finally {
       setCreating(false);
     }
   };
 
-  const openBatch = async (id) => {
+  const openBatch = async (batch) => {
+    // R26: alvo fixado ANTES do await — a lista recarrega sozinha e ler o
+    // estado depois abriria outro lote.
+    const alvo = batch;
     setOpening(true);
-    setError('');
     try {
-      const result = await getFiscalAccountingBatch(id);
+      const result = await getFiscalAccountingBatch(alvo.id);
       setSelectedBatch(result);
     } catch (err) {
-      setError(err.message || 'Erro ao abrir lote contabil fiscal');
+      avisar.erro(err.message || 'Erro ao abrir lote contabil fiscal');
     } finally {
       setOpening(false);
     }
   };
 
-  const generateBatchFile = async (id) => {
+  const generateBatchFile = async (batch) => {
+    /*
+      R26 — o lote é fixado numa `const` ANTES da confirmação, e a ação usa
+      ESSA referência. O modal do sistema NÃO congela a página: com a lista
+      ao lado, clicar noutro lote enquanto a pergunta está aberta faria a
+      tela perguntar sobre o lote A e fechar o lote B — consentimento válido
+      registrado para a ação errada, que nenhum log denuncia.
+
+      A confirmação existe porque gerar o arquivo NÃO é só baixar um ZIP:
+      o backend muda o status do lote para `generated`, grava o ZIP no S3
+      fiscal e registra o evento de segurança. Um lote em `sent` ou
+      `cancelled` não pode mais ser gerado — ou seja, este é o passo que
+      fecha o período contábil.
+    */
+    const lote = batch;
+    if (!lote) return;
+    const documentos = Number(lote.total_documents || 0);
+    const periodo = periodoDoLote(lote);
+    const empresa = lote.company?.razao_social || 'empresa fiscal';
+
+    const { ok } = await confirmar({
+      titulo: 'Gerar arquivo do lote contábil',
+      mensagem: `Gerar o ZIP do lote #${lote.id} (${periodo}, ${empresa}) com ${documentos} documento(s) e ${formatMoney(lote.total_value)}? O lote passa a "Gerado", o arquivo vai para o storage fiscal e a operação fica registrada na trilha de auditoria. Esta ação não pode ser desfeita.`,
+      rotuloConfirmar: 'Gerar arquivo',
+      destrutiva: true
+    });
+    if (!ok) return;
+
     setGenerating(true);
-    setError('');
-    setMessage('');
     try {
-      const result = await generateFiscalAccountingBatch(id);
-      setMessage('Arquivo ZIP do lote contabil gerado com sucesso.');
+      const result = await generateFiscalAccountingBatch(lote.id);
+      avisar.sucesso(`Arquivo ZIP do lote #${lote.id} (${periodo}) gerado com ${documentos} documento(s).`);
       setSelectedBatch(result?.batch || null);
       await load();
     } catch (err) {
-      setError(err.message || 'Erro ao gerar arquivo do lote contabil fiscal');
+      avisar.erro(err.message || 'Erro ao gerar arquivo do lote contabil fiscal');
     } finally {
       setGenerating(false);
     }
   };
 
-  const openZip = async (id) => {
+  const openZip = async (batch) => {
+    // R26: mesma disciplina — o id vem do lote fixado, não do estado relido.
+    const alvo = batch;
     setOpeningZip(true);
-    setError('');
     try {
-      const result = await getFiscalAccountingBatchZipUrl(id);
+      const result = await getFiscalAccountingBatchZipUrl(alvo.id);
       if (result?.url) window.open(result.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      setError(err.message || 'Erro ao abrir ZIP do lote contabil fiscal');
+      avisar.erro(err.message || 'Erro ao abrir ZIP do lote contabil fiscal');
     } finally {
       setOpeningZip(false);
     }
   };
 
+  const totalDocumentos = useMemo(
+    () => batches.reduce((soma, batch) => soma + Number(batch.total_documents || 0), 0),
+    [batches]
+  );
+
   return (
-    <div className="fiscal-page space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Fiscal</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-950 dark:text-white">Exportacao contabil</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-            Lotes em rascunho com documentos fiscais validados. A geracao de ZIP/XML para envio contabil fica para a proxima fase.
-          </p>
-        </div>
-        <form onSubmit={submit} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-[minmax(220px,1fr)_110px_110px_auto]">
-          <select
-            className="input"
-            value={form.fiscal_company_id}
-            onChange={(event) => setForm((current) => ({ ...current, fiscal_company_id: event.target.value }))}
-            required
-          >
-            <option value="">Empresa fiscal</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>{company.razao_social}</option>
-            ))}
-          </select>
-          <input
-            className="input"
-            type="number"
-            min="1"
-            max="12"
-            value={form.reference_month}
-            onChange={(event) => setForm((current) => ({ ...current, reference_month: event.target.value }))}
-            required
-            aria-label="Mes"
-          />
-          <input
-            className="input"
-            type="number"
-            min="2000"
-            max="2100"
-            value={form.reference_year}
-            onChange={(event) => setForm((current) => ({ ...current, reference_year: event.target.value }))}
-            required
-            aria-label="Ano"
-          />
-          <button className="btn-primary whitespace-nowrap" type="submit" disabled={creating}>
-            {creating ? 'Gerando...' : 'Gerar rascunho'}
-          </button>
-        </form>
-      </div>
+    <Pagina className="fiscal-page">
+      <PageHeader
+        titulo="Exportação contábil"
+        contagem={`${batches.length} lotes`}
+        descricao="Lotes com documentos fiscais validados, prontos para o envio contábil."
+      />
 
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{message}</div> : null}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500 dark:bg-slate-950/40">
-              <tr>
-                <th className="px-4 py-3">Periodo</th>
-                <th className="px-4 py-3">Empresa</th>
-                <th className="px-4 py-3">Documentos</th>
-                <th className="px-4 py-3">Valor</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Arquivo</th>
-                <th className="px-4 py-3 text-right">Acao</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {loading ? (
-                <tr><td className="px-4 py-5 text-slate-500" colSpan={7}>Carregando lotes...</td></tr>
-              ) : batches.length ? batches.map((batch) => (
-                <tr key={batch.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40">
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{String(batch.reference_month).padStart(2, '0')}/{batch.reference_year}</td>
-                  <td className="px-4 py-3 font-medium text-slate-950 dark:text-white">{batch.company?.razao_social || '-'}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{batch.total_documents || 0}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatMoney(batch.total_value)}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{batch.status}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{batch.zip_storage_key ? 'ZIP gerado' : 'Pendente'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button className="btn-secondary btn-sm" type="button" onClick={() => openBatch(batch.id)} disabled={opening}>
-                        Abrir
-                      </button>
-                      {batch.zip_storage_key ? (
-                        <button className="btn-secondary btn-sm" type="button" onClick={() => openZip(batch.id)} disabled={openingZip}>
-                          ZIP
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td className="px-4 py-5 text-slate-500" colSpan={7}>Nenhum lote contabil fiscal encontrado.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-base font-semibold text-slate-950 dark:text-white">Detalhe do lote</h2>
-          {selectedBatch ? (
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="block text-slate-500">Periodo</span>
-                  <strong className="text-slate-950 dark:text-white">{String(selectedBatch.reference_month).padStart(2, '0')}/{selectedBatch.reference_year}</strong>
-                </div>
-                <div>
-                  <span className="block text-slate-500">Status</span>
-                  <strong className="text-slate-950 dark:text-white">{selectedBatch.status}</strong>
-                </div>
-                <div>
-                  <span className="block text-slate-500">Documentos</span>
-                  <strong className="text-slate-950 dark:text-white">{selectedBatch.total_documents || 0}</strong>
-                </div>
-                <div>
-                  <span className="block text-slate-500">Valor total</span>
-                  <strong className="text-slate-950 dark:text-white">{formatMoney(selectedBatch.total_value)}</strong>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="btn-primary"
-                  type="button"
-                  onClick={() => generateBatchFile(selectedBatch.id)}
-                  disabled={generating}
-                >
-                  {generating ? 'Gerando ZIP...' : 'Gerar ZIP'}
-                </button>
-                {selectedBatch.zip_storage_key ? (
-                  <button
-                    className="btn-secondary"
-                    type="button"
-                    onClick={() => openZip(selectedBatch.id)}
-                    disabled={openingZip}
-                  >
-                    Abrir ZIP
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                {(selectedBatch.items || []).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800">
-                    <p className="font-medium text-slate-950 dark:text-white">{item.document?.issuer_name || item.document?.issuer_cnpj || '-'}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      NF {item.document?.document_number || '-'} - {formatDate(item.document?.emission_date)} - {formatMoney(item.document?.total_value)}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      XML: {item.included_xml ? 'sim' : 'nao'} | PDF/DANFE: {item.included_pdf ? 'sim' : 'nao'}
-                    </p>
-                  </div>
+      {/*
+        R9 — o formulário fica INLINE, acima da lista (padrão de TELA MISTA).
+        Teste da regra: tirando o formulário, o que sobra é uma lista de
+        lotes que ninguém abriria por si só — gerar o rascunho do período É o
+        trabalho pelo qual se abre esta tela.
+      */}
+      <BlocoConteudo
+        titulo="Gerar rascunho do período"
+        descricao="Reune os documentos fiscais VALIDADOS da empresa no mês de referência. Se já existir lote do período, nenhum novo e criado."
+        variante="secundario"
+      >
+        <form onSubmit={submit}>
+          <FormSecao colunas={4}>
+            <CampoForm label="Empresa fiscal" obrigatorio>
+              <select
+                className="input"
+                value={form.fiscal_company_id}
+                onChange={(event) => setForm((current) => ({ ...current, fiscal_company_id: event.target.value }))}
+                required
+              >
+                <option value="">Empresa fiscal</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>{company.razao_social}</option>
                 ))}
-                {!selectedBatch.items?.length ? <p className="text-sm text-slate-500">Abra um lote para ver os documentos incluidos.</p> : null}
+              </select>
+            </CampoForm>
+            <CampoForm label="Mês" obrigatorio>
+              <input
+                className="input"
+                type="number"
+                min="1"
+                max="12"
+                value={form.reference_month}
+                onChange={(event) => setForm((current) => ({ ...current, reference_month: event.target.value }))}
+                required
+              />
+            </CampoForm>
+            <CampoForm label="Ano" obrigatorio>
+              <input
+                className="input"
+                type="number"
+                min="2000"
+                max="2100"
+                value={form.reference_year}
+                onChange={(event) => setForm((current) => ({ ...current, reference_year: event.target.value }))}
+                required
+              />
+            </CampoForm>
+            <CampoForm label="Ação">
+              <div className="app-actionbar">
+                <button className="btn btn-primary" type="submit" disabled={creating}>
+                  {creating ? 'Gerando...' : 'Gerar rascunho'}
+                </button>
               </div>
-            </div>
-          ) : (
-            <p className="mt-4 text-sm text-slate-500">Selecione um lote para conferir os documentos que entraram no rascunho.</p>
+            </CampoForm>
+          </FormSecao>
+        </form>
+      </BlocoConteudo>
+
+      {/* B2 — o bloco principal é a lista de lotes: é ela que responde à
+          pergunta central da tela ("o que já foi fechado, e o que falta?"). */}
+      <BlocoConteudo
+        titulo="Lotes contábeis"
+        contagem={`${batches.length} lotes`}
+        descricao={`${totalDocumentos} documento(s) fiscais incluidos no total.`}
+        variante="primario"
+        cor="var(--module-fiscal)"
+      >
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'periodo',
+              titulo: 'Período',
+              tipo: 'data',
+              render: (batch) => periodoDoLote(batch)
+            },
+            {
+              id: 'empresa',
+              titulo: 'Empresa',
+              // R17: o lote é lido pela EMPRESA fiscal a que pertence — é o
+              // nome próprio da linha.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (batch) => batch.company?.razao_social || '-'
+            },
+            {
+              id: 'documentos',
+              titulo: 'Documentos',
+              tipo: 'numero',
+              render: (batch) => batch.total_documents || 0
+            },
+            {
+              id: 'valor',
+              titulo: 'Valor',
+              tipo: 'valor',
+              render: (batch) => formatMoney(batch.total_value)
+            },
+            {
+              id: 'status',
+              titulo: 'Status',
+              tipo: 'status',
+              render: (batch) => (
+                <StatusBadge status={rotuloStatusLote(batch.status)} kind={familiaStatusLote(batch.status)} />
+              )
+            },
+            {
+              id: 'arquivo',
+              titulo: 'Arquivo',
+              tipo: 'badge',
+              render: (batch) => (
+                <StatusBadge
+                  status={batch.zip_storage_key ? 'ZIP gerado' : 'Pendente'}
+                  kind={batch.zip_storage_key ? 'success' : 'warning'}
+                />
+              )
+            }
+          ]}
+          itens={batches}
+          carregando={loading}
+          vazio="Nenhum lote contábil fiscal encontrado."
+          storageKey="tabela:lotes-contabeis-fiscais"
+          rotuloRolagem="Lotes contabeis"
+          linhaSelecionada={(batch) => String(batch.id) === String(selectedBatch?.id)}
+          larguraAcoes={200}
+          acoesLinha={(batch) => (
+            <>
+              <button className="btn btn-outline" type="button" onClick={() => openBatch(batch)} disabled={opening}>
+                Abrir
+              </button>
+              {batch.zip_storage_key ? (
+                <button className="btn btn-outline" type="button" onClick={() => openZip(batch)} disabled={openingZip}>
+                  ZIP
+                </button>
+              ) : null}
+            </>
           )}
-        </aside>
-      </div>
-    </div>
+        />
+      </BlocoConteudo>
+
+      <BlocoConteudo
+        titulo="Detalhe do lote"
+        contagem={selectedBatch ? `Lote #${selectedBatch.id}` : null}
+        descricao={selectedBatch ? `${periodoDoLote(selectedBatch)} · ${selectedBatch.company?.razao_social || '-'}` : null}
+        variante="secundario"
+        acoes={selectedBatch ? (
+          <>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => generateBatchFile(selectedBatch)}
+              disabled={generating}
+            >
+              {generating ? 'Gerando ZIP...' : 'Gerar ZIP'}
+            </button>
+            {selectedBatch.zip_storage_key ? (
+              <button
+                className="btn btn-outline"
+                type="button"
+                onClick={() => openZip(selectedBatch)}
+                disabled={openingZip}
+              >
+                Abrir ZIP
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      >
+        {selectedBatch ? (
+          <>
+            <StatGrid colunas={4}>
+              <StatTile label="Período" valor={periodoDoLote(selectedBatch)} />
+              <StatTile
+                label="Status"
+                valor={<StatusBadge status={rotuloStatusLote(selectedBatch.status)} kind={familiaStatusLote(selectedBatch.status)} />}
+              />
+              <StatTile label="Documentos" valor={selectedBatch.total_documents || 0} />
+              <StatTile label="Valor total" valor={formatMoney(selectedBatch.total_value)} />
+            </StatGrid>
+
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'fornecedor',
+                  titulo: 'Fornecedor',
+                  // R17: o item do lote é lido pelo emitente do documento.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => item.document?.issuer_name || item.document?.issuer_cnpj || '-'
+                },
+                {
+                  id: 'numero',
+                  titulo: 'NF',
+                  tipo: 'codigo',
+                  render: (item) => item.document?.document_number || '-'
+                },
+                {
+                  id: 'emissao',
+                  titulo: 'Emissão',
+                  tipo: 'data',
+                  render: (item) => formatDate(item.document?.emission_date)
+                },
+                {
+                  id: 'valor',
+                  titulo: 'Valor',
+                  tipo: 'valor',
+                  render: (item) => formatMoney(item.document?.total_value)
+                },
+                {
+                  id: 'xml',
+                  titulo: 'XML',
+                  tipo: 'badge',
+                  render: (item) => (
+                    <StatusBadge status={item.included_xml ? 'Incluido' : 'Ausente'} kind={item.included_xml ? 'success' : 'warning'} />
+                  )
+                },
+                {
+                  id: 'pdf',
+                  titulo: 'PDF/DANFE',
+                  tipo: 'badge',
+                  render: (item) => (
+                    <StatusBadge status={item.included_pdf ? 'Incluido' : 'Ausente'} kind={item.included_pdf ? 'success' : 'warning'} />
+                  )
+                }
+              ]}
+              itens={selectedBatch.items || []}
+              vazio="Este lote não tem documentos incluidos."
+              storageKey="tabela:lotes-contabeis-fiscais:documentos-do-lote"
+              rotuloRolagem="Documentos do lote"
+            />
+          </>
+        ) : (
+          <p className="text-sm text-[var(--c-muted)]">
+            Selecione um lote para conferir os documentos que entraram no rascunho.
+          </p>
+        )}
+      </BlocoConteudo>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

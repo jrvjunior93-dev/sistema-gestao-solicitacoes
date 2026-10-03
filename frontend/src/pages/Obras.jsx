@@ -1,12 +1,11 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  HiOutlineArrowRight,
   HiOutlineBuildingOffice2,
   HiOutlineMapPin,
   HiOutlinePencilSquare,
-  HiOutlinePlus,
-  HiOutlinePower,
-  HiOutlineArrowRight
+  HiOutlinePower
 } from 'react-icons/hi2';
 import {
   getObras,
@@ -17,8 +16,23 @@ import {
   desativarObra
 } from '../services/obras';
 import { getEmpresasGrupo } from '../services/empresasGrupo';
+import { getResultadoObras } from '../services/financeiro';
 import { useAuth } from '../contexts/AuthContext';
-import { canAccessGestaoObras, isBusinessAdmin } from '../utils/acessoProduto';
+import {
+  canAccessGestaoObras,
+  canManageCadastroObras,
+  canViewFinanceiroRelatorio
+} from '../utils/acessoProduto';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BarraFiltros,
+  Avisos,
+  useAvisos
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
+import './Obras.css';
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -60,7 +74,7 @@ function CurrencyInput({ value, onChange, placeholder, className }) {
       <span className="pointer-events-none absolute left-3 select-none text-sm" style={{ color: 'var(--c-muted)' }}>R$</span>
       <input
         ref={inputRef}
-        className={`${className} pl-9`}
+        className={`${className} input-prefixo-moeda`}
         value={editing ? raw : formatted}
         onChange={(e) => setRaw(e.target.value)}
         onFocus={handleFocus}
@@ -121,19 +135,219 @@ function getExecucaoPercentual(orcado, executado) {
   return Math.max(0, Math.min(100, Number(((Number(executado || 0) / base) * 100).toFixed(1))));
 }
 
-function getLucroPrejuizoColor(value) {
-  const numero = Number(value || 0);
-  if (numero > 0) return '#10b981';
-  if (numero < 0) return '#ef4444';
-  return 'var(--c-text)';
-}
-
 function isCadastroObra(obra) {
   return String(obra?.tipo_centro_custo || 'OBRA').trim().toUpperCase() === 'OBRA';
 }
 
 function getTipoCadastroLabel(obra) {
   return isCadastroObra(obra) ? 'Obra' : 'Centro de custo';
+}
+
+function ObraMetrica({ label, value, tone = 'default', support }) {
+  return (
+    <div className={`obra-card-metrica obra-card-metrica--${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {support ? <small>{support}</small> : null}
+    </div>
+  );
+}
+
+function ObraProgresso({ label, value, max, tone = 'primary' }) {
+  const percentual = getExecucaoPercentual(max, value);
+
+  return (
+    <div className="obra-card-progresso">
+      <div className="obra-card-progresso__legenda">
+        <span>{label}</span>
+        <strong>{percentual.toFixed(1)}%</strong>
+      </div>
+      <div
+        className="obra-card-progresso__trilha"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={percentual}
+      >
+        <span
+          className={`obra-card-progresso__barra obra-card-progresso__barra--${tone}`}
+          style={{ width: `${percentual}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ObraCadastroCard({
+  obra,
+  gestaoObrasHabilitada,
+  podeGerenciarCadastro,
+  onGerenciar,
+  onEditar,
+  onToggleAtivo
+}) {
+  const cadastroEhObra = isCadastroObra(obra);
+  const classificacao = String(obra.classificacao || '').trim().toUpperCase();
+  const obraPrivada = classificacao === 'PRIVADA';
+  const obraPublica = classificacao === 'PUBLICA';
+  const valorReferencia = Number(
+    obra.valor_referencia_resultado
+      ?? (obraPrivada
+        ? (obra.vgv_efetivo ?? obra.vgv)
+        : obraPublica
+          ? obra.planilha_geral
+          : 0)
+      ?? 0
+  );
+  const margem = Number(obra.margem_custo_esperada || 0);
+  const orcamentoCusto = obra.orcamento != null
+    ? Number(obra.orcamento)
+    : valorReferencia > 0 && margem > 0
+      ? valorReferencia * (1 - margem / 100)
+      : null;
+  const executado = Number(obra.resumo?.executado || 0);
+  const recebido = Number(obra.resumo?.recebido || 0);
+  const faltaReceber = Number(obra.resumo?.falta_receber || 0);
+  const lucroPrejuizo = Number(obra.resumo?.lucro_prejuizo || 0);
+  const valorVendido = obra.valor_vendido == null ? null : Number(obra.valor_vendido);
+  const faltaVender = obra.falta_vender == null ? null : Number(obra.falta_vender);
+  const mostrarResultado = gestaoObrasHabilitada && cadastroEhObra;
+  const referenciaLabel = obraPrivada ? 'VGV' : obraPublica ? 'Planilha geral' : 'Volume financeiro';
+  const fonteReferencia = obra.vgv_origem === 'UNIDADES'
+    ? `${Number(obra.vgv_unidades_total || 0)} unidade(s) ativa(s)`
+    : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
+      ? `${Number(obra.vgv_unidades_sem_valor || 0)} unidade(s) sem valor base`
+      : null;
+
+  return (
+    <article className={`obra-cadastro-card${obra.ativo ? '' : ' obra-cadastro-card--inativa'}`}>
+      <header className="obra-cadastro-card__cabecalho">
+        <div className="obra-cadastro-card__icone" aria-hidden="true">
+          <HiOutlineBuildingOffice2 />
+        </div>
+        <div className="obra-cadastro-card__status">
+          <StatusBadge status={obra.ativo ? 'Ativa' : 'Inativa'} />
+          <span className="obra-cadastro-card__tipo">{getTipoCadastroLabel(obra)}</span>
+          {cadastroEhObra && classificacao ? (
+            <span className="obra-cadastro-card__tipo">
+              {classificacao === 'PRIVADA' ? 'Privada' : classificacao === 'PROPRIA' ? 'Própria' : 'Pública'}
+            </span>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="obra-cadastro-card__identidade">
+        <span className="obra-cadastro-card__codigo">{obra.codigo || `OBRA ${obra.id}`}</span>
+        <h2>{obra.nome}</h2>
+        <div className="obra-cadastro-card__local">
+          <HiOutlineMapPin aria-hidden="true" />
+          <span>{obra.cidade || 'Cidade não informada'}</span>
+        </div>
+        <p>Empresa: {obra.empresaGrupo?.nome || 'Não vinculada'}</p>
+      </div>
+
+      {mostrarResultado ? (
+        <>
+          <div className="obra-cadastro-card__metricas obra-cadastro-card__metricas--referencia">
+            <ObraMetrica
+              label={referenciaLabel}
+              value={valorReferencia > 0 ? formatCurrency(valorReferencia) : '—'}
+              support={fonteReferencia}
+              tone="reference"
+            />
+            <ObraMetrica
+              label="Orçamento de custo"
+              value={orcamentoCusto == null ? '—' : formatCurrency(orcamentoCusto)}
+              support={margem > 0 ? `Margem esperada ${margem.toFixed(1)}%` : null}
+              tone="reference"
+            />
+            {obraPrivada && valorVendido != null ? (
+              <>
+                <ObraMetrica
+                  label="Valor vendido"
+                  value={formatCurrency(valorVendido)}
+                  support={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
+                  tone="received"
+                />
+                <ObraMetrica
+                  label="Falta vender"
+                  value={faltaVender == null ? '—' : formatCurrency(faltaVender)}
+                  support={faltaVender == null ? 'Aguardando VGV calculável' : 'VGV menos valor vendido'}
+                  tone="pending"
+                />
+              </>
+            ) : null}
+          </div>
+
+          <div className="obra-cadastro-card__metricas">
+            <ObraMetrica label="Executado" value={formatCurrency(executado)} tone="executed" />
+            <ObraMetrica label="Recebido" value={formatCurrency(recebido)} tone="received" />
+            <ObraMetrica label="Falta receber" value={formatCurrency(faltaReceber)} tone="pending" />
+            <ObraMetrica
+              label="Lucro/Prejuízo"
+              value={formatCurrency(lucroPrejuizo)}
+              tone={lucroPrejuizo < 0 ? 'negative' : lucroPrejuizo > 0 ? 'positive' : 'default'}
+            />
+          </div>
+
+          <div className="obra-cadastro-card__progressos">
+            {orcamentoCusto != null ? (
+              <ObraProgresso label="Executado / Orçamento" value={executado} max={orcamentoCusto} />
+            ) : null}
+            {valorReferencia > 0 ? (
+              <ObraProgresso label={`Recebido / ${referenciaLabel}`} value={recebido} max={valorReferencia} tone="success" />
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <div className="obra-cadastro-card__modo">
+          <strong>{cadastroEhObra ? 'Cadastro básico ativo' : 'Centro de custo ativo'}</strong>
+          <span>
+            {cadastroEhObra
+              ? 'A gestão financeira desta obra não está disponível no acesso atual.'
+              : 'Disponível para solicitações e títulos, sem estrutura operacional de obra.'}
+          </span>
+        </div>
+      )}
+
+      <footer className="obra-cadastro-card__acoes">
+        {gestaoObrasHabilitada && cadastroEhObra ? (
+          <button type="button" className="btn btn-primary obra-cadastro-card__gerenciar" onClick={onGerenciar}>
+            Gerenciar obra
+            <HiOutlineArrowRight aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="obra-cadastro-card__acao-indisponivel">
+            {cadastroEhObra ? 'Gestão indisponível' : 'Cadastro administrativo'}
+          </span>
+        )}
+
+        {podeGerenciarCadastro ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-outline obra-cadastro-card__icone-acao"
+              onClick={onEditar}
+              title="Editar cadastro"
+              aria-label={`Editar ${obra.nome}`}
+            >
+              <HiOutlinePencilSquare aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`btn btn-outline obra-cadastro-card__icone-acao${obra.ativo ? ' btn-perigo-suave' : ''}`}
+              onClick={onToggleAtivo}
+              title={obra.ativo ? 'Desativar cadastro' : 'Ativar cadastro'}
+              aria-label={`${obra.ativo ? 'Desativar' : 'Ativar'} ${obra.nome}`}
+            >
+              <HiOutlinePower aria-hidden="true" />
+            </button>
+          </>
+        ) : null}
+      </footer>
+    </article>
+  );
 }
 
 function initialFormState() {
@@ -151,6 +365,7 @@ function initialFormState() {
     endereco_bairro: '',
     endereco_cep: '',
     endereco_uf: '',
+    nivel_apropriacao_formulario: '',
     classificacao: '',
     vgv: '',
     planilha_geral: '',
@@ -165,17 +380,25 @@ export default function Obras() {
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [busca, setBusca] = useState('');
+  // ?q= da busca universal abre a lista já filtrada.
+  const [busca, setBusca] = useState(() => (
+    new URLSearchParams(window.location.search).get('q') || ''
+  ));
   const [modalAberto, setModalAberto] = useState(false);
   const [form, setForm] = useState(initialFormState());
+  const { avisos, avisar, fechar } = useAvisos();
 
-  const podeGerenciarCadastro = isBusinessAdmin(user);
+  const podeGerenciarCadastro = canManageCadastroObras(user);
   const gestaoObrasHabilitada = canAccessGestaoObras(user);
+  const podeVerResultadoObras = canViewFinanceiroRelatorio(
+    user,
+    'financeiro.relatorios.resultado_obras'
+  );
 
   useEffect(() => {
     carregarObras();
     carregarEmpresasGrupo();
-  }, [gestaoObrasHabilitada]);
+  }, [gestaoObrasHabilitada, podeVerResultadoObras]);
 
   async function carregarEmpresasGrupo() {
     try {
@@ -193,18 +416,43 @@ export default function Obras() {
       let lista = Array.isArray(cadastrosData) ? cadastrosData : [];
 
       if (gestaoObrasHabilitada) {
-        const gestaoData = await getObrasGestao();
+        const [gestaoData, resultadoData] = await Promise.all([
+          getObrasGestao(),
+          podeVerResultadoObras
+            ? getResultadoObras().catch((error) => {
+              console.error(error);
+              return [];
+            })
+            : Promise.resolve([])
+        ]);
         const resumoPorId = new Map((Array.isArray(gestaoData) ? gestaoData : [])
+          .map((obra) => [Number(obra.id), obra]));
+        const resultadoPorId = new Map((Array.isArray(resultadoData) ? resultadoData : [])
           .map((obra) => [Number(obra.id), obra]));
         lista = lista.map((obra) => {
           const gestaoObra = resumoPorId.get(Number(obra.id));
+          const resultadoObra = resultadoPorId.get(Number(obra.id));
           return {
             ...obra,
-            vgv_efetivo: gestaoObra?.vgv_efetivo,
-            vgv_origem: gestaoObra?.vgv_origem,
-            vgv_unidades_total: gestaoObra?.vgv_unidades_total,
-            vgv_unidades_sem_valor: gestaoObra?.vgv_unidades_sem_valor,
-            resumo: gestaoObra?.resumo || obra.resumo
+            vgv_efetivo: resultadoObra?.vgv_efetivo ?? gestaoObra?.vgv_efetivo,
+            vgv_origem: resultadoObra?.vgv_origem ?? gestaoObra?.vgv_origem,
+            vgv_unidades_total: resultadoObra?.vgv_unidades_total ?? gestaoObra?.vgv_unidades_total,
+            vgv_unidades_sem_valor: resultadoObra?.vgv_unidades_sem_valor ?? gestaoObra?.vgv_unidades_sem_valor,
+            valor_referencia_resultado: resultadoObra?.valor_referencia_resultado
+              ?? gestaoObra?.resumo?.valor_referencia_resultado,
+            orcamento: resultadoObra?.orcamento,
+            valor_vendido: resultadoObra?.valor_vendido,
+            falta_vender: resultadoObra?.falta_vender,
+            quantidade_contratos_venda: resultadoObra?.quantidade_contratos_venda,
+            resumo: resultadoObra
+              ? {
+                ...(gestaoObra?.resumo || {}),
+                executado: resultadoObra.pagar?.executado,
+                recebido: resultadoObra.receber?.recebido,
+                falta_receber: resultadoObra.falta_receber,
+                lucro_prejuizo: resultadoObra.lucro_prejuizo
+              }
+              : gestaoObra?.resumo || obra.resumo
           };
         });
       }
@@ -212,7 +460,7 @@ export default function Obras() {
       setObras(lista);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar obras');
+      avisar.erro(error.message || 'Erro ao carregar obras');
     } finally {
       setLoading(false);
     }
@@ -238,6 +486,7 @@ export default function Obras() {
       endereco_bairro: obra.endereco_bairro || '',
       endereco_cep: obra.endereco_cep || '',
       endereco_uf: obra.endereco_uf || '',
+      nivel_apropriacao_formulario: obra.nivel_apropriacao_formulario || '',
       classificacao: obra.classificacao || '',
       vgv: obra.vgv != null ? String(obra.vgv) : '',
       planilha_geral: obra.planilha_geral != null ? String(obra.planilha_geral) : '',
@@ -271,6 +520,9 @@ export default function Obras() {
         endereco_bairro: String(form.endereco_bairro || '').trim() || null,
         endereco_cep: String(form.endereco_cep || '').trim() || null,
         endereco_uf: String(form.endereco_uf || '').trim().toUpperCase() || null,
+        nivel_apropriacao_formulario: cadastroEhObra
+          ? String(form.nivel_apropriacao_formulario || '').trim().toUpperCase()
+          : null,
         classificacao: cadastroEhObra ? (form.classificacao || null) : null,
         vgv: cadastroEhObra && form.classificacao === 'PRIVADA' && form.vgv !== '' ? Number(form.vgv) : null,
         planilha_geral: cadastroEhObra && form.classificacao === 'PUBLICA' && form.planilha_geral !== '' ? Number(form.planilha_geral) : null,
@@ -278,7 +530,11 @@ export default function Obras() {
       };
 
       if (!payload.codigo || !payload.nome) {
-        alert('Informe codigo e nome do cadastro.');
+        avisar.alerta('Informe código e nome do cadastro.');
+        return;
+      }
+      if (cadastroEhObra && !payload.nivel_apropriacao_formulario) {
+        avisar.alerta('Selecione o nível de apropriação usado nos formulários da obra.');
         return;
       }
 
@@ -292,7 +548,7 @@ export default function Obras() {
       await carregarObras();
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao salvar obra');
+      avisar.erro(error.message || 'Erro ao salvar obra');
     } finally {
       setSaving(false);
     }
@@ -309,7 +565,7 @@ export default function Obras() {
       await carregarObras();
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao atualizar status da obra');
+      avisar.erro(error.message || 'Erro ao atualizar status da obra');
     }
   }
 
@@ -332,329 +588,88 @@ export default function Obras() {
     });
   }, [busca, obras]);
 
+  // R16: UM dono para a faixa de avisos. Com o modal aberto ela vive dentro
+  // dele (senão o erro de salvar ficaria atrás do fundo escuro); com o modal
+  // fechado, logo abaixo do PageHeader.
+  const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
+
   return (
-    <div className="page solicitacoes-page">
-      {/* Header */}
-      <div
-        className="sol-surface-card rounded-2xl border px-6 py-6 md:px-8"
-        style={{
-          borderColor: 'var(--ui-border)',
-          boxShadow: 'var(--ui-shadow-sm)'
-        }}
+    <Pagina>
+      {/* C2 (02/09): toda tela usa a MESMA faixa — título 22px e o apoio
+          (contagem + descrição) em uma linha NA FAIXA, como em Empresas do
+          Grupo. Duas telas com dois padrões era o defeito. */}
+      <PageHeader
+        titulo="Gestão de Obras e Centros de Custo"
+        contagem={loading ? null : `${obras.length} cadastro(s)`}
+        descricao={gestaoObrasHabilitada
+          ? 'Obras reais com orçamento e centros de custo administrativos usados nas solicitações.'
+          : 'Cadastro basico de obras e centros de custo utilizado pelo nucleo de solicitacoes.'}
+        acaoPrincipal={podeGerenciarCadastro
+          ? { rotulo: 'Novo cadastro', onClick: abrirModalNovaObra }
+          : null}
+      />
+
+      {!modalAberto && faixaAvisos}
+
+      <BlocoConteudo
+        titulo="Cadastros"
+        variante="primario"
+        cor="var(--c-primary)"
       >
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-1">
-            <span
-              className="inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em]"
-              style={{ borderColor: 'var(--ui-border)', color: 'var(--c-muted)', background: 'var(--ui-canvas)' }}
-            >
-              Portfólio operacional
-            </span>
-            <h1 className="page-title">Gestão de Obras e Centros de Custo</h1>
-            <p className="page-subtitle">
-              {gestaoObrasHabilitada
-                ? 'Controle das obras reais com orçamento e dos centros de custo administrativos usados nas solicitações.'
-                : 'Cadastro basico de obras e centros de custo utilizado pelo nucleo de solicitacoes.'}
-            </p>
-          </div>
-
-          <div className="flex w-full flex-col gap-3 md:w-auto md:min-w-[300px]">
-            <input
-              className="input"
-              placeholder="Buscar por codigo, nome ou cidade"
-              value={busca}
-              onChange={(event) => setBusca(event.target.value)}
-            />
-            {podeGerenciarCadastro && (
-              <button
-                type="button"
-                className="btn btn-primary inline-flex items-center justify-center gap-2"
-                onClick={abrirModalNovaObra}
-              >
-                <HiOutlinePlus className="h-5 w-5" />
-                Novo cadastro
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="app-empty-card">
-          Carregando obras...
-        </div>
-      ) : obrasFiltradas.length === 0 ? (
-        <div className="app-empty-card">
-          <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>Nenhum cadastro encontrado</h2>
-          <p className="mt-2 text-sm" style={{ color: 'var(--c-muted)' }}>
-            Ajuste o filtro ou cadastre uma nova obra/centro de custo para iniciar o gerenciamento.
+        {/* F1: UMA busca, ocupando a largura da faixa (padrão BarraFiltros). */}
+        <BarraFiltros
+          busca={{
+            valor: busca,
+            aoMudar: setBusca,
+            placeholder: 'Buscar por código, nome ou cidade'
+          }}
+        />
+        {!gestaoObrasHabilitada && (
+          <p className="app-note">
+            Gestão de obras desabilitada no plano — os cadastros seguem disponíveis para
+            solicitações, títulos e configurações básicas.
           </p>
-        </div>
-      ) : (
-        <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {obrasFiltradas.map((obra) => {
-            const orcado = Number(obra.resumo?.orcado || 0);
-            const executado = Number(obra.resumo?.executado || 0);
-            const recebido = Number(obra.resumo?.recebido || 0);
-            const faltaReceber = Number(obra.resumo?.falta_receber || 0);
-            const lucroPrejuizo = Number(obra.resumo?.lucro_prejuizo || 0);
-            const percentual = getExecucaoPercentual(orcado, executado);
-            const cadastroEhObra = isCadastroObra(obra);
-            const vgvVisual = obra.classificacao === 'PRIVADA'
-              ? (obra.vgv_efetivo ?? obra.vgv)
-              : obra.vgv;
-
-            return (
-              <article
+        )}
+        {loading ? (
+          <div className="app-empty-card">Carregando obras...</div>
+        ) : obrasFiltradas.length === 0 ? (
+          <div className="app-empty-card">
+            <strong>Nenhum cadastro encontrado</strong>
+            <span>Ajuste o filtro ou cadastre uma nova obra/centro de custo para iniciar o gerenciamento.</span>
+          </div>
+        ) : (
+          <section className="obras-card-grid" aria-label="Obras e centros de custo">
+            {obrasFiltradas.map((obra) => (
+              <ObraCadastroCard
                 key={obra.id}
-                className="group overflow-hidden rounded-2xl border transition hover:-translate-y-0.5"
-                style={{
-                  background: 'var(--ui-surface)',
-                  borderColor: 'var(--ui-border)',
-                  boxShadow: 'var(--ui-shadow-sm)'
-                }}
-              >
-                <div className="flex min-h-[255px] flex-col p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div
-                      className="inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white"
-                      style={{ background: 'var(--c-primary)', boxShadow: '0 8px 20px rgba(0,0,0,0.2)' }}
-                    >
-                      <HiOutlineBuildingOffice2 className="h-7 w-7" />
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                    <span
-                      className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${
-                        obra.ativo
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
-                          : 'border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
-                      }`}
-                    >
-                      {obra.ativo ? 'Ativa' : 'Inativa'}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                      {getTipoCadastroLabel(obra)}
-                    </span>
-                    {cadastroEhObra && obra.classificacao && (
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
-                        obra.classificacao === 'PRIVADA'
-                          ? 'border-violet-200 bg-violet-50 text-violet-700'
-                          : 'border-sky-200 bg-sky-50 text-sky-700'
-                      }`}>
-                        {obra.classificacao}
-                      </span>
-                    )}
-                  </div>
-                  </div>
-
-                  <div className="mt-5">
-                    <div
-                      className="text-[11px] font-bold uppercase tracking-[0.26em]"
-                      style={{ color: 'var(--c-muted)' }}
-                    >
-                      {obra.codigo || `OBRA ${obra.id}`}
-                    </div>
-                    <h2
-                      className="mt-2 text-2xl font-black uppercase leading-tight tracking-tight"
-                      style={{ color: 'var(--c-text)' }}
-                    >
-                      {obra.nome}
-                    </h2>
-                    <div
-                      className="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.18em]"
-                      style={{ color: 'var(--c-muted)' }}
-                    >
-                      <HiOutlineMapPin className="h-4 w-4" />
-                      {obra.cidade || 'Cidade nao informada'}
-                    </div>
-                    <div className="mt-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--c-muted)' }}>
-                      Empresa: {obra.empresaGrupo?.nome || 'Nao vinculada'}
-                    </div>
-                  </div>
-
-                  {cadastroEhObra && (vgvVisual != null || obra.planilha_geral != null || obra.margem_custo_esperada != null) && (
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      {vgvVisual != null && (
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--c-muted)' }}>VGV</div>
-                          <div className="mt-0.5 text-sm font-bold" style={{ color: 'var(--c-text)' }}>{formatCurrency(vgvVisual)}</div>
-                          {obra.vgv_origem === 'UNIDADES' && <div className="text-[10px] text-[var(--c-muted)]">{obra.vgv_unidades_total} unidades · base de venda</div>}
-                          {obra.vgv_origem === 'UNIDADES_INCOMPLETAS' && <div className="text-[10px] text-[var(--c-muted)]">{obra.vgv_unidades_sem_valor} unidade(s) sem valor base</div>}
-                        </div>
-                      )}
-                      {obra.planilha_geral != null && (
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--c-muted)' }}>Planilha Geral</div>
-                          <div className="mt-0.5 text-sm font-bold" style={{ color: 'var(--c-text)' }}>{formatCurrency(obra.planilha_geral)}</div>
-                        </div>
-                      )}
-                      {obra.margem_custo_esperada != null && (
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--c-muted)' }}>Margem</div>
-                          <div className="mt-0.5 text-sm font-bold" style={{ color: 'var(--c-text)' }}>{Number(obra.margem_custo_esperada).toFixed(1)}%</div>
-                        </div>
-                      )}
-                      {(() => {
-                        const ref = obra.classificacao === 'PRIVADA' ? vgvVisual : obra.planilha_geral;
-                        const margem = obra.margem_custo_esperada;
-                        if (ref != null && margem != null && margem > 0) {
-                          const orcamento = Number(ref) * (1 - Number(margem) / 100);
-                          return (
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--c-muted)' }}>Orçamento</div>
-                              <div className="mt-0.5 text-sm font-bold" style={{ color: 'var(--c-primary)' }}>{formatCurrency(orcamento)}</div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  )}
-
-                  {gestaoObrasHabilitada && cadastroEhObra ? (
-                    <>
-                      <div className="mt-8 grid grid-cols-2 gap-4">
-                        <div>
-                          <div
-                            className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                            style={{ color: 'var(--c-muted)' }}
-                          >
-                            Executado
-                          </div>
-                          <div className="mt-2 text-base font-black" style={{ color: 'var(--c-primary)' }}>
-                            {formatCurrency(executado)}
-                          </div>
-                        </div>
-                        <div>
-                          <div
-                            className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                            style={{ color: 'var(--c-muted)' }}
-                          >
-                            Recebido
-                          </div>
-                          <div className="mt-2 text-base font-black" style={{ color: '#10b981' }}>
-                            {formatCurrency(recebido)}
-                          </div>
-                        </div>
-                        <div>
-                          <div
-                            className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                            style={{ color: 'var(--c-muted)' }}
-                          >
-                            Falta receber
-                          </div>
-                          <div className="mt-2 text-base font-black" style={{ color: faltaReceber > 0 ? '#f59e0b' : 'var(--c-text)' }}>
-                            {formatCurrency(faltaReceber)}
-                          </div>
-                        </div>
-                        <div>
-                          <div
-                            className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                            style={{ color: 'var(--c-muted)' }}
-                          >
-                            Lucro/Prejuizo
-                          </div>
-                          <div className="mt-2 text-base font-black" style={{ color: getLucroPrejuizoColor(lucroPrejuizo) }}>
-                            {formatCurrency(lucroPrejuizo)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-5">
-                        <div
-                          className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em]"
-                          style={{ color: 'var(--c-muted)' }}
-                        >
-                          <span>Execucao</span>
-                          <span>{percentual.toFixed(1)}%</span>
-                        </div>
-                        <div
-                          className="h-2 overflow-hidden rounded-full"
-                          style={{ background: 'var(--ui-border)' }}
-                        >
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: `${percentual}%`, background: 'var(--c-primary)' }}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="mt-8 rounded-2xl border border-[var(--ui-border)] bg-[var(--ui-canvas)] px-4 py-4">
-                      <div
-                        className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                        style={{ color: 'var(--c-muted)' }}
-                      >
-                        Modo atual
-                      </div>
-                      <div className="mt-2 text-sm font-semibold" style={{ color: 'var(--c-text)' }}>
-                        {cadastroEhObra ? 'Cadastro basico ativo' : 'Centro de custo ativo'}
-                      </div>
-                      <p className="mt-2 text-sm" style={{ color: 'var(--c-muted)' }}>
-                        {cadastroEhObra
-                          ? 'Esta obra continua disponivel para solicitacoes e configuracoes basicas.'
-                          : 'Este centro de custo esta disponivel para solicitacoes e titulos financeiros sem estrutura de obra.'}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="mt-auto pt-7">
-                    <div className="flex flex-wrap gap-2">
-                      {gestaoObrasHabilitada && cadastroEhObra ? (
-                        <button
-                          type="button"
-                          className="btn btn-primary inline-flex flex-1 items-center justify-center gap-2"
-                          onClick={() => navigate(`/obras/${obra.id}`)}
-                        >
-                          Gerenciar obra
-                          <HiOutlineArrowRight className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <div className="inline-flex min-h-[44px] flex-1 items-center rounded-xl border border-[var(--ui-border)] bg-[var(--ui-canvas)] px-4 text-sm font-medium text-[var(--c-muted)]">
-                          {cadastroEhObra ? 'Gestao de obras desabilitada no plano' : 'Centro de custo sem abas de obra'}
-                        </div>
-                      )}
-                      {podeGerenciarCadastro && (
-                        <>
-                          <button
-                            type="button"
-                            className="btn btn-outline inline-flex h-[44px] w-[44px] items-center justify-center"
-                            onClick={() => abrirModalEditarObra(obra)}
-                            title="Editar obra"
-                          >
-                            <HiOutlinePencilSquare className="h-5 w-5" />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline inline-flex h-[44px] w-[44px] items-center justify-center"
-                            onClick={() => toggleAtivo(obra)}
-                            title={obra.ativo ? 'Desativar obra' : 'Ativar obra'}
-                          >
-                            <HiOutlinePower className="h-5 w-5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-      )}
+                obra={obra}
+                gestaoObrasHabilitada={gestaoObrasHabilitada}
+                podeGerenciarCadastro={podeGerenciarCadastro}
+                onGerenciar={() => navigate(`/obras/${obra.id}`)}
+                onEditar={() => abrirModalEditarObra(obra)}
+                onToggleAtivo={() => toggleAtivo(obra)}
+              />
+            ))}
+          </section>
+        )}
+      </BlocoConteudo>
 
       {/* Modal */}
       {modalAberto && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && fecharModal()}>
-          <div className="modal-dialog modal-dialog--lg">
+          <div
+            className="modal-dialog modal-dialog--lg"
+            role="dialog"
+            aria-modal="true"
+            aria-label={form.id ? 'Editar cadastro' : 'Novo cadastro'}
+          >
             <div className="modal-header">
               <div>
                 <h2 className="modal-title">
                   {form.id ? 'Editar cadastro' : 'Novo cadastro'}
                 </h2>
                 <p className="modal-subtitle">
-                  Mantenha obras reais e centros de custo administrativos alinhados para o modulo operacional e financeiro.
+                  Mantenha obras reais e centros de custo administrativos alinhados para o módulo operacional e financeiro.
                 </p>
               </div>
               <button type="button" className="modal-close-btn" onClick={fecharModal} aria-label="Fechar">
@@ -665,6 +680,7 @@ export default function Obras() {
             </div>
 
             <div className="modal-body">
+            {faixaAvisos}
             <form id="obras-form" onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-3">
               <label className="grid gap-1 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
                 Código
@@ -697,6 +713,9 @@ export default function Obras() {
                     ...current,
                     tipo_centro_custo: event.target.value,
                     classificacao: event.target.value === 'OBRA' ? current.classificacao : '',
+                    nivel_apropriacao_formulario: event.target.value === 'OBRA'
+                      ? current.nivel_apropriacao_formulario
+                      : '',
                     vgv: event.target.value === 'OBRA' ? current.vgv : '',
                     planilha_geral: event.target.value === 'OBRA' ? current.planilha_geral : '',
                     margem_custo_esperada: event.target.value === 'OBRA' ? current.margem_custo_esperada : ''
@@ -808,6 +827,30 @@ export default function Obras() {
 
               {form.tipo_centro_custo === 'OBRA' && (
               <>
+              <label className="grid gap-1 text-sm font-medium md:col-span-2" style={{ color: 'var(--c-text)' }}>
+                Nível de apropriação nos formulários
+                <select
+                  className="input"
+                  value={form.nivel_apropriacao_formulario}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    nivel_apropriacao_formulario: event.target.value
+                  }))}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  <option value="ETAPA">Etapa — visão mais resumida</option>
+                  <option value="SERVICO">Serviço — nível intermediário</option>
+                  <option value="SUBSERVICO">Subserviço — itens mais detalhados</option>
+                  {form.nivel_apropriacao_formulario === 'PERSONALIZADO' ? (
+                    <option value="PERSONALIZADO">Personalizado — definido na Gestão de Apropriações</option>
+                  ) : null}
+                </select>
+                <span className="text-xs font-normal" style={{ color: 'var(--c-muted)' }}>
+                  Define quais apropriações desta obra aparecem em solicitações, compras e demais formulários operacionais.
+                </span>
+              </label>
+
               <label className="grid gap-1 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
                 Classificação
                 <select
@@ -818,6 +861,7 @@ export default function Obras() {
                   <option value="">Não definida</option>
                   <option value="PRIVADA">Privada</option>
                   <option value="PUBLICA">Pública</option>
+                  <option value="PROPRIA">Própria</option>
                 </select>
               </label>
 
@@ -857,7 +901,6 @@ export default function Obras() {
               </>
               )}
 
-              <div className="flex flex-wrap justify-end gap-3 md:col-span-3" style={{ display: 'none' }} />
             </form>
             </div>
             <div className="modal-footer">
@@ -876,6 +919,6 @@ export default function Obras() {
           </div>
         </div>
       )}
-    </div>
+    </Pagina>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  HiOutlineArrowLeft,
   HiOutlineArrowPath,
   HiOutlineBuildingOffice2,
   HiOutlineChartBarSquare,
@@ -13,21 +14,33 @@ import {
   HiOutlineShieldCheck,
   HiOutlineScale
 } from 'react-icons/hi2';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  Avisos,
+  useConfirmacao
+} from '../../../components/padrao';
 import { useAuth } from '../../../contexts/AuthContext';
+import { userHasSetorCapability } from '../../../utils/setor';
 import CrComparativoView from '../components/CrComparativoView';
 import CrConfiguracoesView from '../components/CrConfiguracoesView';
 import CrDashboardView from '../components/CrDashboardView';
 import CrExportacoesView from '../components/CrExportacoesView';
 import CrExecutiveFilters from '../components/CrExecutiveFilters';
+import CrFilaDecisoes from '../components/CrFilaDecisoes';
 import CrImportacoesView from '../components/CrImportacoesView';
 import CrObrasView from '../components/CrObrasView';
+import CrObrigacoesPainel from '../components/CrObrigacoesPainel';
 import CrObrigacoesView from '../components/CrObrigacoesView';
 import CrPlanejamentoMensalView from '../components/CrPlanejamentoMensalView';
-import CrPlanoWorkspace from '../components/CrPlanoWorkspace';
 import CrRealizadoView from '../components/CrRealizadoView';
 import CrAuditoriaView from '../components/CrAuditoriaView';
+import CrDilatacoesView from '../components/CrDilatacoesView';
+import CrPrazosObrasView from '../components/CrPrazosObrasView';
 import {
   CUSTOS_RECEBIVEIS_PERMISSIONS,
+  CUSTOS_RECEBIVEIS_TAB_ALIASES,
   CUSTOS_RECEBIVEIS_TABS
 } from '../constants/custosRecebiveis';
 import {
@@ -37,12 +50,29 @@ import {
   obterPlanoMicroObra,
   publicarPlanoMicro,
   listarMinhasObrigacoesCustosRecebiveis,
+  mensagemLegivel,
+  solicitarReaberturaObraCompetencia,
   validarPlanoMicro
 } from '../services/custosRecebiveis';
 import {
   hasExplicitCustosRecebiveisPermission
 } from '../utils/access';
 import '../styles/custos-recebiveis.css';
+import '../styles/cr-admin.css';
+import '../styles/cr-detalhe.css';
+import '../styles/cr-previsao.css';
+
+// Abas que ainda dependem de obra e competência em contexto (abertas a
+// partir do mês ou de um ponto de atenção do Dashboard).
+const CONTEXT_TABS = ['comparativo', 'realizado'];
+// Visões de uma obra aberta pelo Dashboard: têm caminho de volta a ele.
+const ADMIN_OBRA_TABS = ['planejamento', 'comparativo', 'realizado'];
+
+function hasTabPermission(user, tab) {
+  return Array.isArray(tab.anyOf)
+    ? tab.anyOf.some((permission) => hasExplicitCustosRecebiveisPermission(user, permission))
+    : hasExplicitCustosRecebiveisPermission(user, tab.permission);
+}
 
 const TAB_ICONS = {
   'visao-geral': HiOutlineChartBarSquare,
@@ -51,7 +81,7 @@ const TAB_ICONS = {
   comparativo: HiOutlineScale,
   realizado: HiOutlineBanknotes,
   obrigacoes: HiOutlineClock,
-  importacoes: HiOutlineCircleStack,
+  arquivos: HiOutlineCircleStack,
   exportacoes: HiOutlineArrowDownTray,
   auditoria: HiOutlineShieldCheck,
   configuracoes: HiOutlineCog6Tooth
@@ -64,6 +94,7 @@ function currentMonth() {
 
 export default function CustosRecebiveis() {
   const { user, refreshSession } = useAuth();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [searchParams, setSearchParams] = useSearchParams();
   const [obras, setObras] = useState([]);
   const [obrasLoading, setObrasLoading] = useState(false);
@@ -77,7 +108,7 @@ export default function CustosRecebiveis() {
   const [feedback, setFeedback] = useState(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [obligationSummary, setObligationSummary] = useState(null);
-  const [obligationData, setObligationData] = useState(null);
+  const [decisoesVersao, setDecisoesVersao] = useState(0);
 
   const hasAdministrativeCapability = [
     CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_IMPORT,
@@ -91,38 +122,56 @@ export default function CustosRecebiveis() {
     && hasExplicitCustosRecebiveisPermission(user, CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_VIEW)
     && !hasAdministrativeCapability
   );
+  const isObraUser = userHasSetorCapability(user, 'eh_setor_obra');
+  const obraExperience = isObraUser || operationalExperience;
 
   const availableTabs = useMemo(
-    () => CUSTOS_RECEBIVEIS_TABS.filter((tab) => (
-      hasExplicitCustosRecebiveisPermission(user, tab.permission)
-    )),
+    () => CUSTOS_RECEBIVEIS_TABS.filter((tab) => hasTabPermission(user, tab)),
     [user]
   );
+  // Administrador SEM Dashboard não tem card de obra para chegar aos meses:
+  // para ele a aba "Planejamento mensal" (com a escolha da obra) continua.
+  const hasDashboardTab = availableTabs.some((tab) => tab.id === 'visao-geral');
+  const adminPlanningTab = !obraExperience && !hasDashboardTab;
   const visibleTabs = useMemo(() => {
+    // Engenheiro: entra pelos cards de "Minhas obras" e chega aos meses
+    // clicando na obra — a aba "Planejamento mensal" (que pedia escolher a
+    // obra num select) não aparece para ele.
     const tabs = availableTabs.filter((tab) => (
-      !tab.hidden || (operationalExperience && tab.id === 'obras')
+      obraExperience
+        ? (!tab.hidden || tab.id === 'obras') && tab.id !== 'planejamento'
+        : !tab.hidden || (adminPlanningTab && tab.id === 'planejamento')
     ));
-    if (!operationalExperience) return tabs;
+    if (!obraExperience) return tabs;
     const operationalOrder = new Map([
       ['obras', 0],
-      ['planejamento', 1],
-      ['visao-geral', 2],
-      ['obrigacoes', 3]
+      ['visao-geral', 1],
+      ['obrigacoes', 2]
     ]);
     return [...tabs].sort((left, right) => (
       (operationalOrder.get(left.id) ?? 99) - (operationalOrder.get(right.id) ?? 99)
     ));
-  }, [availableTabs, operationalExperience]);
-  const defaultTab = operationalExperience && availableTabs.some((tab) => tab.id === 'obras')
+  }, [availableTabs, obraExperience, adminPlanningTab]);
+  const defaultTab = obraExperience && availableTabs.some((tab) => tab.id === 'obras')
     ? 'obras'
     : visibleTabs[0]?.id || availableTabs[0]?.id || 'obras';
-  const requestedTab = searchParams.get('aba') || defaultTab;
+  const selectedObraId = Number(searchParams.get('obra'));
+  const hasObraParam = Number.isInteger(selectedObraId) && selectedObraId > 0;
+  const rawTab = searchParams.get('aba') || defaultTab;
+  // Endereços antigos (?aba=importacoes / ?aba=exportacoes) abrem a aba única.
+  const aliasedTab = CUSTOS_RECEBIVEIS_TAB_ALIASES[rawTab] || rawTab;
+  // Administrador: a tabela de obras deixou de existir e os meses só abrem
+  // com uma obra escolhida no Dashboard — sem ela, volta ao Dashboard.
+  const adminHomeTab = hasDashboardTab ? 'visao-geral' : defaultTab;
+  const requestedTab = !obraExperience && (
+    aliasedTab === 'obras' || (aliasedTab === 'planejamento' && !hasObraParam && hasDashboardTab)
+  ) ? adminHomeTab : aliasedTab;
   const activeTab = availableTabs.some((tab) => tab.id === requestedTab)
     ? requestedTab
     : defaultTab || null;
-  const selectedObraId = Number(searchParams.get('obra'));
   const selectedPlanId = Number(searchParams.get('plano'));
   const competencia = searchParams.get('competencia') || currentMonth();
+  const obrasCompetencia = currentMonth();
   const dashboardObraId = Number(searchParams.get('obra_decisao'));
   const dashboardClassificacao = ['PUBLICA', 'PRIVADA'].includes(
     String(searchParams.get('classificacao_decisao') || '').toUpperCase()
@@ -208,6 +257,10 @@ export default function CustosRecebiveis() {
       CUSTOS_RECEBIVEIS_PERMISSIONS.REALIZADOS_RECONCILE
     )
   }), [user]);
+  const canExport = hasExplicitCustosRecebiveisPermission(
+    user,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.REPORT_EXPORT
+  );
   const canGrantBypass = hasExplicitCustosRecebiveisPermission(
     user,
     CUSTOS_RECEBIVEIS_PERMISSIONS.OBLIGATION_BYPASS
@@ -220,6 +273,12 @@ export default function CustosRecebiveis() {
   const selectedObra = obras.find((obra) => Number(obra.id) === selectedObraId)
     || planData?.obra
     || null;
+  const hasSelectedObra = Number.isInteger(selectedObraId) && selectedObraId > 0;
+  // Engenheiro: sem obra escolhida, o planejamento mostra os cards de obra.
+  const engineerWorksHome = obraExperience && (
+    activeTab === 'obras' || (activeTab === 'planejamento' && !hasSelectedObra)
+  );
+  const engineerMonths = obraExperience && activeTab === 'planejamento' && hasSelectedObra;
   const executiveWorks = useMemo(
     () => obras.filter((obra) => String(obra.tipo_centro_custo || '').toUpperCase() === 'OBRA'),
     [obras]
@@ -248,14 +307,14 @@ export default function CustosRecebiveis() {
     try {
       setObrasLoading(true);
       setObrasError('');
-      const response = await listarCustosRecebiveisObras();
+      const response = await listarCustosRecebiveisObras({ competencia: obrasCompetencia });
       setObras(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
-      setObrasError(error.message || 'Erro ao carregar obras.');
+      setObrasError(mensagemLegivel(error, 'Não foi possível carregar as obras.'));
     } finally {
       setObrasLoading(false);
     }
-  }, [canViewObras]);
+  }, [canViewObras, obrasCompetencia]);
 
   const loadPlan = useCallback(async (obraId = selectedObraId, planId = selectedPlanId) => {
     if (!Number.isInteger(Number(obraId)) || Number(obraId) <= 0) {
@@ -279,7 +338,7 @@ export default function CustosRecebiveis() {
       return response;
     } catch (error) {
       setPlanData(null);
-      setPlanError(error.message || 'Erro ao carregar o plano micro.');
+      setPlanError(mensagemLegivel(error, 'Não foi possível carregar a planilha da obra.'));
       return null;
     } finally {
       setPlanLoading(false);
@@ -289,24 +348,21 @@ export default function CustosRecebiveis() {
   const loadObligationSummary = useCallback(async () => {
     if (!canViewObligations) {
       setObligationSummary(null);
-      setObligationData(null);
       return;
     }
     try {
       const response = await listarMinhasObrigacoesCustosRecebiveis();
       setObligationSummary(response?.resumo || null);
-      setObligationData(response || null);
     } catch {
       setObligationSummary(null);
-      setObligationData(null);
     }
   }, [canViewObligations]);
 
   useEffect(() => {
-    if (activeTab && requestedTab !== activeTab) {
+    if (activeTab && searchParams.get('aba') && searchParams.get('aba') !== activeTab) {
       updateQuery({ aba: activeTab }, { replace: true });
     }
-  }, [activeTab, requestedTab, updateQuery]);
+  }, [activeTab, searchParams, updateQuery]);
 
   useEffect(() => {
     loadObras();
@@ -348,7 +404,10 @@ export default function CustosRecebiveis() {
     updateQuery({
       obra: value || null,
       plano: null,
-      sub: value ? 'estrutura' : null
+      sub: null,
+      detalhe: null,
+      painel: null,
+      bloqueio: null
     });
   }
 
@@ -356,16 +415,38 @@ export default function CustosRecebiveis() {
     updateQuery({ plano: planId || null });
   }
 
-  function handleOpenImport() {
-    updateQuery({ aba: 'importacoes' });
+  // Importações: abre (ou fecha) a planilha de uma obra abaixo da lista.
+  function handleSelectArquivosObra(obraId) {
+    updateQuery({ obra: obraId || null, plano: null });
   }
 
-  function handleOpenPlan(planId) {
+  function handleBackToDashboard() {
     updateQuery({
-      aba: 'obras',
-      sub: 'estrutura',
-      plano: planId
+      aba: adminHomeTab,
+      obra: null,
+      detalhe: null,
+      painel: null,
+      bloqueio: null,
+      plano: null
     });
+  }
+
+  // Fila de decisões / histórico de reaberturas: abre o mês do pedido.
+  function handleOpenDecisionMonth(item) {
+    updateQuery({
+      aba: 'planejamento',
+      obra: item?.obra?.id || item?.obra_id || null,
+      competencia: item?.competencia || competencia,
+      detalhe: '1',
+      painel: 'details',
+      plano: null,
+      bloqueio: null
+    });
+  }
+
+  async function handleDecided() {
+    setDecisoesVersao((current) => current + 1);
+    await Promise.all([loadObras(), loadObligationSummary()]);
   }
 
   async function handleDownloadModel() {
@@ -418,9 +499,29 @@ export default function CustosRecebiveis() {
   }
 
   async function handlePublish(planId, justification) {
-    if (!window.confirm(
-      'Publicar esta versão fará com que ela substitua a versão vigente da obra. Deseja continuar?'
-    )) return;
+    /*
+      R19: era `window.confirm` — a caixa do Chrome, que ignora tema e
+      tokens, não existe no DOM e dá o mesmo peso a "salvo" e a "substituir
+      a versão vigente da obra".
+
+      R26: obra e versão são fixadas em `const` ANTES do `await`. O modal do
+      sistema NÃO congela a página: a lista de planos continua clicável, e
+      ler `selectedObra`/`planData` depois da confirmação abriria a janela em
+      que a pessoa lê a versão A e a publicação acontece na obra B.
+
+      R21: o retorno é DESESTRUTURADO. `const ok = await confirmar(...)`
+      guarda um objeto, que é sempre truthy — o "Cancelar" publicaria.
+    */
+    const obraAlvo = selectedObra;
+    const versaoAlvo = (planData?.planos || []).find(
+      (plano) => Number(plano.id) === Number(planId)
+    )?.versao;
+    const { ok } = await confirmar({
+      titulo: 'Publicar versão do plano micro',
+      mensagem: `Publicar ${versaoAlvo ? `a versão v${versaoAlvo}` : 'esta versão'} da obra ${obraAlvo?.nome || obraAlvo?.codigo || 'selecionada'}? Ela substitui a versão vigente para todos que consultam custos, recebíveis e medições desta obra. A medição já aprovada nos meses anteriores continua valendo pelo código do item: item com código novo recomeça do zero.`,
+      rotuloConfirmar: 'Publicar versão'
+    });
+    if (!ok) return;
     try {
       setPublishing(true);
       setFeedback(null);
@@ -453,6 +554,31 @@ export default function CustosRecebiveis() {
       detalhe: null,
       painel: null
     });
+  }
+
+  async function handleRequestReopening(obraId, targetCompetencia, motivo) {
+    try {
+      setFeedback(null);
+      const result = await solicitarReaberturaObraCompetencia(
+        obraId,
+        targetCompetencia || competencia,
+        motivo
+      );
+      setFeedback({
+        tone: 'success',
+        message: result?.idempotente
+          ? 'Já existe uma solicitação de reabertura aguardando decisão.'
+          : 'Solicitação de reabertura enviada para decisão.'
+      });
+      await Promise.all([loadObras(), loadObligationSummary()]);
+      return result;
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        message: error.message || 'Não foi possível solicitar a reabertura.'
+      });
+      throw error;
+    }
   }
 
   function handleOpenDashboardArea(item) {
@@ -491,7 +617,7 @@ export default function CustosRecebiveis() {
       competencia: item.competencia,
       plano: null,
       detalhe: '1',
-      painel: 'planning',
+      painel: item.tipo === 'MEDICAO_CONSOLIDADA' ? 'approved' : 'planning',
       bloqueio: item.exige_reabertura ? '1' : null
     });
   }
@@ -506,44 +632,128 @@ export default function CustosRecebiveis() {
 
   if (!activeTab) {
     return (
-      <div className="page cr-page">
-        <section className="cr-section cr-empty-state cr-empty-state--large">
-          <HiOutlineChartBarSquare className="h-7 w-7" />
-          <strong>Nenhuma área do módulo foi liberada</strong>
-          <span>Solicite ao administrador pelo menos uma permissão de visualização.</span>
-        </section>
-      </div>
+      /*
+        A classe `cr-page` FICA na raiz: é nela que o CSS do módulo declara
+        os tokens locais (`--cr-accent`, `--cr-surface`, `--cr-border`…) que
+        TODAS as visões filhas consomem. Sem ela o módulo inteiro perde a
+        cor. O ritmo vertical passa a ser do `Pagina`.
+      */
+      <Pagina className="cr-page">
+        <PageHeader
+          titulo="Custos e Recebíveis"
+          /* C2 (matriz): mesmo o estado sem area liberada carrega apoio na
+             faixa — quem chega aqui precisa saber POR QUE a tela esta vazia,
+             e o apoio e o unico lugar que sobrevive a rolagem. A contagem e
+             um NUMERO (zero areas), nao um adjetivo: e o que a C2 mede. */
+          contagem="0 área(s) liberada(s)"
+          descricao="Solicite ao administrador pelo menos uma permissão de visualização deste módulo."
+        />
+        <BlocoConteudo titulo="Nenhuma área do módulo foi liberada">
+          <div className="cr-empty-state cr-empty-state--large">
+            {/* R10: `h-7 w-7` (28px) não é degrau da escala — 24px é. */}
+            <HiOutlineChartBarSquare className="h-6 w-6" />
+            <strong>Nenhuma área do módulo foi liberada</strong>
+            <span>Solicite ao administrador pelo menos uma permissão de visualização.</span>
+          </div>
+        </BlocoConteudo>
+      </Pagina>
     );
   }
 
+  const abaAtual = visibleTabs.find((tab) => tab.id === activeTab)
+    || availableTabs.find((tab) => tab.id === activeTab);
+
   return (
-    <div className="page cr-page">
-      <header className="cr-page-header">
-        <div>
-          <span>Planejamento e acompanhamento por obra</span>
-          <h1>Custos e Recebíveis</h1>
-          <p>Planeje o mês, acompanhe medições e compare com os lançamentos financeiros.</p>
-        </div>
-        <div className="cr-page-header__actions">
-          {canViewObligations ? (
-            <button
-              type="button"
-              className="cr-obligation-counter"
-              data-overdue={Number(obligationSummary?.vencidas || 0) > 0 || undefined}
-              onClick={() => updateQuery({ aba: 'obrigacoes' })}
-            >
-              <HiOutlineClock className="h-4 w-4" />
-              <span>Prazos</span>
-              <strong>{obligationSummary?.vencidas || 0} vencida(s)</strong>
-              <small>{obligationSummary?.pendentes || 0} pendente(s)</small>
-            </button>
-          ) : null}
-          <button type="button" className="btn btn-outline" onClick={handleRefresh}>
-            <HiOutlineArrowPath className="h-4 w-4" />
-            Atualizar
+    /*
+      A classe `cr-page` FICA na raiz (tokens locais do módulo, ver acima);
+      o vão entre blocos e o título de página passam a ser do `Pagina`.
+    */
+    <Pagina className="cr-page">
+      {/*
+        R13/R5: o cabeçalho era um `header` próprio que rolava para fora da
+        tela levando o "Atualizar" e o contador de prazos junto. Agora é o
+        PageHeader: gruda abaixo da topbar, compacta na rolagem e nunca some.
+        O olho-de-boi "Planejamento e acompanhamento por obra" e a frase de
+        apoio viraram a linha única de `descricao` — em página longa a pessoa
+        continua sabendo onde está.
+
+        C2 × B3 (critério de 05/09): a FAIXA fica com o TOTAL, os BLOCOS com
+        os recortes. O total do módulo é quantas obras ele enxerga; a carteira
+        consolidada, ali embaixo, conta as obras do recorte do filtro
+        executivo — dois números que respondem perguntas diferentes. A área
+        aberta era a `contagem` e desceu para a `descricao`: continua dizendo
+        onde a pessoa está, sem ocupar o lugar de um número que não é.
+      */}
+      <PageHeader
+        titulo="Custos e Recebíveis"
+        contagem={`${obras.length} obra(s)`}
+        descricao={obraExperience
+          ? `${abaAtual?.label ? `${abaAtual.label} · ` : ''}Planejamento do mês, medições e financeiro.`
+          : (abaAtual?.label || '')}
+        secundarias={[{
+          rotulo: 'Atualizar',
+          icone: <HiOutlineArrowPath className="h-4 w-4" />,
+          onClick: handleRefresh
+        }]}
+      >
+        {/*
+          O contador de prazos continua na faixa fixa, com o markup e o
+          estado `data-overdue` que o CSS do módulo pinta de vermelho quando
+          há obrigação vencida. Ele não é um botão de ação comum: é um
+          SINAL que também leva à aba de obrigações, e transformá-lo numa
+          ação de contorno apagaria o alerta de vencimento — remoção de
+          elemento visível exige aprovação do cliente.
+        */}
+        {canViewObligations ? (
+          <button
+            type="button"
+            className="cr-obligation-counter"
+            data-overdue={Number(obligationSummary?.vencidas || 0) > 0 || undefined}
+            onClick={() => updateQuery({ aba: 'obrigacoes' })}
+          >
+            <HiOutlineClock className="h-4 w-4" />
+            <span>Prazos</span>
+            <strong>{obligationSummary?.vencidas || 0} vencida(s)</strong>
+            <small>{obligationSummary?.pendentes || 0} pendente(s)</small>
           </button>
-        </div>
-      </header>
+        ) : null}
+      </PageHeader>
+
+      {/*
+        R16/R19: UM dono para a faixa de avisos. O `div.cr-feedback` próprio
+        saiu e o mesmo estado `feedback` — que a CrImportacoesView recebe por
+        prop e continua recebendo, byte a byte — vira o aviso do sistema,
+        fechável. A condição de tela permanece: na aba de importações quem
+        mostra o retorno é a própria visão, senão apareceria duas vezes.
+      */}
+      {activeTab !== 'arquivos' ? (
+        <Avisos
+          avisos={feedback ? [{
+            id: 'cr-feedback',
+            tipo: feedback.tone === 'error' ? 'error' : 'success',
+            mensagem: feedback.message
+          }] : []}
+          aoFechar={() => setFeedback(null)}
+        />
+      ) : null}
+
+      {/*
+        R12 NÃO se aplica: a barra de abas escolhe QUAL área do módulo está
+        aberta (é o seletor de contexto da tela, refletido na URL `?aba=`),
+        não recorte de lista.
+      */}
+      {/*
+        Fase 4: a fila de decisões (reaberturas e dilatações pendentes, mais
+        antiga primeiro) fica no topo da tela do administrador — é para cá
+        que vai o pedido do engenheiro. Some quando não há pedido.
+      */}
+      {!obraExperience && planningPermissions.reopenApprove ? (
+        <CrFilaDecisoes
+          versao={decisoesVersao + refreshToken}
+          onOpenMonth={handleOpenDecisionMonth}
+          onDecided={handleDecided}
+        />
+      ) : null}
 
       <nav className="cr-tabs" aria-label="Áreas de Custos e Recebíveis">
         {visibleTabs.map((tab) => {
@@ -552,8 +762,19 @@ export default function CustosRecebiveis() {
             <button
               key={tab.id}
               type="button"
-              className={activeTab === tab.id ? 'is-active' : ''}
-              onClick={() => updateQuery({ aba: tab.id })}
+              className={(
+                activeTab === tab.id
+                || (engineerMonths && tab.id === 'obras')
+                || (hasDashboardTab && !obraExperience && tab.id === adminHomeTab
+                  && ADMIN_OBRA_TABS.includes(activeTab))
+              ) ? 'is-active' : ''}
+              // Engenheiro: "Minhas obras" volta à lista, sem obra aberta.
+              // Administrador: cada aba abre sem a obra/mês da anterior.
+              onClick={() => updateQuery(obraExperience
+                ? (tab.id === 'obras'
+                  ? { aba: 'obras', obra: null, competencia: null, detalhe: null, painel: null, bloqueio: null }
+                  : { aba: tab.id })
+                : { aba: tab.id, obra: null, plano: null, sub: null, detalhe: null, painel: null, bloqueio: null })}
             >
               <Icon className="h-4 w-4" />
               {tab.label}
@@ -592,7 +813,17 @@ export default function CustosRecebiveis() {
             periodo_fim: end
           })}
         />
-      ) : activeTab !== 'obras' && !(activeTab === 'planejamento' && selectedObra) ? (
+      ) : activeTab !== 'obras' && !engineerWorksHome && !engineerMonths
+        && (CONTEXT_TABS.includes(activeTab) || (adminPlanningTab && activeTab === 'planejamento')) ? (
+      /*
+        R12: estes DOIS selects continuam legítimos — não são filtro de
+        lista, são o SELETOR DE CONTEXTO (qual obra e qual competência as
+        visões abaixo carregam, herdado pelo que se cria em seguida), o caso
+        que a própria R12 declara fora do seu escopo. O que muda é a
+        superfície: em vez de uma faixa solta sobre o canvas, um bloco com
+        título dizendo o que ele governa.
+      */
+      <BlocoConteudo titulo="Obra e competência">
       <section className="cr-context-bar" aria-label="Contexto do módulo">
         <label className="cr-field">
           <span>Obra em contexto</span>
@@ -619,50 +850,31 @@ export default function CustosRecebiveis() {
             <small>Altere o mês e o ano para recalcular o período financeiro.</small>
           ) : null}
         </label>
-        <div className="cr-context-summary">
-          <span>Escopo atual</span>
-          <strong>{selectedObra ? selectedObra.nome : `${obras.length} obra(s) disponível(is)`}</strong>
-          <small>
-            {selectedObra?.empresa?.nome || 'A competência será usada nas próximas fases do módulo.'}
-          </small>
-        </div>
       </section>
+      </BlocoConteudo>
       ) : null}
 
-      {feedback && activeTab !== 'importacoes' ? (
-        <div className="cr-feedback" data-tone={feedback.tone || 'info'}>
-          {feedback.message}
+      {hasDashboardTab && !obraExperience && ADMIN_OBRA_TABS.includes(activeTab) ? (
+        <div className="cr-admin-voltar">
+          <button type="button" className="btn btn-outline btn-sm" onClick={handleBackToDashboard}>
+            <HiOutlineArrowLeft className="h-4 w-4" />
+            Dashboard
+          </button>
+          {selectedObra ? (
+            <span>{selectedObra.codigo || selectedObra.id} · {selectedObra.nome}</span>
+          ) : null}
         </div>
       ) : null}
 
-      {activeTab === 'obras' ? (
-        <>
-          <CrObrasView
-            obras={obras}
-            loading={obrasLoading}
-            error={obrasError}
-            onReload={loadObras}
-            onOpen={handleOpenObra}
-            showAdministrationLink={!operationalExperience && canViewStructure}
-          />
-          {!operationalExperience && Number.isInteger(selectedObraId) && selectedObraId > 0 ? (
-            <div id="cr-workspace-anchor">
-              <CrPlanoWorkspace
-                data={planData}
-                loading={planLoading}
-                error={planError}
-                canImport={canImport}
-                canPublish={canPublish}
-                publishing={publishing}
-                onReload={() => loadPlan()}
-                onSelectPlan={handleSelectPlan}
-                onOpenImport={handleOpenImport}
-                onDownloadModel={handleDownloadModel}
-                onPublish={handlePublish}
-              />
-            </div>
-          ) : null}
-        </>
+      {activeTab === 'obras' || engineerWorksHome ? (
+        <CrObrasView
+          obras={obras}
+          loading={obrasLoading}
+          error={obrasError}
+          onReload={loadObras}
+          onOpen={handleOpenObra}
+          cardMode={obraExperience}
+        />
       ) : null}
 
       {activeTab === 'visao-geral' ? (
@@ -679,7 +891,17 @@ export default function CustosRecebiveis() {
         />
       ) : null}
 
-      {activeTab === 'planejamento' ? (
+      {activeTab === 'planejamento' && !engineerWorksHome && !obraExperience && !adminPlanningTab
+        && !selectedObra ? (
+        <BlocoConteudo titulo="Meses da obra">
+          <p className="cr-faixa-aviso" role="status">
+            {obrasLoading || planLoading ? 'Carregando obra...' : 'Obra não encontrada no seu escopo.'}
+          </p>
+        </BlocoConteudo>
+      ) : null}
+
+      {activeTab === 'planejamento' && !engineerWorksHome
+        && (obraExperience || adminPlanningTab || selectedObra) ? (
         <CrPlanejamentoMensalView
           key={`${selectedObraId}-${competencia}-${refreshToken}`}
           obra={selectedObra}
@@ -687,10 +909,18 @@ export default function CustosRecebiveis() {
           initialCompetencia={competencia}
           autoOpen={searchParams.get('bloqueio') === '1'}
           detailMode={detailMode}
-          obligations={obligationData?.items || []}
-          obligationsServerTime={obligationData?.server_time || null}
           permissions={planningPermissions}
           onChanged={handlePlanningChanged}
+          onRequestReopen={handleRequestReopening}
+          prazos={selectedObra?.prazos || null}
+          onBackToWorks={obraExperience ? () => updateQuery({
+            aba: 'obras',
+            obra: null,
+            competencia: null,
+            detalhe: null,
+            painel: null,
+            bloqueio: null
+          }) : null}
           onNavigateDetail={(competenciaValue, area) => updateQuery({
             competencia: competenciaValue || competencia,
             detalhe: competenciaValue ? '1' : null,
@@ -717,52 +947,87 @@ export default function CustosRecebiveis() {
         />
       ) : null}
 
-      {activeTab === 'obrigacoes' ? (
-        <CrObrigacoesView
-          key={refreshToken}
+      {activeTab === 'obrigacoes' && !obraExperience ? (
+        <CrObrigacoesPainel
+          obras={obras}
+          obrasLoading={obrasLoading}
+          obrasError={obrasError}
+          versao={decisoesVersao + refreshToken}
+          canDecide={planningPermissions.reopenApprove}
           canGrantBypass={canGrantBypass}
+          canViewDilatacoes={planningPermissions.reopenApprove || canOpenPlanning}
+          onOpenObra={handleOpenObra}
           onOpenPlanning={handleOpenObligationPlanning}
+          onOpenMonth={handleOpenDecisionMonth}
+          onDecided={handleDecided}
         />
       ) : null}
 
-      {activeTab === 'importacoes' ? (
-        <CrImportacoesView
-          key={selectedObraId || 'none'}
-          obra={selectedObra}
-          data={planData}
-          canImport={canImport}
-          validating={validating}
-          importing={importing}
-          feedback={feedback}
-          onDownloadModel={handleDownloadModel}
-          onValidate={handleValidate}
-          onImport={handleImport}
-          onOpenPlan={handleOpenPlan}
-        />
+      {activeTab === 'obrigacoes' && obraExperience ? (
+        <>
+          <CrObrigacoesView
+            key={refreshToken}
+            canGrantBypass={canGrantBypass}
+            onOpenPlanning={handleOpenObligationPlanning}
+          />
+          {planningPermissions.reopenApprove || canOpenPlanning ? (
+            <CrDilatacoesView
+              key={`dilatacoes-${refreshToken}`}
+              canDecide={planningPermissions.reopenApprove}
+            />
+          ) : null}
+        </>
       ) : null}
 
-      {activeTab === 'exportacoes' ? (
-        <CrExportacoesView
-          key={`${selectedObraId}-${competencia}`}
-          obra={selectedObra}
-          competencia={competencia}
-        />
+      {activeTab === 'arquivos' ? (
+        <>
+          {canImport || canPublish ? (
+            <CrImportacoesView
+              obras={obras}
+              obra={hasSelectedObra ? selectedObra : null}
+              versao={refreshToken}
+              data={planData}
+              planLoading={planLoading}
+              planError={planError}
+              canImport={canImport}
+              canPublish={canPublish}
+              validating={validating}
+              importing={importing}
+              publishing={publishing}
+              feedback={feedback}
+              onSelectObra={handleSelectArquivosObra}
+              onSelectPlan={handleSelectPlan}
+              onReloadPlan={() => loadPlan()}
+              onDownloadModel={handleDownloadModel}
+              onValidate={handleValidate}
+              onImport={handleImport}
+              onPublish={handlePublish}
+            />
+          ) : null}
+          {canExport ? (
+            <BlocoConteudo titulo="Exportações">
+              <CrExportacoesView obras={obras} competenciaInicial={competencia} />
+            </BlocoConteudo>
+          ) : null}
+        </>
       ) : null}
 
       {activeTab === 'auditoria' ? (
-        <CrAuditoriaView
-          key={`${selectedObraId}-${refreshToken}`}
-          obra={selectedObra}
-        />
+        <CrAuditoriaView key={`auditoria-${refreshToken}`} obras={obras} />
       ) : null}
 
       {activeTab === 'configuracoes' ? (
-        <CrConfiguracoesView
-          key={`${selectedObraId}-${refreshToken}`}
-          obra={selectedObra}
-          onChanged={handleRefresh}
-        />
+        <>
+          <CrPrazosObrasView key={`prazos-${refreshToken}`} />
+          <CrConfiguracoesView
+            key={`responsaveis-${refreshToken}`}
+            obras={obras}
+            onChanged={loadObras}
+          />
+        </>
       ) : null}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

@@ -30,27 +30,32 @@ export const RH_DP_PERMISSION_GROUPS = [
       },
       {
         key: 'rh_dp_importacoes_execute',
-        label: 'Executar importacoes',
+        label: 'Executar importações',
         description: 'Permite subir planilhas, gerar preview e confirmar lotes.'
       },
       {
         key: 'rh_dp_apuracao_view',
-        label: 'Ver apuracoes',
+        label: 'Ver apurações',
         description: 'Permite listar e detalhar apuracoes.'
       },
       {
         key: 'rh_dp_apuracao_edit',
-        label: 'Ajustar apuracoes',
+        label: 'Ajustar apurações',
         description: 'Permite gerar apuracao, ajustar itens e concluir conferencia.'
       },
       {
         key: 'rh_dp_fechamento_execute',
-        label: 'Fechar competencia',
+        label: 'Fechar competência',
         description: 'Permite fechar a competencia e gerar titulos no financeiro.'
       },
       {
+        key: 'rh_dp_ticket_generate',
+        label: 'Gerar lote de ticket',
+        description: 'Permite selecionar colaboradores e gerar o pagamento rateado do beneficio.'
+      },
+      {
         key: 'rh_dp_obrigacoes_view',
-        label: 'Ver obrigacoes geradas',
+        label: 'Ver obrigações geradas',
         description: 'Permite acessar fechamentos e titulos gerados no financeiro.'
       }
     ]

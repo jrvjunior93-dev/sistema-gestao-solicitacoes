@@ -93,10 +93,10 @@ export default function FinanceiroTitulosImportacaoPanel({ onClose, onConfirmed 
   }
 
   return (
-    <section className="card sol-surface-card mb-4 overflow-hidden" aria-label="Importacao de contas a pagar">
+    <section className="card sol-surface-card mb-4 overflow-hidden" aria-label="Importação de contas a pagar">
       <div className="flex flex-col gap-3 border-b border-[var(--c-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-[var(--c-text)]">Importar contas a pagar</h2>
+          <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar contas a pagar</h2>
           <p className="text-xs text-[var(--c-muted)]">Envie o modelo preenchido. Nenhuma baixa e criada nesta etapa.</p>
         </div>
         <button type="button" className="btn btn-ghost btn-sm self-start" onClick={onClose} disabled={loadingPreview || confirming}>
@@ -114,7 +114,7 @@ export default function FinanceiroTitulosImportacaoPanel({ onClose, onConfirmed 
           >
             <span>
               <span className="block text-sm font-semibold text-[var(--c-text)]">{file?.name || 'Selecionar planilha .xlsx'}</span>
-              <span className="mt-1 block text-xs text-[var(--c-muted)]">Ate 500 titulos por arquivo.</span>
+              <span className="mt-1 block text-xs text-[var(--c-muted)]">Até 500 títulos por arquivo.</span>
             </span>
             <HiOutlineArrowUpTray className="h-5 w-5 text-[var(--c-primary)]" />
           </button>
@@ -136,10 +136,10 @@ export default function FinanceiroTitulosImportacaoPanel({ onClose, onConfirmed 
           </button>
           {preview && (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--c-border)] pt-3 text-xs">
-              <div><dt className="text-[var(--c-muted)]">Importacao</dt><dd className="font-semibold text-[var(--c-text)]">{preview.codigo}</dd></div>
-              <div><dt className="text-[var(--c-muted)]">Titulos logicos</dt><dd className="font-semibold text-[var(--c-text)]">{preview.total_titulos_logicos}</dd></div>
-              <div><dt className="text-[var(--c-muted)]">Titulos gerados</dt><dd className="font-semibold text-[var(--c-text)]">{preview.total_titulos_gerados}</dd></div>
-              <div><dt className="text-[var(--c-muted)]">Valor liquido</dt><dd className="font-semibold text-[var(--c-text)]">{formatCurrency(preview.valor_liquido)}</dd></div>
+              <div><dt className="text-[var(--c-muted)]">Importação</dt><dd className="font-semibold text-[var(--c-text)]">{preview.codigo}</dd></div>
+              <div><dt className="text-[var(--c-muted)]">Títulos logicos</dt><dd className="font-semibold text-[var(--c-text)]">{preview.total_titulos_logicos}</dd></div>
+              <div><dt className="text-[var(--c-muted)]">Títulos gerados</dt><dd className="font-semibold text-[var(--c-text)]">{preview.total_titulos_gerados}</dd></div>
+              <div><dt className="text-[var(--c-muted)]">Valor líquido</dt><dd className="font-semibold text-[var(--c-text)]">{formatCurrency(preview.valor_liquido)}</dd></div>
             </dl>
           )}
         </div>
@@ -158,8 +158,8 @@ export default function FinanceiroTitulosImportacaoPanel({ onClose, onConfirmed 
           )}
           {preview && preview.status !== 'CONFIRMADO' && (
             <div className="space-y-4">
-              <IssueList title="Erros que bloqueiam a importacao" items={preview.erros} tone="error" />
-              <IssueList title="Avisos para revisao" items={preview.avisos} tone="warning" />
+              <IssueList title="Erros que bloqueiam a importação" items={preview.erros} tone="error" />
+              <IssueList title="Avisos para revisão" items={preview.avisos} tone="warning" />
               {!preview.erros?.length && !preview.avisos?.length && (
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
                   <HiOutlineCheckCircle className="h-5 w-5" /> Planilha pronta para confirmacao.
@@ -168,7 +168,7 @@ export default function FinanceiroTitulosImportacaoPanel({ onClose, onConfirmed 
               {Number(preview.total_avisos || 0) > 0 && (
                 <label className="flex items-start gap-2 text-xs text-[var(--c-text)]">
                   <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--c-primary)]" checked={acceptWarnings} onChange={(event) => setAcceptWarnings(event.target.checked)} />
-                  Revisei os avisos de duplicidade e/ou pendencias cadastrais e confirmo a importacao.
+                  Revisei os avisos de duplicidade e/ou pendências cadastrais e confirmo a importação.
                 </label>
               )}
               <div className="flex justify-end border-t border-[var(--c-border)] pt-3">

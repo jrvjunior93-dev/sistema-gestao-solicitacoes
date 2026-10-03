@@ -11,6 +11,7 @@ const {
   PaymentProvider,
   TituloFinanceiro
 } = require('../models');
+const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -203,6 +204,7 @@ async function validatePaymentBatchIntegrity(batchId, options = {}) {
     const titulo = intent.titulo;
     const tituloLabel = getTitleLabel(titulo || { id: intent.titulo_financeiro_id });
     if (!titulo) throw createHttpError(404, `Titulo ${tituloLabel} nao encontrado para pagamento.`);
+    assertTituloDisponivelParaBaixa(titulo);
 
     const intentStatus = normalizeStatus(intent.status);
     if (allowedIntentStatuses.length && !allowedIntentStatuses.includes(intentStatus)) {

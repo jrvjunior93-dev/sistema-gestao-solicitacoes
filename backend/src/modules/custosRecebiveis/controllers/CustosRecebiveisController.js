@@ -12,6 +12,7 @@ const {
 } = require('../services/planoMicroService');
 const {
   consolidarMedicao,
+  ajustarPrevisaoAoSaldo,
   criarCompetencia,
   decidirReabertura,
   finalizarCompetencia,
@@ -33,9 +34,19 @@ const {
 const {
   listarRealizados,
   reconciliarRealizado,
-  reprocessarRealizados
+  reprocessarRealizados,
+  sincronizarRealizadosAoConsultar
 } = require('../services/realizadoService');
 const { gerarExportacao } = require('../services/exportacaoService');
+const { calcularPrazosObras } = require('../services/prazoService');
+const { obrasTravadasDoUsuario } = require('../services/bloqueioObraService');
+const {
+  decidirDilatacao,
+  listarDilatacoes,
+  listarPrazosObras,
+  salvarPrazosObra,
+  solicitarDilatacao
+} = require('../services/prazoGestaoService');
 const {
   concederBypass,
   listarBypasses,
@@ -48,6 +59,16 @@ const {
   listarAuditoriaObra,
   listarResponsaveisObra
 } = require('../services/governancaService');
+const {
+  listarAuditoriaGeral,
+  listarObrigacoesGeral,
+  listarPlanosGeral,
+  listarResponsaveisGeral
+} = require('../services/consultaAdminService');
+const {
+  listarDecisoesPendentes,
+  listarReaberturasGeral
+} = require('../services/filaDecisoesService');
 
 function respondError(res, error, fallbackMessage) {
   const status = Number(error?.statusCode || error?.status);
@@ -84,7 +105,32 @@ class CustosRecebiveisController {
 
   static async obras(req, res) {
     try {
-      return res.json(await listarObrasNoEscopo(req.user, req.query));
+      const result = await listarObrasNoEscopo(req.user, req.query);
+      const compact = ['1', 'true'].includes(String(req.query.compacto || '').toLowerCase());
+      if (compact) return res.json(result);
+
+      const prazosByWork = result.items?.length
+        ? await calcularPrazosObras(result.items)
+        : new Map();
+      // Falha no calculo da trava nao derruba a tela onde se regulariza.
+      const travadas = new Map((await obrasTravadasDoUsuario(req.user).catch((error) => {
+        console.error('Falha segura ao calcular obras travadas:', error.message);
+        return [];
+      })).map((item) => [Number(item.obra_id), item]));
+      prazosByWork.forEach((prazos, obraId) => {
+        const travada = travadas.get(obraId);
+        // travada = bloqueando de fato; em modo observacao so avisa.
+        prazos.travada = Boolean(travada?.bloqueando);
+        prazos.travaria = Boolean(travada && !travada.bloqueando && !travada.liberada_ate);
+        prazos.liberada_ate = travada?.liberada_ate || null;
+      });
+      return res.json({
+        ...result,
+        items: (result.items || []).map((obra) => ({
+          ...obra,
+          prazos: prazosByWork.get(Number(obra.id)) || null
+        }))
+      });
     } catch (error) {
       return respondError(res, error, 'Erro ao listar obras de Custos e Recebiveis');
     }
@@ -259,6 +305,22 @@ class CustosRecebiveisController {
     }
   }
 
+  // Fase 5 (29/09/2026): reduz a medicao prevista do mes ao saldo depois da
+  // medicao aprovada do mes anterior. So reduz; idempotente pela chave.
+  static async ajustarPrevisaoAoSaldo(req, res) {
+    try {
+      return res.json(await ajustarPrevisaoAoSaldo(
+        req.user,
+        req.params.obraId,
+        req.params.competencia,
+        req.body,
+        req.get('Idempotency-Key')
+      ));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao ajustar a previsao ao saldo');
+    }
+  }
+
   static async consolidarMedicao(req, res) {
     try {
       return res.json(await consolidarMedicao(
@@ -318,6 +380,7 @@ class CustosRecebiveisController {
 
   static async comparativo(req, res) {
     try {
+      await sincronizarRealizadosAoConsultar(req.user, req.params.obraId, req.query.competencia);
       return res.json(await obterComparativo(
         req.user,
         req.params.obraId,
@@ -357,10 +420,16 @@ class CustosRecebiveisController {
 
   static async decidirReabertura(req, res) {
     try {
+      // Fase 4: a tela do administrador envia `justificativa`; o servico
+      // grava `observacao` na auditoria. `observacao` continua valendo.
+      const body = req.body || {};
+      const payload = body.observacao == null && body.justificativa != null
+        ? { ...body, observacao: body.justificativa }
+        : body;
       return res.json(await decidirReabertura(
         req.user,
         req.params.reaberturaId,
-        req.body
+        payload
       ));
     } catch (error) {
       return respondError(res, error, 'Erro ao decidir a reabertura');
@@ -369,6 +438,7 @@ class CustosRecebiveisController {
 
   static async realizados(req, res) {
     try {
+      await sincronizarRealizadosAoConsultar(req.user, req.params.obraId, req.query.competencia);
       return res.json(await listarRealizados(
         req.user,
         req.params.obraId,
@@ -502,6 +572,101 @@ class CustosRecebiveisController {
       ));
     } catch (error) {
       return respondError(res, error, 'Erro ao consultar auditoria de Custos e Recebiveis');
+    }
+  }
+
+  // Consultas gerais do administrador (reforma 2026-09, Fase 4).
+  static async decisoesPendentes(req, res) {
+    try {
+      return res.json(await listarDecisoesPendentes(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar pedidos aguardando decisao');
+    }
+  }
+
+  static async reaberturas(req, res) {
+    try {
+      return res.json(await listarReaberturasGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar reaberturas');
+    }
+  }
+
+  static async auditoriaGeral(req, res) {
+    try {
+      return res.json(await listarAuditoriaGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar auditoria de Custos e Recebiveis');
+    }
+  }
+
+  static async planosGeral(req, res) {
+    try {
+      return res.json(await listarPlanosGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar planos das obras');
+    }
+  }
+
+  static async responsaveisGeral(req, res) {
+    try {
+      return res.json(await listarResponsaveisGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar responsaveis das obras');
+    }
+  }
+
+  static async obrigacoesGeral(req, res) {
+    try {
+      return res.json(await listarObrigacoesGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar obrigacoes das obras');
+    }
+  }
+
+  static async prazosObras(req, res) {
+    try {
+      return res.json(await listarPrazosObras(req.user));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar prazos das obras');
+    }
+  }
+
+  static async salvarPrazosObra(req, res) {
+    try {
+      return res.json(await salvarPrazosObra(req.user, req.params.obraId, req.body));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao salvar prazos da obra');
+    }
+  }
+
+  static async dilatacoes(req, res) {
+    try {
+      return res.json(await listarDilatacoes(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar dilatacoes de prazo');
+    }
+  }
+
+  static async solicitarDilatacao(req, res) {
+    try {
+      const result = await solicitarDilatacao(
+        req.user,
+        req.params.obraId,
+        req.params.competencia,
+        req.body
+      );
+      return res.status(result.idempotente ? 200 : 201).json(result);
+    } catch (error) {
+      return respondError(res, error, 'Erro ao solicitar dilatacao de prazo');
+    }
+  }
+
+  static async decidirDilatacao(req, res) {
+    try {
+      return res.json(await decidirDilatacao(req.user, req.params.dilatacaoId, req.body));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao decidir dilatacao de prazo');
     }
   }
 }

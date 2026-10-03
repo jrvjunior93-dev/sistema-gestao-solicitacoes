@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   HiOutlineArchiveBox,
   HiOutlineArrowUturnLeft,
+  HiOutlineCheckCircle,
+  HiOutlineUserPlus,
   HiOutlineChatBubbleLeftRight,
   HiOutlineChevronLeft,
   HiOutlineInformationCircle,
@@ -11,6 +14,8 @@ import {
   HiPaperClip
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { usePosicaoFlutuante } from '../hooks/usePosicaoFlutuante';
+import { canSendComunicacao } from '../utils/acessoProduto';
 import { API_URL, authHeaders, fileUrl } from '../services/api';
 import { getSetores } from '../services/setores';
 import {
@@ -25,7 +30,17 @@ import {
   getDestinatariosConversa,
   getMensagens,
   listarConversas,
-  marcarLida
+  marcarLida,
+  /*
+    PORTADAS DA ConversaDetalhe (decisao do cliente, 04/09).
+
+    As tres existiam ponta a ponta — servico no frontend e rota no backend —
+    e NENHUMA tela alcancavel as oferecia. O sistema sabia concluir, reabrir
+    e adicionar participantes; ninguem conseguia fazer.
+  */
+  adicionarParticipantesConversa,
+  concluirConversa,
+  reabrirConversa
 } from '../services/conversasInternas';
 import PendingAttachmentsList from '../components/attachments/PendingAttachmentsList';
 import {
@@ -34,9 +49,91 @@ import {
   extrairFilesAnexosPendentes,
   montarMensagemArquivosAcimaDoLimite
 } from '../utils/pendingAttachments';
+import {
+  Avisos,
+  BarraFiltros,
+  PageHeader,
+  Pagina,
+  alternarValorFiltro,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
+import OverlayModal from '../components/ui/OverlayModal';
+import useFecharAoSair from '../hooks/useFecharAoSair';
 
 const LIST_POLL_INTERVAL_MS = 15000;
 const ACTIVE_CHAT_POLL_INTERVAL_MS = 5000;
+
+// Respiro abaixo dos painéis quando eles ocupam a altura útil da janela.
+// É o degrau --esp-4 (16px) da escala, em número porque a conta é feita em
+// JS (a mesma classe de medida que o Pagina faz para a topbar real).
+const RESPIRO_INFERIOR = 16;
+// Piso de altura dos painéis: abaixo disso a conversa deixa de ser legível
+// e vale mais rolar a página (R10: vence a LEITURA, não a densidade).
+const ALTURA_MINIMA_PAINEIS = 360;
+
+// Recorte da lista (R12): situação é ENUMERÁVEL e de valor ÚNICO — o
+// serviço aceita `arquivadas` ligado ou desligado, nunca os dois. Daí
+// `unico: true` na dimensão: marcar um valor substitui o outro, e a
+// etiqueta reflete o que está filtrando de verdade.
+const DIMENSAO_SITUACAO = {
+  id: 'situacao',
+  rotulo: 'Situação',
+  unico: true,
+  opcoes: [
+    { valor: 'ATIVAS', rotulo: 'Ativas' },
+    { valor: 'ARQUIVADAS', rotulo: 'Arquivadas' }
+  ]
+};
+
+/*
+  Superfície dos dois painéis. Ela era uma CÓPIA à mão do `.app-bloco`
+  (fundo, borda, raio e sombra, token por token) — e a B1 reprovou a tela
+  com "nenhum bloco na tela", corretamente: o que existia era um bloco no
+  visual e nada no DOM, então nenhum check conseguia enxergá-lo. É a mesma
+  família do defeito de 02/09, código certo sem o elemento no DOM.
+
+  Agora o painel É `.app-bloco`, e o inline se resume ao que o bloco não
+  tem: padding zero (a lista e o chat rolam coladas na borda) e `clip`.
+  R18: `clip`, NUNCA `hidden` — `hidden` cria scrollport e mata sticky em
+  silêncio.
+*/
+// `p-0` como CLASSE, não medida em style: o degrau 0 é da escala, e a R10
+// quer o ritmo vindo de classe/componente.
+const CLASSE_PAINEL = 'app-bloco p-0';
+/*
+  B2 — um primário por tela, e aqui é o painel da CONVERSA.
+
+  A lista da esquerda é como se chega; a conversa é onde o trabalho
+  acontece — ler, responder, anexar. A barra de cor no painel direito
+  responde "o que esta tela é para fazer", que é a pergunta da B2. Marcar
+  a lista faria o olho parar no índice em vez do conteúdo.
+*/
+const CLASSE_PAINEL_PRIMARIO = 'app-bloco app-bloco--primario p-0';
+const ESTILO_PAINEL = {
+  overflow: 'clip'
+};
+
+const ESTILO_TRUNCADO = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+};
+
+const ESTILO_ITEM_MENU = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'var(--esp-2)',
+  width: '100%',
+  minHeight: 'var(--alvo-clique)',
+  paddingBlock: 'var(--esp-2)',
+  paddingInline: 'var(--esp-3)',
+  fontSize: 'var(--fonte-corpo)',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  textAlign: 'left'
+};
 
 function formatHora(valor) {
   if (!valor) return '';
@@ -90,40 +187,44 @@ function isMensagemVista(msg, participantesLeitura, userId) {
   );
 }
 
+// Os ticks herdam a cor do texto da bolha (currentColor), então funcionam
+// no tema claro e no escuro sem cor escrita à mão.
 function TicksMensagem({ vista }) {
   if (vista) {
     return (
-      <svg width="18" height="10" viewBox="0 0 18 10" fill="none" style={{ flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M1 5L4.5 8.5L10 1.5" stroke="rgba(255,255,255,0.95)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M6 5L9.5 8.5L15 1.5" stroke="rgba(255,255,255,0.95)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <svg width="18" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true" style={{ flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M1 5L4.5 8.5L10 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6 5L9.5 8.5L15 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
   return (
-    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" style={{ flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}>
-      <path d="M1 5L4.5 8.5L11 1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="18" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true" style={{ flexShrink: 0, display: 'inline-block', verticalAlign: 'middle', opacity: 0.55 }}>
+      <path d="M1 5L4.5 8.5L11 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function AvatarConversa({ conv, size = 9 }) {
+function AvatarConversa({ conv }) {
   const isGroup = conv?.is_group;
   const nome = conv?.assunto || '';
   const inicial = isGroup ? '#' : nome.charAt(0).toUpperCase();
+  const cor = isGroup ? 'var(--c-secondary)' : 'var(--c-primary)';
   return (
     <div
+      aria-hidden="true"
       style={{
-        width: size * 4,
-        height: size * 4,
+        width: 'var(--esp-8)',
+        height: 'var(--esp-8)',
         borderRadius: '50%',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
-        fontSize: 14,
+        fontSize: 'var(--fonte-corpo)',
         fontWeight: 700,
-        background: isGroup ? '#ede9fe' : '#dbeafe',
-        color: isGroup ? '#6d28d9' : '#1d4ed8'
+        background: `color-mix(in srgb, ${cor} 16%, var(--ui-surface))`,
+        color: cor
       }}
     >
       {inicial}
@@ -134,10 +235,36 @@ function AvatarConversa({ conv, size = 9 }) {
 export default function ComunicacaoInterna() {
   const { user } = useAuth();
   const userId = user?.id;
+  const podeEnviarComunicacao = canSendComunicacao(user);
+
+  // R3/R19: aviso e confirmação do sistema no lugar da caixa do navegador.
+  // Dois contextos INDEPENDENTES (R16): a faixa da página e a faixa dentro
+  // do modal de nova conversa — erro com o modal aberto ficaria atrás do
+  // fundo escurecido se houvesse um dono só.
+  const { avisos, avisar, fechar } = useAvisos();
+  const { avisos: avisosModal, avisar: avisarModal, fechar: fecharAvisoModal, limpar: limparAvisosModal } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   const [conversas, setConversas] = useState([]);
   const [loadingLista, setLoadingLista] = useState(true);
   const [busca, setBusca] = useState('');
+  const [filtrosAtivos, setFiltrosAtivos] = useState({});
+  /*
+    A TELA IGNORAVA O `:id` DA URL (04/09).
+
+    A rota conversas/:id sempre apontou para esta tela, e ela nunca chamou
+    `useParams`. Clicar
+    numa conversa navegava para /conversas/123 e abria a lista DO ZERO,
+    como se nada tivesse sido pedido. Nao era tela branca: era uma tela que
+    carrega e ignora o pedido, o que engana mais — o usuario ve algo
+    plausivel e conclui que a conversa sumiu.
+
+    Eu mesmo registrei isso errado antes, como "rota quebrada" (E3). A rota
+    nunca esteve quebrada; quem estava surdo era a tela.
+  */
+  const { id: idDaUrl } = useParams();
+  const navigate = useNavigate();
+  const idJaAplicado = useRef(null);
   const [conversaAtiva, setConversaAtiva] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [mensagens, setMensagens] = useState([]);
@@ -154,10 +281,43 @@ export default function ComunicacaoInterna() {
   const [isMobile, setIsMobile] = useState(false);
   const [participantesLeitura, setParticipantesLeitura] = useState([]);
   const [menuMsgId, setMenuMsgId] = useState(null);
-  const [menuMsgOpenUpward, setMenuMsgOpenUpward] = useState(true);
+
+  /* ITEM 6 DA LEVA (06/09) — Esc fechava em 26 telas e NAO fechava aqui.
+     O clique fora ja fechava, mas por outro caminho: um veu de tela cheia
+     (`position: fixed; inset: 0`) logo abaixo do menu. O veu resolve o
+     ponteiro e nao resolve o teclado, e era so isso que faltava.
+     Mantenho o veu (ele tambem impede que o clique de fechar caia na
+     mensagem debaixo — remove-lo mudaria o que a pessoa ve) e somo o
+     gancho padrao do sistema, que traz o Esc. Um ref so basta: o
+     `menuMsgId` garante que existe no maximo UM menu aberto na lista. */
+  const menuMsgRef = useRef(null);
+  useFecharAoSair(menuMsgRef, menuMsgId !== null, () => setMenuMsgId(null));
+  /*
+    O TERCEIRO JEITO DE POSICIONAR CAMADA SAIU DAQUI (06/09).
+
+    O que estava escrito: `setMenuMsgOpenUpward(rect.top > 200)` no clique do
+    botao, e `bottom: 100%` ou `top: 100%` conforme esse booleano. Nao era
+    medicao — era um CHUTE de 200px que nao conhece a altura do menu nem a
+    da janela: numa janela baixa o menu "para baixo" saia pelo rodape, e
+    perto do topo o "para cima" saia pelo cabecalho. E o `right: 0` do menu
+    saia pela borda esquerda nas bolhas encostadas na esquerda da conversa,
+    que e o mesmo defeito do painel "Filtros visiveis".
+
+    A regra desta casa: antes de criar qualquer coisa nova, medir de quantos
+    jeitos isso ja e feito aqui. Eram DOIS (o hook e a medicao a mao do
+    autocomplete de apropriacao) mais este chute; os tres viraram um.
+
+    UM REF SO PARA O BOTAO, pelo mesmo motivo que o `menuMsgRef` e um so: o
+    `menuMsgId` garante no maximo UM menu aberto na lista, e o ref e ligado
+    apenas no botao da mensagem aberta.
+  */
+  const botaoMsgRef = useRef(null);
+  const posicaoMsg = usePosicaoFlutuante(botaoMsgRef, menuMsgRef, menuMsgId !== null, {
+    ancorarADireita: true
+  });
   const [infoMsg, setInfoMsg] = useState(null);
-  const [mostrandoArquivadas, setMostrandoArquivadas] = useState(false);
   const [mensagemRespondendo, setMensagemRespondendo] = useState(null);
+  const [alturaPaineis, setAlturaPaineis] = useState(null);
 
   // Modal nova conversa
   const [showNova, setShowNova] = useState(false);
@@ -177,6 +337,9 @@ export default function ComunicacaoInterna() {
   const inputRef = useRef(null);
   const mensagensRef = useRef([]);
   const msgElemsRef = useRef({});
+  const paineisRef = useRef(null);
+
+  const mostrandoArquivadas = (filtrosAtivos.situacao || new Set()).has('ARQUIVADAS');
 
   const obterUrlAssinadaAnexo = useCallback(async (caminhoArquivo) => {
     if (!caminhoArquivo) return null;
@@ -206,9 +369,9 @@ export default function ComunicacaoInterna() {
       window.open(urlArquivo, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error(error);
-      alert('Erro ao abrir arquivo');
+      avisar.erro(error?.message || 'Erro ao abrir arquivo');
     }
-  }, [obterUrlAssinadaAnexo]);
+  }, [obterUrlAssinadaAnexo, avisar]);
 
   const adicionarArquivosConversa = useCallback((files) => {
     const { arquivos: proximoEstado, rejeitados } = concatenarAnexosPendentes(arquivos, files, {
@@ -216,9 +379,9 @@ export default function ComunicacaoInterna() {
     });
     setArquivos(proximoEstado);
     if (rejeitados.length > 0) {
-      alert(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
+      avisar.alerta(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
     }
-  }, [arquivos]);
+  }, [arquivos, avisar]);
 
   const adicionarArquivosNovaConversa = useCallback((files) => {
     const { arquivos: proximoEstado, rejeitados } = concatenarAnexosPendentes(arquivosNova, files, {
@@ -226,9 +389,10 @@ export default function ComunicacaoInterna() {
     });
     setArquivosNova(proximoEstado);
     if (rejeitados.length > 0) {
-      alert(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
+      // Modal aberto: o aviso tem de nascer DENTRO dele.
+      avisarModal.alerta(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
     }
-  }, [arquivosNova]);
+  }, [arquivosNova, avisarModal]);
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -248,8 +412,8 @@ export default function ComunicacaoInterna() {
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     el.style.transition = 'background-color 0.15s ease';
-    el.style.backgroundColor = 'rgba(74,144,217,0.18)';
-    el.style.borderRadius = '12px';
+    el.style.backgroundColor = 'color-mix(in srgb, var(--c-primary) 18%, transparent)';
+    el.style.borderRadius = 'var(--raio-2)';
     setTimeout(() => {
       el.style.backgroundColor = '';
       el.style.borderRadius = '';
@@ -268,6 +432,29 @@ export default function ComunicacaoInterna() {
     media.addEventListener?.('change', update);
     return () => media.removeEventListener?.('change', update);
   }, []);
+
+  // A altura útil dos painéis é MEDIDA (mesma classe de medida que o Pagina
+  // faz com a topbar real), nunca escrita: o cabeçalho fixo, a faixa de
+  // avisos e a barra de filtros mudam de altura conforme o estado.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    let raf = null;
+    const medir = () => {
+      raf = null;
+      const el = paineisRef.current;
+      if (!el) return;
+      const topo = el.getBoundingClientRect().top + window.scrollY;
+      const disponivel = window.innerHeight - topo - RESPIRO_INFERIOR;
+      setAlturaPaineis(Math.max(ALTURA_MINIMA_PAINEIS, Math.round(disponivel)));
+    };
+    const agendar = () => { if (raf == null) raf = requestAnimationFrame(medir); };
+    agendar();
+    window.addEventListener('resize', agendar);
+    return () => {
+      if (raf != null) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', agendar);
+    };
+  }, [avisos.length, isMobile, filtrosAtivos]);
 
   const carregarLista = useCallback(async (silent = false) => {
     try {
@@ -289,7 +476,20 @@ export default function ComunicacaoInterna() {
     return () => clearInterval(interval);
   }, [carregarLista]);
 
+
+
   const abrirConversa = useCallback(async (conv) => {
+    /*
+      O ENDERECO PASSA A DIZER QUAL CONVERSA ESTA ABERTA.
+
+      Antes a URL ficava parada na entrada da tela qualquer que fosse a
+      conversa escolhida: recarregar a pagina perdia o lugar, e mandar o link para um
+      colega mandava ele para a lista. `replace` em vez de `push` para o
+      botao de voltar do navegador sair da tela, e nao percorrer uma a uma
+      as conversas que a pessoa abriu.
+    */
+    idJaAplicado.current = String(conv.id);
+    navigate(`/conversas/${conv.id}`, { replace: true });
     setConversaAtiva(conv.id);
     setMensagens([]);
     setTemMais(false);
@@ -321,6 +521,35 @@ export default function ComunicacaoInterna() {
       setTimeout(scrollChatToTop, 100);
     }
   }, [scrollChatToTop]);
+
+  /*
+    ESTE EFEITO FICA DEPOIS DO `abrirConversa` DE PROPOSITO.
+
+    Ele o cita na lista de dependencias, e `const` nao sofre hoisting: posto
+    antes, o componente estoura com "Cannot access 'abrirConversa' before
+    initialization" NA EXECUCAO — com o build passando. E a mesma classe de
+    defeito da R22 (hook usado sem import), e nenhum check estatico daqui a
+    pega. Escrevi assim na primeira versao e so vi relendo.
+  */
+  /*
+    ABRE A CONVERSA PEDIDA NA URL, uma vez, quando a lista chega.
+
+    `idJaAplicado` existe para o endereco nao reabrir a conversa a cada
+    recarga da lista (que roda em intervalo): sem ele, quem trocasse de
+    conversa seria puxado de volta para a da URL no proximo ciclo.
+
+    So numero: hoje `conversas/:id` nao tem rota irma com segmento estatico
+    (as duas que existiam foram removidas em 04/09 por nao recortarem nada),
+    mas se alguem criar uma amanha, "entrada" nao pode virar id de conversa.
+  */
+  useEffect(() => {
+    if (!idDaUrl || !/^\d+$/.test(idDaUrl)) return;
+    if (idJaAplicado.current === idDaUrl) return;
+    const alvo = conversas.find((c) => String(c.id) === String(idDaUrl));
+    if (!alvo) return;
+    idJaAplicado.current = idDaUrl;
+    abrirConversa(alvo);
+  }, [idDaUrl, conversas, abrirConversa]);
 
   const carregarMais = useCallback(async () => {
     if (!conversaAtiva || !oldestId || loadingMais) return;
@@ -427,22 +656,30 @@ export default function ComunicacaoInterna() {
     } catch (err) {
       setTexto(textoEnviado);
       setArquivos(arquivosEnviados);
-      alert(err.message || 'Erro ao enviar mensagem');
+      avisar.erro(err?.message || 'Erro ao enviar mensagem');
     } finally {
       setEnviando(false);
       inputRef.current?.focus();
     }
-  }, [conversaAtiva, enviando, texto, arquivos, mensagemRespondendo, userId, user, scrollToBottom]);
+  }, [conversaAtiva, enviando, texto, arquivos, mensagemRespondendo, userId, user, scrollToBottom, avisar]);
 
   const deletarMensagem = useCallback(async (msgId) => {
-    if (!window.confirm('Excluir esta mensagem?')) return;
+    // O retorno de confirmar() é OBJETO — desestruturar é obrigatório (R21):
+    // lido como booleano, "Cancelar" seguiria com a exclusão.
+    const { ok } = await confirmar({
+      titulo: 'Excluir mensagem',
+      mensagem: 'Excluir esta mensagem da conversa? Ela deixa de aparecer para todos os participantes.',
+      rotuloConfirmar: 'Excluir',
+      destrutiva: true
+    });
+    if (!ok) return;
     try {
       await deletarMensagemConversa(msgId);
       setMensagens((prev) => prev.filter((m) => m.id !== msgId));
     } catch (err) {
-      alert(err.message || 'Erro ao excluir mensagem');
+      avisar.erro(err?.message || 'Erro ao excluir mensagem');
     }
-  }, []);
+  }, [confirmar, avisar]);
 
   const salvarEdicao = useCallback(async () => {
     if (!editandoId) return;
@@ -454,9 +691,101 @@ export default function ComunicacaoInterna() {
       setEditandoId(null);
       setTextoEdicao('');
     } catch (err) {
-      alert(err.message || 'Erro ao editar');
+      avisar.erro(err?.message || 'Erro ao editar');
     }
-  }, [editandoId, textoEdicao]);
+  }, [editandoId, textoEdicao, avisar]);
+
+  /*
+    CONCLUIR, REABRIR E ADICIONAR PARTICIPANTES — portadas em 04/09.
+
+    ARQUIVAR NAO E CONCLUIR, e o texto tem de dizer isso a quem clica:
+    arquivar TIRA DA VISTA (some da caixa, volta com um filtro); concluir
+    ENCERRA O ASSUNTO (a conversa fica marcada como resolvida para todos os
+    participantes). Sao coisas diferentes e por isso convivem na faixa.
+
+    As duas mudam ESTADO da conversa para todo mundo, entao passam pelo
+    modal do sistema. O `confirm()` do navegador que a tela antiga usava nao
+    serve: e caixa cinza fora do tema (R19) e — pior — o retorno de
+    `confirmar()` e OBJETO, entao ler como booleano faria "Cancelar"
+    concluir a conversa do mesmo jeito (R21).
+
+    Permissao: as tres rotas do backend exigem `allowComunicacaoSend`, o
+    mesmo gate de `podeEnviarComunicacao`. Botao que a pessoa nao pode usar
+    nao aparece — falhar depois do clique e pior que nao oferecer.
+  */
+  const conversaConcluida = detalhe?.status === 'CONCLUIDA';
+
+  const handleConcluir = useCallback(async () => {
+    if (!conversaAtiva) return;
+    const { ok } = await confirmar({
+      titulo: 'Concluir conversa',
+      mensagem: 'Encerrar o assunto desta conversa? Ela fica marcada como concluída para todos os participantes. Isso e diferente de arquivar, que apenas tira a conversa da sua caixa.',
+      rotuloConfirmar: 'Concluir'
+    });
+    if (!ok) return;
+    try {
+      await concluirConversa(conversaAtiva);
+      const det = await getConversa(conversaAtiva);
+      setDetalhe(det);
+      await carregarLista(true);
+      avisar.sucesso('Conversa concluída.');
+    } catch (err) {
+      avisar.erro(err?.message || 'Erro ao concluir conversa');
+    }
+  }, [conversaAtiva, confirmar, carregarLista, avisar]);
+
+  const handleReabrir = useCallback(async () => {
+    if (!conversaAtiva) return;
+    const { ok } = await confirmar({
+      titulo: 'Reabrir conversa',
+      mensagem: 'Reabrir esta conversa? Ela volta a constar como em andamento para todos os participantes.',
+      rotuloConfirmar: 'Reabrir'
+    });
+    if (!ok) return;
+    try {
+      await reabrirConversa(conversaAtiva);
+      const det = await getConversa(conversaAtiva);
+      setDetalhe(det);
+      await carregarLista(true);
+      avisar.sucesso('Conversa reaberta.');
+    } catch (err) {
+      avisar.erro(err?.message || 'Erro ao reabrir conversa');
+    }
+  }, [conversaAtiva, confirmar, carregarLista, avisar]);
+
+  const [showParticipantes, setShowParticipantes] = useState(false);
+  const [candidatosParticipantes, setCandidatosParticipantes] = useState([]);
+  const [novosParticipantesIds, setNovosParticipantesIds] = useState([]);
+
+  const abrirAdicionarParticipantes = useCallback(async () => {
+    if (!conversaAtiva) return;
+    try {
+      const usuarios = await getDestinatariosConversa();
+      const jaEstao = new Set((detalhe?.participantes || []).map((p) => Number(p.usuario_id)));
+      setCandidatosParticipantes((Array.isArray(usuarios) ? usuarios : [])
+        .filter((u) => !jaEstao.has(Number(u.id))));
+      setNovosParticipantesIds([]);
+      setShowParticipantes(true);
+    } catch (err) {
+      avisar.erro(err?.message || 'Erro ao carregar usuarios');
+    }
+  }, [conversaAtiva, detalhe, avisar]);
+
+  const confirmarAdicionarParticipantes = useCallback(async () => {
+    if (novosParticipantesIds.length === 0) {
+      avisar.erro('Selecione ao menos uma pessoa.');
+      return;
+    }
+    try {
+      await adicionarParticipantesConversa(conversaAtiva, novosParticipantesIds);
+      setShowParticipantes(false);
+      const det = await getConversa(conversaAtiva);
+      setDetalhe(det);
+      avisar.sucesso(`${novosParticipantesIds.length} pessoa(s) adicionada(s) a conversa.`);
+    } catch (err) {
+      avisar.erro(err?.message || 'Erro ao adicionar participantes');
+    }
+  }, [conversaAtiva, novosParticipantesIds, avisar]);
 
   const handleArquivar = useCallback(async () => {
     if (!conversaAtiva) return;
@@ -467,8 +796,9 @@ export default function ComunicacaoInterna() {
       setMensagens([]);
       setMobileModo('lista');
       await carregarLista();
-    } catch (err) { alert(err.message || 'Erro'); }
-  }, [conversaAtiva, carregarLista]);
+      avisar.sucesso('Conversa arquivada.');
+    } catch (err) { avisar.erro(err?.message || 'Erro ao arquivar a conversa'); }
+  }, [conversaAtiva, carregarLista, avisar]);
 
   const handleDesarquivar = useCallback(async () => {
     if (!conversaAtiva) return;
@@ -479,16 +809,26 @@ export default function ComunicacaoInterna() {
       setMensagens([]);
       setMobileModo('lista');
       await carregarLista();
-    } catch (err) { alert(err.message || 'Erro'); }
-  }, [conversaAtiva, carregarLista]);
+      avisar.sucesso('Conversa desarquivada.');
+    } catch (err) { avisar.erro(err?.message || 'Erro ao desarquivar a conversa'); }
+  }, [conversaAtiva, carregarLista, avisar]);
 
-  const toggleArquivadas = useCallback(() => {
-    setMostrandoArquivadas((v) => !v);
+  const limparConversaAberta = useCallback(() => {
     setConversaAtiva(null);
     setDetalhe(null);
     setMensagens([]);
     setMobileModo('lista');
   }, []);
+
+  const aoAlternarFiltro = useCallback((dimensao, valor, opcoes) => {
+    setFiltrosAtivos((atual) => alternarValorFiltro(atual, dimensao, valor, opcoes));
+    limparConversaAberta();
+  }, [limparConversaAberta]);
+
+  const limparFiltros = useCallback(() => {
+    setFiltrosAtivos({});
+    limparConversaAberta();
+  }, [limparConversaAberta]);
 
   const abrirModalNova = useCallback(async () => {
     setShowNova(true);
@@ -499,22 +839,29 @@ export default function ComunicacaoInterna() {
     setDestinatariosMassaIds([]);
     setSetoresMassaIds([]);
     setArquivosNova([]);
+    limparAvisosModal();
     try {
       const [dests, sets] = await Promise.all([getDestinatariosConversa(), getSetores()]);
       setDestinatarios(dests || []);
       setSetores(sets || []);
     } catch { /* silencioso */ }
-  }, []);
+  }, [limparAvisosModal]);
+
+  const fecharModalNova = useCallback(() => {
+    if (salvando) return;
+    setShowNova(false);
+    limparAvisosModal();
+  }, [salvando, limparAvisosModal]);
 
   const salvarNovaConversa = useCallback(async (e) => {
     e?.preventDefault();
-    if (!assuntoNova.trim()) { alert('Informe o assunto'); return; }
-    if (!mensagemNova.trim() && arquivosNova.length === 0) { alert('Informe a mensagem ou anexo'); return; }
+    if (!assuntoNova.trim()) { avisarModal.alerta('Informe o assunto'); return; }
+    if (!mensagemNova.trim() && arquivosNova.length === 0) { avisarModal.alerta('Informe a mensagem ou anexo'); return; }
     setSalvando(true);
     try {
       if (modoMassa) {
         if (destinatariosMassaIds.length === 0 && setoresMassaIds.length === 0) {
-          alert('Selecione ao menos um destinatário ou setor');
+          avisarModal.alerta('Selecione ao menos um destinatário ou setor');
           setSalvando(false);
           return;
         }
@@ -525,9 +872,11 @@ export default function ComunicacaoInterna() {
           files: extrairFilesAnexosPendentes(arquivosNova)
         });
         setShowNova(false);
+        limparAvisosModal();
         await carregarLista();
+        avisar.sucesso('Conversas criadas.');
       } else {
-        if (!destinatarioId) { alert('Selecione um destinatário'); setSalvando(false); return; }
+        if (!destinatarioId) { avisarModal.alerta('Selecione um destinatário'); setSalvando(false); return; }
         const res = await criarConversa({
           destinatario_id: destinatarioId,
           assunto: assuntoNova,
@@ -535,6 +884,7 @@ export default function ComunicacaoInterna() {
           files: extrairFilesAnexosPendentes(arquivosNova)
         });
         setShowNova(false);
+        limparAvisosModal();
         const lista = await listarConversas({ limit: 100 });
         const items = lista?.items || [];
         setConversas(items);
@@ -542,11 +892,11 @@ export default function ComunicacaoInterna() {
         if (found) abrirConversa(found);
       }
     } catch (err) {
-      alert(err.message || 'Erro ao criar conversa');
+      avisarModal.erro(err?.message || 'Erro ao criar conversa');
     } finally {
       setSalvando(false);
     }
-  }, [assuntoNova, mensagemNova, arquivosNova, modoMassa, destinatarioId, destinatariosMassaIds, setoresMassaIds, carregarLista, abrirConversa]);
+  }, [assuntoNova, mensagemNova, arquivosNova, modoMassa, destinatarioId, destinatariosMassaIds, setoresMassaIds, carregarLista, abrirConversa, avisar, avisarModal, limparAvisosModal]);
 
   const conversasFiltradas = conversas
     .filter((c) => {
@@ -559,437 +909,571 @@ export default function ComunicacaoInterna() {
   const mostrarLista = !isMobile || mobileModo === 'lista';
   const mostrarChat = !isMobile || mobileModo === 'chat';
 
+  // C5 — três pesos, todas visíveis: primária sólida (nova conversa) e
+  // secundária em contorno (arquivar/desarquivar a conversa aberta). A tela
+  // não tem ação destrutiva de PÁGINA: excluir é por mensagem, no menu da
+  // própria bolha — e ação que não existe não se inventa.
+  /*
+    A FAIXA GANHA AS TRES PORTADAS (04/09), na ordem do uso.
+
+    "Concluir" e "Reabrir" nunca aparecem juntas — sao os dois lados do
+    mesmo estado. Nenhuma delas e destrutiva: concluir nao apaga nada, e
+    reabrir desfaz. Por isso as duas ficam em contorno, ao lado de arquivar,
+    e nao no vermelho suave.
+
+    Sem permissao de envio, nenhuma aparece: as tres rotas do backend
+    exigem `allowComunicacaoSend`.
+  */
+  const acoesDaConversa = !conversaAtiva || !podeEnviarComunicacao ? [] : [
+    conversaConcluida
+      ? { rotulo: 'Reabrir conversa', onClick: handleReabrir, icone: <HiOutlineArrowUturnLeft aria-hidden="true" /> }
+      : { rotulo: 'Concluir conversa', onClick: handleConcluir, icone: <HiOutlineCheckCircle aria-hidden="true" /> },
+    { rotulo: 'Adicionar participantes', onClick: abrirAdicionarParticipantes, icone: <HiOutlineUserPlus aria-hidden="true" /> }
+  ];
+
+  const secundarias = conversaAtiva
+    ? [...acoesDaConversa, mostrandoArquivadas
+      ? { rotulo: 'Desarquivar conversa', onClick: handleDesarquivar, icone: <HiOutlineArrowUturnLeft aria-hidden="true" /> }
+      : { rotulo: 'Arquivar conversa', onClick: handleArquivar, icone: <HiOutlineArchiveBox aria-hidden="true" /> }]
+    : [];
+
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
-      {/* === PAINEL ESQUERDO — lista === */}
+    <Pagina>
+      <PageHeader
+        titulo="Comunicação Interna"
+        contagem={loadingLista ? null : `${conversasFiltradas.length} conversa(s)`}
+        descricao="Mensagens entre usuários e setores da empresa."
+        acaoPrincipal={podeEnviarComunicacao && !mostrandoArquivadas
+          ? { rotulo: 'Nova conversa', onClick: abrirModalNova }
+          : null}
+        secundarias={secundarias}
+      />
+
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      <BarraFiltros
+        busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Buscar por pessoa, setor ou assunto' }}
+        filtros={[DIMENSAO_SITUACAO]}
+        ativos={filtrosAtivos}
+        aoAlternar={aoAlternarFiltro}
+        aoLimpar={limparFiltros}
+      />
+
+      {/* Dois painéis lado a lado no desktop, um de cada vez no celular.
+          Grade com trilhas minmax(0, …): é o que deixa o texto truncar sem
+          medida à mão. A largura da coluna da lista é 20 degraus de 16px. */}
       <div
+        ref={paineisRef}
         style={{
-          width: 320,
-          flexShrink: 0,
-          display: mostrarLista ? 'flex' : 'none',
-          flexDirection: 'column',
-          borderRight: '1px solid var(--c-border)',
-          background: 'var(--c-surface)'
+          display: 'grid',
+          gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'calc(var(--esp-4) * 20) minmax(0, 1fr)',
+          gap: 'var(--esp-4)',
+          height: alturaPaineis ? `${alturaPaineis}px` : undefined
         }}
-        className="md:flex"
       >
-        {/* Cabeçalho */}
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            {mostrandoArquivadas && (
-              <button
-                onClick={toggleArquivadas}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted)', display: 'flex', alignItems: 'center', padding: 2 }}
-                title="Voltar"
-              >
-                <HiOutlineChevronLeft size={16} />
-              </button>
+        {/* === PAINEL ESQUERDO — lista === */}
+        <section
+          aria-label="Conversas"
+          className={CLASSE_PAINEL}
+          style={{
+            ...ESTILO_PAINEL,
+            display: mostrarLista ? 'grid' : 'none',
+            gridTemplateRows: 'minmax(0, 1fr)'
+          }}
+        >
+          <div style={{ overflowY: 'auto' }}>
+            {loadingLista && (
+              <p style={{ paddingBlock: 'var(--esp-8)', paddingInline: 'var(--esp-4)', textAlign: 'center', color: 'var(--c-muted)', fontSize: 'var(--fonte-corpo)' }}>
+                Carregando...
+              </p>
             )}
-            {mostrandoArquivadas ? 'Arquivadas' : 'Comunicação Interna'}
-          </span>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {!mostrandoArquivadas && (
-              <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 12px' }} onClick={abrirModalNova}>
-                + Nova
-              </button>
-            )}
-            <button
-              onClick={toggleArquivadas}
-              className="btn btn-outline"
-              style={{ width: 30, height: 30, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              title={mostrandoArquivadas ? 'Ver conversas ativas' : 'Ver arquivadas'}
-            >
-              <HiOutlineArchiveBox size={15} />
-            </button>
-          </div>
-        </div>
-
-        {/* Busca */}
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--c-border)' }}>
-          <input
-            className="input"
-            style={{ fontSize: 13 }}
-            placeholder="Buscar conversa..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-        </div>
-
-        {/* Lista de conversas */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loadingLista && (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-muted)', fontSize: 13 }}>Carregando...</div>
-          )}
-          {!loadingLista && conversasFiltradas.length === 0 && (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-muted)', fontSize: 13 }}>
-              <p>Nenhuma conversa</p>
-              <button onClick={abrirModalNova} style={{ color: 'var(--c-primary)', textDecoration: 'underline', fontSize: 12, marginTop: 8, background: 'none', border: 'none', cursor: 'pointer' }}>
-                Criar nova conversa
-              </button>
-            </div>
-          )}
-          {conversasFiltradas.map((conv) => {
-            const ativa = conv.id === conversaAtiva;
-            const nome = nomeConversa(conv, userId);
-            const setor = setorConversa(conv, userId);
-            return (
-              <button
-                key={conv.id}
-                onClick={() => abrirConversa(conv)}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '10px 14px',
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'flex-start',
-                  background: ativa ? 'var(--c-primary-soft, rgba(37,99,235,0.08))' : 'transparent',
-                  cursor: 'pointer',
-                  transition: 'background 0.15s',
-                  border: 'none',
-                  borderBottom: '1px solid var(--c-border)'
-                }}
-                onMouseEnter={(e) => { if (!ativa) e.currentTarget.style.background = 'var(--c-hover, rgba(0,0,0,0.04))'; }}
-                onMouseLeave={(e) => { if (!ativa) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <AvatarConversa conv={conv} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: conv.tem_novidade ? 700 : 500, color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {nome}{setor ? ` (${setor})` : ''}
-                    </span>
-                    <span style={{ fontSize: 11, color: 'var(--c-muted)', flexShrink: 0 }}>{formatHora(conv.last_message_at)}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 12, color: 'var(--c-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {conv.last_message_preview || conv.assunto}
-                    </span>
-                    {conv.tem_novidade && (
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--c-primary)', flexShrink: 0 }} />
-                    )}
-                  </div>
-                  {conv.status === 'CONCLUIDA' && (
-                    <span style={{ fontSize: 10, color: 'var(--c-muted)', background: 'var(--c-border)', padding: '1px 5px', borderRadius: 4 }}>concluída</span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* === PAINEL DIREITO — chat === */}
-      <div style={{ flex: 1, minWidth: 0, display: mostrarChat ? 'flex' : 'none', flexDirection: 'column' }} className="md:flex">
-        {!conversaAtiva ? (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--c-muted)', gap: 12 }}>
-            <HiOutlineChatBubbleLeftRight size={40} style={{ opacity: 0.35 }} />
-            <span style={{ fontSize: 14 }}>Selecione uma conversa ou crie uma nova</span>
-            {!mostrandoArquivadas && (
-              <button onClick={abrirModalNova} className="btn btn-outline" style={{ fontSize: 13 }}>Nova conversa</button>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Cabeçalho do chat */}
-            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--c-border)', background: 'var(--c-surface)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-              <button className="md:hidden" style={{ color: 'var(--c-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setMobileModo('lista')}>
-                <HiOutlineChevronLeft size={20} />
-              </button>
-              <AvatarConversa conv={detalhe?.conversa} size={8} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {nomeConversa(detalhe?.conversa, userId)}
-                </p>
-                <p style={{ fontSize: 12, color: 'var(--c-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {detalhe?.conversa?.assunto}
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                {mostrandoArquivadas ? (
-                  <button onClick={handleDesarquivar} className="btn btn-outline" style={{ width: 32, height: 32, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Desarquivar">
-                    <HiOutlineArrowUturnLeft size={15} />
+            {!loadingLista && conversasFiltradas.length === 0 && (
+              <div style={{ paddingBlock: 'var(--esp-8)', paddingInline: 'var(--esp-4)', textAlign: 'center', color: 'var(--c-muted)', fontSize: 'var(--fonte-corpo)' }}>
+                <p>{mostrandoArquivadas ? 'Nenhuma conversa arquivada' : 'Nenhuma conversa'}</p>
+                {podeEnviarComunicacao && !mostrandoArquivadas ? (
+                  <button
+                    type="button"
+                    onClick={abrirModalNova}
+                    className="btn btn-outline"
+                    style={{ marginBlockStart: 'var(--esp-3)' }}
+                  >
+                    Criar nova conversa
                   </button>
-                ) : (
-                  <button onClick={handleArquivar} className="btn btn-outline" style={{ width: 32, height: 32, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Arquivar">
-                    <HiOutlineArchiveBox size={15} />
+                ) : null}
+              </div>
+            )}
+            {conversasFiltradas.map((conv) => {
+              const ativa = conv.id === conversaAtiva;
+              const nome = nomeConversa(conv, userId);
+              const setor = setorConversa(conv, userId);
+              return (
+                <button
+                  key={conv.id}
+                  type="button"
+                  onClick={() => abrirConversa(conv)}
+                  aria-current={ativa ? 'true' : undefined}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    display: 'grid',
+                    gridTemplateColumns: 'auto minmax(0, 1fr)',
+                    gap: 'var(--esp-3)',
+                    alignItems: 'start',
+                    paddingBlock: 'var(--esp-3)',
+                    paddingInline: 'var(--esp-3)',
+                    background: ativa ? 'color-mix(in srgb, var(--c-primary) 10%, transparent)' : 'transparent',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s',
+                    border: 'none',
+                    borderBottom: '1px solid var(--ui-border)',
+                    color: 'var(--c-text)'
+                  }}
+                  onMouseEnter={(e) => { if (!ativa) e.currentTarget.style.background = 'var(--ui-surface-soft)'; }}
+                  onMouseLeave={(e) => { if (!ativa) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <AvatarConversa conv={conv} />
+                  <span style={{ display: 'grid', gap: 'var(--esp-1)' }}>
+                    <span style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 'var(--esp-2)' }}>
+                      <span style={{ ...ESTILO_TRUNCADO, fontSize: 'var(--fonte-corpo)', fontWeight: conv.tem_novidade ? 700 : 500, color: 'var(--c-text)' }}>
+                        {nome}{setor ? ` (${setor})` : ''}
+                      </span>
+                      <span style={{ fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', flexShrink: 0 }}>{formatHora(conv.last_message_at)}</span>
+                    </span>
+                    <span style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 'var(--esp-2)' }}>
+                      <span style={{ ...ESTILO_TRUNCADO, fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)' }}>
+                        {conv.last_message_preview || conv.assunto}
+                      </span>
+                      {conv.tem_novidade && (
+                        <span
+                          title="Mensagem não lida"
+                          style={{ width: 'var(--esp-2)', height: 'var(--esp-2)', borderRadius: '50%', background: 'var(--c-primary)' }}
+                        />
+                      )}
+                    </span>
+                    {conv.status === 'CONCLUIDA' && (
+                      <span style={{ justifySelf: 'start', fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', background: 'var(--ui-surface-soft)', paddingInline: 'var(--esp-2)', borderRadius: 'var(--raio-1)' }}>
+                        concluída
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* === PAINEL DIREITO — chat === */}
+        <section
+          aria-label="Conversa"
+          className={CLASSE_PAINEL_PRIMARIO}
+          style={{
+            ...ESTILO_PAINEL,
+            display: mostrarChat ? 'grid' : 'none',
+            gridTemplateRows: conversaAtiva ? 'auto minmax(0, 1fr) auto' : 'minmax(0, 1fr)'
+          }}
+        >
+          {!conversaAtiva ? (
+            <div style={{ display: 'grid', justifyItems: 'center', alignContent: 'center', gap: 'var(--esp-3)', color: 'var(--c-muted)', paddingBlock: 'var(--esp-4)', paddingInline: 'var(--esp-4)' }}>
+              <HiOutlineChatBubbleLeftRight size={40} aria-hidden="true" style={{ opacity: 0.35 }} />
+              <span style={{ fontSize: 'var(--fonte-corpo)' }}>Selecione uma conversa ou crie uma nova</span>
+              {!mostrandoArquivadas && podeEnviarComunicacao && (
+                <button type="button" onClick={abrirModalNova} className="btn btn-outline">Nova conversa</button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Cabeçalho da conversa — contexto do painel, não da página:
+                  identidade de quem está do outro lado + assunto. */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? 'auto auto minmax(0, 1fr)' : 'auto minmax(0, 1fr)',
+                  alignItems: 'center',
+                  gap: 'var(--esp-3)',
+                  paddingBlock: 'var(--esp-2)',
+                  paddingInline: 'var(--esp-4)',
+                  borderBottom: '1px solid var(--ui-border)',
+                  background: 'var(--ui-surface)'
+                }}
+              >
+                {isMobile && (
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => setMobileModo('lista')}
+                    title="Voltar para a lista de conversas"
+                    aria-label="Voltar para a lista de conversas"
+                  >
+                    <HiOutlineChevronLeft aria-hidden="true" />
                   </button>
                 )}
+                <AvatarConversa conv={detalhe?.conversa} />
+                <div>
+                  <p style={{ ...ESTILO_TRUNCADO, fontSize: 'var(--fonte-corpo)', fontWeight: 600, color: 'var(--c-text)', marginBlock: 0 }}>
+                    {nomeConversa(detalhe?.conversa, userId)}
+                  </p>
+                  <p style={{ ...ESTILO_TRUNCADO, fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', marginBlock: 0 }}>
+                    {detalhe?.conversa?.assunto}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            {/* Área de mensagens */}
-            <div ref={mensagensContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {loadingChat ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-muted)', fontSize: 13 }}>Carregando...</div>
-              ) : (
-                <>
-                  {/* Spacer empurra mensagens para baixo quando há poucas */}
-                  <div style={{ flex: 1 }} />
-                  {temMais && (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
-                      <button
-                        onClick={carregarMais}
-                        disabled={loadingMais}
-                        style={{ color: 'var(--c-primary)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}
-                      >
-                        {loadingMais ? 'Carregando...' : 'Carregar mensagens anteriores'}
-                      </button>
-                    </div>
-                  )}
-                  {menuMsgId && (
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 19 }} onClick={() => setMenuMsgId(null)} />
-                  )}
-                  {mensagens.map((msg) => {
-                    const euSou = msg.usuario_id === userId;
-                    const menuAberto = menuMsgId === msg.id;
-                    const vista = euSou && isMensagemVista(msg, participantesLeitura, userId);
-                    return (
+              {/* Área de mensagens */}
+              <div
+                ref={mensagensContainerRef}
+                style={{
+                  overflowY: 'auto',
+                  paddingBlock: 'var(--esp-3)',
+                  paddingInline: 'var(--esp-4)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--esp-1)',
+                  background: 'var(--ui-canvas)'
+                }}
+              >
+                {loadingChat ? (
+                  <p style={{ margin: 'auto', color: 'var(--c-muted)', fontSize: 'var(--fonte-corpo)' }}>Carregando...</p>
+                ) : (
+                  <>
+                    {/* Spacer empurra mensagens para baixo quando há poucas */}
+                    <div style={{ flex: 1 }} />
+                    {temMais && (
+                      <div style={{ display: 'flex', justifyContent: 'center', paddingBlock: 'var(--esp-2)' }}>
+                        <button
+                          type="button"
+                          onClick={carregarMais}
+                          disabled={loadingMais}
+                          className="btn btn-outline"
+                        >
+                          {loadingMais ? 'Carregando...' : 'Carregar mensagens anteriores'}
+                        </button>
+                      </div>
+                    )}
+                    {menuMsgId && (
                       <div
-                        key={msg.id}
-                        ref={(el) => { if (el) msgElemsRef.current[Number(msg.id)] = el; else delete msgElemsRef.current[Number(msg.id)]; }}
-                        style={{ display: 'flex', justifyContent: euSou ? 'flex-end' : 'flex-start' }}
-                      >
-                        <div style={{ position: 'relative', maxWidth: '72%' }}>
-                          {/* Botão seta — sempre visível */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setMenuMsgOpenUpward(rect.top > 200);
-                              setMenuMsgId(menuAberto ? null : msg.id);
-                            }}
-                            style={{
-                              position: 'absolute', top: 6, right: 6, zIndex: 20,
-                              width: 18, height: 18, borderRadius: '50%',
-                              background: euSou ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.07)',
-                              border: 'none', cursor: 'pointer', display: 'flex',
-                              alignItems: 'center', justifyContent: 'center',
-                              color: euSou ? '#fff' : 'var(--c-muted)', fontSize: 9, lineHeight: 1,
-                              transition: 'background 0.15s'
-                            }}
-                          >▾</button>
+                        aria-hidden="true"
+                        style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-conteudo)' }}
+                        onClick={() => setMenuMsgId(null)}
+                      />
+                    )}
+                    {mensagens.map((msg) => {
+                      const euSou = msg.usuario_id === userId;
+                      const menuAberto = menuMsgId === msg.id;
+                      const vista = euSou && isMensagemVista(msg, participantesLeitura, userId);
+                      const corSobreBolha = euSou ? 'var(--app-inverse-color)' : 'var(--c-text)';
+                      const fundoRealce = euSou
+                        ? 'color-mix(in srgb, var(--app-inverse-color) 16%, transparent)'
+                        : 'var(--ui-surface-soft)';
+                      return (
+                        <div
+                          key={msg.id}
+                          ref={(el) => { if (el) msgElemsRef.current[Number(msg.id)] = el; else delete msgElemsRef.current[Number(msg.id)]; }}
+                          style={{ display: 'flex', justifyContent: euSou ? 'flex-end' : 'flex-start' }}
+                        >
+                          <div style={{ position: 'relative', maxWidth: '72%' }}>
+                            {/* R15/M1: o alvo do menu é sempre visível e tem o
+                                alvo mínimo de clique (32px), não um disco de 18. */}
+                            <button
+                              type="button"
+                              title="Ações da mensagem"
+                              aria-label="Ações da mensagem"
+                              aria-expanded={menuAberto}
+                              ref={menuAberto ? botaoMsgRef : undefined}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuMsgId(menuAberto ? null : msg.id);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                right: 0,
+                                zIndex: 'var(--z-conteudo-acima)',
+                                width: 'var(--alvo-clique)',
+                                height: 'var(--alvo-clique)',
+                                borderRadius: '50%',
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: corSobreBolha,
+                                opacity: 0.75,
+                                lineHeight: 1
+                              }}
+                            >▾</button>
 
-                          {/* Dropdown menu — direção dinâmica */}
-                          {menuAberto && (
-                            <div style={{
-                              position: 'absolute',
-                              ...(menuMsgOpenUpward
-                                ? { bottom: '100%', marginBottom: 4 }
-                                : { top: '100%', marginTop: 4 }),
-                              right: 0, zIndex: 30,
-                              background: 'var(--c-surface)', border: '1px solid var(--c-border)',
-                              borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                              minWidth: 150, overflow: 'hidden'
-                            }}>
-                                <button
-                                onClick={() => { setMensagemRespondendo(msg); setMenuMsgId(null); inputRef.current?.focus(); }}
-                                style={{ display: 'flex', width: '100%', padding: '9px 14px', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-text)', gap: 8, alignItems: 'center' }}
-                              ><HiOutlineArrowUturnLeft size={14} /> Responder</button>
-                              {msg.pode_editar && (
-                                <button
-                                  onClick={() => { setEditandoId(msg.id); setTextoEdicao(msg.mensagem); setMenuMsgId(null); }}
-                                  style={{ display: 'flex', width: '100%', padding: '9px 14px', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-text)', gap: 8, alignItems: 'center' }}
-                                ><HiOutlinePencil size={14} /> Editar</button>
-                              )}
-                              {msg.pode_deletar && (
-                                <button
-                                  onClick={() => { deletarMensagem(msg.id); setMenuMsgId(null); }}
-                                  style={{ display: 'flex', width: '100%', padding: '9px 14px', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', gap: 8, alignItems: 'center' }}
-                                ><HiOutlineTrash size={14} /> Excluir</button>
-                              )}
-                              <button
-                                onClick={() => { setInfoMsg(msg); setMenuMsgId(null); }}
-                                style={{ display: 'flex', width: '100%', padding: '9px 14px', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-text)', gap: 8, alignItems: 'center', borderTop: '1px solid var(--c-border)' }}
-                              ><HiOutlineInformationCircle size={14} /> Informações</button>
-                            </div>
-                          )}
-
-                          {/* Bolha */}
-                          <div style={{
-                            borderRadius: euSou ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                            padding: '8px 14px',
-                            fontSize: 13,
-                            background: euSou ? '#4a90d9' : 'var(--c-surface)',
-                            color: euSou ? '#ffffff' : 'var(--c-text)',
-                            border: euSou ? 'none' : '1px solid var(--c-border)',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
-                          }}>
-                            {!euSou && (
-                              <p style={{ fontSize: 11, fontWeight: 700, marginBottom: 2, color: 'var(--c-primary)' }}>{msg.autor?.nome}</p>
-                            )}
-                            {msg.citacao && (
-                              <div
-                                onClick={() => scrollToMessage(msg.citacao.id)}
-                                style={{
-                                  background: euSou ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.05)',
-                                  borderLeft: `4px solid ${euSou ? 'rgba(255,255,255,0.75)' : 'var(--c-primary)'}`,
-                                  borderRadius: '0 6px 6px 0',
-                                  padding: '6px 10px',
-                                  marginBottom: 8,
-                                  cursor: 'pointer',
-                                  userSelect: 'none',
-                                  overflow: 'hidden'
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, overflow: 'hidden' }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: euSou ? 'rgba(255,255,255,0.95)' : 'var(--c-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {euSou ? 'Você' : (msg.autor?.nome || 'Alguém')}
-                                  </span>
-                                  <span style={{ fontSize: 10, color: euSou ? 'rgba(255,255,255,0.55)' : 'var(--c-muted)', flexShrink: 0 }}>respondeu</span>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: euSou ? 'rgba(255,255,255,0.85)' : 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {msg.citacao.autor?.nome || 'Mensagem'}
-                                  </span>
-                                </div>
-                                <p style={{ fontSize: 12, margin: 0, color: euSou ? 'rgba(255,255,255,0.78)' : 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                                  {msg.citacao.mensagem}
-                                </p>
-                              </div>
-                            )}
-                            {editandoId === msg.id ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <textarea
-                                  className="input"
-                                  rows={2}
-                                  style={{ fontSize: 13, resize: 'none', color: 'var(--c-text)' }}
-                                  value={textoEdicao}
-                                  onChange={(e) => setTextoEdicao(e.target.value)}
-                                />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                  <button onClick={salvarEdicao} className="btn btn-primary" style={{ fontSize: 11, padding: '2px 8px' }}>Salvar</button>
-                                  <button onClick={() => setEditandoId(null)} style={{ fontSize: 11, color: euSou ? 'rgba(255,255,255,0.7)' : 'var(--c-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancelar</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, paddingRight: 20 }}>{msg.mensagem}</p>
-                            )}
-                            {msg.anexos?.length > 0 && (
-                              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                {msg.anexos.map((a) => (
+                            {/* Dropdown menu — direção dinâmica */}
+                            {menuAberto && posicaoMsg && (
+                              <div ref={menuMsgRef} style={{
+                                ...posicaoMsg.estilo,
+                                zIndex: 'var(--z-conteudo-topo)',
+                                background: 'var(--ui-surface)',
+                                border: '1px solid var(--ui-border)',
+                                borderRadius: 'var(--raio-1)',
+                                boxShadow: 'var(--ui-shadow-md)',
+                                minWidth: 'calc(var(--esp-4) * 10)',
+                                overflow: 'clip'
+                              }}>
+                                {podeEnviarComunicacao ? (
                                   <button
-                                    key={a.id}
                                     type="button"
-                                    onClick={() => abrirAnexoConversa(a)}
-                                    style={{
-                                      fontSize: 11,
-                                      color: euSou ? 'rgba(255,255,255,0.8)' : 'var(--c-primary)',
-                                      textDecoration: 'underline',
-                                      background: 'none',
-                                      border: 'none',
-                                      padding: 0,
-                                      textAlign: 'left',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    Anexo: {a.nome_arquivo}
-                                  </button>
-                                ))}
+                                    onClick={() => { setMensagemRespondendo(msg); setMenuMsgId(null); inputRef.current?.focus(); }}
+                                    style={{ ...ESTILO_ITEM_MENU, color: 'var(--c-text)' }}
+                                  ><HiOutlineArrowUturnLeft aria-hidden="true" /> Responder</button>
+                                ) : null}
+                                {podeEnviarComunicacao && msg.pode_editar && (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setEditandoId(msg.id); setTextoEdicao(msg.mensagem); setMenuMsgId(null); }}
+                                    style={{ ...ESTILO_ITEM_MENU, color: 'var(--c-text)' }}
+                                  ><HiOutlinePencil aria-hidden="true" /> Editar</button>
+                                )}
+                                {podeEnviarComunicacao && msg.pode_deletar && (
+                                  <button
+                                    type="button"
+                                    onClick={() => { deletarMensagem(msg.id); setMenuMsgId(null); }}
+                                    style={{ ...ESTILO_ITEM_MENU, color: 'var(--c-danger)' }}
+                                  ><HiOutlineTrash aria-hidden="true" /> Excluir</button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => { setInfoMsg(msg); setMenuMsgId(null); }}
+                                  style={{ ...ESTILO_ITEM_MENU, color: 'var(--c-text)', borderTop: '1px solid var(--ui-border)' }}
+                                ><HiOutlineInformationCircle aria-hidden="true" /> Informações</button>
                               </div>
                             )}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
-                              <span style={{ fontSize: 10, color: euSou ? 'rgba(255,255,255,0.6)' : 'var(--c-muted)' }}>
-                                {formatDataHora(msg.createdAt)}{msg.editada_em ? ' (editada)' : ''}
-                              </span>
-                              {euSou && <TicksMensagem vista={vista} />}
+
+                            {/* Bolha */}
+                            <div style={{
+                              borderRadius: euSou
+                                ? 'var(--raio-3) var(--raio-3) var(--esp-1) var(--raio-3)'
+                                : 'var(--raio-3) var(--raio-3) var(--raio-3) var(--esp-1)',
+                              paddingBlock: 'var(--esp-2)',
+                              paddingInline: 'var(--esp-3)',
+                              fontSize: 'var(--fonte-corpo)',
+                              lineHeight: 'var(--lh-corpo)',
+                              background: euSou ? 'var(--c-primary)' : 'var(--ui-surface)',
+                              color: corSobreBolha,
+                              border: euSou ? 'none' : '1px solid var(--ui-border)',
+                              boxShadow: 'var(--ui-shadow-sm)'
+                            }}>
+                              {!euSou && (
+                                <p style={{ fontSize: 'var(--fonte-detalhe)', fontWeight: 700, marginBlockEnd: 'var(--esp-1)', color: 'var(--c-primary)' }}>{msg.autor?.nome}</p>
+                              )}
+                              {msg.citacao && (
+                                // A1: a citação leva à mensagem original, então
+                                // é botão de verdade — foco e Enter/Espaço de
+                                // graça, sem tabIndex à mão.
+                                <button
+                                  type="button"
+                                  onClick={() => scrollToMessage(msg.citacao.id)}
+                                  title="Ir para a mensagem citada"
+                                  style={{
+                                    display: 'block',
+                                    width: '100%',
+                                    textAlign: 'left',
+                                    background: fundoRealce,
+                                    border: 'none',
+                                    borderInlineStart: `4px solid ${euSou ? 'var(--app-inverse-color)' : 'var(--c-primary)'}`,
+                                    borderRadius: 'var(--raio-1)',
+                                    paddingBlock: 'var(--esp-1)',
+                                    paddingInline: 'var(--esp-2)',
+                                    marginBlockEnd: 'var(--esp-2)',
+                                    cursor: 'pointer',
+                                    color: corSobreBolha,
+                                    overflow: 'clip'
+                                  }}
+                                >
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-2)', marginBlockEnd: 'var(--esp-1)', overflow: 'clip' }}>
+                                    <span style={{ ...ESTILO_TRUNCADO, fontSize: 'var(--fonte-detalhe)', fontWeight: 700 }}>
+                                      {euSou ? 'Você' : (msg.autor?.nome || 'Alguém')}
+                                    </span>
+                                    <span style={{ fontSize: 'var(--fonte-detalhe)', opacity: 0.7, flexShrink: 0 }}>respondeu</span>
+                                    <span style={{ ...ESTILO_TRUNCADO, fontSize: 'var(--fonte-detalhe)', fontWeight: 700 }}>
+                                      {msg.citacao.autor?.nome || 'Mensagem'}
+                                    </span>
+                                  </span>
+                                  <span style={{ fontSize: 'var(--fonte-detalhe)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                                    {msg.citacao.mensagem}
+                                  </span>
+                                </button>
+                              )}
+                              {editandoId === msg.id ? (
+                                <div style={{ display: 'grid', gap: 'var(--esp-2)' }}>
+                                  <textarea
+                                    className="input"
+                                    rows={2}
+                                    aria-label="Editar mensagem"
+                                    style={{ resize: 'none', color: 'var(--c-text)' }}
+                                    value={textoEdicao}
+                                    onChange={(e) => setTextoEdicao(e.target.value)}
+                                  />
+                                  <div style={{ display: 'flex', gap: 'var(--esp-2)' }}>
+                                    <button type="button" onClick={salvarEdicao} className="btn btn-primary btn-sm">Salvar</button>
+                                    <button type="button" onClick={() => setEditandoId(null)} className="btn btn-outline btn-sm">Cancelar</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginBlock: 0, paddingInlineEnd: 'var(--esp-6)' }}>{msg.mensagem}</p>
+                              )}
+                              {msg.anexos?.length > 0 && (
+                                <div style={{ marginBlockStart: 'var(--esp-2)', display: 'grid', gap: 'var(--esp-1)', justifyItems: 'start' }}>
+                                  {msg.anexos.map((a) => (
+                                    <button
+                                      key={a.id}
+                                      type="button"
+                                      onClick={() => abrirAnexoConversa(a)}
+                                      style={{
+                                        fontSize: 'var(--fonte-detalhe)',
+                                        color: corSobreBolha,
+                                        textDecoration: 'underline',
+                                        background: 'none',
+                                        border: 'none',
+                                        paddingBlock: 0,
+                                        paddingInline: 0,
+                                        minHeight: 'var(--alvo-clique)',
+                                        textAlign: 'left',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Anexo: {a.nome_arquivo}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 'var(--esp-1)', marginBlockStart: 'var(--esp-1)' }}>
+                                <span style={{ fontSize: 'var(--fonte-detalhe)', opacity: 0.75 }}>
+                                  {formatDataHora(msg.createdAt)}{msg.editada_em ? ' (editada)' : ''}
+                                </span>
+                                {euSou && <TicksMensagem vista={vista} />}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={chatEndRef} />
-                </>
-              )}
-            </div>
+                      );
+                    })}
+                    <div ref={chatEndRef} />
+                  </>
+                )}
+              </div>
 
-            {/* Input de mensagem */}
-            <div style={{ borderTop: '1px solid var(--c-border)', background: 'var(--c-surface)', padding: '10px 16px', flexShrink: 0 }}>
-                {mensagemRespondendo && (
-                  <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, marginBottom: 8, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--c-border)', background: 'var(--c-bg, #f8fafc)' }}>
-                    <div style={{ width: 4, flexShrink: 0, background: 'var(--c-primary)' }} />
-                    <div style={{ flex: 1, minWidth: 0, padding: '6px 10px' }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-primary)', margin: '0 0 2px' }}>{mensagemRespondendo.autor?.nome || 'Mensagem'}</p>
-                      <p style={{ fontSize: 12, color: 'var(--c-muted)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{mensagemRespondendo.mensagem}</p>
+              {/* Composição da mensagem */}
+              {podeEnviarComunicacao ? (
+                <div style={{ borderTop: '1px solid var(--ui-border)', background: 'var(--ui-surface)', paddingBlock: 'var(--esp-3)', paddingInline: 'var(--esp-4)' }}>
+                  {mensagemRespondendo && (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                      alignItems: 'stretch',
+                      marginBlockEnd: 'var(--esp-2)',
+                      borderRadius: 'var(--raio-1)',
+                      overflow: 'clip',
+                      border: '1px solid var(--ui-border)',
+                      background: 'var(--ui-surface-soft)'
+                    }}>
+                      <span style={{ width: 'var(--esp-1)', background: 'var(--c-primary)' }} />
+                      <div style={{ paddingBlock: 'var(--esp-1)', paddingInline: 'var(--esp-3)' }}>
+                        <p style={{ ...ESTILO_TRUNCADO, fontSize: 'var(--fonte-detalhe)', fontWeight: 700, color: 'var(--c-primary)', marginBlock: 0 }}>{mensagemRespondendo.autor?.nome || 'Mensagem'}</p>
+                        <p style={{ fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', marginBlock: 0, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{mensagemRespondendo.mensagem}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMensagemRespondendo(null)}
+                        className="btn btn-outline"
+                        title="Cancelar resposta"
+                        aria-label="Cancelar resposta"
+                        style={{ border: 'none', background: 'none' }}
+                      >
+                        <HiOutlineXMark aria-hidden="true" />
+                      </button>
                     </div>
-                    <button onClick={() => setMensagemRespondendo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted)', display: 'flex', alignItems: 'center', padding: '0 10px', flexShrink: 0 }}>
-                      <HiOutlineXMark size={16} />
+                  )}
+                  <PendingAttachmentsList
+                    items={arquivos}
+                    onRemove={(index) => setArquivos((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+                    className="mb-2 space-y-2"
+                    itemClassName="flex items-center justify-between gap-3 rounded border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-sm"
+                    removeButtonClassName="text-[var(--c-danger)] font-semibold px-2"
+                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', gap: 'var(--esp-2)', alignItems: 'end' }}>
+                    <textarea
+                      ref={inputRef}
+                      rows={1}
+                      className="input"
+                      aria-label="Mensagem"
+                      placeholder="Digite uma mensagem... (Enter para enviar)"
+                      value={texto}
+                      onChange={(e) => setTexto(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }}
+                      style={{ resize: 'none', maxHeight: 'calc(var(--esp-8) * 4)' }}
+                    />
+                    <label
+                      className="btn btn-outline"
+                      title="Anexar arquivos"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <HiPaperClip aria-hidden="true" />
+                      <span className="sr-only">Anexar arquivos</span>
+                      <input
+                        type="file"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          adicionarArquivosConversa(e.target.files);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={enviar}
+                      disabled={enviando || (!texto.trim() && arquivos.length === 0)}
+                      className="btn btn-primary"
+                    >
+                      {enviando ? 'Enviando...' : 'Enviar'}
                     </button>
                   </div>
-                )}
-                <PendingAttachmentsList
-                  items={arquivos}
-                  onRemove={(index) => setArquivos((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-                  className="mb-2 space-y-2"
-                  itemClassName="flex items-center justify-between gap-3 rounded border border-[var(--c-border)] bg-[var(--c-bg, #fff)] px-3 py-2 text-sm"
-                  removeButtonClassName="text-red-600 font-semibold px-2"
-                />
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                  <textarea
-                    ref={inputRef}
-                    rows={1}
-                    placeholder="Digite uma mensagem... (Enter para enviar)"
-                    value={texto}
-                    onChange={(e) => setTexto(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-                    style={{ flex: 1, fontSize: 13, resize: 'none', minHeight: 38, maxHeight: 120, borderRadius: 20, padding: '8px 14px', border: '1px solid var(--c-border)', background: 'var(--c-bg, #fff)', color: 'var(--c-text)', outline: 'none' }}
-                  />
-                  <label
-                    className="btn btn-outline"
-                    title="Anexar arquivos"
-                    style={{ width: 38, height: 38, padding: 0, borderRadius: 20, flexShrink: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <HiPaperClip size={18} />
-                    <input
-                      type="file"
-                      multiple
-                      style={{ display: 'none' }}
-                      onChange={(e) => {
-                        adicionarArquivosConversa(e.target.files);
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                  <button
-                    onClick={enviar}
-                    disabled={enviando || (!texto.trim() && arquivos.length === 0)}
-                    className="btn btn-primary"
-                    style={{ fontSize: 13, padding: '8px 18px', borderRadius: 20, flexShrink: 0 }}
-                  >
-                    {enviando ? '...' : 'Enviar'}
-                  </button>
                 </div>
-              </div>
-          </>
-        )}
+              ) : (
+                <p style={{ borderTop: '1px solid var(--ui-border)', paddingBlock: 'var(--esp-3)', paddingInline: 'var(--esp-4)', color: 'var(--c-muted)', fontSize: 'var(--fonte-detalhe)', marginBlock: 0 }}>
+                  Somente leitura. Solicite a permissão de enviar mensagens para responder ou iniciar conversas.
+                </p>
+              )}
+            </>
+          )}
+        </section>
       </div>
 
       {/* === MODAL informações da mensagem === */}
       {infoMsg && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={() => setInfoMsg(null)}
+        <OverlayModal
+          rotulo="Informações da mensagem"
+          largura="var(--modal-max-w-sm, 480px)"
+          onFechar={() => setInfoMsg(null)}
         >
-          <div
-            style={{ background: 'var(--c-surface)', borderRadius: 12, padding: '20px 24px', minWidth: 260, maxWidth: 340, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>Informações da mensagem</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+          <div className="flex items-center justify-between border-b border-[var(--ui-border)] px-4 py-3">
+            <h2 className="app-bloco-titulo">Informações da mensagem</h2>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setInfoMsg(null)}>Fechar</button>
+          </div>
+          <div className="overflow-y-auto px-4 py-3">
+            <div style={{ display: 'grid', gap: 'var(--esp-3)', fontSize: 'var(--fonte-corpo)' }}>
               <div>
-                <span style={{ fontSize: 11, color: 'var(--c-muted)', display: 'block', marginBottom: 2 }}>Enviada por</span>
+                <span style={{ fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', display: 'block' }}>Enviada por</span>
                 <span style={{ fontWeight: 500, color: 'var(--c-text)' }}>{infoMsg.autor?.nome || 'Desconhecido'}</span>
               </div>
               <div>
-                <span style={{ fontSize: 11, color: 'var(--c-muted)', display: 'block', marginBottom: 2 }}>Enviada em</span>
+                <span style={{ fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', display: 'block' }}>Enviada em</span>
                 <span style={{ color: 'var(--c-text)' }}>{formatDataHora(infoMsg.createdAt)}</span>
               </div>
               {infoMsg.editada_em && (
                 <div>
-                  <span style={{ fontSize: 11, color: 'var(--c-muted)', display: 'block', marginBottom: 2 }}>Editada em</span>
+                  <span style={{ fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', display: 'block' }}>Editada em</span>
                   <span style={{ color: 'var(--c-text)' }}>{formatDataHora(infoMsg.editada_em)}</span>
                 </div>
               )}
               <div>
-                <span style={{ fontSize: 11, color: 'var(--c-muted)', display: 'block', marginBottom: 2 }}>Visualização</span>
+                <span style={{ fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)', display: 'block' }}>Visualização</span>
                 {(() => {
                   const msgTime = new Date(infoMsg.createdAt).getTime();
                   const leituras = participantesLeitura.filter(
@@ -999,51 +1483,99 @@ export default function ComunicacaoInterna() {
                     return <span style={{ color: 'var(--c-muted)', fontStyle: 'italic' }}>Ainda não visualizada</span>;
                   }
                   return leituras.map((p) => (
-                    <span key={p.usuario_id} style={{ color: '#2563eb', display: 'block' }}>✓✓ {formatDataHora(p.lida_em)}</span>
+                    <span key={p.usuario_id} style={{ color: 'var(--c-primary)', display: 'block' }}>✓✓ {formatDataHora(p.lida_em)}</span>
                   ));
                 })()}
               </div>
             </div>
-            <button
-              onClick={() => setInfoMsg(null)}
-              className="btn btn-outline"
-              style={{ marginTop: 18, width: '100%', fontSize: 13 }}
-            >Fechar</button>
           </div>
-        </div>
+        </OverlayModal>
+      )}
+
+      {/* === MODAL adicionar participantes (portado da ConversaDetalhe) === */}
+      {showParticipantes && podeEnviarComunicacao && (
+        <OverlayModal
+          rotulo="Adicionar participantes"
+          largura="var(--modal-max-w-sm, 480px)"
+          onFechar={() => setShowParticipantes(false)}
+        >
+          {/* R27: cabeçalho e rodapé ficam, o corpo rola. */}
+          <div data-modal="cabecalho" className="flex items-center justify-between border-b border-[var(--ui-border)] px-4 py-3">
+            <h2 className="app-bloco-titulo">Adicionar participantes</h2>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowParticipantes(false)}>Fechar</button>
+          </div>
+
+          <div className="px-4 py-3">
+            <p className="app-note">
+              Quem entrar passa a ver o histórico desta conversa desde o começo, não só as mensagens a partir de agora.
+            </p>
+            {candidatosParticipantes.length === 0 ? (
+              <p className="text-sm text-muted">Todos os usuários disponíveis já participam desta conversa.</p>
+            ) : (
+              <div className="grid gap-1">
+                {candidatosParticipantes.map((u) => (
+                  <label key={u.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={novosParticipantesIds.includes(u.id)}
+                      onChange={() => setNovosParticipantesIds((atual) => (atual.includes(u.id)
+                        ? atual.filter((x) => x !== u.id)
+                        : [...atual, u.id]))}
+                    />
+                    <span>{u.nome}{u.area ? ` · ${u.area}` : ''}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div data-modal="rodape" className="app-actionbar border-t border-[var(--ui-border)] px-4 py-3">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={confirmarAdicionarParticipantes}
+              disabled={novosParticipantesIds.length === 0}
+            >
+              Adicionar {novosParticipantesIds.length > 0 ? `(${novosParticipantesIds.length})` : ''}
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => setShowParticipantes(false)}>
+              Cancelar
+            </button>
+          </div>
+        </OverlayModal>
       )}
 
       {/* === MODAL nova conversa === */}
-      {showNova && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={() => !salvando && setShowNova(false)}
+      {showNova && podeEnviarComunicacao && (
+        <OverlayModal
+          rotulo="Nova conversa"
+          largura="var(--modal-max-w-md, 640px)"
+          onFechar={fecharModalNova}
         >
-          <div
-            className="card"
-            style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header do modal */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-text)', margin: 0 }}>Nova Conversa</h2>
-              <button onClick={() => setShowNova(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--c-muted)', lineHeight: 1 }}>×</button>
-            </div>
+          <div className="flex items-center justify-between border-b border-[var(--ui-border)] px-4 py-3">
+            <h2 className="app-bloco-titulo">Nova conversa</h2>
+            <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalNova}>Fechar</button>
+          </div>
 
-            <form onSubmit={salvarNovaConversa} style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Modo */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" className={`btn ${!modoMassa ? 'btn-primary' : 'btn-outline'}`} style={{ flex: 1, fontSize: 13 }} onClick={() => setModoMassa(false)}>
+          <form onSubmit={salvarNovaConversa} className="overflow-y-auto px-4 py-3">
+            {/* R3: com o modal aberto, o aviso precisa nascer DENTRO dele —
+                a faixa da página ficaria atrás do fundo escurecido. */}
+            <Avisos avisos={avisosModal} aoFechar={fecharAvisoModal} />
+
+            <div style={{ display: 'grid', gap: 'var(--esp-4)' }}>
+              {/* Modo — seletor de CONTEXTO do formulário (R12 não se aplica:
+                  não filtra lista, escolhe o tipo de envio). */}
+              <div role="group" aria-label="Tipo de envio" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--esp-2)' }}>
+                <button type="button" className={`btn ${!modoMassa ? 'btn-primary' : 'btn-outline'}`} aria-pressed={!modoMassa} onClick={() => setModoMassa(false)}>
                   Individual
                 </button>
-                <button type="button" className={`btn ${modoMassa ? 'btn-primary' : 'btn-outline'}`} style={{ flex: 1, fontSize: 13 }} onClick={() => setModoMassa(true)}>
-                  Em Massa / Setor
+                <button type="button" className={`btn ${modoMassa ? 'btn-primary' : 'btn-outline'}`} aria-pressed={modoMassa} onClick={() => setModoMassa(true)}>
+                  Em massa / setor
                 </button>
               </div>
 
-              {/* Assunto */}
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--c-muted)', fontWeight: 500 }}>Assunto</span>
+              <label style={{ display: 'grid', gap: 'var(--esp-1)' }}>
+                <span className="form-label">Assunto</span>
                 <input
                   className="input"
                   value={assuntoNova}
@@ -1052,10 +1584,9 @@ export default function ComunicacaoInterna() {
                 />
               </label>
 
-              {/* Destinatário individual */}
               {!modoMassa && (
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: 12, color: 'var(--c-muted)', fontWeight: 500 }}>Destinatário</span>
+                <label style={{ display: 'grid', gap: 'var(--esp-1)' }}>
+                  <span className="form-label">Destinatário</span>
                   <select className="input" value={destinatarioId} onChange={(e) => setDestinatarioId(e.target.value)}>
                     <option value="">Selecione...</option>
                     {destinatarios.map((d) => (
@@ -1065,14 +1596,13 @@ export default function ComunicacaoInterna() {
                 </label>
               )}
 
-              {/* Destinatários em massa */}
               {modoMassa && (
                 <>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 12, color: 'var(--c-muted)', fontWeight: 500 }}>Usuários</span>
-                    <div className="input" style={{ maxHeight: 130, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px' }}>
+                  <div style={{ display: 'grid', gap: 'var(--esp-1)' }}>
+                    <span className="form-label">Usuários</span>
+                    <div className="input" style={{ maxHeight: 'calc(var(--esp-8) * 4)', overflowY: 'auto', display: 'grid', gap: 'var(--esp-1)' }}>
                       {destinatarios.map((d) => (
-                        <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                        <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-2)', minHeight: 'var(--alvo-clique)', fontSize: 'var(--fonte-corpo)', cursor: 'pointer' }}>
                           <input
                             type="checkbox"
                             checked={destinatariosMassaIds.includes(d.id)}
@@ -1082,13 +1612,13 @@ export default function ComunicacaoInterna() {
                         </label>
                       ))}
                     </div>
-                  </label>
+                  </div>
 
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 12, color: 'var(--c-muted)', fontWeight: 500 }}>Setores <span style={{ fontWeight: 400 }}>(cria grupo — como WhatsApp)</span></span>
-                    <div className="input" style={{ maxHeight: 130, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px' }}>
+                  <div style={{ display: 'grid', gap: 'var(--esp-1)' }}>
+                    <span className="form-label">Setores <span style={{ fontWeight: 400, color: 'var(--c-muted)' }}>(cria grupo — como WhatsApp)</span></span>
+                    <div className="input" style={{ maxHeight: 'calc(var(--esp-8) * 4)', overflowY: 'auto', display: 'grid', gap: 'var(--esp-1)' }}>
                       {setores.map((s) => (
-                        <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                        <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--esp-2)', minHeight: 'var(--alvo-clique)', fontSize: 'var(--fonte-corpo)', cursor: 'pointer' }}>
                           <input
                             type="checkbox"
                             checked={setoresMassaIds.includes(s.id)}
@@ -1098,59 +1628,58 @@ export default function ComunicacaoInterna() {
                         </label>
                       ))}
                     </div>
-                  </label>
+                  </div>
                 </>
               )}
 
-              {/* Mensagem */}
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--c-muted)', fontWeight: 500 }}>Mensagem</span>
+              <label style={{ display: 'grid', gap: 'var(--esp-1)' }}>
+                <span className="form-label">Mensagem</span>
                 <textarea
                   className="input"
                   rows={4}
-                  style={{ resize: 'vertical', minHeight: 90 }}
+                  style={{ resize: 'vertical' }}
                   value={mensagemNova}
                   onChange={(e) => setMensagemNova(e.target.value)}
                   placeholder="Digite a mensagem..."
                 />
               </label>
 
-              {/* Anexos */}
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--c-muted)', fontWeight: 500 }}>Anexos (opcional)</span>
+              <label style={{ display: 'grid', gap: 'var(--esp-1)' }}>
+                <span className="form-label">Anexos (opcional)</span>
                 <input
                   type="file"
                   multiple
-                  style={{ fontSize: 13 }}
+                  style={{ fontSize: 'var(--fonte-corpo)' }}
                   onChange={(e) => {
                     adicionarArquivosNovaConversa(e.target.files);
                     e.target.value = '';
                   }}
                 />
-                <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>
+                <span style={{ fontSize: 'var(--fonte-detalhe)', color: 'var(--c-muted)' }}>
                   Limite atual: ate {UPLOAD_MAX_FILE_SIZE_MB_PADRAO} MB por arquivo.
                 </span>
               </label>
 
-              {/* Rodapé */}
               <PendingAttachmentsList
                 items={arquivosNova}
                 onRemove={(index) => setArquivosNova((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
                 className="space-y-2"
-                itemClassName="flex items-center justify-between gap-3 rounded border border-[var(--c-border)] bg-[var(--c-bg, #fff)] px-3 py-2 text-sm"
-                removeButtonClassName="text-red-600 font-semibold px-2"
+                itemClassName="flex items-center justify-between gap-3 rounded border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-sm"
+                removeButtonClassName="text-[var(--c-danger)] font-semibold px-2"
               />
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
-                <button type="button" onClick={() => setShowNova(false)} className="btn btn-outline" style={{ fontSize: 13 }}>Cancelar</button>
-                <button type="submit" disabled={salvando} className="btn btn-primary" style={{ fontSize: 13 }}>
+              <div className="app-actionbar">
+                <button type="button" onClick={fecharModalNova} className="btn btn-outline">Cancelar</button>
+                <button type="submit" disabled={salvando} className="btn btn-primary">
                   {salvando ? 'Enviando...' : 'Enviar'}
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
+            </div>
+          </form>
+        </OverlayModal>
       )}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

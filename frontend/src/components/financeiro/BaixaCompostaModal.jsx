@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { HiOutlinePlus, HiOutlineTrash, HiOutlineXMark } from 'react-icons/hi2';
 import { confirmarBaixaFinanceiraComposta, previewBaixaFinanceiraComposta } from '../../services/financeiro';
+import { TabelaPadrao } from '../padrao';
 import ChequePagamentoFields from './ChequePagamentoFields';
+import DateInputBR from '../DateInputBR';
 
 function round(value) { return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100; }
 function money(value) { return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
@@ -83,7 +85,7 @@ function redistributeComponents(components, titulos) {
 }
 
 export default function BaixaCompostaModal({
-  titulos = [], formas = [], contas = [], cartoes = [], cheques = [], empresas = [], onClose, onConfirmed
+  titulos = [], formas = [], contas = [], cartoes = [], cheques = [], onClose, onConfirmed
 }) {
   const orderedTitles = useMemo(() => [...titulos].sort(compareOldestTitle), [titulos]);
   const titleType = String(orderedTitles[0]?.tipo || '').toUpperCase();
@@ -101,15 +103,6 @@ export default function BaixaCompostaModal({
   const compatible = orderedTitles.length > 0
     && orderedTitles.every((item) => Number(item.parceiro_id) === parceiroId)
     && orderedTitles.every((item) => String(item.tipo || '').toUpperCase() === titleType);
-  const empresasDisponiveis = useMemo(() => {
-    const map = new Map();
-    empresas.filter((item) => item?.ativo !== false).forEach((item) => map.set(Number(item.id), item));
-    orderedTitles.forEach((item) => {
-      const id = Number(item.empresa_id || 0);
-      if (id && !map.has(id)) map.set(id, { id, nome: item.empresa?.nome || `Empresa #${id}` });
-    });
-    return Array.from(map.values());
-  }, [empresas, orderedTitles]);
   const totalSaldo = orderedTitles.reduce((sum, item) => sum + Number(item.valor_saldo || 0), 0);
   const totalComponents = components.reduce((sum, item) => sum + Number(item.valor || 0), 0);
 
@@ -122,12 +115,9 @@ export default function BaixaCompostaModal({
       if (field === 'forma_pagamento_id') {
         next.conta_bancaria_id = ''; next.cartao_id = ''; next.cheque_terceiro_id = '';
       }
-      if (field === 'empresa_id') {
-        next.conta_bancaria_id = ''; next.cartao_id = ''; next.cheque_terceiro_id = '';
-      }
       if (field === 'conta_bancaria_id') {
         const conta = contas.find((item) => Number(item.id) === Number(value));
-        if (conta?.empresa_id) next.empresa_id = String(conta.empresa_id);
+        next.empresa_id = String(conta?.empresa_id || orderedTitles[0]?.empresa_id || '');
       }
       if (field === 'cartao_id') {
         const cartao = cartoes.find((item) => Number(item.id) === Number(value));
@@ -220,7 +210,7 @@ export default function BaixaCompostaModal({
           {compatible ? <div className="finance-operation-notice finance-operation-notice--info mb-4">Cada valor informado é distribuído automaticamente pelo vencimento: o título mais antigo é coberto primeiro e o último pode permanecer parcialmente pago.</div> : null}
           {error ? <div className="finance-operation-notice finance-operation-notice--danger mb-4">{error}</div> : null}
           <div className="mb-4 grid gap-3 md:grid-cols-[220px_1fr_auto]">
-            <label className="form-control"><span>Data do {operationName}</span><input className="input" type="date" value={dataMovimento} onChange={(e) => { setDataMovimento(e.target.value); setPreview(null); }} /></label>
+            <label className="form-control"><span>Data do {operationName}</span><DateInputBR className="input" value={dataMovimento} onChange={(e) => { setDataMovimento(e.target.value); setPreview(null); }} /></label>
             <label className="form-control"><span>Observações do grupo</span><input className="input" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder={`Ex.: ${isReceivable ? 'Recebimento' : 'Pagamento'} combinado acordado com o ${partnerName}`} /></label>
             <div className="finance-operation-metric self-end px-4 py-2"><small className="block text-[var(--c-muted)]">Saldo selecionado</small><strong>{money(totalSaldo)}</strong></div>
           </div>
@@ -228,31 +218,82 @@ export default function BaixaCompostaModal({
           <div className="space-y-3">{components.map((component, index) => {
             const forma = formas.find((item) => Number(item.id) === Number(component.forma_pagamento_id));
             const type = operationalType(forma);
-            const contasEmpresa = contas.filter((item) => item.ativo !== false && (!component.empresa_id || Number(item.empresa_id) === Number(component.empresa_id)));
+            const contasAtivas = contas.filter((item) => item.ativo !== false);
             const contasCompativeis = type === 'DINHEIRO'
-              ? contasEmpresa.filter((item) => contaExigeControleDiario(item))
-              : contasEmpresa;
-            const chequesEmpresa = cheques.filter((item) => String(item.status).toUpperCase() === 'EM_CARTEIRA' && (!component.empresa_id || Number(item.empresa_id) === Number(component.empresa_id)));
-            const cartoesEmpresa = cartoes.filter((item) => {
-              if (item.ativo === false || !component.empresa_id) return item.ativo !== false;
-              const contaCartao = contas.find((conta) => Number(conta.id) === Number(item.conta_bancaria_id));
-              return Number(contaCartao?.empresa_id) === Number(component.empresa_id);
-            });
+              ? contasAtivas.filter((item) => contaExigeControleDiario(item))
+              : contasAtivas;
+            const chequesDisponiveis = cheques.filter((item) => String(item.status).toUpperCase() === 'EM_CARTEIRA');
+            const cartoesDisponiveis = cartoes.filter((item) => item.ativo !== false);
             const temRateioIntercompany = Object.entries(component.alocacoes || {}).some(([tituloId, value]) => {
               const titulo = orderedTitles.find((item) => Number(item.id) === Number(tituloId));
               return Number(value) > 0 && Number(titulo?.empresa_id) !== Number(component.empresa_id);
             });
             const componentAllocated = Object.values(component.alocacoes || {}).reduce((sum, value) => sum + Number(value || 0), 0);
-            return <section key={index} className="finance-operation-panel p-4"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-[var(--c-text)]">Fonte {index + 1}</h3>{components.length > 1 ? <button type="button" className="btn btn-outline btn-sm text-[var(--status-rejected-text)]" onClick={() => { setComponents((rows) => redistributeComponents(rows.filter((_, rowIndex) => rowIndex !== index), orderedTitles)); setPreview(null); }}><HiOutlineTrash /></button> : null}</div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <label className="form-control"><span>Empresa da fonte *</span><select className="select" value={component.empresa_id} onChange={(e) => updateComponent(index, 'empresa_id', e.target.value)}><option value="">Selecione</option>{empresasDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.razao_social || `Empresa #${item.id}`}</option>)}</select></label>
+            return <section key={index} className="finance-operation-panel p-4"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-[var(--c-text)]">Fonte {index + 1}</h3>{components.length > 1 ? <button type="button" className="btn btn-outline btn-sm text-[var(--status-rejected-text)]" onClick={() => { setComponents((rows) => redistributeComponents(rows.filter((_, rowIndex) => rowIndex !== index), orderedTitles)); setPreview(null); }}><HiOutlineTrash /></button> : null}</div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="form-control"><span>Forma de {operationName} *</span><select className="select" value={component.forma_pagamento_id} onChange={(e) => updateComponent(index, 'forma_pagamento_id', e.target.value)}><option value="">Selecione</option>{formas.filter((item) => item.ativo !== false && !item.gera_fatura).map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}</select></label>
-              {type === 'CHEQUE' && !isReceivable ? <label className="form-control"><span>Cheque de terceiro em carteira</span><select className="select" value={component.cheque_terceiro_id} onChange={(e) => updateComponent(index, 'cheque_terceiro_id', e.target.value)}><option value="">Selecione um cheque cadastrado</option>{chequesEmpresa.map((item) => <option key={item.id} value={item.id}>{item.codigo} · Nº {item.numero_cheque} · {money(item.valor)}</option>)}</select>{!component.cheque_terceiro_id ? <small className="mt-1 text-xs text-[var(--c-muted)]">Sem seleção, informe a conta e o número do cheque emitido pela empresa.</small> : null}</label> : null}
-              {!['PERMUTA', 'OUTROS'].includes(type) && !(type === 'CHEQUE' && (component.cheque_terceiro_id || isReceivable)) ? <label className="form-control"><span>{type === 'DINHEIRO' ? 'Caixa físico *' : 'Conta financeira *'}</span><select className="select" value={component.conta_bancaria_id} onChange={(e) => updateComponent(index, 'conta_bancaria_id', e.target.value)}><option value="">{type === 'DINHEIRO' ? 'Selecione o caixa físico' : 'Selecione'}</option>{contasCompativeis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.banco_nome || `Conta #${item.id}`}</option>)}</select>{type === 'DINHEIRO' ? <small className="mt-1 text-xs text-[var(--c-muted)]">O caixa deve estar aberto e abranger a data do {operationName}.{component.empresa_id && contasCompativeis.length === 0 ? ' Nenhum caixa físico ativo foi encontrado para esta empresa.' : ''}</small> : null}</label> : null}
-              {type === 'CARTAO' ? <label className="form-control"><span>Cartão *</span><select className="select" value={component.cartao_id} onChange={(e) => updateComponent(index, 'cartao_id', e.target.value)}><option value="">Selecione</option>{cartoesEmpresa.map((item) => <option key={item.id} value={item.id}>{item.nome || item.descricao || `Cartão #${item.id}`}</option>)}</select></label> : null}
+              {type === 'CHEQUE' && !isReceivable ? <label className="form-control"><span>Cheque de terceiro em carteira</span><select className="select" value={component.cheque_terceiro_id} onChange={(e) => updateComponent(index, 'cheque_terceiro_id', e.target.value)}><option value="">Selecione um cheque cadastrado</option>{chequesDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.codigo} · Nº {item.numero_cheque} · {money(item.valor)}{item.empresa?.nome ? ` · ${item.empresa.nome}` : ''}</option>)}</select>{!component.cheque_terceiro_id ? <small className="mt-1 text-xs text-[var(--c-muted)]">Sem seleção, informe a conta e o número do cheque emitido.</small> : null}</label> : null}
+              {!['PERMUTA', 'OUTROS'].includes(type) && !(type === 'CHEQUE' && (component.cheque_terceiro_id || isReceivable)) ? <label className="form-control"><span>{type === 'DINHEIRO' ? 'Caixa físico *' : 'Conta financeira *'}</span><select className="select" value={component.conta_bancaria_id} onChange={(e) => updateComponent(index, 'conta_bancaria_id', e.target.value)}><option value="">{type === 'DINHEIRO' ? 'Selecione o caixa físico' : 'Selecione uma conta'}</option>{contasCompativeis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.banco_nome || `Conta #${item.id}`}{item.empresa?.nome ? ` · ${item.empresa.nome}` : ''}</option>)}</select>{type === 'DINHEIRO' ? <small className="mt-1 text-xs text-[var(--c-muted)]">O caixa deve estar aberto e abranger a data do {operationName}.{contasCompativeis.length === 0 ? ' Nenhum caixa físico ativo foi encontrado.' : ''}</small> : null}</label> : null}
+              {type === 'CARTAO' ? <label className="form-control"><span>Cartão *</span><select className="select" value={component.cartao_id} onChange={(e) => updateComponent(index, 'cartao_id', e.target.value)}><option value="">Selecione</option>{cartoesDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.descricao || `Cartão #${item.id}`}</option>)}</select></label> : null}
               <label className="form-control"><span>Valor da fonte *</span><input className="input" type="number" min="0.01" step="0.01" value={component.valor} readOnly={Boolean(component.cheque_terceiro_id)} onChange={(e) => updateComponent(index, 'valor', e.target.value)} /></label>
               {type !== 'CHEQUE' ? <label className="form-control"><span>Documento</span><input className="input" value={component.documento_referencia} onChange={(e) => updateComponent(index, 'documento_referencia', e.target.value)} /></label> : null}
               {temRateioIntercompany ? <label className="form-control xl:col-span-2"><span>Natureza entre empresas *</span><select className="select" value={component.natureza_intercompany_baixa} onChange={(e) => updateComponent(index, 'natureza_intercompany_baixa', e.target.value)}>{NATUREZAS_INTERCOMPANY.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label> : null}
-            </div>{type === 'CHEQUE' && !component.cheque_terceiro_id ? <ChequePagamentoFields className="mt-4" compact value={component} onChange={(field, value) => updateComponent(index, field, value)} title={isReceivable ? 'Dados do cheque recebido' : 'Dados do cheque usado no pagamento'} description={isReceivable ? 'Informe o cheque entregue pelo cliente. Um único cheque desta fonte pode quitar mais de um título, respeitando a ordem de vencimento.' : 'Informe o cheque emitido pela empresa desta fonte. Os dados ficam individualizados neste componente da baixa.'} /> : null}<div className="finance-operation-table-shell mt-4"><table className="table min-w-[720px]"><thead><tr><th>Título</th><th>Vencimento</th><th className="text-right">Saldo</th><th className="w-52">Valor nesta fonte</th></tr></thead><tbody>{orderedTitles.map((titulo) => <tr key={titulo.id}><td><strong>{titulo.codigo}</strong><small className="block text-[var(--c-muted)]">{titulo.descricao}</small></td><td>{String(titulo.data_vencimento || '').split('-').reverse().join('/')}</td><td className="text-right">{money(titulo.valor_saldo)}</td><td><input className="input input-sm text-right" type="number" min="0" step="0.01" value={component.alocacoes?.[titulo.id] || ''} onChange={(e) => updateAllocation(index, titulo.id, e.target.value)} /></td></tr>)}</tbody><tfoot><tr><th colSpan="3">Distribuído na fonte</th><th className={Math.abs(round(componentAllocated) - round(component.valor)) < 0.01 ? 'text-[var(--status-approved-text)]' : 'text-[var(--status-rejected-text)]'}>{money(componentAllocated)} / {money(component.valor)}</th></tr></tfoot></table></div></section>;
+            </div>{type === 'CHEQUE' && !component.cheque_terceiro_id ? <ChequePagamentoFields className="mt-4" compact value={component} onChange={(field, value) => updateComponent(index, field, value)} title={isReceivable ? 'Dados do cheque recebido' : 'Dados do cheque usado no pagamento'} description={isReceivable ? 'Informe o cheque entregue pelo cliente. Um único cheque desta fonte pode quitar mais de um título, respeitando a ordem de vencimento.' : 'Informe o cheque emitido pela empresa desta fonte. Os dados ficam individualizados neste componente da baixa.'} /> : null}<div className="mt-4">
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'titulo',
+                    titulo: 'Título',
+                    // R17: o código do título NOMEIA o registro rateado.
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (titulo) => (
+                      <div>
+                        <strong>{titulo.codigo}</strong>
+                        <small className="block text-[var(--c-muted)]">{titulo.descricao}</small>
+                      </div>
+                    )
+                  },
+                  {
+                    id: 'vencimento',
+                    titulo: 'Vencimento',
+                    tipo: 'data',
+                    render: (titulo) => String(titulo.data_vencimento || '').split('-').reverse().join('/')
+                  },
+                  {
+                    id: 'saldo',
+                    titulo: 'Saldo',
+                    tipo: 'valor',
+                    render: (titulo) => money(titulo.valor_saldo)
+                  },
+                  {
+                    id: 'valor_fonte',
+                    sempreVisivel: true,
+                    titulo: 'Valor nesta fonte',
+                    tipo: 'valor',
+                    render: (titulo) => (
+                      <input
+                        className="input input-sm text-right"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={component.alocacoes?.[titulo.id] || ''}
+                        onChange={(e) => updateAllocation(index, titulo.id, e.target.value)}
+                      />
+                    )
+                  }
+                ]}
+                itens={orderedTitles}
+                storageKey="tabela:baixa-composta:alocacoes"
+                rotuloRolagem={`Rateio da fonte ${index + 1}`}
+                vazio="Nenhum título selecionado."
+              />
+              {/* Total do <tfoot> antigo: TabelaPadrao não tem rodapé — vira
+                  resumo apartado abaixo da tabela, mesma conta e mesma cor. */}
+              <div className="mt-3 flex items-center justify-between gap-4 rounded-xl border px-3 py-2" style={{ borderColor: 'var(--ui-border)', background: 'var(--ui-canvas)' }}>
+                <span className="text-sm font-semibold text-[var(--c-text)]">Distribuído na fonte</span>
+                <strong className={Math.abs(round(componentAllocated) - round(component.valor)) < 0.01 ? 'text-[var(--status-approved-text)]' : 'text-[var(--status-rejected-text)]'}>{money(componentAllocated)} / {money(component.valor)}</strong>
+              </div>
+            </div></section>;
           })}</div>
           <button type="button" className="btn btn-outline mt-3" onClick={() => { setComponents((rows) => [...rows, newComponent(formas, orderedTitles[0]?.empresa_id || '')]); setPreview(null); }}><HiOutlinePlus /> Adicionar fonte</button>
 

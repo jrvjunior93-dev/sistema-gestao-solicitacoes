@@ -1,5 +1,15 @@
+import DateInputBR from '../../../components/DateInputBR';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Avisos,
+  BlocoConteudo,
+  CampoForm,
+  FormSecao,
+  Pagina,
+  PageHeader,
+  useAvisos
+} from '../../../components/padrao';
 import {
   criarProvisaoFinanceira,
   getProvisionamentoFinanceiroContexto,
@@ -25,6 +35,7 @@ function formatarObra(obra) {
 
 export default function NovaProvisaoFinanceira() {
   const navigate = useNavigate();
+  const { avisos, avisar, fechar } = useAvisos();
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,13 +64,14 @@ export default function NovaProvisaoFinanceira() {
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       } catch (error) {
         console.error(error);
-        alert(error?.message || 'Erro ao carregar formulario de provisao.');
+        avisar.erro(error?.message || 'Erro ao carregar formulario de provisao.');
       } finally {
         setLoading(false);
       }
     }
 
     carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const obrasCriacao = useMemo(() => (
@@ -85,7 +97,7 @@ export default function NovaProvisaoFinanceira() {
     });
     setArquivosPendentes(proximoEstado);
     if (rejeitados.length > 0) {
-      alert(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
+      avisar.alerta(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
     }
   }
 
@@ -99,7 +111,7 @@ export default function NovaProvisaoFinanceira() {
     if (saving) return;
 
     if (!form.obra_id || !form.data_prevista_desembolso || !form.item_macro.trim() || !form.descricao.trim() || !form.valor_previsto) {
-      alert('Preencha obra, data prevista, item macro, descricao e valor previsto.');
+      avisar.erro('Preencha obra, data prevista, item macro, descrição e valor previsto.');
       return;
     }
 
@@ -115,106 +127,175 @@ export default function NovaProvisaoFinanceira() {
           await uploadAnexosProvisaoFinanceira(provisao.id, extrairFilesAnexosPendentes(arquivosPendentes));
         } catch (uploadError) {
           console.error(uploadError);
-          alert(uploadError?.message || 'A provisao foi criada, mas houve erro ao enviar os anexos.');
+          /*
+            O aviso do anexo NÃO pode virar a única notícia: a provisão já
+            foi criada e a navegação abaixo troca de tela. Por isso ele não
+            substitui o fluxo — mantém o mesmo comportamento de antes
+            (avisar e seguir para o detalhe, onde o anexo pode ser reenviado).
+          */
+          avisar.alerta(uploadError?.message || 'A provisao foi criada, mas houve erro ao enviar os anexos.');
         }
       }
 
       navigate(`/provisoes-financeiras/${provisao.id}`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao criar provisao.');
+      avisar.erro(error?.message || 'Erro ao criar provisao.');
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) {
-    return <div className="page"><p>Carregando formulario...</p></div>;
+    return (
+      <Pagina>
+        <PageHeader titulo="Nova Provisão" />
+        <BlocoConteudo>Carregando formulário...</BlocoConteudo>
+      </Pagina>
+    );
   }
 
   return (
-    <div className="page space-y-6">
-      <div className="mx-auto w-full max-w-5xl">
-        <h1 className="page-title">Nova Provisao</h1>
-        <p className="page-subtitle">Registre uma previsao gerencial de desembolso com os dados essenciais do compromisso.</p>
-      </div>
+    <Pagina>
+      {/*
+        R5/C2 — título, contagem e apoio na faixa fixa; o `page-subtitle`
+        solto que estava aqui é reprovado pelo validador.
 
-      <form className="card mx-auto w-full max-w-5xl space-y-5" onSubmit={handleSubmit}>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <label className="grid gap-1 text-sm">
-            Obra *
-            <select className="input" value={form.obra_id} onChange={(event) => atualizarCampo('obra_id', event.target.value)}>
-              <option value="">Selecione...</option>
-              {obrasCriacao.map((obra) => (
-                <option key={obra.id} value={obra.id}>{formatarObra(obra)}</option>
-              ))}
-            </select>
-          </label>
+        A barra de ações do PageHeader fica VAZIA de propósito: a ação
+        principal desta tela é o SUBMIT do formulário, e botão de submit
+        precisa estar dentro do <form> (fora dele viraria um clique que não
+        valida nem envia). Ele vive no `app-actionbar` do rodapé do form,
+        como no molde aprovado (ComercialUnidades).
+      */}
+      <PageHeader
+        titulo="Nova Provisão"
+        /* C3 (apontado pela matriz): tela de CADASTRO com rota propria tem
+           registro-pai a que voltar — a listagem de onde se veio. E o inverso
+           da listagem, onde a seta e redundante. */
+        voltar={{ to: '/provisoes-financeiras', title: 'Voltar para provisoes' }}
+        contagem={`${obrasCriacao.length} obra(s) disponível(is)`}
+        descricao="Registre uma previsão gerencial de desembolso com os dados essenciais do compromisso."
+      />
 
-          <label className="grid gap-1 text-sm">
-            Data prevista de desembolso *
-            <input type="date" className="input" value={form.data_prevista_desembolso} onChange={(event) => atualizarCampo('data_prevista_desembolso', event.target.value)} />
-          </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-          <label className="grid gap-1 text-sm md:col-span-2 xl:col-span-2">
-            Prioridade
-            <select className="input" value={form.prioridade} onChange={(event) => atualizarCampo('prioridade', event.target.value)}>
-              <option value="">Nao definida</option>
-              <option value="baixa">Baixa</option>
-              <option value="media">Media</option>
-              <option value="alta">Alta</option>
-              <option value="critica">Critica</option>
-            </select>
-          </label>
+      {/* R10: o ritmo vertical vem da escala — `gap-4` é o degrau de 16px, o
+          mesmo vão que o `Pagina` dá entre blocos. O <form> precisa envolver
+          os três blocos para que o submit alcance todos os campos. */}
+      <form className="grid gap-4" onSubmit={handleSubmit}>
+        {/*
+          R9 (revista em 04/09) — FORMULÁRIO INLINE, NÃO EM MODAL.
+          Esta tela EXISTE para cadastrar a provisão: pelo teste da regra,
+          tirando o formulário não sobra tela nenhuma. Modal aqui seria
+          esconder atrás de um botão o motivo pelo qual a pessoa abriu a
+          tela. Não mover para OverlayModal.
+        */}
+        <BlocoConteudo
+          titulo="Dados da provisão"
+          variante="primario"
+          cor="var(--c-primary)"
+        >
+          <FormSecao legenda="Compromisso" colunas={2}>
+            <CampoForm label="Obra" obrigatorio>
+              {/* R12: select de FORMULÁRIO (entrada de dado do registro) é
+                  legítimo — a regra vale para filtro de LISTA. */}
+              <select
+                className="input w-full"
+                value={form.obra_id}
+                onChange={(event) => atualizarCampo('obra_id', event.target.value)}
+                required
+              >
+                <option value="">Selecione...</option>
+                {obrasCriacao.map((obra) => (
+                  <option key={obra.id} value={obra.id}>{formatarObra(obra)}</option>
+                ))}
+              </select>
+            </CampoForm>
 
-          <label className="grid gap-1 text-sm md:col-span-2 xl:col-span-3">
-            Item macro *
-            <input
-              type="text"
-              className="input"
-              list="provisao-item-macro-opcoes"
-              value={form.item_macro}
-              onChange={(event) => atualizarCampo('item_macro', event.target.value)}
-              placeholder="Ex.: concretagem, locacao, estrutura metalica"
-            />
-            <datalist id="provisao-item-macro-opcoes">
-              {categorias.map((categoria) => (
-                <option key={categoria.id} value={categoria.nome} />
-              ))}
-            </datalist>
-          </label>
+            <CampoForm label="Data prevista de desembolso" obrigatorio>
+              <DateInputBR
+                className="input w-full"
+                value={form.data_prevista_desembolso}
+                onChange={(event) => atualizarCampo('data_prevista_desembolso', event.target.value)}
+                required
+              />
+            </CampoForm>
 
-          <label className="grid gap-1 text-sm md:col-span-2 xl:col-span-3">
-            Credor
-            <input className="input" value={form.fornecedor_texto} onChange={(event) => atualizarCampo('fornecedor_texto', event.target.value)} placeholder="Opcional" />
-          </label>
+            <CampoForm label="Item macro" obrigatorio hint="Escolha uma categoria macro cadastrada ou digite uma nova.">
+              <input
+                type="text"
+                className="input w-full"
+                list="provisao-item-macro-opcoes"
+                value={form.item_macro}
+                onChange={(event) => atualizarCampo('item_macro', event.target.value)}
+                placeholder="Ex.: concretagem, locacao, estrutura metalica"
+              />
+              <datalist id="provisao-item-macro-opcoes">
+                {categorias.map((categoria) => (
+                  <option key={categoria.id} value={categoria.nome} />
+                ))}
+              </datalist>
+            </CampoForm>
 
-          <label className="grid gap-1 text-sm xl:col-span-2">
-            Valor previsto *
-            <input
-              type="text"
-              inputMode="numeric"
-              className="input"
-              value={valorPrevistoTexto}
-              onChange={(event) => atualizarValorPrevisto(event.target.value)}
-              placeholder={formatarMoedaBRL(0)}
-            />
-          </label>
+            <CampoForm label="Prioridade">
+              <select
+                className="input w-full"
+                value={form.prioridade}
+                onChange={(event) => atualizarCampo('prioridade', event.target.value)}
+              >
+                <option value="">Não definida</option>
+                <option value="baixa">Baixa</option>
+                <option value="media">Media</option>
+                <option value="alta">Alta</option>
+                <option value="critica">Critica</option>
+              </select>
+            </CampoForm>
 
-          <label className="grid gap-1 text-sm xl:col-span-4">
-            Descricao *
-            <textarea className="input min-h-[110px]" value={form.descricao} onChange={(event) => atualizarCampo('descricao', event.target.value)} placeholder="Descreva o desembolso previsto com contexto suficiente para a equipe entender a provisao." />
-          </label>
-        </div>
+            {/*
+              R6 — MÓDULO DE DINHEIRO: o campo de valor é dimensionado pelo
+              PIOR CASO (`.input-moeda`: mín 180px, cabe R$ 9.999.999.999,99,
+              alinhado à direita e em tabular-nums). Estava com `input` cru.
+            */}
+            <CampoForm label="Valor previsto" obrigatorio>
+              <input
+                type="text"
+                inputMode="numeric"
+                className="input input-moeda w-full"
+                value={valorPrevistoTexto}
+                onChange={(event) => atualizarValorPrevisto(event.target.value)}
+                placeholder={formatarMoedaBRL(0)}
+              />
+            </CampoForm>
 
-        <div className="grid gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold">Anexos da provisao</h2>
-              <p className="text-xs text-[var(--c-muted)]">Voce pode anexar documentos ja na criacao. Eles serao enviados logo apos o registro ser salvo.</p>
-              <p className="text-xs text-[var(--c-muted)]">Limite atual: ate {UPLOAD_MAX_FILE_SIZE_MB_PADRAO} MB por arquivo.</p>
-            </div>
-            <label className={`btn btn-outline cursor-pointer ${saving ? 'pointer-events-none opacity-60' : ''}`}>
+            <CampoForm label="Credor" hint="Opcional.">
+              <input
+                className="input w-full"
+                value={form.fornecedor_texto}
+                onChange={(event) => atualizarCampo('fornecedor_texto', event.target.value)}
+                placeholder="Nome do credor"
+              />
+            </CampoForm>
+
+            <CampoForm label="Descrição" obrigatorio tipo="texto-longo" span={2}>
+              {/* R10: a altura do textarea vem da folha do sistema
+                  (textarea.input), não do `min-h-[110px]` que estava aqui. */}
+              <textarea
+                className="input w-full"
+                value={form.descricao}
+                onChange={(event) => atualizarCampo('descricao', event.target.value)}
+                placeholder="Descreva o desembolso previsto com contexto suficiente para a equipe entender a provisão."
+              />
+            </CampoForm>
+          </FormSecao>
+        </BlocoConteudo>
+
+        <BlocoConteudo
+          titulo="Anexos da provisão"
+          contagem={`${arquivosPendentes.length} arquivo(s) selecionado(s)`}
+          descricao={`Enviados logo após o registro ser salvo. Limite atual: até ${UPLOAD_MAX_FILE_SIZE_MB_PADRAO} MB por arquivo.`}
+          variante="secundario"
+          acoes={(
+            <label className={`btn btn-outline${saving ? ' pointer-events-none opacity-60' : ''}`}>
               <input
                 type="file"
                 className="hidden"
@@ -226,30 +307,32 @@ export default function NovaProvisaoFinanceira() {
               />
               Adicionar arquivos
             </label>
-          </div>
-
+          )}
+        >
           {arquivosPendentes.length > 0 ? (
             <PendingAttachmentsList
               items={arquivosPendentes}
               onRemove={(index) => removerArquivoPendente(index)}
               className="grid gap-2"
-              itemClassName="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] bg-white px-3 py-2 text-sm"
-              removeButtonClassName="btn btn-outline"
+              itemClassName="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm"
+              removeButtonClassName="btn btn-outline btn-sm"
             />
           ) : (
-            <div className="text-sm text-[var(--c-muted)]">Nenhum arquivo selecionado.</div>
+            <p className="text-sm text-[var(--c-muted)]">Nenhum arquivo selecionado.</p>
           )}
-        </div>
+        </BlocoConteudo>
 
-        <div className="flex justify-end gap-2">
-          <button type="button" className="btn btn-outline" onClick={() => navigate('/provisoes-financeiras')}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Salvando...' : 'Criar provisao'}
-          </button>
-        </div>
+        <BlocoConteudo>
+          <div className="app-actionbar">
+            <button type="button" className="btn btn-outline" onClick={() => navigate('/provisoes-financeiras')}>
+              Cancelar
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Salvando...' : 'Criar provisao'}
+            </button>
+          </div>
+        </BlocoConteudo>
       </form>
-    </div>
+    </Pagina>
   );
 }

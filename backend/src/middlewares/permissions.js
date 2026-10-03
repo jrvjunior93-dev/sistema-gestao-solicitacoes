@@ -13,6 +13,12 @@ module.exports = function permit(config = []) {
       return res.status(401).json({ error: 'Usuario nao autenticado' });
     }
 
+    // SUPERADMIN possui acesso funcional global. As validacoes de existencia,
+    // consistencia e transicao de estado continuam sendo feitas pelos services.
+    if (hasAnyProfile(req.user, ['SUPERADMIN'])) {
+      return next();
+    }
+
     if (Array.isArray(options.profiles) && options.profiles.length > 0) {
       if (!hasAnyProfile(req.user, options.profiles)) {
         await registrarEventoSeguranca({

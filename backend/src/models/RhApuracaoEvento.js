@@ -63,6 +63,12 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       allowNull: false,
       defaultValue: 0
     },
+    // Fase 12 (27/08): os quatro adicionais do item 11 do escopo, separados de proposito — sao
+    // naturezas legais diferentes, e a planilha-resumo precisa conferir cada uma.
+    adicional_noturno: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+    adicional_insalubridade: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+    adicional_periculosidade: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+    bonificacoes: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
     valor_liquido: {
       type: DataTypes.DECIMAL(14, 2),
       allowNull: false,

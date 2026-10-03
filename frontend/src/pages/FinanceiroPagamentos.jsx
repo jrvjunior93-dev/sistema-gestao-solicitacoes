@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import DateInputBR from '../components/DateInputBR';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import {
   HiOutlineArrowPath,
   HiOutlineBanknotes,
@@ -44,12 +46,22 @@ import {
   canSendPagamentosBanco,
   canSyncPagamentosBanco
 } from '../utils/acessoProduto';
+import StatusBadge from '../components/StatusBadge';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  TabelaPadrao,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
 
 const TABS = [
-  { id: 'titulos', label: 'Titulos elegiveis' },
+  { id: 'titulos', label: 'Títulos elegíveis' },
   { id: 'lotes', label: 'Lotes' },
   { id: 'baixas', label: 'Confirmar baixa', requiresConfirmBaixa: true },
-  { id: 'auditoria', label: 'Auditoria tecnica', requiresAudit: true }
+  { id: 'auditoria', label: 'Auditoria técnica', requiresAudit: true }
 ];
 
 const PAYMENT_EVENT_TYPES = [
@@ -62,7 +74,7 @@ const PAYMENT_EVENT_STATUSES = ['PENDENTE', 'PROCESSADO', 'ERRO'];
 
 const BATCH_STEPS = [
   { statuses: ['RASCUNHO'], label: 'Rascunho' },
-  { statuses: ['PENDENTE_APROVACAO'], label: 'Aprovacao' },
+  { statuses: ['PENDENTE_APROVACAO'], label: 'Aprovação' },
   { statuses: ['APROVADO', 'ENFILEIRADO', 'ENVIANDO'], label: 'Aprovado' },
   { statuses: ['ENVIADO_AO_BANCO', 'PROCESSANDO_BANCO', 'ENVIO_INDETERMINADO'], label: 'Banco' },
   { statuses: ['AGUARDANDO_CONFIRMACAO_BAIXA', 'BAIXADO'], label: 'Baixa' }
@@ -92,18 +104,24 @@ function formatDateTime(value) {
   return date.toLocaleString('pt-BR');
 }
 
-function statusClass(status) {
+/*
+ * R25 — a tela devolvia CLASSE DE PALETA CRUA por status
+ * (`bg-emerald-100 text-emerald-700` e irmãs). Paleta crua não tem par no
+ * tema escuro e não passa pelo piso de contraste do ThemeContext.
+ *
+ * Agora a função devolve a FAMÍLIA SEMÂNTICA e quem pinta é o
+ * `StatusBadge` do sistema — token + ícone, porque cor sozinha não
+ * comunica. O mapa é o mesmo de antes, status por status, para o
+ * significado não mudar junto com a cor: `SUCESSO` continua verde,
+ * `ENFILEIRADO` continua âmbar e `CANCELADO` continua vermelho (o
+ * classificador automático do StatusBadge leria os três de outro jeito).
+ */
+function familiaStatus(status) {
   const normalized = String(status || '').toUpperCase();
-  if (['APROVADO', 'CONFIRMADO_BANCO', 'BAIXADO', 'SUCESSO'].includes(normalized)) {
-    return 'app-status-pill bg-emerald-100 text-emerald-700';
-  }
-  if (['PENDENTE_APROVACAO', 'ENVIADO_AO_BANCO', 'AGUARDANDO_CONFIRMACAO_BAIXA', 'ENFILEIRADO'].includes(normalized)) {
-    return 'app-status-pill bg-amber-100 text-amber-700';
-  }
-  if (['REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'CANCELADO', 'ERRO'].includes(normalized)) {
-    return 'app-status-pill bg-rose-100 text-rose-700';
-  }
-  return 'app-status-pill bg-slate-100 text-slate-700';
+  if (['APROVADO', 'CONFIRMADO_BANCO', 'BAIXADO', 'SUCESSO'].includes(normalized)) return 'success';
+  if (['PENDENTE_APROVACAO', 'ENVIADO_AO_BANCO', 'AGUARDANDO_CONFIRMACAO_BAIXA', 'ENFILEIRADO'].includes(normalized)) return 'warning';
+  if (['REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'CANCELADO', 'ERRO'].includes(normalized)) return 'danger';
+  return 'neutral';
 }
 
 function compactFilters(filters = {}) {
@@ -310,6 +328,25 @@ export default function FinanceiroPagamentos() {
   });
   const [obraSearch, setObraSearch] = useState('');
   const [obraSuggestionsOpen, setObraSuggestionsOpen] = useState(false);
+  /*
+    A LISTA DE OBRAS NÃO FECHAVA DE JEITO NENHUM (05/09).
+
+    Aqui o estado `obraSuggestionsOpen` até existia, mas ninguém o
+    desligava sem consumir a busca: só `handleSelectObra` (escolher uma
+    obra) e `handleClearObra` (o botão "Limpar") o punham em falso. Não
+    havia caminho para apenas DISPENSAR a camada — e ela é `absolute
+    z-dropdown` sobre a faixa de filtros, tapando "Origem" e "Conta pagadora"
+    logo abaixo. Clicar fora não fazia nada; `Esc` não fazia nada.
+
+    Faltava só o gancho: o estado já estava pronto, o hook agora o
+    desliga. A seleção continua funcionando por duas razões, ambas
+    conferidas: o ref envolve o campo E a lista (clique na opção é
+    DENTRO, o hook não fecha no `mousedown`) e a opção já trazia
+    `onMouseDown` com `preventDefault` de antes — foi a única das onze
+    que já tinha a proteção.
+  */
+  const obraSugestoesRef = useRef(null);
+  useFecharAoSair(obraSugestoesRef, obraSuggestionsOpen, () => setObraSuggestionsOpen(false));
   const [batchForm, setBatchForm] = useState({
     payment_account_id: '',
     data_programada: today()
@@ -328,7 +365,14 @@ export default function FinanceiroPagamentos() {
   const [actionLoading, setActionLoading] = useState('');
   const [receiptLoading, setReceiptLoading] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  /*
+    R19/R3 — o `error` era um cartão só de erro; agora a tela usa a faixa de
+    avisos do sistema (tom semântico, fechável, sucesso sumindo em 6s) e a
+    confirmação do sistema no lugar dos três `window.prompt` que pediam
+    justificativa de cancelamento, rejeição e reprocessamento de lote.
+  */
+  const { avisos, avisar, fechar: fecharAviso } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   const canPrepare = useMemo(() => canPreparePagamentos(user), [user]);
   const canApprove = useMemo(() => canApprovePagamentos(user), [user]);
@@ -363,7 +407,6 @@ export default function FinanceiroPagamentos() {
   async function loadBase() {
     try {
       setLoading(true);
-      setError('');
       const [accountsData, batchesData, baixaData, bbHealthData, obrasData] = await Promise.all([
         getPaymentAccounts().catch(() => []),
         getPaymentBatches().catch(() => []),
@@ -383,7 +426,7 @@ export default function FinanceiroPagamentos() {
         payment_account_id: current.payment_account_id || String(firstOperationalAccount?.id || '')
       }));
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar pagamentos');
+      avisar.erro(err?.message || 'Erro ao carregar pagamentos');
     } finally {
       setLoading(false);
     }
@@ -410,12 +453,11 @@ export default function FinanceiroPagamentos() {
   async function loadTitulos() {
     try {
       setActionLoading('titulos');
-      setError('');
       const data = await getPaymentEligibleTitulos(compactFilters(filters));
       setTitulos(Array.isArray(data) ? data : []);
       setSelectedIds([]);
     } catch (err) {
-      setError(err?.message || 'Erro ao buscar titulos elegiveis');
+      avisar.erro(err?.message || 'Erro ao buscar titulos elegiveis');
     } finally {
       setActionLoading('');
     }
@@ -425,13 +467,12 @@ export default function FinanceiroPagamentos() {
     if (!id) return;
     try {
       setActionLoading(`batch-${id}`);
-      setError('');
       const data = await getPaymentBatch(id);
       setSelectedBatch(data);
       const transactionsData = await getPaymentBatchBbTransactions(id).catch(() => []);
       setBbTransactions(Array.isArray(transactionsData) ? transactionsData : []);
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar lote');
+      avisar.erro(err?.message || 'Erro ao carregar lote');
     } finally {
       setActionLoading('');
     }
@@ -440,11 +481,10 @@ export default function FinanceiroPagamentos() {
   async function loadPaymentEvents() {
     try {
       setActionLoading('eventos');
-      setError('');
       const data = await getPaymentEvents(compactFilters(eventFilters));
       setPaymentEvents(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err?.message || 'Erro ao buscar eventos tecnicos de pagamento');
+      avisar.erro(err?.message || 'Erro ao buscar eventos tecnicos de pagamento');
     } finally {
       setActionLoading('');
     }
@@ -646,15 +686,14 @@ export default function FinanceiroPagamentos() {
   async function handleCriarLote() {
     try {
       if (!selectedIds.length) {
-        setError('Selecione ao menos um titulo elegivel.');
+        avisar.erro('Selecione ao menos um título elegível.');
         return;
       }
       if (selectedTitulosAccountPendencies.length > 0) {
-        setError('Remova da selecao os titulos com pendencia operacional antes de gerar o lote.');
+        avisar.erro('Remova da seleção os títulos com pendência operacional antes de gerar o lote.');
         return;
       }
       setActionLoading('criar-lote');
-      setError('');
       const data = await criarPaymentBatch({
         titulo_ids: selectedIds,
         payment_account_id: Number(batchForm.payment_account_id),
@@ -664,22 +703,33 @@ export default function FinanceiroPagamentos() {
       setActiveTab('lotes');
       await refreshAfterAction(data?.id);
     } catch (err) {
-      setError(err?.message || 'Erro ao criar lote');
+      avisar.erro(err?.message || 'Erro ao criar lote');
     } finally {
       setActionLoading('');
     }
   }
 
-  async function runBatchAction(name, callback) {
-    if (!selectedBatch?.id) return;
+  /*
+    FAMÍLIA D / consentimento — `lote` é o registro que a confirmação CITOU,
+    fixado ANTES do `await` do modal e repassado até a chamada do serviço.
+
+    Com o `window.prompt` a página ficava bloqueada e nada podia mudar entre
+    a pergunta e a ação. Com o modal do sistema a tela continua montada: a
+    lista de lotes ao lado segue clicável, e reler `selectedBatch` DEPOIS da
+    confirmação faria a tela perguntar sobre o lote A e cancelar o lote B —
+    consentimento válido registrado para uma ação que ninguém autorizou.
+    Por isso o lote entra por parâmetro; o padrão continua sendo o
+    selecionado, para as ações que não passam por confirmação.
+  */
+  async function runBatchAction(name, callback, lote = selectedBatch) {
+    if (!lote?.id) return;
     try {
       setActionLoading(name);
-      setError('');
-      await callback(selectedBatch.id);
+      await callback(lote.id);
       setMfaCode('');
-      await refreshAfterAction(selectedBatch.id);
+      await refreshAfterAction(lote.id);
     } catch (err) {
-      setError(err?.message || 'Erro ao executar acao do lote');
+      avisar.erro(err?.message || 'Erro ao executar acao do lote');
     } finally {
       setActionLoading('');
     }
@@ -688,11 +738,10 @@ export default function FinanceiroPagamentos() {
   async function handleConfirmBaixa(intentId) {
     try {
       setActionLoading(`baixa-${intentId}`);
-      setError('');
       await confirmarBaixaPaymentIntent(intentId, {});
       await refreshAfterAction();
     } catch (err) {
-      setError(err?.message || 'Erro ao confirmar baixa');
+      avisar.erro(err?.message || 'Erro ao confirmar baixa');
     } finally {
       setActionLoading('');
     }
@@ -702,7 +751,6 @@ export default function FinanceiroPagamentos() {
     if (!selectedBatch?.id || !item?.id) return;
     try {
       setReceiptLoading(String(item.id));
-      setError('');
       const data = await gerarComprovantePaymentBatchItem(selectedBatch.id, item.id);
       const url = data?.signed_url || data?.comprovante_pdf_url;
       if (url) {
@@ -710,72 +758,139 @@ export default function FinanceiroPagamentos() {
       }
       await refreshAfterAction(selectedBatch.id);
     } catch (err) {
-      setError(err?.message || 'Erro ao gerar comprovante de pagamento');
+      avisar.erro(err?.message || 'Erro ao gerar comprovante de pagamento');
     } finally {
       setReceiptLoading('');
     }
   }
 
-  function handleCancelBatch() {
-    if (!selectedBatch?.id) return;
+  /*
+    R19/R3 — as TRÊS caixas do navegador desta tela (cancelar, rejeitar e
+    reprocessar lote) pediam a justificativa em `window.prompt`. Mesma caixa
+    do Chrome pelos mesmos motivos: ignora tema e tokens, bloqueia a página,
+    não existe no DOM (o harness não a mede) e some sem rastro. Agora é o
+    `campo` da confirmação do sistema, num passo só.
+
+    R21 — o retorno se DESESTRUTURA. `confirmar()` devolve { ok, texto } e
+    objeto é SEMPRE truthy: ler como booleano faria "Cancelar" CANCELAR O
+    LOTE. É o defeito de 03/09, aqui num lote de pagamento.
+
+    FAMÍLIA D — cada mensagem cita `lote.codigo`, `lote.quantidade_itens` e
+    `lote.valor_total`, os três lidos do MESMO registro cujo `.id` a ação
+    recebe (`runBatchAction(..., lote)`), no mesmo instante. Não há coleção
+    paralela: a ação endereça um lote, e todo número citado é campo dele.
+
+    Irreversibilidade declarada no texto, em todas as três: cancelamento e
+    rejeição não voltam atrás, e o reprocessamento gera um envio novo ao
+    banco — se o anterior estiver indeterminado, o dinheiro pode sair duas
+    vezes, e é isso que o texto diz antes de a pessoa confirmar.
+
+    `obrigatorio` só na rejeição, porque era a única das três em que o
+    `prompt` vazio já era recusado. Nas outras duas o texto vazio caía numa
+    justificativa padrão que vai no payload — exigir agora mudaria o payload
+    possível, e payload não é decisão de layout.
+  */
+  async function handleCancelBatch() {
+    const lote = selectedBatch;
+    if (!lote?.id) return;
     if (cancelRequiresMfa && !String(mfaCode || '').trim()) {
-      setError('Informe o codigo MFA para cancelar lote pendente de aprovacao ou aprovado.');
+      avisar.erro('Informe o código MFA para cancelar lote pendente de aprovação ou aprovado.');
       return;
     }
-    const justificativa = window.prompt('Informe o motivo do cancelamento do lote:');
-    if (justificativa === null) return;
+
+    const { ok, texto } = await confirmar({
+      titulo: 'Cancelar este lote de pagamento?',
+      mensagem: `O lote ${lote.codigo} — ${lote.quantidade_itens} item(ns), ${formatCurrency(lote.valor_total)} — para de seguir para o banco e os titulos voltam a ficar sem lote. Esta ação não pode ser desfeita: para pagar estes titulos será preciso montar um lote novo.`,
+      rotuloConfirmar: 'Cancelar lote',
+      destrutiva: true,
+      campo: { rotulo: 'Motivo do cancelamento', multilinha: true }
+    });
+    if (!ok) return;
+
     runBatchAction('cancelar', (id) => cancelarPaymentBatch(id, {
-      justificativa: justificativa.trim() || 'Cancelado pela operacao financeira.',
+      justificativa: texto.trim() || 'Cancelado pela operacao financeira.',
       codigo_mfa: cancelRequiresMfa ? mfaCode : undefined
-    }));
+    }), lote);
   }
 
-  function handleRejectBatch() {
-    if (!selectedBatch?.id) return;
-    const justificativa = window.prompt('Informe o motivo da rejeicao do lote:');
-    if (justificativa === null) return;
-    const motivo = justificativa.trim();
+  async function handleRejectBatch() {
+    const lote = selectedBatch;
+    if (!lote?.id) return;
+
+    const { ok, texto } = await confirmar({
+      titulo: 'Rejeitar este lote de pagamento?',
+      mensagem: `O lote ${lote.codigo} — ${lote.quantidade_itens} item(ns), ${formatCurrency(lote.valor_total)} — será rejeitado e não segue para o banco. Esta ação não pode ser desfeita: depois dela o lote só volta ao fluxo por reprocessamento.`,
+      rotuloConfirmar: 'Rejeitar lote',
+      destrutiva: true,
+      campo: { rotulo: 'Motivo da rejeição', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
+
+    const motivo = texto.trim();
     if (!motivo) {
-      setError('Informe uma justificativa para rejeitar o lote.');
+      avisar.erro('Informe uma justificativa para rejeitar o lote.');
       return;
     }
-    runBatchAction('rejeitar', (id) => rejeitarPaymentBatch(id, { justificativa: motivo }));
+    runBatchAction('rejeitar', (id) => rejeitarPaymentBatch(id, { justificativa: motivo }), lote);
   }
 
-  function handleReprocessBatch() {
-    if (!selectedBatch?.id) return;
-    const justificativa = window.prompt('Informe o motivo do reprocessamento do lote:');
-    if (justificativa === null) return;
+  async function handleReprocessBatch() {
+    const lote = selectedBatch;
+    if (!lote?.id) return;
+
+    const { ok, texto } = await confirmar({
+      titulo: 'Reprocessar este lote?',
+      mensagem: `O lote ${lote.codigo} — ${lote.quantidade_itens} item(ns), ${formatCurrency(lote.valor_total)} — gera um NOVO envio ao banco. Confirme só depois de corrigir a causa da falha: envio feito não se desfaz, e se o envio anterior estiver indeterminado o pagamento pode sair duas vezes.`,
+      rotuloConfirmar: 'Reprocessar lote',
+      destrutiva: true,
+      campo: { rotulo: 'Motivo do reprocessamento', multilinha: true }
+    });
+    if (!ok) return;
+
     runBatchAction('reprocessar', (id) => reprocessarPaymentBatch(id, {
       codigo_mfa: mfaCode,
-      justificativa: justificativa.trim() || 'Reprocessamento solicitado pela operacao financeira.'
-    }));
+      justificativa: texto.trim() || 'Reprocessamento solicitado pela operacao financeira.'
+    }), lote);
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-              <h1 className="text-xl font-semibold md:text-2xl">Pagamentos em Massa</h1>
-              <p className="page-subtitle">
-                Motor interno para lotes PIX por chave, com aprovacao por MFA, integracao Banco do Brasil e baixa semiautomatica.
-              </p>
-            </div>
-            <div className="app-page-actions">
-              <span className={isBbSandbox ? 'app-status-pill bg-emerald-100 text-emerald-700' : 'app-status-pill bg-slate-100 text-slate-700'}>
-                {isBbSandbox ? bbAmbienteLabel : 'MOCK'}
-              </span>
-              <Link to="/financeiro/titulos" className="btn btn-outline">Titulos</Link>
-              <Link to="/financeiro/cadastros" className="btn btn-outline">Cadastros</Link>
-            </div>
-        </div>
-      </div>
+    <Pagina>
+      {/*
+        R13/C1/C2 — a faixa fixa do sistema no lugar da linha solta de
+        título. O `h1` media 20px no desktop e 24px no md, à mão e fora dos
+        degraus da escala (R10), e o apoio era um `page-subtitle` solto (R5):
+        agora título em 22px e apoio + contagem em UMA linha, na própria
+        faixa, que gruda abaixo da topbar e compacta sem sumir. Em lista de
+        lotes longa, "Atualizar" continua a um clique (D3/C5: a primária
+        sólida da tela).
 
-      {error && <div className="app-alert app-alert--error">{error}</div>}
+        R11/C6 — saíram daqui os dois links de "ir para" (Titulos,
+        Cadastros): navegação não é ação, e o menu, o breadcrumb e o Ctrl+K
+        já levam a essas telas. É a remoção que a própria R11 autoriza pelo
+        exemplo do "⋯" de Parceiros, e o mesmo recorte que a
+        FinanceiroTitulos fez com os quatro links dela. O caminho não some
+        da tela: o código de cada título elegível continua sendo um link
+        para o título, e a conta pagadora traz por escrito onde cadastrar
+        ("Financeiro > Cadastros Financeiros > Contas pagadoras BB").
+      */}
+      <PageHeader
+        titulo="Pagamentos em Massa"
+        contagem={loading ? null : `${batches.length} lote(s)`}
+        descricao="Motor interno para lotes PIX por chave, com aprovação por MFA, integração Banco do Brasil e baixa semiautomatica."
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar',
+          onClick: loadBase,
+          desabilitada: loading,
+          icone: <HiOutlineArrowPath className={`h-4 w-4${loading ? ' animate-spin' : ''}`} />
+        }}
+      />
+
+      {/* R19/R3: erro e resultado de ação em faixa do sistema, no topo do
+          conteúdo — um dono só para "algo aconteceu agora" (R16). */}
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       <div className="solicitacoes-toolbar">
-        <div className="finance-category-toggle-group" role="tablist" aria-label="Navegacao de pagamentos">
+        <div className="finance-category-toggle-group" role="tablist" aria-label="Navegação de pagamentos">
           {visibleTabs.map((tab) => (
             <button
               key={tab.id}
@@ -787,10 +902,18 @@ export default function FinanceiroPagamentos() {
             </button>
           ))}
         </div>
-        <button type="button" className="btn btn-outline" onClick={loadBase} disabled={loading}>
-          <HiOutlineArrowPath className="h-4 w-4" />
-          Atualizar
-        </button>
+        {/*
+          R25 — a pastilha de ambiente vinha de paleta crua (emerald/slate),
+          que não tem par no tema escuro nem passa pelo piso de contraste;
+          agora é o badge do sistema, com o tom vindo de token.
+          C5 — ela desceu do cabeçalho para a barra de abas porque a faixa
+          fixa carrega AÇÕES: o modo do banco é contexto, não ação. E é
+          contexto que ninguém pode perder de vista, porque separa "sai
+          dinheiro de verdade" de "mock interno".
+        */}
+        <span className={isBbSandbox ? 'badge badge-success' : 'badge badge-muted'} title={`Modo de envio bancário: ${isBbSandbox ? bbModoLabel : 'mock interno'}`}>
+          {isBbSandbox ? bbAmbienteLabel : 'MOCK'}
+        </span>
       </div>
 
       {!loading && (
@@ -801,7 +924,7 @@ export default function FinanceiroPagamentos() {
             onClick={() => setActiveTab('titulos')}
           >
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Conta pagadora</p>
-            <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">
+            <p className="mt-2 text-lg font-semibold text-[var(--c-text)]">
               {paymentOverview.activeAccounts}/{paymentOverview.totalAccounts}
             </p>
             <p className="mt-1 text-sm text-[var(--c-muted)]">
@@ -813,8 +936,8 @@ export default function FinanceiroPagamentos() {
             className="card sol-surface-card text-left transition hover:-translate-y-0.5 hover:border-[var(--c-primary)]"
             onClick={() => setActiveTab(canAudit ? 'auditoria' : 'lotes')}
           >
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Aguardando aprovacao</p>
-            <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{paymentOverview.pendingApprovalCount}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Aguardando aprovação</p>
+            <p className="mt-2 text-lg font-semibold text-[var(--c-text)]">{paymentOverview.pendingApprovalCount}</p>
             <p className="mt-1 text-sm text-[var(--c-muted)]">{formatCurrency(paymentOverview.pendingApprovalValue)} pendente de dupla conferencia.</p>
           </button>
           <button
@@ -823,7 +946,7 @@ export default function FinanceiroPagamentos() {
             onClick={() => setActiveTab('lotes')}
           >
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Banco / retorno</p>
-            <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{paymentOverview.bankProcessingCount}</p>
+            <p className="mt-2 text-lg font-semibold text-[var(--c-text)]">{paymentOverview.bankProcessingCount}</p>
             <p className="mt-1 text-sm text-[var(--c-muted)]">
               {paymentOverview.modeLabel} - {isBbSandbox ? (paymentOverview.certificateConfigured ? 'certificado configurado' : 'certificado pendente') : 'retorno simulado'}
             </p>
@@ -835,14 +958,14 @@ export default function FinanceiroPagamentos() {
             onClick={() => setActiveTab('baixas')}
           >
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Baixa pendente</p>
-            <p className="mt-2 text-2xl font-semibold text-[var(--c-text)]">{paymentOverview.awaitingBaixaCount}</p>
+            <p className="mt-2 text-lg font-semibold text-[var(--c-text)]">{paymentOverview.awaitingBaixaCount}</p>
             <p className="mt-1 text-sm text-[var(--c-muted)]">{formatCurrency(paymentOverview.awaitingBaixaValue)} confirmado pelo banco aguardando baixa.</p>
           </button>
         </section>
       )}
 
       {!loading && (
-        <section className="rounded-lg border border-slate-200 bg-white/80 p-4 shadow-sm">
+        <section className="card sol-surface-card">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">{pageGuidance.eyebrow}</p>
@@ -863,28 +986,41 @@ export default function FinanceiroPagamentos() {
       ) : (
         <>
           {activeTab === 'titulos' && (
-            <section className="space-y-4">
-              <div className="card sol-surface-card">
-                <div className="sol-filtros-head">
-                  <div>
-                    <p className="sol-filtros-title">Selecao para lote</p>
-                    <p className="sol-filtros-subtitle">Contas a pagar abertas/parciais aparecem para conferencia. Somente titulos com favorecido PIX completo e conta pagadora valida entram no lote.</p>
-                  </div>
-                </div>
+            <>
+              {/*
+                B1/B2/R10 — os cartões montados à mão viraram blocos do
+                sistema: o ritmo vertical passa a vir do `Pagina` (o
+                `space-y-4` da raiz saiu) e o bloco do RESULTADO é o único
+                primário, com a barra de cor do módulo financeiro.
+
+                R23 — EXCEÇÃO DECLARADA (consulta cara). São CINCO dimensões
+                de recorte que o usuário combina (duas datas de vencimento,
+                parceiro, obra e origem RH/DP), acima do teto de 3
+                requisições da regra: aplicar a cada marca dispararia uma
+                consulta por marca sobre a carteira a pagar. Por isso as
+                marcas ficam em RASCUNHO e o recorte só vale no clique — o
+                botão diz o que faz ("Buscar elegiveis") e o apoio do bloco
+                avisa que a lista só muda ali.
+              */}
+              <BlocoConteudo
+                titulo="Seleção para lote"
+                variante="secundario"
+                descricao="Contas a pagar abertas/parciais aparecem para conferência; so entram no lote os títulos com favorecido PIX completo e conta pagadora valida. Os filtros abaixo são rascunho: a lista so muda quando você clicar em Buscar elegíveis."
+              >
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
                   <label className="sol-filter-field xl:col-span-2">
-                    <span className="sol-filter-label">Vencimento inicio</span>
-                    <input className="input w-full" type="date" value={filters.vencimento_inicial} onChange={(e) => setFilters((c) => ({ ...c, vencimento_inicial: e.target.value }))} />
+                    <span className="sol-filter-label">Vencimento início</span>
+                    <DateInputBR className="input w-full" value={filters.vencimento_inicial} onChange={(e) => setFilters((c) => ({ ...c, vencimento_inicial: e.target.value }))} />
                   </label>
                   <label className="sol-filter-field xl:col-span-2">
                     <span className="sol-filter-label">Vencimento fim</span>
-                    <input className="input w-full" type="date" value={filters.vencimento_final} onChange={(e) => setFilters((c) => ({ ...c, vencimento_final: e.target.value }))} />
+                    <DateInputBR className="input w-full" value={filters.vencimento_final} onChange={(e) => setFilters((c) => ({ ...c, vencimento_final: e.target.value }))} />
                   </label>
                   <label className="sol-filter-field xl:col-span-2">
                     <span className="sol-filter-label">Parceiro ID</span>
                     <input className="input w-full" inputMode="numeric" value={filters.parceiro_id} onChange={(e) => setFilters((c) => ({ ...c, parceiro_id: e.target.value }))} />
                   </label>
-                  <div className="sol-filter-field relative xl:col-span-3">
+                  <div className="sol-filter-field relative xl:col-span-3" ref={obraSugestoesRef}>
                     <span className="sol-filter-label">Obra</span>
                     <div className="flex gap-2">
                       <input
@@ -901,13 +1037,13 @@ export default function FinanceiroPagamentos() {
                       )}
                     </div>
                     {obraSuggestionsOpen && (
-                      <div className="absolute left-3 right-3 top-[calc(100%-0.5rem)] z-20 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+                      <div className="absolute left-3 right-3 top-[calc(100%-0.5rem)] z-dropdown max-h-64 overflow-y-auto rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] p-2 shadow-xl">
                         {obrasFiltradas.length > 0 ? (
                           obrasFiltradas.map((obra) => (
                             <button
                               key={obra.id}
                               type="button"
-                              className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50"
+                              className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--ui-surface-soft)]"
                               onMouseDown={(event) => event.preventDefault()}
                               onClick={() => handleSelectObra(obra)}
                             >
@@ -926,7 +1062,7 @@ export default function FinanceiroPagamentos() {
                   </div>
                   <label className="sol-filter-field xl:col-span-1">
                     <span className="sol-filter-label">Origem</span>
-                    <span className="flex min-h-[42px] items-center gap-2 text-sm font-semibold text-[var(--c-text)]">
+                    <span className="flex min-h-12 items-center gap-2 text-sm font-semibold text-[var(--c-text)]">
                       <input
                         type="checkbox"
                         checked={Boolean(filters.somente_rh_dp)}
@@ -949,7 +1085,7 @@ export default function FinanceiroPagamentos() {
                       })}
                     </select>
                     {selectedPaymentAccountPendencies.length > 0 && (
-                      <span className="mt-2 block text-xs font-medium text-rose-700">
+                      <span className="mt-2 block text-xs font-medium text-[var(--sem-danger)]">
                         {selectedPaymentAccountPendencies.join(' ')}
                       </span>
                     )}
@@ -959,7 +1095,7 @@ export default function FinanceiroPagamentos() {
                   </label>
                   <label className="sol-filter-field xl:col-span-2">
                     <span className="sol-filter-label">Data pagamento</span>
-                    <input className="input w-full" type="date" min={today()} value={batchForm.data_programada} onChange={(e) => setBatchForm((c) => ({ ...c, data_programada: e.target.value }))} />
+                    <DateInputBR className="input w-full" min={today()} value={batchForm.data_programada} onChange={(e) => setBatchForm((c) => ({ ...c, data_programada: e.target.value }))} />
                   </label>
                 </div>
                 {canPrepare && (
@@ -975,33 +1111,33 @@ export default function FinanceiroPagamentos() {
                       <HiOutlineBanknotes className="h-4 w-4" />
                       {actionLoading === 'criar-lote' ? 'Gerando...' : `Gerar lote (${selectedIds.length})`}
                     </button>
-                    <span className="app-status-pill bg-slate-100 text-slate-700">{formatCurrency(selectedTotal)}</span>
+                    <span className="badge badge-muted">{formatCurrency(selectedTotal)}</span>
                   </div>
                 )}
                 {selectedTitulosAccountPendencies.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                    Remova da selecao os titulos com pendencia operacional antes de gerar o lote:
+                  <div className="mt-3 rounded-lg border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-3 py-2 text-sm text-[var(--sem-danger)]">
+                    Remova da seleção os títulos com pendência operacional antes de gerar o lote:
                     {' '}
                     {selectedTitulosAccountPendencies.map(({ titulo }) => getTituloCodigo(titulo)).join(', ')}.
                   </div>
                 )}
                 {titulosOverview.total > 0 && (
-                  <div className="mt-4 grid gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-sm md:grid-cols-5">
+                  <div className="mt-4 grid gap-2 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface-soft)] p-3 text-sm md:grid-cols-5">
                     <div>
                       <span className="block text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Listados</span>
                       <strong className="text-[var(--c-text)]">{titulosOverview.total}</strong>
                     </div>
                     <div>
-                      <span className="block text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Elegiveis</span>
-                      <strong className="text-emerald-700">{titulosOverview.eligibleCount}</strong>
+                      <span className="block text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Elegíveis</span>
+                      <strong className="text-[var(--sem-success)]">{titulosOverview.eligibleCount}</strong>
                     </div>
                     <div>
                       <span className="block text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Prontos para lote</span>
-                      <strong className={titulosOverview.operationalBlockedCount ? 'text-amber-700' : 'text-emerald-700'}>{titulosOverview.compatibleCount}</strong>
+                      <strong className={titulosOverview.operationalBlockedCount ? 'text-[var(--sem-warning)]' : 'text-[var(--sem-success)]'}>{titulosOverview.compatibleCount}</strong>
                     </div>
                     <div>
-                      <span className="block text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Com pendencia</span>
-                      <strong className={titulosOverview.blockedCount ? 'text-amber-700' : 'text-[var(--c-text)]'}>{titulosOverview.blockedCount}</strong>
+                      <span className="block text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Com pendência</span>
+                      <strong className={titulosOverview.blockedCount ? 'text-[var(--sem-warning)]' : 'text-[var(--c-text)]'}>{titulosOverview.blockedCount}</strong>
                     </div>
                     <div>
                       <span className="block text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Selecionado</span>
@@ -1009,81 +1145,110 @@ export default function FinanceiroPagamentos() {
                     </div>
                   </div>
                 )}
-              </div>
+              </BlocoConteudo>
 
-              <div className="card sol-surface-card">
+              <BlocoConteudo
+                titulo="Títulos elegíveis"
+                variante="primario"
+                cor="var(--module-financeiro)"
+                contagem={titulos.length ? `${titulos.length} titulo(s)` : null}
+                descricao="Marque os títulos que realmente devem ser pagos neste lote."
+              >
                 {titulos.length === 0 ? (
-                  <div className="app-empty-card">Busque titulos a pagar para montar o primeiro lote.</div>
+                  <div className="app-empty-card">Busque títulos a pagar para montar o primeiro lote.</div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="text-xs uppercase text-[var(--c-muted)]">
-                        <tr>
-                          <th className="px-3 py-2">
+                  <>
+                    {/* O "selecionar todos" morava no <th>; o cabeçalho da
+                        TabelaPadrao é o menu de alinhamento/medida, então o
+                        controle sobe para cima da tabela com a MESMA lógica
+                        e agora com rótulo visível. */}
+                    <label className="mb-3 flex items-center gap-2 text-sm text-[var(--c-muted)]">
+                      <input
+                        type="checkbox"
+                        aria-label="Selecionar todos os títulos elegíveis"
+                        checked={allSelectableTitulosSelected}
+                        disabled={!selectableTitulosIds.length}
+                        onChange={toggleTodosTitulosElegiveis}
+                      />
+                      Selecionar todos os títulos elegíveis
+                    </label>
+                    <TabelaPadrao
+                      colunas={[
+                        {
+                          id: 'selecao',
+                          sempreVisivel: true,
+                          titulo: 'Sel.',
+                          // Seleção em lote: coluna de marcação com render próprio.
+                          tipo: 'status',
+                          render: (titulo) => (
                             <input
                               type="checkbox"
-                              aria-label="Selecionar todos os titulos elegiveis"
-                              checked={allSelectableTitulosSelected}
-                              disabled={!selectableTitulosIds.length}
-                              onChange={toggleTodosTitulosElegiveis}
+                              checked={selectedIds.map(String).includes(String(titulo.id))}
+                              disabled={!(titulo.elegivel_pagamento && getTituloPaymentAccountPendencies(titulo, selectedPaymentAccount).length === 0)}
+                              onChange={() => toggleTitulo(titulo.id)}
+                              aria-label={`Selecionar título ${getTituloCodigo(titulo)}`}
                             />
-                          </th>
-                          <th className="px-3 py-2">Titulo</th>
-                          <th className="px-3 py-2">Credor</th>
-                          <th className="px-3 py-2">Favorecido PIX</th>
-                          <th className="px-3 py-2">Vencimento</th>
-                          <th className="px-3 py-2 text-right">Saldo</th>
-                          <th className="px-3 py-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {titulos.map((titulo) => {
-                          const accountPendencies = getTituloPaymentAccountPendencies(titulo, selectedPaymentAccount);
-                          const canSelectTitulo = titulo.elegivel_pagamento && accountPendencies.length === 0;
-                          return (
-                          <tr key={titulo.id} className={canSelectTitulo ? '' : 'bg-amber-50/50'}>
-                            <td className="px-3 py-3">
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.map(String).includes(String(titulo.id))}
-                                disabled={!canSelectTitulo}
-                                onChange={() => toggleTitulo(titulo.id)}
-                              />
-                            </td>
-                            <td className="px-3 py-3">
+                          )
+                        },
+                        {
+                          id: 'titulo',
+                          titulo: 'Título',
+                          tipo: 'codigo',
+                          render: (titulo) => (
+                            <div>
                               <Link to={`/financeiro/titulos/${titulo.id}`} className="font-medium text-[var(--c-primary)]">
                                 {getTituloCodigo(titulo)}
                               </Link>
                               <div className="text-xs text-[var(--c-muted)]">{titulo.numero_documento || 'Sem documento'}</div>
                               <div className="text-xs text-[var(--c-muted)]">{getTituloEmpresaLabel(titulo)}</div>
-                            </td>
-                            <td className="px-3 py-3">{titulo.parceiro?.nome || '-'}</td>
-                            <td className="px-3 py-3">{getBeneficiaryLabel(titulo)}</td>
-                            <td className="px-3 py-3">{formatDate(titulo.data_vencimento)}</td>
-                            <td className="px-3 py-3 text-right font-medium">{formatCurrency(titulo.valor_saldo)}</td>
-                            <td className="px-3 py-3">
-                              {canSelectTitulo ? (
-                                <span className="app-status-pill bg-emerald-100 text-emerald-700">ELEGIVEL</span>
-                              ) : (
-                                <span className="text-xs text-amber-700">{[...(titulo.pendencias_pagamento || []), ...accountPendencies].join(' ')}</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                            </div>
+                          )
+                        },
+                        {
+                          id: 'credor',
+                          titulo: 'Credor',
+                          // R17: o credor NOMEIA o titulo a pagar.
+                          tipo: 'identidade',
+                          noCard: 'titulo',
+                          render: (titulo) => titulo.parceiro?.nome || '-'
+                        },
+                        { id: 'favorecido', titulo: 'Favorecido PIX', tipo: 'texto', render: (titulo) => getBeneficiaryLabel(titulo) },
+                        { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', render: (titulo) => formatDate(titulo.data_vencimento) },
+                        { id: 'saldo', titulo: 'Saldo', tipo: 'valor', render: (titulo) => formatCurrency(titulo.valor_saldo) },
+                        {
+                          id: 'status',
+                          titulo: 'Status',
+                          tipo: 'status',
+                          render: (titulo) => {
+                            const pendencias = getTituloPaymentAccountPendencies(titulo, selectedPaymentAccount);
+                            return titulo.elegivel_pagamento && pendencias.length === 0
+                              ? <StatusBadge status="ELEGIVEL" kind="success" />
+                              : <span className="text-xs text-[var(--sem-warning)]">{[...(titulo.pendencias_pagamento || []), ...pendencias].join(' ')}</span>;
+                          }
+                        }
+                      ]}
+                      itens={titulos}
+                      // A linha destacada em âmbar do markup antigo: título com
+                      // pendência vira tarja de atenção da própria tabela.
+                      urgencia={(titulo) => (titulo.elegivel_pagamento && getTituloPaymentAccountPendencies(titulo, selectedPaymentAccount).length === 0 ? null : 'warning')}
+                      vazio="Busque títulos a pagar para montar o primeiro lote."
+                      storageKey="tabela:financeiro-pagamentos:titulos"
+                      rotuloRolagem="Titulos a pagar elegiveis"
+                    />
+                  </>
                 )}
-              </div>
-            </section>
+              </BlocoConteudo>
+            </>
           )}
 
           {activeTab === 'lotes' && (
             <section className="grid gap-4 xl:grid-cols-[minmax(280px,420px)_1fr]">
-              <div className="card sol-surface-card">
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Lotes recentes</h2>
-                <div className="mt-4 app-list-stack">
+              <BlocoConteudo
+                titulo="Lotes recentes"
+                variante="secundario"
+                contagem={`${batches.length} lote(s)`}
+              >
+                <div className="app-list-stack">
                   {batches.length === 0 ? (
                     <p className="text-sm text-[var(--c-muted)]">Nenhum lote criado.</p>
                   ) : batches.map((batch) => (
@@ -1100,18 +1265,23 @@ export default function FinanceiroPagamentos() {
                             {batch.quantidade_itens} item(ns) - {formatCurrency(batch.valor_total)}
                           </div>
                         </div>
-                        <span className={statusClass(batch.status)}>{batch.status}</span>
+                        <StatusBadge status={batch.status} kind={familiaStatus(batch.status)} />
                       </div>
                     </button>
                   ))}
                 </div>
-              </div>
+              </BlocoConteudo>
 
-              <div className="card sol-surface-card">
+              <BlocoConteudo
+                titulo={selectedBatch ? `Lote ${selectedBatch.codigo}` : 'Lote selecionado'}
+                variante="primario"
+                cor="var(--module-financeiro)"
+                descricao={selectedBatch ? null : 'Escolha um lote na lista ao lado.'}
+              >
                 {!selectedBatch ? (
-                  <div className="app-empty-card">Selecione um lote para revisar aprovacoes, envio e itens.</div>
+                  <div className="app-empty-card">Selecione um lote para revisar aprovações, envio e itens.</div>
                 ) : (
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div>
                         <h2 className="text-lg font-semibold text-[var(--c-text)]">{selectedBatch.codigo}</h2>
@@ -1120,9 +1290,9 @@ export default function FinanceiroPagamentos() {
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <span className={statusClass(selectedBatch.status)}>{selectedBatch.status}</span>
-                        <span className="app-status-pill bg-slate-100 text-slate-700">{formatCurrency(selectedBatch.valor_total)}</span>
-                        <span className="app-status-pill bg-slate-100 text-slate-700">{validApprovals.length}/{REQUIRED_PAYMENT_BATCH_APPROVALS} aprovacao</span>
+                        <StatusBadge status={selectedBatch.status} kind={familiaStatus(selectedBatch.status)} />
+                        <span className="badge badge-muted">{formatCurrency(selectedBatch.valor_total)}</span>
+                        <span className="badge badge-muted">{validApprovals.length}/{REQUIRED_PAYMENT_BATCH_APPROVALS} aprovacao</span>
                       </div>
                     </div>
 
@@ -1131,13 +1301,13 @@ export default function FinanceiroPagamentos() {
                         const isCurrent = index === selectedBatchStepIndex;
                         const isDone = selectedBatchStepIndex > index;
                         const tone = isCurrent
-                          ? 'border-[var(--c-primary)] bg-blue-50 text-[var(--c-primary)]'
+                          ? 'border-[var(--c-primary)] bg-[var(--sem-info-bg)] text-[var(--c-primary)]'
                           : isDone
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 bg-slate-50 text-slate-500';
+                            ? 'border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] text-[var(--sem-success)]'
+                            : 'border-[var(--ui-border)] bg-[var(--ui-surface-soft)] text-[var(--c-muted)]';
                         return (
                           <div key={step.label} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${tone}`}>
-                            <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-xs">{index + 1}</span>
+                            <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--ui-surface)] text-xs">{index + 1}</span>
                             {step.label}
                           </div>
                         );
@@ -1147,7 +1317,7 @@ export default function FinanceiroPagamentos() {
                     <div className="grid gap-3 md:grid-cols-[minmax(180px,260px)_1fr]">
                       <input
                         className="input w-full"
-                        placeholder="Codigo MFA"
+                        placeholder="Código MFA"
                         value={mfaCode}
                         onChange={(e) => setMfaCode(e.target.value)}
                       />
@@ -1210,27 +1380,27 @@ export default function FinanceiroPagamentos() {
                       )}
                     </div>
                     {selectedBatch.status === 'ENVIO_INDETERMINADO' && (
-                      <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                      <div className="rounded-lg border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-3 py-2 text-sm font-semibold text-[var(--sem-warning)]">
                         O resultado do envio e indeterminado. Nao gere outro lote para os mesmos titulos; sincronize o status com o Banco do Brasil.
                       </div>
                     )}
                     {selectedBatch.status === 'APROVADO' && !batchCapabilities.is_creator && (
                       <div className="app-note">
-                        Somente o usuario que criou este lote pode envia-lo ao banco depois da aprovacao.
+                        Somente o usuário que criou este lote pode envia-lo ao banco depois da aprovação.
                       </div>
                     )}
 
                     <div className="grid gap-4 lg:grid-cols-2">
                       <div>
-                        <h3 className="text-sm font-semibold text-[var(--c-text)]">Aprovacoes</h3>
+                        <h3 className="text-sm font-semibold text-[var(--c-text)]">Aprovações</h3>
                         <div className="mt-2 app-list-stack">
                           {(selectedBatch.approvals || []).length === 0 ? (
-                            <div className="app-note">Nenhuma aprovacao registrada.</div>
+                            <div className="app-note">Nenhuma aprovação registrada.</div>
                           ) : selectedBatch.approvals.map((approval) => (
                             <div key={approval.id} className="app-list-card text-sm">
                               <div className="flex justify-between gap-3">
                                 <span>{approval.acao} por usuario #{approval.aprovado_por}</span>
-                                <span className={statusClass(approval.status)}>{approval.status}</span>
+                                <StatusBadge status={approval.status} kind={familiaStatus(approval.status)} />
                               </div>
                               <div className="text-xs text-[var(--c-muted)]">{formatDateTime(approval.aprovado_em || approval.createdAt)}</div>
                             </div>
@@ -1238,7 +1408,7 @@ export default function FinanceiroPagamentos() {
                         </div>
                       </div>
                       <div>
-                        <h3 className="text-sm font-semibold text-[var(--c-text)]">Tentativas tecnicas</h3>
+                        <h3 className="text-sm font-semibold text-[var(--c-text)]">Tentativas técnicas</h3>
                         <div className="mt-2 app-list-stack">
                           {(bbTransactions.length ? bbTransactions : selectedBatch.transactions || []).length === 0 ? (
                             <div className="app-note">Nenhuma tentativa registrada.</div>
@@ -1246,7 +1416,7 @@ export default function FinanceiroPagamentos() {
                             <div key={transaction.id} className="app-list-card text-sm">
                               <div className="flex justify-between gap-3">
                                 <span>{transaction.provider_batch_id || transaction.correlation_id}</span>
-                                <span className={statusClass(transaction.status)}>{transaction.status}</span>
+                                <StatusBadge status={transaction.status} kind={familiaStatus(transaction.status)} />
                               </div>
                               <div className="text-xs text-[var(--c-muted)]">HTTP {transaction.http_status || '-'} - {formatDateTime(transaction.finished_at)}</div>
                             </div>
@@ -1255,60 +1425,62 @@ export default function FinanceiroPagamentos() {
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-left text-sm">
-                        <thead className="text-xs uppercase text-[var(--c-muted)]">
-                          <tr>
-                            <th className="px-3 py-2">Item</th>
-                            <th className="px-3 py-2">Titulo</th>
-                            <th className="px-3 py-2">Favorecido</th>
-                            <th className="px-3 py-2 text-right">Valor</th>
-                            <th className="px-3 py-2">Status</th>
-                            {canAudit && <th className="px-3 py-2 text-right">Comprovante</th>}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {(selectedBatch.items || []).map((item) => (
-                            <tr key={item.id}>
-                              <td className="px-3 py-3">{item.sequencia}</td>
-                              <td className="px-3 py-3">{getTituloCodigo(item.intent?.titulo)}</td>
-                              <td className="px-3 py-3">
-                                {item.intent?.beneficiary?.nome || '-'}
-                                <div className="text-xs text-[var(--c-muted)]">{item.intent?.beneficiary?.pix_chave || '-'}</div>
-                              </td>
-                              <td className="px-3 py-3 text-right font-medium">{formatCurrency(item.valor)}</td>
-                              <td className="px-3 py-3"><span className={statusClass(item.status)}>{item.status}</span></td>
-                              {canAudit && (
-                                <td className="px-3 py-3 text-right">
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline"
-                                    onClick={() => handleGerarComprovanteItem(item)}
-                                    disabled={!canGeneratePaymentReceipt(item) || receiptLoading === String(item.id)}
-                                    title={canGeneratePaymentReceipt(item) ? 'Gerar ou abrir comprovante do pagamento' : 'Disponivel apos confirmacao do banco'}
-                                  >
-                                    <HiOutlineDocumentArrowDown className="h-4 w-4" />
-                                    {receiptLoading === String(item.id)
-                                      ? 'Gerando...'
-                                      : item.comprovante_pdf_url
-                                        ? 'Abrir'
-                                        : 'Gerar'}
-                                  </button>
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <TabelaPadrao
+                      colunas={[
+                        { id: 'item', titulo: 'Item', tipo: 'numero', render: (item) => item.sequencia },
+                        { id: 'titulo', titulo: 'Título', tipo: 'codigo', render: (item) => getTituloCodigo(item.intent?.titulo) },
+                        {
+                          id: 'favorecido',
+                          titulo: 'Favorecido',
+                          // R17: o favorecido NOMEIA o item de pagamento.
+                          tipo: 'identidade',
+                          noCard: 'titulo',
+                          render: (item) => (
+                            <div>
+                              {item.intent?.beneficiary?.nome || '-'}
+                              <div className="text-xs text-[var(--c-muted)]">{item.intent?.beneficiary?.pix_chave || '-'}</div>
+                            </div>
+                          )
+                        },
+                        { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => formatCurrency(item.valor) },
+                        { id: 'status', titulo: 'Status', tipo: 'status', render: (item) => <StatusBadge status={item.status} kind={familiaStatus(item.status)} /> }
+                      ]}
+                      itens={selectedBatch.items || []}
+                      vazio="Nenhum item neste lote."
+                      storageKey="tabela:financeiro-pagamentos:itens-do-lote"
+                      rotuloRolagem="Itens do lote de pagamento"
+                      larguraAcoes={180}
+                      acoesLinha={canAudit ? (item) => (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => handleGerarComprovanteItem(item)}
+                          disabled={!canGeneratePaymentReceipt(item) || receiptLoading === String(item.id)}
+                          title={canGeneratePaymentReceipt(item) ? 'Gerar ou abrir comprovante do pagamento' : 'Disponivel apos confirmacao do banco'}
+                        >
+                          <HiOutlineDocumentArrowDown className="h-4 w-4" />
+                          {receiptLoading === String(item.id)
+                            ? 'Gerando...'
+                            : item.comprovante_pdf_url
+                              ? 'Abrir'
+                              : 'Gerar'}
+                        </button>
+                      ) : undefined}
+                    />
                   </div>
                 )}
-              </div>
+              </BlocoConteudo>
             </section>
           )}
 
           {activeTab === 'baixas' && (
-            <section className="card sol-surface-card">
+            <BlocoConteudo
+              titulo="Pagamentos aguardando baixa"
+              variante="primario"
+              cor="var(--module-financeiro)"
+              contagem={`${awaitingBaixa.length} pagamento(s)`}
+              descricao="Somente pagamentos confirmados pelo banco viram baixa financeira no título."
+            >
               {awaitingBaixa.length === 0 ? (
                 <div className="app-empty-card">Nenhum pagamento confirmado pelo banco aguardando baixa.</div>
               ) : (
@@ -1346,18 +1518,22 @@ export default function FinanceiroPagamentos() {
                   ))}
                 </div>
               )}
-            </section>
+            </BlocoConteudo>
           )}
 
           {activeTab === 'auditoria' && canAudit && (
-            <section className="space-y-4">
-              <div className="card sol-surface-card">
-                <div className="sol-filtros-head">
-                  <div>
-                    <p className="sol-filtros-title">Eventos tecnicos</p>
-                    <p className="sol-filtros-subtitle">Consulta para investigar provider, webhook, polling e respostas bancarias sem acionar baixa financeira.</p>
-                  </div>
-                </div>
+            <>
+              {/*
+                R23 — EXCEÇÃO DECLARADA (consulta cara): OITO dimensões de
+                recorte sobre a trilha técnica inteira, muito acima do teto de
+                3 requisições. As marcas ficam em RASCUNHO e o recorte só vale
+                no clique de "Consultar eventos".
+              */}
+              <BlocoConteudo
+                titulo="Eventos técnicos"
+                variante="secundario"
+                descricao="Consulta para investigar provider, webhook, polling e respostas bancárias sem acionar baixa financeira. Os filtros abaixo são rascunho: a lista so muda quando você clicar em Consultar eventos."
+              >
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
                   <label className="sol-filter-field xl:col-span-2">
                     <span className="sol-filter-label">Status</span>
@@ -1391,11 +1567,11 @@ export default function FinanceiroPagamentos() {
                   </label>
                   <label className="sol-filter-field xl:col-span-2">
                     <span className="sol-filter-label">Recebido de</span>
-                    <input className="input w-full" type="date" value={eventFilters.data_inicio} onChange={(e) => setEventFilters((c) => ({ ...c, data_inicio: e.target.value }))} />
+                    <DateInputBR className="input w-full" value={eventFilters.data_inicio} onChange={(e) => setEventFilters((c) => ({ ...c, data_inicio: e.target.value }))} />
                   </label>
                   <label className="sol-filter-field xl:col-span-2">
-                    <span className="sol-filter-label">Recebido ate</span>
-                    <input className="input w-full" type="date" value={eventFilters.data_fim} onChange={(e) => setEventFilters((c) => ({ ...c, data_fim: e.target.value }))} />
+                    <span className="sol-filter-label">Recebido até</span>
+                    <DateInputBR className="input w-full" value={eventFilters.data_fim} onChange={(e) => setEventFilters((c) => ({ ...c, data_fim: e.target.value }))} />
                   </label>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -1421,61 +1597,87 @@ export default function FinanceiroPagamentos() {
                   >
                     Limpar
                   </button>
-                  <span className="app-status-pill bg-slate-100 text-slate-700">{paymentEvents.length} evento(s)</span>
+                  <span className="badge badge-muted">{paymentEvents.length} evento(s)</span>
                 </div>
-              </div>
+              </BlocoConteudo>
 
-              <div className="card sol-surface-card">
+              <BlocoConteudo
+                titulo="Trilha técnica"
+                variante="primario"
+                cor="var(--module-financeiro)"
+                contagem={paymentEvents.length ? `${paymentEvents.length} evento(s)` : null}
+                descricao="Evento técnico não substitui baixa financeira."
+              >
                 {paymentEvents.length === 0 ? (
-                  <div className="app-empty-card">Nenhum evento tecnico encontrado para os filtros atuais.</div>
+                  <div className="app-empty-card">Nenhum evento técnico encontrado para os filtros atuais.</div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="text-xs uppercase text-[var(--c-muted)]">
-                        <tr>
-                          <th className="px-3 py-2">Recebido</th>
-                          <th className="px-3 py-2">Evento</th>
-                          <th className="px-3 py-2">Provider</th>
-                          <th className="px-3 py-2">Referencia</th>
-                          <th className="px-3 py-2">Status</th>
-                          <th className="px-3 py-2">Resumo</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {paymentEvents.map((event) => (
-                          <tr key={event.id}>
-                            <td className="px-3 py-3 whitespace-nowrap">{formatDateTime(event.received_at)}</td>
-                            <td className="px-3 py-3">
-                              <span className="font-medium text-[var(--c-text)]">{event.event_type}</span>
-                              <div className="text-xs text-[var(--c-muted)]">Evento #{event.id}</div>
-                            </td>
-                            <td className="px-3 py-3">
-                              {event.provider?.codigo || `Provider #${event.provider_id}`}
-                              <div className="text-xs text-[var(--c-muted)]">{event.provider?.ambiente || '-'}</div>
-                            </td>
-                            <td className="px-3 py-3">
-                              <div className="font-medium text-[var(--c-text)]">{event.provider_event_id || '-'}</div>
-                              <div className="text-xs text-[var(--c-muted)]">
-                                {event.batch ? `Lote ${event.batch.codigo}` : event.payment_batch_id ? `Lote #${event.payment_batch_id}` : 'Sem lote'}
-                                {event.intent ? ` - Intent #${event.intent.id}` : event.payment_intent_id ? ` - Intent #${event.payment_intent_id}` : ''}
-                              </div>
-                            </td>
-                            <td className="px-3 py-3">
-                              <span className={statusClass(event.processing_status)}>{event.processing_status}</span>
-                              {event.processing_error && <div className="mt-1 text-xs text-rose-700">{event.processing_error}</div>}
-                            </td>
-                            <td className="px-3 py-3 max-w-xl text-[var(--c-muted)]">{getEventPayloadSummary(event)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <TabelaPadrao
+                    colunas={[
+                      { id: 'recebido', titulo: 'Recebido', tipo: 'data', render: (event) => formatDateTime(event.received_at) },
+                      {
+                        id: 'evento',
+                        titulo: 'Evento',
+                        // R17: o tipo do evento NOMEIA o registro tecnico.
+                        tipo: 'identidade',
+                        noCard: 'titulo',
+                        render: (event) => (
+                          <div>
+                            <span className="font-medium text-[var(--c-text)]">{event.event_type}</span>
+                            <div className="text-xs text-[var(--c-muted)]">Evento #{event.id}</div>
+                          </div>
+                        )
+                      },
+                      {
+                        id: 'provider',
+                        titulo: 'Provider',
+                        tipo: 'texto',
+                        render: (event) => (
+                          <div>
+                            {event.provider?.codigo || `Provider #${event.provider_id}`}
+                            <div className="text-xs text-[var(--c-muted)]">{event.provider?.ambiente || '-'}</div>
+                          </div>
+                        )
+                      },
+                      {
+                        id: 'referencia',
+                        titulo: 'Referência',
+                        tipo: 'codigo',
+                        render: (event) => (
+                          <div>
+                            <div className="font-medium text-[var(--c-text)]">{event.provider_event_id || '-'}</div>
+                            <div className="text-xs text-[var(--c-muted)]">
+                              {event.batch ? `Lote ${event.batch.codigo}` : event.payment_batch_id ? `Lote #${event.payment_batch_id}` : 'Sem lote'}
+                              {event.intent ? ` - Intent #${event.intent.id}` : event.payment_intent_id ? ` - Intent #${event.payment_intent_id}` : ''}
+                            </div>
+                          </div>
+                        )
+                      },
+                      {
+                        id: 'status',
+                        titulo: 'Status',
+                        tipo: 'status',
+                        render: (event) => (
+                          <div>
+                            <StatusBadge status={event.processing_status} kind={familiaStatus(event.processing_status)} />
+                            {event.processing_error && <div className="mt-1 text-xs text-[var(--sem-danger)]">{event.processing_error}</div>}
+                          </div>
+                        )
+                      },
+                      { id: 'resumo', titulo: 'Resumo', tipo: 'texto', render: (event) => <span className="text-[var(--c-muted)]">{getEventPayloadSummary(event)}</span> }
+                    ]}
+                    itens={paymentEvents}
+                    vazio="Nenhum evento técnico encontrado para os filtros atuais."
+                    storageKey="tabela:financeiro-pagamentos:eventos"
+                    rotuloRolagem="Eventos tecnicos de pagamento"
+                  />
                 )}
-              </div>
-            </section>
+              </BlocoConteudo>
+            </>
           )}
         </>
       )}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

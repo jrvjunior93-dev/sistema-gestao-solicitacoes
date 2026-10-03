@@ -1,38 +1,55 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  StatGrid,
+  StatTile,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 import { getSstExecutivo, sincronizarNotificacoesSst } from '../services/sst';
 
-function Metric({ label, value, detail, tone = 'default' }) {
-  const tones = {
-    default: 'border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-text)]',
-    ok: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-    warn: 'border-amber-200 bg-amber-50 text-amber-900',
-    danger: 'border-rose-200 bg-rose-50 text-rose-900',
-    info: 'border-sky-200 bg-sky-50 text-sky-900'
-  };
-  return (
-    <div className={`rounded-lg border p-4 shadow-sm ${tones[tone] || tones.default}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight">{value ?? 0}</p>
-      {detail ? <p className="mt-1 text-xs font-medium opacity-70">{detail}</p> : null}
-    </div>
-  );
+/*
+  R25 — a criticidade vinha em paleta crua (emerald/amber/sky/rose). Ela é
+  uma ESCALA de intensidade, e o sistema não tem paleta de intensidade em
+  token: tem cinco famílias semânticas (`--sem-*`). O mapa abaixo é
+  explícito de propósito, como o FAMILIA_SITUACAO da ComercialUnidades —
+  a classificação automática do StatusBadge jogaria CRITICA e ALTA na mesma
+  família, e a distinção entre os quatro níveis é justamente o que o mapa
+  de risco existe para mostrar.
+*/
+const FAMILIA_CRITICIDADE = {
+  CRITICA: 'danger',
+  CRITICO: 'danger',
+  EMERGENCIAL: 'danger',
+  ALTA: 'warning',
+  ATENCAO: 'warning',
+  MEDIA: 'info',
+  CONTROLADO: 'info',
+  BAIXA: 'success',
+  EXCELENTE: 'success'
+};
+
+function familiaCriticidade(valor) {
+  return FAMILIA_CRITICIDADE[String(valor || '').toUpperCase()] || 'neutral';
 }
 
 export default function SstExecutivo() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   function load() {
     setLoading(true);
     getSstExecutivo()
-      .then((payload) => {
-        setData(payload);
-        setError('');
-      })
-      .catch((err) => setError(err.message || 'Erro ao carregar painel executivo SST'))
+      .then((payload) => setData(payload))
+      .catch((err) => avisar.erro(err?.message || 'Erro ao carregar painel executivo SST'))
       .finally(() => setLoading(false));
   }
 
@@ -41,86 +58,132 @@ export default function SstExecutivo() {
   }, []);
 
   async function syncNotifications() {
-    setMessage('');
+    /*
+      R21/R26 — a sincronização CRIA notificações para as pessoas do módulo:
+      é gravação, e merece consentimento explícito. O retorno se
+      DESESTRUTURA (`const { ok } =`): o hook devolve `{ ok, texto }`, e ler
+      o objeto como booleano faria o "Cancelar" prosseguir. Não há alvo
+      variável a fixar aqui — a ação é sobre o painel inteiro, e não sobre
+      um registro que a lista pudesse trocar durante o modal.
+    */
+    const { ok } = await confirmar({
+      titulo: 'Sincronizar notificações SST',
+      mensagem: 'Cria as notificações pendentes de vencimento, bloqueio e pendência critica para os responsáveis. Deseja continuar?',
+      rotuloConfirmar: 'Sincronizar'
+    });
+    if (!ok) return;
     try {
       const payload = await sincronizarNotificacoesSst();
-      setMessage(`${payload.notificacoes_criadas || 0} notificacao(oes) criada(s).`);
+      avisar.sucesso(`${payload?.notificacoes_criadas || 0} notificacao(oes) criada(s).`);
       load();
     } catch (err) {
-      setError(err.message || 'Erro ao sincronizar notificacoes SST');
+      avisar.erro(err?.message || 'Erro ao sincronizar notificacoes SST');
     }
   }
 
   const cards = data?.cards || {};
+  const obras = data?.heatmap || [];
 
   return (
-    <div className="sst-page space-y-6">
-      <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--c-muted)]">SST Executivo</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--c-text)]">Inteligencia operacional SST</h1>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--c-muted)]">
-              Score, pendencias, bloqueios, obras criticas e prontidao preditiva sem transmissao real ao eSocial.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={syncNotifications} className="btn btn-outline">Sincronizar notificacoes</button>
-            <Link to="/sst/relatorios/heatmap" className="btn btn-primary">Heatmap</Link>
-          </div>
-        </div>
-      </section>
+    <Pagina>
+      <PageHeader
+        titulo="Inteligencia operacional SST"
+        contagem={loading ? 'Carregando' : `${obras.length} obra(s) critica(s)`}
+        descricao="Score, pendências, bloqueios, obras críticas e prontidão preditiva sem transmissão real ao eSocial."
+        secundarias={[{ rotulo: 'Sincronizar notificações', onClick: syncNotifications }]}
+      />
 
-      {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</div> : null}
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">{message}</div> : null}
-      {loading ? <p className="text-sm text-[var(--c-muted)]">Carregando painel executivo...</p> : null}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Compliance geral" value={`${data?.compliance_geral ?? 100}%`} detail={data?.nivel || 'CONTROLADO'} tone={(data?.compliance_geral ?? 100) < 50 ? 'danger' : 'ok'} />
-        <Metric label="Colaboradores avaliados" value={cards.colaboradores_avaliados || 0} detail="Score SST" tone="info" />
-        <Metric label="Pendencias" value={cards.pendencias_total || 0} detail="Abertas ou detectadas" tone={cards.pendencias_total ? 'warn' : 'ok'} />
-        <Metric label="Pendencias criticas" value={cards.pendencias_criticas || 0} detail="Exigem acao" tone={cards.pendencias_criticas ? 'danger' : 'ok'} />
-        <Metric label="Bloqueios abertos" value={cards.bloqueios_abertos || 0} detail="Motor operacional" tone={cards.bloqueios_abertos ? 'danger' : 'ok'} />
-      </section>
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 3 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:sst-executivo" larguraPadrao="total">
+        <BlocoConteudo
+          titulo="Compliance e pendências"
+          variante="primario"
+          cor="var(--module-sst)"
+          descricao={data?.nivel ? `Nivel atual: ${data.nivel}.` : 'Recorte corporativo do modulo.'}
+        >
+          <StatGrid colunas={3}>
+            <StatTile
+              label="Compliance geral"
+              valor={`${data?.compliance_geral ?? 100}%`}
+              sub={data?.nivel || 'CONTROLADO'}
+              tom={(data?.compliance_geral ?? 100) < 50 ? 'danger' : 'success'}
+            />
+            <StatTile label="Colaboradores avaliados" valor={cards.colaboradores_avaliados || 0} sub="Score SST" tom="info" />
+            <StatTile label="Pendências" valor={cards.pendencias_total || 0} sub="Abertas ou detectadas" tom={cards.pendencias_total ? 'warning' : 'success'} />
+            <StatTile label="Pendências críticas" valor={cards.pendencias_criticas || 0} sub="Exigem ação" tom={cards.pendencias_criticas ? 'danger' : 'success'} />
+            <StatTile label="Bloqueios abertos" valor={cards.bloqueios_abertos || 0} sub="Motor operacional" tom={cards.bloqueios_abertos ? 'danger' : 'success'} />
+          </StatGrid>
+        </BlocoConteudo>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Obras criticas</h2>
-            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--c-muted)]">{data?.heatmap?.length || 0} itens</span>
-          </div>
-          <div className="mt-4 space-y-3">
-            {(data?.heatmap || []).map((item) => (
-              <div key={`${item.obra_id || 'sem'}-${item.obra}`} className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-[var(--c-text)]">{item.obra}</p>
-                    <p className="text-xs text-[var(--c-muted)]">Indice {item.indice_risco} - {item.criticidade}</p>
-                  </div>
-                  <span className="rounded-full border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-1 text-xs font-semibold text-[var(--c-text)]">
-                    {item.pendencias} pend.
-                  </span>
-                </div>
-              </div>
+        {/*
+          Isto NÃO é tabela: é o recorte de risco por obra, lido como mapa.
+          Cada obra é um bloco secundário com a TARJA lateral da sua família
+          (`.tarja--*`, o utilitário que o próprio catálogo declara aplicável
+          a "linha, card, bloco") e a etiqueta de criticidade — cor, ícone e
+          texto juntos, porque cor sozinha não comunica.
+        */}
+        {/*
+          C6: o "Heatmap" era a AÇÃO PRINCIPAL desta tela e não é ação nenhuma —
+          é caminho para outra rota. Barra de ações é para o que se faz AQUI; o
+          caminho mora no hub, na trilha e no Ctrl+K, e o atalho fica junto do
+          conteúdo a que ele se refere. É o mesmo arranjo da SstCentroOperacional
+          (linha 211). Nada some: o mapa continua a um clique, do lado das obras
+          críticas que ele desenha.
+        */}
+        <BlocoConteudo
+          titulo="Obras críticas"
+          contagem={`${obras.length} item(ns)`}
+          descricao="Ordenadas pelo índice de risco calculado no backend."
+          acoes={<Link to="/sst/relatorios/heatmap" className="btn btn-outline btn-sm">Abrir mapa</Link>}
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            {obras.map((item) => (
+              <BlocoConteudo
+                key={`${item.obra_id || 'sem'}-${item.obra}`}
+                variante="secundario"
+                className={`tarja tarja--${familiaCriticidade(item.criticidade)}`}
+                titulo={item.obra}
+                descricao={`Índice de risco ${item.indice_risco}`}
+                acoes={<StatusBadge status={item.criticidade || 'SEM NIVEL'} kind={familiaCriticidade(item.criticidade)} />}
+              >
+                <StatGrid colunas={1}>
+                  <StatTile label="Pendências" valor={item.pendencias ?? 0} tom={item.pendencias ? 'warning' : undefined} />
+                </StatGrid>
+              </BlocoConteudo>
             ))}
-            {!data?.heatmap?.length ? <p className="text-sm text-[var(--c-muted)]">Nenhuma obra critica detectada.</p> : null}
+            {!obras.length ? <p className="text-sm text-muted">Nenhuma obra critica detectada.</p> : null}
           </div>
-        </div>
+        </BlocoConteudo>
 
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-[var(--c-text)]">Prontidao preditiva e IA documental</h2>
-          <div className="mt-4 grid gap-3">
-            <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <p className="text-sm font-semibold text-[var(--c-text)]">{data?.predicao?.status || 'PREPARADO_ARQUITETURALMENTE'}</p>
-              <p className="mt-1 text-xs text-[var(--c-muted)]">Motor preditivo preparado, sem IA ativa nesta fase.</p>
-            </div>
-            <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <p className="text-sm font-semibold text-[var(--c-text)]">{data?.ia_documental?.status || 'PIPELINE_DOCUMENTAL_PREPARADO'}</p>
-              <p className="mt-1 text-xs text-[var(--c-muted)]">OCR e classificacao documental estruturados como contratos futuros.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
+        <BlocoConteudo
+          titulo="Prontidão preditiva e IA documental"
+          descricao="Contratos futuros já estruturados; nada e transmitido nesta fase."
+        >
+          <StatGrid colunas={2}>
+            <StatTile
+              label="Prontidão preditiva"
+              valor={data?.predicao?.status || 'PREPARADO_ARQUITETURALMENTE'}
+              sub="Motor preditivo preparado, sem IA ativa nesta fase."
+            />
+            <StatTile
+              label="IA documental"
+              valor={data?.ia_documental?.status || 'PIPELINE_DOCUMENTAL_PREPARADO'}
+              sub="OCR e classificação documental estruturados como contratos futuros."
+            />
+          </StatGrid>
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

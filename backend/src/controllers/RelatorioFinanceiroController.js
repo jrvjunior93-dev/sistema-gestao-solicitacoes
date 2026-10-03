@@ -87,6 +87,16 @@ module.exports = {
     }
   },
 
+  /** ITEM 22 (23/08): os arquivos da linha do relatorio, pelo titulo. */
+  async arquivosDoTitulo(req, res) {
+    try {
+      const { listarArquivosDoTitulo } = require('../services/arquivosDoTituloService');
+      return res.json(await listarArquivosDoTitulo(req, req.params.id));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao listar os arquivos do titulo');
+    }
+  },
+
   async dre(req, res) {
     try {
       const relatorio = await gerarDreGerencial(req, req.query || {});

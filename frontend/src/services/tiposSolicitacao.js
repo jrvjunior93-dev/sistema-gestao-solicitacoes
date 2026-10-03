@@ -8,6 +8,16 @@ export async function getTiposSolicitacao() {
   return res.json();
 }
 
+export async function getTiposSolicitacaoDisponiveis(obraId) {
+  const params = new URLSearchParams({ obra_id: String(obraId) });
+  const res = await fetch(`${API_URL}/tipos-solicitacao/disponiveis?${params.toString()}`, {
+    headers: authHeaders()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || 'Erro ao buscar tipos disponíveis');
+  return data;
+}
+
 export async function criarTipoSolicitacao(data) {
   const res = await fetch(`${API_URL}/tipos-solicitacao`, {
     method: 'POST',
@@ -15,8 +25,9 @@ export async function criarTipoSolicitacao(data) {
     body: JSON.stringify(data)
   });
 
-  if (!res.ok) throw new Error('Erro ao criar tipo');
-  return res.json();
+  const resposta = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(resposta?.error || 'Erro ao criar tipo');
+  return resposta;
 }
 
 export async function atualizarTipoSolicitacao(id, data) {

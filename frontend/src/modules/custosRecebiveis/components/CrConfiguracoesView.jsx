@@ -1,14 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import DateInputBR from '../../../components/DateInputBR';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   HiOutlineCheckCircle,
   HiOutlineExclamationTriangle,
   HiOutlineUserGroup
 } from 'react-icons/hi2';
 import {
+  BarraFiltros,
+  BlocoConteudo,
+  CelulaDupla,
+  TabelaPadrao,
+  alternarValorFiltro,
+  useConfirmacao
+} from '../../../components/padrao';
+import {
   cadastrarResponsavelCustosRecebiveis,
+  consultaIndisponivel,
   encerrarResponsabilidadeCustosRecebiveis,
-  listarResponsaveisCustosRecebiveis
+  listarResponsaveisCustosRecebiveis,
+  listarResponsaveisGeral,
+  mensagemLegivel
 } from '../services/custosRecebiveis';
+import { normalizarBusca, rotuloObra } from './CrFormatos';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -19,7 +32,8 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
-export default function CrConfiguracoesView({ obra, onChanged }) {
+function ResponsaveisDaObra({ obra, onChanged, onClose }) {
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [data, setData] = useState({ items: [], usuarios_elegiveis: [] });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,7 +57,7 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
       const response = await listarResponsaveisCustosRecebiveis(obra.id);
       setData(response || { items: [], usuarios_elegiveis: [] });
     } catch (error) {
-      setFeedback({ tone: 'error', message: error.message });
+      setFeedback({ tone: 'error', message: mensagemLegivel(error, 'Não foi possível concluir a operação.') });
     } finally {
       setLoading(false);
     }
@@ -53,6 +67,23 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
     setFeedback(null);
     load();
   }, [obra?.id]);
+
+  // "Gerenciar": o painel abre abaixo da lista — rola até ele e foca o título.
+  useEffect(() => {
+    if (!obra?.id) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const painel = document.getElementById('cr-vinculos-obra');
+      if (!painel) return;
+      painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const titulo = painel.querySelector('.app-bloco-titulo');
+      if (titulo) {
+        titulo.setAttribute('tabindex', '-1');
+        titulo.focus({ preventScroll: true });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // `obra` (e não só o id): um novo "Gerenciar" na mesma obra rola de novo.
+  }, [obra]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const active = useMemo(
     () => (data.items || []).filter((item) => item.ativo),
@@ -65,20 +96,22 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!form.user_id) return;
-    if (
-      form.papel === 'RESPONSAVEL'
-      && active.some((item) => item.papel === 'RESPONSAVEL')
-      && !window.confirm('O novo responsável encerrará o responsável atual. Deseja continuar?')
-    ) return;
+    if (!form.user_id || saving) return;
+    const obraId = obra.id;
+    const payload = { ...form, user_id: Number(form.user_id) };
+    if (payload.papel === 'RESPONSAVEL' && active.some((item) => item.papel === 'RESPONSAVEL')) {
+      const { ok } = await confirmar({
+        titulo: 'Trocar responsável',
+        mensagem: 'O novo responsável encerra o vínculo do responsável atual desta obra.',
+        rotuloConfirmar: 'Trocar responsável'
+      });
+      if (!ok) return;
+    }
 
     try {
       setSaving(true);
       setFeedback(null);
-      const result = await cadastrarResponsavelCustosRecebiveis(obra.id, {
-        ...form,
-        user_id: Number(form.user_id)
-      });
+      const result = await cadastrarResponsavelCustosRecebiveis(obraId, payload);
       setFeedback({
         tone: 'success',
         message: result.idempotente
@@ -89,7 +122,7 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
       await load();
       await onChanged?.();
     } catch (error) {
-      setFeedback({ tone: 'error', message: error.message });
+      setFeedback({ tone: 'error', message: mensagemLegivel(error, 'Não foi possível concluir a operação.') });
     } finally {
       setSaving(false);
     }
@@ -112,34 +145,23 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
       await load();
       await onChanged?.();
     } catch (error) {
-      setFeedback({ tone: 'error', message: error.message });
+      setFeedback({ tone: 'error', message: mensagemLegivel(error, 'Não foi possível concluir a operação.') });
     } finally {
       setEndingId(null);
     }
   }
 
-  if (!obra?.id) {
-    return (
-      <section className="cr-section cr-empty-state cr-empty-state--large">
-        <HiOutlineUserGroup className="h-7 w-7" />
-        <strong>Selecione uma obra</strong>
-        <span>O cadastro de responsáveis é independente para cada obra.</span>
-      </section>
-    );
-  }
-
   return (
-    <section className="cr-section cr-governance">
-      <header className="cr-section-heading">
-        <div>
-          <span>Governança da obra</span>
-          <h2>Responsáveis e substitutos</h2>
-          <p>
-            Estes vínculos determinam quem recebe as obrigações mensais. A competência
-            inicial impede cobrança retroativa.
-          </p>
-        </div>
-      </header>
+    <BlocoConteudo
+      id="cr-vinculos-obra"
+      className="cr-governance"
+      titulo={`Vínculos · ${rotuloObra(obra)}`}
+      acoes={(
+        <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>
+          Fechar
+        </button>
+      )}
+    >
 
       {feedback ? (
         <div className="cr-feedback" data-tone={feedback.tone}>{feedback.message}</div>
@@ -151,7 +173,6 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
             <HiOutlineUserGroup className="h-5 w-5" />
             <div>
               <strong>Novo vínculo</strong>
-              <span>Somente usuários ativos vinculados à obra aparecem na lista.</span>
             </div>
           </div>
           <label className="cr-field">
@@ -196,8 +217,7 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
           </div>
           <label className="cr-field">
             <span>Início da vigência</span>
-            <input
-              type="date"
+            <DateInputBR
               max={today()}
               required
               value={form.vigencia_inicio}
@@ -295,6 +315,161 @@ export default function CrConfiguracoesView({ obra, onChanged }) {
           </div>
         </details>
       ) : null}
-    </section>
+      {elementoConfirmacao}
+    </BlocoConteudo>
+  );
+}
+
+function nomes(lista) {
+  return lista.length ? lista.map((item) => item.usuario?.nome || `Usuário #${item.usuario?.id || '?'}`).join(', ') : '';
+}
+
+const FILTRO_SITUACAO = [
+  { valor: 'SEM_RESPONSAVEL', rotulo: 'Sem responsável' },
+  { valor: 'COM_RESPONSAVEL', rotulo: 'Com responsável' }
+];
+
+/*
+  Responsáveis e substitutos (Fase 4): lista geral de todas as obras do
+  escopo, sem escolher obra antes. "Gerenciar" abre o cadastro/encerramento
+  da obra logo abaixo. Se o servidor ainda não tiver a lista geral, as obras
+  continuam listadas e o cadastro por obra segue funcionando.
+*/
+export default function CrConfiguracoesView({ obras = [], onChanged }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState('');
+  const [busca, setBusca] = useState('');
+  const [ativos, setAtivos] = useState({});
+  const [aberta, setAberta] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setErro('');
+      setData(await listarResponsaveisGeral());
+    } catch (error) {
+      setData(null);
+      setErro(consultaIndisponivel(error)
+        ? 'Lista geral de responsáveis indisponível no servidor no momento. Use "Gerenciar" para ver os vínculos de cada obra.'
+        : mensagemLegivel(error, 'Não foi possível carregar os responsáveis.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const linhas = useMemo(() => {
+    const fonte = Array.isArray(data?.items)
+      ? data.items.map((item) => ({ ...item, conhecido: true }))
+      : (obras || []).map((obra) => ({ obra, responsaveis: [], conhecido: false }));
+    const termo = normalizarBusca(busca);
+    const situacoes = ativos.situacao || new Set();
+    return fonte
+      .map((item) => {
+        const ativosDaObra = (item.responsaveis || []).filter((vinculo) => vinculo.ativo);
+        return {
+          ...item,
+          titulares: ativosDaObra.filter((vinculo) => vinculo.papel === 'RESPONSAVEL'),
+          substitutos: ativosDaObra.filter((vinculo) => vinculo.papel === 'SUBSTITUTO')
+        };
+      })
+      .filter((item) => {
+        const texto = normalizarBusca(`${item.obra?.codigo} ${item.obra?.nome} ${nomes(item.titulares)} ${nomes(item.substitutos)}`);
+        if (termo && !texto.includes(termo)) return false;
+        if (!situacoes.size || !item.conhecido) return true;
+        return situacoes.has(item.titulares.length ? 'COM_RESPONSAVEL' : 'SEM_RESPONSAVEL');
+      });
+  }, [data, obras, busca, ativos]);
+
+  const semResponsavel = linhas.filter((item) => item.conhecido && !item.titulares.length).length;
+
+  async function handleChanged() {
+    await load();
+    await onChanged?.();
+  }
+
+  return (
+    <>
+      <BlocoConteudo
+        titulo="Responsáveis e substitutos"
+        contagem={data ? `${linhas.length} obra(s) · ${semResponsavel} sem responsável` : `${linhas.length} obra(s)`}
+      >
+        <BarraFiltros
+          busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Obra ou nome do responsável' }}
+          filtros={data ? [{ id: 'situacao', rotulo: 'Situação', opcoes: FILTRO_SITUACAO }] : []}
+          ativos={ativos}
+          aoAlternar={(dimensao, valor, opcoes) => setAtivos(
+            (current) => alternarValorFiltro(current, dimensao, valor, opcoes)
+          )}
+          aoLimpar={() => { setBusca(''); setAtivos({}); }}
+        />
+        {erro ? <p className="cr-faixa-aviso" role="status">{erro}</p> : null}
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'obra',
+              titulo: 'Obra',
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => rotuloObra(item.obra)
+            },
+            {
+              id: 'responsavel',
+              titulo: 'Responsável',
+              tipo: 'texto',
+              render: (item) => {
+                if (!item.conhecido) return '—';
+                return item.titulares.length
+                  ? nomes(item.titulares)
+                  : <span className="cr-warning-text">Sem responsável</span>;
+              }
+            },
+            {
+              id: 'substitutos',
+              titulo: 'Substitutos',
+              tipo: 'texto',
+              render: (item) => (item.conhecido ? (nomes(item.substitutos) || '—') : '—')
+            },
+            {
+              id: 'historico',
+              titulo: 'Vínculos',
+              tipo: 'texto',
+              render: (item) => (item.conhecido ? (
+                <CelulaDupla
+                  principal={`${item.titulares.length + item.substitutos.length} ativo(s)`}
+                  sub={`${(item.responsaveis || []).length} no histórico`}
+                />
+              ) : '—')
+            }
+          ]}
+          itens={linhas}
+          getId={(item) => item.obra?.id}
+          storageKey="tabela:custos-recebiveis-responsaveis"
+          rotuloRolagem="Responsáveis e substitutos"
+          carregando={loading}
+          vazio={erro && !(obras || []).length ? 'Não foi possível carregar a lista.' : 'Nenhuma obra encontrada.'}
+          acoesLinha={(item) => (
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setAberta({ ...item.obra })}
+            >
+              Gerenciar
+            </button>
+          )}
+          larguraAcoes={130}
+        />
+      </BlocoConteudo>
+      {aberta?.id ? (
+        <ResponsaveisDaObra
+          key={aberta.id}
+          obra={aberta}
+          onChanged={handleChanged}
+          onClose={() => setAberta(null)}
+        />
+      ) : null}
+    </>
   );
 }

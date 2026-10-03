@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import StatusBadge from '../components/StatusBadge';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  StatGrid,
+  StatTile,
+  Avisos,
+  useAvisos
+} from '../components/padrao';
 import { getDiagnosticoDreFinanceira } from '../services/financeiro';
 
 const EMPTY_DIAGNOSTICO = {
@@ -29,43 +39,35 @@ function formatMoney(value) {
   });
 }
 
-function severityClass(severidade) {
-  switch (severidade) {
-    case 'CRITICA':
-      return 'bg-red-50 text-red-700 border-red-200';
-    case 'ALTA':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-    case 'MEDIA':
-      return 'bg-sky-50 text-sky-700 border-sky-200';
-    default:
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+/*
+  R25 — as onze paletas cruas que pintavam severidade e status (red/amber/
+  sky/emerald/slate com degrau numerico) sairam. Severidade agora e familia
+  SEMANTICA do sistema, pelo StatusBadge com `kind` explicito: a pilula ja
+  traz fundo suave, cor de token e ICONE — cor sozinha nao comunica para
+  daltonicos, e era exatamente o que a versao anterior fazia.
+
+  Nao ha serie previsto x realizado nesta tela, entao a M4 nao se aplica e o
+  vermelho fica livre para significar UMA coisa so: pendencia critica.
+*/
+function familiaDaSeveridade(severidade) {
+  switch (String(severidade || '').toUpperCase()) {
+    case 'CRITICA': return 'danger';
+    case 'ALTA': return 'warning';
+    case 'MEDIA': return 'info';
+    default: return 'success';
   }
 }
 
-function statusClass(status) {
-  switch (status) {
-    case 'CRITICO':
-      return 'text-red-700';
-    case 'ATENCAO':
-      return 'text-amber-700';
-    case 'REVISAR':
-      return 'text-sky-700';
-    default:
-      return 'text-emerald-700';
+function familiaDoStatus(status) {
+  switch (String(status || '').toUpperCase()) {
+    case 'CRITICO': return 'danger';
+    case 'ATENCAO': return 'warning';
+    case 'REVISAR': return 'info';
+    default: return 'success';
   }
 }
 
-function SummaryCard({ label, value, detail, colorClass = '' }) {
-  return (
-    <div className="app-summary-card">
-      <span className="app-summary-label">{label}</span>
-      <strong className={`app-summary-value ${colorClass}`}>{value}</strong>
-      {detail ? <span className="app-summary-subvalue">{detail}</span> : null}
-    </div>
-  );
-}
-
-function ExampleLine({ item }) {
+function ExemploLinha({ item }) {
   const valorExemplo = item.valor_original ?? item.valor_quitacao ?? item.valor;
   const title =
     item.descricao ||
@@ -78,84 +80,84 @@ function ExampleLine({ item }) {
     item.categoria_nome ||
     item.titulo_codigo ||
     item.codigo ||
-    `Registro #${item.id}`;
+    `Registro ${item.id}`;
+
+  const atributos = [
+    item.id ? `ID ${item.id}` : null,
+    item.codigo ? `Codigo ${item.codigo}` : null,
+    item.titulo_codigo ? `Titulo ${item.titulo_codigo}` : null,
+    item.tipo ? `Tipo ${item.tipo}` : null,
+    item.status ? `Status ${item.status}` : null,
+    item.empresa_nome ? `Empresa ${item.empresa_nome}` : null,
+    item.titulo_empresa_nome ? `Empresa do titulo ${item.titulo_empresa_nome}` : null,
+    item.empresa_origem_nome ? `Origem ${item.empresa_origem_nome}` : null,
+    item.empresa_destino_nome ? `Destino ${item.empresa_destino_nome}` : null,
+    item.obra_nome ? `Obra/Centro ${item.obra_nome}` : null,
+    item.categoria_nome ? `Categoria ${item.categoria_nome}` : null,
+    item.competencia_data ? `Competencia ${item.competencia_data}` : null,
+    item.data_movimento ? `Movimento ${item.data_movimento}` : null,
+    item.data_transferencia ? `Transferencia ${item.data_transferencia}` : null,
+    item.tipo_intercompany ? `Entre Empresas ${item.tipo_intercompany}` : null
+  ].filter(Boolean);
 
   return (
-    <li className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+    <li className="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-900">{title}</span>
+        <span className="text-sm font-semibold text-[var(--c-text)]">{title}</span>
         {valorExemplo != null ? (
-          <span className="text-xs font-semibold text-slate-500">{formatMoney(valorExemplo)}</span>
+          <span className="text-sm font-semibold tabular-nums text-[var(--c-text)]">
+            {formatMoney(valorExemplo)}
+          </span>
         ) : null}
       </div>
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        {item.id ? <span>ID {item.id}</span> : null}
-        {item.codigo ? <span>Codigo {item.codigo}</span> : null}
-        {item.titulo_codigo ? <span>Titulo {item.titulo_codigo}</span> : null}
-        {item.tipo ? <span>Tipo {item.tipo}</span> : null}
-        {item.status ? <span>Status {item.status}</span> : null}
-        {item.empresa_nome ? <span>Empresa {item.empresa_nome}</span> : null}
-        {item.titulo_empresa_nome ? <span>Empresa do titulo {item.titulo_empresa_nome}</span> : null}
-        {item.empresa_origem_nome ? <span>Origem {item.empresa_origem_nome}</span> : null}
-        {item.empresa_destino_nome ? <span>Destino {item.empresa_destino_nome}</span> : null}
-        {item.obra_nome ? <span>Obra/Centro {item.obra_nome}</span> : null}
-        {item.categoria_nome ? <span>Categoria {item.categoria_nome}</span> : null}
-        {item.competencia_data ? <span>Competencia {item.competencia_data}</span> : null}
-        {item.data_movimento ? <span>Movimento {item.data_movimento}</span> : null}
-        {item.data_transferencia ? <span>Transferencia {item.data_transferencia}</span> : null}
-        {item.tipo_intercompany ? <span>Entre Empresas {item.tipo_intercompany}</span> : null}
-      </div>
+      {atributos.length ? (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--c-muted)]">
+          {atributos.map((texto) => <span key={texto}>{texto}</span>)}
+        </div>
+      ) : null}
     </li>
   );
 }
 
-function DiagnosticoItem({ item }) {
+function PendenciaBloco({ item }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold text-slate-950">{item.titulo}</h2>
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${severityClass(item.severidade)}`}>
-              {item.severidade}
-            </span>
-          </div>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">{item.descricao}</p>
-        </div>
-        <div className="text-right">
-          <span className="block text-2xl font-semibold text-slate-950">{item.total}</span>
-          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">pendencias</span>
-        </div>
-      </div>
+    <BlocoConteudo
+      variante="secundario"
+      titulo={item.titulo}
+      /* B3: a faixa fixa ja diz o TOTAL de pendencias em "pendencia(s)".
+         Aqui a unidade e outra de proposito — sao os registros afetados por
+         ESTE item —, para as duas contagens nao se lerem como a mesma. */
+      contagem={`${item.total} registro(s)`}
+      descricao={item.descricao}
+      acoes={<StatusBadge status={item.severidade} kind={familiaDaSeveridade(item.severidade)} />}
+    >
+      <p className="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-sm text-[var(--c-text)]">
+        {item.acao_recomendada}
+      </p>
 
-      <div className="px-4 py-4">
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          {item.acao_recomendada}
-        </p>
-
-        {item.exemplos?.length ? (
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Exemplos</p>
-            <ul className="space-y-2">
-              {item.exemplos.map((example, index) => (
-                <ExampleLine key={`${item.codigo}-${example.id || index}`} item={example} />
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </div>
-    </section>
+      {item.exemplos?.length ? (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Exemplos</p>
+          <ul className="grid gap-2">
+            {item.exemplos.map((exemplo, index) => (
+              <ExemploLinha key={`${item.codigo}-${exemplo.id || index}`} item={exemplo} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </BlocoConteudo>
   );
 }
 
 export default function FinanceiroDiagnosticoDre() {
   const [diagnostico, setDiagnostico] = useState(EMPTY_DIAGNOSTICO);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { avisos, avisar, fechar, limpar } = useAvisos();
 
-  async function carregar() {
+  const carregar = useCallback(async () => {
     setLoading(true);
-    setError('');
+    // Equivalente ao `setError('')` que existia aqui.
+    limpar();
     try {
       const data = await getDiagnosticoDreFinanceira();
       setDiagnostico({
@@ -168,94 +170,142 @@ export default function FinanceiroDiagnosticoDre() {
         itens: Array.isArray(data?.itens) ? data.itens : []
       });
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar diagnostico da DRE');
+      // R3/R19: faixa do sistema, nunca caixa do navegador.
+      avisar.erro(err?.message || 'Erro ao carregar diagnostico da DRE');
     } finally {
       setLoading(false);
     }
-  }
+  }, [avisar, limpar]);
 
   useEffect(() => {
     carregar();
-  }, []);
+  }, [carregar]);
 
   const itensComPendencia = useMemo(
     () => diagnostico.itens.filter((item) => Number(item.total || 0) > 0),
     [diagnostico.itens]
   );
 
+  const resumo = diagnostico.resumo;
+
   return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Diagnostico da DRE</h1>
-            <p className="page-subtitle">
-              Verifique se empresas, obras, centros de custo, categorias e titulos estao prontos para uma DRE confiavel.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/financeiro/relatorios" className="btn btn-outline">Voltar para relatorios</Link>
-            <button type="button" className="btn btn-primary" onClick={carregar} disabled={loading}>
-              {loading ? 'Atualizando...' : 'Atualizar'}
-            </button>
-          </div>
-        </div>
-      </div>
+    <Pagina>
+      {/*
+        R13/C1/C2 — a faixa fixa do sistema substitui o cabecalho a mao, que
+        media o titulo por classe utilitaria propria (degrau que a escala nao
+        tem: titulo de pagina e 22px e quem decide isso e o PageHeader), e o
+        paragrafo de apoio solto que a R5 proibe.
+        (Escrito por extenso de proposito: o check da R10 le linha a linha
+        SEM cortar comentario, entao citar a classe aqui reprovaria a propria
+        explicacao da regra.)
 
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-          {error}
-        </div>
-      ) : null}
+        B3 — a contagem total de pendencias vive AQUI. O cartao "Pendencias"
+        do resumo antigo repetia o mesmo numero na mesma tela; o que ficou no
+        StatGrid e a ABERTURA por severidade, que e informacao diferente.
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Status"
-          value={diagnostico.resumo.status}
-          detail={`Gerado em ${formatDateTime(diagnostico.gerado_em)}`}
-          colorClass={statusClass(diagnostico.resumo.status)}
-        />
-        <SummaryCard
-          label="Pendencias"
-          value={diagnostico.resumo.total_pendencias}
-          detail={`${diagnostico.resumo.pendencias_criticas} criticas, ${diagnostico.resumo.pendencias_altas} altas`}
-        />
-        <SummaryCard
-          label="Titulos na DRE"
-          value={diagnostico.resumo.total_titulos_dre}
-          detail="Titulos marcados para considerar na DRE"
-        />
-        <SummaryCard
-          label="Empresas"
-          value={diagnostico.resumo.total_empresas}
-          detail={`${diagnostico.resumo.total_holdings} holding(s) cadastrada(s)`}
-        />
-      </section>
+        R23 — REGIME DECLARADO: **aplica ao marcar**, no caso degenerado —
+        a tela nao tem filtro nenhum. O botao "Atualizar" nao e o botao de
+        consulta cara da excecao: ele apenas RECARREGA o mesmo diagnostico,
+        sem recorte para virar rascunho.
+      */}
+      <PageHeader
+        titulo="Diagnóstico da DRE"
+        contagem={loading ? 'Carregando…' : `${resumo.total_pendencias} pendencia(s)`}
+        descricao={`Situação ${resumo.status} · gerado em ${formatDateTime(diagnostico.gerado_em)}`}
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar',
+          onClick: carregar,
+          desabilitada: loading
+        }}
+      />
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-950">Como usar este diagnostico</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Antes de confiar na DRE da Holding, corrija primeiro pendencias criticas, depois pendencias altas.
-          A regra operacional recomendada e: toda obra/centro de custo pertence a uma empresa operacional,
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 2 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:financeiro-diagnostico-dre" larguraPadrao="total">
+        {/*
+          B2 — UM bloco primario, e ele responde a pergunta da tela: a DRE
+          pode ser usada como esta? A resposta e a severidade das pendencias,
+          nao a lista delas.
+        */}
+        <BlocoConteudo
+          titulo="Situação dos dados da DRE"
+          descricao="Corrija na ordem: primeiro as críticas, depois as altas."
+          variante="primario"
+          cor="var(--module-financeiro)"
+          acoes={<StatusBadge status={resumo.status} kind={familiaDoStatus(resumo.status)} />}
+        >
+          <StatGrid colunas={5}>
+            <StatTile
+              label="Críticas"
+              valor={String(resumo.pendencias_criticas)}
+              sub="Bloqueiam a leitura da DRE"
+              tom={Number(resumo.pendencias_criticas) > 0 ? 'danger' : 'success'}
+            />
+            <StatTile
+              label="Altas"
+              valor={String(resumo.pendencias_altas)}
+              sub="Distorcem o resultado"
+              tom={Number(resumo.pendencias_altas) > 0 ? 'warning' : 'success'}
+            />
+            <StatTile
+              label="Médias"
+              valor={String(resumo.pendencias_medias)}
+              sub="Revisar antes do fechamento"
+            />
+            <StatTile
+              label="Títulos na DRE"
+              valor={String(resumo.total_titulos_dre)}
+              sub="Marcados para considerar na DRE"
+            />
+            <StatTile
+              label="Empresas"
+              valor={String(resumo.total_empresas)}
+              sub={`${resumo.total_holdings} holding(s) cadastrada(s)`}
+            />
+          </StatGrid>
+        </BlocoConteudo>
+
+        {/* D4 — leitura vence densidade: o texto de metodo fica a mao, mas
+            nasce recolhido para nao empurrar as pendencias para baixo da
+            dobra. Recolher e livre; remover exigiria o cliente. */}
+        <BlocoConteudo
+          titulo="Como usar este diagnóstico"
+          variante="secundario"
+          recolhivel
+          chavePreferencia="bloco:financeiro-diagnostico-dre:como-usar-este-diagnostico"
+          recolhidoPadrao
+        >
+          <p className="text-sm text-[var(--c-text)]">
+            Antes de confiar na DRE da Holding, corrija primeiro pendências críticas, depois pendências altas.
+            A regra operacional recomendada e: toda obra/centro de custo pertence a uma empresa operacional,
             todo titulo financeiro herda ou informa essa empresa, toda categoria financeira tem grupo DRE,
-          toda competencia representa o mes economico real do custo ou receita, e toda baixa ou transferencia
-          entre empresas possui classificacao completa quando representar relacao interna do grupo.
-        </p>
-      </section>
+            toda competencia representa o mes economico real do custo ou receita, e toda baixa ou transferencia
+            entre empresas possui classificacao completa quando representar relacao interna do grupo.
+          </p>
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
 
       {loading ? (
-        <div className="card sol-surface-card p-6 text-sm text-slate-500">Carregando diagnostico...</div>
+        <div className="app-empty-card">Carregando diagnóstico...</div>
       ) : itensComPendencia.length ? (
-        <div className="space-y-4">
-          {itensComPendencia.map((item) => (
-            <DiagnosticoItem key={item.codigo} item={item} />
-          ))}
-        </div>
+        itensComPendencia.map((item) => (
+          <PendenciaBloco key={item.codigo} item={item} />
+        ))
       ) : (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm font-semibold text-emerald-700">
-          Nenhuma pendencia encontrada para os dados acessiveis ao seu usuario.
-        </div>
+        <BlocoConteudo variante="secundario">
+          <p className="text-sm text-[var(--c-text)]">
+            Nenhuma pendência encontrada para os dados acessiveis ao seu usuário.
+          </p>
+        </BlocoConteudo>
       )}
-    </div>
+    </Pagina>
   );
 }

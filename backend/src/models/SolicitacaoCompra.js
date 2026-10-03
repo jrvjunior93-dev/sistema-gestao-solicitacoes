@@ -113,6 +113,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 'SEM_FRETE'
       },
+      frete_modo: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: 'GLOBAL'
+      },
       frete_valor: {
         type: DataTypes.DECIMAL(14, 2),
         allowNull: false,
@@ -128,6 +133,26 @@ module.exports = (sequelize, DataTypes) => {
       },
       frete_dados_pagamento: {
         type: DataTypes.TEXT,
+        allowNull: true
+      },
+      formas_pagamento_json: {
+        type: DataTypes.JSON,
+        allowNull: true
+      },
+      dados_pagamento: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
+      frete_forma_pagamento_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      frete_favorecido_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      frete_favorecido_chave_pix: {
+        type: DataTypes.STRING(255),
         allowNull: true
       }
     },

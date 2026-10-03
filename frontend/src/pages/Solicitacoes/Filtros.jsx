@@ -1,21 +1,178 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { HiAdjustmentsHorizontal, HiChevronDown, HiChevronUp, HiEye, HiEyeSlash } from 'react-icons/hi2';
+import { useMemo } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import BlocoConteudo from '../../components/padrao/BlocoConteudo';
+import BarraFiltros from '../../components/padrao/BarraFiltros';
+import { alternarValorFiltro } from '../../components/padrao/BarraFiltros';
+import { useFiltrosVisiveis } from '../../components/padrao/PainelFiltrosVisiveis';
+import StatGrid from '../../components/padrao/StatGrid';
+import { StatTile } from '../../components/padrao/StatGrid';
 
+/**
+ * FILTROS AVANÇADOS DAS SOLICITAÇÕES — migrados para `BarraFiltros` (R12).
+ *
+ * ## O que mudou de forma, e por quê
+ *
+ * A versão anterior era uma GRADE DE CAMPOS: quatro "multi-selects" escritos
+ * à mão (obra, setor, tipo, status), cada um com o seu popover, o seu
+ * `useEffect` de clique-fora, a sua rotina de posicionamento em pixels e o
+ * seu resumo "Fulano, Beltrano +3" — 971 linhas para fazer o que o
+ * `FiltroRapido` da `ListaAvancada` já faz, e que a `BarraFiltros`
+ * reaproveita. R12: filtro é MARCAÇÃO com etiqueta removível, não campo que
+ * só conta quantos itens escolhi.
+ *
+ * ## Onde cada recorte foi parar
+ *
+ * - **`filtros` (marcação, múltipla)**: obra, setor, tipo e status. Os quatro
+ *   viram um parâmetro CSV (`obra_ids=1,2`) e o `SolicitacaoController.index`
+ *   quebra os quatro por vírgula e monta `IN (...)` — conferido no serviço,
+ *   não presumido. Por isso NENHUM deles declara `unico`: aqui a marcação
+ *   múltipla chega inteira ao banco, e a etiqueta afirma a verdade (R23/F3).
+ * - **`campos` (recorte contínuo, não enumerável)**: código, descrição,
+ *   número do pedido, valor mín./máx., data de registro e o período de
+ *   resposta/pagamento. Texto e faixa não têm lista fechada — é exatamente o
+ *   caso que a `BarraFiltros` declara para `campos`.
+ * - **Responsável fica em `campos`, e é decisão, não descuido**: a lista de
+ *   responsáveis (`responsaveisOptions`) é extraída da PÁGINA carregada, não
+ *   do banco. Virar marcação sobre ela ofereceria um conjunto que se
+ *   encolhe conforme a lista pagina — capacidade aparente (R15) — e tiraria
+ *   a busca por parte do nome, que o backend faz com `LIKE` quando vem um
+ *   valor só. Enquanto o conjunto não for fechado, o recorte é contínuo.
+ *
+ * ## O que esta faixa NÃO tem, de propósito
+ *
+ * **Busca.** A `BarraFiltros` traz uma, mas este componente é renderizado
+ * DENTRO do painel avançado da `ListaAvancada`, que já é dona da busca da
+ * mesma lista. Duas caixas de busca no mesmo contexto é o defeito que a R16
+ * nomeia (o caso das Empresas do Grupo). Uma responsabilidade, um dono.
+ *
+ * ## Filtros visíveis
+ *
+ * O seletor de quais filtros aparecem SAIU da barra de ações e virou a
+ * superfície única do sistema (`components/padrao/PainelFiltrosVisiveis`),
+ * dentro da própria faixa. Medido em 05/09: as 3 telas que oferecem essa
+ * escolha (Consulta de títulos, esta e Provisionamentos — 5 endereços) a
+ * ofereciam de 3 jeitos diferentes; esta era a do menu de marcação.
+ *
+ * E a escolha deixa de morar no navegador. A chave por usuário que o N53
+ * criou aqui resolvia a estação compartilhada, mas não o resto do achado:
+ * como esconder um filtro LIMPA o valor dele, a escolha muda o resultado da
+ * consulta — e por máquina ela dava listas diferentes para a mesma pessoa.
+ * Agora vai para o banco, tipo `filtros`, pelo `PreferenciasContext`. A
+ * chave antiga vira `legado`: quem já configurou continua com a
+ * configuração dele, que sobe para o banco uma vez.
+ */
+
+/*
+  O CONJUNTO INICIAL APROVADO PELO CLIENTE (05/09) — `padrao: false` nasce
+  escondido. São os cinco recortes que a operação usa todo dia; os outros
+  sete ficam a um clique. O padrão vale SÓ para quem nunca configurou:
+  quem tem escolha salva mantém a dele.
+
+  `obrigatorio` em `descricao`: é a busca livre desta faixa (a busca da
+  ListaAvancada é de outro dono, ver acima), e sem ela não sobra caminho
+  para achar uma solicitação pelo que a pessoa lembra dela. `codigo` DEIXA
+  de ser obrigatório — o cliente o pôs entre os escondidos, e um filtro que
+  o padrão esconde não pode ser um filtro que não desmarca.
+*/
 const FILTROS_DISPONIVEIS = [
-  { id: 'codigo', label: 'Codigo da solicitacao' },
-  { id: 'descricao', label: 'Descrição' },
-  { id: 'numero_sienge', label: 'Numero do pedido' },
-  { id: 'obra_ids', label: 'Obra' },
-  { id: 'area', label: 'Setor' },
-  { id: 'tipo_solicitacao_id', label: 'Tipo de solicitacao' },
-  { id: 'status', label: 'Status' },
-  { id: 'valor_min', label: 'Valor minimo' },
-  { id: 'valor_max', label: 'Valor maximo' },
-  { id: 'data_registro', label: 'Data de registro' },
-  { id: 'data_vencimento', label: 'Periodo de vencimento' },
-  { id: 'responsavel', label: 'Responsavel' }
+  { id: 'descricao', rotulo: 'Descrição', obrigatorio: true },
+  { id: 'status', rotulo: 'Status' },
+  { id: 'obra_ids', rotulo: 'Obra' },
+  { id: 'area', rotulo: 'Setor' },
+  { id: 'tipo_solicitacao_id', rotulo: 'Tipo de solicitação' },
+  { id: 'codigo', rotulo: 'Código da solicitação', padrao: false },
+  { id: 'numero_sienge', rotulo: 'Número do pedido', padrao: false },
+  { id: 'valor_min', rotulo: 'Valor mínimo', padrao: false },
+  { id: 'valor_max', rotulo: 'Valor máximo', padrao: false },
+  { id: 'data_registro', rotulo: 'Data de registro', padrao: false },
+  { id: 'data_vencimento', rotulo: 'Período Data Resposta/Pagamento', padrao: false },
+  { id: 'responsavel', rotulo: 'Responsável', padrao: false }
 ];
+
+/* A identidade da lista no banco. Sem o usuário no nome, e isso é o
+   conserto: o servidor indexa a preferência POR USUÁRIO, então a estação
+   compartilhada deixa de vazar a escolha de um operador para o próximo sem
+   precisar que a chave carregue quem é. */
+const CHAVE_FILTROS_VISIVEIS = 'solicitacoes:filtros-visiveis';
+
+/*
+  N53 (05/09) — QUAIS CHAVES DE `filtros` CADA MARCA DO SELETOR GOVERNA.
+
+  Quase todas são um para um, mas "Periodo Data Resposta/Pagamento" governa
+  TRÊS (a data exata e as duas pontas do período). Esconder tem de limpar as
+  três: deixar uma ponta para trás recriaria o defeito em miniatura — lista
+  recortada por uma data que não está em campo nenhum.
+*/
+const CHAVES_DO_FILTRO = {
+  data_vencimento: ['data_vencimento', 'data_vencimento_inicio', 'data_vencimento_fim']
+};
+
+function chavesDoFiltro(filtroId) {
+  return CHAVES_DO_FILTRO[filtroId] || [filtroId];
+}
+
+function filtroPreenchido(filtroId, filtros) {
+  return chavesDoFiltro(filtroId).some((chave) => String(filtros?.[chave] ?? '').trim() !== '');
+}
+
+/*
+  A CHAVE ANTIGA DO NAVEGADOR, LIDA SÓ COMO `legado` (05/09).
+
+  Ela nasceu no N53 nomeando o usuário, para resolver a estação
+  compartilhada. Isso continua valendo aqui: é a escolha DAQUELA pessoa que
+  se lê, nunca a de quem sentou antes. O que muda é o destino — ela agora só
+  responde "o que este usuário já tinha configurado nesta máquina", uma vez,
+  para o `useFiltrosVisiveis` preservar a configuração e subi-la ao banco.
+  A chave NÃO é apagada: é a rede de rollback, exatamente como no
+  `PreferenciasContext`.
+
+  Devolve `null` quando não há nada gravado — e isso é o ponto: "nunca
+  configurou" tem de ser distinguível de "configurou tudo visível", porque
+  só o primeiro recebe o conjunto inicial aprovado pelo cliente.
+*/
+function chaveLegadoVisibilidade(user) {
+  const identificador = user?.id || user?.email || user?.nome || user?.perfil || 'anon';
+  return `solicitacoes:filtros-visiveis:${identificador}`;
+}
+
+function lerLegadoFiltrosVisiveis(user) {
+  try {
+    const salvo = localStorage.getItem(chaveLegadoVisibilidade(user));
+    const lidos = salvo ? JSON.parse(salvo) : null;
+    return Array.isArray(lidos) && lidos.length > 0 ? lidos : null;
+  } catch (error) {
+    console.error('Erro ao carregar filtros visíveis', error);
+    return null;
+  }
+}
+
+const FILTROS_VAZIOS = {
+  codigo: '',
+  descricao: '',
+  numero_sienge: '',
+  obra_ids: '',
+  area: '',
+  tipo_solicitacao_id: '',
+  status: '',
+  valor_min: '',
+  valor_max: '',
+  data_registro: '',
+  data_vencimento: '',
+  data_vencimento_inicio: '',
+  data_vencimento_fim: '',
+  responsavel: ''
+};
+
+/* CSV do parâmetro → conjunto de marcados, e de volta. É o formato que o
+   serviço aceita; a tela não inventa outro. */
+function csvParaConjunto(valor) {
+  return new Set(
+    String(valor || '')
+      .split(',')
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+  );
+}
 
 export default function Filtros({
   filtros,
@@ -30,400 +187,195 @@ export default function Filtros({
   somaValorFiltrado = 0,
   errosDatas = {}
 }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMobileViewport, setIsMobileViewport] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 768 : false
-  );
-  const [obraDropdownOpen, setObraDropdownOpen] = useState(false);
-  const obraDropdownRef = useRef(null);
-  const [setorDropdownOpen, setSetorDropdownOpen] = useState(false);
-  const setorDropdownRef = useRef(null);
-  const [tipoDropdownOpen, setTipoDropdownOpen] = useState(false);
-  const tipoDropdownRef = useRef(null);
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
-  const statusDropdownRef = useRef(null);
-  const statusPopoverRef = useRef(null);
-  const [statusDropdownPosition, setStatusDropdownPosition] = useState({ left: 16, top: 16, width: 240 });
-  const [seletorFiltrosOpen, setSeletorFiltrosOpen] = useState(false);
-  const seletorFiltrosRef = useRef(null);
-  const botaoSeletorFiltrosRef = useRef(null);
-  const [seletorFiltrosPosition, setSeletorFiltrosPosition] = useState({ left: 16, top: 16 });
+  const { user } = useAuth() || {};
 
-  const [filtrosVisiveis, setFiltrosVisiveis] = useState(() => {
-    try {
-      const salvo = localStorage.getItem('solicitacoes:filtros-visiveis');
-      if (salvo) {
-        const filtrosSalvos = JSON.parse(salvo);
-        if (Array.isArray(filtrosSalvos)) {
-          const obrigatorios = ['codigo', 'descricao'];
-          const salvosComNovosFiltros = [...filtrosSalvos];
-          obrigatorios.slice().reverse().forEach((filtroId) => {
-            if (!salvosComNovosFiltros.includes(filtroId)) {
-              salvosComNovosFiltros.unshift(filtroId);
-            }
-          });
-          return salvosComNovosFiltros;
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao carregar filtros visíveis', error);
+  /*
+    Os filtros que esta tela DECLARA. `responsavel` só existe para quem tem
+    a permissão: fora dela, ele não entra na lista — e como a preferência
+    guarda o DESVIO do padrão, uma escolha antiga que o cite continua lá,
+    ignorada na leitura e nunca apagada. Quem recuperar a permissão
+    reencontra a escolha dele.
+  */
+  const declaracaoFiltros = useMemo(
+    () => FILTROS_DISPONIVEIS.filter((filtro) => filtro.id !== 'responsavel' || mostrarFiltroResponsavel),
+    [mostrarFiltroResponsavel]
+  );
+
+  /*
+    Filtro com valor é filtro VISÍVEL — o outro lado do contrato de
+    "esconder limpa". Os VALORES são restaurados pelo `Solicitacoes/index`
+    (chave própria) e também chegam pela URL; nada impede que um deles caia
+    sobre uma marca desligada, e era esse par que deixava a lista recortada
+    por um critério fora da tela. O painel REVELA em vez de apagar: o
+    recorte foi o usuário que montou, então ele aparece na faixa.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DISPONIVEIS
+      .filter((filtro) => filtroPreenchido(filtro.id, filtros))
+      .map((filtro) => filtro.id),
+    [filtros]
+  );
+
+  /* Lido uma vez por usuário: é a chave ANTIGA do navegador, e ela não muda
+     enquanto a pessoa não trocar de sessão. */
+  const legadoFiltrosVisiveis = useMemo(
+    () => lerLegadoFiltrosVisiveis(user),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chaveLegadoVisibilidade(user)]
+  );
+
+  const visibilidadeFiltros = useFiltrosVisiveis(CHAVE_FILTROS_VISIVEIS, declaracaoFiltros, {
+    preenchidos: filtrosPreenchidos,
+    legado: legadoFiltrosVisiveis,
+    /*
+      N53 (05/09) — ESCONDER LIMPA O VALOR.
+
+      A lista das Solicitações é refeita a cada mudança de `filtros`, então
+      esconder sem limpar deixava um recorte ativo que não estava em lugar
+      nenhum da tela — a pessoa lia "12 solicitações" e concluía que eram
+      todas. Limpar dispara a consulta de novo: a lista ALARGA no mesmo
+      instante em que o campo sai da faixa. O número e a tela mudam juntos,
+      que é a diferença entre corrigir e disfarçar.
+    */
+    aoEsconder: (filtroId) => {
+      const vazios = Object.fromEntries(chavesDoFiltro(filtroId).map((chave) => [chave, '']));
+      setFiltros((prev) => ({ ...prev, ...vazios }));
     }
-    return FILTROS_DISPONIVEIS.map(f => f.id);
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('solicitacoes:filtros-visiveis', JSON.stringify(filtrosVisiveis));
-    } catch (error) {
-      console.error('Erro ao salvar filtros visíveis', error);
-    }
-  }, [filtrosVisiveis]);
+  const isFiltroVisivel = (filtroId) => visibilidadeFiltros.ehVisivel(filtroId);
 
-  useEffect(() => {
-    function onResize() {
-      const isMobile = window.innerWidth < 768;
-      setIsMobileViewport(isMobile);
-      if (!isMobile) setMobileOpen(false);
-    }
-
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
-    function onClickOutside(event) {
-      if (tipoDropdownOpen && !tipoDropdownRef.current?.contains(event.target)) {
-        setTipoDropdownOpen(false);
-      }
-      if (obraDropdownOpen && !obraDropdownRef.current?.contains(event.target)) {
-        setObraDropdownOpen(false);
-      }
-      if (setorDropdownOpen && !setorDropdownRef.current?.contains(event.target)) {
-        setSetorDropdownOpen(false);
-      }
-      if (
-        statusDropdownOpen &&
-        !statusDropdownRef.current?.contains(event.target) &&
-        !statusPopoverRef.current?.contains(event.target)
-      ) {
-        setStatusDropdownOpen(false);
-      }
-      if (seletorFiltrosOpen && seletorFiltrosRef.current?.contains(event.target)) {
-        return;
-      }
-      if (seletorFiltrosOpen && botaoSeletorFiltrosRef.current?.contains(event.target)) {
-        return;
-      }
-      if (seletorFiltrosOpen) {
-        setSeletorFiltrosOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [tipoDropdownOpen, obraDropdownOpen, setorDropdownOpen, statusDropdownOpen, seletorFiltrosOpen]);
-
-  useEffect(() => {
-    if (!seletorFiltrosOpen) return undefined;
-
-    const frameId = window.requestAnimationFrame(() => {
-      posicionarSeletorFiltros();
-    });
-
-    function reposicionarSeletor() {
-      posicionarSeletorFiltros();
-    }
-
-    window.addEventListener('resize', reposicionarSeletor);
-    window.addEventListener('scroll', reposicionarSeletor, true);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener('resize', reposicionarSeletor);
-      window.removeEventListener('scroll', reposicionarSeletor, true);
-    };
-  }, [seletorFiltrosOpen]);
-
-  useEffect(() => {
-    if (!statusDropdownOpen) return undefined;
-
-    const frameId = window.requestAnimationFrame(() => {
-      posicionarStatusDropdown();
-    });
-
-    function reposicionarStatus() {
-      posicionarStatusDropdown();
-    }
-
-    window.addEventListener('resize', reposicionarStatus);
-    window.addEventListener('scroll', reposicionarStatus, true);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener('resize', reposicionarStatus);
-      window.removeEventListener('scroll', reposicionarStatus, true);
-    };
-  }, [statusDropdownOpen, statusOptions.length]);
-
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setFiltros(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  function definirCampo(nome, valor) {
+    setFiltros((prev) => ({ ...prev, [nome]: valor }));
   }
 
   function limparFiltros() {
-    setFiltros({
-      codigo: '',
-      descricao: '',
-      numero_sienge: '',
-      obra_ids: '',
-      area: '',
-      tipo_solicitacao_id: '',
-      status: '',
-      valor_min: '',
-      valor_max: '',
-      data_registro: '',
-      data_vencimento: '',
-      data_vencimento_inicio: '',
-      data_vencimento_fim: '',
-      responsavel: ''
-    });
-    setObraDropdownOpen(false);
-    setSetorDropdownOpen(false);
-    setTipoDropdownOpen(false);
-    setStatusDropdownOpen(false);
+    setFiltros({ ...FILTROS_VAZIOS });
   }
 
-  function alternarFiltroVisivel(filtroId) {
-    setFiltrosVisiveis(prev => {
-      if (prev.includes(filtroId)) {
-        return prev.filter(id => id !== filtroId);
-      } else {
-        return [...prev, filtroId];
-      }
-    });
+  /* ---- Marcação: o estado da tela é o CSV; `ativos` é a leitura dele ---- */
+  const ativos = {
+    obra_ids: csvParaConjunto(filtros.obra_ids),
+    area: csvParaConjunto(filtros.area),
+    tipo_solicitacao_id: csvParaConjunto(filtros.tipo_solicitacao_id),
+    status: csvParaConjunto(filtros.status)
+  };
+
+  function aoAlternar(dimensao, valor, opcoes) {
+    const proximos = alternarValorFiltro(ativos, dimensao, valor, opcoes);
+    definirCampo(dimensao, Array.from(proximos[dimensao]).join(','));
   }
 
-  function posicionarSeletorFiltros() {
-    if (!botaoSeletorFiltrosRef.current || typeof window === 'undefined') return;
+  const dimensoes = [
+    isFiltroVisivel('obra_ids') && {
+      id: 'obra_ids',
+      rotulo: 'Obra',
+      vazio: 'Nenhuma obra disponível para filtrar.',
+      opcoes: obrasOptions.map((obra) => ({ valor: String(obra.value), rotulo: obra.label }))
+    },
+    isFiltroVisivel('area') && {
+      id: 'area',
+      rotulo: 'Setor',
+      vazio: 'Nenhum setor disponível para filtrar.',
+      opcoes: setores.map((setor) => ({
+        valor: String(setor.codigo || setor.nome || setor.id),
+        rotulo: setor.nome || setor.codigo || String(setor.id)
+      }))
+    },
+    isFiltroVisivel('tipo_solicitacao_id') && {
+      id: 'tipo_solicitacao_id',
+      rotulo: 'Tipo de solicitação',
+      vazio: 'Nenhum tipo de solicitação cadastrado para filtrar.',
+      opcoes: (tiposSolicitacao || []).map((tipo) => ({ valor: String(tipo.id), rotulo: tipo.nome }))
+    },
+    isFiltroVisivel('status') && {
+      id: 'status',
+      rotulo: 'Status',
+      vazio: 'Nenhum status disponível para filtrar.',
+      opcoes: statusOptions.map((item) => ({ valor: String(item.value), rotulo: item.label }))
+    }
+  ].filter(Boolean);
 
-    const margem = 16;
-    const btnRect = botaoSeletorFiltrosRef.current.getBoundingClientRect();
-    const painelRect = seletorFiltrosRef.current?.getBoundingClientRect();
-    const larguraPainel = Math.min(painelRect?.width || 320, window.innerWidth - margem * 2);
-    const alturaPainel = Math.min(painelRect?.height || 360, window.innerHeight - margem * 2);
-    const maxLeft = Math.max(margem, window.innerWidth - larguraPainel - margem);
-    const espacoAbaixo = window.innerHeight - btnRect.bottom - margem;
-    const espacoAcima = btnRect.top - margem;
-    const abreAcima = alturaPainel > espacoAbaixo && espacoAcima > espacoAbaixo;
+  /*
+    O par de datas de resposta/pagamento continua governado pela MESMA marca
+    do seletor de visibilidade que governava antes (`data_vencimento`) — o
+    rótulo dela na lista é "Periodo Data Resposta/Pagamento".
+  */
+  const mostrarPeriodoVencimento = isFiltroVisivel('data_vencimento');
 
-    setSeletorFiltrosPosition({
-      left: Math.round(Math.min(Math.max(margem, btnRect.right - larguraPainel), maxLeft)),
-      top: Math.round(abreAcima
-        ? Math.max(margem, btnRect.top - alturaPainel - 8)
-        : Math.min(window.innerHeight - alturaPainel - margem, btnRect.bottom + 8))
-    });
-  }
-
-  function alternarSeletorFiltros() {
-    if (!seletorFiltrosOpen) posicionarSeletorFiltros();
-    setSeletorFiltrosOpen(prev => !prev);
-  }
-
-  function posicionarStatusDropdown() {
-    if (!statusDropdownRef.current || typeof window === 'undefined') return;
-
-    const margem = 16;
-    const fieldRect = statusDropdownRef.current.getBoundingClientRect();
-    const painelRect = statusPopoverRef.current?.getBoundingClientRect();
-    const larguraPainel = Math.min(fieldRect.width, window.innerWidth - margem * 2);
-    const alturaPainel = Math.min(painelRect?.height || 250, window.innerHeight - margem * 2);
-    const maxLeft = Math.max(margem, window.innerWidth - larguraPainel - margem);
-    const espacoAbaixo = window.innerHeight - fieldRect.bottom - margem;
-    const espacoAcima = fieldRect.top - margem;
-    const abreAcima = alturaPainel > espacoAbaixo && espacoAcima > espacoAbaixo;
-
-    setStatusDropdownPosition({
-      left: Math.round(Math.min(Math.max(margem, fieldRect.left), maxLeft)),
-      top: Math.round(abreAcima
-        ? Math.max(margem, fieldRect.top - alturaPainel - 8)
-        : Math.min(window.innerHeight - alturaPainel - margem, fieldRect.bottom + 8)),
-      width: Math.round(larguraPainel)
-    });
-  }
-
-  function alternarStatusDropdown() {
-    if (!statusDropdownOpen) posicionarStatusDropdown();
-    setStatusDropdownOpen(prev => !prev);
-  }
-
-  // Dados de obras
-  const obraSelecionadosIds = String(filtros.obra_ids || '')
-    .split(',')
-    .map(v => String(v).trim())
-    .filter(Boolean);
-
-  const obraSelecionadosSet = new Set(obraSelecionadosIds);
-  const obraSelecionadosNomes = obrasOptions
-    .filter(obra => obraSelecionadosSet.has(String(obra.value)))
-    .map(obra => obra.label);
-  const resumoObrasSelecionadas = (() => {
-    if (obraSelecionadosNomes.length === 0) return 'Todas as obras';
-    if (obraSelecionadosNomes.length <= 2) return obraSelecionadosNomes.join(', ');
-    return `${obraSelecionadosNomes.slice(0, 2).join(', ')} +${obraSelecionadosNomes.length - 2}`;
-  })();
-
-  function atualizarObrasSelecionadas(ids) {
-    setFiltros(prev => ({
-      ...prev,
-      obra_ids: ids.join(',')
-    }));
-  }
-
-  function alternarObra(obraId) {
-    const id = String(obraId);
-    const atuais = [...obraSelecionadosIds];
-    const existe = atuais.includes(id);
-    const proximos = existe
-      ? atuais.filter(item => item !== id)
-      : [...atuais, id];
-    atualizarObrasSelecionadas(proximos);
-  }
-
-  function selecionarTodasObras() {
-    const ids = obrasOptions.map(obra => String(obra.value));
-    atualizarObrasSelecionadas(ids);
-  }
-
-  function limparObras() {
-    atualizarObrasSelecionadas([]);
-  }
-
-  // Dados de setores
-  const setorSelecionadosIds = String(filtros.area || '')
-    .split(',')
-    .map(v => String(v).trim())
-    .filter(Boolean);
-
-  const setorSelecionadosSet = new Set(setorSelecionadosIds);
-  const setorSelecionadosNomes = setores
-    .filter(setor => setorSelecionadosSet.has(String(setor.codigo || setor.nome || setor.id)))
-    .map(setor => setor.nome || setor.codigo || String(setor.id));
-  const resumoSetoresSelecionados = (() => {
-    if (setorSelecionadosNomes.length === 0) return 'Todos os setores';
-    if (setorSelecionadosNomes.length <= 2) return setorSelecionadosNomes.join(', ');
-    return `${setorSelecionadosNomes.slice(0, 2).join(', ')} +${setorSelecionadosNomes.length - 2}`;
-  })();
-
-  function atualizarSetoresSelecionados(ids) {
-    setFiltros(prev => ({
-      ...prev,
-      area: ids.join(',')
-    }));
-  }
-
-  function alternarSetor(setorId) {
-    const id = String(setorId);
-    const atuais = [...setorSelecionadosIds];
-    const existe = atuais.includes(id);
-    const proximos = existe
-      ? atuais.filter(item => item !== id)
-      : [...atuais, id];
-    atualizarSetoresSelecionados(proximos);
-  }
-
-  function selecionarTodosSetores() {
-    const ids = setores.map(setor => String(setor.codigo || setor.nome || setor.id)).filter(Boolean);
-    atualizarSetoresSelecionados(ids);
-  }
-
-  function limparSetores() {
-    atualizarSetoresSelecionados([]);
-  }
-
-  // Dados de tipos
-  const tipoSelecionadosIds = String(filtros.tipo_solicitacao_id || '')
-    .split(',')
-    .map(v => String(v).trim())
-    .filter(Boolean);
-
-  const tipoSelecionadosSet = new Set(tipoSelecionadosIds);
-  const tipoSelecionadosNomes = tiposSolicitacao
-    .filter(tipo => tipoSelecionadosSet.has(String(tipo.id)))
-    .map(tipo => tipo.nome);
-  const resumoTiposSelecionados = (() => {
-    if (tipoSelecionadosNomes.length === 0) return 'Todos os tipos';
-    if (tipoSelecionadosNomes.length <= 2) return tipoSelecionadosNomes.join(', ');
-    return `${tipoSelecionadosNomes.slice(0, 2).join(', ')} +${tipoSelecionadosNomes.length - 2}`;
-  })();
-
-  function atualizarTiposSelecionados(ids) {
-    setFiltros(prev => ({
-      ...prev,
-      tipo_solicitacao_id: ids.join(',')
-    }));
-  }
-
-  function alternarTipo(tipoId) {
-    const id = String(tipoId);
-    const atuais = [...tipoSelecionadosIds];
-    const existe = atuais.includes(id);
-    const proximos = existe
-      ? atuais.filter(item => item !== id)
-      : [...atuais, id];
-    atualizarTiposSelecionados(proximos);
-  }
-
-  function selecionarTodosTipos() {
-    const ids = tiposSolicitacao.map(tipo => String(tipo.id));
-    atualizarTiposSelecionados(ids);
-  }
-
-  function limparTipos() {
-    atualizarTiposSelecionados([]);
-  }
-
-  // Dados de status
-  const statusSelecionadosIds = String(filtros.status || '')
-    .split(',')
-    .map(v => String(v).trim())
-    .filter(Boolean);
-
-  const statusSelecionadosSet = new Set(statusSelecionadosIds);
-  const statusSelecionadosNomes = statusOptions
-    .filter(status => statusSelecionadosSet.has(String(status.value)))
-    .map(status => status.label);
-  const resumoStatusSelecionados = (() => {
-    if (statusSelecionadosNomes.length === 0) return 'Todos os status';
-    if (statusSelecionadosNomes.length <= 2) return statusSelecionadosNomes.join(', ');
-    return `${statusSelecionadosNomes.slice(0, 2).join(', ')} +${statusSelecionadosNomes.length - 2}`;
-  })();
-
-  function atualizarStatusSelecionados(ids) {
-    setFiltros(prev => ({
-      ...prev,
-      status: ids.join(',')
-    }));
-  }
-
-  function alternarStatus(statusId) {
-    const id = String(statusId);
-    const atuais = [...statusSelecionadosIds];
-    const existe = atuais.includes(id);
-    const proximos = existe
-      ? atuais.filter(item => item !== id)
-      : [...atuais, id];
-    atualizarStatusSelecionados(proximos);
-  }
-
-  function selecionarTodosStatus() {
-    const ids = statusOptions.map(status => String(status.value));
-    atualizarStatusSelecionados(ids);
-  }
-
-  function limparStatus() {
-    atualizarStatusSelecionados([]);
-  }
+  const campos = [
+    isFiltroVisivel('codigo') && {
+      id: 'codigo',
+      rotulo: 'Código da solicitação',
+      tipo: 'text',
+      valor: filtros.codigo || '',
+      aoMudar: (valor) => definirCampo('codigo', valor)
+    },
+    isFiltroVisivel('descricao') && {
+      id: 'descricao',
+      rotulo: 'Descrição',
+      tipo: 'search',
+      valor: filtros.descricao || '',
+      aoMudar: (valor) => definirCampo('descricao', valor)
+    },
+    isFiltroVisivel('numero_sienge') && {
+      id: 'numero_sienge',
+      rotulo: 'Número do pedido',
+      tipo: 'text',
+      valor: filtros.numero_sienge || '',
+      aoMudar: (valor) => definirCampo('numero_sienge', valor)
+    },
+    isFiltroVisivel('valor_min') && {
+      id: 'valor_min',
+      rotulo: 'Valor mínimo',
+      tipo: 'number',
+      min: 0,
+      valor: filtros.valor_min || '',
+      aoMudar: (valor) => definirCampo('valor_min', valor)
+    },
+    isFiltroVisivel('valor_max') && {
+      id: 'valor_max',
+      rotulo: 'Valor máximo',
+      tipo: 'number',
+      min: 0,
+      valor: filtros.valor_max || '',
+      aoMudar: (valor) => definirCampo('valor_max', valor)
+    },
+    isFiltroVisivel('data_registro') && {
+      id: 'data_registro',
+      rotulo: 'Data de registro',
+      tipo: 'date',
+      min: '1900-01-01',
+      max: '2200-12-31',
+      valor: filtros.data_registro || '',
+      aoMudar: (valor) => definirCampo('data_registro', valor)
+    },
+    mostrarPeriodoVencimento && {
+      id: 'data_vencimento_inicio',
+      rotulo: 'Data Resposta/Pagamento de',
+      tipo: 'date',
+      min: '1900-01-01',
+      max: '2200-12-31',
+      valor: filtros.data_vencimento_inicio || '',
+      aoMudar: (valor) => definirCampo('data_vencimento_inicio', valor)
+    },
+    mostrarPeriodoVencimento && {
+      id: 'data_vencimento_fim',
+      rotulo: 'Data Resposta/Pagamento até',
+      tipo: 'date',
+      min: '1900-01-01',
+      max: '2200-12-31',
+      valor: filtros.data_vencimento_fim || '',
+      aoMudar: (valor) => definirCampo('data_vencimento_fim', valor)
+    },
+    mostrarFiltroResponsavel && isFiltroVisivel('responsavel') && {
+      id: 'responsavel',
+      rotulo: 'Responsável',
+      tipo: 'text',
+      valor: filtros.responsavel || '',
+      aoMudar: (valor) => definirCampo('responsavel', valor)
+    }
+  ].filter(Boolean);
 
   const quantidadeFiltrosAtivos = [
     filtros.codigo,
@@ -440,532 +392,65 @@ export default function Filtros({
     filtros.data_vencimento_inicio,
     filtros.data_vencimento_fim,
     mostrarFiltroResponsavel ? filtros.responsavel : ''
-  ].filter(v => String(v || '').trim() !== '').length;
+  ].filter((v) => String(v || '').trim() !== '').length;
 
-  function isFiltroVisivel(filtroId) {
-    return filtrosVisiveis.includes(filtroId);
-  }
-
-  const mostrarPeriodoVencimento = isFiltroVisivel('periodo_vencimento') || isFiltroVisivel('data_vencimento');
+  /*
+    CONDIÇÃO DERIVADA DO CONTEÚDO, não evento: data inválida continua
+    valendo depois de fechar um aviso, então ela mora ao lado dos campos,
+    como texto fixo — nunca em `useAvisos` (a fronteira está escrita no
+    próprio `Avisos.jsx`).
+  */
+  const errosVisiveis = Object.entries(errosDatas || {}).filter(([, mensagem]) => Boolean(mensagem));
 
   return (
-    <div className="solicitacoes-filtros sol-surface-card p-3 sm:p-4 rounded-xl mb-4 md:mb-6">
-      <div className="md:hidden mb-3">
-        <button
-          type="button"
-          onClick={() => setMobileOpen(prev => !prev)}
-          className="w-full min-h-[44px] inline-flex items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-slate-700 px-3 py-2 bg-white dark:bg-slate-800 text-sm font-medium"
-          aria-expanded={mobileOpen}
-          aria-controls="painel-filtros-solicitacoes"
-        >
-          <span className="inline-flex items-center gap-2">
-            <HiAdjustmentsHorizontal className="w-4 h-4" />
-            Filtros
-            {quantidadeFiltrosAtivos > 0 && (
-              <span className="inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
-                {quantidadeFiltrosAtivos}
-              </span>
-            )}
-          </span>
-          {mobileOpen ? <HiChevronUp className="w-4 h-4" /> : <HiChevronDown className="w-4 h-4" />}
+    <BlocoConteudo
+      variante="secundario"
+      titulo="Filtros"
+      contagem={quantidadeFiltrosAtivos > 0 ? `${quantidadeFiltrosAtivos} ativo(s)` : null}
+      descricao="Refine por obra, setor, tipo, status, valor e datas."
+      recolhivel
+      className="solicitacoes-filtros"
+    >
+      {mostrarSomaValor && (
+        <StatGrid colunas={1}>
+          <StatTile
+            label="Soma filtrada"
+            valor={Number(somaValorFiltrado || 0).toLocaleString('pt-BR', {
+              style: 'currency',
+              currency: 'BRL'
+            })}
+            sub="Soma do valor das solicitações que atendem ao recorte atual."
+          />
+        </StatGrid>
+      )}
+
+      <BarraFiltros
+        campos={campos}
+        filtros={dimensoes}
+        ativos={ativos}
+        /*
+          O seletor desce da barra de ações para DENTRO da faixa (05/09):
+          junto do que ele governa, e no mesmo lugar das outras duas telas
+          que oferecem a escolha.
+        */
+        visibilidade={visibilidadeFiltros}
+        aoAlternar={aoAlternar}
+        aoLimpar={limparFiltros}
+      />
+
+      {errosVisiveis.length > 0 && (
+        <div role="alert">
+          {errosVisiveis.map(([campo, mensagem]) => (
+            <p key={campo} className="form-error">{mensagem}</p>
+          ))}
+        </div>
+      )}
+
+      <div className="app-actionbar">
+        <button className="btn btn-outline" type="button" onClick={limparFiltros}>
+          Limpar filtros
         </button>
       </div>
-
-      <div
-        id="painel-filtros-solicitacoes"
-        className={`${isMobileViewport && !mobileOpen ? 'hidden' : 'block'}`}
-      >
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Filtros</p>
-            <p className="sol-filtros-subtitle">Refine por obra, setor, tipo, status, valor e datas.</p>
-          </div>
-          <div className="sol-filtros-meta">
-            {quantidadeFiltrosAtivos > 0 && (
-              <span className="sol-filtros-badge">{quantidadeFiltrosAtivos} ativo(s)</span>
-            )}
-            {mostrarSomaValor && (
-              <div className="sol-filtros-soma">
-                <span className="sol-filtros-soma-label">Soma filtrada</span>
-                <strong className="sol-filtros-soma-value">
-                  {Number(somaValorFiltrado || 0).toLocaleString('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL'
-                  })}
-                </strong>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="sol-filtros-grid">
-          {isFiltroVisivel('codigo') && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Codigo da solicitacao</label>
-              <input
-                name="codigo"
-                placeholder="Ex: SOL-12345"
-                className="input"
-                value={filtros.codigo || ''}
-                onChange={handleChange}
-                type="text"
-              />
-            </div>
-          )}
-
-          {isFiltroVisivel('descricao') && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Descrição</label>
-              <input
-                name="descricao"
-                placeholder="Digite parte da descrição"
-                className="input"
-                value={filtros.descricao || ''}
-                onChange={handleChange}
-                type="search"
-                autoComplete="off"
-              />
-            </div>
-          )}
-
-          {isFiltroVisivel('numero_sienge') && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Número do pedido</label>
-              <input
-                name="numero_sienge"
-                placeholder="Ex: 12345"
-                className="input"
-                value={filtros.numero_sienge || ''}
-                onChange={handleChange}
-                type="text"
-              />
-            </div>
-          )}
-
-          {isFiltroVisivel('obra_ids') && (
-            <div className="sol-filter-field sol-filter-field-multi" ref={obraDropdownRef}>
-              <div className="sol-filter-label-row">
-                <label className="sol-filter-label">Obra</label>
-                {obraSelecionadosIds.length > 0 && (
-                  <button
-                    type="button"
-                    className="sol-filter-link-btn"
-                    onClick={limparObras}
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                className={`sol-filter-multi-trigger ${obraDropdownOpen ? 'open' : ''}`}
-                onClick={() => setObraDropdownOpen(prev => !prev)}
-                aria-expanded={obraDropdownOpen}
-                aria-label="Selecionar obras"
-              >
-                <span className="truncate">{resumoObrasSelecionadas}</span>
-                {obraDropdownOpen ? <HiChevronUp className="w-4 h-4" /> : <HiChevronDown className="w-4 h-4" />}
-              </button>
-
-              {obraDropdownOpen && (
-                <div className="sol-filter-multi-popover">
-                  <div className="sol-filter-multi-actions">
-                    <button type="button" className="sol-filter-link-btn" onClick={selecionarTodasObras}>
-                      Selecionar todas
-                    </button>
-                    <button type="button" className="sol-filter-link-btn" onClick={limparObras}>
-                      Limpar
-                    </button>
-                  </div>
-
-                  <div className="sol-filter-multi-list">
-                    {obrasOptions.map(obra => {
-                      const id = String(obra.value);
-                      const checked = obraSelecionadosSet.has(id);
-                      return (
-                        <label key={obra.value} className="sol-filter-multi-item">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => alternarObra(id)}
-                          />
-                          <span>{obra.label}</span>
-                        </label>
-                      );
-                    })}
-                    {obrasOptions.length === 0 && (
-                      <p className="sol-filter-multi-empty">Nenhuma obra disponivel.</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {isFiltroVisivel('area') && (
-            <div className="sol-filter-field sol-filter-field-multi" ref={setorDropdownRef}>
-              <div className="sol-filter-label-row">
-                <label className="sol-filter-label">Setor</label>
-                {setorSelecionadosIds.length > 0 && (
-                  <button
-                    type="button"
-                    className="sol-filter-link-btn"
-                    onClick={limparSetores}
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                className={`sol-filter-multi-trigger ${setorDropdownOpen ? 'open' : ''}`}
-                onClick={() => setSetorDropdownOpen(prev => !prev)}
-                aria-expanded={setorDropdownOpen}
-                aria-label="Selecionar setores"
-              >
-                <span className="truncate">{resumoSetoresSelecionados}</span>
-                {setorDropdownOpen ? <HiChevronUp className="w-4 h-4" /> : <HiChevronDown className="w-4 h-4" />}
-              </button>
-
-              {setorDropdownOpen && (
-                <div className="sol-filter-multi-popover">
-                  <div className="sol-filter-multi-actions">
-                    <button type="button" className="sol-filter-link-btn" onClick={selecionarTodosSetores}>
-                      Selecionar todos
-                    </button>
-                    <button type="button" className="sol-filter-link-btn" onClick={limparSetores}>
-                      Limpar
-                    </button>
-                  </div>
-
-                  <div className="sol-filter-multi-list">
-                    {setores.map(setor => {
-                      const id = String(setor.codigo || setor.nome || setor.id);
-                      const checked = setorSelecionadosSet.has(id);
-                      return (
-                        <label key={setor.id || setor.codigo || setor.nome} className="sol-filter-multi-item">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => alternarSetor(id)}
-                          />
-                          <span>{setor.nome || setor.codigo}</span>
-                        </label>
-                      );
-                    })}
-                    {setores.length === 0 && (
-                      <p className="sol-filter-multi-empty">Nenhum setor disponivel.</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {isFiltroVisivel('tipo_solicitacao_id') && (
-            <div className="sol-filter-field sol-filter-field-multi" ref={tipoDropdownRef}>
-              <div className="sol-filter-label-row">
-                <label className="sol-filter-label">Tipo de solicitacao</label>
-                {tipoSelecionadosIds.length > 0 && (
-                  <button
-                    type="button"
-                    className="sol-filter-link-btn"
-                    onClick={limparTipos}
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                className={`sol-filter-multi-trigger ${tipoDropdownOpen ? 'open' : ''}`}
-                onClick={() => setTipoDropdownOpen(prev => !prev)}
-                aria-expanded={tipoDropdownOpen}
-                aria-label="Selecionar tipos de solicitacao"
-              >
-                <span className="truncate">{resumoTiposSelecionados}</span>
-                {tipoDropdownOpen ? <HiChevronUp className="w-4 h-4" /> : <HiChevronDown className="w-4 h-4" />}
-              </button>
-
-              {tipoDropdownOpen && (
-                <div className="sol-filter-multi-popover">
-                  <div className="sol-filter-multi-actions">
-                    <button type="button" className="sol-filter-link-btn" onClick={selecionarTodosTipos}>
-                      Selecionar todos
-                    </button>
-                    <button type="button" className="sol-filter-link-btn" onClick={limparTipos}>
-                      Limpar
-                    </button>
-                  </div>
-
-                  <div className="sol-filter-multi-list">
-                    {tiposSolicitacao.map(tipo => {
-                      const id = String(tipo.id);
-                      const checked = tipoSelecionadosSet.has(id);
-                      return (
-                        <label key={tipo.id} className="sol-filter-multi-item">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => alternarTipo(id)}
-                          />
-                          <span>{tipo.nome}</span>
-                        </label>
-                      );
-                    })}
-                    {tiposSolicitacao.length === 0 && (
-                      <p className="sol-filter-multi-empty">Nenhum tipo cadastrado.</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {isFiltroVisivel('status') && (
-            <div className="sol-filter-field sol-filter-field-multi" ref={statusDropdownRef}>
-              <div className="sol-filter-label-row">
-                <label className="sol-filter-label">Status</label>
-                {statusSelecionadosIds.length > 0 && (
-                  <button
-                    type="button"
-                    className="sol-filter-link-btn"
-                    onClick={limparStatus}
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                className={`sol-filter-multi-trigger ${statusDropdownOpen ? 'open' : ''}`}
-                aria-expanded={statusDropdownOpen}
-                aria-label="Selecionar status"
-                onClick={alternarStatusDropdown}
-              >
-                <span className="truncate">{resumoStatusSelecionados}</span>
-                {statusDropdownOpen ? <HiChevronUp className="w-4 h-4" /> : <HiChevronDown className="w-4 h-4" />}
-              </button>
-
-              {statusDropdownOpen && typeof document !== 'undefined' && createPortal((
-                <div
-                  ref={statusPopoverRef}
-                  className="sol-filter-multi-popover sol-filter-multi-popover--portal"
-                  style={{
-                    left: `${statusDropdownPosition.left}px`,
-                    top: `${statusDropdownPosition.top}px`,
-                    width: `${statusDropdownPosition.width}px`
-                  }}
-                >
-                  <div className="sol-filter-multi-actions">
-                    <button type="button" className="sol-filter-link-btn" onClick={selecionarTodosStatus}>
-                      Selecionar todos
-                    </button>
-                    <button type="button" className="sol-filter-link-btn" onClick={limparStatus}>
-                      Limpar
-                    </button>
-                  </div>
-
-                  <div className="sol-filter-multi-list">
-                    {statusOptions.map(item => {
-                      const id = String(item.value);
-                      const checked = statusSelecionadosSet.has(id);
-                      return (
-                        <label key={item.value} className="sol-filter-multi-item">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => alternarStatus(id)}
-                          />
-                          <span>{item.label}</span>
-                        </label>
-                      );
-                    })}
-                    {statusOptions.length === 0 && (
-                      <p className="sol-filter-multi-empty">Nenhum status disponivel.</p>
-                    )}
-                  </div>
-                </div>
-              ), document.body)}
-            </div>
-          )}
-
-          {isFiltroVisivel('valor_min') && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Valor minimo</label>
-              <input
-                name="valor_min"
-                placeholder="Ex: 1000"
-                className="input"
-                value={filtros.valor_min || ''}
-                onChange={handleChange}
-                type="number"
-                step="0.01"
-                min="0"
-              />
-            </div>
-          )}
-
-          {isFiltroVisivel('valor_max') && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Valor maximo</label>
-              <input
-                name="valor_max"
-                placeholder="Ex: 50000"
-                className="input"
-                value={filtros.valor_max || ''}
-                onChange={handleChange}
-                type="number"
-                step="0.01"
-                min="0"
-              />
-            </div>
-          )}
-
-          {isFiltroVisivel('data_registro') && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Data de registro</label>
-              <input
-                name="data_registro"
-                className="input"
-                value={filtros.data_registro || ''}
-                onChange={handleChange}
-                type="date"
-                min="1900-01-01"
-                max="2200-12-31"
-                aria-invalid={Boolean(errosDatas.data_registro)}
-              />
-              {errosDatas.data_registro && (
-                <span className="text-xs text-red-600">{errosDatas.data_registro}</span>
-              )}
-            </div>
-          )}
-
-          {mostrarPeriodoVencimento && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Vencimento de</label>
-              <input
-                name="data_vencimento_inicio"
-                className="input"
-                value={filtros.data_vencimento_inicio || ''}
-                onChange={handleChange}
-                type="date"
-                min="1900-01-01"
-                max="2200-12-31"
-                aria-invalid={Boolean(errosDatas.data_vencimento_inicio)}
-              />
-              {errosDatas.data_vencimento_inicio && (
-                <span className="text-xs text-red-600">{errosDatas.data_vencimento_inicio}</span>
-              )}
-            </div>
-          )}
-
-          {mostrarPeriodoVencimento && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Vencimento ate</label>
-              <input
-                name="data_vencimento_fim"
-                className="input"
-                value={filtros.data_vencimento_fim || ''}
-                onChange={handleChange}
-                type="date"
-                min="1900-01-01"
-                max="2200-12-31"
-                aria-invalid={Boolean(errosDatas.data_vencimento_fim)}
-              />
-              {errosDatas.data_vencimento_fim && (
-                <span className="text-xs text-red-600">{errosDatas.data_vencimento_fim}</span>
-              )}
-            </div>
-          )}
-
-          {mostrarFiltroResponsavel && isFiltroVisivel('responsavel') && (
-            <div className="sol-filter-field">
-              <label className="sol-filter-label">Responsavel</label>
-              <input
-                name="responsavel"
-                className="input"
-                value={filtros.responsavel || ''}
-                onChange={handleChange}
-                type="text"
-                placeholder="Nome do responsavel"
-                list="responsaveis-solicitacoes"
-              />
-              <datalist id="responsaveis-solicitacoes">
-                {responsaveisOptions.map(responsavel => (
-                  <option key={responsavel.value} value={responsavel.value}>
-                    {responsavel.label}
-                  </option>
-                ))}
-              </datalist>
-            </div>
-          )}
-        </div>
-
-        <div className="sol-filtros-actions">
-          <button className="btn btn-outline" type="button" onClick={limparFiltros}>
-            Limpar filtros
-          </button>
-          <div className="relative">
-            <button
-              ref={botaoSeletorFiltrosRef}
-              className="btn btn-outline inline-flex items-center gap-2"
-              type="button"
-              onClick={alternarSeletorFiltros}
-              title="Selecionar quais filtros exibir"
-            >
-              {seletorFiltrosOpen ? <HiEyeSlash className="w-4 h-4" /> : <HiEye className="w-4 h-4" />}
-              <span className="font-medium">Filtros visíveis</span>
-            </button>
-            {seletorFiltrosOpen && typeof document !== 'undefined' && createPortal((
-              <div
-                ref={seletorFiltrosRef}
-                className="sol-floating-panel fixed z-[1000] w-[320px] max-w-[calc(100vw-2rem)] max-h-[min(72vh,430px)] overflow-hidden p-3"
-                style={{
-                  left: `${seletorFiltrosPosition.left}px`,
-                  top: `${seletorFiltrosPosition.top}px`
-                }}
-              >
-                <div className="sol-floating-panel-header mb-2">
-                  <p className="sol-floating-panel-caption">Selecione os filtros</p>
-                </div>
-                <div className="sol-floating-panel-scroll">
-                  {FILTROS_DISPONIVEIS.map(filtro => {
-                    const isVisible = filtrosVisiveis.includes(filtro.id);
-                    const isResponsavel = filtro.id === 'responsavel';
-                    const shouldDisable = isResponsavel && !mostrarFiltroResponsavel;
-
-                    return (
-                      <label
-                        key={filtro.id}
-                        className={`sol-floating-panel-option ${shouldDisable ? 'is-disabled' : ''}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isVisible}
-                          onChange={() => !shouldDisable && alternarFiltroVisivel(filtro.id)}
-                          disabled={shouldDisable}
-                        />
-                        <span>{filtro.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ), document.body)}
-          </div>
-        </div>
-
-        <div className="md:hidden sticky bottom-0 mt-3 -mx-3 px-3 py-2 bg-white/95 dark:bg-slate-900/95 border-t border-gray-200 dark:border-slate-700 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-          <button
-            className="btn btn-primary w-full"
-            type="button"
-            onClick={() => setMobileOpen(false)}
-          >
-            Filtrar
-          </button>
-        </div>
-      </div>
-    </div>
+    </BlocoConteudo>
   );
 }

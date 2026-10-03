@@ -15,7 +15,12 @@ const NOTIFICACAO_EVENTOS = [
       ['VALOR_ATUALIZADO', 'Valor atualizado', 'Valor da solicitacao foi alterado.'],
       ['DATA_VENCIMENTO_ATUALIZADA', 'Data de vencimento atualizada', 'Data de vencimento da solicitacao foi alterada.'],
       ['ANEXO_ADICIONADO', 'Anexo adicionado', 'Arquivo anexado na solicitacao.'],
-      ['MENCAO_COMENTARIO', 'Mencao em comentario', 'Usuario foi mencionado em comentario.']
+      ['MENCAO_COMENTARIO', 'Mencao em comentario', 'Usuario foi mencionado em comentario.'],
+      ['RETORNO_SOLICITADO', 'Retorno solicitado', 'Outro setor pediu a devolucao da solicitacao para continuar o trabalho.'],
+      ['RETORNO_APROVADO', 'Retorno aprovado', 'O setor atual devolveu a solicitacao ao setor solicitante.'],
+      ['RETORNO_DEVOLVIDO', 'Solicitacao devolvida', 'O setor solicitante devolveu a solicitacao ao setor que aprovou o retorno.'],
+      ['RETORNO_REJEITADO', 'Retorno rejeitado', 'O setor atual rejeitou o pedido de devolucao da solicitacao.'],
+      ['RETORNO_CANCELADO', 'Pedido de retorno cancelado', 'O solicitante cancelou o pedido de devolucao.']
     ]
   },
   {
@@ -30,6 +35,9 @@ const NOTIFICACAO_EVENTOS = [
       ['PEDIDO_COMPRA_GERADO', 'Pedido de compra gerado', 'Pedido criado a partir de cotacao.'],
       ['PEDIDO_COMPRA_STATUS_ALTERADO', 'Status do pedido alterado', 'Mudanca no status do pedido de compra.'],
       ['PEDIDO_COMPRA_CANCELADO', 'Pedido de compra cancelado', 'Pedido ou item cancelado no fluxo de compras.'],
+      ['PEDIDO_COMPRA_AGUARDANDO_GEO', 'Pedido legado aguardando revisão', 'Evento histórico de pedidos que aguardavam preparação financeira pelo GEO.'],
+      ['PEDIDO_COMPRA_REABERTURA_SOLICITADA', 'Reabertura de pedido solicitada', 'Compras solicitou ao GEO a reabertura de um pedido com titulo vinculado.'],
+      ['PEDIDO_COMPRA_REABERTURA_DECIDIDA', 'Reabertura de pedido decidida', 'GEO aprovou ou rejeitou uma solicitacao de reabertura do pedido.'],
       ['COMPRAS_ATRASO_DELEGACAO', 'Atraso em delegacao de compras', 'Solicitacao atribuida ao comprador ultrapassou prazo.']
     ]
   },
@@ -70,7 +78,8 @@ const NOTIFICACAO_EVENTOS = [
       ['RH_DP_APURACAO_GERADA', 'Apuracao gerada', 'Apuracao de competencia criada.'],
       ['RH_DP_FECHAMENTO_GERADO', 'Fechamento gerado', 'Fechamento criou titulos financeiros.'],
       ['RH_DP_FECHAMENTO_REABERTO', 'Fechamento estornado', 'Fechamento reaberto e financeiro notificado.'],
-      ['RH_DP_TITULOS_GERADOS', 'Titulos RH/DP gerados', 'Titulos gerados a partir do fechamento.']
+      ['RH_DP_TITULOS_GERADOS', 'Titulos RH/DP gerados', 'Titulos gerados a partir do fechamento.'],
+      ['RH_TRANSFERENCIA_ATUALIZADA', 'Transferencia entre obras atualizada', 'Nova transferencia, comentario ou decisao que exige consulta dos responsaveis das obras.']
     ]
   },
   {

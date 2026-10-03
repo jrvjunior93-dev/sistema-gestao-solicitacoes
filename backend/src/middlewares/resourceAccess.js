@@ -4,7 +4,8 @@ const {
   canAccessContratosGlobal,
   getUserObraScopeIds,
   isBusinessAdmin,
-  userCanCreateInAllObras
+  userCanCreateInAllObras,
+  userHasAreaPermission
 } = require('../services/authorizationService');
 const { userHasSetorCapability } = require('../services/setorCapabilityService');
 const { registrarEventoSeguranca } = require('../services/securityLogService');
@@ -93,6 +94,26 @@ function createBodyObraAccessMiddleware({
   };
 }
 
+// Escopo de obras EFETIVO das listas escopadas (extraído do middleware
+// abaixo, sem mudança de regra): null = acesso global; array de ids =
+// restrito; [] = nada visível. Exportado para consultas que precisam
+// contar EXATAMENTE o que a lista correspondente mostra (ex.: cartão de
+// compras das pendências do Hub) — mesma função, nunca uma cópia.
+async function resolverEscopoListaObras(user, hasLegacyGlobalAccess) {
+  const obrasPermitidas = await getUserObraScopeIds(user);
+  if (obrasPermitidas === null) {
+    return null;
+  }
+  if (obrasPermitidas.length > 0) {
+    return obrasPermitidas;
+  }
+  const tokens = await buildUserScopeTokens(user);
+  if (await hasLegacyGlobalAccess(tokens, user)) {
+    return null;
+  }
+  return [];
+}
+
 function createScopedListMiddleware({
   queryField,
   resourceType,
@@ -101,32 +122,25 @@ function createScopedListMiddleware({
   scopeKey
 }) {
   return async (req, res, next) => {
-    const obrasPermitidas = await getUserObraScopeIds(req.user);
-    if (obrasPermitidas === null) {
-      req[scopeKey] = null;
-      return next();
-    }
+    const escopo = await resolverEscopoListaObras(req.user, hasLegacyGlobalAccess);
 
-    const obraId = req.query?.[queryField] ? Number(req.query[queryField]) : null;
-
-    if (obrasPermitidas.length > 0) {
-      if (obraId && !obrasPermitidas.includes(obraId)) {
+    if (Array.isArray(escopo) && escopo.length > 0) {
+      const obraId = req.query?.[queryField] ? Number(req.query[queryField]) : null;
+      if (obraId && !escopo.includes(obraId)) {
         await logResourceDenied(req, resourceType, null, obraId, description);
         return res.status(403).json({ error: 'Acesso negado para esta obra' });
       }
-      req[scopeKey] = obrasPermitidas;
-      return next();
     }
 
-    const tokens = await buildUserScopeTokens(req.user);
-    if (await hasLegacyGlobalAccess(tokens, req.user)) {
-      req[scopeKey] = null;
-      return next();
-    }
-
-    req[scopeKey] = [];
+    req[scopeKey] = escopo;
     return next();
   };
+}
+
+// O mesmo escopo que a lista de solicitações de compra recebe via
+// scopeCompraListAccess (req.compraScopeObraIds).
+async function resolverEscopoObrasComprasLista(user) {
+  return resolverEscopoListaObras(user, hasLegacyCompraGlobalAccess);
 }
 
 function createResourceAccessMiddleware({
@@ -135,6 +149,7 @@ function createResourceAccessMiddleware({
   resourceType,
   description,
   hasLegacyGlobalAccess,
+  hasReadAccess,
   attachAs
 }) {
   return async (req, res, next) => {
@@ -147,6 +162,14 @@ function createResourceAccessMiddleware({
 
     const obraId = Number(resource.obra_id);
     if (resourceType === 'SOLICITACAO_COMPRA' && isOwnCompraResource(resource, req.user)) {
+      req[attachAs] = resource;
+      return next();
+    }
+
+    // Uma permissao de leitura ampla pode atravessar o escopo da obra somente em GET/HEAD.
+    // Ela nunca serve como atalho para PATCH/POST/DELETE do mesmo recurso.
+    const metodoSomenteLeitura = req.method === 'GET' || req.method === 'HEAD';
+    if (metodoSomenteLeitura && hasReadAccess && await hasReadAccess(resource, req.user)) {
       req[attachAs] = resource;
       return next();
     }
@@ -223,6 +246,13 @@ const requireContratoAccess = createResourceAccessMiddleware({
   resourceType: 'CONTRATO',
   description: 'Usuario tentou acessar contrato fora do seu escopo',
   hasLegacyGlobalAccess: hasLegacyContractGlobalAccess,
+  // `visualizar_todas` abre o detalhe completo da solicitacao em modo leitura. Quando o contrato
+  // pertence a essa solicitacao, suas parcelas/anexos tambem precisam carregar para que o detalhe
+  // nao exiba um falso erro de obra. A guarda acima limita esta excecao a GET/HEAD.
+  hasReadAccess: async (contrato, user) => (
+    Boolean(contrato?.solicitacao_id)
+    && await userHasAreaPermission(user, ['solicitacoes.lista.visualizar_todas'])
+  ),
   attachAs: 'contratoResource'
 });
 
@@ -250,5 +280,6 @@ module.exports = {
   requireContratoBodyObraAccess,
   requireContratoOptionalBodyObraAccess,
   requirePedidoCompraAccess,
+  resolverEscopoObrasComprasLista,
   scopeCompraListAccess
 };

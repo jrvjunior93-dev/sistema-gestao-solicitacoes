@@ -1,5 +1,5 @@
 const {
-  decryptSensitiveValue,
+  decryptSensitiveValueSafe,
   encryptSensitiveValue
 } = require('../services/sensitiveFieldCrypto');
 
@@ -99,7 +99,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: true,
       get() {
-        return decryptSensitiveValue(this.getDataValue('mfa_totp_secret'));
+        return decryptSensitiveValueSafe(this.getDataValue('mfa_totp_secret'));
       },
       set(value) {
         this.setDataValue('mfa_totp_secret', encryptSensitiveValue(value));
@@ -110,7 +110,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: true,
       get() {
-        return decryptSensitiveValue(this.getDataValue('mfa_totp_temp_secret'));
+        return decryptSensitiveValueSafe(this.getDataValue('mfa_totp_temp_secret'));
       },
       set(value) {
         this.setDataValue('mfa_totp_temp_secret', encryptSensitiveValue(value));

@@ -5,6 +5,7 @@ import {
   salvarUsuariosPermissoesRhDp
 } from '../services/configuracoesSistema';
 import { RH_DP_PERMISSION_GROUPS, normalizeRhDpPermissionList } from '../constants/rhDpPermissions';
+import { Pagina, PageHeader, BlocoConteudo, BarraFiltros, Avisos, useAvisos } from '../components/padrao';
 
 function normalizePermissionMap(input) {
   const source = input && typeof input === 'object' ? input : {};
@@ -43,6 +44,7 @@ export default function UsuariosPermissoesRhDp() {
   const [selecionados, setSelecionados] = useState({});
   const [salvando, setSalvando] = useState(false);
   const [filtro, setFiltro] = useState('');
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function load() {
@@ -61,7 +63,7 @@ export default function UsuariosPermissoesRhDp() {
 
     load().catch((error) => {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar permissoes do RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar permissoes do RH/DP');
     });
   }, []);
 
@@ -120,113 +122,121 @@ export default function UsuariosPermissoesRhDp() {
 
       const response = await salvarUsuariosPermissoesRhDp(payload);
       setSelecionados(normalizePermissionMap(response?.usuarios));
-      alert('Permissoes do RH/DP salvas com sucesso.');
+      avisar.sucesso('Permissões do RH/DP salvas com sucesso.');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao salvar permissoes do RH/DP');
+      avisar.erro(error?.message || 'Erro ao salvar permissoes do RH/DP');
     } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <div className="page solicitacoes-page rhdp-page space-y-6">
-      <div>
-        <h1 className="page-title">Permissoes RH/DP por usuario</h1>
-        <p className="page-subtitle mt-1">
-          Monte usuarios de RH e contabilidade sem criar perfil hardcoded novo. O `ADMINISTRADOR` define exatamente
-          quais areas do RH/DP cada usuario pode operar.
+    <Pagina className="rhdp-page">
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Permissões RH/DP por usuário"
+        contagem={`${Object.keys(selecionados).length} configurado(s)`}
+        descricao="Monte usuários de RH e contabilidade sem criar perfil novo: o ADMINISTRADOR define exatamente quais áreas do RH/DP cada usuário pode operar."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar matriz de permissoes',
+          onClick: salvar,
+          desabilitada: salvando
+        }}
+      />
+
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      <BlocoConteudo
+        titulo="Regra base de acesso ao RH/DP"
+        variante="secundario"
+        recolhivel
+        recolhidoPadrao
+      >
+        <p className="app-note">
+          SUPERADMIN e ADMINISTRADOR continuam com bypass total. Esta tela serve para liberar
+          acessos granulares aos demais usuarios, inclusive contabilidade com escopo parcial.
         </p>
-      </div>
+      </BlocoConteudo>
 
-      <div className="card space-y-4">
-        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          `SUPERADMIN` e `ADMINISTRADOR` continuam com bypass total. Esta tela serve para liberar acessos granulares
-          aos demais usuarios, inclusive contabilidade com escopo parcial.
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-[1.2fr,0.8fr]">
-          <input
-            className="form-control"
-            placeholder="Buscar por nome, email, perfil ou setor"
-            value={filtro}
-            onChange={(event) => setFiltro(event.target.value)}
-          />
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Usuarios configurados: <strong className="text-slate-900">{Object.keys(selecionados).length}</strong>
-          </div>
-        </div>
-
-        <div className="space-y-6">
+      <BlocoConteudo
+        titulo="Usuários ativos"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/* F1: UMA busca, ocupando a largura da faixa (padrão BarraFiltros). */}
+        <BarraFiltros
+          busca={{
+            valor: filtro,
+            aoMudar: setFiltro,
+            placeholder: 'Nome, email, perfil ou setor'
+          }}
+        />
+        <div className="space-y-3">
           {usuariosFiltrados.map((usuario) => {
-            const currentPermissions = normalizeRhDpPermissionList(selecionados[Number(usuario.id)] || []);
+              const currentPermissions = normalizeRhDpPermissionList(selecionados[Number(usuario.id)] || []);
 
-            return (
-              <section key={usuario.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold text-slate-900">{usuario.nome}</h2>
-                    <p className="text-sm text-slate-500">
-                      {usuario.email} | {perfilLabel(usuario)} | {setorLabel(usuario)}
-                    </p>
+              return (
+                <BlocoConteudo
+                  key={usuario.id}
+                  titulo={`${usuario.nome} — ${currentPermissions.length} permissão(oes)`}
+                  variante="secundario"
+                  recolhivel
+                  recolhidoPadrao={currentPermissions.length === 0}
+                >
+                  <p className="app-note mb-3">
+                    {usuario.email} · {perfilLabel(usuario)} · {setorLabel(usuario)}
+                  </p>
+
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    {RH_DP_PERMISSION_GROUPS.map((group) => (
+                      <fieldset
+                        key={group.key}
+                        className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3"
+                      >
+                        <legend className="form-section-legenda">{group.label}</legend>
+                        <div className="space-y-2">
+                          {(group.permissions || []).map((permission) => {
+                            const permissionKey = permission?.key || permission;
+                            const permissionLabel = permission?.label || permissionKey;
+                            const permissionDescription = permission?.description || '';
+                            const checked = currentPermissions.includes(String(permissionKey).toLowerCase());
+
+                            return (
+                              <label
+                                key={permissionKey}
+                                title={permissionKey}
+                                className="flex items-start gap-3 text-sm"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-1"
+                                  checked={checked}
+                                  onChange={() => togglePermission(usuario.id, permissionKey)}
+                                />
+                                <span className="flex flex-col gap-1">
+                                  <span className="font-medium text-[var(--c-text)]">{permissionLabel}</span>
+                                  <span className="app-note">{permissionDescription}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                    ))}
                   </div>
-                  <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
-                    {currentPermissions.length} permissao(oes)
-                  </div>
-                </div>
+                </BlocoConteudo>
+              );
+            })}
 
-                <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                  {RH_DP_PERMISSION_GROUPS.map((group) => (
-                    <div key={group.key} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">{group.label}</h3>
-                      <div className="mt-3 space-y-3">
-                        {(group.permissions || []).map((permission) => {
-                          const permissionKey = permission?.key || permission;
-                          const permissionLabel = permission?.label || permissionKey;
-                          const permissionDescription = permission?.description || '';
-                          const checked = currentPermissions.includes(String(permissionKey).toLowerCase());
-
-                          return (
-                            <label key={permissionKey} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => togglePermission(usuario.id, permissionKey)}
-                              />
-                              <span className="flex flex-col gap-1">
-                                <span className="font-medium text-slate-900">{permissionLabel}</span>
-                                <span className="text-slate-500">{permissionDescription}</span>
-                                <span className="text-xs text-slate-400">{permissionKey}</span>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-
-          {!usuariosFiltrados.length && (
-            <div className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
-              Nenhum usuario encontrado para o filtro atual.
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={salvar}
-            disabled={salvando}
-          >
-            {salvando ? 'Salvando...' : 'Salvar matriz de permissoes'}
-          </button>
-        </div>
-      </div>
-    </div>
+            {!usuariosFiltrados.length && (
+              <div className="app-empty-card">
+                Nenhum usuário encontrado para o filtro atual.
+              </div>
+            )}
+          </div>
+        </BlocoConteudo>
+    </Pagina>
   );
 }

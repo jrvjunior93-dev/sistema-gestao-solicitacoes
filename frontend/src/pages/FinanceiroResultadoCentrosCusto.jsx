@@ -1,24 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  StatGrid,
+  StatTile,
+  Avisos,
+  useAvisos
+} from '../components/padrao';
 import { getResultadoCentrosCusto } from '../services/financeiro';
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function StatItem({ label, value, sub, color }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">{label}</span>
-      <span className="text-sm font-bold tabular-nums leading-tight" style={{ color: color || 'var(--c-text)' }}>
-        {value}
-      </span>
-      {sub ? <span className="text-[10px] text-[var(--c-muted)]">{sub}</span> : null}
-    </div>
-  );
+/*
+  M4 / R8 — a cor e da SERIE, nao do componente.
+
+  Nesta tela ha exatamente uma comparacao, e ela se repete no consolidado do
+  topo e dentro de cada centro: o COMPROMISSO ("a pagar" / "a receber") contra
+  o que de fato passou pelo caixa ("pago" / "recebido"). Compromisso e a serie
+  PREVISTA (azul); caixa e a serie REALIZADA (vermelho). As mesmas duas cores
+  valem nos dois lugares — um consolidado azul com o cartao do centro em outra
+  cor para o MESMO numero seria o defeito que a R8 descreve.
+
+  Os indicadores que nao pertencem a serie nenhuma (quantidade de
+  solicitacoes, saldo liquido derivado) ficam NEUTROS, como a regra manda.
+*/
+function Previsto({ children }) {
+  return <span className="texto-previsto">{children}</span>;
 }
 
-function CentroCustoCard({ centro }) {
+function Realizado({ children }) {
+  return <span className="texto-realizado">{children}</span>;
+}
+
+function CentroCustoBloco({ centro }) {
   const saidas = centro.pagar?.total || 0;
   const pagas = centro.pagar?.pago || 0;
   const entradas = centro.receber?.total || 0;
@@ -26,113 +44,135 @@ function CentroCustoCard({ centro }) {
   const saldoLiquido = recebidas - pagas;
 
   return (
-    <article className="overflow-hidden rounded-xl border bg-[var(--ui-surface)] border-[var(--ui-border)]">
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--ui-border)] px-4 py-4">
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--c-muted)]">
-            {centro.codigo || `#${centro.id}`}
-          </div>
-          <h3 className="mt-0.5 text-sm font-bold uppercase leading-tight text-[var(--c-text)]">{centro.nome}</h3>
-          {centro.cidade ? <div className="mt-0.5 text-[10px] text-[var(--c-muted)]">{centro.cidade}</div> : null}
-        </div>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-          Centro de custo
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-[var(--ui-border)] px-4 py-3">
-        <StatItem label="Solicitacoes" value={String(centro.solicitacoes?.quantidade || 0)} sub={formatCurrency(centro.solicitacoes?.total_valor)} />
-        <StatItem label="Saldo liquido" value={formatCurrency(saldoLiquido)} color={saldoLiquido >= 0 ? '#10b981' : '#f59e0b'} />
-        <StatItem label="A pagar" value={formatCurrency(saidas)} sub={`${centro.pagar?.quantidade || 0} titulo(s)`} color="var(--c-primary)" />
-        <StatItem label="Pago" value={formatCurrency(pagas)} />
-        <StatItem label="A receber" value={formatCurrency(entradas)} sub={`${centro.receber?.quantidade || 0} titulo(s)`} color="#10b981" />
-        <StatItem label="Recebido" value={formatCurrency(recebidas)} />
-      </div>
-    </article>
+    <BlocoConteudo
+      variante="secundario"
+      titulo={centro.nome}
+      contagem={centro.codigo || `Centro ${centro.id}`}
+      descricao={centro.cidade || 'Centro de custo'}
+    >
+      <StatGrid colunas={2}>
+        <StatTile
+          label="Solicitações"
+          valor={String(centro.solicitacoes?.quantidade || 0)}
+          sub={formatCurrency(centro.solicitacoes?.total_valor)}
+        />
+        <StatTile
+          label="Saldo líquido"
+          valor={formatCurrency(saldoLiquido)}
+          sub="Recebido menos pago"
+        />
+        <StatTile
+          label="A pagar"
+          valor={<Previsto>{formatCurrency(saidas)}</Previsto>}
+          sub={`${centro.pagar?.quantidade || 0} título(s)`}
+        />
+        <StatTile label="Pago" valor={<Realizado>{formatCurrency(pagas)}</Realizado>} />
+        <StatTile
+          label="A receber"
+          valor={<Previsto>{formatCurrency(entradas)}</Previsto>}
+          sub={`${centro.receber?.quantidade || 0} título(s)`}
+        />
+        <StatTile label="Recebido" valor={<Realizado>{formatCurrency(recebidas)}</Realizado>} />
+      </StatGrid>
+    </BlocoConteudo>
   );
 }
 
 export default function FinanceiroResultadoCentrosCusto() {
   const [dados, setDados] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError('');
 
     getResultadoCentrosCusto()
       .then((data) => {
         if (active) setDados(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
-        if (active) setError(err?.message || 'Erro ao carregar centros de custo');
+        // R3/R19: erro em faixa do sistema, nunca em caixa do navegador.
+        if (active) avisar.erro(err?.message || 'Erro ao carregar centros de custo');
       })
       .finally(() => {
         if (active) setLoading(false);
       });
 
     return () => { active = false; };
-  }, []);
+  }, [avisar]);
 
   const resumo = useMemo(() => dados.reduce((acc, centro) => {
-    acc.centros += 1;
     acc.solicitacoes += centro.solicitacoes?.quantidade || 0;
     acc.aPagar += centro.pagar?.total || 0;
     acc.pago += centro.pagar?.pago || 0;
     acc.aReceber += centro.receber?.total || 0;
     acc.recebido += centro.receber?.recebido || 0;
     return acc;
-  }, { centros: 0, solicitacoes: 0, aPagar: 0, pago: 0, aReceber: 0, recebido: 0 }), [dados]);
+  }, { solicitacoes: 0, aPagar: 0, pago: 0, aReceber: 0, recebido: 0 }), [dados]);
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Resultado por Centro de Custo</h1>
-            <p className="page-subtitle">Visao financeira dos cadastros administrativos que nao sao obras.</p>
-          </div>
-          <Link to="/financeiro/relatorios" className="btn btn-outline btn-sm">
-            Voltar para relatorios
-          </Link>
-        </div>
+    <Pagina>
+      {/*
+        R13/C1/C2 — faixa fixa do sistema no lugar da linha solta de titulo
+        com `page-subtitle` (R5): titulo em 22px, contagem e apoio numa linha
+        so, dentro da propria faixa.
+
+        B3 — a contagem de centros vive AQUI e em lugar nenhum mais. O cartao
+        "Centros" que existia no resumo repetia exatamente este numero.
+
+        R23 — REGIME DECLARADO: **aplica ao marcar**, que aqui e o caso
+        trivial: a tela nao tem filtro nenhum e faz UMA requisicao no
+        carregamento. Nao chega perto do teto da excecao (4+ dimensoes
+        combinadas ou 2s de resposta), entao nao ha botao de "atualizar
+        relatorio" e nao ha marca em rascunho.
+      */}
+      <PageHeader
+        titulo="Resultado por Centro de Custo"
+        contagem={loading ? 'Carregando…' : `${dados.length} centro(s)`}
+        descricao="Visão financeira dos cadastros administrativos que não são obras."
+      />
+
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      <div className="app-actionbar">
+        <Link className="btn btn-outline btn-sm" to="/financeiro/relatorios/centros-custo/distribuicao-obras">
+          Ver distribuição gerencial por obra
+        </Link>
       </div>
 
-      <div className="card sol-surface-card">
-        <div className="flex flex-wrap items-center gap-4">
-          {[
-            { label: 'Centros', value: String(resumo.centros) },
-            { label: 'Solicitacoes', value: String(resumo.solicitacoes) },
-            { label: 'A pagar', value: formatCurrency(resumo.aPagar) },
-            { label: 'Pago', value: formatCurrency(resumo.pago) },
-            { label: 'A receber', value: formatCurrency(resumo.aReceber) },
-            { label: 'Recebido', value: formatCurrency(resumo.recebido) }
-          ].map((item) => (
-            <div key={item.label} className="flex flex-col">
-              <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">{item.label}</span>
-              <span className="text-sm font-bold tabular-nums leading-tight text-[var(--c-text)]">{item.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {error && <div className="app-alert app-alert--error">{error}</div>}
+      {/*
+        B2 — UM bloco primario, e e ele que responde a pergunta da tela:
+        quanto os centros administrativos comprometem e quanto ja passou pelo
+        caixa. Os cartoes por centro sao a abertura desse numero, e por isso
+        entram como blocos SECUNDARIOS.
+      */}
+      <BlocoConteudo
+        titulo="Consolidado dos centros de custo"
+        descricao="Soma de todos os centros carregados."
+        variante="primario"
+        cor="var(--module-financeiro)"
+      >
+        <StatGrid colunas={5}>
+          <StatTile label="Solicitações" valor={String(resumo.solicitacoes)} />
+          <StatTile label="A pagar" valor={<Previsto>{formatCurrency(resumo.aPagar)}</Previsto>} />
+          <StatTile label="Pago" valor={<Realizado>{formatCurrency(resumo.pago)}</Realizado>} />
+          <StatTile label="A receber" valor={<Previsto>{formatCurrency(resumo.aReceber)}</Previsto>} />
+          <StatTile label="Recebido" valor={<Realizado>{formatCurrency(resumo.recebido)}</Realizado>} />
+        </StatGrid>
+      </BlocoConteudo>
 
       {loading ? (
-        <div className="app-empty-card">Carregando...</div>
+        <div className="app-empty-card">Carregando centros de custo...</div>
       ) : dados.length === 0 ? (
-        <div className="app-empty-card">
-          <p className="text-sm text-[var(--c-muted)]">Nenhum centro de custo encontrado.</p>
-        </div>
+        <div className="app-empty-card">Nenhum centro de custo encontrado.</div>
       ) : (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {dados.map((centro) => (
-            <CentroCustoCard key={centro.id} centro={centro} />
+            <CentroCustoBloco key={centro.id} centro={centro} />
           ))}
-        </section>
+        </div>
       )}
-    </div>
+    </Pagina>
   );
 }

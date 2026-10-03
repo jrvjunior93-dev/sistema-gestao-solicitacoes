@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { Op } = require('sequelize');
 const {
   MovimentoFinanceiro,
   ObraCustoHistorico,
@@ -35,11 +36,16 @@ const filtros = {
 };
 const req = { user: { perfil: 'SUPERADMIN' } };
 let somenteHistorico = false;
+function assertObraOuRateio(where) {
+  const filtro = where[Op.and]?.find(item => item[Op.or]?.[0]?.obra_id === 3);
+  assert.ok(filtro, 'Filtro deve incluir obra direta ou rateio da negociação, sem ampliar o escopo.');
+  assert.match(filtro[Op.or][1].val, /ra\.obra_id IN \(3\)/);
+}
 
 async function verificar() {
   MovimentoFinanceiro.findAll = async (options) => {
     assert.equal(options.where.status, 'ATIVO');
-    assert.equal(options.include[0].where.obra_id, 3);
+    assertObraOuRateio(options.include[0].where);
     return somenteHistorico ? [] : [{
       id: 11, titulo: tituloParcial, valor: '70.00', valor_quitacao: '70.00',
       data_movimento: '2026-09-10', status: 'ATIVO'
@@ -51,7 +57,7 @@ async function verificar() {
     return [historico];
   };
   TituloFinanceiro.findAll = async (options) => {
-    assert.equal(options.where.obra_id, 3);
+    assertObraOuRateio(options.where);
     assert.ok(options.where.data_vencimento);
     return somenteHistorico ? [] : [tituloParcial, tituloAberto];
   };

@@ -35,7 +35,8 @@ const {
 } = require('../services/comprasCotacao');
 const {
   calcularNovaDisponibilidadeLiberada,
-  montarMapaAlocacoesAtivasPorFornecedorItem
+  montarMapaAlocacoesAtivasPorFornecedorItem,
+  montarMapaAlocacoesAtivasPorResposta
 } = require('../services/comprasDisponibilidadeService');
 const { getPresignedUrl, uploadToS3 } = require('../services/s3');
 const {
@@ -548,6 +549,13 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
 
   const respostasPreparadas = [];
   const isRascunho = options.rascunho === true;
+  const novaOfertaSaldo = options.nova_oferta_saldo === true;
+  if (novaOfertaSaldo && isRascunho) {
+    throw Object.assign(
+      new Error('A nova oferta para o saldo deve ser salva como resposta final.'),
+      { statusCode: 400, code: 'COMPRA_OFERTA_SALDO_RASCUNHO_NAO_PERMITIDO' }
+    );
+  }
   const valorMinimoPedido = normalizarValorMinimoPedido(options.valor_minimo_pedido);
   const descontoTotal = normalizarDescontoTotal(options.desconto_total);
   const difalValor = normalizarValorGerencial(options.difal_valor, 'DIFAL');
@@ -632,6 +640,7 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
       observacao: itemResposta.observacao ? String(itemResposta.observacao).trim() : null,
       quantidade_minima_item: disponivel ? quantidadeMinima : null,
       quantidade_disponivel: disponivel ? quantidadeDisponivel : 0,
+      escopo_disponibilidade: novaOfertaSaldo ? 'OFERTA_SALDO' : 'ACUMULADA',
       ipi_valor: disponivel ? ipiValor : 0,
       icms_valor: disponivel ? icmsValor : 0,
       st_valor: disponivel ? stValor : 0,
@@ -662,6 +671,29 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
     }
 
     const statusSolicitacaoAnterior = normalizeText(solicitacaoTravada.status);
+    if (novaOfertaSaldo) {
+      if (!['FECHAMENTO_PARCIAL', 'ENCERRADO'].includes(statusSolicitacaoAnterior)) {
+        throw Object.assign(
+          new Error('Uma nova oferta para saldo so pode ser registrada depois de uma rodada de fechamento.'),
+          { statusCode: 409, code: 'COMPRA_OFERTA_SALDO_SEM_FECHAMENTO_PARCIAL' }
+        );
+      }
+
+      const alocacoesAnteriores = await SolicitacaoCompraAlocacao.count({
+        where: {
+          solicitacao_compra_id: solicitacaoTravada.id,
+          fornecedor_compra_id: cotacaoTravada.fornecedor_compra_id,
+          status: 'ATIVA'
+        },
+        transaction
+      });
+      if (!alocacoesAnteriores) {
+        throw Object.assign(
+          new Error('Este fornecedor ainda nao possui pedido ativo nesta cotacao para receber uma nova oferta de saldo.'),
+          { statusCode: 409, code: 'COMPRA_OFERTA_SALDO_SEM_PEDIDO_ANTERIOR' }
+        );
+      }
+    }
     const reaberturaControlada = statusSolicitacaoAnterior === 'ENCERRADO'
       && options.permitir_reabertura_disponibilidade === true
       && Boolean(usuarioInterno)
@@ -717,11 +749,13 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
         lock: transaction.LOCK.UPDATE
       });
       const mapaAlocacoes = montarMapaAlocacoesAtivasPorFornecedorItem(alocacoesAtivasFornecedor);
+      const mapaAlocacoesResposta = montarMapaAlocacoesAtivasPorResposta(alocacoesAtivasFornecedor);
       const novaDisponibilidade = calcularNovaDisponibilidadeLiberada({
         fornecedorCompraId: cotacaoTravada.fornecedor_compra_id,
         respostasAnteriores,
         respostasNovas: respostasPreparadas,
-        mapaAlocacoesFornecedorItem: mapaAlocacoes
+        mapaAlocacoesFornecedorItem: mapaAlocacoes,
+        mapaAlocacoesResposta
       });
       const quantidadeLiberadaTotal = novaDisponibilidade.quantidade_liberada_total;
       if (quantidadeLiberadaTotal <= 0) {
@@ -779,10 +813,14 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
       solicitacaoCompraId: cotacaoFornecedor.solicitacao.id,
       usuarioId: usuarioInterno?.id || null,
       fornecedorCompraId: cotacaoFornecedor.fornecedor_compra_id,
-      tipoAcao: isRascunho
+      tipoAcao: novaOfertaSaldo
+        ? 'NOVA_OFERTA_SALDO_FORNECEDOR'
+        : isRascunho
         ? (usuarioInterno ? 'RASCUNHO_RESPOSTA_INTERNA' : 'RASCUNHO_RESPOSTA_FORNECEDOR')
         : (usuarioInterno ? 'RESPOSTA_INTERNA_COMPRAS' : 'RESPOSTA_FORNECEDOR'),
-      descricao: isRascunho
+      descricao: novaOfertaSaldo
+        ? `Nova oferta para o saldo registrada para ${cotacaoFornecedor.fornecedor?.nome || cotacaoFornecedor.fornecedor_compra_id}`
+        : isRascunho
         ? (usuarioInterno
             ? `Usuario interno ${usuarioInterno.nome || usuarioInterno.id} salvou rascunho da cotacao do fornecedor ${cotacaoFornecedor.fornecedor?.nome || cotacaoFornecedor.fornecedor_compra_id}`
             : `Fornecedor ${cotacaoFornecedor.fornecedor?.nome || cotacaoFornecedor.fornecedor_compra_id} salvou rascunho da cotacao`)
@@ -796,6 +834,8 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
         status_anterior: statusAnteriorCotacao,
         status_novo: isRascunho ? 'RASCUNHO' : 'RESPONDIDO',
         origem_resposta: usuarioInterno ? 'INTERNA' : 'FORNECEDOR',
+        nova_oferta_saldo: novaOfertaSaldo,
+        escopo_disponibilidade: novaOfertaSaldo ? 'OFERTA_SALDO' : 'ACUMULADA',
         usuario_interno_id: usuarioInterno?.id || null,
         usuario_interno_nome: usuarioInterno?.nome || null,
         condicao_pagamento: condicaoPagamento,
@@ -1510,6 +1550,7 @@ module.exports = {
         frete_transportador_nome: req.body.frete_transportador_nome,
         frete_transportador_cpf_cnpj: req.body.frete_transportador_cpf_cnpj,
         observacao_resposta: req.body.observacao_resposta,
+        nova_oferta_saldo: req.body.nova_oferta_saldo === true,
         usuario_interno: req.user,
         rascunho: req.body.finalizar === false,
         permitir_reabertura_disponibilidade: solicitacaoEncerrada

@@ -80,6 +80,59 @@ export async function logoutRequest() {
   return data;
 }
 
+export async function getDevUserSwitchStatus() {
+  const response = await fetch(`${API_URL}/auth/dev-user-switch`);
+  const data = await parseJsonSafe(response);
+  if (!response.ok) {
+    throw buildError(data, 'Erro ao carregar troca rapida de usuario.', response.status);
+  }
+  return data;
+}
+
+export async function assumeDevUserRequest(userId) {
+  const response = await fetch(`${API_URL}/auth/dev-user-switch/assume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: Number(userId) })
+  });
+  const data = await parseJsonSafe(response);
+  if (!response.ok) {
+    throw buildError(data, 'Erro ao trocar o usuario de teste.', response.status);
+  }
+  return data;
+}
+
+export async function restoreDevUserRequest() {
+  const response = await fetch(`${API_URL}/auth/dev-user-switch/restore`, { method: 'POST' });
+  const data = await parseJsonSafe(response);
+  if (!response.ok) {
+    throw buildError(data, 'Erro ao retornar para o SUPERADMIN.', response.status);
+  }
+  return data;
+}
+
+export async function getDevUserSwitchConfig() {
+  const response = await fetch(`${API_URL}/configuracoes/dev-user-switch`);
+  const data = await parseJsonSafe(response);
+  if (!response.ok) {
+    throw buildError(data, 'Erro ao carregar usuarios de teste.', response.status);
+  }
+  return data;
+}
+
+export async function updateDevUserSwitchConfig(userIds) {
+  const response = await fetch(`${API_URL}/configuracoes/dev-user-switch`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_ids: userIds })
+  });
+  const data = await parseJsonSafe(response);
+  if (!response.ok) {
+    throw buildError(data, 'Erro ao salvar usuarios de teste.', response.status);
+  }
+  return data;
+}
+
 export async function forgotPasswordRequest(email) {
   const response = await fetch(`${API_URL}/auth/forgot-password`, {
     method: 'POST',

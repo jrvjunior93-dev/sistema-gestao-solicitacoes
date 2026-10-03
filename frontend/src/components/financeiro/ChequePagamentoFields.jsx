@@ -1,3 +1,5 @@
+import { getCpfCnpjError, maskCpfCnpj } from '../../utils/formatters';
+
 const fields = [
   ['cheque_numero', 'Numero do cheque', true],
   ['cheque_emitente', 'Emitente / titular', true],
@@ -19,6 +21,18 @@ export default function ChequePagamentoFields({
 }) {
   const update = (field, nextValue) => onChange?.(field, nextValue);
 
+  const updateField = (field, event) => {
+    const nextValue = field === 'titular_documento'
+      ? maskCpfCnpj(event.target.value)
+      : event.target.value;
+    if (field === 'titular_documento') {
+      event.target.setCustomValidity(getCpfCnpjError(nextValue, {
+        label: 'CPF/CNPJ do titular do cheque'
+      }));
+    }
+    update(field, nextValue);
+  };
+
   return (
     <section className={`rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] ${compact ? 'p-3' : 'p-4'} ${className}`}>
       <div className="mb-3">
@@ -32,8 +46,10 @@ export default function ChequePagamentoFields({
             <input
               className={`input w-full ${compact ? 'input-sm' : ''}`}
               type={type}
-              value={value?.[field] || ''}
-              onChange={(event) => update(field, event.target.value)}
+              value={field === 'titular_documento' ? maskCpfCnpj(value?.[field]) : (value?.[field] || '')}
+              onChange={(event) => updateField(field, event)}
+              inputMode={field === 'titular_documento' ? 'numeric' : undefined}
+              maxLength={field === 'titular_documento' ? 18 : undefined}
               required={Boolean(required)}
               autoComplete="off"
             />

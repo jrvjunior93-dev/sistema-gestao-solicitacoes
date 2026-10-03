@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { getUsuarios } from '../services/usuarios';
 import { getSetores } from '../services/setores';
 import {
@@ -12,6 +11,7 @@ import {
   getModuleGovernance,
   MODULE_GOVERNANCE
 } from '../constants/moduleGovernance';
+import { Pagina, PageHeader, BlocoConteudo, Avisos, useAvisos } from '../components/padrao';
 
 const PERMISSAO_SOLICITACOES_MINHAS = 'solicitacoes.lista.visualizar_minhas';
 const COMPRAS_SCOPE_KEYS = [
@@ -93,32 +93,36 @@ function uniq(lista = []) {
 
 function CheckboxPermissao({ permissao, checked, disabled, onChange, inputType = 'checkbox', inputName }) {
   return (
+    // R10/M2: espaçamento e tipo só em degraus da escala (py-3, gap-1, mt-1,
+    // text-xs=12px). O 11px/10px de antes ficava abaixo do piso de leitura.
+    // R25: o realce do item marcado vem do token semântico de informação —
+    // `bg-blue-50/70` não tem par no tema escuro nem piso de contraste.
     <label
-      className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+      className={`flex items-start gap-3 rounded-lg border px-3 py-3 text-sm transition-colors ${
         disabled
           ? 'cursor-not-allowed border-[var(--ui-border)] bg-[var(--ui-canvas)] opacity-70'
           : checked
-            ? 'border-[var(--c-primary)] bg-blue-50/70'
+            ? 'border-[var(--c-primary)] bg-[var(--sem-info-bg)]'
             : 'border-[var(--ui-border)] bg-[var(--ui-surface)] hover:bg-[var(--ui-canvas)]'
       }`}
     >
       <input
         type={inputType}
         name={inputName}
-        className="mt-0.5 shrink-0"
+        className="mt-1 shrink-0"
         checked={checked}
         disabled={disabled}
         onChange={onChange}
       />
-      <span className="flex flex-col gap-0.5">
+      <span className="flex flex-col gap-1">
         <span className="font-medium text-[var(--c-text)]">{permissao.label}</span>
         {permissao.descricao && (
-          <span className="text-[11px] text-[var(--c-muted)]">{permissao.descricao}</span>
+          <span className="text-xs text-[var(--c-muted)]">{permissao.descricao}</span>
         )}
-        <span className="font-mono text-[10px] text-[var(--c-muted)] opacity-60">{permissao.key}</span>
+        <span className="font-mono text-xs text-[var(--c-muted)] opacity-60">{permissao.key}</span>
         {disabled && (
-          <span className="text-[11px] font-semibold text-emerald-700">
-            Padrao obrigatorio para setor OBRA
+          <span className="text-xs font-semibold text-[var(--sem-success)]">
+            Padrão obrigatório para setor OBRA
           </span>
         )}
       </span>
@@ -139,30 +143,20 @@ function ModuleCard({
   const allKeys = grupo.areas.flatMap((area) => area.permissoes.map((perm) => normalizeKey(perm.key)));
   const checkedCount = allKeys.filter((key) => permissoesAtuais.includes(key) || permissoesObrigatorias.includes(key)).length;
 
+  // O cartão do módulo passou a ser um BlocoConteudo: título em degrau de
+  // bloco (18px), apoio na prop `descricao` e as ações do módulo no slot
+  // `acoes`. O estado do módulo e a contagem viraram `badge` do sistema —
+  // pílula desenhada à mão trazia junto px-2.5/text-[10px] e paleta crua.
   return (
-    <section className="card sol-surface-card overflow-hidden p-0">
-      <div className="flex flex-col gap-3 border-b border-[var(--ui-border)] bg-[var(--ui-canvas)] px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-bold text-[var(--c-text)]">{grupo.label}</h2>
-            <span
-              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                moduleEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {moduleEnabled ? 'Modulo ativo' : 'Modulo desabilitado'}
-            </span>
-          </div>
-          <p className="mt-1 text-[12px] text-[var(--c-muted)]">{grupo.descricao}</p>
-          {governance && (
-            <p className="mt-1 text-[11px] text-[var(--c-muted)]">
-              <strong className="text-[var(--c-text)]">Impacto:</strong> {governance.disabledEffect}
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-[var(--ui-surface)] px-3 py-1 text-xs font-semibold text-[var(--c-muted)]">
+    <BlocoConteudo
+      titulo={grupo.label}
+      descricao={grupo.descricao}
+      acoes={(
+        <>
+          <span className={`badge ${moduleEnabled ? 'badge-success' : 'badge-muted'}`}>
+            {moduleEnabled ? 'Modulo ativo' : 'Modulo desabilitado'}
+          </span>
+          <span className="badge badge-default tabular-nums">
             {checkedCount}/{allKeys.length}
           </span>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => onSelectAll(allKeys)}>
@@ -171,10 +165,16 @@ function ModuleCard({
           <button type="button" className="btn btn-outline btn-sm" onClick={() => onClearAll(allKeys)}>
             Desmarcar
           </button>
-        </div>
-      </div>
+        </>
+      )}
+    >
+      {governance && (
+        <p className="app-note mb-4">
+          <strong className="text-[var(--c-text)]">Impacto:</strong> {governance.disabledEffect}
+        </p>
+      )}
 
-      <div className="space-y-4 p-4">
+      <div className="space-y-4">
         {grupo.areas.map((area) => {
           const areaEscopoCompras = area.key === 'compras.escopo';
           const escopoComprasAtivo = areaEscopoCompras ? getEffectiveComprasScope(permissoesAtuais) : null;
@@ -205,26 +205,27 @@ function ModuleCard({
           );
         })}
       </div>
-    </section>
+    </BlocoConteudo>
   );
 }
 
 export default function PermissoesAreasPadroes() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [erro, setErro] = useState('');
   const [setores, setSetores] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [registry, setRegistry] = useState([]);
   const [padroes, setPadroes] = useState({});
   const [setorSelecionado, setSetorSelecionado] = useState('');
   const [perfilSelecionado, setPerfilSelecionado] = useState('USUARIO');
+  // R3/R19: o canal de retorno da tela é o aviso do sistema — a faixa de erro
+  // desenhada à mão e o alert() do navegador saíram no mesmo movimento.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function carregar() {
       try {
         setLoading(true);
-        setErro('');
         const [setoresRes, usuariosRes, configRes, registryRes] = await Promise.all([
           getSetores(),
           getUsuarios(),
@@ -245,7 +246,7 @@ export default function PermissoesAreasPadroes() {
         }
       } catch (error) {
         console.error(error);
-        setErro('Nao foi possivel carregar as permissoes padrao.');
+        avisar.erro('Não foi possível carregar as permissões padrão.');
       } finally {
         setLoading(false);
       }
@@ -329,49 +330,56 @@ export default function PermissoesAreasPadroes() {
   async function salvar() {
     try {
       setSaving(true);
-      setErro('');
       const resultado = await salvarPermissoesAreas({ padroes_setor_perfil: padroes });
       setPadroes(normalizePadroes(resultado?.padroes_setor_perfil));
-      alert('Permissoes padrao por setor e perfil salvas.');
+      avisar.sucesso('Permissões padrão por setor e perfil salvas.');
     } catch (error) {
       console.error(error);
-      setErro('Nao foi possivel salvar as permissoes padrao.');
+      avisar.erro('Não foi possível salvar as permissões padrão.');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="page-shell space-y-6">
-      <header className="surface-card flex flex-col gap-4 p-6 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">
-            Configuracoes
-          </p>
-          <h1 className="mt-2 text-2xl font-bold text-[var(--c-text)]">Permissoes por Setor e Perfil</h1>
-          <p className="mt-2 max-w-3xl text-sm text-[var(--c-muted)]">
-            Defina a matriz padrao para todos os usuarios de um setor e perfil. Permissoes adicionais continuam
-            sendo configuradas por usuario na tela granular existente.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/permissoes-areas" className="btn btn-outline">
-            Excecoes por usuario
-          </Link>
-          <button type="button" className="btn btn-primary" onClick={salvar} disabled={saving || loading}>
-            {saving ? 'Salvando...' : 'Salvar padroes'}
-          </button>
-        </div>
-      </header>
+    // C1/R13: a tela é ALTA (a matriz inteira de módulos rola) e o
+    // "Salvar padroes" saía da vista. Com Pagina + PageHeader o cabeçalho
+    // gruda abaixo da topbar, compacta ao rolar e a ação principal fica
+    // sempre a um clique. O ritmo vertical (16px entre blocos) é do Pagina —
+    // por isso o `space-y-6` da raiz saiu.
+    <Pagina>
+      {/* C6/R11 (decisão do cliente, 04/09): navegação não mora em barra de
+          ação — mora no hub, no breadcrumb e na busca. O link "Excecoes por
+          usuario" saiu daqui; a tela de exceções por usuário tem porta
+          própria no hub de Configurações, grupo "Status e Vinculos". */}
+      <PageHeader
+        titulo="Permissões por Setor e Perfil"
+        descricao="Configurações · Defina a matriz padrão para todos os usuários de um setor e perfil. Permissões adicionais continuam sendo configuradas por usuário na tela granular existente."
+        acaoPrincipal={{
+          rotulo: saving ? 'Salvando...' : 'Salvar padroes',
+          onClick: salvar,
+          desabilitada: saving || loading
+        }}
+      />
 
-      {erro && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-          {erro}
-        </div>
-      )}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <section className="card sol-surface-card space-y-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(180px,280px)_auto] lg:items-end">
+      {/* R5: a contagem do padrão atual é apoio DESTE bloco (depende do setor
+          e do perfil escolhidos ao lado), não da tela — por isso vive nas
+          props contagem/descricao do BlocoConteudo e não se repete na faixa
+          do topo (B3). Com ela fora da grade, restaram as duas colunas dos
+          seletores e a medida arbitrária da grade deixou de existir. */}
+      <BlocoConteudo
+        titulo="Contexto do padrão"
+        variante="primario"
+        cor="var(--c-primary)"
+        contagem={`${permissoesAtuais.length} permissão(oes)`}
+        descricao="no padrão atual do setor e perfil selecionados"
+      >
+        {/* R12: estes dois selects são seletores de CONTEXTO (escolhem QUAL
+            padrão está sendo editado, e o que for marcado é gravado neles) —
+            legítimos pela própria regra, não são filtro de lista. */}
+        <div className="grid gap-3 lg:grid-cols-2 lg:items-end">
           <label className="form-field">
             <span>Setor</span>
             <select value={setorSelecionado} onChange={(event) => setSetorSelecionado(event.target.value)}>
@@ -393,42 +401,38 @@ export default function PermissoesAreasPadroes() {
               ))}
             </select>
           </label>
-
-          <div className="rounded-xl border border-[var(--ui-border)] bg-[var(--ui-canvas)] px-4 py-3 text-sm text-[var(--c-muted)]">
-            <strong className="text-[var(--c-text)]">{permissoesAtuais.length}</strong> permissao(oes) no padrao atual
-          </div>
         </div>
 
+        {/* Isto NÃO é aviso e por isso não passa pelo useAvisos: é CONDIÇÃO
+            derivada do setor escolhido (fecha e o problema continua). Fica
+            como faixa fixa ao lado do que descreve — só a cor virou token. */}
         {isSetorObra(setorAtual) && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Setor OBRA recebe automaticamente a permissao para ver suas proprias solicitacoes e solicitacoes das obras
+          <div className="mt-4 rounded-xl border border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] px-4 py-3 text-sm text-[var(--sem-success)]">
+            Setor OBRA recebe automaticamente a permissão para ver suas próprias solicitações e solicitações das obras
             vinculadas ao usuario, sem liberar todas as solicitacoes do setor.
           </div>
         )}
-      </section>
+      </BlocoConteudo>
 
       {loading ? (
-        <div className="card sol-surface-card text-sm text-[var(--c-muted)]">Carregando permissoes...</div>
+        <div className="app-empty-card">Carregando permissões...</div>
       ) : (
-        <div className="grid gap-4">
-          {registry.map((grupo) => (
-            <ModuleCard
-              key={grupo.key}
-              grupo={grupo}
-              governance={getModuleGovernance(grupo.key)}
-              moduleEnabled={moduleEnabledMap.has(grupo.key) ? moduleEnabledMap.get(grupo.key) : true}
-              permissoesAtuais={permissoesAtuais}
-              permissoesObrigatorias={permissoesObrigatorias}
-              onTogglePermissao={togglePermissao}
-              onSelectAll={selectAll}
-              onClearAll={clearAll}
-            />
-          ))}
-        </div>
+        registry.map((grupo) => (
+          <ModuleCard
+            key={grupo.key}
+            grupo={grupo}
+            governance={getModuleGovernance(grupo.key)}
+            moduleEnabled={moduleEnabledMap.has(grupo.key) ? moduleEnabledMap.get(grupo.key) : true}
+            permissoesAtuais={permissoesAtuais}
+            permissoesObrigatorias={permissoesObrigatorias}
+            onTogglePermissao={togglePermissao}
+            onSelectAll={selectAll}
+            onClearAll={clearAll}
+          />
+        ))
       )}
 
-      <section className="card sol-surface-card space-y-4">
-        <h2 className="text-base font-semibold text-[var(--c-text)]">Resumo dos modulos</h2>
+      <BlocoConteudo titulo="Resumo dos módulos" variante="secundario">
         <div className="grid gap-3 xl:grid-cols-2">
           {MODULE_GOVERNANCE.map((item) => {
             const active = moduleEnabledMap.has(item.key) ? moduleEnabledMap.get(item.key) : true;
@@ -436,14 +440,12 @@ export default function PermissoesAreasPadroes() {
               <article key={item.key} className="rounded-xl border border-[var(--ui-border)] bg-[var(--ui-canvas)] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--c-muted)]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-muted)]">
                       {item.role}
                     </p>
                     <h3 className="mt-1 text-sm font-semibold text-[var(--c-text)]">{item.label}</h3>
                   </div>
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                    active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
-                  }`}>
+                  <span className={`badge ${active ? 'badge-success' : 'badge-muted'}`}>
                     {active ? 'Ativo' : 'Desabilitado'}
                   </span>
                 </div>
@@ -452,7 +454,7 @@ export default function PermissoesAreasPadroes() {
             );
           })}
         </div>
-      </section>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

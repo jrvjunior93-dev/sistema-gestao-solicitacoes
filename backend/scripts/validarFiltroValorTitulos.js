@@ -5,6 +5,10 @@ const path = require('path');
 const {
   validateFinanceTituloQuery
 } = require('../src/validators/financialValidators');
+const {
+  resolveTituloStatusFilter,
+  resolveTituloStatusFilters
+} = require('../src/utils/tituloFinanceiroStatusFilter');
 
 function expectValidationError(callback, messagePart) {
   assert.throws(callback, (error) => (
@@ -34,6 +38,44 @@ expectValidationError(
   'Valor minimo nao pode ser maior que valor maximo.'
 );
 
+assert.strictEqual(validateFinanceTituloQuery({ status: 'ABERTO_VENCIDO' }).status, 'ABERTO_VENCIDO');
+assert.strictEqual(validateFinanceTituloQuery({ status: 'VENCIDO' }).status, 'VENCIDO');
+assert.strictEqual(
+  validateFinanceTituloQuery({ status: 'aberto, quitado,ABERTO' }).status,
+  'ABERTO,QUITADO'
+);
+const colunasOrdenaveis = [
+  'titulo', 'status', 'status_interno_pagar', 'tipo', 'documento',
+  'parceiro', 'obra', 'categoria', 'forma_pagamento', 'origem',
+  'emissao', 'vencimento', 'valor_total', 'saldo'
+];
+for (const coluna of colunasOrdenaveis) {
+  const query = validateFinanceTituloQuery({ ordenar_por: coluna, direcao: 'desc' });
+  assert.strictEqual(query.ordenar_por, coluna.toUpperCase());
+  assert.strictEqual(query.direcao, 'DESC');
+}
+expectValidationError(
+  () => validateFinanceTituloQuery({ ordenar_por: 'campo_interno', direcao: 'asc' }),
+  'Coluna de ordenacao invalido.'
+);
+expectValidationError(
+  () => validateFinanceTituloQuery({ ordenar_por: 'emissao', direcao: 'lateral' }),
+  'Direcao da ordenacao invalido.'
+);
+assert.deepStrictEqual(resolveTituloStatusFilter('EM_ABERTO'), {
+  statuses: ['PREVISAO', 'ABERTO', 'PARCIAL'],
+  vencido: false
+});
+assert.deepStrictEqual(resolveTituloStatusFilter('ABERTO_VENCIDO'), {
+  statuses: ['ABERTO'],
+  vencido: true
+});
+assert.deepStrictEqual(resolveTituloStatusFilters('ABERTO,QUITADO,ABERTO_VENCIDO'), [
+  { statuses: ['ABERTO'], vencido: false },
+  { statuses: ['QUITADO'], vencido: false },
+  { statuses: ['ABERTO'], vencido: true }
+]);
+
 expectValidationError(
   () => validateFinanceTituloQuery({ valor_min: '-1' }),
   'Valor minimo invalido.'
@@ -43,6 +85,10 @@ const serviceSource = fs.readFileSync(
   path.resolve(__dirname, '../src/services/tituloFinanceiroService.js'),
   'utf8'
 );
+const frontendSource = fs.readFileSync(
+  path.resolve(__dirname, '../../frontend/src/pages/FinanceiroTitulos.jsx'),
+  'utf8'
+);
 
 assert(
   serviceSource.includes('where.valor_original[Op.gte] = valorMinimo')
@@ -50,4 +96,23 @@ assert(
   'O filtro de valor dos titulos deve manter os limites minimo e maximo inclusivos.'
 );
 
-console.log('Validacao dos filtros de valor dos titulos concluida com sucesso.');
+for (const coluna of colunasOrdenaveis) {
+  assert(
+    serviceSource.includes(`${coluna}: `) && frontendSource.includes(`id: '${coluna}'`),
+    `A ordenacao da coluna ${coluna} deve existir no servidor e na tabela.`
+  );
+}
+assert(
+  frontendSource.includes('aoOrdenar={ordenarTitulos}')
+    && frontendSource.includes('ordenar_por: ordenacao.coluna'),
+  'A ordenacao deve consultar o servidor para manter a ordem entre paginas.'
+);
+
+assert(
+  frontendSource.includes("{ value: 'VENCIDO'")
+    && frontendSource.includes("{ value: 'ABERTO_VENCIDO'")
+    && frontendSource.includes('aria-multiselectable="true"'),
+  'A consulta de titulos deve expor selecao multipla e filtros de vencimento calculado.'
+);
+
+console.log('Validacao dos filtros de valor e status dos titulos concluida com sucesso.');

@@ -2,6 +2,7 @@
 
 const { ValidationError, ensureAllowedKeys } = require('../../../middlewares/validation');
 const { SST_RESOURCE_CONFIG } = require('../constants/sstConstants');
+const { onlyDigits, isValidCpf } = require('../../../utils/cpfCnpj');
 
 function normalizeInt(value, fieldName, { required = false } = {}) {
   if (value === undefined || value === null || value === '') {
@@ -102,6 +103,14 @@ function normalizeSstPayload(payload = {}, req) {
       ['validade', 'entrega_em'].includes(field)
     ) {
       normalized[field] = normalizeDate(value, field);
+    } else if (field === 'responsavel_tecnico_cpf') {
+      if (value == null || String(value).trim() === '') {
+        normalized[field] = null;
+      } else if (!isValidCpf(value)) {
+        throw new ValidationError('CPF do responsavel tecnico invalido.');
+      } else {
+        normalized[field] = onlyDigits(value);
+      }
     } else {
       normalized[field] = normalizeText(value, field.includes('xml') || field === 'retorno' ? 1000000 : 5000);
     }

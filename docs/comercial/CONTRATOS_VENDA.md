@@ -50,3 +50,19 @@ Conferir no PDF:
 - Item VI agrupa corretamente as parcelas.
 - Item XI exibe local e data corretos.
 - Item XII possui incorporadora com representante legal, comprador/conjuge e testemunhas, sem assinatura do corretor.
+
+## Carga inicial dos modelos oficiais
+
+Os arquivos da pasta `Contratos/` nao entram no cadastro apenas por existirem no repositorio. Em
+cada ambiente, depois que os empreendimentos estiverem cadastrados, execute a partir da raiz:
+
+```bash
+node backend/scripts/dados/configurarModelosContratosComerciais.js
+```
+
+O carregador e idempotente: mantem um modelo oficial ja cadastrado com o mesmo nome e nao substitui
+outro modelo ativo por engano. A opcao `--replace` so deve ser usada depois de revisar o modelo que
+sera desativado. Empreendimentos ausentes sao informados e ficam pendentes ate o cadastro existir.
+
+O servidor que gera o PDF precisa do LibreOffice. Quando `soffice` nao estiver no `PATH`, configure
+`LIBREOFFICE_BIN` com o caminho absoluto do executavel antes de iniciar ou reiniciar o backend.

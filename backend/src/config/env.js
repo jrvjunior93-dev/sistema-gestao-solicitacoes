@@ -23,6 +23,18 @@ function parseBoolean(value, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
 }
 
+const PAYMENT_OWNER_APPROVAL_MODES = Object.freeze(['OFF', 'PILOT', 'ENFORCED', 'PAUSED']);
+
+function parsePaymentOwnerApprovalMode(value) {
+  const normalized = String(value || 'OFF').trim().toUpperCase();
+  return PAYMENT_OWNER_APPROVAL_MODES.includes(normalized) ? normalized : 'OFF';
+}
+
+function parsePositiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function trimTrailingSlashes(value) {
   return String(value || '').trim().replace(/\/+$/g, '');
 }
@@ -57,6 +69,11 @@ function resolveBbOauthTokenUrl() {
   return 'https://oauth.hm.bb.com.br/oauth/token';
 }
 
+const rawPaymentOwnerApprovalMode = String(process.env.PAYMENT_OWNER_APPROVAL_MODE || '').trim().toUpperCase();
+if (rawPaymentOwnerApprovalMode && !PAYMENT_OWNER_APPROVAL_MODES.includes(rawPaymentOwnerApprovalMode)) {
+  console.warn(`[config] PAYMENT_OWNER_APPROVAL_MODE invalido (${rawPaymentOwnerApprovalMode}); usando OFF.`);
+}
+
 function buildSiengeApiBaseUrl({ baseUrl, host, subdomain, basePath }) {
   const explicitBaseUrl = trimTrailingSlashes(baseUrl);
   if (explicitBaseUrl) {
@@ -81,6 +98,8 @@ function buildSiengeApiBaseUrl({ baseUrl, host, subdomain, basePath }) {
 
 const env = {
   nodeEnv: String(process.env.NODE_ENV || 'development').trim(),
+  deploymentEnvironment: String(process.env.DEPLOYMENT_ENV || '').trim().toLowerCase(),
+  devUserSwitchEnabled: parseBoolean(process.env.DEV_USER_SWITCH_ENABLED, false),
   port: Number(process.env.PORT || 8000),
   trustProxy: Number(process.env.TRUST_PROXY || 1),
   dbHost: String(process.env.DB_HOST || '127.0.0.1').trim(),
@@ -88,6 +107,7 @@ const env = {
   dbUser: String(process.env.DB_USER || '').trim(),
   dbPassword: process.env.DB_PASSWORD ?? process.env.DB_PASS ?? '',
   dbName: String(process.env.DB_NAME || '').trim(),
+  dbSslCaFile: String(process.env.DB_SSL_CA_FILE || '').trim(),
   jwtSecret: String(process.env.JWT_SECRET || '').trim(),
   jwtExpiresIn: String(process.env.JWT_EXPIRES_IN || '8h').trim(),
   uploadMaxFileSizeMb: Number(process.env.UPLOAD_MAX_FILE_SIZE_MB || 50),
@@ -117,6 +137,14 @@ const env = {
     process.env.REDIS_REQUIRED,
     String(process.env.NODE_ENV || 'development').trim() === 'production'
   ),
+  paymentOwnerApprovalMode: parsePaymentOwnerApprovalMode(rawPaymentOwnerApprovalMode),
+  paymentOwnerApprovalTtlHours: parsePositiveNumber(process.env.PAYMENT_OWNER_APPROVAL_TTL_HOURS, 48),
+  webauthnRpId: String(process.env.WEBAUTHN_RP_ID || '').trim(),
+  webauthnRpName: String(process.env.WEBAUTHN_RP_NAME || process.env.PRODUCT_NAME || 'Fluxy').trim(),
+  webauthnOrigins: parseCsv(process.env.WEBAUTHN_ORIGINS),
+  webPushVapidPublicKey: String(process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '').trim(),
+  webPushVapidPrivateKey: String(process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '').trim(),
+  webPushVapidSubject: String(process.env.WEB_PUSH_VAPID_SUBJECT || '').trim(),
   clamavEnabled: parseBoolean(process.env.CLAMAV_ENABLED, false),
   clamavHost: String(process.env.CLAMAV_HOST || '127.0.0.1').trim(),
   clamavPort: Number(process.env.CLAMAV_PORT || 3310),
@@ -247,5 +275,7 @@ module.exports = {
   env,
   buildSiengeApiBaseUrl,
   parseCsv,
+  parsePaymentOwnerApprovalMode,
+  PAYMENT_OWNER_APPROVAL_MODES,
   validateRequiredEnv
 };

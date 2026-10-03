@@ -1,0 +1,9 @@
+{
+  "regra": "ROTA SEM MEDICAO",
+  "criado_em": "2026-09-04",
+  "porque": "Tela que o usuario ABRE e que nao esta nem no manifesto estatico nem na lista do harness — ninguem a mede. O check antigo comparava as duas listas ENTRE SI e passava verde quando elas concordavam; concordancia nao e cobertura. Medido em 04/09: 181 rotas, 61 medidas, 120 nunca. O numero SO DESCE: rota nova fora das duas listas reprova na hora. 05/09: caiu de 69 para 4. Duas quedas somadas — as telas da rodada 7 entraram nas duas listas, e o inventario passou a resolver pasta com index.jsx (antes contava src/pages/Solicitacoes.jsx, arquivo que nao existe, como rota nunca medida). Sobraram QUATRO de verdade, listadas aqui. 05/09 (segunda medicao): o proprio detector era o problema. Ele lia UMA LINHA por rota e enxergava 181 telas; era CEGO a 8 (pasta com index.jsx, <Route index> sem path, guarda local que renderiza a tela, e <Route> quebrado em varias linhas) e apontava 2 arquivos que nao existem. Reescrito para ler o <Route> inteiro: 187 telas de rota, ZERO sem medicao. O zero agora tem duas travas — arquivo inexistente no inventario reprova, e leitura abaixo de 180 rotas reprova.",
+  "total_em_04_09": 120,
+  "telas": [],
+  "atualizado_em": "2026-09-05",
+  "total_em": 0
+}

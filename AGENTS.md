@@ -4,6 +4,7 @@
 Guia rapido para colaboradores e agentes automatizados.
 
 ## Regras
+- Autorizacao funcional do proprietario registrada em 2026-08-25: agentes podem analisar e atuar em qualquer area funcional deste sistema, sem divisao fixa por modulo. Essa autorizacao amplia o alcance possivel, mas nao autoriza automaticamente mutacoes fora da tarefa atual. Cada implementacao, teste com escrita, migration, reinicio, integracao externa, deploy ou operacao destrutiva continua limitado ao pedido e as autorizacoes explicitas do usuario para a tarefa em curso.
 - O sistema esta funcionando e pronto para deploy dentro dos objetivos pretendidos. Tudo o que for criado precisa levar em conta todo o contexto criado ate o momento para nao quebrar o sistema.
 - Nao alterar arquivos fora deste repositorio, exceto em sessoes explicitamente abertas para colaboracao multirrepositorio no workspace e seguindo obrigatoriamente `docs/COLABORACAO_WORKSPACE.md` e o `AGENTS.md` do repositorio alvo.
 - Evitar mudancas destrutivas.
@@ -26,7 +27,7 @@ Guia rapido para colaboradores e agentes automatizados.
 
 ### Infra / Deploy
 - Os ambientes usam processos PM2 distintos na EC2:
-  - desenvolvimento (`dev-v2`): `backend-dev`;
+  - desenvolvimento/homologacao (checkout atual em `refactor/frontend`): `backend-dev`;
   - producao (`main`): `backend-solicitacoes`.
 - Nunca reiniciar `backend-solicitacoes` durante uma atualizacao exclusiva de dev; nunca reiniciar `backend-dev` durante um deploy exclusivo de producao.
 - O backend de producao usa Nginx proxy em `api.jrfluxy.com.br` para `127.0.0.1:8000`.
@@ -101,15 +102,31 @@ Guia rapido para colaboradores e agentes automatizados.
   - agrega titulos financeiros por obra: executado (PAGAR baixado) e recebido (RECEBER baixado)
 - sistema de permissoes de areas por usuario:
   - registro central em `backend/src/constants/moduloPermissoes.js`
-  - 19 grupos, 93 areas e 324 permissoes no formato `modulo.area.acao` (as areas sao derivadas do registro central)
+  - 19 grupos, 106 areas e 372 permissoes no formato `modulo.area.acao` (as areas sao derivadas do registro central)
   - armazenado em `ConfiguracaoSistema` chave `PERMISSOES_AREAS_USUARIOS`
   - sessao do usuario: campo `areas_permissoes`
   - helper: `hasPermissao(user, 'chave')` em `frontend/src/utils/acessoProduto.js`
   - UI: Configuracoes > Permissoes de Areas por Usuario (`/permissoes-areas`)
-  - o grupo SST ainda contem permissoes de funcionalidades legadas; nao ampliar esse conjunto antes da simplificacao descrita em `docs/sst/PLANO_SIMPLIFICACAO_SEGURA.md`
+- o grupo SST ainda contem permissoes de funcionalidades legadas; nao ampliar esse conjunto antes da simplificacao descrita em `docs/sst/PLANO_SIMPLIFICACAO_SEGURA.md`
+
+### Estado consolidado em 30/09/2026
+- `CADASTRO DE OBRA` e fluxo independente na Nova Solicitacao, sem obra/centro de custo
+  preexistente; coleta dados cadastrais, responsavel tecnico em texto, usuarios com acesso
+  e documentos, e cria a obra definitiva de forma transacional/idempotente.
+- Gestao de Contratos diferencia legado e fluxo novo, calcula status operacional e permite
+  rescisao preservando medicoes e movimentos; novo aditivo exige Negociacao Detalhada.
+- Fluxo de caixa separa previsto e realizado, aplica o mesmo periodo/data de corte ao
+  comparativo e possui filtros historicos e de projecao.
+- Painel do Gestor possui Modo TV, ordenacao por usuario e olho de privacidade por PIN;
+  o PIN oculta valores, mas nao substitui autenticacao ou permissao.
+- A autorizacao do proprietario para entrada na Fila de Pagamentos esta implementada na
+  branch, mas permanece inativa por padrao com `PAYMENT_OWNER_APPROVAL_MODE=OFF`. Usa PWA,
+  passkeys, push generico, autorizadores nominais, dossie isolado e revalidacao antes do
+  enqueue. Migration/configuracao/homologacao `PILOT` ainda nao foram executadas; nunca
+  ativar `ENFORCED` no mesmo passo do deploy.
 
 ## Checklist de Deploy
-- Backend dev (`dev-v2`): `git pull` -> `npm install` (backend) -> migrations/testes aplicaveis -> `pm2 restart backend-dev --update-env`.
+- Backend dev (`refactor/frontend` no checkout de homologacao): `git pull` -> `npm install` (backend) -> migrations/testes aplicaveis -> `pm2 restart backend-dev --update-env`.
 - Backend producao (`main`): `git pull` -> `npm install` (backend) -> migrations/testes aplicaveis -> `pm2 restart backend-solicitacoes --update-env`.
 - Frontend: `git push` -> Redeploy na Vercel (cache limpo).
 

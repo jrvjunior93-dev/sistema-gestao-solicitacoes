@@ -64,7 +64,7 @@ function validarFrontend() {
   assert(source.includes("String(status).toUpperCase() === 'CANCELADO'"), 'Cancelamento pelo seletor de status nao solicita motivo.');
   assert(source.includes('!itemEditando.removido || pedidoCancelado'), 'Item de pedido cancelado nao foi liberado para remanejamento.');
   assert(!cotacaoSource.includes("rotuloCampo: 'Justificativa do fechamento parcial'"), 'A interface ainda pede justificativa no fechamento parcial.');
-  assert(/Saldo que permanecer(?:a|á) aberto/.test(cotacaoSource), 'Confirmacao do fechamento parcial precisa informar o saldo remanescente.');
+  assert(cotacaoSource.includes('Saldo que permanecerá aberto'), 'Confirmacao do fechamento parcial precisa informar o saldo remanescente.');
 }
 
 validarSaldoHistoricoDestino();

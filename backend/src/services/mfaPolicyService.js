@@ -8,7 +8,18 @@ function normalizeProfile(value) {
 
 const MFA_REQUIRED_PROFILES = new Set(['SUPERADMIN', 'ADMINISTRADOR', 'ADMIN']);
 
+// Permite desligar a exigencia de MFA em ambientes locais/offline, onde o fluxo
+// de TOTP so atrapalha o desenvolvimento. O padrao continua sendo EXIGIR: a
+// politica so cai com MFA_POLICY_ENABLED=false explicito no .env.
+function isMfaPolicyEnabled() {
+  return String(process.env.MFA_POLICY_ENABLED ?? 'true').trim().toLowerCase() !== 'false';
+}
+
 function isMfaRequiredProfile(profileOrUser) {
+  if (!isMfaPolicyEnabled()) {
+    return false;
+  }
+
   const profile = typeof profileOrUser === 'string'
     ? profileOrUser
     : profileOrUser?.perfil;
@@ -18,5 +29,6 @@ function isMfaRequiredProfile(profileOrUser) {
 
 module.exports = {
   isMfaRequiredProfile,
+  isMfaPolicyEnabled,
   normalizeProfile
 };

@@ -345,6 +345,11 @@ function recordHttpEvent(req, statusCode, responseResource = null) {
       method: req.method,
       status_code: statusCode,
       rota: normalized,
+      ...(req.dev_user_switch ? {
+        dev_user_switch: true,
+        actor_id: Number(req.dev_user_switch.actor_id) || null,
+        target_id: Number(req.dev_user_switch.target_id) || null
+      } : {}),
       ...fieldsMetadata,
       ...operationalContext.metadata
     }
@@ -374,7 +379,14 @@ async function recordNavigation(req, body = {}) {
     origem: 'FRONTEND',
     ip_hash: hashIp(req),
     user_agent_resumo: clampText(req.headers?.['user-agent'], 160),
-    metadata: { pagina_nome: pageName }
+    metadata: {
+      pagina_nome: pageName,
+      ...(req.dev_user_switch ? {
+        dev_user_switch: true,
+        actor_id: Number(req.dev_user_switch.actor_id) || null,
+        target_id: Number(req.dev_user_switch.target_id) || null
+      } : {})
+    }
   });
 }
 
@@ -418,9 +430,15 @@ function buildWhere(filters) {
 async function getSummary(query) {
   const filters = normalizeFilters(query);
   const where = buildWhere(filters);
+  const tiposDivergenciaCaixa = ['CASH_DIVERGENCE_OPENING', 'CASH_DIVERGENCE_CLOSING'];
+  const tiposDivergenciaFiltrados = filters.tipo_evento
+    ? tiposDivergenciaCaixa.filter((tipo) => tipo === filters.tipo_evento)
+    : tiposDivergenciaCaixa;
+  const whereDivergencia = { ...where };
+  delete whereDivergencia.tipo_evento;
   const [
     total, usuarios, navegacoes, operacoes, falhas, criacoes, alteracoes, conclusoes,
-    modules, days
+    divergenciasAbertura, divergenciasFechamento, modules, days
   ] = await Promise.all([
     GovernancaEventoOperacional.count({ where }),
     GovernancaEventoOperacional.count({ where, distinct: true, col: 'usuario_id' }),
@@ -430,6 +448,12 @@ async function getSummary(query) {
     GovernancaEventoOperacional.count({ where: { ...where, tipo_evento: 'CREATE' } }),
     GovernancaEventoOperacional.count({ where: { ...where, tipo_evento: 'UPDATE' } }),
     GovernancaEventoOperacional.count({ where: { ...where, tipo_evento: { [Op.in]: ['CLOSE', 'APPROVE', 'RECONCILE'] } } }),
+    tiposDivergenciaFiltrados.includes('CASH_DIVERGENCE_OPENING')
+      ? GovernancaEventoOperacional.count({ where: { ...whereDivergencia, tipo_evento: 'CASH_DIVERGENCE_OPENING' } })
+      : Promise.resolve(0),
+    tiposDivergenciaFiltrados.includes('CASH_DIVERGENCE_CLOSING')
+      ? GovernancaEventoOperacional.count({ where: { ...whereDivergencia, tipo_evento: 'CASH_DIVERGENCE_CLOSING' } })
+      : Promise.resolve(0),
     GovernancaEventoOperacional.findAll({
       where,
       attributes: [
@@ -457,6 +481,11 @@ async function getSummary(query) {
   ]);
   return {
     total, usuarios, navegacoes, operacoes, falhas, criacoes, alteracoes, conclusoes,
+    divergencias_caixa: {
+      abertura: divergenciasAbertura,
+      fechamento: divergenciasFechamento,
+      total: divergenciasAbertura + divergenciasFechamento
+    },
     por_modulo: modules.map((item) => ({
       modulo: item.modulo,
       eventos: Number(item.eventos || 0),

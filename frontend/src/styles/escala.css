@@ -1,0 +1,114 @@
+/* ============================================================================
+   ESCALA — a ÚNICA fonte de medida das telas reformadas (docs/REGRAS-LAYOUT.md)
+   ----------------------------------------------------------------------------
+   Nenhuma tela escreve pixel: escolhe um degrau daqui (ou uma classe de
+   componente que já o usa). O verificador (validarLayout.mjs) reprova medida
+   à mão nas telas do manifesto.
+
+   Critério que governa os valores: CONFORTO E CLAREZA DE LEITURA (decisão do
+   cliente, 02/09). Quando "cabe mais informação" briga com "lê-se melhor",
+   vence a leitura — mais rolagem é aceitável, apertar os olhos não.
+   ========================================================================== */
+
+:root {
+  /* Espaço — degraus 4/8/12/16/24/32/48 (subconjunto Tailwind 1/2/3/4/6/8/12) */
+  --esp-1: 4px;
+  --esp-2: 8px;
+  --esp-3: 12px;
+  --esp-4: 16px;
+  --esp-6: 24px;
+  --esp-8: 32px;
+  --esp-12: 48px;
+
+  /* Tipo — CINCO degraus com papel fixo, e altura de linha de leitura (R30,
+     05/09). Nada abaixo de 12px em conteúdo, inclusive no Login.
+
+     O QUINTO DEGRAU ENTROU EM 05/09, e não é enfeite: a medição achou
+     **92 tamanhos distintos** em uso contra os 4 declarados aqui, e o número
+     grande de painel era um dos motivos — `.dash-kpi-value`,
+     `.dashboard-metric-value`, `.hub-pendencia-cartao-numero`,
+     `.hub-gasto-valor` e `.rh-pessoal-alerta-numero` viviam entre 20px e
+     32px porque não havia degrau para eles. Decisão do cliente: o painel
+     NÃO é achatado para 22 — o número de destaque ganha degrau próprio, e
+     o 22 continua sendo só do título de tela.
+
+     CONTE O DEGRAU, NÃO O VALOR: doze números no D5 são UM degrau. Repetir
+     o mesmo degrau é o que torna a tela legível; misturar cinco alturas
+     para fabricar hierarquia é o que a R30 proíbe. */
+  --fonte-detalhe: 0.75rem;   /* D1 12px: apoio, rótulos, subtexto de célula */
+  --fonte-corpo: 0.875rem;    /* D2 14px: corpo, células, botões, menus */
+  --fonte-bloco: 1.125rem;    /* D3 18px: título de bloco/seção */
+  --fonte-pagina: 1.375rem;   /* D4 22px: título de página, e SÓ ele */
+  --fonte-destaque: 1.875rem; /* D5 30px: número grande de painel, e SÓ ele */
+  --lh-detalhe: 1.45;
+  --lh-corpo: 1.5;
+  --lh-titulo: 1.3;
+  --lh-destaque: 1.1;
+
+  /* Raios — três, do controle ao cartão. */
+  --raio-1: 8px;
+  --raio-2: 12px;
+  --raio-3: 14px;
+}
+
+/* ---- Pagina: o ritmo vertical pertence ao componente, não à tela --------- */
+.app-pagina {
+  display: grid;
+  gap: var(--esp-4);
+  align-content: start;
+  /*
+    A TRILHA DA PÁGINA NÃO PODE SER DITADA PELO CONTEÚDO (06/09, X3).
+
+    A grade era `display: grid` SEM `grid-template-columns`: uma trilha
+    implícita `auto`, cujo tamanho é o MAIOR mínimo-de-conteúdo entre os
+    filhos. Num celular de 390px isso virava, medido no preview publicado:
+
+      sst-dashboard            trilha  468px   (o `<h1>` da faixa)
+      config-hub               trilha  698px
+      sst-centro-operacional   trilha  618px
+      solicitacoes-rel-oper.   trilha 1114px   (o `.app-stat-grid`)
+      dashboard                trilha 1231px   (a faixa com a barra de ação)
+
+    E a trilha ESTICA TODOS os filhos: um único conteúdo teimoso levava a
+    página inteira para além da janela. Como `html, body, #root` e o
+    `.layout-shell` têm `overflow-x: clip` (de propósito — R18, para tabela
+    larga rolar dentro do bloco e não deslocar o documento), o transbordo
+    era RECORTADO: nenhuma barra de rolagem, o conteúdo simplesmente NÃO
+    EXISTIA para quem usa o celular. Foram 15 telas do X3, e as seis
+    "famílias" diferentes que o relatório listou (título, ladrilho,
+    etiqueta, cabeçalho de bloco, botão) eram todas a MESMA causa: esta.
+
+    `minmax(0, 1fr)` é a trilha que já se escreve em todo o resto do
+    sistema (`.app-stat-grid`, `.form-grid`, `.app-blocos-colunas`): o piso
+    ZERO impede o conteúdo de empurrar a coluna, e o `1fr` continua dando a
+    largura inteira. Não é degrau novo — é o mesmo degrau que a folha usa
+    para toda grade que precisa caber.
+  */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+  DEGRAU FIXO, NÃO RAMPA (R30, 05/09).
+
+  Isto era `clamp(1.25rem, 2.5vw, var(--fonte-pagina))`: entre 20px e 22px,
+  passando por todo valor intermediário conforme a largura. Rampa contínua
+  não é degrau — ela produz um tamanho DIFERENTE em cada viewport, e foi
+  uma das fontes dos 92 tamanhos distintos que a medição de 05/09 achou
+  (26 declarações de texto usavam `clamp()`).
+
+  O que substitui: o degrau declarado, e um `@media` que CAI UM DEGRAU
+  inteiro quando a largura não comporta o título de tela. A tela continua
+  cabendo; o que acaba é o meio-termo.
+*/
+.app-pagina > .page-title,
+.app-pagina .app-page-header .page-title {
+  font-size: var(--fonte-pagina);
+  line-height: var(--lh-titulo);
+}
+
+@media (max-width: 600px) {
+  .app-pagina > .page-title,
+  .app-pagina .app-page-header .page-title {
+    font-size: var(--fonte-bloco);
+  }
+}

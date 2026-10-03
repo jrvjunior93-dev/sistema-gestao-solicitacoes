@@ -24,6 +24,11 @@ async function registrarEventoSeguranca({
 
   try {
     const headers = req?.headers || {};
+    const impersonationMetadata = req?.dev_user_switch ? {
+      dev_user_switch: true,
+      actor_id: Number(req.dev_user_switch.actor_id) || null,
+      target_id: Number(req.dev_user_switch.target_id) || null
+    } : null;
     return await SecurityEventLog.create({
       usuario_id: usuarioId,
       tipo_evento: String(tipoEvento).trim().toUpperCase(),
@@ -33,7 +38,9 @@ async function registrarEventoSeguranca({
       descricao: descricao || null,
       ip_origem: req ? getRequestIp(req) : null,
       user_agent: req ? String(headers['user-agent'] || '').slice(0, 255) : null,
-      metadata: metadata || null
+      metadata: impersonationMetadata
+        ? { ...impersonationMetadata, ...(metadata || {}) }
+        : (metadata || null)
     });
   } catch (error) {
     console.error('Falha ao registrar evento de seguranca:', error.message);

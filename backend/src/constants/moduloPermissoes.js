@@ -4,7 +4,8 @@
  * Registro central de permissões de área por módulo.
  *
  * Regras:
- * - SUPERADMIN e ADMINISTRADOR têm bypass total — nunca são afetados.
+ * - SUPERADMIN tem bypass global e nunca e afetado por permissoes granulares.
+ * - ADMINISTRADOR tem bypass nas permissoes comuns, mas respeita verificacoes estritas.
  * - Se um usuário NÃO tiver entradas neste sistema → acesso completo ao que seu perfil já permite (backwards compat).
  * - Se um usuário TIVER entradas → somente as permissões listadas são concedidas.
  *
@@ -23,6 +24,31 @@ const MODULO_PERMISSION_GROUPS = [
         label: 'Dashboard',
         permissoes: [
           { key: 'painel.dashboard.visualizar', label: 'Visualizar Dashboard', descricao: 'Permite acessar o dashboard inicial do painel.' }
+        ]
+      },
+      {
+        key: 'painel_gestor.acesso',
+        label: 'Painel do Gestor',
+        permissoes: [
+          { key: 'painel_gestor.acessar', label: 'Acessar Painel do Gestor', descricao: 'Torna o Painel do Gestor a entrada principal do usuario.' },
+          { key: 'painel_gestor.escopo.todas_obras', label: 'Visualizar todas as obras', descricao: 'Amplia os indicadores gerenciais para todas as obras; sem esta permissao, respeita os vinculos do usuario.' }
+        ]
+      },
+      {
+        key: 'painel_gestor.visualizacao',
+        label: 'Visoes do Painel do Gestor',
+        permissoes: [
+          { key: 'painel_gestor.resultado_obras.visualizar', label: 'Ver Resultado de Obras', descricao: 'Consulta resultado financeiro por obra e periodo.' },
+          { key: 'painel_gestor.custos_recebiveis.visualizar', label: 'Ver Custos e Recebiveis', descricao: 'Consulta o dashboard gerencial de custos e recebiveis.' },
+          { key: 'painel_gestor.saldos.visualizar', label: 'Ver Saldos e Contas', descricao: 'Consulta os saldos disponiveis informados diariamente.' }
+        ]
+      },
+      {
+        key: 'painel_gestor.saldos',
+        label: 'Saldos diarios do gestor',
+        permissoes: [
+          { key: 'painel_gestor.saldos.informar', label: 'Informar saldos do dia', descricao: 'Registra ou atualiza os saldos disponiveis das contas no dia corrente.' },
+          { key: 'painel_gestor.saldos.corrigir', label: 'Corrigir saldos anteriores', descricao: 'Permite corrigir datas anteriores com justificativa e auditoria.' }
         ]
       }
     ]
@@ -115,7 +141,9 @@ const MODULO_PERMISSION_GROUPS = [
           { key: 'solicitacoes.acoes.alterar_status_qualquer_setor', label: 'Alterar status em qualquer setor', descricao: 'Permite alterar o status de solicitações em outros setores usando os status do setor do próprio usuário.' },
           { key: 'solicitacoes.acoes.alterar_valor', label: 'Alterar valor da solicitação', descricao: 'Permite editar o valor financeiro da solicitação sem exigir perfil administrativo do GEO.' },
           { key: 'solicitacoes.acoes.alterar_data_vencimento', label: 'Alterar data de vencimento', descricao: 'Permite editar a data de vencimento da solicitação sem exigir perfil administrativo do GEO.' },
-          { key: 'solicitacoes.apropriacoes.editar', label: 'Editar apropriações', descricao: 'Permite alterar a apropriação principal e o rateio de apropriações da solicitação, mantendo auditoria.' }
+          { key: 'solicitacoes.apropriacoes.editar', label: 'Editar apropriações', descricao: 'Permite alterar a apropriação principal e o rateio de apropriações da solicitação, mantendo auditoria.' },
+          { key: 'solicitacoes.retorno.solicitar', label: 'Solicitar retorno ao setor', descricao: 'Permite pedir que uma solicitação visível volte ao setor operacional do usuário.' },
+          { key: 'solicitacoes.retorno.decidir', label: 'Decidir pedidos de retorno', descricao: 'Permite aprovar ou rejeitar pedidos de retorno enquanto a solicitação está no próprio setor.' }
         ]
       },
       {
@@ -164,8 +192,8 @@ const MODULO_PERMISSION_GROUPS = [
           { key: 'compras.solicitacoes.criar', label: 'Criar solicitacao de compra', descricao: 'Acessar a pagina Nova Solicitacao de Compra e criar solicitacoes vinculadas a obra.' },
           { key: 'compras.solicitacoes.gerenciar', label: 'Gerenciar solicitacoes', descricao: 'Liberar, recusar, enviar para fornecedores, encerrar e comentar solicitacoes de compra.' },
           { key: 'compras.solicitacoes.excluir', label: 'Inativar solicitacoes', descricao: 'Inativar uma ou mais solicitacoes de compra na fila operacional.' },
-          { key: 'compras.solicitacoes.encaminhar_compras', label: 'Enviar para Compras', descricao: 'Encaminhar solicitacoes de compra antigas ou fora do fluxo para a fila do setor de Compras.' },
-          { key: 'compras.solicitacoes.editar_itens', label: 'Editar itens da solicitacao', descricao: 'Editar itens operacionais da solicitacao de compra sem encerrar cotacao.' },
+          { key: 'compras.solicitacoes.encaminhar_compras', label: 'Enviar para Compras', descricao: 'Concluir a revisao no GEO e encaminhar a solicitacao para a fila do setor de Compras.' },
+          { key: 'compras.solicitacoes.editar_itens', label: 'Gerenciar itens da solicitacao', descricao: 'Revisar quantidades e apropriacoes dos itens antes do envio para Compras, sem liberar cotacao ou pedido.' },
           { key: 'compras.solicitacoes.editar_quantidade', label: 'Alterar quantidade solicitada', descricao: 'Alterar quantidade solicitada dos itens com auditoria.' },
           { key: 'compras.solicitacoes.editar_apropriacoes_itens', label: 'Alterar apropriações dos itens', descricao: 'Alterar apropriações dos itens da solicitação de compra com auditoria, sem liberar encerramento da cotação.' },
           { key: 'compras.solicitacoes.gerar_pedidos', label: 'Gerar pedidos pela cotacao', descricao: 'Gerar pedidos de compra a partir da cotacao encerrada.' }
@@ -212,6 +240,17 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'compras.pedidos.financeiro',
+        label: 'Titulos Financeiros dos Pedidos',
+        permissoes: [
+          { key: 'compras.pedidos.financeiro.visualizar', label: 'Visualizar titulos do pedido', descricao: 'Ver titulos, documentos e pedidos de reabertura vinculados ao pedido.' },
+          { key: 'compras.pedidos.financeiro.anexar_documentos', label: 'Anexar comprovação da compra', descricao: 'Incluir nota fiscal, comprovante de compra ou outra evidência ao criar os títulos do pedido.' },
+          { key: 'compras.pedidos.financeiro.gerar_previsao', label: 'Gerar titulos', descricao: 'Permitir que Compras crie os titulos a pagar de um pedido fechado com o fornecedor.' },
+          { key: 'compras.pedidos.financeiro.liberar_pagamento', label: 'Regularizar previsoes legadas', descricao: 'Converter previsoes antigas em titulos abertos quando necessario.' },
+          { key: 'compras.pedidos.financeiro.aprovar_reabertura', label: 'Decidir reabertura', descricao: 'Aprovar ou rejeitar a reabertura solicitada por Compras quando houver titulo vinculado.' }
+        ]
+      },
+      {
         key: 'compras.delegacao',
         label: 'Delegacao de Compras',
         permissoes: [
@@ -246,6 +285,13 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'compras.insumos',
+        label: 'Insumos',
+        permissoes: [
+          { key: 'compras.insumos.catalogar_itens_manuais', label: 'Catalogar itens manuais', descricao: 'Vincular itens manuais a insumos existentes ou criar insumos oficiais pela tela de detalhes.' }
+        ]
+      },
+      {
         key: 'compras.configuracoes',
         label: 'Configuracoes de Compras',
         permissoes: [
@@ -276,6 +322,7 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'financeiro.titulos.visualizar', label: 'Visualizar títulos', descricao: 'Ver lista e detalhes dos títulos a pagar e a receber.' },
           { key: 'financeiro.titulos.criar', label: 'Criar conta manual', descricao: 'Abrir novo título financeiro manualmente.' },
+          { key: 'financeiro.titulos.renegociar', label: 'Parcelar / negociar títulos', descricao: 'Substituir saldos em aberto por novas parcelas com rastreabilidade e encargos.' },
           { key: 'financeiro.titulos.importar', label: 'Importar contas a pagar', descricao: 'Exportar o modelo, validar e confirmar títulos a pagar por planilha.' },
           { key: 'financeiro.titulos.exportar', label: 'Exportar títulos', descricao: 'Exportar em CSV os títulos listados conforme os filtros e colunas visíveis.' },
           { key: 'financeiro.titulos.importar_codigos', label: 'Importar códigos de boleto', descricao: 'Importar por CSV linha digitável, código de barras e banco dos títulos.' },
@@ -347,6 +394,19 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'financeiro.caixas',
+        label: 'Caixas e Contas',
+        permissoes: [
+          { key: 'financeiro.caixas.visualizar', label: 'Visualizar caixas e contas', descricao: 'Consultar o painel diário, sessões, saldos e movimentos das contas com controle de abertura e fechamento.' },
+          { key: 'financeiro.caixas.confirmar_conciliacao', label: 'Confirmar conciliação anterior', descricao: 'Confirmar a conferência OFX exigida antes da abertura de contas bancárias controladas.' },
+          { key: 'financeiro.caixas.abrir', label: 'Abrir caixa ou conta', descricao: 'Registrar a abertura diária e eventuais ajustes de saldo inicial com rastreabilidade.' },
+          { key: 'financeiro.caixas.movimentar', label: 'Registrar entradas e saídas', descricao: 'Criar movimentos manuais durante uma sessão aberta, incluindo comprovantes obrigatórios para saídas.' },
+          { key: 'financeiro.caixas.estornar', label: 'Estornar movimentos', descricao: 'Estornar movimentos manuais do livro de caixa mediante justificativa.' },
+          { key: 'financeiro.caixas.fechar', label: 'Fechar caixa ou conta', descricao: 'Conferir o saldo contado e encerrar a sessão diária.' },
+          { key: 'financeiro.caixas.decidir_divergencia', label: 'Decidir divergências', descricao: 'Aprovar ou rejeitar divergências de fechamento, respeitando a segregação entre solicitante e aprovador.' }
+        ]
+      },
+      {
         key: 'financeiro.bancos',
         label: 'Bancos Enterprise',
         permissoes: [
@@ -381,6 +441,29 @@ const MODULO_PERMISSION_GROUPS = [
           { key: 'financeiro.pagamentos.confirmar_baixa', label: 'Confirmar baixa', descricao: 'Confirmar baixa semiautomatica apos confirmacao bancaria.' },
           { key: 'financeiro.pagamentos.auditar', label: 'Auditar pagamentos', descricao: 'Consultar logs tecnicos, aprovacoes e eventos bancarios.' },
           { key: 'financeiro.pagamentos.configurar', label: 'Configurar pagamentos', descricao: 'Gerenciar providers e contas pagadoras.' }
+        ]
+      },
+      {
+        key: 'financeiro.fila_pagamentos',
+        label: 'Fila de Pagamentos',
+        permissoes: [
+          { key: 'financeiro.fila_pagamentos.visualizar', label: 'Visualizar fila', descricao: 'Acessar somente os titulos encaminhados para pagamento manual.' },
+          { key: 'financeiro.fila_pagamentos.preparar', label: 'Enviar titulos para a fila', descricao: 'Selecionar contas a pagar e encaminha-las ao operador de pagamentos.' },
+          { key: 'financeiro.fila_pagamentos.importar_comprovantes', label: 'Importar comprovantes PDF', descricao: 'Ler comprovantes bancarios, revisar a sugestao e vincula-los aos titulos da fila.' },
+          { key: 'financeiro.fila_pagamentos.baixar', label: 'Registrar baixas da fila', descricao: 'Informar conta, data e valor efetivamente pago e registrar baixas individuais ou em massa.' },
+          { key: 'financeiro.fila_pagamentos.reportar', label: 'Informar nao pagamento', descricao: 'Registrar que um titulo da fila nao foi pago, com justificativa.' },
+          { key: 'financeiro.fila_pagamentos.resolver', label: 'Autorizar e resolver divergencias', descricao: 'Autorizar baixas com valor divergente, reabrir ou encerrar pendencias de pagamento.' }
+        ]
+      },
+      {
+        key: 'financeiro.autorizacoes_pagamento',
+        label: 'Autorizacoes do Proprietario',
+        permissoes: [
+          { key: 'financeiro.autorizacoes_pagamento.visualizar', label: 'Visualizar autorizacoes', descricao: 'Consultar lotes e decisoes de autorizacao sem abrir a solicitacao operacional.' },
+          { key: 'financeiro.autorizacoes_pagamento.preparar', label: 'Preparar autorizacoes', descricao: 'Selecionar titulos elegiveis e montar dossies para o proprietario.' },
+          { key: 'financeiro.autorizacoes_pagamento.decidir', label: 'Autorizar pagamentos', descricao: 'Decidir nominalmente, com passkey, quais titulos podem seguir para a fila.' },
+          { key: 'financeiro.autorizacoes_pagamento.configurar', label: 'Configurar autorizadores', descricao: 'Gerenciar a lista nominal de proprietarios autorizadores e limites.' },
+          { key: 'financeiro.autorizacoes_pagamento.auditar', label: 'Auditar autorizacoes', descricao: 'Consultar eventos, hashes e rastreabilidade das decisoes.' }
         ]
       },
       {
@@ -581,7 +664,80 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'contratos.geral.visualizar', label: 'Visualizar contratos', descricao: 'Ver lista e detalhes de contratos.' },
           { key: 'contratos.geral.criar', label: 'Criar contratos', descricao: 'Abrir novos contratos.' },
-          { key: 'contratos.geral.editar', label: 'Editar contratos', descricao: 'Alterar dados e status de contratos existentes.' }
+          { key: 'contratos.geral.editar', label: 'Editar contratos', descricao: 'Alterar dados e status de contratos existentes.' },
+          {
+            key: 'contratos.geral.encerrar',
+            label: 'Encerrar contrato (quebra de contrato)',
+            descricao: 'Encerra o contrato, zera o saldo restante e exclui os titulos em aberto. Nada mais do que estava previsto sera pago.'
+          },
+          {
+            key: 'contratos.credor.completar_cadastro',
+            label: 'Completar cadastro do credor no contrato',
+            descricao: 'Permite corrigir ENDERECO e CPF/CNPJ do contratado direto na conferencia '
+              + 'que antecede a criacao do contrato. Nao da acesso ao cadastro de parceiros: a rota '
+              + 'altera somente esses campos, e nada mais. Existe porque 98% dos fornecedores estao '
+              + 'sem endereco completo, e o Juridico precisa deles para montar a minuta.'
+          },
+          {
+            key: 'contratos.solicitacao.cancelar',
+            label: 'Cancelar a solicitacao do contrato',
+            descricao: 'Encerra o pedido em definitivo: a solicitacao NAO volta para ajuste. '
+              + 'Vale para o Juridico e para a Gerencia de Processos — quem manda e a permissao, nao o setor. '
+              + 'Rejeitar e diferente: devolve ao responsavel em PENDENTE DE AJUSTE, para corrigir e reenviar.'
+          },
+          {
+            key: 'contratos.fluxo.reenviar',
+            label: 'Agir no contrato DE OUTRA PESSOA',
+            descricao: 'Reenviar para aprovacao um contrato devolvido, e confirmar a assinatura, '
+              + 'em contratos que a pessoa NAO abriu. Quem abriu ja pode fazer as duas coisas sem esta permissao. '
+              + 'Existe porque antes esses dois botoes apareciam para qualquer um que pudesse CRIAR contratos — '
+              + 'e criar contrato nao e o mesmo que tramitar o contrato dos outros. Sem conceder esta permissao a '
+              + 'alguem, um contrato cujo autor esteja de ferias ou desligado fica parado.'
+          }
+        ]
+      },
+      {
+        key: 'contratos.juridico',
+        label: 'Juridico de contratos',
+        permissoes: [
+          {
+            key: 'contratos.juridico.tramitar',
+            label: 'Tramitar contrato no juridico',
+            descricao: 'Avaliar a documentacao, marcar a minuta como pronta e registrar a assinatura. E na assinatura que as parcelas viram titulos.'
+          }
+        ]
+      },
+      {
+        key: 'contratos.medicao',
+        label: 'Medicao de contrato',
+        permissoes: [
+          {
+            key: 'contratos.medicao.editar_valor',
+            label: 'Editar valor de medicao ja criada',
+            descricao: 'Permite alterar o valor da parcela depois que a solicitacao de medicao foi criada. Sem ela, o valor so pode ser definido na criacao.'
+          }
+        ]
+      },
+      {
+        key: 'contratos.aprovacao',
+        label: 'Aprovacao de contratos',
+        permissoes: [
+          {
+            key: 'contratos.aprovacao.aprovar',
+            label: 'Aprovar / rejeitar contratos',
+            // ADMINISTRADOR e os demais perfis precisam desta permissao marcada.
+            // SUPERADMIN possui acesso funcional global em todo o sistema.
+            //
+            // O rotulo dizia "acima do limite" e estava ERRADO: a checagem roda antes de o limite
+            // ser sequer lido (`aprovarContrato`), entao ela vale para QUALQUER valor. Quem lesse
+            // o texto antigo concluiria que contrato abaixo do limite dispensa a permissao — e
+            // deixaria a Gerencia de Processos sem conseguir aprovar nada.
+            descricao: 'Permite aprovar ou rejeitar contratos do fluxo novo, de QUALQUER valor. '
+              + 'O que o limite decide e o caminho depois da aprovacao: abaixo dele o contrato vai '
+              + 'direto a ATIVO e os titulos nascem; a partir dele segue para o JURIDICO, e os '
+              + 'titulos so nascem na conferencia final. '
+              + 'Exigida de ADMINISTRADOR e dos demais perfis; SUPERADMIN possui acesso global.'
+          }
         ]
       },
       {
@@ -708,11 +864,58 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        /**
+         * Pedido de pessoal (Fase 2 do modulo DP, 25/08): a Obra pede, o DP decide.
+         *
+         * O PREFIXO E `rh_dp`, MAS QUEM EXISTE HOJE E SO O DP.
+         *
+         * `RH` e `DEPARTAMENTO PESSOAL` sao setores DIFERENTES na empresa (setores 5 e 10). Em
+         * 26/08 o cliente confirmou: TODAS as etapas construidas aqui — decidir admissao, demissao,
+         * troca de obra, atestar documento, apurar folha, instruir alteracao salarial — sao do
+         * **DP**. O **RH ainda nao existe no sistema**; ele vai nascer depois e vai REUSAR parte
+         * disto.
+         *
+         * O prefixo `rh_dp` fica de proposito, por duas razoes:
+         *
+         * 1. ele ja esta em producao, dentro da configuracao VERSIONADA de permissoes de 30
+         *    usuarios. Renomear exigiria migrar essa configuracao, as 12 tabelas `rh_*`, as rotas e
+         *    as telas — refatoracao grande em codigo vivo, por ganho de nome;
+         * 2. `dp.colaboradores.visualizar` ficaria PIOR no dia em que o RH chegar. A permissao diz o
+         *    que ela libera, nao de quem e — e ver colaborador e coisa que os dois setores vao
+         *    precisar.
+         *
+         * O que garante que o RH consiga reusar: NENHUM servico deste modulo conhece o setor. Quem
+         * decide e definido por PERMISSAO, e `rh_solicitacoes` guarda so `setor_origem` (de onde
+         * veio, para a devolucao voltar) — nao ha setor de destino em lugar nenhum. Conceder a
+         * permissao a um usuario do RH basta; nao ha codigo a mudar.
+         */
+        key: 'rh_dp.solicitacoes',
+        label: 'Solicitacoes de pessoal',
+        permissoes: [
+          { key: 'rh_dp.solicitacoes.abrir', label: 'Abrir solicitacao de pessoal', descricao: 'Pedir admissao, demissao, troca de obra e evento recorrente.' },
+          { key: 'rh_dp.solicitacoes.anexar', label: 'Anexar documento na solicitacao', descricao: 'Enviar documentos, atestados e certificados junto do pedido.' },
+          { key: 'rh_dp.solicitacoes.decidir', label: 'Decidir solicitacao de pessoal', descricao: 'Aprovar ou devolver os pedidos abertos pelas obras.' },
+          { key: 'rh_dp.solicitacoes.ver_todas', label: 'Ver solicitacoes de todas as obras', descricao: 'Sem esta permissao o usuario enxerga apenas a obra dele.' },
+          { key: 'rh_dp.salario.aprovar', label: 'Aprovar alteracao salarial', descricao: 'Decisao de Diretoria sobre mudanca de salario. Concedida nominalmente.' }
+        ]
+      },
+      {
         key: 'rh_dp.documentos',
         label: 'Documentos',
         permissoes: [
           { key: 'rh_dp.documentos.visualizar', label: 'Visualizar documentos', descricao: 'Consultar documentos, pendencias e links assinados.' },
           { key: 'rh_dp.documentos.gerenciar', label: 'Gerenciar documentos', descricao: 'Enviar, substituir e atualizar documentos.' }
+        ]
+      },
+      {
+        key: 'rh_dp.eventos_recorrentes',
+        label: 'Eventos recorrentes',
+        permissoes: [
+          {
+            key: 'rh_dp.eventos_recorrentes.visualizar',
+            label: 'Visualizar eventos recorrentes',
+            descricao: 'Consultar eventos aprovados. Usuarios de Obra veem somente colaboradores das obras vinculadas.'
+          }
         ]
       },
       {
@@ -735,6 +938,7 @@ const MODULO_PERMISSION_GROUPS = [
         label: 'Fechamentos',
         permissoes: [
           { key: 'rh_dp.fechamento.executar', label: 'Fechar competencia', descricao: 'Fechar competencia e gerar titulos no financeiro.' },
+          { key: 'rh_dp.ticket.gerar', label: 'Gerar lote de ticket', descricao: 'Selecionar colaboradores e gerar solicitacao e titulo rateado do beneficio.' },
           { key: 'rh_dp.fechamento.reabrir', label: 'Reabrir fechamento', descricao: 'Reabrir competencias fechadas quando necessario.' },
           { key: 'rh_dp.obrigacoes.visualizar', label: 'Visualizar obrigacoes', descricao: 'Acessar fechamentos e titulos gerados.' }
         ]

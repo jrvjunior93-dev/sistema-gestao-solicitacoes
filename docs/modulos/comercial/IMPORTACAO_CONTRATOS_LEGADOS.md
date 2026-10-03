@@ -10,7 +10,7 @@ A tela `Comercial > Contratos de venda` gera o modelo com dados de referencia do
 
 1. `CONTRATOS`: identificacao, empreendimento, comprador principal, categoria, valor contratado e saldo atual;
 2. `COMPRADORES`: um ou mais compradores por contrato;
-3. `UNIDADES_CONTRATO`: uma ou mais unidades, valor cadastrado de referencia e valor atribuido ao contrato;
+3. `UNIDADES_CONTRATO`: uma ou mais unidades, valor cadastrado de referencia e valor real atribuido;
 4. `PARCELAS`: composicao original e saldo atual por parcela;
 5. `RECEBIMENTOS`: principal historico e componentes separados de juros, multa e desconto.
 
@@ -34,8 +34,8 @@ O modelo gerado pelo sistema usa os cadastros reais como autoridade. Se codigo, 
 ## Regras aprovadas
 
 - contrato pode possuir varias unidades do mesmo empreendimento;
-- o valor cadastrado da unidade e carregado inicialmente no campo `Valor da Unidade` e pode ser alterado antes de salvar;
-- o valor total do contrato e calculado pela soma dos valores das unidades, com tolerancia de `R$ 0,02` na validacao do backend;
+- o valor cadastrado da unidade e apenas referencia; o usuario informa o valor real antes de salvar;
+- a soma dos valores reais das unidades deve fechar o valor total do contrato, com tolerancia de `R$ 0,02`;
 - unidade `VENDIDA` sem contrato pode ser vinculada; unidade inexistente nao e criada automaticamente;
 - unidade bloqueada, ambigua ou vinculada a outro contrato ativo bloqueia a carga;
 - cliente inexistente e criado com CPF/CNPJ e nome como cadastro incompleto, sem sobrescrever cliente existente;

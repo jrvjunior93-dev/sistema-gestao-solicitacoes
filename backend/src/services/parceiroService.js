@@ -1,5 +1,6 @@
-const { Op } = require('sequelize');
+const { Op, col, fn, where: sequelizeWhere } = require('sequelize');
 const { Parceiro, ParceiroCategoria, FornecedorCompra } = require('../models');
+const { isValidCpf: isValidCpfCentral } = require('../utils/cpfCnpj');
 
 const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
 
@@ -88,6 +89,78 @@ function sanitizePixChave(value) {
   return text ? text.slice(0, 255) : null;
 }
 
+function normalizarTelefone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function colunaSomenteDigitos(nomeColuna) {
+  return [' ', '(', ')', '-', '.', '/', '+'].reduce(
+    (expressao, caractere) => fn('REPLACE', expressao, caractere, ''),
+    col(nomeColuna)
+  );
+}
+
+function inferirTipoChavePix(chave, telefone = '') {
+  const texto = String(chave || '').trim();
+  const minusculo = texto.toLowerCase();
+  const digitos = normalizarCpfCnpj(texto);
+  const telefoneDigitos = normalizarTelefone(telefone);
+  const telefoneSemPais = telefoneDigitos.startsWith('55') && telefoneDigitos.length > 11
+    ? telefoneDigitos.slice(2)
+    : telefoneDigitos;
+  const chaveSemPais = digitos.startsWith('55') && digitos.length > 11 ? digitos.slice(2) : digitos;
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(minusculo)) return 'EMAIL';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(texto)) {
+    return 'ALEATORIA';
+  }
+  if (telefoneSemPais && chaveSemPais === telefoneSemPais) return 'TELEFONE';
+  if (isValidCpf(digitos)) return 'CPF';
+  if (isValidCnpj(digitos)) return 'CNPJ';
+  if (digitos.length >= 10 && digitos.length <= 13) return 'TELEFONE';
+  return 'ALEATORIA';
+}
+
+function normalizarChavePix(tipo, chave) {
+  const tipoNormalizado = String(tipo || '').trim().toUpperCase();
+  const texto = String(chave || '').trim();
+  if (['CPF', 'CNPJ', 'TELEFONE'].includes(tipoNormalizado)) {
+    return normalizarCpfCnpj(texto);
+  }
+  if (tipoNormalizado === 'EMAIL') return texto.toLowerCase();
+  return texto.toLowerCase();
+}
+
+function normalizarFavorecidoSimplificado(payload = {}) {
+  const nome = String(payload.nome || '').trim();
+  const telefone = normalizarTelefone(payload.telefone);
+  const chaveInformada = String(payload.chave_pix || '').trim();
+  const tipoPix = String(payload.tipo_chave_pix || inferirTipoChavePix(chaveInformada, telefone))
+    .trim()
+    .toUpperCase();
+
+  if (!nome) throw new Error('Informe o nome do favorecido.');
+  if (nome.length > 255) throw new Error('O nome do favorecido deve ter no maximo 255 caracteres.');
+  if (telefone.length < 10 || telefone.length > 13) {
+    throw new Error('Informe um telefone valido para o favorecido.');
+  }
+  if (!PIX_TIPOS_CHAVE.includes(tipoPix)) throw new Error('Tipo de chave PIX invalido.');
+
+  const chavePix = normalizarChavePix(tipoPix, chaveInformada);
+  if (!chavePix) throw new Error('Informe a chave PIX do favorecido.');
+  if (chavePix.length > 255) throw new Error('A chave PIX deve ter no maximo 255 caracteres.');
+  if (tipoPix === 'CPF' && !isValidCpf(chavePix)) throw new Error('Informe uma chave PIX CPF valida.');
+  if (tipoPix === 'CNPJ' && !isValidCnpj(chavePix)) throw new Error('Informe uma chave PIX CNPJ valida.');
+
+  return {
+    nome,
+    telefone,
+    tipoPix,
+    chavePix,
+    chaveCanonica: `${tipoPix}:${chavePix}`
+  };
+}
+
 function sanitizeDateOnly(value) {
   const text = String(value || '').trim();
   if (!text) return null;
@@ -107,7 +180,22 @@ function sanitizePositiveInteger(value, fieldName) {
   return parsed;
 }
 
-function normalizeParceiroPayload(payload = {}, { partial = false } = {}) {
+/**
+ * Campos do REPRESENTANTE LEGAL. Sao do representante, nao do parceiro: numa PJ quem assina o
+ * contrato e outra pessoa. A qualificacao repete o vocabulario que o Comercial ja usa no parceiro
+ * pessoa fisica (nacionalidade, estado civil, profissao).
+ */
+const CAMPOS_REPRESENTANTE = [
+  'representante_nome',
+  'representante_cpf',
+  'representante_rg',
+  'representante_cargo',
+  'representante_nacionalidade',
+  'representante_estado_civil',
+  'representante_profissao'
+];
+
+function normalizeParceiroPayload(payload = {}, { partial = false, exigirCadastroCompleto = false } = {}) {
   const cpfCnpj = normalizarCpfCnpj(payload.cpf_cnpj);
   const nome = String(payload.nome || '').trim();
   const telefone = String(payload.telefone || '').trim();
@@ -143,6 +231,28 @@ function normalizeParceiroPayload(payload = {}, { partial = false } = {}) {
     }
     if (!tipoPessoa) {
       throw new Error('Nao foi possivel identificar o tipo de pessoa.');
+    }
+
+    // PJ EXIGE NOME FANTASIA E REPRESENTANTE LEGAL (itens 12, 27 e 28 do lote de 23/08).
+    //
+    // Em pessoa FISICA nao se aplica: nome fantasia de pessoa nao existe, e quem assina e ela
+    // mesma. Exigir dos dois levaria a repetir o nome no campo, que e pior do que nao ter.
+    //
+    // A regra e da CRIACAO, e so onde `exigirCadastroCompleto` for pedido — ver o comentario em
+    // `criarParceiro`. Parceiro que ja existe nao vira invalido por uma regra nova.
+    // `inferirTipoPessoa` devolve 'J' e 'F', e nao 'PJ'/'PF' — conferido na propria funcao. Comparar
+    // com 'PJ' deixava a regra sempre falsa e a exigencia nunca disparava.
+    if (exigirCadastroCompleto && tipoPessoa === 'J') {
+      if (!sanitizeText(payload.nome_fantasia)) {
+        throw new Error('Informe o nome fantasia da empresa.');
+      }
+      if (!sanitizeText(payload.representante_nome)) {
+        throw new Error('Informe o nome do representante legal da empresa.');
+      }
+      const cpfRepresentante = normalizarCpfCnpj(payload.representante_cpf);
+      if (!cpfRepresentante || !isValidCpfCentral(cpfRepresentante)) {
+        throw new Error('Informe um CPF valido para o representante legal.');
+      }
     }
   }
 
@@ -194,6 +304,19 @@ function normalizeParceiroPayload(payload = {}, { partial = false } = {}) {
     fornecedor,
     corretor,
     testemunha,
+    nome_fantasia: partial
+      ? (payload.nome_fantasia !== undefined ? sanitizeText(payload.nome_fantasia) : undefined)
+      : sanitizeText(payload.nome_fantasia),
+    // O CPF do representante e guardado so com digitos, como o do parceiro — comparar documento
+    // com pontuacao ja gerou duplicata neste sistema.
+    representante_cpf: partial
+      ? (payload.representante_cpf !== undefined ? (normalizarCpfCnpj(payload.representante_cpf) || null) : undefined)
+      : (normalizarCpfCnpj(payload.representante_cpf) || null),
+    ...Object.fromEntries(CAMPOS_REPRESENTANTE
+      .filter((campo) => campo !== 'representante_cpf')
+      .map((campo) => [campo, partial
+        ? (payload[campo] !== undefined ? sanitizeText(payload[campo]) : undefined)
+        : sanitizeText(payload[campo])])),
     conjuge_nome: partial
       ? (payload.conjuge_nome !== undefined ? sanitizeText(payload.conjuge_nome) : undefined)
       : sanitizeText(payload.conjuge_nome),
@@ -328,6 +451,12 @@ async function buscarParceiros({
           [Op.like]: `%${termoNome}%`
         }
       });
+      or.push(
+        { telefone: { [Op.like]: `%${termoNome}%` } },
+        { pix_chave_fixa_1: { [Op.like]: `%${termoNome}%` } },
+        { pix_chave_fixa_2: { [Op.like]: `%${termoNome}%` } },
+        { pix_chave_variavel: { [Op.like]: `%${termoNome}%` } }
+      );
     }
 
     if (documento) {
@@ -336,6 +465,17 @@ async function buscarParceiros({
           [Op.like]: `%${documento}%`
         }
       });
+      or.push(
+        { telefone: { [Op.like]: `%${documento}%` } },
+        { pix_chave_fixa_1: { [Op.like]: `%${documento}%` } },
+        { pix_chave_fixa_2: { [Op.like]: `%${documento}%` } },
+        { pix_chave_variavel: { [Op.like]: `%${documento}%` } }
+      );
+      or.push(
+        sequelizeWhere(colunaSomenteDigitos('telefone'), { [Op.like]: `%${documento}%` }),
+        sequelizeWhere(colunaSomenteDigitos('pix_chave_fixa_1'), { [Op.like]: `%${documento}%` }),
+        sequelizeWhere(colunaSomenteDigitos('pix_chave_fixa_2'), { [Op.like]: `%${documento}%` })
+      );
     }
 
     filtros.push({ [Op.or]: or });
@@ -390,9 +530,94 @@ async function buscarParceiros({
   return Parceiro.findAll(options);
 }
 
+async function criarFavorecidoSimplificado(payload = {}, options = {}) {
+  const dados = normalizarFavorecidoSimplificado(payload);
+  const valoresChave = Array.from(new Set([
+    String(payload.chave_pix || '').trim(),
+    dados.chavePix
+  ].filter(Boolean)));
+  const whereChaveExistente = {
+    [Op.or]: [
+      { pix_chave_canonica: dados.chaveCanonica },
+      ...(['CPF', 'CNPJ'].includes(dados.tipoPix)
+        ? [{ cpf_cnpj: { [Op.in]: valoresChave } }]
+        : []),
+      { pix_chave_fixa_1: { [Op.in]: valoresChave } },
+      { pix_chave_fixa_2: { [Op.in]: valoresChave } },
+      { pix_chave_variavel: { [Op.in]: valoresChave } }
+    ]
+  };
+
+  const existente = await Parceiro.findOne({
+    where: whereChaveExistente,
+    transaction: options.transaction,
+    ...(options.transaction ? { lock: options.transaction.LOCK.UPDATE } : {})
+  });
+
+  if (existente) {
+    if (existente.ativo === false) {
+      const error = new Error('Esta chave PIX pertence a um favorecido inativo. Solicite a reativacao do cadastro.');
+      error.statusCode = 409;
+      throw error;
+    }
+    return { parceiro: existente, reutilizado: true, chavePix: dados.chavePix };
+  }
+
+  const chaveFixa = dados.tipoPix === 'ALEATORIA' ? {} : {
+    pix_chave_fixa_1_tipo: dados.tipoPix,
+    pix_chave_fixa_1: dados.chavePix
+  };
+  const chaveVariavel = dados.tipoPix === 'ALEATORIA' ? {
+    pix_chave_variavel_tipo: dados.tipoPix,
+    pix_chave_variavel: dados.chavePix
+  } : {};
+
+  try {
+    const parceiro = await Parceiro.create({
+      cpf_cnpj: ['CPF', 'CNPJ'].includes(dados.tipoPix) ? dados.chavePix : null,
+      tipo_pessoa: dados.tipoPix === 'CPF' ? 'F' : dados.tipoPix === 'CNPJ' ? 'J' : null,
+      nome: dados.nome,
+      telefone: dados.telefone,
+      cliente: false,
+      fornecedor: false,
+      corretor: false,
+      testemunha: false,
+      cadastro_simplificado_favorecido: true,
+      pix_chave_canonica: dados.chaveCanonica,
+      ...chaveFixa,
+      ...chaveVariavel,
+      ativo: true
+    }, { transaction: options.transaction });
+
+    return { parceiro, reutilizado: false, chavePix: dados.chavePix };
+  } catch (error) {
+    if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
+    const concorrente = await Parceiro.findOne({
+      where: { pix_chave_canonica: dados.chaveCanonica },
+      transaction: options.transaction
+    });
+    if (!concorrente) throw error;
+    return { parceiro: concorrente, reutilizado: true, chavePix: dados.chavePix };
+  }
+}
+
+/**
+ * `exigirCadastroCompleto` liga a regra PF/PJ de 23/08 (nome fantasia e representante legal na PJ).
+ *
+ * Vem LIGADA por padrao — e o cadastro de credor que o cliente pediu para fechar. Fica desligada
+ * apenas no cadastro rapido de fornecedor de COMPRA DIRETA, que e do modulo de Compras: ligar la
+ * sem o campo existir no formulario derrubaria o cadastro do outro agente, e derrubar o modulo
+ * alheio para cumprir regra do meu e o que o PROTOCOLO-AGENTES-PARALELOS proibe. Anotado la para
+ * ele completar.
+ *
+ * A importacao por XLSX nao passa por aqui (grava pelo model), entao planilha antiga continua
+ * importando — exigir nome fantasia em 5.000 linhas historicas travaria a carga inteira.
+ */
 async function criarParceiro(payload, options = {}) {
   const categoriaIds = parseCategoriaIds(payload?.categoria_ids);
-  const data = normalizeParceiroPayload(payload);
+  const data = normalizeParceiroPayload(payload, {
+    exigirCadastroCompleto: options.exigirCadastroCompleto !== false
+  });
   await ensureParceiroUnico(data.cpf_cnpj, null, options);
   await validarCategorias(categoriaIds, options);
   const parceiro = await Parceiro.create(data, { transaction: options.transaction });
@@ -426,7 +651,12 @@ async function atualizarParceiro(id, payload, options = {}) {
   const fornecedorResolvido = data.fornecedor !== undefined ? data.fornecedor : parceiro.fornecedor;
   const corretorResolvido = data.corretor !== undefined ? data.corretor : parceiro.corretor;
 
-  if (clienteResolvido === false && fornecedorResolvido === false && corretorResolvido === false) {
+  if (
+    clienteResolvido === false &&
+    fornecedorResolvido === false &&
+    corretorResolvido === false &&
+    parceiro.cadastro_simplificado_favorecido !== true
+  ) {
     data.cliente = true;
     data.fornecedor = true;
   }
@@ -444,7 +674,11 @@ async function atualizarParceiro(id, payload, options = {}) {
 module.exports = {
   atualizarParceiro,
   buscarParceiros,
+  criarFavorecidoSimplificado,
   criarParceiro,
+  inferirTipoChavePix,
   isValidCpfCnpj,
+  normalizarChavePix,
+  normalizarFavorecidoSimplificado,
   normalizarCpfCnpj
 };

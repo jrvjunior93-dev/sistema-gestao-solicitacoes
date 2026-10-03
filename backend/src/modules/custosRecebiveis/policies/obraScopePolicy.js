@@ -3,8 +3,16 @@
 const { UsuarioObra } = require('../../../models');
 const { isSuperadmin } = require('../../../services/authorizationService');
 const { registrarEventoSeguranca } = require('../../../services/securityLogService');
+const { hasSetorCapability } = require('../../../services/setorCapabilityService');
 const { CUSTOS_RECEBIVEIS_PERMISSIONS } = require('../constants/custosRecebiveisConstants');
 const { hasExplicitCustosRecebiveisPermission } = require('./permissionPolicy');
+
+function usuarioEhSetorObra(user) {
+  const setores = [user?.setor, ...(Array.isArray(user?.setores) ? user.setores : [])];
+  if (setores.some((setor) => hasSetorCapability(setor, 'eh_setor_obra'))) return true;
+
+  return hasSetorCapability({ codigo: user?.area, nome: user?.area }, 'eh_setor_obra');
+}
 
 async function resolverEscopoObras(user, dependencies = {}) {
   const isSuperadminResolver = dependencies.isSuperadmin || isSuperadmin;
@@ -15,7 +23,10 @@ async function resolverEscopoObras(user, dependencies = {}) {
     return { todas: true, obraIds: null };
   }
 
-  if (await permissionResolver(
+  // Usuarios do setor OBRA nunca ampliam o escopo por permissao global: o
+  // vinculo em usuarios_obras e a fonte de verdade operacional. Isso evita
+  // que uma permissao granular atribuida por engano exponha outra obra.
+  if (!usuarioEhSetorObra(user) && await permissionResolver(
     user,
     CUSTOS_RECEBIVEIS_PERMISSIONS.ALL_OBRAS_SCOPE
   )) {
@@ -34,13 +45,13 @@ async function resolverEscopoObras(user, dependencies = {}) {
   };
 }
 
-async function usuarioPodeAcessarObra(user, obraId) {
+async function usuarioPodeAcessarObra(user, obraId, dependencies = {}) {
   const normalizedObraId = Number(obraId);
   if (!Number.isInteger(normalizedObraId) || normalizedObraId <= 0) {
     return false;
   }
 
-  const escopo = await resolverEscopoObras(user);
+  const escopo = await resolverEscopoObras(user, dependencies);
   return escopo.todas || escopo.obraIds.includes(normalizedObraId);
 }
 
@@ -76,5 +87,6 @@ function requireCustosRecebiveisObraScope(resolveObraId = (req) => (
 module.exports = {
   requireCustosRecebiveisObraScope,
   resolverEscopoObras,
+  usuarioEhSetorObra,
   usuarioPodeAcessarObra
 };

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
 import { Link, useParams } from 'react-router-dom';
 import {
   atualizarCobrancaTituloFinanceiro,
@@ -10,10 +11,22 @@ import {
   getTituloFinanceiroAuditoria,
   getTituloFinanceiroById
 } from '../services/financeiro';
-import { getEmpresasGrupo } from '../services/empresasGrupo';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao } from '../utils/acessoProduto';
 import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  StatGrid,
+  StatTile,
+  CamposComVazios,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
+import DateInputBR from '../components/DateInputBR';
 
 const FORMAS_RECEBIMENTO = ['DINHEIRO', 'PIX', 'CARTAO', 'TRANSFERENCIA', 'BOLETO', 'CHEQUE', 'PERMUTA', 'BENS', 'OUTROS'];
 const CATEGORIAS_BEM = ['VEICULO', 'IMOVEL', 'TERRENO', 'SERVICO', 'MATERIAL', 'CREDITO', 'OUTROS'];
@@ -41,7 +54,7 @@ const NATUREZAS_INTERCOMPANY_BAIXA = [
   },
   {
     value: 'TRANSFERENCIA_INTERNA',
-    label: 'Transferencia interna entre empresas',
+    label: 'Transferência interna entre empresas',
     description: 'Use para cobertura de caixa ou envio de recurso entre empresas. Nao entra na DRE consolidada.',
     tipo_intercompany: 'COBERTURA_CAIXA',
     elimina_consolidado: true,
@@ -49,7 +62,7 @@ const NATUREZAS_INTERCOMPANY_BAIXA = [
   },
   {
     value: 'REEMBOLSO_COMPENSACAO',
-    label: 'Reembolso ou compensacao entre empresas',
+    label: 'Reembolso ou compensação entre empresas',
     description: 'Use para acerto/reembolso interno. Mantem o rastro sem tratar como despesa operacional da obra.',
     tipo_intercompany: 'REEMBOLSO',
     elimina_consolidado: true,
@@ -105,14 +118,6 @@ function labelTipoIntercompany(value) {
   return TIPOS_INTERCOMPANY_LABEL[String(value || '').toUpperCase()] || value || '-';
 }
 
-function statusClass(status) {
-  const normalized = String(status || '').toUpperCase();
-  if (normalized === 'PREVISAO') return 'bg-sky-100 text-sky-700';
-  if (normalized === 'QUITADO') return 'bg-emerald-100 text-emerald-700';
-  if (normalized === 'PARCIAL') return 'bg-amber-100 text-amber-700';
-  if (normalized === 'CANCELADO' || normalized === 'ESTORNADO') return 'bg-rose-100 text-rose-700';
-  return 'bg-slate-100 text-slate-700';
-}
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -256,17 +261,17 @@ function buildCobrancaForm(titulo) {
 
 function auditStatusClass(status) {
   const normalized = String(status || '').toUpperCase();
-  if (normalized === 'SUCCESS') return 'bg-emerald-100 text-emerald-700';
-  if (normalized === 'DENIED') return 'bg-rose-100 text-rose-700';
-  return 'bg-slate-100 text-slate-700';
+  if (normalized === 'SUCCESS') return 'bg-[var(--sem-success-bg)] text-[var(--sem-success)]';
+  if (normalized === 'DENIED') return 'bg-[var(--sem-danger-bg)] text-[var(--sem-danger)]';
+  return 'bg-[var(--sem-neutral-bg)] text-[var(--sem-neutral)]';
 }
 
 function paymentStatusClass(status) {
   const normalized = String(status || '').trim().toUpperCase();
-  if (['APROVADO', 'CONFIRMADO_BANCO', 'BAIXADO'].includes(normalized)) return 'bg-emerald-100 text-emerald-700';
-  if (['PENDENTE_APROVACAO', 'ENVIADO_AO_BANCO', 'AGUARDANDO_CONFIRMACAO_BAIXA'].includes(normalized)) return 'bg-amber-100 text-amber-700';
-  if (['REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'CANCELADO'].includes(normalized)) return 'bg-rose-100 text-rose-700';
-  return 'bg-slate-100 text-slate-700';
+  if (['APROVADO', 'CONFIRMADO_BANCO', 'BAIXADO'].includes(normalized)) return 'bg-[var(--sem-success-bg)] text-[var(--sem-success)]';
+  if (['PENDENTE_APROVACAO', 'ENVIADO_AO_BANCO', 'AGUARDANDO_CONFIRMACAO_BAIXA'].includes(normalized)) return 'bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]';
+  if (['REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'CANCELADO'].includes(normalized)) return 'bg-[var(--sem-danger-bg)] text-[var(--sem-danger)]';
+  return 'bg-[var(--sem-neutral-bg)] text-[var(--sem-neutral)]';
 }
 
 function formatAuditMetadata(metadata, { hideFinancialReferenceIds = false } = {}) {
@@ -334,7 +339,6 @@ export default function FinanceiroTituloDetalhe() {
   const [cartoes, setCartoes] = useState([]);
   const [chequesTerceiros, setChequesTerceiros] = useState([]);
   const [loadingChequesTerceiros, setLoadingChequesTerceiros] = useState(false);
-  const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [auditoria, setAuditoria] = useState([]);
@@ -345,6 +349,11 @@ export default function FinanceiroTituloDetalhe() {
   const [savingBaixa, setSavingBaixa] = useState(false);
   const [estornandoId, setEstornandoId] = useState(null);
   const [corrigindoMovimentoId, setCorrigindoMovimentoId] = useState(null);
+  // R3: aviso e confirmação do sistema no lugar das caixas do navegador. A
+  // faixa `error` desta tela continua como está (erro de fluxo); o
+  // useAvisos cobre só o que era caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeVerPagamentosBancarios = hasPermissao(user, 'financeiro.titulos.pagamentos_bancarios.visualizar');
   const podeVerMovimentosFinanceiros = hasPermissao(user, 'financeiro.titulos.movimentos.visualizar');
   const podeVerAuditoriaFinanceira = hasPermissao(user, 'financeiro.titulos.auditoria.visualizar');
@@ -353,17 +362,15 @@ export default function FinanceiroTituloDetalhe() {
     try {
       setLoading(true);
       setError('');
-      const [tituloData, contasData, cartoesData, empresasData, auditoriaData] = await Promise.all([
+      const [tituloData, contasData, cartoesData, auditoriaData] = await Promise.all([
         getTituloFinanceiroById(id),
         getContasBancarias(),
         getCartoesFinanceiros(),
-        getEmpresasGrupo({ ativo: true }),
         podeVerAuditoriaFinanceira ? getTituloFinanceiroAuditoria(id) : Promise.resolve([])
       ]);
       setTitulo(tituloData);
       setContasBancarias(Array.isArray(contasData) ? contasData : []);
       setCartoes(Array.isArray(cartoesData) ? cartoesData : []);
-      setEmpresasGrupo(Array.isArray(empresasData) ? empresasData : []);
       setAuditoria(Array.isArray(auditoriaData) ? auditoriaData : []);
       setCobrancaForm(buildCobrancaForm(tituloData));
       setBaixaForm((current) => ({
@@ -446,25 +453,23 @@ export default function FinanceiroTituloDetalhe() {
     ? pagamentosAtivos.length
     : Number(titulo?.payment_intents_ativos_count || 0);
   const podeEditarTitulo = ['PREVISAO', 'ABERTO'].includes(String(titulo?.status || '').toUpperCase())
+    && !titulo?.renegociacao_id && !titulo?.renegociado_por_id
     && Number(titulo?.valor_baixado || 0) === 0
     && movimentosAtivosCount === 0
     && pagamentosAtivosCount === 0;
+  const bloqueadoPorRetornoObra = titulo?.bloqueado_retorno_obra === true
+    || Number(titulo?.bloqueado_retorno_obra) === 1;
 
   const contasBancariasBaixa = useMemo(() => {
-    if (!baixaForm.empresa_id) return [];
-    return contasBancarias.filter((conta) => String(conta.empresa_id || '') === String(baixaForm.empresa_id));
-  }, [baixaForm.empresa_id, contasBancarias]);
+    return contasBancarias.filter((conta) => conta.ativo !== false);
+  }, [contasBancarias]);
   const selectedCartaoBaixa = useMemo(
     () => cartoes.find((cartao) => String(cartao.id) === String(baixaForm.cartao_id)) || null,
     [cartoes, baixaForm.cartao_id]
   );
   const cartoesBaixa = useMemo(() => cartoes.filter((cartao) => {
-    if (cartao.ativo === false) return false;
-    if (!baixaForm.empresa_id) return true;
-    if (!isCartaoDebito(cartao)) return true;
-    const contaCartao = contasBancarias.find((conta) => String(conta.id) === String(cartao.conta_bancaria_id));
-    return String(contaCartao?.empresa_id || '') === String(baixaForm.empresa_id);
-  }), [baixaForm.empresa_id, cartoes, contasBancarias]);
+    return cartao.ativo !== false;
+  }), [cartoes]);
   const baixaUsaCartao = isCartaoForma(baixaForm.forma_recebimento);
   const baixaCartaoDebito = baixaUsaCartao && isCartaoDebito(selectedCartaoBaixa);
   const baixaUsaCheque = isChequeForma(baixaForm.forma_recebimento);
@@ -526,6 +531,29 @@ export default function FinanceiroTituloDetalhe() {
   );
   const mostrarIntercompanyBaixa = baixaEmpresaDiferente || baixaForm.intercompany;
 
+  function aplicarEmpresaFonteBaixa(current, empresaFonteId) {
+    const empresaResolvidaId = String(empresaFonteId || titulo?.empresa_id || '');
+    const empresaDiferente = Boolean(
+      empresaTituloId && empresaResolvidaId && empresaResolvidaId !== empresaTituloId
+    );
+    const base = {
+      ...current,
+      empresa_id: empresaResolvidaId,
+      intercompany: empresaDiferente || current.intercompany
+    };
+    return empresaDiferente
+      ? applyNaturezaBaixaIntercompany(base, current.natureza_intercompany_baixa || 'OPERACIONAL_TERCEIRO')
+      : base;
+  }
+
+  function selecionarContaBaixa(contaBancariaId) {
+    const conta = contasBancarias.find((item) => String(item.id) === String(contaBancariaId));
+    setBaixaForm((current) => aplicarEmpresaFonteBaixa({
+      ...current,
+      conta_bancaria_id: contaBancariaId
+    }, conta?.empresa_id));
+  }
+
   async function handleSalvarCobranca(event) {
     event.preventDefault();
     try {
@@ -542,8 +570,10 @@ export default function FinanceiroTituloDetalhe() {
         boleto_emitido_em: cobrancaForm.boleto_emitido_em || null
       };
       await atualizarCobrancaTituloFinanceiro(id, payload);
+      // Recarrega primeiro e avisa depois: `carregar()` limpa o estado de
+      // erro da tela, e avisar antes apagaria a confirmação recém-pintada.
       await carregar();
-      alert('Dados de cobranca atualizados com sucesso.');
+      avisar.sucesso('Dados de cobrança atualizados com sucesso.');
     } catch (err) {
       setError(err?.message || 'Erro ao atualizar cobranca do titulo');
     } finally {
@@ -553,8 +583,8 @@ export default function FinanceiroTituloDetalhe() {
 
   async function handleBaixaSubmit(event) {
     event.preventDefault();
-    if (!baixaForm.empresa_id) {
-      setError('Informe a empresa pagadora da baixa.');
+    if (bloqueadoPorRetornoObra) {
+      setError(titulo?.bloqueio_retorno_motivo || 'Baixa bloqueada por pedido de retorno da Obra.');
       return;
     }
     if (!baixaForm.forma_recebimento) {
@@ -578,7 +608,7 @@ export default function FinanceiroTituloDetalhe() {
       return;
     }
     if (contaBancariaObrigatoria(baixaForm.forma_recebimento) && !baixaPagaComChequeTerceiro && !baixaForm.conta_bancaria_id) {
-      setError('Informe a conta bancaria da empresa pagadora.');
+      setError('Informe a conta bancaria da baixa.');
       return;
     }
     if (baixaEmpresaDiferente && !baixaForm.intercompany) {
@@ -604,8 +634,9 @@ export default function FinanceiroTituloDetalhe() {
       setModalBaixaOpen(false);
       setCorrigindoMovimentoId(null);
       setBaixaForm(buildBaixaForm(titulo, contasBancarias));
+      // Recarrega primeiro e avisa depois (mesma razão do salvar cobranca).
       await carregar();
-      alert(corrigindoMovimentoId ? 'Baixa corrigida com sucesso.' : 'Baixa registrada com sucesso.');
+      avisar.sucesso(corrigindoMovimentoId ? 'Baixa corrigida com sucesso.' : 'Baixa registrada com sucesso.');
     } catch (err) {
       setError(err?.message || 'Erro ao registrar baixa');
     } finally {
@@ -614,15 +645,23 @@ export default function FinanceiroTituloDetalhe() {
   }
 
   async function handleEstornar(movimentoId) {
-    const confirmar = window.confirm('Confirmar estorno desta baixa?');
-    if (!confirmar) return;
+    // confirmar() devolve { ok, texto } — objeto é sempre truthy, então o
+    // retorno TEM de ser desestruturado (R21), senão "Cancelar" estornaria.
+    const { ok } = await confirmar({
+      titulo: 'Estornar baixa',
+      mensagem: 'Confirmar estorno desta baixa?',
+      rotuloConfirmar: 'Estornar',
+      destrutiva: true
+    });
+    if (!ok) return;
 
     try {
       setEstornandoId(movimentoId);
       setError('');
       await estornarMovimentoFinanceiro(id, movimentoId, {});
+      // Recarrega primeiro e avisa depois (mesma razão do salvar cobranca).
       await carregar();
-      alert('Baixa estornada com sucesso.');
+      avisar.sucesso('Baixa estornada com sucesso.');
     } catch (err) {
       setError(err?.message || 'Erro ao estornar baixa');
     } finally {
@@ -631,10 +670,13 @@ export default function FinanceiroTituloDetalhe() {
   }
 
   async function handleCorrigirBaixa(movimento) {
-    const confirmar = window.confirm(
-      'Confirmar estorno desta baixa e abrir a correcao para alterar conta bancaria e data?'
-    );
-    if (!confirmar) return;
+    const { ok } = await confirmar({
+      titulo: 'Corrigir baixa',
+      mensagem: 'Confirmar estorno desta baixa e abrir a correção para alterar conta bancária e data?',
+      rotuloConfirmar: 'Estornar e corrigir',
+      destrutiva: true
+    });
+    if (!ok) return;
 
     try {
       setCorrigindoMovimentoId(movimento.id);
@@ -657,276 +699,189 @@ export default function FinanceiroTituloDetalhe() {
   }
 
   if (loading) {
-    return <p className="text-sm text-[var(--c-muted)]">Carregando titulo financeiro...</p>;
+    return <p className="text-sm text-[var(--c-muted)]">Carregando título financeiro...</p>;
   }
 
   if (!titulo) {
-    return <p className="text-sm text-[var(--c-muted)]">Titulo financeiro nao encontrado.</p>;
+    return <p className="text-sm text-[var(--c-muted)]">Título financeiro não encontrado.</p>;
   }
 
-  const tituloListPath = titulo.tipo === 'PAGAR' ? '/financeiro/contas-a-pagar' : '/financeiro/contas-a-receber';
-  const tituloListLabel = titulo.tipo === 'PAGAR' ? 'contas a pagar' : 'contas a receber';
 
   return (
     <>
-      <div className="page solicitacoes-page">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <Link className="btn btn-outline mb-3" to={tituloListPath}>
-              Voltar para {tituloListLabel}
-            </Link>
-            <h1 className="page-title">Titulo {titulo.codigo || `#${titulo.id}`}</h1>
-            <p className="text-sm text-[var(--c-muted)]">{titulo.descricao || 'Sem descricao'}</p>
-          </div>
+      <Pagina>
+        {/* C3 (R11 revisto, 02/09): tela de DETALHE tem a seta de voltar à
+            esquerda SEMPRE — a R11 só remove "Voltar" redundante de LISTAGEM. */}
+        <PageHeader
+          titulo={`Titulo ${titulo.codigo || `#${titulo.id}`}`}
+          descricao={titulo.descricao || undefined}
+          voltar={{ to: '/financeiro/titulos', title: 'Voltar para títulos' }}
+          acaoPrincipal={{
+            rotulo: 'Registrar baixa',
+            desabilitada: bloqueadoPorRetornoObra
+              || !['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()),
+            title: bloqueadoPorRetornoObra
+              ? (titulo.bloqueio_retorno_motivo || 'Baixa bloqueada por pedido de retorno da Obra')
+              : undefined,
+            onClick: () => {
+              setError('');
+              setCorrigindoMovimentoId(null);
+              setBaixaForm(buildBaixaForm(titulo, contasBancarias));
+              setModalBaixaOpen(true);
+            }
+          }}
+          /*
+            "ABRIR SOLICITAÇÃO" SAIU DAQUI (decisão do cliente, 04/09).
 
-          <div className="flex flex-wrap gap-2">
-            {titulo.solicitacao?.id && (
-              <Link className="btn btn-outline" to={`/solicitacoes/${titulo.solicitacao.id}`}>
-                Abrir solicitacao
-              </Link>
-            )}
-            {podeEditarTitulo && (
-              <Link className="btn btn-outline" to={`/financeiro/titulos/${titulo.id}/editar`}>
-                Editar titulo
-              </Link>
-            )}
-            {!podeEditarTitulo && (
-              <button
-                type="button"
-                className="btn btn-outline opacity-60"
-                disabled
-                title="Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados"
-              >
-                Editar titulo
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                setError('');
-                setCorrigindoMovimentoId(null);
-                setBaixaForm(buildBaixaForm(titulo, contasBancarias));
-                setModalBaixaOpen(true);
-              }}
-              disabled={!['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase())}
-            >
-              Registrar baixa
-            </button>
-          </div>
-        </div>
+            Terceira linha da regra de navegação: link para o REGISTRO
+            RELACIONADO mora no corpo, junto do dado que o origina — nunca
+            na barra de ações nem no menu "⋯".
+
+            Ao lado do dado o link explica por que existe; na barra de ações
+            fica sem contexto, e é essa falta de contexto que a C6 chama de
+            navegação vestida de ação.
+
+            Aqui não se perdeu caminho nenhum: o link JÁ existia no corpo, no
+            campo "Solicitacao" do bloco de dados, com o código clicável.
+            A faixa trazia a MESMA navegação em duplicata.
+          */
+          secundarias={[
+            podeEditarTitulo
+              ? { rotulo: 'Editar título', to: `/financeiro/titulos/${titulo.id}/editar` }
+              : {
+                rotulo: 'Editar título',
+                desabilitada: true,
+                title: 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
+                onClick: () => {}
+              }
+          ].filter(Boolean)}
+        />
+
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <TituloNegociacaoHistorico titulo={titulo} />
 
         {error && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="app-alert app-alert--error">
             {error}
           </div>
         )}
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Tipo</div>
-            <div className="mt-2 text-lg font-semibold text-[var(--c-text)]">{titulo.tipo}</div>
+        {bloqueadoPorRetornoObra && (
+          <div className="app-alert app-alert--warning" role="status">
+            <strong>Baixa temporariamente bloqueada.</strong>{' '}
+            {titulo.bloqueio_retorno_motivo || 'A Obra solicitou o retorno da solicitacao vinculada a este titulo.'}
+            {' '}O bloqueio sera removido quando a solicitacao voltar ao Financeiro.
           </div>
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Status</div>
-            <div className="mt-2">
-              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(titulo.status)}`}>
-                {titulo.status}
-              </span>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor original</div>
-            <div className="mt-2 text-lg font-semibold text-[var(--c-text)]">{formatCurrency(titulo.valor_original)}</div>
-          </div>
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Saldo</div>
-            <div className="mt-2 text-lg font-semibold text-[var(--c-text)]">{formatCurrency(titulo.valor_saldo)}</div>
-          </div>
-        </div>
+        )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-3">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Dados do titulo</h2>
-            <div className="grid gap-3 text-sm md:grid-cols-2">
-              <div>
-                <div className="text-[var(--c-muted)]">Codigo</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.codigo || `#${titulo.id}`}</div>
+        {/* Pergunta central da tela: "quanto falta deste titulo e o que fazer
+            com ele?" — os quatro numeros que decidem vem primeiro. */}
+        <StatGrid colunas={4}>
+          <StatTile label="Tipo" valor={titulo.tipo} />
+          <StatTile label="Status" valor={<StatusBadge status={titulo.status} />} />
+          <StatTile label="Valor original" valor={formatCurrency(titulo.valor_original)} />
+          <StatTile
+            label="Saldo"
+            valor={formatCurrency(titulo.valor_saldo)}
+            tom={Number(titulo.valor_saldo) > 0 ? 'warning' : 'success'}
+          />
+        </StatGrid>
+
+        {/* "Dados do titulo" + "Resumo operacional" eram dois blocos 50/50
+            disputando atencao (15 campos vs 4). Viraram UM bloco principal em
+            largura total; o codigo saiu daqui porque ja e o titulo da pagina
+            (informacao aparece uma vez). Campos vazios ficam atras do
+            alternador — nenhum dado deixou de existir. */}
+        {/* B3: a descrição do título mora na FAIXA (apoio do registro) —
+            repetir aqui era a mesma informação duas vezes na tela. */}
+        <BlocoConteudo
+          titulo="Dados do título"
+          variante="primario"
+          cor="var(--module-financeiro)"
+        >
+          <CamposComVazios
+            colunas={4}
+            campos={[
+              { label: 'Parceiro', valor: titulo.parceiro?.nome, span: 2 },
+              { label: 'Obra', valor: titulo.obra?.nome, span: 2 },
+              { label: 'Vencimento', valor: formatDate(titulo.data_vencimento) === '-' ? null : formatDate(titulo.data_vencimento) },
+              { label: 'Emissão', valor: formatDate(titulo.data_emissao) === '-' ? null : formatDate(titulo.data_emissao) },
+              { label: 'Valor baixado', valor: Number(titulo.valor_baixado) > 0 ? formatCurrency(titulo.valor_baixado) : null },
+              { label: 'Quitacao', valor: formatDate(titulo.data_quitacao) === '-' ? null : formatDate(titulo.data_quitacao) },
+              { label: 'Categoria', valor: titulo.categoriaFinanceira?.nome },
+              {
+                label: 'Solicitação',
+                valor: titulo.solicitacao?.id ? (
+                  <Link className="text-[var(--c-primary)] hover:underline" to={`/solicitacoes/${titulo.solicitacao.id}`}>
+                    {titulo.solicitacao.codigo || `#${titulo.solicitacao.id}`}
+                  </Link>
+                ) : null
+              },
+              { label: 'Criado por', valor: titulo.criadoPor?.nome },
+              { label: 'Baixas ativas', valor: movimentosAtivosCount > 0 ? String(movimentosAtivosCount) : null },
+              {
+                label: cartoesUtilizados.length > 1 ? 'Cartoes utilizados' : 'Cartao utilizado',
+                contexto: tituloRelacionadoACartao,
+                valor: cartoesUtilizados.length > 0
+                  ? cartoesUtilizados.map((cartao) => getCartaoLabel(cartao)).join(' · ')
+                  : null
+              },
+              { label: 'Entre Empresas', valor: titulo.intercompany ? 'Sim' : null },
+              { label: 'Origem', contexto: Boolean(titulo.intercompany), valor: titulo.empresaOrigem?.nome },
+              { label: 'Destino', contexto: Boolean(titulo.intercompany), valor: titulo.empresaDestino?.nome },
+              { label: 'Tipo intercompany', contexto: Boolean(titulo.intercompany), valor: labelTipoIntercompany(titulo.tipo_intercompany) },
+              {
+                label: 'Consolidado',
+                contexto: Boolean(titulo.intercompany),
+                valor: titulo.elimina_consolidado ? 'Elimina no consolidado' : 'Mantem no consolidado'
+              }
+            ]}
+          />
+
+          {podeVerMovimentosFinanceiros && fontesFinanceirasAtivas.length > 0 && (
+            <div className="mt-3 border-t border-[var(--c-border)] pt-3">
+              <div className="mb-2 text-sm font-medium text-[var(--c-text)]">
+                {fontesFinanceirasAtivas.length > 1 ? 'Fontes das baixas' : 'Fonte da baixa'}
               </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Parceiro</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.parceiro?.nome || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Obra</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.obra?.nome || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Vencimento</div>
-                <div className="font-medium text-[var(--c-text)]">{formatDate(titulo.data_vencimento)}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Emissao</div>
-                <div className="font-medium text-[var(--c-text)]">{formatDate(titulo.data_emissao)}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Valor baixado</div>
-                <div className="font-medium text-[var(--c-text)]">{formatCurrency(titulo.valor_baixado)}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Categoria</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.categoriaFinanceira?.nome || '-'}</div>
-              </div>
-              {tituloRelacionadoACartao && (
-                <div>
-                  <div className="text-[var(--c-muted)]">
-                    {cartoesUtilizados.length > 1 ? 'Cartoes utilizados' : 'Cartao utilizado'}
-                  </div>
-                  {cartoesUtilizados.length > 0 ? (
-                    <div className="space-y-1 font-medium text-[var(--c-text)]">
-                      {cartoesUtilizados.map((cartao) => (
-                        <div key={cartao.id}>{getCartaoLabel(cartao)}</div>
-                      ))}
+              <div className="grid gap-2 md:grid-cols-3">
+                {fontesFinanceirasAtivas.map((fonte) => (
+                  <div
+                    key={`${fonte.empresa_nome}-${fonte.conta_bancaria_nome}`}
+                    className="rounded-lg bg-[var(--ui-surface-2)] px-3 py-2"
+                  >
+                    <div className="text-xs text-[var(--c-muted)]">
+                      {titulo.tipo === 'PAGAR' ? 'Empresa pagadora' : 'Empresa recebedora'}
                     </div>
-                  ) : (
-                    <div className="font-medium text-amber-700">Nao informado</div>
-                  )}
-                </div>
-              )}
-              <div>
-                <div className="text-[var(--c-muted)]">Entre Empresas</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.intercompany ? 'Sim' : 'Nao'}</div>
-              </div>
-              {titulo.intercompany && (
-                <>
-                  <div>
-                    <div className="text-[var(--c-muted)]">Origem</div>
-                    <div className="font-medium text-[var(--c-text)]">{titulo.empresaOrigem?.nome || '-'}</div>
+                    <div className="text-sm font-medium text-[var(--c-text)]">{fonte.empresa_nome}</div>
+                    <div className="mt-1 text-xs text-[var(--c-muted)]">Conta bancária</div>
+                    <div className="text-sm font-medium text-[var(--c-text)]">{fonte.conta_bancaria_nome}</div>
                   </div>
-                  <div>
-                    <div className="text-[var(--c-muted)]">Destino</div>
-                    <div className="font-medium text-[var(--c-text)]">{titulo.empresaDestino?.nome || '-'}</div>
-                  </div>
-                  <div>
-                    <div className="text-[var(--c-muted)]">Tipo</div>
-                    <div className="font-medium text-[var(--c-text)]">{labelTipoIntercompany(titulo.tipo_intercompany)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[var(--c-muted)]">Consolidado</div>
-                    <div className="font-medium text-[var(--c-text)]">
-                      {titulo.elimina_consolidado ? 'Elimina no consolidado' : 'Mantem no consolidado'}
-                    </div>
-                  </div>
-                </>
-              )}
-              {podeVerMovimentosFinanceiros && fontesFinanceirasAtivas.length > 0 && (
-                <div className="md:col-span-2 border-t border-[var(--c-border)] pt-3">
-                  <div className="mb-2 font-medium text-[var(--c-text)]">
-                    {fontesFinanceirasAtivas.length > 1 ? 'Fontes das baixas' : 'Fonte da baixa'}
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {fontesFinanceirasAtivas.map((fonte) => (
-                      <div
-                        key={`${fonte.empresa_nome}-${fonte.conta_bancaria_nome}`}
-                        className="rounded-lg bg-[var(--c-bg)] px-3 py-2"
-                      >
-                        <div className="text-xs text-[var(--c-muted)]">
-                          {titulo.tipo === 'PAGAR' ? 'Empresa pagadora' : 'Empresa recebedora'}
-                        </div>
-                        <div className="font-medium text-[var(--c-text)]">{fonte.empresa_nome}</div>
-                        <div className="mt-1 text-xs text-[var(--c-muted)]">Conta bancaria</div>
-                        <div className="font-medium text-[var(--c-text)]">{fonte.conta_bancaria_nome}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-3">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Resumo operacional</h2>
-            <div className="grid gap-3 text-sm md:grid-cols-2">
-              <div>
-                <div className="text-[var(--c-muted)]">Solicitacao</div>
-                <div className="font-medium text-[var(--c-text)]">
-                  {titulo.solicitacao?.id ? (
-                    <Link className="text-blue-600 hover:underline" to={`/solicitacoes/${titulo.solicitacao.id}`}>
-                      {titulo.solicitacao.codigo || `#${titulo.solicitacao.id}`}
-                    </Link>
-                  ) : '-'}
-                </div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Criado por</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.criadoPor?.nome || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Baixas ativas</div>
-                <div className="font-medium text-[var(--c-text)]">{movimentosAtivosCount}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Quitacao</div>
-                <div className="font-medium text-[var(--c-text)]">{formatDate(titulo.data_quitacao)}</div>
+                ))}
               </div>
             </div>
-          </div>
-        </div>
+          )}
+        </BlocoConteudo>
 
+        {/* O bloco tinha os MESMOS oito campos duas vezes: grid somente-leitura
+            + formulario logo abaixo (inicializado do proprio titulo). Ficou so
+            a versao editavel — e o break-all letra a letra saiu junto. */}
         {titulo.tipo === 'RECEBER' && (
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Cobranca externa</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Use esta area para complementar o titulo com os dados do boleto emitido diretamente no banco.
-                </p>
-              </div>
-              {titulo.forma_cobranca && (
-                <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
-                  {titulo.forma_cobranca} {titulo.status_cobranca && titulo.status_cobranca !== 'NAO_APLICAVEL' ? `- ${titulo.status_cobranca}` : ''}
-                </span>
-              )}
-            </div>
-
-            <div className="grid gap-3 text-sm md:grid-cols-4">
-              <div>
-                <div className="text-[var(--c-muted)]">Forma</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.forma_cobranca || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Status da cobranca</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.status_cobranca || 'NAO_APLICAVEL'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Codigo do banco</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.banco_cobranca || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Emitido em</div>
-                <div className="font-medium text-[var(--c-text)]">{formatDate(titulo.boleto_emitido_em)}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Nosso numero</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.nosso_numero || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Identificador externo</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.identificador_externo || '-'}</div>
-              </div>
-              <div className="md:col-span-2">
-                <div className="text-[var(--c-muted)]">Linha digitavel</div>
-                <div className="font-medium break-all text-[var(--c-text)]">{titulo.linha_digitavel || '-'}</div>
-              </div>
-              <div className="md:col-span-2">
-                <div className="text-[var(--c-muted)]">Codigo de barras</div>
-                <div className="font-medium break-all text-[var(--c-text)]">{titulo.codigo_barras || '-'}</div>
-              </div>
-            </div>
+          <BlocoConteudo
+            titulo="Cobrança externa"
+            variante="secundario"
+            recolhivel
+            recolhidoPadrao={!titulo.forma_cobranca}
+            acoes={titulo.forma_cobranca ? (
+              <StatusBadge status={`${titulo.forma_cobranca}${titulo.status_cobranca && titulo.status_cobranca !== 'NAO_APLICAVEL' ? ` - ${titulo.status_cobranca}` : ''}`} />
+            ) : null}
+          >
+            <p className="app-note mb-3">
+              Use esta área para complementar o título com os dados do boleto emitido diretamente no banco.
+            </p>
 
             <form className="grid gap-3 md:grid-cols-4" onSubmit={handleSalvarCobranca}>
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Forma de cobranca</span>
+                <span className="mb-1 block text-muted">Forma de cobrança</span>
                 <select
                   className="input w-full"
                   value={cobrancaForm.forma_cobranca}
@@ -936,7 +891,7 @@ export default function FinanceiroTituloDetalhe() {
                     status_cobranca: event.target.value ? current.status_cobranca : 'PENDENTE_EMISSAO'
                   }))}
                 >
-                  <option value="">Nao controlar</option>
+                  <option value="">Não controlar</option>
                   {FORMAS_COBRANCA.map((item) => (
                     <option key={item} value={item}>{item}</option>
                   ))}
@@ -944,7 +899,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Status da cobranca</span>
+                <span className="mb-1 block text-muted">Status da cobrança</span>
                 <select
                   className="input w-full"
                   value={cobrancaForm.status_cobranca}
@@ -958,7 +913,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Codigo do banco</span>
+                <span className="mb-1 block text-muted">Código do banco</span>
                 <input
                   className="input w-full"
                   inputMode="numeric"
@@ -971,9 +926,8 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Emitido em</span>
-                <input
-                  type="date"
+                <span className="mb-1 block text-muted">Emitido em</span>
+                <DateInputBR
                   className="input w-full"
                   value={cobrancaForm.boleto_emitido_em}
                   onChange={(event) => setCobrancaForm((current) => ({ ...current, boleto_emitido_em: event.target.value }))}
@@ -981,7 +935,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Nosso numero</span>
+                <span className="mb-1 block text-muted">Nosso número</span>
                 <input
                   className="input w-full"
                   value={cobrancaForm.nosso_numero}
@@ -990,7 +944,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Identificador externo</span>
+                <span className="mb-1 block text-muted">Identificador externo</span>
                 <input
                   className="input w-full"
                   value={cobrancaForm.identificador_externo}
@@ -999,7 +953,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm md:col-span-2">
-                <span className="mb-1 block text-slate-500">Linha digitavel</span>
+                <span className="mb-1 block text-muted">Linha digitável</span>
                 <input
                   className="input w-full"
                   value={cobrancaForm.linha_digitavel}
@@ -1008,7 +962,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm md:col-span-4">
-                <span className="mb-1 block text-slate-500">Codigo de barras</span>
+                <span className="mb-1 block text-muted">Código de barras</span>
                 <input
                   className="input w-full"
                   value={cobrancaForm.codigo_barras}
@@ -1022,43 +976,26 @@ export default function FinanceiroTituloDetalhe() {
                 </button>
               </div>
             </form>
-          </div>
+          </BlocoConteudo>
         )}
 
         {String(titulo.tipo || '').toUpperCase() === 'PAGAR' && (
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Boleto para pagamento</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  A linha digitavel ou codigo de barras habilita este titulo para remessa Caixa CNAB240 em Bancos Enterprise.
-                </p>
-              </div>
-              {(titulo.linha_digitavel || titulo.codigo_barras) && (
-                <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                  Pronto para remessa
-                </span>
-              )}
-            </div>
-
-            <div className="grid gap-3 text-sm md:grid-cols-4">
-              <div>
-                <div className="text-[var(--c-muted)]">Codigo do banco</div>
-                <div className="font-medium text-[var(--c-text)]">{titulo.banco_cobranca || '-'}</div>
-              </div>
-              <div className="md:col-span-2">
-                <div className="text-[var(--c-muted)]">Linha digitavel</div>
-                <div className="font-medium break-all text-[var(--c-text)]">{titulo.linha_digitavel || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Codigo de barras</div>
-                <div className="font-medium break-all text-[var(--c-text)]">{titulo.codigo_barras || '-'}</div>
-              </div>
-            </div>
+          <BlocoConteudo
+            titulo="Boleto para pagamento"
+            variante="secundario"
+            recolhivel
+            recolhidoPadrao={!titulo.linha_digitavel && !titulo.codigo_barras}
+            acoes={(titulo.linha_digitavel || titulo.codigo_barras) ? (
+              <StatusBadge status="Pronto para remessa" />
+            ) : null}
+          >
+            <p className="app-note mb-3">
+              A linha digitável ou código de barras habilita este título para remessa Caixa CNAB240 em Bancos Enterprise.
+            </p>
 
             <form className="grid gap-3 md:grid-cols-4" onSubmit={handleSalvarCobranca}>
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Codigo do banco</span>
+                <span className="mb-1 block text-muted">Código do banco</span>
                 <input
                   className="input w-full"
                   inputMode="numeric"
@@ -1071,7 +1008,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm md:col-span-2">
-                <span className="mb-1 block text-slate-500">Linha digitavel</span>
+                <span className="mb-1 block text-muted">Linha digitável</span>
                 <input
                   className="input w-full"
                   value={cobrancaForm.linha_digitavel}
@@ -1080,7 +1017,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <label className="text-sm">
-                <span className="mb-1 block text-slate-500">Codigo de barras</span>
+                <span className="mb-1 block text-muted">Código de barras</span>
                 <input
                   className="input w-full"
                   value={cobrancaForm.codigo_barras}
@@ -1094,24 +1031,22 @@ export default function FinanceiroTituloDetalhe() {
                 </button>
               </div>
             </form>
-          </div>
+          </BlocoConteudo>
         )}
 
         {String(titulo.tipo || '').toUpperCase() === 'PAGAR' && podeVerPagamentosBancarios && (
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Pagamentos bancarios</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Status bancario separado do status financeiro do titulo.
-                </p>
-              </div>
-              <Link to="/financeiro/pagamentos" className="btn btn-outline">Abrir pagamentos</Link>
-            </div>
+          <BlocoConteudo
+            titulo="Pagamentos bancários"
+            variante="secundario"
+            recolhivel
+            recolhidoPadrao={!Array.isArray(titulo.paymentIntents) || titulo.paymentIntents.length === 0}
+            acoes={<Link to="/financeiro/pagamentos" className="btn btn-outline btn-sm">Abrir pagamentos</Link>}
+          >
+            <p className="app-note mb-3">Status bancário separado do status financeiro do título.</p>
 
             {!Array.isArray(titulo.paymentIntents) || titulo.paymentIntents.length === 0 ? (
               <div className="rounded-xl bg-[var(--c-bg)] px-3 py-4 text-sm text-[var(--c-muted)]">
-                Nenhuma intencao de pagamento criada para este titulo.
+                Nenhuma intenção de pagamento criada para este título.
               </div>
             ) : (
               <div className="space-y-3">
@@ -1154,16 +1089,14 @@ export default function FinanceiroTituloDetalhe() {
                 })}
               </div>
             )}
-          </div>
+          </BlocoConteudo>
         )}
 
         {podeVerMovimentosFinanceiros && (
-        <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-          <h2 className="text-lg font-semibold text-[var(--c-text)]">Movimentos financeiros</h2>
-
+        <BlocoConteudo titulo="Movimentos financeiros" variante="secundario">
           {!Array.isArray(titulo.movimentos) || titulo.movimentos.length === 0 ? (
             <div className="rounded-xl bg-[var(--c-bg)] px-3 py-4 text-sm text-[var(--c-muted)]">
-              Nenhum movimento registrado neste titulo.
+              Nenhum movimento registrado neste título.
             </div>
           ) : (
             <div className="space-y-3">
@@ -1234,31 +1167,33 @@ export default function FinanceiroTituloDetalhe() {
                     </div>
 
                     <div className="flex flex-col items-start gap-2 md:items-end">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(movimento.status)}`}>
-                        {movimento.status}
-                      </span>
+                      <StatusBadge status={movimento.status} />
                       {String(movimento.status || '').toUpperCase() === 'ATIVO' && (
-                        <div className="flex flex-wrap gap-2 md:justify-end">
+                        <div className="app-actionbar md:justify-end">
                           <button
                             type="button"
-                            className="btn btn-outline"
-                            disabled={estornandoId === movimento.id || savingBaixa}
+                            className="btn btn-outline btn-sm"
+                            disabled={Boolean(titulo.renegociado_por_id) || estornandoId === movimento.id || savingBaixa}
+                            title={titulo.renegociado_por_id ? 'Baixa anterior preservada pela negociação. Consulte os novos títulos.' : undefined}
                             onClick={() => handleCorrigirBaixa(movimento)}
                           >
                             {corrigindoMovimentoId === movimento.id && estornandoId === movimento.id
                               ? 'Preparando...'
                               : 'Corrigir baixa'}
                           </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            disabled={estornandoId === movimento.id || savingBaixa}
-                            onClick={() => handleEstornar(movimento.id)}
-                          >
-                            {estornandoId === movimento.id && corrigindoMovimentoId !== movimento.id
-                              ? 'Estornando...'
-                              : 'Estornar'}
-                          </button>
+                          <span className="app-actionbar-apartada">
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm btn-perigo-suave"
+                              disabled={Boolean(titulo.renegociado_por_id) || estornandoId === movimento.id || savingBaixa}
+                              title={titulo.renegociado_por_id ? 'Baixa anterior preservada pela negociação. Consulte os novos títulos.' : undefined}
+                              onClick={() => handleEstornar(movimento.id)}
+                            >
+                              {estornandoId === movimento.id && corrigindoMovimentoId !== movimento.id
+                                ? 'Estornando...'
+                                : 'Estornar'}
+                            </button>
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1267,21 +1202,23 @@ export default function FinanceiroTituloDetalhe() {
               ))}
             </div>
           )}
-        </div>
+        </BlocoConteudo>
         )}
 
+        {/* Historico por ultimo e recolhido por padrao (regra 1 da organizacao:
+            dado que gera acao primeiro, registro depois). */}
         {podeVerAuditoriaFinanceira && (
-        <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Auditoria financeira</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Criacao, baixas e estornos ficam rastreados no backend.
-            </p>
-          </div>
+        <BlocoConteudo
+          titulo="Auditoria financeira"
+          variante="secundario"
+          recolhivel
+          recolhidoPadrao
+        >
+          <p className="app-note mb-3">Criação, baixas e estornos ficam rastreados no backend.</p>
 
           {auditoria.length === 0 ? (
             <div className="rounded-xl bg-[var(--c-bg)] px-3 py-4 text-sm text-[var(--c-muted)]">
-              Nenhum evento auditavel encontrado para este titulo.
+              Nenhum evento auditável encontrado para este título.
             </div>
           ) : (
             <div className="space-y-3">
@@ -1299,7 +1236,7 @@ export default function FinanceiroTituloDetalhe() {
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="font-medium text-[var(--c-text)]">{evento.label}</div>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${auditStatusClass(evento.status)}`}>
+                          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${auditStatusClass(evento.status)}`}>
                             {evento.status}
                           </span>
                         </div>
@@ -1322,7 +1259,7 @@ export default function FinanceiroTituloDetalhe() {
                                 <div className="font-medium text-[var(--c-text)]">
                                   {fonte.empresa?.nome || fonte.empresa?.razao_social || 'Empresa nao informada'}
                                 </div>
-                                <div className="mt-1 text-[var(--c-muted)]">Conta bancaria</div>
+                                <div className="mt-1 text-[var(--c-muted)]">Conta bancária</div>
                                 <div className="font-medium text-[var(--c-text)]">
                                   {fonte.conta_bancaria?.nome || 'Sem conta bancaria vinculada'}
                                 </div>
@@ -1335,7 +1272,7 @@ export default function FinanceiroTituloDetalhe() {
                             {metadata.map((item) => (
                               <span
                                 key={`${evento.id}-${item.key}`}
-                                className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"
+                                className="rounded-full bg-[var(--ui-surface-2)] px-2 py-1 text-xs text-[var(--c-text)]"
                               >
                                 {item.label}: {item.value}
                               </span>
@@ -1349,14 +1286,14 @@ export default function FinanceiroTituloDetalhe() {
               })}
             </div>
           )}
-        </div>
+        </BlocoConteudo>
         )}
-      </div>
+      </Pagina>
 
       {modalBaixaOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-4">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-4">
           <div className="card flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden p-0">
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--c-border)] px-5 py-4">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--c-border)] px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold" style={{ color: 'var(--c-text)' }}>
                   {corrigindoMovimentoId ? 'Corrigir baixa' : 'Registrar baixa'}
@@ -1381,10 +1318,10 @@ export default function FinanceiroTituloDetalhe() {
             </div>
 
             <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleBaixaSubmit}>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">{baixaFormaLabel}</span>
+                  <span className="mb-1 block text-muted">{baixaFormaLabel}</span>
                   <select
                     className="input w-full"
                     value={baixaForm.forma_recebimento}
@@ -1405,63 +1342,32 @@ export default function FinanceiroTituloDetalhe() {
                       conta_bancaria_id: ''
                     }))}
                   >
-                    <option value="">Nao informar</option>
+                    <option value="">Não informar</option>
                     {FORMAS_RECEBIMENTO.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
                 </label>
 
-                <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Empresa pagadora/recebedora</span>
-                  <select
-                    className="input w-full"
-                    value={baixaForm.empresa_id}
-                    onChange={(event) => {
-                      const empresaSelecionada = event.target.value;
-                      setBaixaForm((current) => {
-                        const empresaDiferente = Boolean(empresaTituloId && empresaSelecionada && empresaSelecionada !== empresaTituloId);
-                        const base = {
-                          ...current,
-                          empresa_id: empresaSelecionada,
-                          conta_bancaria_id: '',
-                          cartao_id: '',
-                          intercompany: empresaDiferente || current.intercompany
-                        };
-                        return empresaDiferente
-                          ? applyNaturezaBaixaIntercompany(base, current.natureza_intercompany_baixa || 'OPERACIONAL_TERCEIRO')
-                          : base;
-                      });
-                    }}
-                    required
-                  >
-                    <option value="">Selecione</option>
-                    {empresasGrupo.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>
-                        {empresa.nome || empresa.razao_social || `Empresa #${empresa.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
                 {baixaUsaCartao ? (
                   <label className="text-sm md:col-span-2">
-                    <span className="mb-1 block text-slate-500">Cartao utilizado</span>
+                    <span className="mb-1 block text-muted">Cartão utilizado</span>
                     <select
                       className="input w-full"
                       value={baixaForm.cartao_id}
                       onChange={(event) => {
                         const cartaoSelecionado = cartoes.find((cartao) => String(cartao.id) === String(event.target.value));
-                        const contaCartao = isCartaoDebito(cartaoSelecionado) ? String(cartaoSelecionado?.conta_bancaria_id || '') : '';
-                        setBaixaForm((current) => ({
+                        const contaCartao = contasBancarias.find((conta) => String(conta.id) === String(cartaoSelecionado?.conta_bancaria_id));
+                        const contaCartaoId = isCartaoDebito(cartaoSelecionado) ? String(contaCartao?.id || '') : '';
+                        setBaixaForm((current) => aplicarEmpresaFonteBaixa({
                           ...current,
                           cartao_id: event.target.value,
-                          conta_bancaria_id: contaCartao
-                        }));
+                          conta_bancaria_id: contaCartaoId
+                        }, contaCartao?.empresa_id));
                       }}
                       required
                     >
-                      <option value="">Selecione o cartao</option>
+                      <option value="">Selecione o cartão</option>
                       {cartoesBaixa.map((cartao) => (
                         <option key={cartao.id} value={cartao.id}>
                           {getCartaoLabel(cartao)}
@@ -1470,14 +1376,14 @@ export default function FinanceiroTituloDetalhe() {
                     </select>
                     {baixaCartaoDebito ? (
                       <span className="mt-1 block text-xs text-[var(--c-muted)]">
-                        Cartao de debito baixa pela conta bancaria vinculada ao cartao.
+                        Cartão de débito baixa pela conta bancária vinculada ao cartão.
                       </span>
                     ) : null}
                   </label>
                 ) : null}
 
                 {baixaUsaCheque && tituloTipo === 'PAGAR' ? (
-                  <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-900 md:col-span-2">
+                  <div className="rounded-xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] p-3 text-sm text-[var(--sem-warning)] md:col-span-2">
                     <label className="flex items-start gap-2">
                       <input
                         type="checkbox"
@@ -1496,18 +1402,24 @@ export default function FinanceiroTituloDetalhe() {
                       />
                       <span>
                         <span className="block font-semibold">Usar cheque de terceiro em carteira</span>
-                        <span className="block text-xs text-amber-700">
+                        <span className="block text-xs text-[var(--sem-warning)]">
                           Use quando o pagamento for feito com um cheque recebido anteriormente de cliente ou parceiro.
                         </span>
                       </span>
                     </label>
                     {baixaPagaComChequeTerceiro ? (
                       <label className="mt-3 block text-sm">
-                        <span className="mb-1 block text-amber-800">Cheque disponivel</span>
+                        <span className="mb-1 block text-[var(--sem-warning)]">Cheque disponível</span>
                         <select
                           className="input w-full bg-white"
                           value={baixaForm.cheque_terceiro_id || ''}
-                          onChange={(event) => setBaixaForm((current) => ({ ...current, cheque_terceiro_id: event.target.value }))}
+                          onChange={(event) => {
+                            const cheque = chequesTerceirosDisponiveis.find((item) => String(item.id) === String(event.target.value));
+                            setBaixaForm((current) => aplicarEmpresaFonteBaixa({
+                              ...current,
+                              cheque_terceiro_id: event.target.value
+                            }, cheque?.empresa_id));
+                          }}
                           required
                         >
                           <option value="">Selecione o cheque</option>
@@ -1518,11 +1430,11 @@ export default function FinanceiroTituloDetalhe() {
                           ))}
                         </select>
                         {loadingChequesTerceiros ? (
-                          <span className="mt-1 block text-xs text-amber-700">
+                          <span className="mt-1 block text-xs text-[var(--sem-warning)]">
                             Consultando cheques em carteira...
                           </span>
                         ) : !chequesTerceirosDisponiveis.length ? (
-                          <span className="mt-1 block text-xs text-amber-700">
+                          <span className="mt-1 block text-xs text-[var(--sem-warning)]">
                             Nenhum cheque de terceiro em carteira foi encontrado.
                           </span>
                         ) : null}
@@ -1532,15 +1444,15 @@ export default function FinanceiroTituloDetalhe() {
                 ) : null}
 
                 {baixaUsaCheque && !baixaPagaComChequeTerceiro ? (
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-900 md:col-span-2">
-                    <div className="mb-3 text-xs text-emerald-700">
+                  <div className="rounded-xl border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] p-3 text-sm text-[var(--sem-info)] md:col-span-2">
+                    <div className="mb-3 text-xs text-[var(--sem-info)]">
                       {baixaRecebeChequeTerceiro
                         ? 'Ao confirmar um recebimento por cheque, o sistema registra automaticamente o documento na carteira de cheques de terceiros.'
                         : 'Informe os dados do cheque emitido para identificar e auditar o pagamento deste titulo.'}
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
                       <label>
-                        <span className="mb-1 block text-emerald-800">Numero do cheque</span>
+                        <span className="mb-1 block text-[var(--sem-info)]">Número do cheque</span>
                         <input
                           className="input w-full bg-white"
                           value={baixaForm.cheque_numero}
@@ -1549,7 +1461,7 @@ export default function FinanceiroTituloDetalhe() {
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-emerald-800">Emitente / titular</span>
+                        <span className="mb-1 block text-[var(--sem-info)]">Emitente / titular</span>
                         <input
                           className="input w-full bg-white"
                           value={baixaForm.cheque_emitente}
@@ -1558,7 +1470,7 @@ export default function FinanceiroTituloDetalhe() {
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-emerald-800">CPF/CNPJ do titular</span>
+                        <span className="mb-1 block text-[var(--sem-info)]">CPF/CNPJ do titular</span>
                         <input
                           className="input w-full bg-white"
                           value={baixaForm.titular_documento}
@@ -1566,7 +1478,7 @@ export default function FinanceiroTituloDetalhe() {
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-emerald-800">Banco</span>
+                        <span className="mb-1 block text-[var(--sem-info)]">Banco</span>
                         <input
                           className="input w-full bg-white"
                           value={baixaForm.cheque_banco}
@@ -1574,7 +1486,7 @@ export default function FinanceiroTituloDetalhe() {
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-emerald-800">Agencia</span>
+                        <span className="mb-1 block text-[var(--sem-info)]">Agência</span>
                         <input
                           className="input w-full bg-white"
                           value={baixaForm.cheque_agencia}
@@ -1582,7 +1494,7 @@ export default function FinanceiroTituloDetalhe() {
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-emerald-800">Conta</span>
+                        <span className="mb-1 block text-[var(--sem-info)]">Conta</span>
                         <input
                           className="input w-full bg-white"
                           value={baixaForm.cheque_conta}
@@ -1590,19 +1502,17 @@ export default function FinanceiroTituloDetalhe() {
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-emerald-800">Emissao</span>
-                        <input
+                        <span className="mb-1 block text-[var(--sem-info)]">Emissão</span>
+                        <DateInputBR
                           className="input w-full bg-white"
-                          type="date"
                           value={baixaForm.data_emissao}
                           onChange={(event) => setBaixaForm((current) => ({ ...current, data_emissao: event.target.value }))}
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-emerald-800">Vencimento</span>
-                        <input
+                        <span className="mb-1 block text-[var(--sem-info)]">Vencimento</span>
+                        <DateInputBR
                           className="input w-full bg-white"
-                          type="date"
                           value={baixaForm.data_vencimento}
                           onChange={(event) => setBaixaForm((current) => ({ ...current, data_vencimento: event.target.value }))}
                         />
@@ -1612,20 +1522,20 @@ export default function FinanceiroTituloDetalhe() {
                 ) : null}
 
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">
+                  <span className="mb-1 block text-muted">
                     {baixaUsaDinheiro ? 'Caixa fisico *' : 'Conta bancaria'}
                   </span>
                   <select
                     className="input w-full"
                     value={baixaForm.conta_bancaria_id}
-                    onChange={(event) => setBaixaForm((current) => ({ ...current, conta_bancaria_id: event.target.value }))}
+                    onChange={(event) => selecionarContaBaixa(event.target.value)}
                     required={(contaBancariaObrigatoria(baixaForm.forma_recebimento) && !baixaPagaComChequeTerceiro) || baixaCartaoDebito}
-                    disabled={!baixaForm.empresa_id || baixaUsaCartao}
+                    disabled={baixaUsaCartao}
                   >
                     <option value="">
                       {baixaUsaCartao
                         ? (baixaCartaoDebito ? 'Conta vinculada ao cartao' : 'Cartao de credito sem baixa bancaria imediata')
-                        : (baixaForm.empresa_id ? 'Selecione' : 'Selecione a empresa da baixa')}
+                        : 'Selecione uma conta'}
                     </option>
                     {contasFinanceirasCompativeisBaixa.map((conta) => (
                       <option key={conta.id} value={conta.id}>
@@ -1634,19 +1544,18 @@ export default function FinanceiroTituloDetalhe() {
                     ))}
                   </select>
                   {baixaUsaDinheiro ? (
-                    <span className="mt-1 block text-xs text-slate-500">
+                    <span className="mt-1 block text-xs text-muted">
                       {contasFinanceirasCompativeisBaixa.length
                         ? 'O caixa precisa estar aberto e incluir a data deste movimento.'
-                        : 'Nenhuma conta de caixa fisico com controle diario foi encontrada para esta empresa.'}
+                        : 'Nenhuma conta de caixa fisico com controle diario foi encontrada.'}
                     </span>
                   ) : null}
                 </label>
 
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Data do movimento</span>
-                  <input
+                  <span className="mb-1 block text-muted">Data do movimento</span>
+                  <DateInputBR
                     className="input w-full"
-                    type="date"
                     value={baixaForm.data_movimento}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, data_movimento: event.target.value }))}
                     required
@@ -1682,7 +1591,7 @@ export default function FinanceiroTituloDetalhe() {
                   <span>
                     <span className="block font-semibold">Baixa Entre Empresas</span>
                     <span className="block text-xs text-[var(--c-muted)]">
-                      Use quando uma empresa paga ou recebe um titulo que pertence a outra empresa do grupo.
+                      Use quando uma empresa paga ou recebe um título que pertence a outra empresa do grupo.
                     </span>
                   </span>
                 </label>
@@ -1690,7 +1599,7 @@ export default function FinanceiroTituloDetalhe() {
                 {mostrarIntercompanyBaixa && (
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="text-sm md:col-span-2">
-                      <span className="mb-1 block text-slate-500">Natureza da baixa</span>
+                      <span className="mb-1 block text-muted">Natureza da baixa</span>
                       <select
                         className="input w-full"
                         value={baixaForm.natureza_intercompany_baixa || 'OPERACIONAL_TERCEIRO'}
@@ -1706,7 +1615,7 @@ export default function FinanceiroTituloDetalhe() {
                       </span>
                     </label>
                     <label className="text-sm md:col-span-2">
-                      <span className="mb-1 block text-slate-500">Motivo</span>
+                      <span className="mb-1 block text-muted">Motivo</span>
                       <input
                         className="input w-full"
                         value={baixaForm.motivo_intercompany}
@@ -1732,7 +1641,7 @@ export default function FinanceiroTituloDetalhe() {
 
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Tipo de permuta</span>
+                  <span className="mb-1 block text-muted">Tipo de permuta</span>
                   <input
                     className="input w-full"
                     value={baixaForm.tipo_permuta}
@@ -1741,31 +1650,31 @@ export default function FinanceiroTituloDetalhe() {
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Categoria do bem</span>
+                  <span className="mb-1 block text-muted">Categoria do bem</span>
                   <select
                     className="input w-full"
                     value={baixaForm.categoria_bem}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, categoria_bem: event.target.value }))}
                   >
-                    <option value="">Nao informar</option>
+                    <option value="">Não informar</option>
                     {CATEGORIAS_BEM.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Bem / descricao</span>
+                  <span className="mb-1 block text-muted">Bem / descrição</span>
                   <input
                     className="input w-full"
                     value={baixaForm.descricao_bem}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, descricao_bem: event.target.value }))}
-                    placeholder="Veiculo, imovel, terreno..."
+                    placeholder="Veículo, imóvel, terreno..."
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Valor referencia</span>
+                  <span className="mb-1 block text-muted">Valor referência</span>
                   <input
-                    className="input w-full"
+                    className="input input-moeda w-full"
                     inputMode="decimal"
                     value={baixaForm.valor_referencia_bem}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, valor_referencia_bem: normalizeCurrencyTyping(event.target.value) }))}
@@ -1775,20 +1684,20 @@ export default function FinanceiroTituloDetalhe() {
               </div>
 
               <label className="text-sm block">
-                <span className="mb-1 block text-slate-500">Documento de referencia</span>
+                <span className="mb-1 block text-muted">Documento de referência</span>
                 <input
                   className="input w-full"
                   value={baixaForm.documento_referencia}
                   onChange={(event) => setBaixaForm((current) => ({ ...current, documento_referencia: event.target.value }))}
-                  placeholder="Numero de contrato, recibo, placa, matricula..."
+                  placeholder="Número de contrato, recibo, placa, matrícula..."
                 />
               </label>
 
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Valor base</span>
+                  <span className="mb-1 block text-muted">Valor base</span>
                   <input
-                    className="input w-full"
+                    className="input input-moeda w-full"
                     inputMode="decimal"
                     value={baixaForm.valor}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, valor: normalizeCurrencyTyping(event.target.value) }))}
@@ -1797,9 +1706,9 @@ export default function FinanceiroTituloDetalhe() {
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Juros</span>
+                  <span className="mb-1 block text-muted">Juros</span>
                   <input
-                    className="input w-full"
+                    className="input input-moeda w-full"
                     inputMode="decimal"
                     value={baixaForm.juros}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, juros: normalizeCurrencyTyping(event.target.value) }))}
@@ -1807,9 +1716,9 @@ export default function FinanceiroTituloDetalhe() {
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Multa</span>
+                  <span className="mb-1 block text-muted">Multa</span>
                   <input
-                    className="input w-full"
+                    className="input input-moeda w-full"
                     inputMode="decimal"
                     value={baixaForm.multa}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, multa: normalizeCurrencyTyping(event.target.value) }))}
@@ -1817,9 +1726,9 @@ export default function FinanceiroTituloDetalhe() {
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Desconto</span>
+                  <span className="mb-1 block text-muted">Desconto</span>
                   <input
-                    className="input w-full"
+                    className="input input-moeda w-full"
                     inputMode="decimal"
                     value={baixaForm.desconto}
                     onChange={(event) => setBaixaForm((current) => ({ ...current, desconto: normalizeCurrencyTyping(event.target.value) }))}
@@ -1829,16 +1738,16 @@ export default function FinanceiroTituloDetalhe() {
               </div>
 
               <label className="text-sm block">
-                <span className="mb-1 block text-slate-500">Observacoes</span>
+                <span className="mb-1 block text-muted">Observações</span>
                 <textarea
-                  className="input min-h-[96px] w-full"
+                  className="input min-h-24 w-full"
                   value={baixaForm.observacoes}
                   onChange={(event) => setBaixaForm((current) => ({ ...current, observacoes: event.target.value }))}
                 />
               </label>
               </div>
 
-              <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--c-border)] bg-[var(--c-surface)] px-5 py-4">
+              <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--c-border)] bg-[var(--c-surface)] px-6 py-4">
                 <button
                   type="button"
                   className="btn btn-outline"
@@ -1855,7 +1764,7 @@ export default function FinanceiroTituloDetalhe() {
                   className="btn btn-primary"
                   disabled={
                     savingBaixa ||
-                    !baixaForm.empresa_id ||
+                    bloqueadoPorRetornoObra ||
                     !baixaForm.forma_recebimento ||
                     (baixaUsaCartao && !baixaForm.cartao_id) ||
                     (baixaCartaoDebito && !baixaForm.conta_bancaria_id) ||
@@ -1874,6 +1783,8 @@ export default function FinanceiroTituloDetalhe() {
           </div>
         </div>
       )}
+
+      {elementoConfirmacao}
     </>
   );
 }

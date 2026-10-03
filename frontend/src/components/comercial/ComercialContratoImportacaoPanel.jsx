@@ -100,7 +100,7 @@ export default function ComercialContratoImportacaoPanel({ onImported }) {
         <div>
           <p className="sol-filtros-title">Importar extratos do Sienge</p>
           <p className="sol-filtros-subtitle">
-            Valide primeiro. Nenhum contrato, cliente, unidade ou recebimento e alterado durante a previa.
+            Valide primeiro. Nenhum contrato, cliente, unidade ou recebimento e alterado durante a prévia.
           </p>
         </div>
         <button type="button" className="btn btn-outline" onClick={handleDownload} disabled={Boolean(busy)}>
@@ -142,14 +142,14 @@ export default function ComercialContratoImportacaoPanel({ onImported }) {
               ['Saldo atual', currency(preview.valor_saldo)]
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2">
-                <div className="text-[11px] uppercase tracking-wide text-[var(--c-muted)]">{label}</div>
+                <div className="text-xs uppercase tracking-wide text-[var(--c-muted)]">{label}</div>
                 <div className="mt-1 text-sm font-semibold text-[var(--c-text)]">{value ?? 0}</div>
               </div>
             ))}
           </div>
 
-          <IssueList title="Erros que bloqueiam a importacao" items={preview.erros} tone="error" />
-          <IssueList title="Avisos para conferencia" items={preview.avisos} tone="warning" />
+          <IssueList title="Erros que bloqueiam a importação" items={preview.erros} tone="error" />
+          <IssueList title="Avisos para conferência" items={preview.avisos} tone="warning" />
 
           {preview.status === 'CONFIRMADO' ? (
             <div className="app-alert app-alert--success">
@@ -158,9 +158,9 @@ export default function ComercialContratoImportacaoPanel({ onImported }) {
           ) : (
             <div className="flex flex-col gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-sm font-semibold text-[var(--c-text)]">Confirmacao atomica</div>
+                <div className="text-sm font-semibold text-[var(--c-text)]">Confirmação atômica</div>
                 <div className="text-xs text-[var(--c-muted)]">
-                  Se qualquer contrato falhar, a importacao inteira e desfeita. Recebimentos historicos nao movimentam conta bancaria.
+                  Se qualquer contrato falhar, a importação inteira e desfeita. Recebimentos históricos não movimentam conta bancária.
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">

@@ -26,10 +26,10 @@ export default function PrivateRoute({ children }) {
   if (authRestoreError && !isAuthenticated) {
     return (
       <main className="min-h-screen bg-[var(--c-bg)] px-4 py-8 flex items-center justify-center">
-        <section className="w-full max-w-lg rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-6 shadow-sm">
-          <h1 className="text-lg font-semibold text-[var(--c-text)]">Nao foi possivel restaurar sua sessao</h1>
+        <section className="w-full max-w-lg rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-6 shadow-sm">
+          <h1 className="text-lg font-semibold text-[var(--c-text)]">Não foi possível restaurar sua sessão</h1>
           <p className="mt-2 text-sm text-[var(--c-muted)]">
-            Verifique a conexao e tente novamente. Sua sessao local nao foi apagada.
+            Verifique a conexão e tente novamente. Sua sessão local não foi apagada.
           </p>
           <button
             type="button"

@@ -1,6 +1,16 @@
 const { Op } = require('sequelize');
-const { Categoria, Insumo, Unidade, SolicitacaoCompra, SolicitacaoCompraItem, SolicitacaoCompraRespostaItem } = require('../models');
+const {
+  Categoria,
+  Insumo,
+  InsumoAlias,
+  Unidade,
+  SolicitacaoCompra,
+  SolicitacaoCompraItem,
+  SolicitacaoCompraItemManual,
+  SolicitacaoCompraRespostaItem
+} = require('../models');
 const { getUserObraScopeIds } = require('../services/authorizationService');
+const { gerarCodigoInsumo, normalizarNomeInsumo } = require('../services/insumoManualCatalogacaoService');
 
 function parseBoolean(value, fallback) {
   if (typeof value === 'boolean') {
@@ -28,10 +38,17 @@ module.exports = {
 
       if (q) {
         const termo = `%${String(q).trim()}%`;
+        const termoNormalizado = `%${normalizarNomeInsumo(q)}%`;
+        const aliases = await InsumoAlias.findAll({
+          where: { alias_normalizado: { [Op.like]: termoNormalizado }, ativo: true },
+          attributes: ['insumo_id']
+        });
+        const aliasIds = aliases.map((entry) => Number(entry.insumo_id)).filter(Boolean);
         where[Op.or] = [
           { nome: { [Op.like]: termo } },
           { codigo: { [Op.like]: termo } },
-          { descricao: { [Op.like]: termo } }
+          { descricao: { [Op.like]: termo } },
+          ...(aliasIds.length ? [{ id: { [Op.in]: aliasIds } }] : [])
         ];
       }
 
@@ -43,7 +60,8 @@ module.exports = {
         where,
         include: [
           { model: Unidade, as: 'unidade', attributes: ['id', 'nome', 'sigla'] },
-          { model: Categoria, as: 'categoria', attributes: ['id', 'nome'] }
+          { model: Categoria, as: 'categoria', attributes: ['id', 'nome'] },
+          { model: InsumoAlias, as: 'aliases', where: { ativo: true }, required: false, attributes: ['id', 'alias'] }
         ],
         order: [['nome', 'ASC']],
         ...(limite ? { limit: limite } : {})
@@ -57,6 +75,7 @@ module.exports = {
   },
 
   async create(req, res) {
+    const transaction = await Insumo.sequelize.transaction();
     try {
       const nome = String(req.body?.nome || '').trim();
       const codigo = req.body?.codigo != null ? String(req.body.codigo).trim() : '';
@@ -66,21 +85,27 @@ module.exports = {
       const categoria_id = req.body?.categoria_id;
 
       if (!nome) {
+        await transaction.rollback();
         return res.status(400).json({ error: 'Informe o nome' });
       }
 
       const insumo = await Insumo.create({
         nome,
-        codigo: codigo || null,
+        codigo: codigo || await gerarCodigoInsumo(transaction),
         descricao: descricao || null,
         unidade_id: unidade_id || null,
         unidade_manual: unidade_manual || null,
         categoria_id: categoria_id || null
-      });
+      }, { transaction });
 
+      await transaction.commit();
       return res.status(201).json(insumo);
     } catch (error) {
+      if (!transaction.finished) await transaction.rollback();
       console.error(error);
+      if (error?.name === 'SequelizeUniqueConstraintError') {
+        return res.status(409).json({ error: 'Ja existe um insumo com este codigo.' });
+      }
       return res.status(500).json({ error: 'Erro ao criar insumo' });
     }
   },
@@ -152,30 +177,66 @@ module.exports = {
         whereCompra.obra_id = { [Op.in]: obraIdsEscopo };
       }
 
-      const respostaItem = await SolicitacaoCompraRespostaItem.findOne({
-        where: { vencedor: true, preco: { [Op.not]: null }, deleted_at: null },
-        include: [{
-          model: SolicitacaoCompraItem,
-          as: 'itemCadastrado',
-          required: true,
-          where: { insumo_id: insumoId },
+      const respostaWhere = { vencedor: true, preco: { [Op.not]: null }, deleted_at: null };
+      const [respostaCadastrada, respostaManual] = await Promise.all([
+        SolicitacaoCompraRespostaItem.findOne({
+          where: respostaWhere,
           include: [{
-            model: SolicitacaoCompra,
-            as: 'solicitacao',
+            model: SolicitacaoCompraItem,
+            as: 'itemCadastrado',
             required: true,
-            where: whereCompra,
-            attributes: ['id', 'updatedAt']
-          }]
-        }],
-        order: [[
-          { model: SolicitacaoCompraItem, as: 'itemCadastrado' },
-          { model: SolicitacaoCompra, as: 'solicitacao' },
-          'updatedAt', 'DESC'
-        ]],
-        limit: 1
-      });
+            where: { insumo_id: insumoId },
+            include: [{
+              model: SolicitacaoCompra,
+              as: 'solicitacao',
+              required: true,
+              where: whereCompra,
+              attributes: ['id', 'updatedAt']
+            }]
+          }],
+          order: [[
+            { model: SolicitacaoCompraItem, as: 'itemCadastrado' },
+            { model: SolicitacaoCompra, as: 'solicitacao' },
+            'updatedAt', 'DESC'
+          ]],
+          limit: 1
+        }),
+        SolicitacaoCompraRespostaItem.findOne({
+          where: respostaWhere,
+          include: [{
+            model: SolicitacaoCompraItemManual,
+            as: 'itemManual',
+            required: true,
+            where: { insumo_catalogado_id: insumoId },
+            include: [{
+              model: SolicitacaoCompra,
+              as: 'solicitacao',
+              required: true,
+              where: whereCompra,
+              attributes: ['id', 'updatedAt']
+            }]
+          }],
+          order: [[
+            { model: SolicitacaoCompraItemManual, as: 'itemManual' },
+            { model: SolicitacaoCompra, as: 'solicitacao' },
+            'updatedAt', 'DESC'
+          ]],
+          limit: 1
+        })
+      ]);
 
-      const preco = respostaItem ? Number(respostaItem.preco) : null;
+      const candidatos = [
+        respostaCadastrada && {
+          preco: Number(respostaCadastrada.preco),
+          updatedAt: respostaCadastrada.itemCadastrado?.solicitacao?.updatedAt
+        },
+        respostaManual && {
+          preco: Number(respostaManual.preco),
+          updatedAt: respostaManual.itemManual?.solicitacao?.updatedAt
+        }
+      ].filter(Boolean).sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+      const preco = candidatos.length ? candidatos[0].preco : null;
       return res.json({ last_purchase_price: preco });
     } catch (error) {
       console.error(error);
@@ -206,14 +267,21 @@ module.exports = {
         }
 
         try {
-          const insumo = await Insumo.create({
-            nome,
-            codigo: null,
-            descricao: null,
-            unidade_id: unidadeId,
-            categoria_id: categoriaId
-          });
-
+          const transaction = await Insumo.sequelize.transaction();
+          let insumo;
+          try {
+            insumo = await Insumo.create({
+              nome,
+              codigo: await gerarCodigoInsumo(transaction),
+              descricao: null,
+              unidade_id: unidadeId,
+              categoria_id: categoriaId
+            }, { transaction });
+            await transaction.commit();
+          } catch (error) {
+            if (!transaction.finished) await transaction.rollback();
+            throw error;
+          }
           insumosProcessados.push(insumo);
         } catch (error) {
           if (error.name === 'SequelizeUniqueConstraintError') {

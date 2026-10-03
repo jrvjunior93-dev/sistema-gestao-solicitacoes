@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   HiOutlineArrowPath,
-  HiOutlineBanknotes,
   HiOutlineCloudArrowDown,
-  HiOutlineDocumentText,
-  HiOutlineExclamationTriangle,
   HiOutlinePaperAirplane,
-  HiOutlineShieldCheck
+  HiOutlinePlus,
+  HiOutlineXMark
 } from 'react-icons/hi2';
 import {
   baixarCaixaPagamentoRemessa,
@@ -18,7 +16,68 @@ import {
   getContasBancarias,
   salvarCaixaPagamentoConvenio
 } from '../services/financeiro';
-import { getEmpresasGrupo } from '../services/empresasGrupo';
+import OverlayModal from '../components/ui/OverlayModal';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  FormSecao,
+  CampoForm,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
+import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../utils/formatters';
+import DateInputBR from '../components/DateInputBR';
+
+/*
+ * AS QUATRO CLASSES FANTASMA DESTA TELA (achado de 04/09, fatia 3).
+ *
+ * `.app-card`, `.app-button`, `.app-button-secondary` e `.app-input` eram
+ * usadas em 26 pontos deste arquivo e **nunca foram declaradas em CSS
+ * nenhum** — nem aqui, nem no index.css, nem nos componentes padrão. Não é
+ * regressão: está assim desde que a tela existe. Classe fantasma passa por
+ * qualquer check de FORMA (a R25 vê `.app-input` e lê "classe do sistema")
+ * e só some quando alguém cruza o que a tela USA com o que o sistema
+ * DECLARA — `scripts/provas/tokensExistem.mjs`.
+ *
+ * O que a tela PARECIA ter × o que ela TINHA:
+ *
+ *  - `.app-card` (3x: os MetricCard, as Section e o <header> do topo)
+ *      Parecia: superfície branca sobre o canvas, com contorno, raio e
+ *      sombra — os "blocos flutuando" da B1/B5.
+ *      Era: um <div> transparente. Só o padding utilitário do Tailwind
+ *      existia — e, num dos três, num degrau que nem é da escala.
+ *      Ou seja: título, métricas e todas as seções eram TEXTO SOLTO sobre
+ *      o fundo cinza — B5 reprovando em toda a tela, sem ninguém ver.
+ *      Agora: `BlocoConteudo` (`.app-bloco`) e `StatTile` (`.app-stat`).
+ *
+ *  - `.app-button` + `.app-button-secondary` (5x e 3x, sempre juntas)
+ *      Parecia: botão do sistema — 32px de alvo no desktop / 44px no
+ *      toque (R2), tom por token, ícone com piso de 18px, hover e foco.
+ *      Era: <button> CRU do navegador, com a altura do texto (~21px no
+ *      Chrome). Reprova a R2 e a M1 em oito pontos, incluindo o botão que
+ *      GERA A REMESSA DE PAGAMENTO.
+ *      Agora: `.btn btn-primary` / `.btn btn-outline`.
+ *
+ *  - `.app-input` (15x: todo o formulário de convênio e a linha da remessa)
+ *      Parecia: campo do sistema — altura mínima, borda por token, raio,
+ *      anel de foco, placeholder legível.
+ *      Era: <input>/<select> CRU, com `mt-1` de margem e nada mais. Quinze
+ *      campos sem altura de sistema, sem foco visível e — no campo de
+ *      valor — sem o piso de 180px, o alinhamento à direita e o
+ *      tabular-nums que a R6 exige.
+ *      Agora: `.input` (+ `.input-moeda` onde é dinheiro), dentro de
+ *      `CampoForm`/`FormSecao`.
+ *
+ * A lição que fica: **classe fantasma parece intenção.** Quem lê
+ * `className="app-input mt-1"` acredita que há estilo ali, e por isso o
+ * defeito atravessa revisões — não há nada errado para ver, só uma coisa
+ * ausente que o olho preenche.
+ */
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -31,76 +90,31 @@ function formatDateTime(value) {
   return date.toLocaleString('pt-BR');
 }
 
-function statusClass(status) {
+/* R25 — o tom do estado vem da classe do sistema (`badge-*`, que aponta
+   para --sem-*), nunca de paleta crua do Tailwind. `bg-emerald-100`,
+   `bg-amber-100`, `bg-rose-100` e `bg-slate-100` não têm par no tema
+   escuro e não passam pelo piso de contraste do ThemeContext (R24) —
+   `text-slate-500` é 4,34:1 contra o mínimo AA de 4,5:1. */
+function statusBadgeClasse(status) {
   const normalized = String(status || '').toUpperCase();
   if (['OK', 'ATIVO', 'CONCLUIDO', 'BAIXADO', 'PROCESSADO', 'SUCESSO'].includes(normalized)) {
-    return 'app-status-pill bg-emerald-100 text-emerald-700';
+    return 'badge badge-success';
   }
   if (['WARNING', 'ACTION', 'PENDENTE', 'ENVIADO_AO_BANCO', 'AGUARDANDO_CONFIRMACAO_BAIXA'].includes(normalized)) {
-    return 'app-status-pill bg-amber-100 text-amber-700';
+    return 'badge badge-warning';
   }
   if (['CRITICAL', 'ERRO', 'FALHA_INTEGRACAO', 'REJEITADO', 'CANCELADO'].includes(normalized)) {
-    return 'app-status-pill bg-rose-100 text-rose-700';
+    return 'badge badge-danger';
   }
-  return 'app-status-pill bg-slate-100 text-slate-700';
+  return 'badge badge-muted';
 }
 
-function MetricCard({ title, value, detail, icon: Icon }) {
-  return (
-    <div className="app-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
-          {detail ? <p className="mt-1 text-xs text-slate-500">{detail}</p> : null}
-        </div>
-        {Icon ? <Icon className="h-6 w-6 text-blue-600" /> : null}
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, description, children, action }) {
-  return (
-    <section className="app-card p-4">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-          {description ? <p className="mt-1 text-xs text-slate-500">{description}</p> : null}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function EmptyState({ children = 'Sem registros para exibir.' }) {
-  return (
-    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-      {children}
-    </div>
-  );
-}
-
-function MiniTable({ columns, rows, renderRow }) {
-  if (!rows?.length) return <EmptyState />;
-  return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-left text-xs">
-        <thead className="border-b border-slate-200 text-[11px] uppercase tracking-[0.14em] text-slate-500">
-          <tr>
-            {columns.map((column) => (
-              <th key={column} className="px-3 py-2 font-semibold">{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {rows.map(renderRow)}
-        </tbody>
-      </table>
-    </div>
-  );
+function statusTom(status) {
+  const normalized = String(status || '').toUpperCase();
+  if (['CRITICAL', 'ERRO', 'FALHA', 'FALHA_INTEGRACAO'].includes(normalized)) return 'danger';
+  if (['WARNING', 'ACTION', 'PENDENTE'].includes(normalized)) return 'warning';
+  if (['OK', 'ATIVO'].includes(normalized)) return 'success';
+  return undefined;
 }
 
 function normalizeList(data) {
@@ -139,8 +153,7 @@ const convenioInicial = {
   ativo: true
 };
 
-function CaixaPagamentosPanel() {
-  const [empresas, setEmpresas] = useState([]);
+function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
   const [contas, setContas] = useState([]);
   const [convenios, setConvenios] = useState([]);
   const [remessas, setRemessas] = useState([]);
@@ -149,20 +162,16 @@ function CaixaPagamentosPanel() {
   const [selectedTitulos, setSelectedTitulos] = useState([]);
   const [dataPagamento, setDataPagamento] = useState(hojeIso());
   const [form, setForm] = useState(convenioInicial);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [modalConvenio, setModalConvenio] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function loadBase() {
-    setError('');
     try {
-      const [empresasData, contasData, conveniosData, remessasData] = await Promise.all([
-        getEmpresasGrupo({ ativo: true }),
+      const [contasData, conveniosData, remessasData] = await Promise.all([
         getContasBancarias(),
         getCaixaPagamentoConvenios(),
         getCaixaPagamentoRemessas()
       ]);
-      setEmpresas(normalizeList(empresasData));
       setContas(normalizeList(contasData));
       const conveniosList = normalizeList(conveniosData);
       setConvenios(conveniosList);
@@ -171,7 +180,7 @@ function CaixaPagamentosPanel() {
         setSelectedConvenioId(String(conveniosList[0].id));
       }
     } catch (err) {
-      setError(err.message || 'Erro ao carregar dados Caixa Pagamentos');
+      avisar.erro(err.message || 'Erro ao carregar dados Caixa Pagamentos');
     }
   }
 
@@ -181,7 +190,6 @@ function CaixaPagamentosPanel() {
       setSelectedTitulos([]);
       return;
     }
-    setError('');
     try {
       const data = await getCaixaPagamentoTitulosElegiveis(convenioId);
       setTitulos(normalizeList(data));
@@ -189,7 +197,7 @@ function CaixaPagamentosPanel() {
     } catch (err) {
       setTitulos([]);
       setSelectedTitulos([]);
-      setError(err.message || 'Erro ao buscar titulos elegiveis');
+      avisar.erro(err.message || 'Erro ao buscar titulos elegiveis');
     }
   }
 
@@ -203,21 +211,15 @@ function CaixaPagamentosPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConvenioId]);
 
-  function onEmpresaChange(value) {
-    const empresa = empresas.find((item) => String(item.id) === String(value));
-    setForm((current) => ({
-      ...current,
-      empresa_id: value,
-      empresa_nome: empresa?.razao_social || empresa?.nome || current.empresa_nome,
-      empresa_cpf_cnpj: empresa?.cnpj || current.empresa_cpf_cnpj
-    }));
-  }
-
   function onContaChange(value) {
     const conta = contas.find((item) => String(item.id) === String(value));
+    const empresa = conta?.empresa || {};
     setForm((current) => ({
       ...current,
       conta_bancaria_id: value,
+      empresa_id: String(conta?.empresa_id || empresa.id || ''),
+      empresa_nome: empresa.razao_social || empresa.nome || current.empresa_nome,
+      empresa_cpf_cnpj: empresa.cnpj || current.empresa_cpf_cnpj,
       agencia: conta?.agencia || current.agencia,
       conta: conta?.conta || current.conta
     }));
@@ -225,16 +227,25 @@ function CaixaPagamentosPanel() {
 
   async function submitConvenio(event) {
     event.preventDefault();
+    const documentoErro = getCpfCnpjError(form.empresa_cpf_cnpj, {
+      required: true,
+      label: 'CPF/CNPJ da empresa'
+    });
+    if (documentoErro) {
+      avisar.erro(documentoErro);
+      return;
+    }
     setLoading(true);
-    setMessage('');
-    setError('');
+    limparAvisos();
     try {
-      await salvarCaixaPagamentoConvenio(form);
+      // Payload idêntico ao anterior — a reforma é de layout.
+      await salvarCaixaPagamentoConvenio({ ...form, empresa_cpf_cnpj: onlyDigits(form.empresa_cpf_cnpj) });
       setForm(convenioInicial);
-      setMessage('Convenio Caixa de pagamentos salvo.');
+      setModalConvenio(false);
+      avisar.sucesso('Convênio Caixa de pagamentos salvo.');
       await loadBase();
     } catch (err) {
-      setError(err.message || 'Erro ao salvar convenio');
+      avisar.erro(err.message || 'Erro ao salvar convenio');
     } finally {
       setLoading(false);
     }
@@ -246,21 +257,51 @@ function CaixaPagamentosPanel() {
     ));
   }
 
+  function alternarTodosTitulos(marcar, ids) {
+    setSelectedTitulos(marcar ? [...ids] : []);
+  }
+
   async function gerarRemessa() {
+    /*
+      R26 (04/09) — tudo o que a ação usa é FIXADO antes do `await`: o
+      convênio, a lista de títulos e a data. O modal do sistema não bloqueia
+      a tela como o `prompt` bloqueava; trocar o convênio no seletor com a
+      confirmação aberta recarrega `titulos` e ZERA `selectedTitulos`, então
+      reler o estado depois do `await` faria a tela perguntar sobre N
+      títulos e mandar outra lista (ou lista vazia) ao banco.
+
+      DoD (classe "consentimento"): a contagem e o valor citados na mensagem
+      saem de `titulosAlvo`/`valorAlvo`, e é `titulosAlvo` que vai no payload.
+    */
+    const convenioAlvo = selectedConvenioId;
+    const titulosAlvo = [...selectedTitulos];
+    const dataAlvo = dataPagamento;
+    const valorAlvo = titulos
+      .filter((titulo) => titulosAlvo.includes(titulo.id))
+      .reduce((total, titulo) => total + Number(titulo.valor_saldo || titulo.valor_original || 0), 0);
+
+    if (!convenioAlvo || !titulosAlvo.length) return;
+
+    const { ok } = await confirmar({
+      titulo: 'Gerar a remessa de pagamento?',
+      mensagem: `${titulosAlvo.length} título(s), somando ${formatCurrency(valorAlvo)}, entram num arquivo CNAB240 de pagamento com data ${dataAlvo}. O arquivo é gerado e fica registrado; esta tela não desfaz a geração — cancelar depois é tratativa junto ao banco.`,
+      rotuloConfirmar: 'Gerar remessa'
+    });
+    if (!ok) return;
+
     setLoading(true);
-    setMessage('');
-    setError('');
+    limparAvisos();
     try {
       const remessa = await gerarCaixaPagamentoRemessa({
-        convenio_id: selectedConvenioId,
-        titulo_ids: selectedTitulos,
-        data_pagamento: dataPagamento
+        convenio_id: convenioAlvo,
+        titulo_ids: titulosAlvo,
+        data_pagamento: dataAlvo
       });
-      setMessage(`Remessa ${remessa.nome_arquivo} gerada com sucesso.`);
+      avisar.sucesso(`Remessa ${remessa.nome_arquivo} gerada com sucesso.`);
       setSelectedTitulos([]);
-      await Promise.all([loadBase(), loadTitulos(selectedConvenioId)]);
+      await Promise.all([loadBase(), loadTitulos(convenioAlvo)]);
     } catch (err) {
-      setError(err.message || 'Erro ao gerar remessa Caixa');
+      avisar.erro(err.message || 'Erro ao gerar remessa Caixa');
     } finally {
       setLoading(false);
     }
@@ -278,7 +319,7 @@ function CaixaPagamentosPanel() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err.message || 'Erro ao baixar remessa Caixa');
+      avisar.erro(err.message || 'Erro ao baixar remessa Caixa');
     }
   }
 
@@ -287,201 +328,251 @@ function CaixaPagamentosPanel() {
     .reduce((total, titulo) => total + Number(titulo.valor_saldo || titulo.valor_original || 0), 0);
 
   return (
-    <Section
-      title="Caixa Pagamentos CNAB240"
-      description="Gere remessas reais de pagamento de boletos por codigo de barras/linha digitavel, separadas das remessas de cobranca."
-      action={(
-        <button type="button" className="app-button app-button-secondary" onClick={loadBase} disabled={loading}>
-          <HiOutlineArrowPath className={loading ? 'animate-spin' : ''} />
-          Atualizar Caixa
-        </button>
-      )}
-    >
-      <div className="space-y-4">
-        {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
-        {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+    <>
+      <BlocoConteudo
+        titulo="Caixa Pagamentos CNAB240"
+        contagem={`${selectedTitulos.length} título(s) · ${formatCurrency(valorSelecionado)}`}
+        descricao="Remessas reais de pagamento de boleto por código de barras/linha digitável, separadas das remessas de cobrança."
+        acoes={(
+          <>
+            {/* D3 — as ações do bloco ficam VISÍVEIS, em três pesos: o
+                cadastro raro (R9) abre em modal pelo secundário, e o
+                primário é o que executa o pagamento. */}
+            <button type="button" className="btn btn-outline" onClick={() => { setForm(convenioInicial); setModalConvenio(true); }}>
+              <HiOutlinePlus aria-hidden="true" />
+              Novo convênio
+            </button>
+            <button type="button" className="btn btn-outline" onClick={loadBase} disabled={loading}>
+              <HiOutlineArrowPath aria-hidden="true" className={loading ? 'animate-spin' : ''} />
+              Atualizar Caixa
+            </button>
+          </>
+        )}
+      >
+        {/* R12 — este `select` é SELETOR DE CONTEXTO, não filtro de lista:
+            escolhe QUAL convênio a remessa usa, e a lista abaixo (e o
+            arquivo gerado) herdam a escolha. Continua legítimo pela regra.
+            R2/R7 — os dois campos da linha compartilham altura e linha de
+            base pelo form-grid; nenhum deles mede a si mesmo (a grade
+            `1fr 180px auto` escrita na tela saiu). */}
+        <FormSecao legenda="Gerar remessa de pagamento" colunas={2}>
+          <CampoForm label="Convênio Caixa" obrigatorio>
+            <select className="input" value={selectedConvenioId} onChange={(e) => setSelectedConvenioId(e.target.value)}>
+              <option value="">Selecione um convênio</option>
+              {convenios.map((convenio) => (
+                <option key={convenio.id} value={convenio.id}>
+                  {convenio.empresa?.razao_social || convenio.empresa_nome} - {convenio.compromisso_codigo || convenio.convenio_codigo}
+                </option>
+              ))}
+            </select>
+          </CampoForm>
+          <CampoForm label="Data de pagamento" obrigatorio>
+            <DateInputBR className="input" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
+          </CampoForm>
+        </FormSecao>
 
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <form onSubmit={submitConvenio} className="rounded-lg border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-slate-950">Cadastrar convenio</h3>
-            <p className="mt-1 text-xs text-slate-500">Cada empresa do grupo pode ter seu proprio convenio Caixa.</p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <label className="text-xs font-semibold text-slate-600">
-                Empresa
-                <select className="app-input mt-1" value={form.empresa_id} onChange={(e) => onEmpresaChange(e.target.value)} required>
-                  <option value="">Selecione</option>
-                  {empresas.map((empresa) => (
-                    <option key={empresa.id} value={empresa.id}>{empresa.razao_social || empresa.nome}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Conta de debito
-                <select className="app-input mt-1" value={form.conta_bancaria_id} onChange={(e) => onContaChange(e.target.value)} required>
+        {/* C5/D3 — UM primário sólido, e ele diz o que vai acontecer. Fica
+            fora do FormSecao de propósito: botão não é campo, e envolvê-lo
+            num <label> faria o rótulo do campo disputar o clique com ele. */}
+        <div className="app-actionbar">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={gerarRemessa}
+            disabled={!selectedConvenioId || !selectedTitulos.length || loading}
+          >
+            <HiOutlinePaperAirplane aria-hidden="true" />
+            Gerar remessa
+          </button>
+        </div>
+
+        <TabelaPadrao
+          // R16b — a marcação em lote é capacidade do componente (com
+          // "todos" no cabeçalho e estado indeterminado), não uma coluna de
+          // checkbox montada à mão dentro de um `tipo: 'status'`.
+          selecao={{
+            selecionados: selectedTitulos,
+            aoAlternar: (id) => toggleTitulo(id),
+            aoAlternarTodos: alternarTodosTitulos
+          }}
+          colunas={[
+            { id: 'codigo', titulo: 'Título', tipo: 'codigo', render: (titulo) => titulo.codigo },
+            {
+              id: 'fornecedor',
+              titulo: 'Fornecedor',
+              // R17: o fornecedor NOMEIA o titulo elegivel.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (titulo) => titulo.parceiro?.nome || '-'
+            },
+            { id: 'vencimento', titulo: 'Venc.', tipo: 'data', render: (titulo) => titulo.data_vencimento || '-' },
+            { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (titulo) => formatCurrency(titulo.valor_saldo || titulo.valor_original) }
+          ]}
+          itens={titulos}
+          storageKey="tabela:financeiro-bancos:titulos-elegiveis"
+          rotuloRolagem="Titulos elegiveis para remessa"
+          vazio="Nenhum título elegível encontrado."
+        />
+      </BlocoConteudo>
+
+      <BlocoConteudo titulo="Remessas geradas" descricao="Arquivos CNAB240 já produzidos por esta tela.">
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'arquivo',
+              titulo: 'Arquivo',
+              // R17: o nome do arquivo NOMEIA a remessa gerada.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (remessa) => remessa.nome_arquivo
+            },
+            { id: 'empresa', titulo: 'Empresa', tipo: 'texto', render: (remessa) => remessa.empresa?.razao_social || remessa.empresa?.nome || '-' },
+            { id: 'status', titulo: 'Status', tipo: 'status', render: (remessa) => <span className={statusBadgeClasse(remessa.status)}>{remessa.status}</span> },
+            { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (remessa) => formatCurrency(remessa.valor_total) }
+          ]}
+          itens={remessas}
+          storageKey="tabela:financeiro-bancos:remessas"
+          vazio="Sem registros para exibir."
+          rotuloRolagem="Remessas geradas"
+          larguraAcoes={140}
+          acoesLinha={(remessa) => (
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => baixarRemessa(remessa.id)}>
+              <HiOutlineCloudArrowDown aria-hidden="true" />
+              Baixar
+            </button>
+          )}
+        />
+      </BlocoConteudo>
+
+      {/* R9/R1 — cadastro esporádico abre em MODAL do sistema, não inline
+          na tela: o formulário de convênio dividia a tela ao meio e empurrava
+          a lista de títulos para uma coluna estreita.
+          R27 — corpo rolante e rodapé fixo são do OverlayModal; a tela não
+          escreve `overflow-y` nenhum, e o botão de salvar fica sempre à
+          vista mesmo com os quinze campos abertos. */}
+      {modalConvenio ? (
+        <OverlayModal
+          rotulo="Novo convênio Caixa de pagamentos"
+          largura="var(--modal-max-w-xl, 1080px)"
+          onFechar={() => setModalConvenio(false)}
+        >
+          <div data-modal="cabecalho" className="flex items-start justify-between gap-4 border-b border-[var(--c-border)] p-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--c-text)]">Cadastrar convênio Caixa</h2>
+              <p className="text-sm text-[var(--c-muted)]">
+                A empresa do convênio será identificada pela conta de débito.
+              </p>
+            </div>
+            <button type="button" className="btn btn-outline" onClick={() => setModalConvenio(false)} aria-label="Fechar">
+              <HiOutlineXMark aria-hidden="true" />
+            </button>
+          </div>
+
+          <form id="form-convenio-caixa" className="p-4" onSubmit={submitConvenio}>
+            {/* R2/R7 — todos os campos com a MESMA altura e a mesma linha de
+                base: quem mede é o form-grid, não a tela. Antes eram
+                `<input>`/`<select>` crus do navegador (ver o comentário da
+                classe fantasma no topo do arquivo). */}
+            <FormSecao legenda="Empresa e conta" colunas={2}>
+              <CampoForm label="Conta de débito" obrigatorio>
+                <select className="input" value={form.conta_bancaria_id} onChange={(e) => onContaChange(e.target.value)} required>
                   <option value="">Selecione</option>
                   {contas.map((conta) => (
-                    <option key={conta.id} value={conta.id}>{conta.nome || conta.banco} - {conta.agencia}/{conta.conta}</option>
+                    <option key={conta.id} value={conta.id}>{conta.nome || conta.banco} - {conta.agencia}/{conta.conta}{conta.empresa?.nome ? ` - ${conta.empresa.nome}` : ''}</option>
                   ))}
                 </select>
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Codigo do convenio
-                <input className="app-input mt-1" value={form.convenio_codigo} onChange={(e) => setForm({ ...form, convenio_codigo: e.target.value })} required />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Nome do convenio
-                <input className="app-input mt-1" value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Ex.: CONSTRUTORA SUL CAPIXABA..." />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Codigo do compromisso
-                <input className="app-input mt-1" value={form.compromisso_codigo} onChange={(e) => setForm({ ...form, compromisso_codigo: e.target.value })} placeholder="Ex.: 0001" />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Nome do compromisso
-                <input className="app-input mt-1" value={form.compromisso_nome} onChange={(e) => setForm({ ...form, compromisso_nome: e.target.value })} placeholder="Ex.: PAG FORN 0557 003..." />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Ambiente
-                <select className="app-input mt-1" value={form.ambiente} onChange={(e) => setForm({ ...form, ambiente: e.target.value })}>
-                  <option value="HOMOLOGACAO">Homologacao</option>
-                  <option value="PRODUCAO">Producao</option>
+              </CampoForm>
+              <CampoForm label="Nome da empresa no convênio" obrigatorio linha>
+                <input className="input" value={form.empresa_nome} onChange={(e) => setForm({ ...form, empresa_nome: e.target.value })} required />
+              </CampoForm>
+              <CampoForm label="CNPJ/CPF da empresa" obrigatorio>
+                <input
+                  className="input"
+                  value={maskCpfCnpj(form.empresa_cpf_cnpj)}
+                  onChange={(e) => setForm({ ...form, empresa_cpf_cnpj: maskCpfCnpj(e.target.value) })}
+                  inputMode="numeric"
+                  maxLength={18}
+                  required
+                />
+              </CampoForm>
+              <CampoForm label="Ambiente">
+                <select className="input" value={form.ambiente} onChange={(e) => setForm({ ...form, ambiente: e.target.value })}>
+                  <option value="HOMOLOGACAO">Homologação</option>
+                  <option value="PRODUCAO">Produção</option>
                 </select>
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Agencia
-                <input className="app-input mt-1" value={form.agencia} onChange={(e) => setForm({ ...form, agencia: e.target.value })} required />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Digito agencia
-                <input className="app-input mt-1" value={form.agencia_dv} onChange={(e) => setForm({ ...form, agencia_dv: e.target.value })} />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Conta
-                <input className="app-input mt-1" value={form.conta} onChange={(e) => setForm({ ...form, conta: e.target.value })} required />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                Digito conta
-                <input className="app-input mt-1" value={form.conta_dv} onChange={(e) => setForm({ ...form, conta_dv: e.target.value })} />
-              </label>
-              <label className="text-xs font-semibold text-slate-600 md:col-span-2">
-                Nome da empresa no convenio
-                <input className="app-input mt-1" value={form.empresa_nome} onChange={(e) => setForm({ ...form, empresa_nome: e.target.value })} required />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                CNPJ/CPF da empresa
-                <input className="app-input mt-1" value={form.empresa_cpf_cnpj} onChange={(e) => setForm({ ...form, empresa_cpf_cnpj: e.target.value })} required />
-              </label>
-              <label className="flex items-center gap-2 pt-6 text-xs font-semibold text-slate-700">
-                <input type="checkbox" checked={form.homologado} onChange={(e) => setForm({ ...form, homologado: e.target.checked })} />
-                Convenio homologado
-              </label>
-            </div>
-            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-              Para a Caixa, o codigo do compromisso e usado como identificador operacional do CNAB quando informado.
-              Se ele ficar vazio, o sistema usa o codigo do convenio.
-            </div>
-            <button type="submit" className="app-button mt-4 w-full" disabled={loading}>
-              Salvar convenio
-            </button>
+              </CampoForm>
+            </FormSecao>
+
+            <FormSecao legenda="Convênio e compromisso" colunas={2}>
+              <CampoForm label="Código do convênio" obrigatorio>
+                <input className="input" value={form.convenio_codigo} onChange={(e) => setForm({ ...form, convenio_codigo: e.target.value })} required />
+              </CampoForm>
+              <CampoForm label="Nome do convênio">
+                <input className="input" value={form.convenio_nome} onChange={(e) => setForm({ ...form, convenio_nome: e.target.value })} placeholder="Ex.: CONSTRUTORA SUL CAPIXABA..." />
+              </CampoForm>
+              <CampoForm
+                label="Código do compromisso"
+                hint="Para a Caixa, o código do compromisso é o identificador operacional do CNAB quando informado. Vazio, o sistema usa o código do convênio."
+              >
+                <input className="input" value={form.compromisso_codigo} onChange={(e) => setForm({ ...form, compromisso_codigo: e.target.value })} placeholder="Ex.: 0001" />
+              </CampoForm>
+              <CampoForm label="Nome do compromisso">
+                <input className="input" value={form.compromisso_nome} onChange={(e) => setForm({ ...form, compromisso_nome: e.target.value })} placeholder="Ex.: PAG FORN 0557 003..." />
+              </CampoForm>
+            </FormSecao>
+
+            <FormSecao legenda="Agência e conta no arquivo" colunas={4}>
+              <CampoForm label="Agência" obrigatorio>
+                <input className="input" value={form.agencia} onChange={(e) => setForm({ ...form, agencia: e.target.value })} required />
+              </CampoForm>
+              <CampoForm label="Dígito da agência">
+                <input className="input" value={form.agencia_dv} onChange={(e) => setForm({ ...form, agencia_dv: e.target.value })} />
+              </CampoForm>
+              <CampoForm label="Conta" obrigatorio>
+                <input className="input" value={form.conta} onChange={(e) => setForm({ ...form, conta: e.target.value })} required />
+              </CampoForm>
+              <CampoForm label="Dígito da conta">
+                <input className="input" value={form.conta_dv} onChange={(e) => setForm({ ...form, conta_dv: e.target.value })} />
+              </CampoForm>
+              <CampoForm label="Convênio homologado" linha>
+                <label className="flex items-center gap-2 text-sm text-[var(--c-text)]">
+                  <input type="checkbox" checked={form.homologado} onChange={(e) => setForm({ ...form, homologado: e.target.checked })} />
+                  O banco já homologou este convênio
+                </label>
+              </CampoForm>
+            </FormSecao>
           </form>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-950">Gerar remessa de pagamento</h3>
-                <p className="mt-1 text-xs text-slate-500">Selecione um convenio e titulos com linha digitavel ou codigo de barras.</p>
-              </div>
-              <div className="text-right text-xs text-slate-500">
-                <strong className="block text-sm text-slate-900">{formatCurrency(valorSelecionado)}</strong>
-                {selectedTitulos.length} titulo(s) selecionado(s)
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_auto]">
-              <select className="app-input" value={selectedConvenioId} onChange={(e) => setSelectedConvenioId(e.target.value)}>
-                <option value="">Selecione um convenio</option>
-                {convenios.map((convenio) => (
-                  <option key={convenio.id} value={convenio.id}>
-                    {convenio.empresa?.razao_social || convenio.empresa_nome} - {convenio.compromisso_codigo || convenio.convenio_codigo}
-                  </option>
-                ))}
-              </select>
-              <input type="date" className="app-input" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
-              <button type="button" className="app-button" onClick={gerarRemessa} disabled={!selectedConvenioId || !selectedTitulos.length || loading}>
-                <HiOutlinePaperAirplane />
-                Gerar
-              </button>
-            </div>
-
-            <div className="mt-4 max-h-[330px] overflow-auto rounded-lg border border-slate-200">
-              <table className="min-w-full text-left text-xs">
-                <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Sel.</th>
-                    <th className="px-3 py-2">Titulo</th>
-                    <th className="px-3 py-2">Fornecedor</th>
-                    <th className="px-3 py-2">Venc.</th>
-                    <th className="px-3 py-2">Valor</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {!titulos.length ? (
-                    <tr><td colSpan="5" className="px-3 py-6 text-center text-slate-500">Nenhum titulo elegivel encontrado.</td></tr>
-                  ) : titulos.map((titulo) => (
-                    <tr key={titulo.id} className="hover:bg-slate-50">
-                      <td className="px-3 py-2">
-                        <input type="checkbox" checked={selectedTitulos.includes(titulo.id)} onChange={() => toggleTitulo(titulo.id)} />
-                      </td>
-                      <td className="px-3 py-2 font-medium text-slate-900">{titulo.codigo}</td>
-                      <td className="px-3 py-2 text-slate-600">{titulo.parceiro?.nome || '-'}</td>
-                      <td className="px-3 py-2 text-slate-600">{titulo.data_vencimento || '-'}</td>
-                      <td className="px-3 py-2 text-slate-700">{formatCurrency(titulo.valor_saldo || titulo.valor_original)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* C5/D3 — o rodapé não rola (R27), e o botão que executa a ação
+              liga ao formulário pelo atributo `form`. */}
+          <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
+            <button type="button" className="btn btn-outline" onClick={() => setModalConvenio(false)} disabled={loading}>Cancelar</button>
+            <button type="submit" form="form-convenio-caixa" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Salvando…' : 'Salvar convênio'}
+            </button>
           </div>
-        </div>
-
-        <div>
-          <h3 className="mb-3 text-sm font-semibold text-slate-950">Remessas geradas</h3>
-          <MiniTable
-            columns={['Arquivo', 'Empresa', 'Status', 'Valor', 'Download']}
-            rows={remessas}
-            renderRow={(remessa) => (
-              <tr key={remessa.id}>
-                <td className="px-3 py-3 font-medium text-slate-900">{remessa.nome_arquivo}</td>
-                <td className="px-3 py-3 text-slate-600">{remessa.empresa?.razao_social || remessa.empresa?.nome || '-'}</td>
-                <td className="px-3 py-3"><span className={statusClass(remessa.status)}>{remessa.status}</span></td>
-                <td className="px-3 py-3 text-slate-700">{formatCurrency(remessa.valor_total)}</td>
-                <td className="px-3 py-3">
-                  <button type="button" className="app-button app-button-secondary h-9 px-3" onClick={() => baixarRemessa(remessa.id)}>
-                    <HiOutlineCloudArrowDown />
-                    Baixar
-                  </button>
-                </td>
-              </tr>
-            )}
-          />
-        </div>
-      </div>
-    </Section>
+        </OverlayModal>
+      ) : null}
+    </>
   );
 }
 
 export default function FinanceiroBancos() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [falhou, setFalhou] = useState(false);
+  const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   async function loadDashboard() {
     setLoading(true);
-    setError('');
+    setFalhou(false);
     try {
       const data = await getBankingDashboard();
       setDashboard(data);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar painel bancario enterprise');
+      setFalhou(true);
+      avisar.erro(err.message || 'Erro ao carregar painel bancario enterprise');
     } finally {
       setLoading(false);
     }
@@ -489,6 +580,7 @@ export default function FinanceiroBancos() {
 
   useEffect(() => {
     loadDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const snapshots = dashboard?.snapshots || {};
@@ -496,193 +588,299 @@ export default function FinanceiroBancos() {
   const alerts = dashboard?.alerts || [];
   const cnab = dashboard?.cnab240_payments || {};
 
+  // A leitura de saúde tem de acompanhar a falha de carga: sem isto o
+  // ladrilho diria "OK" com o painel vazio, que é pior que dizer nada.
   const statusLabel = useMemo(() => {
     if (loading) return 'Carregando';
-    if (error) return 'Falha';
+    if (falhou) return 'Falha';
     return dashboard?.status || 'OK';
-  }, [dashboard?.status, error, loading]);
+  }, [dashboard?.status, falhou, loading]);
 
   return (
-    <div className="space-y-5">
-      <header className="app-card p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-600">Financeiro</p>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-950">Bancos Enterprise</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-600">
-              Visao consolidada de contas bancarias, pagamentos BB, boletos Caixa, remessas, retornos,
-              conciliacao bancaria e financiamentos. O painel e de observabilidade e governanca, sem alterar
-              a logica operacional existente.
-            </p>
-          </div>
-          <button type="button" className="app-button app-button-secondary" onClick={loadDashboard} disabled={loading}>
-            <HiOutlineArrowPath className={loading ? 'animate-spin' : ''} />
-            Atualizar
-          </button>
-        </div>
-        {error ? (
-          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </div>
-        ) : null}
-      </header>
+    <Pagina>
+      {/* R13/C1/C2/R5 — faixa fixa do sistema. O <header> custom com o rótulo
+          "Financeiro" em versalete, o <h1> com tamanho escrito na tela e o
+          parágrafo de apoio de três linhas saíram: título, contagem e apoio
+          são do PageHeader, numa linha só. */}
+      <PageHeader
+        titulo="Bancos"
+        contagem={`${summary?.accounts?.active || 0} conta(s) ativa(s)`}
+        descricao="Contas, pagamentos BB, boletos Caixa, remessas, retornos, conciliação e financiamentos — observabilidade, sem alterar a operação."
+        secundarias={[
+          {
+            rotulo: 'Atualizar',
+            onClick: () => { limparAvisos(); loadDashboard(); },
+            desabilitada: loading,
+            icone: <HiOutlineArrowPath aria-hidden="true" />
+          }
+        ]}
+      />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Saude bancaria" value={statusLabel} detail={formatDateTime(dashboard?.generated_at)} icon={HiOutlineShieldCheck} />
-        <MetricCard title="Contas ativas" value={summary?.accounts?.active || 0} detail={`${summary?.accounts?.total || 0} cadastrada(s)`} icon={HiOutlineBanknotes} />
-        <MetricCard title="Concil. pendente" value={summary?.reconciliation?.pending || 0} detail={formatCurrency(summary?.reconciliation?.pending_value)} icon={HiOutlineDocumentText} />
-        <MetricCard title="Alertas" value={alerts.length} detail="Pontos para acompanhamento" icon={HiOutlineExclamationTriangle} />
-      </div>
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
-      <CaixaPagamentosPanel />
+      {/* M2/R10 — o ladrilho do sistema no lugar dos quatro `MetricCard`
+          locais, cujo rótulo, número e ícone traziam tamanho escrito à mão,
+          fora da escala. B3: a contagem de contas ativas já vive na faixa
+          fixa, e aqui aparece o total cadastrado, que é outro número. */}
+      <StatGrid colunas={4}>
+        <StatTile label="Saúde bancária" valor={statusLabel} sub={formatDateTime(dashboard?.generated_at)} tom={statusTom(statusLabel)} />
+        <StatTile label="Contas cadastradas" valor={String(summary?.accounts?.total || 0)} />
+        <StatTile
+          label="Conciliação pendente"
+          valor={String(summary?.reconciliation?.pending || 0)}
+          sub={formatCurrency(summary?.reconciliation?.pending_value)}
+          tom={(summary?.reconciliation?.pending || 0) > 0 ? 'warning' : undefined}
+        />
+        <StatTile
+          label="Alertas operacionais"
+          valor={String(alerts.length)}
+          sub="Pontos para acompanhamento"
+          tom={alerts.length ? 'warning' : undefined}
+        />
+      </StatGrid>
 
-      <Section title="Alertas operacionais" description="Pontos que podem gerar distorcao de saldo, baixa ou retorno bancario.">
+      {/* B2 — UM bloco principal com barra de cor: é o alerta que responde a
+          pergunta central de um painel de observabilidade. */}
+      <BlocoConteudo
+        titulo="Alertas operacionais"
+        variante="primario"
+        cor="var(--sem-warning)"
+        descricao="Pontos que podem gerar distorção de saldo, baixa ou retorno bancário."
+      >
         {!alerts.length ? (
-          <EmptyState>Nenhum alerta operacional encontrado.</EmptyState>
+          <p className="text-sm text-[var(--c-muted)]">Nenhum alerta operacional encontrado.</p>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {alerts.map((alert) => (
-              <div key={`${alert.type}-${alert.severity}`} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <strong className="text-sm text-slate-950">{alert.title}</strong>
-                  <span className={statusClass(alert.severity)}>{alert.severity}</span>
-                </div>
-                <p className="mt-1 text-sm text-slate-600">{alert.description}</p>
-                {alert.source ? <p className="mt-2 text-xs font-medium text-blue-700">{alert.source}</p> : null}
-              </div>
-            ))}
-          </div>
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'alerta',
+                titulo: 'Alerta',
+                // R17: o título do alerta NOMEIA a ocorrência.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (alerta) => (
+                  <div>
+                    <div className="font-semibold text-[var(--c-text)]">{alerta.title}</div>
+                    <div className="text-xs text-[var(--c-muted)]">{alerta.description}</div>
+                  </div>
+                )
+              },
+              { id: 'origem', titulo: 'Origem', tipo: 'texto', render: (alerta) => alerta.source || '-' },
+              {
+                id: 'severidade',
+                titulo: 'Severidade',
+                tipo: 'status',
+                render: (alerta) => <span className={statusBadgeClasse(alerta.severity)}>{alerta.severity}</span>
+              }
+            ]}
+            itens={alerts}
+            getId={(alerta) => `${alerta.type}-${alerta.severity}`}
+            storageKey="tabela:financeiro-bancos:alertas"
+            rotuloRolagem="Alertas operacionais"
+            vazio="Nenhum alerta operacional encontrado."
+          />
         )}
-      </Section>
+      </BlocoConteudo>
 
-      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <Section title="Contas bancarias" description="Contas vinculadas a empresas do grupo e saldo operacional estimado pelos movimentos registrados.">
-          <MiniTable
-            columns={['Conta', 'Empresa', 'Status', 'Saldo estimado']}
-            rows={snapshots.accounts?.data?.items || []}
-            renderRow={(account) => (
-              <tr key={account.id}>
-                <td className="px-3 py-3 font-medium text-slate-900">{account.nome || account.banco || `Conta #${account.id}`}</td>
-                <td className="px-3 py-3 text-slate-600">{account.empresa?.nome || account.empresa?.razao_social || '-'}</td>
-                <td className="px-3 py-3"><span className={statusClass(account.ativo ? 'ATIVO' : 'INATIVO')}>{account.ativo ? 'ATIVO' : 'INATIVO'}</span></td>
-                <td className="px-3 py-3 text-slate-700">{formatCurrency(account.saldo_operacional_estimado)}</td>
-              </tr>
-            )}
-          />
-        </Section>
+      <CaixaPagamentosPanel avisar={avisar} limparAvisos={limparAvisos} confirmar={confirmar} />
 
-        <Section title="CNAB240 Pagamentos" description="Contrato tecnico preparado a partir do manual de pagamentos e debito automatico.">
-          <div className="space-y-3 text-sm text-slate-600">
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
-              <strong className="block text-sm">Segmento J habilitado</strong>
-              <span className="text-xs">{cnab.status || 'BOLETO_SEGMENTO_J_READY'}</span>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900">Segmentos planejados</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(cnab.supported_segments || []).map((segment) => (
-                  <span key={segment.code} className="app-status-pill bg-slate-100 text-slate-700">
-                    {segment.code} - {segment.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <ul className="list-disc space-y-1 pl-5 text-xs">
-              {(cnab.guardrails || []).slice(0, 5).map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        </Section>
-      </div>
+      <BlocoConteudo
+        titulo="Contas bancárias"
+        descricao="Contas vinculadas a empresas do grupo e saldo operacional estimado pelos movimentos registrados."
+      >
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'conta',
+              titulo: 'Conta',
+              // R17: a conta/banco NOMEIA o registro.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (account) => account.nome || account.banco || `Conta #${account.id}`
+            },
+            { id: 'empresa', titulo: 'Empresa', tipo: 'texto', render: (account) => account.empresa?.nome || account.empresa?.razao_social || '-' },
+            { id: 'status', titulo: 'Status', tipo: 'status', render: (account) => <span className={statusBadgeClasse(account.ativo ? 'ATIVO' : 'INATIVO')}>{account.ativo ? 'ATIVO' : 'INATIVO'}</span> },
+            { id: 'saldo', titulo: 'Saldo estimado', tipo: 'valor', render: (account) => formatCurrency(account.saldo_operacional_estimado) }
+          ]}
+          itens={snapshots.accounts?.data?.items || []}
+          storageKey="tabela:financeiro-bancos:contas"
+          vazio="Sem registros para exibir."
+          rotuloRolagem="Contas bancarias"
+        />
+      </BlocoConteudo>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Section title="Pagamentos BB" description="Lotes e transacoes do motor de pagamento em massa.">
-          <MiniTable
-            columns={['Lote', 'Status', 'Valor', 'Atualizado']}
-            rows={snapshots.bb_payments?.data?.recent_batches || []}
-            renderRow={(batch) => (
-              <tr key={batch.id}>
-                <td className="px-3 py-3 font-medium text-slate-900">{batch.codigo || `#${batch.id}`}</td>
-                <td className="px-3 py-3"><span className={statusClass(batch.status)}>{batch.status || '-'}</span></td>
-                <td className="px-3 py-3 text-slate-700">{formatCurrency(batch.valor_total)}</td>
-                <td className="px-3 py-3 text-slate-500">{formatDateTime(batch.updatedAt)}</td>
-              </tr>
-            )}
-          />
-        </Section>
+      <BlocoConteudo
+        titulo="Pagamentos BB"
+        descricao="Lotes e transações do motor de pagamento em massa."
+      >
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'lote',
+              titulo: 'Lote',
+              // R17: o codigo do lote NOMEIA o pagamento em massa.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (batch) => batch.codigo || `#${batch.id}`
+            },
+            { id: 'status', titulo: 'Status', tipo: 'status', render: (batch) => <span className={statusBadgeClasse(batch.status)}>{batch.status || '-'}</span> },
+            { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (batch) => formatCurrency(batch.valor_total) },
+            { id: 'atualizado', titulo: 'Atualizado', tipo: 'data', render: (batch) => formatDateTime(batch.updatedAt) }
+          ]}
+          itens={snapshots.bb_payments?.data?.recent_batches || []}
+          storageKey="tabela:financeiro-bancos:pagamentos-bb"
+          vazio="Sem registros para exibir."
+          rotuloRolagem="Lotes de pagamento BB"
+        />
+      </BlocoConteudo>
 
-        <Section title="Boletos Caixa" description="Remessas, retornos e ocorrencias de cobranca separados do CNAB240 de pagamentos.">
-          <MiniTable
-            columns={['Origem', 'Codigo', 'Status', 'Data']}
-            rows={[
-              ...(snapshots.caixa_boletos?.data?.remessas?.recent || []).map((item) => ({ ...item, origem: 'Remessa' })),
-              ...(snapshots.caixa_boletos?.data?.retornos?.recent || []).map((item) => ({ ...item, origem: 'Retorno' }))
-            ].slice(0, 8)}
-            renderRow={(item) => (
-              <tr key={`${item.origem}-${item.id}`}>
-                <td className="px-3 py-3 text-slate-600">{item.origem}</td>
-                <td className="px-3 py-3 font-medium text-slate-900">{item.codigo || item.nome_arquivo || `#${item.id}`}</td>
-                <td className="px-3 py-3"><span className={statusClass(item.status)}>{item.status || '-'}</span></td>
-                <td className="px-3 py-3 text-slate-500">{formatDateTime(item.createdAt)}</td>
-              </tr>
-            )}
-          />
-        </Section>
-      </div>
+      <BlocoConteudo
+        titulo="Conciliação bancária"
+        descricao="Importações OFX e movimentos pendentes, para evitar baixa duplicada ou saldo distorcido."
+      >
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'movimento',
+              titulo: 'Movimento',
+              // R17: a descricao do banco NOMEIA o movimento conciliado.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => item.descricao_banco || item.documento || `Movimento #${item.id}`
+            },
+            { id: 'status', titulo: 'Status', tipo: 'status', render: (item) => <span className={statusBadgeClasse(item.status)}>{item.status || '-'}</span> },
+            { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => formatCurrency(item.valor) },
+            { id: 'data', titulo: 'Data', tipo: 'data', render: (item) => item.data_movimento || '-' }
+          ]}
+          itens={snapshots.reconciliation?.data?.recent || []}
+          storageKey="tabela:financeiro-bancos:conciliacao"
+          vazio="Sem registros para exibir."
+          rotuloRolagem="Movimentos de conciliacao"
+        />
+      </BlocoConteudo>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Section title="Conciliacao bancaria" description="Importacoes OFX e movimentos pendentes para evitar baixa duplicada ou saldo distorcido.">
-          <MiniTable
-            columns={['Movimento', 'Status', 'Valor', 'Data']}
-            rows={snapshots.reconciliation?.data?.recent || []}
-            renderRow={(item) => (
-              <tr key={item.id}>
-                <td className="px-3 py-3 font-medium text-slate-900">{item.descricao_banco || item.documento || `Movimento #${item.id}`}</td>
-                <td className="px-3 py-3"><span className={statusClass(item.status)}>{item.status || '-'}</span></td>
-                <td className="px-3 py-3 text-slate-700">{formatCurrency(item.valor)}</td>
-                <td className="px-3 py-3 text-slate-500">{item.data_movimento || '-'}</td>
-              </tr>
-            )}
-          />
-        </Section>
+      {/* Blocos de consulta esporádica nascem RECOLHIDOS (o título fica
+          sempre à vista, então nada some — recolher e reorganizar é livre,
+          remover é que exigiria decisão do cliente). É o que faz o painel
+          caber na tela sem apertar a leitura (D4). */}
+      <BlocoConteudo
+        titulo="Boletos Caixa"
+        descricao="Remessas, retornos e ocorrências de cobrança, separados do CNAB240 de pagamentos."
+        recolhivel
+        recolhidoPadrao
+      >
+        <TabelaPadrao
+          colunas={[
+            { id: 'origem', titulo: 'Origem', tipo: 'badge', render: (item) => item.origem },
+            {
+              id: 'codigo',
+              titulo: 'Código',
+              // R17: o codigo/arquivo NOMEIA a remessa ou o retorno.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => item.codigo || item.nome_arquivo || `#${item.id}`
+            },
+            { id: 'status', titulo: 'Status', tipo: 'status', render: (item) => <span className={statusBadgeClasse(item.status)}>{item.status || '-'}</span> },
+            { id: 'data', titulo: 'Data', tipo: 'data', render: (item) => formatDateTime(item.createdAt) }
+          ]}
+          itens={[
+            ...(snapshots.caixa_boletos?.data?.remessas?.recent || []).map((item) => ({ ...item, origem: 'Remessa' })),
+            ...(snapshots.caixa_boletos?.data?.retornos?.recent || []).map((item) => ({ ...item, origem: 'Retorno' }))
+          ].slice(0, 8)}
+          getId={(item) => `${item.origem}-${item.id}`}
+          storageKey="tabela:financeiro-bancos:boletos-caixa"
+          vazio="Sem registros para exibir."
+          rotuloRolagem="Remessas e retornos de boletos Caixa"
+        />
+      </BlocoConteudo>
 
-        <Section title="Financiamentos bancarios" description="Contratos bancarios que geram titulos e movimentam contas de credito.">
-          <MiniTable
-            columns={['Contrato', 'Status', 'Parcelas', 'Total']}
-            rows={snapshots.financing?.data?.recent || []}
-            renderRow={(item) => (
-              <tr key={item.id}>
-                <td className="px-3 py-3 font-medium text-slate-900">{item.codigo || item.numero_contrato || `#${item.id}`}</td>
-                <td className="px-3 py-3"><span className={statusClass(item.status)}>{item.status || '-'}</span></td>
-                <td className="px-3 py-3 text-slate-600">{item.quantidade_parcelas || '-'}</td>
-                <td className="px-3 py-3 text-slate-700">{formatCurrency(item.valor_total)}</td>
-              </tr>
-            )}
-          />
-        </Section>
-      </div>
+      <BlocoConteudo
+        titulo="Financiamentos bancários"
+        descricao="Contratos bancários que geram títulos e movimentam contas de crédito."
+        recolhivel
+        recolhidoPadrao
+      >
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'contrato',
+              titulo: 'Contrato',
+              // R17: o contrato NOMEIA o financiamento.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => item.codigo || item.numero_contrato || `#${item.id}`
+            },
+            { id: 'status', titulo: 'Status', tipo: 'status', render: (item) => <span className={statusBadgeClasse(item.status)}>{item.status || '-'}</span> },
+            { id: 'parcelas', titulo: 'Parcelas', tipo: 'numero', render: (item) => item.quantidade_parcelas || '-' },
+            { id: 'total', titulo: 'Total', tipo: 'valor', render: (item) => formatCurrency(item.valor_total) }
+          ]}
+          itens={snapshots.financing?.data?.recent || []}
+          storageKey="tabela:financeiro-bancos:financiamentos"
+          vazio="Sem registros para exibir."
+          rotuloRolagem="Financiamentos bancarios"
+        />
+      </BlocoConteudo>
 
-      <Section title="Timeline bancaria" description="Linha de eventos consolidada entre pagamentos, boletos e conciliacao.">
-        {!dashboard?.timeline?.length ? (
-          <EmptyState />
-        ) : (
-          <div className="space-y-2">
-            {dashboard.timeline.map((event) => (
-              <div key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm">
+      <BlocoConteudo
+        titulo="CNAB240 Pagamentos — contrato técnico"
+        descricao="Preparado a partir do manual de pagamentos e débito automático."
+        recolhivel
+        recolhidoPadrao
+      >
+        <p className="text-sm text-[var(--c-text)]">
+          <span className={statusBadgeClasse('OK')}>Segmento J habilitado</span>{' '}
+          <span className="text-xs text-[var(--c-muted)]">{cnab.status || 'BOLETO_SEGMENTO_J_READY'}</span>
+        </p>
+        <p className="mt-3 text-sm font-semibold text-[var(--c-text)]">Segmentos planejados</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(cnab.supported_segments || []).map((segment) => (
+            <span key={segment.code} className="badge badge-muted">
+              {segment.code} - {segment.name}
+            </span>
+          ))}
+        </div>
+        <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-[var(--c-muted)]">
+          {(cnab.guardrails || []).slice(0, 5).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </BlocoConteudo>
+
+      <BlocoConteudo
+        titulo="Timeline bancária"
+        descricao="Linha de eventos consolidada entre pagamentos, boletos e conciliação."
+        recolhivel
+        recolhidoPadrao
+      >
+        <TabelaPadrao
+          // Sem coluna de IDENTIDADE por natureza: a linha da timeline é um
+          // EVENTO no tempo — o rótulo já é a coluna-título e o que a
+          // distingue é o instante, não um nome próprio.
+          semIdentidade
+          colunas={[
+            {
+              id: 'evento',
+              titulo: 'Evento',
+              tipo: 'texto',
+              noCard: 'titulo',
+              render: (event) => (
                 <div>
-                  <p className="font-medium text-slate-950">{event.label}</p>
-                  <p className="text-xs text-slate-500">{event.source} - {event.type}</p>
+                  <div className="font-medium text-[var(--c-text)]">{event.label}</div>
+                  <div className="text-xs text-[var(--c-muted)]">{event.source} - {event.type}</div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={statusClass(event.status)}>{event.status || '-'}</span>
-                  <span className="text-xs text-slate-500">{formatDateTime(event.occurred_at)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-    </div>
+              )
+            },
+            { id: 'status', titulo: 'Status', tipo: 'status', render: (event) => <span className={statusBadgeClasse(event.status)}>{event.status || '-'}</span> },
+            { id: 'quando', titulo: 'Quando', tipo: 'data', render: (event) => formatDateTime(event.occurred_at) }
+          ]}
+          itens={dashboard?.timeline || []}
+          storageKey="tabela:financeiro-bancos:timeline"
+          vazio="Sem registros para exibir."
+          rotuloRolagem="Timeline bancaria"
+        />
+      </BlocoConteudo>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

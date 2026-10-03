@@ -1,9 +1,10 @@
 import { API_URL, authHeaders } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
 async function parseJson(response, fallbackMessage) {
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(text || fallbackMessage);
+    throw new Error(mensagemDeErro(text, fallbackMessage, response.status));
   }
 
   return text ? JSON.parse(text) : null;

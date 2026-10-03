@@ -54,20 +54,6 @@
 - relatorios financeiros, fluxo de caixa e resultado de obras devem refletir imediatamente estornos e novas baixas
 - relatorios analiticos devem permitir organizacao de colunas por usuario sem alterar o calculo financeiro
 
-## Caixa fisico
-
-- caixa fisico e uma conta ativa do tipo operacional `CAIXA_INTERNO`, vinculada a uma empresa e configurada para abertura e fechamento
-- a abertura do caixa fisico nao depende da conciliacao OFX de contas bancarias
-- somente uma sessao pode ficar aberta por caixa
-- o saldo operacional e calculado por `saldo inicial + entradas - saidas`
-- lancamentos manuais somente podem ser incluidos ou estornados enquanto a sessao estiver aberta
-- estorno preserva o movimento, altera seu status e exige motivo com pelo menos 10 caracteres
-- movimentos financeiros e transferencias ja vinculados ao caixa compoem o livro sem serem duplicados manualmente
-- o fechamento registra saldo calculado, saldo contado e diferenca; divergencia exige justificativa com pelo menos 10 caracteres
-- o saldo contado no fechamento e a referencia para a proxima abertura
-- contas bancarias configuradas com abertura e fechamento preservam a conferencia OFX anterior; essa regra nao deve ser aplicada ao `CAIXA_INTERNO`
-- o caixa fisico nao substitui conta bancaria, custodia de cheque de terceiro, titulo financeiro ou conciliacao OFX
-
 ## Navegacao e Filtros
 
 - ao mudar entre abas `PAGAR` e `RECEBER`, a tela deve limpar filtros, selecoes e lista carregada da aba anterior

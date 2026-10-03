@@ -32,7 +32,7 @@ Blocos principais em `backend/src`:
   Garantem consistencia de `body`, `params` e `query`.
 
 - `database/`
-  Cuida da conexao e das migrations.
+  Cuida da conexao e da verificacao/aplicacao explicitamente autorizada de migrations.
 
 ## Frontend
 
@@ -43,6 +43,7 @@ Stack principal:
 - React Router
 - Tailwind CSS
 - React Icons
+- Capacitor para empacotamento controlado do frontend web
 
 Blocos principais em `frontend/src`:
 
@@ -51,6 +52,10 @@ Blocos principais em `frontend/src`:
 
 - `modules/solicitacao-compra/`
   Fluxo especializado de compras, cotacao e pedidos.
+
+- `modules/custosRecebiveis/`, `crm/`, `fiscal/`, `governanca/`,
+  `provisionamento-financeiro/` e `sst/`
+  Dominios especializados carregados conforme modulo/permissao.
 
 - `components/`
   Componentes reutilizaveis, UI base e blocos de solicitacoes.
@@ -75,6 +80,9 @@ Stack principal em `mobile/`:
 - Secure Store para sessao
 
 O app mobile possui cliente e navegacao proprios, mas consome a mesma API e deve respeitar os mesmos modulos, permissoes e escopos do backend. O escopo publicado e as pendencias de lojas ficam em `publicacao-mobile-stores.md`.
+
+O projeto Expo e o empacotamento Capacitor sao trilhas distintas. Alterar uma nao
+sincroniza automaticamente a outra.
 
 ## Infra e Runtime
 

@@ -52,8 +52,19 @@ export default function NotificacoesBell() {
 
   useEffect(() => {
     carregar();
-    const id = setInterval(() => carregar(), 120000);
-    return () => clearInterval(id);
+    const id = setInterval(() => carregar(), 30000);
+    const aoVoltarParaTela = () => {
+      if (!document.hidden) carregar();
+    };
+    window.addEventListener('focus', aoVoltarParaTela);
+    window.addEventListener('notificacoes:atualizar', aoVoltarParaTela);
+    document.addEventListener('visibilitychange', aoVoltarParaTela);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', aoVoltarParaTela);
+      window.removeEventListener('notificacoes:atualizar', aoVoltarParaTela);
+      document.removeEventListener('visibilitychange', aoVoltarParaTela);
+    };
   }, []);
 
   useEffect(() => {
@@ -127,7 +138,12 @@ export default function NotificacoesBell() {
     }
 
     await carregar({ page: 1 });
-    if (item.solicitacao_id) {
+    const rotaInterna = typeof item.metadata?.rota === 'string' && item.metadata.rota.startsWith('/')
+      ? item.metadata.rota
+      : null;
+    if (rotaInterna) {
+      navigate(rotaInterna);
+    } else if (item.solicitacao_id) {
       navigate(`/solicitacoes/${item.solicitacao_id}`);
     }
     setAberto(false);
@@ -144,7 +160,7 @@ export default function NotificacoesBell() {
         ref={botaoRef}
         onClick={alternarPainel}
         className={`notification-trigger ${aberto ? 'is-open' : ''}`}
-        aria-label="Notificacoes"
+        aria-label="Notificações"
         aria-expanded={aberto}
         aria-haspopup="dialog"
         type="button"
@@ -163,19 +179,19 @@ export default function NotificacoesBell() {
             type="button"
             className="notification-overlay md:hidden"
             onClick={() => setAberto(false)}
-            aria-label="Fechar notificacoes"
+            aria-label="Fechar notificações"
           />
 
           <div
             ref={painelRef}
             className="notification-panel"
             role="dialog"
-            aria-label="Central de notificacoes"
+            aria-label="Central de notificações"
           >
             <header className="notification-panel-header">
               <div>
-                <p className="notification-panel-kicker">Atualizacoes do Fluxy</p>
-                <h2 className="notification-panel-title">Notificacoes</h2>
+                <p className="notification-panel-kicker">Atualizações do Fluxy</p>
+                <h2 className="notification-panel-title">Notificações</h2>
                 <p className="notification-panel-subtitle">
                   {totalNaoLidas > 0
                     ? `${totalNaoLidas} item(ns) ainda pedem leitura.`
@@ -197,7 +213,7 @@ export default function NotificacoesBell() {
                   type="button"
                   onClick={() => setAberto(false)}
                   className="notification-close"
-                  aria-label="Fechar painel de notificacoes"
+                  aria-label="Fechar painel de notificações"
                 >
                   <HiOutlineXMark className="h-5 w-5" />
                 </button>
@@ -222,7 +238,7 @@ export default function NotificacoesBell() {
                     <HiOutlineSparkles className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="notification-empty-title">Nenhuma notificacao nova</p>
+                    <p className="notification-empty-title">Nenhuma notificação nova</p>
                     <p className="notification-empty-copy">
                       Quando houver mencoes ou alertas operacionais, eles aparecem aqui.
                     </p>
@@ -242,6 +258,11 @@ export default function NotificacoesBell() {
                   </div>
 
                   <div className="notification-item-body">
+                    {['RETORNO_SOLICITADO', 'RH_TRANSFERENCIA_ATUALIZADA'].includes(item.tipo) && !item.lida_em && (
+                      <span className="mb-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-800">
+                        Ação necessária
+                      </span>
+                    )}
                     <p className="notification-item-message">{item.mensagem}</p>
                     {item.createdAt && (
                       <p className="notification-item-date">

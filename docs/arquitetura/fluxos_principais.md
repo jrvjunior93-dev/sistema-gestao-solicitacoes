@@ -24,13 +24,15 @@
 
 1. Usuario cria solicitacao de compra.
 2. Adiciona itens e rateia as quantidades em apropriacoes validas da obra.
-3. Quando configurada, a diretoria aprova ou rejeita a compra.
-4. A compra aprovada fica apta a cotar sem integracao externa ou liberacao manual adicional.
-5. Comprador seleciona fornecedores e define os itens enviados a cada um.
-6. Sistema valida o pertencimento dos itens e gera tokens/links individuais.
-7. Fornecedor salva rascunho ou responde no portal publico; operador autorizado pode registrar resposta interna.
-8. Comprador compara respostas e define vencedor/quantidade por item.
-9. Encerramento gera e fecha os pedidos uma unica vez e finaliza as cotacoes nao canceladas.
+3. A compra normal nasce `PENDENTE` em GEO, sem aprovacao da diretoria.
+4. Usuario GEO autorizado pela permissao `compras.solicitacoes.editar_itens` revisa quantidades e apropriacoes.
+5. Usuario GEO com `compras.solicitacoes.encaminhar_compras` conclui a revisao e envia para Compras.
+6. A compra passa a `LIBERADO_PARA_COMPRA` e fica apta a cotar sem integracao externa adicional.
+7. Comprador seleciona fornecedores e define os itens enviados a cada um.
+8. Sistema valida o pertencimento dos itens e gera tokens/links individuais.
+9. Fornecedor salva rascunho ou responde no portal publico; operador autorizado pode registrar resposta interna.
+10. Comprador compara respostas e define vencedor/quantidade por item.
+11. Encerramento gera e fecha os pedidos uma unica vez e finaliza as cotacoes nao canceladas.
 
 ## 5. Pedido de Compra
 

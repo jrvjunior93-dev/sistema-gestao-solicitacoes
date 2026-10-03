@@ -29,3 +29,9 @@ export function canAccessCustosRecebiveis(user) {
     )
   );
 }
+
+export function canManageResponsaveisObra(user) {
+  return canAccessCustosRecebiveis(user)
+    && hasExplicitCustosRecebiveisPermission(user, CUSTOS_RECEBIVEIS_PERMISSIONS.CONFIG_MANAGE)
+    && hasExplicitCustosRecebiveisPermission(user, CUSTOS_RECEBIVEIS_PERMISSIONS.OBRAS_VIEW);
+}

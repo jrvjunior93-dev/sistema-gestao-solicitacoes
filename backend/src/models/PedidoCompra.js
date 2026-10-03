@@ -79,6 +79,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true
       },
+      entrega_controle_obrigatorio: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       prazo_entrega_tipo: {
         type: DataTypes.STRING(20),
         allowNull: true
@@ -180,6 +181,22 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       encerrado_em: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      financeiro_fluxo_versao: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      status_financeiro: {
+        type: DataTypes.STRING(40),
+        allowNull: true
+      },
+      financeiro_encaminhado_em: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      financeiro_atualizado_em: {
         type: DataTypes.DATE,
         allowNull: true
       }

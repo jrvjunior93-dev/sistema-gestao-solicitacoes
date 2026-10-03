@@ -1,0 +1,21 @@
+{
+  "regra": "R12 — select usado como filtro de lista",
+  "criado_em": "2026-09-04",
+  "porque": "O check procurava vocabulario em portugues (/filtr|situacao/) no entorno do <select>. Doze telas do Financeiro nomeiam o estado em ingles (filters, setFilter, updateFilter) e passaram verdes dentro da faixa de filtros do proprio sistema. Uma leva fechou com matriz limpa e a regra nao estava sendo aplicada em 58 selects. Congelado, nao absolvido: a decisao de corrigir e do responsavel, porque mexer nelas reabre uma leva fechada.",
+  "total_em": 72,
+  "arquivos": {
+    "src/pages/FinanceiroBaixas.jsx": 6,
+    "src/pages/FinanceiroConciliacao.jsx": 10,
+    "src/pages/FinanceiroDre.jsx": 4,
+    "src/pages/FinanceiroEndividamento.jsx": 4,
+    "src/pages/FinanceiroExecutivoGrupo.jsx": 2,
+    "src/pages/FinanceiroFaturaCartaoDetalhe.jsx": 1,
+    "src/pages/FinanceiroFluxoConsolidado.jsx": 4,
+    "src/pages/FinanceiroIntercompany.jsx": 7,
+    "src/pages/FinanceiroObras.jsx": 9,
+    "src/pages/FinanceiroPagamentos.jsx": 2,
+    "src/pages/FinanceiroRelatorioAnalitico.jsx": 7,
+    "src/pages/FinanceiroRelatorios.jsx": 7,
+    "src/pages/FinanceiroTitulos.jsx": 9
+  }
+}

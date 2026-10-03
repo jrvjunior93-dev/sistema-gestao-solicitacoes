@@ -2,7 +2,8 @@ const {
   detalharFechamentoRh,
   fecharApuracaoRh,
   listarFechamentosRh,
-  reabrirFechamentoRh
+  reabrirFechamentoRh,
+  obterComprovanteFechamentoRh
 } = require('../services/rhFechamentoService');
 const { responderErroController } = require('../utils/controllerError');
 
@@ -24,6 +25,20 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao buscar fechamento RH/DP');
+    }
+  },
+
+  async obterComprovante(req, res) {
+    try {
+      const data = await obterComprovanteFechamentoRh(
+        req.params.id,
+        req.params.filaId,
+        req.params.comprovanteId || null
+      );
+      return res.json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao gerar link do comprovante do fechamento RH/DP');
     }
   },
 

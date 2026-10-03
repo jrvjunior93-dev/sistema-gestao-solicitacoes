@@ -1,0 +1,17 @@
+{
+  "regra": "R10 — px dentro de colchete composto (grid-cols-[360px_...], max-h-[calc(100vh-270px)], h-[min(88vh,780px)])",
+  "criado_em": "2026-09-04",
+  "porque": "O check de R10 conhecia UMA forma do valor arbitrario em px: o colchete que E o numero, -[520px]. A medida mais cara costuma vir dentro de uma EXPRESSAO, e essas passavam verdes. Congelar e a unica forma honesta de ligar um check no meio do trabalho: o numero so desce, ocorrencia nova reprova na hora.",
+  "total_em": 13,
+  "arquivos": {
+    "src/pages/ConfiguracoesComercialCategorias.jsx": 1,
+    "src/pages/ConfiguracoesProvisionamentoFluxo.jsx": 1,
+    "src/pages/FinanceiroBoletos.jsx": 1,
+    "src/pages/FinanceiroConciliacao.jsx": 1,
+    "src/pages/FinanceiroPagamentos.jsx": 2,
+    "src/pages/FinanceiroRelatorios.jsx": 2,
+    "src/pages/FinanceiroTitulos.jsx": 3,
+    "src/pages/Parceiros.jsx": 1,
+    "src/pages/TiposCompartilhadosSetor.jsx": 1
+  }
+}

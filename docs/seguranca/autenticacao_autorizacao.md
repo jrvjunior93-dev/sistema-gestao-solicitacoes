@@ -14,7 +14,10 @@ A autorizacao efetiva combina modulo habilitado, perfil, permissoes granulares, 
 
 Os perfis centrais aceitos pela importacao de usuarios sao `USUARIO`, `ESTAGIARIO`, `ADMIN`, `ADMINISTRADOR` e `SUPERADMIN`.
 
-- `SUPERADMIN`: excecao tecnica ampla; por padrao pode atravessar o bloqueio de modulo em rotas autenticadas. Rotas publicas sensiveis podem desativar expressamente esse bypass.
+- `SUPERADMIN`: excecao tecnica ampla e usuario configurador global; atravessa bloqueios
+  de modulo e permissoes granulares em rotas autenticadas. Requisitos de identidade do
+  dominio, como estar cadastrado como autorizador nominal e assinar com passkey, nao sao
+  meras permissoes e continuam obrigatorios.
 - `ADMINISTRADOR`: junto com `SUPERADMIN`, forma o conceito `BusinessAdmin` e ignora a matriz granular de areas. Nao recebe automaticamente o bypass de modulo reservado ao `SUPERADMIN`.
 - `ADMIN`: nao e administrador global; suas excecoes dependem de permissoes e capacidades do setor, como `eh_setor_geo`.
 - `USUARIO` e `ESTAGIARIO`: seguem permissoes e escopos atribuídos.
@@ -31,7 +34,7 @@ O codigo ainda reconhece perfis especializados em fluxos especificos, como `FINA
 
 2. Perfil e permissao de area
    - registro central em `backend/src/constants/moduloPermissoes.js`;
-   - estado atualizado em 2026-09-15: 19 grupos, 93 areas e 324 chaves;
+   - estado atualizado em 2026-09-30: 19 grupos, 106 areas e 372 permissoes;
    - formato `modulo.area.acao`, por exemplo `financeiro.titulos.criar`;
    - configuracao `PERMISSOES_AREAS_USUARIOS` contem permissoes por usuario, bloqueios por usuario e padroes por setor/perfil;
    - a permissao efetiva e a uniao de padrao do setor/perfil, sessao e concessao individual, menos os bloqueios;
@@ -66,3 +69,18 @@ Excecao segura para modulo novo: `CUSTOS_RECEBIVEIS` nao usa esse fallback legad
 Seu backend resolve as concessoes explicitas diretamente da matriz central, aplica os
 bloqueios individuais e concede bypass somente a `SUPERADMIN`. Sem
 `custos_recebiveis.modulo.acessar`, o acesso permanece negado.
+
+## Troca de usuario em desenvolvimento
+
+O middleware pode carregar ator real e usuario efetivo quando a troca rapida esta
+explicitamente habilitada no ambiente de desenvolvimento. Eventos de seguranca devem
+registrar os dois. A funcionalidade permanece desligada em producao e nao pode ser
+aceita em atos de assinatura, cadastro de passkey ou autorizacao financeira nominal.
+
+## Novas operacoes sensiveis
+
+O `SUPERADMIN` preserva o bypass global de acesso e configuracao. Uma operacao
+sensivel ainda pode exigir identidade ou credencial adicional do dominio: aprovar
+pagamento em nome do proprietario, por exemplo, requer cadastro nominal ativo e
+passkey mesmo quando o usuario possui perfil `SUPERADMIN`. Isso impede que o bypass
+administrativo seja confundido com a assinatura financeira do proprietario.

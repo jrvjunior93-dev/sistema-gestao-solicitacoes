@@ -1,17 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
+import DateInputBR from '../../components/DateInputBR';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import OverlayModal from '../../components/ui/OverlayModal';
+import StatusBadge from '../../components/StatusBadge';
+import {
+  Avisos,
+  BlocoConteudo,
+  CampoForm,
+  FormSecao,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../../components/padrao';
+import PrevisoesContrato from './PrevisoesContrato';
+import ModalMedicao from './ModalMedicao';
 import { Link } from 'react-router-dom';
 import { buscarParceiroPorId, buscarParceiros } from '../../services/parceiros';
 import { cadastrarCredorSolicitacao, updateCredorSolicitacao } from '../../services/solicitacoes';
 import { getEmpresasGrupo } from '../../services/empresasGrupo';
 import { getObras } from '../../services/obras';
-import { formatCurrencyInput, normalizeCurrencyTyping } from '../../utils/formatters';
+import {
+  formatCurrencyInput,
+  getCpfCnpjError,
+  getPixDocumentError,
+  isValidCnpj,
+  isValidCpf,
+  maskCpfCnpj,
+  normalizeCurrencyTyping
+} from '../../utils/formatters';
 import {
   categoriaFinanceiraMatchesAutocomplete,
   categoriaFinanceiraMatchesSearch
 } from '../../utils/categoriaFinanceira';
 import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanceiraAutocomplete';
 import { useAuth } from '../../contexts/AuthContext';
-import { canManagePaymentBeneficiaries } from '../../utils/acessoProduto';
+import { useFecharAoSair } from '../../hooks/useFecharAoSair';
+import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, devePrepararAutorizacaoPagamento } from '../../utils/acessoProduto';
+import { listarComprovantesFila } from '../../utils/comprovantesFila';
+import { criarAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -20,7 +47,9 @@ import {
   getCategoriasFinanceiras,
   getFormasPagamentoFinanceiras,
   getPaymentBeneficiaries,
-  getTitulosFinanceirosPorSolicitacao
+  getTitulosFinanceirosPorSolicitacao,
+  enviarTitulosFilaPagamentos,
+  getComprovanteFilaPagamento
 } from '../../services/financeiro';
 
 const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
@@ -56,9 +85,15 @@ function normalizeCodigoBancoInput(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 8);
 }
 
-function limparDescricaoTituloCompra(value) {
+function limparDescricaoTituloCompra(value, solicitacao) {
   const texto = String(value || '').trim();
   if (!texto) return texto;
+  const codigo = String(solicitacao?.codigo || '').trim();
+  const tipo = String(solicitacao?.tipo?.nome || solicitacao?.tipo_nome || '').trim();
+  const identificacao = [codigo, tipo].filter(Boolean).join(' - ');
+  if (codigo && tipo && normalizeSearchText(texto).includes(normalizeSearchText(identificacao))) {
+    return identificacao;
+  }
   if (normalizeSearchText(texto).includes('solicitacao de compra')) {
     return texto
       .replace(/\s+(Itens|Items):[\s\S]*$/i, '')
@@ -121,7 +156,7 @@ function getParceiroPixOptions(parceiro) {
     },
     {
       id: 'pix_chave_variavel',
-      label: 'Chave variavel',
+      label: 'Chave variável',
       tipo: parceiro.pix_chave_variavel_tipo,
       chave: parceiro.pix_chave_variavel
     }
@@ -130,6 +165,40 @@ function getParceiroPixOptions(parceiro) {
 
 function getParceiroPixPrincipal(parceiro) {
   return getParceiroPixOptions(parceiro)[0] || null;
+}
+
+function normalizePixKey(value) {
+  const texto = String(value || '').trim();
+  if (!texto) return '';
+  if (texto.includes('@')) return texto.toLowerCase();
+  const somenteDigitos = texto.replace(/\D/g, '');
+  return somenteDigitos.length >= 10 ? somenteDigitos : texto.toLowerCase();
+}
+
+function inferPixKeyType(value, telefone = '') {
+  const texto = String(value || '').trim();
+  const digitos = texto.replace(/\D/g, '');
+  const telefoneDigitos = String(telefone || '').replace(/\D/g, '');
+  const telefoneSemPais = telefoneDigitos.startsWith('55') && telefoneDigitos.length > 11
+    ? telefoneDigitos.slice(2)
+    : telefoneDigitos;
+  const chaveSemPais = digitos.startsWith('55') && digitos.length > 11 ? digitos.slice(2) : digitos;
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(texto)) return 'EMAIL';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(texto)) {
+    return 'ALEATORIA';
+  }
+  if (telefoneSemPais && chaveSemPais === telefoneSemPais) return 'TELEFONE';
+  if (isValidCpf(digitos)) return 'CPF';
+  if (isValidCnpj(digitos)) return 'CNPJ';
+  if (digitos.length >= 10 && digitos.length <= 13) return 'TELEFONE';
+  return 'ALEATORIA';
+}
+
+function findPartnerPixOption(partner, pixKey) {
+  const normalized = normalizePixKey(pixKey);
+  if (!normalized) return null;
+  return getParceiroPixOptions(partner).find((item) => normalizePixKey(item.chave) === normalized) || null;
 }
 
 function createPaymentDraft() {
@@ -141,6 +210,67 @@ function createPaymentDraft() {
     cpf_cnpj: '',
     pix_tipo_chave: 'CNPJ',
     pix_chave: ''
+  };
+}
+
+function buildPaymentDraftForTitle({
+  parceiro,
+  beneficiaries = [],
+  solicitacao,
+  usarFavorecidoSolicitacao = false,
+  usarChaveSolicitacao = false,
+  compraDireta = false
+}) {
+  const lista = Array.isArray(beneficiaries) ? beneficiaries : [];
+  const chavePixSolicitacao = usarChaveSolicitacao
+    ? String(solicitacao?.favorecido_chave_pix || '').trim()
+    : '';
+  const favorecidoId = solicitacao?.favorecido?.id || solicitacao?.favorecido_id || null;
+  const temFavorecidoSolicitacao = usarFavorecidoSolicitacao && Boolean(favorecidoId);
+  const favorecidoSolicitacao = temFavorecidoSolicitacao ? solicitacao?.favorecido || null : null;
+  const favorecidoEhCredor = temFavorecidoSolicitacao && String(favorecidoId) === String(parceiro?.id);
+
+  // O favorecido escolhido nesta solicitacao prevalece sobre os favorecidos bancarios
+  // cadastrados no credor. So reutilizamos um cadastro se chave E documento coincidirem.
+  if (temFavorecidoSolicitacao) {
+    const documentoSolicitacao = onlyDigits(favorecidoSolicitacao?.cpf_cnpj);
+    const beneficiaryDaSolicitacao = !compraDireta && chavePixSolicitacao && documentoSolicitacao
+      ? lista.find((item) => item.ativo !== false
+        && normalizePixKey(item.pix_chave) === normalizePixKey(chavePixSolicitacao)
+        && onlyDigits(item.cpf_cnpj) === documentoSolicitacao) || null
+      : null;
+    const pixDaSolicitacao = findPartnerPixOption(favorecidoSolicitacao, chavePixSolicitacao);
+    return {
+      ...createPaymentDraft(),
+      preparar_pagamento_pix: Boolean(chavePixSolicitacao),
+      usar_credor_como_favorecido: Boolean(chavePixSolicitacao && favorecidoEhCredor && pixDaSolicitacao),
+      payment_beneficiary_id: beneficiaryDaSolicitacao?.id ? String(beneficiaryDaSolicitacao.id) : '',
+      nome: favorecidoSolicitacao?.nome || '',
+      cpf_cnpj: favorecidoSolicitacao?.cpf_cnpj || '',
+      pix_tipo_chave: pixDaSolicitacao?.tipo
+        || (chavePixSolicitacao ? inferPixKeyType(chavePixSolicitacao, favorecidoSolicitacao?.telefone) : 'CNPJ'),
+      pix_chave: chavePixSolicitacao
+    };
+  }
+  if (compraDireta) return createPaymentDraft();
+
+  const beneficiary = lista.find((item) => item.ativo !== false && item.pix_chave)
+    || lista.find((item) => item.ativo !== false)
+    || null;
+  const pixDoCredor = getParceiroPixPrincipal(parceiro);
+  const pixChave = beneficiary?.pix_chave || pixDoCredor?.chave || '';
+
+  return {
+    preparar_pagamento_pix: Boolean(pixChave),
+    usar_credor_como_favorecido: Boolean(!beneficiary && pixDoCredor?.chave),
+    payment_beneficiary_id: beneficiary?.id ? String(beneficiary.id) : '',
+    nome: beneficiary?.nome || parceiro?.nome || '',
+    cpf_cnpj: beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || '',
+    pix_tipo_chave: beneficiary?.pix_tipo_chave
+      || pixDoCredor?.tipo
+      || inferPixKeyType(pixChave, parceiro?.telefone)
+      || 'CNPJ',
+    pix_chave: pixChave
   };
 }
 
@@ -293,6 +423,28 @@ function buildParcelasDetalhadas(
   }));
 }
 
+export function prepararPagamentoParaForma(pagamento, forma) {
+  if (!formaUsaParcelasDetalhadas(forma)) return pagamento;
+  const quantidade = Math.max(Number(pagamento.quantidade_parcelas || 1), 1);
+  if (Array.isArray(pagamento.parcelas) && pagamento.parcelas.length === quantidade) return pagamento;
+  return {
+    ...pagamento,
+    parcelas: buildParcelasDetalhadas(
+      pagamento.parcelas,
+      quantidade,
+      pagamento.data_vencimento || today(),
+      pagamento.valor
+    )
+  };
+}
+
+export function calcularValorPagamento(pagamento, forma) {
+  if (formaUsaParcelasDetalhadas(forma)) {
+    return roundCurrency((pagamento.parcelas || []).reduce((acc, parcela) => acc + currencyToNumber(parcela.valor), 0));
+  }
+  return roundCurrency(currencyToNumber(pagamento?.valor));
+}
+
 function getFreteTerceiroCompraDireta(solicitacao) {
   const compraDireta = solicitacao?.compra_direta;
   if (String(compraDireta?.frete_tipo || '').toUpperCase() !== 'TERCEIRO') return null;
@@ -300,22 +452,47 @@ function getFreteTerceiroCompraDireta(solicitacao) {
   return compraDireta;
 }
 
+function getFormasCompraDireta(solicitacao) {
+  const salvas = solicitacao?.compra_direta?.formas_pagamento_json;
+  if (Array.isArray(salvas) && salvas.length) return salvas;
+  const criacao = (solicitacao?.historicos || []).find((item) => item?.acao === 'CRIADA');
+  try {
+    const metadata = typeof criacao?.metadata === 'string' ? JSON.parse(criacao.metadata) : criacao?.metadata;
+    return Array.isArray(metadata?.formas_pagamento) ? metadata.formas_pagamento : [];
+  } catch {
+    return [];
+  }
+}
+
+function exigeTitulosSeparadosCompraDireta(solicitacao) {
+  return Boolean(getFreteTerceiroCompraDireta(solicitacao) || getFormasCompraDireta(solicitacao).length > 1);
+}
+
 function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', options = {}) {
   const parceiro = options.parceiro || solicitacao?.parceiro || null;
+  const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
+  const favorecidoPadraoId = credorOriginalId && String(parceiro?.id) === String(credorOriginalId)
+    ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
+    : null;
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    origem_frete: Boolean(options.origem_frete),
     parceiro_id: parceiro?.id ? String(parceiro.id) : '',
     parceiro_nome: parceiro?.nome || '',
+    favorecido_pagamento_id: Object.prototype.hasOwnProperty.call(options, 'favorecido_pagamento_id')
+      ? (options.favorecido_pagamento_id ? String(options.favorecido_pagamento_id) : '')
+      : (favorecidoPadraoId ? String(favorecidoPadraoId) : ''),
     categoria_financeira_id: categoriaFinanceiraId ? String(categoriaFinanceiraId) : '',
     valor,
     data_vencimento: options.data_vencimento || solicitacao?.data_vencimento || today(),
     observacoes: options.observacoes || '',
-    competencia_data: '',
-    forma_pagamento_id: '',
+    forma_pagamento_id: options.forma_pagamento_id || (solicitacao?.forma_pagamento_id ? String(solicitacao.forma_pagamento_id) : ''),
     cartao_id: '',
     quantidade_parcelas: '1',
     data_compra: today(),
-    parcelas: []
+    parcelas: [],
+    dados_pagamento: createPaymentDraft(),
+    dados_pagamento_parceiro_id: ''
   };
 }
 
@@ -330,22 +507,55 @@ function createRateio(valor = '') {
   };
 }
 
-function buildDefaultForm(solicitacao) {
+export function buildDefaultForm(solicitacao) {
   const valorSolicitacao = solicitacao?.valor ? formatCurrencyInput(solicitacao.valor) : '';
   const freteTerceiro = getFreteTerceiroCompraDireta(solicitacao);
   const valorItens = freteTerceiro
     ? formatCurrencyInput(solicitacao?.compra_direta?.valor_fechado || 0)
     : valorSolicitacao;
+  const formasCompraDireta = getFormasCompraDireta(solicitacao);
+  const valoresSugeridos = distribuirParcelasFormatadas(valorItens, formasCompraDireta.length || 1);
+  const pagamentosCompra = formasCompraDireta.length
+    ? formasCompraDireta.map((forma, index) => createPagamento(
+        solicitacao,
+        forma.valor != null ? formatCurrencyInput(forma.valor) : valoresSugeridos[index],
+        '',
+        {
+          forma_pagamento_id: String(forma.id),
+          favorecido_pagamento_id: forma.favorecido_id
+            || solicitacao?.favorecido_id
+            || solicitacao?.favorecido?.id
+            || null,
+          observacoes: [
+            (forma.favorecido_nome || solicitacao?.favorecido?.nome)
+              ? `Favorecido: ${forma.favorecido_nome || solicitacao.favorecido.nome}` : '',
+            forma.dados_pagamento || solicitacao?.compra_direta?.dados_pagamento || ''
+          ].filter(Boolean).join('\n')
+        }
+      ))
+    : [createPagamento(solicitacao, valorItens, '', {
+        observacoes: solicitacao?.dados_pagamento
+          ? `Dados para pagamento: ${solicitacao.dados_pagamento}`
+          : ''
+      })];
   const pagamentos = freteTerceiro
     ? [
-        createPagamento(solicitacao, valorItens),
+        ...pagamentosCompra,
         createPagamento(solicitacao, formatCurrencyInput(freteTerceiro.frete_valor), '', {
           parceiro: freteTerceiro.freteCredor,
+          favorecido_pagamento_id: freteTerceiro.frete_favorecido_id || null,
+          origem_frete: true,
           data_vencimento: freteTerceiro.frete_data_vencimento,
-          observacoes: `Frete pago a terceiro. Dados para pagamento: ${freteTerceiro.frete_dados_pagamento || '-'}`
+          forma_pagamento_id: freteTerceiro.frete_forma_pagamento_id
+            ? String(freteTerceiro.frete_forma_pagamento_id) : '',
+          observacoes: [
+            'Frete pago a terceiro.',
+            freteTerceiro.freteFavorecido?.nome ? `Favorecido: ${freteTerceiro.freteFavorecido.nome}` : '',
+            freteTerceiro.frete_dados_pagamento ? `Dados para pagamento: ${freteTerceiro.frete_dados_pagamento}` : ''
+          ].filter(Boolean).join('\n')
         })
       ]
-    : [createPagamento(solicitacao, valorSolicitacao)];
+    : pagamentosCompra;
   return {
     tipo: 'PAGAR',
     status: 'ABERTO',
@@ -382,7 +592,13 @@ function criarCredorFormPadrao() {
     nome: '',
     cpf_cnpj: '',
     telefone: '',
-    email: ''
+    email: '',
+    // PJ exige nome fantasia e representante legal (23/08). Em pessoa fisica nao se aplica: nome
+    // fantasia de pessoa nao existe, e quem assina e ela mesma.
+    nome_fantasia: '',
+    representante_nome: '',
+    representante_cpf: '',
+    representante_cargo: ''
   };
 }
 
@@ -390,13 +606,34 @@ function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-function statusClass(status) {
+/*
+  R2/R25 — a familia semantica do StatusBadge substitui as classes de paleta
+  crua que estavam aqui, PRESERVANDO o mapeamento anterior tom a tom (sky =
+  info, emerald = success, amber = warning, rose = danger, slate = neutral).
+  Passar `kind` explicito em vez de deixar o badge adivinhar pelo texto e
+  deliberado: a heuristica generica classifica CANCELADO como neutro e
+  PREVISAO como atencao, o que MUDARIA a cor que o usuario ve hoje.
+*/
+function familiaSituacao(status) {
   const normalized = String(status || '').toUpperCase();
-  if (normalized === 'PREVISAO') return 'bg-sky-100 text-sky-700';
-  if (normalized === 'QUITADO') return 'bg-emerald-100 text-emerald-700';
-  if (normalized === 'PARCIAL') return 'bg-amber-100 text-amber-700';
-  if (normalized === 'CANCELADO' || normalized === 'ESTORNADO') return 'bg-rose-100 text-rose-700';
-  return 'bg-slate-100 text-slate-700';
+  if (normalized === 'PREVISAO') return 'info';
+  if (normalized === 'LIBERADA' || normalized === 'QUITADO') return 'success';
+  if (normalized === 'PARCIAL') return 'warning';
+  if (normalized === 'CANCELADO' || normalized === 'ESTORNADO') return 'danger';
+  return 'neutral';
+}
+
+function rotuloSituacao(status) {
+  const normalized = String(status || '').toUpperCase();
+  return {
+    PREVISAO: 'Previsão',
+    ABERTO: 'Aberto',
+    LIBERADA: 'Liberada',
+    PARCIAL: 'Parcial',
+    QUITADO: 'Quitado',
+    CANCELADO: 'Cancelado',
+    ESTORNADO: 'Estornado'
+  }[normalized] || status || '-';
 }
 
 function SearchIcon() {
@@ -421,6 +658,27 @@ function ParceiroPagamentoField({ pagamento, pagamentoIndex, tipo, onSelect }) {
   const [search, setSearch] = useState('');
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
+  /*
+    A LISTA DE PARCEIROS DO PAGAMENTO NÃO FECHAVA DE JEITO NENHUM (05/09).
+
+    Não havia estado de aberta: a camada existia sempre que `options`
+    tivesse itens, e essa lista só era esvaziada ao ESCOLHER um parceiro
+    ou ao apagar a busca abaixo de dois caracteres. Como é `absolute
+    z-dropdown` e este campo se repete por pagamento, a lista de um pagamento
+    cobria o pagamento seguinte. Clicar fora não fazia nada; `Esc` não
+    fazia nada.
+
+    Agora existe `listaAberta`: digitar ou focar o campo abre, clicar
+    fora e `Esc` fecham, sem perder o termo buscado.
+
+    A seleção continua funcionando: o ref envolve o campo E a lista
+    (clique na opção é DENTRO, o hook não fecha no `mousedown`), e a
+    opção ganhou `onMouseDown` com `preventDefault` para o foco não sair
+    do campo antes do `onClick`.
+  */
+  const campoRef = useRef(null);
+  const [listaAberta, setListaAberta] = useState(false);
+  useFecharAoSair(campoRef, listaAberta, () => setListaAberta(false));
   const roleLabel = getParceiroRoleLabel(tipo);
   const roleTitle = getParceiroRoleTitle(tipo);
 
@@ -456,30 +714,35 @@ function ParceiroPagamentoField({ pagamento, pagamentoIndex, tipo, onSelect }) {
   }, [search, tipo]);
 
   return (
-    <div className="relative text-sm">
-      <span className="mb-1 block text-slate-500">{roleTitle} deste titulo</span>
+    <div className="relative text-sm" ref={campoRef}>
+      <span className="mb-1 block text-[var(--c-muted)]">{roleTitle} deste titulo</span>
       <input
         className="input w-full"
         type="text"
         placeholder={pagamento?.parceiro_nome || `Buscar ${roleLabel} por nome ou CPF/CNPJ`}
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        onFocus={() => setListaAberta(true)}
+        onChange={(event) => {
+          setListaAberta(true);
+          setSearch(event.target.value);
+        }}
       />
       {pagamento?.parceiro_nome && (
-        <div className="mt-1 text-xs text-slate-500">
+        <div className="mt-1 text-xs text-[var(--c-muted)]">
           Selecionado: {pagamento.parceiro_nome}
         </div>
       )}
       {loading && (
-        <div className="mt-1 text-xs text-slate-500">Buscando parceiros...</div>
+        <div className="mt-1 text-xs text-[var(--c-muted)]">Buscando parceiros...</div>
       )}
-      {options.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-52 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+      {listaAberta && options.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-dropdown mt-2 max-h-52 overflow-y-auto rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-2 shadow-lg">
           {options.map((partner) => (
             <button
               key={partner.id}
               type="button"
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+              className="w-full rounded-xl border border-[var(--c-border)] px-3 py-2 text-left text-sm hover:bg-[var(--c-bg)]"
+              onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
                 onSelect(pagamentoIndex, partner);
                 setSearch('');
@@ -487,12 +750,209 @@ function ParceiroPagamentoField({ pagamento, pagamentoIndex, tipo, onSelect }) {
               }}
             >
               <div className="font-medium text-[var(--c-text)]">{partner.nome}</div>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-[var(--c-muted)]">
                 {partner.cpf_cnpj || '-'} {partner.telefone ? `- ${partner.telefone}` : ''}
               </div>
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, onUsePartner, compraDireta = false }) {
+  const draft = pagamento?.dados_pagamento || createPaymentDraft();
+  const parceiro = context?.parceiro || null;
+  const beneficiaries = compraDireta ? [] : (context?.beneficiaries || []).filter((item) => item.ativo !== false);
+  const opcoesChave = [];
+  const chavesIncluidas = new Set();
+
+  for (const beneficiary of beneficiaries) {
+    const chaveNormalizada = normalizePixKey(beneficiary.pix_chave);
+    if (!chaveNormalizada || chavesIncluidas.has(chaveNormalizada)) continue;
+    chavesIncluidas.add(chaveNormalizada);
+    opcoesChave.push({
+      id: `beneficiary-${beneficiary.id}`,
+      label: `${beneficiary.nome} - ${beneficiary.pix_tipo_chave}`,
+      tipo: beneficiary.pix_tipo_chave,
+      chave: beneficiary.pix_chave,
+      beneficiary
+    });
+  }
+
+  for (const pix of (compraDireta ? [] : getParceiroPixOptions(parceiro))) {
+    const chaveNormalizada = normalizePixKey(pix.chave);
+    if (!chaveNormalizada || chavesIncluidas.has(chaveNormalizada)) continue;
+    chavesIncluidas.add(chaveNormalizada);
+    opcoesChave.push({ ...pix, id: `partner-${pix.id}` });
+  }
+
+  return (
+    <div
+      className="rounded-xl border p-3"
+      style={{ borderColor: 'var(--sem-info-border)', background: 'var(--sem-info-bg)' }}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-[var(--c-text)]">Dados para pagamento deste título</div>
+          <div className="text-xs text-[var(--c-muted)]">
+            Confirme o favorecido e a chave que serão usados na preparação do PIX.
+          </div>
+        </div>
+        <label className="flex shrink-0 items-center gap-2 text-sm font-medium text-[var(--c-text)]">
+          <input
+            type="checkbox"
+            checked={Boolean(draft.preparar_pagamento_pix)}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              const pix = compraDireta || pagamento?.favorecido_pagamento_id
+                ? null : getParceiroPixPrincipal(parceiro);
+              onChange(pagamentoIndex, {
+                preparar_pagamento_pix: checked,
+                ...(checked && !draft.pix_chave
+                  ? {
+                      nome: draft.nome || parceiro?.nome || '',
+                      cpf_cnpj: draft.cpf_cnpj || parceiro?.cpf_cnpj || '',
+                      pix_tipo_chave: pix?.tipo || draft.pix_tipo_chave,
+                      pix_chave: pix?.chave || draft.pix_chave
+                    }
+                  : {})
+              });
+            }}
+          />
+          Preparar PIX
+        </label>
+      </div>
+
+      {draft.preparar_pagamento_pix && (
+        <FormSecao colunas={2}>
+          {context?.loading && (
+            <div className="app-note form-campo--linha">Carregando favorecidos e chaves PIX...</div>
+          )}
+
+          {!compraDireta && <CampoForm label="Favorecido bancário vinculado">
+            <select
+              className="input"
+              value={draft.payment_beneficiary_id || ''}
+              disabled={Boolean(context?.loading)}
+              onChange={(event) => {
+                const beneficiary = beneficiaries.find((item) => String(item.id) === String(event.target.value));
+                onChange(pagamentoIndex, {
+                  usar_credor_como_favorecido: false,
+                  payment_beneficiary_id: event.target.value,
+                  nome: beneficiary?.nome || parceiro?.nome || draft.nome,
+                  cpf_cnpj: beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || draft.cpf_cnpj,
+                  pix_tipo_chave: beneficiary?.pix_tipo_chave || draft.pix_tipo_chave,
+                  pix_chave: beneficiary?.pix_chave || draft.pix_chave
+                });
+              }}
+            >
+              <option value="">Novo favorecido</option>
+              {beneficiaries.map((beneficiary) => (
+                <option key={beneficiary.id} value={beneficiary.id}>
+                  {beneficiary.nome} - {beneficiary.pix_chave || 'sem PIX'}
+                </option>
+              ))}
+            </select>
+          </CampoForm>}
+
+          <label
+            className="form-group flex items-start gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--c-text)]"
+            style={{ borderColor: 'var(--sem-info-border)', background: 'var(--c-surface)' }}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(draft.usar_credor_como_favorecido)}
+              disabled={!parceiro}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  onUsePartner(pagamentoIndex, parceiro);
+                } else {
+                  onChange(pagamentoIndex, { usar_credor_como_favorecido: false });
+                }
+              }}
+            />
+            <span>
+              Usar o próprio credor como favorecido
+              <span className="mt-1 block text-xs text-[var(--c-muted)]">
+                {compraDireta
+                  ? 'Nome e documento vêm do credor; digite a chave PIX desta solicitação.'
+                  : 'Nome, documento e chaves vêm do Cadastro de Pessoas.'}
+              </span>
+            </span>
+          </label>
+
+          {opcoesChave.length > 0 && (
+            <CampoForm label="Buscar entre as chaves cadastradas" linha>
+              <select
+                className="input"
+                value=""
+                onChange={(event) => {
+                  const opcao = opcoesChave.find((item) => item.id === event.target.value);
+                  if (!opcao) return;
+                  onChange(pagamentoIndex, {
+                    usar_credor_como_favorecido: !opcao.beneficiary,
+                    payment_beneficiary_id: opcao.beneficiary ? String(opcao.beneficiary.id) : '',
+                    nome: opcao.beneficiary?.nome || parceiro?.nome || draft.nome,
+                    cpf_cnpj: opcao.beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || draft.cpf_cnpj,
+                    pix_tipo_chave: opcao.tipo,
+                    pix_chave: opcao.chave
+                  });
+                }}
+              >
+                <option value="">Selecione uma chave para preencher</option>
+                {opcoesChave.map((opcao) => (
+                  <option key={opcao.id} value={opcao.id}>
+                    {opcao.label} - {opcao.chave}
+                  </option>
+                ))}
+              </select>
+            </CampoForm>
+          )}
+
+          <CampoForm label="Nome do favorecido" obrigatorio>
+            <input
+              className="input"
+              value={draft.nome || ''}
+              onChange={(event) => onChange(pagamentoIndex, { nome: event.target.value })}
+              required
+            />
+          </CampoForm>
+          <CampoForm label="CPF/CNPJ" obrigatorio>
+            <input
+              className="input"
+              value={maskCpfCnpj(draft.cpf_cnpj)}
+              onChange={(event) => onChange(pagamentoIndex, { cpf_cnpj: maskCpfCnpj(event.target.value) })}
+              inputMode="numeric"
+              maxLength={18}
+              required
+            />
+          </CampoForm>
+          <CampoForm label="Tipo da chave PIX">
+            <select
+              className="input"
+              value={draft.pix_tipo_chave || 'CNPJ'}
+              onChange={(event) => onChange(pagamentoIndex, { pix_tipo_chave: event.target.value })}
+            >
+              {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+            </select>
+          </CampoForm>
+          <CampoForm
+            label="Chave PIX"
+            obrigatorio
+            hint={compraDireta
+              ? 'Use somente a chave informada nesta compra direta ou digite outra confirmada para este pagamento.'
+              : 'Você pode escolher uma chave cadastrada acima ou editar este campo diretamente.'}
+          >
+            <input
+              className="input"
+              value={draft.pix_chave || ''}
+              onChange={(event) => onChange(pagamentoIndex, { pix_chave: event.target.value })}
+              required
+            />
+          </CampoForm>
+        </FormSecao>
       )}
     </div>
   );
@@ -556,27 +1016,40 @@ function ImpactoGerencialPreview({ form, categoria, empresasGrupo, totalPagament
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-sm font-semibold text-[var(--c-text)]">Impacto gerencial antes de salvar</div>
-          <div className="text-xs text-slate-500">Confira DRE, caixa e consolidado deste titulo.</div>
+          <div className="text-xs text-[var(--c-muted)]">Confira DRE, caixa e consolidado deste título.</div>
         </div>
         {form.intercompany && (
-          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+          <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' }}>
             Entre Empresas
           </span>
         )}
       </div>
       <div className="grid gap-3 md:grid-cols-3">
-        <div className={`rounded-xl border px-3 py-2 ${dreAtiva ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.16em]">DRE</div>
+        <div
+          className="rounded-xl border px-3 py-2"
+          style={dreAtiva
+            ? { borderColor: 'var(--sem-success-border)', background: 'var(--sem-success-bg)', color: 'var(--sem-success)' }
+            : { borderColor: 'var(--sem-warning-border)', background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' }}
+        >
+          <div className="text-xs font-semibold uppercase tracking-[0.16em]">DRE</div>
           <div className="mt-1 text-sm font-semibold">{dreTexto}</div>
           <div className="mt-1 text-xs opacity-80">{getCategoriaDreResumo(categoria)}</div>
         </div>
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-blue-800">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.16em]">Caixa</div>
+        <div
+          className="rounded-xl border px-3 py-2"
+          style={{ borderColor: 'var(--sem-info-border)', background: 'var(--sem-info-bg)', color: 'var(--sem-info)' }}
+        >
+          <div className="text-xs font-semibold uppercase tracking-[0.16em]">Caixa</div>
           <div className="mt-1 text-sm font-semibold">{caixaTexto}</div>
-          <div className="mt-1 text-xs opacity-80">Vai para o fluxo previsto ate a baixa.</div>
+          <div className="mt-1 text-xs opacity-80">Vai para o fluxo previsto até a baixa.</div>
         </div>
-        <div className={`rounded-xl border px-3 py-2 ${form.intercompany ? 'border-violet-200 bg-violet-50 text-violet-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.16em]">Consolidado</div>
+        <div
+          className="rounded-xl border px-3 py-2"
+          style={form.intercompany
+            ? { borderColor: 'var(--sem-info-border)', background: 'var(--sem-info-bg)', color: 'var(--sem-info)' }
+            : { borderColor: 'var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)' }}
+        >
+          <div className="text-xs font-semibold uppercase tracking-[0.16em]">Consolidado</div>
           <div className="mt-1 text-sm font-semibold">{consolidadoTexto}</div>
           <div className="mt-1 text-xs opacity-80">
             {form.intercompany
@@ -593,15 +1066,37 @@ export default function FinanceiroCard({
   solicitacao,
   onTituloCriado,
   onSolicitacaoAtualizada,
-  podeAcessarModuloFinanceiro = false
+  podeAcessarModuloFinanceiro = false,
+  podeVisualizarTitulos = false,
+  somenteLeitura = false
 }) {
   const { user } = useAuth();
+  const podeExecutarAcoesFinanceiras = podeAcessarModuloFinanceiro && !somenteLeitura;
+  // Preparar a fila tem permissao propria e independe do setor atual da solicitacao.
+  const podeEnviarParaFila = podeVisualizarTitulos && canPrepareFilaPagamentos(user);
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeGerenciarDadosPagamento = canManagePaymentBeneficiaries(user);
-  const freteTerceiroObrigatorio = Boolean(getFreteTerceiroCompraDireta(solicitacao));
+  const freteTerceiroObrigatorio = exigeTitulosSeparadosCompraDireta(solicitacao);
+  // Medicao escolhida pelo botao da linha do titulo — abre os anexos, os comentarios e a edicao
+  // de valor/vencimento dela (PI-16 e pedido do cliente, 20/08).
+  const [medicaoAberta, setMedicaoAberta] = useState(null);
+  // As parcelas que a tabela de previsoes carregou. O modal usa as MESMAS, em vez de buscar de
+  // novo: duas leituras da mesma coisa acabam discordando logo depois de uma edicao.
+  const [dadosContrato, setDadosContrato] = useState(null);
+  // Recarrega a tabela depois que a medicao e alterada — o valor mudou nela E nas ultimas parcelas.
+  const [recarregarParcelas, setRecarregarParcelas] = useState(0);
   const [titulos, setTitulos] = useState([]);
+  const [titulosSelecionados, setTitulosSelecionados] = useState([]);
+  const [enviandoFila, setEnviandoFila] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [erro, setErro] = useState('');
+  /*
+    R19/R28 — o `erro` de string solta e os tres `alert()` do navegador viraram
+    UM canal so: `useAvisos`. Erro e sucesso passam pela mesma faixa semantica
+    do sistema, dentro da pagina, fechavel — e o sucesso agora FICA (R28), em
+    vez de sumir junto com o modal que fechava no mesmo gesto.
+  */
+  const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
   const [modalOpen, setModalOpen] = useState(false);
   const [cadastroCredorModalOpen, setCadastroCredorModalOpen] = useState(false);
   const [cadastroCredorSaving, setCadastroCredorSaving] = useState(false);
@@ -623,32 +1118,86 @@ export default function FinanceiroCard({
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categoriaModalOpen, setCategoriaModalOpen] = useState(false);
   const [categoriaSearch, setCategoriaSearch] = useState('');
+  /*
+    AS DUAS CAMADAS DA CATEGORIA FINANCEIRA NÃO FECHAVAM DE JEITO NENHUM
+    (05/09) — a lista de sugestões e o aviso "Nenhuma categoria
+    encontrada", que é flutuante do mesmo jeito (`absolute`, mesma
+    âncora) e por isso conta como camada, não como texto de apoio.
+
+    Nenhuma das duas tinha estado de aberta: apareciam por texto digitado
+    e sumiam só ao ESCOLHER uma categoria ou apagar a busca. Ficavam
+    sobre o campo seguinte. Clicar fora não fazia nada;
+    `Esc` não fazia nada.
+
+    Um estado só governa as duas, porque as duas são a MESMA camada em
+    dois estados (com resultado e sem): abrir uma e deixar a outra
+    presa seria trocar metade do defeito.
+
+    A seleção continua funcionando: o ref envolve o campo E as duas
+    camadas (clique na opção é DENTRO, o hook não fecha no `mousedown`),
+    e a opção ganhou `onMouseDown` com `preventDefault` para o foco não
+    sair do campo antes do `onClick`.
+  */
+  const listaCategoriasRef = useRef(null);
+  const [listaCategoriasAberta, setListaCategoriasAberta] = useState(false);
+  useFecharAoSair(listaCategoriasRef, listaCategoriasAberta, () => setListaCategoriasAberta(false));
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [obras, setObras] = useState([]);
   const [loadingObras, setLoadingObras] = useState(false);
   const [loadingPagamento, setLoadingPagamento] = useState(false);
+  const [paymentContexts, setPaymentContexts] = useState({});
+  // Mantidos somente enquanto o seletor legado de categoria permanece montado de forma oculta.
+  // O fluxo ativo usa os dados bancarios e a categoria dentro de cada titulo.
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [loadingBeneficiaries, setLoadingBeneficiaries] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState(createPaymentDraft);
   const [geracaoMultiplaTitulos, setGeracaoMultiplaTitulos] = useState(
-    () => Boolean(getFreteTerceiroCompraDireta(solicitacao))
+    () => exigeTitulosSeparadosCompraDireta(solicitacao)
   );
-  const parceiroPagamentoId = selectedPartner?.id || form.parceiro_id || null;
+  // A tabela de parcelas e a fonte unica do fluxo novo. Solicitacoes comuns e contratos legados
+  // continuam usando a relacao generica de titulos abaixo.
+  const situacaoPorTitulo = useMemo(() => new Map(
+    (dadosContrato?.parcelas || [])
+      .filter((parcela) => parcela.titulo_financeiro_id)
+      .map((parcela) => [String(parcela.titulo_financeiro_id), parcela.situacao || parcela.status])
+  ), [dadosContrato?.parcelas]);
+  const usaTabelaParcelasFluxoNovo = Boolean(
+    dadosContrato?.contrato?.fluxo_novo
+      && String(dadosContrato.contrato.solicitacao_id) === String(solicitacao?.id)
+  );
+  // Enquanto a rota identifica se o contrato e novo ou legado, nao renderiza a lista generica:
+  // isso evita o piscar das mesmas parcelas em dois formatos antes da resposta chegar.
+  const classificandoContrato = Boolean(solicitacao?.contrato_id) && dadosContrato === null;
+  const exibirTitulosDetalhados = podeVisualizarTitulos
+    && !usaTabelaParcelasFluxoNovo
+    && !classificandoContrato;
+  const tipoSolicitacao = normalizeSearchText(
+    solicitacao?.tipo?.nome
+      || solicitacao?.tipo_nome
+      || solicitacao?.tipo_solicitacao
+      || solicitacao?.descricao_tipo
+  );
+  const compraDiretaSolicitacao = tipoSolicitacao.includes('compra direta');
+  const usaTituloAutomaticoRecarga = tipoSolicitacao.includes('recarga de cartao');
+  const geracaoManualDesabilitada = usaTabelaParcelasFluxoNovo
+    || usaTituloAutomaticoRecarga
+    || classificandoContrato;
+  const motivoGeracaoManualDesabilitada = usaTituloAutomaticoRecarga
+    ? 'A conta da Recarga de Cartao e criada automaticamente pela solicitacao.'
+    : 'Os titulos do contrato do fluxo novo sao criados automaticamente pelo cronograma.';
 
   function resetModalState(baseSolicitacao = solicitacao) {
     setForm(buildDefaultForm(baseSolicitacao));
-    setGeracaoMultiplaTitulos(Boolean(getFreteTerceiroCompraDireta(baseSolicitacao)));
+    setGeracaoMultiplaTitulos(exigeTitulosSeparadosCompraDireta(baseSolicitacao));
     setSelectedPartner(baseSolicitacao?.parceiro || null);
     setSelectedCategory(null);
     setPartnerSearch('');
     setPartnerOptions([]);
     setCategoriaSearch('');
     setCategoriaModalOpen(false);
-    setBeneficiaries([]);
-    setLoadingBeneficiaries(false);
-    setPaymentDraft(createPaymentDraft());
+    setPaymentContexts({});
   }
 
   useEffect(() => {
@@ -665,6 +1214,12 @@ export default function FinanceiroCard({
       setParceiroFinanceiro(null);
       return undefined;
     }
+    // A leitura da Obra usa somente o parceiro ja entregue pela solicitacao. A busca financeira
+    // completa inclui chaves PIX e outros dados operacionais que nao fazem parte deste resumo.
+    if (somenteLeitura) {
+      setParceiroFinanceiro(solicitacao?.parceiro || null);
+      return undefined;
+    }
 
     let active = true;
     buscarParceiroPorId(parceiroId)
@@ -678,16 +1233,23 @@ export default function FinanceiroCard({
     return () => {
       active = false;
     };
-  }, [solicitacao?.parceiro?.id]);
+  }, [solicitacao?.parceiro?.id, somenteLeitura]);
 
   async function carregarTitulos() {
+    if (!podeVisualizarTitulos) {
+      setTitulos([]);
+      limparAvisos();
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      setErro('');
+      limparAvisos();
       const data = await getTitulosFinanceirosPorSolicitacao(solicitacao.id);
       setTitulos(Array.isArray(data) ? data : []);
+      setTitulosSelecionados([]);
     } catch (error) {
-      setErro(error?.message || 'Erro ao carregar titulos da solicitacao');
+      avisar.erro(error?.message || 'Erro ao carregar titulos da solicitacao');
     } finally {
       setLoading(false);
     }
@@ -695,7 +1257,61 @@ export default function FinanceiroCard({
 
   useEffect(() => {
     carregarTitulos();
-  }, [solicitacao.id]);
+  }, [solicitacao.id, podeVisualizarTitulos]);
+
+  function ultimoItemFila(titulo) {
+    return [...(titulo.filaPagamentosManuais || [])]
+      .sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
+  }
+
+  function elegivelParaFila(titulo) {
+    if (String(titulo.tipo).toUpperCase() !== 'PAGAR') return false;
+    if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status).toUpperCase())) return false;
+    if (!(Number(titulo.valor_saldo) > 0)) return false;
+    return !(titulo.filaPagamentosManuais || []).some((item) => ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(item.status));
+  }
+
+  async function enviarSelecionadosParaFila() {
+    if (!podeEnviarParaFila || enviandoFila || titulosSelecionados.length === 0) return;
+    const requerAutorizacao = devePrepararAutorizacaoPagamento(user);
+    const { ok } = await confirmar({
+      titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
+      mensagem: requerAutorizacao
+        ? `${titulosSelecionados.length} título(s) serão reunidos para decisão do proprietário.`
+        : `${titulosSelecionados.length} título(s) ficarão disponíveis na Fila de Pagamentos.`,
+      rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
+    });
+    if (!ok) return;
+    setEnviandoFila(true);
+    try {
+      const chave = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      if (requerAutorizacao) await criarAutorizacaoPagamento(titulosSelecionados, `solicitacao-${chave}`);
+      else await enviarTitulosFilaPagamentos(titulosSelecionados, `solicitacao-${chave}`);
+      await carregarTitulos();
+      await onSolicitacaoAtualizada?.();
+      setTitulosSelecionados([]);
+      avisar.sucesso(requerAutorizacao ? 'Títulos enviados ao proprietário para autorização.' : 'Títulos enviados para a Fila de Pagamentos.');
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível enviar os títulos para pagamento.');
+    } finally {
+      setEnviandoFila(false);
+    }
+  }
+
+  async function abrirComprovante(filaId, comprovanteId) {
+    try {
+      const resposta = await getComprovanteFilaPagamento(filaId, comprovanteId);
+      const link = document.createElement('a');
+      link.href = resposta.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
+    }
+  }
 
   useEffect(() => {
     if (!modalOpen) return undefined;
@@ -780,50 +1396,155 @@ export default function FinanceiroCard({
     }));
   }, [modalOpen, selectedPartner, form.tipo]);
 
+  const paymentPartnerSignature = (form.pagamentos || [])
+    .map((pagamento) => `${pagamento.id}:${pagamento.parceiro_id || ''}`)
+    .join('|');
+
   useEffect(() => {
-    if (!modalOpen || form.tipo !== 'PAGAR' || !parceiroPagamentoId || !podeGerenciarDadosPagamento) {
-      setBeneficiaries([]);
-      setLoadingBeneficiaries(false);
-      setPaymentDraft(createPaymentDraft());
+    if (!modalOpen || form.tipo !== 'PAGAR' || !podeGerenciarDadosPagamento) {
+      setPaymentContexts({});
       return undefined;
     }
 
     let active = true;
-    setLoadingBeneficiaries(true);
+    const pagamentosAtuais = form.pagamentos || [];
+    const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
+    const favorecidoId = solicitacao?.favorecido?.id || solicitacao?.favorecido_id || null;
 
-    Promise.all([
-      buscarParceiroPorId(parceiroPagamentoId).catch(() => selectedPartner || null),
-      getPaymentBeneficiaries({ parceiro_id: parceiroPagamentoId }).catch(() => [])
-    ])
-      .then(([parceiroCompleto, data]) => {
+    setPaymentContexts((current) => Object.fromEntries(
+      pagamentosAtuais.map((pagamento) => [pagamento.id, {
+        ...(current[pagamento.id] || {}),
+        loading: Boolean(pagamento.parceiro_id)
+      }])
+    ));
+
+    Promise.all(pagamentosAtuais.map(async (pagamento) => {
+      const parceiroId = pagamento.parceiro_id || null;
+      if (!parceiroId) {
+        return { pagamentoId: pagamento.id, parceiroId: '', parceiro: null, beneficiaries: [] };
+      }
+
+      const parceiroFallback = String(selectedPartner?.id) === String(parceiroId)
+        ? selectedPartner
+        : null;
+      const ehFrete = compraDiretaSolicitacao && pagamento.origem_frete;
+      const formaDaLinha = ehFrete
+        ? (solicitacao?.compra_direta?.freteFormaPagamento
+          || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)))
+        : (getFormasCompraDireta(solicitacao).find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id))
+          || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)));
+      const favorecidoDaLinhaId = ehFrete
+        ? solicitacao?.compra_direta?.frete_favorecido_id
+        : formaDaLinha?.favorecido_id || favorecidoId;
+      const favorecidoDaLinha = ehFrete
+        ? solicitacao?.compra_direta?.freteFavorecido
+        : formaDaLinha?.favorecido_id
+          ? {
+              id: formaDaLinha.favorecido_id,
+              nome: formaDaLinha.favorecido_nome || '',
+              cpf_cnpj: formaDaLinha.favorecido_cpf_cnpj || ''
+            }
+          : solicitacao?.favorecido;
+      const chavePixDaLinha = ehFrete
+        ? solicitacao?.compra_direta?.frete_favorecido_chave_pix
+        : formaDaLinha?.chave_pix || solicitacao?.favorecido_chave_pix;
+      const usarChaveSolicitacao = (ehFrete || Boolean(
+        credorOriginalId && String(credorOriginalId) === String(parceiroId)
+      )) && (!compraDiretaSolicitacao || isFormaPix(formaDaLinha));
+      const usarFavorecidoSolicitacao = Boolean(favorecidoDaLinhaId) && (ehFrete || Boolean(
+        credorOriginalId && String(credorOriginalId) === String(parceiroId)
+      ));
+      const precisaCarregarFavorecido = usarFavorecidoSolicitacao
+        && favorecidoDaLinhaId
+        && String(favorecidoDaLinhaId) !== String(parceiroId)
+        && !favorecidoDaLinha?.cpf_cnpj;
+      const [parceiroCompleto, beneficiaries, favorecidoCompleto] = await Promise.all([
+        buscarParceiroPorId(parceiroId).catch(() => parceiroFallback),
+        compraDiretaSolicitacao
+          ? Promise.resolve([])
+          : getPaymentBeneficiaries({ parceiro_id: parceiroId }).catch(() => []),
+        precisaCarregarFavorecido
+          ? buscarParceiroPorId(favorecidoDaLinhaId).catch(() => favorecidoDaLinha || null)
+          : Promise.resolve(favorecidoDaLinha || null)
+      ]);
+
+      return {
+        pagamentoId: pagamento.id,
+        parceiroId: String(parceiroId),
+        parceiro: parceiroCompleto || parceiroFallback,
+        beneficiaries: Array.isArray(beneficiaries) ? beneficiaries : [],
+        favorecidoCompleto,
+        ehFrete,
+        chavePixDaLinha,
+        usarChaveSolicitacao,
+        usarFavorecidoSolicitacao
+      };
+    }))
+      .then((resultados) => {
         if (!active) return;
-        const lista = Array.isArray(data) ? data : [];
-        const beneficiary = lista.find((item) => item.ativo !== false && item.pix_chave) || lista[0] || null;
-        const pix = getParceiroPixPrincipal(parceiroCompleto);
-        const possuiDadosPix = Boolean(beneficiary?.pix_chave || pix?.chave);
-
-        setBeneficiaries(lista);
-        if (parceiroCompleto?.id) {
-          setSelectedPartner(parceiroCompleto);
-        }
-        setPaymentDraft({
-          preparar_pagamento_pix: possuiDadosPix,
-          usar_credor_como_favorecido: !beneficiary && Boolean(pix?.chave),
-          payment_beneficiary_id: beneficiary?.id ? String(beneficiary.id) : '',
-          nome: beneficiary?.nome || parceiroCompleto?.nome || '',
-          cpf_cnpj: beneficiary?.cpf_cnpj || parceiroCompleto?.cpf_cnpj || '',
-          pix_tipo_chave: beneficiary?.pix_tipo_chave || pix?.tipo || 'CNPJ',
-          pix_chave: beneficiary?.pix_chave || pix?.chave || ''
-        });
-      })
-      .finally(() => {
-        if (active) setLoadingBeneficiaries(false);
+        setPaymentContexts(Object.fromEntries(resultados.map((resultado) => [resultado.pagamentoId, {
+          parceiroId: resultado.parceiroId,
+          parceiro: resultado.parceiro,
+          beneficiaries: resultado.beneficiaries,
+          loading: false
+        }])));
+        setForm((current) => ({
+          ...current,
+          pagamentos: (current.pagamentos || []).map((pagamento) => {
+            const resultado = resultados.find((item) => item.pagamentoId === pagamento.id);
+            if (!resultado || pagamento.dados_pagamento_parceiro_id === resultado.parceiroId) {
+              return pagamento;
+            }
+            const solicitacaoComFavorecido = resultado.ehFrete
+              ? {
+                  ...solicitacao,
+                  favorecido: resultado.favorecidoCompleto || solicitacao?.compra_direta?.freteFavorecido || null,
+                  favorecido_chave_pix: resultado.chavePixDaLinha || null
+                }
+              : resultado.favorecidoCompleto
+                ? {
+                    ...solicitacao,
+                    favorecido: resultado.favorecidoCompleto,
+                    favorecido_chave_pix: resultado.chavePixDaLinha || null
+                  }
+                : { ...solicitacao, favorecido_chave_pix: resultado.chavePixDaLinha || null };
+            return {
+              ...pagamento,
+              dados_pagamento: buildPaymentDraftForTitle({
+                parceiro: resultado.parceiro,
+                beneficiaries: resultado.beneficiaries,
+                solicitacao: solicitacaoComFavorecido,
+                usarChaveSolicitacao: resultado.usarChaveSolicitacao,
+                usarFavorecidoSolicitacao: resultado.usarFavorecidoSolicitacao,
+                compraDireta: compraDiretaSolicitacao
+              }),
+              dados_pagamento_parceiro_id: resultado.parceiroId
+            };
+          })
+        }));
       });
 
     return () => {
       active = false;
     };
-  }, [modalOpen, form.tipo, parceiroPagamentoId, podeGerenciarDadosPagamento]);
+  }, [
+    modalOpen,
+    form.tipo,
+    paymentPartnerSignature,
+    podeGerenciarDadosPagamento,
+    formasPagamento,
+    selectedPartner?.id,
+    solicitacao?.parceiro?.id,
+    solicitacao?.parceiro_id,
+    solicitacao?.favorecido?.id,
+    solicitacao?.favorecido?.cpf_cnpj,
+    solicitacao?.favorecido_id,
+    solicitacao?.favorecido_chave_pix,
+    solicitacao?.compra_direta?.formas_pagamento_json,
+    solicitacao?.compra_direta?.frete_favorecido_id,
+    solicitacao?.compra_direta?.frete_favorecido_chave_pix,
+    compraDiretaSolicitacao
+  ]);
 
   useEffect(() => {
     if (!modalOpen) return undefined;
@@ -839,7 +1560,7 @@ export default function FinanceiroCard({
       .catch((error) => {
         if (!active) return;
         setCategorias([]);
-        setErro(error?.message || 'Erro ao carregar categorias financeiras');
+        avisar.erro(error?.message || 'Erro ao carregar categorias financeiras');
       })
       .finally(() => {
         if (active) setLoadingCategorias(false);
@@ -900,14 +1621,35 @@ export default function FinanceiroCard({
     ])
       .then(([formasData, cartoesData]) => {
         if (!active) return;
-        setFormasPagamento(Array.isArray(formasData) ? formasData : []);
+        const formasCarregadas = Array.isArray(formasData) ? formasData : [];
+        setFormasPagamento(formasCarregadas);
         setCartoes(Array.isArray(cartoesData) ? cartoesData : []);
+        setForm((current) => ({
+          ...current,
+          pagamentos: (current.pagamentos || []).map((pagamento) => {
+            const forma = formasCarregadas.find(
+              (item) => String(item.id) === String(pagamento.forma_pagamento_id)
+            );
+            if (!formaUsaParcelasDetalhadas(forma)) return pagamento;
+
+            const quantidade = Math.max(Number(pagamento.quantidade_parcelas || 1), 1);
+            return {
+              ...pagamento,
+              parcelas: buildParcelasDetalhadas(
+                pagamento.parcelas,
+                quantidade,
+                pagamento.data_vencimento || today(),
+                pagamento.valor
+              )
+            };
+          })
+        }));
       })
       .catch((error) => {
         if (!active) return;
         setFormasPagamento([]);
         setCartoes([]);
-        setErro(error?.message || 'Erro ao carregar formas de pagamento');
+        avisar.erro(error?.message || 'Erro ao carregar formas de pagamento');
       })
       .finally(() => {
         if (active) setLoadingPagamento(false);
@@ -919,19 +1661,18 @@ export default function FinanceiroCard({
   }, [modalOpen]);
 
   useEffect(() => {
-    if (selectedCategory && !isCategoriaCompativel(selectedCategory, form.tipo)) {
-      setSelectedCategory(null);
-      setForm((current) => ({
-        ...current,
-        categoria_financeira_id: '',
-        pagamentos: (current.pagamentos || []).map((pagamento) => ({
-          ...pagamento,
-          categoria_financeira_id: ''
-        }))
-      }));
-      setCategoriaSearch('');
-    }
-  }, [form.tipo, selectedCategory]);
+    setForm((current) => ({
+      ...current,
+      pagamentos: (current.pagamentos || []).map((pagamento) => {
+        const categoria = categorias.find(
+          (item) => String(item.id) === String(pagamento.categoria_financeira_id || '')
+        );
+        return categoria && !isCategoriaCompativel(categoria, current.tipo)
+          ? { ...pagamento, categoria_financeira_id: '' }
+          : pagamento;
+      })
+    }));
+  }, [form.tipo, categorias]);
 
   const totalTitulos = useMemo(() => {
     return titulos.reduce((acc, item) => acc + Number(item.valor_original || 0), 0);
@@ -974,15 +1715,19 @@ export default function FinanceiroCard({
   }
 
   function getValorPagamento(pagamento) {
-    if (pagamentoUsaParcelasDetalhadas(pagamento)) {
-      return roundCurrency((pagamento.parcelas || []).reduce((acc, parcela) => acc + currencyToNumber(parcela.valor), 0));
-    }
-    return roundCurrency(currencyToNumber(pagamento?.valor));
+    return calcularValorPagamento(pagamento, getFormaPagamento(pagamento.forma_pagamento_id));
   }
 
+  // O valor exibido pode chegar antes do cadastro das formas ou apos um reset da
+  // solicitacao. Preparar as parcelas na leitura evita validar/enviar um estado
+  // diferente do que o usuario esta vendo, sem depender da ordem dos efeitos.
+  const pagamentosPreparados = useMemo(() => (form.pagamentos || []).map((pagamento) =>
+    prepararPagamentoParaForma(pagamento, getFormaPagamento(pagamento.forma_pagamento_id))
+  ), [form.pagamentos, formasPagamento]);
+
   const totalPagamentos = useMemo(() => {
-    return roundCurrency((form.pagamentos || []).reduce((acc, pagamento) => acc + getValorPagamento(pagamento), 0));
-  }, [form.pagamentos, formasPagamento]);
+    return roundCurrency(pagamentosPreparados.reduce((acc, pagamento) => acc + getValorPagamento(pagamento), 0));
+  }, [pagamentosPreparados, formasPagamento]);
 
   const valorSolicitacao = useMemo(() => roundCurrency(currencyToNumber(form.valor)), [form.valor]);
   const descontoFinanceiro = useMemo(() => roundCurrency(currencyToNumber(form.desconto_financeiro)), [form.desconto_financeiro]);
@@ -1005,6 +1750,7 @@ export default function FinanceiroCard({
     || (Math.abs(totalRateioValor - valorSolicitacao) <= 0.02 && Math.abs(totalRateioPercentual - 100) <= 0.02);
   const parceiroRoleLabel = getParceiroRoleLabel(form.tipo);
   const parceiroRoleTitle = getParceiroRoleTitle(form.tipo);
+  const loadingPaymentContexts = Object.values(paymentContexts).some((context) => context?.loading);
 
   const categoriasAutocomplete = useMemo(() => {
     if (!categoriaSearch.trim() || selectedCategory) {
@@ -1054,35 +1800,65 @@ export default function FinanceiroCard({
   }
 
   function selecionarParceiroPagamento(index, partner) {
+    const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
+    const favorecidoSolicitacaoId = credorOriginalId && String(partner?.id) === String(credorOriginalId)
+      ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
+      : null;
     updatePagamento(index, {
       parceiro_id: partner?.id ? String(partner.id) : '',
-      parceiro_nome: partner?.nome || ''
+      parceiro_nome: partner?.nome || '',
+      favorecido_pagamento_id: favorecidoSolicitacaoId ? String(favorecidoSolicitacaoId) : '',
+      dados_pagamento: createPaymentDraft(),
+      dados_pagamento_parceiro_id: ''
     });
   }
 
   function aplicarCredorPadraoNosPagamentos(partner) {
+    const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
+    const favorecidoSolicitacaoId = credorOriginalId && String(partner?.id) === String(credorOriginalId)
+      ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
+      : null;
     setForm((current) => ({
       ...current,
       parceiro_id: partner?.id ? String(partner.id) : '',
-      pagamentos: (current.pagamentos || []).map((pagamento) => ({
-        ...pagamento,
-        parceiro_id: partner?.id ? String(partner.id) : pagamento.parceiro_id,
-        parceiro_nome: partner?.nome || pagamento.parceiro_nome
-      }))
+      pagamentos: (current.pagamentos || []).map((pagamento) => (
+        pagamento.origem_frete ? pagamento : {
+          ...pagamento,
+          parceiro_id: partner?.id ? String(partner.id) : pagamento.parceiro_id,
+          parceiro_nome: partner?.nome || pagamento.parceiro_nome,
+          favorecido_pagamento_id: String(favorecidoSolicitacaoId || ''),
+          dados_pagamento: createPaymentDraft(),
+          dados_pagamento_parceiro_id: ''
+        }
+      ))
     }));
   }
 
-  function preencherFavorecidoComParceiro(partner) {
-    const pix = getParceiroPixPrincipal(partner);
-    setPaymentDraft((current) => ({
-      ...current,
+  function updateDadosPagamento(index, changes) {
+    setForm((current) => {
+      const pagamentos = [...(current.pagamentos || [])];
+      const pagamento = pagamentos[index] || createPagamento(solicitacao);
+      pagamentos[index] = {
+        ...pagamento,
+        dados_pagamento: {
+          ...(pagamento.dados_pagamento || createPaymentDraft()),
+          ...changes
+        }
+      };
+      return { ...current, pagamentos };
+    });
+  }
+
+  function preencherFavorecidoComParceiro(index, partner) {
+    const pix = compraDiretaSolicitacao ? null : getParceiroPixPrincipal(partner);
+    updateDadosPagamento(index, {
       usar_credor_como_favorecido: true,
       payment_beneficiary_id: '',
       nome: partner?.nome || '',
       cpf_cnpj: partner?.cpf_cnpj || '',
-      pix_tipo_chave: pix?.tipo || current.pix_tipo_chave || 'CNPJ',
+      pix_tipo_chave: pix?.tipo || 'CNPJ',
       pix_chave: pix?.chave || ''
-    }));
+    });
   }
 
   function updateFormaPagamento(index, formaPagamentoId) {
@@ -1097,6 +1873,9 @@ export default function FinanceiroCard({
       pagamentos[index] = {
         ...pagamento,
         forma_pagamento_id: formaPagamentoId,
+        dados_pagamento: compraDiretaSolicitacao && !isFormaPix(forma)
+          ? { ...pagamento.dados_pagamento, preparar_pagamento_pix: false }
+          : pagamento.dados_pagamento,
         cartao_id: manterCartao ? pagamento.cartao_id : '',
         quantidade_parcelas: String(quantidade),
         data_compra: forma?.exige_cartao ? (pagamento.data_compra || today()) : pagamento.data_compra,
@@ -1168,6 +1947,7 @@ export default function FinanceiroCard({
   }
 
   function adicionarPagamento() {
+    setGeracaoMultiplaTitulos(true);
     setForm((current) => ({
       ...current,
       pagamentos: [
@@ -1175,7 +1955,7 @@ export default function FinanceiroCard({
         createPagamento(
           { ...solicitacao, parceiro: selectedPartner || solicitacao?.parceiro },
           '',
-          current.categoria_financeira_id
+          current.pagamentos?.[0]?.categoria_financeira_id || ''
         )
       ]
     }));
@@ -1251,23 +2031,6 @@ export default function FinanceiroCard({
       return `Selecione o ${parceiroRoleLabel} antes de gerar a conta.`;
     }
 
-    if (!form.categoria_financeira_id) {
-      return 'Selecione a categoria financeira do titulo.';
-    }
-
-    if (!form.competencia_data) {
-      return 'Informe a competencia DRE real do titulo.';
-    }
-
-    if (form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && paymentDraft.preparar_pagamento_pix) {
-      if (!parceiroPagamentoId) {
-        return 'Selecione o credor antes de informar os dados para pagamento.';
-      }
-      if (!paymentDraft.nome || !paymentDraft.cpf_cnpj || !paymentDraft.pix_tipo_chave || !paymentDraft.pix_chave) {
-        return 'Preencha os dados PIX do favorecido para pagamento em massa.';
-      }
-    }
-
     if (valorSolicitacao <= 0) {
       return 'A solicitacao precisa ter valor informado para gerar a conta.';
     }
@@ -1284,7 +2047,7 @@ export default function FinanceiroCard({
       return 'O valor liquido do titulo precisa ser maior que zero.';
     }
 
-    const pagamentos = Array.isArray(form.pagamentos) ? form.pagamentos : [];
+    const pagamentos = pagamentosPreparados;
     if (pagamentos.length === 0) {
       return 'Informe pelo menos uma forma de pagamento.';
     }
@@ -1300,12 +2063,33 @@ export default function FinanceiroCard({
         return `Selecione a ${labelForma}.`;
       }
 
+      if (!forma) {
+        return `A ${labelForma} nao esta disponivel. Selecione novamente.`;
+      }
+
       if (geracaoMultiplaTitulos && !pagamento.parceiro_id) {
         return `Selecione o ${parceiroRoleLabel} do titulo ${pagamentoIndex + 1}.`;
       }
 
-      if (geracaoMultiplaTitulos && !(pagamento.categoria_financeira_id || form.categoria_financeira_id)) {
+      if (!pagamento.categoria_financeira_id) {
         return `Selecione a categoria financeira do titulo ${pagamentoIndex + 1}.`;
+      }
+
+      const dadosPagamento = pagamento.dados_pagamento || createPaymentDraft();
+      if (form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && dadosPagamento.preparar_pagamento_pix) {
+        if (!pagamento.parceiro_id) {
+          return `Selecione o credor do titulo ${pagamentoIndex + 1} antes de informar os dados para pagamento.`;
+        }
+        if (!dadosPagamento.nome || !dadosPagamento.cpf_cnpj || !dadosPagamento.pix_tipo_chave || !dadosPagamento.pix_chave) {
+          return `Preencha os dados PIX do favorecido do titulo ${pagamentoIndex + 1}.`;
+        }
+        const documentoErro = getCpfCnpjError(dadosPagamento.cpf_cnpj, {
+          required: true,
+          label: `CPF/CNPJ do favorecido do titulo ${pagamentoIndex + 1}`
+        });
+        if (documentoErro) return documentoErro;
+        const pixErro = getPixDocumentError(dadosPagamento.pix_chave, dadosPagamento.pix_tipo_chave);
+        if (pixErro) return `Titulo ${pagamentoIndex + 1}: ${pixErro}`;
       }
 
       if (valorPagamento <= 0) {
@@ -1369,48 +2153,55 @@ export default function FinanceiroCard({
     return '';
   }
 
-  async function salvarDadosPagamentoCredor() {
-    if (form.tipo !== 'PAGAR' || !podeGerenciarDadosPagamento || !paymentDraft.preparar_pagamento_pix) return null;
+  async function salvarDadosPagamentoTitulos() {
+    const idsPorPagamento = new Map();
+    const beneficiaryIdsPorChave = new Map();
+    if (form.tipo !== 'PAGAR' || !podeGerenciarDadosPagamento) return idsPorPagamento;
 
-    const beneficiaryPayload = {
-      parceiro_id: Number(parceiroPagamentoId),
-      nome: paymentDraft.nome,
-      cpf_cnpj: paymentDraft.cpf_cnpj,
-      metodo_preferencial: 'PIX_CHAVE',
-      pix_tipo_chave: paymentDraft.pix_tipo_chave,
-      pix_chave: paymentDraft.pix_chave,
-      ativo: true
-    };
+    for (const pagamento of form.pagamentos || []) {
+      const draft = pagamento.dados_pagamento || createPaymentDraft();
+      if (compraDiretaSolicitacao && !isFormaPix(getFormaPagamento(pagamento.forma_pagamento_id))) continue;
+      if (!draft.preparar_pagamento_pix) continue;
 
-    const beneficiary = paymentDraft.payment_beneficiary_id
-      ? await atualizarPaymentBeneficiary(paymentDraft.payment_beneficiary_id, beneficiaryPayload)
-      : await criarPaymentBeneficiary(beneficiaryPayload);
+      const beneficiaryPayload = {
+        parceiro_id: Number(pagamento.parceiro_id),
+        nome: draft.nome,
+        cpf_cnpj: onlyDigits(draft.cpf_cnpj),
+        metodo_preferencial: 'PIX_CHAVE',
+        pix_tipo_chave: draft.pix_tipo_chave,
+        pix_chave: draft.pix_chave,
+        ativo: true
+      };
+      const chaveDoCredor = `${beneficiaryPayload.parceiro_id}:${normalizePixKey(beneficiaryPayload.pix_chave)}`;
+      const beneficiaryIdJaSalvo = beneficiaryIdsPorChave.get(chaveDoCredor);
+      if (!draft.payment_beneficiary_id && beneficiaryIdJaSalvo) {
+        idsPorPagamento.set(pagamento.id, beneficiaryIdJaSalvo);
+        continue;
+      }
+      const beneficiary = draft.payment_beneficiary_id
+        ? await atualizarPaymentBeneficiary(draft.payment_beneficiary_id, beneficiaryPayload)
+        : await criarPaymentBeneficiary(beneficiaryPayload);
 
-    if (beneficiary?.id) {
-      setPaymentDraft((current) => ({
-        ...current,
-        payment_beneficiary_id: String(beneficiary.id)
-      }));
-      setBeneficiaries((current) => {
-        const restantes = current.filter((item) => String(item.id) !== String(beneficiary.id));
-        return [beneficiary, ...restantes];
-      });
+      if (beneficiary?.id) {
+        idsPorPagamento.set(pagamento.id, Number(beneficiary.id));
+        beneficiaryIdsPorChave.set(chaveDoCredor, Number(beneficiary.id));
+      }
     }
 
-    return beneficiary;
+    return idsPorPagamento;
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     const erroValidacao = validarGeracaoConta();
     if (erroValidacao) {
-      setErro(erroValidacao);
+      avisar.erro(erroValidacao);
       return;
     }
 
     try {
       setSaving(true);
-      setErro('');
+      limparAvisos();
       const impostosPayload = descontoFinanceiro > 0
         ? [{
             tipo_imposto: 'DESCONTO',
@@ -1422,17 +2213,16 @@ export default function FinanceiroCard({
           }]
         : [];
 
-      await salvarDadosPagamentoCredor();
+      const beneficiaryIds = await salvarDadosPagamentoTitulos();
 
       await gerarContaPorSolicitacao(solicitacao.id, {
         tipo: form.tipo,
         empresa_id: Number(form.empresa_id),
         status: form.status || 'ABERTO',
         parceiro_id: selectedPartner?.id || form.parceiro_id,
-        categoria_financeira_id: form.categoria_financeira_id || undefined,
-        competencia_data: form.competencia_data || undefined,
+        categoria_financeira_id: pagamentosPreparados[0]?.categoria_financeira_id || undefined,
         forma_cobranca: form.tipo === 'PAGAR'
-          ? (form.forma_cobranca || resolveFormaCobrancaPagamentos(form.pagamentos, getFormaPagamento))
+          ? (form.forma_cobranca || resolveFormaCobrancaPagamentos(pagamentosPreparados, getFormaPagamento))
           : form.forma_cobranca || undefined,
         banco_cobranca: form.banco_cobranca || undefined,
         linha_digitavel: form.linha_digitavel || undefined,
@@ -1441,7 +2231,6 @@ export default function FinanceiroCard({
         valor_bruto: form.valor,
         valor_liquido: formatCurrencyInput(valorLiquidoPrevisto),
         impostos: impostosPayload,
-        considera_dre: isCategoriaClassificadaParaDre(selectedCategory),
         intercompany: Boolean(form.intercompany),
         empresa_contraparte_id: form.intercompany
           ? Number(form.tipo === 'PAGAR' ? form.empresa_origem_id : form.empresa_destino_id) || undefined
@@ -1461,12 +2250,14 @@ export default function FinanceiroCard({
           valor_rateio: rateio.tipo_rateio === 'VALOR' ? rateio.valor_rateio : undefined,
           observacoes: rateio.observacoes || undefined
         })),
-        pagamentos: (form.pagamentos || []).map((pagamento) => {
+        pagamentos: pagamentosPreparados.map((pagamento) => {
           const forma = getFormaPagamento(pagamento.forma_pagamento_id);
           const usaDetalhe = formaUsaParcelasDetalhadas(forma);
           return {
-            parceiro_id: geracaoMultiplaTitulos ? pagamento.parceiro_id || undefined : undefined,
-            categoria_financeira_id: pagamento.categoria_financeira_id || form.categoria_financeira_id || undefined,
+            parceiro_id: pagamento.parceiro_id || undefined,
+            favorecido_pagamento_id: pagamento.favorecido_pagamento_id || undefined,
+            categoria_financeira_id: pagamento.categoria_financeira_id || undefined,
+            payment_beneficiary_id: beneficiaryIds.get(pagamento.id) || undefined,
             valor: usaDetalhe ? undefined : pagamento.valor,
             forma_pagamento_id: pagamento.forma_pagamento_id || undefined,
             cartao_id: pagamento.cartao_id || undefined,
@@ -1485,9 +2276,9 @@ export default function FinanceiroCard({
       if (typeof onTituloCriado === 'function') {
         await onTituloCriado();
       }
-      alert('Conta gerada com sucesso.');
+      avisar.sucesso('Título criado com sucesso.');
     } catch (error) {
-      setErro(error?.message || 'Erro ao gerar conta');
+      avisar.erro(error?.message || 'Erro ao criar título');
     } finally {
       setSaving(false);
     }
@@ -1496,7 +2287,7 @@ export default function FinanceiroCard({
   async function handleSalvarCredor() {
     try {
       setCredorSaving(true);
-      setErro('');
+      limparAvisos();
       await updateCredorSolicitacao(solicitacao.id, credorSelecionado?.id || null);
       setCredorModalOpen(false);
       setCredorSearch('');
@@ -1504,9 +2295,9 @@ export default function FinanceiroCard({
       if (typeof onSolicitacaoAtualizada === 'function') {
         await onSolicitacaoAtualizada();
       }
-      alert('Credor atualizado com sucesso.');
+      avisar.sucesso('Credor atualizado com sucesso.');
     } catch (error) {
-      setErro(error?.message || 'Erro ao atualizar credor');
+      avisar.erro(error?.message || 'Erro ao atualizar credor');
     } finally {
       setCredorSaving(false);
     }
@@ -1516,8 +2307,23 @@ export default function FinanceiroCard({
     const { name, value } = event.target;
     setCadastroCredorForm((current) => ({
       ...current,
-      [name]: value
+      [name]: ['cpf_cnpj', 'representante_cpf'].includes(name) ? maskCpfCnpj(value) : value
     }));
+  }
+
+  function fecharModalGerarConta() {
+    limparAvisos();
+    setModalOpen(false);
+    resetModalState(solicitacao);
+  }
+
+  // Fechar sem salvar devolve o credor que a solicitacao TEM hoje — a escolha
+  // dentro do modal e rascunho ate "Salvar credor".
+  function fecharCredorModal() {
+    setCredorModalOpen(false);
+    setCredorSearch('');
+    setCredorOptions([]);
+    setCredorSelecionado(solicitacao?.parceiro || null);
   }
 
   function fecharCadastroCredorModal() {
@@ -1527,186 +2333,356 @@ export default function FinanceiroCard({
   }
 
   async function handleCadastrarCredor() {
+    const documentoErro = getCpfCnpjError(cadastroCredorForm.cpf_cnpj, {
+      required: true,
+      label: 'CPF/CNPJ do credor'
+    });
+    if (documentoErro) {
+      avisar.erro(documentoErro);
+      return;
+    }
+    if (onlyDigits(cadastroCredorForm.cpf_cnpj).length === 14) {
+      const representanteErro = getCpfCnpjError(cadastroCredorForm.representante_cpf, {
+        required: true,
+        type: 'cpf',
+        label: 'CPF do representante legal'
+      });
+      if (representanteErro) {
+        avisar.erro(representanteErro);
+        return;
+      }
+    }
     try {
       setCadastroCredorSaving(true);
-      setErro('');
+      limparAvisos();
       await cadastrarCredorSolicitacao(solicitacao.id, {
         nome: cadastroCredorForm.nome,
         cpf_cnpj: onlyDigits(cadastroCredorForm.cpf_cnpj),
         telefone: onlyDigits(cadastroCredorForm.telefone),
-        email: cadastroCredorForm.email
+        email: cadastroCredorForm.email,
+        // Vao vazios quando o documento e de pessoa fisica — o backend so os exige na PJ.
+        nome_fantasia: cadastroCredorForm.nome_fantasia,
+        representante_nome: cadastroCredorForm.representante_nome,
+        representante_cpf: onlyDigits(cadastroCredorForm.representante_cpf),
+        representante_cargo: cadastroCredorForm.representante_cargo
       });
       fecharCadastroCredorModal();
       if (typeof onSolicitacaoAtualizada === 'function') {
         await onSolicitacaoAtualizada();
       }
-      alert('Credor cadastrado e vinculado com sucesso.');
+      avisar.sucesso('Credor cadastrado e vinculado com sucesso.');
     } catch (error) {
-      setErro(error?.message || 'Erro ao cadastrar credor');
+      avisar.erro(error?.message || 'Erro ao cadastrar credor');
     } finally {
       setCadastroCredorSaving(false);
     }
   }
 
-  return (
-    <>
-      <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Financeiro</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Gere contas a pagar ou receber sem sair do fluxo da solicitacao.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {podeAcessarModuloFinanceiro && (
-              <Link to="/financeiro/titulos" className="btn btn-outline">
-                Ver titulos
-              </Link>
-            )}
-            {podeAcessarModuloFinanceiro && (
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => {
-                  setErro('');
-                  setCadastroCredorForm(criarCredorFormPadrao());
-                  setCadastroCredorModalOpen(true);
-                }}
-              >
-                Cadastrar credor
-              </button>
-            )}
-            {podeAcessarModuloFinanceiro && (
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => {
-                  setErro('');
-                  setCredorSelecionado(solicitacao?.parceiro || null);
-                  setCredorSearch('');
-                  setCredorOptions([]);
-                  setCredorModalOpen(true);
-                }}
-              >
-                Editar credor
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                setErro('');
-                resetModalState(solicitacao);
-                setModalOpen(true);
-              }}
-            >
-              Gerar conta
-            </button>
-          </div>
-        </div>
+  // Um modal por vez: a faixa de avisos mora no modal aberto (erro ao lado do
+  // campo que o causou) e volta para o bloco quando nao ha nenhum — e assim a
+  // confirmacao de "conta gerada" fica visivel depois que o modal fecha (R28).
+  const algumModalAberto = modalOpen || credorModalOpen || cadastroCredorModalOpen;
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-xl bg-[var(--c-bg)] px-3 py-2">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Titulos</div>
-            <div className="mt-1 text-lg font-semibold text-[var(--c-text)]">{titulos.length}</div>
-          </div>
-          <div className="rounded-xl bg-[var(--c-bg)] px-3 py-2">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Total</div>
-            <div className="mt-1 text-lg font-semibold text-[var(--c-text)]">{formatCurrency(totalTitulos)}</div>
-          </div>
-          <div className="rounded-xl bg-[var(--c-bg)] px-3 py-2">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Parceiro</div>
-            <div className="mt-1 text-sm font-medium text-[var(--c-text)]">{parceiroFinanceiro?.nome || 'Nao vinculado'}</div>
-            <div className="mt-1 flex min-w-0 items-baseline gap-1 text-xs text-[var(--c-muted)]">
-              <span className="shrink-0 font-medium">PIX:</span>
-              <span className="truncate" title={parceiroFinanceiroPix?.chave || ''}>
-                {parceiroFinanceiroPix ? `${parceiroFinanceiroPix.tipo} - ${parceiroFinanceiroPix.chave}` : ''}
-              </span>
-            </div>
-          </div>
-          <div className="rounded-xl bg-[var(--c-bg)] px-3 py-2">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor sugerido</div>
-            <div className="mt-1 text-sm font-medium text-[var(--c-text)]">
-              {solicitacao.valor ? formatCurrency(solicitacao.valor) : 'Nao informado'}
-            </div>
-          </div>
-        </div>
-
-        {erro && !modalOpen && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {erro}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="rounded-xl bg-[var(--c-bg)] px-3 py-4 text-sm text-[var(--c-muted)]">
-            Carregando titulos financeiros...
-          </div>
-        ) : titulos.length === 0 ? (
-          <div className="rounded-xl bg-[var(--c-bg)] px-3 py-4 text-sm text-[var(--c-muted)]">
-            Nenhum titulo financeiro foi gerado para esta solicitacao.
-          </div>
+  /*
+    R17 — toda coluna declara o que ELA E; a medida e o alinhamento vem do
+    tipo, nunca da tela. `saldo` e `tipo: 'valor'`: 190px, a direita e
+    tabular, dimensionada para R$ 9.999.999.999,99 sem truncar (T7).
+  */
+  const colunasTitulos = [
+    {
+      id: 'titulo',
+      titulo: 'Título',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (titulo) => {
+        const nome = limparDescricaoTituloCompra(titulo.descricao, solicitacao) || `${titulo.tipo} #${titulo.id}`;
+        return podeExecutarAcoesFinanceiras ? (
+          // Link para o REGISTRO RELACIONADO fica no corpo, junto do dado que
+          // o origina — e e ele que da o caminho por TECLADO da linha (A1).
+          <Link className="font-medium" to={`/financeiro/titulos/${titulo.id}`} title={nome}>
+            {nome}
+          </Link>
         ) : (
-          <div className="space-y-2">
-            {titulos.map((titulo) => (
-              <div
-                key={titulo.id}
-                className="rounded-xl border border-[var(--c-border)] px-3 py-3 text-sm"
-              >
-                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <Link className="font-medium text-blue-600 hover:underline" to={`/financeiro/titulos/${titulo.id}`}>
-                      {limparDescricaoTituloCompra(titulo.descricao) || `${titulo.tipo} #${titulo.id}`}
-                    </Link>
-                    <div className="text-[var(--c-muted)]">
-                      {titulo.parceiro?.nome || '-'} - vencimento {formatDate(titulo.data_vencimento)}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(titulo.status)}`}>
-                      {titulo.status}
-                    </span>
-                    <span className="text-sm font-semibold text-[var(--c-text)]">
-                      {formatCurrency(titulo.valor_saldo)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          <span className="font-medium" title={nome}>{nome}</span>
+        );
+      }
+    },
+    {
+      id: 'parceiro',
+      titulo: 'Parceiro',
+      tipo: 'texto',
+      render: (titulo) => titulo.parceiro?.nome || '-'
+    },
+    {
+      id: 'vencimento',
+      titulo: 'Vencimento',
+      tipo: 'data',
+      render: (titulo) => formatDate(titulo.data_vencimento)
+    },
+    {
+      id: 'situacao',
+      titulo: 'Situação',
+      tipo: 'status',
+      render: (titulo) => {
+        const fila = ultimoItemFila(titulo);
+        const situacao = String(titulo.status).toUpperCase() === 'QUITADO'
+          ? 'QUITADO'
+          : fila?.status === 'PENDENTE' ? 'ENVIADO PARA PAGAMENTO'
+            : fila?.status === 'NAO_PAGO' ? 'NÃO PAGO'
+              : fila?.status === 'DIVERGENTE' ? 'PAGAMENTO DIVERGENTE'
+                : situacaoPorTitulo.get(String(titulo.id)) || titulo.status;
+        return (
+          <span data-testid={`situacao-titulo-${titulo.id}`}>
+            <StatusBadge status={rotuloSituacao(situacao)} kind={familiaSituacao(situacao)} />
+          </span>
+        );
+      }
+    },
+    {
+      id: 'comprovante',
+      titulo: 'Comprovante',
+      tipo: 'acao',
+      render: (titulo) => {
+        const comprovantes = (titulo.filaPagamentosManuais || []).flatMap(listarComprovantesFila);
+        return comprovantes.length ? (
+          <div className="flex max-w-60 flex-col items-start gap-1">
+            {comprovantes.map((comprovante) => (
+              <button key={`${comprovante.filaId}-${comprovante.id || 'legado'}`}
+                type="button" className="btn btn-outline btn-sm max-w-full truncate"
+                title={comprovante.nome}
+                onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
+                {comprovante.nome}
+              </button>
             ))}
           </div>
-        )}
-      </div>
+        ) : <span className="text-[var(--c-muted)]">Pendente</span>;
+      }
+    },
+    {
+      id: 'saldo',
+      titulo: 'Saldo',
+      tipo: 'valor',
+      render: (titulo) => formatCurrency(titulo.valor_saldo)
+    }
+  ];
 
-      {cadastroCredorModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="card flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden">
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] pb-3">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--c-text)]">Cadastrar credor</h3>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Cadastre uma pessoa como credor ativo e vincule a esta solicitacao.
-                </p>
-              </div>
+  return (
+    <>
+      <ModalMedicao
+        medicao={medicaoAberta}
+        historicos={solicitacao?.historicos || []}
+        parcelas={dadosContrato?.parcelas || []}
+        solicitacaoId={solicitacao?.id}
+        podeEditar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.editar_medicao === true}
+        podeAprovar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.aprovar === true}
+        podeAnexar={somenteLeitura}
+        onFechar={() => setMedicaoAberta(null)}
+        onSalvo={() => setRecarregarParcelas((n) => n + 1)}
+      />
+      {/*
+        B2 — bloco SECUNDARIO, como os demais blocos do detalhe da solicitacao.
+        O primario desta tela e a identificacao do registro (Header/InfoCard);
+        este card e um dos blocos de trabalho, e dois primarios na mesma tela
+        seriam defeito.
+      */}
+      <BlocoConteudo
+        titulo="Financeiro"
+        variante="secundario"
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
+        descricao={podeExecutarAcoesFinanceiras
+          ? 'Gere contas a pagar ou receber sem sair do fluxo da solicitacao.'
+          : 'Acompanhe titulos, parcelas, medicoes e pagamentos desta solicitacao.'}
+        acoes={podeExecutarAcoesFinanceiras ? (
+          <span className="app-actionbar">
+            {/*
+              "Ver titulos" SAIU (05/09, apontado pela matriz na C6).
+
+              Ele levava a LISTA do modulo, nao ao registro relacionado — e a
+              regra "onde a navegacao mora" (04/09) e explicita: lista de
+              modulo mora no hub, registro relacionado mora no corpo. O link
+              para o registro continua onde deve, na coluna de identidade da
+              tabela logo abaixo.
+
+              Nao e remocao de capacidade sem palavra: e a mesma regra ja
+              aplicada nesta leva ao Kanban, as Tarefas, ao Fiscal e aos dez
+              relatorios de Compras. Manter so aqui seria a tela falar um
+              idioma diferente do resto do sistema.
+            */}
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => {
+                limparAvisos();
+                setCadastroCredorForm(criarCredorFormPadrao());
+                setCadastroCredorModalOpen(true);
+              }}
+            >
+              Cadastrar credor
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => {
+                limparAvisos();
+                setCredorSelecionado(solicitacao?.parceiro || null);
+                setCredorSearch('');
+                setCredorOptions([]);
+                setCredorModalOpen(true);
+              }}
+            >
+              Editar credor
+            </button>
+            <span title={geracaoManualDesabilitada ? motivoGeracaoManualDesabilitada : undefined}>
               <button
                 type="button"
-                className="btn btn-outline"
-                onClick={fecharCadastroCredorModal}
-                disabled={cadastroCredorSaving}
+                className="btn btn-primary"
+                disabled={geracaoManualDesabilitada}
+                aria-label={geracaoManualDesabilitada
+                  ? `Criar Título desabilitado. ${motivoGeracaoManualDesabilitada}`
+                  : 'Criar Título'}
+                onClick={() => {
+                  limparAvisos();
+                  resetModalState(solicitacao);
+                  setModalOpen(true);
+                }}
               >
-                Fechar
+                Criar Título
+              </button>
+            </span>
+          </span>
+        ) : null}
+      >
+        {!algumModalAberto && <Avisos avisos={avisos} aoFechar={fecharAviso} />}
+
+        {/* PI-16: as previsoes de parcela do contrato, aqui no card do Financeiro — pedido do
+            cliente. Antes da aprovacao nao existe titulo nenhum, entao esta e a unica leitura do
+            que esta por vir; depois dela, a mesma tabela mostra o titulo e a medicao de cada
+            parcela. O componente se esconde sozinho quando a solicitacao nao e a dona do
+            contrato. */}
+        <PrevisoesContrato
+          contratoId={solicitacao?.contrato_id || null}
+          solicitacaoId={solicitacao?.id}
+          atualizarEm={recarregarParcelas}
+          onDados={setDadosContrato}
+          onAbrirMedicao={setMedicaoAberta}
+          somenteLeitura={somenteLeitura}
+          permitirAbrirMedicaoSomenteLeitura={somenteLeitura}
+        />
+
+        {exibirTitulosDetalhados && (
+          <StatGrid colunas={4}>
+            <StatTile label="Títulos" valor={titulos.length} />
+            {/*
+              DEFEITO DE SIGNIFICADO, corrigido no ROTULO e nao no calculo
+              (o calculo nao e meu para mudar): o ladrilho soma
+              `valor_original` de cada titulo, e a coluna da tabela mostra
+              `valor_saldo`. Sao duas grandezas diferentes, e o rotulo "Total"
+              deixava o leitor tentar fechar uma com a outra. Agora cada um
+              diz o que e. Relatado ao responsavel.
+            */}
+            <StatTile
+              label="Total original"
+              valor={formatCurrency(totalTitulos)}
+              sub="Soma do valor original dos títulos (a coluna Saldo mostra o que resta)"
+            />
+            <StatTile
+              label="Parceiro"
+              valor={parceiroFinanceiro?.nome || 'Nao vinculado'}
+              sub={podeExecutarAcoesFinanceiras && parceiroFinanceiroPix
+                ? `PIX: ${parceiroFinanceiroPix.tipo} - ${parceiroFinanceiroPix.chave}`
+                : undefined}
+              title={podeExecutarAcoesFinanceiras ? (parceiroFinanceiroPix?.chave || undefined) : undefined}
+            />
+            <StatTile
+              label="Valor sugerido"
+              valor={solicitacao.valor ? formatCurrency(solicitacao.valor) : 'Nao informado'}
+            />
+          </StatGrid>
+        )}
+
+        {exibirTitulosDetalhados && (
+          podeEnviarParaFila && titulos.some(elegivelParaFila) ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm text-[var(--c-muted)]">Selecione os títulos abertos na tabela.</span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={enviarSelecionadosParaFila} disabled={!titulosSelecionados.length || enviandoFila}>
+                {enviandoFila ? 'Enviando...' : `${devePrepararAutorizacaoPagamento(user) ? 'Solicitar autorização' : 'Enviar para fila de pagamento'}${titulosSelecionados.length ? ` (${titulosSelecionados.length})` : ''}`}
               </button>
             </div>
+          ) : null
+        )}
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto py-4">
-              {erro && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {erro}
-                </div>
-              )}
+        {exibirTitulosDetalhados && podeAcessarModuloFinanceiro && !podeEnviarParaFila
+          && titulos.some(elegivelParaFila) && (
+          <p className="mb-3 text-xs text-[var(--c-muted)]">
+            Para enviar títulos deste card à fila, é necessária a permissão Financeiro → Fila de Pagamentos → Enviar títulos para a fila.
+          </p>
+        )}
 
-              <label className="grid gap-1 text-sm text-[var(--c-muted)]">
-                Nome do credor
+        {exibirTitulosDetalhados && (
+          <TabelaPadrao
+            colunas={colunasTitulos}
+            itens={titulos}
+            getId={(titulo) => titulo.id}
+            selecao={podeEnviarParaFila ? {
+              selecionados: titulosSelecionados,
+              elegivel: elegivelParaFila,
+              aoAlternar: (id) => setTitulosSelecionados((atual) => atual.includes(Number(id))
+                ? atual.filter((atualId) => atualId !== Number(id))
+                : [...atual, Number(id)]),
+              aoAlternarTodos: (marcar, ids) => setTitulosSelecionados(marcar ? ids.map(Number) : [])
+            } : undefined}
+            carregando={loading}
+            storageKey="tabela:solicitacao-detalhe:titulos-financeiros"
+            vazio="Nenhum título financeiro foi gerado para esta solicitação."
+            rotuloRolagem="Titulos financeiros da solicitacao"
+          />
+        )}
+      </BlocoConteudo>
+      {elementoConfirmacao}
+
+      {/*
+        R9 — cadastrar um credor INTERROMPE o trabalho principal (o detalhe da
+        solicitacao), entao e modal mesmo. R27 — a casca agora e o
+        `OverlayModal`: o corpo rola, cabecalho e rodape ficam, e o botao
+        "Cadastrar e vincular" nao some quando o formulario cresce (ele cresce:
+        CNPJ acrescenta quatro campos).
+      */}
+      {cadastroCredorModalOpen && (
+        /*
+          Sem `onFechar` DE PROPOSITO: o `OverlayModal` so liga o Escape quando
+          recebe um, e este painel guarda um formulario digitado. Fechar por
+          tecla acidental descartaria o cadastro. O caminho de saida sao os
+          botoes "Fechar"/"Cancelar" — que e exatamente o que a versao anterior
+          (feita a mao, sem tratador de teclado) fazia.
+        */
+        <OverlayModal
+          rotulo="Cadastrar credor"
+          largura="var(--modal-max-w-md, 640px)"
+        >
+          <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] p-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--c-text)]">Cadastrar credor</h3>
+              <p className="text-sm text-[var(--c-muted)]">
+                Cadastre uma pessoa como credor ativo e vincule a esta solicitação.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={fecharCadastroCredorModal}
+              disabled={cadastroCredorSaving}
+            >
+              Fechar
+            </button>
+          </div>
+
+          <div className="p-4">
+            <Avisos avisos={avisos} aoFechar={fecharAviso} />
+
+            <FormSecao colunas={2}>
+              <CampoForm label="Nome do credor">
                 <input
                   className="input"
                   name="nome"
@@ -1715,10 +2691,9 @@ export default function FinanceiroCard({
                   placeholder="Ex.: Fornecedor ABC"
                   disabled={cadastroCredorSaving}
                 />
-              </label>
+              </CampoForm>
 
-              <label className="grid gap-1 text-sm text-[var(--c-muted)]">
-                CPF/CNPJ
+              <CampoForm label="CPF/CNPJ">
                 <input
                   className="input"
                   name="cpf_cnpj"
@@ -1727,10 +2702,9 @@ export default function FinanceiroCard({
                   placeholder="CPF ou CNPJ do credor"
                   disabled={cadastroCredorSaving}
                 />
-              </label>
+              </CampoForm>
 
-              <label className="grid gap-1 text-sm text-[var(--c-muted)]">
-                Telefone
+              <CampoForm label="Telefone">
                 <input
                   className="input"
                   name="telefone"
@@ -1739,10 +2713,9 @@ export default function FinanceiroCard({
                   placeholder="(00) 00000-0000"
                   disabled={cadastroCredorSaving}
                 />
-              </label>
+              </CampoForm>
 
-              <label className="grid gap-1 text-sm text-[var(--c-muted)]">
-                Email
+              <CampoForm label="Email">
                 <input
                   className="input"
                   name="email"
@@ -1752,61 +2725,107 @@ export default function FinanceiroCard({
                   placeholder="email@fornecedor.com"
                   disabled={cadastroCredorSaving}
                 />
-              </label>
-            </div>
+              </CampoForm>
+            </FormSecao>
 
-            <div className="flex flex-col-reverse gap-2 border-t border-[var(--c-border)] pt-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={fecharCadastroCredorModal}
-                disabled={cadastroCredorSaving}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleCadastrarCredor}
-                disabled={cadastroCredorSaving}
-              >
-                {cadastroCredorSaving ? 'Cadastrando...' : 'Cadastrar e vincular'}
-              </button>
-            </div>
+            {/* Aparecem e somem conforme o DOCUMENTO digitado: 14 digitos e CNPJ. Mostrar sempre
+                faria o formulario pedir nome fantasia de pessoa fisica, que nao existe. */}
+            {onlyDigits(cadastroCredorForm.cpf_cnpj).length === 14 && (
+              <FormSecao legenda="Representante legal" colunas={2}>
+                <CampoForm label="Nome fantasia" obrigatorio linha>
+                  <input
+                    className="input"
+                    name="nome_fantasia"
+                    value={cadastroCredorForm.nome_fantasia}
+                    onChange={handleCadastroCredorChange}
+                    placeholder="Como a empresa e conhecida"
+                    disabled={cadastroCredorSaving}
+                  />
+                </CampoForm>
+
+                <CampoForm label="Nome" obrigatorio>
+                  <input
+                    className="input"
+                    name="representante_nome"
+                    value={cadastroCredorForm.representante_nome}
+                    onChange={handleCadastroCredorChange}
+                    placeholder="Quem assina pela empresa"
+                    disabled={cadastroCredorSaving}
+                  />
+                </CampoForm>
+                <CampoForm label="CPF" obrigatorio>
+                  <input
+                    className="input"
+                    name="representante_cpf"
+                    value={cadastroCredorForm.representante_cpf}
+                    onChange={handleCadastroCredorChange}
+                    placeholder="Somente números"
+                    disabled={cadastroCredorSaving}
+                  />
+                </CampoForm>
+                <CampoForm label="Cargo">
+                  <input
+                    className="input"
+                    name="representante_cargo"
+                    value={cadastroCredorForm.representante_cargo}
+                    onChange={handleCadastroCredorChange}
+                    placeholder="Sócio, diretor, procurador"
+                    disabled={cadastroCredorSaving}
+                  />
+                </CampoForm>
+              </FormSecao>
+            )}
           </div>
-        </div>
+
+          <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={fecharCadastroCredorModal}
+              disabled={cadastroCredorSaving}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleCadastrarCredor}
+              disabled={cadastroCredorSaving}
+            >
+              {cadastroCredorSaving ? 'Cadastrando...' : 'Cadastrar e vincular'}
+            </button>
+          </div>
+        </OverlayModal>
       )}
 
+      {/* R9/R27 — trocar o credor interrompe a leitura da solicitacao: modal.
+          A casca vira `OverlayModal` para o rodape ("Salvar credor") nao sair
+          do campo de visao quando a busca devolve muitos resultados. */}
       {credorModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="card w-full max-w-xl space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--c-text)]">Editar credor da solicitacao</h3>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Atualize o credor vinculado ao pagamento desta solicitacao.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => {
-                  setCredorModalOpen(false);
-                  setCredorSearch('');
-                  setCredorOptions([]);
-                  setCredorSelecionado(solicitacao?.parceiro || null);
-                }}
-                disabled={credorSaving}
-              >
-                Fechar
-              </button>
+        <OverlayModal
+          rotulo="Editar credor da solicitação"
+          largura="var(--modal-max-w-md, 640px)"
+          onFechar={credorSaving ? undefined : fecharCredorModal}
+        >
+          <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] p-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--c-text)]">Editar credor da solicitação</h3>
+              <p className="text-sm text-[var(--c-muted)]">
+                Atualize o credor vinculado ao pagamento desta solicitação.
+              </p>
             </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={fecharCredorModal}
+              disabled={credorSaving}
+            >
+              Fechar
+            </button>
+          </div>
 
-            {erro && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {erro}
-              </div>
-            )}
+          <div className="space-y-4 p-4">
+            <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
             <div className="rounded-xl bg-[var(--c-bg)] px-3 py-2 text-sm">
               <span className="block text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Credor atual</span>
@@ -1822,15 +2841,17 @@ export default function FinanceiroCard({
               <label className="text-sm text-[var(--c-muted)]" htmlFor="solicitacao-credor-busca">
                 Buscar credor
               </label>
-              <input
-                id="solicitacao-credor-busca"
-                className="input w-full"
-                type="text"
-                value={credorSearch}
-                onChange={(event) => setCredorSearch(event.target.value)}
-                placeholder="Digite nome ou CPF/CNPJ do credor"
-                disabled={credorSaving}
-              />
+              <div className="flex">
+                <input
+                  id="solicitacao-credor-busca"
+                  className="input app-busca"
+                  type="text"
+                  value={credorSearch}
+                  onChange={(event) => setCredorSearch(event.target.value)}
+                  placeholder="Digite nome ou CPF/CNPJ do credor"
+                  disabled={credorSaving}
+                />
+              </div>
 
               {credorSearching && (
                 <div className="text-xs text-[var(--c-muted)]">Buscando credores...</div>
@@ -1857,65 +2878,69 @@ export default function FinanceiroCard({
                 </div>
               )}
             </div>
-
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setCredorSelecionado(null)}
-                disabled={credorSaving || !credorSelecionado}
-              >
-                Remover vinculo
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSalvarCredor}
-                disabled={credorSaving}
-              >
-                {credorSaving ? 'Salvando...' : 'Salvar credor'}
-              </button>
-            </div>
           </div>
-        </div>
+
+          <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
+            <button
+              type="button"
+              className="btn btn-outline btn-perigo-suave"
+              onClick={() => setCredorSelecionado(null)}
+              disabled={credorSaving || !credorSelecionado}
+            >
+              Remover vínculo
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary app-actionbar-apartada"
+              onClick={handleSalvarCredor}
+              disabled={credorSaving}
+            >
+              {credorSaving ? 'Salvando...' : 'Salvar credor'}
+            </button>
+          </div>
+        </OverlayModal>
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
-          <div
-            className="max-h-[92vh] w-full space-y-4 overflow-y-auto rounded-2xl border border-[var(--c-border)] bg-[var(--modal-bg)] p-4 text-[var(--c-text)] shadow-2xl sm:p-5"
-            style={{ maxWidth: '820px' }}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--c-text)]">Gerar conta</h3>
-                <p className="text-sm text-slate-500">
-                  O sistema sugere os dados da solicitacao. Voce confirma e cria o titulo.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => {
-                  setErro('');
-                  setModalOpen(false);
-                  resetModalState(solicitacao);
-                }}
-              >
-                Fechar
-              </button>
+        /*
+          Idem: nada de Escape aqui. Este e o formulario mais longo da tela
+          (rateios, N titulos, N parcelas) — perder tudo por uma tecla seria
+          pior que o defeito que a migracao veio consertar.
+        */
+        <OverlayModal
+          rotulo="Criar Título"
+          largura="var(--modal-max-w-lg, 860px)"
+        >
+          {/*
+            R27 — o cabecalho e o rodape saem do corpo rolante. Este e o modal
+            mais alto do sistema (rateios + N titulos + N parcelas cada): sem a
+            marcacao, era exatamente aqui que o botao "Confirmar" ficava fora
+            do painel, cortado em silencio.
+          */}
+          <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] p-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--c-text)]">Criar Título</h3>
+              <p className="text-sm text-[var(--c-muted)]">
+                O sistema sugere os dados da solicitação. Você confirma e cria o título.
+              </p>
             </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={fecharModalGerarConta}
+              disabled={saving}
+            >
+              Fechar
+            </button>
+          </div>
 
-            {erro && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {erro}
-              </div>
-            )}
+          <div className="space-y-4 p-4">
+            <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <form id="form-gerar-conta" className="space-y-4" onSubmit={handleSubmit}>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Tipo</span>
+                  <span className="mb-1 block text-[var(--c-muted)]">Tipo</span>
                   <select
                     className="input w-full"
                     value={form.tipo}
@@ -1927,22 +2952,22 @@ export default function FinanceiroCard({
                 </label>
 
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Status inicial</span>
+                  <span className="mb-1 block text-[var(--c-muted)]">Status inicial</span>
                   <select
                     className="input w-full"
                     value={form.status}
                     onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}
                   >
                     <option value="ABERTO">Aberto</option>
-                    <option value="PREVISAO">Previsao</option>
+                    <option value="PREVISAO">Previsão</option>
                   </select>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    Previsao entra nos relatorios, mas nao permite baixa ate virar aberto.
+                  <span className="mt-1 block text-xs text-[var(--c-muted)]">
+                    Previsão entra nos relatórios, mas não permite baixa até virar aberto.
                   </span>
                 </label>
 
                 <div className="space-y-2 text-sm">
-                  <span className="block text-slate-500">{parceiroRoleTitle}</span>
+                  <span className="block text-[var(--c-muted)]">{parceiroRoleTitle}</span>
                   <input
                     className="input w-full"
                     type="text"
@@ -1952,16 +2977,16 @@ export default function FinanceiroCard({
                   />
 
                   {searchingPartners && (
-                    <div className="text-xs text-slate-500">Buscando parceiros...</div>
+                    <div className="text-xs text-[var(--c-muted)]">Buscando parceiros...</div>
                   )}
 
                   {partnerOptions.length > 0 && (
-                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-2">
+                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-2xl border border-[var(--c-border)] p-2">
                       {partnerOptions.map((partner) => (
                         <button
                           key={partner.id}
                           type="button"
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                          className="w-full rounded-xl border border-[var(--c-border)] px-3 py-2 text-left text-sm hover:bg-[var(--c-bg)]"
                           onClick={() => {
                             setSelectedPartner(partner);
                             aplicarCredorPadraoNosPagamentos(partner);
@@ -1970,7 +2995,7 @@ export default function FinanceiroCard({
                           }}
                         >
                           <div className="font-medium text-[var(--c-text)]">{partner.nome}</div>
-                          <div className="text-xs text-slate-500">{partner.cpf_cnpj || '-'} {partner.telefone ? `- ${partner.telefone}` : ''}</div>
+                          <div className="text-xs text-[var(--c-muted)]">{partner.cpf_cnpj || '-'} {partner.telefone ? `- ${partner.telefone}` : ''}</div>
                         </button>
                       ))}
                     </div>
@@ -1979,22 +3004,28 @@ export default function FinanceiroCard({
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
+                {/*
+                  R6 — TODO campo de dinheiro desta tela (editavel ou so de
+                  leitura) leva `.input-moeda`: minimo de 180px, alinhado a
+                  direita e tabular, dimensionado para R$ 9.999.999.999,99. A
+                  celula "Obra" e texto e continua alinhada a esquerda.
+                */}
                 <div className="text-sm">
-                  <span className="mb-1 block text-slate-500">Valor</span>
-                  <div className="input flex items-center bg-slate-50 text-slate-700">
+                  <span className="mb-1 block text-[var(--c-muted)]">Valor</span>
+                  <div className="input input-moeda flex items-center justify-end bg-[var(--c-bg)] text-[var(--c-text)]">
                     {form.valor || 'R$ 0,00'}
                   </div>
                 </div>
                 <div className="text-sm">
-                  <span className="mb-1 block text-slate-500">Obra</span>
-                  <div className="input flex items-center bg-slate-50 text-slate-700">
+                  <span className="mb-1 block text-[var(--c-muted)]">Obra</span>
+                  <div className="input flex items-center bg-[var(--c-bg)] text-[var(--c-text)]">
                     {solicitacao.obra?.nome || '-'}
                   </div>
                 </div>
                 <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Desconto concedido</span>
+                  <span className="mb-1 block text-[var(--c-muted)]">Desconto concedido</span>
                   <input
-                    className="input w-full"
+                    className="input input-moeda w-full"
                     placeholder="R$ 0,00"
                     value={form.desconto_financeiro}
                     onChange={(event) => setForm((current) => ({
@@ -2006,33 +3037,40 @@ export default function FinanceiroCard({
                       desconto_financeiro: formatCurrencyInput(event.target.value)
                     }))}
                   />
-                  <span className="app-note mt-2">Opcional. Reduz o valor liquido do titulo.</span>
+                  <span className="app-note mt-2">Opcional. Reduz o valor líquido do título.</span>
                 </label>
                 <div className="text-sm">
-                  <span className="mb-1 block text-slate-500">Valor liquido previsto</span>
-                  <div className="input flex items-center bg-slate-50 text-slate-700">
+                  <span className="mb-1 block text-[var(--c-muted)]">Valor líquido previsto</span>
+                  <div className="input input-moeda flex items-center justify-end bg-[var(--c-bg)] text-[var(--c-text)]">
                     {formatCurrency(valorLiquidoPrevisto)}
                   </div>
                 </div>
                 <div className="text-sm">
-                  <span className="mb-1 block text-slate-500">Total das formas</span>
-                  <div className={`input flex items-center ${totalBateComSolicitacao ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  <span className="mb-1 block text-[var(--c-muted)]">Total das formas</span>
+                  <div
+                    className="input input-moeda flex items-center justify-end"
+                    style={totalBateComSolicitacao
+                      ? { background: 'var(--sem-success-bg)', color: 'var(--sem-success)' }
+                      : { background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' }}
+                  >
                     {formatCurrency(totalPagamentos)}
                     {!totalBateComSolicitacao && ` (${diferencaPagamentos > 0 ? 'faltam' : 'sobram'} ${formatCurrency(Math.abs(diferencaPagamentos))})`}
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <span className="block text-sm text-slate-500">Categoria financeira</span>
-                <div className="relative">
+              <div className="hidden space-y-2" aria-hidden="true">
+                <span className="block text-sm text-[var(--c-muted)]">Categoria financeira</span>
+                <div className="relative" ref={listaCategoriasRef}>
                   <div className="flex gap-2">
                     <input
                       className="input w-full"
                       type="text"
                       placeholder="Digite para buscar a categoria"
                       value={categoriaSearch}
+                      onFocus={() => setListaCategoriasAberta(true)}
                       onChange={(event) => {
+                        setListaCategoriasAberta(true);
                         setCategoriaSearch(event.target.value);
                         if (selectedCategory) {
                           setSelectedCategory(null);
@@ -2067,17 +3105,18 @@ export default function FinanceiroCard({
                     )}
                   </div>
 
-                  {categoriasAutocomplete.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full z-10 mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                  {listaCategoriasAberta && categoriasAutocomplete.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full z-dropdown mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-2 shadow-lg">
                       {categoriasAutocomplete.map((categoria) => (
                         <button
                           key={categoria.id}
                           type="button"
-                          className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-slate-50"
+                          className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--c-bg)]"
+                          onMouseDown={(event) => event.preventDefault()}
                         onClick={() => selecionarCategoria(categoria)}
                       >
                         <span className="block font-medium text-[var(--c-text)]">{categoria.nome}</span>
-                        <span className="block text-xs text-slate-500">
+                        <span className="block text-xs text-[var(--c-muted)]">
                             {categoria.tipo} - {getCategoriaDreResumo(categoria)}
                           </span>
                       </button>
@@ -2085,13 +3124,13 @@ export default function FinanceiroCard({
                     </div>
                   )}
 
-                  {categoriaSearch.trim() && !selectedCategory && !loadingCategorias && categoriasAutocomplete.length === 0 && (
-                    <div className="absolute left-0 right-0 top-full z-10 mt-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500 shadow-lg">
+                  {listaCategoriasAberta && categoriaSearch.trim() && !selectedCategory && !loadingCategorias && categoriasAutocomplete.length === 0 && (
+                    <div className="absolute left-0 right-0 top-full z-dropdown mt-2 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-3 text-sm text-[var(--c-muted)] shadow-lg">
                       Nenhuma categoria encontrada. Use a lupa para pesquisar com mais detalhes.
                     </div>
                   )}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-[var(--c-muted)]">
                   {selectedCategory
                     ? `${selectedCategory.tipo} - ${getCategoriaDreResumo(selectedCategory)}`
                     : loadingCategorias
@@ -2100,24 +3139,11 @@ export default function FinanceiroCard({
                 </div>
               </div>
 
-              <label className="app-filter-field">
-                <span className="app-filter-label">Competencia DRE</span>
-                <input
-                  className="input w-full"
-                  type="date"
-                  value={form.competencia_data}
-                  onChange={(event) => setForm((current) => ({ ...current, competencia_data: event.target.value }))}
-                  required={isCategoriaClassificadaParaDre(selectedCategory)}
-                />
-                <span className="mt-1 block text-xs text-slate-500">
-                  {isCategoriaClassificadaParaDre(selectedCategory)
-                    ? 'Obrigatoria para DRE. Informe o periodo economico real.'
-                    : 'Opcional quando o titulo nao entra na DRE.'}
-                </span>
-              </label>
-
-              {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && (
-                <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3.5 dark:border-sky-900/70 dark:bg-sky-950/20">
+              {false && form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && (
+                <div
+                  className="rounded-2xl border p-3"
+                  style={{ borderColor: 'var(--sem-info-border)', background: 'var(--sem-info-bg)' }}
+                >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="text-sm font-semibold text-[var(--c-text)]">Dados para pagamento do credor</div>
@@ -2152,15 +3178,14 @@ export default function FinanceiroCard({
                   </div>
 
                   {paymentDraft.preparar_pagamento_pix && (
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <FormSecao colunas={2}>
                       {loadingBeneficiaries && (
-                        <div className="app-note md:col-span-2">Carregando dados bancarios do credor...</div>
+                        <div className="app-note form-campo--linha">Carregando dados bancários do credor...</div>
                       )}
 
-                      <label className="app-filter-field">
-                        <span className="app-filter-label">Favorecido bancario vinculado</span>
+                      <CampoForm label="Favorecido bancário vinculado">
                         <select
-                          className="input w-full"
+                          className="input"
                           value={paymentDraft.payment_beneficiary_id}
                           disabled={loadingBeneficiaries}
                           onChange={(event) => {
@@ -2183,11 +3208,13 @@ export default function FinanceiroCard({
                             </option>
                           ))}
                         </select>
-                      </label>
+                      </CampoForm>
 
-                      <label className="flex items-start gap-2 rounded-xl border border-sky-100 bg-white/70 px-3 py-2 text-sm text-[var(--c-text)] dark:border-sky-900/60 dark:bg-slate-950/20">
+                      <label
+                        className="form-group flex items-start gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--c-text)]"
+                        style={{ borderColor: 'var(--sem-info-border)', background: 'var(--c-surface)' }}
+                      >
                         <input
-                          className="mt-0.5"
                           type="checkbox"
                           checked={paymentDraft.usar_credor_como_favorecido}
                           disabled={!selectedPartner}
@@ -2201,17 +3228,16 @@ export default function FinanceiroCard({
                         />
                         <span>
                           Usar o próprio credor como favorecido
-                          <span className="mt-0.5 block text-xs text-[var(--c-muted)]">
+                          <span className="mt-1 block text-xs text-[var(--c-muted)]">
                             Nome, documento e chave PIX vêm do Cadastro de Pessoas.
                           </span>
                         </span>
                       </label>
 
                       {paymentDraft.usar_credor_como_favorecido && parceiroPixOptions.length > 1 && (
-                        <label className="app-filter-field md:col-span-2">
-                          <span className="app-filter-label">Chave PIX cadastrada no credor</span>
+                        <CampoForm label="Chave PIX cadastrada no credor" linha>
                           <select
-                            className="input w-full"
+                            className="input"
                             value={`${paymentDraft.pix_tipo_chave}:${paymentDraft.pix_chave}`}
                             onChange={(event) => {
                               const pix = parceiroPixOptions.find((item) => `${item.tipo}:${item.chave}` === event.target.value);
@@ -2229,47 +3255,45 @@ export default function FinanceiroCard({
                               </option>
                             ))}
                           </select>
-                        </label>
+                        </CampoForm>
                       )}
 
-                      <label className="app-filter-field">
-                        <span className="app-filter-label">Nome do favorecido</span>
+                      <CampoForm label="Nome do favorecido" obrigatorio>
                         <input
-                          className="input w-full"
+                          className="input"
                           value={paymentDraft.nome}
                           onChange={(event) => setPaymentDraft((current) => ({ ...current, nome: event.target.value }))}
                           required
                         />
-                      </label>
-                      <label className="app-filter-field">
-                        <span className="app-filter-label">CPF/CNPJ</span>
+                      </CampoForm>
+                      <CampoForm label="CPF/CNPJ" obrigatorio>
                         <input
-                          className="input w-full"
-                          value={paymentDraft.cpf_cnpj}
-                          onChange={(event) => setPaymentDraft((current) => ({ ...current, cpf_cnpj: event.target.value }))}
+                          className="input"
+                          value={maskCpfCnpj(paymentDraft.cpf_cnpj)}
+                          onChange={(event) => setPaymentDraft((current) => ({ ...current, cpf_cnpj: maskCpfCnpj(event.target.value) }))}
+                          inputMode="numeric"
+                          maxLength={18}
                           required
                         />
-                      </label>
-                      <label className="app-filter-field">
-                        <span className="app-filter-label">Tipo da chave PIX</span>
+                      </CampoForm>
+                      <CampoForm label="Tipo da chave PIX">
                         <select
-                          className="input w-full"
+                          className="input"
                           value={paymentDraft.pix_tipo_chave}
                           onChange={(event) => setPaymentDraft((current) => ({ ...current, pix_tipo_chave: event.target.value }))}
                         >
                           {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
                         </select>
-                      </label>
-                      <label className="app-filter-field">
-                        <span className="app-filter-label">Chave PIX</span>
+                      </CampoForm>
+                      <CampoForm label="Chave PIX" obrigatorio>
                         <input
-                          className="input w-full"
+                          className="input"
                           value={paymentDraft.pix_chave}
                           onChange={(event) => setPaymentDraft((current) => ({ ...current, pix_chave: event.target.value }))}
                           required
                         />
-                      </label>
-                    </div>
+                      </CampoForm>
+                    </FormSecao>
                   )}
                 </div>
               )}
@@ -2279,13 +3303,16 @@ export default function FinanceiroCard({
                   <div>
                     <div className="text-sm font-semibold text-[var(--c-text)]">Rateio por obra/centro de custo</div>
                     <div className="text-xs text-[var(--c-muted)]">
-                      Opcional. Use quando o titulo precisa compor mais de uma obra nos relatorios financeiros.
+                      Opcional. Use quando o título precisa compor mais de uma obra nos relatórios financeiros.
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      totalRateioValido ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                    }`}>
+                    <span
+                      className="valor-tabular rounded-full px-3 py-1 text-xs font-semibold"
+                      style={totalRateioValido
+                        ? { background: 'var(--sem-success-bg)', color: 'var(--sem-success)' }
+                        : { background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' }}
+                    >
                       {(form.rateios || []).length === 0
                         ? 'Sem rateio'
                         : `${formatCurrency(totalRateioValor)} - ${totalRateioPercentual.toFixed(2)}%`}
@@ -2299,9 +3326,9 @@ export default function FinanceiroCard({
                 {(form.rateios || []).length > 0 && (
                   <div className="space-y-3">
                     {(form.rateios || []).map((rateio, rateioIndex) => (
-                      <div key={rateio.id || rateioIndex} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-2 xl:grid-cols-12">
+                      <div key={rateio.id || rateioIndex} className="grid gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 md:grid-cols-2 xl:grid-cols-12">
                         <label className="text-sm xl:col-span-4">
-                          <span className="mb-1 block text-slate-500">Obra/centro de custo</span>
+                          <span className="mb-1 block text-[var(--c-muted)]">Obra/centro de custo</span>
                           <select
                             className="input w-full"
                             value={rateio.obra_id}
@@ -2316,7 +3343,7 @@ export default function FinanceiroCard({
                           </select>
                         </label>
                         <label className="text-sm xl:col-span-2">
-                          <span className="mb-1 block text-slate-500">Tipo</span>
+                          <span className="mb-1 block text-[var(--c-muted)]">Tipo</span>
                           <select
                             className="input w-full"
                             value={rateio.tipo_rateio}
@@ -2328,9 +3355,9 @@ export default function FinanceiroCard({
                         </label>
                         {rateio.tipo_rateio === 'VALOR' ? (
                           <label className="text-sm xl:col-span-2">
-                            <span className="mb-1 block text-slate-500">Valor</span>
+                            <span className="mb-1 block text-[var(--c-muted)]">Valor</span>
                             <input
-                              className="input w-full"
+                              className="input input-moeda w-full"
                               placeholder="R$ 0,00"
                               value={rateio.valor_rateio}
                               onChange={(event) => updateRateio(rateioIndex, 'valor_rateio', normalizeCurrencyTyping(event.target.value))}
@@ -2339,7 +3366,7 @@ export default function FinanceiroCard({
                           </label>
                         ) : (
                           <label className="text-sm xl:col-span-2">
-                            <span className="mb-1 block text-slate-500">Percentual</span>
+                            <span className="mb-1 block text-[var(--c-muted)]">Percentual</span>
                             <input
                               className="input w-full"
                               inputMode="decimal"
@@ -2350,7 +3377,7 @@ export default function FinanceiroCard({
                           </label>
                         )}
                         <label className="text-sm xl:col-span-3">
-                          <span className="mb-1 block text-slate-500">Observacoes</span>
+                          <span className="mb-1 block text-[var(--c-muted)]">Observações</span>
                           <input
                             className="input w-full"
                             placeholder="Opcional"
@@ -2384,10 +3411,10 @@ export default function FinanceiroCard({
                       intercompany_group_id: event.target.checked ? current.intercompany_group_id : ''
                     }))}
                   />
-                  Movimentacao entre empresas do grupo
+                  Movimentação entre empresas do grupo
                 </label>
                 <div className="text-xs text-[var(--c-muted)]">
-                  Use esta configuracao manual para pagamentos sem cartao. Em pagamentos com cartao, o sistema usa automaticamente a empresa da conta vinculada ao cartao em cada titulo.
+                  Use esta configuração manual para pagamentos sem cartão. Em pagamentos com cartão, o sistema usa automaticamente a empresa da conta vinculada ao cartão em cada título.
                 </div>
                 {form.intercompany && (
                   <div className="grid gap-3 md:grid-cols-2">
@@ -2447,35 +3474,33 @@ export default function FinanceiroCard({
               <div className="financeiro-formas-pagamento space-y-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-[var(--c-text)]">Titulos e formas de pagamento</div>
+                    <div className="text-sm font-semibold text-[var(--c-text)]">Títulos e formas de pagamento</div>
                     <div className="text-xs text-[var(--c-muted)]">
                       {geracaoMultiplaTitulos
                         ? 'Crie titulos separados com vencimento, forma e valor proprios ate fechar o valor da solicitacao.'
                         : 'Informe o titulo unico desta solicitacao. Marque a opcao abaixo para gerar multiplos titulos.'}
                     </div>
-                    <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <label className="mt-3 flex items-center gap-2 text-sm font-medium text-[var(--c-text)]">
                       <input
                         type="checkbox"
                         checked={geracaoMultiplaTitulos}
                         disabled={freteTerceiroObrigatorio}
                         onChange={(event) => toggleGeracaoMultiplaTitulos(event.target.checked)}
                       />
-                      Gerar multiplos titulos
+                      Gerar múltiplos títulos
                     </label>
                     {freteTerceiroObrigatorio ? (
-                      <div className="mt-1 text-xs text-amber-700">
-                        Obrigatorio para separar a compra do frete pago ao terceiro.
+                      <div className="mt-1 text-xs" style={{ color: 'var(--sem-warning)' }}>
+                        Obrigatório para manter formas de pagamento e frete em títulos separados.
                       </div>
                     ) : null}
                   </div>
-                  {geracaoMultiplaTitulos ? (
-                    <button type="button" className="btn btn-outline shrink-0" onClick={adicionarPagamento}>
-                      Adicionar titulo
-                    </button>
-                  ) : null}
+                  <button type="button" className="btn btn-outline shrink-0" onClick={adicionarPagamento}>
+                    Adicionar forma de pagamento
+                  </button>
                 </div>
 
-                {(form.pagamentos || []).map((pagamento, pagamentoIndex) => {
+                {pagamentosPreparados.map((pagamento, pagamentoIndex) => {
                   const forma = getFormaPagamento(pagamento.forma_pagamento_id);
                   const quantidade = getQuantidadeParcelas(pagamento);
                   const usaDetalhe = formaUsaParcelasDetalhadas(forma);
@@ -2491,13 +3516,16 @@ export default function FinanceiroCard({
                   );
 
                   return (
-                    <div key={pagamento.id || pagamentoIndex} className="financeiro-forma-pagamento-item space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
+                    <div key={pagamento.id || pagamentoIndex} className="financeiro-forma-pagamento-item space-y-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">
                           {geracaoMultiplaTitulos ? `Titulo ${pagamentoIndex + 1}` : 'Titulo unico'}
                         </div>
+                        {/* R2 — era um <button> sem classe .btn: alvo de clique abaixo do
+                            minimo de 32px. Agora e botao de verdade, em vermelho suave
+                            (destrutivo visivel). */}
                         {geracaoMultiplaTitulos && (form.pagamentos || []).length > 1 && (
-                          <button type="button" className="text-sm font-semibold text-rose-600" onClick={() => removerPagamento(pagamentoIndex)}>
+                          <button type="button" className="btn btn-outline btn-perigo-suave" onClick={() => removerPagamento(pagamentoIndex)}>
                             Remover
                           </button>
                         )}
@@ -2512,21 +3540,31 @@ export default function FinanceiroCard({
                         />
                       )}
 
-                      {geracaoMultiplaTitulos && (
-                        <CategoriaFinanceiraAutocomplete
-                          label="Categoria financeira deste titulo"
-                          value={pagamento.categoria_financeira_id || form.categoria_financeira_id || ''}
-                          options={categoriasCompativeis}
-                          onChange={(categoriaId) => updatePagamento(pagamentoIndex, {
-                            categoria_financeira_id: categoriaId
-                          })}
-                          helperText="A categoria deste titulo sera aplicada a todas as parcelas geradas nele."
+                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento
+                        && (!compraDiretaSolicitacao || isFormaPix(forma)) && (
+                        <DadosPagamentoTitulo
+                          pagamento={pagamento}
+                          pagamentoIndex={pagamentoIndex}
+                          context={paymentContexts[pagamento.id]}
+                          onChange={updateDadosPagamento}
+                          onUsePartner={preencherFavorecidoComParceiro}
+                          compraDireta={compraDiretaSolicitacao}
                         />
                       )}
 
+                      <CategoriaFinanceiraAutocomplete
+                        label="Categoria financeira deste título"
+                        value={pagamento.categoria_financeira_id || ''}
+                        options={categoriasCompativeis}
+                        onChange={(categoriaId) => updatePagamento(pagamentoIndex, {
+                          categoria_financeira_id: categoriaId
+                        })}
+                        helperText="A categoria deste título será aplicada a todas as parcelas geradas nele."
+                      />
+
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="text-sm">
-                          <span className="mb-1 block text-slate-500">Forma de pagamento</span>
+                          <span className="mb-1 block text-[var(--c-muted)]">Forma de pagamento</span>
                           <select
                             className="input w-full"
                             value={pagamento.forma_pagamento_id}
@@ -2541,14 +3579,14 @@ export default function FinanceiroCard({
                         </label>
 
                         <div className="text-sm">
-                          <span className="mb-1 block text-slate-500">Valor desta forma</span>
+                          <span className="mb-1 block text-[var(--c-muted)]">Valor desta forma</span>
                           {usaDetalhe ? (
-                            <div className="financeiro-forma-pagamento-readonly input flex items-center bg-slate-50 text-slate-700">
+                            <div className="financeiro-forma-pagamento-readonly input input-moeda flex items-center justify-end bg-[var(--c-bg)] text-[var(--c-text)]">
                               {pagamento.valor || 'R$ 0,00'}
                             </div>
                           ) : (
                             <input
-                              className="input w-full"
+                              className="input input-moeda w-full"
                               type="text"
                               inputMode="decimal"
                               placeholder="R$ 0,00"
@@ -2563,7 +3601,7 @@ export default function FinanceiroCard({
                       <div className="grid gap-3 md:grid-cols-2">
                         {formaPermiteParcelamentoOperacional(forma) ? (
                           <label className="text-sm">
-                            <span className="mb-1 block text-slate-500">Parcelas</span>
+                            <span className="mb-1 block text-[var(--c-muted)]">Parcelas</span>
                             <input
                               className="input w-full"
                               type="number"
@@ -2575,32 +3613,30 @@ export default function FinanceiroCard({
                           </label>
                         ) : (
                           <div className="text-sm">
-                            <span className="mb-1 block text-slate-500">Parcelas</span>
-                            <div className="financeiro-forma-pagamento-readonly input flex items-center bg-slate-50 text-slate-500">1 parcela</div>
+                            <span className="mb-1 block text-[var(--c-muted)]">Parcelas</span>
+                            <div className="financeiro-forma-pagamento-readonly input flex items-center bg-[var(--c-bg)] text-[var(--c-muted)]">1 parcela</div>
                           </div>
                         )}
 
                         {usaCartao ? (
                           <label className="text-sm">
-                            <span className="mb-1 block text-slate-500">Data da compra</span>
-                            <input
+                            <span className="mb-1 block text-[var(--c-muted)]">Data da compra</span>
+                            <DateInputBR
                               className="input w-full"
-                              type="date"
                               value={pagamento.data_compra}
                               onChange={(event) => updatePagamento(pagamentoIndex, { data_compra: event.target.value })}
                             />
                           </label>
                         ) : usaDetalhe ? (
                           <div className="text-sm">
-                            <span className="mb-1 block text-slate-500">Vencimento</span>
-                            <div className="financeiro-forma-pagamento-readonly input flex items-center bg-slate-50 text-slate-500">Definido nas parcelas</div>
+                            <span className="mb-1 block text-[var(--c-muted)]">Vencimento</span>
+                            <div className="financeiro-forma-pagamento-readonly input flex items-center bg-[var(--c-bg)] text-[var(--c-muted)]">Definido nas parcelas</div>
                           </div>
                         ) : (
                           <label className="text-sm">
-                            <span className="mb-1 block text-slate-500">Vencimento</span>
-                            <input
+                            <span className="mb-1 block text-[var(--c-muted)]">Vencimento</span>
+                            <DateInputBR
                               className="input w-full"
-                              type="date"
                               value={pagamento.data_vencimento}
                               onChange={(event) => updatePagamento(pagamentoIndex, { data_vencimento: event.target.value })}
                               required
@@ -2612,13 +3648,13 @@ export default function FinanceiroCard({
                       {forma?.exige_cartao && (
                         <div className="space-y-2">
                           <label className="text-sm">
-                            <span className="mb-1 block text-slate-500">Cartao utilizado</span>
+                            <span className="mb-1 block text-[var(--c-muted)]">Cartão utilizado</span>
                             <select
                               className="input w-full"
                               value={pagamento.cartao_id || ''}
                               onChange={(event) => updatePagamento(pagamentoIndex, { cartao_id: event.target.value })}
                             >
-                              <option value="">Selecione o cartao</option>
+                              <option value="">Selecione o cartão</option>
                               {cartoesFiltrados.map((cartao) => {
                                 const empresaCartao = cartao?.contaBancaria?.empresa?.nome;
                                 return (
@@ -2628,13 +3664,18 @@ export default function FinanceiroCard({
                                 );
                               })}
                             </select>
-                            <span className="mt-1 block text-xs text-slate-500">
-                              A conta vinculada ao cartao define a empresa que realizou o pagamento.
+                            <span className="mt-1 block text-xs text-[var(--c-muted)]">
+                              A conta vinculada ao cartão define a empresa que realizou o pagamento.
                             </span>
                           </label>
 
                           {cartaoSelecionado && (
-                            <div className={`rounded-lg border px-3 py-2 text-xs ${cartaoEntreEmpresas ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
+                            <div
+                              className="rounded-xl border px-3 py-2 text-xs"
+                              style={cartaoEntreEmpresas
+                                ? { borderColor: 'var(--sem-warning-border)', background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' }
+                                : { borderColor: 'var(--sem-success-border)', background: 'var(--sem-success-bg)', color: 'var(--sem-success)' }}
+                            >
                               {cartaoEntreEmpresas
                                 ? `Entre empresas automatico: ${empresaContaCartao?.nome || 'empresa do cartao'} paga titulo de ${empresaTitulo?.nome || 'empresa da obra'}. O titulo e a classificacao gerencial permanecem na empresa da obra.`
                                 : `Pagamento na mesma empresa do titulo: ${empresaTitulo?.nome || empresaContaCartao?.nome || 'empresa da obra'}.`}
@@ -2645,19 +3686,19 @@ export default function FinanceiroCard({
 
                       {usaDetalhe && (
                         <div className="space-y-3">
-                          <div className="text-xs text-slate-500">
+                          <div className="text-xs text-[var(--c-muted)]">
                             Informe vencimento e valor de cada {getLabelParcelaForma(forma)}.
                           </div>
                           {(pagamento.parcelas || []).map((parcela, parcelaIndex) => (
-                            <div key={parcelaIndex} className="financeiro-forma-pagamento-parcela rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            <div key={parcelaIndex} className="financeiro-forma-pagamento-parcela rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
+                              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">
                                 Parcela {parcelaIndex + 1}/{quantidade}
                               </div>
                               <div className="grid gap-3 md:grid-cols-2">
                                 <label className="text-sm">
-                                  <span className="mb-1 block text-slate-500">Valor</span>
+                                  <span className="mb-1 block text-[var(--c-muted)]">Valor</span>
                                   <input
-                                    className="input w-full"
+                                    className="input input-moeda w-full"
                                     type="text"
                                     inputMode="decimal"
                                     value={parcela.valor || ''}
@@ -2667,10 +3708,9 @@ export default function FinanceiroCard({
                                   />
                                 </label>
                                 <label className="text-sm">
-                                  <span className="mb-1 block text-slate-500">Vencimento</span>
-                                  <input
+                                  <span className="mb-1 block text-[var(--c-muted)]">Vencimento</span>
+                                  <DateInputBR
                                     className="input w-full"
-                                    type="date"
                                     value={parcela.data_vencimento || ''}
                                     onChange={(event) => updateParcela(pagamentoIndex, parcelaIndex, 'data_vencimento', event.target.value)}
                                     required
@@ -2680,7 +3720,7 @@ export default function FinanceiroCard({
                                 {formaAceitaDadosBoletoOuGuia(forma) && (
                                   <>
                                     <label className="text-sm md:col-span-2">
-                                      <span className="mb-1 block text-slate-500">Documento ou referencia</span>
+                                      <span className="mb-1 block text-[var(--c-muted)]">Documento ou referência</span>
                                       <input
                                         className="input w-full"
                                         value={parcela.numero_documento || ''}
@@ -2689,7 +3729,7 @@ export default function FinanceiroCard({
                                       />
                                     </label>
                                     <label className="text-sm">
-                                      <span className="mb-1 block text-slate-500">Codigo do banco</span>
+                                      <span className="mb-1 block text-[var(--c-muted)]">Código do banco</span>
                                       <input
                                         className="input w-full"
                                         inputMode="numeric"
@@ -2701,29 +3741,32 @@ export default function FinanceiroCard({
                                       />
                                     </label>
                                     <label className="text-sm">
-                                      <span className="mb-1 block text-slate-500">Linha digitavel</span>
+                                      <span className="mb-1 block text-[var(--c-muted)]">Linha digitável</span>
                                       <input
                                         className="input w-full"
                                         value={parcela.linha_digitavel || ''}
                                         onChange={(event) => updateParcela(pagamentoIndex, parcelaIndex, 'linha_digitavel', event.target.value)}
-                                        placeholder="Linha digitavel, se houver"
+                                        placeholder="Linha digitável, se houver"
                                       />
                                     </label>
                                     <label className="text-sm md:col-span-2">
-                                      <span className="mb-1 block text-slate-500">Codigo de barras</span>
+                                      <span className="mb-1 block text-[var(--c-muted)]">Código de barras</span>
                                       <input
                                         className="input w-full"
                                         value={parcela.codigo_barras || ''}
                                         onChange={(event) => updateParcela(pagamentoIndex, parcelaIndex, 'codigo_barras', event.target.value)}
-                                        placeholder="Codigo de barras, se houver"
+                                        placeholder="Código de barras, se houver"
                                       />
                                     </label>
                                   </>
                                 )}
 
                                 {isFormaCheque(forma) && (
-                                  <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800 md:col-span-2">
-                                    Os dados do cheque serao informados na baixa, quando o instrumento real for definido.
+                                  <div
+                                    className="rounded-xl border px-3 py-2 text-xs md:col-span-2"
+                                    style={{ borderColor: 'var(--sem-warning-border)', background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' }}
+                                  >
+                                    Os dados do cheque serão informados na baixa, quando o instrumento real for definido.
                                   </div>
                                 )}
                               </div>
@@ -2736,102 +3779,119 @@ export default function FinanceiroCard({
                 })}
               </div>
 
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => {
-                    setErro('');
-                    setModalOpen(false);
-                    resetModalState(solicitacao);
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={saving || loadingBeneficiaries}
-                >
-                  {saving ? 'Gerando...' : loadingBeneficiaries ? 'Carregando credor...' : 'Confirmar'}
-                </button>
-              </div>
             </form>
           </div>
-        </div>
+
+          {/*
+            O rodape sai do <form> para poder ficar FIXO no painel (R27); o
+            botao continua submetendo o MESMO formulario pelo atributo `form`,
+            entao nem o handler nem a validacao nativa dos campos mudam.
+          */}
+          <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
+            <button
+              type="button"
+              className="btn btn-outline app-actionbar-apartada"
+              onClick={fecharModalGerarConta}
+              disabled={saving}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="form-gerar-conta"
+              className="btn btn-primary"
+              disabled={saving || loadingPaymentContexts || loadingPagamento}
+            >
+              {saving ? 'Gerando...' : loadingPaymentContexts || loadingPagamento ? 'Carregando formas e favorecidos...' : 'Confirmar'}
+            </button>
+          </div>
+        </OverlayModal>
       )}
 
+      {/*
+        Modal de escolha DENTRO do modal de gerar conta: o `ModalPortal`
+        empilha por ordem de montagem, entao este fica por cima e o Escape
+        fecha so ele. O `fixed inset-0` com camada a mao ficava fora dessa
+        pilha — e o `overflow-hidden` do painel matava o sticky de qualquer
+        coisa dentro (R18).
+      */}
       {modalOpen && categoriaModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-6">
-          <div className="card flex max-h-[72vh] w-full max-w-2xl flex-col gap-3 overflow-hidden">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-[var(--c-text)]">Selecionar categoria financeira</h3>
-                <p className="text-xs text-slate-500">
-                  Pesquise pelo nome e escolha uma categoria compativel com o tipo do titulo.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setCategoriaModalOpen(false)}
-              >
-                Fechar
-              </button>
+        <OverlayModal
+          rotulo="Selecionar categoria financeira"
+          largura="var(--modal-max-w-xl, 1120px)"
+          onFechar={() => setCategoriaModalOpen(false)}
+        >
+          <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] p-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--c-text)]">Selecionar categoria financeira</h3>
+              <p className="text-xs text-[var(--c-muted)]">
+                Pesquise pelo nome e escolha uma categoria compatível com o tipo do título.
+              </p>
             </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setCategoriaModalOpen(false)}
+            >
+              Fechar
+            </button>
+          </div>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex flex-col gap-3 p-4">
+            {/* R3 — a busca usa `.app-busca` (cresce ate 480px, minimo 220).
+                Ela declara `flex: 1`, entao PRECISA de um pai em linha: solta
+                num flex-column ela esticaria na VERTICAL. */}
+            <div className="flex">
               <input
-                className="input w-full"
+                className="input app-busca"
                 type="text"
-                placeholder="Buscar categoria por ID, nome ou descricao"
+                placeholder="Buscar categoria por ID, nome ou descrição"
                 value={categoriaSearch}
                 onChange={(event) => setCategoriaSearch(event.target.value)}
               />
+            </div>
 
-              <div className="text-xs text-slate-500">
-                {loadingCategorias
-                  ? 'Carregando categorias financeiras...'
-                  : `${categoriasFiltradas.length} categoria(s) disponivel(is) para ${String(form.tipo || '').toLowerCase()}.`}
-              </div>
+            <div className="text-xs text-[var(--c-muted)]">
+              {loadingCategorias
+                ? 'Carregando categorias financeiras...'
+                : `${categoriasFiltradas.length} categoria(s) disponivel(is) para ${String(form.tipo || '').toLowerCase()}.`}
+            </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 p-2">
-                {loadingCategorias ? (
-                  <div className="px-3 py-4 text-sm text-slate-500">
-                    Buscando categorias...
-                  </div>
-                ) : categoriasFiltradas.length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-slate-500">
-                    Nenhuma categoria encontrada para esse filtro.
-                  </div>
-                ) : categoriasFiltradas.map((categoria) => (
-                  <button
-                    key={categoria.id}
-                    type="button"
-                    className={`w-full rounded-2xl border px-3 py-2 text-left text-sm transition ${
-                      selectedCategory?.id === categoria.id
-                        ? 'border-blue-300 bg-blue-50'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                    onClick={() => selecionarCategoria(categoria)}
-                  >
-                    <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="font-medium text-[var(--c-text)]">{categoria.nome}</div>
-                        <div className="text-xs text-slate-500">
-                          {categoria.tipo} - {categoria.descricao || 'Sem descricao complementar'}
-                        </div>
+            <div className="space-y-2 overscroll-contain rounded-2xl border border-[var(--c-border)] p-2">
+              {loadingCategorias ? (
+                <div className="px-3 py-4 text-sm text-[var(--c-muted)]">
+                  Buscando categorias...
+                </div>
+              ) : categoriasFiltradas.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-[var(--c-muted)]">
+                  Nenhuma categoria encontrada para esse filtro.
+                </div>
+              ) : categoriasFiltradas.map((categoria) => (
+                <button
+                  key={categoria.id}
+                  type="button"
+                  className="w-full rounded-2xl border px-3 py-2 text-left text-sm transition"
+                  style={selectedCategory?.id === categoria.id
+                    ? { borderColor: 'var(--c-primary)', background: 'var(--sem-info-bg)' }
+                    : { borderColor: 'var(--c-border)' }}
+                  onClick={() => selecionarCategoria(categoria)}
+                >
+                  <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="font-medium text-[var(--c-text)]">{categoria.nome}</div>
+                      <div className="text-xs text-[var(--c-muted)]">
+                        {categoria.tipo} - {categoria.descricao || 'Sem descricao complementar'}
                       </div>
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        #{categoria.id}
-                      </span>
                     </div>
-                  </button>
-                ))}
-              </div>
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">
+                      #{categoria.id}
+                    </span>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+        </OverlayModal>
       )}
     </>
   );

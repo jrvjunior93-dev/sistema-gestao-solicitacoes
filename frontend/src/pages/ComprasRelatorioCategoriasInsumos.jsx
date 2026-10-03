@@ -1,39 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useFiltrosVisiveis
+} from '../components/padrao';
 import { obterRelatorioCategoriasInsumosCompras } from '../services/compras';
 import { getMinhasObras } from '../services/obras';
+import '../styles/compras-relatorio-apoio.css';
 
 const DEFAULT_FILTERS = {
   obra_id: '',
   data_inicio: '',
   data_fim: ''
 };
-
-const CATEGORIA_COLUMNS = [
-  { key: 'categoria', width: 260, minWidth: 170 },
-  { key: 'itens', width: 100, minWidth: 80 },
-  { key: 'pedidos', width: 110, minWidth: 90 },
-  { key: 'quantidade', width: 130, minWidth: 105 },
-  { key: 'valor', width: 150, minWidth: 120 }
-];
-
-const INSUMO_COLUMNS = [
-  { key: 'descricao', width: 280, minWidth: 190 },
-  { key: 'categoria', width: 210, minWidth: 150 },
-  { key: 'unidade', width: 100, minWidth: 80 },
-  { key: 'itens', width: 90, minWidth: 76 },
-  { key: 'pedidos', width: 100, minWidth: 84 },
-  { key: 'quantidade', width: 130, minWidth: 105 },
-  { key: 'valor', width: 150, minWidth: 120 }
-];
-
-const OBRA_COLUMNS = [
-  { key: 'obra', width: 260, minWidth: 170 },
-  { key: 'itens', width: 100, minWidth: 80 },
-  { key: 'pedidos', width: 110, minWidth: 90 },
-  { key: 'valor', width: 150, minWidth: 120 }
-];
 
 function readFilters(searchParams) {
   return {
@@ -76,6 +63,46 @@ function extractErrorMessage(error) {
     return message || 'Erro ao carregar compras por categoria e insumo';
   }
 }
+
+/**
+ * BARRA DE PROPORCAO — a largura em % e DADO (a proporcao da categoria), nao
+ * medida de layout: por isso continua no `style` e nao vira degrau da escala
+ * (R10). Trilho e preenchimento saem de token (R25); antes o trilho era
+ * `bg-slate-100`, paleta crua sem par no tema escuro.
+ *
+ * O ZERO NAO DESENHA (correcao de 04/09). A versao anterior calculava
+ * `Math.max(4, pct)` sem guarda: uma categoria com valor ZERO saia com 4% de
+ * barra pintada — barra visivel afirmando que existe valor onde nao existe
+ * nenhum. O piso de 4% tem proposito legitimo (valor pequeno porem real
+ * precisa aparecer), mas so vale DEPOIS de o valor ser maior que zero.
+ */
+function BarraProporcao({ valor, maximo }) {
+  const numero = Number(valor || 0);
+  const proporcao = maximo > 0 ? (numero / maximo) * 100 : 0;
+  const largura = numero > 0 ? Math.max(4, proporcao) : 0;
+  return (
+    <div className="h-2 rounded-full bg-[var(--ui-border)] overflow-clip">
+      <div className="h-full rounded-full bg-[var(--c-primary)]" style={{ width: `${largura}%` }} />
+    </div>
+  );
+}
+
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'data_inicio', rotulo: 'Pedido criado de' },
+  { id: 'data_fim', rotulo: 'Pedido criado até' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de custo' }
+];
 
 export default function ComprasRelatorioCategoriasInsumos() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -143,8 +170,77 @@ export default function ComprasRelatorioCategoriasInsumos() {
     [topCategorias]
   );
 
-  function aplicarFiltros(event) {
-    event.preventDefault();
+  /*
+    R12: a obra deixou de ser `<select>` e virou MARCACAO. `unico: true`
+    porque o endpoint recebe UM `obra_id` (`parseInteger` no validador do
+    backend, com `ensureAllowedKeys` limitando a chave a um valor): sem
+    declarar, o menu abriria com caixa quadrada prometendo escolha multipla
+    e, com duas marcas, a tela mandaria filtro nenhum — duas etiquetas na
+    faixa e a lista sem estreitar (R15).
+  */
+  const ativos = useMemo(() => ({
+    obra_id: new Set(filtros.obra_id ? [String(filtros.obra_id)] : [])
+  }), [filtros.obra_id]);
+
+  const dimensoes = useMemo(() => [
+    {
+      id: 'obra_id',
+      rotulo: 'Obra / Centro de custo',
+      unico: true,
+      opcoes: obras.map((obra) => ({
+        valor: String(obra.id),
+        rotulo: obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome
+      }))
+    }
+  ], [obras]);
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => String(filtros[filtro.id] ?? '').trim() !== ''
+      || String(searchParams.get(filtro.id) ?? '').trim() !== '').map((filtro) => filtro.id),
+    [filtros, searchParams]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:compras-categorias-insumos', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      atualizarCampo(id, DEFAULT_FILTERS[id] ?? '');
+      // A consulta em curso mora na URL: sem tirar a chave dali, o recorte
+      // seguiria valendo com o campo já fora da faixa.
+      if (searchParams.get(id)) {
+        const proximos = new URLSearchParams(searchParams);
+        proximos.delete(id);
+        setSearchParams(proximos);
+      }
+    }
+  });
+
+  function atualizarCampo(campo, valor) {
+    setFiltros((current) => ({ ...current, [campo]: valor }));
+  }
+
+  function alternarFiltro(dimensao, valor) {
+    setFiltros((current) => ({
+      ...current,
+      [dimensao]: String(current[dimensao]) === String(valor) ? '' : String(valor)
+    }));
+  }
+
+  function aplicarFiltros() {
     setSearchParams(buildSearchParams(filtros));
   }
 
@@ -154,128 +250,99 @@ export default function ComprasRelatorioCategoriasInsumos() {
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <p className="eyebrow">Compras / Relatorios</p>
-            <h1 className="page-title">Categorias e Insumos</h1>
-            <p className="page-subtitle">
-              Valor pedido por categoria, insumo e obra/centro com base nos itens reais dos pedidos de compra.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/compras/relatorios" className="btn btn-outline">
-              Voltar aos relatorios
-            </Link>
-          </div>
-        </div>
-      </div>
+    /* C1: apoio (contagem + descricao) passa de 180 caracteres — mais longo
+       que nos outros relatorios de Compras — e empurrava a barra de acoes
+       para uma segunda linha na faixa compacta (94px; ver o comentario em
+       styles/compras-relatorio-apoio.css). */
+    <Pagina className="apoio-linha-unica">
+      {/* R11: "Voltar aos relatorios" era botao de acao fazendo papel de
+          navegacao. Vira a seta `voltar` do PageHeader. */}
+      <PageHeader
+        titulo="Categorias e Insumos"
+        voltar={{ to: '/compras/relatorios', title: 'Voltar aos relatorios' }}
+        contagem={`${formatNumber(categorias.length)} categoria(s) no recorte`}
+        /* R23: agregacao pesada sobre itens de pedido — o recorte e
+           RASCUNHO ate o clique, e a regra exige que a tela AVISE isso. */
+        descricao="Valor pedido por categoria, insumo e obra/centro com base nos itens reais dos pedidos de compra. Marque o recorte e clique em Atualizar relatório."
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar relatorio',
+          onClick: aplicarFiltros,
+          desabilitada: loading
+        }}
+        secundarias={[{ rotulo: 'Limpar', onClick: limparFiltros }]}
+      />
 
-      <div className="mt-4 card sol-surface-card solicitacoes-filtros app-filters-card">
-        <form className="grid gap-4" onSubmit={aplicarFiltros}>
-          <div className="app-filters-grid">
-            <label className="app-filter-field">
-              <span className="app-filter-label">Obra / Centro de custo</span>
-              <select
-                className="input"
-                value={filtros.obra_id}
-                onChange={(event) => setFiltros((current) => ({ ...current, obra_id: event.target.value }))}
-              >
-                <option value="">Todos</option>
-                {obras.map((obra) => (
-                  <option key={obra.id} value={obra.id}>
-                    {obra.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
+      <BlocoConteudo variante="secundario">
+        {/* R12/R16b: obra e recorte enumeravel (marcacao + etiqueta); as
+            datas sao contornos continuos — vao em `campos`. */}
+        <BarraFiltros
+          campos={[
+            {
+              id: 'data_inicio',
+              rotulo: 'Pedido criado de',
+              tipo: 'date',
+              valor: filtros.data_inicio,
+              aoMudar: (valor) => atualizarCampo('data_inicio', valor)
+            },
+            {
+              id: 'data_fim',
+              rotulo: 'Pedido criado até',
+              tipo: 'date',
+              valor: filtros.data_fim,
+              aoMudar: (valor) => atualizarCampo('data_fim', valor)
+            }
+          ].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={ativos}
+          /* R16: "Limpar" tem UM dono nesta tela — o botao secundario do
+             cabecalho. Passar `aoLimpar` aqui poria um segundo controle
+             com a MESMA acao no mesmo contexto visual; o ✕ de cada
+             etiqueta continua removendo o recorte individual. */
+          aoAlternar={alternarFiltro}
+          visibilidade={visibilidadeFiltros}
+        />
+      </BlocoConteudo>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Pedido criado de</span>
-              <input
-                className="input"
-                type="date"
-                value={filtros.data_inicio}
-                onChange={(event) => setFiltros((current) => ({ ...current, data_inicio: event.target.value }))}
-              />
-            </label>
+      {/* O erro de carregamento era uma caixa de paleta crua escrita a mao
+          (`border-red-200 bg-red-50 text-red-700`) — sem par no tema escuro
+          e sem passar pelo piso de contraste (R25). Agora e o Avisos do
+          sistema: tom semantico + icone. */}
+      <Avisos
+        avisos={erro ? [{ id: 'categorias-insumos-erro', tipo: 'error', mensagem: erro }] : []}
+        aoFechar={() => setErro('')}
+      />
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Pedido criado ate</span>
-              <input
-                className="input"
-                type="date"
-                value={filtros.data_fim}
-                onChange={(event) => setFiltros((current) => ({ ...current, data_fim: event.target.value }))}
-              />
-            </label>
-          </div>
+      {/* Os cinco ladrilhos usavam `.metric-card`, classe que NAO EXISTE em
+          CSS nenhum do repositorio: os KPIs saiam sem caixa, sem hierarquia
+          e sem alinhamento — texto solto sobre o canvas. Agora StatGrid. */}
+      <StatGrid colunas={5}>
+        <StatTile label="Itens" valor={formatNumber(resumo.itens)} sub="Itens de pedidos" />
+        <StatTile label="Pedidos" valor={formatNumber(resumo.pedidos)} sub="Pedidos com itens" />
+        <StatTile label="Categorias" valor={formatNumber(resumo.categorias)} sub="Com movimentação" />
+        <StatTile label="Valor total" valor={formatMoney(resumo.valor_total)} sub="Valor dos itens" />
+        <StatTile label="Ticket médio item" valor={formatMoney(resumo.ticket_medio_item)} sub="Valor médio por item" />
+      </StatGrid>
 
-          <div className="app-page-actions">
-            <button type="button" className="btn btn-outline" onClick={limparFiltros}>
-              Limpar
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Atualizando...' : 'Atualizar relatorio'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {erro && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {erro}
-        </div>
-      )}
-
-      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <div className="metric-card">
-          <span>Itens</span>
-          <strong>{formatNumber(resumo.itens)}</strong>
-          <small>Itens de pedidos</small>
-        </div>
-        <div className="metric-card">
-          <span>Pedidos</span>
-          <strong>{formatNumber(resumo.pedidos)}</strong>
-          <small>Pedidos com itens</small>
-        </div>
-        <div className="metric-card">
-          <span>Categorias</span>
-          <strong>{formatNumber(resumo.categorias)}</strong>
-          <small>Com movimentacao</small>
-        </div>
-        <div className="metric-card">
-          <span>Valor total</span>
-          <strong>{formatMoney(resumo.valor_total)}</strong>
-          <small>Valor dos itens</small>
-        </div>
-        <div className="metric-card">
-          <span>Ticket medio item</span>
-          <strong>{formatMoney(resumo.ticket_medio_item)}</strong>
-          <small>Valor medio por item</small>
-        </div>
-      </div>
-
-      <div className="mt-4 card sol-surface-card">
-        <div className="app-page-header-row">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--c-text)]">Compras por categoria</h2>
-            <p className="page-subtitle">
-              Top 10 categorias por valor efetivamente pedido no periodo filtrado.
-            </p>
-          </div>
-        </div>
-        {loading ? (
-          <div className="text-sm text-[var(--c-muted)] py-4">Carregando categorias...</div>
-        ) : topCategorias.length === 0 ? (
-          <div className="app-empty-card mt-3">Sem itens de pedido para montar o grafico.</div>
-        ) : (
-          <div className="grid gap-3 mt-3">
-            {topCategorias.map((item, index) => {
-              const valor = Number(item.valor_total || 0);
-              const percentual = maiorValorCategoria > 0 ? Math.max(4, (valor / maiorValorCategoria) * 100) : 0;
-              return (
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 3 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:compras-relatorio-categorias-insumos" larguraPadrao="total">
+        <BlocoConteudo
+          titulo="Compras por categoria"
+          descricao="Top 10 categorias por valor efetivamente pedido no período filtrado."
+        >
+          {loading ? (
+            <div className="app-empty-card">Carregando categorias...</div>
+          ) : topCategorias.length === 0 ? (
+            <div className="app-empty-card">Sem itens de pedido para montar o gráfico.</div>
+          ) : (
+            <div className="grid gap-3">
+              {topCategorias.map((item, index) => (
                 <div key={`categoria-grafico-${item.key}`} className="grid gap-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -285,129 +352,109 @@ export default function ComprasRelatorioCategoriasInsumos() {
                         {formatNumber(item.itens)} item(ns)
                       </span>
                     </div>
-                    <strong className="text-sm tabular-nums text-[var(--c-text)]">{formatMoney(valor)}</strong>
+                    <strong className="text-sm tabular-nums text-[var(--c-text)]">{formatMoney(item.valor_total)}</strong>
                   </div>
-                  <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[var(--c-primary)]"
-                      style={{ width: `${percentual}%` }}
-                    />
-                  </div>
+                  <BarraProporcao valor={item.valor_total} maximo={maiorValorCategoria} />
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </BlocoConteudo>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <div className="card sol-surface-card overflow-hidden">
-          <h2 className="text-lg font-bold text-[var(--c-text)] mb-1">Por categoria</h2>
-          <p className="page-subtitle mb-3">Categorias do cadastro de insumos e itens manuais sem categoria.</p>
-          <div className="sol-table-wrapper">
-            <ResizableTable className="sol-table" columns={CATEGORIA_COLUMNS} storageKey="fluxy.compras.categoriasInsumos.categorias.columns">
-              <thead>
-                <tr>
-                  <ResizableTh columnKey="categoria">Categoria</ResizableTh>
-                  <ResizableTh columnKey="itens" className="text-right">Itens</ResizableTh>
-                  <ResizableTh columnKey="pedidos" className="text-right">Pedidos</ResizableTh>
-                  <ResizableTh columnKey="quantidade" className="text-right">Quantidade</ResizableTh>
-                  <ResizableTh columnKey="valor" className="text-right">Valor</ResizableTh>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={5}>Carregando...</td></tr>
-                ) : categorias.length === 0 ? (
-                  <tr><td colSpan={5}>Sem itens de pedido no periodo.</td></tr>
-                ) : (
-                  categorias.map((item) => (
-                    <tr key={item.key}>
-                      <td className="font-semibold text-slate-900">{item.categoria_nome}</td>
-                      <td className="text-right">{formatNumber(item.itens)}</td>
-                      <td className="text-right">{formatNumber(item.pedidos)}</td>
-                      <td className="text-right">{formatNumber(item.quantidade_total, 3)}</td>
-                      <td className="text-right">{formatMoney(item.valor_total)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </ResizableTable>
-          </div>
+        {/* R18: os `overflow-hidden` que embrulhavam estas tabelas criavam
+            scrollport e matavam o `position: sticky` da coluna fixa e do
+            cabecalho — sem erro e sem falha de build. */}
+        <div data-bloco-id="por-categoria" data-bloco-rotulo="Por categoria" className="grid gap-4 xl:grid-cols-2">
+          <BlocoConteudo
+            titulo="Por categoria"
+            descricao="Categorias do cadastro de insumos e itens manuais sem categoria."
+            variante="secundario"
+          >
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'categoria',
+                  titulo: 'Categoria',
+                  // R17: a categoria NOMEIA a linha deste resumo.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => item.categoria_nome
+                },
+                { id: 'itens', titulo: 'Itens', tipo: 'numero', render: (item) => formatNumber(item.itens) },
+                { id: 'pedidos', titulo: 'Pedidos', tipo: 'numero', render: (item) => formatNumber(item.pedidos) },
+                { id: 'quantidade', titulo: 'Quantidade', tipo: 'numero', render: (item) => formatNumber(item.quantidade_total, 3) },
+                { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => formatMoney(item.valor_total) }
+              ]}
+              itens={categorias}
+              getId={(item) => item.key}
+              carregando={loading}
+              storageKey="tabela:compras-categorias-insumos:categorias"
+              rotuloRolagem="Compras por categoria"
+              vazio="Sem itens de pedido no período."
+            />
+          </BlocoConteudo>
+
+          <BlocoConteudo
+            titulo="Por obra/centro"
+            descricao="Concentração de valor pedido por origem operacional."
+            variante="secundario"
+          >
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'obra',
+                  titulo: 'Obra/Centro',
+                  // R17: a obra/centro NOMEIA a linha deste resumo.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => item.obra_nome
+                },
+                { id: 'itens', titulo: 'Itens', tipo: 'numero', render: (item) => formatNumber(item.itens) },
+                { id: 'pedidos', titulo: 'Pedidos', tipo: 'numero', render: (item) => formatNumber(item.pedidos) },
+                { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => formatMoney(item.valor_total) }
+              ]}
+              itens={obrasResumo}
+              getId={(item) => item.key}
+              carregando={loading}
+              storageKey="tabela:compras-categorias-insumos:obras"
+              rotuloRolagem="Compras por obra/centro"
+              vazio="Sem itens de pedido no período."
+            />
+          </BlocoConteudo>
         </div>
 
-        <div className="card sol-surface-card overflow-hidden">
-          <h2 className="text-lg font-bold text-[var(--c-text)] mb-1">Por obra/centro</h2>
-          <p className="page-subtitle mb-3">Concentracao de valor pedido por origem operacional.</p>
-          <div className="sol-table-wrapper">
-            <ResizableTable className="sol-table" columns={OBRA_COLUMNS} storageKey="fluxy.compras.categoriasInsumos.obras.columns">
-              <thead>
-                <tr>
-                  <ResizableTh columnKey="obra">Obra/Centro</ResizableTh>
-                  <ResizableTh columnKey="itens" className="text-right">Itens</ResizableTh>
-                  <ResizableTh columnKey="pedidos" className="text-right">Pedidos</ResizableTh>
-                  <ResizableTh columnKey="valor" className="text-right">Valor</ResizableTh>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={4}>Carregando...</td></tr>
-                ) : obrasResumo.length === 0 ? (
-                  <tr><td colSpan={4}>Sem itens de pedido no periodo.</td></tr>
-                ) : (
-                  obrasResumo.map((item) => (
-                    <tr key={item.key}>
-                      <td className="font-semibold text-slate-900">{item.obra_nome}</td>
-                      <td className="text-right">{formatNumber(item.itens)}</td>
-                      <td className="text-right">{formatNumber(item.pedidos)}</td>
-                      <td className="text-right">{formatMoney(item.valor_total)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </ResizableTable>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 card sol-surface-card overflow-hidden">
-        <h2 className="text-lg font-bold text-[var(--c-text)] mb-1">Por insumo/item</h2>
-        <p className="page-subtitle mb-3">Top 100 itens por valor total pedido.</p>
-        <div className="sol-table-wrapper">
-          <ResizableTable className="sol-table" columns={INSUMO_COLUMNS} storageKey="fluxy.compras.categoriasInsumos.insumos.columns">
-            <thead>
-              <tr>
-                <ResizableTh columnKey="descricao">Insumo/Item</ResizableTh>
-                <ResizableTh columnKey="categoria">Categoria</ResizableTh>
-                <ResizableTh columnKey="unidade">Unidade</ResizableTh>
-                <ResizableTh columnKey="itens" className="text-right">Itens</ResizableTh>
-                <ResizableTh columnKey="pedidos" className="text-right">Pedidos</ResizableTh>
-                <ResizableTh columnKey="quantidade" className="text-right">Quantidade</ResizableTh>
-                <ResizableTh columnKey="valor" className="text-right">Valor</ResizableTh>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7}>Carregando...</td></tr>
-              ) : insumos.length === 0 ? (
-                <tr><td colSpan={7}>Sem itens de pedido no periodo.</td></tr>
-              ) : (
-                insumos.map((item) => (
-                  <tr key={item.key}>
-                    <td className="font-semibold text-slate-900">{item.descricao}</td>
-                    <td>{item.categoria_nome}</td>
-                    <td>{item.unidade || '-'}</td>
-                    <td className="text-right">{formatNumber(item.itens)}</td>
-                    <td className="text-right">{formatNumber(item.pedidos)}</td>
-                    <td className="text-right">{formatNumber(item.quantidade_total, 3)}</td>
-                    <td className="text-right">{formatMoney(item.valor_total)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </ResizableTable>
-        </div>
-      </div>
-    </div>
+        <BlocoConteudo
+          titulo="Por insumo/item"
+          descricao="Top 100 itens por valor total pedido."
+          variante="primario"
+          cor="var(--c-primary)"
+        >
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'descricao',
+                titulo: 'Insumo/Item',
+                // R17: a descricao do insumo NOMEIA o registro.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => item.descricao
+              },
+              { id: 'categoria', titulo: 'Categoria', tipo: 'texto', render: (item) => item.categoria_nome },
+              { id: 'unidade', titulo: 'Unidade', tipo: 'texto', render: (item) => item.unidade || '-' },
+              { id: 'itens', titulo: 'Itens', tipo: 'numero', render: (item) => formatNumber(item.itens) },
+              { id: 'pedidos', titulo: 'Pedidos', tipo: 'numero', render: (item) => formatNumber(item.pedidos) },
+              { id: 'quantidade', titulo: 'Quantidade', tipo: 'numero', render: (item) => formatNumber(item.quantidade_total, 3) },
+              { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => formatMoney(item.valor_total) }
+            ]}
+            itens={insumos}
+            getId={(item) => item.key}
+            carregando={loading}
+            storageKey="tabela:compras-categorias-insumos:insumos"
+            rotuloRolagem="Compras por insumo/item"
+            vazio="Sem itens de pedido no período."
+          />
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
+    </Pagina>
   );
 }

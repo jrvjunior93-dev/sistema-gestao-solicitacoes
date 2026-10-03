@@ -8,11 +8,13 @@ const { TIPOS_INTERCOMPANY } = require('../constants/intercompany');
 const {
   CLASSIFICACOES_GERENCIAIS_FINANCEIRAS
 } = require('../constants/categoriaFinanceiraGerencial');
+const { onlyDigits, isValidCpfCnpj } = require('../utils/cpfCnpj');
+const { STATUS_TITULO_FILTROS_CALCULADOS } = require('../utils/tituloFinanceiroStatusFilter');
 
 const CATEGORIAS_BEM = ['VEICULO', 'IMOVEL', 'TERRENO', 'SERVICO', 'MATERIAL', 'CREDITO', 'OUTROS'];
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['NAO_APLICAVEL', 'PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
-const STATUS_TITULO = ['PREVISAO', 'ABERTO', 'PARCIAL', 'QUITADO', 'CANCELADO', 'ESTORNADO'];
+const STATUS_TITULO = ['PREVISAO', 'ABERTO', 'PARCIAL', 'QUITADO', 'CANCELADO', 'ESTORNADO', 'RENEGOCIADO'];
 const STATUS_TITULO_INICIAL = ['PREVISAO', 'ABERTO'];
 const NATUREZAS_INTERCOMPANY_BAIXA = ['OPERACIONAL_TERCEIRO', 'TRANSFERENCIA_INTERNA', 'REEMBOLSO_COMPENSACAO'];
 const CAMPOS_INTERCOMPANY_TITULO = [
@@ -113,6 +115,12 @@ function parseOptionalText(value, fieldName, max, { required = false } = {}) {
     required,
     max
   });
+}
+
+function parseOptionalCpfCnpj(value, fieldName) {
+  if (isBlank(value)) return undefined;
+  if (!isValidCpfCnpj(value)) throw new ValidationError(`${fieldName} invalido.`);
+  return onlyDigits(value);
 }
 
 function parseNullableText(value, fieldName, max) {
@@ -223,6 +231,8 @@ function parsePagamentosTitulo(value) {
         'observacoes',
         'parceiro_id',
         'categoria_financeira_id',
+        'payment_beneficiary_id',
+        'favorecido_pagamento_id',
         'forma_pagamento_id',
         'cartao_id',
         'quantidade_parcelas',
@@ -242,6 +252,8 @@ function parsePagamentosTitulo(value) {
       observacoes: parseOptionalText(item?.observacoes, `Observacoes do pagamento ${index + 1}`, 1000),
       parceiro_id: parseInteger(item?.parceiro_id, `Parceiro do pagamento ${index + 1}`),
       categoria_financeira_id: parseInteger(item?.categoria_financeira_id, `Categoria financeira do pagamento ${index + 1}`),
+      payment_beneficiary_id: parseInteger(item?.payment_beneficiary_id, `Favorecido PIX do pagamento ${index + 1}`),
+      favorecido_pagamento_id: parseInteger(item?.favorecido_pagamento_id, `Favorecido do pagamento ${index + 1}`),
       forma_pagamento_id: parseInteger(item?.forma_pagamento_id, `Forma de pagamento ${index + 1}`, { required: true }),
       cartao_id: parseInteger(item?.cartao_id, `Cartao ${index + 1}`),
       quantidade_parcelas: parseInteger(item?.quantidade_parcelas, `Quantidade de parcelas ${index + 1}`),
@@ -352,6 +364,27 @@ function parseEnum(value, fieldName, allowedValues = [], { required = false } = 
   return normalized;
 }
 
+function parseEnumList(value, fieldName, allowedValues = [], { required = false, maxItems = 20 } = {}) {
+  if (isBlank(value)) {
+    if (required) {
+      throw new ValidationError(`${fieldName} e obrigatorio.`);
+    }
+    return undefined;
+  }
+
+  const rawValues = Array.isArray(value) ? value : String(value).split(',');
+  const normalized = [...new Set(rawValues
+    .flatMap((item) => String(item || '').split(','))
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean))];
+
+  if (normalized.length === 0 || normalized.length > maxItems || normalized.some((item) => !allowedValues.includes(item))) {
+    throw new ValidationError(`${fieldName} invalido.`);
+  }
+
+  return normalized.join(',');
+}
+
 function parseNullableEnum(value, fieldName, allowedValues = []) {
   if (value === undefined) {
     return undefined;
@@ -418,6 +451,8 @@ function validateFinanceTituloQuery(query = {}) {
       'data_emissao_final',
       'vencimento_inicial',
       'vencimento_final',
+      'ordenar_por',
+      'direcao',
       'paginated',
       'page',
       'limit'
@@ -446,7 +481,12 @@ function validateFinanceTituloQuery(query = {}) {
 
   return {
     tipo: parseEnum(query.tipo, 'Tipo', ['PAGAR', 'RECEBER']),
-    status: parseEnum(query.status, 'Status', [...STATUS_TITULO, 'ATIVA', 'CANCELADA']),
+    status: parseEnumList(query.status, 'Status', [
+      ...STATUS_TITULO,
+      ...STATUS_TITULO_FILTROS_CALCULADOS,
+      'ATIVA',
+      'CANCELADA'
+    ]),
     q: parseOptionalText(query.q, 'Busca', 120),
     codigo: parseOptionalText(query.codigo, 'Codigo do titulo', 40),
     empresa_id: parseInteger(query.empresa_id, 'Empresa do grupo'),
@@ -464,6 +504,12 @@ function validateFinanceTituloQuery(query = {}) {
     data_emissao_final: dataEmissaoFinal,
     vencimento_inicial: vencimentoInicial,
     vencimento_final: vencimentoFinal,
+    ordenar_por: parseEnum(query.ordenar_por, 'Coluna de ordenacao', [
+      'TITULO', 'STATUS', 'STATUS_INTERNO_PAGAR', 'TIPO', 'DOCUMENTO',
+      'PARCEIRO', 'OBRA', 'CATEGORIA', 'FORMA_PAGAMENTO', 'ORIGEM',
+      'EMISSAO', 'VENCIMENTO', 'VALOR_TOTAL', 'SALDO'
+    ]),
+    direcao: parseEnum(query.direcao, 'Direcao da ordenacao', ['ASC', 'DESC']),
     paginated: parseBoolean(query.paginated, 'Paginado'),
     page: parseInteger(query.page, 'Pagina'),
     limit: parseOptionalText(query.limit, 'Limite', 20)
@@ -492,7 +538,19 @@ function validateFinanceFluxoCaixaQuery(query = {}) {
     periodo: parseEnum(
       query.periodo,
       'Periodo',
-      ['HOJE', '7_DIAS', '30_DIAS', '90_DIAS', 'MES_ATUAL', 'PROXIMO_MES', 'PERSONALIZADO']
+      [
+        'HOJE',
+        'ULTIMOS_7_DIAS',
+        'ULTIMOS_30_DIAS',
+        'ULTIMOS_90_DIAS',
+        '7_DIAS',
+        '30_DIAS',
+        '90_DIAS',
+        'MES_ANTERIOR',
+        'MES_ATUAL',
+        'PROXIMO_MES',
+        'PERSONALIZADO'
+      ]
     ),
     data_inicial: dataInicial,
     data_final: dataFinal,
@@ -1000,7 +1058,7 @@ function validateFinanceRelatorioConciliacaoQuery(query = {}) {
     data_final: dataFinal,
     conta_bancaria_id: parseInteger(query.conta_bancaria_id, 'Conta bancaria'),
     status: parseEnum(query.status, 'Status', ['TODOS', 'CONCILIADO', 'PENDENTE', 'IGNORADO', 'REMOVIDO']),
-    tipo_conciliacao: parseEnum(query.tipo_conciliacao, 'Tipo de conciliacao', ['TODOS', 'TRANSFERENCIA', 'TITULO', 'FATURA_CARTAO', 'TARIFA', 'ESTORNO_TARIFA', 'ESTORNO_BANCARIO', 'CREDITO_ROTATIVO', 'MOVIMENTO', 'SEM_VINCULO']),
+    tipo_conciliacao: parseEnum(query.tipo_conciliacao, 'Tipo de conciliacao', ['TODOS', 'TRANSFERENCIA', 'TITULO', 'FATURA_CARTAO', 'TARIFA', 'RENDIMENTO', 'ESTORNO_TARIFA', 'ESTORNO_BANCARIO', 'CREDITO_ROTATIVO', 'MOVIMENTO', 'SEM_VINCULO']),
     natureza: parseEnum(query.natureza, 'Natureza', ['TODAS', 'ENTRADA', 'SAIDA']),
     busca: parseOptionalText(query.busca, 'Busca', 120)
   };
@@ -1015,6 +1073,14 @@ function validateFinanceConciliacaoTarifaBody(body = {}) {
 
   return {
     codigo: parseOptionalText(body.codigo, 'Codigo da tarifa', 80, { required: true }),
+    descricao: parseOptionalText(body.descricao, 'Descricao', 255)
+  };
+}
+
+function validateFinanceConciliacaoRendimentoBody(body = {}) {
+  ensureAllowedKeys(body, ['codigo', 'descricao'], 'Conciliacao bancaria por rendimento');
+  return {
+    codigo: parseOptionalText(body.codigo, 'Codigo do rendimento', 80, { required: true }),
     descricao: parseOptionalText(body.descricao, 'Descricao', 255)
   };
 }
@@ -1115,7 +1181,7 @@ function validateFinanceConciliacaoCriarTituloBody(body = {}) {
     categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira', { required: true }),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
     numero_documento: parseOptionalText(body.numero_documento, 'Numero do documento', 120),
-    competencia_data: parseDateOnly(body.competencia_data, 'Data de competencia', { required: true }),
+    competencia_data: parseDateOnly(body.competencia_data, 'Data de competencia'),
     considera_dre: parseBoolean(body.considera_dre, 'Considera DRE'),
     conta_bancaria_id: parseInteger(body.conta_bancaria_id, 'Conta bancaria', { required: true }),
     forma_recebimento: formaRecebimento,
@@ -1255,7 +1321,7 @@ function validateFinanceTituloCreateFromSolicitacaoBody(body = {}) {
     cartao_id: parseInteger(body.cartao_id, 'Cartao'),
     quantidade_parcelas: parseInteger(body.quantidade_parcelas, 'Quantidade de parcelas'),
     data_compra: parseDateOnly(body.data_compra, 'Data da compra'),
-    competencia_data: parseDateOnly(body.competencia_data, 'Data de competencia', { required: true }),
+    competencia_data: parseDateOnly(body.competencia_data, 'Data de competencia'),
     considera_dre: parseBoolean(body.considera_dre, 'Considera DRE'),
     intercompany: parseBoolean(body.intercompany, 'Entre Empresas'),
     empresa_contraparte_id: parseInteger(body.empresa_contraparte_id, 'Empresa contraparte'),
@@ -1349,7 +1415,7 @@ function validateFinanceTituloCreateBody(body = {}) {
     cartao_id: parseInteger(body.cartao_id, 'Cartao'),
     quantidade_parcelas: parseInteger(body.quantidade_parcelas, 'Quantidade de parcelas'),
     data_compra: parseDateOnly(body.data_compra, 'Data da compra'),
-    competencia_data: parseDateOnly(body.competencia_data, 'Data de competencia', { required: true }),
+    competencia_data: parseDateOnly(body.competencia_data, 'Data de competencia'),
     considera_dre: parseBoolean(body.considera_dre, 'Considera DRE'),
     intercompany: parseBoolean(body.intercompany, 'Entre Empresas'),
     empresa_contraparte_id: parseInteger(body.empresa_contraparte_id, 'Empresa contraparte'),
@@ -1595,7 +1661,7 @@ function validateFinanceTituloBaixaBody(body = {}) {
     cheque_banco: parseOptionalText(body.cheque_banco, 'Banco do cheque', 120),
     cheque_agencia: parseOptionalText(body.cheque_agencia, 'Agencia do cheque', 40),
     cheque_conta: parseOptionalText(body.cheque_conta, 'Conta do cheque', 60),
-    titular_documento: parseOptionalText(body.titular_documento, 'Documento do titular do cheque', 40),
+    titular_documento: parseOptionalCpfCnpj(body.titular_documento, 'CPF/CNPJ do titular do cheque'),
     data_emissao: parseDateOnly(body.data_emissao, 'Data de emissao do cheque'),
     data_vencimento: parseDateOnly(body.data_vencimento, 'Data de vencimento do cheque'),
     intercompany: parseBoolean(body.intercompany, 'Entre Empresas'),
@@ -1702,7 +1768,7 @@ function validateFinanceTituloBaixaParceladaBody(body = {}) {
       cheque_banco: parseOptionalText(item?.cheque_banco, `Banco do cheque da parcela ${index + 1}`, 120),
       cheque_agencia: parseOptionalText(item?.cheque_agencia, `Agencia do cheque da parcela ${index + 1}`, 40),
       cheque_conta: parseOptionalText(item?.cheque_conta, `Conta do cheque da parcela ${index + 1}`, 60),
-      titular_documento: parseOptionalText(item?.titular_documento, `Documento do titular do cheque da parcela ${index + 1}`, 40),
+      titular_documento: parseOptionalCpfCnpj(item?.titular_documento, `CPF/CNPJ do titular do cheque da parcela ${index + 1}`),
       data_emissao: parseDateOnly(item?.data_emissao, `Data de emissao do cheque da parcela ${index + 1}`),
       data_vencimento: parseDateOnly(item?.data_vencimento, `Data de vencimento do cheque da parcela ${index + 1}`),
       usar_cheque_terceiro: usarChequeTerceiro,
@@ -1912,15 +1978,16 @@ function validateFinanceCaixaQuery(query = {}) {
 function validateFinanceCaixaAberturaBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['conta_bancaria_id', 'data_abertura', 'saldo_abertura', 'observacoes'],
+    ['conta_bancaria_id', 'data_abertura', 'saldo_abertura', 'observacoes', 'ajuste_descricao'],
     'Abertura de caixa'
   );
 
   return {
     conta_bancaria_id: parseInteger(body.conta_bancaria_id, 'Conta financeira', { required: true }),
     data_abertura: parseDateOnly(body.data_abertura, 'Data de abertura'),
-    saldo_abertura: parseDecimal(body.saldo_abertura, 'Saldo de abertura'),
-    observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000)
+    saldo_abertura: parseDecimal(body.saldo_abertura, 'Saldo contado na abertura', { required: true }),
+    observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
+    ajuste_descricao: parseOptionalText(body.ajuste_descricao, 'Justificativa da divergencia', 1000)
   };
 }
 
@@ -2043,13 +2110,14 @@ function validateFinanceTarifasBancariasConfigBody(body = {}) {
     itens: body.itens.map((item, index) => {
       ensureAllowedKeys(
         item || {},
-        ['codigo', 'nome', 'descricao', 'categoria_financeira_id', 'ativo'],
+        ['codigo', 'nome', 'tipo_atalho', 'descricao', 'categoria_financeira_id', 'ativo'],
         `Tarifa bancaria ${index + 1}`
       );
 
       return {
         codigo: parseOptionalText(item?.codigo, `Codigo da tarifa ${index + 1}`, 80, { required: true }),
         nome: parseOptionalText(item?.nome, `Nome da tarifa ${index + 1}`, 80, { required: true }),
+        tipo_atalho: parseEnum(item?.tipo_atalho, `Tipo do atalho ${index + 1}`, ['TARIFA', 'RENDIMENTO']) || 'TARIFA',
         descricao: parseOptionalText(item?.descricao, `Descricao da tarifa ${index + 1}`, 255),
         categoria_financeira_id: parseInteger(item?.categoria_financeira_id, `Categoria financeira da tarifa ${index + 1}`, { required: true }),
         ativo: parseBoolean(item?.ativo, `Ativo da tarifa ${index + 1}`)
@@ -2069,6 +2137,7 @@ module.exports = {
   validateFinanceConciliacaoEstornoBancarioBody,
   validateFinanceConciliacaoEstornoTarifaBody,
   validateFinanceConciliacaoTarifaBody,
+  validateFinanceConciliacaoRendimentoBody,
   validateFinanceConciliacaoTransferenciaBody,
   validateFinanceConciliacaoEstornoTransferenciaBody,
   validateFinanceConciliacaoImportBody,

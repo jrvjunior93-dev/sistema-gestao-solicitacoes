@@ -5,12 +5,29 @@ import {
   HiOutlineCheckCircle,
   HiOutlineCloudArrowUp,
   HiOutlineDocumentText,
-  HiOutlineMagnifyingGlass,
   HiOutlinePencilSquare,
   HiOutlinePlayCircle,
   HiOutlinePlusCircle,
   HiOutlineSparkles
 } from 'react-icons/hi2';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  CelulaDupla,
+  FormSecao,
+  CampoForm,
+  BarraFiltros,
+  alternarValorFiltro,
+  Avisos,
+  useAvisos,
+  useConfirmacao,
+  useFiltrosVisiveis
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import {
   createTreinamentoConteudo,
@@ -28,11 +45,31 @@ import {
   canPublishTreinamento
 } from '../utils/acessoProduto';
 
+// =====================================================================
+// CENTRAL DE TREINAMENTO
+// ---------------------------------------------------------------------
+// R18 — o conteúdo tem VÍDEO e ANEXO, e a lista virou TabelaPadrao (que
+// tem cabeçalho grudado e contêiner de rolagem próprio). Nenhum ancestral
+// dela usa `overflow-hidden`: recorte de forma nesta tela é `overflow-clip`
+// (que corta igual e NÃO cria scrollport), e o truncamento de texto fica
+// no idioma de célula do próprio componente. `overflow: hidden` num
+// ancestral mataria o sticky em silêncio — sem erro, sem falha de build.
+//
+// R9 — o painel de edição fica INLINE. A tela existe para MANTER a base
+// de treinamento de quem tem `canManageTreinamento`; para os demais, o
+// painel nem renderiza. Nada aqui interrompe outro trabalho, então não
+// vai para OverlayModal (foi o erro de 04/09, revertido em cinco telas).
+// =====================================================================
+
 const TIPOS = [
-  { value: '', label: 'Todos' },
-  { value: 'FAQ', label: 'Perguntas e respostas' },
-  { value: 'VIDEO', label: 'Videos' },
-  { value: 'GUIA', label: 'Guias' }
+  { valor: 'FAQ', rotulo: 'Perguntas e respostas' },
+  { valor: 'VIDEO', rotulo: 'Videos' },
+  { valor: 'GUIA', rotulo: 'Guias' }
+];
+
+const STATUS_GESTAO = [
+  { valor: 'PUBLICADO', rotulo: 'Publicados' },
+  { valor: 'RASCUNHO', rotulo: 'Rascunhos' }
 ];
 
 const MODULOS_BASE = [
@@ -115,11 +152,46 @@ function toPayload(form) {
   };
 }
 
-function tipoIcon(tipo) {
-  if (tipo === 'VIDEO') return HiOutlinePlayCircle;
-  if (tipo === 'FAQ') return HiOutlineSparkles;
-  return HiOutlineDocumentText;
+function TipoIcone({ tipo }) {
+  if (tipo === 'VIDEO') return <HiOutlinePlayCircle aria-hidden="true" />;
+  if (tipo === 'FAQ') return <HiOutlineSparkles aria-hidden="true" />;
+  return <HiOutlineDocumentText aria-hidden="true" />;
 }
+
+// A família semântica do TIPO é explícita: o StatusBadge classificaria
+// FAQ, VIDEO e GUIA todos em 'info' (nenhum casa com os padrões de
+// sucesso/erro/pendência), e a tela precisa distinguir os três.
+const FAMILIA_TIPO = {
+  FAQ: 'info',
+  VIDEO: 'warning',
+  GUIA: 'success'
+};
+
+function primeiroValor(conjunto) {
+  return Array.from(conjunto || [])[0] || '';
+}
+
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'busca', rotulo: 'Busca', obrigatorio: true },
+  { id: 'tipo', rotulo: 'Tipo' },
+  { id: 'modulo', rotulo: 'Módulo' },
+  { id: 'status', rotulo: 'Status' }
+];
 
 export default function Treinamento() {
   const { user } = useAuth();
@@ -132,16 +204,67 @@ export default function Treinamento() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [erro, setErro] = useState('');
-  const [sucesso, setSucesso] = useState('');
   const [pendingFile, setPendingFile] = useState(null);
+  /*
+    R12 — os TRÊS <select> de recorte (tipo, módulo, status) e a busca com
+    botão "Buscar" viraram a BarraFiltros: busca larga em cima e marcação
+    abaixo, com etiqueta removível. Cada dimensão é `unico` porque o
+    serviço aceita UM valor por parâmetro (`tipo=`, `modulo=`, `status=`);
+    com marcação múltipla a tela mandaria uma lista que a API não lê, e o
+    usuário veria duas etiquetas sem a lista estreitar — capacidade
+    aparente sem efeito (R15).
+  */
   const [filtros, setFiltros] = useState({
-    tipo: '',
-    modulo: '',
-    busca: '',
-    status: podeGerenciar ? '' : 'PUBLICADO'
+    tipo: new Set(),
+    modulo: new Set(),
+    // Quem não gerencia só enxerga publicado — a regra de visibilidade é
+    // a mesma de antes, byte a byte.
+    status: podeGerenciar ? new Set() : new Set(['PUBLICADO'])
+  });
+  const [busca, setBusca] = useState('');
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      if (filtro.id === 'busca') return busca.trim() !== '';
+      if (filtro.id === 'status' && !podeGerenciar) return false;
+      return (filtros[filtro.id]?.size || 0) > 0;
+    }).map((filtro) => filtro.id),
+    [busca, filtros, podeGerenciar]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:treinamento:conteudos', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => setFiltros((atual) => ({
+      ...atual,
+      // Quem não gerencia continua vendo só o publicado: esconder o campo
+      // não pode ampliar o que a pessoa tem direito de ver.
+      [id]: id === 'status' && !podeGerenciar ? new Set(['PUBLICADO']) : new Set()
+    }))
   });
   const [form, setForm] = useState(EMPTY_FORM);
+  // R3/R19: o `window.confirm` do arquivamento e as duas faixas de
+  // erro/sucesso pintadas com paleta crua viraram componentes do sistema.
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
+
+  const filtroTipo = primeiroValor(filtros.tipo);
+  const filtroModulo = primeiroValor(filtros.modulo);
+  const filtroStatus = primeiroValor(filtros.status);
 
   const modulos = useMemo(() => {
     const fromResumo = Object.keys(resumo?.modulos || {});
@@ -153,15 +276,22 @@ export default function Treinamento() {
     [conteudos, form.id]
   );
 
-  async function carregar() {
-    setErro('');
+  async function carregar(recorte) {
+    const alvo = recorte || {
+      tipo: filtroTipo,
+      modulo: filtroModulo,
+      status: filtroStatus,
+      busca
+    };
     setLoading(true);
     try {
       const [resumoData, listaData] = await Promise.all([
         getTreinamentoResumo(),
         getTreinamentoConteudos({
-          ...filtros,
-          status: filtros.status || undefined,
+          tipo: alvo.tipo || undefined,
+          modulo: alvo.modulo || undefined,
+          busca: alvo.busca || undefined,
+          status: alvo.status || undefined,
           limit: 300
         })
       ]);
@@ -169,20 +299,39 @@ export default function Treinamento() {
       setConteudos(Array.isArray(listaData?.items) ? listaData.items : []);
     } catch (error) {
       console.error(error);
-      setErro(error.message || 'Erro ao carregar treinamentos.');
+      avisar.erro(error.message || 'Erro ao carregar treinamentos.');
     } finally {
       setLoading(false);
     }
   }
 
+  /*
+    R23 — o recorte APLICA AO MARCAR, e a busca textual tem espera de
+    digitação (350ms) e nunca botão. Antes, marcar tipo/módulo/status
+    recarregava na hora, mas a BUSCA só valia depois de um clique em
+    "Buscar": a caixa mostrava um termo que a lista ainda não obedecia.
+    Não cai na exceção de consulta cara (são 4 dimensões declaradas, mas
+    UMA requisição de lista — o critério da R23 é 4+ requisições ou mais
+    de 2 segundos).
+  */
   useEffect(() => {
-    carregar();
+    const timer = setTimeout(() => {
+      carregar({ tipo: filtroTipo, modulo: filtroModulo, status: filtroStatus, busca });
+    }, busca ? 350 : 0);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros.tipo, filtros.modulo, filtros.status]);
+  }, [filtroTipo, filtroModulo, filtroStatus, busca]);
 
-  async function handleBuscar(event) {
-    event.preventDefault();
-    await carregar();
+  function alternarFiltro(dimensao, valor, opcoes) {
+    setFiltros((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes));
+  }
+
+  function limparFiltros() {
+    setFiltros({
+      tipo: new Set(),
+      modulo: new Set(),
+      status: podeGerenciar ? new Set() : new Set(['PUBLICADO'])
+    });
   }
 
   function handleChange(field, value) {
@@ -192,15 +341,11 @@ export default function Treinamento() {
   function novoConteudo(tipo = 'FAQ') {
     setForm({ ...EMPTY_FORM, tipo });
     setPendingFile(null);
-    setSucesso('');
-    setErro('');
   }
 
   function editarConteudo(item) {
     setForm(toForm(item));
     setPendingFile(null);
-    setSucesso('');
-    setErro('');
     marcarTreinamentoLeitura(item.id, false).catch(() => {});
   }
 
@@ -211,26 +356,30 @@ export default function Treinamento() {
 
   async function salvarConteudo(event) {
     event.preventDefault();
+    // R26: o arquivo pendente é fixado antes dos awaits — o seletor segue
+    // clicável enquanto a gravação corre, e o `pendingFile` lido depois do
+    // await poderia ser outro (a mensagem final citava justamente ele).
+    const arquivoPendente = pendingFile;
     setSaving(true);
-    setErro('');
-    setSucesso('');
     try {
       const payload = toPayload(form);
       const saved = form.id
         ? await updateTreinamentoConteudo(form.id, payload)
         : await createTreinamentoConteudo(payload);
       let next = saved;
-      if (pendingFile) {
+      if (arquivoPendente) {
         setUploading(true);
-        next = await enviarArquivo(saved.id, pendingFile, saved.tipo);
+        next = await enviarArquivo(saved.id, arquivoPendente, saved.tipo);
         setPendingFile(null);
       }
       setForm(toForm(next));
-      setSucesso(pendingFile ? 'Conteudo salvo e arquivo enviado para o S3.' : 'Conteudo salvo com sucesso.');
+      avisar.sucesso(arquivoPendente
+        ? 'Conteudo salvo e arquivo enviado para o S3.'
+        : 'Conteudo salvo com sucesso.');
       await carregar();
     } catch (error) {
       console.error(error);
-      setErro(error.message || 'Erro ao salvar conteudo.');
+      avisar.erro(error.message || 'Erro ao salvar conteudo.');
     } finally {
       setSaving(false);
       setUploading(false);
@@ -238,34 +387,45 @@ export default function Treinamento() {
   }
 
   async function publicarConteudo(id) {
+    const alvo = id;
     setSaving(true);
-    setErro('');
-    setSucesso('');
     try {
-      const saved = await publishTreinamentoConteudo(id);
+      const saved = await publishTreinamentoConteudo(alvo);
       setForm(toForm(saved));
-      setSucesso('Conteudo publicado.');
+      avisar.sucesso('Conteudo publicado.');
       await carregar();
     } catch (error) {
       console.error(error);
-      setErro(error.message || 'Erro ao publicar conteudo.');
+      avisar.erro(error.message || 'Erro ao publicar conteudo.');
     } finally {
       setSaving(false);
     }
   }
 
-  async function arquivarConteudo(id) {
-    if (!window.confirm('Arquivar este conteudo de treinamento?')) return;
+  async function arquivarConteudo(item) {
+    // R26: o registro é fixado em `const` ANTES do await. O modal do
+    // sistema não congela a tela — clicar noutra linha com ele aberto
+    // faria a tela perguntar sobre um conteúdo e arquivar outro.
+    const alvo = item;
+    if (!alvo?.id) return;
+    // R21: desestruturar { ok }; o retorno é objeto e objeto é sempre
+    // truthy, então `const ok = ...` faria "Cancelar" arquivar.
+    const { ok } = await confirmar({
+      titulo: 'Arquivar conteudo',
+      mensagem: `Arquivar "${alvo.titulo || `#${alvo.id}`}"? Ele sai da Central de Treinamento para todos os usuarios.`,
+      rotuloConfirmar: 'Arquivar',
+      destrutiva: true
+    });
+    if (!ok) return;
     setSaving(true);
-    setErro('');
     try {
-      await deleteTreinamentoConteudo(id);
+      await deleteTreinamentoConteudo(alvo.id);
       setForm(EMPTY_FORM);
-      setSucesso('Conteudo arquivado.');
+      avisar.sucesso('Conteudo arquivado.');
       await carregar();
     } catch (error) {
       console.error(error);
-      setErro(error.message || 'Erro ao arquivar conteudo.');
+      avisar.erro(error.message || 'Erro ao arquivar conteudo.');
     } finally {
       setSaving(false);
     }
@@ -276,23 +436,22 @@ export default function Treinamento() {
     event.target.value = '';
     if (!file) return;
     setPendingFile(file);
-    if (!form.id) {
-      setSucesso('Arquivo selecionado. Ao salvar o conteudo, ele sera enviado para o S3.');
-      setErro('');
+    // R26: o conteúdo de destino é fixado antes do await.
+    const conteudoId = form.id;
+    if (!conteudoId) {
+      avisar.informacao('Arquivo selecionado. Ao salvar o conteudo, ele sera enviado para o S3.');
       return;
     }
     setUploading(true);
-    setErro('');
-    setSucesso('');
     try {
-      const saved = await enviarArquivo(form.id, file);
+      const saved = await enviarArquivo(conteudoId, file);
       setForm(toForm(saved));
       setPendingFile(null);
-      setSucesso('Arquivo enviado para o S3.');
+      avisar.sucesso('Arquivo enviado para o S3.');
       await carregar();
     } catch (error) {
       console.error(error);
-      setErro(error.message || 'Erro ao enviar arquivo.');
+      avisar.erro(error.message || 'Erro ao enviar arquivo.');
     } finally {
       setUploading(false);
     }
@@ -303,350 +462,333 @@ export default function Treinamento() {
     : '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg';
 
   async function abrirArquivo(item, tipoArquivo) {
+    const alvo = item;
     try {
-      await marcarTreinamentoLeitura(item.id, false);
-      const data = await getTreinamentoArquivoUrl(item.id, tipoArquivo);
+      await marcarTreinamentoLeitura(alvo.id, false);
+      const data = await getTreinamentoArquivoUrl(alvo.id, tipoArquivo);
       if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error(error);
-      setErro(error.message || 'Arquivo nao encontrado.');
+      avisar.erro(error.message || 'Arquivo nao encontrado.');
     }
   }
 
   async function concluirConteudo(item) {
+    const alvo = item;
     try {
-      await marcarTreinamentoLeitura(item.id, true);
-      setSucesso('Registro de leitura concluido.');
+      await marcarTreinamentoLeitura(alvo.id, true);
+      avisar.sucesso('Registro de leitura concluído.');
     } catch (error) {
       console.error(error);
-      setErro(error.message || 'Erro ao registrar conclusao.');
+      avisar.erro(error.message || 'Erro ao registrar conclusao.');
     }
   }
 
+  /*
+    R1/R17 — a lista era um <article> por conteúdo, com os dados soltos em
+    <span> dentro de um <button>: sem colunas declaradas, sem
+    redimensionamento, sem largura salva por usuário. Vira TabelaPadrao.
+
+    `semIdentidade` é DECLARADO (R17): o título de um conteúdo de
+    treinamento é uma frase ("Como lançar um título a pagar"), e a coluna
+    `identidade` exibe SEMPRE em maiúsculas. Frase em caixa alta piora a
+    leitura — é o mesmo motivo pelo qual a regra cita nome de arquivo como
+    exemplo legítimo da marca.
+  */
+  const colunas = [
+    {
+      id: 'tipo',
+      titulo: 'Tipo',
+      tipo: 'badge',
+      render: (item) => (
+        <span className="inline-flex items-center gap-1">
+          <TipoIcone tipo={item.tipo} />
+          <StatusBadge status={item.tipo} kind={FAMILIA_TIPO[item.tipo] || 'info'} />
+        </span>
+      )
+    },
+    {
+      id: 'conteudo',
+      titulo: 'Conteudo',
+      tipo: 'texto',
+      noCard: 'titulo',
+      render: (item) => (
+        <CelulaDupla
+          principal={item.titulo}
+          sub={item.pergunta || item.descricao || item.resposta || item.conteudo || 'Sem descricao'}
+        />
+      )
+    },
+    {
+      id: 'modulo',
+      titulo: 'Módulo',
+      tipo: 'codigo',
+      render: (item) => item.modulo || 'GERAL'
+    },
+    {
+      id: 'publico_alvo',
+      titulo: 'Publico alvo',
+      tipo: 'texto',
+      render: (item) => item.publico_alvo || '-'
+    },
+    {
+      id: 'tags',
+      titulo: 'Tags',
+      tipo: 'texto',
+      render: (item) => {
+        const texto = normalizeTags(item.tags);
+        return <span title={texto || undefined}>{texto || '-'}</span>;
+      }
+    },
+    {
+      id: 'anexos',
+      titulo: 'Anexos',
+      tipo: 'texto',
+      render: (item) => {
+        const partes = [];
+        if (item.video_s3_key || item.video_url) partes.push('Video');
+        if (item.documento_s3_key || item.documento_url) partes.push('Arquivo');
+        return partes.length ? partes.join(' · ') : '-';
+      }
+    },
+    {
+      id: 'publicacao',
+      titulo: 'Publicação',
+      tipo: 'texto',
+      render: (item) => (
+        <CelulaDupla
+          principal={formatDate(item.publicado_em)}
+          sub={item?.publicadoPor?.nome || '-'}
+        />
+      )
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      render: (item) => <StatusBadge status={item.status} />
+    }
+  ];
+
+  const acoesCabecalho = podeGerenciar
+    ? {
+      acaoPrincipal: {
+        rotulo: 'Novo guia',
+        icone: <HiOutlineBookOpen aria-hidden="true" />,
+        onClick: () => novoConteudo('GUIA')
+      },
+      secundarias: [
+        { rotulo: 'Novo FAQ', icone: <HiOutlinePlusCircle aria-hidden="true" />, onClick: () => novoConteudo('FAQ') },
+        { rotulo: 'Novo video', icone: <HiOutlinePlayCircle aria-hidden="true" />, onClick: () => novoConteudo('VIDEO') }
+      ]
+    }
+    : {};
+
   return (
-    <main className="treinamento-page space-y-6">
-      <section className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--c-muted)]">
-              Institucional
-            </p>
-            <h1 className="mt-2 text-2xl font-bold text-[var(--c-text)]">
-              Central de Treinamento
-            </h1>
-            <p className="mt-2 text-sm text-[var(--c-muted)]">
-              Base operacional para perguntas frequentes, videos e guias de uso do FLUXY.
-              Os arquivos ficam privados no S3 e sao abertos por URL assinada.
-            </p>
-          </div>
-          {podeGerenciar && (
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-outline" onClick={() => novoConteudo('FAQ')}>
-                <HiOutlinePlusCircle className="h-4 w-4" />
-                FAQ
-              </button>
-              <button type="button" className="btn btn-outline" onClick={() => novoConteudo('VIDEO')}>
-                <HiOutlinePlayCircle className="h-4 w-4" />
-                Video
-              </button>
-              <button type="button" className="btn btn-primary" onClick={() => novoConteudo('GUIA')}>
-                <HiOutlineBookOpen className="h-4 w-4" />
-                Guia
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
+    <Pagina>
+      {/*
+        C2 × B3 (critério de 05/09): a FAIXA fica com o TOTAL e os blocos
+        ficam com os RECORTES. O cartão "Conteudos" do resumo mostrava
+        exatamente o mesmo `resumo.total` que agora vive na faixa — dois
+        números iguais em lugares diferentes é duplicação, e o critério
+        diz o que fazer: o cartão sem recorte próprio sai, o número fica
+        na faixa, que é a que acompanha a pessoa ao rolar. Os outros
+        quatro cartões continuam, porque cada um responde a uma pergunta
+        que só ele responde (quantos publicados, quantos vídeos, quantas
+        perguntas, quantos guias).
+      */}
+      <PageHeader
+        titulo="Central de Treinamento"
+        contagem={resumo ? `${resumo.total || 0} conteudo(s)` : null}
+        descricao="Base operacional para perguntas frequentes, videos e guias de uso do FLUXY. Os arquivos ficam privados no S3 e são abertos por URL assinada."
+        {...acoesCabecalho}
+      />
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {[
-          ['Conteudos', resumo?.total || 0],
-          ['Publicados', resumo?.publicados || 0],
-          ['Videos', resumo?.videos || 0],
-          ['Perguntas', resumo?.faqs || 0],
-          ['Guias', resumo?.guias || 0]
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--c-muted)]">{label}</p>
-            <p className="mt-3 text-2xl font-bold text-[var(--c-text)]">{value}</p>
-          </div>
-        ))}
-      </section>
+      {/* R16: UM dono para a faixa de avisos. */}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      {(erro || sucesso) && (
-        <div
-          className={`rounded-xl border px-4 py-3 text-sm ${
-            erro
-              ? 'border-red-200 bg-red-50 text-red-700'
-              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-          }`}
-        >
-          {erro || sucesso}
-        </div>
-      )}
+      <BlocoConteudo titulo="Resumo da base" descricao="Recortes do acervo publicado e em preparo.">
+        {/* Ladrilho de dado único é StatGrid/StatTile — eram cinco <div>
+            desenhados à mão, com `text-2xl` e `tracking-[0.22em]` (medidas
+            fora da escala, R10). */}
+        <StatGrid colunas={4}>
+          <StatTile label="Publicados" valor={resumo?.publicados || 0} tom="success" />
+          <StatTile label="Videos" valor={resumo?.videos || 0} icone={<HiOutlinePlayCircle aria-hidden="true" />} />
+          <StatTile label="Perguntas" valor={resumo?.faqs || 0} icone={<HiOutlineSparkles aria-hidden="true" />} />
+          <StatTile label="Guias" valor={resumo?.guias || 0} icone={<HiOutlineBookOpen aria-hidden="true" />} />
+        </StatGrid>
+      </BlocoConteudo>
 
-      <section className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm">
-        <form className="grid gap-3 lg:grid-cols-[160px_180px_1fr_auto]" onSubmit={handleBuscar}>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-[var(--c-muted)]">Tipo</span>
-            <select
-              className="input"
-              value={filtros.tipo}
-              onChange={(event) => setFiltros((current) => ({ ...current, tipo: event.target.value }))}
-            >
-              {TIPOS.map((tipo) => (
-                <option key={tipo.value || 'todos'} value={tipo.value}>{tipo.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-[var(--c-muted)]">Modulo</span>
-            <select
-              className="input"
-              value={filtros.modulo}
-              onChange={(event) => setFiltros((current) => ({ ...current, modulo: event.target.value }))}
-            >
-              <option value="">Todos</option>
-              {modulos.map((modulo) => (
-                <option key={modulo} value={modulo}>{modulo}</option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-[var(--c-muted)]">Busca</span>
-            <input
-              className="input"
-              value={filtros.busca}
-              onChange={(event) => setFiltros((current) => ({ ...current, busca: event.target.value }))}
-              placeholder="Pergunta, titulo, modulo ou tag"
-            />
-          </label>
-          <div className="flex items-end gap-2">
-            {podeGerenciar && (
-              <select
-                className="input min-w-[150px]"
-                value={filtros.status}
-                onChange={(event) => setFiltros((current) => ({ ...current, status: event.target.value }))}
-              >
-                <option value="">Ativos</option>
-                <option value="PUBLICADO">Publicados</option>
-                <option value="RASCUNHO">Rascunhos</option>
-              </select>
-            )}
-            <button type="submit" className="btn btn-primary">
-              <HiOutlineMagnifyingGlass className="h-4 w-4" />
-              Buscar
-            </button>
-          </div>
-        </form>
-      </section>
+      <BlocoConteudo
+        titulo="Conteudos disponíveis"
+        // O rótulo diz a VERDADE sobre o número: a consulta traz no máximo
+        // 300 itens do recorte, então este é o que está LISTADO, não o
+        // total da base (que vive na faixa, e vem do resumo do servidor).
+        contagem={loading ? 'Carregando...' : `${conteudos.length} item(ns) listado(s)`}
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        <BarraFiltros
+          busca={visibilidadeFiltros.ehVisivel('busca') ? {
+            valor: busca,
+            aoMudar: setBusca,
+            placeholder: 'Buscar por pergunta, título, módulo ou tag'
+          } : null}
+          filtros={[
+            { id: 'tipo', rotulo: 'Tipo', unico: true, opcoes: TIPOS },
+            {
+              id: 'modulo',
+              rotulo: 'Módulo',
+              unico: true,
+              opcoes: modulos.map((modulo) => ({ valor: modulo, rotulo: modulo }))
+            },
+            ...(podeGerenciar
+              ? [{ id: 'status', rotulo: 'Status', unico: true, opcoes: STATUS_GESTAO }]
+              : [])
+          ].filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={filtros}
+          aoAlternar={alternarFiltro}
+          aoLimpar={limparFiltros}
+          visibilidade={visibilidadeFiltros}
+        />
 
-      <div className={`grid gap-5 ${podeGerenciar ? 'xl:grid-cols-[minmax(0,1fr)_520px]' : ''}`}>
-        <section className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-[var(--c-text)]">Conteudos disponiveis</h2>
-              <p className="text-xs text-[var(--c-muted)]">
-                {loading ? 'Carregando...' : `${conteudos.length} item(ns) listado(s)`}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-3">
-            {!loading && conteudos.length === 0 && (
-              <div className="rounded-xl border border-dashed border-[var(--c-border)] p-6 text-sm text-[var(--c-muted)]">
-                Nenhum conteudo encontrado para os filtros atuais.
-              </div>
-            )}
-
-            {conteudos.map((item) => {
-              const Icon = tipoIcon(item.tipo);
-              const hasVideo = Boolean(item.video_s3_key || item.video_url);
-              const hasDocument = Boolean(item.documento_s3_key || item.documento_url);
-              return (
-                <article
-                  key={item.id}
-                  className={`rounded-xl border p-4 transition ${
-                    Number(form.id) === Number(item.id)
-                      ? 'border-blue-300 bg-[var(--c-surface-muted)] ring-2 ring-blue-200/60'
-                      : 'border-[var(--c-border)] bg-[var(--c-surface-muted)]'
-                  }`}
-                >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <button
-                      type="button"
-                      className="flex flex-1 gap-3 text-left"
-                      onClick={() => editarConteudo(item)}
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] text-blue-600">
-                        <Icon className="h-5 w-5" />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">
-                          {item.tipo} - {item.modulo || 'GERAL'} - {item.status}
-                        </span>
-                        <span className="mt-1 block text-sm font-semibold text-[var(--c-text)]">
-                          {item.titulo}
-                        </span>
-                        <span className="mt-1 line-clamp-2 block text-xs text-[var(--c-muted)]">
-                          {item.pergunta || item.descricao || item.resposta || item.conteudo || 'Sem descricao'}
-                        </span>
-                      </span>
-                    </button>
-                    <div className="flex flex-wrap gap-2">
-                      {hasVideo && (
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item, 'VIDEO')}>
-                          <HiOutlinePlayCircle className="h-4 w-4" />
-                          Video
-                        </button>
-                      )}
-                      {hasDocument && (
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item, 'DOCUMENTO')}>
-                          <HiOutlineDocumentText className="h-4 w-4" />
-                          Arquivo
-                        </button>
-                      )}
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => concluirConteudo(item)}>
-                        <HiOutlineCheckCircle className="h-4 w-4" />
-                        Concluir
-                      </button>
-                    </div>
-                  </div>
-                  {Array.isArray(item.tags) && item.tags.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {item.tags.map((tag) => (
-                        <span key={tag} className="rounded-full bg-[var(--c-surface)] px-2 py-1 text-[11px] font-semibold text-[var(--c-muted)]">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 text-[11px] text-[var(--c-muted)]">
-                    Publicado em {formatDate(item.publicado_em)} por {item?.publicadoPor?.nome || '-'}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-
-        {podeGerenciar && (
-          <aside className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-[var(--c-text)]">
-                  {form.id ? 'Editar conteudo' : 'Novo conteudo'}
-                </h2>
-                <p className="text-xs text-[var(--c-muted)]">
-                  Publique somente materiais revisados para treinamento institucional.
-                </p>
-              </div>
-              {form.id && (
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => novoConteudo(form.tipo)}>
-                  Limpar
+        <TabelaPadrao
+          colunas={colunas}
+          itens={conteudos}
+          carregando={loading}
+          getId={(item) => item.id}
+          storageKey="tabela:treinamento:conteudos"
+          rotuloRolagem="Conteudos de treinamento"
+          semIdentidade
+          colunasConfiguraveis
+          larguraAcoes={300}
+          // A1: a linha responde a clique E ao teclado (o TabelaPadrao dá
+          // tabIndex + Enter/Espaço quando recebe aoClicarLinha); os
+          // botões da linha também são focáveis.
+          aoClicarLinha={podeGerenciar ? editarConteudo : undefined}
+          linhaSelecionada={(item) => Number(form.id) === Number(item.id)}
+          vazio={{
+            title: 'Nenhum conteudo encontrado',
+            message: 'Nenhum conteudo para os filtros atuais. Limpe o recorte ou publique um material novo.'
+          }}
+          acoesLinha={(item) => {
+            const temVideo = Boolean(item.video_s3_key || item.video_url);
+            const temDocumento = Boolean(item.documento_s3_key || item.documento_url);
+            return (
+              <>
+                {temVideo && (
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item, 'VIDEO')}>
+                    <HiOutlinePlayCircle aria-hidden="true" />
+                    Video
+                  </button>
+                )}
+                {temDocumento && (
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item, 'DOCUMENTO')}>
+                    <HiOutlineDocumentText aria-hidden="true" />
+                    Arquivo
+                  </button>
+                )}
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => concluirConteudo(item)}>
+                  <HiOutlineCheckCircle aria-hidden="true" />
+                  Concluir
                 </button>
-              )}
-            </div>
+              </>
+            );
+          }}
+        />
+      </BlocoConteudo>
 
-            <form className="space-y-3" onSubmit={salvarConteudo}>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Tipo</span>
-                  <select className="input" value={form.tipo} onChange={(event) => handleChange('tipo', event.target.value)}>
-                    <option value="FAQ">FAQ</option>
-                    <option value="VIDEO">Video</option>
-                    <option value="GUIA">Guia</option>
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Status</span>
-                  <select className="input" value={form.status} onChange={(event) => handleChange('status', event.target.value)}>
-                    <option value="RASCUNHO">Rascunho</option>
-                    <option value="PUBLICADO">Publicado</option>
-                  </select>
-                </label>
-              </div>
+      {podeGerenciar && (
+        /* R9 — INLINE (painel abaixo da lista, padrão de tela mista). Era
+           um <aside> preso numa coluna de 520px escrita à mão
+           (`xl:grid-cols-[minmax(0,1fr)_520px]`, medida na tela — R10) que
+           espremia a listagem em meia tela. A lista tem oito colunas e
+           precisa da largura inteira. */
+        <BlocoConteudo
+          titulo={form.id ? 'Editar conteudo' : 'Novo conteudo'}
+          descricao="Publique somente materiais revisados para treinamento institucional."
+          acoes={form.id ? (
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => novoConteudo(form.tipo)}>
+              Limpar
+            </button>
+          ) : null}
+        >
+          <form onSubmit={salvarConteudo}>
+            <FormSecao legenda="Classificação" colunas={4}>
+              <CampoForm label="Tipo" obrigatorio>
+                {/* R12: select de FORMULÁRIO (entrada de dado do registro).
+                    O recorte da LISTA, esse sim, virou marcação. */}
+                <select className="input w-full" value={form.tipo} onChange={(event) => handleChange('tipo', event.target.value)}>
+                  <option value="FAQ">FAQ</option>
+                  <option value="VIDEO">Video</option>
+                  <option value="GUIA">Guia</option>
+                </select>
+              </CampoForm>
+              <CampoForm label="Status">
+                <select className="input w-full" value={form.status} onChange={(event) => handleChange('status', event.target.value)}>
+                  <option value="RASCUNHO">Rascunho</option>
+                  <option value="PUBLICADO">Publicado</option>
+                </select>
+              </CampoForm>
+              <CampoForm label="Módulo">
+                <input className="input w-full" value={form.modulo} onChange={(event) => handleChange('modulo', event.target.value.toUpperCase())} />
+              </CampoForm>
+              <CampoForm label="Publico alvo">
+                <input className="input w-full" value={form.publico_alvo} onChange={(event) => handleChange('publico_alvo', event.target.value)} />
+              </CampoForm>
+            </FormSecao>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Modulo</span>
-                  <input className="input" value={form.modulo} onChange={(event) => handleChange('modulo', event.target.value.toUpperCase())} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Publico alvo</span>
-                  <input className="input" value={form.publico_alvo} onChange={(event) => handleChange('publico_alvo', event.target.value)} />
-                </label>
-              </div>
-
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[var(--c-muted)]">Titulo</span>
-                <input className="input" value={form.titulo} onChange={(event) => handleChange('titulo', event.target.value)} required />
-              </label>
+            <FormSecao legenda="Conteudo" colunas={2}>
+              <CampoForm label="Título" obrigatorio span={2}>
+                <input className="input w-full" value={form.titulo} onChange={(event) => handleChange('titulo', event.target.value)} required />
+              </CampoForm>
 
               {form.tipo === 'FAQ' && (
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Pergunta</span>
-                  <textarea className="input min-h-[72px]" value={form.pergunta} onChange={(event) => handleChange('pergunta', event.target.value)} />
-                </label>
+                <CampoForm label="Pergunta" tipo="texto-longo" span={2}>
+                  {/* R10: a altura do textarea vem da folha do sistema
+                      (textarea.input), não dos `min-h-[72px]`/`[112px]`/
+                      `[96px]` que estavam escritos aqui. */}
+                  <textarea className="input w-full" value={form.pergunta} onChange={(event) => handleChange('pergunta', event.target.value)} />
+                </CampoForm>
               )}
 
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[var(--c-muted)]">
-                  {form.tipo === 'FAQ' ? 'Resposta' : 'Descricao'}
-                </span>
+              <CampoForm label={form.tipo === 'FAQ' ? 'Resposta' : 'Descricao'} tipo="texto-longo" span={2}>
                 <textarea
-                  className="input min-h-[112px]"
+                  className="input w-full"
                   value={form.tipo === 'FAQ' ? form.resposta : form.descricao}
                   onChange={(event) => handleChange(form.tipo === 'FAQ' ? 'resposta' : 'descricao', event.target.value)}
                 />
-              </label>
+              </CampoForm>
 
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[var(--c-muted)]">Conteudo complementar</span>
-                <textarea className="input min-h-[96px]" value={form.conteudo} onChange={(event) => handleChange('conteudo', event.target.value)} />
-              </label>
+              <CampoForm label="Conteudo complementar" tipo="texto-longo" span={2}>
+                <textarea className="input w-full" value={form.conteudo} onChange={(event) => handleChange('conteudo', event.target.value)} />
+              </CampoForm>
+            </FormSecao>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Tags</span>
-                  <input className="input" value={form.tags} onChange={(event) => handleChange('tags', event.target.value)} placeholder="financeiro, titulos" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Ordem</span>
-                  <input className="input" type="number" value={form.ordem} onChange={(event) => handleChange('ordem', event.target.value)} />
-                </label>
-              </div>
+            <FormSecao legenda="Organização e midia" colunas={4}>
+              <CampoForm label="Tags">
+                <input className="input w-full" value={form.tags} onChange={(event) => handleChange('tags', event.target.value)} placeholder="financeiro, títulos" />
+              </CampoForm>
+              <CampoForm label="Ordem">
+                <input className="input w-full" type="number" value={form.ordem} onChange={(event) => handleChange('ordem', event.target.value)} />
+              </CampoForm>
+              <CampoForm label="Duracao min.">
+                <input className="input w-full" type="number" min="0" value={form.duracao_minutos} onChange={(event) => handleChange('duracao_minutos', event.target.value)} />
+              </CampoForm>
+              <CampoForm label="Thumbnail URL">
+                <input className="input w-full" value={form.thumbnail_url} onChange={(event) => handleChange('thumbnail_url', event.target.value)} />
+              </CampoForm>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Duracao min.</span>
-                  <input className="input" type="number" min="0" value={form.duracao_minutos} onChange={(event) => handleChange('duracao_minutos', event.target.value)} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-semibold text-[var(--c-muted)]">Thumbnail URL</span>
-                  <input className="input" value={form.thumbnail_url} onChange={(event) => handleChange('thumbnail_url', event.target.value)} />
-                </label>
-              </div>
-
-              <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--c-text)]">
-                      {form.tipo === 'VIDEO' ? 'Arquivo de video' : 'Arquivo do material'}
-                    </p>
-                    <p className="text-xs text-[var(--c-muted)]">
-                      {form.tipo === 'VIDEO'
-                        ? 'Selecione um MP4 ou WebM. Se ainda nao salvou, o envio acontece apos salvar.'
-                        : 'Selecione PDF, planilha, apresentacao, imagem ou documento.'}
-                    </p>
-                    {pendingFile && (
-                      <p className="mt-1 text-xs font-semibold text-blue-600">
-                        Selecionado: {pendingFile.name}
-                      </p>
-                    )}
-                  </div>
+              <CampoForm
+                label={form.tipo === 'VIDEO' ? 'Arquivo de video' : 'Arquivo do material'}
+                linha
+                hint={form.tipo === 'VIDEO'
+                  ? 'Selecione um MP4 ou WebM. Se ainda nao salvou, o envio acontece apos salvar.'
+                  : 'Selecione PDF, planilha, apresentacao, imagem ou documento.'}
+              >
+                <div className="app-actionbar">
                   <label className="btn btn-outline cursor-pointer">
-                    <HiOutlineCloudArrowUp className="h-4 w-4" />
+                    <HiOutlineCloudArrowUp aria-hidden="true" />
                     {uploading ? 'Enviando...' : 'Selecionar arquivo'}
                     <input
                       ref={fileInputRef}
@@ -657,38 +799,53 @@ export default function Treinamento() {
                       disabled={uploading || saving}
                     />
                   </label>
+                  {pendingFile && (
+                    <span className="text-sm text-[var(--c-muted)]">
+                      Selecionado: {pendingFile.name}
+                    </span>
+                  )}
                 </div>
-              </div>
+              </CampoForm>
+            </FormSecao>
 
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  <HiOutlinePencilSquare className="h-4 w-4" />
-                  {saving ? 'Salvando...' : pendingFile ? 'Salvar e enviar arquivo' : 'Salvar'}
+            <div className="app-actionbar">
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                <HiOutlinePencilSquare aria-hidden="true" />
+                {saving ? 'Salvando...' : pendingFile ? 'Salvar e enviar arquivo' : 'Salvar'}
+              </button>
+              {form.id && podePublicar && selected?.status !== 'PUBLICADO' && (
+                <button type="button" className="btn btn-outline" onClick={() => publicarConteudo(form.id)} disabled={saving}>
+                  Publicar
                 </button>
-                {form.id && (
-                  <>
-                    {podePublicar && selected?.status !== 'PUBLICADO' && (
-                      <button type="button" className="btn btn-outline" onClick={() => publicarConteudo(form.id)}>
-                        Publicar
-                      </button>
-                    )}
-                    <button type="button" className="btn btn-danger" onClick={() => arquivarConteudo(form.id)}>
-                      <HiOutlineArchiveBox className="h-4 w-4" />
-                      Arquivar
-                    </button>
-                  </>
-                )}
-              </div>
-
+              )}
               {form.id && (
-                <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-3 text-xs text-[var(--c-muted)]">
-                  Arquivos ja salvos ficam privados no S3 e sao abertos por URL assinada.
+                <div className="app-actionbar-apartada">
+                  {/* C5: destrutiva apartada e em vermelho suave — era um
+                      `btn-danger` cheio, o peso reservado à confirmação
+                      final. */}
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-perigo-suave"
+                    onClick={() => arquivarConteudo(selected || { id: form.id, titulo: form.titulo })}
+                    disabled={saving}
+                  >
+                    <HiOutlineArchiveBox aria-hidden="true" />
+                    Arquivar
+                  </button>
                 </div>
               )}
-            </form>
-          </aside>
-        )}
-      </div>
-    </main>
+            </div>
+
+            {form.id && (
+              <p className="text-sm text-[var(--c-muted)]">
+                Arquivos já salvos ficam privados no S3 e são abertos por URL assinada.
+              </p>
+            )}
+          </form>
+        </BlocoConteudo>
+      )}
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

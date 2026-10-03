@@ -98,6 +98,32 @@ export function isValidCpfCnpj(value) {
   return false;
 }
 
+export function getCpfCnpjError(value, {
+  required = false,
+  type = 'cpfCnpj',
+  label = type === 'cpf' ? 'CPF' : type === 'cnpj' ? 'CNPJ' : 'CPF/CNPJ'
+} = {}) {
+  const digits = onlyDigits(value);
+  if (!digits) return required ? `${label} e obrigatorio.` : '';
+
+  const valid = type === 'cpf'
+    ? isValidCpf(digits)
+    : type === 'cnpj'
+      ? isValidCnpj(digits)
+      : isValidCpfCnpj(digits);
+  return valid ? '' : `${label} invalido.`;
+}
+
+export function getPixDocumentError(value, type, label = 'Chave PIX') {
+  const normalizedType = String(type || '').trim().toUpperCase();
+  if (!['CPF', 'CNPJ'].includes(normalizedType)) return '';
+  return getCpfCnpjError(value, {
+    required: true,
+    type: normalizedType.toLowerCase(),
+    label: `${label} ${normalizedType}`
+  });
+}
+
 export function parseCurrencyInput(value) {
   if (value === null || value === undefined || value === '') return 0;
   const raw = String(value).trim().replace(/[R$\s]/gi, '');

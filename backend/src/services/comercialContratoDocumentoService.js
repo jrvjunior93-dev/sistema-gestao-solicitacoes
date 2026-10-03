@@ -2,6 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const { pathToFileURL } = require('url');
 const { Op } = require('sequelize');
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
@@ -1726,13 +1727,29 @@ function runLibreOffice(args, tempDir) {
 
 async function convertDocxToPdf(docxBuffer, baseName) {
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'fluxy-contrato-'));
+  const libreOfficeProfileDir = path.join(tempDir, 'libreoffice-profile');
   const safeBaseName = sanitizeFileNameForStorage(baseName || 'contrato').replace(/\.docx$/i, '') || 'contrato';
   const docxPath = path.join(tempDir, `${safeBaseName}.docx`);
   const pdfPath = path.join(tempDir, `${safeBaseName}.pdf`);
 
   try {
+    // Cada conversao precisa de um perfil proprio. O LibreOffice serializa processos que usam o
+    // mesmo perfil e, em servidor ou QA paralelo, a segunda requisicao pode ficar aguardando uma
+    // instancia invisivel indefinidamente. O perfil vive dentro do tempDir e sai no finally.
+    await fs.promises.mkdir(libreOfficeProfileDir, { recursive: true });
     await fs.promises.writeFile(docxPath, docxBuffer);
-    await runLibreOffice(['--headless', '--convert-to', 'pdf', '--outdir', tempDir, docxPath], tempDir);
+    await runLibreOffice([
+      `-env:UserInstallation=${pathToFileURL(libreOfficeProfileDir).href}`,
+      '--headless',
+      '--nologo',
+      '--nodefault',
+      '--nofirststartwizard',
+      '--convert-to',
+      'pdf',
+      '--outdir',
+      tempDir,
+      docxPath
+    ], tempDir);
     return await fs.promises.readFile(pdfPath);
   } finally {
     await fs.promises.rm(tempDir, { recursive: true, force: true });

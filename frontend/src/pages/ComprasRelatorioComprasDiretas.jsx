@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useFiltrosVisiveis
+} from '../components/padrao';
 import { obterRelatorioComprasDiretas } from '../services/compras';
 import { getMinhasObras } from '../services/obras';
+import '../styles/compras-relatorio-apoio.css';
 
 const DEFAULT_FILTERS = {
   obra_id: '',
@@ -13,21 +25,6 @@ const DEFAULT_FILTERS = {
   item: '',
   limit: '1000'
 };
-
-const DETAIL_COLUMNS = [
-  { key: 'data', width: 120, minWidth: 95 },
-  { key: 'compra', width: 110, minWidth: 95 },
-  { key: 'solicitacao', width: 120, minWidth: 100 },
-  { key: 'solicitante', width: 220, minWidth: 160 },
-  { key: 'obra', width: 240, minWidth: 170 },
-  { key: 'credor', width: 260, minWidth: 180 },
-  { key: 'item', width: 260, minWidth: 180 },
-  { key: 'unidade', width: 90, minWidth: 70 },
-  { key: 'quantidade', width: 120, minWidth: 90 },
-  { key: 'unitario', width: 130, minWidth: 105 },
-  { key: 'total', width: 140, minWidth: 110 },
-  { key: 'status', width: 170, minWidth: 120 }
-];
 
 function readFilters(searchParams) {
   return {
@@ -86,49 +83,76 @@ function extractErrorMessage(error) {
   }
 }
 
-function RankingTable({ title, subtitle, rows, valueLabel = 'Valor', nameKey = 'label', metaKey }) {
+/*
+  As duas UNICAS ocorrencias de `.link-primary` no repositorio inteiro
+  estavam nesta tela, e a classe NAO EXISTE em CSS nenhum: os codigos de SC
+  e SOL eram links de verdade pintados como texto comum — clicavel sem sinal
+  de que era clicavel (R15). A forma que o sistema ja usa para link dentro de
+  tabela e a de FinanceiroTituloDetalhe: peso + cor de token + sublinhado no
+  hover.
+*/
+const CLASSE_LINK = 'font-semibold text-[var(--c-primary)] hover:underline';
+
+function RankingTable({ title, subtitle, rows, valueLabel = 'Valor', nameKey = 'label', metaKey, storageKey }) {
   const safeRows = Array.isArray(rows) ? rows.slice(0, 8) : [];
 
   return (
-    <div className="card sol-surface-card">
-      <div className="app-page-header-row mb-3">
-        <div>
-          <h2 className="section-title">{title}</h2>
-          {subtitle ? <p className="muted-text">{subtitle}</p> : null}
-        </div>
-      </div>
-      <div className="table-wrapper compras-responsive-table">
-        <table className="table compact-table min-w-[980px]">
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>Compras</th>
-              <th>Itens</th>
-              <th>{valueLabel}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {safeRows.length ? safeRows.map((row) => (
-              <tr key={row.key}>
-                <td>
-                  <strong>{row[nameKey] || row.label || '-'}</strong>
-                  {metaKey && row[metaKey] ? <small className="block muted-text">{row[metaKey]}</small> : null}
-                </td>
-                <td>{formatNumber(row.compras)}</td>
-                <td>{formatNumber(row.itens)}</td>
-                <td>{formatMoney(row.valor_total)}</td>
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan={4} className="text-center muted-text">Sem dados no periodo.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <BlocoConteudo titulo={title} descricao={subtitle} variante="secundario">
+      <TabelaPadrao
+        colunas={[
+          {
+            id: 'nome',
+            titulo: 'Nome',
+            // R17: o nome do ranking (solicitante/credor/item/obra) NOMEIA a linha.
+            tipo: 'identidade',
+            noCard: 'titulo',
+            render: (row) => (
+              <div>
+                <strong>{row[nameKey] || row.label || '-'}</strong>
+                {metaKey && row[metaKey] ? (
+                  <small className="block text-xs text-[var(--c-muted)]">{row[metaKey]}</small>
+                ) : null}
+              </div>
+            )
+          },
+          { id: 'compras', titulo: 'Compras', tipo: 'numero', render: (row) => formatNumber(row.compras) },
+          { id: 'itens', titulo: 'Itens', tipo: 'numero', render: (row) => formatNumber(row.itens) },
+          { id: 'valor', titulo: valueLabel, tipo: 'valor', render: (row) => formatMoney(row.valor_total) }
+        ]}
+        itens={safeRows}
+        getId={(row) => row.key}
+        storageKey={storageKey}
+        rotuloRolagem={title}
+        vazio="Sem dados no período."
+      />
+    </BlocoConteudo>
   );
 }
+
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'q', rotulo: 'Busca', obrigatorio: true },
+  { id: 'data_inicio', rotulo: 'Criada de' },
+  { id: 'data_fim', rotulo: 'Criada até' },
+  { id: 'item', rotulo: 'Nome do item comprado' },
+  { id: 'limit', rotulo: 'Limite de linhas' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de custo' },
+  { id: 'status', rotulo: 'Status' }
+];
 
 export default function ComprasRelatorioComprasDiretas() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -194,8 +218,97 @@ export default function ComprasRelatorioComprasDiretas() {
     Array.isArray(relatorio?.status) ? relatorio.status : []
   ), [relatorio]);
 
-  function aplicarFiltros(event) {
-    event.preventDefault();
+  /*
+    R12: obra e status deixaram de ser controle solto e viraram MARCACAO.
+    Ambos com `unico: true`, porque o endpoint recebe UM `obra_id`
+    (`parseInteger`) e UM `status` (`parseOptionalText`), com
+    `ensureAllowedKeys` limitando cada chave a um valor. Sem declarar, o menu
+    abriria com caixa quadrada prometendo escolha multipla e, com duas
+    marcas, a tela mandaria filtro nenhum — duas etiquetas na faixa e a
+    lista sem estreitar (R15).
+
+    O status ainda ganhou uma coisa que nao tinha: antes era `<input>` com
+    `datalist`, ou seja, campo de texto LIVRE com sugestao. Quem digitasse
+    "enviada" em vez de "ENVIADO" recebia lista vazia sem saber por que. A
+    lista de status vem do proprio relatorio — e enumeravel de verdade.
+  */
+  const ativos = useMemo(() => ({
+    obra_id: new Set(filtros.obra_id ? [String(filtros.obra_id)] : []),
+    status: new Set(filtros.status ? [String(filtros.status)] : [])
+  }), [filtros.obra_id, filtros.status]);
+
+  const dimensoes = useMemo(() => [
+    {
+      id: 'obra_id',
+      rotulo: 'Obra / Centro de custo',
+      unico: true,
+      opcoes: obras.map((obra) => ({
+        valor: String(obra.id),
+        rotulo: obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome
+      }))
+    },
+    {
+      id: 'status',
+      rotulo: 'Status',
+      unico: true,
+      opcoes: statusOptions.map((entry) => ({ valor: String(entry.key), rotulo: entry.label }))
+    }
+  ], [obras, statusOptions]);
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      /* O valor que o SISTEMA propõe não conta como preenchido: se contasse,
+         o padrão revelaria de volta, a cada recarga, exatamente o filtro que
+         a pessoa escondeu. */
+      const padrao = String(DEFAULT_FILTERS[filtro.id] ?? '');
+      const rascunho = String(filtros[filtro.id] ?? '');
+      const emCurso = String(searchParams.get(filtro.id) ?? '');
+      return (rascunho !== '' && rascunho !== padrao) || (emCurso !== '' && emCurso !== padrao);
+    }).map((filtro) => filtro.id),
+    [filtros, searchParams]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:compras-diretas', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      atualizarCampo(id, DEFAULT_FILTERS[id] ?? '');
+      // A consulta em curso mora na URL: sem tirar a chave dali, o recorte
+      // seguiria valendo com o campo já fora da faixa.
+      if (searchParams.get(id)) {
+        const proximos = new URLSearchParams(searchParams);
+        proximos.delete(id);
+        setSearchParams(proximos);
+      }
+    }
+  });
+
+  function atualizarCampo(campo, valor) {
+    setFiltros((current) => ({ ...current, [campo]: valor }));
+  }
+
+  function alternarFiltro(dimensao, valor) {
+    setFiltros((current) => ({
+      ...current,
+      [dimensao]: String(current[dimensao]) === String(valor) ? '' : String(valor)
+    }));
+  }
+
+  function aplicarFiltros() {
     setSearchParams(buildSearchParams(filtros));
   }
 
@@ -205,267 +318,249 @@ export default function ComprasRelatorioComprasDiretas() {
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <p className="eyebrow">Compras / Relatorios</p>
-            <h1 className="page-title">Compras Diretas</h1>
-            <p className="page-subtitle">
-              Monitore quem solicita, quais credores atendem, quais itens sao comprados e o volume de compras diretas.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/compras/relatorios" className="btn btn-outline">
-              Voltar aos relatorios
-            </Link>
-          </div>
-        </div>
-      </div>
+    /* C1: apoio (contagem + descricao) passa de 180 caracteres — mais longo
+       que nos outros relatorios de Compras — e empurrava a barra de acoes
+       para uma segunda linha na faixa compacta (94px; ver o comentario em
+       styles/compras-relatorio-apoio.css). */
+    <Pagina className="apoio-linha-unica">
+      {/* R11: "Voltar aos relatorios" era botao de acao fazendo papel de
+          navegacao. Vira a seta `voltar` do PageHeader. */}
+      <PageHeader
+        titulo="Compras Diretas"
+        voltar={{ to: '/compras/relatorios', title: 'Voltar aos relatorios' }}
+        contagem={loading ? 'Carregando...' : `${formatNumber(itens.length)} item(ns) listado(s)`}
+        /* R23: sete recortes combinaveis sobre uma consulta analitica de ate
+           5000 linhas — bem acima do criterio da excecao. O recorte e
+           RASCUNHO ate o clique, e a regra exige que a tela AVISE isso. */
+        descricao="Monitore quem solicita, quais credores atendem, quais itens são comprados e o volume de compras diretas. Marque o recorte e clique em Atualizar relatório."
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar relatorio',
+          onClick: aplicarFiltros,
+          desabilitada: loading
+        }}
+        secundarias={[{ rotulo: 'Limpar', onClick: limparFiltros, desabilitada: loading }]}
+      />
 
-      <div className="mt-4 card sol-surface-card solicitacoes-filtros app-filters-card">
-        <form className="grid gap-4" onSubmit={aplicarFiltros}>
-          <div className="app-filters-grid">
-            <label className="app-filter-field">
-              <span className="app-filter-label">Obra / Centro de custo</span>
-              <select
-                className="input"
-                value={filtros.obra_id}
-                onChange={(event) => setFiltros((current) => ({ ...current, obra_id: event.target.value }))}
-              >
-                <option value="">Todas</option>
-                {obras.map((obra) => (
-                  <option key={obra.id} value={obra.id}>
-                    {obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Criada de</span>
-              <input
-                className="input"
-                type="date"
-                value={filtros.data_inicio}
-                onChange={(event) => setFiltros((current) => ({ ...current, data_inicio: event.target.value }))}
-              />
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Criada ate</span>
-              <input
-                className="input"
-                type="date"
-                value={filtros.data_fim}
-                onChange={(event) => setFiltros((current) => ({ ...current, data_fim: event.target.value }))}
-              />
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Status</span>
-              <input
-                className="input"
-                list="compras-diretas-status"
-                placeholder="Ex.: ENVIADO"
-                value={filtros.status}
-                onChange={(event) => setFiltros((current) => ({ ...current, status: event.target.value }))}
-              />
-              <datalist id="compras-diretas-status">
-                {statusOptions.map((entry) => (
-                  <option key={entry.key} value={entry.key}>{entry.label}</option>
-                ))}
-              </datalist>
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Busca geral</span>
-              <input
-                className="input"
-                placeholder="SOL, SC, solicitante, credor ou obra"
-                value={filtros.q}
-                onChange={(event) => setFiltros((current) => ({ ...current, q: event.target.value }))}
-              />
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Item</span>
-              <input
-                className="input"
-                placeholder="Nome do item comprado"
-                value={filtros.item}
-                onChange={(event) => setFiltros((current) => ({ ...current, item: event.target.value }))}
-              />
-            </label>
-
-            <label className="app-filter-field">
-              <span className="app-filter-label">Limite de linhas</span>
-              <input
-                className="input"
-                type="number"
-                min="1"
-                max="5000"
-                value={filtros.limit}
-                onChange={(event) => setFiltros((current) => ({ ...current, limit: event.target.value }))}
-              />
-            </label>
-          </div>
-
-          <div className="app-filter-actions">
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              Atualizar relatorio
-            </button>
-            <button type="button" className="btn btn-outline" onClick={limparFiltros} disabled={loading}>
-              Limpar
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {erro ? (
-        <div className="mt-4 alert alert-error">{erro}</div>
-      ) : null}
-
-      <div className="dashboard-metric-grid mt-4">
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Compras diretas</span>
-          <strong>{formatNumber(resumo.compras)}</strong>
-          <small>Solicitacoes criadas</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Valor total</span>
-          <strong>{formatMoney(resumo.valor_total)}</strong>
-          <small>Soma dos itens</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Itens</span>
-          <strong>{formatNumber(resumo.itens)}</strong>
-          <small>{formatNumber(resumo.quantidade_total, 2)} unidades informadas</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Solicitantes</span>
-          <strong>{formatNumber(resumo.solicitantes)}</strong>
-          <small>Usuarios com compras diretas</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Credores</span>
-          <strong>{formatNumber(resumo.credores)}</strong>
-          <small>Fornecedores/credores usados</small>
-        </div>
-      </div>
-
-      <div className="grid gap-4 mt-4 lg:grid-cols-2">
-        <RankingTable
-          title="Solicitantes"
-          subtitle="Usuarios que mais abriram compras diretas."
-          rows={relatorio?.solicitantes}
-          metaKey="email"
+      <BlocoConteudo variante="secundario">
+        {/* R12/R16b: a busca geral ocupa a faixa em cima; obra e status sao
+            enumeraveis e vao em marcacao com etiqueta removivel; datas,
+            texto do item e limite de linhas nao tem lista fechada e vao em
+            `campos`, o espaco declarado da BarraFiltros para o continuo. */}
+        <BarraFiltros
+          busca={visibilidadeFiltros.ehVisivel('q') ? {
+            valor: filtros.q,
+            aoMudar: (valor) => atualizarCampo('q', valor),
+            placeholder: 'SOL, SC, solicitante, credor ou obra'
+          } : null}
+          campos={[
+            {
+              id: 'data_inicio',
+              rotulo: 'Criada de',
+              tipo: 'date',
+              valor: filtros.data_inicio,
+              aoMudar: (valor) => atualizarCampo('data_inicio', valor)
+            },
+            {
+              id: 'data_fim',
+              rotulo: 'Criada até',
+              tipo: 'date',
+              valor: filtros.data_fim,
+              aoMudar: (valor) => atualizarCampo('data_fim', valor)
+            },
+            {
+              id: 'item',
+              rotulo: 'Nome do item comprado',
+              tipo: 'text',
+              valor: filtros.item,
+              aoMudar: (valor) => atualizarCampo('item', valor)
+            },
+            {
+              id: 'limit',
+              rotulo: 'Limite de linhas',
+              tipo: 'number',
+              min: 1,
+              max: 5000,
+              valor: filtros.limit,
+              aoMudar: (valor) => atualizarCampo('limit', valor)
+            }
+          ].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={ativos}
+          /* R16: "Limpar" tem UM dono nesta tela — o botao secundario do
+             cabecalho. Passar `aoLimpar` aqui poria um segundo controle
+             com a MESMA acao no mesmo contexto visual; o ✕ de cada
+             etiqueta continua removendo o recorte individual. */
+          aoAlternar={alternarFiltro}
+          visibilidade={visibilidadeFiltros}
         />
-        <RankingTable
-          title="Credores"
-          subtitle="Fornecedores/credores mais usados em compra direta."
-          rows={relatorio?.credores}
-          metaKey="documento"
-        />
-        <RankingTable
-          title="Itens comprados"
-          subtitle="Itens com maior valor acumulado."
-          rows={relatorio?.itens_ranking}
-          metaKey="unidade"
-        />
-        <RankingTable
-          title="Obras / centros"
-          subtitle="Centros de custo com maior uso de compra direta."
-          rows={relatorio?.obras}
-          metaKey="obra_codigo"
-        />
-      </div>
+      </BlocoConteudo>
 
-      <div className="mt-4 card sol-surface-card">
-        <div className="app-page-header-row mb-3">
-          <div>
-            <h2 className="section-title">Detalhamento por item</h2>
-            <p className="muted-text">
-              {loading ? 'Carregando...' : `${itens.length} item(ns) listado(s).`}
-            </p>
-          </div>
+      <Avisos
+        avisos={erro ? [{ id: 'compras-diretas-erro', tipo: 'error', mensagem: erro }] : []}
+        aoFechar={() => setErro('')}
+      />
+
+      <StatGrid colunas={5}>
+        <StatTile label="Compras diretas" valor={formatNumber(resumo.compras)} sub="Solicitações criadas" />
+        <StatTile label="Valor total" valor={formatMoney(resumo.valor_total)} sub="Soma dos itens" />
+        <StatTile
+          label="Itens"
+          valor={formatNumber(resumo.itens)}
+          sub={`${formatNumber(resumo.quantidade_total, 2)} unidades informadas`}
+        />
+        <StatTile label="Solicitantes" valor={formatNumber(resumo.solicitantes)} sub="Usuários com compras diretas" />
+        <StatTile label="Credores" valor={formatNumber(resumo.credores)} sub="Fornecedores/credores usados" />
+      </StatGrid>
+
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 2 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:compras-relatorio-compras-diretas" larguraPadrao="total">
+        <div data-bloco-id="solicitantes" data-bloco-rotulo="Solicitantes" className="grid gap-4 lg:grid-cols-2">
+          <RankingTable
+            title="Solicitantes"
+            subtitle="Usuarios que mais abriram compras diretas."
+            rows={relatorio?.solicitantes}
+            metaKey="email"
+            storageKey="tabela:compras-diretas:solicitantes"
+          />
+          <RankingTable
+            title="Credores"
+            subtitle="Fornecedores/credores mais usados em compra direta."
+            rows={relatorio?.credores}
+            metaKey="documento"
+            storageKey="tabela:compras-diretas:credores"
+          />
+          <RankingTable
+            title="Itens comprados"
+            subtitle="Itens com maior valor acumulado."
+            rows={relatorio?.itens_ranking}
+            metaKey="unidade"
+            storageKey="tabela:compras-diretas:itens-ranking"
+          />
+          <RankingTable
+            title="Obras / centros"
+            subtitle="Centros de custo com maior uso de compra direta."
+            rows={relatorio?.obras}
+            metaKey="obra_codigo"
+            storageKey="tabela:compras-diretas:obras"
+          />
         </div>
 
-        <div className="table-wrapper">
-          <ResizableTable
-            columns={DETAIL_COLUMNS}
-            storageKey="compras-diretas-relatorio-detalhe-v1"
-            className="table compact-table"
-          >
-            <thead>
-              <tr>
-                <ResizableTh columnKey="data">Data</ResizableTh>
-                <ResizableTh columnKey="compra">SC</ResizableTh>
-                <ResizableTh columnKey="solicitacao">SOL</ResizableTh>
-                <ResizableTh columnKey="solicitante">Solicitante</ResizableTh>
-                <ResizableTh columnKey="obra">Obra</ResizableTh>
-                <ResizableTh columnKey="credor">Credor</ResizableTh>
-                <ResizableTh columnKey="item">Item</ResizableTh>
-                <ResizableTh columnKey="unidade">Unid.</ResizableTh>
-                <ResizableTh columnKey="quantidade">Qtd.</ResizableTh>
-                <ResizableTh columnKey="unitario">Unitario</ResizableTh>
-                <ResizableTh columnKey="total">Total</ResizableTh>
-                <ResizableTh columnKey="status">Status</ResizableTh>
-              </tr>
-            </thead>
-            <tbody>
-              {itens.length ? itens.map((row) => (
-                <tr key={`${row.compra_id}-${row.item?.tipo}-${row.item?.id}`}>
-                  <td>{formatDate(row.criado_em)}</td>
-                  <td>
-                    <Link to={`/solicitacoes-compra/${row.compra_id}`} className="link-primary">
-                      {row.compra_codigo}
-                    </Link>
-                  </td>
-                  <td>
-                    {row.solicitacao_id ? (
-                      <Link to={`/solicitacoes/${row.solicitacao_id}`} className="link-primary">
-                        {row.solicitacao_codigo || `#${row.solicitacao_id}`}
-                      </Link>
-                    ) : '-'}
-                  </td>
-                  <td>
+        <BlocoConteudo
+          titulo="Detalhamento por item"
+          contagem={loading ? 'Carregando...' : `${formatNumber(itens.length)} item(ns)`}
+          descricao="Cada item comprado com solicitante, obra, credor e valor."
+          variante="primario"
+          cor="var(--c-primary)"
+        >
+          <TabelaPadrao
+            colunas={[
+              { id: 'data', titulo: 'Data', tipo: 'data', render: (row) => formatDate(row.criado_em) },
+              {
+                id: 'compra',
+                titulo: 'SC',
+                tipo: 'codigo',
+                render: (row) => (
+                  <Link to={`/solicitacoes-compra/${row.compra_id}`} className={CLASSE_LINK}>
+                    {row.compra_codigo}
+                  </Link>
+                )
+              },
+              {
+                id: 'solicitacao',
+                titulo: 'SOL',
+                tipo: 'codigo',
+                render: (row) => (row.solicitacao_id ? (
+                  <Link to={`/solicitacoes/${row.solicitacao_id}`} className={CLASSE_LINK}>
+                    {row.solicitacao_codigo || `#${row.solicitacao_id}`}
+                  </Link>
+                ) : '-')
+              },
+              {
+                id: 'solicitante',
+                titulo: 'Solicitante',
+                tipo: 'texto',
+                render: (row) => (
+                  <div>
                     <strong>{row.solicitante?.nome || '-'}</strong>
-                    {row.solicitante?.email ? <small className="block muted-text">{row.solicitante.email}</small> : null}
-                  </td>
-                  <td>
+                    {row.solicitante?.email ? (
+                      <small className="block text-xs text-[var(--c-muted)]">{row.solicitante.email}</small>
+                    ) : null}
+                  </div>
+                )
+              },
+              {
+                id: 'obra',
+                titulo: 'Obra',
+                tipo: 'texto',
+                render: (row) => (
+                  <div>
                     <strong>{row.obra?.nome || '-'}</strong>
-                    {row.obra?.codigo ? <small className="block muted-text">{row.obra.codigo}</small> : null}
-                  </td>
-                  <td>
+                    {row.obra?.codigo ? (
+                      <small className="block text-xs text-[var(--c-muted)]">{row.obra.codigo}</small>
+                    ) : null}
+                  </div>
+                )
+              },
+              {
+                id: 'credor',
+                titulo: 'Credor',
+                tipo: 'texto',
+                render: (row) => (
+                  <div>
                     <strong>{row.credor?.nome || 'Sem credor'}</strong>
-                    {row.credor?.documento ? <small className="block muted-text">{row.credor.documento}</small> : null}
-                  </td>
-                  <td>
+                    {row.credor?.documento ? (
+                      <small className="block text-xs text-[var(--c-muted)]">{row.credor.documento}</small>
+                    ) : null}
+                  </div>
+                )
+              },
+              {
+                id: 'item',
+                titulo: 'Item',
+                // R17: o item comprado NOMEIA a linha do detalhamento.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (row) => (
+                  <div>
                     <strong>{row.item?.descricao || '-'}</strong>
                     {row.item?.apropriacao?.codigo ? (
-                      <small className="block muted-text">
+                      <small className="block text-xs text-[var(--c-muted)]">
                         {row.item.apropriacao.codigo} {row.item.apropriacao.descricao || ''}
                       </small>
                     ) : null}
-                  </td>
-                  <td>{row.item?.unidade || '-'}</td>
-                  <td>{formatNumber(row.quantidade, 2)}</td>
-                  <td>{formatMoney(row.valor_unitario)}</td>
-                  <td>{formatMoney(row.valor_total)}</td>
-                  <td><span className="badge badge-soft">{row.status_label || row.status}</span></td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={12} className="text-center muted-text">
-                    Nenhuma compra direta encontrada para os filtros informados.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </ResizableTable>
-        </div>
-      </div>
-    </div>
+                  </div>
+                )
+              },
+              { id: 'unidade', titulo: 'Unid.', tipo: 'texto', render: (row) => row.item?.unidade || '-' },
+              { id: 'quantidade', titulo: 'Qtd.', tipo: 'numero', render: (row) => formatNumber(row.quantidade, 2) },
+              { id: 'unitario', titulo: 'Unitário', tipo: 'valor', render: (row) => formatMoney(row.valor_unitario) },
+              { id: 'total', titulo: 'Total', tipo: 'valor', render: (row) => formatMoney(row.valor_total) },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                // `.badge-soft` NAO EXISTE em CSS nenhum do repositorio — a
+                // pilula saia sem fundo, sem contorno e sem forma. `badge-muted`
+                // existe e e a familia neutra do sistema.
+                render: (row) => <span className="badge badge-muted">{row.status_label || row.status}</span>
+              }
+            ]}
+            itens={itens}
+            getId={(row) => `${row.compra_id}-${row.item?.tipo}-${row.item?.id}`}
+            carregando={loading}
+            storageKey="tabela:compras-diretas:detalhe"
+            rotuloRolagem="Detalhamento por item"
+            vazio="Nenhuma compra direta encontrada para os filtros informados."
+          />
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
+    </Pagina>
   );
 }

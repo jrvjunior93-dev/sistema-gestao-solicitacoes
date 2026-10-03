@@ -5,6 +5,7 @@ const ExcelJS = require('exceljs');
 const {
   TEMPLATE_VERSION,
   gerarModeloImportacao,
+  getFormaRecebimentoImportacao,
   mapParcelaTipo,
   normalizePayloadForStorage,
   parseDate,
@@ -20,6 +21,12 @@ async function run() {
   assert.deepEqual(mapParcelaTipo('Entrega das chaves'), ['CHAVES', 'UNICA']);
   assert.equal(parseDate('2026-07-15T00:00:00.000Z', 'Data'), '2026-07-15');
   assert.equal(parseDate('2026-07-15T03:00:00.000Z', 'Data'), '2026-07-15');
+  assert.throws(
+    () => parseDate('2026-12-15', 'Data do recebimento', { max: '2026-09-08' }),
+    /nao pode ser posterior a 2026-09-08/
+  );
+  assert.equal(getFormaRecebimentoImportacao('Permuta'), 'PERMUTA');
+  assert.equal(getFormaRecebimentoImportacao('Mensal'), 'MIGRACAO_SIENGE');
   assert.deepEqual(
     normalizePayloadForStorage({ data_contrato: new Date(2026, 6, 15), chave_importacao: 'C-1' }),
     { data_contrato: '2026-07-15', chave_importacao: 'C-1' }

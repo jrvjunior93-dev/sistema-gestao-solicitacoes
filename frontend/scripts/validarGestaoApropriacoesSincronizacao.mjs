@@ -24,19 +24,24 @@ assert.equal(
 
 assert.match(
   source,
-  /setTextoMassa\(''\);\s*await recarregarCadastroEConfiguracao\(\);/,
-  'A importacao manual deve atualizar o cadastro e a configuracao da obra selecionada.'
+  /setTextoMassa\(naoGravadas\.join\('\\n'\)\);\s*await recarregarCadastroEConfiguracao\(obraAlvo\);/,
+  'A importacao manual deve atualizar a configuracao da obra-alvo, mesmo se o seletor mudar.'
 );
 
 assert.match(
   source,
-  /\(configuracaoMacros\?\.candidatas \|\| \[\]\)\.map\(\(item\) =>/,
+  /const itensConfiguracao = useMemo\(\(\) => \{\s*return Array\.isArray\(configuracaoMacros\?\.candidatas\)/,
   'Todas as apropriacoes ativas devem permanecer visiveis como candidatas.'
 );
 assert.match(
   source,
-  /checked=\{macrosSelecionadas\.has\(Number\(item\.id\)\)\}[\s\S]*?onChange=\{\(\) => alternarMacro\(item\.id\)\}/,
-  'Todas as candidatas devem continuar marcaveis na configuracao.'
+  /selecao=\{\{\s*selecionados: macrosSelecionadas,[\s\S]*?aoAlternar: \(id\) => alternarMacro\(id\)/,
+  'As candidatas devem continuar marcaveis mesmo quando o nivel atual for automatico.'
+);
+assert.match(
+  source,
+  /function alternarMacro\(id\) \{\s*setNivelConfiguracao\('PERSONALIZADO'\)/,
+  'Uma alteracao manual deve trocar explicitamente o nivel para Personalizado.'
 );
 
 console.log('Sincronizacao da gestao de apropriacoes validada com sucesso.');

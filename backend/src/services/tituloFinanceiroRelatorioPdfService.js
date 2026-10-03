@@ -16,11 +16,16 @@ const COLORS = {
 };
 
 const STATUS_LABELS = {
+  EM_ABERTO: 'Em aberto',
+  ABERTO_VENCIDO: 'Aberto - vencido',
   ABERTO: 'Aberto',
+  PARCIAL_VENCIDO: 'Parcial - vencido',
   PARCIAL: 'Parcial',
+  PREVISAO: 'Previsao',
+  PREVISAO_VENCIDA: 'Previsao - vencida',
   PAGO: 'Pago',
   QUITADO: 'Quitado',
-  VENCIDO: 'Vencido',
+  VENCIDO: 'Vencidos em aberto',
   CANCELADO: 'Cancelado',
   CANCELADA: 'Cancelada',
   ATIVO: 'Ativo',
@@ -82,7 +87,13 @@ function getTituloCodigo(titulo = {}) {
 
 function getStatusLabel(status) {
   const normalized = String(status || '').trim().toUpperCase();
-  return STATUS_LABELS[normalized] || normalizeText(status);
+  if (!normalized) return normalizeText(status);
+  return normalized
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => STATUS_LABELS[item] || item)
+    .join(', ');
 }
 
 function getStatusColor(titulo = {}) {
@@ -288,7 +299,7 @@ function drawTableRow(doc, titulo, y, index) {
 function buildSummary(titulos) {
   const now = new Date();
   return titulos.reduce((summary, titulo) => {
-    const total = toNumber(titulo.valor_original);
+    const total = toNumber(titulo.renegociado_por_id ? titulo.valor_baixado : titulo.valor_original);
     const balance = toNumber(titulo.valor_saldo);
     const paid = Math.max(toNumber(titulo.valor_baixado), total - balance, 0);
     const dueDate = titulo.data_vencimento ? new Date(`${titulo.data_vencimento}T23:59:59`) : null;

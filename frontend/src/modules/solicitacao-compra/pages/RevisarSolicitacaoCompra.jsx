@@ -1,7 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { criarSolicitacaoCompra, criarSolicitacaoCompraDireta, obterUrlAssinadaCompra } from '../../../services/compras';
 import CompraPreviewModal from '../components/CompraPreviewModal';
+import StatusBadge from '../../../components/StatusBadge';
+import {
+  Avisos,
+  BlocoConteudo,
+  CamposComVazios,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos
+} from '../../../components/padrao';
 import { criarPreviewCompra } from '../utils/preview';
 import { montarLinhasResumoApropriacao, montarTextoResumoApropriacao } from '../utils/apropriacoes';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -56,62 +68,51 @@ function formatarFormasPagamento(formas) {
   return lista.map((forma) => forma?.nome || forma?.codigo).filter(Boolean).join('; ') || '-';
 }
 
-function StatusChecklist({ ativo, titulo, descricao }) {
-  return (
-    <div
-      className={`rounded-xl border px-4 py-3 ${
-        ativo
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-          : 'border-amber-200 bg-amber-50 text-amber-800'
-      }`}
-    >
-      <div className="text-sm font-semibold">{ativo ? 'OK' : 'Pendente'}</div>
-      <div className="mt-1 text-sm">{titulo}</div>
-      <div className="mt-1 text-xs opacity-80">{descricao}</div>
-    </div>
-  );
-}
-
-function CardMetrica({ titulo, valor, detalhe }) {
-  return (
-    <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-4">
-      <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">{titulo}</div>
-      <div className="mt-2 text-2xl font-semibold">{valor}</div>
-      <div className="mt-1 text-sm text-[var(--c-muted)]">{detalhe}</div>
-    </div>
-  );
-}
-
-function LinhaResumo({ titulo, valor, className = '' }) {
-  return (
-    <div className={className}>
-      <div className="text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">{titulo}</div>
-      <div className="mt-1 text-sm font-medium text-[var(--c-text)]">{valor}</div>
-    </div>
-  );
-}
-
 export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const draftKey = buildComprasDraftKey(user?.id, modoCompraDireta ? 'compra-direta' : 'solicitacao');
+  const reaproveitarSolicitacaoId = !modoCompraDireta ? Number(searchParams.get('reaproveitar_solicitacao') || 0) : 0;
+  const draftKey = buildComprasDraftKey(user?.id, reaproveitarSolicitacaoId > 0
+    ? `reaproveitar-${reaproveitarSolicitacaoId}`
+    : modoCompraDireta ? 'compra-direta' : 'solicitacao');
+  const rotaEdicao = modoCompraDireta ? '/solicitacoes-compra-direta/nova'
+    : reaproveitarSolicitacaoId > 0
+      ? `/solicitacoes-compra/nova?reaproveitar_solicitacao=${reaproveitarSolicitacaoId}`
+      : '/solicitacoes-compra/nova';
   const [draft, setDraft] = useState(null);
   const [confirmado, setConfirmado] = useState(false);
   const [loading, setLoading] = useState(false);
+  const criacaoEmAndamentoRef = useRef(false);
   const [previewVisualizado, setPreviewVisualizado] = useState(false);
-  const [modalPreviewAberto, setModalPreviewAberto] = useState(false);
-  const [previewArquivo, setPreviewArquivo] = useState(null);
+  /*
+    UM ÚNICO VISUALIZADOR NA TELA (R16, 05/09).
+
+    Antes existiam DOIS: `modalPreviewAberto`, que abria uma cópia manual da
+    casca do `CompraPreviewModal` escrita aqui dentro (mesmas classes, mesmo
+    `background: var(--ui-surface)`, só com o fundo em `bg-black/50` em vez
+    de `bg-black/60`), e `previewArquivo`, que renderizava o componente de
+    verdade — os dois no mesmo arquivo, um logo abaixo do outro.
+
+    Duas cascas para a mesma responsabilidade divergem sozinhas: a cópia
+    local ficou sem a trava de rolagem, sem o `Escape`, sem a devolução do
+    foco e com `overflow-hidden` (R18) no painel. Agora existe um estado só
+    — o que está sendo visualizado —, e ele pode ser o PDF montado aqui
+    (`srcDoc`) ou o arquivo anexado a um item.
+  */
+  const [previewAtivo, setPreviewAtivo] = useState(null);
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     try {
       const dados = readComprasDraft(draftKey);
       if (!dados) {
-        navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', { replace: true });
+        navigate(rotaEdicao, { replace: true });
         return;
       }
       if (!dados?.payload?.obra_id || !Array.isArray(dados?.payload?.itens) || !dados.payload.itens.length) {
         removeComprasDraft(draftKey);
-        navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', { replace: true });
+        navigate(rotaEdicao, { replace: true });
         return;
       }
 
@@ -119,12 +120,22 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     } catch (error) {
       console.error(error);
       removeComprasDraft(draftKey);
-      navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', { replace: true });
+      navigate(rotaEdicao, { replace: true });
     }
-  }, [draftKey, modoCompraDireta, navigate]);
+  }, [draftKey, navigate, rotaEdicao]);
 
   const itensResumo = useMemo(() => draft?.resumo?.itens || [], [draft]);
   const totalItens = itensResumo.length;
+  // A tabela recebe a ordem e a chave da linha já resolvidas (o render de
+  // coluna enxerga só o item, não o índice).
+  const itensRevisao = useMemo(
+    () => itensResumo.map((item, index) => ({
+      ...item,
+      __ordem: String(index + 1).padStart(2, '0'),
+      __chave: `${item.manual ? 'manual' : item.insumo_id}-${index}`
+    })),
+    [itensResumo]
+  );
 
   const estatisticas = useMemo(() => {
     return itensResumo.reduce(
@@ -156,6 +167,9 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
   );
   const valorTotalCompraDireta = Number(draft?.resumo?.valor_total || valorLiquidoItensCompraDireta || 0);
   const freteTipoCompraDireta = String(draft?.payload?.frete_tipo || 'SEM_FRETE').toUpperCase();
+  const freteModoCompraDireta = String(draft?.payload?.frete_modo || 'GLOBAL').toUpperCase() === 'POR_ITEM'
+    ? 'POR_ITEM'
+    : 'GLOBAL';
   const freteValorCompraDireta = Number(draft?.payload?.frete_valor || 0);
   const freteTipoLabel = freteTipoCompraDireta === 'TERCEIRO'
     ? 'Frete pago a terceiro'
@@ -164,6 +178,25 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       : 'Sem frete';
   const temDescontoCompraDireta = modoCompraDireta && descontoCompraDireta > 0;
 
+  /*
+    ===================================================================
+    TEMPLATE DO DOCUMENTO IMPRESSO — NÃO É MARKUP DE TELA.
+    ===================================================================
+
+    O bloco abaixo monta o HTML de um documento A4 que roda dentro de um
+    `iframe` isolado (`srcDoc`), fora do DOM da aplicação. Ele NÃO herda o
+    tema, não vê `styles/escala.css` e não alcança nenhum token `--*`: o
+    `iframe` com `srcDoc` é outro documento. Por isso escreve `<table>`,
+    hexadecimais e medidas em px — não há alternativa dentro das regras
+    porque as regras (R1, R10, R25) descrevem a TELA, e isto é papel.
+
+    Todos os detectores estáticos acusam este trecho, e é falso positivo
+    por natureza: eles procuram a forma (`<table`, `#111827`, `24px`) sem
+    poder saber que a forma vive num documento separado. A exceção precisa
+    estar registrada no manifesto (`excecoes_tabela_crua` + `excecoes_cor`)
+    — não há como esta tela passar sem ela, e não há como corrigir o
+    "defeito" sem quebrar o documento que o usuário revisa antes de gravar.
+  */
   const conteudoPreviewPdf = useMemo(() => {
     if (!draft) {
       return '';
@@ -179,6 +212,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
           <td>${escapeHtml(item.quantidade || '-')}</td>
           ${modoCompraDireta ? `<td>${escapeHtml(formatarMoeda(item.valor_unitario))}</td>` : ''}
           ${modoCompraDireta ? `<td>${escapeHtml(formatarMoeda(item.valor_total))}</td>` : ''}
+          ${modoCompraDireta && freteModoCompraDireta === 'POR_ITEM' ? `<td>${escapeHtml(formatarMoeda(item.frete_valor))}</td>` : ''}
           ${modoCompraDireta ? '' : `<td>${escapeHtml(item.especificacao || '-')}</td>`}
           <td>${montarLinhasResumoApropriacao(item).map((linha) => escapeHtml(linha)).join('<br />') || '-'}</td>
           ${modoCompraDireta ? '' : `<td>${escapeHtml(formatarData(item.necessario_para))}</td>`}
@@ -194,7 +228,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       <html lang="pt-BR">
         <head>
           <meta charset="UTF-8" />
-          <title>Pre-visualizacao - Solicitacao de Compra</title>
+          <title>Pre-visualização - Solicitação de Compra</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
             h1 { margin: 0 0 8px; font-size: 24px; }
@@ -211,17 +245,22 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
           ${temDescontoCompraDireta ? `<div class="meta"><strong>Valor bruto:</strong> ${escapeHtml(formatarMoeda(valorBrutoCompraDireta))}</div>` : ''}
           ${temDescontoCompraDireta ? `<div class="meta"><strong>Desconto concedido:</strong> ${escapeHtml(formatarMoeda(descontoCompraDireta))}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Valor líquido dos itens:</strong> ${escapeHtml(formatarMoeda(valorLiquidoItensCompraDireta))}</div>` : ''}
-          ${modoCompraDireta ? `<div class="meta"><strong>Frete:</strong> ${escapeHtml(freteTipoLabel)}${freteTipoCompraDireta !== 'SEM_FRETE' ? ` - ${escapeHtml(formatarMoeda(freteValorCompraDireta))}` : ''}</div>` : ''}
+          ${modoCompraDireta ? `<div class="meta"><strong>Frete:</strong> ${escapeHtml(freteTipoLabel)}${freteTipoCompraDireta !== 'SEM_FRETE' ? ` - ${escapeHtml(freteModoCompraDireta === 'POR_ITEM' ? 'por item' : 'valor total')} - ${escapeHtml(formatarMoeda(freteValorCompraDireta))}` : ''}</div>` : ''}
           ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Credor do frete:</strong> ${escapeHtml(draft.resumo?.frete_credor_nome || '-')}</div>` : ''}
           ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Pagamento do frete:</strong> ${escapeHtml(formatarData(draft.payload?.frete_data_vencimento))} - ${escapeHtml(draft.payload?.frete_dados_pagamento || '-')}</div>` : ''}
+          ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Forma do frete:</strong> ${escapeHtml(draft.resumo?.frete_forma_pagamento || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.frete_favorecido_id ? `<div class="meta"><strong>Favorecido do frete:</strong> ${escapeHtml(draft.resumo?.frete_favorecido_nome || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.frete_favorecido_chave_pix ? `<div class="meta"><strong>PIX do frete:</strong> ${escapeHtml(draft.payload.frete_favorecido_chave_pix)}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Valor total da solicitação:</strong> ${escapeHtml(formatarMoeda(valorTotalCompraDireta))}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Credor:</strong> ${escapeHtml(draft.resumo?.credor_nome || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.favorecido_id ? `<div class="meta"><strong>Favorecido do pagamento:</strong> ${escapeHtml(draft.resumo?.favorecido_nome || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.favorecido_chave_pix ? `<div class="meta"><strong>Chave PIX:</strong> ${escapeHtml(draft.payload.favorecido_chave_pix)}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Formas de pagamento:</strong> ${escapeHtml(formatarFormasPagamento(draft.resumo?.formas_pagamento))}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Dados para pagamento:</strong> ${escapeHtml(draft.payload?.dados_pagamento || '-')}</div>` : ''}
           <div class="meta"><strong>${modoCompraDireta ? 'Data de vencimento' : 'Necessario para'}:</strong> ${escapeHtml(
             formatarData(draft.payload?.necessario_para)
           )}</div>
-          <div class="meta"><strong>Observacoes:</strong> ${escapeHtml(draft.payload?.observacoes || '-')}</div>
+          <div class="meta"><strong>Observações:</strong> ${escapeHtml(draft.payload?.observacoes || '-')}</div>
           <div class="meta"><strong>Link geral:</strong> ${escapeHtml(draft.payload?.link_geral || '-')}</div>
           <table>
             <thead>
@@ -230,9 +269,9 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
                 <th>Insumo</th>
                 <th>Unidade</th>
                 <th>Quantidade</th>
-                ${modoCompraDireta ? '<th>Valor unit.</th><th>Valor total</th>' : ''}
-                ${modoCompraDireta ? '' : '<th>Especificacao</th>'}
-                <th>Apropriacao</th>
+                ${modoCompraDireta ? `<th>Valor unit.</th><th>Valor total</th>${freteModoCompraDireta === 'POR_ITEM' ? '<th>Frete</th>' : ''}` : ''}
+                ${modoCompraDireta ? '' : '<th>Especificação</th>'}
+                <th>Apropriação</th>
                 ${modoCompraDireta ? '' : '<th>Necessario para</th><th>Link</th><th>Arquivo</th>'}
               </tr>
             </thead>
@@ -249,18 +288,37 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     temDescontoCompraDireta,
     valorBrutoCompraDireta,
     freteTipoCompraDireta,
+    freteModoCompraDireta,
     freteTipoLabel,
     freteValorCompraDireta,
     valorLiquidoItensCompraDireta,
     valorTotalCompraDireta
   ]);
 
+  /*
+    O QUE ESTE CONTROLE MEDE, E O QUE ELE PROMETE (registrado em 05/09).
+
+    `setPreviewVisualizado(true)` acontece na MESMA ação que abre o modal.
+    O checklist diz "PDF revisado" e o texto de apoio diz que "o envio só
+    libera quando o PDF foi aberto": abrir e fechar no mesmo segundo
+    satisfaz o portão. Ele mede o CLIQUE, não a conferência.
+
+    NÃO foi endurecido nesta rodada de propósito — exigir tempo de leitura,
+    rolagem até o fim do documento ou uma confirmação dentro do modal muda
+    o comportamento percebido de duas telas em produção (esta e a compra
+    direta), e isso é decisão do responsável, não de uma reorganização de
+    layout. Fica registrado no relatório.
+  */
   function abrirPreviaPdf() {
     if (!draft) {
       return;
     }
 
-    setModalPreviewAberto(true);
+    setPreviewAtivo({
+      title: modoCompraDireta ? 'Pre-visualizacao da compra direta' : 'Pre-visualizacao do PDF',
+      name: 'Revise o documento antes de confirmar a criacao da solicitacao.',
+      srcDoc: conteudoPreviewPdf
+    });
     setPreviewVisualizado(true);
   }
 
@@ -268,37 +326,38 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     try {
       const url = await obterUrlAssinadaCompra(item?.arquivo_url);
       if (!url) {
-        alert('Arquivo nao encontrado.');
+        avisar.erro('Arquivo não encontrado.');
         return;
       }
 
-      setPreviewArquivo(await criarPreviewCompra({
+      setPreviewAtivo(await criarPreviewCompra({
         title: 'Arquivo do item',
         name: item.arquivo_nome_original || 'Arquivo anexado',
         url
       }));
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao abrir arquivo do item');
+      avisar.erro(error.message || 'Erro ao abrir arquivo do item');
     }
   }
 
   async function handleConfirmar() {
-    if (!draft) {
+    if (!draft || criacaoEmAndamentoRef.current) {
       return;
     }
 
     if (!confirmado) {
-      alert('Confirme que revisou os dados antes de criar a solicitacao.');
+      avisar.alerta('Confirme que revisou os dados antes de criar a solicitação.');
       return;
     }
 
     if (!previewVisualizado) {
-      alert('Abra a pre-visualizacao do PDF antes de confirmar a criacao da solicitacao.');
+      avisar.alerta('Abra a pre-visualização do PDF antes de confirmar a criação da solicitação.');
       return;
     }
 
     try {
+      criacaoEmAndamentoRef.current = true;
       setLoading(true);
       const resposta = modoCompraDireta
         ? await criarSolicitacaoCompraDireta(draft.payload)
@@ -313,8 +372,9 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       });
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao criar solicitacao de compra');
+      avisar.erro(error.message || 'Erro ao criar solicitacao de compra');
     } finally {
+      criacaoEmAndamentoRef.current = false;
       setLoading(false);
     }
   }
@@ -323,7 +383,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     if (draft) {
       writeComprasDraft(draftKey, draft, user?.id);
     }
-    navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', {
+    navigate(rotaEdicao, {
       state: { preservarRascunhoCompra: true }
     });
   }
@@ -332,336 +392,324 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     return null;
   }
 
+  /*
+    O grid de campos vem do `CamposComVazios`: campo sem valor some com
+    contador (B4), e `contexto: false` tira da tela E da contagem o campo
+    que não pertence a este registro — os dados de crédito e frete não
+    existem na solicitação comum, então não podem contar como "vazios".
+  */
+  const camposDaCompra = [
+    { label: 'Obra', valor: draft.resumo?.obra_nome },
+    { label: 'Solicitante', valor: draft.resumo?.solicitante_nome },
+    { label: 'Credor', valor: draft.resumo?.credor_nome, contexto: modoCompraDireta },
+    { label: 'Favorecido do pagamento', valor: draft.resumo?.favorecido_nome, contexto: modoCompraDireta && Boolean(draft.payload?.favorecido_id) },
+    { label: 'Chave PIX', valor: draft.payload?.favorecido_chave_pix, contexto: modoCompraDireta && Boolean(draft.payload?.favorecido_chave_pix) },
+    {
+      label: 'Formas de pagamento',
+      valor: formatarFormasPagamento(draft.resumo?.formas_pagamento),
+      contexto: modoCompraDireta
+    },
+    {
+      label: 'Dados para pagamento',
+      valor: draft.payload?.dados_pagamento,
+      span: 2,
+      contexto: modoCompraDireta
+    },
+    {
+      label: modoCompraDireta ? 'Data de vencimento' : 'Necessario para',
+      valor: formatarData(draft.payload?.necessario_para)
+    },
+    { label: 'Link geral', valor: draft.payload?.link_geral, span: 2 },
+    {
+      label: 'Valor bruto',
+      valor: formatarMoeda(valorBrutoCompraDireta),
+      contexto: temDescontoCompraDireta
+    },
+    {
+      label: 'Desconto concedido',
+      valor: formatarMoeda(descontoCompraDireta),
+      contexto: temDescontoCompraDireta
+    },
+    {
+      label: 'Valor líquido dos itens',
+      valor: formatarMoeda(valorLiquidoItensCompraDireta),
+      contexto: modoCompraDireta
+    },
+    {
+      label: 'Frete',
+      valor: freteTipoLabel,
+      sub: freteTipoCompraDireta !== 'SEM_FRETE'
+        ? `${freteModoCompraDireta === 'POR_ITEM' ? 'Por item' : 'Valor total'} · ${formatarMoeda(freteValorCompraDireta)}`
+        : undefined,
+      contexto: modoCompraDireta
+    },
+    {
+      label: 'Credor do frete',
+      valor: draft.resumo?.frete_credor_nome,
+      contexto: modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO'
+    },
+    {
+      label: 'Forma de pagamento do frete',
+      valor: draft.resumo?.frete_forma_pagamento,
+      contexto: modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO'
+    },
+    {
+      label: 'Favorecido do frete',
+      valor: draft.resumo?.frete_favorecido_nome,
+      contexto: modoCompraDireta && Boolean(draft.payload?.frete_favorecido_id)
+    },
+    {
+      label: 'Chave PIX do frete',
+      valor: draft.payload?.frete_favorecido_chave_pix,
+      contexto: modoCompraDireta && Boolean(draft.payload?.frete_favorecido_chave_pix)
+    },
+    {
+      label: 'Vencimento do frete',
+      valor: formatarData(draft.payload?.frete_data_vencimento),
+      contexto: modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO'
+    },
+    {
+      label: 'Dados para pagamento do frete',
+      valor: draft.payload?.frete_dados_pagamento,
+      span: 2,
+      contexto: modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO'
+    },
+    {
+      label: 'Valor total da solicitação',
+      valor: formatarMoeda(valorTotalCompraDireta),
+      tom: 'info',
+      contexto: modoCompraDireta
+    },
+    {
+      label: 'Notas/Guias anexadas',
+      valor: `${draft.resumo?.anexos_cabecalho?.length || 0} arquivo(s)`,
+      contexto: modoCompraDireta
+    },
+    { label: 'Observações', valor: draft.payload?.observacoes, span: 2 }
+  ];
+
   return (
-    <div className="page solicitacoes-page">
-      <div>
-        <h1 className="page-title">{modoCompraDireta ? 'Revisar Compra Direta' : 'Revisar Solicitacao de Compra'}</h1>
-        <p className="page-subtitle">
-          Esta etapa agora mostra o que realmente importa: contexto da compra, checklist do envio e
-          leitura clara dos itens antes da criacao.
-        </p>
-      </div>
+    <Pagina>
+      <Avisos avisos={avisos} aoFechar={fechar} />
+      <PageHeader
+        titulo={modoCompraDireta ? 'Revisar Compra Direta' : 'Revisar Solicitacao de Compra'}
+        contagem={`${totalItens} item(ns)`}
+        descricao={prontoParaCriar
+          ? 'Etapa final antes do envio: pronta para criar.'
+          : 'Etapa final antes do envio: revise o PDF e marque a autorizacao.'}
+        acaoPrincipal={{
+          rotulo: loading ? 'Criando...' : 'Criar solicitacao',
+          onClick: handleConfirmar,
+          desabilitada: loading || !prontoParaCriar,
+          title: prontoParaCriar
+            ? undefined
+            : 'Abra a pre-visualizacao do PDF e marque a autorizacao para liberar o envio.'
+        }}
+        secundarias={[
+          {
+            rotulo: previewVisualizado ? 'Abrir PDF novamente' : 'Visualizar PDF antes de criar',
+            onClick: abrirPreviaPdf
+          },
+          { rotulo: 'Voltar e editar', onClick: handleVoltarEditar }
+        ]}
+      />
 
-      <div className="card overflow-hidden">
-        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.55fr)_360px]">
-          <div className="p-5 md:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">
-                  Etapa final antes do envio
-                </div>
-                <h2 className="mt-2 text-2xl font-semibold text-[var(--c-text)]">
-                  {prontoParaCriar ? 'Solicitacao pronta para criar' : 'Ainda existem pendencias de revisao'}
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm text-[var(--c-muted)]">
-                  Revise o PDF, confira os itens e confirme a autorizacao. Quando os dois
-                  checkpoints estiverem ok, o envio fica objetivo.
-                </p>
-              </div>
-              <div
-                className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
-                  prontoParaCriar
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                    : 'border-amber-300 bg-amber-50 text-amber-700'
-                }`}
-              >
-                {prontoParaCriar ? 'Pronto para criar' : 'Revisao pendente'}
-              </div>
-            </div>
+      {/*
+        BLOCO PRIMÁRIO — é o que responde a pergunta central desta tela:
+        "posso enviar?". Os dois checkpoints e a autorização moram aqui;
+        o botão que executa vive na faixa fixa, sempre a um clique (R13).
+      */}
+      <BlocoConteudo
+        variante="primario"
+        cor={prontoParaCriar ? 'var(--sem-success)' : 'var(--sem-warning)'}
+        titulo="Checklist de envio"
+        descricao="O envio so libera quando o PDF foi aberto e a confirmação estiver marcada."
+      >
+        <StatGrid colunas={2}>
+          <StatTile
+            label="PDF revisado"
+            valor={previewVisualizado ? 'OK' : 'Pendente'}
+            sub="Abra a pre-visualização para validar o documento que será anexado ao histórico."
+            tom={previewVisualizado ? 'success' : 'warning'}
+          />
+          <StatTile
+            label="Autorização marcada"
+            valor={confirmado ? 'OK' : 'Pendente'}
+            sub="Confirme que os dados estão corretos antes de criar a solicitação."
+            tom={confirmado ? 'success' : 'warning'}
+          />
+        </StatGrid>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <CardMetrica titulo="Itens" valor={totalItens} detalhe="Total revisado nesta compra" />
-              {modoCompraDireta && (
-                <CardMetrica
-                  titulo="Total da solicitação"
-                  valor={formatarMoeda(valorTotalCompraDireta)}
-                  detalhe={freteTipoCompraDireta === 'TERCEIRO'
-                    ? `Itens ${formatarMoeda(valorLiquidoItensCompraDireta)} + frete ${formatarMoeda(freteValorCompraDireta)}`
-                    : temDescontoCompraDireta
-                      ? `Bruto ${formatarMoeda(valorBrutoCompraDireta)} - desconto ${formatarMoeda(descontoCompraDireta)}`
-                      : 'Valor que será levado para a solicitação'}
-                />
-              )}
-              <CardMetrica
-                titulo="Com arquivo"
-                valor={estatisticas.comArquivo}
-                detalhe="Itens com documento anexado"
-              />
-              <CardMetrica
-                titulo="Com link"
-                valor={estatisticas.comLink}
-                detalhe="Itens com link de produto"
-              />
-              <CardMetrica
-                titulo="Manuais"
-                valor={estatisticas.manuais}
-                detalhe="Itens fora do cadastro padrao"
-              />
-            </div>
-          </div>
+        <label className="mt-4 flex items-start gap-3 rounded-xl border border-[var(--c-border)] p-4">
+          <input
+            type="checkbox"
+            checked={confirmado}
+            onChange={(event) => setConfirmado(event.target.checked)}
+          />
+          <span className="text-sm text-[var(--c-text)]">
+            Confirmo que revisei os dados e autorizo a criacao da {modoCompraDireta ? 'compra direta' : 'solicitacao de compra'}.
+          </span>
+        </label>
+      </BlocoConteudo>
 
-          <div className="border-t border-[var(--c-border)] bg-[var(--c-surface)] p-5 md:p-6 xl:border-l xl:border-t-0">
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Checklist de envio</div>
-            <div className="mt-4 grid gap-3">
-              <StatusChecklist
-                ativo={previewVisualizado}
-                titulo="PDF revisado"
-                descricao="Abra a pre-visualizacao para validar o documento que sera anexado ao historico."
-              />
-              <StatusChecklist
-                ativo={confirmado}
-                titulo="Autorizacao marcada"
-                descricao="Confirme que os dados estao corretos antes de criar a solicitacao."
-              />
-            </div>
-
-            <button type="button" className="btn btn-outline mt-5 w-full justify-center" onClick={abrirPreviaPdf}>
-              {previewVisualizado ? 'Abrir PDF novamente' : 'Visualizar PDF antes de criar'}
-            </button>
-
-            <label className="mt-4 flex items-start gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <input
-                type="checkbox"
-                checked={confirmado}
-                onChange={(event) => setConfirmado(event.target.checked)}
-              />
-              <span className="text-sm text-[var(--c-text)]">
-                Confirmo que revisei os dados e autorizo a criacao da {modoCompraDireta ? 'compra direta' : 'solicitacao de compra'}.
-              </span>
-            </label>
-
-            <div className="mt-5 grid gap-2">
-              <button
-                type="button"
-                className="btn btn-primary w-full justify-center"
-                onClick={handleConfirmar}
-                disabled={loading || !prontoParaCriar}
-              >
-                {loading ? 'Criando...' : 'Criar solicitacao'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline w-full justify-center"
-                onClick={handleVoltarEditar}
-              >
-                Voltar e editar
-              </button>
-            </div>
-
-            <div className="mt-4 text-xs text-[var(--c-muted)]">
-              O envio so libera quando o PDF foi aberto e a confirmacao estiver marcada.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="card xl:sticky xl:top-4">
-          <div className="card-header">
-            <h2 className="font-semibold">{modoCompraDireta ? 'Dados da compra direta' : 'Dados da compra'}</h2>
-          </div>
-
-          <div className="grid gap-4 text-sm">
-            <LinhaResumo titulo="Obra" valor={textoOuPadrao(draft.resumo?.obra_nome)} />
-            <LinhaResumo titulo="Solicitante" valor={textoOuPadrao(draft.resumo?.solicitante_nome)} />
-            {modoCompraDireta && <LinhaResumo titulo="Credor" valor={textoOuPadrao(draft.resumo?.credor_nome)} />}
-            {modoCompraDireta && (
-              <LinhaResumo
-                titulo="Formas de pagamento"
-                valor={textoOuPadrao(formatarFormasPagamento(draft.resumo?.formas_pagamento))}
-              />
-            )}
-            {modoCompraDireta && (
-              <LinhaResumo
-                titulo="Dados para pagamento"
-                valor={textoOuPadrao(draft.payload?.dados_pagamento)}
-                className="whitespace-pre-wrap"
-              />
-            )}
-            <LinhaResumo
-              titulo={modoCompraDireta ? 'Data de vencimento' : 'Necessario para'}
-              valor={textoOuPadrao(formatarData(draft.payload?.necessario_para))}
+      {/*
+        Os ladrilhos abaixo mostram RECORTES do conjunto (itens com arquivo,
+        com link, manuais, valor). O TOTAL de itens fica na faixa fixa, que
+        acompanha a rolagem — repeti-lo aqui seria a duplicação que a B3
+        proíbe (critério de 05/09: faixa fica com o total, bloco com os
+        recortes).
+      */}
+      <BlocoConteudo variante="secundario" titulo="Composição dos itens">
+        <StatGrid colunas={modoCompraDireta ? 4 : 3}>
+          {modoCompraDireta ? (
+            <StatTile
+              label="Total da solicitação"
+              valor={formatarMoeda(valorTotalCompraDireta)}
+              sub={freteTipoCompraDireta !== 'SEM_FRETE'
+                ? `Itens ${formatarMoeda(valorLiquidoItensCompraDireta)} + frete ${formatarMoeda(freteValorCompraDireta)}`
+                : temDescontoCompraDireta
+                  ? `Bruto ${formatarMoeda(valorBrutoCompraDireta)} - desconto ${formatarMoeda(descontoCompraDireta)}`
+                  : 'Valor que sera levado para a solicitacao'}
+              tom="info"
             />
-            <LinhaResumo titulo="Link geral" valor={textoOuPadrao(draft.payload?.link_geral)} className="break-all" />
-            {modoCompraDireta && (
-              <>
-                {temDescontoCompraDireta && (
-                  <LinhaResumo titulo="Valor bruto" valor={formatarMoeda(valorBrutoCompraDireta)} />
-                )}
-                {temDescontoCompraDireta && (
-                  <LinhaResumo titulo="Desconto concedido" valor={formatarMoeda(descontoCompraDireta)} />
-                )}
-                <LinhaResumo
-                  titulo="Valor líquido dos itens"
-                  valor={formatarMoeda(valorLiquidoItensCompraDireta)}
-                />
-                <LinhaResumo titulo="Frete" valor={`${freteTipoLabel}${freteTipoCompraDireta !== 'SEM_FRETE' ? ` - ${formatarMoeda(freteValorCompraDireta)}` : ''}`} />
-                {freteTipoCompraDireta === 'TERCEIRO' && (
-                  <>
-                    <LinhaResumo titulo="Credor do frete" valor={textoOuPadrao(draft.resumo?.frete_credor_nome)} />
-                    <LinhaResumo titulo="Vencimento do frete" valor={textoOuPadrao(formatarData(draft.payload?.frete_data_vencimento))} />
-                    <LinhaResumo titulo="Dados para pagamento do frete" valor={textoOuPadrao(draft.payload?.frete_dados_pagamento)} className="whitespace-pre-wrap" />
-                  </>
-                )}
-                <LinhaResumo titulo="Valor total da solicitação" valor={formatarMoeda(valorTotalCompraDireta)} />
-                <LinhaResumo
-                  titulo="Notas/Guias anexadas"
-                  valor={`${draft.resumo?.anexos_cabecalho?.length || 0} arquivo(s)`}
-                />
-              </>
-            )}
+          ) : null}
+          <StatTile label="Com arquivo" valor={estatisticas.comArquivo} sub="Itens com documento anexado" />
+          <StatTile label="Com link" valor={estatisticas.comLink} sub="Itens com link de produto" />
+          <StatTile label="Manuais" valor={estatisticas.manuais} sub="Itens fora do cadastro padrão" />
+        </StatGrid>
+      </BlocoConteudo>
 
-            <div className="rounded-xl border border-[var(--c-border)] px-4 py-4">
-              <div className="text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Observacoes</div>
-              <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--c-text)]">
-                {textoOuPadrao(draft.payload?.observacoes)}
-              </div>
-            </div>
-          </div>
-        </div>
+      <BlocoConteudo
+        variante="secundario"
+        titulo={modoCompraDireta ? 'Dados da compra direta' : 'Dados da compra'}
+      >
+        <CamposComVazios campos={camposDaCompra} colunas={3} />
+      </BlocoConteudo>
 
-        <div className="card">
-          <div className="card-header flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold">Itens revisados</h2>
-              <p className="mt-1 text-sm text-[var(--c-muted)]">
-                Confira quantidade, rateio de apropriacao, prazo e acessos de compra em uma lista unica.
-              </p>
-            </div>
-            <div className="inline-flex rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-muted)]">
-              {totalItens} item(ns)
-            </div>
-          </div>
+      <BlocoConteudo
+        titulo="Itens revisados"
+        descricao="Confira quantidade, rateio de apropriação, prazo e acessos de compra em uma lista única."
+      >
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'ordem',
+              titulo: '#',
+              tipo: 'codigo',
+              render: (item) => (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="app-status-pill">{item.__ordem}</span>
+                  {/*
+                    A tarja "Manual" era um par de classes de paleta crua
+                    (border-amber-300/bg-amber-50/text-amber-700), que não
+                    tem correspondente no tema escuro nem passa pelo piso de
+                    contraste (R25). O `StatusBadge` é a etiqueta única do
+                    sistema: família semântica, token e ícone junto — cor
+                    sozinha não comunica para daltônicos.
+                  */}
+                  {item.manual && <StatusBadge status="Manual" kind="warning" />}
+                </div>
+              )
+            },
+            {
+              id: 'item',
+              titulo: 'Item',
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => item.insumo_nome
+            },
+            {
+              id: 'quantidade',
+              titulo: 'Quantidade',
+              tipo: 'numero',
+              render: (item) => `${item.quantidade} ${item.unidade_sigla || '-'}`
+            },
+            ...(modoCompraDireta ? [{
+              id: 'valor',
+              titulo: 'Valor',
+              tipo: 'valor',
+              render: (item) => (
+                <>
+                  <div>{formatarMoeda(item.valor_unitario)} un.</div>
+                  <div className="mt-1 font-semibold">{formatarMoeda(item.valor_total)}</div>
+                </>
+              )
+            }, ...(freteModoCompraDireta === 'POR_ITEM' ? [{
+              id: 'frete_valor',
+              titulo: 'Frete',
+              tipo: 'valor',
+              render: (item) => formatarMoeda(item.frete_valor)
+            }] : [])] : []),
+            {
+              id: 'apropriacao',
+              titulo: 'Apropriação',
+              tipo: 'texto',
+              render: (item) => (
+                <span className="text-[var(--c-muted)]">{montarTextoResumoApropriacao(item)}</span>
+              )
+            },
+            ...(modoCompraDireta ? [] : [
+              {
+                id: 'necessario_para',
+                titulo: 'Necessario para',
+                tipo: 'data',
+                render: (item) => formatarData(item.necessario_para)
+              },
+              {
+                id: 'especificacao',
+                titulo: 'Especificação',
+                tipo: 'texto',
+                render: (item) => (
+                  <div className="whitespace-pre-wrap text-[var(--c-text)]">
+                    {textoOuPadrao(item.especificacao)}
+                  </div>
+                )
+              },
+              {
+                id: 'acessos',
+                titulo: 'Acessos',
+                tipo: 'texto',
+                render: (item) => (
+                  <div className="flex flex-wrap gap-2">
+                    {item.link_produto ? (
+                      <a
+                        href={item.link_produto}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-outline"
+                      >
+                        Abrir link
+                      </a>
+                    ) : (
+                      <span className="text-xs text-[var(--c-muted)]">Sem link</span>
+                    )}
 
-          <div className="overflow-hidden rounded-2xl border border-[var(--c-border)]">
-            <div className="overflow-x-auto">
-              <table className="min-w-[980px] w-full text-left text-sm">
-                <thead className="bg-slate-100 text-[11px] uppercase tracking-[0.16em] text-[var(--c-muted)]">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">Item</th>
-                    <th className="px-4 py-3 font-semibold">Quantidade</th>
-                    {modoCompraDireta && <th className="px-4 py-3 font-semibold">Valor</th>}
-                    <th className="px-4 py-3 font-semibold">Apropriacao</th>
-                    {!modoCompraDireta && <th className="px-4 py-3 font-semibold">Necessario para</th>}
-                    {!modoCompraDireta && <th className="px-4 py-3 font-semibold">Especificacao</th>}
-                    {!modoCompraDireta && <th className="px-4 py-3 font-semibold">Acessos</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-border)]">
-                  {itensResumo.map((item, index) => (
-                    <tr key={`${item.manual ? 'manual' : item.insumo_id}-${index}`} className="align-top">
-                      <td className="px-4 py-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex rounded-full border border-[var(--c-border)] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--c-muted)]">
-                            {String(index + 1).padStart(2, '0')}
-                          </span>
-                          {item.manual && (
-                            <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700">
-                              Manual
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-2 max-w-[240px] font-semibold text-[var(--c-text)]">{item.insumo_nome}</div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-[var(--c-text)]">
-                        {item.quantidade} {item.unidade_sigla || '-'}
-                      </td>
-                      {modoCompraDireta && (
-                        <td className="px-4 py-4 whitespace-nowrap text-[var(--c-text)]">
-                          <div>{formatarMoeda(item.valor_unitario)} un.</div>
-                          <div className="mt-1 font-semibold">{formatarMoeda(item.valor_total)}</div>
-                        </td>
-                      )}
-                      <td className="px-4 py-4 max-w-[220px] text-[var(--c-muted)]">
-                        {montarTextoResumoApropriacao(item)}
-                      </td>
-                      {!modoCompraDireta && (
-                        <td className="px-4 py-4 whitespace-nowrap font-semibold text-[var(--c-text)]">
-                          {formatarData(item.necessario_para)}
-                        </td>
-                      )}
-                      {!modoCompraDireta && (
-                        <td className="px-4 py-4">
-                          <div className="max-w-[320px] whitespace-pre-wrap text-[var(--c-text)]">
-                            {textoOuPadrao(item.especificacao)}
-                          </div>
-                        </td>
-                      )}
-                      {!modoCompraDireta && (
-                        <td className="px-4 py-4">
-                          <div className="flex min-w-[180px] flex-wrap gap-2">
-                          {item.link_produto ? (
-                            <a
-                              href={item.link_produto}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex rounded-lg border border-[var(--c-border)] px-3 py-2 text-xs font-semibold text-[var(--c-text)] transition hover:border-[var(--c-primary)] hover:text-[var(--c-primary)]"
-                            >
-                              Abrir link
-                            </a>
-                          ) : (
-                            <span className="inline-flex rounded-lg border border-dashed border-[var(--c-border)] px-3 py-2 text-xs text-[var(--c-muted)]">
-                              Sem link
-                            </span>
-                          )}
+                    {item.arquivo_url ? (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => handleAbrirArquivo(item)}
+                        title={item.arquivo_nome_original || 'Abrir arquivo'}
+                      >
+                        <span className="truncate">{item.arquivo_nome_original || 'Abrir arquivo'}</span>
+                      </button>
+                    ) : (
+                      <span className="text-xs text-[var(--c-muted)]">Sem arquivo</span>
+                    )}
+                  </div>
+                )
+              }
+            ])
+          ]}
+          itens={itensRevisao}
+          getId={(item) => item.__chave}
+          vazio="Nenhum item revisado."
+          storageKey="tabela:revisar-solicitacao-compra:itens"
+          rotuloRolagem="Itens revisados"
+        />
+      </BlocoConteudo>
 
-                          {item.arquivo_url ? (
-                            <button
-                              type="button"
-                              className="inline-flex max-w-[180px] rounded-lg border border-[var(--c-border)] px-3 py-2 text-left text-xs font-semibold text-[var(--c-text)] transition hover:border-[var(--c-primary)] hover:text-[var(--c-primary)]"
-                              onClick={() => handleAbrirArquivo(item)}
-                              title={item.arquivo_nome_original || 'Abrir arquivo'}
-                            >
-                              <span className="truncate">{item.arquivo_nome_original || 'Abrir arquivo'}</span>
-                            </button>
-                          ) : (
-                            <span className="inline-flex rounded-lg border border-dashed border-[var(--c-border)] px-3 py-2 text-xs text-[var(--c-muted)]">
-                              Sem arquivo
-                            </span>
-                          )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {modalPreviewAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl shadow-2xl" style={{ background: 'var(--ui-surface)' }}>
-            <div className="flex items-center justify-between border-b border-[var(--c-border)] px-4 py-3">
-              <div>
-                <h2 className="text-lg font-semibold">Pre-visualizacao do PDF</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Revise o documento antes de confirmar a criacao da solicitacao.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setModalPreviewAberto(false)}
-              >
-                Fechar
-              </button>
-            </div>
-
-            <div className="flex-1 bg-gray-100 p-3">
-              <iframe
-                title="Pre-visualizacao da solicitacao de compra"
-                srcDoc={conteudoPreviewPdf}
-                className="h-full w-full rounded-lg border border-[var(--c-border)] bg-white"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
-    </div>
+      <CompraPreviewModal preview={previewAtivo} onClose={() => setPreviewAtivo(null)} />
+    </Pagina>
   );
 }

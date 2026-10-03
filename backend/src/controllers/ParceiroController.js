@@ -1,7 +1,9 @@
-const { Contrato, ContratoCredor, Parceiro, ParceiroCategoria } = require('../models');
+const { Contrato, ContratoCredor, Obra, Parceiro, ParceiroCategoria, TipoSolicitacao } = require('../models');
+const { pendenciasDoCadastro: pendenciasDoCadastroCredor } = require('../services/credorContratoService');
 const {
   atualizarParceiro,
   buscarParceiros,
+  criarFavorecidoSimplificado,
   criarParceiro,
   normalizarCpfCnpj
 } = require('../services/parceiroService');
@@ -10,8 +12,32 @@ const {
   obterOpcoesNovaSolicitacao,
   resolverCamposNovaSolicitacao
 } = require('../services/novaSolicitacaoCamposConfig');
+const { normalizeTipoSolicitacaoBehavior } = require('../services/tipoSolicitacaoBehaviorService');
+const { criarEscopoIdempotencia } = require('../services/idempotenciaCriacaoService');
 const { responderErroController } = require('../utils/controllerError');
 const { createWorkbookBuffer, sheetToJsonRows } = require('../utils/excelWorkbook');
+const {
+  obterAreasConfiguracaoCamposDestino
+} = require('../services/tipoSolicitacaoDisponibilidadeService');
+const {
+  obterAreasConfiguracaoCamposDestinoInicial,
+  resolverDestinoInicialNovaSolicitacao
+} = require('../services/novaSolicitacaoDestinoService');
+
+async function obterAreasConfiguracaoCampos(body = {}) {
+  const obraId = Number(body.obra_id);
+  const [destino, destinoInicial] = await Promise.all([
+    Number.isInteger(obraId) && obraId > 0
+      ? Obra.findByPk(obraId, { attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'] })
+      : Promise.resolve(null),
+    resolverDestinoInicialNovaSolicitacao()
+  ]);
+  return [...new Set([
+    ...obterAreasConfiguracaoCamposDestino(destino),
+    ...obterAreasConfiguracaoCamposDestinoInicial(destinoInicial),
+    body.area_responsavel
+  ].map((area) => String(area || '').trim()).filter(Boolean))];
+}
 
 const PLANILHA_COLUNAS = [
   ['cpf_cnpj', 'CPF/CNPJ'],
@@ -261,6 +287,10 @@ function responderXlsx(res, buffer, filename) {
   return res.send(buffer);
 }
 
+const idempotenciaFavorecido = criarEscopoIdempotencia({
+  mensagemEmAndamento: 'Este favorecido ja esta sendo cadastrado. Aguarde a conclusao.'
+});
+
 module.exports = {
   async index(req, res) {
     try {
@@ -305,10 +335,66 @@ module.exports = {
     }
   },
 
+  async createFavorecidoNovaSolicitacao(req, res) {
+    const idempotencia = idempotenciaFavorecido.preparar(req, res);
+    if (idempotencia.handled) return undefined;
+
+    try {
+      const tipoSolicitacaoId = Number(req.body?.tipo_solicitacao_id);
+      const tipoSubId = req.body?.tipo_sub_id ? Number(req.body.tipo_sub_id) : null;
+      const areaResponsavel = String(req.body?.area_responsavel || '').trim();
+      const areasConfiguracaoCampos = await obterAreasConfiguracaoCampos(req.body);
+      const tipo = await TipoSolicitacao.findOne({
+        where: { id: tipoSolicitacaoId, ativo: true },
+        attributes: ['id', 'nome', 'codigo_interno', 'comportamento']
+      });
+
+      if (!tipo) {
+        return res.status(404).json({ error: 'Tipo de solicitacao nao encontrado ou inativo.' });
+      }
+
+      const comportamento = normalizeTipoSolicitacaoBehavior(tipo);
+      const configCampos = await obterConfigCamposNovaSolicitacao();
+      const campos = resolverCamposNovaSolicitacao(
+        comportamento,
+        configCampos,
+        tipoSolicitacaoId,
+        { areaResponsavel: areasConfiguracaoCampos, tipoSubId }
+      );
+      const fluxoMedicao = comportamento.mostrar_periodo_medicao === true
+        || comportamento.exige_periodo_medicao === true;
+
+      if (campos?.favorecido?.visivel !== true
+        && campos?.forma_pagamento?.visivel !== true
+        && !fluxoMedicao) {
+        return res.status(403).json({
+          error: 'Cadastro de favorecido nao esta disponivel para este tipo de solicitacao.'
+        });
+      }
+
+      const resultado = await Parceiro.sequelize.transaction((transaction) =>
+        criarFavorecidoSimplificado(req.body || {}, { transaction })
+      );
+      const body = {
+        parceiro: resultado.parceiro.get
+          ? resultado.parceiro.get({ plain: true })
+          : resultado.parceiro,
+        reutilizado: resultado.reutilizado === true
+      };
+      body.parceiro.chave_pix_selecionada = resultado.chavePix;
+
+      idempotenciaFavorecido.armazenar(idempotencia.scopeKey, body);
+      return res.status(body.reutilizado ? 200 : 201).json(body);
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao cadastrar favorecido', { status: 400 });
+    }
+  },
+
   async createCredorNovaSolicitacao(req, res) {
     try {
       const tipoSolicitacaoId = Number(req.body?.tipo_solicitacao_id);
       const areaResponsavel = String(req.body?.area_responsavel || '').trim();
+      const areasConfiguracaoCampos = await obterAreasConfiguracaoCampos(req.body);
       const contratoId = req.body?.contrato_id !== undefined && req.body?.contrato_id !== null && req.body?.contrato_id !== ''
         ? Number(req.body.contrato_id)
         : null;
@@ -337,7 +423,7 @@ module.exports = {
         {},
         configCampos,
         tipoSolicitacaoId,
-        { areaResponsavel }
+        { areaResponsavel: areasConfiguracaoCampos }
       );
 
       if (campos?.cadastro_credor?.visivel !== true) {
@@ -347,9 +433,22 @@ module.exports = {
       const opcoesNovaSolicitacao = obterOpcoesNovaSolicitacao(
         configCampos,
         tipoSolicitacaoId,
-        areaResponsavel
+        areasConfiguracaoCampos
       );
       const permiteCredorAvulsoComContrato = opcoesNovaSolicitacao.permitir_credor_avulso_com_contrato === true;
+
+      // Endereco completo e CPF/CNPJ valido sao exigidos JA no cadastro (PI-20).
+      //
+      // Antes, o credor nascia so com nome, documento e telefone — e era exatamente isso que
+      // produzia os 2.428 fornecedores sem endereco. Cadastrar incompleto aqui apenas empurra o
+      // problema para a conferencia do contrato acima do limite, com a pessoa ja no meio do
+      // formulario. A regra e a MESMA da conferencia, importada de la: duas copias divergiriam.
+      const pendencias = pendenciasDoCadastroCredor(req.body || {});
+      if (pendencias.length > 0) {
+        return res.status(400).json({
+          error: `Complete o cadastro do credor antes de salvar. Pendente: ${pendencias.join(', ')}.`
+        });
+      }
 
       const payload = {
         ...req.body,
@@ -362,6 +461,7 @@ module.exports = {
 
       delete payload.tipo_solicitacao_id;
       delete payload.area_responsavel;
+      delete payload.obra_id;
       delete payload.contrato_id;
 
       const parceiro = await criarParceiro(payload);
@@ -395,6 +495,10 @@ module.exports = {
 
   async createCredorCompraDireta(req, res) {
     try {
+      // COMPRAS, e nao contratos: a exigencia de nome fantasia e representante legal (23/08) fica
+      // DESLIGADA aqui porque o formulario de compra direta e do outro agente e ainda nao tem esses
+      // campos. Ligar sem o campo existir derrubaria o cadastro rapido de fornecedor dele.
+      // Registrado no PROTOCOLO-AGENTES-PARALELOS para ser completado do lado de Compras.
       const parceiro = await criarParceiro({
         ...req.body,
         fornecedor: true,
@@ -402,7 +506,7 @@ module.exports = {
         corretor: false,
         testemunha: false,
         ativo: true
-      });
+      }, { exigirCadastroCompleto: false });
 
       return res.status(201).json(parceiro);
     } catch (error) {

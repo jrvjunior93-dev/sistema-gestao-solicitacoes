@@ -1,3 +1,4 @@
+import DateInputBR from '../../../components/DateInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -9,17 +10,34 @@ import {
   listarInsumos,
   listarUnidades,
   obterUrlAssinadaCompra,
+  obterEtapasCompraSolicitacao,
   uploadAnexoTemporarioCompra
 } from '../../../services/compras';
 import { buscarParceiros, criarCredorCompraDireta } from '../../../services/parceiros';
 import { listarApropriacoes } from '../../../services/apropriacoes';
 import { getMinhasObras } from '../../../services/obras';
+import {
+  Avisos,
+  BlocoConteudo,
+  CampoForm,
+  FormSecao,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import OverlayModal from '../../../components/ui/OverlayModal';
 import ApropriacaoAutocomplete from '../../../components/ui/ApropriacaoAutocomplete';
+import ParceiroBuscaRemota from '../../../components/solicitacoes/ParceiroBuscaRemota';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
+import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatters';
 import CompraPreviewModal from '../components/CompraPreviewModal';
 import { criarPreviewCompra } from '../utils/preview';
 import {
-  aplicarApropriacaoUnica,
   calcularResumoRateios,
   criarRateioBase,
   formatarQuantidade,
@@ -35,8 +53,17 @@ import {
   removeComprasDraft,
   writeComprasDraft
 } from '../utils/comprasDraftStorage';
+import { prepararItensReaproveitados } from '../utils/reaproveitamentoItensCompra';
 const ITEM_ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.html,.rar';
 const HEADER_ATTACHMENT_ACCEPT = '.pdf,.png,.jpg,.jpeg,.xml';
+
+// A linha de erro de campo (.form-error) também dentro da célula da tabela:
+// a grade de itens não pode usar `CampoForm` (o controle já vive no `render`
+// da coluna), mas a mensagem tem de aparecer NO MESMO lugar do resto.
+function ErroCampo({ mensagem }) {
+  if (!mensagem) return null;
+  return <span className="form-error" role="alert">{mensagem}</span>;
+}
 
 function parseValorMonetario(value) {
   if (value === null || value === undefined || value === '') {
@@ -85,6 +112,11 @@ function formaPagamentoEhBoleto(forma) {
   return Boolean(forma?.gera_boleto) || texto.includes('BOLETO');
 }
 
+function formaPagamentoEhPix(forma) {
+  const texto = normalizarTexto(`${forma?.codigo || ''} ${forma?.nome || ''} ${forma?.tipo || ''}`);
+  return texto.includes('PIX');
+}
+
 function formaPagamentoEhFopag(forma) {
   return [forma?.codigo, forma?.nome]
     .map((valor) => normalizarTexto(valor).trim())
@@ -94,6 +126,24 @@ function formaPagamentoEhFopag(forma) {
 function formatarFormaPagamento(forma) {
   if (!forma) return '';
   return forma.nome || forma.codigo || `Forma ${forma.id}`;
+}
+
+function criarDetalheFormaPagamento(detalhe = {}) {
+  const favorecido = detalhe?.favorecido && typeof detalhe.favorecido === 'object'
+    ? detalhe.favorecido
+    : detalhe?.favorecido_id
+      ? {
+          id: detalhe.favorecido_id,
+          nome: detalhe.favorecido_nome || 'Favorecido selecionado',
+          cpf_cnpj: detalhe.favorecido_cpf_cnpj || ''
+        }
+      : null;
+  return {
+    usar_credor_como_favorecido: Boolean(detalhe?.usar_credor_como_favorecido),
+    favorecido,
+    chave_pix: String(detalhe?.chave_pix || detalhe?.favorecido_chave_pix || ''),
+    dados_pagamento: String(detalhe?.dados_pagamento || '')
+  };
 }
 
 function criarNovoCredorPadrao() {
@@ -110,14 +160,18 @@ function calcularValorTotalItem(item) {
 }
 
 function criarItemBase(insumo) {
+  const unidadeManual = String(insumo?.unidade_manual || '').trim();
+  const unidadeCadastrada = insumo?.unidade || null;
   return {
     insumo_id: insumo.id,
     insumo_nome: insumo.nome,
-    unidade_id: insumo.unidade_id,
-    unidade_sigla: insumo.unidade_manual || insumo.unidade?.sigla || '',
+    unidade_id: unidadeManual ? null : (insumo.unidade_id || unidadeCadastrada?.id || null),
+    unidade_sigla: unidadeManual || unidadeCadastrada?.sigla || unidadeCadastrada?.nome || '',
+    unidade_sigla_manual: unidadeManual,
     quantidade: '1',
     valor_unitario: '',
     valor_total: '',
+    frete_valor: '',
     especificacao: '',
     apropriacao_id: '',
     apropriacoes: [],
@@ -130,7 +184,7 @@ function criarItemBase(insumo) {
 }
 
 function criarItemManualBase(dados, necessarioParaPadrao) {
-  return {
+  return sincronizarItemComRateios({
     insumo_id: null,
     insumo_nome: dados.nome_manual,
     unidade_id: dados.unidade_id || null,
@@ -138,9 +192,10 @@ function criarItemManualBase(dados, necessarioParaPadrao) {
     quantidade: String(dados.quantidade || '1'),
     valor_unitario: dados.valor_unitario || '',
     valor_total: dados.valor_total || '',
+    frete_valor: dados.frete_valor || '',
     especificacao: dados.especificacao || '',
-    apropriacao_id: '',
-    apropriacoes: [],
+    apropriacao_id: dados.apropriacoes?.[0]?.apropriacao_id || '',
+    apropriacoes: Array.isArray(dados.apropriacoes) ? dados.apropriacoes : [],
     necessario_para: necessarioParaPadrao || '',
     link_produto: '',
     arquivo_url: '',
@@ -148,28 +203,31 @@ function criarItemManualBase(dados, necessarioParaPadrao) {
     manual: true,
     nome_manual: dados.nome_manual,
     unidade_sigla_manual: dados.unidade_sigla_manual
-  };
+  });
 }
 
 function sincronizarQuantidadeRateioUnico(item, quantidade) {
   const rateios = normalizarRateiosEntrada(item);
   if (rateios.length !== 1) {
-    return sincronizarItemComRateios({
+    return {
       ...item,
-      quantidade
-    });
+      quantidade,
+      apropriacoes: rateios,
+      apropriacao_id: rateios[0]?.apropriacao_id || ''
+    };
   }
 
-  return sincronizarItemComRateios({
+  return {
     ...item,
     quantidade,
+    apropriacao_id: rateios[0]?.apropriacao_id || '',
     apropriacoes: [
       {
         ...rateios[0],
         quantidade_apropriada: quantidade
       }
     ]
-  });
+  };
 }
 
 export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
@@ -179,14 +237,20 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const obraIdInicial = String(searchParams.get('obra_id') || '').trim();
   const tipoSolicitacaoIdInicial = String(searchParams.get('tipo_solicitacao_id') || '').trim();
   const areaResponsavelInicial = String(searchParams.get('area_responsavel') || '').trim();
-  const draftKey = buildComprasDraftKey(user?.id, modoCompraDireta ? 'compra-direta' : 'solicitacao');
+  const reaproveitarSolicitacaoId = !modoCompraDireta ? Number(searchParams.get('reaproveitar_solicitacao') || 0) : 0;
+  const draftKey = buildComprasDraftKey(user?.id, reaproveitarSolicitacaoId > 0
+    ? `reaproveitar-${reaproveitarSolicitacaoId}`
+    : modoCompraDireta ? 'compra-direta' : 'solicitacao');
   const hidratandoDraftRef = useRef(false);
   const draftCarregadoRef = useRef(false);
   const suspenderAutosaveAteRef = useRef(0);
   const importacaoItensInputRef = useRef(null);
   const importacaoEmAndamentoRef = useRef(false);
+  const novoItemManualIndexRef = useRef(null);
   const buscaCredorRequestRef = useRef(0);
   const buscaCredorFreteRequestRef = useRef(0);
+  const campoCredorRef = useRef(null);
+  const campoCredorFreteRef = useRef(null);
   const [obras, setObras] = useState([]);
   const [insumos, setInsumos] = useState([]);
   const [unidades, setUnidades] = useState([]);
@@ -199,11 +263,16 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [dadosPagamento, setDadosPagamento] = useState('');
   const [descontoTotal, setDescontoTotal] = useState('');
   const [freteTipo, setFreteTipo] = useState('SEM_FRETE');
+  const [freteModo, setFreteModo] = useState('GLOBAL');
   const [freteValor, setFreteValor] = useState('');
   const [freteDataVencimento, setFreteDataVencimento] = useState('');
   const [freteParceiroId, setFreteParceiroId] = useState('');
   const [freteParceiroBusca, setFreteParceiroBusca] = useState('');
   const [freteDadosPagamento, setFreteDadosPagamento] = useState('');
+  const [freteFormaPagamentoId, setFreteFormaPagamentoId] = useState('');
+  const [freteFavorecidoSelecionado, setFreteFavorecidoSelecionado] = useState(null);
+  const [freteUsarCredorComoFavorecido, setFreteUsarCredorComoFavorecido] = useState(false);
+  const [freteChavePix, setFreteChavePix] = useState('');
   const [freteParceiros, setFreteParceiros] = useState([]);
   const [buscandoCredoresFrete, setBuscandoCredoresFrete] = useState(false);
   const [autocompleteFreteAberto, setAutocompleteFreteAberto] = useState(false);
@@ -212,14 +281,84 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [anexosCabecalho, setAnexosCabecalho] = useState([]);
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [formaPagamentoIds, setFormaPagamentoIds] = useState([]);
+  const [valoresFormaPagamento, setValoresFormaPagamento] = useState({});
+  const [detalhesFormaPagamento, setDetalhesFormaPagamento] = useState({});
   const [parceiroId, setParceiroId] = useState('');
   const [parceiroBusca, setParceiroBusca] = useState('');
+  const [favorecidoSelecionado, setFavorecidoSelecionado] = useState(null);
+  const [usarCredorComoFavorecido, setUsarCredorComoFavorecido] = useState(false);
+  const [favorecidoChavePix, setFavorecidoChavePix] = useState('');
   const [parceiros, setParceiros] = useState([]);
   const [buscandoParceiros, setBuscandoParceiros] = useState(false);
   const [autocompleteCredorAberto, setAutocompleteCredorAberto] = useState(false);
   const [credorAtivoIndex, setCredorAtivoIndex] = useState(0);
   const [erroBuscaCredor, setErroBuscaCredor] = useState('');
   const [modalCredorAberto, setModalCredorAberto] = useState(false);
+  /*
+    "FORMAS DE PAGAMENTO" SÓ FECHAVA CLICANDO DE NOVO NO PRÓPRIO BOTÃO
+    (05/09) — mesmo defeito das "Competências dos cards" do custosRecebiveis,
+    e pela mesma causa: era um `<details>` NATIVO. `<details>` não oferece
+    fechar ao clicar fora e ignora `Esc`, então a lista de marcação ficava
+    aberta por cima do formulário (é `absolute`, `z-dropdown`) tapando o campo
+    de credor logo abaixo enquanto a pessoa preenchia o resto.
+
+    Sem estado em React, `<details>` também não tinha onde receber o
+    `useFecharAoSair`. Virou botão + estado, com o mesmo desenho — inclusive
+    a seta que gira, que saiu de `group-open:` para a classe condicional,
+    porque `group-open` só existe quando existe um `<details open>`.
+
+    O ref envolve botão e painel. Marcar uma forma alterna sua seleção e
+    recolhe a lista; outras formas ainda podem ser adicionadas reabrindo-a.
+  */
+  const formasPagamentoRef = useRef(null);
+  const [formasPagamentoAberto, setFormasPagamentoAberto] = useState(false);
+  useFecharAoSair(formasPagamentoRef, formasPagamentoAberto, () => setFormasPagamentoAberto(false));
+  /*
+    AS DUAS LISTAS DE CREDOR FECHAM AO CLICAR FORA, NAO AO PERDER O FOCO (05/09).
+
+    As duas (credor da compra e credor do frete) fechavam por `onBlur` com
+    `setTimeout(120)` — e o atraso nao era desenho, era a corrida entre o
+    fechamento por perda de foco e a escolha da opcao. O que ficava de fora:
+    rolar a pagina, clicar num rotulo ou abrir o painel de "Formas de
+    pagamento" (que e `absolute` e cai logo acima do campo de credor) com o
+    foco preso no input NAO fechavam a lista — duas camadas empilhadas em
+    cima do formulario. O `Esc` ja existia, mas so com o foco dentro do
+    input; agora vale no documento inteiro, e continua no `onKeyDown` para
+    quem digita.
+
+    POR QUE A SELECAO SOBREVIVE: cada ref cobre o `div` que embrulha o input
+    E a lista, entao clicar numa opcao e clique DENTRO e o hook nao fecha no
+    `mousedown`. E a opcao ja escolhia no proprio `onMouseDown` com
+    `preventDefault()` — que roda antes do listener do documento e ainda
+    segura o foco no campo.
+
+    Fechar aqui e so `setAutocomplete...Aberto(false)`: o texto do campo e o
+    `parceiro_id` sao guardados por `selecionarCredor...`, e nada mais depende
+    do fechamento.
+  */
+  useFecharAoSair(campoCredorRef, autocompleteCredorAberto, () => setAutocompleteCredorAberto(false));
+  useFecharAoSair(campoCredorFreteRef, autocompleteFreteAberto, () => setAutocompleteFreteAberto(false));
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
+  /*
+    VALIDAÇÃO CAMPO A CAMPO (R3 da DoD).
+
+    Esta tela reprovava o envio com ~20 caixas do navegador, uma por campo
+    ("Item 3: informe a quantidade"), longe do campo que faltava preencher.
+    Trocar `alert` por `Avisos` moveria a MESMA frase para o topo da página —
+    continuaria longe. O erro passa a morar NO CAMPO (`erro` do `CampoForm`,
+    ou a linha `.form-error` na célula da grade), com a MESMA condição, a
+    MESMA mensagem e a MESMA ordem da cadeia de `return`: nada foi afrouxado
+    nem endurecido.
+
+    Vai para `Avisos` só o que não tem campo nesta tela para receber a frase
+    — resultado de operação (importou, salvou, falhou) e condição que não é
+    de um campo ("Adicione ao menos um item.", "Esse insumo já foi
+    adicionado.").
+  */
+  const [errosCampo, setErrosCampo] = useState({});
+  const [errosItem, setErrosItem] = useState({});
+  const [erroRateiosModal, setErroRateiosModal] = useState('');
   const [novoCredor, setNovoCredor] = useState(criarNovoCredorPadrao);
   const [salvandoCredor, setSalvandoCredor] = useState(false);
   const [buscaInsumo, setBuscaInsumo] = useState('');
@@ -228,17 +367,37 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [uploadingAnexoCabecalho, setUploadingAnexoCabecalho] = useState(false);
   const [importandoItens, setImportandoItens] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [modalManualAberto, setModalManualAberto] = useState(false);
   const [modalApropriacaoIndex, setModalApropriacaoIndex] = useState(null);
   const [rateiosModal, setRateiosModal] = useState([]);
   const [previewArquivo, setPreviewArquivo] = useState(null);
-  const [itemManual, setItemManual] = useState({
-    nome_manual: '',
-    unidade_id: '',
-    unidade_sigla_manual: '',
-    quantidade: '1',
-    especificacao: ''
-  });
+
+  // O erro do campo sai assim que a pessoa mexe nele — mensagem de validação
+  // que sobrevive à correção vira ruído e ensina a ignorar a próxima.
+  function limparErroCampo(campo) {
+    setErrosCampo((atual) => (atual[campo] ? { ...atual, [campo]: '' } : atual));
+  }
+
+  function limparErroItem(indice, campo) {
+    setErrosItem((atual) => (atual[indice]?.[campo]
+      ? { ...atual, [indice]: { ...atual[indice], [campo]: '' } }
+      : atual));
+  }
+
+  // Uma reprovação por envio, como sempre foi: a validação é uma cadeia de
+  // `return` e para no primeiro problema. O que muda é ONDE a frase aparece.
+  function reprovarCampo(campo, mensagem) {
+    setErrosItem({});
+    setErrosCampo({ [campo]: mensagem });
+  }
+
+  function reprovarItem(indice, campo, mensagem) {
+    setErrosCampo({});
+    setErrosItem({ [indice]: { [campo]: mensagem } });
+  }
+
+  function erroDoItem(indice, campo) {
+    return errosItem[indice]?.[campo] || '';
+  }
 
   async function carregarObras() {
     try {
@@ -246,7 +405,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setObras(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar obras');
+      avisar.erro(error.message || 'Erro ao carregar obras');
     }
   }
 
@@ -256,7 +415,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setInsumos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar insumos');
+      avisar.erro(error.message || 'Erro ao carregar insumos');
     }
   }
 
@@ -297,31 +456,65 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setApropriacoes(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar apropriações');
+      avisar.erro(error.message || 'Erro ao carregar apropriações');
     }
   }
 
-  function limparRascunho() {
-    if (!window.confirm('Limpar todos os dados ainda nao enviados desta compra?')) return;
+  /*
+    CONSENTIMENTO (R21 + R26) — "Limpar rascunho" é o botão de maior perda
+    desta tela: ele apaga o rascunho gravado E zera a compra inteira que está
+    na tela (obra, credor, frete, anexos, formas de pagamento e TODOS os
+    itens). A pergunta antiga ("Limpar todos os dados ainda nao enviados
+    desta compra?") não dizia isso.
+
+    O retorno de `confirmar` é `{ ok, texto }` — objeto é SEMPRE verdadeiro, e
+    ler sem desestruturar faz o "Cancelar" prosseguir (R21). E como o modal do
+    sistema NÃO congela a página (ao contrário do `confirm` do navegador), o
+    alvo é fixado numa `const` ANTES do `await` (R26): a chave do rascunho e a
+    contagem de itens que a pessoa leu são as que a ação usa.
+  */
+  async function limparRascunho() {
+    const chaveAlvo = draftKey;
+    const totalItensAlvo = itens.length;
+    const { ok } = await confirmar({
+      titulo: 'Limpar rascunho',
+      mensagem: `Isto apaga o rascunho gravado e zera esta ${modoCompraDireta ? 'compra direta' : 'solicitação de compra'} inteira: obra, credor, formas de pagamento, frete, anexos e ${totalItensAlvo} item(ns) já preenchido(s). Não há como desfazer.`,
+      rotuloConfirmar: 'Limpar rascunho',
+      destrutiva: true
+    });
+    if (!ok) return;
     suspenderAutosaveAteRef.current = Date.now() + 1500;
-    removeComprasDraft(draftKey);
+    removeComprasDraft(chaveAlvo);
     setObraId(obraIdInicial || '');
     setNecessarioPara('');
     setObservacoes('');
     setDadosPagamento('');
     setDescontoTotal('');
     setFreteTipo('SEM_FRETE');
+    setFreteModo('GLOBAL');
     setFreteValor('');
     setFreteDataVencimento('');
     setFreteParceiroId('');
     setFreteParceiroBusca('');
     setFreteDadosPagamento('');
+    setFreteFormaPagamentoId('');
+    setFreteFavorecidoSelecionado(null);
+    setFreteUsarCredorComoFavorecido(false);
+    setFreteChavePix('');
     setFreteParceiros([]);
     setAnexosCabecalho([]);
     setFormaPagamentoIds([]);
+    setValoresFormaPagamento({});
+    setDetalhesFormaPagamento({});
     setParceiroId('');
     setParceiroBusca('');
+    setFavorecidoSelecionado(null);
+    setUsarCredorComoFavorecido(false);
+    setFavorecidoChavePix('');
     setItens([]);
+    setErrosCampo({});
+    setErrosItem({});
+    fecharModalApropriacao();
   }
 
   useEffect(() => {
@@ -334,6 +527,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }, []);
 
   const itemModalAtual = modalApropriacaoIndex !== null ? itens[modalApropriacaoIndex] || null : null;
+  // Obra travada em Custos e Recebiveis: GET /obras/minhas?modo=CRIACAO marca
+  // a obra com o motivo; o envio e recusado tambem no servidor.
+  const obraTravadaMotivo = obras.find((obra) => Number(obra.id) === Number(obraId))
+    ?.bloqueio_solicitacao_nova?.motivo || '';
+
   const formasPagamentoSelecionadas = useMemo(
     () => formasPagamento.filter((forma) => formaPagamentoIds.includes(String(forma.id))),
     [formasPagamento, formaPagamentoIds]
@@ -342,6 +540,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     () => formasPagamentoSelecionadas.some((forma) => formaPagamentoEhBoleto(forma)),
     [formasPagamentoSelecionadas]
   );
+  const compraDiretaExigeFavorecido = modoCompraDireta
+    && formasPagamentoSelecionadas.some((forma) => !formaPagamentoEhBoleto(forma));
+  const compraDiretaExigeChavePix = modoCompraDireta
+    && formasPagamentoSelecionadas.some(formaPagamentoEhPix);
+  const freteFormaPagamento = formasPagamento.find((forma) => String(forma.id) === freteFormaPagamentoId) || null;
+  const freteExigeFavorecido = freteTipo === 'TERCEIRO' && freteFormaPagamento && !formaPagamentoEhBoleto(freteFormaPagamento);
+  const freteExigeChavePix = freteExigeFavorecido && formaPagamentoEhPix(freteFormaPagamento);
+  const freteExigeBoleto = freteTipo === 'TERCEIRO' && freteFormaPagamento && formaPagamentoEhBoleto(freteFormaPagamento);
   const resumoFormasPagamento = useMemo(() => {
     if (!formasPagamentoSelecionadas.length) {
       return 'Selecione uma ou mais formas';
@@ -354,31 +560,43 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     () => anexosCabecalho.filter((anexo) => anexo?.tipo_documento === 'BOLETO'),
     [anexosCabecalho]
   );
+  const anexosBoletoFrete = useMemo(
+    () => anexosCabecalho.filter((anexo) => anexo?.tipo_documento === 'FRETE_BOLETO'),
+    [anexosCabecalho]
+  );
 
-  const resumoModalApropriacao = useMemo(() => {
-    const total = parseQuantidade(itemModalAtual?.quantidade);
-    const distribuido = rateiosModal.reduce(
-      (acc, rateio) => acc + parseQuantidade(rateio.quantidade_apropriada),
-      0
-    );
-    const saldo = Number((total - distribuido).toFixed(4));
-
-    return {
-      total,
-      distribuido: Number(distribuido.toFixed(4)),
-      saldo,
-      fechado: Math.abs(saldo) <= 0.01 && total > 0
-    };
-  }, [itemModalAtual, rateiosModal]);
+  const resumoModalApropriacao = useMemo(() => calcularResumoRateios({
+    quantidade: itemModalAtual?.quantidade,
+    apropriacoes: rateiosModal
+  }), [itemModalAtual?.quantidade, rateiosModal]);
 
   useEffect(() => {
     if (draftCarregadoRef.current) {
       return;
     }
 
+    let aguardaReaproveitamento = false;
     try {
       const dados = readComprasDraft(draftKey);
       if (!dados) {
+        if (reaproveitarSolicitacaoId > 0) {
+          aguardaReaproveitamento = true;
+          let ativo = true;
+          obterEtapasCompraSolicitacao(reaproveitarSolicitacaoId)
+            .then((origem) => {
+              if (!ativo) return;
+              const naoAprovados = prepararItensReaproveitados(origem.itens);
+              hidratandoDraftRef.current = true;
+              setObraId(String(origem.obra_id || obraIdInicial || ''));
+              setObservacoes(`Itens reaproveitados da solicitação #${reaproveitarSolicitacaoId}. Revise quantidades, apropriações e datas antes de enviar.`);
+              setItens(naoAprovados);
+              if (!naoAprovados.length) avisar.alerta('Esta solicitação não possui itens não aprovados disponíveis para reaproveitar.');
+              else avisar.sucesso(`${naoAprovados.length} item(ns) carregado(s) em uma nova solicitação. Você pode editar, remover ou adicionar itens antes de criar.`);
+            })
+            .catch((error) => { if (ativo) avisar.erro(error.message || 'Não foi possível carregar os itens rejeitados.'); })
+            .finally(() => { if (ativo) draftCarregadoRef.current = true; });
+          return () => { ativo = false; };
+        }
         if (obraIdInicial) setObraId(obraIdInicial);
         draftCarregadoRef.current = true;
         return;
@@ -408,21 +626,68 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setDadosPagamento(payload.dados_pagamento || '');
       setDescontoTotal(payload.desconto_total ? String(payload.desconto_total) : '');
       setFreteTipo(String(payload.frete_tipo || 'SEM_FRETE').toUpperCase());
+      setFreteModo(String(payload.frete_modo || 'GLOBAL').toUpperCase() === 'POR_ITEM' ? 'POR_ITEM' : 'GLOBAL');
       setFreteValor(payload.frete_valor ? String(payload.frete_valor) : '');
       setFreteDataVencimento(payload.frete_data_vencimento || '');
       setFreteParceiroId(payload.frete_parceiro_id ? String(payload.frete_parceiro_id) : '');
       setFreteParceiroBusca(dados?.resumo?.frete_credor_nome || '');
       setFreteDadosPagamento(payload.frete_dados_pagamento || '');
+      setFreteFormaPagamentoId(payload.frete_forma_pagamento_id ? String(payload.frete_forma_pagamento_id) : '');
+      setFreteFavorecidoSelecionado(payload.frete_favorecido_id
+        ? (dados?.resumo?.frete_favorecido || { id: payload.frete_favorecido_id, nome: dados?.resumo?.frete_favorecido_nome || 'Favorecido selecionado' })
+        : null);
+      setFreteUsarCredorComoFavorecido(Boolean(payload.frete_favorecido_id && String(payload.frete_favorecido_id) === String(payload.frete_parceiro_id)));
+      setFreteChavePix(String(payload.frete_favorecido_chave_pix || ''));
       setAnexosCabecalho(Array.isArray(payload.anexos_cabecalho) ? payload.anexos_cabecalho : []);
       setFormaPagamentoIds(
         Array.isArray(payload.forma_pagamento_ids)
           ? payload.forma_pagamento_ids.map((item) => String(item)).filter(Boolean)
           : []
       );
+      setValoresFormaPagamento(payload.valores_forma_pagamento && typeof payload.valores_forma_pagamento === 'object'
+        ? payload.valores_forma_pagamento : {});
+      const detalhesSalvos = payload.detalhes_forma_pagamento && typeof payload.detalhes_forma_pagamento === 'object'
+        ? payload.detalhes_forma_pagamento
+        : {};
+      const formasSalvas = Array.isArray(payload.formas_pagamento)
+        ? payload.formas_pagamento
+        : Array.isArray(dados?.resumo?.formas_pagamento) ? dados.resumo.formas_pagamento : [];
+      setDetalhesFormaPagamento(Object.fromEntries(
+        (Array.isArray(payload.forma_pagamento_ids) ? payload.forma_pagamento_ids : [])
+          .map((formaId) => {
+            const id = String(formaId);
+            const formaSalva = formasSalvas.find((forma) => String(forma?.id) === id) || {};
+            const detalheSalvo = detalhesSalvos[id] || formaSalva;
+            const favorecidoLegado = payload.favorecido_id
+              ? (dados?.resumo?.favorecido || {
+                  id: payload.favorecido_id,
+                  nome: dados?.resumo?.favorecido_nome || 'Favorecido selecionado'
+                })
+              : null;
+            return [id, criarDetalheFormaPagamento({
+              ...detalheSalvo,
+              favorecido: detalheSalvo?.favorecido || favorecidoLegado,
+              favorecido_id: detalheSalvo?.favorecido_id || favorecidoLegado?.id,
+              favorecido_chave_pix: detalheSalvo?.chave_pix || payload.favorecido_chave_pix,
+              dados_pagamento: detalheSalvo?.dados_pagamento || payload.dados_pagamento,
+              usar_credor_como_favorecido: Boolean(
+                (detalheSalvo?.favorecido_id || favorecidoLegado?.id)
+                && String(detalheSalvo?.favorecido_id || favorecidoLegado?.id) === String(payload.parceiro_id)
+              )
+            })];
+          })
+      ));
       setParceiroId(payload.parceiro_id ? String(payload.parceiro_id) : '');
       if (dados?.resumo?.credor_nome) {
         setParceiroBusca(dados.resumo.credor_nome);
       }
+      setUsarCredorComoFavorecido(Boolean(payload.favorecido_id && String(payload.favorecido_id) === String(payload.parceiro_id)));
+      setFavorecidoSelecionado(payload.favorecido_id
+        ? (dados?.resumo?.favorecido && String(dados.resumo.favorecido.id) === String(payload.favorecido_id)
+          ? dados.resumo.favorecido
+          : { id: payload.favorecido_id, nome: dados?.resumo?.favorecido_nome || 'Favorecido selecionado' })
+        : null);
+      setFavorecidoChavePix(String(payload.favorecido_chave_pix || ''));
       setItens(
         Array.isArray(payload.itens)
           ? payload.itens.map((item, index) => {
@@ -433,13 +698,16 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                 insumo_nome: item.manual
                   ? item.nome_manual || item.insumo_nome || ''
                   : resumoItem?.insumo_nome || item.insumo_nome || '',
-                unidade_id: item.manual ? null : item.unidade_id,
+                unidade_id: item.manual ? null : (item.unidade_sigla_manual ? null : item.unidade_id),
                 unidade_sigla: item.manual
                   ? item.unidade_sigla_manual || item.unidade_sigla || ''
-                  : resumoItem?.unidade_sigla || '',
+                  : item.unidade_sigla_manual || item.unidade_sigla || resumoItem?.unidade_sigla || '',
                 quantidade: String(item.quantidade ?? '1'),
                 valor_unitario: item.valor_unitario ? String(item.valor_unitario) : '',
                 valor_total: item.valor_total ? String(item.valor_total) : '',
+                frete_valor: item.frete_valor !== null && item.frete_valor !== undefined
+                  ? String(item.frete_valor)
+                  : '',
                 especificacao: item.especificacao || '',
                 apropriacao_id: item.apropriacao_id ? String(item.apropriacao_id) : '',
                 apropriacoes: Array.isArray(item.apropriacoes) ? item.apropriacoes : [],
@@ -449,9 +717,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                 arquivo_nome_original: item.arquivo_nome_original || '',
                 manual: Boolean(item.manual),
                 nome_manual: item.manual ? item.nome_manual || item.insumo_nome || '' : '',
-                unidade_sigla_manual: item.manual
-                  ? item.unidade_sigla_manual || item.unidade_sigla || ''
-                  : ''
+                unidade_sigla_manual: item.unidade_sigla_manual
+                  || (item.manual ? item.unidade_sigla || '' : '')
               });
             })
           : []
@@ -459,7 +726,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     } catch (error) {
       console.error(error);
     } finally {
-      draftCarregadoRef.current = true;
+      if (!aguardaReaproveitamento) draftCarregadoRef.current = true;
     }
   }, [draftKey]);
 
@@ -471,6 +738,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     ) return undefined;
     const possuiConteudo = Boolean(
       obraId || necessarioPara || observacoes || dadosPagamento || parceiroId || freteTipo !== 'SEM_FRETE' || itens.length
+      || favorecidoSelecionado || favorecidoChavePix
     );
     if (!possuiConteudo) return undefined;
 
@@ -484,19 +752,39 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           dados_pagamento: dadosPagamento || '',
           desconto_total: descontoTotal || '',
           frete_tipo: freteTipo,
-          frete_valor: freteTipo === 'SEM_FRETE' ? '' : freteValor || '',
+          frete_modo: freteTipo === 'SEM_FRETE' ? 'GLOBAL' : freteModo,
+          frete_valor: freteTipo === 'SEM_FRETE'
+            ? ''
+            : freteModo === 'POR_ITEM'
+              ? arredondarMoeda(itens.reduce((total, item) => total + Math.max(0, parseValorMonetario(item?.frete_valor)), 0))
+              : freteValor || '',
           frete_data_vencimento: freteTipo === 'TERCEIRO' ? freteDataVencimento || null : null,
           frete_parceiro_id: freteTipo === 'TERCEIRO' ? freteParceiroId || null : null,
           frete_dados_pagamento: freteTipo === 'TERCEIRO' ? freteDadosPagamento || '' : '',
+          frete_forma_pagamento_id: freteTipo === 'TERCEIRO' ? freteFormaPagamentoId || null : null,
+          frete_favorecido_id: freteTipo === 'TERCEIRO' ? freteFavorecidoSelecionado?.id || null : null,
+          frete_favorecido_chave_pix: freteTipo === 'TERCEIRO' ? freteChavePix.trim() || null : null,
           anexos_cabecalho: anexosCabecalho,
           forma_pagamento_ids: formaPagamentoIds,
+          valores_forma_pagamento: valoresFormaPagamento,
+          detalhes_forma_pagamento: detalhesFormaPagamento,
           parceiro_id: parceiroId || null,
+          favorecido_id: favorecidoSelecionado?.id || null,
+          favorecido_chave_pix: favorecidoChavePix.trim() || null,
           itens
         },
         resumo: {
           solicitante_nome: user?.nome || '',
           credor_nome: parceiroBusca || '',
+          favorecido: favorecidoSelecionado
+            ? { id: favorecidoSelecionado.id, nome: favorecidoSelecionado.nome, cpf_cnpj: favorecidoSelecionado.cpf_cnpj || '' }
+            : null,
+          favorecido_nome: favorecidoSelecionado?.nome || '',
           frete_credor_nome: freteParceiroBusca || '',
+          frete_favorecido: freteFavorecidoSelecionado
+            ? { id: freteFavorecidoSelecionado.id, nome: freteFavorecidoSelecionado.nome, cpf_cnpj: freteFavorecidoSelecionado.cpf_cnpj || '' }
+            : null,
+          frete_favorecido_nome: freteFavorecidoSelecionado?.nome || '',
           itens
         },
         contexto: {
@@ -511,13 +799,19 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     anexosCabecalho,
     areaResponsavelContexto,
     dadosPagamento,
+    detalhesFormaPagamento,
     descontoTotal,
     draftKey,
     formaPagamentoIds,
+    valoresFormaPagamento,
     freteDataVencimento,
     freteDadosPagamento,
+    freteFormaPagamentoId,
+    freteFavorecidoSelecionado,
+    freteChavePix,
     freteParceiroBusca,
     freteParceiroId,
+    freteModo,
     freteTipo,
     freteValor,
     itens,
@@ -526,6 +820,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     observacoes,
     parceiroBusca,
     parceiroId,
+    favorecidoSelecionado,
+    favorecidoChavePix,
+    compraDiretaExigeFavorecido,
     tipoSolicitacaoIdContexto,
     user?.id,
     user?.nome
@@ -565,6 +862,24 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     });
   }, [buscaInsumo, insumos]);
 
+  // A grade edita por POSICAO na lista; a tabela precisa de um id estavel por
+  // linha, entao o indice viaja junto do item.
+  const itensGrade = useMemo(
+    () => itens.map((item, indice) => ({ ...item, __indice: indice })),
+    [itens]
+  );
+
+  useEffect(() => {
+    const indice = novoItemManualIndexRef.current;
+    if (indice === null) return;
+    const campos = document.querySelectorAll(`[data-nome-item-manual="${indice}"]`);
+    const campoVisivel = Array.from(campos).find((campo) => campo.getClientRects().length);
+    if (campoVisivel) {
+      campoVisivel.focus();
+      novoItemManualIndexRef.current = null;
+    }
+  }, [itens]);
+
   const itensPendentesApropriacao = useMemo(
     () => itens.filter((item) => !validarRateiosItem(item).ok).length,
     [itens]
@@ -586,15 +901,23 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   );
 
   const freteValorNumero = useMemo(
-    () => arredondarMoeda(Math.max(0, parseValorMonetario(freteValor))),
-    [freteValor]
+    () => arredondarMoeda(Math.max(
+      0,
+      freteModo === 'POR_ITEM'
+        ? itens.reduce((total, item) => total + parseValorMonetario(item?.frete_valor), 0)
+        : parseValorMonetario(freteValor)
+    )),
+    [freteModo, freteValor, itens]
   );
 
   const valorTotalSolicitacaoCompraDireta = useMemo(
     () => arredondarMoeda(
-      valorTotalCompraDireta + (freteTipo === 'TERCEIRO' ? freteValorNumero : 0)
+      valorTotalCompraDireta + (freteTipo !== 'SEM_FRETE' ? freteValorNumero : 0)
     ),
     [freteTipo, freteValorNumero, valorTotalCompraDireta]
+  );
+  const valorTotalCredorCompraDireta = arredondarMoeda(
+    valorTotalCompraDireta + (freteTipo === 'EMBUTIDO' ? freteValorNumero : 0)
   );
 
   const parceiroSelecionado = useMemo(
@@ -690,8 +1013,21 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   function selecionarCredorCompraDireta(parceiro) {
     if (!parceiro) return;
     buscaCredorRequestRef.current += 1;
+    limparErroCampo('credor');
     setParceiroId(String(parceiro.id));
     setParceiroBusca(formatarCredor(parceiro));
+    if (usarCredorComoFavorecido) {
+      setFavorecidoSelecionado(parceiro);
+      setFavorecidoChavePix('');
+    }
+    setDetalhesFormaPagamento((atual) => Object.fromEntries(
+      Object.entries(atual).map(([formaId, detalhe]) => [
+        formaId,
+        detalhe?.usar_credor_como_favorecido
+          ? { ...criarDetalheFormaPagamento(detalhe), favorecido: parceiro, chave_pix: '' }
+          : detalhe
+      ])
+    ));
     setParceiros((atual) => [
       parceiro,
       ...atual.filter((item) => Number(item.id) !== Number(parceiro.id))
@@ -730,8 +1066,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   function selecionarCredorFrete(parceiro) {
     if (!parceiro) return;
     buscaCredorFreteRequestRef.current += 1;
+    limparErroCampo('frete_parceiro');
     setFreteParceiroId(String(parceiro.id));
     setFreteParceiroBusca(formatarCredor(parceiro));
+    if (freteUsarCredorComoFavorecido) {
+      setFreteFavorecidoSelecionado(parceiro);
+      setFreteChavePix('');
+    }
     setFreteParceiros((atual) => [
       parceiro,
       ...atual.filter((item) => Number(item.id) !== Number(parceiro.id))
@@ -769,22 +1110,45 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
   function alterarFreteTipo(tipo) {
     setFreteTipo(tipo);
+    limparErroCampo('frete_valor');
     if (tipo === 'SEM_FRETE') {
+      setFreteModo('GLOBAL');
       setFreteValor('');
+      setItens((atuais) => atuais.map((item) => ({ ...item, frete_valor: '' })));
     }
     if (tipo !== 'TERCEIRO') {
       setFreteDataVencimento('');
       setFreteParceiroId('');
       setFreteParceiroBusca('');
       setFreteDadosPagamento('');
+      setFreteFormaPagamentoId('');
+      setFreteFavorecidoSelecionado(null);
+      setFreteUsarCredorComoFavorecido(false);
+      setFreteChavePix('');
+      setAnexosCabecalho((atuais) => atuais.filter((anexo) => anexo?.tipo_documento !== 'FRETE_BOLETO'));
       setFreteParceiros([]);
       setAutocompleteFreteAberto(false);
     }
   }
 
+  function alterarFreteModo(modo) {
+    const modoNormalizado = modo === 'POR_ITEM' ? 'POR_ITEM' : 'GLOBAL';
+    setFreteModo(modoNormalizado);
+    limparErroCampo('frete_valor');
+    setErrosItem({});
+  }
+
   async function cadastrarCredorCompraDireta() {
     if (!novoCredor.nome.trim()) {
-      alert('Informe o nome do credor.');
+      reprovarCampo('credor_nome', 'Informe o nome do credor.');
+      return;
+    }
+    const documentoErro = getCpfCnpjError(novoCredor.cpf_cnpj, {
+      required: true,
+      label: 'CPF/CNPJ do credor'
+    });
+    if (documentoErro) {
+      reprovarCampo('credor_cpf_cnpj', documentoErro);
       return;
     }
 
@@ -792,15 +1156,17 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     try {
       const parceiro = await criarCredorCompraDireta({
         ...novoCredor,
-        cpf_cnpj: novoCredor.cpf_cnpj.replace(/\D/g, ''),
+        cpf_cnpj: onlyDigits(novoCredor.cpf_cnpj),
         telefone: novoCredor.telefone.replace(/\D/g, '')
       });
       selecionarCredorCompraDireta(parceiro);
       setNovoCredor(criarNovoCredorPadrao());
+      setErrosCampo({});
       setModalCredorAberto(false);
+      avisar.sucesso('Credor cadastrado e selecionado nesta compra.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao cadastrar credor');
+      avisar.erro(error.message || 'Erro ao cadastrar credor');
     } finally {
       setSalvandoCredor(false);
     }
@@ -808,7 +1174,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
   async function baixarModeloItens() {
     if (!modoCompraDireta && !obraId) {
-      alert('Selecione a obra antes de baixar o modelo.');
+      reprovarCampo('obra_id', 'Selecione a obra antes de baixar o modelo.');
       return;
     }
 
@@ -820,7 +1186,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       }
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao baixar modelo de itens');
+      avisar.erro(error.message || 'Erro ao baixar modelo de itens');
     }
   }
 
@@ -830,7 +1196,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     }
 
     if (!obraId) {
-      alert('Selecione a obra antes de importar os itens.');
+      reprovarCampo('obra_id', 'Selecione a obra antes de importar os itens.');
       return;
     }
 
@@ -849,12 +1215,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         : [];
 
       if (!itensImportados.length) {
-        alert('Nenhum item valido foi encontrado na planilha.');
+        avisar.alerta('Nenhum item valido foi encontrado na planilha.');
         return;
       }
 
       if (itens.length + itensImportados.length > 300) {
-        alert(`A solicitacao ficaria com ${itens.length + itensImportados.length} itens. O limite e 300 itens.`);
+        avisar.alerta(`A solicitacao ficaria com ${itens.length + itensImportados.length} itens. O limite e 300 itens.`);
         return;
       }
 
@@ -869,19 +1235,19 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         );
         if (duplicados.length) {
           const nomes = duplicados.slice(0, 5).map((item) => item.insumo_nome).join(', ');
-          alert(`A importacao contem insumo(s) que ja estao na solicitacao: ${nomes}. Remova as duplicidades e tente novamente.`);
+          avisar.alerta(`A importacao contem insumo(s) que ja estao na solicitacao: ${nomes}. Remova as duplicidades e tente novamente.`);
           return;
         }
       }
 
       setItens((atual) => [...atual, ...itensImportados]);
-      alert(
+      avisar.sucesso(
         `${itensImportados.length} item(ns) importado(s) para ${modoCompraDireta ? 'a compra direta' : 'a solicitacao de compra'}. Revise os dados antes de continuar.`
       );
     } catch (error) {
       console.error(error);
-      const detalhes = Array.isArray(error?.erros) ? `\n${error.erros.join('\n')}` : '';
-      alert(`${error.message || 'Erro ao importar itens'}${detalhes}`);
+      const detalhes = Array.isArray(error?.erros) ? ` ${error.erros.join(' ')}` : '';
+      avisar.erro(`${error.message || 'Erro ao importar itens'}${detalhes}`);
     } finally {
       importacaoEmAndamentoRef.current = false;
       setImportandoItens(false);
@@ -890,13 +1256,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
   async function adicionarInsumo(insumo) {
     if (!obraId) {
-      alert('Selecione a obra antes de adicionar itens.');
+      reprovarCampo('obra_id', 'Selecione a obra antes de adicionar itens.');
       return;
     }
 
     const existente = itens.find((item) => !item.manual && Number(item.insumo_id) === Number(insumo.id));
     if (existente) {
-      alert('Esse insumo já foi adicionado.');
+      avisar.alerta('Esse insumo já foi adicionado.');
       return;
     }
 
@@ -920,30 +1286,28 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
   function adicionarItemManual() {
     if (!obraId) {
-      alert('Selecione a obra antes de adicionar item manual.');
+      reprovarCampo('obra_id', 'Selecione a obra antes de adicionar itens.');
       return;
     }
-
-    if (!itemManual.nome_manual.trim() || !itemManual.unidade_sigla_manual.trim()) {
-      alert('Informe nome e unidade do item manual.');
+    if (itens.length >= 300) {
+      avisar.alerta('O limite é de 300 itens por solicitação.');
       return;
     }
-
-    setItens((atual) => [
-      ...atual,
-      criarItemManualBase(
-        {
-          ...itemManual,
-          quantidade: itemManual.quantidade || '1'
-        },
-        necessarioPara
-      )
-    ]);
-    setItemManual({ nome_manual: '', unidade_id: '', unidade_sigla_manual: '', quantidade: '1', especificacao: '' });
-    setModalManualAberto(false);
+    const novoItem = criarItemManualBase({
+      nome_manual: '',
+      unidade_sigla_manual: '',
+      quantidade: '1',
+      apropriacoes: []
+    }, necessarioPara);
+    novoItemManualIndexRef.current = itens.length;
+    setItens((atual) => [...atual, novoItem]);
   }
 
   function atualizarItem(index, campo, valor) {
+    // A coluna do insumo guarda o erro na chave `insumo`, mas o campo editado
+    // chama-se `insumo_nome` — sem o mapeamento a mensagem sobreviveria à
+    // correção, que é exatamente o que ensina a ignorar a próxima.
+    limparErroItem(index, campo === 'insumo_nome' ? 'insumo' : campo);
     setItens((atual) =>
       atual.map((item, itemIndex) => {
         if (itemIndex !== index) {
@@ -972,23 +1336,31 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         }
 
         if (campo === 'valor_unitario') {
-          return sincronizarItemComRateios({
+          return {
             ...atualizado,
             valor_total: modoCompraDireta ? String(calcularValorTotalItem(atualizado)) : atualizado.valor_total
-          });
+          };
         }
 
-        return sincronizarItemComRateios(atualizado);
+        return atualizado;
       })
     );
   }
 
-  function atualizarUnidadeItem(index, unidadeIdSelecionada) {
-    const unidade = unidades.find((item) => String(item.id) === String(unidadeIdSelecionada));
+  function atualizarUnidadeItem(index, valorDigitado) {
+    const texto = String(valorDigitado || '');
+    const itemAtual = itens[index];
+    const textoNormalizado = normalizarTexto(texto).trim();
+    const unidade = unidades.find((item) => (
+      [item.sigla, item.nome, `${item.sigla || ''} - ${item.nome || ''}`]
+        .some((valor) => normalizarTexto(valor).trim() === textoNormalizado)
+    ));
+    const unidadeSigla = unidade?.sigla || unidade?.nome || texto;
+    limparErroItem(index, 'unidade');
     atualizarCamposItem(index, {
       unidade_id: unidade?.id || null,
-      unidade_sigla: unidade?.sigla || unidade?.nome || '',
-      unidade_sigla_manual: unidade?.sigla || unidade?.nome || ''
+      unidade_sigla: unidadeSigla,
+      unidade_sigla_manual: itemAtual?.manual ? unidadeSigla : (unidade ? '' : texto)
     });
   }
 
@@ -999,10 +1371,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           return item;
         }
 
-        return sincronizarItemComRateios({
+        return {
           ...item,
           ...campos
-        });
+        };
       })
     );
   }
@@ -1010,69 +1382,66 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   function abrirModalApropriacao(index) {
     const item = itens[index];
     if (!parseQuantidade(item?.quantidade)) {
-      alert('Informe a quantidade do item antes de distribuir a apropriacao.');
+      reprovarItem(index, 'quantidade', 'Informe a quantidade do item antes de distribuir a apropriação.');
       return;
     }
 
     const rateiosExistentes = normalizarRateiosEntrada(item);
+    setErroRateiosModal('');
     setModalApropriacaoIndex(index);
-    setRateiosModal(
-      rateiosExistentes.length
-        ? rateiosExistentes
-        : [criarRateioBase(String(item.quantidade || ''))]
-    );
+    setRateiosModal(rateiosExistentes.length
+      ? rateiosExistentes
+      : [criarRateioBase(String(item.quantidade || ''))]);
   }
 
   function fecharModalApropriacao() {
     setModalApropriacaoIndex(null);
     setRateiosModal([]);
+    setErroRateiosModal('');
   }
 
   function atualizarRateioModal(rateioIndex, campo, valor) {
-    setRateiosModal((atual) =>
-      atual.map((rateio, index) =>
-        index === rateioIndex
-          ? {
-              ...rateio,
-              [campo]: valor
-            }
-          : rateio
-      )
-    );
+    setErroRateiosModal('');
+    setRateiosModal((atual) => atual.map((rateio, index) => (
+      index === rateioIndex ? { ...rateio, [campo]: valor } : rateio
+    )));
   }
 
   function adicionarRateioModal() {
+    setErroRateiosModal('');
     setRateiosModal((atual) => [...atual, criarRateioBase('')]);
   }
 
   function removerRateioModal(rateioIndex) {
+    setErroRateiosModal('');
     setRateiosModal((atual) => atual.filter((_, index) => index !== rateioIndex));
   }
 
   function salvarRateiosItem() {
-    if (modalApropriacaoIndex === null || !itemModalAtual) {
-      return;
-    }
+    if (modalApropriacaoIndex === null || !itemModalAtual) return;
 
     const itemComRateios = sincronizarItemComRateios({
       ...itemModalAtual,
+      apropriacao_id: '',
       apropriacoes: rateiosModal
     });
     const validacao = validarRateiosItem(itemComRateios);
-
     if (!validacao.ok) {
-      alert(validacao.mensagem);
+      setErroRateiosModal(validacao.mensagem);
       return;
     }
 
     atualizarCamposItem(modalApropriacaoIndex, {
-      apropriacoes: rateiosModal
+      apropriacao_id: itemComRateios.apropriacao_id,
+      apropriacoes: itemComRateios.apropriacoes
     });
+    limparErroItem(modalApropriacaoIndex, 'apropriacao');
     fecharModalApropriacao();
   }
 
   function removerItem(index) {
     setItens((atual) => atual.filter((_, itemIndex) => itemIndex !== index));
+    setErrosItem({});
     setUploadingArquivos((atual) => {
       const proximo = {};
       Object.entries(atual).forEach(([chave, valor]) => {
@@ -1089,17 +1458,32 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     if (modalApropriacaoIndex === index) {
       fecharModalApropriacao();
     } else if (modalApropriacaoIndex !== null && modalApropriacaoIndex > index) {
-      setModalApropriacaoIndex((atual) => (atual !== null ? atual - 1 : atual));
+      setModalApropriacaoIndex((atual) => atual - 1);
     }
   }
 
-  function limparLista() {
-    if (!window.confirm('Deseja remover todos os itens da lista atual?')) {
+  /*
+    Função SEM chamador na tela (nenhum botão a aciona hoje) — mantida por
+    ser capacidade existente, migrada junto: a pergunta agora é a do sistema,
+    com o retorno desestruturado (R21) e o alvo fixado antes do `await` (R26).
+    A chamada a `setItensSelecionados([])` que existia aqui referenciava um
+    estado que NÃO EXISTE neste arquivo: se algum dia esta função fosse
+    ligada a um botão, ela quebraria com ReferenceError. Está no relatório.
+  */
+  async function limparLista() {
+    const totalItensAlvo = itens.length;
+    const { ok } = await confirmar({
+      titulo: 'Remover todos os itens',
+      mensagem: `Deseja remover todos os itens da lista atual? São ${totalItensAlvo} item(ns), com quantidades, valores e rateios já preenchidos.`,
+      rotuloConfirmar: 'Remover todos',
+      destrutiva: true
+    });
+    if (!ok) {
       return;
     }
 
     setItens([]);
-    setItensSelecionados([]);
+    setErrosItem({});
     setUploadingArquivos({});
     fecharModalApropriacao();
   }
@@ -1119,7 +1503,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       });
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao enviar arquivo do item');
+      avisar.erro(error.message || 'Erro ao enviar arquivo do item');
     } finally {
       setUploadingArquivos((atual) => {
         const proximo = { ...atual };
@@ -1131,9 +1515,30 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
   function alternarFormaPagamento(formaId) {
     const id = String(formaId);
-    setFormaPagamentoIds((atual) =>
-      atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]
-    );
+    limparErroCampo('forma_pagamento');
+    setFormaPagamentoIds((atual) => {
+      const selecionada = atual.includes(id);
+      if (!selecionada) {
+        setDetalhesFormaPagamento((detalhes) => ({
+          ...detalhes,
+          [id]: detalhes[id] || criarDetalheFormaPagamento()
+        }));
+      }
+      return selecionada ? atual.filter((item) => item !== id) : [...atual, id];
+    });
+    setFormasPagamentoAberto(false);
+  }
+
+  function atualizarDetalheFormaPagamento(formaId, alteracoes) {
+    const id = String(formaId);
+    setDetalhesFormaPagamento((atual) => ({
+      ...atual,
+      [id]: {
+        ...criarDetalheFormaPagamento(atual[id]),
+        ...alteracoes
+      }
+    }));
+    limparErroCampo(`pagamento_forma_${id}`);
   }
 
   async function handleSelecionarAnexoCabecalho(file, tipoDocumento = 'NOTA_FISCAL_GUIA') {
@@ -1144,6 +1549,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setUploadingAnexoCabecalho(true);
     try {
       const data = await uploadAnexoTemporarioCompra(file);
+      if (tipoDocumento === 'BOLETO') limparErroCampo('boleto');
+      if (tipoDocumento === 'FRETE_BOLETO') limparErroCampo('frete_boleto');
       setAnexosCabecalho((atual) => [
         ...atual,
         {
@@ -1154,7 +1561,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       ]);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao enviar anexo da compra direta');
+      avisar.erro(error.message || 'Erro ao enviar anexo da compra direta');
     } finally {
       setUploadingAnexoCabecalho(false);
     }
@@ -1175,7 +1582,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     try {
       const url = await obterUrlAssinadaCompra(item.arquivo_url);
       if (!url) {
-        alert('Arquivo nao encontrado.');
+        avisar.alerta('Arquivo não encontrado.');
         return;
       }
 
@@ -1186,75 +1593,140 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       }));
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao abrir arquivo do item');
+      avisar.erro(error.message || 'Erro ao abrir arquivo do item');
     }
   }
 
   async function handleSalvar() {
     if (!obraId) {
-      alert('Selecione a obra.');
+      reprovarCampo('obra_id', 'Selecione a obra.');
+      return;
+    }
+    // Obra travada em Custos e Recebiveis nao recebe solicitacao nova (29/09/2026).
+    if (obraTravadaMotivo) {
+      reprovarCampo('obra_id', obraTravadaMotivo);
       return;
     }
 
     if (modoCompraDireta && !necessarioPara) {
-      alert('Informe a data de vencimento.');
+      reprovarCampo('necessario_para', 'Informe a data de vencimento.');
       return;
     }
 
     if (modoCompraDireta && formaPagamentoIds.length === 0) {
-      alert('Selecione ao menos uma forma de pagamento.');
+      reprovarCampo('forma_pagamento', 'Selecione ao menos uma forma de pagamento.');
+      return;
+    }
+    if (modoCompraDireta && formasPagamentoSelecionadas.length !== formaPagamentoIds.length) {
+      reprovarCampo('forma_pagamento', 'Aguarde o carregamento das formas de pagamento e confira a seleção.');
+      return;
+    }
+    const formasPagamentoComValor = formasPagamentoSelecionadas.map((forma) => {
+      const detalhe = criarDetalheFormaPagamento(detalhesFormaPagamento[String(forma.id)]);
+      return {
+        id: Number(forma.id),
+        valor: formasPagamentoSelecionadas.length === 1
+          ? valorTotalCredorCompraDireta
+          : arredondarMoeda(parseValorMonetario(valoresFormaPagamento[String(forma.id)])),
+        favorecido_id: detalhe.favorecido?.id ? Number(detalhe.favorecido.id) : null,
+        chave_pix: detalhe.chave_pix.trim() || null,
+        dados_pagamento: detalhe.dados_pagamento.trim() || null
+      };
+    });
+    if (modoCompraDireta && (formasPagamentoComValor.some((forma) => forma.valor <= 0)
+      || arredondarMoeda(formasPagamentoComValor.reduce((soma, forma) => soma + forma.valor, 0)) !== valorTotalCredorCompraDireta)) {
+      reprovarCampo('valores_forma_pagamento', 'Distribua o valor total do credor entre as formas selecionadas.');
       return;
     }
 
+    for (const forma of formasPagamentoSelecionadas) {
+      if (formaPagamentoEhBoleto(forma)) continue;
+      const detalhe = criarDetalheFormaPagamento(detalhesFormaPagamento[String(forma.id)]);
+      const campoErro = `pagamento_forma_${forma.id}`;
+      if (!detalhe.favorecido?.id) {
+        reprovarCampo(campoErro, `Selecione o favorecido para ${formatarFormaPagamento(forma)}.`);
+        return;
+      }
+      if (formaPagamentoEhPix(forma) && !detalhe.chave_pix.trim()) {
+        reprovarCampo(campoErro, `Digite a chave PIX para ${formatarFormaPagamento(forma)}.`);
+        return;
+      }
+      if (!formaPagamentoEhPix(forma) && !detalhe.dados_pagamento.trim()) {
+        reprovarCampo(campoErro, `Informe os dados para pagamento por ${formatarFormaPagamento(forma)}.`);
+        return;
+      }
+    }
+
     if (modoCompraDireta && compraDiretaTemBoleto && anexosBoletoCabecalho.length === 0) {
-      alert('Anexe o boleto para continuar com forma de pagamento Boleto.');
+      reprovarCampo('boleto', 'Anexe o boleto para continuar com forma de pagamento Boleto.');
       return;
     }
 
     if (!itens.length) {
-      alert('Adicione ao menos um item.');
+      // Não existe campo para receber esta frase: a lista está vazia.
+      setErrosCampo({});
+      setErrosItem({});
+      avisar.alerta('Adicione ao menos um item.');
       return;
     }
 
     for (let index = 0; index < itens.length; index += 1) {
       const item = itens[index];
       if (!item.quantidade) {
-        alert(`Item ${index + 1}: informe a quantidade.`);
+        reprovarItem(index, 'quantidade', `Item ${index + 1}: informe a quantidade.`);
+        return;
+      }
+      if (!item.unidade_id && !String(item.unidade_sigla || item.unidade_sigla_manual || '').trim()) {
+        reprovarItem(index, 'unidade', `Item ${index + 1}: informe a unidade.`);
         return;
       }
       if (modoCompraDireta && parseValorMonetario(item.valor_unitario) <= 0) {
-        alert(`Item ${index + 1}: informe o valor unitario.`);
+        reprovarItem(index, 'valor_unitario', `Item ${index + 1}: informe o valor unitario.`);
+        return;
+      }
+      if (modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+        && (item.frete_valor === null || item.frete_valor === undefined || String(item.frete_valor).trim() === '')) {
+        reprovarItem(index, 'frete_valor', `Item ${index + 1}: informe o frete do item, mesmo que seja zero.`);
+        return;
+      }
+      if (modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+        && parseValorMonetario(item.frete_valor) < 0) {
+        reprovarItem(index, 'frete_valor', `Item ${index + 1}: o frete nao pode ser negativo.`);
         return;
       }
       if (!modoCompraDireta && !item.necessario_para) {
-        alert(`Item ${index + 1}: o prazo de entrega é obrigatório.`);
+        reprovarItem(index, 'necessario_para', `Item ${index + 1}: o prazo de entrega é obrigatório.`);
+        return;
+      }
+      if (item.manual && (!String(item.nome_manual || '').trim() || !String(item.unidade_sigla_manual || '').trim())) {
+        reprovarItem(index, 'insumo', `Item manual ${index + 1}: informe nome e unidade.`);
         return;
       }
       const validacaoRateios = validarRateiosItem(item);
       if (!validacaoRateios.ok) {
-        alert(`Item ${index + 1}: ${validacaoRateios.mensagem}`);
+        reprovarItem(index, 'apropriacao', `Item ${index + 1}: ${validacaoRateios.mensagem}`);
         return;
       }
-      if (item.manual) {
-        if (!item.nome_manual || !item.unidade_sigla_manual) {
-          alert(`Item manual ${index + 1}: informe nome e unidade.`);
-          return;
-        }
-      } else {
+      if (!item.manual) {
         if (!item.insumo_id) {
-          alert(`Item ${index + 1}: informe o insumo.`);
+          reprovarItem(index, 'insumo', `Item ${index + 1}: informe o insumo.`);
           return;
         }
       }
     }
 
     if (modoCompraDireta && descontoCompraDireta > valorBrutoCompraDireta) {
-      alert('O desconto concedido nao pode ser maior que o valor bruto dos itens.');
+      reprovarCampo('desconto_total', 'O desconto concedido nao pode ser maior que o valor bruto dos itens.');
       return;
     }
 
     if (modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteValorNumero <= 0) {
-      alert(
+      if (freteModo === 'POR_ITEM') {
+        reprovarItem(0, 'frete_valor', 'Informe ao menos um frete de item maior que zero.');
+        return;
+      }
+      reprovarCampo(
+        'frete_valor',
         freteTipo === 'EMBUTIDO'
           ? 'Informe um valor maior que zero para o frete embutido.'
           : 'Informe um valor maior que zero para o frete pago a terceiro.'
@@ -1264,18 +1736,33 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
     if (modoCompraDireta && freteTipo === 'TERCEIRO') {
       if (!freteParceiroId) {
-        alert('Selecione o credor responsável pelo frete.');
+        reprovarCampo('frete_parceiro', 'Selecione o credor responsável pelo frete.');
         return;
       }
       if (!freteDataVencimento) {
-        alert('Informe a data para pagamento do frete.');
+        reprovarCampo('frete_data_vencimento', 'Informe a data para pagamento do frete.');
         return;
       }
-      if (!String(freteDadosPagamento || '').trim()) {
-        alert('Informe os dados para pagamento do frete.');
+      if (!freteFormaPagamentoId || !freteFormaPagamento) {
+        reprovarCampo('frete_forma_pagamento_id', 'Selecione a forma de pagamento do frete.');
+        return;
+      }
+      if (freteExigeBoleto && anexosBoletoFrete.length === 0) {
+        reprovarCampo('frete_boleto', 'Anexe o boleto do frete.');
+        return;
+      }
+      if (freteExigeFavorecido && !freteFavorecidoSelecionado?.id) {
+        reprovarCampo('frete_favorecido_id', 'Selecione o favorecido do frete.');
+        return;
+      }
+      if (freteExigeChavePix && !freteChavePix.trim()) {
+        reprovarCampo('frete_favorecido_chave_pix', 'Digite a chave PIX do frete.');
         return;
       }
     }
+
+    setErrosCampo({});
+    setErrosItem({});
 
     try {
       setLoading(true);
@@ -1293,41 +1780,61 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           apropriacao_id: apropriacoesItem[0]?.apropriacao_id || null
         };
       });
+      const primeiraFormaComFavorecido = formasPagamentoSelecionadas.find((forma) => !formaPagamentoEhBoleto(forma));
+      const primeiraFormaPix = formasPagamentoSelecionadas.find(formaPagamentoEhPix);
+      const detalheLegadoFavorecido = primeiraFormaComFavorecido
+        ? criarDetalheFormaPagamento(detalhesFormaPagamento[String(primeiraFormaComFavorecido.id)])
+        : criarDetalheFormaPagamento();
+      const detalheLegadoPix = primeiraFormaPix
+        ? criarDetalheFormaPagamento(detalhesFormaPagamento[String(primeiraFormaPix.id)])
+        : criarDetalheFormaPagamento();
 
       const payload = {
         obra_id: obraId,
         tipo_solicitacao_id: modoCompraDireta ? tipoSolicitacaoIdContexto || null : undefined,
         origem: modoCompraDireta ? 'COMPRA_DIRETA' : undefined,
         parceiro_id: modoCompraDireta ? parceiroId || null : undefined,
+        favorecido_id: detalheLegadoFavorecido.favorecido?.id
+          ? Number(detalheLegadoFavorecido.favorecido.id) : undefined,
+        favorecido_chave_pix: detalheLegadoPix.chave_pix.trim() || undefined,
         necessario_para: necessarioPara || null,
         observacoes: observacoes || null,
-        dados_pagamento: modoCompraDireta ? dadosPagamento || null : undefined,
+        dados_pagamento: modoCompraDireta ? detalheLegadoFavorecido.dados_pagamento || null : undefined,
         desconto_total: modoCompraDireta ? descontoCompraDireta : undefined,
         frete_tipo: modoCompraDireta ? freteTipo : undefined,
+        frete_modo: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteModo : 'GLOBAL',
         frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteValorNumero : undefined,
         frete_data_vencimento: modoCompraDireta && freteTipo === 'TERCEIRO' ? freteDataVencimento : undefined,
         frete_parceiro_id: modoCompraDireta && freteTipo === 'TERCEIRO' ? Number(freteParceiroId) : undefined,
         frete_dados_pagamento: modoCompraDireta && freteTipo === 'TERCEIRO'
           ? String(freteDadosPagamento || '').trim()
           : undefined,
+        frete_forma_pagamento_id: modoCompraDireta && freteTipo === 'TERCEIRO' ? Number(freteFormaPagamentoId) : undefined,
+        frete_favorecido_id: modoCompraDireta && freteExigeFavorecido ? Number(freteFavorecidoSelecionado.id) : undefined,
+        frete_favorecido_chave_pix: modoCompraDireta && freteExigeChavePix ? freteChavePix.trim() : undefined,
         forma_pagamento_ids: modoCompraDireta ? formaPagamentoIds.map((id) => Number(id)).filter((id) => id > 0) : undefined,
+        formas_pagamento: modoCompraDireta ? formasPagamentoComValor : undefined,
         anexos_cabecalho: modoCompraDireta ? anexosCabecalho : undefined,
         itens: itensNormalizados.map((item) => ({
           manual: Boolean(item.manual),
           insumo_id: item.manual ? null : item.insumo_id,
-          unidade_id: item.manual ? null : item.unidade_id,
+          unidade_id: item.manual || item.unidade_sigla_manual ? null : item.unidade_id,
           apropriacao_id: item.apropriacao_id,
           apropriacoes: item.apropriacoes,
           quantidade: Number(item.quantidade),
           valor_unitario: modoCompraDireta ? parseValorMonetario(item.valor_unitario) : undefined,
           valor_total: modoCompraDireta ? calcularValorTotalItem(item) : undefined,
+          frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+            ? arredondarMoeda(Math.max(0, parseValorMonetario(item.frete_valor)))
+            : 0,
           especificacao: item.especificacao || '',
           necessario_para: item.necessario_para || necessarioPara || null,
           link_produto: item.link_produto || null,
           arquivo_url: item.arquivo_url || null,
           arquivo_nome_original: item.arquivo_nome_original || null,
           nome_manual: item.manual ? item.nome_manual : null,
-          unidade_sigla_manual: item.manual ? item.unidade_sigla_manual : (item.unidade_id ? null : item.unidade_sigla)
+          unidade_sigla_manual: item.unidade_sigla_manual
+            || (item.unidade_id ? null : item.unidade_sigla)
         }))
       };
 
@@ -1336,31 +1843,47 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         obra_codigo: obraSelecionada?.codigo || '',
         solicitante_nome: user?.nome || '',
         credor_nome: parceiroSelecionado ? formatarCredor(parceiroSelecionado) : parceiroBusca || '',
+        favorecido: detalheLegadoFavorecido.favorecido ? {
+          id: detalheLegadoFavorecido.favorecido.id,
+          nome: detalheLegadoFavorecido.favorecido.nome,
+          cpf_cnpj: detalheLegadoFavorecido.favorecido.cpf_cnpj || ''
+        } : null,
+        favorecido_nome: detalheLegadoFavorecido.favorecido?.nome || '',
         formas_pagamento: modoCompraDireta
           ? formasPagamentoSelecionadas.map((forma) => ({
               id: forma.id,
               nome: formatarFormaPagamento(forma),
               codigo: forma.codigo || '',
-              gera_boleto: Boolean(forma.gera_boleto)
+              gera_boleto: Boolean(forma.gera_boleto),
+              ...formasPagamentoComValor.find((item) => item.id === Number(forma.id))
             }))
           : [],
         valor_bruto: modoCompraDireta ? valorBrutoCompraDireta : null,
         desconto_total: modoCompraDireta ? descontoCompraDireta : null,
         valor_total_itens: modoCompraDireta ? valorTotalCompraDireta : null,
         frete_tipo: modoCompraDireta ? freteTipo : null,
+        frete_modo: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteModo : 'GLOBAL',
         frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteValorNumero : 0,
         frete_credor_nome: modoCompraDireta && freteTipo === 'TERCEIRO'
           ? (freteCredorSelecionado ? formatarCredor(freteCredorSelecionado) : freteParceiroBusca || '')
           : '',
         frete_data_vencimento: modoCompraDireta && freteTipo === 'TERCEIRO' ? freteDataVencimento : null,
         frete_dados_pagamento: modoCompraDireta && freteTipo === 'TERCEIRO' ? freteDadosPagamento : '',
+        frete_forma_pagamento: modoCompraDireta && freteTipo === 'TERCEIRO' ? formatarFormaPagamento(freteFormaPagamento) : '',
+        frete_favorecido: modoCompraDireta && freteExigeFavorecido
+          ? { id: freteFavorecidoSelecionado.id, nome: freteFavorecidoSelecionado.nome, cpf_cnpj: freteFavorecidoSelecionado.cpf_cnpj || '' }
+          : null,
+        frete_favorecido_nome: modoCompraDireta && freteExigeFavorecido ? freteFavorecidoSelecionado.nome : '',
         valor_total: modoCompraDireta ? valorTotalSolicitacaoCompraDireta : null,
-        dados_pagamento: modoCompraDireta ? dadosPagamento || '' : '',
+        dados_pagamento: modoCompraDireta ? detalheLegadoFavorecido.dados_pagamento || '' : '',
         anexos_cabecalho: modoCompraDireta ? anexosCabecalho : [],
         itens: itensNormalizados.map((item) => ({
           ...item,
           valor_unitario: modoCompraDireta ? parseValorMonetario(item.valor_unitario) : undefined,
           valor_total: modoCompraDireta ? calcularValorTotalItem(item) : undefined,
+          frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+            ? arredondarMoeda(Math.max(0, parseValorMonetario(item.frete_valor)))
+            : 0,
           apropriacao_linhas: montarLinhasResumoApropriacao(item, apropriacoes)
         }))
       };
@@ -1373,115 +1896,136 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         : undefined;
 
       writeComprasDraft(draftKey, { payload, resumo, contexto }, user?.id);
-      navigate(modoCompraDireta ? '/solicitacoes-compra-direta/revisar' : '/solicitacoes-compra/revisar');
+      navigate(modoCompraDireta ? '/solicitacoes-compra-direta/revisar'
+        : reaproveitarSolicitacaoId > 0
+          ? `/solicitacoes-compra/revisar?reaproveitar_solicitacao=${reaproveitarSolicitacaoId}`
+          : '/solicitacoes-compra/revisar');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao preparar revisão da solicitação');
+      avisar.erro(error.message || 'Erro ao preparar revisão da solicitação');
     } finally {
       setLoading(false);
     }
   }
 
-  return (
-    <div className="page solicitacoes-page page-compra-nova">
-      <div>
-        <h1 className="page-title">{modoCompraDireta ? 'Compra Direta' : 'Nova Solicitação de Compra'}</h1>
-        <p className="page-subtitle">
-          {modoCompraDireta
-            ? 'Informe os itens ja comprados, valores, notas fiscais e apropriacoes para abrir a solicitacao de pagamento.'
-            : 'Monte os itens da compra e distribua a apropriacao por item antes de enviar.'}
-        </p>
-      </div>
+  const modalCredorVisivel = modoCompraDireta && modalCredorAberto;
+  const modalApropriacaoVisivel = modalApropriacaoIndex !== null && Boolean(itemModalAtual);
+  // A faixa de avisos acompanha o modal aberto para não ficar atrás do fundo.
+  const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
+  const algumModalAberto = modalCredorVisivel || modalApropriacaoVisivel;
 
-      <div className="card">
-        <div className="card-header">
-          <h2 className="font-semibold">Dados gerais</h2>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="grid gap-2 xl:col-span-2">
-            <label className="text-sm font-medium">Obra *</label>
+  const estiloFreteAtivo = {
+    background: 'var(--sem-info-bg)',
+    borderColor: 'var(--sem-info-border)',
+    color: 'var(--sem-info)'
+  };
+
+  function renderOpcaoFrete(tipo, rotulo) {
+    const ativo = freteTipo === tipo;
+    return (
+      <button
+        type="button"
+        className="btn btn-outline"
+        style={ativo ? estiloFreteAtivo : undefined}
+        onClick={() => alterarFreteTipo(ativo ? 'SEM_FRETE' : tipo)}
+        aria-pressed={ativo}
+      >
+        <span
+          className="flex h-4 w-4 items-center justify-center rounded border"
+          style={ativo
+            ? { borderColor: 'var(--c-primary)', background: 'var(--c-primary)', color: 'var(--c-surface)' }
+            : { borderColor: 'var(--c-border)' }}
+          aria-hidden="true"
+        >
+          {ativo ? '✓' : ''}
+        </span>
+        {rotulo}
+      </button>
+    );
+  }
+
+  return (
+    <Pagina className="page-compra-nova">
+      {/* C3: tela de REGISTRO — a seta de voltar à esquerda da faixa é a
+          affordance primária de retorno à listagem, nos dois modos. */}
+      <PageHeader
+        titulo={modoCompraDireta ? 'Compra Direta' : 'Nova Solicitação de Compra'}
+        descricao={modoCompraDireta
+          ? 'Informe os itens ja comprados, valores, notas fiscais e apropriacoes para abrir a solicitacao de pagamento.'
+          : 'Monte os itens da compra e distribua a apropriacao por item antes de enviar.'}
+        voltar={{ to: '/solicitacoes-compra', title: 'Voltar para solicitações de compra' }}
+      />
+
+      {reaproveitarSolicitacaoId > 0 && <p className="text-sm text-[var(--c-muted)]">
+        Nova solicitação a partir dos itens não aprovados da solicitação #{reaproveitarSolicitacaoId}.
+        Os itens originais permanecem bloqueados; aqui você pode editar as cópias e adicionar outros itens.
+      </p>}
+
+      {!algumModalAberto && faixaAvisos}
+
+      {/*
+        R9 (revista em 04/09) — FORMULÁRIO INLINE. Esta tela EXISTE para
+        cadastrar a compra: tirando o formulário não sobra tela nenhuma. Os
+        blocos abaixo são os MESMOS grupos que a tela já tinha, na MESMA
+        ordem; nada foi reagrupado e nada nasce recolhido.
+      */}
+      <BlocoConteudo titulo="Dados gerais" variante="primario" cor="var(--sem-info)">
+        <FormSecao colunas={2}>
+          <CampoForm label="Obra" obrigatorio linha erro={errosCampo.obra_id || obraTravadaMotivo}>
             <ApropriacaoAutocomplete
               value={obraId}
               options={obras}
-              onChange={setObraId}
+              onChange={(valor) => { limparErroCampo('obra_id'); setObraId(valor); }}
               placeholder="Buscar obra por código ou nome..."
               inputClassName="input w-full"
               mostrarConsultaCompleta={false}
             />
-          </div>
+          </CampoForm>
 
-          <div className="grid gap-2">
-            <label className="text-sm font-medium">Solicitante</label>
+          <CampoForm label="Solicitante">
             <input className="input" value={user?.nome || ''} disabled />
-          </div>
+          </CampoForm>
 
-          <div className="grid gap-2">
-            <label className="text-sm font-medium">{modoCompraDireta ? 'Data de vencimento *' : 'Necessário para'}</label>
-            <input
-              type="date"
+          <CampoForm
+            label={modoCompraDireta ? 'Data de vencimento' : 'Necessário para'}
+            obrigatorio={modoCompraDireta}
+            erro={errosCampo.necessario_para}
+          >
+            <DateInputBR
               className="input"
               value={necessarioPara}
-              onChange={(event) => setNecessarioPara(event.target.value)}
+              onChange={(event) => { limparErroCampo('necessario_para'); setNecessarioPara(event.target.value); }}
               required={modoCompraDireta}
             />
-          </div>
+          </CampoForm>
 
           {modoCompraDireta && (
-            <div className="grid gap-2 md:col-span-2">
-              <label className="text-sm font-medium">Formas de pagamento *</label>
-              <details className="group relative">
-                <summary className="input flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                  <span className="min-w-0 truncate">{resumoFormasPagamento}</span>
-                  <svg className="h-4 w-4 shrink-0 transition group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path d="m7 10 5 5 5-5" />
-                  </svg>
-                </summary>
-                <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[110] max-h-64 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1.5 shadow-xl">
-                  {formasPagamento.map((forma) => {
-                    const selecionada = formaPagamentoIds.includes(String(forma.id));
-                    const boleto = formaPagamentoEhBoleto(forma);
-                    return (
-                      <label
-                        key={forma.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-[var(--c-text)] hover:bg-[var(--c-surface-hover)]"
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={selecionada}
-                          onChange={() => alternarFormaPagamento(forma.id)}
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">{formatarFormaPagamento(forma)}</span>
-                        {boleto && <span className="shrink-0 text-xs text-amber-700">Exige anexo</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </details>
-              {formasPagamento.length === 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Nenhuma forma de pagamento ativa foi encontrada. Verifique os cadastros financeiros.
-                </div>
-              )}
-            </div>
-          )}
-
-          {modoCompraDireta && (
-            <div className="grid gap-2 md:col-span-2">
-              <label className="text-sm font-medium">Credor</label>
+            <CampoForm label="Credor" linha erro={errosCampo.credor}>
               <div className="flex flex-wrap gap-2">
-                <div className="relative min-w-[260px] flex-1">
+                <div ref={campoCredorRef} className="relative min-w-0 flex-1 app-busca">
                   <input
                     className="input w-full"
                     value={parceiroBusca}
                     onChange={(event) => {
                       buscaCredorRequestRef.current += 1;
+                      limparErroCampo('credor');
                       setParceiroBusca(event.target.value);
                       setParceiroId('');
+                      if (usarCredorComoFavorecido) {
+                        setFavorecidoSelecionado(null);
+                        setFavorecidoChavePix('');
+                      }
+                      setDetalhesFormaPagamento((atual) => Object.fromEntries(
+                        Object.entries(atual).map(([formaId, detalhe]) => [
+                          formaId,
+                          detalhe?.usar_credor_como_favorecido
+                            ? { ...criarDetalheFormaPagamento(detalhe), favorecido: null, chave_pix: '' }
+                            : detalhe
+                        ])
+                      ));
                       setAutocompleteCredorAberto(true);
                     }}
                     onFocus={() => setAutocompleteCredorAberto(true)}
-                    onBlur={() => window.setTimeout(() => setAutocompleteCredorAberto(false), 120)}
                     onKeyDown={tratarTecladoCredor}
                     placeholder="Digite nome, CPF ou CNPJ"
                     autoComplete="off"
@@ -1494,7 +2038,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   {autocompleteCredorAberto && !parceiroId && String(parceiroBusca || '').trim().length >= 2 && (
                     <div
                       id="compra-direta-credores-opcoes"
-                      className="absolute left-0 right-0 top-[calc(100%+6px)] z-[90] max-h-64 overflow-y-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
+                      className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-64 overflow-y-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
                       role="listbox"
                     >
                       {buscandoParceiros && (
@@ -1502,7 +2046,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                       )}
 
                       {!buscandoParceiros && erroBuscaCredor && (
-                        <div className="px-3 py-2 text-sm text-red-600">{erroBuscaCredor}</div>
+                        <div className="px-3 py-2 text-sm text-[var(--sem-danger)]">{erroBuscaCredor}</div>
                       )}
 
                       {!buscandoParceiros && !erroBuscaCredor && parceiros.length === 0 && (
@@ -1513,11 +2057,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                         <button
                           key={parceiro.id}
                           type="button"
-                          className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                            index === credorAtivoIndex
-                              ? 'bg-[var(--c-primary)] text-white'
-                              : 'text-[var(--c-text)] hover:bg-[var(--c-surface-hover)]'
-                          }`}
+                          className="w-full rounded-md px-3 py-2 text-left text-sm transition-colors"
+                          style={index === credorAtivoIndex
+                            ? { background: 'var(--c-primary)', color: 'var(--c-surface)' }
+                            : { color: 'var(--c-text)' }}
                           onMouseEnter={() => setCredorAtivoIndex(index)}
                           onMouseDown={(event) => {
                             event.preventDefault();
@@ -1530,7 +2073,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                             {parceiro.nome || parceiro.razao_social || `Credor ${parceiro.id}`}
                           </span>
                           {parceiro.cpf_cnpj && (
-                            <span className={`block truncate text-xs ${index === credorAtivoIndex ? 'text-white/80' : 'text-[var(--c-muted)]'}`}>
+                            <span className="block truncate text-xs" style={{ opacity: 0.8 }}>
                               {parceiro.cpf_cnpj}
                             </span>
                           )}
@@ -1541,7 +2084,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                 </div>
                 <button
                   type="button"
-                  className="btn btn-outline h-[42px] w-[42px] shrink-0 px-0"
+                  className="btn btn-outline shrink-0"
                   onClick={() => setModalCredorAberto(true)}
                   title="Cadastrar novo credor"
                   aria-label="Cadastrar novo credor"
@@ -1553,216 +2096,468 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                 </button>
               </div>
               {parceiroId && (
-                <div className="text-sm text-emerald-700">
+                <span className="text-sm text-[var(--sem-success)]">
                   Credor selecionado: <strong>{parceiroBusca || formatarCredor(parceiroSelecionado)}</strong>
+                </span>
+              )}
+            </CampoForm>
+          )}
+
+          {modoCompraDireta && (
+            /* Não usa `CampoForm`: o menu de marcação é feito de <label>, e
+               label dentro de label é HTML inválido. Mesmas classes .form-*. */
+            <div className="form-group form-campo--linha">
+              <span className="form-label form-label--required">Formas de pagamento</span>
+              <div className="relative" ref={formasPagamentoRef}>
+                <button
+                  type="button"
+                  className="input flex w-full cursor-pointer items-center justify-between gap-3 text-left"
+                  aria-expanded={formasPagamentoAberto}
+                  onClick={() => setFormasPagamentoAberto((aberto) => !aberto)}
+                >
+                  <span className="min-w-0 truncate">{resumoFormasPagamento}</span>
+                  <svg className={`h-4 w-4 shrink-0 transition${formasPagamentoAberto ? ' rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="m7 10 5 5 5-5" />
+                  </svg>
+                </button>
+                {formasPagamentoAberto && (
+                <div className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-64 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl">
+                  {formasPagamento.map((forma) => {
+                    const selecionada = formaPagamentoIds.includes(String(forma.id));
+                    const boleto = formaPagamentoEhBoleto(forma);
+                    return (
+                      <label
+                        key={forma.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-[var(--c-text)] hover:bg-[var(--ui-surface-2)]"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={selecionada}
+                          onChange={() => alternarFormaPagamento(forma.id)}
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">{formatarFormaPagamento(forma)}</span>
+                        {boleto && <span className="shrink-0 text-xs text-[var(--sem-warning)]">Exige anexo</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+                )}
+              </div>
+              <ErroCampo mensagem={errosCampo.forma_pagamento} />
+              {formasPagamento.length === 0 && (
+                <div
+                  className="mt-2 rounded-xl border px-3 py-2 text-sm"
+                  style={{
+                    borderColor: 'var(--sem-warning-border)',
+                    background: 'var(--sem-warning-bg)',
+                    color: 'var(--sem-warning)'
+                  }}
+                >
+                  Nenhuma forma de pagamento ativa foi encontrada. Verifique os cadastros financeiros.
                 </div>
               )}
             </div>
           )}
 
-          <div className="grid gap-2 md:col-span-2">
-            <label className="text-sm font-medium">Observações da compra</label>
-            <textarea className="input min-h-[76px]" value={observacoes} onChange={(event) => setObservacoes(event.target.value)} placeholder="Informações úteis para conferência ou pagamento" />
-          </div>
-          {modoCompraDireta && (
-            <div className="grid gap-2 md:col-span-2">
-              <label className="text-sm font-medium">Dados para pagamento</label>
-              <textarea
-                className="input min-h-[76px]"
-                value={dadosPagamento}
-                onChange={(event) => setDadosPagamento(event.target.value)}
-                placeholder="Informe linha digitavel, PIX, banco/agencia/conta ou orientacoes para o financeiro."
-              />
+          {modoCompraDireta && formasPagamentoSelecionadas.length > 0 && (
+            <div className="form-campo--linha overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+              <div className="hidden grid-cols-2 gap-4 border-b border-[var(--c-border)] bg-[var(--ui-surface-2)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:grid">
+                <span>Forma e valor</span>
+                <span>Como realizar o pagamento</span>
+              </div>
+              <div className="divide-y divide-[var(--c-border)]">
+                {formasPagamentoSelecionadas.map((forma) => {
+                  const formaId = String(forma.id);
+                  const detalhe = criarDetalheFormaPagamento(detalhesFormaPagamento[formaId]);
+                  const boleto = formaPagamentoEhBoleto(forma);
+                  const pix = formaPagamentoEhPix(forma);
+                  return (
+                    <section key={forma.id} className="grid gap-4 px-4 py-4 md:grid-cols-2">
+                      <div className="min-w-0 space-y-2">
+                        <div>
+                          <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">Forma e valor</span>
+                          <strong className="text-sm text-[var(--c-text)]">{formatarFormaPagamento(forma)}</strong>
+                        </div>
+                        <CampoForm label="Valor" obrigatorio erro={errosCampo.valores_forma_pagamento}>
+                          <input
+                            className="input input-moeda"
+                            inputMode="decimal"
+                            value={formasPagamentoSelecionadas.length === 1
+                              ? valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                              : valoresFormaPagamento[formaId] || ''}
+                            readOnly={formasPagamentoSelecionadas.length === 1}
+                            onChange={(event) => {
+                              setValoresFormaPagamento((atual) => ({ ...atual, [formaId]: event.target.value }));
+                              limparErroCampo('valores_forma_pagamento');
+                            }}
+                          />
+                        </CampoForm>
+                      </div>
+
+                      <div className="min-w-0 space-y-3">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">Como realizar o pagamento</span>
+                        {boleto ? (
+                          <div className="space-y-2">
+                            <p className="text-sm text-[var(--c-muted)]">Anexe o boleto que será usado nesta compra.</p>
+                            <label className={`btn btn-outline inline-flex w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept={HEADER_ATTACHMENT_ACCEPT}
+                                disabled={uploadingAnexoCabecalho}
+                                onChange={(event) => {
+                                  const [file] = Array.from(event.target.files || []);
+                                  void handleSelecionarAnexoCabecalho(file, 'BOLETO');
+                                  event.target.value = '';
+                                }}
+                              />
+                              {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar boleto *'}
+                            </label>
+                            <span className="block text-xs text-[var(--c-muted)]">
+                              {anexosBoletoCabecalho.length} boleto(s) anexado(s).
+                            </span>
+                            <ErroCampo mensagem={errosCampo.boleto} />
+                          </div>
+                        ) : (
+                          <>
+                            <label className="flex items-center gap-2 text-sm text-[var(--c-text)]">
+                              <input
+                                type="checkbox"
+                                checked={detalhe.usar_credor_como_favorecido}
+                                disabled={!parceiroId}
+                                onChange={(event) => {
+                                  const marcado = event.target.checked;
+                                  atualizarDetalheFormaPagamento(formaId, {
+                                    usar_credor_como_favorecido: marcado,
+                                    favorecido: marcado
+                                      ? (parceiroSelecionado || { id: parceiroId, nome: parceiroBusca })
+                                      : null,
+                                    chave_pix: ''
+                                  });
+                                }}
+                              />
+                              Usar o credor como favorecido
+                            </label>
+                            {!detalhe.usar_credor_como_favorecido ? (
+                              <ParceiroBuscaRemota
+                                label="Favorecido do pagamento"
+                                selecionado={detalhe.favorecido}
+                                obrigatorio
+                                onSelecionar={(favorecido) => atualizarDetalheFormaPagamento(formaId, {
+                                  favorecido,
+                                  chave_pix: ''
+                                })}
+                              />
+                            ) : (
+                              <p className="text-xs text-[var(--c-muted)]">
+                                Favorecido: {detalhe.favorecido?.nome || parceiroBusca}
+                              </p>
+                            )}
+                            {pix ? (
+                              <CampoForm
+                                label="Chave PIX"
+                                obrigatorio
+                                hint="Digite a chave confirmada para esta solicitação."
+                              >
+                                <input
+                                  className="input"
+                                  value={detalhe.chave_pix}
+                                  maxLength={255}
+                                  autoComplete="off"
+                                  required
+                                  onChange={(event) => atualizarDetalheFormaPagamento(formaId, { chave_pix: event.target.value })}
+                                />
+                              </CampoForm>
+                            ) : (
+                              <CampoForm label="Dados para pagamento" obrigatorio>
+                                <textarea
+                                  className="input"
+                                  rows={3}
+                                  value={detalhe.dados_pagamento}
+                                  onChange={(event) => atualizarDetalheFormaPagamento(formaId, { dados_pagamento: event.target.value })}
+                                  placeholder="Informe banco, agência, conta ou orientações para o pagamento."
+                                />
+                              </CampoForm>
+                            )}
+                            <ErroCampo mensagem={errosCampo[`pagamento_forma_${formaId}`]} />
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+              <div className="border-t border-[var(--c-border)] bg-[var(--ui-surface-2)] px-4 py-2 text-xs text-[var(--c-muted)]">
+                Total do credor: {valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </div>
             </div>
           )}
-        </div>
-      </div>
+
+          <CampoForm label="Observações da compra" tipo="observacao">
+            <textarea
+              className="input"
+              rows={3}
+              value={observacoes}
+              onChange={(event) => setObservacoes(event.target.value)}
+              placeholder="Informações úteis para conferência ou pagamento"
+            />
+          </CampoForm>
+
+        </FormSecao>
+      </BlocoConteudo>
 
       {modoCompraDireta && (
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <h2 className="font-semibold">Condições comerciais e comprovantes</h2>
-              <p className="mt-1 text-sm text-[var(--c-muted)]">
-                Registre descontos, tratamento do frete e os documentos que comprovam a despesa.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4">
-            <div className="grid items-start gap-4 lg:grid-cols-[minmax(220px,0.35fr)_minmax(0,1.65fr)]">
-            <div>
-              <label className="text-sm font-semibold text-[var(--c-fg)]">Desconto concedido pelo fornecedor</label>
+        <BlocoConteudo
+          titulo="Condições comerciais e comprovantes"
+          descricao="Registre descontos, tratamento do frete e os documentos que comprovam a despesa."
+        >
+          <FormSecao legenda="Desconto" colunas={2}>
+            <CampoForm label="Desconto concedido pelo fornecedor" erro={errosCampo.desconto_total}>
               <input
-                className="input mt-1"
+                className="input input-moeda"
                 value={descontoTotal}
-                onChange={(event) => setDescontoTotal(event.target.value)}
+                onChange={(event) => { limparErroCampo('desconto_total'); setDescontoTotal(event.target.value); }}
                 placeholder="R$ 0,00"
               />
-            </div>
+            </CampoForm>
+          </FormSecao>
 
-            <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--c-text)]">Frete</h3>
-                  <p className="mt-1 text-xs text-[var(--c-muted)]">
-                    Informe se o frete já compõe os itens ou se será pago separadamente a outro credor.
-                  </p>
-                </div>
+          <FormSecao legenda="Frete" colunas={2}>
+            <div className="form-group form-campo--linha">
+              <span className="form-label">Tratamento do frete</span>
+              <span className="form-hint">
+                Informe se o frete será pago ao credor principal ou separadamente a outro credor.
+              </span>
+              <div className="flex flex-wrap items-center gap-2" aria-label="Tratamento do frete">
+                {renderOpcaoFrete('EMBUTIDO', 'Embutido')}
+                {renderOpcaoFrete('TERCEIRO', 'Pago a terceiro')}
                 {freteTipo === 'TERCEIRO' && (
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                  <span
+                    className="rounded-full px-3 py-1 text-xs font-semibold"
+                    style={{ background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' }}
+                  >
                     Gera título separado
                   </span>
                 )}
               </div>
-
-              <div className="mt-3 flex flex-wrap gap-2" aria-label="Tratamento do frete">
-                <button
-                  type="button"
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${freteTipo === 'EMBUTIDO' ? 'border-blue-400 bg-blue-50 text-blue-900' : 'border-[var(--c-border)] text-[var(--c-text)] hover:bg-[var(--c-surface-hover)]'}`}
-                  onClick={() => alterarFreteTipo(freteTipo === 'EMBUTIDO' ? 'SEM_FRETE' : 'EMBUTIDO')}
-                  aria-pressed={freteTipo === 'EMBUTIDO'}
-                >
-                  <span className={`flex h-4 w-4 items-center justify-center rounded border ${freteTipo === 'EMBUTIDO' ? 'border-blue-600 bg-blue-600 text-white' : 'border-[var(--c-border)]'}`}>
-                    {freteTipo === 'EMBUTIDO' ? '✓' : ''}
-                  </span>
-                  Embutido
-                </button>
-                <button
-                  type="button"
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${freteTipo === 'TERCEIRO' ? 'border-blue-400 bg-blue-50 text-blue-900' : 'border-[var(--c-border)] text-[var(--c-text)] hover:bg-[var(--c-surface-hover)]'}`}
-                  onClick={() => alterarFreteTipo(freteTipo === 'TERCEIRO' ? 'SEM_FRETE' : 'TERCEIRO')}
-                  aria-pressed={freteTipo === 'TERCEIRO'}
-                >
-                  <span className={`flex h-4 w-4 items-center justify-center rounded border ${freteTipo === 'TERCEIRO' ? 'border-blue-600 bg-blue-600 text-white' : 'border-[var(--c-border)]'}`}>
-                    {freteTipo === 'TERCEIRO' ? '✓' : ''}
-                  </span>
-                  Pago a terceiro
-                </button>
-              </div>
-
-              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {freteTipo === 'TERCEIRO' && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 md:col-span-2 xl:col-span-4">
-                    O frete ficará disponível em Contas a Pagar para geração de título separado.
-                  </div>
-                )}
-
-                {freteTipo !== 'SEM_FRETE' && (
-                  <div className="grid gap-1.5">
-                    <label className="text-sm font-medium">Valor do frete *</label>
-                    <input
-                      className="input"
-                      value={freteValor}
-                      onChange={(event) => setFreteValor(event.target.value)}
-                      placeholder="R$ 0,00"
-                      inputMode="decimal"
-                    />
-                    <span className="text-xs text-[var(--c-muted)]">
-                      {freteTipo === 'EMBUTIDO'
-                        ? 'Valor informativo: não será somado novamente nem gerará título.'
-                        : 'Será somado à solicitação e separado do credor principal.'}
-                    </span>
-                  </div>
-                )}
-
-                {freteTipo === 'TERCEIRO' && (
-                  <>
-                    <div className="relative grid gap-1.5 md:col-span-2">
-                      <label className="text-sm font-medium">Credor do frete *</label>
-                      <input
-                        className="input w-full"
-                        value={freteParceiroBusca}
-                        onChange={(event) => {
-                          buscaCredorFreteRequestRef.current += 1;
-                          setFreteParceiroBusca(event.target.value);
-                          setFreteParceiroId('');
-                          setAutocompleteFreteAberto(true);
-                        }}
-                        onFocus={() => setAutocompleteFreteAberto(true)}
-                        onBlur={() => window.setTimeout(() => setAutocompleteFreteAberto(false), 120)}
-                        onKeyDown={tratarTecladoCredorFrete}
-                        placeholder="Digite nome, CPF ou CNPJ"
-                        autoComplete="off"
-                        role="combobox"
-                        aria-autocomplete="list"
-                        aria-expanded={autocompleteFreteAberto}
-                        aria-controls="compra-direta-frete-credores-opcoes"
-                      />
-                      {autocompleteFreteAberto && !freteParceiroId && String(freteParceiroBusca || '').trim().length >= 2 && (
-                        <div
-                          id="compra-direta-frete-credores-opcoes"
-                          className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-64 overflow-y-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
-                          role="listbox"
-                        >
-                          {buscandoCredoresFrete && <div className="px-3 py-2 text-sm text-[var(--c-muted)]">Buscando credores...</div>}
-                          {!buscandoCredoresFrete && erroBuscaCredorFrete && <div className="px-3 py-2 text-sm text-red-600">{erroBuscaCredorFrete}</div>}
-                          {!buscandoCredoresFrete && !erroBuscaCredorFrete && freteParceiros.length === 0 && (
-                            <div className="px-3 py-2 text-sm text-[var(--c-muted)]">Nenhum credor encontrado.</div>
-                          )}
-                          {!buscandoCredoresFrete && !erroBuscaCredorFrete && freteParceiros.map((parceiro, index) => (
-                            <button
-                              key={parceiro.id}
-                              type="button"
-                              className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${index === freteCredorAtivoIndex ? 'bg-[var(--c-primary)] text-white' : 'text-[var(--c-text)] hover:bg-[var(--c-surface-hover)]'}`}
-                              onMouseEnter={() => setFreteCredorAtivoIndex(index)}
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                selecionarCredorFrete(parceiro);
-                              }}
-                              role="option"
-                              aria-selected={index === freteCredorAtivoIndex}
-                            >
-                              <span className="block truncate font-medium">{parceiro.nome || parceiro.razao_social || `Credor ${parceiro.id}`}</span>
-                              {parceiro.cpf_cnpj && (
-                                <span className={`block truncate text-xs ${index === freteCredorAtivoIndex ? 'text-white/80' : 'text-[var(--c-muted)]'}`}>{parceiro.cpf_cnpj}</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid gap-1.5">
-                      <label className="text-sm font-medium">Data para pagamento *</label>
-                      <input type="date" className="input" value={freteDataVencimento} onChange={(event) => setFreteDataVencimento(event.target.value)} />
-                    </div>
-
-                    <div className="grid gap-1.5 md:col-span-2 xl:col-span-4">
-                      <label className="text-sm font-medium">Dados para pagamento do frete *</label>
-                      <textarea
-                        className="input min-h-[80px]"
-                        value={freteDadosPagamento}
-                        onChange={(event) => setFreteDadosPagamento(event.target.value)}
-                        placeholder="Informe PIX, banco/agência/conta, linha digitável ou instruções para o financeiro."
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] pt-4">
-              <div>
-                <div className="text-sm font-semibold text-[var(--c-text)]">Comprovantes da Despesa</div>
-                <div className="mt-0.5 text-xs text-[var(--c-muted)]">Nota fiscal, guia, boleto ou comprovante relacionado à compra.</div>
+            {freteTipo === 'TERCEIRO' && (
+              <div
+                className="form-campo--linha rounded-lg border px-3 py-2 text-xs"
+                style={{
+                  borderColor: 'var(--sem-warning-border)',
+                  background: 'var(--sem-warning-bg)',
+                  color: 'var(--sem-warning)'
+                }}
+              >
+                O frete ficará disponível em Contas a Pagar para geração de título separado.
               </div>
-              <div className="flex flex-wrap gap-2">
-              <label className={`btn btn-outline w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
+            )}
+
+            {freteTipo !== 'SEM_FRETE' && (
+              <CampoForm
+                label="Como informar o frete"
+                hint="Use o valor por item quando o fornecedor detalhar o frete individualmente."
+              >
+                <select
+                  className="input"
+                  value={freteModo}
+                  onChange={(event) => alterarFreteModo(event.target.value)}
+                >
+                  <option value="GLOBAL">Valor total do frete</option>
+                  <option value="POR_ITEM">Frete por item</option>
+                </select>
+              </CampoForm>
+            )}
+
+            {freteTipo !== 'SEM_FRETE' && freteModo === 'GLOBAL' && (
+              <CampoForm
+                label="Valor do frete"
+                obrigatorio
+                erro={errosCampo.frete_valor}
+                hint={freteTipo === 'EMBUTIDO'
+                  ? 'Será somado à compra e pago ao credor principal no mesmo título.'
+                  : 'Será somado à solicitação e separado do credor principal.'}
+              >
                 <input
-                  type="file"
-                  className="hidden"
-                  accept={HEADER_ATTACHMENT_ACCEPT}
-                  onChange={(event) => {
-                    const [file] = Array.from(event.target.files || []);
-                    void handleSelecionarAnexoCabecalho(file, 'NOTA_FISCAL_GUIA');
-                    event.target.value = '';
-                  }}
+                  className="input input-moeda"
+                  value={freteValor}
+                  onChange={(event) => { limparErroCampo('frete_valor'); setFreteValor(event.target.value); }}
+                  placeholder="R$ 0,00"
+                  inputMode="decimal"
                 />
-                {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar arquivos'}
-              </label>
-              {compraDiretaTemBoleto && (
+              </CampoForm>
+            )}
+
+            {freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM' && (
+              <div className="form-campo--linha rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-xs text-[var(--c-muted)]">
+                Preencha o frete em cada linha da lista de itens. Total informado: <strong className="text-[var(--c-text)]">{formatarMoeda(freteValorNumero)}</strong>.
+              </div>
+            )}
+
+            {freteTipo === 'TERCEIRO' && (
+              <>
+                <CampoForm label="Credor do frete" obrigatorio linha erro={errosCampo.frete_parceiro}>
+                  <div ref={campoCredorFreteRef} className="relative">
+                    <input
+                      className="input w-full"
+                      value={freteParceiroBusca}
+                      onChange={(event) => {
+                        buscaCredorFreteRequestRef.current += 1;
+                        limparErroCampo('frete_parceiro');
+                        setFreteParceiroBusca(event.target.value);
+                        setFreteParceiroId('');
+                        if (freteUsarCredorComoFavorecido) {
+                          setFreteFavorecidoSelecionado(null);
+                          setFreteChavePix('');
+                        }
+                        setAutocompleteFreteAberto(true);
+                      }}
+                      onFocus={() => setAutocompleteFreteAberto(true)}
+                      onKeyDown={tratarTecladoCredorFrete}
+                      placeholder="Digite nome, CPF ou CNPJ"
+                      autoComplete="off"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={autocompleteFreteAberto}
+                      aria-controls="compra-direta-frete-credores-opcoes"
+                    />
+                    {autocompleteFreteAberto && !freteParceiroId && String(freteParceiroBusca || '').trim().length >= 2 && (
+                      <div
+                        id="compra-direta-frete-credores-opcoes"
+                        className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-64 overflow-y-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
+                        role="listbox"
+                      >
+                        {buscandoCredoresFrete && <div className="px-3 py-2 text-sm text-[var(--c-muted)]">Buscando credores...</div>}
+                        {!buscandoCredoresFrete && erroBuscaCredorFrete && <div className="px-3 py-2 text-sm text-[var(--sem-danger)]">{erroBuscaCredorFrete}</div>}
+                        {!buscandoCredoresFrete && !erroBuscaCredorFrete && freteParceiros.length === 0 && (
+                          <div className="px-3 py-2 text-sm text-[var(--c-muted)]">Nenhum credor encontrado.</div>
+                        )}
+                        {!buscandoCredoresFrete && !erroBuscaCredorFrete && freteParceiros.map((parceiro, index) => (
+                          <button
+                            key={parceiro.id}
+                            type="button"
+                            className="w-full rounded-md px-3 py-2 text-left text-sm transition-colors"
+                            style={index === freteCredorAtivoIndex
+                              ? { background: 'var(--c-primary)', color: 'var(--c-surface)' }
+                              : { color: 'var(--c-text)' }}
+                            onMouseEnter={() => setFreteCredorAtivoIndex(index)}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              selecionarCredorFrete(parceiro);
+                            }}
+                            role="option"
+                            aria-selected={index === freteCredorAtivoIndex}
+                          >
+                            <span className="block truncate font-medium">{parceiro.nome || parceiro.razao_social || `Credor ${parceiro.id}`}</span>
+                            {parceiro.cpf_cnpj && (
+                              <span className="block truncate text-xs" style={{ opacity: 0.8 }}>{parceiro.cpf_cnpj}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CampoForm>
+
+                <CampoForm label="Data para pagamento" obrigatorio erro={errosCampo.frete_data_vencimento}>
+                  <DateInputBR
+                    className="input"
+                    value={freteDataVencimento}
+                    onChange={(event) => { limparErroCampo('frete_data_vencimento'); setFreteDataVencimento(event.target.value); }}
+                  />
+                </CampoForm>
+
+                <CampoForm label="Forma de pagamento do frete" obrigatorio erro={errosCampo.frete_forma_pagamento_id}>
+                  <select className="input" value={freteFormaPagamentoId} onChange={(event) => {
+                    setFreteFormaPagamentoId(event.target.value);
+                    setFreteFavorecidoSelecionado(null);
+                    setFreteUsarCredorComoFavorecido(false);
+                    setFreteChavePix('');
+                    limparErroCampo('frete_forma_pagamento_id');
+                  }}>
+                    <option value="">Selecione</option>
+                    {formasPagamento.filter((forma) => !formaPagamentoEhFopag(forma)).map((forma) => (
+                      <option key={forma.id} value={forma.id}>{formatarFormaPagamento(forma)}</option>
+                    ))}
+                  </select>
+                </CampoForm>
+
+                {freteExigeFavorecido && (
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={freteUsarCredorComoFavorecido} disabled={!freteParceiroId}
+                        onChange={(event) => {
+                          const marcado = event.target.checked;
+                          setFreteUsarCredorComoFavorecido(marcado);
+                          setFreteFavorecidoSelecionado(marcado
+                            ? (freteCredorSelecionado || { id: freteParceiroId, nome: freteParceiroBusca }) : null);
+                          setFreteChavePix('');
+                          limparErroCampo('frete_favorecido_id');
+                        }} />
+                      Usar o credor do frete como favorecido
+                    </label>
+                    {!freteUsarCredorComoFavorecido ? (
+                      <ParceiroBuscaRemota label="Favorecido do frete" selecionado={freteFavorecidoSelecionado}
+                        obrigatorio onSelecionar={(parceiro) => {
+                          setFreteFavorecidoSelecionado(parceiro);
+                          setFreteChavePix('');
+                          limparErroCampo('frete_favorecido_id');
+                        }} />
+                    ) : <p className="text-xs text-[var(--c-muted)]">{freteFavorecidoSelecionado?.nome || freteParceiroBusca}</p>}
+                    <ErroCampo mensagem={errosCampo.frete_favorecido_id} />
+                  </div>
+                )}
+
+                {freteExigeChavePix && (
+                  <CampoForm label="Chave PIX do frete" obrigatorio erro={errosCampo.frete_favorecido_chave_pix}>
+                    <input className="input" value={freteChavePix} maxLength={255} autoComplete="off" required
+                      onChange={(event) => { setFreteChavePix(event.target.value); limparErroCampo('frete_favorecido_chave_pix'); }} />
+                  </CampoForm>
+                )}
+
+                {freteExigeBoleto && (
+                  <div className="space-y-2">
+                    <label className={`btn btn-outline inline-flex w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
+                      <input type="file" className="hidden" accept={HEADER_ATTACHMENT_ACCEPT} disabled={uploadingAnexoCabecalho}
+                        onChange={(event) => {
+                          const [file] = Array.from(event.target.files || []);
+                          void handleSelecionarAnexoCabecalho(file, 'FRETE_BOLETO');
+                          event.target.value = '';
+                        }} />
+                      {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar boleto do frete *'}
+                    </label>
+                    <span className="text-xs text-[var(--c-muted)]">{anexosBoletoFrete.length} boleto(s) do frete anexado(s).</span>
+                    <ErroCampo mensagem={errosCampo.frete_boleto} />
+                  </div>
+                )}
+
+                <CampoForm
+                  label="Dados para pagamento do frete"
+                  erro={errosCampo.frete_dados_pagamento}
+                >
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={freteDadosPagamento}
+                    onChange={(event) => { limparErroCampo('frete_dados_pagamento'); setFreteDadosPagamento(event.target.value); }}
+                    placeholder="Instruções adicionais para o financeiro (opcional)."
+                  />
+                </CampoForm>
+              </>
+            )}
+          </FormSecao>
+
+          {/* Comprovantes: o gatilho do seletor de arquivo JÁ é um <label>,
+              então o campo usa a casca .form-group em vez do CampoForm. */}
+          <FormSecao legenda="Comprovantes da Despesa" colunas={2}>
+            <div className="form-group form-campo--linha">
+              <span className="form-label">Documentos da compra</span>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <span className="block text-xs text-[var(--c-muted)]">Nota fiscal, guia ou comprovante</span>
                 <label className={`btn btn-outline w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
                   <input
                     type="file"
@@ -1770,64 +2565,78 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     accept={HEADER_ATTACHMENT_ACCEPT}
                     onChange={(event) => {
                       const [file] = Array.from(event.target.files || []);
-                      void handleSelecionarAnexoCabecalho(file, 'BOLETO');
+                      void handleSelecionarAnexoCabecalho(file, 'NOTA_FISCAL_GUIA');
                       event.target.value = '';
                     }}
                   />
-                  {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar boleto *'}
+                  {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar arquivos'}
                 </label>
-              )}
+                </div>
               </div>
-            </div>
 
-            {anexosCabecalho.length > 0 ? (
-              <div className="grid gap-2">
-                {anexosCabecalho.map((anexo, index) => (
-                  <div
-                    key={`${anexo.arquivo_url}-${index}`}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm"
-                  >
-                    <span className="truncate">
-                      {anexo.tipo_documento === 'BOLETO' ? 'Boleto: ' : ''}
-                      {anexo.arquivo_nome_original || 'Anexo da compra direta'}
-                    </span>
-                    <button type="button" className="text-red-600 hover:underline" onClick={() => removerAnexoCabecalho(index)}>
-                      Remover
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-[var(--c-muted)]">Nenhum comprovante da despesa anexado.</div>
-            )}
-          </div>
-        </div>
+              {anexosCabecalho.length > 0 ? (
+                <div className="mt-3 grid gap-2">
+                  {anexosCabecalho.map((anexo, index) => (
+                    <div
+                      key={`${anexo.arquivo_url}-${index}`}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm"
+                    >
+                      <span className="truncate">
+                        {anexo.tipo_documento === 'BOLETO' ? 'Boleto: ' : anexo.tipo_documento === 'FRETE_BOLETO' ? 'Boleto do frete: ' : ''}
+                        {anexo.arquivo_nome_original || 'Anexo da compra direta'}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm btn-perigo-suave"
+                        onClick={() => removerAnexoCabecalho(index)}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="form-hint">Nenhum comprovante da despesa anexado.</span>
+              )}
+            </div>
+          </FormSecao>
+        </BlocoConteudo>
       )}
 
       <div className="compra-nova-layout">
-        <div className="card compra-insumos-card">
-          <div className="card-header flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold">Insumos</h2>
-            <button type="button" className="btn btn-outline" onClick={() => setModalManualAberto(true)}>
+        <BlocoConteudo
+          titulo="Insumos"
+          className="compra-insumos-card"
+          acoes={(
+            <button type="button" className="btn btn-outline btn-sm" onClick={adicionarItemManual}>
               Item manual
             </button>
-          </div>
-
+          )}
+        >
           <div className="grid gap-3">
-            <input className="input" placeholder="Buscar por nome, código ou categoria" value={buscaInsumo} onChange={(event) => setBuscaInsumo(event.target.value)} />
+            {/* F1: UMA busca no contexto deste bloco, ocupando a faixa dele.
+                Não leva `.app-busca` porque a classe tem piso de 220px e a
+                coluna de insumos do `.compra-nova-layout` mede 248px com
+                recuo — o piso estouraria a largura da página. */}
+            <input
+              className="input w-full"
+              placeholder="Buscar por nome, código ou categoria"
+              value={buscaInsumo}
+              onChange={(event) => setBuscaInsumo(event.target.value)}
+            />
 
-            <div className="grid max-h-[520px] gap-2 overflow-y-auto">
+            <div className="grid max-h-96 gap-2 overflow-y-auto">
               {insumosFiltrados.map((insumo) => (
                 <button
                   key={insumo.id}
                   type="button"
-                  className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-3 text-left transition hover:bg-[var(--c-surface-hover)]"
+                  className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-3 text-left transition hover:bg-[var(--ui-surface-2)]"
                   onClick={() => adicionarInsumo(insumo)}
                 >
                   <div className="font-medium">{insumo.nome}</div>
                   <div className="mt-1 text-xs text-[var(--c-muted)]">
                     {insumo.categoria?.nome || 'Sem categoria'} · {insumo.unidade_manual ? (
-                      <span className="text-red-600 dark:text-red-400 font-semibold">{insumo.unidade_manual}</span>
+                      <span className="font-semibold text-[var(--sem-danger)]">{insumo.unidade_manual}</span>
                     ) : (
                       insumo.unidade?.sigla || '-'
                     )}
@@ -1840,426 +2649,522 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               )}
             </div>
           </div>
-        </div>
+        </BlocoConteudo>
 
-        <div className="card compra-itens-card">
-          <div className="card-header flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold">Itens da solicitação</h2>
-            <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-[var(--c-muted)]">
-              <>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={baixarModeloItens}
-                  disabled={!modoCompraDireta && !obraId}
-                  title={!modoCompraDireta && !obraId ? 'Selecione a obra para baixar o modelo' : undefined}
-                >
-                  {modoCompraDireta ? 'Baixar modelo Excel' : 'Baixar modelo de itens'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => importacaoItensInputRef.current?.click()}
-                  disabled={importandoItens || !obraId}
-                  title={!obraId ? 'Selecione a obra antes de importar' : undefined}
-                >
-                  {importandoItens
-                    ? 'Importando...'
-                    : (modoCompraDireta ? 'Importar Excel' : 'Importar itens em massa')}
-                </button>
-                <input
-                  ref={importacaoItensInputRef}
-                  type="file"
-                  className="hidden"
-                  accept=".xlsx"
-                  onChange={(event) => {
-                    const [file] = Array.from(event.target.files || []);
-                    void handleImportarItens(file);
-                    event.target.value = '';
-                  }}
-                />
-                <span className="rounded-full border border-[var(--c-border)] px-3 py-1 text-xs">
-                  Limite 300 itens
-                </span>
-              </>
-              <span>{itens.length} item(ns)</span>
-              {itens.length > 0 && <span>{itensPendentesApropriacao} pendente(s) de rateio fechado</span>}
-            </div>
-          </div>
-
+        <BlocoConteudo
+          titulo="Itens da solicitação"
+          className="compra-itens-card"
+          contagem={`${itens.length} item(ns)`}
+          descricao={itens.length > 0
+            ? `${itensPendentesApropriacao} pendente(s) de rateio fechado · limite de 300 itens`
+            : 'Limite de 300 itens'}
+          acoes={(
+            <>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={baixarModeloItens}
+                disabled={!modoCompraDireta && !obraId}
+                title={!modoCompraDireta && !obraId ? 'Selecione a obra para baixar o modelo' : undefined}
+              >
+                {modoCompraDireta ? 'Baixar modelo Excel' : 'Baixar modelo de itens'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => importacaoItensInputRef.current?.click()}
+                disabled={importandoItens || !obraId}
+                title={!obraId ? 'Selecione a obra antes de importar' : undefined}
+              >
+                {importandoItens
+                  ? 'Importando...'
+                  : (modoCompraDireta ? 'Importar Excel' : 'Importar itens em massa')}
+              </button>
+              <input
+                ref={importacaoItensInputRef}
+                type="file"
+                className="hidden"
+                accept=".xlsx"
+                onChange={(event) => {
+                  const [file] = Array.from(event.target.files || []);
+                  void handleImportarItens(file);
+                  event.target.value = '';
+                }}
+              />
+            </>
+          )}
+        >
           {itens.length === 0 ? (
             <div className="compra-itens-empty py-8 text-center text-sm text-[var(--c-muted)]">Adicione itens a partir da lista de insumos ou crie item manual.</div>
           ) : (
-            <div className="compras-responsive-table compra-itens-table-wrap">
-              <table className="table compra-itens-table">
-                <thead>
-                  <tr>
-                    <th>Insumo</th>
-                    <th>Unidade</th>
-                    <th>Quantidade *</th>
-                    {modoCompraDireta && <th>Valor unitário *</th>}
-                    {modoCompraDireta && <th>Total</th>}
-                    {!modoCompraDireta && <th>Especificação</th>}
-                    <th>Apropriação *</th>
-                    {!modoCompraDireta && <th>Necessário para</th>}
-                    {!modoCompraDireta && <th>Link do produto</th>}
-                    {!modoCompraDireta && <th>Arquivo do item</th>}
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itens.map((item, index) => (
-                    <tr key={`${item.manual ? 'manual' : item.insumo_id}-${index}`}>
-                      <td>
-                        <input
-                          className={`input min-w-[240px] ${item.manual ? 'border-red-300 text-red-700' : ''}`}
-                          value={item.insumo_nome}
-                          disabled={!item.manual}
-                          onChange={(event) => atualizarItem(index, 'insumo_nome', event.target.value)}
-                        />
-                        {false && (
-                          <p className="mt-1 text-[11px] text-[var(--c-muted)]">
-                            Últ. compra: <span className="font-semibold text-emerald-700">R$ {Number(item.ultimo_preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                          </p>
-                        )}
-                      </td>
-                      <td>
-                        <select
-                          className="input min-w-[110px]"
-                          value={item.unidade_id ? String(item.unidade_id) : ''}
-                          onChange={(event) => atualizarUnidadeItem(index, event.target.value)}
-                        >
-                          <option value="">Selecione</option>
-                          {unidades.map((unidade) => (
-                            <option key={unidade.id || unidade.sigla} value={unidade.id}>
-                              {unidade.sigla || unidade.nome}{unidade.nome && unidade.sigla ? ` - ${unidade.nome}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                        {!item.unidade_id && item.unidade_sigla ? (
-                          <p className="mt-1 text-[11px] text-[var(--c-muted)]">Atual: {item.unidade_sigla}</p>
-                        ) : null}
-                      </td>
-                      <td><input type="number" min="0.01" step="0.01" className="input min-w-[110px]" value={item.quantidade} onChange={(event) => atualizarItem(index, 'quantidade', event.target.value)} /></td>
-                      {modoCompraDireta && (
-                        <td>
-                          <input
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            className="input min-w-[140px]"
-                            value={item.valor_unitario}
-                            onChange={(event) => atualizarItem(index, 'valor_unitario', event.target.value)}
-                          />
-                        </td>
-                      )}
-                      {modoCompraDireta && (
-                        <td>
-                          <div className="min-w-[130px] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm font-semibold">
-                            {formatarMoeda(calcularValorTotalItem(item))}
-                          </div>
-                        </td>
-                      )}
-                      {!modoCompraDireta && (
-                        <td><input className="input min-w-[260px]" value={item.especificacao} onChange={(event) => atualizarItem(index, 'especificacao', event.target.value)} /></td>
-                      )}
-                      <td>
-                        {(() => {
-                          const linhasApropriacao = montarLinhasResumoApropriacao(item, apropriacoes);
-                          const resumoApropriacao = calcularResumoRateios(item);
-
-                          return (
-                            <div className="flex min-w-[200px] items-center gap-2">
-                              <div className="flex-1 min-w-0">
-                                {linhasApropriacao.length > 0 ? (
-                                  <>
-                                    <div className="grid gap-0.5 text-xs text-[var(--c-text)]">
-                                      {linhasApropriacao.slice(0, 2).map((linha, linhaIndex) => (
-                                        <div key={`${linha}-${linhaIndex}`} className="truncate">{linha}</div>
-                                      ))}
-                                      {linhasApropriacao.length > 2 && (
-                                        <div className="text-[var(--c-muted)]">+{linhasApropriacao.length - 2} rateio(s)</div>
-                                      )}
-                                    </div>
-                                    <div className={`text-[11px] font-semibold ${resumoApropriacao.fechado ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                      {resumoApropriacao.fechado ? 'Fechado' : `Saldo ${formatarQuantidade(resumoApropriacao.saldo)}`}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <span className="text-xs text-[var(--c-muted)]">Nenhuma</span>
-                                )}
-                              </div>
-                              <button type="button" className="btn btn-outline text-xs px-2 py-1 shrink-0" onClick={() => abrirModalApropriacao(index)}>
-                                {linhasApropriacao.length > 0 ? 'Editar' : 'Apropriar'}
-                              </button>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      {!modoCompraDireta && <td><input type="date" className={`input min-w-[170px] ${!item.necessario_para ? 'border-red-400' : ''}`} value={item.necessario_para} onChange={(event) => atualizarItem(index, 'necessario_para', event.target.value)} required /></td>}
-                      {!modoCompraDireta && (
-                        <td>
-                          <input
-                            type="url"
-                            className="input min-w-[260px]"
-                            placeholder="https://"
-                            value={item.link_produto}
-                            onChange={(event) => atualizarItem(index, 'link_produto', event.target.value)}
-                          />
-                        </td>
-                      )}
-                      {!modoCompraDireta && (
-                        <td>
-                          <div className="flex min-w-[260px] flex-col gap-2">
-                            <label className={`btn btn-outline cursor-pointer justify-center ${uploadingArquivos[index] ? 'pointer-events-none opacity-60' : ''}`}>
-                              <input
-                                type="file"
-                                className="hidden"
-                                accept={ITEM_ATTACHMENT_ACCEPT}
-                                onChange={(event) => {
-                                  const [file] = Array.from(event.target.files || []);
-                                  void handleSelecionarArquivo(index, file);
-                                  event.target.value = '';
-                                }}
-                              />
-                              {uploadingArquivos[index]
-                                ? 'Enviando...'
-                                : item.arquivo_nome_original
-                                  ? 'Trocar arquivo'
-                                  : 'Anexar arquivo'}
-                            </label>
-                            <div className="text-xs text-[var(--c-muted)]">
-                              {item.arquivo_nome_original || 'Sem arquivo anexado'}
-                            </div>
-                            {item.arquivo_url && (
-                              <div className="flex flex-wrap gap-2 text-xs">
-                                <button type="button" className="text-blue-600 hover:underline" onClick={() => abrirArquivoItem(item)}>
-                                  Abrir
-                                </button>
-                                <button type="button" className="text-red-600 hover:underline" onClick={() => removerArquivoItem(index)}>
-                                  Remover arquivo
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                      <td><button type="button" className="btn btn-danger min-w-[110px] justify-center" onClick={() => removerItem(index)}>Remover</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Use o botao <strong>Apropriar</strong> em cada item para dividir a quantidade entre etapas da obra. O sistema mostra total, distribuido e saldo em tempo real.
-          </div>
-
-          <div className="mt-6 flex flex-wrap justify-end gap-2">
-            <button type="button" className="btn btn-outline" onClick={limparRascunho}>Limpar rascunho</button>
-            <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes-compra')}>Cancelar</button>
-            <button type="button" className="btn btn-primary" onClick={handleSalvar} disabled={loading}>{loading ? 'Preparando...' : 'Revisar solicitação'}</button>
-          </div>
-        </div>
-      </div>
-
-      {modalManualAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card w-full max-w-lg">
-            <div className="card-header flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Novo item manual</h2>
-              <button type="button" className="btn btn-outline" onClick={() => setModalManualAberto(false)}>Fechar</button>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="grid gap-2 md:col-span-2">
-                <label className="text-sm font-medium">Nome *</label>
-                <input className="input" value={itemManual.nome_manual} onChange={(event) => setItemManual((atual) => ({ ...atual, nome_manual: event.target.value }))} />
-              </div>
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Unidade *</label>
-                <select
-                  className="input"
-                  value={itemManual.unidade_id}
-                  onChange={(event) => {
-                    const unidade = unidades.find((item) => String(item.id) === String(event.target.value));
-                    setItemManual((atual) => ({
-                      ...atual,
-                      unidade_id: unidade?.id ? String(unidade.id) : '',
-                      unidade_sigla_manual: unidade?.sigla || unidade?.nome || ''
-                    }));
-                  }}
-                >
-                  <option value="">Selecione</option>
-                  {unidades.map((unidade) => (
-                    <option key={unidade.id || unidade.sigla} value={unidade.id}>
-                      {unidade.sigla || unidade.nome} {unidade.nome && unidade.sigla ? `- ${unidade.nome}` : ''}
-                    </option>
-                  ))}
-                </select>
-                {!unidades.length ? (
-                  <span className="text-xs text-[var(--c-muted)]">Nenhuma unidade cadastrada encontrada.</span>
-                ) : null}
-              </div>
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Quantidade *</label>
-                <input type="number" min="0.01" step="0.01" className="input" value={itemManual.quantidade} onChange={(event) => setItemManual((atual) => ({ ...atual, quantidade: event.target.value }))} />
-              </div>
-              {!modoCompraDireta && (
-                <div className="grid gap-2 md:col-span-2">
-                  <label className="text-sm font-medium">Especificação</label>
-                  <textarea className="input min-h-[96px]" value={itemManual.especificacao} onChange={(event) => setItemManual((atual) => ({ ...atual, especificacao: event.target.value }))} />
-                </div>
-              )}
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" className="btn btn-outline" onClick={() => setModalManualAberto(false)}>Cancelar</button>
-              <button type="button" className="btn btn-primary" onClick={adicionarItemManual}>Adicionar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modoCompraDireta && modalCredorAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="card w-full max-w-xl">
-            <div className="card-header flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Cadastrar Credor</h2>
-              <button type="button" className="btn btn-outline" onClick={() => setModalCredorAberto(false)}>
-                Fechar
-              </button>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-2 text-sm">
-                CPF/CNPJ
-                <input
-                  className="input"
-                  value={novoCredor.cpf_cnpj}
-                  onChange={(event) => setNovoCredor((atual) => ({ ...atual, cpf_cnpj: event.target.value }))}
-                />
-              </label>
-              <label className="grid gap-2 text-sm">
-                Nome *
-                <input
-                  className="input"
-                  value={novoCredor.nome}
-                  onChange={(event) => setNovoCredor((atual) => ({ ...atual, nome: event.target.value }))}
-                />
-              </label>
-              <label className="grid gap-2 text-sm">
-                Telefone
-                <input
-                  className="input"
-                  value={novoCredor.telefone}
-                  onChange={(event) => setNovoCredor((atual) => ({ ...atual, telefone: event.target.value }))}
-                />
-              </label>
-              <label className="grid gap-2 text-sm">
-                E-mail
-                <input
-                  type="email"
-                  className="input"
-                  value={novoCredor.email}
-                  onChange={(event) => setNovoCredor((atual) => ({ ...atual, email: event.target.value }))}
-                />
-              </label>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" className="btn btn-outline" onClick={() => setModalCredorAberto(false)}>
-                Cancelar
-              </button>
-              <button type="button" className="btn btn-primary" onClick={cadastrarCredorCompraDireta} disabled={salvandoCredor}>
-                {salvandoCredor ? 'Salvando...' : 'Salvar credor'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modalApropriacaoIndex !== null && itemModalAtual && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="card compras-apropriacao-modal flex max-h-[94vh] w-full flex-col overflow-y-auto">
-            <div className="card-header flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-semibold">Apropriar item</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  {itemModalAtual.insumo_nome} · Quantidade total {formatarQuantidade(itemModalAtual.quantidade)}
-                </p>
-              </div>
-              <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>Fechar</button>
-            </div>
-
-            <div className="flex flex-1 flex-col gap-4">
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3">
-                  <div className="text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Total</div>
-                  <div className="mt-2 text-xl font-semibold">{formatarQuantidade(resumoModalApropriacao.total)}</div>
-                </div>
-                <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3">
-                  <div className="text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Distribuído</div>
-                  <div className="mt-2 text-xl font-semibold">{formatarQuantidade(resumoModalApropriacao.distribuido)}</div>
-                </div>
-                <div className={`rounded-xl border px-4 py-3 ${resumoModalApropriacao.fechado ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                  <div className="text-xs uppercase tracking-[0.14em]">Saldo</div>
-                  <div className="mt-2 text-xl font-semibold">{formatarQuantidade(resumoModalApropriacao.saldo)}</div>
-                </div>
-              </div>
-
-              <div className="grid gap-3">
-                {rateiosModal.map((rateio, rateioIndex) => (
-                  <div key={`rateio-${rateioIndex}`} className="grid gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 md:grid-cols-[minmax(0,1fr)_170px_96px]">
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Apropriação</label>
-                      <ApropriacaoAutocomplete
-                        value={rateio.apropriacao_id}
-                        options={apropriacoes}
-                        onChange={(id) => atualizarRateioModal(rateioIndex, 'apropriacao_id', id)}
+            <TabelaPadrao
+              /*
+                GRADE DE LANÇAMENTO, NÃO LISTA DE CONSULTA (05/09).
+                A maioria das colunas aqui é campo de digitação, não dado a ler.
+                Oferecer "escolher colunas" numa grade assim dá ao usuário como
+                esconder o campo que ele precisa preencher — e ele não descobre por
+                que o lançamento parou de funcionar. A capacidade sai DAQUI, não do
+                sistema: nas 246 tabelas de consulta ela continua.
+              */
+              colunasConfiguraveis={false}
+              colunas={[
+                {
+                  id: 'insumo',
+                  titulo: 'Insumo',
+                  // R17: o INSUMO é o que nomeia o item da solicitação.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  // Entrada de dados: o controle mora no render da coluna.
+                  render: (item) => (
+                    <>
+                      <input
+                        className="input"
+                        style={item.manual
+                          ? { borderColor: 'var(--sem-danger-border)', color: 'var(--sem-danger)' }
+                          : undefined}
+                        aria-label="Nome do insumo"
+                        data-nome-item-manual={item.manual ? item.__indice : undefined}
+                        value={item.insumo_nome}
+                        disabled={!item.manual}
+                        onChange={(event) => atualizarItem(item.__indice, 'insumo_nome', event.target.value)}
                       />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Quantidade apropriada</label>
+                      <ErroCampo mensagem={erroDoItem(item.__indice, 'insumo')} />
+                    </>
+                  )
+                },
+                {
+                  id: 'unidade',
+                  titulo: 'Unidade',
+                  tipo: 'codigo',
+                  render: (item) => (
+                    <>
+                      <input
+                        className="input"
+                        aria-label="Unidade do item"
+                        list={`unidades-item-${item.__indice}`}
+                        value={item.unidade_sigla || ''}
+                        maxLength={50}
+                        placeholder="Digite ou selecione a UN"
+                        onChange={(event) => atualizarUnidadeItem(item.__indice, event.target.value)}
+                      />
+                      <datalist id={`unidades-item-${item.__indice}`}>
+                        {unidades.map((unidade) => (
+                          <option
+                            key={unidade.id || unidade.sigla}
+                            value={unidade.sigla || unidade.nome}
+                            label={unidade.nome && unidade.sigla ? unidade.nome : undefined}
+                          />
+                        ))}
+                      </datalist>
+                      <ErroCampo mensagem={erroDoItem(item.__indice, 'unidade')} />
+                    </>
+                  )
+                },
+                {
+                  id: 'quantidade',
+                  titulo: 'Quantidade *',
+                  tipo: 'numero',
+                  render: (item) => (
+                    <>
                       <input
                         type="number"
                         min="0.01"
                         step="0.01"
                         className="input"
-                        value={rateio.quantidade_apropriada}
-                        onChange={(event) => atualizarRateioModal(rateioIndex, 'quantidade_apropriada', event.target.value)}
+                        aria-label="Quantidade do item"
+                        value={item.quantidade}
+                        onChange={(event) => atualizarItem(item.__indice, 'quantidade', event.target.value)}
                       />
-                    </div>
+                      <ErroCampo mensagem={erroDoItem(item.__indice, 'quantidade')} />
+                    </>
+                  )
+                },
+                ...(modoCompraDireta ? [
+                  {
+                    id: 'valor_unitario',
+                    titulo: 'Valor unitário *',
+                    tipo: 'valor',
+                    render: (item) => (
+                      <>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          className="input"
+                          aria-label="Valor unitário do item"
+                          value={item.valor_unitario}
+                          onChange={(event) => atualizarItem(item.__indice, 'valor_unitario', event.target.value)}
+                        />
+                        <ErroCampo mensagem={erroDoItem(item.__indice, 'valor_unitario')} />
+                      </>
+                    )
+                  },
+                  {
+                    id: 'valor_total',
+                    titulo: 'Total',
+                    tipo: 'valor',
+                    render: (item) => <strong>{formatarMoeda(calcularValorTotalItem(item))}</strong>
+                  },
+                  ...(freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM' ? [{
+                    id: 'frete_valor',
+                    titulo: 'Frete do item *',
+                    tipo: 'valor',
+                    render: (item) => (
+                      <>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="input"
+                          aria-label={`Frete do item ${item.insumo_nome || item.nome_manual || item.__indice + 1}`}
+                          value={item.frete_valor ?? ''}
+                          onChange={(event) => atualizarItem(item.__indice, 'frete_valor', event.target.value)}
+                          placeholder="0,00"
+                        />
+                        <ErroCampo mensagem={erroDoItem(item.__indice, 'frete_valor')} />
+                      </>
+                    )
+                  }] : [])
+                ] : [
+                  {
+                    id: 'especificacao',
+                    titulo: 'Especificação',
+                    tipo: 'texto',
+                    render: (item) => (
+                      <input
+                        className="input"
+                        aria-label="Especificação do item"
+                        value={item.especificacao}
+                        onChange={(event) => atualizarItem(item.__indice, 'especificacao', event.target.value)}
+                      />
+                    )
+                  }
+                ]),
+                {
+                  id: 'apropriacao',
+                  titulo: 'Apropriação *',
+                  tipo: 'texto',
+                  render: (item) => {
+                    const linhasApropriacao = montarLinhasResumoApropriacao(item, apropriacoes);
+                    const resumoApropriacao = calcularResumoRateios(item);
 
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Ação</label>
-                      <button type="button" className="btn btn-outline justify-center" onClick={() => removerRateioModal(rateioIndex)}>
-                        Remover
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-auto flex flex-wrap justify-between gap-2 pt-4">
-                <button type="button" className="btn btn-outline" onClick={adicionarRateioModal}>
-                  Adicionar apropriação
+                    return (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            {linhasApropriacao.length > 0 ? (
+                              <>
+                                <div className="grid gap-1 text-xs text-[var(--c-text)]">
+                                  {linhasApropriacao.slice(0, 2).map((linha, linhaIndex) => (
+                                    <div key={`${linha}-${linhaIndex}`} className="truncate" title={linha}>{linha}</div>
+                                  ))}
+                                  {linhasApropriacao.length > 2 && (
+                                    <div className="text-[var(--c-muted)]">+{linhasApropriacao.length - 2} rateio(s)</div>
+                                  )}
+                                </div>
+                                <div
+                                  className="text-xs font-semibold"
+                                  style={{ color: resumoApropriacao.fechado ? 'var(--sem-success)' : 'var(--sem-warning)' }}
+                                >
+                                  {resumoApropriacao.fechado ? 'Fechado' : `Saldo ${formatarQuantidade(resumoApropriacao.saldo)}`}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-xs text-[var(--c-muted)]">Nenhuma</span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm shrink-0"
+                            onClick={() => abrirModalApropriacao(item.__indice)}
+                            aria-label={`${linhasApropriacao.length > 0 ? 'Editar apropriação' : 'Apropriar'} ${item.insumo_nome || `item ${item.__indice + 1}`}`}
+                          >
+                            {linhasApropriacao.length > 0 ? 'Editar' : 'Apropriar'}
+                          </button>
+                        </div>
+                        <ErroCampo mensagem={erroDoItem(item.__indice, 'apropriacao')} />
+                      </>
+                    );
+                  }
+                },
+                ...(modoCompraDireta ? [] : [
+                  {
+                    id: 'necessario_para',
+                    titulo: 'Necessário para',
+                    tipo: 'data',
+                    render: (item) => (
+                      <>
+                        <DateInputBR
+                          className="input"
+                          style={!item.necessario_para ? { borderColor: 'var(--sem-danger)' } : undefined}
+                          aria-label="Data em que o item é necessário"
+                          value={item.necessario_para}
+                          onChange={(event) => atualizarItem(item.__indice, 'necessario_para', event.target.value)}
+                          required
+                        />
+                        <ErroCampo mensagem={erroDoItem(item.__indice, 'necessario_para')} />
+                      </>
+                    )
+                  },
+                  {
+                    id: 'link_produto',
+                    titulo: 'Link do produto',
+                    tipo: 'texto',
+                    render: (item) => (
+                      <input
+                        type="url"
+                        className="input"
+                        placeholder="https://"
+                        aria-label="Link do produto"
+                        value={item.link_produto}
+                        onChange={(event) => atualizarItem(item.__indice, 'link_produto', event.target.value)}
+                      />
+                    )
+                  },
+                  {
+                    id: 'arquivo',
+                    titulo: 'Arquivo do item',
+                    tipo: 'texto',
+                    render: (item) => (
+                      <div className="flex flex-col gap-2">
+                        <label className={`btn btn-outline cursor-pointer justify-center ${uploadingArquivos[item.__indice] ? 'pointer-events-none opacity-60' : ''}`}>
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept={ITEM_ATTACHMENT_ACCEPT}
+                            onChange={(event) => {
+                              const [file] = Array.from(event.target.files || []);
+                              void handleSelecionarArquivo(item.__indice, file);
+                              event.target.value = '';
+                            }}
+                          />
+                          {uploadingArquivos[item.__indice]
+                            ? 'Enviando...'
+                            : item.arquivo_nome_original
+                              ? 'Trocar arquivo'
+                              : 'Anexar arquivo'}
+                        </label>
+                        <div className="text-xs text-[var(--c-muted)]">
+                          {item.arquivo_nome_original || 'Sem arquivo anexado'}
+                        </div>
+                        {item.arquivo_url && (
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivoItem(item)}>
+                              Abrir
+                            </button>
+                            <button type="button" className="btn btn-outline btn-sm btn-perigo-suave" onClick={() => removerArquivoItem(item.__indice)}>
+                              Remover arquivo
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                ])
+              ]}
+              itens={itensGrade}
+              getId={(item) => `${item.manual ? 'manual' : item.insumo_id}-${item.__indice}`}
+              storageKey={modoCompraDireta
+                ? 'tabela:nova-solicitacao-compra:itens-direta'
+                : 'tabela:nova-solicitacao-compra:itens'}
+              rotuloRolagem="Itens da solicitação"
+              vazio="Adicione itens a partir da lista de insumos ou crie item manual."
+              urgencia={(item) => (calcularResumoRateios(item).fechado ? null : 'warning')}
+              acoesLinha={(item) => (
+                <button type="button" className="btn btn-outline btn-sm btn-perigo-suave" onClick={() => removerItem(item.__indice)}>
+                  Remover
                 </button>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>
-                    Cancelar
-                  </button>
-                  <button type="button" className="btn btn-primary" onClick={salvarRateiosItem}>
-                    Salvar distribuição
+              )}
+              larguraAcoes={140}
+            />
+          )}
+
+          <div
+            className="mt-4 rounded-lg border px-4 py-3 text-sm"
+            style={{
+              borderColor: 'var(--sem-success-border)',
+              background: 'var(--sem-success-bg)',
+              color: 'var(--sem-success)'
+            }}
+          >
+            Use o botão <strong>Apropriar</strong> em cada item para distribuir a quantidade entre etapas da obra. O modal mostra total, distribuído e saldo antes de salvar.
+          </div>
+
+          {/* C5: UM primário sólido, secundário em contorno, destrutiva apartada. */}
+          <div className="app-actionbar mt-6">
+            <button type="button" className="btn btn-outline btn-perigo-suave" onClick={limparRascunho}>
+              Limpar rascunho
+            </button>
+            <span className="app-actionbar-apartada">
+              <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes-compra')}>Cancelar</button>
+              <button type="button" className="btn btn-primary" onClick={handleSalvar} disabled={loading || Boolean(obraTravadaMotivo)}>{loading ? 'Preparando...' : 'Revisar solicitação'}</button>
+            </span>
+          </div>
+        </BlocoConteudo>
+      </div>
+
+      {/* O cadastro de credor permanece no modal padrão do sistema. */}
+
+      <OverlayModal
+        aberto={modalCredorVisivel}
+        rotulo="Cadastrar Credor"
+        largura="var(--modal-max-w-md, 680px)"
+        onFechar={() => setModalCredorAberto(false)}
+      >
+        <div data-modal="cabecalho" className="app-bloco-head">
+          <h2 className="app-bloco-titulo">Cadastrar Credor</h2>
+          <span className="app-bloco-acoes">
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setModalCredorAberto(false)}>
+              Fechar
+            </button>
+          </span>
+        </div>
+
+        <div className="p-4">
+          {modalCredorVisivel && faixaAvisos}
+
+          <FormSecao colunas={2}>
+            <CampoForm label="CPF/CNPJ" erro={errosCampo.credor_cpf_cnpj}>
+              <input
+                className="input"
+                value={novoCredor.cpf_cnpj}
+                onChange={(event) => {
+                  limparErroCampo('credor_cpf_cnpj');
+                  setNovoCredor((atual) => ({ ...atual, cpf_cnpj: maskCpfCnpj(event.target.value) }));
+                }}
+                inputMode="numeric"
+                maxLength={18}
+              />
+            </CampoForm>
+            <CampoForm label="Nome" obrigatorio erro={errosCampo.credor_nome}>
+              <input
+                className="input"
+                value={novoCredor.nome}
+                onChange={(event) => {
+                  limparErroCampo('credor_nome');
+                  setNovoCredor((atual) => ({ ...atual, nome: event.target.value }));
+                }}
+              />
+            </CampoForm>
+            <CampoForm label="Telefone">
+              <input
+                className="input"
+                value={novoCredor.telefone}
+                onChange={(event) => setNovoCredor((atual) => ({ ...atual, telefone: event.target.value }))}
+              />
+            </CampoForm>
+            <CampoForm label="E-mail">
+              <input
+                type="email"
+                className="input"
+                value={novoCredor.email}
+                onChange={(event) => setNovoCredor((atual) => ({ ...atual, email: event.target.value }))}
+              />
+            </CampoForm>
+          </FormSecao>
+        </div>
+
+        <div data-modal="rodape" className="app-actionbar p-4">
+          <span className="app-actionbar-apartada">
+            <button type="button" className="btn btn-outline" onClick={() => setModalCredorAberto(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="btn btn-primary" onClick={cadastrarCredorCompraDireta} disabled={salvandoCredor}>
+              {salvandoCredor ? 'Salvando...' : 'Salvar credor'}
+            </button>
+          </span>
+        </div>
+      </OverlayModal>
+
+      <OverlayModal
+        aberto={modalApropriacaoVisivel}
+        rotulo="Apropriar item"
+        largura="var(--modal-max-w-lg, 860px)"
+        onFechar={fecharModalApropriacao}
+      >
+        <div data-modal="cabecalho" className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3 sm:px-6">
+          <div>
+            <h2 className="app-bloco-titulo">Apropriar item</h2>
+            <p
+              className="app-bloco-lead"
+              title={`${itemModalAtual?.insumo_nome || 'Item manual'} · Quantidade total ${formatarQuantidade(itemModalAtual?.quantidade)}`}
+            >
+              {itemModalAtual?.insumo_nome || 'Item manual'} · Quantidade total {formatarQuantidade(itemModalAtual?.quantidade)}
+            </p>
+          </div>
+          <span className="app-bloco-acoes">
+            <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalApropriacao}>Fechar</button>
+          </span>
+        </div>
+
+        <div className="p-4">
+          {modalApropriacaoVisivel && faixaAvisos}
+          <StatGrid colunas={3}>
+            <StatTile label="Total" valor={formatarQuantidade(resumoModalApropriacao.total)} />
+            <StatTile label="Distribuído" valor={formatarQuantidade(resumoModalApropriacao.distribuido)} />
+            <StatTile
+              label="Saldo"
+              valor={formatarQuantidade(resumoModalApropriacao.saldo)}
+              tom={resumoModalApropriacao.fechado ? 'success' : 'warning'}
+            />
+          </StatGrid>
+
+          <div className="mt-4 grid gap-3">
+            {rateiosModal.map((rateio, rateioIndex) => (
+              <div key={`rateio-${rateioIndex}`} className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+                <FormSecao colunas={3}>
+                  <CampoForm label="Apropriação" span={2}>
+                    <ApropriacaoAutocomplete
+                      value={rateio.apropriacao_id}
+                      options={apropriacoes}
+                      onChange={(id) => atualizarRateioModal(rateioIndex, 'apropriacao_id', id)}
+                    />
+                  </CampoForm>
+                  <CampoForm label="Quantidade apropriada">
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      className="input"
+                      aria-label={`Quantidade apropriada do rateio ${rateioIndex + 1}`}
+                      value={rateio.quantidade_apropriada}
+                      onChange={(event) => atualizarRateioModal(rateioIndex, 'quantidade_apropriada', event.target.value)}
+                    />
+                  </CampoForm>
+                </FormSecao>
+                <div className="app-actionbar">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm btn-perigo-suave"
+                    onClick={() => removerRateioModal(rateioIndex)}
+                    disabled={rateiosModal.length <= 1}
+                  >
+                    Remover
                   </button>
                 </div>
               </div>
-            </div>
+            ))}
+          </div>
+
+          <ErroCampo mensagem={erroRateiosModal} />
+          <div className="mt-4">
+            <button type="button" className="btn btn-outline" onClick={adicionarRateioModal}>
+              Adicionar apropriação
+            </button>
           </div>
         </div>
-      )}
+
+        <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
+          <span className="app-actionbar-apartada">
+            <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>Cancelar</button>
+            <button type="button" className="btn btn-primary" onClick={salvarRateiosItem}>Salvar distribuição</button>
+          </span>
+        </div>
+      </OverlayModal>
+
 
       <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
-    </div>
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

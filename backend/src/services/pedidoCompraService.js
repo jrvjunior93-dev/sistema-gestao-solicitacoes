@@ -8,7 +8,10 @@ const {
   PedidoCompraFrete,
   PedidoCompraFreteRateio,
   PedidoCompraItem,
+  PedidoCompraItemRecebimento,
   PedidoCompraItemLog,
+  PedidoCompraReabertura,
+  PedidoCompraTitulo,
   Solicitacao,
   SolicitacaoCompra,
   SolicitacaoCompraAlocacao,
@@ -25,6 +28,7 @@ const {
 const {
   isSolicitacaoCompraCancelada,
   normalizeText: normalizeCotacaoText,
+  obterQuantidadeBaseFinanceiraCotacao,
   registrarLogSolicitacaoCompra
 } = require('./comprasCotacao');
 const {
@@ -38,6 +42,7 @@ const {
   sincronizarRateiosFretesPendentesPedido
 } = require('./pedidoCompraFreteService');
 const { validarResponsavelElegivelDelegacaoCompras } = require('./comprasDelegacaoService');
+const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
 const {
   sincronizarTotaisFretePedido,
   sincronizarValoresSolicitacaoCompra
@@ -45,7 +50,9 @@ const {
 const {
   buildCompraFornecedorItemKey,
   calcularDisponibilidadeFornecedorItem,
-  montarMapaAlocacoesAtivasPorFornecedorItem
+  isOfertaSaldo,
+  montarMapaAlocacoesAtivasPorFornecedorItem,
+  montarMapaAlocacoesAtivasPorResposta
 } = require('./comprasDisponibilidadeService');
 
 function normalizeText(value) {
@@ -372,6 +379,7 @@ async function carregarSolicitacaoPedidos(id, transaction, { incluirPedidos = tr
             'observacao',
             'quantidade_minima_item',
             'quantidade_disponivel',
+            'escopo_disponibilidade',
             'ipi_valor',
             'icms_valor',
             'st_valor',
@@ -425,7 +433,7 @@ function obterBaseItemPorResposta(solicitacao, resposta) {
       solicitacao_compra_item_id: item.id,
       solicitacao_compra_item_manual_id: null,
       descricao: item.insumo?.nome || `Item ${item.id}`,
-      unidade: item.unidade?.sigla || null,
+      unidade: item.unidade_sigla_manual || item.unidade?.sigla || item.unidade?.nome || null,
       quantidade_solicitada: roundQty(item.quantidade)
     };
   }
@@ -469,7 +477,7 @@ async function registrarLogPedidoItem({
 async function assertPedidoEditavel(pedidoOrId, transaction) {
   const pedido = typeof pedidoOrId === 'object' && pedidoOrId
     ? pedidoOrId
-    : await PedidoCompra.findByPk(Number(pedidoOrId), { transaction });
+    : await PedidoCompra.findByPk(Number(pedidoOrId), { transaction, lock: transaction?.LOCK?.UPDATE });
 
   if (!pedido) {
     throw new Error('Pedido nao encontrado.');
@@ -667,6 +675,7 @@ async function obterOuCriarPedidoPorFornecedor({
   usuarioId,
   transaction
 }) {
+  await require('./pedidoEntregaService').assertComprasPodeGerarPedido(transaction);
   let pedido = await PedidoCompra.findOne({
     where: {
       solicitacao_compra_id: solicitacao.id,
@@ -766,6 +775,7 @@ async function obterOuCriarPedidoPorFornecedor({
 
   pedido = await PedidoCompra.create(
     {
+      entrega_controle_obrigatorio: true,
       solicitacao_compra_id: solicitacao.id,
       obra_id: solicitacao.obra_id,
       fornecedor_compra_id: vinculacaoFornecedor.fornecedor_compra_id,
@@ -992,7 +1002,7 @@ function montarMapaSaldosSolicitacao(solicitacao) {
       item_tipo: 'CADASTRADO',
       item_referencia_id: Number(item.id),
       descricao: item.insumo?.nome || `Item ${item.id}`,
-      unidade: item.unidade?.sigla || null,
+      unidade: item.unidade_sigla_manual || item.unidade?.sigla || item.unidade?.nome || null,
       quantidade_atual: roundQty(item.quantidade),
       quantidade_fechada: 0,
       saldo: 0
@@ -1093,6 +1103,43 @@ async function sincronizarStatusSolicitacaoCompraPorSaldo({
       },
       transaction
     });
+  }
+
+  if (quantidadeFechada > 0 && Number(solicitacao.solicitacao_principal_id || 0) > 0) {
+    const setorComprasModel = await findSetorByCapability('eh_setor_compras', { transaction });
+    const setorCompras = resolveSetorPersistenciaValue(setorComprasModel, 'COMPRAS');
+    const statusPrincipal = proximoStatus === 'ENCERRADO' ? 'FECHADO_FORNECEDOR' : 'PEDIDO_PARCIAL';
+    const principal = await Solicitacao.findByPk(solicitacao.solicitacao_principal_id, {
+      attributes: ['id', 'status_global', 'area_responsavel'],
+      transaction,
+      lock: transaction?.LOCK?.UPDATE
+    });
+    if (principal && (
+      normalizeText(principal.status_global) !== normalizeText(statusPrincipal)
+      || normalizeText(principal.area_responsavel) !== normalizeText(setorCompras)
+    )) {
+      const statusAnterior = principal.status_global;
+      const setorAnterior = principal.area_responsavel;
+      await principal.update({
+        status_global: statusPrincipal,
+        area_responsavel: setorCompras
+      }, { transaction });
+      await Historico.create({
+        solicitacao_id: principal.id,
+        usuario_responsavel_id: usuarioId || null,
+        setor: setorCompras,
+        acao: 'STATUS_COMPRA_SINCRONIZADO',
+        status_anterior: statusAnterior,
+        status_novo: statusPrincipal,
+        descricao: `Compra mantida em ${setorCompras} com status ${statusPrincipal}.`,
+        metadata: JSON.stringify({
+          setor_anterior: setorAnterior,
+          setor_novo: setorCompras,
+          quantidade_fechada: quantidadeFechada,
+          saldo_restante: saldoRestante
+        })
+      }, { transaction });
+    }
   }
 
   return solicitacao;
@@ -1229,8 +1276,11 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
   const alocadoAnteriorPorFornecedorItem = montarMapaAlocacoesAtivasPorFornecedorItem(
     solicitacao?.alocacoes || []
   );
+  const alocadoAnteriorPorResposta = montarMapaAlocacoesAtivasPorResposta(solicitacao?.alocacoes || []);
   const tributosAnterioresPorFornecedorItem = new Map();
   const fretesAnterioresPorFornecedorItem = new Map();
+  const tributosAnterioresPorResposta = new Map();
+  const fretesAnterioresPorResposta = new Map();
   for (const alocacao of solicitacao?.alocacoes || []) {
     if (normalizeText(alocacao.status) !== 'ATIVA') continue;
     const fornecedorItemKey = buildCompraFornecedorItemKey(alocacao.fornecedor_compra_id, alocacao);
@@ -1244,8 +1294,22 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
       fornecedorItemKey,
       roundMoney((fretesAnterioresPorFornecedorItem.get(fornecedorItemKey) || 0) + asNumber(alocacao.frete_rateado))
     );
+    const respostaItemId = Number(alocacao.resposta_item_id || 0);
+    if (respostaItemId) {
+      const tributosResposta = tributosAnterioresPorResposta.get(respostaItemId) || { ipi: 0, icms: 0, st: 0 };
+      tributosAnterioresPorResposta.set(respostaItemId, {
+        ipi: roundMoney(tributosResposta.ipi + asNumber(alocacao.ipi_rateado)),
+        icms: roundMoney(tributosResposta.icms + asNumber(alocacao.icms_rateado)),
+        st: roundMoney(tributosResposta.st + asNumber(alocacao.st_rateado))
+      });
+      fretesAnterioresPorResposta.set(
+        respostaItemId,
+        roundMoney((fretesAnterioresPorResposta.get(respostaItemId) || 0) + asNumber(alocacao.frete_rateado))
+      );
+    }
   }
   const alocadoRodadaPorFornecedorItem = new Map();
+  const alocadoRodadaPorResposta = new Map();
   const tributosRodadaPorFornecedorItem = new Map();
   const fretesRodadaPorFornecedorItem = new Map();
 
@@ -1291,9 +1355,13 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
     const quantidadeDisponivel = roundQty(
       resposta.quantidade_disponivel ?? (resposta.disponivel ? quantidadeBase : 0)
     );
+    const ofertaSaldo = isOfertaSaldo(resposta);
     const quantidadeJaAlocadaFornecedorItem = roundQty(
-      (alocadoAnteriorPorFornecedorItem.get(fornecedorItemKey) || 0)
-      + (alocadoRodadaPorFornecedorItem.get(fornecedorItemKey) || 0)
+      ofertaSaldo
+        ? (alocadoAnteriorPorResposta.get(Number(resposta.id)) || 0)
+          + (alocadoRodadaPorResposta.get(Number(resposta.id)) || 0)
+        : (alocadoAnteriorPorFornecedorItem.get(fornecedorItemKey) || 0)
+          + (alocadoRodadaPorFornecedorItem.get(fornecedorItemKey) || 0)
     );
     const disponibilidadeRestante = roundQty(Math.max(0, quantidadeDisponivel - quantidadeJaAlocadaFornecedorItem));
     if (quantidadeAlocada > disponibilidadeRestante) {
@@ -1314,9 +1382,22 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
       fornecedorItemKey,
       roundQty((alocadoRodadaPorFornecedorItem.get(fornecedorItemKey) || 0) + quantidadeAlocada)
     );
-    const tributosAnteriores = tributosAnterioresPorFornecedorItem.get(fornecedorItemKey) || { ipi: 0, icms: 0, st: 0 };
+    alocadoRodadaPorResposta.set(
+      Number(resposta.id),
+      roundQty((alocadoRodadaPorResposta.get(Number(resposta.id)) || 0) + quantidadeAlocada)
+    );
+    const tributosAnteriores = ofertaSaldo
+      ? tributosAnterioresPorResposta.get(Number(resposta.id)) || { ipi: 0, icms: 0, st: 0 }
+      : tributosAnterioresPorFornecedorItem.get(fornecedorItemKey) || { ipi: 0, icms: 0, st: 0 };
     const tributosRodada = tributosRodadaPorFornecedorItem.get(fornecedorItemKey) || { ipi: 0, icms: 0, st: 0 };
-    const percentualQuantidade = quantidadeDisponivel > 0 ? quantidadeAlocada / quantidadeDisponivel : 0;
+    const quantidadeBaseFinanceira = obterQuantidadeBaseFinanceiraCotacao({
+      quantidadeSolicitada: quantidadeBase,
+      quantidadeDisponivel,
+      escopoDisponibilidade: resposta.escopo_disponibilidade
+    });
+    const percentualQuantidade = quantidadeBaseFinanceira > 0
+      ? quantidadeAlocada / quantidadeBaseFinanceira
+      : 0;
     const ratearTributo = (total, anterior, rodada) => roundMoney(Math.min(
       Math.max(0, asNumber(total) - anterior - rodada),
       asNumber(total) * percentualQuantidade
@@ -1327,7 +1408,9 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
     const freteItemRateado = normalizeText(vinculacaoFornecedor.frete_modo) === 'POR_ITEM'
       ? ratearTributo(
           resposta.frete_valor,
-          fretesAnterioresPorFornecedorItem.get(fornecedorItemKey) || 0,
+          ofertaSaldo
+            ? fretesAnterioresPorResposta.get(Number(resposta.id)) || 0
+            : fretesAnterioresPorFornecedorItem.get(fornecedorItemKey) || 0,
           fretesRodadaPorFornecedorItem.get(fornecedorItemKey) || 0
         )
       : 0;
@@ -1371,6 +1454,9 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
   const descontosAtivosPorFornecedor = new Map();
   const difalAtivoPorFornecedor = new Map();
   const freteAtivoPorFornecedor = new Map();
+  const descontosAtivosPorResposta = new Map();
+  const difalAtivoPorResposta = new Map();
+  const freteAtivoPorResposta = new Map();
   for (const alocacao of solicitacao?.alocacoes || []) {
     if (normalizeText(alocacao.status) !== 'ATIVA') continue;
     const fornecedorId = Number(alocacao.fornecedor_compra_id || 0);
@@ -1386,20 +1472,41 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
       fornecedorId,
       roundMoney((freteAtivoPorFornecedor.get(fornecedorId) || 0) + asNumber(alocacao.frete_rateado))
     );
+    const respostaItemId = Number(alocacao.resposta_item_id || 0);
+    if (respostaItemId) {
+      descontosAtivosPorResposta.set(respostaItemId, roundMoney(
+        (descontosAtivosPorResposta.get(respostaItemId) || 0) + asNumber(alocacao.desconto_rateado)
+      ));
+      difalAtivoPorResposta.set(respostaItemId, roundMoney(
+        (difalAtivoPorResposta.get(respostaItemId) || 0) + asNumber(alocacao.difal_rateado)
+      ));
+      freteAtivoPorResposta.set(respostaItemId, roundMoney(
+        (freteAtivoPorResposta.get(respostaItemId) || 0) + asNumber(alocacao.frete_rateado)
+      ));
+    }
   }
 
   for (const [fornecedorId, grupo] of porFornecedor.entries()) {
     const vinculacaoFornecedor = grupo[0]?.vinculacaoFornecedor;
+    const respostaIdsGrupo = grupo.map((item) => Number(item.resposta?.id || 0)).filter(Boolean);
+    const ofertaSaldoGrupo = grupo.every((item) => isOfertaSaldo(item.resposta));
+    const somarPorRespostas = (mapa) => roundMoney(
+      respostaIdsGrupo.reduce((total, respostaId) => total + asNumber(mapa.get(respostaId)), 0)
+    );
     const difalCotacao = roundMoney(vinculacaoFornecedor?.difal_valor);
-    const difalAnterior = roundMoney(difalAtivoPorFornecedor.get(fornecedorId) || 0);
+    const difalAnterior = ofertaSaldoGrupo
+      ? somarPorRespostas(difalAtivoPorResposta)
+      : roundMoney(difalAtivoPorFornecedor.get(fornecedorId) || 0);
     const difalRestante = roundMoney(Math.max(0, difalCotacao - difalAnterior));
     const baseCotada = roundMoney((vinculacaoFornecedor?.respostas || []).reduce((sum, resposta) => {
       if (!resposta.disponivel || asNumber(resposta.preco) <= 0) return sum;
       const baseItem = obterBaseItemPorResposta(solicitacao, resposta);
-      const quantidadeDisponivel = roundQty(
-        resposta.quantidade_disponivel ?? (resposta.disponivel ? baseItem?.quantidade_solicitada : 0)
-      );
-      return sum + quantidadeDisponivel * asNumber(resposta.preco);
+      const quantidadeBaseFinanceira = obterQuantidadeBaseFinanceiraCotacao({
+        quantidadeSolicitada: baseItem?.quantidade_solicitada,
+        quantidadeDisponivel: resposta.quantidade_disponivel,
+        escopoDisponibilidade: resposta.escopo_disponibilidade
+      });
+      return sum + quantidadeBaseFinanceira * asNumber(resposta.preco);
     }, 0));
     const basesDifal = grupo.map((alocacao) => alocacao.valor_mercadoria);
     const difalDaRodada = baseCotada > 0
@@ -1416,7 +1523,9 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
 
     if (normalizeText(vinculacaoFornecedor?.frete_modo) !== 'POR_ITEM') {
       const freteCotacao = roundMoney(vinculacaoFornecedor?.frete_valor);
-      const freteAnterior = roundMoney(freteAtivoPorFornecedor.get(fornecedorId) || 0);
+      const freteAnterior = ofertaSaldoGrupo
+        ? somarPorRespostas(freteAtivoPorResposta)
+        : roundMoney(freteAtivoPorFornecedor.get(fornecedorId) || 0);
       const freteRestante = roundMoney(Math.max(0, freteCotacao - freteAnterior));
       const basesFrete = grupo.map((alocacao) => alocacao.valor_mercadoria);
       const baseRodada = basesFrete.reduce((sum, valor) => sum + asNumber(valor), 0);
@@ -1432,7 +1541,10 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
     }
 
     const descontoCotacao = roundMoney(grupo[0]?.vinculacaoFornecedor?.desconto_total);
-    const descontoTotal = roundMoney(Math.max(0, descontoCotacao - (descontosAtivosPorFornecedor.get(fornecedorId) || 0)));
+    const descontoAnterior = ofertaSaldoGrupo
+      ? somarPorRespostas(descontosAtivosPorResposta)
+      : roundMoney(descontosAtivosPorFornecedor.get(fornecedorId) || 0);
+    const descontoTotal = roundMoney(Math.max(0, descontoCotacao - descontoAnterior));
     const bases = grupo.map((alocacao) => alocacao.valor_total);
     const descontos = calcularRateiosMonetarios(descontoTotal, bases);
     grupo.forEach((alocacao, index) => {
@@ -1486,8 +1598,10 @@ async function criarPedidoPorFornecedorRodada({
   usuarioId,
   transaction
 }) {
+  await require('./pedidoEntregaService').assertComprasPodeGerarPedido(transaction);
   const pedido = await PedidoCompra.create(
     {
+      entrega_controle_obrigatorio: true,
       solicitacao_compra_id: solicitacao.id,
       fechamento_id: fechamento.id,
       obra_id: solicitacao.obra_id,
@@ -1556,6 +1670,8 @@ async function gerarPedidosDosVencedores({
   fechamentoParcialConfirmado = false,
   fechamentoExcedenteConfirmado = false,
   justificativaExcedente = null,
+  previsaoEntrega = null,
+  previsoesEntrega = null,
   permitirParcial = false,
   permitirFinal = false,
   transaction
@@ -1715,6 +1831,14 @@ async function gerarPedidosDosVencedores({
     grupo.registrosAlocacao.push(alocacao.registro);
   }
 
+  const { dataValida, hojeBrasil, confirmarPrevisaoFornecedor } = require('./pedidoEntregaDomain');
+  const dataGeracao = hojeBrasil();
+  const feriadosEntrega = previsoesEntrega ? await require('./pedidoEntregaService').calendarioEntrega(transaction) : [];
+  if (previsoesEntrega && (previsoesEntrega.length !== porFornecedor.size
+    || new Set(previsoesEntrega.map((p) => Number(p.fornecedor_id))).size !== porFornecedor.size
+    || previsoesEntrega.some((p) => !porFornecedor.has(Number(p.fornecedor_id))))) {
+    throw Object.assign(new Error('As previsões devem corresponder aos fornecedores dos pedidos selecionados.'), { statusCode: 400 });
+  }
   const pedidosCriados = [];
   for (const grupo of porFornecedor.values()) {
     if (!grupo.respostaItemIds.length) continue;
@@ -1745,6 +1869,24 @@ async function gerarPedidosDosVencedores({
         .map((item) => [Number(item.resposta_item_id || 0), item])
         .filter(([id]) => id > 0)
     );
+
+    const confirmacaoEntrega = previsoesEntrega ? confirmarPrevisaoFornecedor(grupo.vinculacaoFornecedor,
+      previsoesEntrega.find((p) => Number(p.fornecedor_id) === Number(grupo.vinculacaoFornecedor.fornecedor_compra_id)),
+      dataGeracao, feriadosEntrega) : null;
+    // Compatibilidade com frontend anterior: a data explícita legada continua validada.
+    const previsaoConfirmada = confirmacaoEntrega?.previsao || previsaoEntrega;
+    if (!dataValida(previsaoConfirmada) || previsaoConfirmada < dataGeracao) {
+      throw Object.assign(new Error('Confirme a data prevista de entrega dos pedidos (hoje ou futura).'), { statusCode: 400 });
+    }
+    await require('../models').PedidoCompraEntrega.bulkCreate((pedidoAtualizado.itens || []).map((item) => ({
+      pedido_compra_item_id: item.id, pedido_compra_id: pedido.id, previsao: previsaoConfirmada, estado: 'OBRA', versao: 1
+    })), { transaction });
+    await registrarHistoricoPedidoNaSolicitacaoPrincipal({ solicitacao, pedido, usuarioId,
+      acao: 'PEDIDO_PREVISAO_CONFIRMADA', descricao: `Previsão inicial de entrega do pedido #${pedido.id}: ${previsaoConfirmada}`,
+      metadados: { pedido_id: pedido.id, previsao: previsaoConfirmada, ...confirmacaoEntrega,
+        prazo_entrega_dias: grupo.vinculacaoFornecedor.prazo_entrega_dias,
+        prazo_entrega_tipo: grupo.vinculacaoFornecedor.prazo_entrega_tipo,
+        itens: (pedidoAtualizado.itens || []).map((item) => item.id) }, transaction });
 
     for (const registro of grupo.registrosAlocacao) {
       const itemPedido = itensPorResposta.get(Number(registro.resposta_item_id || 0));
@@ -1803,7 +1945,7 @@ async function gerarPedidosDosVencedores({
           observacoes: `Frete informado na cotacao do fornecedor ${grupo.vinculacaoFornecedor.fornecedor?.nome || grupo.vinculacaoFornecedor.fornecedor_compra_id}`
         },
         usuarioId,
-        idempotencyKey: `COTACAO:${grupo.vinculacaoFornecedor.id}:FRETE`,
+        idempotencyKey: `COTACAO:${grupo.vinculacaoFornecedor.id}:FECHAMENTO:${fechamento.id}:FRETE`,
         permitirSemCredor: true,
         transaction
       });
@@ -2082,6 +2224,8 @@ async function fecharPedidosDaSolicitacaoCompraAutomaticamente({
       continue;
     }
 
+    await require('./pedidoEntregaService').assertPrevisaoConfirmada(pedido, transaction);
+
     await pedido.update(
       {
         status: statusFechado.codigo,
@@ -2119,6 +2263,9 @@ async function fecharPedidosDaSolicitacaoCompraAutomaticamente({
       },
       transaction
     });
+
+    const { sincronizarPedidoFinanceiroAoFechar } = require('./pedidoCompraFinanceiroService');
+    await sincronizarPedidoFinanceiroAoFechar({ pedido, usuarioId, transaction });
   }
 }
 
@@ -2140,7 +2287,7 @@ async function isSolicitacaoCompraComPedidosFechadosComFornecedor(solicitacao) {
   ));
 }
 
-async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, transaction }) {
+async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacaoGeoId = null, transaction }) {
   const motivoNormalizado = String(motivo || '').trim();
   if (!motivoNormalizado) {
     throw new Error('Informe o motivo da reabertura.');
@@ -2159,7 +2306,24 @@ async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, transacti
     throw new Error('Pedido cancelado nao pode ser reaberto.');
   }
 
-  await assertPedidoSemVinculoFinanceiroParaCancelamento(pedido.id, transaction);
+  if (aprovacaoGeoId) {
+    const aprovacao = await PedidoCompraReabertura.findOne({
+      where: {
+        id: Number(aprovacaoGeoId),
+        pedido_compra_id: pedido.id,
+        status: 'APROVADA'
+      },
+      transaction
+    });
+    if (!aprovacao) {
+      const error = new Error('A aprovacao do GEO para esta reabertura nao foi encontrada.');
+      error.statusCode = 409;
+      error.code = 'APROVACAO_GEO_INVALIDA';
+      throw error;
+    }
+  } else {
+    await assertPedidoPodeReabrirDiretamente(pedido.id, transaction);
+  }
 
   const solicitacao = await SolicitacaoCompra.findByPk(pedido.solicitacao_compra_id, {
     transaction,
@@ -2180,7 +2344,10 @@ async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, transacti
     await pedido.update(
       {
         status: statusAberto.codigo,
-        encerrado_em: null
+        encerrado_em: null,
+        ...(pedido.financeiro_fluxo_versao
+          ? { status_financeiro: 'NAO_INICIADO', financeiro_atualizado_em: new Date() }
+          : {})
       },
       { transaction }
     );
@@ -2297,7 +2464,8 @@ async function listarPedidos({
   obraIds = null,
   compradorResponsavelId = null,
   solicitanteId = null,
-  visao = null
+  visao = null,
+  statusFinanceiro = null
 } = {}) {
   const where = {};
 
@@ -2375,11 +2543,18 @@ async function listarPedidos({
     return haystack.includes(filtro);
   });
 
-  if (!visaoResumo || pedidosFiltrados.length === 0) {
-    return pedidosFiltrados;
+  const { aplicarResumoFinanceiroPedidos } = require('./pedidoCompraFinanceiroService');
+  const pedidosComFinanceiro = await aplicarResumoFinanceiroPedidos(pedidosFiltrados);
+  const statusFinanceiroNormalizado = normalizeText(statusFinanceiro);
+  const pedidosFinais = statusFinanceiroNormalizado
+    ? pedidosComFinanceiro.filter((pedido) => normalizeText(pedido.financeiro?.status) === statusFinanceiroNormalizado)
+    : pedidosComFinanceiro;
+
+  if (!visaoResumo || pedidosFinais.length === 0) {
+    return pedidosFinais;
   }
 
-  const ids = pedidosFiltrados.map((pedido) => Number(pedido.id));
+  const ids = pedidosFinais.map((pedido) => Number(pedido.id));
   const contagens = await PedidoCompraItem.findAll({
     where: {
       pedido_compra_id: { [Op.in]: ids },
@@ -2396,8 +2571,8 @@ async function listarPedidos({
     contagens.map((row) => [Number(row.pedido_compra_id), Number(row.total || 0)])
   );
 
-  return pedidosFiltrados.map((pedido) => ({
-    ...pedido.toJSON(),
+  return pedidosFinais.map((pedido) => ({
+    ...pedido,
     itens_ativos_count: Number(mapaContagens.get(Number(pedido.id)) || 0)
   }));
 }
@@ -2506,7 +2681,7 @@ async function listarAuditoriaItensPedido({ obraId, pedidoId, itemId, acao, q, o
 async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
   const pedido = await PedidoCompra.findByPk(id, {
     include: [
-      { model: FornecedorCompra, as: 'fornecedor', attributes: ['id', 'nome', 'email', 'whatsapp', 'contato'] },
+      { model: FornecedorCompra, as: 'fornecedor', attributes: ['id', 'nome', 'email', 'whatsapp', 'contato', 'parceiro_id'] },
       {
         model: Obra,
         as: 'obra',
@@ -2642,6 +2817,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
   const mapaAlocacoesFornecedorItem = montarMapaAlocacoesAtivasPorFornecedorItem(
     solicitacao?.alocacoes || []
   );
+  const mapaAlocacoesResposta = montarMapaAlocacoesAtivasPorResposta(solicitacao?.alocacoes || []);
 
   const candidatos = edicaoBloqueada
     ? []
@@ -2678,7 +2854,8 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
           fornecedorCompraId: fornecedor.fornecedor_compra_id,
           item: resposta,
           quantidadeDisponivel: resposta.quantidade_disponivel ?? baseItem?.quantidade_solicitada,
-          mapaAlocacoesFornecedorItem
+          mapaAlocacoesFornecedorItem,
+          mapaAlocacoesResposta
         });
         return {
           resposta_item_id: resposta.id,
@@ -2774,6 +2951,9 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
     };
   });
 
+  const { obterResumoFinanceiroPedido } = require('./pedidoCompraFinanceiroService');
+  const financeiro = await obterResumoFinanceiroPedido(pedido, { incluirDetalhes: true });
+
   return {
     ...pedido.toJSON(),
     itens,
@@ -2784,12 +2964,14 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
       ? 'COTACAO_ENCERRADA'
       : null,
     candidatos_adicao: candidatos,
-    candidatos_remanejamento: candidatosRemanejamento
+    candidatos_remanejamento: candidatosRemanejamento,
+    financeiro
   };
 }
 
 async function atualizarPedidoItem({ pedidoId, itemId, payload, usuarioId, transaction }) {
   await assertPedidoEditavel(pedidoId, transaction);
+  if (payload.quantidade_pedido !== undefined) await assertItensSemRecebimento([Number(itemId)], transaction);
 
   const item = await PedidoCompraItem.findOne({
     where: {
@@ -2845,6 +3027,7 @@ async function atualizarPedidoItem({ pedidoId, itemId, payload, usuarioId, trans
 
 async function removerPedidoItem({ pedidoId, itemId, usuarioId, transaction }) {
   await assertPedidoEditavel(pedidoId, transaction);
+  await assertItensSemRecebimento([Number(itemId)], transaction);
 
   const item = await PedidoCompraItem.findOne({
     where: {
@@ -2943,6 +3126,10 @@ async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, tran
     throw new Error('Pedido cancelado nao pode ter o status alterado.');
   }
 
+  if (statusConfig.codigo === 'FECHADO_FORNECEDOR') {
+    await require('./pedidoEntregaService').assertPrevisaoConfirmada(pedido, transaction);
+  }
+
   await pedido.update(
     {
       status: statusConfig.codigo,
@@ -2971,7 +3158,9 @@ async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, tran
     attributes: ['id', 'solicitacao_principal_id']
   });
   const isStatusFinal = Boolean(statusConfig.bloqueia_edicao) || ['ENCERRADO', 'CANCELADO'].includes(statusConfig.codigo);
-  const statusSolicitacaoCompra = `PEDIDO_${statusConfig.codigo}`;
+  const statusSolicitacaoCompra = statusConfig.codigo === 'FECHADO_FORNECEDOR'
+    ? 'FECHADO_FORNECEDOR'
+    : `PEDIDO_${statusConfig.codigo}`;
 
   if (solicitacao && !pedido.fechamento_id) {
     await SolicitacaoCompra.update(
@@ -2980,8 +3169,10 @@ async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, tran
     );
 
     if (Number(solicitacao.solicitacao_principal_id || 0) > 0) {
+      const setorComprasModel = await findSetorByCapability('eh_setor_compras', { transaction });
+      const setorCompras = resolveSetorPersistenciaValue(setorComprasModel, 'COMPRAS');
       await Solicitacao.update(
-        { status_global: statusSolicitacaoCompra },
+        { status_global: statusSolicitacaoCompra, area_responsavel: setorCompras },
         { where: { id: solicitacao.solicitacao_principal_id }, transaction }
       );
     }
@@ -3019,12 +3210,39 @@ async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, tran
     transaction
   });
 
+  if (statusConfig.codigo === 'FECHADO_FORNECEDOR') {
+    const { sincronizarPedidoFinanceiroAoFechar } = require('./pedidoCompraFinanceiroService');
+    await sincronizarPedidoFinanceiroAoFechar({ pedido, usuarioId, transaction });
+  }
+
   return pedido;
+}
+
+async function assertPedidoPodeReabrirDiretamente(pedidoId, transaction) {
+  const pedidoCompraId = Number(pedidoId);
+  const [vinculosNovos, alocacoesHistoricas, fretesHistoricos] = await Promise.all([
+    PedidoCompraTitulo.count({ where: { pedido_compra_id: pedidoCompraId }, transaction }),
+    SolicitacaoCompraAlocacao.count({
+      where: { pedido_compra_id: pedidoCompraId, titulo_financeiro_id: { [Op.ne]: null } },
+      transaction
+    }),
+    PedidoCompraFrete.count({
+      where: { pedido_compra_id: pedidoCompraId, titulo_financeiro_id: { [Op.ne]: null } },
+      transaction
+    })
+  ]);
+
+  if (vinculosNovos > 0 || alocacoesHistoricas > 0 || fretesHistoricos > 0) {
+    const error = new Error('Este pedido possui historico financeiro. Solicite a aprovacao do GEO para reabri-lo.');
+    error.statusCode = 409;
+    error.code = 'REABERTURA_EXIGE_APROVACAO_GEO';
+    throw error;
+  }
 }
 
 async function assertPedidoSemVinculoFinanceiroParaCancelamento(pedidoId, transaction) {
   const pedidoCompraId = Number(pedidoId);
-  const [alocacoesComTitulo, fretesComTitulo] = await Promise.all([
+  const [alocacoesComTitulo, fretesComTitulo, titulosNovoFluxoAtivos] = await Promise.all([
     SolicitacaoCompraAlocacao.count({
       where: {
         pedido_compra_id: pedidoCompraId,
@@ -3055,10 +3273,20 @@ async function assertPedidoSemVinculoFinanceiroParaCancelamento(pedidoId, transa
         ]
       },
       transaction
+    }),
+    PedidoCompraTitulo.count({
+      where: { pedido_compra_id: pedidoCompraId },
+      include: [{
+        model: TituloFinanceiro,
+        as: 'titulo',
+        required: true,
+        where: { status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] } }
+      }],
+      transaction
     })
   ]);
 
-  if (alocacoesComTitulo > 0 || fretesComTitulo > 0) {
+  if (alocacoesComTitulo > 0 || fretesComTitulo > 0 || titulosNovoFluxoAtivos > 0) {
     throw new Error('Este pedido possui titulo financeiro vinculado. Estorne ou cancele o financeiro antes de alterar o pedido.');
   }
 }
@@ -3116,6 +3344,9 @@ async function cancelarPedidoCompra({ pedidoId, motivo, usuarioId, transaction }
   }
 
   await assertPedidoSemVinculoFinanceiroParaCancelamento(pedido.id, transaction);
+
+  const itensComEntrega = await PedidoCompraItem.findAll({ where: { pedido_compra_id: pedido.id }, attributes: ['id'], transaction });
+  await assertItensSemRecebimento(itensComEntrega.map((i) => i.id), transaction);
 
   const statusAnterior = pedido.status;
   const agora = new Date();
@@ -3438,6 +3669,7 @@ async function cancelarPedidoItens({ pedidoId, itens = [], motivo, usuarioId, tr
   }
 
   const idsSelecionados = itensPedido.map((item) => Number(item.id));
+  await assertItensSemRecebimento(idsSelecionados, transaction);
   const cancelaPedidoInteiro = itensAtivosAntes.length > 0 && idsSelecionados.length === itensAtivosAntes.length;
   if (cancelaPedidoInteiro) {
     await assertPedidoSemVinculoFinanceiroParaCancelamento(pedidoId, transaction);
@@ -3911,6 +4143,7 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
     throw new Error('Item de origem nao encontrado.');
   }
 
+  await assertItensSemRecebimento([itemOrigem.id], transaction);
   await assertPedidoSemVinculoFinanceiroParaCancelamento(pedidoOrigem.id, transaction);
 
   await SolicitacaoCompra.findByPk(pedidoOrigem.solicitacao_compra_id, {
@@ -4188,7 +4421,40 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
   return recalcularPedidoPorId(pedidoOrigem.id, transaction);
 }
 
+async function assertItensSemRecebimento(ids, transaction) {
+  if (!ids.length) return;
+  const recebido = Number(await PedidoCompraItemRecebimento.sum('quantidade', {
+    where: { pedido_compra_item_id: { [Op.in]: ids } }, transaction
+  }) || 0);
+  if (recebido > 0) throw Object.assign(new Error('Há recebimentos registrados. Preserve a entrega e use Cancelar saldo não entregue no acompanhamento da solicitação.'), { statusCode: 409 });
+}
+
+async function cancelarSaldoNaoRecebido({ pedido, item, recebido, motivo, usuarioId, transaction }) {
+  // O recebimento permanece intocado. Cancelamento financeiro requer tratamento previo.
+  await assertPedidoSemVinculoFinanceiroParaCancelamento(pedido.id, transaction);
+  const anterior = item.toJSON();
+  const saldo = roundQty(asNumber(item.quantidade_pedido) - asNumber(item.quantidade_cancelada) - recebido);
+  if (saldo <= 0) throw Object.assign(new Error('Não há saldo pendente para cancelar.'), { statusCode: 409 });
+  const alocacoes = await SolicitacaoCompraAlocacao.count({ where: { pedido_compra_item_id: item.id, status: 'ATIVA' }, transaction });
+  const custos = alocacoes ? await reduzirAlocacoesAtivasDoItem({ pedidoItemId: item.id, quantidade: saldo, usuarioId, motivo, transaction }) : {};
+  const proporcao = recebido / Math.max(1e-3, asNumber(item.quantidade_pedido));
+  await item.update({ quantidade_pedido: recebido, quantidade_cancelada: 0, removido: recebido === 0,
+    cancelado_por: usuarioId, cancelado_em: new Date(), motivo_cancelamento: motivo,
+    ipi_valor: roundMoney(alocacoes ? asNumber(item.ipi_valor) - (custos.ipi_rateado || 0) : asNumber(item.ipi_valor) * proporcao),
+    icms_valor: roundMoney(alocacoes ? asNumber(item.icms_valor) - (custos.icms_rateado || 0) : asNumber(item.icms_valor) * proporcao),
+    st_valor: roundMoney(alocacoes ? asNumber(item.st_valor) - (custos.st_rateado || 0) : asNumber(item.st_valor) * proporcao),
+    difal_rateado: roundMoney(alocacoes ? asNumber(item.difal_rateado) - (custos.difal_rateado || 0) : asNumber(item.difal_rateado) * proporcao)
+  }, { transaction });
+  await registrarLogPedidoItem({ pedidoCompraId: pedido.id, pedidoCompraItemId: item.id, usuarioId,
+    acao: 'SALDO_NAO_ENTREGUE_CANCELADO', descricao: motivo, dadosAnteriores: anterior,
+    dadosNovos: { ...item.toJSON(), quantidade_cancelada_nesta_operacao: saldo }, transaction });
+  if (alocacoes) await sincronizarDescontoPedidoPorAlocacoes(pedido.id, transaction);
+  await recalcularPedidoPorId(pedido.id, transaction);
+  await sincronizarRateiosFretesPendentesPedido({ pedidoId: pedido.id, usuarioId, motivo, transaction });
+}
+
 module.exports = {
+  cancelarSaldoNaoRecebido,
   atualizarPedidoItem,
   atualizarStatusPedido,
   atualizarStatusPedidosEmLote,

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ResizableTable, ResizableTh } from '../../../components/ResizableTable';
 import ApropriacaoAutocomplete from '../../../components/ui/ApropriacaoAutocomplete';
+import Alert from '../../../components/ui/Alert';
+import OverlayModal from '../../../components/ui/OverlayModal';
+import StatusBadge from '../../../components/StatusBadge';
 import { useAuth } from '../../../contexts/AuthContext';
 import { listarApropriacoes } from '../../../services/apropriacoes';
 import {
@@ -9,15 +11,21 @@ import {
   atualizarQuantidadeItemSolicitacaoCompra,
   baixarPdfSolicitacaoCompra,
   cancelarSolicitacaoCompra,
+  cadastrarUnidadeItemSolicitacaoCompra,
+  encaminharSolicitacaoCompraParaCompras,
   obterSolicitacaoCompra
 } from '../../../services/compras';
 import {
   canAlterarQuantidadeSolicitacaoCompra,
+  canCatalogarItensManuaisCompras,
   canDeleteCompraSolicitacoes,
   canEditarApropriacoesItemCompraDireta,
-  canEditarApropriacoesItemSolicitacaoCompra
+  canEditarApropriacoesItemSolicitacaoCompra,
+  canEncaminharCompraSolicitacoes,
+  isBusinessAdmin
 } from '../../../utils/acessoProduto';
 import { useSafeNavigateBack } from '../../../utils/navigation';
+import { userHasSetorCapability } from '../../../utils/setor';
 import {
   calcularResumoRateios,
   criarRateioBase,
@@ -28,6 +36,22 @@ import {
   sincronizarItemComRateios,
   validarRateiosItem
 } from '../utils/apropriacoes';
+import ItemCompraDetalhe, { statusCatalogacao } from '../components/ItemCompraDetalhe';
+import {
+  Avisos,
+  BlocoConteudo,
+  CamposComVazios,
+  CampoForm,
+  CelulaDupla,
+  FormSecao,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
 
 function formatarData(data) {
   if (!data) return '-';
@@ -38,38 +62,17 @@ function formatarData(data) {
   return Number.isNaN(valor.getTime()) ? '-' : valor.toLocaleDateString('pt-BR');
 }
 
+function normalizarStatusCompra(status) {
+  return String(status || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+function estaAguardandoRevisaoGeo(status) {
+  return ['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(normalizarStatusCompra(status));
+}
+
 function formatarStatus(status) {
   return String(status || '-').replace(/_/g, ' ').toUpperCase();
 }
-
-function statusClass(status) {
-  const value = String(status || '').toUpperCase();
-  if (value === 'ENCERRADO') return 'app-status-pill bg-slate-100 text-slate-700';
-  if (value === 'FECHAMENTO_PARCIAL') return 'app-status-pill bg-amber-100 text-amber-800';
-  if (value === 'AGUARDANDO_DIRETORIA') return 'app-status-pill bg-amber-100 text-amber-700';
-  return 'app-status-pill bg-blue-100 text-blue-700';
-}
-
-function statusCotacaoClass(status) {
-  const value = String(status || '').toUpperCase();
-  if (value === 'RESPONDIDO') return 'app-status-pill bg-emerald-100 text-emerald-700';
-  if (value === 'FINALIZADA') return 'app-status-pill bg-slate-100 text-slate-700';
-  if (value === 'VISUALIZADO') return 'app-status-pill bg-amber-100 text-amber-700';
-  if (['CANCELADA', 'CANCELADO'].includes(value)) return 'app-status-pill bg-slate-100 text-slate-700';
-  return 'app-status-pill bg-blue-100 text-blue-700';
-}
-
-const itemTableColumns = [
-  { key: 'indice', width: 64, minWidth: 56 },
-  { key: 'tipo', width: 112, minWidth: 92 },
-  { key: 'insumo', width: 220, minWidth: 160 },
-  { key: 'unidade', width: 96, minWidth: 78 },
-  { key: 'quantidade', width: 118, minWidth: 98 },
-  { key: 'especificacao', width: 260, minWidth: 180 },
-  { key: 'apropriacao', width: 140, minWidth: 110 },
-  { key: 'necessario_para', width: 132, minWidth: 112 },
-  { key: 'link', width: 280, minWidth: 140 }
-];
 
 function combinarItensSolicitacaoCompra(solicitacao, apropriacoes = []) {
   const itens = (solicitacao?.itens || []).map((item) => ({
@@ -77,32 +80,62 @@ function combinarItensSolicitacaoCompra(solicitacao, apropriacoes = []) {
     item_tipo: 'CADASTRADO',
     tipo: 'CADASTRADO',
     nome: item.insumo?.nome || '-',
-    unidade: item.unidade?.sigla || '-',
+    unidade: item.unidade_sigla_manual || item.unidade?.sigla || item.unidade?.nome || '-',
+    unidade_id: item.unidade_id || item.unidade?.id || null,
+    unidade_sigla_manual: item.unidade_sigla_manual || '',
     quantidade: item.quantidade,
     especificacao: item.especificacao || '-',
     apropriacao_id: item.apropriacao_id || '',
-    apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ') || item.apropriacao?.codigo || '-',
+    apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ')
+      || item.apropriacao?.descricao
+      || item.apropriacao?.nome
+      || item.apropriacao?.codigo
+      || '-',
     apropriacoes: Array.isArray(item.apropriacoes) ? item.apropriacoes : [],
     apropriacao_linhas: item.apropriacao_linhas || [],
     necessario_para: item.necessario_para,
-    link_produto: item.link_produto || ''
+    necessario_para_formatado: formatarData(item.necessario_para),
+    link_produto: item.link_produto || '',
+    arquivo_url: item.arquivo_url || '',
+    arquivo_nome_original: item.arquivo_nome_original || ''
   }));
 
-  const manuais = (solicitacao?.itensManuais || []).map((item) => ({
-    id: item.id,
-    item_tipo: 'MANUAL',
-    tipo: 'MANUAL',
-    nome: item.nome_manual || '-',
-    unidade: item.unidade_sigla_manual || '-',
-    quantidade: item.quantidade,
-    especificacao: item.especificacao || '-',
-    apropriacao_id: item.apropriacao_id || '',
-    apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ') || item.apropriacao?.codigo || '-',
-    apropriacoes: Array.isArray(item.apropriacoes) ? item.apropriacoes : [],
-    apropriacao_linhas: item.apropriacao_linhas || [],
-    necessario_para: item.necessario_para,
-    link_produto: item.link_produto || ''
-  }));
+  const manuais = (solicitacao?.itensManuais || []).map((item) => {
+    const insumoOficial = item.insumoCatalogado || null;
+    return {
+      id: item.id,
+      item_tipo: 'MANUAL',
+      tipo: 'MANUAL',
+      nome: insumoOficial?.nome || item.nome_manual || '-',
+      unidade: insumoOficial?.unidade?.sigla
+        || insumoOficial?.unidade?.nome
+        || insumoOficial?.unidade_manual
+        || item.unidade_sigla_manual
+        || '-',
+      quantidade: item.quantidade,
+      especificacao: insumoOficial?.descricao || item.especificacao || '-',
+      nome_original: item.nome_manual || '-',
+      especificacao_original: item.especificacao || '-',
+      apropriacao_id: item.apropriacao_id || '',
+      apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ')
+        || item.apropriacao?.descricao
+        || item.apropriacao?.nome
+        || item.apropriacao?.codigo
+        || '-',
+      apropriacoes: Array.isArray(item.apropriacoes) ? item.apropriacoes : [],
+      apropriacao_linhas: item.apropriacao_linhas || [],
+      necessario_para: item.necessario_para,
+      necessario_para_formatado: formatarData(item.necessario_para),
+      link_produto: item.link_produto || '',
+      arquivo_url: item.arquivo_url || '',
+      arquivo_nome_original: item.arquivo_nome_original || '',
+      insumo_catalogado_id: item.insumo_catalogado_id || null,
+      insumoCatalogado: insumoOficial,
+      catalogador: item.catalogador || null,
+      catalogado_em: item.catalogado_em || null,
+      catalogacao_tipo: item.catalogacao_tipo || null
+    };
+  });
 
   return [...itens, ...manuais];
 }
@@ -117,17 +150,37 @@ export default function SolicitacaoCompraDetalheView() {
   const [loading, setLoading] = useState(false);
   const [baixando, setBaixando] = useState(false);
   const [salvandoQuantidadeId, setSalvandoQuantidadeId] = useState(null);
+  const [cadastrandoUnidadeId, setCadastrandoUnidadeId] = useState(null);
+  /*
+    A EDIÇÃO DE QUANTIDADE VIROU FORMULÁRIO (05/09).
+
+    Eram DOIS `window.prompt` encadeados: um pedia a quantidade, o outro o
+    motivo. O motivo vai para a trilha de auditoria da solicitação — e
+    justificativa que entra em registro não se digita numa caixa do Chrome,
+    que não tem rótulo, não valida, não diz o que vai acontecer e some sem
+    deixar rastro no DOM (R19).
+
+    O `useConfirmacao` resolve o caso de UM campo; aqui são dois (quantidade
+    e motivo) e o segundo depende do primeiro estar válido, então o passo é
+    um formulário no modal do sistema. O item é fixado no estado ao abrir e
+    lido dali na gravação — nunca relido da lista depois do `await` (R26).
+  */
+  const [modalQuantidadeItem, setModalQuantidadeItem] = useState(null);
+  const [quantidadeForm, setQuantidadeForm] = useState({ quantidade: '', motivo: '' });
   const [modalApropriacaoItem, setModalApropriacaoItem] = useState(null);
   const [rateiosModal, setRateiosModal] = useState([]);
   const [motivoApropriacao, setMotivoApropriacao] = useState('');
   const [salvandoApropriacaoId, setSalvandoApropriacaoId] = useState(null);
   const [modalCancelamentoAberto, setModalCancelamentoAberto] = useState(false);
   const [cancelandoSolicitacao, setCancelandoSolicitacao] = useState(false);
+  const [encaminhandoCompras, setEncaminhandoCompras] = useState(false);
   const [cancelamentoForm, setCancelamentoForm] = useState({
     motivo: '',
     cancelar_cotacao: true,
     cancelar_solicitacao_principal: false
   });
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   async function carregar() {
     try {
@@ -136,7 +189,7 @@ export default function SolicitacaoCompraDetalheView() {
       setSolicitacao(data || null);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar solicitacao de compra');
+      avisar.erro(error.message || 'Erro ao carregar solicitacao de compra');
     } finally {
       setLoading(false);
     }
@@ -169,7 +222,10 @@ export default function SolicitacaoCompraDetalheView() {
   }, [obraIdSolicitacao]);
 
   const itensCombinados = useMemo(() => {
-    return combinarItensSolicitacaoCompra(solicitacao, apropriacoes);
+    // `posicao` guarda o "#" que a coluna de índice mostrava: a TabelaPadrao
+    // renderiza por item (sem índice), então a ordem vira dado da linha.
+    return combinarItensSolicitacaoCompra(solicitacao, apropriacoes)
+      .map((item, indice) => ({ ...item, posicao: indice + 1 }));
   }, [apropriacoes, solicitacao]);
 
   const resumoCotacao = useMemo(() => {
@@ -182,9 +238,21 @@ export default function SolicitacaoCompraDetalheView() {
     };
   }, [solicitacao]);
 
-  const podeEditarQuantidadeItem = canAlterarQuantidadeSolicitacaoCompra(user);
+  const aguardandoRevisaoGeo = estaAguardandoRevisaoGeo(solicitacao?.status);
+  const usuarioEhGeo = userHasSetorCapability(user, 'eh_setor_geo');
+  const usuarioEhCompras = userHasSetorCapability(user, 'eh_setor_compras');
+  const edicaoGeoPermitidaNoEstagio = !usuarioEhGeo || usuarioEhCompras || aguardandoRevisaoGeo;
+  const podeEditarQuantidadeItem = canAlterarQuantidadeSolicitacaoCompra(user) && edicaoGeoPermitidaNoEstagio;
+  const podeCadastrarUnidadeItem = podeEditarQuantidadeItem;
   const podeEditarApropriacoesItem =
-    canEditarApropriacoesItemSolicitacaoCompra(user) || canEditarApropriacoesItemCompraDireta(user);
+    (canEditarApropriacoesItemSolicitacaoCompra(user) || canEditarApropriacoesItemCompraDireta(user))
+    && edicaoGeoPermitidaNoEstagio;
+  const podeCatalogarItensManuais = canCatalogarItensManuaisCompras(user);
+  const podeEncaminharCompras = (
+    canEncaminharCompraSolicitacoes(user)
+    && aguardandoRevisaoGeo
+    && (usuarioEhGeo || isBusinessAdmin(user))
+  );
 
   const resumoRateiosModal = modalApropriacaoItem
     ? calcularResumoRateios({ ...modalApropriacaoItem, apropriacoes: rateiosModal })
@@ -199,9 +267,56 @@ export default function SolicitacaoCompraDetalheView() {
       window.setTimeout(() => window.URL.revokeObjectURL(url), 10000);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao abrir PDF');
+      avisar.erro(error.message || 'Erro ao abrir PDF');
     } finally {
       setBaixando(false);
+    }
+  }
+
+  async function handleCadastrarUnidadeItem(item) {
+    const unidadeLivre = String(item?.unidade_sigla_manual || '').trim();
+    if (!unidadeLivre) return;
+
+    const { ok } = await confirmar({
+      titulo: 'Cadastrar unidade de medida',
+      mensagem: `Cadastrar "${unidadeLivre}" no catálogo de unidades e vinculá-la somente a este item? A unidade padrão do insumo não será alterada.`,
+      rotuloConfirmar: 'Cadastrar UN'
+    });
+    if (!ok) return;
+
+    const loadingKey = `${item.item_tipo}-${item.id}`;
+    try {
+      setCadastrandoUnidadeId(loadingKey);
+      const data = await cadastrarUnidadeItemSolicitacaoCompra(id, item.id);
+      setSolicitacao(data || null);
+      avisar.sucesso(`UN ${unidadeLivre} cadastrada e vinculada ao item.`);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error.message || 'Erro ao cadastrar a unidade informada no item');
+    } finally {
+      setCadastrandoUnidadeId(null);
+    }
+  }
+
+  async function handleEncaminharCompras() {
+    const { ok } = await confirmar({
+      titulo: 'Enviar para Compras',
+      mensagem: 'Concluir a revisão GEO e enviar esta solicitação para o setor de Compras?',
+      rotuloConfirmar: 'Enviar para Compras',
+      rotuloCancelar: 'Continuar revisando'
+    });
+    if (!ok) return;
+
+    try {
+      setEncaminhandoCompras(true);
+      const data = await encaminharSolicitacaoCompraParaCompras(id);
+      setSolicitacao(data || null);
+      avisar.sucesso('Solicitação revisada e enviada para o setor de Compras.');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error.message || 'Erro ao enviar solicitacao para Compras');
+    } finally {
+      setEncaminhandoCompras(false);
     }
   }
 
@@ -211,30 +326,40 @@ export default function SolicitacaoCompraDetalheView() {
     return Number(texto.replace(/\./g, '').replace(',', '.'));
   }
 
-  async function handleEditarQuantidade(item) {
+  function abrirModalQuantidade(item) {
     if (!item?.id) {
-      alert('Item sem identificador para edicao.');
+      avisar.erro('Item sem identificador para edição.');
       return;
     }
+    setModalQuantidadeItem(item);
+    setQuantidadeForm({
+      quantidade: String(item.quantidade ?? '').replace('.', ','),
+      motivo: ''
+    });
+  }
 
-    const quantidadeTexto = window.prompt(
-      `Informe a nova quantidade para ${item.nome}:`,
-      String(item.quantidade ?? '').replace('.', ',')
-    );
-    if (quantidadeTexto === null) return;
+  function fecharModalQuantidade() {
+    if (salvandoQuantidadeId) return;
+    setModalQuantidadeItem(null);
+    setQuantidadeForm({ quantidade: '', motivo: '' });
+  }
 
-    const quantidade = parseQuantidadeDigitada(quantidadeTexto);
+  async function salvarQuantidadeItem() {
+    // R26: o item é fixado ANTES de qualquer await. O modal do sistema não
+    // congela a tela, e reler `modalQuantidadeItem` depois da gravação
+    // poderia atualizar um item diferente daquele que a pessoa viu.
+    const item = modalQuantidadeItem;
+    if (!item?.id) return;
+
+    const quantidade = parseQuantidadeDigitada(quantidadeForm.quantidade);
     if (!Number.isFinite(quantidade) || quantidade <= 0) {
-      alert('Informe uma quantidade valida maior que zero.');
+      avisar.alerta('Informe uma quantidade valida maior que zero.');
       return;
     }
 
-    const motivo = window.prompt('Informe o motivo da alteracao da quantidade solicitada.');
-    if (motivo === null) return;
-
-    const motivoNormalizado = motivo.trim();
+    const motivoNormalizado = String(quantidadeForm.motivo || '').trim();
     if (!motivoNormalizado) {
-      alert('Informe o motivo da alteracao.');
+      avisar.alerta('Informe o motivo da alteração.');
       return;
     }
 
@@ -250,11 +375,13 @@ export default function SolicitacaoCompraDetalheView() {
       const itemAtualizado = combinarItensSolicitacaoCompra(data, apropriacoes).find(
         (itemAtual) => itemAtual.item_tipo === item.item_tipo && Number(itemAtual.id) === Number(item.id)
       );
+      setModalQuantidadeItem(null);
+      setQuantidadeForm({ quantidade: '', motivo: '' });
       abrirModalApropriacao(itemAtualizado || { ...item, quantidade });
-      alert('Quantidade atualizada. Revise obrigatoriamente a apropriacao deste item antes de continuar.');
+      avisar.sucesso('Quantidade atualizada. Revise obrigatoriamente a apropriação deste item antes de continuar.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao atualizar quantidade solicitada');
+      avisar.erro(error.message || 'Erro ao atualizar quantidade solicitada');
     } finally {
       setSalvandoQuantidadeId(null);
     }
@@ -296,33 +423,35 @@ export default function SolicitacaoCompraDetalheView() {
   }
 
   async function salvarApropriacoesItem() {
-    if (!modalApropriacaoItem?.id) {
-      alert('Item sem identificador para edicao.');
+    // R26: mesma disciplina da quantidade — alvo fixado antes do await.
+    const alvo = modalApropriacaoItem;
+    if (!alvo?.id) {
+      avisar.erro('Item sem identificador para edição.');
       return;
     }
 
     const itemComRateios = sincronizarItemComRateios({
-      ...modalApropriacaoItem,
+      ...alvo,
       apropriacoes: rateiosModal
     });
     const validacao = validarRateiosItem(itemComRateios);
 
     if (!validacao.ok) {
-      alert(validacao.mensagem);
+      avisar.alerta(validacao.mensagem);
       return;
     }
 
     const motivo = motivoApropriacao.trim();
     if (!motivo) {
-      alert('Informe o motivo da alteracao.');
+      avisar.alerta('Informe o motivo da alteração.');
       return;
     }
 
-    const loadingKey = `${modalApropriacaoItem.item_tipo}-${modalApropriacaoItem.id}`;
+    const loadingKey = `${alvo.item_tipo}-${alvo.id}`;
     try {
       setSalvandoApropriacaoId(loadingKey);
-      const data = await atualizarApropriacoesItemSolicitacaoCompra(id, modalApropriacaoItem.id, {
-        item_tipo: modalApropriacaoItem.item_tipo,
+      const data = await atualizarApropriacoesItemSolicitacaoCompra(id, alvo.id, {
+        item_tipo: alvo.item_tipo,
         apropriacoes: normalizarRateiosEntrada(itemComRateios).map((rateio) => ({
           apropriacao_id: Number(rateio.apropriacao_id),
           quantidade_apropriada: parseQuantidade(rateio.quantidade_apropriada)
@@ -331,10 +460,10 @@ export default function SolicitacaoCompraDetalheView() {
       });
       setSolicitacao(data || null);
       fecharModalApropriacao();
-      alert('Apropriacoes do item atualizadas com auditoria.');
+      avisar.sucesso('Apropriações do item atualizadas com auditoria.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao atualizar apropriacoes do item');
+      avisar.erro(error.message || 'Erro ao atualizar apropriacoes do item');
     } finally {
       setSalvandoApropriacaoId(null);
     }
@@ -355,24 +484,26 @@ export default function SolicitacaoCompraDetalheView() {
   }
 
   async function handleConfirmarCancelamentoSolicitacao() {
-    const motivo = String(cancelamentoForm.motivo || '').trim();
-    if (!motivo) {
-      alert('Informe o motivo do cancelamento.');
+    // R26: o recorte do cancelamento (motivo + as duas marcas) é fixado
+    // numa const ANTES do await; nada é relido do estado depois.
+    const pedido = {
+      ...cancelamentoForm,
+      motivo: String(cancelamentoForm.motivo || '').trim()
+    };
+    if (!pedido.motivo) {
+      avisar.alerta('Informe o motivo do cancelamento.');
       return;
     }
 
     try {
       setCancelandoSolicitacao(true);
-      const data = await cancelarSolicitacaoCompra(id, {
-        ...cancelamentoForm,
-        motivo
-      });
+      const data = await cancelarSolicitacaoCompra(id, pedido);
       setSolicitacao(data || null);
       setModalCancelamentoAberto(false);
-      alert('Solicitacao de compra cancelada com historico.');
+      avisar.sucesso('Solicitação de compra cancelada com histórico.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao cancelar solicitacao de compra');
+      avisar.erro(error.message || 'Erro ao cancelar solicitacao de compra');
     } finally {
       setCancelandoSolicitacao(false);
     }
@@ -380,449 +511,566 @@ export default function SolicitacaoCompraDetalheView() {
 
   if (loading) {
     return (
-      <div className="page solicitacoes-page">
-        <div className="app-empty-card sol-surface-card">Carregando...</div>
-      </div>
+      <Pagina className="compra-detalhe-page">
+        <BlocoConteudo>Carregando...</BlocoConteudo>
+      </Pagina>
     );
   }
 
   if (!solicitacao) {
     return (
-      <div className="page solicitacoes-page">
-        <div className="app-empty-card sol-surface-card">Solicitacao de compra nao encontrada.</div>
-      </div>
+      <Pagina className="compra-detalhe-page">
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <BlocoConteudo>Solicitação de compra não encontrada.</BlocoConteudo>
+      </Pagina>
     );
   }
 
   const statusSolicitacaoCompra = String(solicitacao.status || '').toUpperCase();
   const solicitacaoCompraCancelada = ['CANCELADA', 'CANCELADO', 'INATIVA'].includes(statusSolicitacaoCompra);
   const podeCancelarSolicitacaoCompra = canDeleteCompraSolicitacoes(user) && !solicitacaoCompraCancelada;
+  const codigoSolicitacao = `SC-${String(solicitacao.id).padStart(5, '0')}`;
+  const cotacaoBloqueada = solicitacaoCompraCancelada || aguardandoRevisaoGeo;
+  const rotuloCotacao = solicitacaoCompraCancelada
+    ? 'Cotacao cancelada'
+    : aguardandoRevisaoGeo
+      ? 'Cotacao apos revisao GEO'
+      : 'Gerenciar cotacao';
+
+  const acaoPdf = {
+    rotulo: baixando ? 'Abrindo PDF...' : 'Abrir PDF',
+    onClick: handleAbrirPdf,
+    desabilitada: baixando
+  };
+  const acaoCotacao = {
+    rotulo: rotuloCotacao,
+    onClick: () => navigate(`/solicitacoes-compra/${id}/cotacao`),
+    desabilitada: cotacaoBloqueada
+  };
+  const acaoEncaminhar = {
+    rotulo: encaminhandoCompras ? 'Enviando...' : 'Enviar para Compras',
+    onClick: handleEncaminharCompras,
+    desabilitada: encaminhandoCompras
+  };
 
   return (
-    <div className="page solicitacoes-page compra-detalhe-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Detalhe da Solicitacao de Compra</h1>
-            <p className="page-subtitle">
-              SC-{String(solicitacao.id).padStart(5, '0')} - dados, itens e vinculos operacionais da solicitacao.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <button type="button" className="btn btn-outline" onClick={() => navigateBack('/solicitacoes-compra')}>
-              Voltar
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => navigate(`/solicitacoes-compra/${id}/cotacao`)}
-              disabled={solicitacaoCompraCancelada}
-            >
-              {solicitacaoCompraCancelada ? 'Cotacao cancelada' : 'Gerenciar cotacao'}
-            </button>
-            {podeCancelarSolicitacaoCompra && (
-              <button type="button" className="btn btn-danger" onClick={abrirModalCancelamento}>
-                Cancelar SC
-              </button>
-            )}
-            <button type="button" className="btn btn-primary" onClick={handleAbrirPdf} disabled={baixando}>
-              {baixando ? 'Abrindo PDF...' : 'Abrir PDF'}
-            </button>
-          </div>
-        </div>
+    <Pagina className="compra-detalhe-page">
+      <Avisos avisos={avisos} aoFechar={fechar} />
+      {/*
+        C5: UM primário sólido. Quando a revisão GEO pode ser concluída, o
+        que a tela existe para fazer é ENVIAR PARA COMPRAS — o PDF desce
+        para secundária. Fora desse estágio o primário é abrir o PDF.
+        Antes os dois eram `btn btn-primary` lado a lado.
+      */}
+      <PageHeader
+        titulo={`Solicitação ${codigoSolicitacao}`}
+        contagem={`${itensCombinados.length} item(ns)`}
+        descricao={[solicitacao.obra?.nome, solicitacao.solicitante?.nome].filter(Boolean).join(' · ')
+          || 'Dados, itens e vinculos operacionais da solicitacao.'}
+        voltar={{ onClick: () => navigateBack('/solicitacoes-compra'), title: 'Voltar para solicitacoes de compra' }}
+        acaoPrincipal={podeEncaminharCompras ? acaoEncaminhar : acaoPdf}
+        secundarias={podeEncaminharCompras ? [acaoCotacao, acaoPdf] : [acaoCotacao]}
+        destrutiva={podeCancelarSolicitacaoCompra ? {
+          rotulo: 'Cancelar SC',
+          onClick: abrirModalCancelamento
+        } : undefined}
+      />
 
-        <div className="compra-detalhe-summary-grid">
-          <div className="compra-detalhe-summary-item">
-            <span className="compra-detalhe-summary-label">Status</span>
-            <strong>
-              <span className={statusClass(solicitacao.status)}>{formatarStatus(solicitacao.status)}</span>
-            </strong>
-          </div>
-          <div className="compra-detalhe-summary-item">
-            <span className="compra-detalhe-summary-label">Obra</span>
-            <strong>{solicitacao.obra?.nome || '-'}</strong>
-            <small>{solicitacao.obra?.codigo || '-'}</small>
-          </div>
-          <div className="compra-detalhe-summary-item">
-            <span className="compra-detalhe-summary-label">Solicitante</span>
-            <strong>{solicitacao.solicitante?.nome || '-'}</strong>
-          </div>
-          <div className="compra-detalhe-summary-item">
-            <span className="compra-detalhe-summary-label">Necessario para</span>
-            <strong>{formatarData(solicitacao.necessario_para)}</strong>
-          </div>
-          <div className="compra-detalhe-summary-item">
-            <span className="compra-detalhe-summary-label">Criada em</span>
-            <strong>{formatarData(solicitacao.createdAt)}</strong>
-          </div>
-          <div className="compra-detalhe-summary-item">
-            <span className="compra-detalhe-summary-label">Solicitacao principal</span>
-            {solicitacao.solicitacaoPrincipal ? (
-              <button
-                type="button"
-                className="compra-detalhe-link-button"
-                onClick={() => navigate(`/solicitacoes/${solicitacao.solicitacaoPrincipal.id}`)}
-              >
-                {solicitacao.solicitacaoPrincipal.codigo || `ID ${solicitacao.solicitacaoPrincipal.id}`}
-              </button>
-            ) : (
-              <strong>-</strong>
-            )}
-          </div>
-          <div className="compra-detalhe-summary-item compra-detalhe-summary-wide">
-            <span className="compra-detalhe-summary-label">Observacoes</span>
-            <strong>{solicitacao.observacoes || '-'}</strong>
-          </div>
-        </div>
-      </div>
+      {/*
+        CONDIÇÃO DERIVADA DO CONTEÚDO, não evento: ela descreve o estágio em
+        que a solicitação está e continua verdadeira depois de fechada. Por
+        isso NÃO passa pelo `useAvisos` (que é para evento) e fica como
+        faixa fixa no fluxo, com o tom semântico do sistema — a versão
+        anterior pintava a mesma faixa com paleta crua (amber-50/300/900),
+        que não tem par no tema escuro (R25).
+      */}
+      {aguardandoRevisaoGeo && (
+        <Alert
+          type="warning"
+          title="Aguardando revisão do GEO."
+          message="Usuarios autorizados podem conferir quantidades e apropriacoes. A cotacao sera liberada somente depois do envio para Compras."
+        />
+      )}
 
-      <div className="mt-4 grid gap-4">
-        <div className="card sol-surface-card compra-detalhe-itens-card">
-          <div className="card-header flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold">Itens</h2>
-            <span className="text-sm text-[var(--c-muted)]">{itensCombinados.length} item(ns)</span>
-          </div>
-          <div className="app-table-shell compra-detalhe-itens-shell overflow-x-auto">
-            <ResizableTable
-              columns={itemTableColumns}
-              storageKey="fluxy.solicitacao-compra-detalhe.itens.columns.v1"
-              className="table compra-detalhe-itens-table"
-            >
-              <thead>
-                <tr>
-                  <ResizableTh columnKey="indice">#</ResizableTh>
-                  <ResizableTh columnKey="tipo">Tipo</ResizableTh>
-                  <ResizableTh columnKey="insumo">Insumo</ResizableTh>
-                  <ResizableTh columnKey="unidade">Unidade</ResizableTh>
-                  <ResizableTh columnKey="quantidade">Quantidade</ResizableTh>
-                  <ResizableTh columnKey="especificacao">Especificacao</ResizableTh>
-                  <ResizableTh columnKey="apropriacao">Apropriacao</ResizableTh>
-                  <ResizableTh columnKey="necessario_para">Necessario para</ResizableTh>
-                  <ResizableTh columnKey="link">Link</ResizableTh>
-                </tr>
-              </thead>
-              <tbody>
-                {itensCombinados.map((item, index) => {
-                  const loadingKey = `${item.item_tipo}-${item.id}`;
-
-                  return (
-                  <tr key={loadingKey}>
-                    <td>{index + 1}</td>
-                    <td>
-                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${item.tipo === 'MANUAL' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
-                        {item.tipo}
-                      </span>
-                    </td>
-                    <td className={item.tipo === 'MANUAL' ? 'font-semibold text-red-700' : ''}>{item.nome}</td>
-                    <td>{item.unidade}</td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <span>{item.quantidade}</span>
-                        {podeEditarQuantidadeItem && !solicitacaoCompraCancelada && (
-                          <button
-                            type="button"
-                            className="rounded-full border border-[var(--c-border)] px-2 py-1 text-xs font-semibold text-[var(--c-text)] hover:bg-[var(--c-surface-muted)]"
-                            onClick={() => handleEditarQuantidade(item)}
-                            disabled={salvandoQuantidadeId === loadingKey}
-                          >
-                            {salvandoQuantidadeId === loadingKey ? 'Salvando...' : 'Editar'}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td>{item.especificacao}</td>
-                    <td>
-                      <div className="flex flex-col gap-2">
-                        <span>{item.apropriacao}</span>
-                        {podeEditarApropriacoesItem && !solicitacaoCompraCancelada && (
-                          <button
-                            type="button"
-                            className="w-fit rounded-full border border-[var(--c-border)] px-2 py-1 text-xs font-semibold text-[var(--c-text)] hover:bg-[var(--c-surface-muted)]"
-                            onClick={() => abrirModalApropriacao(item)}
-                            disabled={salvandoApropriacaoId === loadingKey}
-                          >
-                            {salvandoApropriacaoId === loadingKey ? 'Salvando...' : 'Editar apropr.'}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td>{formatarData(item.necessario_para)}</td>
-                    <td>
-                      {item.link_produto ? (
-                        <a
-                          className="compra-detalhe-link-cell"
-                          href={item.link_produto}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={item.link_produto}
-                        >
-                          {item.link_produto}
-                        </a>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </ResizableTable>
-          </div>
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="card sol-surface-card">
-            <div className="card-header">
-              <h2 className="font-semibold">Cotacao</h2>
-            </div>
-            <div className="grid gap-3 text-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-[var(--c-border)] px-3 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-muted)]">Fornecedores</div>
-                  <div className="mt-1 text-xl font-semibold text-[var(--c-text)]">{resumoCotacao.total}</div>
-                </div>
-                <div className="rounded-xl border border-[var(--c-border)] px-3 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-muted)]">Respondidos</div>
-                  <div className="mt-1 text-xl font-semibold text-[var(--c-text)]">{resumoCotacao.respondidos}</div>
-                </div>
-              </div>
-              <div className="text-xs text-[var(--c-muted)]">
-                Enviados: {resumoCotacao.enviados} - Visualizados: {resumoCotacao.visualizados}
-              </div>
-              <button
-                type="button"
-                className="btn btn-primary w-full"
-                onClick={() => navigate(`/solicitacoes-compra/${id}/cotacao`)}
-                disabled={solicitacaoCompraCancelada}
-              >
-                {solicitacaoCompraCancelada ? 'Cotacao cancelada' : 'Abrir gestao da cotacao'}
-              </button>
-            </div>
-          </div>
-
-          <div className="card sol-surface-card compra-detalhe-support-card">
-            <div className="card-header">
-              <h2 className="font-semibold">Vinculos operacionais</h2>
-            </div>
-            <div className="grid gap-3 text-sm text-[var(--c-muted)]">
-              <div className="rounded-xl border border-[var(--c-border)] px-3 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em]">Solicitacao principal</div>
-                <div className="mt-1 text-base font-semibold text-[var(--c-text)]">
-                  {solicitacao.solicitacaoPrincipal?.codigo || '-'}
-                </div>
-              </div>
-              <div className="rounded-xl border border-[var(--c-border)] px-3 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em]">PDF e cotacao</div>
-                <div className="mt-1">Use os botoes do cabecalho para abrir o PDF ou gerenciar a cotacao desta compra.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {modalApropriacaoItem && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4">
-          <div className="max-h-[92vh] w-full max-w-[980px] overflow-y-auto rounded-2xl bg-[var(--c-surface)] p-4 shadow-2xl sm:p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Editar apropriacoes do item</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  {modalApropriacaoItem.nome} - quantidade total {formatarQuantidade(modalApropriacaoItem.quantidade)}
-                </p>
-              </div>
-              <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>
-                Fechar
-              </button>
-            </div>
-
-            <div className="grid gap-3">
-              {rateiosModal.map((rateio, rateioIndex) => (
-                <div key={`rateio-item-${rateioIndex}`} className="rounded-xl border border-[var(--c-border)] p-3">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_150px_96px]">
-                    <label className="grid gap-1 text-sm font-semibold text-[var(--c-text)]">
-                      Apropriacao
-                      <ApropriacaoAutocomplete
-                        value={rateio.apropriacao_id}
-                        options={apropriacoes}
-                        onChange={(value) => atualizarRateioModal(rateioIndex, 'apropriacao_id', value)}
-                        placeholder="Digite codigo ou descricao"
-                      />
-                    </label>
-                    <label className="grid gap-1 text-sm font-semibold text-[var(--c-text)]">
-                      Quantidade
-                      <input
-                        className="input"
-                        value={rateio.quantidade_apropriada}
-                        onChange={(event) => atualizarRateioModal(rateioIndex, 'quantidade_apropriada', event.target.value)}
-                        placeholder="Ex.: 10,5"
-                      />
-                    </label>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        className="btn btn-outline w-full justify-center"
-                        onClick={() => removerRateioModal(rateioIndex)}
-                        disabled={rateiosModal.length <= 1}
-                      >
-                        Remover
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              <button type="button" className="btn btn-outline w-fit" onClick={adicionarRateioModal}>
-                Adicionar apropriacao
-              </button>
-
-              {resumoRateiosModal && (
-                <div className={`rounded-xl border px-3 py-2 text-sm ${
-                  resumoRateiosModal.fechado
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : 'border-amber-200 bg-amber-50 text-amber-800'
-                }`}>
-                  Total: {formatarQuantidade(resumoRateiosModal.total)} | Distribuido: {formatarQuantidade(resumoRateiosModal.distribuido)} | Saldo: {formatarQuantidade(resumoRateiosModal.saldo)}
-                </div>
-              )}
-
-              <label className="grid gap-1 text-sm font-semibold text-[var(--c-text)]">
-                Motivo da alteracao
-                <textarea
-                  className="input min-h-24"
-                  value={motivoApropriacao}
-                  onChange={(event) => setMotivoApropriacao(event.target.value)}
-                  placeholder="Explique por que a apropriacao do item foi alterada."
-                />
-              </label>
-
-              <div className="flex flex-wrap justify-end gap-2">
-                <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>
-                  Cancelar
-                </button>
+      <BlocoConteudo variante="secundario" titulo="Dados da solicitação">
+        <CamposComVazios
+          colunas={4}
+          campos={[
+            {
+              label: 'Status',
+              valor: <StatusBadge status={formatarStatus(solicitacao.status)} setor="COMPRAS" />
+            },
+            { label: 'Obra', valor: solicitacao.obra?.nome, sub: solicitacao.obra?.codigo },
+            { label: 'Solicitante', valor: solicitacao.solicitante?.nome },
+            { label: 'Necessario para', valor: formatarData(solicitacao.necessario_para) },
+            { label: 'Criada em', valor: formatarData(solicitacao.createdAt) },
+            {
+              /*
+                O link para o registro relacionado mora NO CORPO, junto do
+                dado que o origina — nunca na barra de ações (decisão de
+                04/09 sobre onde a navegação mora).
+              */
+              label: 'Solicitação principal',
+              valor: solicitacao.solicitacaoPrincipal ? (
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  onClick={salvarApropriacoesItem}
-                  disabled={Boolean(salvandoApropriacaoId)}
+                  className="compra-detalhe-link-button"
+                  onClick={() => navigate(`/solicitacoes/${solicitacao.solicitacaoPrincipal.id}`)}
                 >
-                  {salvandoApropriacaoId ? 'Salvando...' : 'Salvar apropriacoes'}
+                  {solicitacao.solicitacaoPrincipal.codigo || `ID ${solicitacao.solicitacaoPrincipal.id}`}
                 </button>
-              </div>
+              ) : null
+            },
+            { label: 'Observações', valor: solicitacao.observacoes, span: 2 }
+          ]}
+        />
+      </BlocoConteudo>
+
+      {/*
+        O bloco PRIMÁRIO é o dos itens: é o que a pessoa vem conferir nesta
+        tela (quantidade, apropriação, cadastro pendente).
+      */}
+      <BlocoConteudo variante="primario" cor="var(--sem-info)" titulo="Itens">
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'posicao',
+              titulo: '#',
+              tipo: 'numero',
+              render: (item) => (
+                <span className="compra-item-index">{String(item.posicao).padStart(2, '0')}</span>
+              )
+            },
+            {
+              id: 'origem',
+              titulo: 'Origem',
+              tipo: 'badge',
+              render: (item) => (
+                <span className={`compra-item-origin ${item.tipo === 'MANUAL' ? 'is-manual' : ''}`}>{item.tipo}</span>
+              )
+            },
+            {
+              id: 'item',
+              titulo: 'Item',
+              // R17: o nome do insumo é o que nomeia a linha.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => (
+                <CelulaDupla
+                  principal={item.nome}
+                  sub={item.especificacao || 'Sem especificacao adicional'}
+                />
+              )
+            },
+            {
+              id: 'quantidade',
+              titulo: 'Quantidade',
+              tipo: 'numero',
+              render: (item) => <CelulaDupla principal={item.quantidade} sub={item.unidade} />
+            },
+            {
+              id: 'apropriacao',
+              titulo: 'Apropriação',
+              tipo: 'texto',
+              render: (item) => item.apropriacao
+            },
+            {
+              id: 'necessario_para',
+              titulo: 'Necessario para',
+              tipo: 'data',
+              render: (item) => item.necessario_para_formatado
+            },
+            {
+              id: 'cadastro',
+              titulo: 'Cadastro',
+              tipo: 'badge',
+              render: (item) => {
+                const status = statusCatalogacao(item);
+                return <span className={`compra-item-catalog-status ${status.className}`}>{status.label}</span>;
+              }
+            }
+          ]}
+          itens={itensCombinados}
+          getId={(item) => `${item.item_tipo}-${item.id}`}
+          storageKey="tabela:solicitacao-compra-detalhe:itens"
+          rotuloRolagem="Itens da solicitacao de compra"
+          vazio="Nenhum item informado nesta solicitação."
+          linhaExpansivel={(item) => {
+            const loadingKey = `${item.item_tipo}-${item.id}`;
+            return (
+              <ItemCompraDetalhe
+                item={item}
+                solicitacaoId={id}
+                podeEditarQuantidade={podeEditarQuantidadeItem}
+                podeEditarApropriacao={podeEditarApropriacoesItem}
+                podeCatalogar={podeCatalogarItensManuais}
+                podeCadastrarUnidade={podeCadastrarUnidadeItem}
+                bloqueado={solicitacaoCompraCancelada}
+                cadastrandoUnidade={cadastrandoUnidadeId === loadingKey}
+                salvandoQuantidade={salvandoQuantidadeId === loadingKey}
+                salvandoApropriacao={salvandoApropriacaoId === loadingKey}
+                onEditarQuantidade={abrirModalQuantidade}
+                onEditarApropriacao={abrirModalApropriacao}
+                onCadastrarUnidade={handleCadastrarUnidadeItem}
+                onCatalogado={carregar}
+              />
+            );
+          }}
+        />
+      </BlocoConteudo>
+
+      <BlocoConteudo variante="secundario" titulo="Cotação">
+        <StatGrid colunas={4}>
+          <StatTile label="Fornecedores" valor={resumoCotacao.total} />
+          <StatTile label="Respondidos" valor={resumoCotacao.respondidos} tom="success" />
+          <StatTile label="Enviados" valor={resumoCotacao.enviados} />
+          <StatTile label="Visualizados" valor={resumoCotacao.visualizados} />
+        </StatGrid>
+        <div className="app-actionbar mt-4">
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => navigate(`/solicitacoes-compra/${id}/cotacao`)}
+            disabled={cotacaoBloqueada}
+          >
+            {solicitacaoCompraCancelada
+              ? 'Cotacao cancelada'
+              : aguardandoRevisaoGeo
+                ? 'Aguardando envio para Compras'
+                : 'Abrir gestao da cotacao'}
+          </button>
+        </div>
+      </BlocoConteudo>
+
+      <BlocoConteudo variante="secundario" titulo="Vínculos operacionais" recolhivel recolhidoPadrao>
+        <StatGrid colunas={2}>
+          <StatTile
+            label="Solicitação principal"
+            valor={solicitacao.solicitacaoPrincipal?.codigo}
+            vazio={!solicitacao.solicitacaoPrincipal?.codigo}
+          />
+          <StatTile
+            label="PDF e cotação"
+            valor="No cabecalho da tela"
+            sub="Use os botoes do cabeçalho para abrir o PDF ou gerenciar a cotação desta compra."
+          />
+        </StatGrid>
+      </BlocoConteudo>
+
+      {Array.isArray(solicitacao.fornecedores) && solicitacao.fornecedores.length > 0 && (
+        <BlocoConteudo
+          variante="secundario"
+          titulo="Fornecedores vinculados"
+          contagem={`${solicitacao.fornecedores.length} cotação(oes)`}
+        >
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'fornecedor',
+                titulo: 'Fornecedor',
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (cotacao) => cotacao.fornecedor?.nome || '-'
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (cotacao) => <StatusBadge status={formatarStatus(cotacao.status)} setor="COMPRAS" />
+              },
+              {
+                id: 'enviado_em',
+                titulo: 'Enviado em',
+                tipo: 'data',
+                render: (cotacao) => formatarData(cotacao.enviado_em)
+              },
+              {
+                id: 'respondido_em',
+                titulo: 'Respondido em',
+                tipo: 'data',
+                render: (cotacao) => formatarData(cotacao.respondido_em)
+              },
+              {
+                id: 'prazo',
+                titulo: 'Prazo',
+                tipo: 'data',
+                render: (cotacao) => formatarData(cotacao.prazo_resposta)
+              }
+            ]}
+            itens={solicitacao.fornecedores}
+            vazio="Nenhum fornecedor vinculado."
+            storageKey="tabela:solicitacao-compra-detalhe:fornecedores"
+            rotuloRolagem="Fornecedores vinculados"
+            acoesLinha={() => (
+              <button type="button" className="btn btn-outline" onClick={() => navigate(`/solicitacoes-compra/${id}/cotacao`)}>
+                Gerenciar
+              </button>
+            )}
+            larguraAcoes={160}
+          />
+        </BlocoConteudo>
+      )}
+
+      {modalQuantidadeItem && (
+        <OverlayModal
+          rotulo="Editar quantidade solicitada"
+          largura="var(--modal-max-w-md, 640px)"
+          onFechar={fecharModalQuantidade}
+        >
+          <div data-modal="cabecalho" className="border-b border-[var(--c-border)] p-4">
+            <h2 className="app-bloco-titulo">Editar quantidade solicitada</h2>
+            <p className="text-sm text-[var(--c-muted)]">
+              {modalQuantidadeItem.nome} — quantidade atual {formatarQuantidade(modalQuantidadeItem.quantidade)} {modalQuantidadeItem.unidade}
+            </p>
+          </div>
+
+          <div className="grid gap-3 p-4">
+            <FormSecao colunas={2}>
+              <CampoForm label="Nova quantidade" obrigatorio hint="Use virgula para decimais (ex.: 10,5).">
+                <input
+                  className="input"
+                  value={quantidadeForm.quantidade}
+                  onChange={(event) => setQuantidadeForm((atual) => ({ ...atual, quantidade: event.target.value }))}
+                  placeholder="Ex.: 10,5"
+                  disabled={Boolean(salvandoQuantidadeId)}
+                  autoFocus
+                />
+              </CampoForm>
+              <CampoForm
+                label="Motivo da alteração"
+                obrigatorio
+                tipo="observacao"
+                hint="O motivo vai para a trilha de auditoria da solicitacao."
+              >
+                <textarea
+                  className="input"
+                  value={quantidadeForm.motivo}
+                  onChange={(event) => setQuantidadeForm((atual) => ({ ...atual, motivo: event.target.value }))}
+                  placeholder="Explique por que a quantidade solicitada esta sendo alterada."
+                  disabled={Boolean(salvandoQuantidadeId)}
+                />
+              </CampoForm>
+            </FormSecao>
+            <p className="text-sm text-[var(--c-muted)]">
+              Ao salvar, a apropriação deste item abre em seguida para revisão obrigatória.
+            </p>
+          </div>
+
+          <div data-modal="rodape" className="border-t border-[var(--c-border)] p-4">
+            <div className="app-actionbar">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={fecharModalQuantidade}
+                disabled={Boolean(salvandoQuantidadeId)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={salvarQuantidadeItem}
+                disabled={Boolean(salvandoQuantidadeId)}
+              >
+                {salvandoQuantidadeId ? 'Salvando quantidade...' : 'Salvar quantidade'}
+              </button>
             </div>
           </div>
-        </div>
+        </OverlayModal>
+      )}
+
+      {modalApropriacaoItem && (
+        <OverlayModal
+          rotulo="Editar apropriações do item"
+          largura="var(--modal-max-w-xl, 980px)"
+          onFechar={fecharModalApropriacao}
+        >
+          <div data-modal="cabecalho" className="border-b border-[var(--c-border)] p-4">
+            <h2 className="app-bloco-titulo">Editar apropriações do item</h2>
+            <p className="text-sm text-[var(--c-muted)]">
+              {modalApropriacaoItem.nome} - quantidade total {formatarQuantidade(modalApropriacaoItem.quantidade)}
+            </p>
+          </div>
+
+          <div className="grid gap-3 p-4">
+            {rateiosModal.map((rateio, rateioIndex) => (
+              <div key={`rateio-item-${rateioIndex}`} className="rounded-xl border border-[var(--c-border)] p-3">
+                <FormSecao colunas={3}>
+                  <CampoForm label="Apropriação" span={2}>
+                    <ApropriacaoAutocomplete
+                      value={rateio.apropriacao_id}
+                      options={apropriacoes}
+                      onChange={(value) => atualizarRateioModal(rateioIndex, 'apropriacao_id', value)}
+                      placeholder="Digite código ou descrição"
+                    />
+                  </CampoForm>
+                  <CampoForm label="Quantidade">
+                    <input
+                      className="input"
+                      value={rateio.quantidade_apropriada}
+                      onChange={(event) => atualizarRateioModal(rateioIndex, 'quantidade_apropriada', event.target.value)}
+                      placeholder="Ex.: 10,5"
+                    />
+                  </CampoForm>
+                </FormSecao>
+                <div className="app-actionbar">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-perigo-suave"
+                    onClick={() => removerRateioModal(rateioIndex)}
+                    disabled={rateiosModal.length <= 1}
+                  >
+                    Remover
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="app-actionbar">
+              <button type="button" className="btn btn-outline" onClick={adicionarRateioModal}>
+                Adicionar apropriação
+              </button>
+            </div>
+
+            {/*
+              O saldo do rateio é CONDIÇÃO (fecha ou não fecha), não evento:
+              fica ao lado do que descreve, com o tom semântico do sistema.
+            */}
+            {resumoRateiosModal && (
+              <Alert
+                type={resumoRateiosModal.fechado ? 'success' : 'warning'}
+                message={`Total: ${formatarQuantidade(resumoRateiosModal.total)} | Distribuido: ${formatarQuantidade(resumoRateiosModal.distribuido)} | Saldo: ${formatarQuantidade(resumoRateiosModal.saldo)}`}
+              />
+            )}
+
+            <FormSecao colunas={2}>
+              <CampoForm
+                label="Motivo da alteração"
+                obrigatorio
+                tipo="observacao"
+                hint="O motivo vai para a trilha de auditoria da apropriacao."
+              >
+                <textarea
+                  className="input"
+                  value={motivoApropriacao}
+                  onChange={(event) => setMotivoApropriacao(event.target.value)}
+                  placeholder="Explique por que a apropriação do item foi alterada."
+                />
+              </CampoForm>
+            </FormSecao>
+          </div>
+
+          <div data-modal="rodape" className="border-t border-[var(--c-border)] p-4">
+            <div className="app-actionbar">
+              <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={salvarApropriacoesItem}
+                disabled={Boolean(salvandoApropriacaoId)}
+              >
+                {salvandoApropriacaoId ? 'Salvando...' : 'Salvar apropriacoes'}
+              </button>
+            </div>
+          </div>
+        </OverlayModal>
       )}
 
       {modalCancelamentoAberto && (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/45 p-4">
-          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-[var(--c-surface)] p-5 shadow-2xl">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Cancelar solicitacao de compra</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Esta acao registra historico e remove a compra dos fluxos operacionais em aberto.
-                </p>
-              </div>
-              <button type="button" className="btn btn-outline" onClick={fecharModalCancelamento} disabled={cancelandoSolicitacao}>
-                Fechar
-              </button>
-            </div>
+        <OverlayModal
+          rotulo="Cancelar solicitação de compra"
+          largura="var(--modal-max-w-lg, 860px)"
+          onFechar={fecharModalCancelamento}
+        >
+          <div data-modal="cabecalho" className="border-b border-[var(--c-border)] p-4">
+            <h2 className="app-bloco-titulo">Cancelar solicitação de compra</h2>
+            <p className="text-sm text-[var(--c-muted)]">
+              Esta ação registra histórico e remove a compra dos fluxos operacionais em aberto.
+            </p>
+          </div>
 
-            <div className="grid gap-4">
-              <label className="grid gap-1 text-sm font-semibold text-[var(--c-text)]">
-                Motivo do cancelamento *
+          <div className="grid gap-4 p-4">
+            <FormSecao colunas={2}>
+              <CampoForm label="Motivo do cancelamento" obrigatorio tipo="observacao">
                 <textarea
-                  className="input min-h-[110px]"
+                  className="input"
                   value={cancelamentoForm.motivo}
                   onChange={(event) => setCancelamentoForm((prev) => ({ ...prev, motivo: event.target.value }))}
-                  placeholder="Explique por que a solicitacao de compra esta sendo cancelada."
+                  placeholder="Explique por que a solicitação de compra esta sendo cancelada."
                   disabled={cancelandoSolicitacao}
                 />
-              </label>
+              </CampoForm>
+            </FormSecao>
 
-              <label className="flex items-start gap-3 rounded-xl border border-[var(--c-border)] p-3 text-sm text-[var(--c-text)]">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={cancelamentoForm.cancelar_cotacao}
-                  onChange={(event) => setCancelamentoForm((prev) => ({ ...prev, cancelar_cotacao: event.target.checked }))}
-                  disabled={cancelandoSolicitacao}
-                />
-                <span>
-                  <strong>Cancelar cotacao vinculada</strong>
-                  <span className="mt-1 block text-[var(--c-muted)]">
-                    Fornecedores e respostas ficam preservados para auditoria, mas a cotacao deixa de ficar ativa.
-                  </span>
+            <label className="flex items-start gap-3 rounded-xl border border-[var(--c-border)] p-3 text-sm text-[var(--c-text)]">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={cancelamentoForm.cancelar_cotacao}
+                onChange={(event) => setCancelamentoForm((prev) => ({ ...prev, cancelar_cotacao: event.target.checked }))}
+                disabled={cancelandoSolicitacao}
+              />
+              <span>
+                <strong>Cancelar cotação vinculada</strong>
+                <span className="mt-1 block text-[var(--c-muted)]">
+                  Fornecedores e respostas ficam preservados para auditoria, mas a cotação deixa de ficar ativa.
                 </span>
-              </label>
+              </span>
+            </label>
 
-              <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={cancelamentoForm.cancelar_solicitacao_principal}
-                  onChange={(event) => setCancelamentoForm((prev) => ({ ...prev, cancelar_solicitacao_principal: event.target.checked }))}
-                  disabled={cancelandoSolicitacao}
-                />
-                <span>
-                  <strong>Tambem cancelar a solicitacao principal</strong>
-                  <span className="mt-1 block">
-                    O sistema bloqueia esta opcao se ja existir titulo financeiro vinculado.
-                  </span>
+            {/*
+              A segunda marca é a que tem alcance fora desta tela (cancela a
+              solicitação principal). O destaque dela era paleta crua
+              (amber-50/200/900); agora é o `Alert` semântico do sistema, com
+              a marca dentro dele.
+            */}
+            <label
+              className="flex items-start gap-3 rounded-xl border p-3 text-sm"
+              style={{
+                borderColor: 'var(--sem-warning-border)',
+                background: 'var(--sem-warning-bg)',
+                color: 'var(--sem-warning)'
+              }}
+            >
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={cancelamentoForm.cancelar_solicitacao_principal}
+                onChange={(event) => setCancelamentoForm((prev) => ({ ...prev, cancelar_solicitacao_principal: event.target.checked }))}
+                disabled={cancelandoSolicitacao}
+              />
+              <span>
+                <strong>Também cancelar a solicitação principal</strong>
+                <span className="mt-1 block">
+                  O sistema bloqueia esta opção se já existir título financeiro vinculado.
                 </span>
-              </label>
+              </span>
+            </label>
+          </div>
 
-              <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--c-border)] pt-4">
-                <button type="button" className="btn btn-outline" onClick={fecharModalCancelamento} disabled={cancelandoSolicitacao}>
-                  Cancelar
-                </button>
-                <button type="button" className="btn btn-danger" onClick={handleConfirmarCancelamentoSolicitacao} disabled={cancelandoSolicitacao}>
+          <div data-modal="rodape" className="border-t border-[var(--c-border)] p-4">
+            <div className="app-actionbar">
+              <button type="button" className="btn btn-outline" onClick={fecharModalCancelamento} disabled={cancelandoSolicitacao}>
+                Cancelar
+              </button>
+              <span className="app-actionbar-apartada">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-perigo-suave"
+                  onClick={handleConfirmarCancelamentoSolicitacao}
+                  disabled={cancelandoSolicitacao}
+                >
                   {cancelandoSolicitacao ? 'Cancelando...' : 'Confirmar cancelamento'}
                 </button>
-              </div>
+              </span>
             </div>
           </div>
-        </div>
+        </OverlayModal>
       )}
 
-      {Array.isArray(solicitacao.fornecedores) && solicitacao.fornecedores.length > 0 && (
-        <div className="mt-4 card sol-surface-card">
-          <div className="card-header flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold">Fornecedores vinculados</h2>
-            <span className="text-sm text-[var(--c-muted)]">{solicitacao.fornecedores.length} cotacao(oes)</span>
-          </div>
-          <div className="app-table-shell compras-responsive-table">
-            <table className="table min-w-[760px]">
-              <thead>
-                <tr>
-                  <th>Fornecedor</th>
-                  <th>Status</th>
-                  <th>Enviado em</th>
-                  <th>Respondido em</th>
-                  <th>Prazo</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {solicitacao.fornecedores.map((cotacao) => (
-                  <tr key={cotacao.id}>
-                    <td className="font-medium">{cotacao.fornecedor?.nome || '-'}</td>
-                    <td><span className={statusCotacaoClass(cotacao.status)}>{formatarStatus(cotacao.status)}</span></td>
-                    <td>{formatarData(cotacao.enviado_em)}</td>
-                    <td>{formatarData(cotacao.respondido_em)}</td>
-                    <td>{formatarData(cotacao.prazo_resposta)}</td>
-                    <td className="text-right">
-                      <button type="button" className="btn btn-xs btn-outline" onClick={() => navigate(`/solicitacoes-compra/${id}/cotacao`)}>
-                        Gerenciar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

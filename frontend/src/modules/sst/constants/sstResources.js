@@ -1,4 +1,24 @@
-export const SST_SIMPLIFIED_MODE = import.meta.env.VITE_SST_SIMPLIFIED_MODE !== 'false';
+/*
+  MODO SIMPLIFICADO DESLIGADO POR DECISÃO DO CLIENTE (05/09).
+
+  Ele nasceu LIGADO por padrão (`!== 'false'`), e o efeito era que 12 telas
+  do SST existiam, tinham rota e guarda de permissão, e redirecionavam para
+  /sst/pgr — enquanto o menu ainda as oferecia. Menu que mostra porta que
+  não abre é pior que ausência: a pessoa clica, não acontece nada, e não
+  sabe se é permissão, erro ou defeito.
+
+  Numa primeira rodada o cliente mandou tirá-las do menu enquanto o modo
+  estivesse ligado, e a visibilidade passou a sair DESTA MESMA constante,
+  para as duas coisas nunca mais divergirem. Agora ele decidiu o fundo:
+  **as 12 telas voltam**. Com o padrão invertido, o menu volta a oferecê-las
+  e o redirecionamento some — pela mesma constante, sem tocar em mais nada.
+
+  Quem quiser o modo simplificado de volta liga explicitamente, com
+  `VITE_SST_SIMPLIFIED_MODE=true`. Inverter o padrão em vez de apagar a
+  capacidade: o modo continua existindo, só não é mais o comportamento de
+  quem não escolheu nada.
+*/
+export const SST_SIMPLIFIED_MODE = import.meta.env.VITE_SST_SIMPLIFIED_MODE === 'true';
 
 export const SST_SIMPLIFIED_RESOURCES = new Set([
   'pgr',
@@ -28,7 +48,7 @@ export const SST_RESOURCES = {
       { key: 'categoria', label: 'Categoria' },
       { key: 'severidade', label: 'Severidade', options: ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'] },
       { key: 'probabilidade', label: 'Probabilidade', options: ['BAIXA', 'MEDIA', 'ALTA'] },
-      { key: 'descricao', label: 'Descricao', type: 'textarea' },
+      { key: 'descricao', label: 'Descrição', type: 'textarea' },
       { key: 'ativo', label: 'Ativo', type: 'checkbox' }
     ],
     columns: ['nome', 'categoria', 'severidade', 'probabilidade', 'obra.nome']
@@ -44,8 +64,8 @@ export const SST_RESOURCES = {
       { key: 'nome', label: 'Agente', required: true },
       { key: 'intensidade', label: 'Intensidade' },
       { key: 'unidade', label: 'Unidade' },
-      { key: 'tecnica_avaliacao', label: 'Tecnica de avaliacao' },
-      { key: 'limite_tolerancia', label: 'Limite de tolerancia' },
+      { key: 'tecnica_avaliacao', label: 'Técnica de avaliacao' },
+      { key: 'limite_tolerancia', label: 'Limite de tolerância' },
       { key: 'ativo', label: 'Ativo', type: 'checkbox' }
     ],
     columns: ['nome', 'tipo_agente', 'intensidade', 'limite_tolerancia']
@@ -117,7 +137,7 @@ export const SST_RESOURCES = {
       { key: 'medico', label: 'Medico' },
       { key: 'crm', label: 'CRM' },
       { key: 'uf_crm', label: 'UF CRM' },
-      { key: 'restricoes', label: 'Restricoes', type: 'textarea' }
+      { key: 'restricoes', label: 'Restrições', type: 'textarea' }
     ],
     columns: ['colaborador.nome', 'tipo_exame', 'apto', 'data_exame', 'validade']
   },
@@ -166,9 +186,9 @@ export const SST_RESOURCES = {
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas', required: true },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
       { key: 'colaborador_id', label: 'Colaborador', type: 'selectRef', ref: 'colaboradores', required: true },
-      { key: 'codigo', label: 'Codigo/NR' },
+      { key: 'codigo', label: 'Código/NR' },
       { key: 'nome', label: 'Treinamento', required: true },
-      { key: 'data_inicio', label: 'Inicio', type: 'date' },
+      { key: 'data_inicio', label: 'Início', type: 'date' },
       { key: 'data_fim', label: 'Fim', type: 'date' },
       { key: 'validade', label: 'Validade', type: 'date' },
       { key: 'instrutor', label: 'Instrutor' },
@@ -199,7 +219,7 @@ export const SST_RESOURCES = {
       { key: 'cat_emitida', label: 'CAT emitida', type: 'checkbox' },
       { key: 'fotos_url', label: 'Fotos/Anexos URL' },
       { key: 'acoes_corretivas', label: 'Ações corretivas', type: 'textarea' },
-      { key: 'descricao', label: 'Descricao', type: 'textarea', required: true }
+      { key: 'descricao', label: 'Descrição', type: 'textarea', required: true }
     ],
     columns: ['data_ocorrencia', 'tipo', 'gravidade', 'colaborador.nome', 'cat_emitida']
   },
@@ -229,15 +249,15 @@ export const SST_RESOURCES = {
     fields: [
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas', required: true },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
-      { key: 'codigo', label: 'Codigo', required: true },
+      { key: 'codigo', label: 'Código', required: true },
       { key: 'nome', label: 'Politica', required: true },
       { key: 'tipo_regra', label: 'Tipo de regra', options: ['ASO_VALIDO', 'TREINAMENTO_OBRIGATORIO', 'EPI_OBRIGATORIO', 'DOCUMENTO_VALIDO', 'EXPOSICAO_COMPATIVEL', 'CONFORMIDADE_GERAL'], required: true },
       { key: 'tipo_bloqueio', label: 'Tipo de bloqueio', options: ['ALERTA', 'RESTRICAO', 'BLOQUEIO_CRITICO'] },
       { key: 'criticidade', label: 'Criticidade', options: ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'] },
-      { key: 'funcao_alvo', label: 'Funcao alvo' },
+      { key: 'funcao_alvo', label: 'Função alvo' },
       { key: 'tipo_risco', label: 'Tipo de risco' },
       { key: 'ativo', label: 'Ativa', type: 'checkbox' },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['codigo', 'nome', 'tipo_regra', 'tipo_bloqueio', 'criticidade', 'ativo']
   },
@@ -268,7 +288,7 @@ export const SST_RESOURCES = {
       { key: 'prioridade', label: 'Prioridade', options: ['NORMAL', 'ALTA', 'URGENTE'] },
       { key: 'criticidade', label: 'Criticidade', options: ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'] },
       { key: 'status', label: 'Status', options: ['NAO_LIDA', 'LIDA', 'ARQUIVADA'] },
-      { key: 'titulo', label: 'Titulo', required: true },
+      { key: 'titulo', label: 'Título', required: true },
       { key: 'mensagem', label: 'Mensagem', type: 'textarea', required: true }
     ],
     columns: ['createdAt', 'tipo_notificacao', 'prioridade', 'criticidade', 'status', 'titulo']
@@ -284,9 +304,9 @@ export const SST_RESOURCES = {
       { key: 'tipo_pendencia', label: 'Tipo', required: true },
       { key: 'criticidade', label: 'Criticidade', options: ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'] },
       { key: 'status', label: 'Status', options: ['ABERTA', 'EM_TRATAMENTO', 'RESOLVIDA', 'IGNORADA'] },
-      { key: 'titulo', label: 'Titulo', required: true },
+      { key: 'titulo', label: 'Título', required: true },
       { key: 'prazo_limite', label: 'Prazo', type: 'date' },
-      { key: 'descricao', label: 'Descricao', type: 'textarea' }
+      { key: 'descricao', label: 'Descrição', type: 'textarea' }
     ],
     columns: ['createdAt', 'tipo_pendencia', 'criticidade', 'status', 'colaborador.nome', 'obra.nome', 'titulo']
   },
@@ -300,7 +320,7 @@ export const SST_RESOURCES = {
       { key: 'colaborador_id', label: 'Colaborador', type: 'selectRef', ref: 'colaboradores' },
       { key: 'escopo_tipo', label: 'Escopo', options: ['COLABORADOR', 'OBRA', 'EMPRESA', 'SETOR'], required: true },
       { key: 'score', label: 'Score', type: 'number', required: true },
-      { key: 'nivel', label: 'Nivel', options: ['EXCELENTE', 'CONTROLADO', 'ATENCAO', 'CRITICO'] }
+      { key: 'nivel', label: 'Nível', options: ['EXCELENTE', 'CONTROLADO', 'ATENCAO', 'CRITICO'] }
     ],
     columns: ['calculado_em', 'escopo_tipo', 'score', 'nivel', 'colaborador.nome', 'obra.nome']
   },
@@ -310,13 +330,13 @@ export const SST_RESOURCES = {
     area: 'configuracoes',
     fields: [
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas' },
-      { key: 'codigo', label: 'Codigo', required: true },
+      { key: 'codigo', label: 'Código', required: true },
       { key: 'nome', label: 'Nome', required: true },
-      { key: 'nivel', label: 'Nivel', options: ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'], required: true },
+      { key: 'nivel', label: 'Nível', options: ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'], required: true },
       { key: 'tipo_alvo', label: 'Alvo' },
       { key: 'peso', label: 'Peso', type: 'number' },
       { key: 'ativo', label: 'Ativa', type: 'checkbox' },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['codigo', 'nome', 'nivel', 'tipo_alvo', 'peso', 'ativo']
   },
@@ -327,13 +347,13 @@ export const SST_RESOURCES = {
     fields: [
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas' },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
-      { key: 'codigo', label: 'Codigo', required: true },
+      { key: 'codigo', label: 'Código', required: true },
       { key: 'nome', label: 'Workflow', required: true },
       { key: 'gatilho_evento', label: 'Evento gatilho', required: true },
       { key: 'escopo', label: 'Escopo', options: ['CORPORATIVO', 'EMPRESA', 'OBRA', 'COLABORADOR'] },
       { key: 'prioridade', label: 'Prioridade', options: ['BAIXA', 'NORMAL', 'ALTA', 'URGENTE'] },
       { key: 'ativo', label: 'Ativo', type: 'checkbox' },
-      { key: 'descricao', label: 'Descricao', type: 'textarea' }
+      { key: 'descricao', label: 'Descrição', type: 'textarea' }
     ],
     columns: ['codigo', 'nome', 'gatilho_evento', 'escopo', 'prioridade', 'ativo']
   },
@@ -343,8 +363,8 @@ export const SST_RESOURCES = {
     area: 'configuracoes',
     fields: [
       { key: 'workflow_id', label: 'Workflow ID', type: 'number', required: true },
-      { key: 'codigo', label: 'Codigo', required: true },
-      { key: 'nome', label: 'Acao', required: true },
+      { key: 'codigo', label: 'Código', required: true },
+      { key: 'nome', label: 'Ação', required: true },
       { key: 'tipo_acao', label: 'Tipo', options: ['REVISAR_CONFORMIDADE', 'AVALIAR_BLOQUEIOS', 'RECALCULAR_SCORE', 'GERAR_RECOMENDACOES', 'GERAR_NOTIFICACOES'], required: true },
       { key: 'ordem', label: 'Ordem', type: 'number' },
       { key: 'ativo', label: 'Ativa', type: 'checkbox' }
@@ -383,9 +403,9 @@ export const SST_RESOURCES = {
       { key: 'tipo_recomendacao', label: 'Tipo', required: true },
       { key: 'criticidade', label: 'Criticidade', options: ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA', 'EMERGENCIAL'] },
       { key: 'status', label: 'Status', options: ['ABERTA', 'EM_ANALISE', 'APLICADA', 'IGNORADA'] },
-      { key: 'titulo', label: 'Titulo', required: true },
-      { key: 'descricao', label: 'Descricao', type: 'textarea', required: true },
-      { key: 'acao_sugerida', label: 'Acao sugerida', type: 'textarea' }
+      { key: 'titulo', label: 'Título', required: true },
+      { key: 'descricao', label: 'Descrição', type: 'textarea', required: true },
+      { key: 'acao_sugerida', label: 'Ação sugerida', type: 'textarea' }
     ],
     columns: ['createdAt', 'tipo_recomendacao', 'criticidade', 'status', 'obra.nome', 'titulo']
   },
@@ -398,7 +418,7 @@ export const SST_RESOURCES = {
       { key: 'tipo_documento', label: 'Tipo', options: ['ASO', 'CERTIFICADO', 'TREINAMENTO', 'EPI', 'OUTRO'], required: true },
       { key: 'status', label: 'Status', options: ['EM_ANALISE', 'PROCESSADO', 'PENDENTE_TEXTO_DOCUMENTO', 'BLOQUEADO_CONFIGURACAO', 'BLOQUEADO_CREDENCIAL', 'APROVADO_HUMANO', 'REJEITADO_HUMANO', 'ERRO_PROVIDER'] },
       { key: 'confianca', label: 'Confianca', type: 'number' },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['createdAt', 'tipo_documento', 'provider', 'status', 'confianca', 'documento.titulo', 'observacoes']
   },
@@ -442,7 +462,7 @@ export const SST_RESOURCES = {
     subtitle: 'Ativacao gradual por empresa, obra, setor, grupo piloto ou usuario.',
     area: 'configuracoes',
     fields: [
-      { key: 'codigo', label: 'Codigo', required: true },
+      { key: 'codigo', label: 'Código', required: true },
       { key: 'nome', label: 'Plano', required: true },
       { key: 'escopo_tipo', label: 'Escopo', options: ['PILOTO', 'EMPRESA', 'OBRA', 'SETOR', 'USUARIO'] },
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas' },
@@ -450,7 +470,7 @@ export const SST_RESOURCES = {
       { key: 'grupo_piloto', label: 'Grupo piloto' },
       { key: 'status', label: 'Status', options: ['PLANEJADO', 'ATIVO', 'PAUSADO', 'ENCERRADO'] },
       { key: 'percentual_ativacao', label: 'Percentual ativacao', type: 'number' },
-      { key: 'descricao', label: 'Descricao', type: 'textarea' }
+      { key: 'descricao', label: 'Descrição', type: 'textarea' }
     ],
     columns: ['codigo', 'nome', 'escopo_tipo', 'status', 'percentual_ativacao', 'obra.nome']
   },
@@ -459,7 +479,7 @@ export const SST_RESOURCES = {
     subtitle: 'Metricas operacionais para producao controlada e estabilidade enterprise.',
     area: 'analytics',
     fields: [
-      { key: 'tipo_metrica', label: 'Tipo de metrica', required: true },
+      { key: 'tipo_metrica', label: 'Tipo de métrica', required: true },
       { key: 'escopo_tipo', label: 'Escopo', options: ['SISTEMA', 'EMPRESA', 'OBRA', 'COLABORADOR'] },
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas' },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
@@ -480,7 +500,7 @@ export const SST_RESOURCES = {
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas' },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
       { key: 'status', label: 'Status', options: ['ABERTO', 'EM_TRATAMENTO', 'RESOLVIDO', 'IGNORADO'] },
-      { key: 'titulo', label: 'Titulo', required: true },
+      { key: 'titulo', label: 'Título', required: true },
       { key: 'mensagem', label: 'Mensagem', type: 'textarea' }
     ],
     columns: ['createdAt', 'tipo_alerta', 'criticidade', 'status', 'titulo', 'obra.nome']
@@ -490,7 +510,7 @@ export const SST_RESOURCES = {
     subtitle: 'Timeout, retry, cooldown e circuit breaker conceitual por camada SST.',
     area: 'configuracoes',
     fields: [
-      { key: 'codigo', label: 'Codigo', required: true },
+      { key: 'codigo', label: 'Código', required: true },
       { key: 'nome', label: 'Politica', required: true },
       { key: 'tipo_alvo', label: 'Alvo', options: ['WORKFLOW', 'AUTOMACAO', 'INTEGRACAO', 'IA_DOCUMENTAL', 'NOTIFICACAO'], required: true },
       { key: 'timeout_ms', label: 'Timeout ms', type: 'number' },
@@ -498,7 +518,7 @@ export const SST_RESOURCES = {
       { key: 'cooldown_minutos', label: 'Cooldown minutos', type: 'number' },
       { key: 'circuit_breaker_enabled', label: 'Circuit breaker', type: 'checkbox' },
       { key: 'ativo', label: 'Ativa', type: 'checkbox' },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['codigo', 'nome', 'tipo_alvo', 'timeout_ms', 'max_retries', 'ativo']
   },
@@ -562,10 +582,10 @@ export const SST_RESOURCES = {
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
       { key: 'colaborador_id', label: 'Colaborador', type: 'selectRef', ref: 'colaboradores' },
       { key: 'tipo_documento', label: 'Tipo', options: ['ASO', 'CAT', 'PGR', 'PCMSO', 'CERTIFICADO', 'LAUDO', 'TREINAMENTO', 'OUTRO'], required: true },
-      { key: 'titulo', label: 'Titulo', required: true },
+      { key: 'titulo', label: 'Título', required: true },
       { key: 'validade', label: 'Validade', type: 'date' },
       { key: 'status', label: 'Status', options: ['ENVIADO', 'CONFERIDO', 'REJEITADO', 'VENCIDO'] },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['tipo_documento', 'titulo', 'validade', 'status']
   },
@@ -576,8 +596,8 @@ export const SST_RESOURCES = {
     fields: [
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas', required: true },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
-      { key: 'responsavel', label: 'Responsavel', required: true },
-      { key: 'vigencia_inicio', label: 'Inicio', type: 'date' },
+      { key: 'responsavel', label: 'Responsável', required: true },
+      { key: 'vigencia_inicio', label: 'Início', type: 'date' },
       { key: 'vigencia_fim', label: 'Fim', type: 'date' },
       { key: 'status', label: 'Status', options: ['ATIVO', 'VENCIDO', 'SUBSTITUIDO'] }
     ],
@@ -590,9 +610,9 @@ export const SST_RESOURCES = {
     fields: [
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas', required: true },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
-      { key: 'medico_responsavel', label: 'Medico responsavel', required: true },
+      { key: 'medico_responsavel', label: 'Medico responsável', required: true },
       { key: 'crm', label: 'CRM' },
-      { key: 'vigencia_inicio', label: 'Inicio', type: 'date' },
+      { key: 'vigencia_inicio', label: 'Início', type: 'date' },
       { key: 'vigencia_fim', label: 'Fim', type: 'date' },
       { key: 'status', label: 'Status', options: ['ATIVO', 'VENCIDO', 'SUBSTITUIDO'] }
     ],
@@ -605,14 +625,14 @@ export const SST_RESOURCES = {
     fields: [
       { key: 'empresa_id', label: 'Empresa', type: 'selectRef', ref: 'empresas', required: true },
       { key: 'obra_id', label: 'Obra/Centro', type: 'selectRef', ref: 'obras' },
-      { key: 'codigo', label: 'Codigo' },
-      { key: 'titulo', label: 'Titulo', required: true },
-      { key: 'data_emissao', label: 'Emissao', type: 'date' },
-      { key: 'vigencia_inicio', label: 'Inicio', type: 'date' },
+      { key: 'codigo', label: 'Código' },
+      { key: 'titulo', label: 'Título', required: true },
+      { key: 'data_emissao', label: 'Emissão', type: 'date' },
+      { key: 'vigencia_inicio', label: 'Início', type: 'date' },
       { key: 'vigencia_fim', label: 'Fim', type: 'date' },
       { key: 'status', label: 'Status', options: ['RASCUNHO', 'ATIVO', 'VENCIDO', 'SUBSTITUIDO'] },
-      { key: 'responsavel_tecnico', label: 'Responsavel tecnico' },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'responsavel_tecnico', label: 'Responsável técnico' },
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['codigo', 'titulo', 'data_emissao', 'vigencia_fim', 'status', 'responsavel_tecnico']
   },
@@ -631,11 +651,11 @@ export const SST_RESOURCES = {
       { key: 'metodologia', label: 'Metodologia' },
       { key: 'unidade_medida', label: 'Unidade de medida' },
       { key: 'valor_medido', label: 'Valor medido', type: 'number' },
-      { key: 'limite_tolerancia', label: 'Limite de tolerancia', type: 'number' },
-      { key: 'nivel_acao', label: 'Nivel de acao', type: 'number' },
+      { key: 'limite_tolerancia', label: 'Limite de tolerância', type: 'number' },
+      { key: 'nivel_acao', label: 'Nível de ação', type: 'number' },
       { key: 'resultado', label: 'Resultado' },
       { key: 'data_avaliacao', label: 'Data da avaliacao', type: 'date' },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['ltcat.titulo', 'ambiente', 'agente', 'valor_medido', 'unidade_medida', 'resultado', 'data_avaliacao']
   },
@@ -650,7 +670,7 @@ export const SST_RESOURCES = {
       { key: 'status', label: 'Status', options: ['PREPARADO', 'PENDENTE_DOCUMENTACAO', 'REJEITADO', 'PROCESSADO'] },
       { key: 'protocolo', label: 'Protocolo' },
       { key: 'recibo', label: 'Recibo' },
-      { key: 'observacoes', label: 'Observacoes', type: 'textarea' }
+      { key: 'observacoes', label: 'Observações', type: 'textarea' }
     ],
     columns: ['tipo_evento', 'status', 'colaborador.nome', 'protocolo', 'recibo']
   },

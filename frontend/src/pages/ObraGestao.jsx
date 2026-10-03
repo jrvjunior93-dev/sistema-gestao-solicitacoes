@@ -12,7 +12,16 @@ import {
   HiOutlineReceiptPercent,
   HiOutlineTrash
 } from 'react-icons/hi2';
+import {
+  Avisos,
+  CelulaDupla,
+  Pagina,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
 import { useAuth } from '../contexts/AuthContext';
+import { canManageGestaoObrasApropriacoes } from '../utils/acessoProduto';
 import { getObraGestao, obterUrlArquivoObra } from '../services/obras';
 import {
   atualizarApropriacao,
@@ -22,11 +31,11 @@ import {
 
 const TAB_DEFINITIONS = [
   { id: 'dashboard', label: 'Dashboard', icon: HiOutlineChartBar },
-  { id: 'orcamento', label: 'Orcamento', icon: HiOutlineReceiptPercent },
+  { id: 'orcamento', label: 'Orçamento', icon: HiOutlineReceiptPercent },
   { id: 'custos', label: 'Custos', icon: HiOutlineBanknotes },
   { id: 'parcelas', label: 'Receitas', icon: HiOutlineClipboardDocumentList },
   { id: 'arquivos', label: 'Arquivos', icon: HiOutlineFolderOpen },
-  { id: 'relatorio-final', label: 'Relatorio Final', icon: HiOutlineBuildingOffice2 }
+  { id: 'relatorio-final', label: 'Relatório Final', icon: HiOutlineBuildingOffice2 }
 ];
 
 function formatCurrency(value) {
@@ -65,17 +74,18 @@ function percent(value) {
 
 function DetailTableEmpty({ message }) {
   return (
-    <div className="card px-5 py-9 text-center text-sm" style={{ color: 'var(--c-muted)' }}>
+    <div className="card px-4 py-8 text-center text-sm" style={{ color: 'var(--c-muted)' }}>
       {message}
     </div>
   );
 }
 
-function KpiCard({ label, value, accentColor, helper }) {
+function KpiCard({ label, value, serie, helper }) {
+  const classeSerie = serie === 'prevista' ? ' texto-previsto' : serie === 'realizada' ? ' texto-realizado' : '';
   return (
     <div className="app-summary-card">
       <div className="app-summary-label">{label}</div>
-      <div className="app-summary-value" style={{ color: accentColor || 'var(--c-text)' }}>
+      <div className={`app-summary-value${classeSerie}`} style={classeSerie ? undefined : { color: 'var(--c-text)' }}>
         {value}
       </div>
       {helper ? <div className="app-summary-subvalue">{helper}</div> : null}
@@ -83,14 +93,15 @@ function KpiCard({ label, value, accentColor, helper }) {
   );
 }
 
-function CompactHeaderMetric({ label, value, accentColor }) {
+function CompactHeaderMetric({ label, value, serie }) {
+  const classeSerie = serie === 'prevista' ? ' texto-previsto' : serie === 'realizada' ? ' texto-realizado' : '';
   return (
     <div
       className="rounded-xl border px-3 py-2"
       style={{ borderColor: 'var(--ui-border)', background: 'var(--ui-canvas)' }}
     >
       <div className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>{label}</div>
-      <div className="mt-1 text-lg font-bold leading-none" style={{ color: accentColor || 'var(--c-text)' }}>
+      <div className={`mt-1 text-lg font-bold${classeSerie}`} style={classeSerie ? undefined : { color: 'var(--c-text)' }}>
         {value}
       </div>
     </div>
@@ -108,8 +119,10 @@ export default function ObraGestao() {
   const [orcamentoDraft, setOrcamentoDraft] = useState([]);
   const [novoItemModal, setNovoItemModal] = useState(false);
   const [novoItem, setNovoItem] = useState({ codigo: '', descricao: '', valor_orcado: '' });
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
-  const isSuperadmin = String(user?.perfil || '').toUpperCase() === 'SUPERADMIN';
+  const podeEditarApropriacoes = canManageGestaoObrasApropriacoes(user);
   const requestedTab = searchParams.get('aba') || 'dashboard';
   const activeTab = TAB_DEFINITIONS.some((tab) => tab.id === requestedTab)
     ? requestedTab
@@ -140,7 +153,7 @@ export default function ObraGestao() {
       setData(response);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar gerenciamento da obra');
+      avisar.erro(error.message || 'Erro ao carregar gerenciamento da obra');
     } finally {
       setLoading(false);
     }
@@ -165,14 +178,21 @@ export default function ObraGestao() {
       await carregarObra();
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao salvar orcamento');
+      avisar.erro(error.message || 'Erro ao salvar orcamento');
     } finally {
       setSavingBudget(false);
     }
   }
 
-  function limparOrcamento() {
-    if (!window.confirm('Deseja zerar o valor orcado de todos os itens desta obra?')) {
+  async function limparOrcamento() {
+    const { ok } = await confirmar({
+      titulo: 'Limpar orçamento',
+      mensagem: 'Deseja zerar o valor orçado de todos os itens desta obra?',
+      rotuloConfirmar: 'Zerar valores',
+      rotuloCancelar: 'Manter valores',
+      destrutiva: true
+    });
+    if (!ok) {
       return;
     }
 
@@ -182,7 +202,7 @@ export default function ObraGestao() {
   async function criarNovoItem() {
     try {
       if (!novoItem.codigo.trim()) {
-        alert('Informe o codigo do item.');
+        avisar.alerta('Informe o código do item.');
         return;
       }
 
@@ -198,12 +218,19 @@ export default function ObraGestao() {
       await carregarObra();
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao criar item de orcamento');
+      avisar.erro(error.message || 'Erro ao criar item de orcamento');
     }
   }
 
   async function removerItemOrcamento(itemId) {
-    if (!window.confirm('Deseja remover este item de orcamento?')) {
+    const { ok } = await confirmar({
+      titulo: 'Remover item de orçamento',
+      mensagem: 'Deseja remover este item de orçamento?',
+      rotuloConfirmar: 'Remover item',
+      rotuloCancelar: 'Manter item',
+      destrutiva: true
+    });
+    if (!ok) {
       return;
     }
 
@@ -212,7 +239,7 @@ export default function ObraGestao() {
       await carregarObra();
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao remover item de orcamento');
+      avisar.erro(error.message || 'Erro ao remover item de orcamento');
     }
   }
 
@@ -220,13 +247,13 @@ export default function ObraGestao() {
     try {
       const url = await obterUrlArquivoObra(item.caminho_arquivo);
       if (!url) {
-        alert('Arquivo indisponivel.');
+        avisar.erro('Arquivo indisponível.');
         return;
       }
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao abrir arquivo');
+      avisar.erro(error.message || 'Erro ao abrir arquivo');
     }
   }
 
@@ -237,52 +264,68 @@ export default function ObraGestao() {
 
   const kpis = data?.kpis || {};
 
+  // R16: UM dono para a faixa de avisos. Com o modal de novo item aberto ela
+  // vive dentro dele (senão o erro de criar ficaria atrás do fundo escuro);
+  // fora dele, no topo do conteúdo, logo abaixo do cabeçalho fixo.
+  const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
+
   if (loading) {
     return (
-      <div className="page max-w-[1420px] mx-auto">
+      <Pagina>
         <DetailTableEmpty message="Carregando gerenciamento da obra..." />
-      </div>
+      </Pagina>
     );
   }
 
   if (!data?.obra) {
     return (
-      <div className="page max-w-[1420px] mx-auto">
+      <Pagina>
+        {/* A falha do carregamento cai aqui (data continua nulo): sem a faixa
+            neste retorno, o aviso de erro não teria onde ser pintado. */}
+        {faixaAvisos}
         <DetailTableEmpty message="Obra nao encontrada." />
-      </div>
+      </Pagina>
     );
   }
 
   return (
-    <div className="page max-w-[1480px] mx-auto">
-      <section className="card px-4 py-4 md:px-5 md:py-4">
+    <Pagina>
+      {/* R13: cabeçalho do registro é FAIXA FIXA — nome, métricas e abas
+          continuam visíveis na rolagem. */}
+      <section className="app-page-header">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-1 items-start gap-4">
+            {/* C3 (R11 revisto, 02/09): em tela de DETALHE/REGISTRO a seta de
+                voltar à esquerda é a affordance primária de retorno e FICA
+                sempre — a R11 vale para menus de ações e "Voltar" redundantes
+                em LISTAGENS, não para esta seta. */}
             <button
               type="button"
-              className="btn btn-outline mt-1 inline-flex h-10 w-10 items-center justify-center rounded-2xl"
+              className="btn btn-outline app-voltar"
               onClick={() => navigate('/obras')}
+              title="Voltar para obras"
+              aria-label="Voltar para obras"
             >
-              <HiOutlineArrowLeft className="h-5 w-5" />
+              <HiOutlineArrowLeft aria-hidden="true" />
             </button>
-
-            <div>
-              <div className="text-xs font-semibold uppercase" style={{ color: 'var(--c-muted)' }}>
-                {data.obra.codigo || `OBRA ${data.obra.id}`}
-              </div>
-              <h1 className="mt-0.5 text-xl font-bold uppercase" style={{ color: 'var(--c-text)' }}>
+            <div className="min-w-0">
+              {/* O NOME do registro é a informação principal do cabeçalho —
+                  peso e escala de título; código e localização são apoio. */}
+              <h1 className="page-title uppercase" style={{ color: 'var(--c-text)' }} title={data.obra.nome}>
                 {data.obra.nome}
               </h1>
-              <div className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>
-                <HiOutlineMapPin className="h-3.5 w-3.5" />
+              <div className="mt-1 inline-flex items-center gap-2 text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>
+                <span>{data.obra.codigo || `OBRA ${data.obra.id}`}</span>
+                <span aria-hidden="true">·</span>
+                <HiOutlineMapPin className="h-4 w-4" />
                 {data.obra.cidade || 'Cidade nao informada'}
               </div>
             </div>
           </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:min-w-[320px]">
-            <CompactHeaderMetric label="Custo pago" value={formatCurrency(kpis.custo_pago)} />
-            <CompactHeaderMetric label="Saldo projetado" value={formatCurrency(kpis.saldo_projetado)} accentColor="var(--accent-green)" />
+          <div className="app-painel-lateral grid gap-3 sm:grid-cols-2">
+            <CompactHeaderMetric label="Custo pago" value={formatCurrency(kpis.custo_pago)} serie="realizada" />
+            <CompactHeaderMetric label="Saldo projetado" value={formatCurrency(kpis.saldo_projetado)} />
           </div>
         </div>
 
@@ -306,74 +349,52 @@ export default function ObraGestao() {
         </div>
       </section>
 
+      {!novoItemModal && faixaAvisos}
+
       {activeTab === 'dashboard' && (
         <>
           <section className="app-summary-grid">
-            <KpiCard label="Investimento total" value={formatCurrency(kpis.investimento_total)} />
-            <KpiCard label="Custo executado" value={formatCurrency(kpis.custo_executado)} accentColor="var(--accent-blue)" />
-            <KpiCard label="Diferenca / saldo" value={formatCurrency(kpis.diferenca_saldo)} accentColor="var(--accent-green)" />
-            <KpiCard label="Eficiencia" value={percent(kpis.eficiencia)} helper="do orcamento" />
+            <KpiCard label="Investimento total" value={formatCurrency(kpis.investimento_total)} serie="prevista" />
+            <KpiCard label="Custo executado" value={formatCurrency(kpis.custo_executado)} serie="realizada" />
+            <KpiCard label="Diferença / saldo" value={formatCurrency(kpis.diferenca_saldo)} />
+            <KpiCard label="Eficiência" value={percent(kpis.eficiencia)} helper="do orcamento" />
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-            <div className="card px-4 py-3">
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Comparativo Orcado vs Executado por Categoria</h2>
-              <div className="mt-3 space-y-3">
-                {dashboardCategorias.length === 0 ? (
-                  <div className="text-sm" style={{ color: 'var(--c-muted)' }}>Nenhuma categoria orcamentaria vinculada a obra.</div>
-                ) : dashboardCategorias.map((item) => {
-                  const base = Math.max(Number(item.valor_orcado || 0), Number(item.pago || 0), 1);
-                  const widthPago = `${Math.min(100, (Number(item.pago || 0) / base) * 100)}%`;
-                  const widthOrcado = `${Math.min(100, (Number(item.valor_orcado || 0) / base) * 100)}%`;
+          {/* Os dois painéis ("Comparativo" e "Status dos Itens Macro") mostravam
+              as MESMAS categorias com os mesmos valores lado a lado, disputando
+              atenção. Ficou UM painel em largura total; o % de execução — o
+              único dado que o segundo painel acrescentava — entrou na linha. */}
+          <section className="card px-4 py-3">
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Comparativo Orçado vs Executado por Categoria</h2>
+            <div className="mt-3 space-y-3">
+              {dashboardCategorias.length === 0 ? (
+                <div className="text-sm" style={{ color: 'var(--c-muted)' }}>Nenhuma categoria orcamentaria vinculada a obra.</div>
+              ) : dashboardCategorias.map((item) => {
+                const base = Math.max(Number(item.valor_orcado || 0), Number(item.pago || 0), 1);
+                const widthPago = `${Math.min(100, (Number(item.pago || 0) / base) * 100)}%`;
+                const widthOrcado = `${Math.min(100, (Number(item.valor_orcado || 0) / base) * 100)}%`;
 
-                  return (
-                    <div key={item.id}>
-                      <div className="mb-1.5 flex items-center justify-between gap-4 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
-                        <span className="max-w-[52%] truncate">{item.descricao}</span>
-                        <div className="flex items-center gap-3 text-xs uppercase" style={{ color: 'var(--c-muted)' }}>
-                          <span>Pago {formatCurrency(item.pago)}</span>
-                          <span>Orcado {formatCurrency(item.valor_orcado)}</span>
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="h-2.5 overflow-hidden rounded-full obra-bar-track">
-                          <div className="h-full rounded-full obra-bar-fill-soft" style={{ width: widthOrcado }} />
-                        </div>
-                        <div className="h-2.5 overflow-hidden rounded-full obra-bar-track">
-                          <div className="h-full rounded-full bg-[linear-gradient(90deg,#2454ff_0%,#35b6ff_100%)]" style={{ width: widthPago }} />
-                        </div>
+                return (
+                  <div key={item.id}>
+                    <div className="mb-2 flex items-center justify-between gap-4 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
+                      <span className="min-w-0 flex-1 truncate" title={item.descricao}>{item.descricao}</span>
+                      <div className="flex shrink-0 items-center gap-3 text-xs uppercase" style={{ color: 'var(--c-muted)' }}>
+                        <span className="texto-realizado font-semibold">Pago {formatCurrency(item.pago)}</span>
+                        <span className="texto-previsto font-semibold">Orcado {formatCurrency(item.valor_orcado)}</span>
+                        <span className="font-bold texto-realizado">{percent(item.percentual_execucao)}</span>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="card px-4 py-3">
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Status dos Itens Macro</h2>
-              <div className="mt-3 space-y-2">
-                {dashboardCategorias.length === 0 ? (
-                  <div className="text-sm" style={{ color: 'var(--c-muted)' }}>Sem dados para acompanhamento.</div>
-                ) : dashboardCategorias.map((item) => (
-                  <div key={item.id} className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'var(--ui-border)', background: 'var(--ui-canvas)' }}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="max-w-[75%]">
-                        <div className="truncate text-sm font-semibold uppercase" style={{ color: 'var(--c-text)' }}>{item.descricao}</div>
-                        <div className="mt-1 text-xs uppercase" style={{ color: 'var(--c-muted)' }}>
-                          Orc: {formatCurrency(item.valor_orcado)} &nbsp;|&nbsp; Exec: {formatCurrency(item.pago)}
-                        </div>
+                    <div className="space-y-2">
+                      <div className="h-2 overflow-hidden rounded-full obra-bar-track">
+                        <div className="h-full rounded-full serie-prevista" style={{ width: widthOrcado }} />
                       </div>
-                      <div className="text-sm font-bold obra-accent-blue">{percent(item.percentual_execucao)}</div>
-                    </div>
-                    <div className="mt-2.5 h-2 overflow-hidden rounded-full obra-bar-track">
-                      <div
-                        className="h-full rounded-full bg-[linear-gradient(90deg,#2454ff_0%,#35b6ff_100%)]"
-                        style={{ width: `${Math.min(100, Number(item.percentual_execucao || 0))}%` }}
-                      />
+                      <div className="h-2 overflow-hidden rounded-full obra-bar-track">
+                        <div className="h-full rounded-full serie-realizada" style={{ width: widthPago }} />
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </section>
         </>
@@ -385,19 +406,21 @@ export default function ObraGestao() {
             <div>
               <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Estrutura Orcamentaria</h2>
               <p className="mt-1 text-sm" style={{ color: 'var(--c-muted)' }}>
-                A V1 usa as apropriacoes da obra como estrutura base para orcamento, custo executado e relatorio final.
+                A V1 usa as apropriações da obra como estrutura base para orçamento, custo executado e relatório final.
               </p>
             </div>
 
-            {isSuperadmin && (
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn btn-outline !rounded-xl" onClick={limparOrcamento}>
-                  Limpar orcamento
-                </button>
-                <button type="button" className="btn btn-primary !rounded-xl" onClick={() => setNovoItemModal(true)}>
+            {podeEditarApropriacoes && (
+              <div className="app-actionbar">
+                <button type="button" className="btn btn-primary" onClick={() => setNovoItemModal(true)}>
                   <HiOutlinePlus className="h-4 w-4" />
                   Novo item
                 </button>
+                <span className="app-actionbar-apartada">
+                  <button type="button" className="btn btn-outline btn-perigo-suave" onClick={limparOrcamento}>
+                    Limpar orçamento
+                  </button>
+                </span>
               </div>
             )}
           </div>
@@ -408,23 +431,21 @@ export default function ObraGestao() {
             </div>
           ) : (
             <>
-              <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--ui-border)' }}>
-                <table className="min-w-full border-collapse">
-                  <thead style={{ background: 'var(--ui-canvas)' }}>
-                    <tr className="text-left text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>
-                      <th className="px-4 py-3">Descricao do item macro</th>
-                      <th className="px-4 py-3 text-right">Valor orcado (R$)</th>
-                      {isSuperadmin ? <th className="px-4 py-3 text-right">Acoes</th> : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orcamentoDraft.map((item) => (
-                      <tr key={item.id} className="border-t" style={{ borderColor: 'var(--ui-border)' }}>
-                        <td className="px-4 py-3">
+              <div className="mt-3">
+                <TabelaPadrao
+                  colunas={[
+                    {
+                      id: 'item',
+                      // R17: código + descrição SÃO a identidade do item macro.
+                      tipo: 'identidade',
+                      titulo: 'Descrição do item macro',
+                      noCard: 'titulo',
+                      render: (item) => (
+                        <div>
                           <div className="text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>{item.codigo}</div>
-                          {isSuperadmin ? (
+                          {podeEditarApropriacoes ? (
                             <input
-                              className="input mt-1.5 !rounded-xl"
+                              className="input mt-2"
                               style={{ borderColor: 'var(--ui-border)' }}
                               value={item.descricao}
                               onChange={(event) => setOrcamentoDraft((current) => current.map((row) => (
@@ -434,54 +455,66 @@ export default function ObraGestao() {
                           ) : (
                             <div className="mt-1 text-sm font-semibold uppercase" style={{ color: 'var(--c-text)' }}>{item.descricao || '-'}</div>
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {isSuperadmin ? (
-                            <input
-                              className="input ml-auto max-w-[220px] !rounded-xl text-right"
-                              style={{ borderColor: 'var(--ui-border)' }}
-                              value={item.valor_orcado}
-                              onChange={(event) => setOrcamentoDraft((current) => current.map((row) => (
-                                row.id === item.id ? { ...row, valor_orcado: event.target.value } : row
-                              )))}
-                            />
-                          ) : (
-                            <div className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{formatCurrency(normalizeMoneyInput(item.valor_orcado))}</div>
-                          )}
-                        </td>
-                        {isSuperadmin ? (
-                          <td className="px-4 py-3.5 text-right">
-                            <button
-                              type="button"
-                              className="btn btn-outline inline-flex h-10 w-10 items-center justify-center rounded-xl"
-                              onClick={() => removerItemOrcamento(item.id)}
-                            >
-                              <HiOutlineTrash className="h-4 w-4" />
-                            </button>
-                          </td>
-                        ) : null}
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="border-t" style={{ borderColor: 'var(--ui-border)', background: 'var(--ui-canvas)' }}>
-                    <tr>
-                      <td className="px-4 py-3 text-right text-xs font-semibold uppercase" style={{ color: 'var(--c-muted)' }}>
-                        Total orcado
-                      </td>
-                      <td className="px-4 py-3 text-right text-xl font-bold" style={{ color: 'var(--c-text)' }}>
-                        {formatCurrency(
-                          somarOrcamentoAnalitico(orcamentoDraft)
-                        )}
-                      </td>
-                      {isSuperadmin ? <td className="px-4 py-3" /> : null}
-                    </tr>
-                  </tfoot>
-                </table>
+                        </div>
+                      )
+                    },
+                    {
+                      id: 'valor_orcado',
+                      // TRAVADA (05/09): com permissao de editar, este e o unico campo do
+                      // orcamento macro — esconder a coluna tira o editar junto com o valor.
+                      sempreVisivel: true,
+                      titulo: 'Valor orçado (R$)',
+                      tipo: 'valor',
+                      render: (item) => (
+                        podeEditarApropriacoes ? (
+                          <input
+                            className="input input-moeda ml-auto"
+                            style={{ borderColor: 'var(--ui-border)' }}
+                            value={item.valor_orcado}
+                            onChange={(event) => setOrcamentoDraft((current) => current.map((row) => (
+                              row.id === item.id ? { ...row, valor_orcado: event.target.value } : row
+                            )))}
+                          />
+                        ) : (
+                          <div className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{formatCurrency(normalizeMoneyInput(item.valor_orcado))}</div>
+                        )
+                      )
+                    }
+                  ]}
+                  itens={orcamentoDraft}
+                  storageKey="tabela:obra-gestao:orcamento"
+                  rotuloRolagem="Estrutura orcamentaria"
+                  acoesLinha={podeEditarApropriacoes ? (item) => (
+                    <button
+                      type="button"
+                      className="btn btn-outline inline-flex items-center justify-center rounded-xl"
+                      onClick={() => removerItemOrcamento(item.id)}
+                      title="Remover item"
+                      aria-label="Remover item"
+                    >
+                      <HiOutlineTrash className="h-4 w-4" />
+                    </button>
+                  ) : undefined}
+                  larguraAcoes={120}
+                />
               </div>
 
-              {isSuperadmin && (
+              {/* Total que morava no <tfoot>: TabelaPadrao não tem rodapé —
+                  vira resumo apartado abaixo da tabela, mesma soma. */}
+              <div className="mt-3 flex justify-end">
+                <div className="rounded-xl border px-3 py-2 text-right" style={{ borderColor: 'var(--ui-border)', background: 'var(--ui-canvas)' }}>
+                  <div className="text-xs font-semibold uppercase" style={{ color: 'var(--c-muted)' }}>Total orçado</div>
+                  <div className="mt-1 text-lg font-bold" style={{ color: 'var(--c-text)' }}>
+                    {formatCurrency(
+                      somarOrcamentoAnalitico(orcamentoDraft)
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {podeEditarApropriacoes && (
                 <div className="mt-4 flex justify-end">
-                  <button type="button" className="btn btn-primary !rounded-xl" onClick={salvarOrcamento} disabled={savingBudget}>
+                  <button type="button" className="btn btn-primary" onClick={salvarOrcamento} disabled={savingBudget}>
                     {savingBudget ? 'Salvando...' : 'Confirmar e salvar orcamento'}
                   </button>
                 </div>
@@ -496,12 +529,12 @@ export default function ObraGestao() {
             <div>
               <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Custos Executados</h2>
               <p className="mt-1 text-xs" style={{ color: 'var(--c-muted)' }}>
-                Custos pagos do financeiro vinculados a obra, exibidos por titulo e parceiro.
+                Custos pagos do financeiro vinculados a obra, exibidos por título e parceiro.
               </p>
             </div>
             <div className="rounded-xl border px-3 py-2 text-right" style={{ borderColor: 'var(--ui-border)', background: 'var(--ui-canvas)' }}>
               <div className="text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>Total pago</div>
-              <div className="mt-1 text-lg font-bold obra-accent-blue">{formatCurrency(data.custos.total_pago)}</div>
+              <div className="mt-1 text-lg font-bold texto-realizado">{formatCurrency(data.custos.total_pago)}</div>
             </div>
           </div>
 
@@ -510,34 +543,51 @@ export default function ObraGestao() {
               <DetailTableEmpty message="Nenhum custo executado encontrado para esta obra." />
             </div>
           ) : (
-            <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--ui-border)' }}>
-              <table className="min-w-full border-collapse">
-                <thead style={{ background: 'var(--ui-canvas)' }}>
-                  <tr className="text-left text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>
-                    <th className="px-4 py-3">Datas</th>
-                    <th className="px-4 py-3">Fornecedor</th>
-                    <th className="px-4 py-3">Origem</th>
-                    <th className="px-4 py-3">Codigo ref.</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.custos.itens.map((item) => (
-                    <tr key={`${item.id}-${item.data_movimento}`} className="border-t" style={{ borderColor: 'var(--ui-border)' }}>
-                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)' }}>
-                        <div className="font-semibold">{formatDate(item.data_vencimento)}</div>
-                        <div className="mt-0.5 text-xs uppercase" style={{ color: 'var(--c-muted)' }}>
-                          Lanc.: {formatDate(item.data_movimento)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm font-semibold uppercase" style={{ color: 'var(--c-text)' }}>{item.parceiro_nome}</td>
-                      <td className="px-4 py-3 text-xs font-semibold uppercase obra-accent-blue">{item.origem}</td>
-                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)' }}>{item.codigo_referencia}</td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{formatCurrency(item.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-3">
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'datas',
+                    titulo: 'Datas',
+                    tipo: 'data',
+                    render: (item) => (
+                      <CelulaDupla
+                        principal={formatDate(item.data_vencimento)}
+                        sub={`Lanc.: ${formatDate(item.data_movimento)}`}
+                      />
+                    )
+                  },
+                  {
+                    id: 'fornecedor',
+                    titulo: 'Fornecedor',
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (item) => <span className="font-semibold">{item.parceiro_nome}</span>
+                  },
+                  {
+                    id: 'origem',
+                    titulo: 'Origem',
+                    tipo: 'badge',
+                    render: (item) => <span className="text-xs font-semibold uppercase obra-accent-blue">{item.origem}</span>
+                  },
+                  {
+                    id: 'codigo_ref',
+                    titulo: 'Código ref.',
+                    tipo: 'codigo',
+                    render: (item) => item.codigo_referencia
+                  },
+                  {
+                    id: 'total',
+                    titulo: 'Total',
+                    tipo: 'valor',
+                    render: (item) => <span className="font-semibold">{formatCurrency(item.total)}</span>
+                  }
+                ]}
+                itens={data.custos.itens}
+                getId={(item) => `${item.id}-${item.data_movimento}`}
+                storageKey="tabela:obra-gestao:custos"
+                rotuloRolagem="Custos executados"
+              />
             </div>
           )}
         </section>
@@ -549,7 +599,7 @@ export default function ObraGestao() {
             <div>
               <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Receitas</h2>
               <p className="mt-1 text-xs" style={{ color: 'var(--c-muted)' }}>
-                Titulos a receber em aberto ou parcial vinculados a obra.
+                Títulos a receber em aberto ou parcial vinculados a obra.
               </p>
             </div>
             <div className="rounded-xl border px-3 py-2 text-right" style={{ borderColor: 'var(--ui-border)', background: 'var(--ui-canvas)' }}>
@@ -563,41 +613,56 @@ export default function ObraGestao() {
               <DetailTableEmpty message="Nenhuma receita em aberto para esta obra." />
             </div>
           ) : (
-            <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--ui-border)' }}>
-              <table className="min-w-full border-collapse">
-                <thead style={{ background: 'var(--ui-canvas)' }}>
-                  <tr className="text-left text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>
-                    <th className="px-4 py-3">Vencimento</th>
-                    <th className="px-4 py-3">Parceiro</th>
-                    <th className="px-4 py-3">Descricao</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Saldo</th>
-                    <th className="px-4 py-3 text-right">Acao</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data.receitas || data.parcelas).itens.map((item) => (
-                    <tr key={item.id} className="border-t" style={{ borderColor: 'var(--ui-border)' }}>
-                      <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{formatDate(item.data_vencimento)}</td>
-                      <td className="px-4 py-3 text-sm font-semibold uppercase" style={{ color: 'var(--c-text)' }}>{item.parceiro_nome}</td>
-                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)' }}>
-                        <div className="line-clamp-2 max-w-[620px]">{item.descricao}</div>
-                      </td>
-                      <td className="px-4 py-3 text-xs font-semibold uppercase obra-accent-blue">{item.status}</td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{formatCurrency(item.valor_saldo)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => navigate(`/financeiro/titulos/${item.id}`)}
-                        >
-                          Abrir titulo
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-3">
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'vencimento',
+                    titulo: 'Vencimento',
+                    tipo: 'data',
+                    render: (item) => <span className="font-semibold">{formatDate(item.data_vencimento)}</span>
+                  },
+                  {
+                    id: 'parceiro',
+                    titulo: 'Parceiro',
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    flex: false,
+                    render: (item) => <span className="font-semibold">{item.parceiro_nome}</span>
+                  },
+                  {
+                    id: 'descricao',
+                    titulo: 'Descrição',
+                    tipo: 'texto',
+                    render: (item) => <div className="line-clamp-2 max-w-prose">{item.descricao}</div>
+                  },
+                  {
+                    id: 'status',
+                    titulo: 'Status',
+                    tipo: 'status',
+                    render: (item) => <span className="text-xs font-semibold uppercase obra-accent-blue">{item.status}</span>
+                  },
+                  {
+                    id: 'saldo',
+                    titulo: 'Saldo',
+                    tipo: 'valor',
+                    render: (item) => <span className="font-semibold">{formatCurrency(item.valor_saldo)}</span>
+                  }
+                ]}
+                itens={(data.receitas || data.parcelas).itens}
+                storageKey="tabela:obra-gestao:receitas"
+                rotuloRolagem="Receitas"
+                acoesLinha={(item) => (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => navigate(`/financeiro/titulos/${item.id}`)}
+                  >
+                    Abrir título
+                  </button>
+                )}
+                larguraAcoes={150}
+              />
             </div>
           )}
         </section>
@@ -622,33 +687,48 @@ export default function ObraGestao() {
               <DetailTableEmpty message="Nenhum arquivo encontrado para esta obra." />
             </div>
           ) : (
-            <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--ui-border)' }}>
-              <table className="min-w-full border-collapse">
-                <thead style={{ background: 'var(--ui-canvas)' }}>
-                  <tr className="text-left text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>
-                    <th className="px-4 py-3">Tipo</th>
-                    <th className="px-4 py-3">Origem</th>
-                    <th className="px-4 py-3">Arquivo</th>
-                    <th className="px-4 py-3">Data</th>
-                    <th className="px-4 py-3 text-right">Acao</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.arquivos.itens.map((item) => (
-                    <tr key={item.id} className="border-t" style={{ borderColor: 'var(--ui-border)' }}>
-                      <td className="px-4 py-3 text-xs font-semibold uppercase obra-accent-blue">{item.tipo}</td>
-                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)' }}>{item.origem}</td>
-                      <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--c-text)' }}>{item.nome_original}</td>
-                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)' }}>{formatDate(item.createdAt)}</td>
-                      <td className="px-4 py-3.5 text-right">
-                        <button type="button" className="btn btn-outline !rounded-xl" onClick={() => abrirArquivo(item)}>
-                          Abrir
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-3">
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'tipo',
+                    titulo: 'Tipo',
+                    tipo: 'badge',
+                    render: (item) => <span className="text-xs font-semibold uppercase obra-accent-blue">{item.tipo}</span>
+                  },
+                  {
+                    id: 'origem',
+                    titulo: 'Origem',
+                    tipo: 'codigo',
+                    render: (item) => item.origem
+                  },
+                  {
+                    id: 'arquivo',
+                    titulo: 'Arquivo',
+                    tipo: 'texto',
+                    noCard: 'titulo',
+                    render: (item) => <span className="font-medium">{item.nome_original}</span>
+                  },
+                  {
+                    id: 'data',
+                    titulo: 'Data',
+                    tipo: 'data',
+                    render: (item) => formatDate(item.createdAt)
+                  }
+                ]}
+                itens={data.arquivos.itens}
+                storageKey="tabela:obra-gestao:arquivos"
+                rotuloRolagem="Arquivos da obra"
+                // R17: a identidade aqui é NOME DE ARQUIVO — exibi-lo em
+                // maiúsculas distorceria caixa/extensão; ausência declarada.
+                semIdentidade
+                acoesLinha={(item) => (
+                  <button type="button" className="btn btn-outline" onClick={() => abrirArquivo(item)}>
+                    Abrir
+                  </button>
+                )}
+                larguraAcoes={120}
+              />
             </div>
           )}
         </section>
@@ -657,9 +737,9 @@ export default function ObraGestao() {
       {activeTab === 'relatorio-final' && (
         <section className="space-y-4">
           <div className="card px-4 py-3">
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Relatorio Final</h2>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>Relatório Final</h2>
             <p className="mt-1 text-xs" style={{ color: 'var(--c-muted)' }}>
-              Consolidacao do custo da obra por apropriacao, somando pedidos, a pagar e pago.
+              Consolidação do custo da obra por apropriação, somando pedidos, a pagar e pago.
             </p>
           </div>
 
@@ -678,29 +758,45 @@ export default function ObraGestao() {
                 <DetailTableEmpty message="Nenhum item consolidado para o relatorio final." />
               </div>
             ) : (
-              <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--ui-border)' }}>
-                <table className="min-w-full border-collapse">
-                  <thead style={{ background: 'var(--ui-canvas)' }}>
-                    <tr className="text-left text-xs font-medium uppercase" style={{ color: 'var(--c-muted)' }}>
-                      <th className="px-4 py-3">Item macro</th>
-                      <th className="px-4 py-3 text-right">Pedidos</th>
-                      <th className="px-4 py-3 text-right">A pagar</th>
-                      <th className="px-4 py-3 text-right">Pago</th>
-                      <th className="px-4 py-3 text-right">Custo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.relatorio_final.itens.map((item) => (
-                      <tr key={item.id} className="border-t" style={{ borderColor: 'var(--ui-border)' }}>
-                        <td className="px-4 py-3 text-sm font-semibold uppercase" style={{ color: 'var(--c-text)' }}>{item.descricao}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold obra-accent-blue">{formatCurrency(item.pedidos)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold obra-accent-amber">{formatCurrency(item.a_pagar)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold obra-accent-green">{formatCurrency(item.pago)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold" style={{ color: 'var(--c-text)' }}>{formatCurrency(item.custo_total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="mt-3">
+                <TabelaPadrao
+                  colunas={[
+                    {
+                      id: 'item',
+                      titulo: 'Item macro',
+                      tipo: 'identidade',
+                      noCard: 'titulo',
+                      render: (item) => <span className="font-semibold">{item.descricao}</span>
+                    },
+                    {
+                      id: 'pedidos',
+                      titulo: 'Pedidos',
+                      tipo: 'valor',
+                      render: (item) => <span className="font-semibold obra-accent-blue">{formatCurrency(item.pedidos)}</span>
+                    },
+                    {
+                      id: 'a_pagar',
+                      titulo: 'A pagar',
+                      tipo: 'valor',
+                      render: (item) => <span className="font-semibold obra-accent-amber">{formatCurrency(item.a_pagar)}</span>
+                    },
+                    {
+                      id: 'pago',
+                      titulo: 'Pago',
+                      tipo: 'valor',
+                      render: (item) => <span className="font-semibold obra-accent-green">{formatCurrency(item.pago)}</span>
+                    },
+                    {
+                      id: 'custo',
+                      titulo: 'Custo',
+                      tipo: 'valor',
+                      render: (item) => <span className="font-semibold">{formatCurrency(item.custo_total)}</span>
+                    }
+                  ]}
+                  itens={data.relatorio_final.itens}
+                  storageKey="tabela:obra-gestao:relatorio-final"
+                  rotuloRolagem="Relatorio final por item macro"
+                />
               </div>
             )}
           </div>
@@ -708,13 +804,20 @@ export default function ObraGestao() {
       )}
 
       {novoItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]">
-          <div className="card w-full max-w-xl px-5 py-4">
+        <div
+          className="fixed inset-0 z-modal flex items-center justify-center p-4"
+          /* R25: o fundo escurecido do modal vem do token do sistema
+             (--modal-overlay), o mesmo do OverlayModal e da paleta de
+             comandos. `bg-slate-950/45` era cor crua: não muda no tema
+             escuro e não acompanha nenhuma decisão futura de opacidade. */
+          style={{ background: 'var(--modal-overlay)' }}
+        >
+          <div className="card w-full max-w-xl px-6 py-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-black uppercase tracking-[-0.03em]" style={{ color: 'var(--c-text)' }}>Novo item do orcamento</h2>
+                <h2 className="text-lg font-semibold" style={{ color: 'var(--c-text)' }}>Novo item do orçamento</h2>
                 <p className="mt-1 text-sm" style={{ color: 'var(--c-muted)' }}>
-                  O item sera criado como apropriacao da obra e passara a alimentar orcamento, custo e relatorio final.
+                  O item será criado como apropriação da obra e passara a alimentar orçamento, custo e relatório final.
                 </p>
               </div>
               <button
@@ -726,27 +829,29 @@ export default function ObraGestao() {
               </button>
             </div>
 
+            {faixaAvisos}
+
             <div className="mt-4 grid gap-3">
               <label className="grid gap-1 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
-                Codigo
+                Código
                 <input
-                  className="input !rounded-xl"
+                  className="input"
                   value={novoItem.codigo}
                   onChange={(event) => setNovoItem((current) => ({ ...current, codigo: event.target.value }))}
                 />
               </label>
               <label className="grid gap-1 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
-                Descricao
+                Descrição
                 <input
-                  className="input !rounded-xl"
+                  className="input"
                   value={novoItem.descricao}
                   onChange={(event) => setNovoItem((current) => ({ ...current, descricao: event.target.value }))}
                 />
               </label>
               <label className="grid gap-1 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
-                Valor orcado
+                Valor orçado
                 <input
-                  className="input !rounded-xl"
+                  className="input"
                   value={novoItem.valor_orcado}
                   onChange={(event) => setNovoItem((current) => ({ ...current, valor_orcado: event.target.value }))}
                   placeholder="0,00"
@@ -755,16 +860,18 @@ export default function ObraGestao() {
             </div>
 
             <div className="mt-4 flex justify-end gap-3">
-              <button type="button" className="btn btn-outline !rounded-xl" onClick={() => setNovoItemModal(false)}>
+              <button type="button" className="btn btn-outline" onClick={() => setNovoItemModal(false)}>
                 Cancelar
               </button>
-              <button type="button" className="btn btn-primary !rounded-xl" onClick={criarNovoItem}>
+              <button type="button" className="btn btn-primary" onClick={criarNovoItem}>
                 Criar item
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

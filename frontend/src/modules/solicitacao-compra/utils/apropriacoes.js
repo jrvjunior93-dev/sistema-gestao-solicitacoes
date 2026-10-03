@@ -113,7 +113,7 @@ export function validarRateiosItem(item) {
 
   const rateios = normalizarRateiosEntrada(item);
   if (!rateios.length) {
-    return { ok: false, mensagem: 'Informe ao menos uma apropriacao.' };
+    return { ok: false, mensagem: 'Informe ao menos uma apropriação.' };
   }
 
   const apropriacoesUsadas = new Set();
@@ -123,11 +123,11 @@ export function validarRateiosItem(item) {
     const quantidade = parseQuantidade(rateio.quantidade_apropriada);
 
     if (!apropriacaoId) {
-      return { ok: false, mensagem: 'Preencha todas as apropriacoes do item.' };
+      return { ok: false, mensagem: 'Preencha todas as apropriações do item.' };
     }
 
     if (apropriacoesUsadas.has(apropriacaoId)) {
-      return { ok: false, mensagem: 'Nao repita a mesma apropriacao no item.' };
+      return { ok: false, mensagem: 'Não repita a mesma apropriação no item.' };
     }
 
     if (quantidade <= 0) {
@@ -160,12 +160,13 @@ export function montarLinhasResumoApropriacao(item, catalogo = []) {
   if (Array.isArray(item?.apropriacoes) && item.apropriacoes.length > 0) {
     return item.apropriacoes.map((rateio) => {
       const apropriacao = rateio?.apropriacao || encontrarApropriacaoPorId(catalogo, rateio?.apropriacao_id);
-      const codigo =
-        apropriacao?.codigo ||
+      const nome =
         apropriacao?.descricao ||
+        apropriacao?.nome ||
+        apropriacao?.codigo ||
         (rateio?.apropriacao_id ? `Apropriacao ${rateio.apropriacao_id}` : 'Apropriacao');
 
-      return `${codigo}: ${formatarQuantidade(rateio?.quantidade_apropriada)}`;
+      return `${nome}: ${formatarQuantidade(rateio?.quantidade_apropriada)}`;
     });
   }
 
@@ -173,15 +174,15 @@ export function montarLinhasResumoApropriacao(item, catalogo = []) {
     return [item.apropriacao_label];
   }
 
-  if (item?.apropriacao?.codigo || item?.apropriacao?.descricao) {
-    return [item.apropriacao?.codigo || item.apropriacao?.descricao];
+  if (item?.apropriacao?.codigo || item?.apropriacao?.descricao || item?.apropriacao?.nome) {
+    return [item.apropriacao?.descricao || item.apropriacao?.nome || item.apropriacao?.codigo];
   }
 
   if (item?.apropriacao_id) {
     const apropriacao = encontrarApropriacaoPorId(catalogo, item.apropriacao_id);
-    const codigo = apropriacao?.codigo || apropriacao?.descricao || `Apropriacao ${item.apropriacao_id}`;
+    const nome = apropriacao?.descricao || apropriacao?.nome || apropriacao?.codigo || `Apropriacao ${item.apropriacao_id}`;
     const quantidade = item?.quantidade_apropriada ?? item?.quantidade;
-    return [quantidade ? `${codigo}: ${formatarQuantidade(quantidade)}` : codigo];
+    return [quantidade ? `${nome}: ${formatarQuantidade(quantidade)}` : nome];
   }
 
   return [];

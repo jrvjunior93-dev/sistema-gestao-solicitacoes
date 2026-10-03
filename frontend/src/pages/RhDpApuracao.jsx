@@ -1,15 +1,35 @@
+import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  CampoForm,
+  CelulaDupla,
+  FormSecao,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  alternarValorFiltro,
+  useAvisos,
+  useConfirmacao,
+  useFiltrosVisiveis
+} from '../components/padrao';
+import Alert from '../components/ui/Alert';
+import OverlayModal from '../components/ui/OverlayModal';
+import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { getObras } from '../services/obras';
-import { getCategoriasFinanceiras } from '../services/financeiro';
 import {
   conferirRhApuracao,
+  consolidarRhJornadasMultiobra,
   fecharRhApuracao,
   gerarRhApuracao,
   getRhApuracao,
   getRhApuracoes,
   getRhEmpresasGrupo,
+  getRhJornadasMultiobra,
   reabrirRhFechamento,
   atualizarRhApuracaoItem
 } from '../services/rhDp';
@@ -36,11 +56,31 @@ function formatDateTime(value) {
   return date.toLocaleString('pt-BR');
 }
 
+// Coluna `tipo: 'data'` é medida para "22/08/2026" (110px, TabelaPadrao). O
+// carimbo com hora ("02/09/2026 21:30:11") precisa de 128px e quebrava em duas
+// linhas no preview de 1920px. Na LISTA vale o dia — a hora exata continua à
+// vista no cabeçalho do detalhe ("criada em ... por ...") e é assim que todas
+// as outras telas do sistema fazem em coluna `data` (ComprasRelatorio*, etc).
+function formatDate(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('pt-BR');
+}
+
 function formatNumber(value) {
   const number = Number(value || 0);
   return number.toLocaleString('pt-BR', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
+  });
+}
+
+function acertoContabilPendente(detalhe) {
+  return (detalhe?.itens || []).some((item) => {
+    const acerto = item.detalhes_json?.resumo?.acerto_conversao;
+    return acerto && (Number(acerto.ajuste_mensal || 0) !== 0
+      || Number(acerto.credito_restante || 0) > 0);
   });
 }
 
@@ -52,12 +92,45 @@ function getLastDayOfCompetencia(competencia) {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 }
 
-function statusClass(status) {
+function getCompetenciaDay(competencia, day) {
+  const [year, month] = String(competencia || '').split('-').map(Number);
+  if (!year || !month) return new Date().toISOString().slice(0, 10);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month - 1, Math.min(day, lastDay))).toISOString().slice(0, 10);
+}
+
+function anticipateWeekend(dateOnly) {
+  const date = new Date(`${dateOnly}T12:00:00Z`);
+  if (date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() - 1);
+  if (date.getUTCDay() === 0) date.setUTCDate(date.getUTCDate() - 2);
+  return date.toISOString().slice(0, 10);
+}
+
+// A pilula de status e do StatusBadge (dono unico, R16). O `kind` preserva as
+// MESMAS familias que as classes escritas a mao usavam: conferida = sucesso,
+// rascunho = atencao.
+function familiaStatus(status) {
   const normalized = String(status || '').trim().toUpperCase();
-  if (normalized === 'CONFERIDA' || normalized === 'CONFERIDO') {
-    return 'app-status-pill bg-emerald-100 text-emerald-700';
-  }
-  return 'app-status-pill bg-amber-100 text-amber-700';
+  return normalized === 'CONFERIDA' || normalized === 'CONFERIDO' ? 'success' : 'warning';
+}
+
+function rotuloStatus(status) {
+  return String(status || '').trim().toUpperCase() === 'CONFERIDA' ? 'Conferida' : 'Rascunho';
+}
+
+function statusMultiobra(status) {
+  const normalizado = String(status || '').toUpperCase();
+  if (normalizado === 'CONSOLIDADA') return { rotulo: 'Consolidada', kind: 'success' };
+  if (normalizado === 'ATUALIZACAO') return { rotulo: 'Jornada atualizada', kind: 'warning' };
+  if (normalizado === 'PRONTA') return { rotulo: 'Pronta para consolidar', kind: 'info' };
+  return { rotulo: 'Aguardando outra obra', kind: 'warning' };
+}
+
+// O servico da apuracao recebe UM valor por recorte, entao cada dimensao do
+// filtro e declarada `unico: true` na BarraFiltros: marcar outro SUBSTITUI.
+// Sem isso, marcar dois valores fazia a tela mandar NENHUM.
+function valorUnico(conjunto) {
+  return conjunto && conjunto.size === 1 ? conjunto.values().next().value : undefined;
 }
 
 function initialForm() {
@@ -69,12 +142,26 @@ function initialForm() {
   };
 }
 
+function filtrosVazios() {
+  return {
+    competencia: '',
+    empresa_grupo_id: new Set(),
+    obra_id: new Set(),
+    tipo_vinculo: new Set(),
+    status: new Set()
+  };
+}
+
 function getPixOptions(item) {
   const pagamento = item?.colaborador?.pagamento || {};
+  const indicadoNaJornada = item?.detalhes_json?.pagamento;
+  if (indicadoNaJornada?.alterado_na_jornada) {
+    return [{ key: 'jornada', label: 'Indicado na jornada', value: indicadoNaJornada.chave_pix_titulo }];
+  }
   return [
     { key: 'principal', label: 'Principal', value: pagamento.chave_pix },
     { key: 'secundaria', label: 'Fixa 2', value: pagamento.chave_pix_secundaria },
-    { key: 'variavel', label: 'Variavel', value: pagamento.chave_pix_variavel }
+    { key: 'variavel', label: 'Variável', value: pagamento.chave_pix_variavel }
   ]
     .map((option) => ({ ...option, value: String(option.value || '').trim() }))
     .filter((option) => option.value);
@@ -82,6 +169,12 @@ function getPixOptions(item) {
 
 function getDefaultPixValue(item) {
   return getPixOptions(item)[0]?.value || '';
+}
+
+function getContaPagamentoLabel(item) {
+  const pagamento = item?.colaborador?.pagamento || {};
+  if (!pagamento.banco || !pagamento.agencia || !pagamento.conta) return '';
+  return `${pagamento.tipo_conta || 'Conta'} · ${pagamento.banco} · Ag. ${pagamento.agencia} · Cc. ${pagamento.conta}`;
 }
 
 function toEditState(item) {
@@ -94,44 +187,126 @@ function toEditState(item) {
   };
 }
 
+/**
+ * APURACAO — ABA do Pessoal, nao pagina (D1, 02/09).
+ *
+ * `/rh-dp/apuracao` hoje redireciona para `/rh-dp/pessoal?aba=apuracao`: este
+ * componente e SEMPRE montado como aba, entao a prop `comoAba` (e o cabecalho
+ * proprio que ela escondia) saiu. Nao ha `Pagina` nem `PageHeader` aqui de
+ * proposito: o titulo e a faixa fixa sao do RhDpPessoal, e duas faixas fixas
+ * empilhadas seriam justamente o defeito que a R16 evita. O ritmo vertical
+ * vem da grade do `.app-pagina`.
+ */
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'competencia', rotulo: 'Competência' },
+  { id: 'empresa_grupo_id', rotulo: 'Empresa do grupo' },
+  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'tipo_vinculo', rotulo: 'Vínculo' },
+  { id: 'status', rotulo: 'Status' }
+];
+
 export default function RhDpApuracao() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [parametros] = useSearchParams();
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeEditar = canEditRhDpApuracao(user);
   const podeFechar = canExecuteRhDpFechamento(user);
   const podeReabrirFechamento = canReopenRhDpFechamento(user);
   const financeiroHabilitado = hasEnabledModule(user, 'FINANCEIRO');
   const [empresas, setEmpresas] = useState([]);
   const [obras, setObras] = useState([]);
-  const [categoriasFinanceiras, setCategoriasFinanceiras] = useState([]);
   const [apuracoes, setApuracoes] = useState([]);
   const [detalhe, setDetalhe] = useState(null);
   const [edicoes, setEdicoes] = useState({});
   const [carregandoBase, setCarregandoBase] = useState(false);
   const [carregandoLista, setCarregandoLista] = useState(false);
-  const [carregandoCategorias, setCarregandoCategorias] = useState(false);
   const [gerando, setGerando] = useState(false);
+  const [multiobra, setMultiobra] = useState({ resumo: {}, colaboradores: [] });
+  const [carregandoMultiobra, setCarregandoMultiobra] = useState(false);
+  const [consolidandoMultiobra, setConsolidandoMultiobra] = useState(false);
+  const [colaboradorMultiobra, setColaboradorMultiobra] = useState(null);
   const [salvandoItemId, setSalvandoItemId] = useState(null);
   const [conferindo, setConferindo] = useState(false);
   const [fechando, setFechando] = useState(false);
-  const [filtros, setFiltros] = useState({
-    competencia: '',
-    empresa_grupo_id: '',
-    obra_id: '',
-    tipo_vinculo: '',
-    status: ''
+  // R12: os recortes enumeraveis (empresa, obra, vinculo, status) viram
+  // MARCACAO — um conjunto por dimensao; competencia e continua e vive na
+  // prop `campos` da BarraFiltros (R16b).
+  const [filtros, setFiltros] = useState(() => ({
+    ...filtrosVazios(),
+    competencia: parametros.get('competencia') || '',
+    obra_id: parametros.get('obra_id') ? new Set([parametros.get('obra_id')]) : new Set()
+  }));
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      const valor = filtros[filtro.id];
+      return valor instanceof Set ? valor.size > 0 : String(valor ?? '').trim() !== '';
+    }).map((filtro) => filtro.id),
+    [filtros]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:rh-dp-apuracao:lista', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      setFiltros((atual) => ({ ...atual, [id]: atual[id] instanceof Set ? new Set() : '' }));
+    }
   });
-  const [form, setForm] = useState(initialForm());
+  const [form, setForm] = useState(() => ({
+    ...initialForm(),
+    competencia: parametros.get('competencia') || ''
+  }));
   const [fechamentoForm, setFechamentoForm] = useState({
     data_fechamento: new Date().toISOString().slice(0, 10),
     data_vencimento: '',
-    categoria_financeira_id: '',
     observacoes: ''
   });
 
   useEffect(() => {
     carregarBase();
   }, []);
+
+  useEffect(() => {
+    if (!form.competencia) {
+      setMultiobra({ resumo: {}, colaboradores: [] });
+      return;
+    }
+    carregarJornadasMultiobra(form.competencia);
+  }, [form.competencia]);
+
+  // Filtro marcado aplica na hora (padrao Solicitacoes); a competencia
+  // digitada espera 350ms para nao martelar a API a cada tecla.
+  useEffect(() => {
+    const atraso = setTimeout(() => carregarApuracoes(filtros), 350);
+    return () => clearTimeout(atraso);
+  }, [filtros]);
 
   useEffect(() => {
     const next = {};
@@ -141,19 +316,13 @@ export default function RhDpApuracao() {
     setEdicoes(next);
     setFechamentoForm({
       data_fechamento: new Date().toISOString().slice(0, 10),
-      data_vencimento: getLastDayOfCompetencia(detalhe?.competencia),
-      categoria_financeira_id: '',
+      data_vencimento: anticipateWeekend(detalhe?.etapa_pagamento === 'ADIANTAMENTO_40'
+        ? getCompetenciaDay(detalhe?.competencia, 15)
+        : getLastDayOfCompetencia(detalhe?.competencia)),
       observacoes: ''
     });
   }, [detalhe]);
 
-  useEffect(() => {
-    if (!financeiroHabilitado) {
-      setCategoriasFinanceiras([]);
-      return;
-    }
-    carregarCategoriasFinanceiras();
-  }, [financeiroHabilitado]);
 
   async function carregarBase() {
     try {
@@ -165,43 +334,74 @@ export default function RhDpApuracao() {
 
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
       setObras(Array.isArray(listaObras) ? listaObras : []);
-      await carregarApuracoes();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar base da apuracao RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar base da apuração RH/DP');
     } finally {
       setCarregandoBase(false);
     }
   }
 
-  async function carregarCategoriasFinanceiras() {
+  async function carregarJornadasMultiobra(competencia = form.competencia) {
+    if (!competencia) return;
     try {
-      setCarregandoCategorias(true);
-      const data = await getCategoriasFinanceiras();
-      setCategoriasFinanceiras(Array.isArray(data) ? data.filter((item) => {
-        const tipo = String(item?.tipo || '').trim().toUpperCase();
-        const hasDreGroup = String(item?.dre_grupo || '').trim();
-        return (!tipo || tipo === 'PAGAR' || tipo === 'AMBOS') && item?.considera_dre !== false && hasDreGroup;
-      }) : []);
+      setCarregandoMultiobra(true);
+      const data = await getRhJornadasMultiobra(competencia);
+      setMultiobra(data || { resumo: {}, colaboradores: [] });
+      setColaboradorMultiobra((atual) => {
+        if (!atual) return null;
+        return (data?.colaboradores || []).find(
+          (item) => Number(item.colaborador_id) === Number(atual.colaborador_id)
+        ) || null;
+      });
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar categorias financeiras');
+      avisar.erro(error?.message || 'Erro ao carregar jornadas multiobra');
     } finally {
-      setCarregandoCategorias(false);
+      setCarregandoMultiobra(false);
     }
   }
 
-  async function carregarApuracoes() {
+  async function consolidarMultiobra() {
+    if (!colaboradorMultiobra || colaboradorMultiobra.jornadas_pendentes || !podeEditar) return;
+    try {
+      setConsolidandoMultiobra(true);
+      const apuracao = await consolidarRhJornadasMultiobra({
+        competencia: form.competencia,
+        colaborador_id: Number(colaboradorMultiobra.colaborador_id),
+        etapa_pagamento: colaboradorMultiobra.etapa_pagamento || undefined,
+        dias_base: Number(form.dias_base || 30),
+        observacoes: form.observacoes || undefined
+      });
+      setDetalhe(apuracao);
+      setColaboradorMultiobra(null);
+      await Promise.all([
+        carregarJornadasMultiobra(form.competencia),
+        carregarApuracoes()
+      ]);
+      avisar.sucesso('Jornadas consolidadas em uma única apuração com rateio por obra.');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao consolidar as jornadas do colaborador');
+    } finally {
+      setConsolidandoMultiobra(false);
+    }
+  }
+
+  async function carregarApuracoes(nextFiltros = filtros) {
     try {
       setCarregandoLista(true);
       const data = await getRhApuracoes({
-        competencia: filtros.competencia || undefined,
-        empresa_grupo_id: filtros.empresa_grupo_id || undefined,
-        obra_id: filtros.obra_id || undefined,
-        tipo_vinculo: filtros.tipo_vinculo || undefined,
-        status: filtros.status || undefined
+        competencia: nextFiltros.competencia || undefined,
+        empresa_grupo_id: valorUnico(nextFiltros.empresa_grupo_id),
+        obra_id: valorUnico(nextFiltros.obra_id),
+        tipo_vinculo: valorUnico(nextFiltros.tipo_vinculo),
+        status: valorUnico(nextFiltros.status)
       });
       setApuracoes(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao carregar apuracoes RH/DP');
     } finally {
       setCarregandoLista(false);
     }
@@ -213,7 +413,7 @@ export default function RhDpApuracao() {
       setDetalhe(data);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar detalhe da apuracao RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar detalhe da apuração RH/DP');
     }
   }
 
@@ -222,7 +422,7 @@ export default function RhDpApuracao() {
     if (!podeEditar) return;
 
     if (!form.competencia) {
-      alert('Informe a competencia antes de gerar a apuracao.');
+      avisar.alerta('Informe a competência antes de gerar a apuração.');
       return;
     }
 
@@ -236,14 +436,25 @@ export default function RhDpApuracao() {
       });
 
       const apuracoesGeradas = Array.isArray(data?.apuracoes) ? data.apuracoes : [data].filter(Boolean);
+      const apuracoesIgnoradas = Array.isArray(data?.ignoradas) ? data.ignoradas : [];
       setDetalhe(apuracoesGeradas[0] || null);
       await carregarApuracoes();
       if (apuracoesGeradas.length > 1) {
-        alert(`${apuracoesGeradas.length} apuracoes foram geradas, uma para cada obra confirmada na importacao.`);
+        avisar.informacao(`${apuracoesGeradas.length} apuracoes foram geradas, uma para cada obra confirmada na importacao.`);
+      } else if (apuracoesGeradas.length === 1) {
+        avisar.sucesso('A apuração da obra foi gerada ou atualizada.');
+      } else if (apuracoesIgnoradas.length) {
+        avisar.informacao('Nenhuma apuração nova foi gerada. Os recortes encontrados já estavam conferidos.');
+      }
+      if (apuracoesIgnoradas.length && apuracoesGeradas.length) {
+        avisar.informacao(
+          `${apuracoesIgnoradas.length} recorte(s) já conferido(s) foram preservados; `
+          + `${apuracoesGeradas.length} recorte(s) foram processados.`
+        );
       }
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao gerar apuracao RH/DP');
+      avisar.erro(error?.message || 'Erro ao gerar apuracao RH/DP');
     } finally {
       setGerando(false);
     }
@@ -267,7 +478,7 @@ export default function RhDpApuracao() {
       await carregarApuracoes();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao salvar ajuste do item da apuracao');
+      avisar.erro(error?.message || 'Erro ao salvar ajuste do item da apuracao');
     } finally {
       setSalvandoItemId(null);
     }
@@ -275,9 +486,13 @@ export default function RhDpApuracao() {
 
   async function marcarComoConferida() {
     if (!detalhe?.id) return;
-    if (!window.confirm('Concluir a conferencia desta apuracao? Todos os itens precisam estar marcados como conferidos.')) {
-      return;
-    }
+
+    const { ok } = await confirmar({
+      titulo: 'Concluir conferência',
+      mensagem: 'Concluir a conferência desta apuração? Todos os itens precisam estar marcados como conferidos.',
+      rotuloConfirmar: 'Concluir conferência'
+    });
+    if (!ok) return;
 
     try {
       setConferindo(true);
@@ -286,7 +501,7 @@ export default function RhDpApuracao() {
       await carregarApuracoes();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao concluir a conferencia da apuracao');
+      avisar.erro(error?.message || 'Erro ao concluir a conferencia da apuracao');
     } finally {
       setConferindo(false);
     }
@@ -294,29 +509,32 @@ export default function RhDpApuracao() {
 
   async function onFecharApuracao(event) {
     event.preventDefault();
-    if (!detalhe?.id || !financeiroHabilitado || !podeEditar) {
+    if (!detalhe?.id || !financeiroHabilitado || !podeFechar) {
       return;
     }
 
-    if (!window.confirm('Fechar esta competencia e gerar os titulos a pagar no financeiro central?')) {
-      return;
-    }
+    // Fechar e irreversivel pelo caminho normal (so o estorno desfaz, e so
+    // enquanto nenhum titulo estiver baixado): confirmacao destrutiva.
+    const { ok } = await confirmar({
+      titulo: 'Fechar competência',
+      mensagem: `Fechar a competencia ${detalhe.competencia} e gerar os titulos a pagar no financeiro central? Depois de fechada, so um estorno reabre a apuracao — e apenas enquanto nenhum titulo estiver baixado.`,
+      rotuloConfirmar: 'Fechar e gerar titulos',
+      destrutiva: true
+    });
+    if (!ok) return;
 
     try {
       setFechando(true);
       const data = await fecharRhApuracao(detalhe.id, {
         data_fechamento: fechamentoForm.data_fechamento || undefined,
         data_vencimento: fechamentoForm.data_vencimento || undefined,
-        categoria_financeira_id: fechamentoForm.categoria_financeira_id
-          ? Number(fechamentoForm.categoria_financeira_id)
-          : undefined,
         observacoes: fechamentoForm.observacoes || undefined
       });
       await carregarApuracoes();
       navigate(`/rh-dp/fechamentos?fechamento_id=${data.id}`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao fechar a apuracao RH/DP');
+      avisar.erro(error?.message || 'Erro ao fechar a apuracao RH/DP');
     } finally {
       setFechando(false);
     }
@@ -327,25 +545,31 @@ export default function RhDpApuracao() {
       return;
     }
 
-    const justificativa = window.prompt(
-      'Informe a justificativa para estornar o fechamento e reabrir a apuracao. Esta acao so sera permitida se os titulos financeiros nao estiverem baixados.'
-    );
-    if (!justificativa || !justificativa.trim()) {
+    // R16b: confirmar e justificar viraram UM passo — a justificativa que
+    // saia em `window.prompt` e agora o campo da propria confirmacao.
+    const { ok, texto } = await confirmar({
+      titulo: 'Estornar fechamento',
+      mensagem: `Estornar o fechamento de ${detalhe.competencia} e reabrir a apuracao? Os titulos gerados no financeiro sao cancelados. So e permitido se nenhum deles estiver baixado.`,
+      rotuloConfirmar: 'Estornar e reabrir',
+      destrutiva: true,
+      campo: { rotulo: 'Justificativa', obrigatorio: true, multilinha: true }
+    });
+    if (!ok || !texto.trim()) {
       return;
     }
 
     try {
       setFechando(true);
       await reabrirRhFechamento(detalhe.fechamentoRh.id, {
-        justificativa: justificativa.trim()
+        justificativa: texto.trim()
       });
       const atualizado = await getRhApuracao(detalhe.id);
       setDetalhe(atualizado);
       await carregarApuracoes();
-      alert('Fechamento estornado e apuracao reaberta. O financeiro foi notificado.');
+      avisar.sucesso('Fechamento estornado e apuração reaberta. O financeiro foi notificado.');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao reabrir fechamento RH/DP');
+      avisar.erro(error?.message || 'Erro ao reabrir fechamento RH/DP');
     } finally {
       setFechando(false);
     }
@@ -374,588 +598,867 @@ export default function RhDpApuracao() {
     );
   }, [apuracoes]);
 
+  const dimensoesFiltro = useMemo(() => ([
+    {
+      id: 'empresa_grupo_id',
+      rotulo: 'Empresa do grupo',
+      unico: true,
+      opcoes: empresas.map((item) => ({ valor: String(item.id), rotulo: item.nome }))
+    },
+    {
+      id: 'obra_id',
+      rotulo: 'Obra',
+      unico: true,
+      opcoes: obras.map((item) => ({
+        valor: String(item.id),
+        rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
+      }))
+    },
+    {
+      id: 'tipo_vinculo',
+      rotulo: 'Vínculo',
+      unico: true,
+      opcoes: [
+        { valor: 'CLT', rotulo: 'CLT' },
+        { valor: 'NAO_CLT', rotulo: 'Não CLT' }
+      ]
+    },
+    {
+      id: 'status',
+      rotulo: 'Status',
+      unico: true,
+      opcoes: [
+        { valor: 'RASCUNHO', rotulo: 'Rascunho' },
+        { valor: 'CONFERIDA', rotulo: 'Conferida' }
+      ]
+    }
+  ]), [empresas, obras]);
+
   return (
-    <div className="page solicitacoes-page rhdp-page rhdp-apuracao-page space-y-6">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">RH/DP - Apuracao</h1>
-            <p className="page-subtitle">
-              Gere a pre-folha por competencia a partir das obras informadas nas importacoes confirmadas, revise por colaborador e registre ajustes auditados.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/rh-dp" className="btn btn-outline">
-              Voltar ao RH/DP
-            </Link>
-            <Link to="/rh-dp/importacoes" className="btn btn-outline">
-              Importacoes
-            </Link>
-          </div>
-        </div>
-      </div>
+    <div className="app-pagina">
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <form className="sol-surface-card rhdp-apuracao-create-card rounded-xl p-4 space-y-4" onSubmit={onGerarApuracao}>
-        <div className="rhdp-apuracao-form-grid">
-          <label className="rhdp-apuracao-field">
-            <span>Competencia</span>
-            <input
-              type="month"
-              className="form-control"
-              value={form.competencia}
-              onChange={(event) => setForm((current) => ({ ...current, competencia: event.target.value }))}
-              disabled={!podeEditar}
-            />
-          </label>
-          <label className="rhdp-apuracao-field">
-            <span>Base para diaria</span>
-            <select
-              className="form-control"
-              value={form.dias_base}
-              onChange={(event) => setForm((current) => ({ ...current, dias_base: event.target.value }))}
-              disabled={!podeEditar}
+      {/* Formulario de ACAO, nao filtro: e daqui que a pre-folha nasce. */}
+      <BlocoConteudo
+        titulo="Gerar apuração"
+        descricao="A pré-folha da competência sai das obras informadas nas importações confirmadas; depois revise por colaborador e registre os ajustes auditados."
+      >
+        <form className="space-y-4" onSubmit={onGerarApuracao}>
+          {/* Três controles curtos + a observação, que toma a linha (tipo
+              "observacao"). Com `colunas={2}` sobrava uma célula vazia no meio
+              da grade; com 3 a linha fecha exata. */}
+          <FormSecao legenda="Recorte da apuração" colunas={3}>
+            <CampoForm label="Competência">
+              <input
+                type="month"
+                className="input w-full"
+                value={form.competencia}
+                onChange={(event) => setForm((current) => ({ ...current, competencia: event.target.value }))}
+                disabled={!podeEditar}
+              />
+            </CampoForm>
+            <CampoForm label="Base para diária">
+              <select
+                className="input w-full"
+                value={form.dias_base}
+                onChange={(event) => setForm((current) => ({ ...current, dias_base: event.target.value }))}
+                disabled={!podeEditar}
+              >
+                <option value="30">30 dias - mensal padrão</option>
+                <option value="22">22 dias - dias úteis</option>
+                <option value="20">20 dias - escala operacional</option>
+              </select>
+            </CampoForm>
+            <CampoForm label="Tipo de vínculo">
+              <select
+                className="input w-full"
+                value={form.tipo_vinculo}
+                onChange={(event) => setForm((current) => ({ ...current, tipo_vinculo: event.target.value }))}
+                disabled={!podeEditar}
+              >
+                <option value="">Todos os vínculos</option>
+                <option value="CLT">CLT</option>
+                <option value="NAO_CLT">Não CLT</option>
+              </select>
+            </CampoForm>
+            <CampoForm label="Observações do recorte" tipo="observacao">
+              <textarea
+                className="input w-full"
+                rows={3}
+                placeholder="Observações do recorte"
+                value={form.observacoes}
+                onChange={(event) => setForm((current) => ({ ...current, observacoes: event.target.value }))}
+                disabled={!podeEditar}
+              />
+            </CampoForm>
+          </FormSecao>
+
+          {podeEditar ? (
+            <div className="app-actionbar">
+              <button type="submit" className="btn btn-primary" disabled={gerando}>
+                {gerando ? 'Gerando apuracoes...' : 'Gerar apuracoes das obras importadas'}
+              </button>
+            </div>
+          ) : null}
+        </form>
+      </BlocoConteudo>
+
+      {form.competencia && (carregandoMultiobra || (multiobra.colaboradores || []).length > 0) ? (
+        <BlocoConteudo
+          titulo="Jornadas em mais de uma obra"
+          descricao="O vínculo é identificado automaticamente. Cada obra envia sua parte; o DP confere e consolida tudo em uma única apuração."
+          contagem={carregandoMultiobra
+            ? 'Atualizando...'
+            : `${multiobra.resumo?.pendentes || 0} pendente(s) · ${multiobra.resumo?.prontos || 0} pronta(s)`}
+          acoes={(
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => carregarJornadasMultiobra(form.competencia)}
+              disabled={carregandoMultiobra}
             >
-              <option value="30">30 dias - mensal padrao</option>
-              <option value="22">22 dias - dias uteis</option>
-              <option value="20">20 dias - escala operacional</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="rhdp-apuracao-form-grid rhdp-apuracao-form-grid-secondary">
-          <label className="rhdp-apuracao-field">
-            <span>Tipo de vinculo</span>
-            <select
-              className="form-control"
-              value={form.tipo_vinculo}
-              onChange={(event) => setForm((current) => ({ ...current, tipo_vinculo: event.target.value }))}
-              disabled={!podeEditar}
-            >
-              <option value="">Todos os vinculos</option>
-              <option value="CLT">CLT</option>
-              <option value="NAO_CLT">Nao CLT</option>
-            </select>
-          </label>
-          <label className="rhdp-apuracao-field">
-            <span>Observacoes do recorte</span>
-            <textarea
-              className="form-control min-h-[84px]"
-              placeholder="Observacoes do recorte"
-              value={form.observacoes}
-              onChange={(event) => setForm((current) => ({ ...current, observacoes: event.target.value }))}
-              disabled={!podeEditar}
-            />
-          </label>
-        </div>
-
-        {podeEditar ? (
-          <div className="app-page-actions">
-            <button type="submit" className="btn btn-primary" disabled={gerando}>
-              {gerando ? 'Gerando apuracoes...' : 'Gerar apuracoes das obras importadas'}
+              Atualizar
             </button>
-          </div>
-        ) : null}
-      </form>
-
-      <div className="sol-surface-card solicitacoes-toolbar app-toolbar-card rhdp-apuracao-summary rounded-xl p-3 md:p-4">
-        <div className="app-summary-grid">
-          <div className="app-summary-card">
-            <span className="app-summary-label">Apuracoes</span>
-            <strong className="app-summary-value">{resumoLista.quantidade}</strong>
-          </div>
-          <div className="app-summary-card">
-            <span className="app-summary-label">Bruto filtrado</span>
-            <strong className="app-summary-value">{formatCurrency(resumoLista.totalBruto)}</strong>
-          </div>
-          <div className="app-summary-card">
-            <span className="app-summary-label">Liquido filtrado</span>
-            <strong className="app-summary-value">{formatCurrency(resumoLista.totalLiquido)}</strong>
-          </div>
-          <div className="app-summary-card">
-            <span className="app-summary-label">Status</span>
-            <strong className="app-summary-value">{resumoLista.rascunhos} rascunho(s)</strong>
-            <span className="app-summary-subvalue">{resumoLista.conferidas} conferida(s)</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="sol-surface-card solicitacoes-filtros app-filters-card rhdp-apuracao-filters rounded-xl p-4 md:p-5">
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Filtros</p>
-            <p className="sol-filtros-subtitle">
-              Recarregue as apuracoes por competencia, empresa, obra, vinculo e status.
-            </p>
-          </div>
-        </div>
-
-        <div className="sol-filtros-grid rhdp-apuracao-filter-grid">
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Competencia</span>
-            <input
-              type="month"
-              className="input w-full"
-              value={filtros.competencia}
-              onChange={(event) => setFiltros((current) => ({ ...current, competencia: event.target.value }))}
+          )}
+        >
+          {(multiobra.resumo?.pendentes || 0) > 0 ? (
+            <Alert
+              type="warning"
+              message="Existem colaboradores aguardando a jornada de outra obra. A consolidação será liberada quando todas as partes forem enviadas."
             />
-          </label>
+          ) : null}
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'colaborador',
+                titulo: 'Colaborador',
+                tipo: 'identidade',
+                render: (item) => <CelulaDupla principal={item.nome} sub={item.matricula || item.cargo || 'Sem matrícula'} />
+              },
+              {
+                id: 'etapa_pagamento',
+                titulo: 'Etapa',
+                tipo: 'texto',
+                render: (item) => item.etapa_pagamento === 'ADIANTAMENTO_40'
+                  ? '40%'
+                  : item.etapa_pagamento === 'SALDO_60' ? '60%'
+                    : item.etapa_pagamento === 'PROPORCIONAL' ? 'Proporcional' : 'Legado'
+              },
+              {
+                id: 'empresa',
+                titulo: 'Empresa',
+                tipo: 'texto',
+                render: (item) => item.empresa?.nome || 'Não informada'
+              },
+              {
+                id: 'obras',
+                titulo: 'Jornadas',
+                tipo: 'numero',
+                render: (item) => `${item.jornadas_enviadas} de ${item.total_obras}`
+              },
+              {
+                id: 'pendencias',
+                titulo: 'Obras pendentes',
+                tipo: 'texto',
+                render: (item) => item.obras
+                  .filter((obra) => !obra.jornada_enviada)
+                  .map((obra) => obra.codigo || obra.nome)
+                  .join(', ') || 'Nenhuma'
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (item) => {
+                  const status = statusMultiobra(item.status);
+                  return <StatusBadge status={status.rotulo} kind={status.kind} />;
+                }
+              }
+            ]}
+            itens={multiobra.colaboradores || []}
+            carregando={carregandoMultiobra}
+            storageKey="tabela:rh-dp-apuracao:multiobra"
+            rotuloRolagem="Jornadas multiobra"
+            vazio="Nenhum colaborador teve vínculo com mais de uma obra nesta competência."
+            acoesLinha={(item) => (
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setColaboradorMultiobra(item)}>
+                {item.status === 'CONSOLIDADA' ? 'Ver consolidação' : 'Revisar'}
+              </button>
+            )}
+            larguraAcoes={150}
+          />
+        </BlocoConteudo>
+      ) : null}
 
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Empresa do grupo</span>
-            <select
-              className="input w-full"
-              value={filtros.empresa_grupo_id}
-              onChange={(event) => setFiltros((current) => ({ ...current, empresa_grupo_id: event.target.value }))}
-            >
-              <option value="">Todas</option>
-              {empresas.map((item) => (
-                <option key={item.id} value={item.id}>{item.nome}</option>
-              ))}
-            </select>
-          </label>
+      <StatGrid colunas={4}>
+        <StatTile label="Apurações" valor={resumoLista.quantidade} />
+        <StatTile label="Bruto filtrado" valor={formatCurrency(resumoLista.totalBruto)} />
+        <StatTile label="Líquido filtrado" valor={formatCurrency(resumoLista.totalLiquido)} />
+        <StatTile
+          label="Status"
+          valor={`${resumoLista.rascunhos} rascunho(s)`}
+          sub={`${resumoLista.conferidas} conferida(s)`}
+          tom={resumoLista.rascunhos ? 'warning' : 'success'}
+        />
+      </StatGrid>
 
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Obra</span>
-            <select
-              className="input w-full"
-              value={filtros.obra_id}
-              onChange={(event) => setFiltros((current) => ({ ...current, obra_id: event.target.value }))}
-            >
-              <option value="">Todas</option>
-              {obras.map((item) => (
-                <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}</option>
-              ))}
-            </select>
-          </label>
+      <BlocoConteudo
+        titulo="Apurações"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/* R12/R16: o cartao de filtros com grade de select saiu inteiro.
+            Competencia (continua) vai em `campos`; empresa, obra, vinculo e
+            status sao enumeraveis e vao em `filtros`, com marcacao e etiqueta
+            removivel. Cada um e `unico` porque o servico so aceita UM valor
+            por recorte. O filtro aplica ao marcar — nao ha mais "Aplicar". */}
+        <BarraFiltros
+          campos={[{
+            id: 'competencia',
+            rotulo: 'Competência',
+            tipo: 'month',
+            valor: filtros.competencia,
+            aoMudar: (valor) => setFiltros((atuais) => ({ ...atuais, competencia: valor }))
+          }].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+          filtros={dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={{
+            empresa_grupo_id: filtros.empresa_grupo_id,
+            obra_id: filtros.obra_id,
+            tipo_vinculo: filtros.tipo_vinculo,
+            status: filtros.status
+          }}
+          aoAlternar={(dimensao, valor, opcoes) => setFiltros((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes))}
+          aoLimpar={() => setFiltros(filtrosVazios())}
+          visibilidade={visibilidadeFiltros}
+        />
 
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Vinculo</span>
-            <select
-              className="input w-full"
-              value={filtros.tipo_vinculo}
-              onChange={(event) => setFiltros((current) => ({ ...current, tipo_vinculo: event.target.value }))}
-            >
-              <option value="">Todos</option>
-              <option value="CLT">CLT</option>
-              <option value="NAO_CLT">Nao CLT</option>
-            </select>
-          </label>
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'competencia',
+              titulo: 'Competência',
+              tipo: 'codigo',
+              render: (item) => item.competencia
+            },
+            {
+              /*
+                R17 — quem NOMEIA a apuracao é a OBRA, não a empresa do grupo.
+                O gerador só cria apuracao a partir de importacao CONFIRMADA
+                com obra (`obra_id: { [Op.ne]: null }`, rhApuracaoService), uma
+                por obra; `empresa_grupo_id` é opcional e vem nulo sempre que a
+                importacao não tem empresa do grupo — daí o "Por colaborador"
+                repetido em toda linha. O detalhe já titula o registro assim:
+                "Apuracao {competencia} - {obra}".
 
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Status</span>
-            <select
-              className="input w-full"
-              value={filtros.status}
-              onChange={(event) => setFiltros((current) => ({ ...current, status: event.target.value }))}
-            >
-              <option value="">Todos</option>
-              <option value="RASCUNHO">Rascunho</option>
-              <option value="CONFERIDA">Conferida</option>
-            </select>
-          </label>
-        </div>
+                Corrigir o papel também conserta a largura (T4): a sobra do
+                contêiner vai para a PRIMEIRA coluna flexível, e com a empresa
+                marcada como identidade era ela que engolia ~570px para exibir
+                um rótulo de 144px, enquanto a obra (291px de nome real em
+                180px de coluna) quebrava em duas linhas. Por isso a obra vem
+                antes: identidade primeiro é a ordem de leitura das outras
+                listas, e a sobra passa a cair no texto que precisa dela.
+              */
+              id: 'obra',
+              titulo: 'Obra',
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => item.obra?.nome || (item.obra_id == null ? 'Consolidada multiobra' : '-')
+            },
+            {
+              id: 'etapa_pagamento',
+              titulo: 'Pagamento',
+              tipo: 'texto',
+              render: (item) => item.etapa_pagamento === 'ADIANTAMENTO_40'
+                ? '40%'
+                : item.etapa_pagamento === 'SALDO_60'
+                  ? '60%'
+                  : item.etapa_pagamento === 'PROPORCIONAL' ? 'Proporcional'
+                  : item.etapa_pagamento === 'DIARIA' ? `Diária #${item.importacao_id}` : 'Legado'
+            },
+            {
+              id: 'empresa',
+              titulo: 'Empresa',
+              tipo: 'texto',
+              /*
+                A COLUNA DE CONTEÚDO DESTA TABELA É A EMPRESA (04/09).
 
-        <div className="app-page-actions">
-          <button type="button" className="btn btn-primary" onClick={carregarApuracoes} disabled={carregandoLista}>
-            {carregandoLista ? 'Atualizando...' : 'Aplicar filtros'}
-          </button>
-        </div>
-      </div>
+                Medido no preview: "EMPRESA" quebrava em duas linhas
+                enquanto "OBRA" segurava 215px de folga. As duas nascem com
+                `flexPadrao` (identidade e texto), e sem peso explícito a
+                sobra vai para a PRIMEIRA delas — que aqui é a obra, e não
+                precisava.
 
-      <div className="sol-surface-card rhdp-apuracao-list-card rounded-xl p-4">
-        {carregandoBase || carregandoLista ? (
-          <p className="text-sm text-slate-500">Carregando apuracoes...</p>
-        ) : !apuracoes.length ? (
-          <p className="text-sm text-slate-500">Nenhuma apuracao encontrada para os filtros atuais.</p>
-        ) : (
-          <div className="app-dense-table-wrapper rhdp-apuracao-table-wrapper">
-            <table className="app-dense-data-table rhdp-apuracao-table">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="px-3 py-2 font-medium">Competencia</th>
-                  <th className="px-3 py-2 font-medium">Empresa</th>
-                  <th className="px-3 py-2 font-medium">Obra</th>
-                  <th className="px-3 py-2 font-medium">Vinculo</th>
-                  <th className="px-3 py-2 font-medium">Base</th>
-                  <th className="px-3 py-2 font-medium">Colaboradores</th>
-                  <th className="px-3 py-2 font-medium">Liquido</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Gerada em</th>
-                  <th className="px-3 py-2 font-medium">Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {apuracoes.map((item) => (
-                  <tr key={item.id} className="border-b border-slate-100 align-top">
-                    <td className="px-3 py-3">{item.competencia}</td>
-                    <td className="px-3 py-3">{item.empresaGrupo?.nome || 'Por colaborador'}</td>
-                    <td className="px-3 py-3">{item.obra?.nome || '-'}</td>
-                    <td className="px-3 py-3">{item.tipo_vinculo || 'Misto'}</td>
-                    <td className="px-3 py-3">{item.dias_base || 30} dias</td>
-                    <td className="px-3 py-3">{item.total_colaboradores || 0}</td>
-                    <td className="px-3 py-3">{formatCurrency(item.total_liquido)}</td>
-                    <td className="px-3 py-3">
-                      <span className={statusClass(item.status)}>
-                        {item.status === 'CONFERIDA' ? 'Conferida' : 'Rascunho'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">{formatDateTime(item.createdAt)}</td>
-                    <td className="px-3 py-3">
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirApuracao(item.id)}>
-                        Abrir
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                O componente distribui a sobra para UMA coluna só e escolhe
+                pela declaração, não pelo conteúdo renderizado: ele não tem
+                como saber qual texto é mais longo nesta base. Quem sabe é a
+                tela, e o jeito de dizer é o peso.
+              */
+              flex: 2,
+              render: (item) => item.empresaGrupo?.nome || 'Por colaborador'
+            },
+            {
+              id: 'vinculo',
+              titulo: 'Vínculo',
+              tipo: 'badge',
+              render: (item) => item.tipo_vinculo || 'Misto'
+            },
+            {
+              id: 'base',
+              titulo: 'Base',
+              tipo: 'numero',
+              render: (item) => `${item.dias_base || 30} dias`
+            },
+            {
+              id: 'colaboradores',
+              titulo: 'Colaboradores',
+              tipo: 'numero',
+              render: (item) => item.total_colaboradores || 0
+            },
+            {
+              id: 'liquido',
+              titulo: 'Líquido',
+              tipo: 'valor',
+              render: (item) => formatCurrency(item.total_liquido)
+            },
+            {
+              id: 'status',
+              titulo: 'Status',
+              tipo: 'status',
+              render: (item) => (
+                <StatusBadge status={rotuloStatus(item.status)} kind={familiaStatus(item.status)} />
+              )
+            },
+            {
+              id: 'gerada',
+              titulo: 'Gerada em',
+              tipo: 'data',
+              render: (item) => formatDate(item.createdAt)
+            }
+          ]}
+          itens={apuracoes}
+          storageKey="tabela:rh-dp-apuracao:lista"
+          rotuloRolagem="Apurações RH/DP"
+          carregando={carregandoBase || carregandoLista}
+          vazio="Nenhuma apuração encontrada para os filtros atuais."
+          acoesLinha={(item) => (
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirApuracao(item.id)}>
+              Abrir
+            </button>
+          )}
+          larguraAcoes={120}
+        />
+      </BlocoConteudo>
 
       {detalhe ? (
-        <div className="sol-surface-card rhdp-apuracao-detail-card rounded-xl p-4 space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Apuracao {detalhe.competencia} - {detalhe.obra?.nome || 'obra nao informada'}
-              </h2>
-              <p className="text-sm text-slate-500">
-                Recorte: empresa do cadastro do colaborador | {detalhe.tipo_vinculo || 'todos os vinculos'} | base {detalhe.dias_base || 30} dias | {detalhe.total_colaboradores || 0} colaborador(es)
-              </p>
-              <p className="text-xs text-slate-400">
-                Criada em {formatDateTime(detalhe.createdAt)} por {detalhe.criadoPor?.nome || 'sistema'}
-              </p>
-            </div>
-
-            <div className="app-page-actions rhdp-apuracao-detail-actions">
-              <span className={statusClass(detalhe.status)}>
-                {detalhe.status === 'CONFERIDA' ? 'Conferida' : 'Rascunho'}
-              </span>
+        <BlocoConteudo
+          titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'consolidada multiobra'}${detalhe.etapa_pagamento ? ` · ${detalhe.etapa_pagamento === 'ADIANTAMENTO_40' ? '40%' : detalhe.etapa_pagamento === 'SALDO_60' ? '60%' : detalhe.etapa_pagamento === 'PROPORCIONAL' ? 'Proporcional' : 'Diária'}` : ''}`}
+          contagem={`${detalhe.total_colaboradores || 0} colaborador(es)`}
+          descricao={`Recorte: empresa do cadastro do colaborador | ${detalhe.tipo_vinculo || 'todos os vinculos'} | base ${detalhe.dias_base || 30} dias | criada em ${formatDateTime(detalhe.createdAt)} por ${detalhe.criadoPor?.nome || 'sistema'}`}
+          acoes={(
+            <>
+              <StatusBadge status={rotuloStatus(detalhe.status)} kind={familiaStatus(detalhe.status)} />
               {detalhe.fechamentoRh ? (
                 <>
-                  <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`} className="btn btn-outline">
+                  <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`} className="btn btn-outline btn-sm">
                     Ver fechamento
                   </Link>
                   {podeReabrirFechamento ? (
-                    <button type="button" className="btn btn-outline" onClick={reabrirFechamentoAtual} disabled={fechando}>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={reabrirFechamentoAtual} disabled={fechando}>
                       {fechando ? 'Processando...' : 'Estornar e reabrir'}
                     </button>
                   ) : null}
                 </>
               ) : null}
               {detalhe.status === 'RASCUNHO' && podeEditar ? (
-                <button type="button" className="btn btn-primary" onClick={marcarComoConferida} disabled={conferindo}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={marcarComoConferida} disabled={conferindo}>
                   {conferindo ? 'Concluindo...' : 'Marcar apuracao como conferida'}
                 </button>
               ) : null}
-            </div>
-          </div>
+            </>
+          )}
+        >
+          <StatGrid colunas={5}>
+            <StatTile label="Total bruto" valor={formatCurrency(detalhe.total_bruto)} />
+            <StatTile label="Total descontos" valor={formatCurrency(detalhe.total_descontos)} />
+            <StatTile label="Total líquido" valor={formatCurrency(detalhe.total_liquido)} />
+            <StatTile
+              label="Conferência"
+              valor={`${detalhe.resumo_operacional?.itens_conferidos || 0} item(ns)`}
+              sub={`${detalhe.resumo_operacional?.itens_pendentes || 0} pendente(s)`}
+              tom={detalhe.resumo_operacional?.itens_pendentes ? 'warning' : 'success'}
+            />
+            <StatTile
+              label="Base da diária"
+              valor={`${detalhe.dias_base || 30} dias`}
+              sub="Parametro usado no cálculo proporcional"
+            />
+          </StatGrid>
 
-          <div className="app-summary-grid">
-            <div className="app-summary-card">
-              <span className="app-summary-label">Total bruto</span>
-              <strong className="app-summary-value">{formatCurrency(detalhe.total_bruto)}</strong>
-            </div>
-            <div className="app-summary-card">
-              <span className="app-summary-label">Total descontos</span>
-              <strong className="app-summary-value">{formatCurrency(detalhe.total_descontos)}</strong>
-            </div>
-            <div className="app-summary-card">
-              <span className="app-summary-label">Total liquido</span>
-              <strong className="app-summary-value">{formatCurrency(detalhe.total_liquido)}</strong>
-            </div>
-            <div className="app-summary-card">
-              <span className="app-summary-label">Conferencia</span>
-              <strong className="app-summary-value">{detalhe.resumo_operacional?.itens_conferidos || 0} item(ns)</strong>
-              <span className="app-summary-subvalue">{detalhe.resumo_operacional?.itens_pendentes || 0} pendente(s)</span>
-            </div>
-            <div className="app-summary-card">
-              <span className="app-summary-label">Base da diaria</span>
-              <strong className="app-summary-value">{detalhe.dias_base || 30} dias</strong>
-              <span className="app-summary-subvalue">Parametro usado no calculo proporcional</span>
-            </div>
-          </div>
+          {acertoContabilPendente(detalhe) ? (
+            <Alert
+              type="warning"
+              title="Acerto de conversao em conferencia"
+              message="O saldo mensal e as diarias estao calculados para analise do DP. O fechamento financeiro deste acerto permanece bloqueado ate a apropriacao contabil separar mensal, diarias e eventual credito por obra. Nenhum titulo sera gerado com rateio incorreto."
+            />
+          ) : null}
 
           {detalhe.observacoes ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <strong className="mr-2 text-slate-800">Observacoes:</strong>
-              {detalhe.observacoes}
-            </div>
+            <p className="app-note">
+              <strong>Observações:</strong> {detalhe.observacoes}
+            </p>
           ) : null}
 
           {!financeiroHabilitado ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              O fechamento com geracao de titulos depende do modulo <strong>FINANCEIRO</strong> habilitado na instalacao.
-            </div>
+            <Alert
+              type="warning"
+              message="O fechamento com geracao de titulos depende do modulo FINANCEIRO habilitado na instalacao."
+            />
           ) : null}
 
           {detalhe.fechamentoRh ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <strong className="block text-emerald-900">Competencia fechada</strong>
-                  <span>
-                    Fechada em {new Date(`${detalhe.fechamentoRh.data_fechamento}T00:00:00`).toLocaleDateString('pt-BR')} com vencimento em{' '}
-                    {new Date(`${detalhe.fechamentoRh.data_vencimento}T00:00:00`).toLocaleDateString('pt-BR')}.
-                  </span>
-                </div>
-                <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`} className="btn btn-outline">
-                  Abrir lote financeiro
-                </Link>
-              </div>
-            </div>
+            <Alert
+              type="success"
+              title="Competência fechada"
+              message={(
+                <>
+                  Fechada em {new Date(`${detalhe.fechamentoRh.data_fechamento}T00:00:00`).toLocaleDateString('pt-BR')} com vencimento em{' '}
+                  {new Date(`${detalhe.fechamentoRh.data_vencimento}T00:00:00`).toLocaleDateString('pt-BR')}.{' '}
+                  <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`}>
+                    Abrir lote financeiro
+                  </Link>
+                </>
+              )}
+            />
           ) : null}
 
           {financeiroHabilitado && detalhe.status === 'CONFERIDA' && !detalhe.fechamentoRh && podeFechar ? (
-            <form className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4" onSubmit={onFecharApuracao}>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold text-slate-900">Fechamento da competencia</h3>
-                <p className="text-sm text-slate-600">
-                  O fechamento gera titulos <strong>PAGAR</strong> no financeiro central e vincula cada item da apuracao ao respectivo titulo.
-                  A categoria financeira deve estar marcada para DRE e com grupo DRE classificado.
-                </p>
-              </div>
+            <BlocoConteudo
+              variante="secundario"
+              titulo="Fechamento da competência"
+              descricao="O fechamento gera títulos PAGAR no financeiro central e vincula cada item da apuração ao respectivo título. A categoria financeira deve estar marcada para DRE e com grupo DRE classificado."
+            >
+              <form className="space-y-4" onSubmit={onFecharApuracao}>
+                <FormSecao legenda="Dados do lote" colunas={3}>
+                  <CampoForm label="Data de fechamento">
+                    <DateInputBR
+                      className="input w-full"
+                      value={fechamentoForm.data_fechamento}
+                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_fechamento: event.target.value }))}
+                      disabled={fechando}
+                    />
+                  </CampoForm>
 
-              <div className="rhdp-apuracao-close-grid">
-                <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Data de fechamento</span>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={fechamentoForm.data_fechamento}
-                    onChange={(event) => setFechamentoForm((current) => ({ ...current, data_fechamento: event.target.value }))}
-                    disabled={fechando}
-                  />
-                </label>
+                  <CampoForm label="Vencimento dos títulos" obrigatorio>
+                    <DateInputBR
+                      className="input w-full"
+                      value={fechamentoForm.data_vencimento}
+                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento: event.target.value }))}
+                      disabled={fechando}
+                      required
+                    />
+                  </CampoForm>
 
-                <label className="text-sm">
-                  <span className="mb-1 block text-slate-500">Data de vencimento</span>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={fechamentoForm.data_vencimento}
-                    onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento: event.target.value }))}
-                    disabled={fechando}
-                  />
-                </label>
+                  <CampoForm label="Categoria financeira">
+                    <div className="input flex items-center bg-slate-50 text-slate-700" aria-label="Categoria financeira automática">
+                      2.01.02.01 - Salários e Ordenados
+                    </div>
+                  </CampoForm>
 
-                <label className="text-sm xl:col-span-2">
-                  <span className="mb-1 block text-slate-500">Categoria financeira</span>
-                  <select
-                    className="form-control"
-                    value={fechamentoForm.categoria_financeira_id}
-                    onChange={(event) => setFechamentoForm((current) => ({ ...current, categoria_financeira_id: event.target.value }))}
-                    disabled={fechando || carregandoCategorias}
-                    required
-                  >
-                    <option value="">Selecione a categoria da folha</option>
-                    {categoriasFinanceiras.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.nome}{item.dre_grupo ? ` - ${item.dre_grupo}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {!carregandoCategorias && !categoriasFinanceiras.length ? (
-                    <span className="mt-1 block text-xs text-amber-700">
-                      Cadastre uma categoria PAGAR/AMBOS marcada para DRE e com grupo DRE antes de fechar.
-                    </span>
-                  ) : null}
-                </label>
-              </div>
+                  <CampoForm label="Observações do fechamento" tipo="observacao">
+                    <textarea
+                      className="input w-full"
+                      rows={3}
+                      value={fechamentoForm.observacoes}
+                      onChange={(event) => setFechamentoForm((current) => ({ ...current, observacoes: event.target.value }))}
+                      disabled={fechando}
+                    />
+                  </CampoForm>
+                </FormSecao>
 
-              <label className="text-sm block">
-                <span className="mb-1 block text-slate-500">Observacoes do fechamento</span>
-                <textarea
-                  className="form-control min-h-[96px]"
-                  value={fechamentoForm.observacoes}
-                  onChange={(event) => setFechamentoForm((current) => ({ ...current, observacoes: event.target.value }))}
-                  disabled={fechando}
-                />
-              </label>
-
-              <div className="app-page-actions">
-                <button type="submit" className="btn btn-primary" disabled={fechando}>
-                  {fechando ? 'Fechando competencia...' : 'Fechar competencia e gerar titulos'}
-                </button>
-              </div>
-            </form>
+                <div className="app-actionbar">
+                  <button type="submit" className="btn btn-primary" disabled={fechando || acertoContabilPendente(detalhe)}>
+                    {acertoContabilPendente(detalhe)
+                      ? 'Aguardando apropriacao do acerto'
+                      : fechando ? 'Fechando competencia...' : 'Fechar competencia e gerar titulos'}
+                  </button>
+                </div>
+              </form>
+            </BlocoConteudo>
           ) : null}
 
-          {!detalhe.itens?.length ? (
-            <p className="text-sm text-slate-500">A apuracao nao possui itens.</p>
-          ) : (
-            <div className="app-dense-table-wrapper rhdp-apuracao-items-wrapper">
-              <table className="app-dense-data-table rhdp-apuracao-items-table">
-                <colgroup>
-                  <col className="rhdp-apuracao-colaborador-col" />
-                  <col className="rhdp-apuracao-vinculo-col" />
-                  <col className="rhdp-apuracao-numero-col" />
-                  <col className="rhdp-apuracao-horas-col" />
-                  <col className="rhdp-apuracao-moeda-col" />
-                  <col className="rhdp-apuracao-moeda-col" />
-                  <col className="rhdp-apuracao-liquido-col" />
-                  <col className="rhdp-apuracao-pix-col" />
-                  <col className="rhdp-apuracao-ajuste-col" />
-                  <col className="rhdp-apuracao-ajuste-col" />
-                  <col className="rhdp-apuracao-status-col" />
-                  <col className="rhdp-apuracao-observacoes-col" />
-                  <col className="rhdp-apuracao-acoes-col" />
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
-                    <th className="px-3 py-2 font-medium">Colaborador</th>
-                    <th className="px-3 py-2 font-medium">Vinculo</th>
-                    <th className="px-3 py-2 font-medium">Dias</th>
-                    <th className="px-3 py-2 font-medium">Horas extras</th>
-                    <th className="px-3 py-2 font-medium">Bruto</th>
-                    <th className="px-3 py-2 font-medium">Descontos</th>
-                    <th className="px-3 py-2 font-medium">Liquido</th>
-                    <th className="px-3 py-2 font-medium">PIX do titulo</th>
-                    <th className="px-3 py-2 font-medium">Ajuste credito</th>
-                    <th className="px-3 py-2 font-medium">Ajuste debito</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">Observacoes</th>
-                    <th className="px-3 py-2 font-medium">Acoes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detalhe.itens.map((item) => {
-                    const pixOptions = getPixOptions(item);
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'colaborador',
+                titulo: 'Colaborador',
+                // R17: o item da apuracao é de um COLABORADOR nomeado.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={item.colaborador?.nome || '-'}
+                    sub={`${item.colaborador?.matricula || '-'} | ${item.colaborador?.cargo || '-'} | ${item.colaborador?.empresaGrupo?.nome || 'Empresa nao informada'}${item.detalhes_json?.multiobra ? ` | Rateio em ${item.detalhes_json.distribuicao_obras?.length || 0} obras` : ''}`}
+                  />
+                )
+              },
+              {
+                id: 'vinculo',
+                titulo: 'Vínculo',
+                tipo: 'badge',
+                render: (item) => item.colaborador?.tipo_vinculo || '-'
+              },
+              {
+                id: 'dias',
+                titulo: 'Dias',
+                tipo: 'numero',
+                render: (item) => formatNumber(item.dias_trabalhados)
+              },
+              {
+                id: 'calculo',
+                titulo: 'Calculo',
+                tipo: 'badge',
+                render: (item) => (item.detalhes_json?.forma_calculo_gerencial
+                  || item.colaborador?.forma_calculo_gerencial) === 'DIARIA'
+                  ? `Diaria ${formatCurrency(item.detalhes_json?.resumo?.valor_diaria
+                    || item.colaborador?.valor_diaria || 0)}`
+                  : ((item.detalhes_json?.pagamento_automatico_40_60
+                    ?? item.colaborador?.pagamento_automatico_40_60) ? 'Mensal 40% / 60%' : 'Mensal')
+              },
+              {
+                id: 'parcelas_40_60',
+                sempreVisivel: true,
+                titulo: 'Distribuição dos títulos',
+                tipo: 'texto',
+                render: (item) => {
+                  if (detalhe.etapa_pagamento === 'ADIANTAMENTO_40') return 'Somente 40%';
+                  if (detalhe.etapa_pagamento === 'SALDO_60') return 'Somente saldo 60%';
+                  if (detalhe.etapa_pagamento === 'PROPORCIONAL') {
+                    const resumo = item.detalhes_json?.resumo || {};
+                    return <div className="space-y-1">
+                      <div>Proporcional · {resumo.dias_reconhecidos ?? item.dias_trabalhados} dias / divisor 30</div>
+                      <div className="app-note">Base {formatCurrency(resumo.mensal_proporcional)} · 40% já pago {formatCurrency(resumo.adiantamento_anterior)}</div>
+                      {Number(resumo.credito_para_acerto_dp || 0) > 0
+                        ? <div className="app-note">Crédito para acerto pelo DP: {formatCurrency(resumo.credito_para_acerto_dp)}</div> : null}
+                    </div>;
+                  }
+                  if (detalhe.etapa_pagamento === 'DIARIA') {
+                    const acerto = item.detalhes_json?.resumo?.acerto_conversao;
+                    if (!acerto) return 'Diária deste envio';
                     return (
-                    <tr key={item.id} className="border-b border-slate-100 align-top">
-                      <td className="px-3 py-3">
-                        <div className="font-medium text-slate-800">{item.colaborador?.nome || '-'}</div>
-                        <div className="text-xs text-slate-500">
-                          {item.colaborador?.matricula || '-'} | {item.colaborador?.cargo || '-'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">{item.colaborador?.tipo_vinculo || '-'}</td>
-                      <td className="px-3 py-3">{formatNumber(item.dias_trabalhados)}</td>
-                      <td className="px-3 py-3">{formatNumber(item.horas_extras)}</td>
-                      <td className="px-3 py-3">{formatCurrency(item.valor_bruto)}</td>
-                      <td className="px-3 py-3">{formatCurrency(item.valor_descontos)}</td>
-                      <td className="px-3 py-3">
-                        <div className="font-medium text-slate-800">{formatCurrency(item.valor_liquido)}</div>
-                        <div className="text-xs text-slate-500">{item.regra_aplicada || '-'}</div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <select
-                          className="form-control min-w-[190px]"
-                          value={edicoes[item.id]?.chave_pix_titulo ?? getDefaultPixValue(item)}
-                          onChange={(event) =>
-                            setEdicoes((current) => ({
-                              ...current,
-                              [item.id]: {
-                                ...current[item.id],
-                                chave_pix_titulo: event.target.value
-                              }
-                            }))
-                          }
-                          disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || !pixOptions.length}
-                        >
-                          {!pixOptions.length ? (
-                            <option value="">Sem chave PIX</option>
-                          ) : (
-                            pixOptions.map((option) => (
-                              <option key={option.key} value={option.value}>
-                                {option.label}: {option.value}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                        <div className="mt-1 text-xs text-slate-500">Principal usada por padrao.</div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="text"
-                          className="form-control min-w-[120px]"
-                          value={edicoes[item.id]?.ajuste_credito_manual ?? ''}
-                          onChange={(event) =>
-                            setEdicoes((current) => ({
-                              ...current,
-                              [item.id]: {
-                                ...current[item.id],
-                                ajuste_credito_manual: event.target.value
-                              }
-                            }))
-                          }
-                          disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="text"
-                          className="form-control min-w-[120px]"
-                          value={edicoes[item.id]?.ajuste_debito_manual ?? ''}
-                          onChange={(event) =>
-                            setEdicoes((current) => ({
-                              ...current,
-                              [item.id]: {
-                                ...current[item.id],
-                                ajuste_debito_manual: event.target.value
-                              }
-                            }))
-                          }
-                          disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        <select
-                          className="form-control min-w-[140px]"
-                          value={edicoes[item.id]?.status || 'PENDENTE'}
-                          onChange={(event) =>
-                            setEdicoes((current) => ({
-                              ...current,
-                              [item.id]: {
-                                ...current[item.id],
-                                status: event.target.value
-                              }
-                            }))
-                          }
-                          disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                        >
-                          <option value="PENDENTE">Pendente</option>
-                          <option value="CONFERIDO">Conferido</option>
-                        </select>
-                      </td>
-                      <td className="px-3 py-3">
-                        <textarea
-                          className="form-control min-h-[76px] min-w-[220px]"
-                          value={edicoes[item.id]?.observacoes ?? ''}
-                          onChange={(event) =>
-                            setEdicoes((current) => ({
-                              ...current,
-                              [item.id]: {
-                                ...current[item.id],
-                                observacoes: event.target.value
-                              }
-                            }))
-                          }
-                          disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        {podeEditar && detalhe.status === 'RASCUNHO' ? (
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            onClick={() => salvarItem(item.id)}
-                            disabled={salvandoItemId === item.id}
-                          >
-                            {salvandoItemId === item.id ? 'Salvando...' : 'Salvar ajuste'}
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
+                      <div className="space-y-1">
+                        <div>Diária + acerto mensal até {acerto.fim_mensal}</div>
+                        <div className="app-note">Mensal devido {formatCurrency(acerto.mensal_devido)} · pago {formatCurrency(acerto.mensal_pago)}</div>
+                        <div className="app-note">Ajuste neste envio {formatCurrency(acerto.ajuste_mensal)} · crédito restante {formatCurrency(acerto.credito_restante)}</div>
+                      </div>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  }
+                  const automatico = item.colaborador?.forma_calculo_gerencial !== 'DIARIA'
+                    && item.colaborador?.pagamento_automatico_40_60;
+                  if (!automatico) return 'Título único';
+                  return 'Jornada antiga: refaça os envios em etapas antes de fechar';
+                }
+              },
+              {
+                id: 'bruto',
+                titulo: 'Bruto',
+                tipo: 'valor',
+                render: (item) => formatCurrency(item.valor_bruto)
+              },
+              {
+                id: 'descontos',
+                titulo: 'Descontos',
+                tipo: 'valor',
+                render: (item) => formatCurrency(item.valor_descontos)
+              },
+              {
+                id: 'liquido',
+                titulo: 'Líquido',
+                tipo: 'valor',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={formatCurrency(item.valor_liquido)}
+                    sub={item.regra_aplicada || '-'}
+                  />
+                )
+              },
+              {
+                id: 'pix',
+                sempreVisivel: true,
+                titulo: 'Conta de pagamento',
+                tipo: 'texto',
+                // Edicao inline: o controle mora no render da coluna.
+                render: (item) => {
+                  const pixOptions = getPixOptions(item);
+                  const contaLabel = getContaPagamentoLabel(item);
+                  return (
+                    <>
+                      <select
+                        className="input"
+                        value={edicoes[item.id]?.chave_pix_titulo ?? getDefaultPixValue(item)}
+                        onChange={(event) =>
+                          setEdicoes((current) => ({
+                            ...current,
+                            [item.id]: {
+                              ...current[item.id],
+                              chave_pix_titulo: event.target.value
+                            }
+                          }))
+                        }
+                        disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || !pixOptions.length}
+                      >
+                        {!pixOptions.length ? (
+                          <option value="">Sem chave PIX</option>
+                        ) : (
+                          pixOptions.map((option) => (
+                            <option key={option.key} value={option.value}>
+                              {option.label}: {option.value}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <span className="app-note mt-1 block">
+                        {item.detalhes_json?.pagamento?.alterado_na_jornada
+                          ? `Troca na jornada · beneficiário: ${item.detalhes_json.pagamento.favorecido_nome} · CPF: ${item.detalhes_json.pagamento.favorecido_cpf}. Confira antes de fechar.`
+                          : (pixOptions.length ? 'PIX principal usado por padrão.' : (contaLabel || 'Pagamento não configurado.'))}
+                      </span>
+                    </>
+                  );
+                }
+              },
+              {
+                id: 'ajuste_credito',
+                sempreVisivel: true,
+                titulo: 'Ajuste crédito',
+                tipo: 'texto',
+                render: (item) => (
+                  <input
+                    type="text"
+                    className="input"
+                    value={edicoes[item.id]?.ajuste_credito_manual ?? ''}
+                    onChange={(event) =>
+                      setEdicoes((current) => ({
+                        ...current,
+                        [item.id]: {
+                          ...current[item.id],
+                          ajuste_credito_manual: event.target.value
+                        }
+                      }))
+                    }
+                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
+                  />
+                )
+              },
+              {
+                id: 'ajuste_debito',
+                sempreVisivel: true,
+                titulo: 'Ajuste débito',
+                tipo: 'texto',
+                render: (item) => (
+                  <input
+                    type="text"
+                    className="input"
+                    value={edicoes[item.id]?.ajuste_debito_manual ?? ''}
+                    onChange={(event) =>
+                      setEdicoes((current) => ({
+                        ...current,
+                        [item.id]: {
+                          ...current[item.id],
+                          ajuste_debito_manual: event.target.value
+                        }
+                      }))
+                    }
+                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
+                  />
+                )
+              },
+              {
+                id: 'status',
+                sempreVisivel: true,
+                titulo: 'Status',
+                tipo: 'badge',
+                render: (item) => (
+                  <select
+                    className="input"
+                    value={edicoes[item.id]?.status || 'PENDENTE'}
+                    onChange={(event) =>
+                      setEdicoes((current) => ({
+                        ...current,
+                        [item.id]: {
+                          ...current[item.id],
+                          status: event.target.value
+                        }
+                      }))
+                    }
+                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
+                  >
+                    <option value="PENDENTE">Pendente</option>
+                    <option value="CONFERIDO">Conferido</option>
+                  </select>
+                )
+              },
+              {
+                id: 'observacoes',
+                sempreVisivel: true,
+                titulo: 'Observações',
+                tipo: 'texto',
+                render: (item) => (
+                  <textarea
+                    className="input"
+                    rows={2}
+                    value={edicoes[item.id]?.observacoes ?? ''}
+                    onChange={(event) =>
+                      setEdicoes((current) => ({
+                        ...current,
+                        [item.id]: {
+                          ...current[item.id],
+                          observacoes: event.target.value
+                        }
+                      }))
+                    }
+                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
+                  />
+                )
+              }
+            ]}
+            itens={detalhe.itens || []}
+            storageKey="tabela:rh-dp-apuracao:itens"
+            rotuloRolagem="Itens da apuracao"
+            vazio="A apuração não possui itens."
+            acoesLinha={(item) => (
+              podeEditar && detalhe.status === 'RASCUNHO' ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => salvarItem(item.id)}
+                  disabled={salvandoItemId === item.id}
+                >
+                  {salvandoItemId === item.id ? 'Salvando...' : 'Salvar ajuste'}
+                </button>
+              ) : null
+            )}
+            larguraAcoes={160}
+          />
+        </BlocoConteudo>
       ) : null}
+
+      <OverlayModal
+        aberto={Boolean(colaboradorMultiobra)}
+        onFechar={() => !consolidandoMultiobra && setColaboradorMultiobra(null)}
+        rotulo="Consolidar jornadas em mais de uma obra"
+        largura="min(1080px, calc(100vw - 2rem))"
+      >
+        {colaboradorMultiobra ? (
+          <>
+            <div data-modal="cabecalho" className="modal-header">
+              <div>
+                <h2 className="modal-title">Consolidar jornadas</h2>
+                <p className="modal-subtitle">
+                  {colaboradorMultiobra.nome} · {form.competencia} · {colaboradorMultiobra.total_obras} obras
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setColaboradorMultiobra(null)}
+                disabled={consolidandoMultiobra}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {colaboradorMultiobra.jornadas_pendentes ? (
+                <Alert
+                  type="warning"
+                  message={`Ainda faltam ${colaboradorMultiobra.jornadas_pendentes} jornada(s). O DP pode acompanhar os dados recebidos, mas a consolidação permanece bloqueada.`}
+                />
+              ) : (
+                <Alert
+                  type="success"
+                  message="Todas as obras enviaram suas jornadas. Confira os valores antes de formar a apuração única."
+                />
+              )}
+
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'obra',
+                    titulo: 'Obra',
+                    tipo: 'identidade',
+                    render: (obra) => <CelulaDupla principal={obra.nome} sub={obra.codigo || `#${obra.id}`} />
+                  },
+                  {
+                    id: 'envio',
+                    titulo: 'Envio',
+                    tipo: 'status',
+                    render: (obra) => (
+                      <StatusBadge
+                        status={obra.jornada_enviada ? 'Recebida' : 'Pendente'}
+                        kind={obra.jornada_enviada ? 'success' : 'warning'}
+                      />
+                    )
+                  },
+                  { id: 'dias', titulo: 'Dias', tipo: 'numero', render: (obra) => formatNumber(obra.dias_trabalhados) },
+                  { id: 'faltas', titulo: 'Faltas', tipo: 'numero', render: (obra) => formatNumber(obra.faltas) },
+                  { id: 'acrescimos', titulo: 'Acréscimos', tipo: 'valor', render: (obra) => formatCurrency(obra.acrescimos) },
+                  { id: 'descontos', titulo: 'Descontos', tipo: 'valor', render: (obra) => formatCurrency(obra.descontos) },
+                  {
+                    id: 'atualizacao',
+                    titulo: 'Enviada em',
+                    tipo: 'data',
+                    render: (obra) => formatDateTime(obra.enviada_em)
+                  }
+                ]}
+                itens={colaboradorMultiobra.obras || []}
+                storageKey="tabela:rh-dp-apuracao:multiobra-modal"
+                rotuloRolagem="Partes da jornada multiobra"
+                vazio="Não há obras vinculadas para conferir."
+              />
+            </div>
+
+            <div data-modal="rodape" className="modal-footer">
+              <div className="app-note mr-auto">
+                {colaboradorMultiobra.status === 'CONSOLIDADA'
+                  ? 'Esta consolidação já possui uma apuração vinculada.'
+                  : colaboradorMultiobra.status === 'ATUALIZACAO'
+                    ? 'Uma obra reenviou a jornada. Revise e atualize a apuração antes do fechamento.'
+                    : 'O fechamento gerará um título único, rateado pelos valores de cada obra.'}
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setColaboradorMultiobra(null)}
+                disabled={consolidandoMultiobra}
+              >
+                Cancelar
+              </button>
+              {colaboradorMultiobra.status === 'CONSOLIDADA' ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    await abrirApuracao(colaboradorMultiobra.apuracao_id);
+                    setColaboradorMultiobra(null);
+                  }}
+                >
+                  Abrir apuração
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={consolidarMultiobra}
+                  disabled={Boolean(colaboradorMultiobra.jornadas_pendentes) || consolidandoMultiobra || !podeEditar}
+                >
+                  {consolidandoMultiobra ? 'Consolidando...' : 'Consolidar em uma apuração'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : null}
+      </OverlayModal>
+
+      {elementoConfirmacao}
     </div>
   );
 }

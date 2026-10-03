@@ -262,6 +262,20 @@ function validateFinancialOperationalIndicators() {
   assert(pageSource.includes("canUsers ? ['GERAL', 'SETORES', 'USUARIOS']"), 'A interface deve ocultar a visao por usuario sem permissao granular.');
 }
 
+function validateCashDivergenceIndicators() {
+  const serviceSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/modules/governanca/services/auditoriaOperacionalService.js'),
+    'utf8'
+  );
+  const pageSource = fs.readFileSync(
+    path.resolve(__dirname, '../../frontend/src/modules/governanca/pages/AuditoriaOperacional.jsx'),
+    'utf8'
+  );
+  ['CASH_DIVERGENCE_OPENING', 'CASH_DIVERGENCE_CLOSING', 'divergencias_caixa']
+    .forEach((contract) => assert(serviceSource.includes(contract), `Auditoria de divergencia de caixa ausente: ${contract}`));
+  assert(pageSource.includes('Divergências de caixa'), 'Auditoria operacional deve ter card proprio para divergencias de caixa.');
+}
+
 function run() {
   validateRouteNormalization();
   validateSafeFieldNames();
@@ -276,6 +290,7 @@ function run() {
   validateRetentionPolicy();
   validatePermissionMatrixAndIndexes();
   validateFinancialOperationalIndicators();
+  validateCashDivergenceIndicators();
   console.log('Auditoria operacional validada com sucesso.');
 }
 

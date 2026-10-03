@@ -1,3 +1,6 @@
+const db = require('../models');
+const { condicoesCodigoFlexivel } = require('../utils/buscaFlexivel');
+const { condicoesVisaoPendencia } = require('../services/pendenciasVisoes');
 const {
   Solicitacao,
   Historico,
@@ -11,14 +14,20 @@ const {
   ContratoApropriacao,
   ContratoCredor,
   SolicitacaoApropriacao,
+  SolicitacaoCentroCustoDistribuicao,
+  SolicitacaoCadastroObraUsuario,
+  SolicitacaoCadastroObraDados,
   TipoSubContrato,
   Anexo,
   MensagemSetor,
   Parceiro,
+  FormaPagamentoFinanceira,
   SetorPermissao,
   Setor,
   ConfiguracaoSistema,
   SolicitacaoVisibilidadeUsuario,
+  SolicitacaoPedidoRetorno,
+  SolicitacaoAtencaoUsuario,
   Comprovante,
   TituloFinanceiro,
   SolicitacaoPagamento,
@@ -53,7 +62,8 @@ const {
 } = require('../services/setorCapabilityService');
 const {
   applyTipoSolicitacaoModuleAvailability,
-  normalizeTipoSolicitacaoBehavior
+  normalizeTipoSolicitacaoBehavior,
+  obterRotuloDataSolicitacao
 } = require('../services/tipoSolicitacaoBehaviorService');
 const { isModuleEnabled } = require('../services/moduleConfigService');
 const {
@@ -74,20 +84,64 @@ const {
   publishSolicitacaoRealtimeEvent
 } = require('../services/solicitacaoRealtimeService');
 const {
+  registrarAtencaoSolicitacao,
+  marcarAtencaoLida
+} = require('../services/solicitacaoAtencaoService');
+const {
   obterConfigCamposNovaSolicitacao,
   obterOpcoesNovaSolicitacao,
   resolverCamposNovaSolicitacao
 } = require('../services/novaSolicitacaoCamposConfig');
 const { criarParceiro } = require('../services/parceiroService');
 const { isObraCentroCusto } = require('../constants/centroCusto');
+const { resolverApropriacaoPadrao } = require('../services/obraTipoApropriacaoPadraoService');
+const {
+  formaPagamentoEhBoleto,
+  formaPagamentoEhPix,
+  listarFormasDosFluxos
+} = require('../services/formasPagamentoMedicaoService');
+const {
+  executarCriacaoComControle: executarCriacaoDespesaEventualComControle,
+  obterSaldoPorObra: obterSaldoDespesaEventualPorObra,
+  tipoEhDespesaEventual,
+  validarDeclaracoes: validarDeclaracoesDespesaEventual
+} = require('../services/despesaEventualService');
+const {
+  executarCriacaoRecargaComControle,
+  liberarTituloRecargaAposAprovacao,
+  sincronizarTituloComStatusSolicitacao,
+  tipoEhRecargaCartao
+} = require('../services/recargaCartaoService');
+const { sincronizarTicketComSolicitacao } = require('../services/rhTicketService');
 const {
   canEditarApropriacoesSolicitacao,
+  isBusinessAdmin,
   userHasAreaPermission,
+  userHasAreaPermissionWhenConfigured,
   userHasConfiguredAreaPermissions
 } = require('../services/authorizationService');
 const {
+  resolverContextoAprovacaoPorTipo
+} = require('../services/solicitacao/aprovacaoTipoConfig');
+const { registrarLogSolicitacaoCompra } = require('../services/comprasCotacao');
+const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
+const {
   obterRegrasSetoresVisiveisPorUsuario
 } = require('../services/setoresVisiveisUsuarioService');
+const {
+  obterAreasConfiguracaoCamposDestinoInicial,
+  resolverDestinoInicialNovaSolicitacao
+} = require('../services/novaSolicitacaoDestinoService');
+const {
+  assertTipoDisponivelNoDestino,
+  obterAreasConfiguracaoCamposDestino
+} = require('../services/tipoSolicitacaoDisponibilidadeService');
+const { validarDistribuicaoCentroCusto } = require('../services/centroCustoDistribuicaoService');
+const {
+  aplicarVencimentoEfetivoSolicitacao,
+  sqlVencimentoEfetivoSolicitacao,
+  sqlVencimentoMedicaoPendente
+} = require('../services/solicitacaoVencimentoListaService');
 
 const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
 const CHAVE_TIPOS_SOLICITACAO_POR_SETOR = 'TIPOS_SOLICITACAO_POR_SETOR';
@@ -102,9 +156,56 @@ const SOLICITACAO_RESPONSAVEL_ACTIONS = [
   'RESPONSAVEL_ASSUMIU',
   'RESPONSAVEL_REMOVIDO'
 ];
+
+// Subqueries do "responsavel atual" de uma solicitacao: o ultimo evento
+// de responsavel (ATRIBUIDO/ASSUMIU/REMOVIDO, MAX(id) como proxy do mais
+// recente). Espelha o criterio do resumo da lista; REMOVIDO como ultimo
+// evento significa "sem responsavel". (Pacote B3 da reforma.)
+const SUBQUERY_ULTIMO_EVENTO_RESPONSAVEL = `
+  SELECT solicitacao_id, MAX(id) AS max_id
+  FROM historicos
+  WHERE acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU', 'RESPONSAVEL_REMOVIDO')
+  GROUP BY solicitacao_id
+`;
+
+function montarSubqueryComResponsavelAtual() {
+  return `(
+    SELECT h.solicitacao_id
+    FROM historicos h
+    INNER JOIN (${SUBQUERY_ULTIMO_EVENTO_RESPONSAVEL}) ult ON ult.max_id = h.id
+    WHERE h.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+  )`;
+}
+
+function montarSubqueryResponsavelAtual(usuarioId) {
+  const id = Number(usuarioId);
+  return `(
+    SELECT h.solicitacao_id
+    FROM historicos h
+    INNER JOIN (${SUBQUERY_ULTIMO_EVENTO_RESPONSAVEL}) ult ON ult.max_id = h.id
+    WHERE h.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+      AND h.usuario_responsavel_id = ${Number.isInteger(id) ? id : -1}
+  )`;
+}
+const { criarEscopoIdempotencia } = require('../services/idempotenciaCriacaoService');
+const { validarPeriodoMedicao, validarMedicaoParcelas, aplicarMedicaoNasParcelas, registrarMedicaoDoContrato } = require('../services/medicaoContratoService');
+const {
+  assertPodeInteragirSolicitacao,
+  assertPodeVisualizarSolicitacao,
+  montarContextoInteracao
+} = require('../services/solicitacaoRetornoService');
+const { podeVisualizarSolicitacaoPelaFila } = require('../services/solicitacaoFilaPagamentoAcessoService');
+const { gerarTokenUploadCriacaoSolicitacao } = require('../services/solicitacaoCriacaoUploadTokenService');
+
 const CREATE_SOLICITACAO_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
-const solicitacaoCreatePendingKeys = new Map();
-const solicitacaoCreateCompletedKeys = new Map();
+
+// Mesma mecanica do fluxo novo de contratos, agora em um lugar so: manter duas copias ja
+// tinha feito elas divergirem (TTL diferente e liberacao da chave em queda de conexao so
+// em uma delas). TTL e mensagem preservados como estavam aqui.
+const escopoIdempotenciaSolicitacao = criarEscopoIdempotencia({
+  ttlMs: CREATE_SOLICITACAO_IDEMPOTENCY_TTL_MS,
+  mensagemEmAndamento: 'Esta solicitacao ja esta sendo criada. Aguarde a conclusao antes de tentar novamente.'
+});
 
 function parseDecimalOpcionalSolicitacao(valor) {
   if (valor === null || valor === undefined) return null;
@@ -164,67 +265,8 @@ function formatarRateioApropriacoesHistorico(rateios = []) {
     return `${codigo}${descricao}${percentual}${valorRateio}${quantidade}`.trim();
   }).join('; ');
 }
-function limparIdempotenciaCriacaoExpirada() {
-  const agora = Date.now();
-  for (const [key, value] of solicitacaoCreatePendingKeys.entries()) {
-    if (!value || value.expiresAt <= agora) {
-      solicitacaoCreatePendingKeys.delete(key);
-    }
-  }
-  for (const [key, value] of solicitacaoCreateCompletedKeys.entries()) {
-    if (!value || value.expiresAt <= agora) {
-      solicitacaoCreateCompletedKeys.delete(key);
-    }
-  }
-}
-
-function prepararIdempotenciaCriacao(req, res) {
-  limparIdempotenciaCriacaoExpirada();
-
-  const rawKey = String(req.headers?.['idempotency-key'] || '').trim();
-  if (!rawKey) {
-    return { handled: false, scopeKey: null };
-  }
-
-  if (!/^[A-Za-z0-9:_-]{8,160}$/.test(rawKey)) {
-    res.status(400).json({ error: 'Chave de idempotencia invalida.' });
-    return { handled: true, scopeKey: null };
-  }
-
-  const scopeKey = `${req.user?.id || 'anon'}:${rawKey}`;
-  const cached = solicitacaoCreateCompletedKeys.get(scopeKey);
-  if (cached?.body) {
-    res.set('X-Idempotent-Replay', 'true');
-    res.status(200).json(cached.body);
-    return { handled: true, scopeKey: null };
-  }
-
-  if (solicitacaoCreatePendingKeys.has(scopeKey)) {
-    res.status(409).json({
-      error: 'Esta solicitacao ja esta sendo criada. Aguarde a conclusao antes de tentar novamente.'
-    });
-    return { handled: true, scopeKey: null };
-  }
-
-  solicitacaoCreatePendingKeys.set(scopeKey, {
-    expiresAt: Date.now() + CREATE_SOLICITACAO_IDEMPOTENCY_TTL_MS
-  });
-
-  res.on('finish', () => {
-    solicitacaoCreatePendingKeys.delete(scopeKey);
-  });
-
-  return { handled: false, scopeKey };
-}
-
-function armazenarIdempotenciaCriacao(scopeKey, body) {
-  if (!scopeKey || !body) return;
-  solicitacaoCreatePendingKeys.delete(scopeKey);
-  solicitacaoCreateCompletedKeys.set(scopeKey, {
-    expiresAt: Date.now() + CREATE_SOLICITACAO_IDEMPOTENCY_TTL_MS,
-    body
-  });
-}
+const prepararIdempotenciaCriacao = (req, res) => escopoIdempotenciaSolicitacao.preparar(req, res);
+const armazenarIdempotenciaCriacao = (scopeKey, body) => escopoIdempotenciaSolicitacao.armazenar(scopeKey, body);
 /* =====================================================
    FUNCAO AUXILIAR - VISIBILIDADE
 ===================================================== */
@@ -296,15 +338,18 @@ function validarDatasConsultaSolicitacoes(filtros) {
   return null;
 }
 
-async function montarResumoSolicitacoesLista(solicitacoes) {
+async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
   if (!Array.isArray(solicitacoes) || solicitacoes.length === 0) {
     return [];
   }
 
   const idsSolicitacoes = solicitacoes.map((item) => Number(item.id)).filter(Boolean);
   const ordemIds = new Map(idsSolicitacoes.map((id, index) => [id, index]));
+  const areaPorSolicitacao = new Map(
+    solicitacoes.map((item) => [Number(item.id), item.area_responsavel || null])
+  );
 
-  const [historicosResponsavel, historicosStatus] = await Promise.all([
+  const [historicosResponsavel, historicosStatus, pedidosRetornoPendentes, atencoesPendentes] = await Promise.all([
     Historico.findAll({
       where: {
         solicitacao_id: { [Op.in]: idsSolicitacoes },
@@ -336,8 +381,47 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
         ['solicitacao_id', 'ASC'],
         ['createdAt', 'DESC']
       ]
-    })
+    }),
+    SolicitacaoPedidoRetorno.findAll({
+      where: {
+        solicitacao_id: { [Op.in]: idsSolicitacoes },
+        status: 'PENDENTE'
+      },
+      attributes: [
+        'id',
+        'solicitacao_id',
+        'setor_solicitante',
+        'setor_atual_pedido',
+        'motivo',
+        'createdAt'
+      ],
+      order: [
+        ['solicitacao_id', 'ASC'],
+        ['createdAt', 'DESC']
+      ]
+    }),
+    usuarioId ? SolicitacaoAtencaoUsuario.findAll({
+      where: {
+        solicitacao_id: { [Op.in]: idsSolicitacoes },
+        usuario_id: usuarioId,
+        lido_em: null
+      },
+      attributes: ['solicitacao_id', 'tipo', 'resumo', 'evento_em'],
+      raw: true
+    }) : Promise.resolve([])
   ]);
+
+  const atencaoPorSolicitacao = new Map(atencoesPendentes.map((linha) => [Number(linha.solicitacao_id), linha]));
+  const entregaService = require('../services/pedidoEntregaService');
+  const entregasPendentes = (await Promise.all(['OBRA', 'COMPRAS'].map((setor) =>
+    entregaService.pendenciasEntrega({ solicitacaoIds: idsSolicitacoes, setor })
+      .then((linhas) => linhas.map((linha) => ({ ...linha, setor })))))).flat();
+  const entregasPorSolicitacao = new Map();
+  for (const entrega of entregasPendentes) {
+    const id = Number(entrega.solicitacao_id);
+    if (!entregasPorSolicitacao.has(id)) entregasPorSolicitacao.set(id, []);
+    entregasPorSolicitacao.get(id).push(entrega);
+  }
 
   const responsavelPorSolicitacao = new Map();
   historicosResponsavel.forEach((item) => {
@@ -359,9 +443,22 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
     }
   });
 
+  const pedidoRetornoPorSolicitacao = new Map();
+  pedidosRetornoPendentes.forEach((item) => {
+    const solicitacaoId = Number(item.solicitacao_id);
+    if (
+      !pedidoRetornoPorSolicitacao.has(solicitacaoId)
+      && areaPorSolicitacao.has(solicitacaoId)
+      && normalizarTokenComparacao(item.setor_atual_pedido)
+        === normalizarTokenComparacao(areaPorSolicitacao.get(solicitacaoId))
+    ) {
+      pedidoRetornoPorSolicitacao.set(solicitacaoId, item);
+    }
+  });
+
   return solicitacoes
     .map((item) => {
-      const solicitacao = item.toJSON();
+      const solicitacao = aplicarVencimentoEfetivoSolicitacao(item.toJSON());
       const resumoFinanceiro = calcularResumoFinanceiroSolicitacao(solicitacao);
       solicitacao.responsavel = responsavelPorSolicitacao.get(Number(item.id)) || null;
       solicitacao.setor_status_atual =
@@ -370,6 +467,25 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
       solicitacao.valor_pago_acumulado = resumoFinanceiro.valorPagoAcumulado;
       solicitacao.saldo_pagamento = resumoFinanceiro.saldoPagamento;
       solicitacao.valor_exibicao = resumoFinanceiro.valorExibicao;
+      const pedidoRetorno = pedidoRetornoPorSolicitacao.get(Number(item.id)) || null;
+      solicitacao.retorno_solicitado_pendente = Boolean(pedidoRetorno);
+      solicitacao.pedido_retorno_pendente = pedidoRetorno
+        ? {
+          id: pedidoRetorno.id,
+          setor_solicitante: pedidoRetorno.setor_solicitante,
+          motivo: pedidoRetorno.motivo,
+          createdAt: pedidoRetorno.createdAt
+        }
+        : null;
+      const atencao = atencaoPorSolicitacao.get(Number(item.id));
+      const entregas = entregasPorSolicitacao.get(Number(item.id)) || [];
+      solicitacao.entrega_pendente = entregas.length ? {
+        quantidade: entregas.length, vencida: entregas.some((e) => Number(e.vencida) || e.setor === 'OBRA'),
+        resumo: entregas.slice(0, 3).map((e) => `Pedido #${e.pedido_id}: ${e.setor === 'OBRA' ? 'Obra deve informar entrega' : e.estado === 'DIVERGENCIA' ? 'Compras deve tratar divergência' : `Compras deve reprogramar até ${e.prazo_compras}`}`).join(' · ')
+      } : null;
+      solicitacao.atencao_pendente = atencao
+        ? { tipo: atencao.tipo, resumo: atencao.resumo, evento_em: atencao.evento_em }
+        : null;
       return solicitacao;
     })
     .sort((a, b) => (ordemIds.get(Number(a.id)) || 0) - (ordemIds.get(Number(b.id)) || 0));
@@ -412,6 +528,9 @@ function buildSolicitacaoResumoListaInclude() {
 
 async function buscarResumoListaSolicitacaoPorId(id) {
   const solicitacao = await Solicitacao.findByPk(id, {
+    attributes: {
+      include: [[Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']]
+    },
     include: buildSolicitacaoResumoListaInclude()
   });
 
@@ -423,16 +542,7 @@ async function buscarResumoListaSolicitacaoPorId(id) {
   return Array.isArray(resumo) && resumo.length > 0 ? resumo[0] : null;
 }
 
-async function verificarAcessoDetalheSolicitacao(req, solicitacao) {
-  const acessoObra = await validarAcessoObra(req, solicitacao);
-  if (!acessoObra) {
-    return {
-      allowed: false,
-      status: 403,
-      error: 'Acesso negado. Vincule o usuario a obra para continuar.'
-    };
-  }
-
+async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLeituraGlobal = false } = {}) {
   const areaUsuario = await obterAreaUsuario(req);
   const tokensSetorUsuario = expandirTokensComAliasesGeo(
     await obterTokensSetorPrincipalUsuario(req, areaUsuario)
@@ -451,7 +561,70 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao) {
     userHasAreaPermission(req.user, [PERMISSAO_SOLICITACOES_VISUALIZAR_SETOR]),
     userHasAreaPermission(req.user, [PERMISSAO_SOLICITACOES_VISUALIZAR_TODAS])
   ]);
-  const podeVerTodasSolicitacoes = temPermissoesAreasConfiguradas && permissaoVerTodasSolicitacoes;
+  const podeVerTodasSolicitacoes =
+    permitirLeituraGlobal && temPermissoesAreasConfiguradas && permissaoVerTodasSolicitacoes;
+
+  if (podeVerTodasSolicitacoes) {
+    return {
+      allowed: true,
+      leituraGlobal: true,
+      areaUsuario,
+      tokensSetorUsuario
+    };
+  }
+
+  if (permitirLeituraGlobal && await podeVisualizarSolicitacaoPelaFila(req.user, solicitacao.id)) {
+    return {
+      allowed: true,
+      leituraPelaFilaPagamento: true,
+      areaUsuario,
+      tokensSetorUsuario
+    };
+  }
+
+  // Uma mencao e um convite explicito para acompanhar esta solicitacao. Ela concede somente
+  // leitura do detalhe, mesmo quando obra e setor normalmente nao fariam parte do escopo do
+  // usuario. A escrita continua sendo calculada separadamente pelo setor principal em
+  // `avaliarContextoInteracaoSolicitacao`, portanto o mencionado precisa solicitar retorno
+  // quando a demanda estiver em outro setor.
+  if (perfil !== 'SUPERADMIN') {
+    const mencaoUsuario = await NotificacaoDestinatario.findOne({
+      include: [
+        {
+          model: Notificacao,
+          as: 'notificacao',
+          required: true,
+          where: {
+            solicitacao_id: solicitacao.id,
+            tipo: 'MENCAO_COMENTARIO'
+          },
+          attributes: ['id']
+        }
+      ],
+      where: {
+        usuario_id: req.user.id
+      },
+      attributes: ['id']
+    });
+
+    if (mencaoUsuario) {
+      return {
+        allowed: true,
+        acessoPorMencao: true,
+        areaUsuario,
+        tokensSetorUsuario
+      };
+    }
+  }
+
+  const acessoObra = await validarAcessoObra(req, solicitacao);
+  if (!acessoObra) {
+    return {
+      allowed: false,
+      status: 403,
+      error: 'Acesso negado. Vincule o usuario a obra para continuar.'
+    };
+  }
 
   if (
     perfil !== 'SUPERADMIN' &&
@@ -464,6 +637,23 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao) {
       allowed: false,
       status: 403,
       error: 'Acesso negado'
+    };
+  }
+
+  // Precedencia global da permissao granular: depois de validar o vinculo com a obra, quem tem
+  // "Ver solicitacoes do setor" pode abrir qualquer demanda que esteja no seu setor principal.
+  // Isso evita que regras legadas especializadas (ADMIN_PRIMEIRO, Administrativo ou GEO)
+  // contradigam a lista. Outros setores continuam fora deste atalho.
+  if (
+    perfil !== 'SUPERADMIN' &&
+    temPermissoesAreasConfiguradas &&
+    podeVerSolicitacoesSetor &&
+    setorPertenceAoUsuario(tokensSetorUsuario, solicitacao.area_responsavel)
+  ) {
+    return {
+      allowed: true,
+      areaUsuario,
+      tokensSetorUsuario
     };
   }
 
@@ -624,9 +814,16 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao) {
       });
     }
 
+    // A mesma precedencia da lista precisa valer no detalhe. Sem esta guarda, a solicitacao
+    // aparecia para quem tem "Ver solicitacoes do setor", mas o clique ainda era negado pelo
+    // modo legado ADMIN_PRIMEIRO. Estar no setor continua obrigatorio; a permissao nao libera
+    // detalhes de outros setores.
     const podeVerPeloModoRecebimento =
       solicitacaoDoSetorUsuario &&
-      String(modoRecebimentoGeo || '').toUpperCase() === 'TODOS_VISIVEIS';
+      (
+        (temPermissoesAreasConfiguradas && podeVerSolicitacoesSetor) ||
+        String(modoRecebimentoGeo || '').toUpperCase() === 'TODOS_VISIVEIS'
+      );
     const solicitacaoEmSetorExtra = await solicitacaoPertenceASetoresVisiveis(
       solicitacao,
       setoresExtrasVisiveisUsuario
@@ -672,12 +869,35 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao) {
   };
 }
 
+async function avaliarContextoInteracaoSolicitacao(req, solicitacao, acessoExistente = null) {
+  const acesso = acessoExistente || await verificarAcessoDetalheSolicitacao(req, solicitacao);
+  if (!acesso.allowed) return acesso;
+
+  // Qualquer vinculo adicional serve apenas para VISUALIZAR. Para escrever, anexar, medir ou
+  // pedir aditivo vale exclusivamente o SETOR PRINCIPAL do usuario. Antes, `obterTokensSetorUsuario`
+  // acrescentava `usuario_setores`; assim, Joao (setor principal OBRA) conseguia comentar uma
+  // solicitacao em GEO apenas por possuir um vinculo secundario historico com GEO. Esse mesmo
+  // falso positivo escondia o botao Solicitar retorno.
+  const tokensOperacionais = expandirTokensComAliasesGeo(
+    await obterTokensSetorPrincipalUsuario(req, acesso.areaUsuario)
+  );
+
+  return {
+    ...acesso,
+    estaNoSetorUsuario: setorPertenceAoUsuario(tokensOperacionais, solicitacao.area_responsavel),
+    setorUsuario: acesso.areaUsuario || null,
+    tokensOperacionais
+  };
+}
+
 async function enviarSolicitacaoParaSetorInterno({
   req,
   solicitacao,
   setorDestino,
   usuarioId,
-  permitirEnvioFluxoDiretoria = false
+  permitirEnvioFluxoDiretoria = false,
+  destacarAtencao = false,
+  ignorarPermissaoEnvioManual = false
 }) {
   const acessoObra = await validarAcessoObra(req, solicitacao);
   if (!acessoObra) {
@@ -691,7 +911,7 @@ async function enviarSolicitacaoParaSetorInterno({
   const podeEnviarQualquerSetor =
     perfil === 'SUPERADMIN' || Boolean(usuarioLogado?.pode_enviar_qualquer_setor);
 
-  if (!podeEnviarQualquerSetor) {
+  if (!podeEnviarQualquerSetor && !ignorarPermissaoEnvioManual) {
     const areaUsuario = await obterAreaUsuario(req);
     const tokensSetorUsuario = await obterTokensSetoresOperacionaisUsuario(req, areaUsuario);
     if (!setorPertenceAoUsuario(tokensSetorUsuario, solicitacao.area_responsavel)) {
@@ -762,6 +982,19 @@ async function enviarSolicitacaoParaSetorInterno({
     observacao: `De ${setorOrigem} para ${setorDestino}`
   });
 
+  if (destacarAtencao) {
+    try {
+      await registrarAtencaoSolicitacao({
+        solicitacao,
+        atorId: usuarioId,
+        tipo: 'ENVIO_MANUAL',
+        resumo: `${req.user?.nome || 'Usuário'} enviou para ${nomeDestino}`
+      });
+    } catch (atencaoError) {
+      console.error('Envio concluido, mas destaque da solicitacao falhou:', atencaoError);
+    }
+  }
+
   await criarNotificacao({
     solicitacao_id: solicitacao.id,
     tipo: 'ENVIADA_SETOR',
@@ -787,6 +1020,47 @@ async function enviarSolicitacaoParaSetorInterno({
   });
 
   return { ok: true };
+}
+
+/**
+ * Resolve o setor que efetivamente criou a solicitacao.
+ *
+ * A fonte principal e o usuario gravado em `criado_por`, seguindo a mesma regra dos fluxos de
+ * contrato. O historico de criacao e o fallback para registros cujo usuario ou setor ja nao esteja
+ * disponivel. Alguns fluxos especiais nasceram diretamente no setor destinatario, portanto o
+ * historico nao pode ter precedencia sobre o cadastro do autor em todos os tipos de solicitacao.
+ */
+async function resolverSetorCriadorSolicitacao(solicitacao) {
+  const usuarioCriadorId = Number(solicitacao.criado_por);
+  if (Number.isInteger(usuarioCriadorId) && usuarioCriadorId > 0) {
+    const usuarioCriador = await User.findByPk(usuarioCriadorId, {
+      attributes: ['id', 'setor_id']
+    });
+
+    if (usuarioCriador?.setor_id) {
+      const setorCriador = await Setor.findOne({
+        where: {
+          id: usuarioCriador.setor_id,
+          ativo: true
+        },
+        attributes: ['codigo', 'nome']
+      });
+      const setorAtualCriador = resolveSetorPersistenciaValue(setorCriador, null);
+      if (setorAtualCriador) return setorAtualCriador;
+    }
+  }
+
+  const historicoCriacao = await Historico.findOne({
+    where: {
+      solicitacao_id: solicitacao.id,
+      acao: 'SOLICITACAO_CRIADA',
+      setor: { [Op.ne]: null }
+    },
+    attributes: ['setor'],
+    order: [['createdAt', 'ASC'], ['id', 'ASC']]
+  });
+  const setorHistorico = String(historicoCriacao?.setor || '').trim();
+  return setorHistorico || null;
 }
 
 async function obterAreaUsuario(req) {
@@ -949,6 +1223,17 @@ function setorPertenceAoUsuario(tokensSetor = [], setorSolicitacao = null) {
   });
 }
 
+async function solicitacaoEstaNoSetorGeo(solicitacao, transaction = null) {
+  const setorGeo = await findSetorByCapability('eh_setor_geo', {
+    attributes: ['id', 'codigo', 'nome', 'eh_setor_geo'],
+    onlyActive: true,
+    transaction
+  });
+  if (!setorGeo) return isGeoToken(solicitacao?.area_responsavel);
+  const tokensGeo = buildSetorComparisonTokens(setorGeo).map(normalizarTokenComparacao);
+  return tokensGeo.includes(normalizarTokenComparacao(solicitacao?.area_responsavel));
+}
+
 function obterClassificacaoDaObra(obra) {
   return normalizarClassificacaoObra(obra?.classificacao || obra?.classificacao_obra);
 }
@@ -977,6 +1262,22 @@ async function obterContextoAprovacaoDiretoria(solicitacao, obraCarregada = null
     solicitacao?.tipo_solicitacao_id,
     configuracao.setoresDestinoPorTipo
   );
+  const setorDestinoOriginal = setorDestinoPersistido || setorDestinoConfigurado;
+  const setorDestinoModel = setorDestinoOriginal
+    ? await resolveSetorReferencia(setorDestinoOriginal, {
+      attributes: ['id', 'codigo', 'nome', 'eh_setor_financeiro']
+    })
+    : null;
+  const destinoEhFinanceiro = hasSetorCapability(
+    setorDestinoModel || { codigo: setorDestinoOriginal, nome: setorDestinoOriginal },
+    'eh_setor_financeiro'
+  );
+  const setorGeo = destinoEhFinanceiro
+    ? await findSetorByCapability('eh_setor_geo', { attributes: ['id', 'codigo', 'nome'] })
+    : null;
+  const setorDestinoEfetivo = destinoEhFinanceiro
+    ? resolveSetorPersistenciaValue(setorGeo, 'GEO')
+    : setorDestinoOriginal;
 
   return {
     obra,
@@ -984,9 +1285,7 @@ async function obterContextoAprovacaoDiretoria(solicitacao, obraCarregada = null
     diretoriaEsperada:
       diretoriaPersistida ||
       obterDiretoriaParaObra(obra, configuracao.diretoriasPorClassificacao),
-    setorDestinoAprovacao:
-      setorDestinoPersistido ||
-      setorDestinoConfigurado,
+    setorDestinoAprovacao: setorDestinoEfetivo,
     diretoriasPorClassificacao: configuracao.diretoriasPorClassificacao,
     setoresDestinoPorTipo: configuracao.setoresDestinoPorTipo
   };
@@ -1110,7 +1409,9 @@ async function validarAcessoObra(req, solicitacao) {
   }
 
   if (!solicitacao.obra_id) {
-    return false;
+    // CADASTRO DE OBRA nasce deliberadamente sem obra vinculada. O solicitante continua
+    // podendo acompanhar o proprio pedido; GEO e perfis administrativos ja passam acima.
+    return Number(solicitacao.criado_por) === Number(req.user?.id);
   }
 
   const { UsuarioObra } = require('../models');
@@ -1332,6 +1633,12 @@ async function solicitacaoAtendeEscopoOperacionalUsuario({
     return true;
   }
 
+  if (await userHasSetorCapability(req.user, 'eh_setor_compras')
+    && await userHasAreaPermission(req.user, [PERMISSAO_SOLICITACOES_VISUALIZAR_SETOR])) {
+    const pendencias = await require('../services/pedidoEntregaService').pendenciasEntrega({ solicitacaoIds: [solicitacao.id], setor: 'COMPRAS' });
+    if (pendencias.length) return true;
+  }
+
   if (await solicitacaoPertenceASetoresVisiveis(solicitacao, tokensProprios)) {
     return true;
   }
@@ -1446,71 +1753,23 @@ function normalizarTipoPendenciaFinanceira(valor) {
   return TIPOS_PENDENCIA_FINANCEIRA.has(tipo) ? tipo : 'FORA_DO_PRAZO';
 }
 
-module.exports = {
 
-  // =====================================================
-  // LISTAR SOLICITACOES
-  // =====================================================
-  async index(req, res) {
-    try {
-      const { id: usuarioId } = req.user;
-      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
-      let areaUsuario = null;
-      const {
-        area,
-        status,
-        arquivadas,
-        obra_id,
-        obra_ids,
-        codigo,
-        descricao,
-        codigo_contrato,
-        numero_solicitacao,
-        numero_sienge,
-        responsavel,
-        data_registro,
-        data_vencimento,
-        data_vencimento_inicio,
-        data_vencimento_fim,
-        data_inicio,
-        data_fim,
-        valor_min,
-        valor_max,
-        tipo_macro_id,
-        tipo_solicitacao_id,
-        page,
-        limit,
-        apenas_obras,
-        apenas_status
-      } = req.query;
-      const erroDatas = validarDatasConsultaSolicitacoes({
-        data_registro,
-        data_vencimento,
-        data_vencimento_inicio,
-        data_vencimento_fim,
-        data_inicio,
-        data_fim
-      });
-      if (erroDatas) {
-        return res.status(400).json({ error: erroDatas });
-      }
-      const paginacaoSolicitada = true;
-      const apenasObrasSolicitadas = ['1', 'true', 'sim'].includes(
-        String(apenas_obras || '').trim().toLowerCase()
-      );
-      const apenasStatusSolicitados = ['1', 'true', 'sim'].includes(
-        String(apenas_status || '').trim().toLowerCase()
-      );
-      const paginaAtual = parsePositiveInt(page, 1);
-      const limitePorPagina = parseSolicitacoesPageSize(limit);
-      const offset = (paginaAtual - 1) * limitePorPagina;
-
-      /* ===============================
-        1) BUSCAR SOLICITACOES OCULTADAS
-      =============================== */
-      const listarArquivadas = ['1', 'true', 'sim'].includes(
-        String(arquivadas || '').trim().toLowerCase()
-      );
+// =====================================================================
+// ESCOPO DE VISIBILIDADE DA LISTA — EXTRAÍDO LITERALMENTE do index()
+// (pacote B3 do porte: movimentação de código, NENHUMA mudança de regra;
+// os blocos abaixo são os mesmos que viviam embutidos no index(), com
+// duas costuras mecânicas: o retorno antecipado de "arquivadas sem
+// ocultas" virou a flag `vazio`, e as derivações usuarioComRegraMista/
+// ordenacaoLista vieram junto por serem funções puras do contexto).
+// Consumidores: index(), contadores(), BuscaController (grupo
+// Solicitações) e DashboardPendenciasController — todos enxergam o MESMO
+// recorte e os MESMOS tokens de setor (contexto.setorTokens), por
+// construção.
+// =====================================================================
+async function montarEscopoVisibilidadeLista(req, { listarArquivadas = false } = {}) {
+  const { id: usuarioId } = req.user;
+  const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+  let areaUsuario = null;
 
       const ocultadas = await SolicitacaoVisibilidadeUsuario.findAll({
         where: {
@@ -1529,23 +1788,12 @@ module.exports = {
         cancelada: false
       };
 
+      // Costura mecânica: o retorno antecipado do index() ("arquivadas"
+      // sem nenhuma solicitação oculta) vira a flag `vazio` — o chamador
+      // decide a resposta; nenhuma consulta adicional é feita, como antes.
       if (listarArquivadas) {
         if (idsOcultos.length === 0) {
-          if (apenasObrasSolicitadas || apenasStatusSolicitados) {
-            return res.json([]);
-          }
-          if (!paginacaoSolicitada) {
-            return res.json([]);
-          }
-          return res.json({
-            items: [],
-            meta: {
-              page: paginaAtual,
-              limit: limitePorPagina,
-              total: 0,
-              total_pages: 0
-            }
-          });
+          return { vazio: true, where, contexto: null };
         }
         where[Op.and] = where[Op.and] || [];
         where[Op.and].push({ id: { [Op.in]: idsOcultos } });
@@ -1660,7 +1908,10 @@ module.exports = {
         }
 
         if (!temPermissoesAreasConfiguradas || podeVerSolicitacoesSetor) {
-          condicoesAdministrativo.push(...montarCondicoesVisibilidadeSetores(setoresExtrasUsuario));
+          condicoesAdministrativo.push(...montarCondicoesVisibilidadeSetores([
+            ...setorTokens,
+            ...setoresExtrasUsuario
+          ]));
         }
 
         where[Op.and] = where[Op.and] || [];
@@ -1784,14 +2035,15 @@ module.exports = {
         }
 
         if (podeAplicarEscopoSetor) {
+          if (await userHasSetorCapability(req.user, 'eh_setor_compras')) {
+            condicoes.push(Sequelize.literal(require('../services/pedidoEntregaService').sqlPendenciaEntrega('COMPRAS')));
+          }
           // Setor atual ve
-          const setoresPermitidos = [];
-          if (areaUsuario) setoresPermitidos.push(areaUsuario);
-          if (setorAtual?.codigo) setoresPermitidos.push(setorAtual.codigo);
-          if (setorAtual?.nome) setoresPermitidos.push(setorAtual.nome);
-          if (setorAtual?.id) setoresPermitidos.push(String(setorAtual.id));
-          if (req.user.setor_id) setoresPermitidos.push(String(req.user.setor_id));
-          const setoresUnicos = Array.from(new Set(setoresPermitidos.filter(Boolean)));
+          // `setorTokens` ja contem id, codigo e nome do setor, alem dos aliases operacionais
+          // GEO <-> GERENCIA DE PROCESSOS. Usar aqui somente os valores literais do cadastro
+          // fazia o usuario comum da Gerencia nao enxergar solicitacoes persistidas como GEO
+          // (e vice-versa), embora o restante do fluxo trate os dois tokens como equivalentes.
+          const setoresUnicos = Array.from(new Set(setorTokens.filter(Boolean)));
           if (setoresUnicos.length > 0) {
             condicoes.push({ area_responsavel: { [Op.in]: setoresUnicos } });
           }
@@ -1865,6 +2117,494 @@ module.exports = {
         where[Op.and].push({ [Op.or]: condicoes.length > 0 ? condicoes : [{ id: -1 }] });
       }
 
+      const usuarioComRegraMistaPorTipo =
+        perfil === 'USUARIO' &&
+        !adminGEO &&
+        !isSetorObra;
+      // A fila do GEO e operacional: uma prestacao, retorno ou nova movimentacao precisa voltar
+      // ao topo para conferencia. Os demais setores preservam a ordenacao historica por criacao.
+      const ordenacaoLista = isUsuarioGeo
+        ? [['updatedAt', 'DESC'], ['createdAt', 'DESC']]
+        : [['createdAt', 'DESC']];
+
+      return {
+        vazio: false,
+        where,
+        contexto: {
+          usuarioId,
+          perfil,
+          areaUsuario,
+          setorAtual,
+          setorTokens,
+          setoresExtrasUsuario,
+          setoresVisiveisAoAtribuir,
+          setorTodosVisiveis,
+          temPermissoesAreasConfiguradas,
+          podeVerSolicitacoesProprias,
+          podeVerSolicitacoesSetor,
+          podeVerTodasSolicitacoes,
+          isSetorObra,
+          isUsuarioGeo,
+          isSetorAdministrativo,
+          adminGEO,
+          obrasVinculadas,
+          idsOcultos,
+          usuarioComRegraMistaPorTipo,
+          ordenacaoLista
+        }
+      };
+}
+
+// Pós-filtro da regra mista por tipo — EXTRAÍDO LITERALMENTE do index()
+// (mesmo predicado, mesmas consultas). Fora do caso USUARIO comum a
+// função é transparente, como no index() original. Aceita instâncias do
+// Sequelize ou objetos puros (lê os mesmos campos).
+async function filtrarRegraMistaPorTipo(itens, contexto) {
+  if (!contexto?.usuarioComRegraMistaPorTipo) return itens;
+  const lista = Array.isArray(itens) ? itens : [];
+  if (lista.length === 0) return lista;
+  const {
+    usuarioId,
+    setorTokens,
+    setorTodosVisiveis,
+    temPermissoesAreasConfiguradas,
+    podeVerSolicitacoesSetor
+  } = contexto;
+
+        const idsResultado = lista.map(item => Number(item.id));
+        const historicosUsuario = idsResultado.length > 0
+          ? await Historico.findAll({
+              where: {
+                solicitacao_id: { [Op.in]: idsResultado },
+                usuario_responsavel_id: usuarioId,
+                acao: { [Op.in]: ['RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU'] }
+              },
+              attributes: ['solicitacao_id']
+            })
+          : [];
+        const idsComInteracaoUsuario = new Set(
+          historicosUsuario.map(h => Number(h.solicitacao_id))
+        );
+
+        const regrasTiposPorSetor = await obterTiposSolicitacaoPorSetorConfig();
+        const setoresUsuarioUpper = new Set(setorTokens.map(t => String(t || '').toUpperCase()));
+
+        return lista.filter(item => {
+          const areaItem = String(item.area_responsavel || '').trim().toUpperCase();
+          const tipoId = Number(item.tipo_solicitacao_id);
+          const itemEhDoSetorUsuario = setoresUsuarioUpper.has(areaItem);
+          const itemCriadoPeloUsuario = Number(item.criado_por) === Number(usuarioId);
+          const itemComInteracaoUsuario = idsComInteracaoUsuario.has(Number(item.id));
+
+          if (!itemEhDoSetorUsuario) return true;
+          if (itemCriadoPeloUsuario || itemComInteracaoUsuario) return true;
+          // A permissao granular explicita prevalece sobre o modo operacional legado
+          // ADMIN_PRIMEIRO. Se o administrador marcou "Ver solicitacoes do setor", o usuario
+          // deve receber todas as demandas do proprio setor, independentemente do tipo.
+          if (temPermissoesAreasConfiguradas && podeVerSolicitacoesSetor) return true;
+
+          // A regra de recebimento pertence ao setor do USUARIO. O item pode estar persistido
+          // com outro alias operacional (por exemplo GEO), enquanto o usuario pertence a
+          // GERENCIA DE PROCESSOS. Consultar apenas `areaItem` escolhia a configuracao do alias
+          // errado e podia rebaixar o tipo para ADMIN_PRIMEIRO depois de a consulta ja o ter
+          // autorizado. `setorTokens` preserva a mesma identidade usada no escopo SQL acima.
+          const regraTipo = obterRegrasTipoPorTokensSetor(regrasTiposPorSetor, setorTokens);
+          let modoPorTipo = null;
+          if (regraTipo?.modos && Number.isInteger(tipoId) && tipoId > 0) {
+            modoPorTipo = regraTipo.modos[String(tipoId)] || null;
+          }
+
+          const modoEfetivo = String(modoPorTipo || (setorTodosVisiveis ? 'TODOS_VISIVEIS' : 'ADMIN_PRIMEIRO')).toUpperCase();
+          return modoEfetivo === 'TODOS_VISIVEIS';
+        });
+}
+
+module.exports = {
+  // Reuso interno da reforma (BuscaController e DashboardPendencias):
+  // o MESMO escopo e o MESMO pós-filtro da lista, sem duplicação.
+  montarEscopoVisibilidadeLista,
+  filtrarRegraMistaPorTipo,
+
+  // ===================================================================
+  // CONTADORES DAS VISOES DA LISTA (Minhas / Fila do setor / Vencendo /
+  // Atrasadas / Todas). Usa o MESMO escopo de visibilidade da listagem
+  // (montarEscopoVisibilidadeLista + filtrarRegraMistaPorTipo): o numero
+  // da aba bate com a lista por construcao. (Pacote B3 da reforma.)
+  // ===================================================================
+  async contadores(req, res) {
+    try {
+      const zeros = { todas: 0, minhas: 0, fila_setor: 0, vencendo: 0, atrasadas: 0 };
+      const escopo = await montarEscopoVisibilidadeLista(req, { listarArquivadas: false });
+      if (escopo.vazio) {
+        return res.json(zeros);
+      }
+
+      const { where, contexto } = escopo;
+      let itens = await Solicitacao.findAll({
+        where,
+        attributes: [
+          'id', 'obra_id', 'area_responsavel', 'tipo_solicitacao_id',
+          'criado_por', 'status_global', 'data_vencimento', 'createdAt',
+          [Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']
+        ],
+        raw: true
+      });
+
+      itens = await filtrarRegraMistaPorTipo(itens, contexto);
+
+      const usuarioId = Number(contexto.usuarioId);
+      const ids = itens.map((item) => Number(item.id));
+
+      // responsavel ATUAL por solicitacao (ultimo evento vence; ASC +
+      // sobrescrita = MAX(id), mesmo criterio das subqueries da listagem)
+      const responsavelAtual = new Map();
+      if (ids.length > 0) {
+        const eventos = await Historico.findAll({
+          where: {
+            solicitacao_id: { [Op.in]: ids },
+            acao: { [Op.in]: SOLICITACAO_RESPONSAVEL_ACTIONS }
+          },
+          attributes: ['id', 'solicitacao_id', 'acao', 'usuario_responsavel_id'],
+          order: [['id', 'ASC']],
+          raw: true
+        });
+        eventos.forEach((evento) => {
+          responsavelAtual.set(
+            Number(evento.solicitacao_id),
+            String(evento.acao).toUpperCase() === 'RESPONSAVEL_REMOVIDO'
+              ? null
+              : (Number(evento.usuario_responsavel_id) || null)
+          );
+        });
+      }
+
+      // devolucoes: criadas por mim, de volta ao meu setor, que ja foram
+      // enviadas a outro setor (mesma definicao das pendencias do Hub)
+      const tokensSetorUpper = new Set(
+        (contexto.setorTokens || []).filter(Boolean).map((t) => String(t).toUpperCase())
+      );
+      const candidatasDevolucao = itens
+        .filter((item) => (
+          Number(item.criado_por) === usuarioId
+          && tokensSetorUpper.has(String(item.area_responsavel || '').trim().toUpperCase())
+        ))
+        .map((item) => Number(item.id));
+      let idsComEnvio = new Set();
+      if (candidatasDevolucao.length > 0) {
+        const envios = await Historico.findAll({
+          where: {
+            solicitacao_id: { [Op.in]: candidatasDevolucao },
+            acao: 'ENVIADA_SETOR'
+          },
+          attributes: ['solicitacao_id'],
+          raw: true
+        });
+        idsComEnvio = new Set(envios.map((envio) => Number(envio.solicitacao_id)));
+      }
+
+      const hoje = new Date();
+      const isoLocal = (date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      };
+      const hojeIso = isoLocal(hoje);
+      const limiteData = new Date(hoje);
+      limiteData.setDate(limiteData.getDate() + 7);
+      const limiteIso = isoLocal(limiteData);
+
+      const contagem = { ...zeros, todas: itens.length };
+      itens.forEach((item) => {
+        const itemComVencimento = aplicarVencimentoEfetivoSolicitacao(item);
+        const id = Number(item.id);
+        const areaItem = String(item.area_responsavel || '').trim().toUpperCase();
+        const responsavel = responsavelAtual.get(id) || null;
+        const vencimento = itemComVencimento.data_vencimento
+          ? String(itemComVencimento.data_vencimento).slice(0, 10)
+          : null;
+
+        if (responsavel === usuarioId || idsComEnvio.has(id)) {
+          contagem.minhas += 1;
+        }
+        if (tokensSetorUpper.has(areaItem) && !responsavel) {
+          contagem.fila_setor += 1;
+        }
+        if (vencimento && vencimento >= hojeIso && vencimento <= limiteIso) {
+          contagem.vencendo += 1;
+        }
+        if (vencimento && vencimento < hojeIso) {
+          contagem.atrasadas += 1;
+        }
+      });
+
+      return res.json(contagem);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao carregar contadores da lista' });
+    }
+  },
+
+  // =====================================================
+  // LISTAR SOLICITACOES
+  // =====================================================
+  async index(req, res) {
+    try {
+      const {
+        area,
+        status,
+        arquivadas,
+        obra_id,
+        obra_ids,
+        codigo,
+        descricao,
+        codigo_contrato,
+        numero_solicitacao,
+        numero_sienge,
+        responsavel,
+        data_registro,
+        data_vencimento,
+        data_vencimento_inicio,
+        data_vencimento_fim,
+        data_inicio,
+        data_fim,
+        valor_min,
+        valor_max,
+        tipo_macro_id,
+        tipo_solicitacao_id,
+        page,
+        limit,
+        apenas_obras,
+        apenas_status,
+        ids,
+        minhas,
+        sem_responsavel,
+        visao,
+        q,
+        ordenar,
+        direcao
+      } = req.query;
+      const erroDatas = validarDatasConsultaSolicitacoes({
+        data_registro,
+        data_vencimento,
+        data_vencimento_inicio,
+        data_vencimento_fim,
+        data_inicio,
+        data_fim
+      });
+      if (erroDatas) {
+        return res.status(400).json({ error: erroDatas });
+      }
+      const paginacaoSolicitada = true;
+      const apenasObrasSolicitadas = ['1', 'true', 'sim'].includes(
+        String(apenas_obras || '').trim().toLowerCase()
+      );
+      const apenasStatusSolicitados = ['1', 'true', 'sim'].includes(
+        String(apenas_status || '').trim().toLowerCase()
+      );
+      const paginaAtual = parsePositiveInt(page, 1);
+      const limitePorPagina = parseSolicitacoesPageSize(limit);
+      const offset = (paginaAtual - 1) * limitePorPagina;
+
+      /* ===============================
+        1) BUSCAR SOLICITACOES OCULTADAS
+      =============================== */
+      const listarArquivadas = ['1', 'true', 'sim'].includes(
+        String(arquivadas || '').trim().toLowerCase()
+      );
+
+      const escopo = await montarEscopoVisibilidadeLista(req, { listarArquivadas });
+      if (escopo.vazio) {
+        if (apenasObrasSolicitadas || apenasStatusSolicitados) {
+          return res.json([]);
+        }
+        if (!paginacaoSolicitada) {
+          return res.json([]);
+        }
+        return res.json({
+          items: [],
+          meta: {
+            page: paginaAtual,
+            limit: limitePorPagina,
+            total: 0,
+            total_pages: 0
+          }
+        });
+      }
+      const { where } = escopo;
+      const { usuarioComRegraMistaPorTipo, ordenacaoLista, usuarioId, setorTokens } = escopo.contexto;
+
+      // =================================================================
+      // PARÂMETROS ADITIVOS DA REFORMA (pacote B3): tudo abaixo apenas
+      // RESTRINGE o conjunto que o escopo acima já autorizou — nenhuma
+      // condição amplia visibilidade.
+      // =================================================================
+
+      // Conjunto explícito de ids (cartões do Hub antigos); teto de 200.
+      const idsFiltro = String(ids || '')
+        .split(',')
+        .map((valor) => Number(valor))
+        .filter((valor) => Number.isInteger(valor) && valor > 0)
+        .slice(0, 200);
+      if (idsFiltro.length > 0) {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({ id: { [Op.in]: idsFiltro } });
+      }
+
+      // Ordenação opcional por coluna. SEM o parâmetro vale o padrão do
+      // sistema (ordenacaoLista do escopo — inclusive a fila operacional
+      // do GEO por updatedAt); o parâmetro só sobrepõe quando presente.
+      const CAMPOS_ORDENAVEIS = new Set([
+        'createdAt', 'codigo', 'descricao', 'valor', 'status_global',
+        'area_responsavel', 'data_vencimento', 'numero_sienge'
+      ]);
+      const colunaOrdenacaoSolicitada = String(ordenar || '').trim();
+      const direcaoOrdenacaoSolicitada = String(direcao || '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+      const ordenacaoColunaSolicitada = colunaOrdenacaoSolicitada === 'data_vencimento'
+        ? [Sequelize.literal(sqlVencimentoEfetivoSolicitacao()), direcaoOrdenacaoSolicitada]
+        : [colunaOrdenacaoSolicitada, direcaoOrdenacaoSolicitada];
+      // Pedido de retorno e uma interrupcao operacional: precisa aparecer antes das demais
+      // solicitacoes, inclusive quando estiver fora da pagina que o usuario tinha carregado.
+      // A prioridade entra no banco antes de limit/offset e continua valendo quando ha uma
+      // ordenacao de coluna escolhida na interface.
+      const ordenacaoRetornoPendente = [
+        [Sequelize.literal(`CASE WHEN ${require('../services/pedidoEntregaService').sqlPendenciaEntrega(
+          await userHasSetorCapability(req.user, 'eh_setor_compras') ? 'COMPRAS' : 'OBRA'
+        )} THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(require('../services/pedidoEntregaService').sqlOrdemEntrega(
+          await userHasSetorCapability(req.user, 'eh_setor_compras') ? 'COMPRAS' : 'OBRA'
+        )), 'DESC'],
+        [Sequelize.literal(`CASE WHEN EXISTS (
+          SELECT 1 FROM solicitacao_atencoes_usuario sau
+          WHERE sau.solicitacao_id = Solicitacao.id
+            AND sau.usuario_id = ${Number(usuarioId) || -1}
+            AND sau.lido_em IS NULL
+        ) THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(`(
+          SELECT sau.evento_em FROM solicitacao_atencoes_usuario sau
+          WHERE sau.solicitacao_id = Solicitacao.id
+            AND sau.usuario_id = ${Number(usuarioId) || -1}
+            AND sau.lido_em IS NULL
+        )`), 'DESC'],
+        [Sequelize.literal(`CASE WHEN EXISTS (
+          SELECT 1
+          FROM solicitacao_pedidos_retorno spr
+          WHERE spr.solicitacao_id = Solicitacao.id
+            AND spr.status = 'PENDENTE'
+            AND spr.setor_atual_pedido = Solicitacao.area_responsavel
+        ) THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(`(
+          SELECT MAX(spr.createdAt)
+          FROM solicitacao_pedidos_retorno spr
+          WHERE spr.solicitacao_id = Solicitacao.id
+            AND spr.status = 'PENDENTE'
+            AND spr.setor_atual_pedido = Solicitacao.area_responsavel
+        )`), 'DESC']
+      ];
+      const ordenacaoEfetiva = [
+        ...ordenacaoRetornoPendente,
+        ...(CAMPOS_ORDENAVEIS.has(colunaOrdenacaoSolicitada)
+          ? [ordenacaoColunaSolicitada, ['id', 'DESC']]
+          : ordenacaoLista)
+      ];
+
+      // Visões "Minhas pendências" e "Fila do setor" (condições AND).
+      const querMinhas = ['1', 'true', 'sim'].includes(String(minhas || '').trim().toLowerCase());
+      const querSemResponsavel = ['1', 'true', 'sim'].includes(String(sem_responsavel || '').trim().toLowerCase());
+
+      if (querMinhas) {
+        const condicoesMinhas = [
+          // responsavel ATUAL sou eu (ultimo evento de responsavel)
+          { id: { [Op.in]: Sequelize.literal(montarSubqueryResponsavelAtual(usuarioId)) } }
+        ];
+        const tokensSetorUsuario = (setorTokens || []).filter(Boolean);
+        if (tokensSetorUsuario.length > 0) {
+          // devolucao recebida: criada por mim, de volta ao meu setor apos
+          // ter sido enviada a outro setor (mesma definicao das pendencias
+          // do Hub — docs/PENDENCIAS-SQL.md)
+          condicoesMinhas.push({
+            [Op.and]: [
+              { criado_por: usuarioId },
+              { area_responsavel: { [Op.in]: tokensSetorUsuario } },
+              {
+                id: {
+                  [Op.in]: Sequelize.literal(`(
+                    SELECT h.solicitacao_id FROM historicos h WHERE h.acao = 'ENVIADA_SETOR'
+                  )`)
+                }
+              }
+            ]
+          });
+        }
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({ [Op.or]: condicoesMinhas });
+      }
+
+      if (querSemResponsavel) {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          id: { [Op.notIn]: Sequelize.literal(montarSubqueryComResponsavelAtual()) }
+        });
+      }
+
+      // Visão nomeada das pendências do Hub (?visao=...): aplica o MESMO
+      // recorte SQL do contador do cartão, aditivamente sobre o escopo —
+      // número do cartão e lista saem do mesmo WHERE (pendenciasVisoes).
+      // Os tokens de setor vêm do PRÓPRIO escopo (contexto.setorTokens):
+      // contador e lista usam o mesmo resolvedor, por construção.
+      const visaoPendencia = String(visao || '').trim().toLowerCase();
+      if (visaoPendencia) {
+        const condicoesVisao = condicoesVisaoPendencia(visaoPendencia, {
+          usuarioId,
+          tokensSetor: setorTokens,
+          acessoGlobal: String(escopo.contexto?.perfil || '').trim().toUpperCase() === 'SUPERADMIN'
+        });
+        if (condicoesVisao === undefined) {
+          return res.status(400).json({ error: `Visão desconhecida: ${visaoPendencia}` });
+        }
+        where[Op.and] = where[Op.and] || [];
+        if (condicoesVisao === null) {
+          // Usuário sem setor: o contador nem existe — conjunto vazio.
+          where[Op.and].push({ id: -1 });
+        } else {
+          where[Op.and].push(...condicoesVisao);
+        }
+      }
+
+      // Busca única (?q=): codigo, descricao, numeros, contrato, nome da
+      // obra e do parceiro, de uma vez. Caixa/acento insensíveis pela
+      // collation utf8mb4 *_ci do banco. Os nomes físicos de tabela nas
+      // subqueries vêm dos models (getTableName) — no servidor oficial a
+      // tabela de obras é "Obras", com maiúscula (ver CONVENCAO/f58e030).
+      const buscaUnica = String(q || '').trim();
+      if (buscaUnica) {
+        const like = `%${buscaUnica}%`;
+        const likeEscapado = db.sequelize.escape(like);
+        const tabelaObras = String(Obra.getTableName());
+        const tabelaParceiros = String(Parceiro.getTableName());
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { codigo: { [Op.like]: like } },
+            { descricao: { [Op.like]: like } },
+            { numero_sienge: { [Op.like]: like } },
+            { numero_pedido: { [Op.like]: like } },
+            { codigo_contrato: { [Op.like]: like } },
+            // Variações de digitação de código ("sol 5109", "SOL5109",
+            // "5109") — o MESMO casamento flexível da busca universal:
+            // busca e lista devem achar o mesmo conjunto.
+            ...condicoesCodigoFlexivel([
+              { campo: 'codigo', sql: '`Solicitacao`.`codigo`' },
+              { campo: 'numero_sienge', sql: '`Solicitacao`.`numero_sienge`' },
+              { campo: 'numero_pedido', sql: '`Solicitacao`.`numero_pedido`' },
+              { campo: 'codigo_contrato', sql: '`Solicitacao`.`codigo_contrato`' }
+            ], buscaUnica),
+            { obra_id: { [Op.in]: Sequelize.literal(`(SELECT o.id FROM \`${tabelaObras}\` o WHERE o.nome LIKE ${likeEscapado})`) } },
+            { parceiro_id: { [Op.in]: Sequelize.literal(`(SELECT p.id FROM \`${tabelaParceiros}\` p WHERE p.nome LIKE ${likeEscapado})`) } }
+          ]
+        });
+      }
+
       /* ===============================
         4) FILTROS
       =============================== */
@@ -1902,11 +2642,12 @@ module.exports = {
             .filter(Boolean)
             .map(v => String(v).trim())));
 
-          if (valoresFiltroSetor.length > 0) {
-            where.area_responsavel = { [Op.in]: valoresFiltroSetor };
-          } else {
-            where.area_responsavel = { [Op.in]: areasSelecionadas };
-          }
+          const filtroArea = { area_responsavel: { [Op.in]: valoresFiltroSetor.length ? valoresFiltroSetor : areasSelecionadas } };
+          const setorEntrega = valoresFiltroSetor.some((v) => normalizarTokenComparacao(v) === 'COMPRAS') ? 'COMPRAS'
+            : valoresFiltroSetor.some((v) => normalizarTokenComparacao(v) === 'OBRA') ? 'OBRA' : null;
+          where[Op.and] = where[Op.and] || [];
+          where[Op.and].push(setorEntrega ? { [Op.or]: [filtroArea,
+            Sequelize.literal(require('../services/pedidoEntregaService').sqlPendenciaEntrega(setorEntrega))] } : filtroArea);
         }
       }
       if (status) {
@@ -2070,7 +2811,7 @@ module.exports = {
         if (isDataIsoValida(dataVencimentoInicioStr)) {
           where[Op.and].push(
             Sequelize.where(
-              Sequelize.fn('DATE', Sequelize.col('Solicitacao.data_vencimento')),
+              Sequelize.fn('DATE', Sequelize.literal(sqlVencimentoEfetivoSolicitacao())),
               { [Op.gte]: dataVencimentoInicioStr }
             )
           );
@@ -2078,7 +2819,7 @@ module.exports = {
         if (isDataIsoValida(dataVencimentoFimStr)) {
           where[Op.and].push(
             Sequelize.where(
-              Sequelize.fn('DATE', Sequelize.col('Solicitacao.data_vencimento')),
+              Sequelize.fn('DATE', Sequelize.literal(sqlVencimentoEfetivoSolicitacao())),
               { [Op.lte]: dataVencimentoFimStr }
             )
           );
@@ -2089,7 +2830,7 @@ module.exports = {
           where[Op.and] = where[Op.and] || [];
           where[Op.and].push(
             Sequelize.where(
-              Sequelize.fn('DATE', Sequelize.col('Solicitacao.data_vencimento')),
+              Sequelize.fn('DATE', Sequelize.literal(sqlVencimentoEfetivoSolicitacao())),
               dataVencimentoStr
             )
           );
@@ -2185,56 +2926,17 @@ module.exports = {
           .filter(Boolean)
       )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
-      const usuarioComRegraMistaPorTipo =
-        perfil === 'USUARIO' &&
-        !adminGEO &&
-        !isSetorObra;
 
       if (usuarioComRegraMistaPorTipo) {
         const solicitacoesFiltro = await Solicitacao.findAll({
           where,
           attributes: ['id', 'obra_id', 'area_responsavel', 'tipo_solicitacao_id', 'criado_por', 'status_global', 'createdAt'],
-          order: [['createdAt', 'DESC']]
+          order: ordenacaoEfetiva
         });
         let resultadoFiltro = solicitacoesFiltro.map(item => item.toJSON());
 
-        const idsResultado = resultadoFiltro.map(item => item.id);
-        const historicosUsuario = idsResultado.length > 0
-          ? await Historico.findAll({
-              where: {
-                solicitacao_id: { [Op.in]: idsResultado },
-                usuario_responsavel_id: usuarioId,
-                acao: { [Op.in]: ['RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU'] }
-              },
-              attributes: ['solicitacao_id']
-            })
-          : [];
-        const idsComInteracaoUsuario = new Set(
-          historicosUsuario.map(h => Number(h.solicitacao_id))
-        );
 
-        const regrasTiposPorSetor = await obterTiposSolicitacaoPorSetorConfig();
-        const setoresUsuarioUpper = new Set(setorTokens.map(t => String(t || '').toUpperCase()));
-
-        resultadoFiltro = resultadoFiltro.filter(item => {
-          const areaItem = String(item.area_responsavel || '').trim().toUpperCase();
-          const tipoId = Number(item.tipo_solicitacao_id);
-          const itemEhDoSetorUsuario = setoresUsuarioUpper.has(areaItem);
-          const itemCriadoPeloUsuario = Number(item.criado_por) === Number(usuarioId);
-          const itemComInteracaoUsuario = idsComInteracaoUsuario.has(Number(item.id));
-
-          if (!itemEhDoSetorUsuario) return true;
-          if (itemCriadoPeloUsuario || itemComInteracaoUsuario) return true;
-
-          const regraTipo = obterRegrasTipoPorTokensSetor(regrasTiposPorSetor, [areaItem]);
-          let modoPorTipo = null;
-          if (regraTipo?.modos && Number.isInteger(tipoId) && tipoId > 0) {
-            modoPorTipo = regraTipo.modos[String(tipoId)] || null;
-          }
-
-          const modoEfetivo = String(modoPorTipo || (setorTodosVisiveis ? 'TODOS_VISIVEIS' : 'ADMIN_PRIMEIRO')).toUpperCase();
-          return modoEfetivo === 'TODOS_VISIVEIS';
-        });
+        resultadoFiltro = await filtrarRegraMistaPorTipo(resultadoFiltro, escopo.contexto);
 
         totalRegistros = resultadoFiltro.length;
 
@@ -2258,9 +2960,12 @@ module.exports = {
           const ordemPagina = new Map(idsPagina.map((id, index) => [id, index]));
           const solicitacoesPagina = await Solicitacao.findAll({
             where: { id: { [Op.in]: idsPagina } },
+            attributes: {
+              include: [[Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']]
+            },
             include: includeBase
           });
-          resultado = await montarResumoSolicitacoesLista(solicitacoesPagina);
+          resultado = await montarResumoSolicitacoesLista(solicitacoesPagina, usuarioId);
           resultado.sort(
             (a, b) =>
               (ordemPagina.get(Number(a.id)) || 0) -
@@ -2295,13 +3000,16 @@ module.exports = {
         totalRegistros = await Solicitacao.count({ where });
         const solicitacoes = await Solicitacao.findAll({
           where,
+          attributes: {
+            include: [[Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']]
+          },
           include: includeBase,
-          order: [['createdAt', 'DESC']],
+          order: ordenacaoEfetiva,
           ...(paginacaoSolicitada
             ? { limit: limitePorPagina, offset }
             : {})
         });
-        resultado = await montarResumoSolicitacoesLista(solicitacoes);
+        resultado = await montarResumoSolicitacoesLista(solicitacoes, usuarioId);
 
       }
 
@@ -2354,6 +3062,58 @@ module.exports = {
     );
   },
 
+  async usuariosAtivosCadastroObra(req, res) {
+    try {
+      const usuarios = await User.findAll({
+        where: { ativo: true },
+        attributes: ['id', 'nome'],
+        order: [['nome', 'ASC'], ['id', 'ASC']]
+      });
+      return res.json(usuarios);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao listar usuarios ativos.' });
+    }
+  },
+
+  async saldoDespesaEventual(req, res) {
+    try {
+      const obraId = Number(req.query?.obra_id);
+      if (!Number.isInteger(obraId) || obraId <= 0) {
+        return res.status(400).json({ error: 'Informe uma obra valida.' });
+      }
+
+      const obra = await Obra.findByPk(obraId, { attributes: ['id', 'tipo_centro_custo'] });
+      if (!obra || !isObraCentroCusto(obra.tipo_centro_custo)) {
+        return res.status(404).json({ error: 'Obra nao encontrada.' });
+      }
+
+      const areaUsuario = await obterAreaUsuario(req);
+      const tokensSetorUsuario = await obterTokensSetorUsuario(req, areaUsuario);
+      const setoresCriacaoTodasObras = await obterSetoresCriacaoTodasObras();
+      const perfilUsuario = String(req.user?.perfil || '').trim().toUpperCase();
+      const podeCriarEmTodasObras = tokensSetorUsuario.some((token) => (
+        setoresCriacaoTodasObras.includes(String(token || '').trim().toUpperCase())
+      ));
+
+      if (perfilUsuario !== 'SUPERADMIN' && !podeCriarEmTodasObras) {
+        const { UsuarioObra } = require('../models');
+        const vinculo = await UsuarioObra.findOne({
+          where: { user_id: req.user.id, obra_id: obraId },
+          attributes: ['id']
+        });
+        if (!vinculo) return res.status(403).json({ error: 'Acesso negado para esta obra.' });
+      }
+
+      return res.json(await obterSaldoDespesaEventualPorObra(obraId));
+    } catch (error) {
+      console.error(error);
+      return res.status(Number(error?.statusCode) || 500).json({
+        error: error?.message || 'Erro ao calcular o saldo de Despesa Eventual.'
+      });
+    }
+  },
+
   // =====================================================
   // CRIAR SOLICITACAO
   // =====================================================
@@ -2370,10 +3130,17 @@ module.exports = {
         tipo_macro_id,
         tipo_sub_id,
         descricao,
+        justificativa,
         valor,
         parceiro_id,
+        favorecido_id,
+        forma_pagamento_id,
+        favorecido_chave_pix,
+        dados_pagamento,
+        boleto_anexo_nome,
+        despesa_eventual_declaracoes,
+        cartao_recarga_id,
         apropriacao_id,
-        area_responsavel,
         codigo_contrato,
         contrato_id,
         data_vencimento,
@@ -2382,34 +3149,57 @@ module.exports = {
         data_fim_medicao,
         itens_apropriacao,
         apropriacoes_rateio,
-        ref_contrato_abertura
+        distribuicao_centro_custo: distribuicaoCentroCusto,
+        ref_contrato_abertura,
+        // Wireframe 2: parcelas do contrato do fluxo novo que esta medicao consome.
+        medicao_parcelas: medicaoParcelas,
+        // Dados de pagamento DA MEDICAO (itens 5 e 9, 23/08): favorecido, chave PIX, forma de
+        // pagamento, contato e o aceite. Sairam da abertura do contrato e vieram para ca.
+        medicao_pagamento: medicaoPagamento,
+        cadastro_obra_usuario_ids: cadastroObraUsuarioIds,
+        cadastro_obra_dados: cadastroObraDados,
+        cadastro_obra_documentos_nomes: cadastroObraDocumentosNomes,
+        // O upload continua no endpoint historico logo depois da criacao; estes nomes provam que
+        // o formulario tinha ao menos um arquivo selecionado antes de registrar a medicao.
+        anexos_pendentes_nomes: anexosPendentesNomes
       } = req.body;
 
-      if (!obra_id || !tipo_solicitacao_id || !area_responsavel) {
+      if (!tipo_solicitacao_id) {
         return res.status(400).json({
           error: 'Campos obrigatorios nao informados'
         });
       }
 
-      const setorDestinoSelecionado = await resolveSetorReferencia(area_responsavel, {
-        attributes: ['id', 'nome', 'codigo', 'eh_setor_obra', 'eh_setor_financeiro', 'eh_setor_compras', 'eh_setor_geo', 'eh_setor_administrativo']
-      });
-      if (!setorDestinoSelecionado) {
-        return res.status(400).json({
-          error: 'Setor responsavel nao encontrado no cadastro.'
-        });
+      const tipoSelecionado = await TipoSolicitacao.findByPk(tipo_solicitacao_id);
+      if (!tipoSelecionado) {
+        return res.status(400).json({ error: 'Tipo de solicitacao nao encontrado.' });
       }
-      const areaResponsavelPersistida = resolveSetorPersistenciaValue(setorDestinoSelecionado, area_responsavel);
+      const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
+      const usaFluxoCadastroObra = comportamentoBase.usa_fluxo_cadastro_obra === true;
+      if (!usaFluxoCadastroObra && !obra_id) {
+        return res.status(400).json({ error: 'Selecione a Obra ou Centro de Custo da solicitacao.' });
+      }
 
-      const obraSelecionada = await Obra.findByPk(obra_id, {
-        attributes: ['id', 'codigo', 'nome', 'classificacao', 'tipo_centro_custo']
+      // O destino inicial nao e uma escolha do navegador. Centralizar a resolucao no backend
+      // impede payload forjado e mantem todas as entradas da Nova Solicitacao em GEO/PENDENTE.
+      // `area_responsavel` continua persistida porque sustenta fila, retorno, historico e acesso.
+      const destinoInicial = await resolverDestinoInicialNovaSolicitacao();
+      const setorDestinoSelecionado = destinoInicial.setor;
+      const areaResponsavelPersistida = destinoInicial.areaResponsavel;
+      const area_responsavel = areaResponsavelPersistida;
+
+      const obraSelecionada = usaFluxoCadastroObra ? null : await Obra.findByPk(obra_id, {
+        attributes: ['id', 'codigo', 'nome', 'ativo', 'classificacao', 'tipo_centro_custo']
       });
-      if (!obraSelecionada) {
+      if (!usaFluxoCadastroObra && !obraSelecionada) {
         return res.status(400).json({ error: 'Obra/Centro de custo informado nao foi encontrado.' });
       }
-      const registroSelecionadoEhObra = isObraCentroCusto(obraSelecionada.tipo_centro_custo);
+      const registroSelecionadoEhObra = Boolean(obraSelecionada && isObraCentroCusto(obraSelecionada.tipo_centro_custo));
+      const areasConfiguracaoCampos = [
+        ...(obraSelecionada ? obterAreasConfiguracaoCamposDestino(obraSelecionada) : []),
+        ...obterAreasConfiguracaoCamposDestinoInicial(destinoInicial)
+      ];
 
-      const regrasAreasPorSetor = await obterRegrasAreasPorSetorOrigem();
       const areaUsuario = await obterAreaUsuario(req);
       const tokensSetorUsuario = await obterTokensSetorUsuario(req, areaUsuario);
       const perfilUsuario = String(req.user?.perfil || '').trim().toUpperCase();
@@ -2418,7 +3208,7 @@ module.exports = {
         setoresCriacaoTodasObras.includes(String(token || '').trim().toUpperCase())
       );
 
-      if (perfilUsuario !== 'SUPERADMIN' && !podeCriarEmTodasObras) {
+      if (!usaFluxoCadastroObra && perfilUsuario !== 'SUPERADMIN' && !podeCriarEmTodasObras) {
         const { UsuarioObra } = require('../models');
         const vinculo = await UsuarioObra.findOne({
           where: {
@@ -2434,41 +3224,98 @@ module.exports = {
         }
       }
 
-      const destinosPermitidos = new Set();
-      tokensSetorUsuario.forEach(token => {
-        const lista = regrasAreasPorSetor[String(token || '').toUpperCase()] || [];
-        lista.forEach(item => destinosPermitidos.add(String(item || '').toUpperCase()));
-      });
-
-      if (destinosPermitidos.size > 0) {
-        const destino = String(areaResponsavelPersistida || '').trim().toUpperCase();
-        if (!destinosPermitidos.has(destino)) {
-          return res.status(403).json({
-            error: 'Area responsavel nao permitida para o seu setor.'
-          });
-        }
-      }
-
-      const tipoSelecionado = await TipoSolicitacao.findByPk(tipo_solicitacao_id);
-      if (!tipoSelecionado) {
+      // PI-16: tipo de USO DO SISTEMA nao pode ser aberto pela Nova Solicitacao — nem pela tela,
+      // nem por chamada direta a esta rota. Esconder so na tela seria um cadeado na porta da
+      // frente com a janela aberta; a solicitacao desse tipo nasce pelo servico que a cria
+      // (hoje, o aditivo de contrato legado).
+      if (normalizeTipoSolicitacaoBehavior(tipoSelecionado)?.somente_sistema === true) {
         return res.status(400).json({
-          error: 'Tipo de solicitacao nao encontrado.'
+          error: 'Este tipo de solicitacao e de uso do sistema e nao pode ser aberto manualmente.'
         });
       }
-      const tiposPorSetorConfig = await obterTiposSolicitacaoPorSetorConfig();
-      const regraTiposSetorDestino = obterRegrasTipoPorTokensSetor(
-        tiposPorSetorConfig,
-        buildSetorComparisonTokens(setorDestinoSelecionado)
-      );
-      if (regraTiposSetorDestino && Array.isArray(regraTiposSetorDestino.tipos) && regraTiposSetorDestino.tipos.length > 0) {
-        const tipoIdNum = Number(tipo_solicitacao_id);
-        if (!regraTiposSetorDestino.tipos.includes(tipoIdNum)) {
-          return res.status(403).json({
-            error: 'Tipo de solicitacao nao permitido para o setor selecionado.'
-          });
-        }
+      if (!usaFluxoCadastroObra) await assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado);
+      if ([tipoSelecionado.nome, tipoSelecionado.codigo_interno].some((nome) => ['COMPRA_DIRETA', 'SOLICITACAO_DE_COMPRA', 'SOLICITACAO_COMPRA'].includes(normalizarTokenComparacao(nome)))) {
+        await require('../services/pedidoEntregaService').assertObraPodeCriarCompra(obra_id);
       }
-      const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
+      const usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
+      const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado);
+      if (
+        (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao) &&
+        setorDestinoSelecionado.eh_setor_geo !== true &&
+        ![
+          setorDestinoSelecionado.codigo,
+          setorDestinoSelecionado.nome,
+          areaResponsavelPersistida
+        ].some((token) => isGeoSetorToken(token))
+      ) {
+        return res.status(400).json({
+          error: `${tipoSelecionado.nome || 'Este tipo de solicitacao'} deve ser enviado para o setor GERENCIA DE PROCESSOS.`
+        });
+      }
+      let pessoasCadastroObra = [];
+      let dadosCadastroObraValidados = null;
+      if (usaFluxoCadastroObra) {
+        const tipoObra = String(cadastroObraDados?.tipo_obra || '').trim().toUpperCase();
+        const faseObra = String(cadastroObraDados?.fase_obra || '').trim().toUpperCase();
+        const valorObra = Number(cadastroObraDados?.valor_obra);
+        const responsavelTecnicoIdLegado = Number(cadastroObraDados?.responsavel_tecnico_id);
+        let responsavelTecnico = String(cadastroObraDados?.responsavel_tecnico || '').trim();
+        const endereco = String(cadastroObraDados?.endereco || '').trim();
+        const usuarioIds = [...new Set(
+          (Array.isArray(cadastroObraUsuarioIds) ? cadastroObraUsuarioIds : [])
+            .map(Number)
+            .filter((id) => Number.isInteger(id) && id > 0)
+        )];
+        if (!['PUBLICA', 'PRIVADA', 'PROPRIA'].includes(tipoObra)) {
+          return res.status(400).json({ error: 'Selecione o tipo da obra: Publica, Privada ou Propria.' });
+        }
+        if (!['PRE_OBRA', 'OBRA_INICIADA'].includes(faseObra)) {
+          return res.status(400).json({ error: 'Selecione a fase da obra.' });
+        }
+        if (!Number.isFinite(valorObra) || valorObra <= 0) {
+          return res.status(400).json({ error: 'Informe um valor valido para a obra.' });
+        }
+        if (!endereco) {
+          return res.status(400).json({ error: 'Informe o endereco da obra.' });
+        }
+        if (!responsavelTecnico && Number.isInteger(responsavelTecnicoIdLegado) && responsavelTecnicoIdLegado > 0) {
+          const responsavelLegado = await User.findOne({
+            where: { id: responsavelTecnicoIdLegado, ativo: true },
+            attributes: ['id', 'nome']
+          });
+          responsavelTecnico = String(responsavelLegado?.nome || '').trim();
+        }
+        if (!responsavelTecnico) {
+          return res.status(400).json({ error: 'Informe o responsavel tecnico da obra.' });
+        }
+        if (usuarioIds.length === 0) {
+          return res.status(400).json({ error: 'Selecione ao menos um usuario com acesso a obra.' });
+        }
+        pessoasCadastroObra = await User.findAll({
+          where: { id: { [Op.in]: usuarioIds }, ativo: true },
+          attributes: ['id', 'nome', 'perfil'],
+          order: [['nome', 'ASC'], ['id', 'ASC']]
+        });
+        if (pessoasCadastroObra.length !== usuarioIds.length) {
+          return res.status(400).json({ error: 'Um ou mais usuarios selecionados nao existem ou estao inativos.' });
+        }
+        const temPlanilha = (Array.isArray(anexosPendentesNomes) ? anexosPendentesNomes : [])
+          .some((nome) => String(nome || '').trim());
+        if (faseObra === 'OBRA_INICIADA' && !temPlanilha) {
+          return res.status(400).json({ error: 'Anexe a planilha orcamentaria para uma obra iniciada.' });
+        }
+        dadosCadastroObraValidados = {
+          tipo_obra: tipoObra,
+          fase_obra: faseObra,
+          valor_obra: valorObra,
+          responsavel_tecnico: responsavelTecnico.slice(0, 160),
+          responsavel_tecnico_id: Number.isInteger(responsavelTecnicoIdLegado) && responsavelTecnicoIdLegado > 0
+            ? responsavelTecnicoIdLegado
+            : null,
+          endereco,
+          documentacao_pendente: faseObra === 'PRE_OBRA'
+        };
+      }
       const [contratosDisponiveis, apropriacoesDisponiveis] = await Promise.all([
         isModuleEnabled('CONTRATOS'),
         isModuleEnabled('OBRAS')
@@ -2477,6 +3324,9 @@ module.exports = {
         contratos: contratosDisponiveis,
         apropriacoes: apropriacoesDisponiveis
       });
+      const rotuloDataSolicitacao = obterRotuloDataSolicitacao(comportamentoTipo, {
+        recargaCartao: usaFluxoRecargaCartao
+      });
       const configCamposNovaSolicitacao = await obterConfigCamposNovaSolicitacao();
       const camposNovaSolicitacao = resolverCamposNovaSolicitacao(
         comportamentoTipo,
@@ -2484,11 +3334,56 @@ module.exports = {
         tipo_solicitacao_id,
         {
           apropriacoesDisponiveis,
-          areaResponsavel: areaResponsavelPersistida
+          areaResponsavel: areasConfiguracaoCampos,
+          // Regra do subtipo tem precedencia sobre a do tipo (escopo de contratos 3.1-3.3).
+          tipoSubId: tipo_sub_id
         }
       );
-      const campoVisivel = (campo) => camposNovaSolicitacao?.[campo]?.visivel !== false;
-      const campoObrigatorio = (campo) => Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
+      const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento']);
+      const campoVisivel = (campo) => (
+        (usaFluxoRecargaCartao && camposFixosRecargaCartao.has(campo))
+        || (!usaFluxoRecargaCartao && camposNovaSolicitacao?.[campo]?.visivel !== false)
+      );
+      const exibeFormaPagamentoNaNovaSolicitacao = campoVisivel('forma_pagamento')
+        && comportamentoTipo.usa_fluxo_contrato_novo !== true;
+      const usaApropriacaoAutomaticaObra = comportamentoTipo.usa_apropriacao_automatica_obra === true;
+      const tipoEhDeMedicao = Boolean(
+        comportamentoTipo.mostrar_periodo_medicao || comportamentoTipo.exige_periodo_medicao
+      );
+      const nomesAnexosPendentes = Array.isArray(anexosPendentesNomes)
+        ? anexosPendentesNomes.map((nome) => String(nome || '').trim()).filter(Boolean)
+        : [];
+
+      // MEDICAO DE CONTRATO DO FLUXO NOVO NAO TEM VALOR, DESCRICAO NEM VENCIMENTO PROPRIOS (20/08).
+      //
+      // Ela nao cria solicitacao (PI-16): mais abaixo esta requisicao e interceptada e vira um
+      // evento da solicitacao unica do contrato. O valor sai da soma das parcelas marcadas e o
+      // vencimento sai de cada parcela — os tres campos do formulario eram coletados, validados e
+      // **descartados**.
+      //
+      // A dispensa mora AQUI, e nao so na tela, porque estas validacoes rodam ANTES da
+      // interceptacao: com a tela parando de enviar e a checagem no lugar, toda medicao passaria a
+      // responder 400. Foi exatamente assim que a abertura de contrato acima do limite ficou
+      // impossivel por uma rodada — a exigencia mudou de lugar e a checagem antiga ficou.
+      //
+      // Contrato LEGADO nao entra: a medicao dele cria solicitacao propria, e la os tres valem.
+      // Consulta propria, e curta, em vez de subir o carregamento de `contratoAlvo` para ca: ele
+      // vem com uma checagem de contrato inativo/nao aprovado que responde 400 por conta propria, e
+      // adiantar isso trocaria a ORDEM das mensagens de erro que a tela ja mostra hoje. Só roda
+      // quando ha parcelas de medicao no corpo.
+      let ehMedicaoFluxoNovo = false;
+      if (Array.isArray(medicaoParcelas) && medicaoParcelas.length > 0 && contrato_id) {
+        const contratoDaMedicao = await Contrato.findByPk(contrato_id, {
+          attributes: ['id', 'fluxo_novo', 'solicitacao_id']
+        });
+        ehMedicaoFluxoNovo = Boolean(contratoDaMedicao?.fluxo_novo && contratoDaMedicao?.solicitacao_id);
+      }
+
+      const campoObrigatorio = (campo) => {
+        if (ehMedicaoFluxoNovo && ['valor', 'descricao', 'data_vencimento'].includes(campo)) return false;
+        if (usaFluxoRecargaCartao) return camposFixosRecargaCartao.has(campo);
+        return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
+      };
       const rateioApropriacoes = campoVisivel('contrato')
         ? normalizarApropriacoesRateio(apropriacoes_rateio)
         : [];
@@ -2499,13 +3394,47 @@ module.exports = {
         });
       }
 
-      if (campoObrigatorio('descricao') && !descricao) {
+      if (campoObrigatorio('descricao') && !String(descricao || '').trim()) {
         return res.status(400).json({
-          error: 'Campos obrigatorios nao informados'
+          error: usaFluxoCadastroObra
+            ? 'Informe o nome da obra.'
+            : 'Campos obrigatorios nao informados'
+        });
+      }
+      if (campoObrigatorio('justificativa') && !String(justificativa || '').trim()) {
+        return res.status(400).json({ error: 'Informe a justificativa da solicitacao.' });
+      }
+      if (campoObrigatorio('forma_pagamento') && !forma_pagamento_id) {
+        return res.status(400).json({ error: 'Selecione a forma de pagamento.' });
+      }
+      // Quando o tipo possui forma de pagamento, a regra de anexo depende da forma ativa e e
+      // validada depois que ela for carregada. Antecipar a exigencia aqui faria o boleto pedir
+      // dois arquivos: o proprio boleto e um anexo generico redundante.
+      if (
+        (tipoEhDeMedicao || (!usaFluxoCadastroObra && !exibeFormaPagamentoNaNovaSolicitacao && campoObrigatorio('anexos')))
+        && nomesAnexosPendentes.length === 0
+      ) {
+        return res.status(400).json({
+          error: tipoEhDeMedicao
+            ? 'Anexe ao menos um arquivo para enviar a solicitacao de medicao.'
+            : (usaFluxoCadastroObra
+              ? 'Anexe a planilha orcamentaria da obra.'
+              : 'Anexe ao menos um comprovante da despesa.')
         });
       }
 
-      if (campoObrigatorio('subtipo') && !tipo_sub_id) {
+      let declaracoesDespesaEventualNormalizadas = null;
+      if (usaFluxoDespesaEventual) {
+        declaracoesDespesaEventualNormalizadas = validarDeclaracoesDespesaEventual(
+          despesa_eventual_declaracoes
+        );
+      }
+
+      // O SUBTIPO SAI DO CONTRATO DO FLUXO NOVO (item 1, 23/08): pelo tipo CONTRATO so existe a
+      // abertura, entao ele nao separava nada. A tela deixou de mostrar o campo, e exigir aqui
+      // tornaria a criacao impossivel — foi assim que a abertura acima do limite ficou travada por
+      // uma rodada, quando a exigencia mudou de lugar e a checagem antiga ficou.
+      if (campoObrigatorio('subtipo') && !comportamentoTipo.usa_fluxo_contrato_novo && !tipo_sub_id) {
         return res.status(400).json({
           error: 'Para continuar, selecione o subtipo.'
         });
@@ -2514,9 +3443,16 @@ module.exports = {
         const subtipoSelecionado = await TipoSubContrato.findOne({
           where: {
             id: tipo_sub_id,
-            tipo_macro_id: tipo_solicitacao_id,
             ativo: true
-          }
+          },
+          include: [{
+            model: TipoSolicitacao,
+            as: 'tiposSolicitacao',
+            where: { id: tipo_solicitacao_id },
+            attributes: ['id'],
+            through: { attributes: [] },
+            required: true
+          }]
         });
         if (!subtipoSelecionado) {
           return res.status(400).json({
@@ -2531,8 +3467,11 @@ module.exports = {
       }
       if (campoObrigatorio('data_vencimento') && !data_vencimento) {
         return res.status(400).json({
-          error: 'Informe a data de vencimento.'
+          error: `Informe a ${rotuloDataSolicitacao.toLocaleLowerCase('pt-BR')}.`
         });
+      }
+      if (usaFluxoRecargaCartao && !cartao_recarga_id) {
+        return res.status(400).json({ error: 'Selecione o cartao que recebera a recarga.' });
       }
       if (campoObrigatorio('data_demissao') && !data_demissao) {
         return res.status(400).json({
@@ -2543,7 +3482,7 @@ module.exports = {
         const vencimentoStr = String(data_vencimento).trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimentoStr)) {
           return res.status(400).json({
-            error: 'Data de vencimento invalida. Use o formato YYYY-MM-DD.'
+            error: `${rotuloDataSolicitacao} invalida. Use o formato YYYY-MM-DD.`
           });
         }
 
@@ -2552,7 +3491,7 @@ module.exports = {
 
         if (vencimentoStr < hojeStr) {
           return res.status(400).json({
-            error: 'A data de vencimento nao pode ser menor que a data atual.'
+            error: `A ${rotuloDataSolicitacao.toLocaleLowerCase('pt-BR')} nao pode ser menor que a data atual.`
           });
         }
       }
@@ -2568,6 +3507,157 @@ module.exports = {
         return res.status(400).json({
           error: 'Selecione um contrato.'
         });
+      }
+
+      // Estado do contrato do fluxo novo (R2): so contrato APROVADO recebe solicitacao.
+      //
+      // O "status Previsao" do MD-6 fala do TITULO — que pode ter sido alterado por quem tem
+      // permissao —, nao de contrato pendente. Contrato nao aprovado nao se mede (decisao do
+      // cliente, 17/08). Contrato abaixo de R$ 50 mil nasce aprovado, e por isso pode ser
+      // criado e medido na sequencia.
+      //
+      // Nao toca no legado de proposito: o filtro e `fluxo_novo = true`, e os 335 contratos
+      // do banco estao em `false`, entao nenhuma solicitacao existente muda de comportamento.
+      let contratoAlvo = null;
+      if (contrato_id) {
+        contratoAlvo = await Contrato.findByPk(contrato_id, {
+          // `solicitacao_id` entra aqui porque a PI-16 decide por ele: com solicitacao-mae, a
+          // medicao vira evento dela em vez de criar solicitacao nova.
+          attributes: ['id', 'codigo', 'fluxo_novo', 'status_contrato', 'ativo', 'solicitacao_id']
+        });
+        if (contratoAlvo && contratoAlvo.fluxo_novo && (!contratoAlvo.ativo || contratoAlvo.status_contrato !== 'ATIVO')) {
+          const motivo = !contratoAlvo.ativo
+            ? 'esta inativo'
+            : contratoAlvo.status_contrato === 'REJEITADO' ? 'foi rejeitado' : 'ainda nao foi aprovado';
+          return res.status(400).json({
+            error: `O contrato ${contratoAlvo.codigo || contrato_id} ${motivo} e nao pode receber solicitacao.`
+          });
+        }
+      }
+
+      // Wireframe 2: as parcelas medidas sao conferidas ANTES de gravar a solicitacao.
+      // A criacao de solicitacao nao roda em transacao; validar aqui evita o unico cenario
+      // ruim de verdade — solicitacao criada e medicao nao aplicada, com o saldo do contrato
+      // dizendo uma coisa e as parcelas outra.
+      const itensMedicao = Array.isArray(medicaoParcelas) ? medicaoParcelas : [];
+      if (itensMedicao.length > 0) {
+        if (!contratoAlvo?.fluxo_novo) {
+          return res.status(400).json({ error: 'Parcelas de medicao so valem para contrato do fluxo novo.' });
+        }
+        try {
+          await assertPodeInteragirSolicitacao(req, contratoAlvo.solicitacao_id);
+          await validarMedicaoParcelas({ contratoId: Number(contrato_id), itens: itensMedicao });
+        } catch (erroMedicao) {
+          return res.status(Number(erroMedicao.statusCode) || 400).json({
+            error: erroMedicao.message,
+            code: erroMedicao.code || undefined
+          });
+        }
+      }
+
+      // MD-8: periodo da medicao. `fim >= inicio` vale para qualquer contrato; a checagem de
+      // sobreposicao so para o fluxo novo — ver a justificativa no servico (o legado tem 375
+      // pares sobrepostos hoje, e bloquear isso quebraria pratica corrente).
+      if (campoVisivel('periodo_medicao') && data_inicio_medicao && data_fim_medicao) {
+        try {
+          await validarPeriodoMedicao({
+            contratoId: contrato_id || null,
+            dataInicio: data_inicio_medicao,
+            dataFim: data_fim_medicao,
+            verificarSobreposicao: Boolean(contratoAlvo?.fluxo_novo)
+          });
+        } catch (erroPeriodo) {
+          return res.status(Number(erroPeriodo.statusCode) || 400).json({ error: erroPeriodo.message });
+        }
+      }
+
+      // PI-16: MEDICAO DE CONTRATO DO FLUXO NOVO NAO CRIA SOLICITACAO.
+      //
+      // Ela passa a ser um EVENTO da solicitacao unica do contrato. Um contrato com 19 medicoes
+      // tinha 19 solicitacoes; agora tem uma, e a unidade de aprovacao e pagamento e o TITULO.
+      //
+      // A interceptacao fica AQUI, depois de toda a validacao e antes de qualquer gravacao, para
+      // nao existir o meio-termo de "solicitacao criada e medicao nao aplicada" — que e
+      // exatamente o cenario que o comentario da validacao acima diz querer evitar.
+      //
+      // O contrato LEGADO nao entra aqui: ele nao tem solicitacao-mae, e sua medicao segue
+      // criando solicitacao propria, como as 665 do historico.
+      if (itensMedicao.length > 0 && contratoAlvo?.fluxo_novo && contratoAlvo?.solicitacao_id) {
+        try {
+          const registro = await registrarMedicaoDoContrato({
+            contratoId: Number(contrato_id),
+            itens: itensMedicao,
+            periodoInicio: data_inicio_medicao || null,
+            periodoFim: data_fim_medicao || null,
+            pagamento: {
+              ...(medicaoPagamento || {}),
+              anexos_pendentes_nomes: nomesAnexosPendentes
+            },
+            usuarioId: Number(req.user.id)
+          });
+
+          // A medicao entra na linha do tempo da solicitacao do contrato. `medicao_id` e o que
+          // permite ao modal do titulo mostrar so os comentarios daquela medicao.
+          await Historico.create({
+            solicitacao_id: contratoAlvo.solicitacao_id,
+            medicao_id: registro.medicao.id,
+            usuario_responsavel_id: Number(req.user.id),
+            // `historicos.setor` e NOT NULL — recuo na area da solicitacao do contrato.
+            setor: area_responsavel || contratoAlvo.area_responsavel || '-',
+            acao: 'MEDICAO_REGISTRADA',
+            // A SOBRA entra no texto quando existe: medindo a ultima parcela livre por menos que o
+            // previsto, a diferenca nao tem para onde ir e vira saldo do contrato (decisao do
+            // cliente, 21/08). Sem escrever aqui, ela apareceria so como um numero a mais no saldo e
+            // ninguem saberia de qual medicao veio.
+            descricao: `Medicao ${registro.medicao.numero} do contrato ${contratoAlvo.codigo}: `
+              + `${registro.parcelas_medidas} parcela(s), total R$ ${Number(registro.total_medido).toFixed(2)}`
+              + (Number(registro.sobra || 0) > 0
+                ? `. O contrato nao usou R$ ${Number(registro.sobra).toFixed(2)}, que ficam como saldo ate o encerramento`
+                : ''),
+            metadata: JSON.stringify({
+              medicao_id: registro.medicao.id,
+              medicao_numero: registro.medicao.numero,
+              contrato_id: Number(contrato_id),
+              periodo_inicio: registro.medicao.periodo_inicio,
+              periodo_fim: registro.medicao.periodo_fim,
+              total_medido: registro.total_medido,
+              sobra: Number(registro.sobra || 0)
+            })
+          });
+
+          // Responde no MESMO formato da criacao normal — a solicitacao achatada — porque a tela
+          // le `solicitacao.id` direto e navega para o detalhe. Aqui ela navega para a solicitacao
+          // DO CONTRATO, que e exatamente onde a medicao acabou de aparecer.
+          const solicitacaoDoContrato = await Solicitacao.findByPk(contratoAlvo.solicitacao_id);
+          // A medicao e criada na solicitacao do contrato e, no mesmo ato, segue de OBRA para GEO.
+          // O upload ocorre logo depois deste POST; sem uma autorizacao curta, ele seria recusado
+          // porque o criador ja nao esta no setor atual da solicitacao. O token vale apenas para
+          // os tipos efetivamente selecionados e expira conforme o fluxo normal de criacao.
+          const tiposUploadInicialMedicao = [];
+          if (String(boleto_anexo_nome || '').trim()) tiposUploadInicialMedicao.push('BOLETO');
+          if (nomesAnexosPendentes.length > 0) tiposUploadInicialMedicao.push('SOLICITACAO');
+          const criacaoUploadTokenMedicao = gerarTokenUploadCriacaoSolicitacao({
+            solicitacaoId: contratoAlvo.solicitacao_id,
+            usuarioId: Number(req.user.id),
+            tipos: tiposUploadInicialMedicao
+          });
+          return res.status(201).json({
+            ...(solicitacaoDoContrato?.toJSON ? solicitacaoDoContrato.toJSON() : solicitacaoDoContrato),
+            medicao: registro.medicao,
+            parcelas_medidas: registro.parcelas_medidas,
+            total_medido: registro.total_medido,
+            // Quanto o contrato deixou de usar nesta medicao (21/08). Sem devolver aqui, a tela nao
+            // teria como avisar que sobrou — o numero so apareceria no saldo, sem explicacao.
+            sobra: Number(registro.sobra || 0),
+            // Deixa explicito para quem consumir: nao houve solicitacao nova (PI-16).
+            criou_solicitacao: false,
+            ...(criacaoUploadTokenMedicao
+              ? { criacao_upload_token: criacaoUploadTokenMedicao }
+              : {})
+          });
+        } catch (erroMedicao) {
+          return res.status(Number(erroMedicao.statusCode) || 400).json({ error: erroMedicao.message });
+        }
       }
       if (campoObrigatorio('itens_apropriacao') && !itens_apropriacao && rateioApropriacoes.length === 0) {
         return res.status(400).json({
@@ -2602,7 +3692,19 @@ module.exports = {
         });
       }
 
-      if (registroSelecionadoEhObra && campoVisivel('apropriacao_principal') && apropriacao_id !== undefined && apropriacao_id !== null && apropriacao_id !== '') {
+      if (usaApropriacaoAutomaticaObra) {
+        if (!registroSelecionadoEhObra) {
+          return res.status(400).json({
+            error: 'Este tipo de solicitacao exige uma obra; centros de custo nao participam da apropriacao automatica.'
+          });
+        }
+        const resolvido = await resolverApropriacaoPadrao({
+          obraId: obra_id,
+          tipoSolicitacaoId: tipo_solicitacao_id,
+          exigir: true
+        });
+        apropriacao = resolvido.apropriacao;
+      } else if (registroSelecionadoEhObra && campoVisivel('apropriacao_principal') && apropriacao_id !== undefined && apropriacao_id !== null && apropriacao_id !== '') {
         apropriacao = await Apropriacao.findByPk(Number(apropriacao_id), {
           attributes: ['id', 'obra_id', 'codigo', 'descricao', 'somadora', 'macro_formulario', 'ativo']
         });
@@ -2721,12 +3823,15 @@ module.exports = {
       const usuarioId = req.user.id;
       const usuario = await User.findByPk(usuarioId);
       let parceiro = null;
+      let favorecido = null;
+      let formaPagamentoIdPersistida = null;
+      let formaPagamentoSelecionada = null;
 
       const permiteCredorNaSolicitacao = campoVisivel('credor') || campoVisivel('cadastro_credor');
       const opcoesNovaSolicitacao = obterOpcoesNovaSolicitacao(
         configCamposNovaSolicitacao,
         tipo_solicitacao_id || tipo_macro_id,
-        area_responsavel
+        areasConfiguracaoCampos
       );
       const permiteCredorAvulsoComContrato = opcoesNovaSolicitacao.permitir_credor_avulso_com_contrato === true;
       const permiteVincularCredorPorCadastroRapido = campoVisivel('cadastro_credor') && !permiteCredorAvulsoComContrato;
@@ -2792,9 +3897,82 @@ module.exports = {
         }
       }
 
+      if (campoVisivel('forma_pagamento') && forma_pagamento_id !== undefined && forma_pagamento_id !== null && forma_pagamento_id !== '') {
+        const formaPagamentoId = Number(forma_pagamento_id);
+        const formasConfiguradas = await listarFormasDosFluxos();
+        formaPagamentoSelecionada = formasConfiguradas.formas
+          .find((forma) => Number(forma.id) === formaPagamentoId) || null;
+        if (!Number.isInteger(formaPagamentoId) || !formaPagamentoSelecionada) {
+          return res.status(400).json({ error: 'A forma de pagamento informada nao esta ativa ou liberada para este fluxo.' });
+        }
+        formaPagamentoIdPersistida = formaPagamentoId;
+      }
+
+      // Toda solicitacao que informa uma forma de pagamento precisa identificar quem recebera.
+      // Antes a obrigatoriedade implicita valia apenas para PIX, permitindo boleto e transferencia
+      // com `favorecido_id` nulo — o erro so aparecia quando o Financeiro tentava pagar.
+      const favorecidoEhObrigatorio = campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada);
+      if (favorecidoEhObrigatorio && !favorecido_id) {
+        return res.status(400).json({ error: 'Selecione o favorecido do pagamento.' });
+      }
+      if ((campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
+        favorecido = await Parceiro.findByPk(Number(favorecido_id), {
+          attributes: ['id', 'nome', 'cpf_cnpj', 'ativo']
+        });
+        if (!favorecido || favorecido.ativo === false) {
+          return res.status(400).json({ error: 'Selecione um favorecido ativo.' });
+        }
+      }
+
+      const chavePixPersistida = formaPagamentoEhPix(formaPagamentoSelecionada)
+        ? String(favorecido_chave_pix || '').trim()
+        : null;
+      if (formaPagamentoEhPix(formaPagamentoSelecionada) && !chavePixPersistida) {
+        return res.status(400).json({ error: 'Informe a chave PIX do favorecido.' });
+      }
+      if (formaPagamentoEhBoleto(formaPagamentoSelecionada) && !String(boleto_anexo_nome || '').trim()) {
+        return res.status(400).json({ error: 'Anexe o boleto para usar esta forma de pagamento.' });
+      }
+      const dadosPagamentoPersistidos = formaPagamentoSelecionada
+        && !formaPagamentoEhPix(formaPagamentoSelecionada)
+        && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
+        ? String(dados_pagamento || '').trim()
+        : null;
+      if (
+        formaPagamentoSelecionada
+        && !formaPagamentoEhPix(formaPagamentoSelecionada)
+        && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
+        && !dadosPagamentoPersistidos
+      ) {
+        return res.status(400).json({ error: 'Informe os dados para pagamento desta forma.' });
+      }
+      if (
+        exibeFormaPagamentoNaNovaSolicitacao
+        && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
+        && nomesAnexosPendentes.length === 0
+      ) {
+        return res.status(400).json({
+          error: 'Anexe ao menos um comprovante para esta forma de pagamento.'
+        });
+      }
+
       const valorPersistido = !campoVisivel('valor')
         ? null
         : (valor === '' || valor === undefined ? null : valor);
+
+      let distribuicaoCentroCustoValidada = null;
+      if (!usaFluxoCadastroObra && !registroSelecionadoEhObra) {
+        distribuicaoCentroCustoValidada = await validarDistribuicaoCentroCusto({
+          centroCustoId: obra_id,
+          usuario: req.user,
+          valorTotal: valorPersistido,
+          distribuicao: distribuicaoCentroCusto
+        });
+      } else if (distribuicaoCentroCusto) {
+        return res.status(400).json({
+          error: 'A distribuicao gerencial por obras e exclusiva para solicitacoes de Centro de Custo.'
+        });
+      }
 
       if (rateioApropriacoesDetalhado.length > 0) {
         const valorTotalSolicitacao = arredondarCentavos(parseDecimalOpcionalSolicitacao(valorPersistido));
@@ -2842,15 +4020,26 @@ module.exports = {
 
       const codigo = await gerarCodigoSolicitacao();
 
-      const solicitacao = await Solicitacao.create({
+      const justificativaPersistida = campoVisivel('justificativa')
+        ? (String(justificativa || '').trim() || null)
+        : null;
+      const dadosSolicitacao = {
         codigo,
-        obra_id,
+        obra_id: usaFluxoCadastroObra ? null : obra_id,
         parceiro_id: parceiro?.id || null,
         apropriacao_id: apropriacao?.id || null,
         tipo_solicitacao_id,
         tipo_macro_id: tipo_macro_id || null,
         tipo_sub_id: campoVisivel('subtipo') ? (tipo_sub_id || null) : null,
         descricao: campoVisivel('descricao') ? descricao : '',
+        justificativa: justificativaPersistida,
+        favorecido_id: favorecido?.id || null,
+        forma_pagamento_id: formaPagamentoIdPersistida,
+        favorecido_chave_pix: chavePixPersistida,
+        dados_pagamento: dadosPagamentoPersistidos,
+        despesa_eventual_declaracoes: declaracoesDespesaEventualNormalizadas
+          ? JSON.stringify(declaracoesDespesaEventualNormalizadas)
+          : null,
         valor: valorPersistido,
         area_responsavel: areaResponsavelPersistida,
         fluxo_aprovacao_diretoria: false,
@@ -2864,7 +4053,83 @@ module.exports = {
         data_fim_medicao: campoVisivel('periodo_medicao') ? (data_fim_medicao || null) : null,
         criado_por: usuarioId,
         status_global: 'PENDENTE'
+      };
+
+      const criarSolicitacaoComDistribuicao = async () => sequelize.transaction(async (transaction) => {
+        const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
+        await SolicitacaoCentroCustoDistribuicao.bulkCreate(
+          distribuicaoCentroCustoValidada.linhas.map((item) => ({
+            solicitacao_id: resultado.id,
+            centro_custo_id: Number(obra_id),
+            obra_id: item.obra_id,
+            abrangencia: item.abrangencia,
+            criterio: item.criterio,
+            percentual: item.percentual,
+            valor_distribuido: item.valor_distribuido,
+            criado_por: usuarioId
+          })),
+          { transaction }
+        );
+        return { resultado, saldo: null };
       });
+
+      const criarSolicitacaoCadastroObra = async () => sequelize.transaction(async (transaction) => {
+        const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
+        await Promise.all([
+          SolicitacaoCadastroObraUsuario.bulkCreate(
+            pessoasCadastroObra.map((pessoa) => ({
+              solicitacao_id: resultado.id,
+              usuario_id: pessoa.id,
+              criado_por: usuarioId
+            })),
+            { transaction }
+          ),
+          SolicitacaoCadastroObraDados.create({
+            solicitacao_id: resultado.id,
+            ...dadosCadastroObraValidados,
+            criado_por: usuarioId
+          }, { transaction })
+        ]);
+        return { resultado, saldo: null };
+      });
+
+      const criacao = usaFluxoCadastroObra
+        ? await criarSolicitacaoCadastroObra()
+        : usaFluxoRecargaCartao
+          ? await executarCriacaoRecargaComControle({
+            cartaoId: cartao_recarga_id,
+            user: req.user,
+            dadosSolicitacao
+          })
+          : usaFluxoDespesaEventual
+            ? await executarCriacaoDespesaEventualComControle({
+              obraId: obra_id,
+              tipoId: tipo_solicitacao_id,
+              valor: valorPersistido,
+              criar: () => Solicitacao.create(dadosSolicitacao)
+            })
+            : distribuicaoCentroCustoValidada
+              ? await criarSolicitacaoComDistribuicao()
+              : { resultado: await Solicitacao.create(dadosSolicitacao), saldo: null };
+      const solicitacao = criacao.resultado;
+
+      // Fluxos especiais possuem controle transacional proprio. Se algum deles for futuramente
+      // liberado para Centro de Custo, a classificacao gerencial ainda e persistida sem tocar nos
+      // titulos ou nos custos reais das obras.
+      if (distribuicaoCentroCustoValidada && (usaFluxoRecargaCartao || usaFluxoDespesaEventual)) {
+        await SolicitacaoCentroCustoDistribuicao.bulkCreate(
+          distribuicaoCentroCustoValidada.linhas.map((item) => ({
+            solicitacao_id: solicitacao.id,
+            centro_custo_id: Number(obra_id),
+            obra_id: item.obra_id,
+            abrangencia: item.abrangencia,
+            criterio: item.criterio,
+            percentual: item.percentual,
+            valor_distribuido: item.valor_distribuido,
+            criado_por: usuarioId
+          }))
+        );
+      }
 
       if (rateioApropriacoesDetalhado.length > 0) {
         await SolicitacaoApropriacao.bulkCreate(
@@ -2889,13 +4154,30 @@ module.exports = {
         status: 'SUCCESS',
         descricao: 'Solicitacao criada',
         metadata: {
-          obra_id,
+          obra_id: usaFluxoCadastroObra ? null : obra_id,
           tipo_solicitacao_id,
           area_responsavel: areaResponsavelPersistida,
           setor_destino_pos_aprovacao: null,
           diretoria_fluxo_codigo: null,
           parceiro_id: parceiro?.id || null,
-          apropriacao_id: apropriacao?.id || null
+          favorecido_id: favorecido?.id || null,
+          forma_pagamento_id: formaPagamentoIdPersistida,
+          despesa_eventual_saldo: criacao.saldo,
+          cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartao_recarga_id) : null,
+          apropriacao_id: apropriacao?.id || null,
+          apropriacao_origem: usaApropriacaoAutomaticaObra ? 'PADRAO_OBRA_TIPO' : 'INFORMADA',
+          distribuicao_centro_custo: distribuicaoCentroCustoValidada
+            ? distribuicaoCentroCustoValidada.linhas.map((item) => ({
+              obra_id: item.obra_id,
+              abrangencia: item.abrangencia,
+              criterio: item.criterio,
+              percentual: item.percentual,
+              valor_distribuido: item.valor_distribuido
+            }))
+            : null,
+          cadastro_obra_usuario_ids: usaFluxoCadastroObra
+            ? pessoasCadastroObra.map((pessoa) => Number(pessoa.id))
+            : null
         }
       });
 
@@ -2916,6 +4198,8 @@ module.exports = {
       if (apropriacao) {
         metadata.apropriacao_id = apropriacao.id;
         metadata.apropriacao_codigo = apropriacao.codigo;
+        metadata.apropriacao_descricao = apropriacao.descricao || null;
+        metadata.apropriacao_origem = usaApropriacaoAutomaticaObra ? 'PADRAO_OBRA_TIPO' : 'INFORMADA';
       }
       if (rateioApropriacoesDetalhado.length > 0) {
         metadata.apropriacoes_rateio = rateioApropriacoesDetalhado.map(item => ({
@@ -2933,6 +4217,22 @@ module.exports = {
       if (campoVisivel('ref_contrato_abertura') && ref_contrato_abertura) {
         metadata.ref_contrato_abertura = String(ref_contrato_abertura).trim();
       }
+      if (distribuicaoCentroCustoValidada) {
+        metadata.distribuicao_centro_custo = distribuicaoCentroCustoValidada.linhas.map((item) => ({
+          obra_id: item.obra_id,
+          abrangencia: item.abrangencia,
+          criterio: item.criterio,
+          percentual: item.percentual,
+          valor_distribuido: item.valor_distribuido
+        }));
+      }
+      if (usaFluxoCadastroObra) {
+        metadata.cadastro_obra_pessoas = pessoasCadastroObra.map((pessoa) => ({
+          id: Number(pessoa.id),
+          nome: pessoa.nome
+        }));
+        metadata.cadastro_obra_dados = dadosCadastroObraValidados;
+      }
       await Historico.create({
         solicitacao_id: solicitacao.id,
         usuario_responsavel_id: usuarioId,
@@ -2942,6 +4242,20 @@ module.exports = {
         descricao: descricaoHistorico,
         metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null
       });
+
+      // A justificativa explica a abertura e, por isso, pertence à trilha cronológica da
+      // solicitação. A coluna continua preservada como dado de domínio, mas a leitura passa a
+      // acontecer somente pelo histórico, sem duplicá-la no card de dados do detalhe.
+      if (justificativaPersistida) {
+        await Historico.create({
+          solicitacao_id: solicitacao.id,
+          usuario_responsavel_id: usuarioId,
+          setor: areaUsuario,
+          acao: 'JUSTIFICATIVA_REGISTRADA',
+          descricao: `Justificativa: ${justificativaPersistida}`,
+          metadata: JSON.stringify({ origem: 'NOVA_SOLICITACAO' })
+        });
+      }
 
       const destinatariosCriacao = await obterDestinatariosCriacaoSetor(solicitacao);
 
@@ -2953,6 +4267,23 @@ module.exports = {
         destinatarios: destinatariosCriacao,
         usarDestinatariosInformados: true
       });
+
+      if (itensMedicao.length > 0) {
+        try {
+          await aplicarMedicaoNasParcelas({
+            contratoId: Number(contrato_id),
+            solicitacaoId: solicitacao.id,
+            itens: itensMedicao,
+            usuarioId
+          });
+        } catch (erroMedicao) {
+          // Ja validado acima; chegar aqui e concorrencia (outra medicao consumiu o saldo no
+          // meio). Desfaz a solicitacao: melhor nao existir do que existir sem consumir o
+          // contrato, que e o que o saldo e o financeiro passariam a contradizer.
+          await solicitacao.destroy().catch(() => null);
+          return res.status(Number(erroMedicao.statusCode) || 400).json({ error: erroMedicao.message });
+        }
+      }
 
       // Criador ja enxerga
       await garantirVisibilidade(solicitacao.id, usuarioId);
@@ -2966,14 +4297,34 @@ module.exports = {
         }
       });
 
-      const respostaSolicitacao = solicitacao?.toJSON ? solicitacao.toJSON() : solicitacao;
+      const tiposUploadInicial = [];
+      if (String(boleto_anexo_nome || '').trim()) tiposUploadInicial.push('BOLETO');
+      if (nomesAnexosPendentes.length > 0) {
+        tiposUploadInicial.push(usaFluxoCadastroObra ? 'PLANILHA_ORCAMENTARIA' : 'SOLICITACAO');
+      }
+      if (usaFluxoCadastroObra && Array.isArray(cadastroObraDocumentosNomes)
+        && cadastroObraDocumentosNomes.length > 0) {
+        tiposUploadInicial.push('DOCUMENTO_OBRA');
+      }
+      const criacaoUploadToken = gerarTokenUploadCriacaoSolicitacao({
+        solicitacaoId: solicitacao.id,
+        usuarioId,
+        tipos: tiposUploadInicial
+      });
+      const respostaSolicitacaoBase = solicitacao?.toJSON ? solicitacao.toJSON() : solicitacao;
+      const respostaSolicitacao = criacaoUploadToken
+        ? { ...respostaSolicitacaoBase, criacao_upload_token: criacaoUploadToken }
+        : respostaSolicitacaoBase;
       armazenarIdempotenciaCriacao(idempotenciaCriacao.scopeKey, respostaSolicitacao);
 
       return res.status(201).json(respostaSolicitacao);
 
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao criar solicitacao' });
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Erro ao criar solicitacao',
+        code: error.code || undefined
+      });
     }
   },
 
@@ -2998,7 +4349,7 @@ module.exports = {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
       }
 
-      const acesso = await verificarAcessoDetalheSolicitacao(req, solicitacao);
+      const acesso = await verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLeituraGlobal: true });
       if (!acesso.allowed) {
         return res.status(acesso.status || 403).json({ error: acesso.error || 'Acesso negado' });
       }
@@ -3082,9 +4433,65 @@ module.exports = {
             ]
           },
           {
+            model: SolicitacaoCentroCustoDistribuicao,
+            as: 'distribuicoesCentroCusto',
+            required: false,
+            include: [
+              {
+                model: Obra,
+                as: 'obraGerencial',
+                required: false,
+                attributes: ['id', 'codigo', 'nome', 'classificacao']
+              }
+            ]
+          },
+          {
+            model: SolicitacaoCadastroObraUsuario,
+            as: 'pessoasCadastroObra',
+            required: false,
+            attributes: ['id', 'usuario_id'],
+            include: [{
+              model: User,
+              as: 'usuario',
+              required: false,
+              attributes: ['id', 'nome']
+            }]
+          },
+          {
+            model: SolicitacaoCadastroObraDados,
+            as: 'dadosCadastroObra',
+            required: false,
+            include: [
+              {
+                model: User,
+                as: 'responsavelTecnico',
+                required: false,
+                attributes: ['id', 'nome']
+              },
+              {
+                model: Obra,
+                as: 'obraCadastrada',
+                required: false,
+                attributes: ['id', 'codigo', 'nome', 'fase_obra', 'documentacao_pendente']
+              }
+            ]
+          },
+          {
             model: Parceiro,
             as: 'parceiro',
             attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email']
+          },
+          {
+            model: Parceiro,
+            as: 'favorecido',
+            required: false,
+            attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email']
+          },
+          {
+            model: FormaPagamentoFinanceira,
+            as: 'formaPagamento',
+            required: false,
+            attributes: ['id', 'nome', 'codigo', 'tipo']
           },
           // HISTORICO
           {
@@ -3122,10 +4529,11 @@ module.exports = {
         });
       }
 
-      const acesso = await verificarAcessoDetalheSolicitacao(req, solicitacao);
+      const acesso = await verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLeituraGlobal: true });
       if (!acesso.allowed) {
         return res.status(acesso.status || 403).json({ error: acesso.error || 'Acesso negado' });
       }
+      const contextoInteracaoBase = await avaliarContextoInteracaoSolicitacao(req, solicitacao, acesso);
       const tokensSetorUsuario = acesso.tokensSetorUsuario || [];
 
       const contextoAprovacaoDiretoria = await obterContextoAprovacaoDiretoria(
@@ -3136,28 +4544,53 @@ module.exports = {
         solicitacao,
         contextoAprovacaoDiretoria
       );
+      const podeAprovarSolicitacaoPorPermissao =
+        !(await userHasConfiguredAreaPermissions(req.user)) ||
+        await userHasAreaPermission(req.user, ['solicitacoes.acoes.aprovar']);
       const podeAprovarDiretoria =
         usaFluxoAprovacaoDiretoria &&
+        podeAprovarSolicitacaoPorPermissao &&
         (
           String(req.user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN' ||
           setorPertenceAoUsuario(tokensSetorUsuario, solicitacao.area_responsavel)
         );
+      const contextoAprovacaoTipo = usaFluxoAprovacaoDiretoria
+        ? { configurada: false, valida: false }
+        : await resolverContextoAprovacaoPorTipo(solicitacao);
+      const [usuarioEhGeo, usuarioTemPermissaoAprovacao, solicitacaoNoGeo] = await Promise.all([
+        userHasSetorCapability(req.user, 'eh_setor_geo'),
+        userHasAreaPermissionWhenConfigured(req.user, ['solicitacoes.acoes.aprovar']),
+        solicitacaoEstaNoSetorGeo(solicitacao)
+      ]);
+      let podeAprovarPorTipo = Boolean(
+        contextoAprovacaoTipo.valida &&
+        solicitacaoNoGeo &&
+        !solicitacao.cancelada &&
+        (isBusinessAdmin(req.user) || usuarioEhGeo || usuarioTemPermissaoAprovacao)
+      );
 
       const payload = solicitacao.toJSON ? solicitacao.toJSON() : solicitacao;
-      const compraDiretaVinculada = await SolicitacaoCompra.findOne({
+      const compraVinculada = await SolicitacaoCompra.findOne({
         where: {
-          solicitacao_principal_id: solicitacao.id,
-          origem: 'COMPRA_DIRETA'
+          solicitacao_principal_id: solicitacao.id
         },
         attributes: [
           'id',
+          'origem',
+          'status',
           'valor_fechado',
           'desconto_total',
           'frete_tipo',
+          'frete_modo',
           'frete_valor',
           'frete_data_vencimento',
           'frete_parceiro_id',
-          'frete_dados_pagamento'
+          'frete_dados_pagamento',
+          'frete_forma_pagamento_id',
+          'frete_favorecido_id',
+          'frete_favorecido_chave_pix',
+          'formas_pagamento_json',
+          'dados_pagamento'
         ],
         include: [
           {
@@ -3165,12 +4598,31 @@ module.exports = {
             as: 'freteCredor',
             attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'],
             required: false
+          },
+          {
+            model: Parceiro,
+            as: 'freteFavorecido',
+            attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'],
+            required: false
+          },
+          {
+            model: FormaPagamentoFinanceira,
+            as: 'freteFormaPagamento',
+            attributes: ['id', 'nome', 'codigo', 'tipo', 'gera_boleto'],
+            required: false
           }
         ]
       });
-      payload.compra_direta = compraDiretaVinculada
-        ? (compraDiretaVinculada.toJSON ? compraDiretaVinculada.toJSON() : compraDiretaVinculada)
+      const compraVinculadaPayload = compraVinculada
+        ? (compraVinculada.toJSON ? compraVinculada.toJSON() : compraVinculada)
         : null;
+      if (compraVinculadaPayload && normalizarTokenComparacao(compraVinculadaPayload.origem) !== 'COMPRA_DIRETA') {
+        podeAprovarPorTipo = false;
+      }
+      payload.compra_direta = normalizarTokenComparacao(compraVinculadaPayload?.origem) === 'COMPRA_DIRETA'
+        ? compraVinculadaPayload
+        : null;
+      payload.solicitacao_compra_id = compraVinculadaPayload?.id || null;
       const resumoFinanceiro = calcularResumoFinanceiroSolicitacao(payload);
       payload.valor_total = resumoFinanceiro.valorTotal;
       payload.valor_pago_acumulado = resumoFinanceiro.valorPagoAcumulado;
@@ -3186,6 +4638,23 @@ module.exports = {
       payload.acao_aprovar_diretoria_disponivel = podeAprovarDiretoria;
       payload.setor_destino_aprovacao = contextoAprovacaoDiretoria.setorDestinoAprovacao || null;
       payload.diretoria_responsavel = contextoAprovacaoDiretoria.diretoriaEsperada || null;
+      payload.aprovacao_por_tipo = {
+        configurada: contextoAprovacaoTipo.configurada === true,
+        valida: contextoAprovacaoTipo.valida === true,
+        setor_destino: contextoAprovacaoTipo.setorDestino || null,
+        setor_destino_nome: contextoAprovacaoTipo.setorDestinoNome || null,
+        status_destino: contextoAprovacaoTipo.statusDestino || null,
+        status_destino_nome: contextoAprovacaoTipo.statusDestinoNome || null,
+        erro_configuracao: contextoAprovacaoTipo.erro || null
+      };
+      payload.acao_aprovar_tipo_disponivel = podeAprovarPorTipo;
+      payload.contexto_interacao = await montarContextoInteracao(
+        req,
+        solicitacao,
+        contextoInteracaoBase
+      );
+
+      await marcarAtencaoLida(solicitacao.id, req.user.id);
 
       return res.json(payload);
 
@@ -3210,21 +4679,22 @@ module.exports = {
       const isSuperadmin = perfil === 'SUPERADMIN';
       const areaUsuario = await obterAreaUsuario(req);
       const isSetorObra = await isSetorObraGeral(req);
-      const permissoesFonte = Array.isArray(req.user?.areas_permissoes)
-        ? req.user.areas_permissoes
-        : (Array.isArray(usuario?.areas_permissoes) ? usuario.areas_permissoes : []);
-      const permissoesArea = permissoesFonte.map((item) => String(item || '').trim().toLowerCase());
-      const podeAlterarStatusQualquerSetor = permissoesArea.includes('solicitacoes.acoes.alterar_status_qualquer_setor');
+      const podeAlterarStatusQualquerSetor = await userHasAreaPermissionWhenConfigured(
+        req.user,
+        ['solicitacoes.acoes.alterar_status_qualquer_setor']
+      );
 
       const solicitacao = await Solicitacao.findByPk(id);
       if (!solicitacao) {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
       }
 
-      const acessoObra = await validarAcessoObra(req, solicitacao);
-      if (!acessoObra) {
-        return res.status(403).json({
-          error: 'Acesso negado. Vincule o usuario a obra para continuar.'
+      try {
+        await assertPodeInteragirSolicitacao(req, solicitacao);
+      } catch (errorAcesso) {
+        return res.status(Number(errorAcesso.statusCode) || 403).json({
+          error: errorAcesso.message,
+          code: errorAcesso.code || undefined
         });
       }
 
@@ -3232,6 +4702,17 @@ module.exports = {
 
       if (status === statusAnterior) {
         return res.sendStatus(204);
+      }
+
+      const statusNovoNorm = normalizarTokenComparacao(status);
+      let setorCriadorParaAjuste = null;
+      if (statusNovoNorm === 'PENDENTE_DE_AJUSTE') {
+        setorCriadorParaAjuste = await resolverSetorCriadorSolicitacao(solicitacao);
+        if (!setorCriadorParaAjuste) {
+          return res.status(409).json({
+            error: 'Nao foi possivel identificar o setor que criou esta solicitacao para devolve-la para ajuste.'
+          });
+        }
       }
 
       const setorAtual = solicitacao.area_responsavel;
@@ -3301,6 +4782,9 @@ module.exports = {
 
       await solicitacao.update({ status_global: status });
 
+      await sincronizarTituloComStatusSolicitacao(solicitacao.id, status, usuarioId);
+      await sincronizarTicketComSolicitacao(solicitacao.id, status, usuarioId);
+
       await Historico.create({
         solicitacao_id: id,
         usuario_responsavel_id: usuarioId,
@@ -3327,9 +4811,34 @@ module.exports = {
 
       let envioAutomaticoExecutado = false;
 
+      // PENDENTE DE AJUSTE sempre devolve a solicitacao ao setor que a criou. A regra tem
+      // precedencia sobre as automacoes configuraveis para que nenhuma configuracao de status
+      // redirecione a devolucao para outro setor.
+      if (statusNovoNorm === 'PENDENTE_DE_AJUSTE') {
+        if (
+          normalizarTokenComparacao(solicitacao.area_responsavel)
+          !== normalizarTokenComparacao(setorCriadorParaAjuste)
+        ) {
+          const envioAjuste = await enviarSolicitacaoParaSetorInterno({
+            req,
+            solicitacao,
+            setorDestino: setorCriadorParaAjuste,
+            usuarioId,
+            permitirEnvioFluxoDiretoria: true,
+            ignorarPermissaoEnvioManual: true
+          });
+
+          if (!envioAjuste.ok) {
+            return res.status(envioAjuste.status || 400).json({
+              error: envioAjuste.error || 'Erro ao devolver solicitacao ao setor criador para ajuste'
+            });
+          }
+        }
+        envioAutomaticoExecutado = true;
+      }
+
       if (isSetorObra) {
         const statusAnteriorNorm = normalizarTokenComparacao(statusAnterior);
-        const statusNovoNorm = normalizarTokenComparacao(status);
 
         // Quando OBRA atende um ajuste, retorna automaticamente para o setor
         // que enviou a solicitacao para OBRA (ultimo envio para OBRA).
@@ -3376,32 +4885,6 @@ module.exports = {
           }
         }
 
-        // Quando OBRA marca "Mercadoria Entregue", envia automaticamente para FINANCEIRO.
-        if (!envioAutomaticoExecutado && statusNovoNorm === 'MERCADORIA_ENTREGUE') {
-          const setorFinanceiro = await findSetorByCapability('eh_setor_financeiro', {
-            attributes: ['codigo', 'nome']
-          });
-          if (!setorFinanceiro) {
-            return res.status(400).json({
-              error: 'Nenhum setor configurado como financeiro foi encontrado para o envio automatico.'
-            });
-          }
-
-          const envioFinanceiro = await enviarSolicitacaoParaSetorInterno({
-            req,
-            solicitacao,
-            setorDestino: resolveSetorPersistenciaValue(setorFinanceiro, 'FINANCEIRO'),
-            usuarioId,
-            permitirEnvioFluxoDiretoria: true
-          });
-
-          if (!envioFinanceiro.ok) {
-            return res.status(envioFinanceiro.status || 400).json({
-              error: envioFinanceiro.error || 'Erro ao enviar solicitacao automaticamente para FINANCEIRO'
-            });
-          }
-          envioAutomaticoExecutado = true;
-        }
       }
 
       if (!envioAutomaticoExecutado) {
@@ -3470,10 +4953,12 @@ module.exports = {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
       }
 
-      const acessoObra = await validarAcessoObra(req, solicitacao);
-      if (!acessoObra) {
-        return res.status(403).json({
-          error: 'Acesso negado. Vincule o usuario a obra para continuar.'
+      try {
+        await assertPodeInteragirSolicitacao(req, solicitacao);
+      } catch (errorAcesso) {
+        return res.status(Number(errorAcesso.statusCode) || 403).json({
+          error: errorAcesso.message,
+          code: errorAcesso.code || undefined
         });
       }
 
@@ -3899,10 +5384,10 @@ module.exports = {
       const { valor } = req.body;
       const perfil = String(req.user?.perfil || '').trim().toUpperCase();
       const isGeo = await isSetorGeo(req);
-      const permissoesArea = Array.isArray(req.user?.areas_permissoes)
-        ? req.user.areas_permissoes.map((item) => String(item || '').trim().toLowerCase())
-        : [];
-      const podeEditarPorPermissao = permissoesArea.includes('solicitacoes.acoes.alterar_valor');
+      const podeEditarPorPermissao = await userHasAreaPermissionWhenConfigured(
+        req.user,
+        ['solicitacoes.acoes.alterar_valor']
+      );
       const podeEditar =
         perfil === 'SUPERADMIN' ||
         (perfil.startsWith('ADMIN') && isGeo) ||
@@ -3997,10 +5482,10 @@ module.exports = {
       const { data_vencimento } = req.body;
       const perfil = String(req.user?.perfil || '').trim().toUpperCase();
       const isGeo = await isSetorGeo(req);
-      const permissoesArea = Array.isArray(req.user?.areas_permissoes)
-        ? req.user.areas_permissoes.map((item) => String(item || '').trim().toLowerCase())
-        : [];
-      const podeEditarPorPermissao = permissoesArea.includes('solicitacoes.acoes.alterar_data_vencimento');
+      const podeEditarPorPermissao = await userHasAreaPermissionWhenConfigured(
+        req.user,
+        ['solicitacoes.acoes.alterar_data_vencimento']
+      );
       const podeEditar =
         perfil === 'SUPERADMIN' ||
         (perfil.startsWith('ADMIN') && isGeo) ||
@@ -4291,6 +5776,176 @@ module.exports = {
     }
   },
 
+  async aprovarPorTipo(req, res) {
+    const transaction = await sequelize.transaction();
+
+    try {
+      const solicitacao = await Solicitacao.findByPk(req.params.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!solicitacao) {
+        await transaction.rollback();
+        return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const acesso = await verificarAcessoDetalheSolicitacao(req, solicitacao, {
+        permitirLeituraGlobal: true
+      });
+      if (!acesso.allowed) {
+        await transaction.rollback();
+        return res.status(acesso.status || 403).json({ error: acesso.error || 'Acesso negado' });
+      }
+
+      const [usuarioEhGeo, usuarioTemPermissao, solicitacaoNoGeo] = await Promise.all([
+        userHasSetorCapability(req.user, 'eh_setor_geo'),
+        userHasAreaPermissionWhenConfigured(req.user, ['solicitacoes.acoes.aprovar']),
+        solicitacaoEstaNoSetorGeo(solicitacao, transaction)
+      ]);
+      if (!(isBusinessAdmin(req.user) || usuarioEhGeo || usuarioTemPermissao)) {
+        await transaction.rollback();
+        return res.status(403).json({
+          error: 'Apenas GEO ou um usuario com permissao para aprovar solicitacoes pode concluir esta acao.'
+        });
+      }
+      if (!solicitacaoNoGeo) {
+        await transaction.rollback();
+        return res.status(409).json({
+          error: 'A solicitacao nao esta mais no setor GEO para ser aprovada.'
+        });
+      }
+      if (solicitacao.cancelada) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'Solicitacao cancelada nao pode ser aprovada.' });
+      }
+      if (solicitacao.fluxo_aprovacao_diretoria && !solicitacao.aprovada_diretoria_em) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: 'Esta solicitacao segue o fluxo de aprovacao da diretoria.'
+        });
+      }
+
+      const contexto = await resolverContextoAprovacaoPorTipo(solicitacao, { transaction });
+      if (!contexto.configurada) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: 'Configure o setor destino e o status de chegada deste tipo antes de aprovar.'
+        });
+      }
+      if (!contexto.valida) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: contexto.erro || 'A configuracao de aprovacao deste tipo esta invalida.'
+        });
+      }
+
+      const areaAnterior = solicitacao.area_responsavel;
+      const statusAnterior = solicitacao.status_global;
+      const compraVinculada = await SolicitacaoCompra.findOne({
+        where: { solicitacao_principal_id: solicitacao.id },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      const ehCompraDireta = normalizarTokenComparacao(compraVinculada?.origem) === 'COMPRA_DIRETA';
+
+      if (compraVinculada && !ehCompraDireta) {
+        await transaction.rollback();
+        return res.status(409).json({
+          error: 'Para solicitacao de compra, aprove ou rejeite os itens no GEO e depois use Encaminhar aprovados para Compras.'
+        });
+      }
+
+      await solicitacao.update({
+        area_responsavel: contexto.setorDestino,
+        status_global: contexto.statusDestino
+      }, { transaction });
+      const manteveNoMesmoSetor = normalizarTokenComparacao(areaAnterior) === normalizarTokenComparacao(contexto.setorDestino);
+
+      // A abertura do titulo de recarga decorre da aprovacao, nao do nome escolhido para o
+      // status de chegada. Assim a configuracao pode usar qualquer status ativo do GEO.
+      await liberarTituloRecargaAposAprovacao(
+        solicitacao.id,
+        req.user.id,
+        transaction
+      );
+      await sincronizarTicketComSolicitacao(
+        solicitacao.id,
+        'APROVADA',
+        req.user.id,
+        transaction
+      );
+
+      await Historico.create({
+        solicitacao_id: solicitacao.id,
+        usuario_responsavel_id: req.user.id,
+        setor: areaAnterior,
+        acao: manteveNoMesmoSetor ? 'SOLICITACAO_APROVADA' : 'SOLICITACAO_APROVADA_ENCAMINHADA',
+        status_anterior: statusAnterior,
+        status_novo: contexto.statusDestino,
+        descricao: manteveNoMesmoSetor
+          ? `Solicitacao aprovada e mantida em ${contexto.setorDestinoNome} com status ${contexto.statusDestinoNome}`
+          : `Solicitacao aprovada e enviada para ${contexto.setorDestinoNome} com status ${contexto.statusDestinoNome}`,
+        metadata: JSON.stringify({
+          tipo_solicitacao_id: solicitacao.tipo_solicitacao_id,
+          area_anterior: areaAnterior,
+          area_nova: contexto.setorDestino,
+          status_anterior: statusAnterior,
+          status_novo: contexto.statusDestino,
+          solicitacao_compra_id: compraVinculada?.id || null,
+          origem: 'APROVACAO_CONFIGURADA_POR_TIPO'
+        })
+      }, { transaction });
+
+      await StatusArea.create({
+        solicitacao_id: solicitacao.id,
+        setor: contexto.setorDestino,
+        status: contexto.statusDestino,
+        observacao: manteveNoMesmoSetor
+          ? 'Aprovada pelo GEO e mantida no setor ate o envio de titulo para pagamento.'
+          : 'Aprovada pelo GEO e encaminhada conforme a configuracao do tipo.'
+      }, { transaction });
+
+      await transaction.commit();
+
+      void criarNotificacao({
+        solicitacao_id: solicitacao.id,
+        tipo: 'SOLICITACAO_APROVADA',
+        mensagem: manteveNoMesmoSetor
+          ? `${req.user?.nome || 'Usuario'} aprovou a solicitacao ${solicitacao.codigo}; ela permanece em ${contexto.setorDestinoNome}`
+          : `${req.user?.nome || 'Usuario'} aprovou a solicitacao ${solicitacao.codigo} e a enviou para ${contexto.setorDestinoNome}`,
+        created_by: req.user.id,
+        metadata: {
+          setor_destino: contexto.setorDestino,
+          status_destino: contexto.statusDestino
+        }
+      }).catch((error) => console.error('[APROVACAO_SOLICITACAO] Falha ao notificar.', error));
+
+      void publishSolicitacaoRealtimeEvent({
+        action: 'APPROVED',
+        solicitacao,
+        actor: { id: req.user.id, nome: req.user?.nome || null },
+        metadata: {
+          setor_destino: contexto.setorDestino,
+          status_destino: contexto.statusDestino
+        }
+      }).catch((error) => console.error('[APROVACAO_SOLICITACAO] Falha no realtime.', error));
+
+      return res.json({
+        ok: true,
+        solicitacao_id: solicitacao.id,
+        setor_destino: contexto.setorDestino,
+        status_destino: contexto.statusDestino,
+        solicitacao_compra_id: null
+      });
+    } catch (error) {
+      if (!transaction.finished) await transaction.rollback();
+      console.error(error);
+      return res.status(error?.statusCode || 500).json({
+        error: error?.message || 'Erro ao aprovar e encaminhar a solicitacao'
+      });
+    }
+  },
+
   async aprovarDiretoria(req, res) {
     try {
       const { id } = req.params;
@@ -4334,13 +5989,35 @@ module.exports = {
         });
       }
 
+      if (
+        await userHasConfiguredAreaPermissions(req.user) &&
+        !(await userHasAreaPermission(req.user, ['solicitacoes.acoes.aprovar']))
+      ) {
+        return res.status(403).json({
+          error: 'Acesso negado para aprovar ou rejeitar solicitacoes.'
+        });
+      }
+
       if (!setorPertenceAoUsuario([solicitacao.diretoria_fluxo_codigo], solicitacao.area_responsavel)) {
         return res.status(400).json({
           error: 'A solicitacao nao esta mais na diretoria configurada.'
         });
       }
 
-      const destino = solicitacao.setor_destino_pos_aprovacao;
+      const destinoConfigurado = solicitacao.setor_destino_pos_aprovacao;
+      const setorFinanceiroConfigurado = await resolveSetorReferencia(destinoConfigurado, {
+        attributes: ['id', 'codigo', 'nome', 'eh_setor_financeiro']
+      });
+      const destinoEhFinanceiro = hasSetorCapability(
+        setorFinanceiroConfigurado || { codigo: destinoConfigurado, nome: destinoConfigurado },
+        'eh_setor_financeiro'
+      );
+      const setorGeo = destinoEhFinanceiro
+        ? await findSetorByCapability('eh_setor_geo', { attributes: ['id', 'codigo', 'nome'] })
+        : null;
+      const destino = destinoEhFinanceiro
+        ? resolveSetorPersistenciaValue(setorGeo, 'GEO')
+        : destinoConfigurado;
       const destinoNormalizado = normalizarTokenComparacao(destino);
       const liberarCompraParaCompras = destinoNormalizado === 'COMPRAS';
       await solicitacao.update({
@@ -4370,6 +6047,7 @@ module.exports = {
         observacao: `Aprovada pela diretoria e enviada para ${destino}`,
         metadata: JSON.stringify({
           diretoria_fluxo_codigo: solicitacao.diretoria_fluxo_codigo,
+          setor_destino_configurado: destinoConfigurado,
           setor_destino_pos_aprovacao: destino,
           solicitacao_compra_status: liberarCompraParaCompras ? 'LIBERADO_PARA_COMPRA' : 'ENVIADO'
         })
@@ -4748,10 +6426,12 @@ module.exports = {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
       }
 
-      const acessoObra = await validarAcessoObra(req, solicitacao);
-      if (!acessoObra) {
-        return res.status(403).json({
-          error: 'Acesso negado. Vincule o usuario a obra para continuar.'
+      try {
+        await assertPodeInteragirSolicitacao(req, solicitacao);
+      } catch (errorAcesso) {
+        return res.status(Number(errorAcesso.statusCode) || 403).json({
+          error: errorAcesso.message,
+          code: errorAcesso.code || undefined
         });
       }
 
@@ -4800,6 +6480,18 @@ module.exports = {
           }
         })
       });
+
+      try {
+        await registrarAtencaoSolicitacao({
+          solicitacao,
+          atorId: req.user.id,
+          tipo: 'COMENTARIO',
+          resumo: `${usuario?.nome || 'Usuário'} adicionou um comentário`,
+          mencoes: idsMencionados
+        });
+      } catch (atencaoError) {
+        console.error('Comentario salvo, mas destaque da solicitacao falhou:', atencaoError);
+      }
 
       if (usuariosMencionados.length > 0) {
         for (const usuarioMencionado of usuariosMencionados) {
@@ -4850,6 +6542,15 @@ module.exports = {
       const historicoId = Number(req.params.historicoId);
       if (!Number.isInteger(solicitacaoId) || !Number.isInteger(historicoId)) {
         return res.status(400).json({ error: 'Parametros invalidos.' });
+      }
+
+      try {
+        await assertPodeInteragirSolicitacao(req, solicitacaoId);
+      } catch (errorAcesso) {
+        return res.status(Number(errorAcesso.statusCode) || 403).json({
+          error: errorAcesso.message,
+          code: errorAcesso.code || undefined
+        });
       }
 
       const historico = await Historico.findOne({
@@ -5107,7 +6808,8 @@ module.exports = {
           req,
           solicitacao,
           setorDestino,
-          usuarioId
+          usuarioId,
+          destacarAtencao: true
         });
         if (!envio.ok) {
           resultado.erros.push({ id, error: envio.error || 'Erro ao enviar' });
@@ -5339,7 +7041,8 @@ module.exports = {
         req,
         solicitacao,
         setorDestino: setor_destino,
-        usuarioId
+        usuarioId,
+        destacarAtencao: true
       });
       if (!envio.ok) {
         return res.status(envio.status || 400).json({ error: envio.error || 'Erro ao enviar para setor' });
@@ -5465,3 +7168,14 @@ module.exports = {
     }
   }
 };
+
+// API interna usada pelos anexos, aditivos e pelo fluxo de retorno. O require e tardio nesses
+// consumidores para nao criar ciclo durante a carga do controller.
+Object.defineProperty(module.exports, '_avaliarContextoInteracaoSolicitacao', {
+  value: avaliarContextoInteracaoSolicitacao,
+  enumerable: false
+});
+Object.defineProperty(module.exports, '_verificarAcessoDetalheSolicitacao', {
+  value: verificarAcessoDetalheSolicitacao,
+  enumerable: false
+});

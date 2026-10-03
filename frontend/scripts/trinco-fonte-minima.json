@@ -1,0 +1,12 @@
+{
+  "regra": "PISO DE 12px EM CSS",
+  "criado_em": "2026-09-05",
+  "porque": "O piso ('nada abaixo de 12px em conteudo', criterio do cliente de 02/09) era conferido so no JSX pela R10. Folha de CSS passava batido — e era la que ele estava sendo violado em massa. Quem pegou foi a MATRIZ no preview, item M1, e so porque um dos elementos era clicavel: as fontes de 9px teriam passado inteiras.",
+  "corrigidos_na_hora": "compras-responsive.css (24 declaracoes, a menor 9,28px, na TOPBAR que 13 rotas veem) e AuditoriaOperacional.css (23, a menor 9px). Os dois foram corrigidos porque eram o defeito que a matriz apontou.",
+  "erro_meu_registrado": "Eu ia ligar este check DURO afirmando passivo zero. A medicao que me deu zero rodou num diretorio que nao existia, e os.walk devolve vazio SEM ERRO — varredura que nao varre devolve zero igualzinho a varredura limpa. O check real encontrou 196. E a mesma familia de 'concordancia nao e cobertura': ausencia de achado nao e ausencia de defeito quando o instrumento nao olhou.",
+  "zerado_em": "2026-09-05",
+  "como_zerou": "O passivo de 196 foi a ZERO na execucao da R30 (cinco degraus de fonte), que passou 621 declaracoes de CSS do valor cru para o token do degrau. As quatro folhas congeladas cairam juntas: index.css 60 -> 0, custos-recebiveis.css 112 -> 0, design-tokens.css 18 -> 0, lista-avancada.css 6 -> 0. As 213 ocorrencias abaixo do piso que a medicao de 05/09 encontrou (em 21 tamanhos, a menor com 9px) nao existem mais, e as 6 do Login — que tinham excecao de IDENTIDADE mas nunca de piso — entraram junto, por decisao expressa do cliente.",
+  "a_lista_esta_vazia_e_isso_e_o_ponto": "Trinco vazio nao e trinco desligado: e trinco no aperto maximo. Com `arquivos` em branco, QUALQUER declaracao nova abaixo de 12px em qualquer folha de CSS reprova na hora, como arquivo fora do trinco — que e o comportamento que este check sempre quis ter e nao podia enquanto havia passivo.",
+  "total_em": 0,
+  "arquivos": {}
+}

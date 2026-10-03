@@ -14,10 +14,19 @@ const {
 const { dispararEventoAutomacaoCrm } = require('./crmAutomationRuntimeService');
 const { canReceiveCrmLeadAssignment } = require('./authorizationService');
 const { notificacaoEventoAtivo } = require('./notificacaoConfigService');
+const { onlyDigits, isValidCpfCnpj } = require('../utils/cpfCnpj');
 
 const LEAD_EXPORT_MAX_ROWS = 5000;
 const CSV_FORMULA_REGEX = /^[=+\-@]/;
 const CRM_LEAD_BACKLOG_STATUSES = ['NOVO', 'CONTATO', 'QUALIFICADO', 'OPORTUNIDADE'];
+
+function normalizeLeadDocument(value) {
+  if (value == null || String(value).trim() === '') return null;
+  if (!isValidCpfCnpj(value)) {
+    throw Object.assign(new Error('CPF/CNPJ do lead invalido.'), { status: 400, statusCode: 400 });
+  }
+  return onlyDigits(value);
+}
 const CSV_DATE_FORMATTER = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo',
   year: 'numeric',
@@ -406,7 +415,11 @@ async function obterLead(id) {
 }
 
 async function criarLead(dados, userId, req) {
-  const dup = await verificarDuplicata(dados);
+  const normalizedData = {
+    ...dados,
+    documento: normalizeLeadDocument(dados.documento)
+  };
+  const dup = await verificarDuplicata(normalizedData);
   if (dup) {
     throw Object.assign(
       new Error(`Lead duplicado: ja existe lead com id ${dup.id} (${dup.nome})`),
@@ -415,8 +428,8 @@ async function criarLead(dados, userId, req) {
   }
 
   // Busca pipeline/etapa padrão se não informado
-  let pipelineId = dados.pipeline_id || null;
-  let stageId = dados.pipeline_stage_id || null;
+  let pipelineId = normalizedData.pipeline_id || null;
+  let stageId = normalizedData.pipeline_stage_id || null;
 
   if (!pipelineId) {
     const pipeline = await CrmPipeline.findOne({ where: { is_default: true, ativo: true } });
@@ -438,7 +451,7 @@ async function criarLead(dados, userId, req) {
   }
 
   const lead = await CrmLead.create({
-    ...dados,
+    ...normalizedData,
     pipeline_id: pipelineId,
     pipeline_stage_id: stageId,
     lifecycle_status: 'NOVO',
@@ -479,6 +492,9 @@ async function atualizarLead(id, dados, userId, req) {
   const updates = {};
   for (const campo of camposPermitidos) {
     if (dados[campo] !== undefined) updates[campo] = dados[campo];
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'documento')) {
+    updates.documento = normalizeLeadDocument(updates.documento);
   }
   updates.atualizado_por = userId;
   updates.ultima_interacao_at = new Date();

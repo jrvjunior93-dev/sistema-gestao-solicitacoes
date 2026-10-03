@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HiArrowDownTray, HiArrowUpTray, HiEnvelope, HiKey } from 'react-icons/hi2';
+import { HiEnvelope } from 'react-icons/hi2';
 import {
   getUsuarios,
   ativarUsuario,
@@ -9,18 +9,45 @@ import {
   enviarConviteUsuario,
   forcarResetSenhaUsuarios
 } from '../services/usuarios';
-import EmptyState from '../components/ui/EmptyState';
-import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  TabelaPadrao,
+  CelulaDupla,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { isSuperadmin } from '../utils/acessoProduto';
+
+function resumirObras(vinculos) {
+  const nomes = (vinculos || [])
+    .map((v) => (v.obra ? (v.obra.codigo ? `${v.obra.codigo} - ${v.obra.nome}` : v.obra.nome) : null))
+    .filter(Boolean);
+  if (nomes.length === 0) return { texto: '-', completo: '' };
+  // A coluna mostrava TODAS as obras em linha corrida e explodia a largura;
+  // o dado completo continua no title (tooltip) — só a forma mudou.
+  const visiveis = nomes.slice(0, 2).join(', ');
+  const resto = nomes.length - 2;
+  return {
+    texto: resto > 0 ? `${visiveis} +${resto}` : visiveis,
+    completo: nomes.join(', ')
+  };
+}
 
 export default function Usuarios() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const inputImportacaoRef = useRef(null);
   const [usuarios, setUsuarios] = useState([]);
   const [importando, setImportando] = useState(false);
   const [loading, setLoading] = useState(true);
   const isSuperadminLogado = isSuperadmin(user);
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   useEffect(() => {
     carregar();
@@ -72,11 +99,16 @@ export default function Usuarios() {
     if (!file) return;
 
     if (!String(file.name || '').toLowerCase().endsWith('.csv')) {
-      alert('Utilize o arquivo modelo em CSV para importar usuarios.');
+      avisar.alerta('Utilize o arquivo modelo em CSV para importar usuários.');
       return;
     }
 
-    if (!confirm(`Importar usuarios em massa usando o arquivo "${file.name}"?`)) {
+    const { ok } = await confirmar({
+      titulo: 'Importar usuários em massa',
+      mensagem: `Importar usuarios em massa usando o arquivo "${file.name}"?`,
+      rotuloConfirmar: 'Importar'
+    });
+    if (!ok) {
       return;
     }
 
@@ -91,189 +123,197 @@ export default function Usuarios() {
       const convitesErros = Number(resultado?.convites_erros || 0);
       const erros = Array.isArray(resultado?.erros) ? resultado.erros : [];
       if (erros.length > 0) {
-        const resumo = erros.slice(0, 5).map((item) => `Linha ${item.linha}: ${item.error}`).join('\n');
-        alert(`Importados: ${importados}. Ignorados: ${ignorados}. Convites enviados: ${convitesEnviados}. Falhas de convite: ${convitesErros}. Erros: ${erros.length}.\n${resumo}${erros.length > 5 ? '\n...' : ''}`);
+        const resumo = erros.slice(0, 5).map((item) => `Linha ${item.linha}: ${item.error}`).join(' - ');
+        avisar.alerta(
+          `Importados: ${importados}. Ignorados: ${ignorados}. Convites enviados: ${convitesEnviados}. Falhas de convite: ${convitesErros}. Erros: ${erros.length}. ${resumo}${erros.length > 5 ? ' ...' : ''}`,
+          'Importacao concluida com erros'
+        );
       } else {
-        alert(`Importacao concluida. Importados: ${importados}. Ignorados: ${ignorados}. Convites enviados: ${convitesEnviados}. Falhas de convite: ${convitesErros}.`);
+        avisar.sucesso(`Importacao concluida. Importados: ${importados}. Ignorados: ${ignorados}. Convites enviados: ${convitesEnviados}. Falhas de convite: ${convitesErros}.`);
       }
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao importar usuarios em massa');
+      avisar.erro(error?.message || 'Erro ao importar usuarios em massa');
     } finally {
       setImportando(false);
     }
   }
 
   async function enviarConvite(usuario) {
-    if (!confirm(`Enviar link para definicao de senha para ${usuario.nome || usuario.email}?`)) {
+    const { ok } = await confirmar({
+      titulo: 'Enviar link de senha',
+      mensagem: `Enviar link para definicao de senha para ${usuario.nome || usuario.email}?`,
+      rotuloConfirmar: 'Enviar link'
+    });
+    if (!ok) {
       return;
     }
 
     try {
       const resultado = await enviarConviteUsuario(usuario.id);
-      alert(resultado?.email_configurado === false
-        ? 'Link gerado, mas o SMTP nao esta configurado. Configure o e-mail antes de usar em producao.'
-        : 'Link enviado com sucesso.');
       await carregar();
+      if (resultado?.email_configurado === false) {
+        avisar.alerta('Link gerado, mas o SMTP não esta configurado. Configure o e-mail antes de usar em produção.');
+      } else {
+        avisar.sucesso('Link enviado com sucesso.');
+      }
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao enviar link de senha');
+      avisar.erro(error?.message || 'Erro ao enviar link de senha');
     }
   }
 
   async function forcarResetSenhas() {
-    if (!confirm('Isso vai exigir que todos os usuarios ativos redefinam a senha no proximo acesso e enviara links por e-mail. Deseja continuar?')) {
+    const { ok } = await confirmar({
+      titulo: 'Resetar senhas de todos',
+      mensagem: 'Isso vai exigir que todos os usuários ativos redefinam a senha no próximo acesso e enviara links por e-mail. Deseja continuar?',
+      rotuloConfirmar: 'Resetar senhas',
+      rotuloCancelar: 'Manter senhas',
+      destrutiva: true
+    });
+    if (!ok) {
       return;
     }
 
     try {
       const resultado = await forcarResetSenhaUsuarios();
-      alert(`Reset aplicado. Usuarios processados: ${resultado?.total || 0}. Links enviados: ${resultado?.enviados || 0}. Falhas: ${resultado?.falhas || 0}.`);
       await carregar();
+      avisar.sucesso(`Reset aplicado. Usuarios processados: ${resultado?.total || 0}. Links enviados: ${resultado?.enviados || 0}. Falhas: ${resultado?.falhas || 0}.`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao forcar redefinicao de senhas');
+      avisar.erro(error?.message || 'Erro ao forcar redefinicao de senhas');
     }
   }
 
+  const colunas = [
+    {
+      id: 'usuario',
+      titulo: 'Usuário',
+      // Nome de usuário é identificação: exibido em maiúsculas (só exibição).
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (u) => <CelulaDupla principal={u.nome} sub={u.email} />
+    },
+    {
+      id: 'setor',
+      titulo: 'Setor',
+      // Nome de setor é identidade; flex: false para a sobra continuar na
+      // coluna principal (Usuario).
+      tipo: 'identidade',
+      flex: false,
+      render: (u) => u.setor?.nome || '-'
+    },
+    {
+      id: 'obras',
+      titulo: 'Obras',
+      tipo: 'texto',
+      render: (u) => {
+        const obras = resumirObras(u.vinculos);
+        return <span title={obras.completo}>{obras.texto}</span>;
+      }
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      render: (u) => <StatusBadge status={u.ativo ? 'Ativo' : 'Inativo'} />
+    }
+  ];
+
   return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Usuarios</h1>
-            <p className="page-subtitle">Cadastro, importacao e gestao operacional de usuarios.</p>
-          </div>
-          <div className="app-page-actions">
-            <span className="app-status-pill bg-sky-100 text-sky-700">
-              {loading ? 'Carregando base...' : `${usuarios.length} usuario(s)`}
-            </span>
-          </div>
-        </div>
-      </div>
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader; nada de apoio duplicado no bloco. */}
+      <PageHeader
+        titulo="Usuários"
+        contagem={loading ? null : `${usuarios.length} usuario(s)`}
+        descricao="Cadastro, importação e gestão operacional de usuários."
+        acaoPrincipal={{ rotulo: 'Novo usuário', onClick: () => navigate('/usuarios/novo') }}
+        /* Modelo e importação vinham do "⋯" (removido do sistema em 07/09)
+           e são secundárias visíveis. "Resetar senhas de todos" era o item
+           `perigosa` do menu, que o apartava com separador e cor de perigo:
+           na faixa, o equivalente é o grupo APARTADO — por isso ela vai
+           para `destrutiva`, e não para a fila das secundárias. */
+        secundarias={[
+          { rotulo: 'Baixar modelo CSV', onClick: baixarModeloImportacaoUsuarios },
+          {
+            rotulo: importando ? 'Importando…' : 'Importar usuarios (.csv)',
+            desabilitada: importando,
+            onClick: () => inputImportacaoRef.current?.click()
+          }
+        ]}
+        destrutiva={isSuperadminLogado ? {
+          rotulo: 'Resetar senhas de todos',
+          title: 'Forcar redefinicao de senha para todos os usuarios ativos',
+          onClick: forcarResetSenhas
+        } : undefined}
+      />
 
-      <div className="sol-surface-card solicitacoes-toolbar app-toolbar-card rounded-xl p-3 md:p-4">
-        <div className="text-sm text-gray-600 dark:text-slate-300">
-          Usuarios cadastrados: <strong>{usuarios.length}</strong>
-        </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-        <div className="app-page-actions">
-          {isSuperadminLogado && (
-            <button
-              type="button"
-              className="btn btn-outline px-3"
-              onClick={forcarResetSenhas}
-              title="Forcar redefinicao de senha para todos os usuarios ativos"
-            >
-              <HiKey className="w-4 h-4" />
-              Resetar senhas
-            </button>
-          )}
+      <input
+        ref={inputImportacaoRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={onSelecionarArquivoImportacao}
+        disabled={importando}
+      />
 
-          <button
-            type="button"
-            className="btn btn-outline px-3"
-            onClick={baixarModeloImportacaoUsuarios}
-            title="Baixar planilha modelo de importacao"
-          >
-            <HiArrowDownTray className="w-4 h-4" />
-          </button>
-
-          <label
-            className={`btn btn-outline px-3 cursor-pointer ${importando ? 'opacity-60 pointer-events-none' : ''}`}
-            title="Importar usuarios em massa (.csv)"
-          >
-            <HiArrowUpTray className="w-4 h-4" />
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={onSelecionarArquivoImportacao}
-              disabled={importando}
-            />
-          </label>
-
-          <button className="btn btn-primary" onClick={() => navigate('/usuarios/novo')}>
-            Novo usuario
-          </button>
-        </div>
-      </div>
-
-      <div className="sol-surface-card rounded-xl p-4">
+      <BlocoConteudo
+        titulo="Modelo de importação CSV"
+        variante="secundario"
+        recolhivel
+        recolhidoPadrao
+      >
         <p className="app-note">
-          Modelo CSV: Nome, Email, Setor, Perfil, Obras (separar por <code>|</code> ou <code>,</code>), Senha e Enviar convite. Perfis aceitos: <code>USUARIO</code>, <code>ESTAGIARIO</code>, <code>ADMIN</code>, <code>ADMINISTRADOR</code> e <code>SUPERADMIN</code>. Com convite marcado, a senha pode ficar vazia e o usuario define a propria senha pelo link seguro.
+          Colunas: Nome, Email, Setor, Perfil, Obras (separar por <code>|</code> ou <code>,</code>), Senha e Enviar convite. Perfis aceitos: <code>USUARIO</code>, <code>ESTAGIARIO</code>, <code>ADMIN</code>, <code>ADMINISTRADOR</code> e <code>SUPERADMIN</code>. Com convite marcado, a senha pode ficar vazia e o usuario define a propria senha pelo link seguro.
         </p>
-      </div>
+      </BlocoConteudo>
 
-      <div className="card sol-surface-card app-table-shell">
-        {loading ? (
-          <div className="space-y-4 p-4">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="grid gap-2 rounded-2xl border border-[var(--c-border)]/70 p-4">
-                <LoadingSkeleton className="h-4 w-40 rounded-xl" />
-                <LoadingSkeleton lines={2} lastLineClassName="w-1/2" />
-              </div>
-            ))}
-          </div>
-        ) : usuarios.length === 0 ? (
-          <EmptyState
-            title="Nenhum usuario cadastrado"
-            message="Quando novos acessos forem criados ou importados, eles aparecem aqui."
-          />
-        ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>Email</th>
-                  <th>Setor</th>
-                  <th>Obras</th>
-                  <th>Status</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usuarios.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.nome}</td>
-                    <td>{u.email}</td>
-                    <td>{u.setor?.nome || '-'}</td>
-                    <td>
-                      {(u.vinculos || [])
-                        .map((v) => (v.obra ? (v.obra.codigo ? `${v.obra.codigo} - ${v.obra.nome}` : v.obra.nome) : null))
-                        .filter(Boolean)
-                        .join(', ')}
-                    </td>
-                    <td>
-                      <span className={u.ativo ? 'app-status-pill bg-emerald-100 text-emerald-700' : 'app-status-pill bg-slate-100 text-slate-700'}>
-                        {u.ativo ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          className="btn btn-outline px-3"
-                          onClick={() => enviarConvite(u)}
-                          title="Enviar link para definir ou redefinir senha"
-                        >
-                          <HiEnvelope className="w-4 h-4" />
-                        </button>
-                        <button className="btn btn-outline" onClick={() => navigate(`/usuarios/${u.id}`)}>
-                          Editar
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => toggleAtivo(u)}>
-                          {u.ativo ? 'Desativar' : 'Ativar'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+      <BlocoConteudo
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        <TabelaPadrao
+          colunas={colunas}
+          itens={usuarios}
+          carregando={loading}
+          storageKey="tabela:usuarios"
+          larguraAcoes={320}
+          aoClicarLinha={(u) => navigate(`/usuarios/${u.id}`)}
+          vazio={{
+            title: 'Nenhum usuario cadastrado',
+            message: 'Quando novos acessos forem criados ou importados, eles aparecem aqui.'
+          }}
+          acoesLinha={(u) => (
+            <>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => enviarConvite(u)}
+                title="Enviar link para definir ou redefinir senha"
+              >
+                <HiEnvelope className="w-4 h-4" />
+                Convite
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={() => navigate(`/usuarios/${u.id}`)}>
+                Editar
+              </button>
+              {u.ativo ? (
+                <button className="btn btn-outline btn-sm btn-perigo-suave" onClick={() => toggleAtivo(u)}>
+                  Desativar
+                </button>
+              ) : (
+                <button className="btn btn-outline btn-sm" onClick={() => toggleAtivo(u)}>
+                  Ativar
+                </button>
+              )}
+            </>
+          )}
+        />
+      </BlocoConteudo>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

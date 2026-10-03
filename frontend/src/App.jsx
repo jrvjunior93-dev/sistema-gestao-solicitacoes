@@ -12,9 +12,14 @@ import {
   canAccessComunicacao,
   canAccessCompras,
   canAccessDashboard,
+  canAccessPainelGestor,
+  canInformPainelGestorSaldos,
   canAccessContratos,
   canAccessFinanceiro,
   canAccessFinanceiroDda,
+  canViewFinanceiroCaixas,
+  canAccessFilaPagamentos,
+  canAccessAutorizacoesPagamento,
   canAccessFiscal,
   canAccessConfiguracoes,
   canAccessPagamentos,
@@ -40,8 +45,8 @@ import {
   canViewComercialEmpreendimentos,
   canViewProvisionamentos,
   canViewProvisionamentosDashboard,
-  canViewRhDpApuracao,
   canViewRhDpColaboradores,
+  canAccessRhDpCadastroColaboradores,
   canViewRhDpDocumentos,
   canViewRhDpObrigacoes,
   canViewFinanceiroRelatorio,
@@ -75,10 +80,14 @@ import {
 } from './modules/sst/constants/sstResources';
 import { canAccessCustosRecebiveis } from './modules/custosRecebiveis/utils/access';
 
+const HomeHub = lazy(() => import('./navigation/HomeHub'));
+const ModuleHub = lazy(() => import('./navigation/ModuleHub'));
 const Login = lazy(() => import('./pages/Login'));
 const RecuperarSenha = lazy(() => import('./pages/RecuperarSenha'));
 const DefinirSenha = lazy(() => import('./pages/DefinirSenha'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const PainelGestor = lazy(() => import('./pages/PainelGestor'));
+const PainelGestorSaldosRegistro = lazy(() => import('./pages/PainelGestorSaldosRegistro'));
 const Solicitacoes = lazy(() => import('./pages/Solicitacoes'));
 const SolicitacaoDetalhe = lazy(() => import('./pages/SolicitacaoDetalhe'));
 const SolicitacoesArquivadas = lazy(() => import('./pages/SolicitacoesArquivadas'));
@@ -90,6 +99,8 @@ const NovaSolicitacao = lazy(() => import('./pages/NovaSolicitacao'));
 const UploadComprovantes = lazy(() => import('./pages/UploadComprovantes'));
 const ComprovantesPendentes = lazy(() => import('./pages/ComprovantesPendentes'));
 const FinanceiroTitulos = lazy(() => import('./pages/FinanceiroTitulos'));
+const FinanceiroFilaPagamentos = lazy(() => import('./pages/FinanceiroFilaPagamentos'));
+const FinanceiroAutorizacoesPagamento = lazy(() => import('./pages/FinanceiroAutorizacoesPagamento'));
 const FinanceiroTituloNovo = lazy(() => import('./pages/FinanceiroTituloNovo'));
 const FinanceiroTituloDetalhe = lazy(() => import('./pages/FinanceiroTituloDetalhe'));
 const FinanceiroTituloEditar = lazy(() => import('./pages/FinanceiroTituloEditar'));
@@ -101,6 +112,7 @@ const FinanceiroBoletos = lazy(() => import('./pages/FinanceiroBoletos'));
 const FinanceiroFaturasCartao = lazy(() => import('./pages/FinanceiroFaturasCartao'));
 const FinanceiroFaturaCartaoDetalhe = lazy(() => import('./pages/FinanceiroFaturaCartaoDetalhe'));
 const FinanceiroCadastros = lazy(() => import('./pages/FinanceiroCadastros'));
+const ConfiguracoesStatusInternosPagar = lazy(() => import('./pages/ConfiguracoesStatusInternosPagar'));
 const FinanceiroRelatorios = lazy(() => import('./pages/FinanceiroRelatorios'));
 const FinanceiroExecutivoGrupo = lazy(() => import('./pages/FinanceiroExecutivoGrupo'));
 const FinanceiroFluxoConsolidado = lazy(() => import('./pages/FinanceiroFluxoConsolidado'));
@@ -117,7 +129,9 @@ const FinanceiroBancos = lazy(() => import('./pages/FinanceiroBancos'));
 const FinanceiroCaixas = lazy(() => import('./pages/FinanceiroCaixas'));
 const FinanceiroResultadoObras = lazy(() => import('./pages/FinanceiroResultadoObras'));
 const FinanceiroResultadoCentrosCusto = lazy(() => import('./pages/FinanceiroResultadoCentrosCusto'));
+const FinanceiroDistribuicaoCentrosCusto = lazy(() => import('./pages/FinanceiroDistribuicaoCentrosCusto'));
 const CustosRecebiveis = lazy(() => import('./modules/custosRecebiveis/pages/CustosRecebiveis'));
+const ResponsaveisObra = lazy(() => import('./pages/ResponsaveisObra'));
   const ModuloRelatorios = lazy(() => import('./pages/ModuloRelatorios'));
   const ComprasRelatorioCategoriasInsumos = lazy(() => import('./pages/ComprasRelatorioCategoriasInsumos'));
   const ComprasRelatorioComprasDiretas = lazy(() => import('./pages/ComprasRelatorioComprasDiretas'));
@@ -137,6 +151,7 @@ const TiposSolicitacao = lazy(() => import('./pages/TiposSolicitacao'));
 const GestaoContratos = lazy(() => import('./pages/GestaoContratos'));
 const ContratosRelatorioOperacional = lazy(() => import('./pages/ContratosRelatorioOperacional'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
+const ConfiguracaoUsuariosTesteRapido = lazy(() => import('./pages/ConfiguracaoUsuariosTesteRapido'));
 const ConfiguracoesSuporte = lazy(() => import('./pages/ConfiguracoesSuporte'));
 const ConfiguracoesVisibilidadeUi = lazy(() => import('./pages/ConfiguracoesVisibilidadeUi'));
 const EmpresasGrupo = lazy(() => import('./pages/EmpresasGrupo'));
@@ -146,15 +161,20 @@ const Perfil = lazy(() => import('./pages/Perfil'));
 const PermissoesSetor = lazy(() => import('./pages/PermissoesSetor'));
 const CoresSistema = lazy(() => import('./pages/CoresSistema'));
 const AreasObra = lazy(() => import('./pages/AreasObra'));
+const ObraTipoApropriacao = lazy(() => import('./pages/ObraTipoApropriacao'));
+const ContratoObraCategorias = lazy(() => import('./pages/ContratoObraCategorias'));
+const ContratoFluxoNovo = lazy(() => import('./pages/ContratoFluxoNovo'));
 const AreasPorSetorOrigem = lazy(() => import('./pages/AreasPorSetorOrigem'));
 const SetoresVisiveisUsuario = lazy(() => import('./pages/SetoresVisiveisUsuario'));
 const ComportamentoRecebimentoSetor = lazy(() => import('./pages/ComportamentoRecebimentoSetor'));
 const TimeoutInatividade = lazy(() => import('./pages/TimeoutInatividade'));
 const TiposSolicitacaoPorSetor = lazy(() => import('./pages/TiposSolicitacaoPorSetor'));
+const TiposSolicitacaoPorDestino = lazy(() => import('./pages/TiposSolicitacaoPorDestino'));
 const NovaSolicitacaoCamposConfig = lazy(() => import('./pages/NovaSolicitacaoCamposConfig'));
 const NovaSolicitacaoAutomacaoDestinoConfig = lazy(() => import('./pages/NovaSolicitacaoAutomacaoDestinoConfig'));
 const TiposCompartilhadosSetor = lazy(() => import('./pages/TiposCompartilhadosSetor'));
 const AutomacaoStatusSetor = lazy(() => import('./pages/AutomacaoStatusSetor'));
+const AprovacaoSolicitacaoPorTipo = lazy(() => import('./pages/AprovacaoSolicitacaoPorTipo'));
 const SetoresCriacaoTodasObras = lazy(() => import('./pages/SetoresCriacaoTodasObras'));
 const SetoresAcessoTodasObras = lazy(() => import('./pages/SetoresAcessoTodasObras'));
 const UsuariosEnvioQualquerSetor = lazy(() => import('./pages/UsuariosEnvioQualquerSetor'));
@@ -169,11 +189,19 @@ const ArquivosModelos = lazy(() => import('./pages/ArquivosModelos'));
 const ArquivosModelosConfig = lazy(() => import('./pages/ArquivosModelosConfig'));
 const Treinamento = lazy(() => import('./pages/Treinamento'));
 const ConfiguracoesCotacao = lazy(() => import('./pages/ConfiguracoesCotacao'));
+const ConfiguracoesPainelGestor = lazy(() => import('./pages/ConfiguracoesPainelGestor'));
 const ConfiguracoesStatusPedidoCompra = lazy(() => import('./pages/ConfiguracoesStatusPedidoCompra'));
+const ConfiguracoesTitulosPedidosCompra = lazy(() => import('./pages/ConfiguracoesTitulosPedidosCompra'));
+const ConfiguracoesControleDiarioContas = lazy(() => import('./pages/ConfiguracoesControleDiarioContas'));
 const ConfiguracoesComercialCategorias = lazy(() => import('./pages/ConfiguracoesComercialCategorias'));
 const ConfiguracoesProvisionamentoFluxo = lazy(() => import('./pages/ConfiguracoesProvisionamentoFluxo'));
 const ConfiguracoesModulos = lazy(() => import('./pages/ConfiguracoesModulos'));
 const ConfiguracoesNotificacoesSistema = lazy(() => import('./pages/ConfiguracoesNotificacoesSistema'));
+const ConfiguracoesContratoAlertasEFormas = lazy(() => import('./pages/ConfiguracoesContratoAlertasEFormas'));
+const CartoesRecarga = lazy(() => import('./pages/CartoesRecarga'));
+const ConfiguracoesAcoesPrincipais = lazy(() => import('./pages/ConfiguracoesAcoesPrincipais'));
+const ConfiguracoesAtalhosSetor = lazy(() => import('./pages/ConfiguracoesAtalhosSetor'));
+const ConfiguracoesDetalheLayout = lazy(() => import('./pages/ConfiguracoesDetalheLayout'));
 const Parceiros = lazy(() => import('./pages/Parceiros'));
 const ParceiroCategorias = lazy(() => import('./pages/ParceiroCategorias'));
 const ComercialEmpreendimentos = lazy(() => import('./pages/ComercialEmpreendimentos'));
@@ -189,12 +217,10 @@ const ProvisionamentosFinanceiros = lazy(() => import('./modules/provisionamento
 const NovaProvisaoFinanceira = lazy(() => import('./modules/provisionamento-financeiro/pages/NovaProvisaoFinanceira'));
 const ProvisionamentoFinanceiroDetalhe = lazy(() => import('./modules/provisionamento-financeiro/pages/ProvisionamentoFinanceiroDetalhe'));
 const GestaoCategoriasMacro = lazy(() => import('./modules/provisionamento-financeiro/pages/GestaoCategoriasMacro'));
-const RhDpInicio = lazy(() => import('./pages/RhDpInicio'));
-const RhDpEmpresas = lazy(() => import('./pages/RhDpEmpresas'));
 const RhDpColaboradores = lazy(() => import('./pages/RhDpColaboradores'));
+const RhDpPessoal = lazy(() => import('./pages/RhDpPessoal'));
 const RhDpDocumentos = lazy(() => import('./pages/RhDpDocumentos'));
 const RhDpImportacoes = lazy(() => import('./pages/RhDpImportacoes'));
-const RhDpApuracao = lazy(() => import('./pages/RhDpApuracao'));
 const RhDpFechamentos = lazy(() => import('./pages/RhDpFechamentos'));
 const RhDpRelatorioOperacional = lazy(() => import('./pages/RhDpRelatorioOperacional'));
 const SolicitacoesCompra = lazy(() => import('./modules/solicitacao-compra/pages/SolicitacoesCompra'));
@@ -280,6 +306,14 @@ function SuperadminRoute({ children }) {
   return children;
 }
 
+function DevOnlySuperadminRoute({ children }) {
+  const { user } = useAuth();
+  if (!isSuperadmin(user) || !user?.dev_user_switch_enabled) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
 function BusinessAdminRoute({ children }) {
   const { user } = useAuth();
   if (!isBusinessAdmin(user)) {
@@ -292,6 +326,14 @@ function ConfiguracoesRoute({ children }) {
   const { user } = useAuth();
   if (!canAccessConfiguracoes(user)) {
     return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+function EmpresasGrupoRoute({ children }) {
+  const { user } = useAuth();
+  if (!canManageConfiguracoesArea(user, 'cadastros') && !canAccessRhDpEmpresas(user)) {
+    return <Navigate to="/configuracoes" replace />;
   }
   return children;
 }
@@ -323,9 +365,29 @@ function CustosRecebiveisRoute({ children }) {
 function DashboardRoute() {
   const { user } = useAuth();
   if (!canAccessDashboard(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return <Dashboard />;
+}
+
+function HomeEntry() {
+  const { user } = useAuth();
+  if (canAccessPainelGestor(user)) {
+    return <Navigate to="/painel-gestor" replace />;
+  }
+  return <HomeHub />;
+}
+
+function PainelGestorRoute({ children }) {
+  const { user } = useAuth();
+  if (!canAccessPainelGestor(user)) return <Navigate to="/" replace />;
+  return children;
+}
+
+function PainelGestorSaldosRoute({ children }) {
+  const { user } = useAuth();
+  if (!canInformPainelGestorSaldos(user)) return <Navigate to="/painel-gestor?aba=saldos" replace />;
+  return children;
 }
 
 function SolicitacoesRelatoriosRoute({ children }) {
@@ -355,7 +417,7 @@ function ModuloComprasRoute({ children }) {
 function CompraSolicitacoesRoute({ children }) {
   const { user } = useAuth();
   if (!canViewCompraSolicitacoes(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -363,7 +425,7 @@ function CompraSolicitacoesRoute({ children }) {
 function CompraSolicitacaoCreateRoute({ children }) {
   const { user } = useAuth();
   if (!canCreateCompraSolicitacao(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -371,7 +433,7 @@ function CompraSolicitacaoCreateRoute({ children }) {
 function CompraSolicitacaoCreateFlowRoute({ children }) {
   const { user } = useAuth();
   if (!canCreateCompraSolicitacao(user) && !canViewCompraSolicitacoes(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -395,7 +457,7 @@ function ComprasPedidosRoute({ children }) {
 function ComprasDelegacaoRoute({ children }) {
   const { user } = useAuth();
   if (!canViewComprasDelegacao(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -403,7 +465,7 @@ function ComprasDelegacaoRoute({ children }) {
 function ComprasFornecedoresRoute({ children }) {
   const { user } = useAuth();
   if (!canViewComprasFornecedores(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -411,7 +473,7 @@ function ComprasFornecedoresRoute({ children }) {
 function ComprasRelatoriosRoute({ children }) {
   const { user } = useAuth();
   if (!canViewComprasRelatorios(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -419,7 +481,7 @@ function ComprasRelatoriosRoute({ children }) {
 function ComprasConfiguracoesRoute({ children }) {
   const { user } = useAuth();
   if (!canManageComprasConfiguracoes(user)) {
-    return <Navigate to="/solicitacoes" replace />;
+    return <Navigate to="/" replace />;
   }
   return children;
 }
@@ -448,11 +510,33 @@ function FinanceiroRoute({ children }) {
   return children;
 }
 
+function FinanceiroCaixasRoute({ children }) {
+  const { user } = useAuth();
+  if (!canViewFinanceiroCaixas(user)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
 function FinanceiroPagamentosRoute({ children }) {
   const { user } = useAuth();
   if (!canAccessPagamentos(user)) {
     return <Navigate to="/" replace />;
   }
+  return children;
+}
+
+function FinanceiroFilaPagamentosRoute({ children }) {
+  const { user } = useAuth();
+  if (!canAccessFilaPagamentos(user)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+function FinanceiroAutorizacoesPagamentoRoute({ children }) {
+  const { user } = useAuth();
+  if (!canAccessAutorizacoesPagamento(user)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -767,18 +851,18 @@ function RhDpDashboardRoute({ children }) {
   return children;
 }
 
-function RhDpEmpresasRoute({ children }) {
+function RhDpColaboradoresRoute({ children }) {
   const { user } = useAuth();
-  if (!canAccessRhDpEmpresas(user)) {
-    return <Navigate to="/rh-dp" replace />;
+  if (!canViewRhDpColaboradores(user)) {
+    return <Navigate to="/hub/rhdp" replace />;
   }
   return children;
 }
 
-function RhDpColaboradoresRoute({ children }) {
+function RhDpCadastroColaboradoresRoute({ children }) {
   const { user } = useAuth();
-  if (!canViewRhDpColaboradores(user)) {
-    return <Navigate to="/rh-dp" replace />;
+  if (!canAccessRhDpCadastroColaboradores(user)) {
+    return <Navigate to="/rh-dp/pessoal?aba=colaboradores" replace />;
   }
   return children;
 }
@@ -786,7 +870,7 @@ function RhDpColaboradoresRoute({ children }) {
 function RhDpDocumentosRoute({ children }) {
   const { user } = useAuth();
   if (!canViewRhDpDocumentos(user)) {
-    return <Navigate to="/rh-dp" replace />;
+    return <Navigate to="/hub/rhdp" replace />;
   }
   return children;
 }
@@ -794,15 +878,7 @@ function RhDpDocumentosRoute({ children }) {
 function RhDpImportacoesRoute({ children }) {
   const { user } = useAuth();
   if (!canExecuteRhDpImportacoes(user)) {
-    return <Navigate to="/rh-dp" replace />;
-  }
-  return children;
-}
-
-function RhDpApuracaoRoute({ children }) {
-  const { user } = useAuth();
-  if (!canViewRhDpApuracao(user)) {
-    return <Navigate to="/rh-dp" replace />;
+    return <Navigate to="/hub/rhdp" replace />;
   }
   return children;
 }
@@ -810,10 +886,10 @@ function RhDpApuracaoRoute({ children }) {
 function RhDpFinanceiroRoute({ children }) {
   const { user } = useAuth();
   if (!canViewRhDpObrigacoes(user)) {
-    return <Navigate to="/rh-dp" replace />;
+    return <Navigate to="/hub/rhdp" replace />;
   }
   if (!hasEnabledModule(user, 'FINANCEIRO')) {
-    return <Navigate to="/rh-dp" replace />;
+    return <Navigate to="/hub/rhdp" replace />;
   }
   return children;
 }
@@ -863,7 +939,13 @@ export default function App() {
           </PrivateRoute>
         )}
       >
-        <Route index element={<DashboardRoute />} />
+        {/* Hub Principal (nível 1) e hubs de módulo (nível 2). O
+            Dashboard executivo, antes na raiz, vive agora em /dashboard. */}
+        <Route index element={<HomeEntry />} />
+        <Route path="hub/:moduleId" element={<ModuleHub />} />
+        <Route path="dashboard" element={<DashboardRoute />} />
+        <Route path="painel-gestor" element={<PainelGestorRoute><PainelGestor /></PainelGestorRoute>} />
+        <Route path="painel-gestor/saldos/registro" element={<PainelGestorRoute><PainelGestorSaldosRoute><PainelGestorSaldosRegistro /></PainelGestorSaldosRoute></PainelGestorRoute>} />
 
         <Route path="solicitacoes" element={<Solicitacoes />} />
         <Route path="solicitacoes/relatorios" element={<SolicitacoesRelatoriosRoute><ModuloRelatorios modulo="solicitacoes" /></SolicitacoesRelatoriosRoute>} />
@@ -873,8 +955,6 @@ export default function App() {
         <Route path="solicitacoes/:id" element={<SolicitacaoDetalhe />} />
         <Route path="prioridades-diretoria" element={<PrioridadesDiretoriaRoute><PrioridadesDiretoria /></PrioridadesDiretoriaRoute>} />
         <Route path="comunicacao-interna" element={<ComunicacaoRoute><ComunicacaoInterna /></ComunicacaoRoute>} />
-        <Route path="conversas/entrada" element={<ComunicacaoRoute><ComunicacaoInterna /></ComunicacaoRoute>} />
-        <Route path="conversas/saida" element={<ComunicacaoRoute><ComunicacaoInterna /></ComunicacaoRoute>} />
         <Route path="conversas/:id" element={<ComunicacaoRoute><ComunicacaoInterna /></ComunicacaoRoute>} />
         <Route path="arquivos-modelos" element={<BibliotecaRoute><ArquivosModelos /></BibliotecaRoute>} />
         <Route path="treinamento" element={<EnabledModuleRoute moduleKey="TREINAMENTO"><TreinamentoRoute><Treinamento /></TreinamentoRoute></EnabledModuleRoute>} />
@@ -892,23 +972,39 @@ export default function App() {
         <Route path="tipos-solicitacao" element={<ConfiguracoesAreaRoute area="cadastros"><TiposSolicitacao /></ConfiguracoesAreaRoute>} />
         <Route path="gestao-contratos" element={<ContratosRoute><GestaoContratos /></ContratosRoute>} />
         <Route path="configuracoes" element={<ConfiguracoesRoute><Configuracoes /></ConfiguracoesRoute>} />
+        <Route path="configuracoes-status-internos-pagar" element={<FinanceiroRoute><ConfiguracoesStatusInternosPagar /></FinanceiroRoute>} />
+        <Route path="configuracoes-usuarios-teste" element={<DevOnlySuperadminRoute><ConfiguracaoUsuariosTesteRapido /></DevOnlySuperadminRoute>} />
         <Route path="configuracoes-suporte" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesSuporte /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-visibilidade-ui" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesVisibilidadeUi /></ConfiguracoesAreaRoute>} />
-        <Route path="empresas-grupo" element={<ConfiguracoesAreaRoute area="cadastros"><EmpresasGrupo /></ConfiguracoesAreaRoute>} />
+        {/*
+          D2 (02/09): com o RH/DP apontando para ca, quem tinha acesso APENAS
+          por rh_dp.empresas.gerenciar perderia a tela na unificacao. O guarda
+          soma as duas permissoes — redirecionar nao pode tirar acesso de
+          ninguem.
+        */}
+        <Route path="empresas-grupo" element={<EmpresasGrupoRoute><EmpresasGrupo /></EmpresasGrupoRoute>} />
         <Route path="tipos-sub-contrato" element={<ConfiguracoesAreaRoute area="cadastros"><TiposSubContrato /></ConfiguracoesAreaRoute>} />
         <Route path="status-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><StatusSetor /></ConfiguracoesAreaRoute>} />
         <Route path="permissoes-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><PermissoesSetor /></ConfiguracoesAreaRoute>} />
         <Route path="cores-sistema" element={<ConfiguracoesAreaRoute area="aparencia"><CoresSistema /></ConfiguracoesAreaRoute>} />
         <Route path="areas-obra" element={<ConfiguracoesAreaRoute area="status_vinculos"><AreasObra /></ConfiguracoesAreaRoute>} />
+        <Route path="obra-tipo-apropriacao" element={<ConfiguracoesAreaRoute area="status_vinculos"><ObraTipoApropriacao /></ConfiguracoesAreaRoute>} />
+        <Route path="contrato-obra-categorias" element={<ConfiguracoesAreaRoute area="geral"><ContratoObraCategorias /></ConfiguracoesAreaRoute>} />
+        <Route path="contratos/novo" element={<ContratoFluxoNovo />} />
         <Route path="areas-por-setor-origem" element={<ConfiguracoesAreaRoute area="status_vinculos"><AreasPorSetorOrigem /></ConfiguracoesAreaRoute>} />
         <Route path="setores-visiveis-usuario" element={<ConfiguracoesAreaRoute area="status_vinculos"><SetoresVisiveisUsuario /></ConfiguracoesAreaRoute>} />
         <Route path="comportamento-recebimento-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><ComportamentoRecebimentoSetor /></ConfiguracoesAreaRoute>} />
         <Route path="timeout-inatividade" element={<ConfiguracoesAreaRoute area="status_vinculos"><TimeoutInatividade /></ConfiguracoesAreaRoute>} />
         <Route path="tipos-solicitacao-por-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><TiposSolicitacaoPorSetor /></ConfiguracoesAreaRoute>} />
+        <Route path="tipos-solicitacao-por-destino" element={<ConfiguracoesAreaRoute area="status_vinculos"><TiposSolicitacaoPorDestino /></ConfiguracoesAreaRoute>} />
         <Route path="nova-solicitacao-campos" element={<ConfiguracoesAreaRoute area="solicitacoes"><NovaSolicitacaoCamposConfig /></ConfiguracoesAreaRoute>} />
         <Route path="nova-solicitacao-automacao-destino" element={<ConfiguracoesAreaRoute area="solicitacoes"><NovaSolicitacaoAutomacaoDestinoConfig /></ConfiguracoesAreaRoute>} />
         <Route path="tipos-compartilhados-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><TiposCompartilhadosSetor /></ConfiguracoesAreaRoute>} />
         <Route path="automacao-status-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><AutomacaoStatusSetor /></ConfiguracoesAreaRoute>} />
+        <Route path="aprovacao-solicitacao-por-tipo" element={<ConfiguracoesAreaRoute area="status_vinculos"><AprovacaoSolicitacaoPorTipo /></ConfiguracoesAreaRoute>} />
+        <Route path="configuracoes-acoes-principais" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesAcoesPrincipais /></ConfiguracoesAreaRoute>} />
+        <Route path="configuracoes-atalhos-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesAtalhosSetor /></ConfiguracoesAreaRoute>} />
+        <Route path="configuracoes-detalhe-layout" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesDetalheLayout /></ConfiguracoesAreaRoute>} />
         <Route path="setores-criacao-todas-obras" element={<ConfiguracoesAreaRoute area="status_vinculos"><SetoresCriacaoTodasObras /></ConfiguracoesAreaRoute>} />
         <Route path="setores-acesso-todas-obras" element={<ConfiguracoesAreaRoute area="status_vinculos"><SetoresAcessoTodasObras /></ConfiguracoesAreaRoute>} />
         <Route path="usuarios-envio-qualquer-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><UsuariosEnvioQualquerSetor /></ConfiguracoesAreaRoute>} />
@@ -919,13 +1015,19 @@ export default function App() {
         <Route path="permissoes-areas-padroes" element={<ConfiguracoesAreaRoute area="permissoes"><PermissoesAreasPadroes /></ConfiguracoesAreaRoute>} />
         <Route path="governanca" element={<GovernancaSistemaRoute><GovernancaSistema /></GovernancaSistemaRoute>} />
         <Route path="governanca/auditoria-operacional" element={<AuditoriaOperacionalRoute><AuditoriaOperacional /></AuditoriaOperacionalRoute>} />
+        <Route path="configuracoes-painel-gestor" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesPainelGestor /></ConfiguracoesAreaRoute>} />
         <Route path="arquivos-modelos-config" element={<SuperadminRoute><ArquivosModelosConfig /></SuperadminRoute>} />
         <Route path="configuracoes-cotacao" element={<EnabledModuleRoute moduleKey="COMPRAS"><EnabledModuleRoute moduleKey="COTACOES"><ComprasConfiguracoesRoute><ConfiguracoesCotacao /></ComprasConfiguracoesRoute></EnabledModuleRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-status-pedidos-compra" element={<EnabledModuleRoute moduleKey="COMPRAS"><ComprasConfiguracoesRoute><ConfiguracoesStatusPedidoCompra /></ComprasConfiguracoesRoute></EnabledModuleRoute>} />
+        <Route path="configuracoes-titulos-pedidos-compra" element={<EnabledModuleRoute moduleKey="COMPRAS"><SuperadminRoute><ConfiguracoesTitulosPedidosCompra /></SuperadminRoute></EnabledModuleRoute>} />
+        <Route path="configuracoes-controle-diario-contas" element={<EnabledModuleRoute moduleKey="FINANCEIRO"><SuperadminRoute><ConfiguracoesControleDiarioContas /></SuperadminRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-comercial-categorias" element={<EnabledModuleRoute moduleKey="COMERCIAL"><ConfiguracoesAreaRoute area="geral"><ConfiguracoesComercialCategorias /></ConfiguracoesAreaRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-provisionamento-fluxo" element={<EnabledModuleRoute moduleKey="PROVISOES"><ConfiguracoesAreaRoute area="geral"><ConfiguracoesProvisionamentoFluxo /></ConfiguracoesAreaRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-modulos" element={<ConfiguracoesAreaRoute area="modulos"><ConfiguracoesModulos /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-notificacoes-sistema" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesNotificacoesSistema /></ConfiguracoesAreaRoute>} />
+        <Route path="configuracoes-contrato-alertas" element={<ConfiguracoesAreaRoute area="geral"><ConfiguracoesContratoAlertasEFormas /></ConfiguracoesAreaRoute>} />
+        <Route path="configuracoes-formas-pagamento-solicitacao" element={<ConfiguracoesAreaRoute area="geral"><ConfiguracoesContratoAlertasEFormas /></ConfiguracoesAreaRoute>} />
+        <Route path="configuracoes-cartoes-recarga" element={<SuperadminRoute><CartoesRecarga /></SuperadminRoute>} />
         <Route path="parceiros" element={<ConfiguracoesAreaRoute area="cadastros"><Parceiros /></ConfiguracoesAreaRoute>} />
         <Route path="parceiros-categorias" element={<ConfiguracoesAreaRoute area="cadastros"><ParceiroCategorias /></ConfiguracoesAreaRoute>} />
         <Route path="crm/dashboard" element={<CrmDashboardRoute><CrmDashboard /></CrmDashboardRoute>} />
@@ -970,14 +1072,31 @@ export default function App() {
         <Route path="provisoes-financeiras/:id" element={<ProvisionamentosRoute><ProvisionamentoFinanceiroDetalhe /></ProvisionamentosRoute>} />
         <Route path="provisoes-financeiras/dashboard" element={<ProvisionamentosDashboardRoute><DashboardProvisionamentoFinanceiro /></ProvisionamentosDashboardRoute>} />
         <Route path="provisoes-financeiras/categorias" element={<ProvisionamentosCategoriasRoute><GestaoCategoriasMacro /></ProvisionamentosCategoriasRoute>} />
-        <Route path="rh-dp" element={<RhDpDashboardRoute><RhDpInicio /></RhDpDashboardRoute>} />
+        {/*
+          D3 (02/09): o RH/DP nao tem mais tela de "Inicio" propria — era um
+          mural de sete cards que repetia o menu. O hub do modulo (/hub/rhdp)
+          ja e o indice, e vale para todos os modulos. A rota antiga fica como
+          redirecionamento: link salvo, favorito e atalho continuam chegando.
+        */}
+        <Route path="rh-dp" element={<Navigate to="/hub/rhdp" replace />} />
         <Route path="rh-dp/relatorios" element={<RhDpDashboardRoute><ModuloRelatorios modulo="rhdp" /></RhDpDashboardRoute>} />
-        <Route path="rh-dp/relatorios/operacional" element={<RhDpColaboradoresRoute><RhDpRelatorioOperacional /></RhDpColaboradoresRoute>} />
-        <Route path="rh-dp/empresas" element={<RhDpEmpresasRoute><RhDpEmpresas /></RhDpEmpresasRoute>} />
-        <Route path="rh-dp/colaboradores" element={<RhDpColaboradoresRoute><RhDpColaboradores /></RhDpColaboradoresRoute>} />
+        <Route path="rh-dp/relatorios/operacional" element={<RhDpDashboardRoute><RhDpRelatorioOperacional /></RhDpDashboardRoute>} />
+        {/*
+          D2 (02/09): Empresas do grupo passa a existir uma vez so, em
+          Cadastros. Redirecionamento em vez de rota morta.
+        */}
+        <Route path="rh-dp/empresas" element={<Navigate to="/empresas-grupo" replace />} />
+        <Route path="rh-dp/pessoal" element={<RhDpColaboradoresRoute><RhDpPessoal /></RhDpColaboradoresRoute>} />
+        {/*
+          D1 (02/09): Pessoal e a porta unica do dia a dia. Jornada e Apuracao
+          sao o mesmo trabalho em sequencia e viraram abas de la — as rotas
+          antigas levam a aba certa em vez de quebrar.
+        */}
+        <Route path="rh-dp/jornada" element={<Navigate to="/rh-dp/pessoal?aba=jornada" replace />} />
+        <Route path="rh-dp/colaboradores" element={<RhDpCadastroColaboradoresRoute><RhDpColaboradores /></RhDpCadastroColaboradoresRoute>} />
         <Route path="rh-dp/documentos" element={<RhDpDocumentosRoute><RhDpDocumentos /></RhDpDocumentosRoute>} />
         <Route path="rh-dp/importacoes" element={<RhDpImportacoesRoute><RhDpImportacoes /></RhDpImportacoesRoute>} />
-        <Route path="rh-dp/apuracao" element={<RhDpApuracaoRoute><RhDpApuracao /></RhDpApuracaoRoute>} />
+        <Route path="rh-dp/apuracao" element={<Navigate to="/rh-dp/pessoal?aba=apuracao" replace />} />
         <Route path="rh-dp/fechamentos" element={<RhDpFinanceiroRoute><RhDpFechamentos /></RhDpFinanceiroRoute>} />
         <Route path="sst" element={<SstDashboardRoute><SstDashboard /></SstDashboardRoute>} />
         <Route path="sst/relatorios" element={<SstDashboardRoute><ModuloRelatorios modulo="sst" /></SstDashboardRoute>} />
@@ -995,9 +1114,36 @@ export default function App() {
 
         <Route path="comprovantes/upload" element={<FinanceiroRoute><UploadComprovantes /></FinanceiroRoute>} />
         <Route path="comprovantes/pendentes" element={<FinanceiroRoute><ComprovantesPendentes /></FinanceiroRoute>} />
-        <Route path="financeiro/contas-a-receber" element={<FinanceiroRoute><FinanceiroTitulos tipoFixo="RECEBER" /></FinanceiroRoute>} />
-        <Route path="financeiro/contas-a-pagar" element={<FinanceiroRoute><FinanceiroTitulos tipoFixo="PAGAR" /></FinanceiroRoute>} />
+        {/*
+          D2 (financeiro): PORTA ÚNICA COM O RECORTE NA URL.
+
+          Havia três rotas para o MESMO componente e o recorte chegava por
+          uma prop invisível (tipoFixo). Prop de rota não é endereço: não dá
+          para favoritar "só a pagar" nem mandar o link. Agora é
+          /financeiro/titulos?tipo=receber|pagar, e a tela lê o recorte da
+          própria URL.
+
+          R20 — as duas rotas antigas REDIRECIONAM preservando o recorte:
+          favorito, atalho fixado e tela inicial continuam chegando à mesma
+          lista, com a mesma carteira.
+
+          `replace` é OBRIGATÓRIO aqui, não estilo: o `Navigate` do router
+          empurra uma entrada no histórico por padrão, então sem ele o
+          "Voltar" do navegador cairia de novo no endereço antigo, que
+          redirecionaria de novo — a pessoa ficaria presa na tela sem
+          conseguir sair pelo Voltar.
+
+          PERMISSÃO: os três endereços eram guardados pelo MESMO
+          FinanceiroRoute (canAccessFinanceiro) — nenhum recorte exigia mais
+          que o outro, então não há permissão a preservar por recorte. O
+          destino continua sob esse guarda, e é ele que barra: quem não podia
+          ver "a pagar" segue sem ver, agora barrado na porta única.
+        */}
+        <Route path="financeiro/contas-a-receber" element={<Navigate to="/financeiro/titulos?tipo=receber" replace />} />
+        <Route path="financeiro/contas-a-pagar" element={<Navigate to="/financeiro/titulos?tipo=pagar" replace />} />
         <Route path="financeiro/titulos" element={<FinanceiroRoute><FinanceiroTitulos /></FinanceiroRoute>} />
+        <Route path="financeiro/fila-pagamentos" element={<FinanceiroFilaPagamentosRoute><FinanceiroFilaPagamentos /></FinanceiroFilaPagamentosRoute>} />
+        <Route path="financeiro/autorizacoes-pagamento" element={<FinanceiroAutorizacoesPagamentoRoute><FinanceiroAutorizacoesPagamento /></FinanceiroAutorizacoesPagamentoRoute>} />
         <Route path="financeiro/titulos/novo" element={<FinanceiroRoute><FinanceiroTituloNovo /></FinanceiroRoute>} />
         <Route path="financeiro/titulos/:id/editar" element={<FinanceiroRoute><FinanceiroTituloEditar /></FinanceiroRoute>} />
         <Route path="financeiro/titulos/:id" element={<FinanceiroRoute><FinanceiroTituloDetalhe /></FinanceiroRoute>} />
@@ -1019,13 +1165,15 @@ export default function App() {
         <Route path="financeiro/relatorios/financeiro-obras" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.financeiro_obras"><FinanceiroObras /></FinanceiroRelatorioRoute>} />
         <Route path="financeiro/relatorios/resultado-obras" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.resultado_obras"><FinanceiroResultadoObras /></FinanceiroRelatorioRoute>} />
         <Route path="financeiro/relatorios/centros-custo" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.centros_custo"><FinanceiroResultadoCentrosCusto /></FinanceiroRelatorioRoute>} />
+        <Route path="financeiro/relatorios/centros-custo/distribuicao-obras" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.centros_custo"><FinanceiroDistribuicaoCentrosCusto /></FinanceiroRelatorioRoute>} />
         <Route path="financeiro/baixas" element={<FinanceiroRoute><FinanceiroBaixas /></FinanceiroRoute>} />
         <Route path="financeiro/financiamentos-bancarios" element={<FinanceiroRoute><FinanceiroFinanciamentosBancarios /></FinanceiroRoute>} />
         <Route path="financeiro/bancos" element={<FinanceiroRoute><FinanceiroBancos /></FinanceiroRoute>} />
         <Route path="financeiro/conciliacao" element={<FinanceiroRoute><FinanceiroConciliacao /></FinanceiroRoute>} />
-        <Route path="financeiro/caixas" element={<FinanceiroRoute><FinanceiroCaixas /></FinanceiroRoute>} />
+        <Route path="financeiro/caixas" element={<FinanceiroCaixasRoute><FinanceiroCaixas /></FinanceiroCaixasRoute>} />
         <Route path="financeiro/cadastros" element={<FinanceiroRoute><FinanceiroCadastros /></FinanceiroRoute>} />
         <Route path="custos-recebiveis" element={<CustosRecebiveisRoute><CustosRecebiveis /></CustosRecebiveisRoute>} />
+        <Route path="configuracoes-responsaveis-obras" element={<CustosRecebiveisRoute><ResponsaveisObra /></CustosRecebiveisRoute>} />
         <Route path="compras/relatorios" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ModuloRelatorios modulo="compras" /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/auditoria" element={<ModuloComprasRoute><ComprasRelatoriosRoute><RelatoriosAdministrativos /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/categorias-insumos" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioCategoriasInsumos /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
@@ -1038,7 +1186,6 @@ export default function App() {
         <Route path="compras/relatorios/ciclo" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioCiclo /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/economia-cotacoes" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioEconomiaCotacoes /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/fornecedores" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioFornecedores /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
-        <Route path="relatorios/administrativos" element={<ModuloComprasRoute><ComprasRelatoriosRoute><RelatoriosAdministrativos /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="perfil" element={<Perfil />} />
         <Route path="contratos/relatorios" element={<ContratosRoute><ModuloRelatorios modulo="contratos" /></ContratosRoute>} />
         <Route path="contratos/relatorios/operacional" element={<ContratosRoute><ContratosRelatorioOperacional /></ContratosRoute>} />

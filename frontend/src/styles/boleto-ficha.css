@@ -1,0 +1,76 @@
+/*
+ * FICHA DE COMPENSAÇÃO — PAPEL, NÃO TELA (04/09, leva do Financeiro).
+ *
+ * Por que esta folha existe, e por que ela é a única do sistema que não
+ * segue o tema: a ficha de compensação da `FinanceiroBoletos` não é uma
+ * superfície do produto — é a REPRODUÇÃO de um documento bancário que vai
+ * para a impressora e para as mãos do pagador. Ela tem de ser branca com
+ * tinta preta no tema claro E no escuro, porque é isso que sai impresso; e
+ * o código de barras precisa de preto pleno sobre branco pleno, ou o
+ * leitor óptico não lê. Aqui "acompanhar o tema" seria o defeito.
+ *
+ * A R25 continua valendo, e é por isso que os valores moram AQUI, num
+ * token declarado, e não como `bg-white text-slate-950 border-slate-300`
+ * espalhados por trinta linhas de JSX — que era o estado anterior e o pior
+ * caso de cor do módulo. A tela passa a citar `var(--boleto-*)`; a decisão
+ * de que este retângulo é papel está escrita num lugar só, com o motivo.
+ *
+ * Nenhum valor é hexadecimal nem `rgb()` de propósito: palavra-chave de
+ * cor deixa a intenção legível ("papel", "tinta", "régua") e não se
+ * confunde com paleta crua do Tailwind.
+ *
+ * PENDENTE DE DECISÃO DO CLIENTE: se a ficha deve ganhar um modo escuro
+ * de VISUALIZAÇÃO (com a impressão continuando branca) ou permanecer
+ * branca também na tela, como está aqui.
+ */
+:root {
+  --boleto-papel: white;
+  --boleto-tinta: black;
+  /* Régua do formulário: cinza claro, como a impressão do banco. */
+  --boleto-regua: gainsboro;
+  /* Rótulo dos campos: 5,7:1 sobre branco — acima do piso AA de 4,5:1. */
+  --boleto-rotulo: dimgray;
+  /* Aviso de amostra/teste: 6,4:1 sobre branco, e legível em preto e branco. */
+  --boleto-aviso: saddlebrown;
+}
+
+.boleto-print {
+  background: var(--boleto-papel);
+  color: var(--boleto-tinta);
+}
+
+/* Altura do código de barras: medida do DOCUMENTO (padrão FEBRABAN), não
+   da escala da interface — por isso vive aqui e não como utilitário. */
+.boleto-codigo-barras {
+  display: block;
+  width: 100%;
+  height: 4rem;
+  background: var(--boleto-papel);
+  color: var(--boleto-tinta);
+}
+
+/* Campo de instruções da ficha: altura mínima do formulário impresso. */
+.boleto-instrucoes {
+  min-height: 7.5rem;
+}
+
+/* Superfície de leitura da pré-visualização: a ficha é papel, então o
+   fundo em volta dela é o canvas do sistema (esse SIM acompanha o tema). */
+.boleto-preview-fundo {
+  background: var(--ui-canvas);
+}
+
+/* Impressão: só a ficha vai para o papel. Vinha de um bloco <style> inline
+   dentro do JSX da tela; regra de folha mora em folha. */
+@media print {
+  body * { visibility: hidden; }
+  .boleto-print, .boleto-print * { visibility: visible; }
+  .boleto-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+}

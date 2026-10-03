@@ -1,10 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  CelulaDupla,
+  PageHeader,
+  Pagina,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  alternarValorFiltro,
+  useAvisos,
+  useConfirmacao,
+  useFiltrosVisiveis
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { getObras } from '../services/obras';
 import {
   getRhEmpresasGrupo,
   getRhFechamento,
+  getRhFechamentoComprovanteLink,
   getRhFechamentos,
   reabrirRhFechamento
 } from '../services/rhDp';
@@ -17,6 +34,10 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL'
 });
 
+// R12: os recortes enumeráveis viram MARCAÇÃO (conjunto por dimensão);
+// competência é contínua e vive na prop `campos` da BarraFiltros (R16b).
+const DIMENSOES = ['empresa_grupo_id', 'obra_id', 'status'];
+
 function formatCurrency(value) {
   return currencyFormatter.format(Number(value || 0));
 }
@@ -28,20 +49,56 @@ function formatDate(value) {
   return date.toLocaleDateString('pt-BR');
 }
 
-function statusClass(status) {
+// A pílula de status é do StatusBadge (dono único, R16). O `kind` preserva
+// as MESMAS famílias que as classes escritas à mão usavam: fechado =
+// sucesso, estornado = perigo, o resto neutro.
+function familiaStatus(status) {
   const normalized = String(status || '').trim().toUpperCase();
-  if (normalized === 'FECHADO') {
-    return 'app-status-pill bg-emerald-100 text-emerald-700';
-  }
-  if (normalized === 'ESTORNADO') {
-    return 'app-status-pill bg-rose-100 text-rose-700';
-  }
-  return 'app-status-pill bg-slate-100 text-slate-700';
+  if (normalized === 'FECHADO') return 'success';
+  if (normalized === 'ESTORNADO') return 'danger';
+  return 'neutral';
 }
 
-export default function RhDpFechamentos() {
+function conjuntoDeParam(searchParams, chave) {
+  return new Set(searchParams.getAll(chave).filter(Boolean).map(String));
+}
+
+// A API do fechamento recebe UM valor por recorte. Com exatamente uma marca
+// o filtro continua indo para o servidor (mesma consulta de antes); com duas
+// ou mais, o servidor devolve o conjunto amplo e a marcação estreita aqui —
+// senão a marcação múltipla ficaria mentindo na tela.
+function unico(conjunto) {
+  return conjunto && conjunto.size === 1 ? conjunto.values().next().value : undefined;
+}
+
+function combina(conjunto, valor) {
+  if (!conjunto || conjunto.size === 0) return true;
+  return conjunto.has(String(valor ?? ''));
+}
+
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'competencia', rotulo: 'Competência' },
+  { id: 'empresa_grupo_id', rotulo: 'Empresa do grupo' },
+  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'status', rotulo: 'Status' }
+];
+
+export default function RhDpFechamentos({ comoAba = false }) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [empresas, setEmpresas] = useState([]);
   const [obras, setObras] = useState([]);
   const [fechamentos, setFechamentos] = useState([]);
@@ -50,24 +107,100 @@ export default function RhDpFechamentos() {
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
   const [reabrindo, setReabrindo] = useState(false);
-  const [filtros, setFiltros] = useState({
+  const [filtros, setFiltros] = useState(() => ({
     competencia: searchParams.get('competencia') || '',
-    empresa_grupo_id: searchParams.get('empresa_grupo_id') || '',
-    obra_id: searchParams.get('obra_id') || '',
-    status: searchParams.get('status') || ''
+    empresa_grupo_id: conjuntoDeParam(searchParams, 'empresa_grupo_id'),
+    obra_id: conjuntoDeParam(searchParams, 'obra_id'),
+    status: conjuntoDeParam(searchParams, 'status')
+  }));
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      const valor = filtros[filtro.id];
+      return valor instanceof Set ? valor.size > 0 : String(valor ?? '').trim() !== '';
+    }).map((filtro) => filtro.id),
+    [filtros]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:rh-dp-fechamentos:lista', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      setFiltros((atual) => ({ ...atual, [id]: atual[id] instanceof Set ? new Set() : '' }));
+    }
   });
+  const detalheCarregado = useRef(null);
+  const detalheRef = useRef(null);
+  const rolarDetalheAposCarregar = useRef(false);
+  // A sincronia da URL roda dentro de um timeout: sem esta referência ela
+  // leria os parâmetros do render em que foi agendada e podia apagar um
+  // fechamento_id escolhido no meio do caminho.
+  const paramsAtuais = useRef(searchParams);
+
+  useEffect(() => {
+    paramsAtuais.current = searchParams;
+  }, [searchParams]);
 
   useEffect(() => {
     carregarBase();
   }, []);
 
+  // Filtro marcado aplica na hora (padrão Solicitações); a competência
+  // digitada espera 350ms para não martelar a API a cada tecla.
+  useEffect(() => {
+    const atraso = setTimeout(() => {
+      sincronizarUrl(filtros);
+      carregarFechamentos(filtros);
+    }, 350);
+    return () => clearTimeout(atraso);
+  }, [filtros]);
+
   useEffect(() => {
     const fechamentoId = searchParams.get('fechamento_id');
     if (!fechamentoId) {
+      detalheCarregado.current = null;
       return;
     }
+    // A URL muda a cada marca de filtro; o detalhe só recarrega quando o
+    // fechamento apontado muda de verdade.
+    if (detalheCarregado.current === fechamentoId) {
+      return;
+    }
+    detalheCarregado.current = fechamentoId;
     abrirFechamento(fechamentoId);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!detalhe?.id || !rolarDetalheAposCarregar.current) return;
+
+    rolarDetalheAposCarregar.current = false;
+    const frame = requestAnimationFrame(rolarParaDetalhe);
+
+    return () => cancelAnimationFrame(frame);
+  }, [detalhe?.id]);
+
+  function rolarParaDetalhe() {
+    const reduzirMovimento = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    detalheRef.current?.scrollIntoView({
+      behavior: reduzirMovimento ? 'auto' : 'smooth',
+      block: 'start'
+    });
+    detalheRef.current?.focus({ preventScroll: true });
+  }
 
   async function carregarBase() {
     try {
@@ -78,10 +211,9 @@ export default function RhDpFechamentos() {
       ]);
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
       setObras(Array.isArray(listaObras) ? listaObras : []);
-      await carregarFechamentos();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar base dos fechamentos RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar base dos fechamentos RH/DP');
     } finally {
       setCarregandoBase(false);
     }
@@ -92,15 +224,15 @@ export default function RhDpFechamentos() {
       setCarregandoLista(true);
       const params = {
         competencia: nextFilters.competencia || undefined,
-        empresa_grupo_id: nextFilters.empresa_grupo_id || undefined,
-        obra_id: nextFilters.obra_id || undefined,
-        status: nextFilters.status || undefined
+        empresa_grupo_id: unico(nextFilters.empresa_grupo_id),
+        obra_id: unico(nextFilters.obra_id),
+        status: unico(nextFilters.status)
       };
       const data = await getRhFechamentos(params);
       setFechamentos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar fechamentos RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar fechamentos RH/DP');
     } finally {
       setCarregandoLista(false);
     }
@@ -113,38 +245,67 @@ export default function RhDpFechamentos() {
       setDetalhe(data);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar detalhe do fechamento RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar detalhe do fechamento RH/DP');
     } finally {
       setCarregandoDetalhe(false);
     }
   }
 
-  function aplicarFiltros() {
-    const nextParams = {};
-    if (filtros.competencia) nextParams.competencia = filtros.competencia;
-    if (filtros.empresa_grupo_id) nextParams.empresa_grupo_id = filtros.empresa_grupo_id;
-    if (filtros.obra_id) nextParams.obra_id = filtros.obra_id;
-    if (filtros.status) nextParams.status = filtros.status;
-    if (searchParams.get('fechamento_id')) {
-      nextParams.fechamento_id = searchParams.get('fechamento_id');
+  async function abrirComprovante(item) {
+    try {
+      const url = await getRhFechamentoComprovanteLink(
+        detalhe.id,
+        item.fila_id,
+        item.legado ? null : item.id
+      );
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Nao foi possivel abrir o comprovante de pagamento.');
     }
-    setSearchParams(nextParams);
-    carregarFechamentos(filtros);
+  }
+
+  function sincronizarUrl(atuais) {
+    const vigentes = paramsAtuais.current;
+    const proximos = new URLSearchParams();
+    // Esta consulta vive dentro de Pessoal. Preservar a aba evita que uma
+    // alteração de filtro remova `aba=fechamentos` e devolva o usuário para
+    // a primeira aba da página.
+    const aba = vigentes.get('aba');
+    if (aba) proximos.set('aba', aba);
+    if (atuais.competencia) proximos.set('competencia', atuais.competencia);
+    DIMENSOES.forEach((dimensao) => {
+      Array.from(atuais[dimensao] || []).forEach((valor) => proximos.append(dimensao, valor));
+    });
+    const fechamentoId = vigentes.get('fechamento_id');
+    if (fechamentoId) proximos.set('fechamento_id', fechamentoId);
+    if (proximos.toString() !== vigentes.toString()) {
+      setSearchParams(proximos, { replace: true });
+    }
   }
 
   function selecionarFechamento(item) {
-    const nextParams = {};
-    if (filtros.competencia) nextParams.competencia = filtros.competencia;
-    if (filtros.empresa_grupo_id) nextParams.empresa_grupo_id = filtros.empresa_grupo_id;
-    if (filtros.obra_id) nextParams.obra_id = filtros.obra_id;
-    if (filtros.status) nextParams.status = filtros.status;
-    nextParams.fechamento_id = String(item.id);
-    setSearchParams(nextParams);
-    abrirFechamento(item.id);
+    rolarDetalheAposCarregar.current = true;
+
+    if (String(detalhe?.id || '') === String(item.id)) {
+      rolarParaDetalhe();
+      rolarDetalheAposCarregar.current = false;
+      return;
+    }
+
+    const proximos = new URLSearchParams(paramsAtuais.current);
+    proximos.set('fechamento_id', String(item.id));
+    setSearchParams(proximos);
   }
 
+  const fechamentosVisiveis = useMemo(() => fechamentos.filter((item) => (
+    combina(filtros.empresa_grupo_id, item.apuracao?.empresa_grupo_id)
+    && combina(filtros.obra_id, item.apuracao?.obra_id)
+    && combina(filtros.status, item.status)
+  )), [fechamentos, filtros]);
+
   const resumo = useMemo(() => {
-    return fechamentos.reduce(
+    return fechamentosVisiveis.reduce(
       (acc, item) => {
         acc.quantidade += 1;
         acc.totalTitulos += Number(item.total_titulos || 0);
@@ -157,7 +318,31 @@ export default function RhDpFechamentos() {
         totalValor: 0
       }
     );
-  }, [fechamentos]);
+  }, [fechamentosVisiveis]);
+
+  const dimensoesFiltro = useMemo(() => ([
+    {
+      id: 'empresa_grupo_id',
+      rotulo: 'Empresa do grupo',
+      opcoes: empresas.map((item) => ({ valor: String(item.id), rotulo: item.nome }))
+    },
+    {
+      id: 'obra_id',
+      rotulo: 'Obra',
+      opcoes: obras.map((item) => ({
+        valor: String(item.id),
+        rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
+      }))
+    },
+    {
+      id: 'status',
+      rotulo: 'Status',
+      opcoes: [
+        { valor: 'FECHADO', rotulo: 'Fechado' },
+        { valor: 'ESTORNADO', rotulo: 'Estornado' }
+      ]
+    }
+  ]), [empresas, obras]);
 
   const podeReabrirFechamento = canReopenRhDpFechamento(user);
 
@@ -166,12 +351,27 @@ export default function RhDpFechamentos() {
       return;
     }
 
-    const justificativa = window.prompt(
-      'Informe a justificativa para estornar o fechamento e reabrir a apuracao. Esta acao so sera permitida se os titulos financeiros nao estiverem baixados.'
-    );
-    if (!justificativa || !justificativa.trim()) {
-      return;
-    }
+    const competencia = detalhe.apuracao?.competencia || 'desta competencia';
+    const totalTitulos = Number(detalhe.total_titulos || 0);
+    /*
+      R3/R19: confirmar e justificar num passo só. Antes eram dois — a
+      confirmação do sistema e, logo depois, um `window.prompt` para a
+      justificativa. Além de a caixa do navegador ser o que a regra bane,
+      pedir em dois passos deixava a pessoa confirmar um estorno e só então
+      descobrir que precisava escrever o motivo.
+    */
+    const { ok, texto: justificativa } = await confirmar({
+      titulo: 'Estornar fechamento',
+      mensagem: `Estornar o fechamento de ${competencia} (${detalhe.apuracao?.empresaGrupo?.nome || 'empresa do grupo'})? Os ${totalTitulos} titulo(s) ja gerados no financeiro sao cancelados e a apuracao volta a ficar aberta. So e permitido se nenhum desses titulos estiver baixado.`,
+      rotuloConfirmar: 'Estornar',
+      destrutiva: true,
+      campo: {
+        rotulo: 'Justificativa do estorno',
+        obrigatorio: true,
+        multilinha: true
+      }
+    });
+    if (!ok || !justificativa.trim()) return;
 
     try {
       setReabrindo(true);
@@ -180,266 +380,280 @@ export default function RhDpFechamentos() {
       });
       setDetalhe(atualizado);
       await carregarFechamentos();
-      alert('Fechamento estornado e apuracao reaberta. O financeiro foi notificado.');
+      avisar.sucesso('Fechamento estornado e apuração reaberta. O financeiro foi notificado.');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao reabrir fechamento RH/DP');
+      avisar.erro(error?.message || 'Erro ao reabrir fechamento RH/DP');
     } finally {
       setReabrindo(false);
     }
   }
 
+  const Container = comoAba ? 'section' : Pagina;
+
   return (
-    <div className="page solicitacoes-page rhdp-page space-y-6">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">RH/DP - Fechamentos</h1>
-            <p className="page-subtitle">
-              Consulte competencias fechadas, acompanhe os titulos gerados no financeiro central e abra o detalhe do lote.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/rh-dp" className="btn btn-outline">
-              Voltar ao RH/DP
-            </Link>
-            <Link to="/rh-dp/apuracao" className="btn btn-outline">
-              Apuracao
-            </Link>
-          </div>
-        </div>
-      </div>
+    <Container
+      className={comoAba ? 'app-pagina rhdp-fechamentos-aba' : 'rhdp-page'}
+      aria-label={comoAba ? 'Fechamentos da apuração' : undefined}
+    >
+      {!comoAba ? (
+        <PageHeader
+          titulo="Fechamentos"
+          contagem={`${resumo.quantidade} fechamento${resumo.quantidade === 1 ? '' : 's'}`}
+          descricao="Competências fechadas, títulos gerados no financeiro central e o detalhe do lote."
+        />
+      ) : null}
 
-      <div className="sol-surface-card solicitacoes-toolbar app-toolbar-card rounded-xl p-3 md:p-4">
-        <div className="app-summary-grid">
-          <div className="app-summary-card">
-            <span className="app-summary-label">Fechamentos</span>
-            <strong className="app-summary-value">{resumo.quantidade}</strong>
-          </div>
-          <div className="app-summary-card">
-            <span className="app-summary-label">Titulos gerados</span>
-            <strong className="app-summary-value">{resumo.totalTitulos}</strong>
-          </div>
-          <div className="app-summary-card">
-            <span className="app-summary-label">Valor total</span>
-            <strong className="app-summary-value">{formatCurrency(resumo.totalValor)}</strong>
-          </div>
-        </div>
-      </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <div className="sol-surface-card solicitacoes-filtros app-filters-card rounded-xl p-4 md:p-5">
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Filtros</p>
-            <p className="sol-filtros-subtitle">
-              Refine a listagem por competencia, empresa do grupo, obra e status do fechamento.
-            </p>
-          </div>
-        </div>
+      <StatGrid colunas={comoAba ? 3 : 2}>
+        {comoAba ? <StatTile label="Fechamentos" valor={resumo.quantidade} /> : null}
+        <StatTile label="Títulos gerados" valor={resumo.totalTitulos} />
+        <StatTile label="Valor total" valor={formatCurrency(resumo.totalValor)} />
+      </StatGrid>
 
-        <div className="sol-filtros-grid">
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Competencia</span>
-            <input
-              type="month"
-              className="input w-full"
-              value={filtros.competencia}
-              onChange={(event) => setFiltros((current) => ({ ...current, competencia: event.target.value }))}
-            />
-          </label>
+      <BlocoConteudo
+        titulo="Competências fechadas"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/* R12/R16: o cartao de filtros com grade de select saiu inteiro.
+            Competencia (contínua) vai em `campos`; empresa, obra e status
+            sao enumeraveis e vao em `filtros`, com marcacao e etiqueta
+            removivel. O filtro aplica ao marcar — nao ha mais "Aplicar". */}
+        <BarraFiltros
+          campos={[{
+            id: 'competencia',
+            rotulo: 'Competência',
+            tipo: 'month',
+            valor: filtros.competencia,
+            aoMudar: (valor) => setFiltros((atuais) => ({ ...atuais, competencia: valor }))
+          }].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+          filtros={dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={{
+            empresa_grupo_id: filtros.empresa_grupo_id,
+            obra_id: filtros.obra_id,
+            status: filtros.status
+          }}
+          aoAlternar={(dimensao, valor) => setFiltros((atuais) => alternarValorFiltro(atuais, dimensao, valor))}
+          aoLimpar={() => setFiltros({
+            competencia: '',
+            empresa_grupo_id: new Set(),
+            obra_id: new Set(),
+            status: new Set()
+          })}
+          visibilidade={visibilidadeFiltros}
+        />
 
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Empresa do grupo</span>
-            <select
-              className="input w-full"
-              value={filtros.empresa_grupo_id}
-              onChange={(event) => setFiltros((current) => ({ ...current, empresa_grupo_id: event.target.value }))}
-            >
-              <option value="">Todas</option>
-              {empresas.map((item) => (
-                <option key={item.id} value={item.id}>{item.nome}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Obra</span>
-            <select
-              className="input w-full"
-              value={filtros.obra_id}
-              onChange={(event) => setFiltros((current) => ({ ...current, obra_id: event.target.value }))}
-            >
-              <option value="">Todas</option>
-              {obras.map((item) => (
-                <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Status</span>
-            <select
-              className="input w-full"
-              value={filtros.status}
-              onChange={(event) => setFiltros((current) => ({ ...current, status: event.target.value }))}
-            >
-              <option value="">Todos</option>
-              <option value="FECHADO">Fechado</option>
-              <option value="ESTORNADO">Estornado</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="app-page-actions">
-          <button type="button" className="btn btn-primary" onClick={aplicarFiltros} disabled={carregandoLista}>
-            {carregandoLista ? 'Atualizando...' : 'Aplicar filtros'}
-          </button>
-        </div>
-      </div>
-
-      <div className="sol-surface-card rounded-xl p-4">
-        {carregandoBase || carregandoLista ? (
-          <p className="text-sm text-slate-500">Carregando fechamentos RH/DP...</p>
-        ) : !fechamentos.length ? (
-          <p className="text-sm text-slate-500">Nenhum fechamento encontrado para os filtros atuais.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="px-3 py-2 font-medium">Competencia</th>
-                  <th className="px-3 py-2 font-medium">Empresa</th>
-                  <th className="px-3 py-2 font-medium">Obra</th>
-                  <th className="px-3 py-2 font-medium">Vencimento</th>
-                  <th className="px-3 py-2 font-medium">Titulos</th>
-                  <th className="px-3 py-2 font-medium">Valor</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fechamentos.map((item) => (
-                  <tr key={item.id} className="border-b border-slate-100 align-top">
-                    <td className="px-3 py-3">{item.apuracao?.competencia || '-'}</td>
-                    <td className="px-3 py-3">{item.apuracao?.empresaGrupo?.nome || '-'}</td>
-                    <td className="px-3 py-3">{item.apuracao?.obra?.nome || 'Todas as obras'}</td>
-                    <td className="px-3 py-3">{formatDate(item.data_vencimento)}</td>
-                    <td className="px-3 py-3">{item.total_titulos || 0}</td>
-                    <td className="px-3 py-3">{formatCurrency(item.total_valor)}</td>
-                    <td className="px-3 py-3">
-                      <span className={statusClass(item.status)}>{item.status}</span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionarFechamento(item)}>
-                        Abrir
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'competencia',
+              titulo: 'Competência',
+              tipo: 'codigo',
+              render: (item) => item.apuracao?.competencia || '-'
+            },
+            {
+              id: 'empresa',
+              titulo: 'Empresa',
+              // R17: a EMPRESA do grupo é o que nomeia o lote fechado.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => item.apuracao?.empresaGrupo?.nome || '-'
+            },
+            {
+              id: 'obra',
+              titulo: 'Obra',
+              tipo: 'texto',
+              render: (item) => item.apuracao?.obra?.nome || 'Todas as obras'
+            },
+            {
+              id: 'vencimento',
+              titulo: 'Vencimento',
+              tipo: 'data',
+              render: (item) => formatDate(item.data_vencimento)
+            },
+            {
+              id: 'titulos',
+              titulo: 'Títulos',
+              tipo: 'numero',
+              render: (item) => item.total_titulos || 0
+            },
+            {
+              id: 'valor',
+              titulo: 'Valor',
+              tipo: 'valor',
+              render: (item) => formatCurrency(item.total_valor)
+            },
+            {
+              id: 'status',
+              titulo: 'Status',
+              tipo: 'status',
+              render: (item) => <StatusBadge status={item.status} kind={familiaStatus(item.status)} />
+            }
+          ]}
+          itens={fechamentosVisiveis}
+          storageKey="tabela:rh-dp-fechamentos:lista"
+          rotuloRolagem="Fechamentos RH/DP"
+          carregando={carregandoBase || carregandoLista}
+          vazio="Nenhum fechamento encontrado para os filtros atuais."
+          acoesLinha={(item) => (
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionarFechamento(item)}>
+              Abrir
+            </button>
+          )}
+          larguraAcoes={120}
+        />
+      </BlocoConteudo>
 
       {detalhe ? (
-        <div className="sol-surface-card rounded-xl p-4 space-y-4">
-          {carregandoDetalhe ? (
-            <p className="text-sm text-slate-500">Carregando detalhe do fechamento...</p>
-          ) : (
-            <>
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="space-y-1">
-                  <h2 className="text-lg font-semibold text-slate-900">
-                    Fechamento {detalhe.apuracao?.competencia || '-'} - {detalhe.apuracao?.empresaGrupo?.nome || '-'}
-                  </h2>
-                  <p className="text-sm text-slate-500">
-                    Recorte: {detalhe.apuracao?.obra?.nome || 'todas as obras'} | {detalhe.apuracao?.tipo_vinculo || 'todos os vinculos'}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    Fechado em {formatDate(detalhe.data_fechamento)} com vencimento em {formatDate(detalhe.data_vencimento)}
-                  </p>
-                </div>
-
-                <div className="app-page-actions">
-                  <span className={statusClass(detalhe.status)}>{detalhe.status}</span>
-                  {String(detalhe.status || '').toUpperCase() === 'FECHADO' && podeReabrirFechamento ? (
-                    <button type="button" className="btn btn-outline" onClick={reabrirFechamentoAtual} disabled={reabrindo}>
-                      {reabrindo ? 'Processando...' : 'Estornar e reabrir'}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="app-summary-grid">
-                <div className="app-summary-card">
-                  <span className="app-summary-label">Titulos gerados</span>
-                  <strong className="app-summary-value">{detalhe.total_titulos || 0}</strong>
-                </div>
-                <div className="app-summary-card">
-                  <span className="app-summary-label">Valor total</span>
-                  <strong className="app-summary-value">{formatCurrency(detalhe.total_valor)}</strong>
-                </div>
-                <div className="app-summary-card">
-                  <span className="app-summary-label">Categoria financeira</span>
-                  <strong className="app-summary-value">{detalhe.categoriaFinanceira?.nome || 'Nao informada'}</strong>
-                </div>
-              </div>
+        <div ref={detalheRef} tabIndex={-1}>
+          <BlocoConteudo
+            variante="secundario"
+            titulo={`Fechamento ${detalhe.apuracao?.competencia || '-'} - ${detalhe.apuracao?.empresaGrupo?.nome || '-'}`}
+            descricao={`Recorte: ${detalhe.apuracao?.obra?.nome || 'todas as obras'} · ${detalhe.apuracao?.tipo_vinculo || 'todos os vinculos'}`}
+            acoes={(
+              <>
+                <StatusBadge status={detalhe.status} kind={familiaStatus(detalhe.status)} />
+                {String(detalhe.status || '').toUpperCase() === 'FECHADO' && podeReabrirFechamento ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-perigo-suave btn-sm"
+                    onClick={reabrirFechamentoAtual}
+                    disabled={reabrindo}
+                  >
+                    {reabrindo ? 'Processando...' : 'Estornar e reabrir'}
+                  </button>
+                ) : null}
+              </>
+            )}
+          >
+            {carregandoDetalhe ? (
+              <p className="app-note">Carregando detalhe do fechamento...</p>
+            ) : (
+              <>
+              {/* As datas eram um paragrafo solto sob o titulo; viraram
+                  ladrilho como o resto do resumo do lote — mesma informacao,
+                  em superficie. */}
+              <StatGrid colunas={3}>
+                <StatTile label="Títulos gerados" valor={detalhe.total_titulos || 0} />
+                <StatTile label="Valor total" valor={formatCurrency(detalhe.total_valor)} />
+                <StatTile label="Categoria financeira" valor={detalhe.categoriaFinanceira?.nome || 'Nao informada'} />
+                <StatTile label="Fechado em" valor={formatDate(detalhe.data_fechamento)} />
+                <StatTile label="Vencimento" valor={formatDate(detalhe.data_vencimento)} />
+              </StatGrid>
 
               {detalhe.observacoes ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  <strong className="mr-2 text-slate-800">Observacoes:</strong>
-                  {detalhe.observacoes}
-                </div>
+                <p className="app-note">
+                  <strong>Observações:</strong> {detalhe.observacoes}
+                </p>
               ) : null}
 
-              {!detalhe.titulos?.length ? (
-                <p className="text-sm text-slate-500">Nenhum titulo foi vinculado a este fechamento.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-slate-500">
-                        <th className="px-3 py-2 font-medium">Colaborador</th>
-                        <th className="px-3 py-2 font-medium">Vinculo</th>
-                        <th className="px-3 py-2 font-medium">Titulo</th>
-                        <th className="px-3 py-2 font-medium">Parceiro</th>
-                        <th className="px-3 py-2 font-medium">Obra</th>
-                        <th className="px-3 py-2 font-medium">Valor</th>
-                        <th className="px-3 py-2 font-medium">Vencimento</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detalhe.titulos.map((item) => (
-                        <tr key={item.id} className="border-b border-slate-100 align-top">
-                          <td className="px-3 py-3">
-                            <div className="font-medium text-slate-800">{item.itemApuracao?.colaborador?.nome || '-'}</div>
-                            <div className="text-xs text-slate-500">
-                              {item.itemApuracao?.colaborador?.matricula || '-'}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3">{item.itemApuracao?.colaborador?.tipo_vinculo || '-'}</td>
-                          <td className="px-3 py-3">
-                            {item.tituloFinanceiro?.id ? (
-                              <Link className="text-blue-600 hover:underline" to={`/financeiro/titulos/${item.tituloFinanceiro.id}`}>
-                                #{item.tituloFinanceiro.id} - {item.tituloFinanceiro.descricao || 'Titulo'}
-                              </Link>
-                            ) : '-'}
-                          </td>
-                          <td className="px-3 py-3">{item.tituloFinanceiro?.parceiro?.nome || '-'}</td>
-                          <td className="px-3 py-3">{item.tituloFinanceiro?.obra?.nome || '-'}</td>
-                          <td className="px-3 py-3">{formatCurrency(item.valor_gerado || item.itemApuracao?.valor_liquido)}</td>
-                          <td className="px-3 py-3">{formatDate(item.tituloFinanceiro?.data_vencimento)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'colaborador',
+                    titulo: 'Colaborador',
+                    // R17: o titulo gerado pertence a um COLABORADOR nomeado.
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (item) => (
+                      <CelulaDupla
+                        principal={item.itemApuracao?.colaborador?.nome || '-'}
+                        sub={item.itemApuracao?.colaborador?.matricula || '-'}
+                      />
+                    )
+                  },
+                  {
+                    id: 'vinculo',
+                    titulo: 'Vínculo',
+                    tipo: 'badge',
+                    render: (item) => item.itemApuracao?.colaborador?.tipo_vinculo || '-'
+                  },
+                  {
+                    id: 'tipo_titulo',
+                    titulo: 'Parcela',
+                    tipo: 'badge',
+                    render: (item) => ({
+                      ADIANTAMENTO_40: '40% dia 15',
+                      SALDO_60: '60% fim do mes',
+                      PROPORCIONAL: 'Proporcional',
+                      PENSAO_ALIMENTICIA: 'Pensao',
+                      DIARIAS: 'Diarias',
+                      INTEGRAL: 'Integral'
+                    }[item.tipo_titulo] || item.tipo_titulo || 'Integral')
+                  },
+                  {
+                    id: 'titulo',
+                    titulo: 'Título',
+                    tipo: 'texto',
+                    render: (item) => (item.tituloFinanceiro?.id ? (
+                      <Link className="text-[var(--c-primary)] hover:underline" to={`/financeiro/titulos/${item.tituloFinanceiro.id}`}>
+                        #{item.tituloFinanceiro.id} - {item.tituloFinanceiro.descricao || 'Titulo'}
+                      </Link>
+                    ) : '-')
+                  },
+                  {
+                    id: 'parceiro',
+                    titulo: 'Parceiro',
+                    tipo: 'texto',
+                    render: (item) => item.tituloFinanceiro?.parceiro?.nome || '-'
+                  },
+                  {
+                    id: 'obra',
+                    titulo: 'Obra',
+                    tipo: 'texto',
+                    render: (item) => item.tituloFinanceiro?.obra?.nome || '-'
+                  },
+                  {
+                    id: 'valor',
+                    titulo: 'Valor',
+                    tipo: 'valor',
+                    render: (item) => formatCurrency(item.valor_gerado || item.itemApuracao?.valor_liquido)
+                  },
+                  {
+                    id: 'vencimento',
+                    titulo: 'Vencimento',
+                    tipo: 'data',
+                    render: (item) => formatDate(item.tituloFinanceiro?.data_vencimento)
+                  },
+                  {
+                    id: 'comprovantes',
+                    titulo: 'Comprovantes',
+                    tipo: 'acao',
+                    render: (item) => {
+                      const comprovantes = item.comprovantes_pagamento || [];
+                      if (!comprovantes.length) return <span className="app-note">Pendente</span>;
+                      return (
+                        <div className="flex flex-wrap gap-2">
+                          {comprovantes.map((comprovante, index) => (
+                            <button
+                              key={`${comprovante.fila_id}-${comprovante.id || 'legado'}-${index}`}
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => abrirComprovante(comprovante)}
+                              title={comprovante.nome || `Comprovante ${index + 1}`}
+                            >
+                              {comprovantes.length === 1 ? 'Abrir comprovante' : `Comprovante ${index + 1}`}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    }
+                  }
+                ]}
+                itens={detalhe.titulos || []}
+                storageKey="tabela:rh-dp-fechamentos:titulos"
+                rotuloRolagem="Títulos do fechamento"
+                vazio="Nenhum título foi vinculado a este fechamento."
+              />
+              </>
+            )}
+          </BlocoConteudo>
         </div>
       ) : null}
-    </div>
+
+      {elementoConfirmacao}
+    </Container>
   );
 }

@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  Avisos,
+  BlocoConteudo,
+  CampoForm,
+  FormSecao,
+  PageHeader,
+  Pagina,
+  StatGrid,
+  StatTile,
+  useAvisos
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { getEmpreendimentosComerciais, getTabelasPrecoComerciais, getUnidadesComerciais } from '../services/comercial';
+
+const DESCRICAO = 'Visualize a disponibilidade comercial por empreendimento com leitura rapida de reservas, vendas e tabela ativa.';
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -8,21 +22,32 @@ function formatCurrency(value) {
   });
 }
 
-function statusClass(status) {
-  switch (String(status || '').toUpperCase()) {
-    case 'DISPONIVEL':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'RESERVADA':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'VENDIDA':
-      return 'border-blue-200 bg-blue-50 text-blue-700';
-    case 'DISTRATADA':
-      return 'border-slate-200 bg-slate-50 text-slate-700';
-    case 'BLOQUEADA':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
-    default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
-  }
+/*
+  R25 — a situação da unidade deixa de ser paleta crua.
+
+  O `statusClass()` pintava o card inteiro com 18 classes de degrau numérico
+  do Tailwind (emerald/amber/blue/slate/rose), e os quatro KPIs traziam
+  outras 16: sem par no tema escuro e fora do piso de contraste do
+  ThemeContext (R24). A distinção por situação, que é
+  o que faz o mapa ser um mapa, continua — só que pela família SEMÂNTICA do
+  StatusBadge, que é token e vem com ícone junto da cor (a cor sozinha não
+  comunica para daltônicos).
+
+  O mapeamento é explícito porque o classificador automático do StatusBadge
+  não conhece este vocabulário: DISPONIVEL, RESERVADA, VENDIDA e DISTRATADA
+  cairiam todas em `info` e as quatro sairiam da mesma cor — que é
+  exatamente a distinção que esta tela existe para mostrar.
+*/
+const FAMILIA_SITUACAO = {
+  DISPONIVEL: 'success',
+  RESERVADA: 'warning',
+  VENDIDA: 'info',
+  DISTRATADA: 'neutral',
+  BLOQUEADA: 'danger'
+};
+
+function familiaDaSituacao(situacao) {
+  return FAMILIA_SITUACAO[String(situacao || '').toUpperCase()] || undefined;
 }
 
 function getAgrupador(unidade) {
@@ -35,12 +60,13 @@ export default function ComercialMapaUnidades() {
   const [tabelas, setTabelas] = useState([]);
   const [empreendimentoId, setEmpreendimentoId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // R3/R19: erro de carga vira faixa do sistema (Avisos), que tem superfície
+  // própria e existe também durante o carregamento (B5).
+  const { avisos, avisar, fechar } = useAvisos();
 
   async function carregar() {
     try {
       setLoading(true);
-      setError('');
       const [empreData, unidadesData, tabelasData] = await Promise.all([
         getEmpreendimentosComerciais({ ativo: 1 }),
         getUnidadesComerciais({ ativo: 1 }),
@@ -50,7 +76,8 @@ export default function ComercialMapaUnidades() {
       setUnidades(Array.isArray(unidadesData) ? unidadesData : []);
       setTabelas(Array.isArray(tabelasData) ? tabelasData : []);
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar mapa de unidades');
+      console.error(err);
+      avisar.erro(err?.message || 'Erro ao carregar mapa de unidades');
     } finally {
       setLoading(false);
     }
@@ -98,97 +125,159 @@ export default function ComercialMapaUnidades() {
     bloqueada: unidadesFiltradas.filter((item) => item.situacao === 'BLOQUEADA').length
   }), [unidadesFiltradas]);
 
+  /*
+    B5 — no carregamento a tela também tem cabeçalho e superfície.
+
+    Antes o estado de carga devolvia um card solto sobre o canvas: sem faixa
+    fixa, sem título e sem lugar onde um erro de carga pudesse aparecer. A
+    `contagem` fica NULA de propósito: passar `0` afirmaria "0 unidades", e a
+    tela ainda não sabe quantas são.
+  */
   if (loading) {
-    return <div className="page solicitacoes-page"><div className="app-empty-card">Carregando mapa de unidades...</div></div>;
+    return (
+      <Pagina>
+        <PageHeader titulo="Mapa de unidades" descricao={DESCRICAO} />
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <BlocoConteudo titulo="Disponibilidade" variante="primario" cor="var(--module-comercial)">
+          <p className="app-note">Carregando mapa de unidades...</p>
+        </BlocoConteudo>
+      </Pagina>
+    );
   }
 
   return (
-    <div className="page solicitacoes-page space-y-5 md:space-y-6">
-      <header className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Mapa de unidades</h1>
-            <p className="page-subtitle">
-              Visualize a disponibilidade comercial por empreendimento com leitura rapida de reservas, vendas e tabela ativa.
-            </p>
-          </div>
+    <Pagina>
+      {/* C1/C2/R5/R13: título, contagem e apoio na faixa fixa do topo, com
+          superfície própria — o <p class="page-subtitle"> solto sobre o
+          canvas saiu. O ritmo vertical da raiz é do Pagina (R10). */}
+      <PageHeader
+        titulo="Mapa de unidades"
+        contagem={`${unidadesFiltradas.length} unidade(s)`}
+        descricao={DESCRICAO}
+      />
+
+      {/* R16: UM dono para a faixa de avisos — logo abaixo do cabeçalho. */}
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {/* B2: este é o bloco PRINCIPAL da tela — é ele que responde "como
+          está a disponibilidade deste empreendimento?". Os agrupamentos
+          abaixo são o detalhe dessa resposta e ficam neutros. */}
+      <BlocoConteudo
+        titulo="Disponibilidade"
+        descricao="Escolha o empreendimento; o mapa abaixo mostra as unidades agrupadas por bloco ou torre."
+        variante="primario"
+        cor="var(--module-comercial)"
+      >
+        <div className="space-y-4">
+          {/* R12: seletor de CONTEXTO — escolhe QUAL empreendimento o mapa
+              exibe, não recorta uma lista. Select segue legítimo aqui. */}
+          <FormSecao colunas={2}>
+            <CampoForm label="Empreendimento">
+              <select
+                className="input w-full"
+                value={empreendimentoId}
+                onChange={(e) => setEmpreendimentoId(e.target.value)}
+              >
+                <option value="">Selecione</option>
+                {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+              </select>
+            </CampoForm>
+          </FormSecao>
+
+          {/*
+            StatGrid/StatTile (R10/M2): o ladrilho do sistema no lugar dos
+            quatro cartões de paleta crua com número em `text-2xl`.
+
+            Os quatro ficam NEUTROS de propósito. A R8 governa COMPARAÇÃO
+            (previsto azul × realizado vermelho) e diz que KPI que não
+            pertence a nenhuma série fica na cor de texto — estes são
+            contagem por situação, não previsto × realizado. Quem carrega a
+            cor da situação é a etiqueta de cada unidade, no mapa abaixo,
+            onde ela distingue um registro do outro.
+          */}
+          <StatGrid colunas={4}>
+            <StatTile label="Disponíveis" valor={String(resumo.disponivel)} />
+            <StatTile label="Reservadas" valor={String(resumo.reservada)} />
+            <StatTile label="Vendidas" valor={String(resumo.vendida)} />
+            <StatTile label="Bloqueadas" valor={String(resumo.bloqueada)} />
+          </StatGrid>
+
+          <p className="app-note">
+            Tabela ativa:{' '}
+            {tabelaAtiva
+              ? `${tabelaAtiva.nome}${tabelaAtiva.codigo ? ` · ${tabelaAtiva.codigo}` : ''}`
+              : 'nenhuma tabela de preco ativa para este empreendimento.'}
+          </p>
         </div>
-      </header>
+      </BlocoConteudo>
 
-      {error && <div className="app-alert app-alert--error">{error}</div>}
-
-      <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-        <div className="grid gap-3 md:grid-cols-[280px_repeat(4,minmax(0,1fr))]">
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Empreendimento</span>
-            <select className="input w-full" value={empreendimentoId} onChange={(e) => setEmpreendimentoId(e.target.value)}>
-              <option value="">Selecione</option>
-              {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
-            </select>
-          </label>
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-emerald-700">Disponiveis</div>
-            <div className="mt-2 text-2xl font-semibold text-emerald-800">{resumo.disponivel}</div>
-          </div>
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-amber-700">Reservadas</div>
-            <div className="mt-2 text-2xl font-semibold text-amber-800">{resumo.reservada}</div>
-          </div>
-          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-blue-700">Vendidas</div>
-            <div className="mt-2 text-2xl font-semibold text-blue-800">{resumo.vendida}</div>
-          </div>
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-rose-700">Bloqueadas</div>
-            <div className="mt-2 text-2xl font-semibold text-rose-800">{resumo.bloqueada}</div>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-          <div className="text-sm font-semibold text-[var(--c-text)]">Tabela ativa</div>
-          <div className="mt-2 text-sm text-[var(--c-muted)]">
-            {tabelaAtiva ? `${tabelaAtiva.nome}${tabelaAtiva.codigo ? ` · ${tabelaAtiva.codigo}` : ''}` : 'Nenhuma tabela de preco ativa para este empreendimento.'}
-          </div>
-        </div>
-      </section>
-
+      {/*
+        Esta tela é um MAPA de cards por agrupamento, não uma lista tabular:
+        a leitura é espacial (varrer o bloco inteiro e ver onde está o que
+        sobrou), e não coluna a coluna. Migrar para TabelaPadrao trocaria o
+        mapa por uma lista e perderia justamente o que a tela faz — por isso
+        os cards ficam, agora sobre a superfície neutra do sistema, com a
+        situação na etiqueta em vez de tingindo o card inteiro (R25).
+      */}
       {grupos.length === 0 ? (
-        <div className="app-empty-card">Nenhuma unidade encontrada para o empreendimento selecionado.</div>
+        <BlocoConteudo titulo="Unidades">
+          <p className="app-note">Nenhuma unidade encontrada para o empreendimento selecionado.</p>
+        </BlocoConteudo>
       ) : (
         grupos.map((grupo) => (
-          <section key={grupo.nome} className="sol-surface-card rounded-2xl p-4 md:p-5">
-            <div className="sol-filtros-head">
-              <div>
-                <p className="sol-filtros-title">{grupo.nome}</p>
-                <p className="sol-filtros-subtitle">{grupo.itens.length} unidade(s) neste agrupamento.</p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <BlocoConteudo
+            key={grupo.nome}
+            titulo={grupo.nome}
+            contagem={`${grupo.itens.length} unidade(s)`}
+          >
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {grupo.itens.map((item) => (
-                <article key={item.id} className={`rounded-2xl border p-4 ${statusClass(item.situacao)}`}>
+                <article
+                  key={item.id}
+                  className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4"
+                >
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-base font-semibold">{item.codigo}</h3>
-                      <p className="text-sm opacity-80">{item.nome || 'Unidade comercial'}</p>
+                    <div className="min-w-0">
+                      {/* R10: título do card no degrau de corpo (14px). O
+                          `title` completo cobre o código longo (T6). */}
+                      <h3 className="text-sm font-semibold text-[var(--c-text)]" title={item.codigo || ''}>
+                        {item.codigo}
+                      </h3>
+                      <p className="text-xs text-[var(--c-muted)]">{item.nome || 'Unidade comercial'}</p>
                     </div>
-                    <span className="inline-flex rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold">
-                      {item.situacao}
-                    </span>
+                    <StatusBadge status={item.situacao} kind={familiaDaSituacao(item.situacao)} />
                   </div>
-                  <div className="mt-3 space-y-1 text-sm">
-                    <div>Metragem privativa: {item.metragem_privativa || '-'}</div>
-                    <div>Fracao ideal: {item.fracao_ideal || '-'}</div>
-                    <div>Reserva: {item.parceiroReserva?.nome || '-'}</div>
-                    <div>Valor tabela: {item.valor_tabela ? formatCurrency(item.valor_tabela) : '-'}</div>
-                    <div>Base venda: {item.valor_base_venda ? formatCurrency(item.valor_base_venda) : '-'}</div>
-                  </div>
+
+                  <dl className="mt-3 space-y-1 text-sm text-[var(--c-text)]">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <dt className="text-[var(--c-muted)]">Metragem privativa</dt>
+                      <dd className="valor-tabular">{item.metragem_privativa || '-'}</dd>
+                    </div>
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <dt className="text-[var(--c-muted)]">Fracao ideal</dt>
+                      <dd className="valor-tabular">{item.fracao_ideal || '-'}</dd>
+                    </div>
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <dt className="text-[var(--c-muted)]">Reserva</dt>
+                      <dd>{item.parceiroReserva?.nome || '-'}</dd>
+                    </div>
+                    {/* R6: valor exibido usa `tabular-nums` (.valor-tabular)
+                        — números alinham entre um card e outro. */}
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <dt className="text-[var(--c-muted)]">Valor tabela</dt>
+                      <dd className="valor-tabular">{item.valor_tabela ? formatCurrency(item.valor_tabela) : '-'}</dd>
+                    </div>
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <dt className="text-[var(--c-muted)]">Base venda</dt>
+                      <dd className="valor-tabular">{item.valor_base_venda ? formatCurrency(item.valor_base_venda) : '-'}</dd>
+                    </div>
+                  </dl>
                 </article>
               ))}
             </div>
-          </section>
+          </BlocoConteudo>
         ))
       )}
-    </div>
+    </Pagina>
   );
 }

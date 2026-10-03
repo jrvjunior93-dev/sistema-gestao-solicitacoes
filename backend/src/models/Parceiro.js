@@ -9,7 +9,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       cpf_cnpj: {
         type: DataTypes.STRING(20),
-        allowNull: false,
+        allowNull: true,
         unique: true
       },
       nome: {
@@ -74,7 +74,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       tipo_pessoa: {
         type: DataTypes.STRING(1),
-        allowNull: false
+        allowNull: true
       },
       cliente: {
         type: DataTypes.BOOLEAN,
@@ -105,6 +105,22 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(40),
         allowNull: true
       },
+      // Nome de fachada. A razao social identifica a empresa no papel; quem trabalha na obra
+      // conhece o fornecedor por este. Sem o campo, os dois brigavam dentro de `nome`.
+      nome_fantasia: {
+        type: DataTypes.STRING(180),
+        allowNull: true
+      },
+      // Representante legal: numa PJ quem assina o contrato e uma pessoa DIFERENTE do parceiro.
+      // Os campos de qualificacao repetem o vocabulario que o Comercial ja usa para o parceiro
+      // pessoa fisica, para as duas partes do sistema falarem a mesma lingua.
+      representante_nome: { type: DataTypes.STRING(180), allowNull: true },
+      representante_cpf: { type: DataTypes.STRING(20), allowNull: true },
+      representante_rg: { type: DataTypes.STRING(40), allowNull: true },
+      representante_cargo: { type: DataTypes.STRING(80), allowNull: true },
+      representante_nacionalidade: { type: DataTypes.STRING(60), allowNull: true },
+      representante_estado_civil: { type: DataTypes.STRING(40), allowNull: true },
+      representante_profissao: { type: DataTypes.STRING(80), allowNull: true },
       conjuge_nome: {
         type: DataTypes.STRING(255),
         allowNull: true
@@ -144,6 +160,16 @@ module.exports = (sequelize, DataTypes) => {
       pix_chave_variavel: {
         type: DataTypes.STRING(255),
         allowNull: true
+      },
+      cadastro_simplificado_favorecido: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      pix_chave_canonica: {
+        type: DataTypes.STRING(300),
+        allowNull: true,
+        unique: true
       },
       ativo: {
         type: DataTypes.BOOLEAN,

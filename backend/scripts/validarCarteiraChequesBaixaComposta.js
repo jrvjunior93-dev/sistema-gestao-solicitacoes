@@ -13,6 +13,7 @@ function validateMigration() {
   const intercompanyMigration = read('migrations/202608100001_baixa_composta_intercompany_fontes.js');
   const chequeSettlementMigration = read('migrations/202608120001_dados_cheque_movimentos_baixas.js');
   const chequeHolderMigration = read('migrations/202608120002_cheques_titular_parceiro.js');
+  const lifecycleMigration = read('migrations/202609150002_cheques_ciclo_compensacao.js');
   [
     'baixas_financeiras_grupos',
     'baixas_financeiras_componentes',
@@ -29,6 +30,15 @@ function validateMigration() {
   ['movimentos_financeiros', 'baixas_financeiras_componentes', 'cheque_numero', 'cheque_emitente', 'cheque_data_vencimento']
     .forEach((contract) => assert(chequeSettlementMigration.includes(contract), `Dados do cheque ausentes na migration: ${contract}`));
   assert(chequeHolderMigration.includes('titular_parceiro_id'), 'Cheque deve persistir o vinculo com o titular cadastrado.');
+  [
+    'movimento_deposito_id',
+    'conciliacao_deposito_id',
+    'movimento_devolucao_id',
+    'conciliacao_devolucao_id',
+    'data_compensacao',
+    'deposito_idempotency_key',
+    'ux_cheques_deposito_idempotency'
+  ].forEach((contract) => assert(lifecycleMigration.includes(contract), `Ciclo de compensacao ausente na migration: ${contract}`));
 }
 
 function validateSecurityAndTransactions() {
@@ -57,15 +67,22 @@ function validateSecurityAndTransactions() {
   assert(service.includes('isValidCpfCnpj'), 'Cadastro de cheque deve validar CPF/CNPJ do titular.');
   assert(service.includes('normalizarCpfCnpj'), 'CPF/CNPJ do titular deve ser persistido sem mascara.');
   assert(service.includes('Informe numero e emitente do cheque na operacao'), 'Cheque proprio da baixa composta deve exigir identificacao.');
-  assert(service.includes("tipo === 'DINHEIRO'"), 'Baixa composta deve reconhecer a fonte em dinheiro.');
-  assert(service.includes('em dinheiro deve usar um caixa fisico com controle de abertura e fechamento'), 'Dinheiro deve exigir conta de caixa fisico.');
-  assert(service.includes('obterSessaoAbertaParaConta'), 'Dinheiro deve validar a sessao aberta do caixa.');
   assert(service.includes("tipo: validacao.tipo_titulo === 'PAGAR' ? 'PAGAMENTO' : 'RECEBIMENTO'"), 'Grupo composto deve registrar pagamento ou recebimento.');
   assert(service.includes('chequeRecebidoComposto'), 'Cheque recebido composto deve ser cadastrado uma unica vez por fonte.');
   assert(service.includes("status: 'CANCELADO'"), 'Estorno composto deve cancelar o cheque recebido ainda em carteira.');
   assert(titleService.includes('buildChequeMovimentoFields'), 'Baixa simples deve persistir os dados do cheque no movimento.');
   assert(titleService.includes('skipChequeTerceiroRecebido'), 'Rateio de cheque recebido nao pode duplicar o cheque por titulo.');
   assert(titleService.includes('chequeRecebidoValor'), 'Cheque recebido deve guardar o valor integral da fonte composta.');
+  assert(service.includes("tipo_movimento: 'DEPOSITO_CHEQUE_TERCEIRO'"), 'Deposito deve gerar movimento bancario conciliavel.');
+  assert(service.includes('confirmarCompensacaoChequePorMovimento'), 'Conciliacao deve confirmar a compensacao do cheque.');
+  assert(service.includes("status: 'COMPENSADO'"), 'Cheque deve distinguir deposito de compensacao bancaria.');
+  assert(service.includes('deposito_idempotency_key'), 'Deposito deve ser protegido contra repeticao.');
+
+  const conciliacaoService = read('src/services/conciliacaoBancariaService.js');
+  assert(conciliacaoService.includes('DEPOSITO_CHEQUE_TERCEIRO'), 'Conciliacao deve listar depositos de cheques de terceiros.');
+  assert(conciliacaoService.includes('DEVOLUCAO_CHEQUE_TERCEIRO'), 'Devolucao bancaria deve gerar contrapartida do deposito.');
+  assert(conciliacaoService.includes('chequeRecebidoStatusDestino: \'DEVOLVIDO\''), 'Devolucao deve reabrir o recebimento vinculado quando existir.');
+  assert(conciliacaoService.includes('calculateDiffDays(conciliacao.data_movimento, movimento.data_movimento) <= 180'), 'Cheque proprio deve aceitar conciliacao na apresentacao bancaria posterior.');
 }
 
 function validateRoutesAndPermissions() {
@@ -111,9 +128,9 @@ function validateFrontend() {
   assert(detail.includes('finance-operation-modal--detail'), 'Detalhe da baixa deve usar a superficie financeira opaca.');
   assert(!detail.includes('var(--c-card)'), 'Detalhe da baixa nao pode depender de token de fundo inexistente.');
   assert(styles.includes('.finance-operation-notice--warning'), 'Avisos financeiros devem possuir contraste tematico.');
-  assert(modal.includes('Empresa da fonte'), 'Cada fonte deve permitir selecionar sua propria empresa.');
+  assert(!modal.includes('Empresa da fonte'), 'A empresa da fonte nao deve ser solicitada separadamente da conta.');
   assert(modal.includes('Natureza entre empresas'), 'Rateio entre empresas deve exigir classificacao operacional.');
-  assert(modal.includes('empresasDisponiveis'), 'Modal deve listar todas as empresas permitidas como fonte.');
+  assert(modal.includes("next.empresa_id = String(conta?.empresa_id"), 'A conta selecionada deve definir automaticamente a empresa da fonte.');
   assert(modal.includes('Cheque de terceiro em carteira'), 'Modal deve identificar claramente os cheques cadastrados em carteira.');
   assert(modal.includes('orderedTitles'), 'Rateio composto deve ordenar os titulos antes de distribuir as fontes.');
   assert(modal.includes('redistributeComponents'), 'Alterar uma fonte deve recalcular a distribuicao do mais antigo ao mais novo.');
@@ -121,9 +138,6 @@ function validateFrontend() {
   assert(modal.includes('Dados do cheque recebido'), 'Recebimento composto deve coletar os dados do cheque recebido.');
   assert(modal.includes('Selecione um cheque cadastrado'), 'Opcao vazia do cheque nao pode sugerir uma origem ambigua.');
   assert(modal.includes('ChequePagamentoFields'), 'Baixa composta deve coletar os dados do cheque proprio em cada fonte.');
-  assert(modal.includes('validateCashSources'), 'Baixa composta deve validar as fontes em dinheiro antes do envio.');
-  assert(modal.includes('Caixa físico *'), 'Fonte em dinheiro deve identificar o seletor de caixa fisico.');
-  assert(modal.includes('contaExigeControleDiario'), 'Fonte em dinheiro deve filtrar apenas contas fisicas controladas.');
   assert(titles.includes('ChequePagamentoFields'), 'Baixa selecionada e em massa devem coletar os dados do cheque.');
   assert(titleDetail.includes('Cheque nº'), 'Detalhe do titulo deve exibir o cheque vinculado ao movimento.');
   ['cheque_numero', 'cheque_emitente', 'titular_documento', 'data_vencimento']
@@ -131,7 +145,14 @@ function validateFrontend() {
   assert(titles.includes("getChequesTerceiros({ status: 'EM_CARTEIRA', limit: 300 })"), 'Baixa composta deve carregar a mesma carteira exibida na gestao de cheques.');
   assert(custody.includes('Importar cheques'));
   assert(custody.includes('Confirmar importação'));
-  assert(custody.includes('max-h-[52vh] overflow-auto'), 'Preview da importacao deve permitir rolagem.');
+  assert(
+    custody.includes('min-h-0 overflow-y-auto p-4'),
+    'O corpo do modal de importacao deve permitir rolagem sem ultrapassar a viewport.'
+  );
+  assert(
+    custody.includes('rotuloRolagem="Linhas do lote de importação"'),
+    'A tabela do preview deve manter a regiao de rolagem identificada.'
+  );
   assert(!custody.includes("['data_emissao', 'Data de emissão'"), 'Data de emissao nao deve aparecer no cadastro de custodia.');
   assert(custody.includes('PessoaChequeAutocomplete'), 'Cadastro deve usar a consulta central de pessoas.');
   assert(custody.includes('titular_parceiro_id'), 'Cadastro manual deve exigir o titular selecionado.');

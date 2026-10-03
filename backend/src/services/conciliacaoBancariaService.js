@@ -7,6 +7,8 @@ const {
   CategoriaFinanceira,
   FaturaCartaoFinanceiro,
   CartaoFinanceiro,
+  ChequeTerceiro,
+  ChequeTerceiroMovimento,
   MovimentoFinanceiro,
   Obra,
   Parceiro,
@@ -15,6 +17,7 @@ const {
   TransferenciaFinanceira,
   User
 } = require('../models');
+const { confirmarCompensacaoChequePorMovimento } = require('./chequeTerceiroService');
 const {
   canAccessFinanceiro,
   getFinanceiroObraScopeIds
@@ -138,6 +141,15 @@ function categoriaFinanceiraAptaParaTarifa(categoria) {
   return !CLASSIFICACOES_INCOMPATIVEIS_COM_TARIFA.has(classificacao);
 }
 
+function categoriaFinanceiraAptaParaRendimento(categoria) {
+  if (!categoria || categoria.ativo === false) return false;
+  const tipo = String(categoria.tipo || '').trim().toUpperCase();
+  if (!['RECEBER', 'AMBOS'].includes(tipo)) return false;
+  if (categoria.considera_dre === false || !String(categoria.dre_grupo || '').trim()) return false;
+  const classificacao = String(categoria.classificacao_gerencial || '').trim().toUpperCase();
+  return !CLASSIFICACOES_INCOMPATIVEIS_COM_TARIFA.has(classificacao);
+}
+
 function categoriaFinanceiraPareceTarifa(categoria) {
   const text = normalizeText([
     categoria?.nome,
@@ -178,6 +190,18 @@ async function resolveCategoriaTarifaBancaria(tarifa, { transaction = null } = {
     throw createHttpError(400, 'Configure uma categoria financeira de tarifa bancaria em Financeiro > Cadastros para conciliar este atalho.');
   }
 
+  return categoria;
+}
+
+async function resolveCategoriaRendimentoBancario(atalho, { transaction = null } = {}) {
+  const categoriaId = Number(atalho?.categoria_financeira_id || 0);
+  if (!Number.isInteger(categoriaId) || categoriaId <= 0) {
+    throw createHttpError(400, 'Configure uma categoria financeira de entrada para o rendimento da conta.');
+  }
+  const categoria = await CategoriaFinanceira.findByPk(categoriaId, { transaction });
+  if (!categoriaFinanceiraAptaParaRendimento(categoria)) {
+    throw createHttpError(400, 'Categoria do rendimento deve estar ativa, ser RECEBER ou AMBOS e estar classificada para DRE.');
+  }
   return categoria;
 }
 
@@ -553,6 +577,12 @@ function buildConciliacaoInclude() {
           as: 'contaBancaria',
           required: false,
           attributes: ['id', 'nome']
+        },
+        {
+          model: ChequeTerceiro,
+          as: 'chequeTerceiroDepositado',
+          required: false,
+          attributes: ['id', 'codigo', 'numero_cheque', 'status']
         }
       ]
     },
@@ -922,9 +952,6 @@ async function loadUnavailableMovementIds(movimentoIds = [], exceptConciliacaoId
 
 async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
   const tituloWhere = await buildTituloWhere(req, conciliacao);
-  if (!tituloWhere) {
-    return [];
-  }
 
   const defaultDateInitial = subtractDays(conciliacao.data_movimento, 5);
   const defaultDateFinal = addDays(conciliacao.data_movimento, 5);
@@ -945,7 +972,7 @@ async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
     }
   };
 
-  const items = await MovimentoFinanceiro.findAll({
+  const movimentosTitulos = tituloWhere ? await MovimentoFinanceiro.findAll({
     where: whereMovimento,
     include: [
       {
@@ -980,7 +1007,81 @@ async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
       }
     ],
     order: [['data_movimento', 'DESC'], ['createdAt', 'DESC']]
-  });
+  }) : [];
+
+  const obraIds = await getFinanceiroObraScopeIds(req.user);
+  const chequesProprios = tituloWhere && getSignalByValue(conciliacao.valor) === 'PAGAR'
+    ? await MovimentoFinanceiro.findAll({
+      where: {
+        status: 'ATIVO',
+        conta_bancaria_id: conciliacao.conta_bancaria_id,
+        tipo_movimento: 'BAIXA',
+        forma_recebimento: { [Op.like]: '%CHEQUE%' },
+        data_movimento: {
+          [Op.between]: [
+            searchFilters.data_inicial || subtractDays(conciliacao.data_movimento, 180),
+            searchFilters.data_final || conciliacao.data_movimento
+          ]
+        }
+      },
+      include: [
+        {
+          model: TituloFinanceiro,
+          as: 'titulo',
+          required: true,
+          where: tituloWhere,
+          attributes: ['id', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
+          include: [
+            { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] },
+            { model: CategoriaFinanceira, as: 'categoriaFinanceira', attributes: ['id', 'nome', 'tipo'] },
+            { model: Obra, as: 'obra', required: false, attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'] }
+          ]
+        },
+        { model: ContaBancaria, as: 'contaBancaria', attributes: ['id', 'nome'] }
+      ],
+      order: [['data_movimento', 'DESC'], ['createdAt', 'DESC']]
+    })
+    : [];
+  const depositosCheque = getSignalByValue(conciliacao.valor) === 'RECEBER'
+    ? await MovimentoFinanceiro.findAll({
+      where: {
+        ...whereMovimento,
+        tipo_movimento: 'DEPOSITO_CHEQUE_TERCEIRO'
+      },
+      include: [
+        {
+          model: ChequeTerceiro,
+          as: 'chequeTerceiroDepositado',
+          required: true,
+          where: { status: 'DEPOSITADO' },
+          attributes: [
+            'id', 'codigo', 'numero_cheque', 'titular_nome', 'cliente_nome',
+            'obra_origem_id', 'titulo_financeiro_id'
+          ]
+        },
+        {
+          model: ContaBancaria,
+          as: 'contaBancaria',
+          attributes: ['id', 'nome']
+        }
+      ],
+      order: [['data_movimento', 'DESC'], ['createdAt', 'DESC']]
+    })
+    : [];
+
+  const items = Array.from(new Map(
+    [...movimentosTitulos, ...chequesProprios, ...depositosCheque]
+      .map((item) => [Number(item.id), item])
+  ).values())
+    .filter((item) => {
+      if (!item.chequeTerceiroDepositado || obraIds === null) return true;
+      const obraId = Number(item.chequeTerceiroDepositado.obra_origem_id || 0);
+      return Boolean(obraId && obraIds.includes(obraId));
+    })
+    .sort((a, b) => {
+      const dataCompare = String(b.data_movimento || '').localeCompare(String(a.data_movimento || ''));
+      return dataCompare || Number(b.id || 0) - Number(a.id || 0);
+    });
 
   const unavailableIds = await loadUnavailableMovementIds(
     items.map((item) => item.id),
@@ -1015,7 +1116,11 @@ async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
     }
 
     if (numeroDocumentoPesquisa) {
-      const numeroDocumento = normalizeText(item.titulo?.numero_documento);
+      const numeroDocumento = normalizeText(
+        item.titulo?.numero_documento
+        || item.chequeTerceiroDepositado?.numero_cheque
+        || item.documento_referencia
+      );
       if (!numeroDocumento || !numeroDocumento.includes(numeroDocumentoPesquisa)) {
         return false;
       }
@@ -1026,6 +1131,10 @@ async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
         item.titulo?.descricao,
         item.titulo?.numero_documento,
         item.titulo?.parceiro?.nome,
+        item.chequeTerceiroDepositado?.codigo,
+        item.chequeTerceiroDepositado?.numero_cheque,
+        item.chequeTerceiroDepositado?.titular_nome,
+        item.chequeTerceiroDepositado?.cliente_nome,
         item.observacoes
       ]
         .map((value) => normalizeText(value))
@@ -1096,19 +1205,23 @@ function scoreSuggestion(conciliacao, movimento) {
 }
 
 function serializeSuggestion(movimento, ranking) {
+  const cheque = movimento.chequeTerceiroDepositado;
   return {
     movimento_financeiro_id: movimento.id,
     titulo_financeiro_id: movimento.titulo?.id || null,
-    titulo_descricao: movimento.titulo?.descricao || `Titulo #${movimento.titulo?.id || '-'}`,
-    tipo: movimento.titulo?.tipo || null,
-    parceiro_nome: movimento.titulo?.parceiro?.nome || '-',
+    titulo_descricao: movimento.titulo?.descricao
+      || (cheque ? `Deposito do cheque ${cheque.codigo || cheque.numero_cheque}` : `Titulo #${movimento.titulo?.id || '-'}`),
+    tipo: movimento.titulo?.tipo || (cheque ? 'RECEBER' : null),
+    parceiro_nome: movimento.titulo?.parceiro?.nome || cheque?.titular_nome || '-',
     categoria_financeira_id: movimento.titulo?.categoriaFinanceira?.id || null,
     categoria_financeira_nome: movimento.titulo?.categoriaFinanceira?.nome || null,
     obra_id: movimento.titulo?.obra?.id || movimento.titulo?.obra_id || null,
     obra_codigo: movimento.titulo?.obra?.codigo || null,
     obra_nome: movimento.titulo?.obra?.nome || null,
     obra_tipo_centro_custo: movimento.titulo?.obra?.tipo_centro_custo || null,
-    documento: movimento.titulo?.numero_documento || null,
+    documento: movimento.titulo?.numero_documento || cheque?.numero_cheque || movimento.documento_referencia || null,
+    cheque_terceiro_id: cheque?.id || null,
+    cheque_terceiro_codigo: cheque?.codigo || null,
     data_movimento: movimento.data_movimento,
     valor_quitacao: Number(movimento.valor_quitacao || 0),
     conta_bancaria_nome: movimento.contaBancaria?.nome || '-',
@@ -1799,6 +1912,15 @@ async function resolveMovimentoForConciliacao(req, conciliacao, movimentoId, opt
         model: ContaBancaria,
         as: 'contaBancaria',
         attributes: ['id', 'nome']
+      },
+      {
+        model: ChequeTerceiro,
+        as: 'chequeTerceiroDepositado',
+        required: false,
+        attributes: [
+          'id', 'codigo', 'status', 'obra_origem_id', 'titulo_financeiro_id',
+          'movimento_entrada_id', 'movimento_deposito_id'
+        ]
       }
     ]
   });
@@ -1814,8 +1936,20 @@ async function resolveMovimentoForConciliacao(req, conciliacao, movimentoId, opt
     throw createHttpError(400, 'Somente movimentos ativos podem ser conciliados.');
   }
 
+  const tipoMovimento = String(movimento.tipo_movimento || '').toUpperCase();
+  const depositoCheque = tipoMovimento === 'DEPOSITO_CHEQUE_TERCEIRO'
+    ? movimento.chequeTerceiroDepositado
+    : null;
+  if (tipoMovimento === 'DEPOSITO_CHEQUE_TERCEIRO' && !depositoCheque) {
+    throw createHttpError(409, 'O movimento de deposito nao possui um cheque de terceiro vinculado.');
+  }
+  if (depositoCheque && String(depositoCheque.status || '').toUpperCase() !== 'DEPOSITADO') {
+    throw createHttpError(409, 'O cheque selecionado nao esta aguardando compensacao bancaria.');
+  }
+
   const obraIds = await getFinanceiroObraScopeIds(req.user);
-  if (obraIds !== null && (!obraIds.length || !obraIds.includes(Number(movimento.titulo?.obra_id || 0)))) {
+  const obraMovimentoId = Number(movimento.titulo?.obra_id || depositoCheque?.obra_origem_id || 0);
+  if (obraIds !== null && (!obraIds.length || !obraMovimentoId || !obraIds.includes(obraMovimentoId))) {
     throw createHttpError(403, 'Acesso negado para o titulo vinculado a este movimento.');
   }
 
@@ -1835,12 +1969,24 @@ async function resolveMovimentoForConciliacao(req, conciliacao, movimentoId, opt
     throw createHttpError(400, 'A empresa do movimento financeiro deve ser a mesma empresa do lancamento bancario.');
   }
 
-  if (String(movimento.titulo?.tipo || '').toUpperCase() !== getSignalByValue(conciliacao.valor)) {
+  const tipoCompativel = depositoCheque
+    ? 'RECEBER'
+    : String(movimento.titulo?.tipo || '').toUpperCase();
+  if (tipoCompativel !== getSignalByValue(conciliacao.valor)) {
     throw createHttpError(400, 'O tipo do titulo nao e compativel com o sinal do lancamento bancario.');
   }
 
   if (!hasSameConciliacaoDate(conciliacao.data_movimento, movimento.data_movimento)) {
-    throw createHttpError(400, 'A data do movimento deve ser igual a data do lancamento bancario importado.');
+    const formaMovimento = String(movimento.forma_recebimento || '').toUpperCase();
+    const movimentoCheque = Boolean(depositoCheque || formaMovimento.includes('CHEQUE'));
+    const dataBanco = new Date(`${conciliacao.data_movimento}T00:00:00`);
+    const dataCheque = new Date(`${movimento.data_movimento}T00:00:00`);
+    const chequeDentroDaJanela = movimentoCheque
+      && dataBanco >= dataCheque
+      && calculateDiffDays(conciliacao.data_movimento, movimento.data_movimento) <= 180;
+    if (!chequeDentroDaJanela) {
+      throw createHttpError(400, 'A data do movimento deve ser igual a data do lancamento bancario importado.');
+    }
   }
 
   if (validarValor) {
@@ -2263,7 +2409,11 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
   if (!motivo) throw createHttpError(400, 'Informe o motivo do estorno da conciliacao.');
 
   const referencia = await loadConciliacaoById(req, conciliacaoId);
-  if (String(referencia.resolucao_tipo || '').toUpperCase() === 'ESTORNO_BANCARIO') {
+  if (
+    String(referencia.resolucao_tipo || '').toUpperCase() === 'ESTORNO_BANCARIO'
+    || String(referencia.estorno_status || '').toUpperCase() === 'CONFIRMADO'
+    || referencia.estorno_conciliacao_origem_id
+  ) {
     throw createHttpError(409, 'O desfazimento de um estorno bancario confirmado exige fluxo operacional especifico e nao pode ser feito pelo estorno generico.');
   }
   if (referencia.transferencia_financeira_id) {
@@ -2312,9 +2462,59 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
       throw createHttpError(409, 'Um movimento financeiro ja esta vinculado a outra conciliacao e exige revisao manual.');
     }
 
+    if (String(conciliacao.resolucao_tipo || '').toUpperCase() === 'COMPENSACAO_CHEQUE_TERCEIRO') {
+      const movimentoDepositoIds = movimentosVinculados
+        .filter((movimento) => String(movimento.tipo_movimento || '').toUpperCase() === 'DEPOSITO_CHEQUE_TERCEIRO')
+        .map((movimento) => Number(movimento.id));
+      const chequesCompensados = movimentoDepositoIds.length
+        ? await ChequeTerceiro.findAll({
+          where: { movimento_deposito_id: { [Op.in]: movimentoDepositoIds } },
+          order: [['id', 'ASC']],
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        })
+        : [];
+      if (chequesCompensados.length !== movimentoDepositoIds.length) {
+        throw createHttpError(409, 'O cheque compensado vinculado a esta conciliacao nao foi encontrado.');
+      }
+      for (const chequeCompensado of chequesCompensados) {
+        if (chequeCompensado.conciliacao_devolucao_id || chequeCompensado.movimento_devolucao_id) {
+          throw createHttpError(409, 'Um dos cheques possui devolucao bancaria posterior. Estorne primeiro o fluxo de devolucao.');
+        }
+        if (
+          String(chequeCompensado.status || '').toUpperCase() !== 'COMPENSADO'
+          || Number(chequeCompensado.conciliacao_deposito_id || 0) !== Number(conciliacao.id)
+        ) {
+          throw createHttpError(409, 'O estado de um dos cheques nao corresponde a esta compensacao.');
+        }
+        await chequeCompensado.update({
+          status: 'DEPOSITADO',
+          conciliacao_deposito_id: null,
+          data_compensacao: null,
+          atualizado_por: req.user?.id || null
+        }, { transaction });
+        await ChequeTerceiroMovimento.create({
+          cheque_terceiro_id: chequeCompensado.id,
+          tipo_evento: 'ESTORNO_COMPENSACAO',
+          status_anterior: 'COMPENSADO',
+          status_novo: 'DEPOSITADO',
+          empresa_destino_id: chequeCompensado.empresa_id || null,
+          titulo_financeiro_id: chequeCompensado.titulo_financeiro_id || null,
+          movimento_financeiro_id: chequeCompensado.movimento_deposito_id,
+          valor: chequeCompensado.valor,
+          data_evento: conciliacao.data_movimento,
+          observacoes: motivo,
+          metadata_json: { conciliacao_bancaria_id: conciliacao.id },
+          criado_por: req.user?.id || null
+        }, { transaction });
+      }
+      tipoEstorno = 'COMPENSACAO_CHEQUE_TERCEIRO';
+    }
+
     const tiposAvulsosEstornaveis = new Set([
       'TARIFA_BANCARIA',
       'ESTORNO_TARIFA_BANCARIA',
+      'RENDIMENTO_BANCARIO',
       'LIBERACAO_CREDITO_ROTATIVO',
       'AMORTIZACAO_CREDITO_ROTATIVO'
     ]);
@@ -2344,6 +2544,8 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
         ? 'TARIFA_BANCARIA'
         : tipoMovimentoAvulso === 'ESTORNO_TARIFA_BANCARIA'
           ? 'ESTORNO_TARIFA_BANCARIA'
+          : tipoMovimentoAvulso === 'RENDIMENTO_BANCARIO'
+            ? 'RENDIMENTO_BANCARIO'
           : 'CREDITO_ROTATIVO';
       await movimentoAvulso.update({
         status: 'ESTORNADO',
@@ -2375,7 +2577,13 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
       tipoEstorno = 'FATURA_CARTAO';
     } else if (conciliacao.titulo_financeiro_id) {
       tipoEstorno = 'TITULO_FINANCEIRO';
-    } else if (movimentosVinculados.length && !['TARIFA_BANCARIA', 'ESTORNO_TARIFA_BANCARIA', 'CREDITO_ROTATIVO'].includes(tipoEstorno)) {
+    } else if (movimentosVinculados.length && ![
+      'TARIFA_BANCARIA',
+      'ESTORNO_TARIFA_BANCARIA',
+      'RENDIMENTO_BANCARIO',
+      'CREDITO_ROTATIVO',
+      'COMPENSACAO_CHEQUE_TERCEIRO'
+    ].includes(tipoEstorno)) {
       tipoEstorno = 'MOVIMENTO_FINANCEIRO';
     }
 
@@ -2418,6 +2626,101 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
   }
 }
 
+async function confirmarConciliacaoRendimento(req, conciliacaoId, payload = {}) {
+  await assertFinanceAccess(req);
+  const codigo = normalizeConfigCode(payload.codigo);
+  if (!codigo) throw createHttpError(400, 'Selecione o rendimento da conta.');
+
+  const atalhos = await listarTarifasBancariasConfig(req);
+  const atalho = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigo
+    && item.ativo !== false && item.tipo_atalho === 'RENDIMENTO');
+  if (!atalho) throw createHttpError(400, 'Atalho de rendimento inativo ou nao configurado.');
+
+  const transaction = await sequelize.transaction();
+  try {
+    const conciliacao = await ConciliacaoBancaria.findOne({
+      where: { id: parseInteger(conciliacaoId, 'Conciliacao bancaria'), deleted_at: null },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!conciliacao) throw createHttpError(404, 'Lancamento de conciliacao nao encontrado.');
+
+    const status = String(conciliacao.status || '').toUpperCase();
+    if (status !== 'PENDENTE') {
+      const movimentoExistente = status === 'CONCILIADO' && conciliacao.movimento_financeiro_id
+        ? await MovimentoFinanceiro.findByPk(conciliacao.movimento_financeiro_id, { transaction })
+        : null;
+      if (movimentoExistente
+        && String(movimentoExistente.tipo_movimento || '').toUpperCase() === 'RENDIMENTO_BANCARIO'
+        && String(movimentoExistente.observacoes || '').trim().toUpperCase().startsWith(`[${codigo}]`)) {
+        await transaction.commit();
+        return { ...conciliacao.toJSON(), movimento: movimentoExistente.toJSON(), idempotente: true };
+      }
+      throw createHttpError(409, 'Somente conciliacoes pendentes podem ser confirmadas.');
+    }
+
+    const valorBanco = Number(conciliacao.valor || 0);
+    if (!Number.isFinite(valorBanco) || valorBanco <= 0) {
+      throw createHttpError(400, 'Rendimento da conta deve ser um lancamento de entrada no OFX.');
+    }
+    const valor = roundCurrency(valorBanco);
+    if (valor <= 0) throw createHttpError(400, 'Valor do rendimento bancario invalido.');
+    const { conta, empresaId } = await validarEmpresaConciliacaoComConta(conciliacao, { transaction });
+    const categoria = await resolveCategoriaRendimentoBancario(atalho, { transaction });
+    const sessao = await obterSessaoAbertaParaConta(conta, conciliacao.data_movimento, { transaction });
+    const descricao = String(payload.descricao || conciliacao.descricao_banco || atalho.nome).trim().slice(0, 255);
+    const movimento = await MovimentoFinanceiro.create({
+      titulo_financeiro_id: null,
+      categoria_financeira_id: categoria.id,
+      conta_bancaria_id: conta.id,
+      empresa_id: empresaId,
+      caixa_sessao_id: sessao?.id || null,
+      conciliacao_bancaria_id: conciliacao.id,
+      tipo_movimento: 'RENDIMENTO_BANCARIO',
+      status: 'ATIVO',
+      valor,
+      juros: 0,
+      multa: 0,
+      desconto: 0,
+      valor_quitacao: valor,
+      data_movimento: conciliacao.data_movimento,
+      documento_referencia: conciliacao.documento || atalho.codigo,
+      observacoes: `[${atalho.codigo}] ${descricao || atalho.nome}`,
+      criado_por: req.user?.id || null
+    }, { transaction });
+    await conciliacao.update({
+      transferencia_financeira_id: null,
+      movimento_financeiro_id: movimento.id,
+      titulo_financeiro_id: null,
+      fatura_cartao_id: null,
+      empresa_id: empresaId,
+      caixa_sessao_id: sessao?.id || null,
+      status: 'CONCILIADO',
+      confirmado_por: req.user?.id || null,
+      confirmado_em: new Date()
+    }, { transaction });
+    await transaction.commit();
+    try {
+      await registrarEventoSeguranca({
+        req,
+        usuarioId: req.user?.id || null,
+        tipoEvento: 'FINANCIAL_BANK_RECONCILED_YIELD',
+        recursoTipo: 'CONCILIACAO_BANCARIA',
+        recursoId: conciliacao.id,
+        status: 'SUCCESS',
+        descricao: 'Credito OFX conciliado como rendimento da conta',
+        metadata: { movimento_financeiro_id: movimento.id, conta_bancaria_id: conta.id, categoria_financeira_id: categoria.id, codigo_atalho: atalho.codigo, valor }
+      });
+    } catch (auditError) {
+      console.error('Falha ao registrar auditoria do rendimento bancario:', auditError);
+    }
+    return { ...conciliacao.toJSON(), movimento: movimento.toJSON(), idempotente: false };
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    throw error;
+  }
+}
+
 async function confirmarConciliacaoTarifa(req, conciliacaoId, payload = {}) {
   await assertFinanceAccess(req);
 
@@ -2427,7 +2730,7 @@ async function confirmarConciliacaoTarifa(req, conciliacaoId, payload = {}) {
   }
 
   const atalhos = await listarTarifasBancariasConfig(req);
-  const tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false);
+  const tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false && item.tipo_atalho === 'TARIFA');
   if (!tarifa) {
     throw createHttpError(400, 'Tarifa bancaria inativa ou nao configurada.');
   }
@@ -2647,7 +2950,7 @@ async function confirmarConciliacaoEstornoTarifa(req, conciliacaoId, payload = {
   let tarifa = null;
   if (codigoTarifa) {
     const atalhos = await listarTarifasBancariasConfig(req);
-    tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false);
+    tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false && item.tipo_atalho === 'TARIFA');
     if (!tarifa) {
       throw createHttpError(400, 'Tarifa bancaria inativa ou nao configurada.');
     }
@@ -2798,6 +3101,7 @@ async function confirmarConciliacaoEstornoBancario(req, conciliacaoId, payload =
   let tituloOriginalId = Number(origem.titulo_financeiro_id || 0) || null;
   let tipoMovimentoOriginal = null;
   let origemSemBaixa = false;
+  let chequeDepositoIds = [];
   const movimentosOrigem = await MovimentoFinanceiro.findAll({
     where: {
       conciliacao_bancaria_id: origem.id,
@@ -2806,6 +3110,20 @@ async function confirmarConciliacaoEstornoBancario(req, conciliacaoId, payload =
     },
     order: [['id', 'ASC']]
   });
+  const movimentosDepositoOrigem = String(origem.resolucao_tipo || '').toUpperCase() === 'COMPENSACAO_CHEQUE_TERCEIRO'
+    ? await MovimentoFinanceiro.findAll({
+      where: {
+        conciliacao_bancaria_id: origem.id,
+        tipo_movimento: 'DEPOSITO_CHEQUE_TERCEIRO',
+        status: 'ATIVO'
+      },
+      order: [['id', 'ASC']]
+    })
+    : [];
+  if (movimentosDepositoOrigem.length) {
+    movimentoOriginalId = Number(movimentosDepositoOrigem[0].id);
+    tituloOriginalId = null;
+  }
   if (movimentosOrigem.length > 1) {
     throw createHttpError(
       409,
@@ -2843,8 +3161,58 @@ async function confirmarConciliacaoEstornoBancario(req, conciliacaoId, payload =
       if (String(movimentoOriginal.status || '').toUpperCase() !== 'ATIVO') {
         throw createHttpError(409, 'A tarifa bancaria original nao esta ativa para concluir esta devolucao.');
       }
+    } else if (tipoMovimentoOriginal === 'DEPOSITO_CHEQUE_TERCEIRO') {
+      if (!movimentosDepositoOrigem.length) {
+        throw createHttpError(409, 'A conciliacao original nao possui depositos de cheques vinculados.');
+      }
+      const totalDepositos = roundCurrency(movimentosDepositoOrigem.reduce((total, item) => (
+        total + Math.abs(Number(item.valor_quitacao || item.valor || 0))
+      ), 0));
+      if (totalDepositos !== roundCurrency(Math.abs(Number(estorno.valor || 0)))) {
+        throw createHttpError(409, 'A devolucao bancaria deve corresponder ao total dos cheques depositados na conciliacao original.');
+      }
+      const chequesDeposito = await ChequeTerceiro.findAll({
+        where: {
+          movimento_deposito_id: { [Op.in]: movimentosDepositoOrigem.map((item) => Number(item.id)) }
+        },
+        order: [['id', 'ASC']]
+      });
+      if (chequesDeposito.length !== movimentosDepositoOrigem.length) {
+        throw createHttpError(409, 'Um dos depositos originais nao possui cheque de terceiro vinculado.');
+      }
+      chequeDepositoIds = chequesDeposito.map((item) => Number(item.id));
+      for (const chequeDeposito of chequesDeposito) {
+        const statusChequeDeposito = String(chequeDeposito.status || '').toUpperCase();
+        const devolucaoPreparada = statusChequeDeposito === 'DEVOLVIDO'
+          && !chequeDeposito.conciliacao_devolucao_id
+          && !chequeDeposito.movimento_devolucao_id;
+        if (
+          !['COMPENSADO', 'DEVOLVIDO'].includes(statusChequeDeposito)
+          || (statusChequeDeposito === 'DEVOLVIDO' && !devolucaoPreparada)
+          || Number(chequeDeposito.conciliacao_deposito_id || 0) !== Number(origem.id)
+        ) {
+          throw createHttpError(409, 'Um dos cheques originais nao esta compensado por este lancamento bancario.');
+        }
+        const tituloChequeId = Number(chequeDeposito.titulo_financeiro_id || 0) || null;
+        if (tituloChequeId && chequeDeposito.movimento_entrada_id) {
+          const movimentoEntrada = await MovimentoFinanceiro.findByPk(chequeDeposito.movimento_entrada_id);
+          if (movimentoEntrada && String(movimentoEntrada.status || '').toUpperCase() === 'ATIVO') {
+            await estornarMovimentoTitulo(
+              req,
+              tituloChequeId,
+              movimentoEntrada.id,
+              { observacoes: `Cheque devolvido pelo banco no OFX #${estorno.id}: ${motivo}` },
+              {
+                chequeRecebidoStatusPermitidos: ['COMPENSADO'],
+                chequeRecebidoStatusDestino: 'DEVOLVIDO',
+                dataDevolucao: estorno.data_movimento
+              }
+            );
+          }
+        }
+      }
     } else {
-      throw createHttpError(409, 'O movimento original nao corresponde a uma baixa ou tarifa bancaria estornavel.');
+      throw createHttpError(409, 'O movimento original nao corresponde a uma baixa, tarifa ou deposito de cheque estornavel.');
     }
   } else if (
     String(origem.status || '').toUpperCase() === 'PENDENTE'
@@ -2978,6 +3346,84 @@ async function confirmarConciliacaoEstornoBancario(req, conciliacaoId, payload =
             criado_por: req.user?.id || null
           }, { transaction });
         }
+      } else if (tipoMovimentoOriginal === 'DEPOSITO_CHEQUE_TERCEIRO') {
+        const chequesDeposito = await ChequeTerceiro.findAll({
+          where: { id: { [Op.in]: chequeDepositoIds } },
+          order: [['id', 'ASC']],
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
+        if (chequesDeposito.length !== chequeDepositoIds.length) {
+          throw createHttpError(409, 'Um dos cheques do deposito nao foi encontrado durante a confirmacao.');
+        }
+        const movimentosDepositoMap = new Map(movimentosDepositoOrigem.map((item) => [Number(item.id), item]));
+        for (const chequeDeposito of chequesDeposito) {
+          const statusAnteriorCheque = String(chequeDeposito.status || '').toUpperCase();
+          if (!['COMPENSADO', 'DEVOLVIDO'].includes(statusAnteriorCheque)) {
+            throw createHttpError(409, 'Um dos cheques do deposito recebeu outra movimentacao antes da devolucao.');
+          }
+          const movimentoDepositoCheque = movimentosDepositoMap.get(Number(chequeDeposito.movimento_deposito_id));
+          if (!movimentoDepositoCheque) {
+            throw createHttpError(409, 'O movimento de deposito de um dos cheques nao foi encontrado.');
+          }
+          let movimentoDevolucaoCheque = await MovimentoFinanceiro.findOne({
+            where: {
+              conciliacao_bancaria_id: estorno.id,
+              movimento_origem_id: movimentoDepositoCheque.id,
+              tipo_movimento: 'DEVOLUCAO_CHEQUE_TERCEIRO',
+              status: 'ATIVO'
+            },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+          });
+          if (!movimentoDevolucaoCheque) {
+            movimentoDevolucaoCheque = await MovimentoFinanceiro.create({
+              titulo_financeiro_id: null,
+              conta_bancaria_id: estorno.conta_bancaria_id,
+              empresa_id: estorno.empresa_id,
+              conciliacao_bancaria_id: estorno.id,
+              movimento_origem_id: movimentoDepositoCheque.id,
+              forma_recebimento: 'CHEQUE_TERCEIRO',
+              documento_referencia: estorno.documento || chequeDeposito.numero_cheque || chequeDeposito.codigo,
+              tipo_movimento: 'DEVOLUCAO_CHEQUE_TERCEIRO',
+              status: 'ATIVO',
+              valor: roundCurrency(Math.abs(Number(movimentoDepositoCheque.valor_quitacao || movimentoDepositoCheque.valor || 0))),
+              juros: 0,
+              multa: 0,
+              desconto: 0,
+              valor_quitacao: roundCurrency(Math.abs(Number(movimentoDepositoCheque.valor_quitacao || movimentoDepositoCheque.valor || 0))),
+              data_movimento: estorno.data_movimento,
+              observacoes: `[DEVOLUCAO_CHEQUE:${chequeDeposito.id}] ${motivo}`,
+              criado_por: req.user?.id || null
+            }, { transaction });
+          }
+          movimentoEstorno ||= movimentoDevolucaoCheque;
+          await chequeDeposito.update({
+            status: 'DEVOLVIDO',
+            conciliacao_devolucao_id: estorno.id,
+            movimento_devolucao_id: movimentoDevolucaoCheque.id,
+            data_devolucao: estorno.data_movimento,
+            atualizado_por: req.user?.id || null
+          }, { transaction });
+          await ChequeTerceiroMovimento.create({
+            cheque_terceiro_id: chequeDeposito.id,
+            tipo_evento: 'DEVOLUCAO_BANCARIA_CONCILIADA',
+            status_anterior: statusAnteriorCheque,
+            status_novo: 'DEVOLVIDO',
+            empresa_origem_id: chequeDeposito.empresa_id || null,
+            titulo_financeiro_id: chequeDeposito.titulo_financeiro_id || null,
+            movimento_financeiro_id: movimentoDevolucaoCheque.id,
+            valor: chequeDeposito.valor,
+            data_evento: estorno.data_movimento,
+            observacoes: motivo,
+            metadata_json: {
+              conciliacao_devolucao_id: estorno.id,
+              conciliacao_deposito_id: origem.id,
+              movimento_deposito_id: movimentoDepositoCheque.id
+            },
+            criado_por: req.user?.id || null
+          }, { transaction });
+        }
       }
     } else if (
       String(origem.status || '').toUpperCase() !== 'PENDENTE'
@@ -3025,12 +3471,15 @@ async function confirmarConciliacaoEstornoBancario(req, conciliacaoId, payload =
       status: 'SUCCESS',
       descricao: origemSemBaixa
         ? 'Estorno bancario confirmado pelo par de movimentos do extrato, sem baixa de titulo'
+        : tipoMovimentoOriginal === 'DEPOSITO_CHEQUE_TERCEIRO'
+          ? 'Devolucao de cheque confirmada e recebimento de origem reaberto quando aplicavel'
         : 'Estorno bancario confirmado e vinculado ao lancamento original',
       metadata: {
         conciliacao_origem_id: origem.id,
         titulo_financeiro_id: tituloOriginalId || null,
         movimento_origem_id: movimentoOriginal?.id || null,
         movimento_estorno_id: movimentoEstorno?.id || null,
+        cheque_terceiro_ids: chequeDepositoIds,
         evento_bancario_tipo: classificacao.tipo,
         pareado_sem_baixa: origemSemBaixa,
         valor: Math.abs(Number(estorno.valor || 0)),
@@ -3159,38 +3608,7 @@ async function confirmarConciliacaoCreditoRotativo(req, conciliacaoId, payload =
   }
 }
 
-async function finalizarConciliacao(req, conciliacao, movimento, { batch = false } = {}) {
-  await movimento.update({
-    conciliacao_bancaria_id: conciliacao.id
-  });
-
-  await conciliacao.update({
-    movimento_financeiro_id: movimento.id,
-    titulo_financeiro_id: movimento.titulo?.id || null,
-    status: 'CONCILIADO',
-    confirmado_por: req.user?.id || null,
-    confirmado_em: new Date(),
-    resolucao_tipo: inferirResolucaoConciliacao(conciliacao, movimento.id, { batch })
-  });
-
-  await registrarEventoSeguranca({
-    req,
-    usuarioId: req.user?.id || null,
-    tipoEvento: batch ? 'FINANCIAL_BANK_RECONCILED_BATCH' : 'FINANCIAL_BANK_RECONCILED',
-    recursoTipo: 'CONCILIACAO_BANCARIA',
-    recursoId: conciliacao.id,
-    status: 'SUCCESS',
-    descricao: batch
-      ? 'Lancamento bancario conciliado em lote a partir de sugestao'
-      : 'Lancamento bancario conciliado manualmente',
-    metadata: {
-      movimento_financeiro_id: movimento.id,
-      titulo_financeiro_id: movimento.titulo?.id || null
-    }
-  });
-}
-
-async function confirmarConciliacao(req, conciliacaoId, payload = {}) {
+async function confirmarConciliacao(req, conciliacaoId, payload = {}, options = {}) {
   const conciliacao = await loadConciliacaoById(req, conciliacaoId);
   if (String(conciliacao.status || '').toUpperCase() !== 'PENDENTE') {
     throw createHttpError(400, 'Somente conciliacoes pendentes podem ser confirmadas.');
@@ -3232,29 +3650,72 @@ async function confirmarConciliacao(req, conciliacaoId, payload = {}) {
   }
 
   const movimentoPrincipal = movimentos[0];
-  await Promise.all(movimentos.map((movimento) => movimento.update({
-    conciliacao_bancaria_id: conciliacao.id
-  })));
+  const transaction = await sequelize.transaction();
+  try {
+    const conciliacaoBloqueada = await ConciliacaoBancaria.findByPk(conciliacao.id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!conciliacaoBloqueada || String(conciliacaoBloqueada.status || '').toUpperCase() !== 'PENDENTE') {
+      throw createHttpError(409, 'Este lancamento bancario recebeu outra conciliacao. Atualize a tela.');
+    }
 
-  await conciliacao.update({
-    movimento_financeiro_id: movimentoPrincipal.id,
-    titulo_financeiro_id: movimentoPrincipal.titulo?.id || null,
-    status: 'CONCILIADO',
-    confirmado_por: req.user?.id || null,
-    confirmado_em: new Date(),
-    resolucao_tipo: inferirResolucaoConciliacao(conciliacao, movimentoPrincipal.id)
-  });
+    for (const movimento of movimentos) {
+      const movimentoBloqueado = await MovimentoFinanceiro.findByPk(movimento.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!movimentoBloqueado || String(movimentoBloqueado.status || '').toUpperCase() !== 'ATIVO') {
+        throw createHttpError(409, 'Um dos movimentos selecionados deixou de estar disponivel.');
+      }
+      if (
+        movimentoBloqueado.conciliacao_bancaria_id
+        && Number(movimentoBloqueado.conciliacao_bancaria_id) !== Number(conciliacao.id)
+      ) {
+        throw createHttpError(409, 'Um dos movimentos selecionados ja foi usado em outra conciliacao.');
+      }
+      await movimentoBloqueado.update({ conciliacao_bancaria_id: conciliacao.id }, { transaction });
+      await confirmarCompensacaoChequePorMovimento({
+        movimentoId: movimentoBloqueado.id,
+        conciliacaoId: conciliacao.id,
+        dataCompensacao: conciliacao.data_movimento,
+        usuarioId: req.user?.id || null,
+        transaction
+      });
+    }
+
+    await conciliacaoBloqueada.update({
+      movimento_financeiro_id: movimentoPrincipal.id,
+      titulo_financeiro_id: movimentoPrincipal.titulo?.id || null,
+      status: 'CONCILIADO',
+      confirmado_por: req.user?.id || null,
+      confirmado_em: new Date(),
+      resolucao_tipo: movimentos.some((movimento) => (
+        String(movimento.tipo_movimento || '').toUpperCase() === 'DEPOSITO_CHEQUE_TERCEIRO'
+      ))
+        ? 'COMPENSACAO_CHEQUE_TERCEIRO'
+        : inferirResolucaoConciliacao(conciliacao, movimentoPrincipal.id, { batch: options.batch === true })
+    }, { transaction });
+    await transaction.commit();
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    throw error;
+  }
 
   await registrarEventoSeguranca({
     req,
     usuarioId: req.user?.id || null,
-    tipoEvento: isAssociacaoMultipla ? 'FINANCIAL_BANK_RECONCILED_MULTIPLE' : 'FINANCIAL_BANK_RECONCILED',
+    tipoEvento: isAssociacaoMultipla
+      ? 'FINANCIAL_BANK_RECONCILED_MULTIPLE'
+      : options.batch === true ? 'FINANCIAL_BANK_RECONCILED_BATCH' : 'FINANCIAL_BANK_RECONCILED',
     recursoTipo: 'CONCILIACAO_BANCARIA',
     recursoId: conciliacao.id,
     status: 'SUCCESS',
     descricao: isAssociacaoMultipla
       ? 'Lancamento bancario conciliado manualmente com multiplos movimentos'
-      : 'Lancamento bancario conciliado manualmente',
+      : options.batch === true
+        ? 'Lancamento bancario conciliado em lote a partir de sugestao'
+        : 'Lancamento bancario conciliado manualmente',
     metadata: {
       movimento_financeiro_id: movimentoPrincipal.id,
       movimento_financeiro_ids: movimentos.map((movimento) => movimento.id),
@@ -3394,7 +3855,9 @@ async function conciliarSugeridos(req, filters = {}) {
         conciliacao,
         analise.sugestao_automatica.movimento_financeiro_id
       );
-      await finalizarConciliacao(req, conciliacao, movimento, { batch: true });
+      await confirmarConciliacao(req, conciliacao.id, {
+        movimento_financeiro_id: movimento.id
+      }, { batch: true });
       resumo.total_conciliadas += 1;
     } catch (error) {
       resumo.falhas += 1;
@@ -3645,6 +4108,7 @@ async function removerConciliacao(req, conciliacaoId, payload = {}) {
 }
 
 module.exports = {
+  categoriaFinanceiraAptaParaRendimento,
   conciliarSugeridos,
   corrigirContaConciliacao,
   confirmarConciliacao,
@@ -3653,6 +4117,7 @@ module.exports = {
   confirmarConciliacaoFatura,
   confirmarConciliacaoEstornoTarifa,
   confirmarConciliacaoTarifa,
+  confirmarConciliacaoRendimento,
   confirmarConciliacaoTransferencia,
   estornarConciliacao,
   estornarConciliacaoTransferencia,

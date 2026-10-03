@@ -11,6 +11,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false
       },
+      status_aprovacao: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+      },
       apropriacao_id: {
         type: DataTypes.INTEGER,
         allowNull: true
@@ -42,6 +46,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0
       },
+      frete_valor: {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: false,
+        defaultValue: 0
+      },
       especificacao: {
         type: DataTypes.TEXT,
         allowNull: true
@@ -60,6 +69,22 @@ module.exports = (sequelize, DataTypes) => {
       },
       arquivo_nome_original: {
         type: DataTypes.STRING,
+        allowNull: true
+      },
+      insumo_catalogado_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      catalogado_por: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      catalogado_em: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      catalogacao_tipo: {
+        type: DataTypes.STRING(20),
         allowNull: true
       }
     },

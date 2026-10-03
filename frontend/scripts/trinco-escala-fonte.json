@@ -1,0 +1,26 @@
+{
+  "regra": "R30 — CINCO DEGRAUS DE FONTE EM CSS, ESCRITOS COMO TOKEN",
+  "criado_em": "2026-09-05",
+  "porque": "A escala de tipografia era conferida SO no JSX (classe do Tailwind, dentro da R10). O CSS — que e onde a tipografia deste sistema mora — nunca foi olhado, e foi por isso que 88% da poluicao passou anos invisivel. Medido em 05/09: 92 tamanhos distintos contra 4 declarados, 76% das ocorrencias nos degraus, 88% das declaracoes de CSS com o valor cru, 213 ocorrencias abaixo do piso de 12px em 21 tamanhos (a menor 9px) e 26 declaracoes usando clamp() em texto. Do outro lado, o JSX estava em 96,6%. Regra sem portao e intencao, e portao so vale onde ele olha.",
+  "medido_em_05_09": {
+    "tamanhos_distintos_antes": 92,
+    "tamanhos_distintos_depois": 6,
+    "abaixo_do_piso_antes": 213,
+    "abaixo_do_piso_depois": 0,
+    "declaracoes_css_fora_de_token_antes": "621 de 701 (88,6%)",
+    "declaracoes_css_fora_de_token_depois": "1 de 658 (0,2%), e essa 1 e a excecao declarada abaixo",
+    "clamp_em_texto_antes": 26,
+    "clamp_em_texto_depois": 0
+  },
+  "trinco_nasce_vazio_e_por_que_isso_nao_e_bravata": "Este trinco esta VAZIO de proposito: o passivo foi para zero na mesma execucao em que o check ligou, entao nao ha o que congelar. A lista existe mesmo assim, e nao e enfeite — ela e o mecanismo que permite ligar um check no meio do trabalho de outra pessoa sem travar a leva. Se uma folha nova entrar com passivo herdado, ela entra AQUI com a contagem medida, e o numero so desce.",
+  "excecoes": [
+    {
+      "arquivo": "src/styles/responsive-system.css",
+      "seletor": ".layout-main :where(input, select, textarea)",
+      "valor": "16px",
+      "motivo": "TRAVA DE ZOOM DO iOS, nao decisao de hierarquia (05/09). O Safari do iPhone DA ZOOM na pagina inteira ao focar um campo cujo font-size seja menor que 16px, e o zoom nao volta sozinho — o usuario fica com a tela deslocada. Nao existe degrau de 16px na escala e nao deve existir: 16 aqui nao esta dizendo nada sobre hierarquia, esta desarmando um comportamento do navegador. Trocar por 14px (o degrau de corpo) reintroduz o zoom; trocar por 18px engorda todo campo do sistema em telas pequenas para resolver por acidente. Vale SO dentro do @media de tela pequena e SO para input/select/textarea."
+    }
+  ],
+  "total_em": 0,
+  "arquivos": {}
+}

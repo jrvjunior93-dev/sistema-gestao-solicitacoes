@@ -160,7 +160,6 @@ async function executar() {
       }
     });
   });
-
   const contagens = {
     solicitacoes_diretas: countByApropriacao(solicitacoes),
     solicitacoes_rateios: countByApropriacao(solicitacaoRateios),
@@ -198,7 +197,6 @@ async function executar() {
       atualizado_em: item.updatedAt || null
     };
   });
-
   const historicoLegadoPorObra = new Map();
   custosHistoricos.forEach((item) => add(historicoLegadoPorObra, item.obra_id, item.valor));
   const resumoObras = obras.map((obra) => ({

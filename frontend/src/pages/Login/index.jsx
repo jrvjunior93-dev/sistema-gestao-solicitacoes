@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import cscLogo from '../../assets/CSC_logo_lockup_padded.png';
 import fluxyLogo from '../../assets/fluxy_mark_cropped.png';
 import CityBackground from '../../components/CityBackground';
+import { Avisos, useAvisos } from '../../components/padrao';
 import Alert from '../../components/ui/Alert';
 import Spinner from '../../components/ui/Spinner';
 import { useAuth } from '../../contexts/AuthContext';
@@ -41,50 +42,91 @@ export default function Login() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaChallenge, setMfaChallenge] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [erro, setErro] = useState('');
+  const { avisos, avisar, fechar, limpar } = useAvisos();
 
   const { login } = useAuth();
   const navigate = useNavigate();
   const isMfaStep = Boolean(mfaChallenge);
-  const introKicker = isMfaStep ? 'Seguranca em duas etapas' : '';
-  const introTitle = isMfaStep ? 'Validacao segura' : 'Entrar';
+  const introKicker = isMfaStep ? 'Segurança em duas etapas' : '';
+  const introTitle = isMfaStep ? 'Validação segura' : 'Entrar';
   const introCopy = isMfaStep
-    ? 'Confirme o codigo gerado no autenticador para concluir o acesso ao ambiente.'
+    ? 'Confirme o código gerado no aplicativo autenticador para concluir o acesso.'
     : '';
   const isMinimalIntro = !introKicker && !introCopy;
+
+  // Fora do shell não há menu, breadcrumb nem tela para onde escapar: toda
+  // mensagem de erro tem de dizer O QUE FAZER, não só o que falhou
+  // (DoD, "TELAS FORA DO SHELL", 03/09).
+  function ehFalhaDeRede(mensagemNormalizada) {
+    return mensagemNormalizada.includes('failed to fetch')
+      || mensagemNormalizada.includes('network')
+      || mensagemNormalizada.includes('nao foi possivel conectar')
+      || mensagemNormalizada.includes('não foi possível conectar');
+  }
 
   function normalizeLoginErrorMessage(err) {
     const rawMessage = String(err?.message || '').trim();
     const normalizedMessage = rawMessage.toLowerCase();
 
     if (err?.data?.code === 'PASSWORD_RESET_REQUIRED') {
-      return 'Sua senha precisa ser definida ou redefinida. Use "Esqueci minha senha" para receber um link seguro.';
+      return 'Sua senha precisa ser definida ou redefinida. Toque em "Esqueci minha senha", aqui embaixo, para receber um link seguro por e-mail.';
+    }
+
+    if (ehFalhaDeRede(normalizedMessage)) {
+      return 'Não foi possível falar com o servidor. Confira sua conexão (Wi-Fi ou dados) e toque em "Entrar" de novo em alguns instantes.';
+    }
+
+    if (err?.status === 429) {
+      return 'Muitas tentativas seguidas. Aguarde alguns minutos antes de tentar de novo; se não lembra a senha, use "Esqueci minha senha".';
+    }
+
+    if (
+      err?.status === 401
+      || normalizedMessage.includes('erro ao efetuar login')
+      || normalizedMessage.includes('unauthorized')
+      || normalizedMessage.includes('credenciais')
+      || normalizedMessage.includes('usuario ou senha')
+      || normalizedMessage.includes('e-mail ou senha')
+    ) {
+      return 'E-mail ou senha inválidos. Confira o e-mail digitado e o CAPS LOCK; se não lembra a senha, use "Esqueci minha senha".';
+    }
+
+    if (err?.status === 403) {
+      return 'Este acesso está bloqueado. Procure o administrador do sistema para liberar o seu usuário.';
     }
 
     if (!rawMessage) {
-      return 'Nao foi possivel entrar agora. Tente novamente em alguns instantes.';
+      return 'Não foi possível entrar agora. Tente de novo em alguns instantes; se continuar, procure o administrador do sistema.';
     }
 
-    if (
-      err?.status === 401 ||
-      normalizedMessage.includes('erro ao efetuar login') ||
-      normalizedMessage.includes('unauthorized') ||
-      normalizedMessage.includes('credenciais') ||
-      normalizedMessage.includes('usuario ou senha') ||
-      normalizedMessage.includes('e-mail ou senha')
-    ) {
-      return 'E-mail ou senha invalidos. Confira seus dados e tente novamente.';
+    return `${rawMessage.replace(/\.?$/, '.')} Tente de novo em alguns instantes; se continuar, procure o administrador do sistema.`;
+  }
+
+  function normalizeMfaErrorMessage(err) {
+    const rawMessage = String(err?.message || '').trim();
+    const normalizedMessage = rawMessage.toLowerCase();
+
+    if (ehFalhaDeRede(normalizedMessage)) {
+      return 'Não foi possível falar com o servidor. Confira sua conexão e toque em "Validar e entrar" de novo — o código do aplicativo troca a cada 30 segundos, então use o que estiver na tela na hora.';
     }
 
-    if (
-      normalizedMessage.includes('failed to fetch') ||
-      normalizedMessage.includes('network') ||
-      normalizedMessage.includes('nao foi possivel conectar')
-    ) {
-      return 'Nao foi possivel conectar ao servidor. Verifique sua conexao e tente novamente.';
+    if (err?.status === 429) {
+      return 'Muitas tentativas seguidas. Aguarde alguns minutos e valide de novo com um código novo do aplicativo.';
     }
 
-    return rawMessage;
+    if (err?.status === 401 || normalizedMessage.includes('expirad') || normalizedMessage.includes('challenge')) {
+      return 'A validação expirou por tempo. Toque em "Voltar", informe e-mail e senha outra vez e use o código que o aplicativo mostrar naquele momento.';
+    }
+
+    if (err?.status === 400 || normalizedMessage.includes('codigo') || normalizedMessage.includes('código') || normalizedMessage.includes('invalid')) {
+      return 'Código inválido. Abra o aplicativo autenticador, aguarde o próximo código de 6 dígitos e digite-o sem espaços.';
+    }
+
+    if (!rawMessage) {
+      return 'Não foi possível validar a autenticação em duas etapas. Aguarde o próximo código do aplicativo e tente de novo; se continuar, procure o administrador do sistema.';
+    }
+
+    return `${rawMessage.replace(/\.?$/, '.')} Aguarde o próximo código do aplicativo e tente de novo; se continuar, procure o administrador do sistema.`;
   }
 
   function handlePrimaryButtonPointerMove(event) {
@@ -106,16 +148,19 @@ export default function Login() {
       return;
     }
 
-    const perfil = String(data?.user?.perfil || '').trim().toUpperCase();
-    const isAdmin = perfil === 'SUPERADMIN' || perfil.startsWith('ADMIN');
-    navigate(isAdmin ? '/' : '/solicitacoes');
+    // Tela inicial escolhida pelo usuário, já VALIDADA no backend contra
+    // as permissões atuais (payload traz null quando a preferência caiu
+    // — permissão perdida ou rota removida — e nesse caso a Home assume
+    // silenciosamente). Sem escolha, todo perfil cai na Home.
+    const telaInicial = String(data?.user?.tela_inicial?.to || '').trim();
+    navigate(telaInicial.startsWith('/') ? telaInicial : '/');
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setErro('');
+    limpar();
     if (!email.trim() || !senha) {
-      setErro('Preencha e-mail e senha para continuar.');
+      avisar.erro('Preencha e-mail e senha para continuar.');
       return;
     }
 
@@ -133,7 +178,7 @@ export default function Login() {
       await login(data);
       navigateAfterLogin(data);
     } catch (err) {
-      setErro(normalizeLoginErrorMessage(err));
+      avisar.erro(normalizeLoginErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -141,16 +186,16 @@ export default function Login() {
 
   async function handleMfaSubmit(e) {
     e.preventDefault();
-    setErro('');
+    limpar();
 
     if (!mfaChallenge?.challengeToken) {
-      setErro('O desafio de autenticacao expirou. Informe sua senha novamente.');
       setMfaChallenge(null);
+      avisar.erro('A validação em duas etapas expirou. Informe e-mail e senha outra vez para receber um novo desafio.');
       return;
     }
 
     if (!String(mfaCode || '').trim()) {
-      setErro('Informe o codigo do autenticador.');
+      avisar.erro('Informe o código de 6 dígitos que o aplicativo autenticador está mostrando agora.');
       return;
     }
 
@@ -165,7 +210,7 @@ export default function Login() {
       setMfaCode('');
       navigateAfterLogin(data);
     } catch (err) {
-      setErro(err?.message || 'Nao foi possivel validar a autenticacao em duas etapas.');
+      avisar.erro(normalizeMfaErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -174,7 +219,7 @@ export default function Login() {
   function cancelarMfa() {
     setMfaChallenge(null);
     setMfaCode('');
-    setErro('');
+    limpar();
   }
 
   return (
@@ -209,9 +254,9 @@ export default function Login() {
 
           <div className="login-divider" aria-hidden="true" />
 
-          {erro && (
+          {avisos.length > 0 && (
             <div className="login-alert-wrap">
-              <Alert type="error" message={erro} onClose={() => setErro('')} />
+              <Avisos avisos={avisos} aoFechar={fechar} />
             </div>
           )}
 
@@ -219,11 +264,11 @@ export default function Login() {
             <form onSubmit={handleMfaSubmit} noValidate className="login-form">
               <Alert
                 type="info"
-                message={`Senha validada para ${mfaChallenge.user?.nome || mfaChallenge.user?.email || 'o usuario'}. Informe o codigo do aplicativo autenticador.`}
+                message={`Senha validada para ${mfaChallenge.user?.nome || mfaChallenge.user?.email || 'o usuário'}. Informe agora o código de 6 dígitos do aplicativo autenticador.`}
               />
 
               <div className="login-field">
-                <label htmlFor="login-mfa-code" className="login-label">Codigo do autenticador</label>
+                <label htmlFor="login-mfa-code" className="login-label">Código do autenticador</label>
                 <input
                   id="login-mfa-code"
                   type="text"
@@ -240,7 +285,7 @@ export default function Login() {
 
               <div className="login-security-note">
                 <span className="login-security-dot" aria-hidden="true" />
-                <span>A validacao adicional protege o ambiente corporativo.</span>
+                <span>A validação adicional protege o ambiente corporativo.</span>
               </div>
 
               <div className="login-actions-2col">
@@ -296,7 +341,7 @@ export default function Login() {
                   />
                   <button
                     type="button"
-                    className="login-eye-btn"
+                    className="btn login-eye-btn"
                     onClick={() => setShowPassword((value) => !value)}
                     aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                     aria-pressed={showPassword}
@@ -311,9 +356,17 @@ export default function Login() {
                   <span className="login-security-dot" aria-hidden="true" />
                   <span>Acesso corporativo protegido.</span>
                 </div>
+                {/*
+                  `btn-ghost`, não contorno: a C5 classifica AÇÕES, e este
+                  controle NAVEGA — é o único caminho para fora da tela de
+                  login, pelo escopo declarado da C6/R11. Desenhar contorno
+                  em volta dele o promoveria a ação secundária e competiria
+                  com "Entrar". O `.btn` continua ali só pelo alvo de
+                  clique (M1): sem ele, o alvo tinha 19px de altura.
+                */}
                 <button
                   type="button"
-                  className="login-forgot"
+                  className="btn btn-ghost login-forgot"
                   onClick={() => navigate('/recuperar-senha', { state: { email: email.trim() } })}
                 >
                   Esqueci minha senha

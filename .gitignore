@@ -18,6 +18,9 @@ dist/
 build/
 coverage/
 .next/
+
+# Saída do harness de QA visual (capturas e relatórios por rodada)
+frontend/scripts/qa-preview/saida/
 out/
 backend/dist/
 backend/public/
@@ -25,6 +28,10 @@ frontend/dist/
 mobile/dist/
 mobile/android/build/
 frontend/android/build/
+
+# Evidencias de QA: PNGs sao provas em disco, nao codigo.
+# Os scripts e relatorios (.md) continuam versionados.
+qa/evidencias/
 
 # Uploads, temporarios e relatorios
 backend/uploads/
@@ -46,6 +53,7 @@ yarn-error.log*
 *.pem
 *.key
 *.p12
+*.pfx
 *.crt
 *.sql
 *.sqlite
@@ -60,6 +68,7 @@ yarn-error.log*
 .idea/
 .DS_Store
 Thumbs.db
+~$*.docx
 
 # Artefatos locais antigos
 image.png
@@ -73,3 +82,17 @@ teste/
 sistema-gestao/
 sistema-gestao-solicitacoes/
 _tmp_brandkit_blue_complete/
+
+# As paginas publicas pertencem ao snapshot, mas nunca transportar metadados Git aninhados.
+legal-pages/.git/
+
+# Andaime de medição dos agentes de QA (05/09).
+# Para medir corte de texto e geometria, um agente monta uma página isolada
+# com o CSS real e a abre num Chromium. Isso é ferramenta de trabalho, não
+# código do sistema — e já entrou no repositório duas vezes por um `git add
+# -A` meu. Ignorar aqui é mais barato que lembrar de limpar toda vez.
+frontend/qa-temp.html
+frontend/__qa_visit_tmp.mjs
+frontend/src/__qaTempMain.jsx
+frontend/src/__qaTemp*.jsx
+frontend/src/**/__Prova*.jsx

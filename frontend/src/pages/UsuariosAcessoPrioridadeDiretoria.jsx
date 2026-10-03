@@ -3,6 +3,8 @@ import {
   getUsuariosAcessoPrioridadeDiretoria,
   salvarUsuariosAcessoPrioridadeDiretoria
 } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, BlocoConteudo, TabelaPadrao, CelulaDupla, BarraFiltros, Avisos, useAvisos } from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 
 const MODO_NENHUM = 'NENHUM';
 const MODO_TODOS = 'TODOS';
@@ -40,6 +42,8 @@ export default function UsuariosAcessoPrioridadeDiretoria() {
   const [busca, setBusca] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  // R3 (02/09): aviso do sistema no lugar da caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function load() {
@@ -55,7 +59,7 @@ export default function UsuariosAcessoPrioridadeDiretoria() {
         }, {}));
       } catch (error) {
         console.error(error);
-        alert('Erro ao carregar usuarios com acesso a prioridade diretoria.');
+        avisar.erro('Erro ao carregar usuários com acesso a prioridade diretoria.');
       } finally {
         setCarregando(false);
       }
@@ -163,135 +167,156 @@ export default function UsuariosAcessoPrioridadeDiretoria() {
       }, {});
 
       await salvarUsuariosAcessoPrioridadeDiretoria({ usuarios: usuariosPayload });
-      alert('Configuracao salva com sucesso.');
+      avisar.sucesso('Configuração salva com sucesso.');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao salvar configuracao.');
+      avisar.erro(error?.message || 'Erro ao salvar configuracao.');
     } finally {
       setSalvando(false);
     }
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Acesso a Prioridade Diretoria</h1>
-        <p className="mt-1 text-sm text-[var(--c-muted)]">
-          Defina quais usuarios acessam os lotes de prioridade e se enxergam todos os lotes ou apenas diretorias especificas.
-        </p>
-      </div>
-
-      <div className="card space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <label className="grid gap-1 text-sm w-full md:max-w-md">
-            Buscar usuario
-            <input
-              className="input"
-              placeholder="Nome, email, perfil ou setor"
-              value={busca}
-              onChange={(event) => setBusca(event.target.value)}
-            />
-          </label>
-
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" className="btn btn-outline" onClick={selecionarTodosFiltrados}>
-              Todos os lotes filtrados
-            </button>
-            <button type="button" className="btn btn-outline" onClick={limparTodosFiltrados}>
-              Limpar filtrados
-            </button>
-          </div>
-        </div>
-
-        <div className="text-sm text-[var(--c-muted)]">
-          Usuarios configurados: <strong>{totalConfigurados}</strong>
-        </div>
-
-        {diretorias.length === 0 && (
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
-            Nenhuma diretoria esta configurada em Aprovacao por Diretoria. Configure as diretorias antes de limitar por diretoria especifica.
-          </div>
-        )}
-
-        {carregando ? (
-          <p className="text-sm text-[var(--c-muted)]">Carregando usuarios...</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-2">
-            {usuariosFiltrados.map((usuario) => {
-              const acesso = normalizarAcesso(acessos[String(usuario.id)]);
-              const setorLabel = usuario?.setor?.nome || usuario?.setor?.codigo || '-';
-              const ativo = usuario?.ativo !== false;
-
+  const colunas = [
+    {
+      id: 'usuario',
+      titulo: 'Usuário',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (usuario) => <CelulaDupla principal={usuario.nome} sub={usuario.email} />
+    },
+    {
+      id: 'perfil',
+      titulo: 'Perfil',
+      tipo: 'badge',
+      render: (usuario) => String(usuario.perfil || '').toUpperCase() || '-'
+    },
+    {
+      id: 'setor',
+      titulo: 'Setor',
+      tipo: 'badge',
+      render: (usuario) => usuario?.setor?.nome || usuario?.setor?.codigo || '-'
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      render: (usuario) => <StatusBadge status={usuario?.ativo !== false ? 'Ativo' : 'Inativo'} />
+    },
+    {
+      id: 'escopo',
+      // TRAVADAS (05/09): escopo e diretorias SAO a concessao de acesso; fora do
+      // modo "Diretorias especificas" a segunda nem mostra dado, so um traco.
+      sempreVisivel: true,
+      titulo: 'Escopo',
+      tipo: 'texto',
+      flex: false,
+      render: (usuario) => {
+        const acesso = normalizarAcesso(acessos[String(usuario.id)]);
+        const ativo = usuario?.ativo !== false;
+        return (
+          <select
+            className="input input-sm w-full"
+            value={acesso.modo}
+            disabled={!ativo}
+            aria-label={`Escopo de ${usuario.nome}`}
+            onChange={(event) => alterarModo(usuario.id, event.target.value)}
+          >
+            <option value={MODO_NENHUM}>Sem acesso</option>
+            <option value={MODO_TODOS}>Todos os lotes</option>
+            <option value={MODO_DIRETORIAS}>Diretorias especificas</option>
+          </select>
+        );
+      }
+    },
+    {
+      id: 'diretorias',
+      sempreVisivel: true,
+      titulo: 'Diretorias',
+      tipo: 'texto',
+      flex: false,
+      render: (usuario) => {
+        const acesso = normalizarAcesso(acessos[String(usuario.id)]);
+        const ativo = usuario?.ativo !== false;
+        if (acesso.modo !== MODO_DIRETORIAS) {
+          return (
+            <span
+              className="text-[var(--c-muted)]"
+              title="Disponível apenas no escopo 'Diretorias especificas'"
+            >
+              -
+            </span>
+          );
+        }
+        return (
+          <div className="flex flex-col gap-1">
+            {diretorias.map((diretoria) => {
+              const classificacao = String(diretoria.classificacao || '').toUpperCase();
               return (
-                <div
-                  key={usuario.id}
-                  className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-sm"
-                >
-                  <div className="grid gap-3 md:grid-cols-[1fr_240px] md:items-start">
-                    <div className="grid gap-1">
-                      <span className="font-medium text-[var(--c-text)]">
-                        {usuario.nome}
-                        {!ativo ? ' (inativo)' : ''}
-                      </span>
-                      <span className="text-[var(--c-muted)]">
-                        {usuario.email} - {String(usuario.perfil || '').toUpperCase()} - {setorLabel}
-                      </span>
-                    </div>
-
-                    <label className="grid gap-1">
-                      Escopo
-                      <select
-                        className="input"
-                        value={acesso.modo}
-                        disabled={!ativo}
-                        onChange={(event) => alterarModo(usuario.id, event.target.value)}
-                      >
-                        <option value={MODO_NENHUM}>Sem acesso</option>
-                        <option value={MODO_TODOS}>Todos os lotes</option>
-                        <option value={MODO_DIRETORIAS}>Diretorias especificas</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  {acesso.modo === MODO_DIRETORIAS && (
-                    <div className="mt-3 flex flex-wrap gap-3">
-                      {diretorias.map((diretoria) => {
-                        const classificacao = String(diretoria.classificacao || '').toUpperCase();
-                        return (
-                          <label key={`${usuario.id}-${classificacao}`} className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={acesso.diretorias.includes(classificacao)}
-                              disabled={!ativo}
-                              onChange={() => alternarDiretoria(usuario.id, classificacao)}
-                            />
-                            <span>{classificacao} - {diretoria.diretoria_label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <label key={`${usuario.id}-${classificacao}`} className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={acesso.diretorias.includes(classificacao)}
+                    disabled={!ativo}
+                    onChange={() => alternarDiretoria(usuario.id, classificacao)}
+                  />
+                  <span>{classificacao} - {diretoria.diretoria_label}</span>
+                </label>
               );
             })}
-
-            {usuariosFiltrados.length === 0 && (
-              <p className="text-sm text-gray-600">Nenhum usuario encontrado.</p>
-            )}
           </div>
-        )}
+        );
+      }
+    }
+  ];
 
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={salvar}
-            disabled={salvando}
-          >
-            {salvando ? 'Salvando...' : 'Salvar configuracao'}
-          </button>
+  return (
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Acesso a Prioridade Diretoria"
+        contagem={`${totalConfigurados} configurado(s)`}
+        descricao="Defina quais usuários acessam os lotes de prioridade e se enxergam todos os lotes ou apenas diretorias especificas."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar configuracao',
+          onClick: salvar,
+          desabilitada: salvando
+        }}
+        secundarias={[
+          { rotulo: 'Todos os lotes filtrados', onClick: selecionarTodosFiltrados },
+          { rotulo: 'Limpar filtrados', onClick: limparTodosFiltrados }
+        ]}
+      />
+
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {diretorias.length === 0 && !carregando && (
+        <div className="app-alert">
+          Nenhuma diretoria esta configurada em Aprovação por Diretoria. Configure as diretorias antes de limitar por diretoria especifica.
         </div>
-      </div>
-    </div>
+      )}
+
+      <BlocoConteudo
+        titulo="Usuários"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/* F1: UMA busca, ocupando a largura da faixa (padrão BarraFiltros). */}
+        <BarraFiltros
+          busca={{
+            valor: busca,
+            aoMudar: setBusca,
+            placeholder: 'Nome, email, perfil ou setor'
+          }}
+        />
+        <TabelaPadrao
+          colunas={colunas}
+          itens={usuariosFiltrados}
+          carregando={carregando}
+          storageKey="tabela:usuarios-prioridade-diretoria"
+          vazio={{ title: 'Nenhum usuario encontrado' }}
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

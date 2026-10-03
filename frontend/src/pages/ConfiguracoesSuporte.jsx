@@ -1,9 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   getSuporteWhatsapp,
   salvarSuporteWhatsapp
 } from '../services/configuracoesSistema';
+import { Avisos, BlocoConteudo, Pagina, PageHeader, useAvisos } from '../components/padrao';
+
+/**
+ * WHATSAPP DO SUPORTE — reforma de 04/09.
+ *
+ * O cabeçalho era `.config-page-header`, que NÃO é sticky: ao rolar, título
+ * e ações sumiam (C1/R13). A faixa fixa é `Pagina` + `PageHeader` — e as
+ * duas peças andam juntas: quem publica `--pos-cabecalho-fixo` é o `Pagina`,
+ * e a compactação é estado do `PageHeader`.
+ *
+ * O "Voltar" era um `<Link className="btn btn-outline">` na faixa de ações
+ * (C6/R11: navegação vestida de ação). O retorno não sumiu — mudou de forma:
+ * é a prop `voltar` do `PageHeader`, a seta à esquerda do título, que é a
+ * affordance primária de retorno e continua sendo a mesma navegação.
+ */
 
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -24,8 +38,14 @@ export default function ConfiguracoesSuporte() {
   const [whatsapp, setWhatsapp] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
-  const [error, setError] = useState('');
+  /*
+    R3: erro e sucesso vinham em markup próprio — duas <div> com paleta crua
+    (border-red-200/bg-red-50 e border-emerald-200/bg-emerald-50), cada uma
+    com seu estado. É de `useAvisos`/`Avisos` que vem o tom semântico do
+    sistema (que acompanha o tema escuro e o piso de contraste do
+    ThemeContext, R24/R25) e o fechamento automático do sucesso em 6s.
+  */
+  const { avisos, avisar, fechar, limpar } = useAvisos();
 
   useEffect(() => {
     let active = true;
@@ -37,7 +57,7 @@ export default function ConfiguracoesSuporte() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(err?.message || 'Erro ao carregar configuracao de suporte.');
+        avisar.erro(err?.message || 'Erro ao carregar configuracao de suporte.');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -46,7 +66,7 @@ export default function ConfiguracoesSuporte() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [avisar]);
 
   const previewUrl = useMemo(() => {
     const digits = onlyDigits(whatsapp);
@@ -57,43 +77,44 @@ export default function ConfiguracoesSuporte() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setError('');
-    setMessage(null);
+    limpar();
     setSaving(true);
 
     try {
       const data = await salvarSuporteWhatsapp({ whatsapp });
       setWhatsapp(maskPhone(data?.whatsapp || ''));
-      setMessage('WhatsApp de suporte atualizado.');
+      avisar.sucesso('WhatsApp de suporte atualizado.');
     } catch (err) {
-      setError(err?.message || 'Erro ao salvar WhatsApp de suporte.');
+      avisar.erro(err?.message || 'Erro ao salvar WhatsApp de suporte.');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="solicitacoes-page config-page space-y-5 md:space-y-6">
-      <header className="config-page-header">
-        <div className="config-page-header-row">
-          <div>
-            <p className="config-summary-kicker">Suporte</p>
-            <h1 className="config-page-title">WhatsApp do Suporte</h1>
-            <p className="config-page-subtitle">
-              Defina o numero usado pelo botao Suporte no topo do sistema.
-            </p>
-          </div>
-          <Link to="/configuracoes" className="btn btn-outline">
-            Voltar
-          </Link>
-        </div>
-      </header>
+    <Pagina>
+      {/* C6/R11: o retorno tem forma própria — a prop `voltar`. Ele não foi
+          removido, saiu da barra de ações (onde moram ações SOBRE esta
+          tela) para o lugar que é dele. */}
+      <PageHeader
+        titulo="WhatsApp do Suporte"
+        descricao="Configuração de Suporte: define o número usado pelo botão Suporte no topo do sistema."
+        voltar={{ to: '/configuracoes', title: 'Voltar para Configurações' }}
+      />
 
-      <form onSubmit={handleSubmit} className="config-summary-card">
-        <div className="w-full max-w-2xl space-y-4">
-          <div>
+      <BlocoConteudo
+        titulo="Número de atendimento"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* A faixa de avisos fica dentro do bloco do formulário: o erro
+              do salvamento pertence ao formulário que o produziu. */}
+          <Avisos avisos={avisos} aoFechar={fechar} />
+
+          <div className="max-w-md">
             <label className="app-filter-label" htmlFor="suporte-whatsapp">
-              Numero WhatsApp
+              Número WhatsApp
             </label>
             <input
               id="suporte-whatsapp"
@@ -101,8 +122,8 @@ export default function ConfiguracoesSuporte() {
               value={whatsapp}
               onChange={(event) => {
                 setWhatsapp(maskPhone(event.target.value));
-                setMessage(null);
-                setError('');
+                // Mexer no campo apaga a mensagem da tentativa anterior.
+                limpar();
               }}
               placeholder="(27) 99999-9999"
               disabled={loading || saving}
@@ -110,28 +131,16 @@ export default function ConfiguracoesSuporte() {
           </div>
 
           {previewUrl ? (
-            <p className="config-item-description">
-              Link gerado: <span className="font-semibold text-slate-900">{previewUrl}</span>
+            <p className="app-note">
+              Link gerado: <span className="font-semibold text-[var(--c-text)]">{previewUrl}</span>
             </p>
           ) : (
-            <p className="config-item-description">
-              Informe DDD e numero. O sistema adiciona o DDI 55 automaticamente.
+            <p className="app-note">
+              Informe DDD e número. O sistema adiciona o DDI 55 automaticamente.
             </p>
           )}
 
-          {error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
-            </div>
-          ) : null}
-
-          {message ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-              {message}
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-3">
+          <div className="app-actionbar">
             <button type="submit" className="btn btn-primary" disabled={loading || saving}>
               {saving ? 'Salvando...' : 'Salvar numero'}
             </button>
@@ -146,8 +155,8 @@ export default function ConfiguracoesSuporte() {
               </a>
             ) : null}
           </div>
-        </div>
-      </form>
-    </div>
+        </form>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

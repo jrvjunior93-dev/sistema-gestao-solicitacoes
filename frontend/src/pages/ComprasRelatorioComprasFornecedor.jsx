@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  CelulaDupla,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { obterRelatorioComprasPorFornecedor } from '../services/compras';
 import { getMinhasObras } from '../services/obras';
 
@@ -9,37 +23,6 @@ const DEFAULT_FILTERS = {
   data_inicio: '',
   data_fim: ''
 };
-
-const FORNECEDOR_COLUMNS = [
-  { key: 'fornecedor', width: 280, minWidth: 180 },
-  { key: 'pedidos', width: 100, minWidth: 80 },
-  { key: 'itens', width: 90, minWidth: 70 },
-  { key: 'obras', width: 180, minWidth: 130 },
-  { key: 'valor', width: 160, minWidth: 120 },
-  { key: 'ticket', width: 150, minWidth: 120 },
-  { key: 'minimo', width: 130, minWidth: 100 },
-  { key: 'ultimo', width: 120, minWidth: 100 }
-];
-
-const OBRA_COLUMNS = [
-  { key: 'obra', width: 260, minWidth: 180 },
-  { key: 'fornecedores', width: 130, minWidth: 100 },
-  { key: 'pedidos', width: 100, minWidth: 80 },
-  { key: 'itens', width: 90, minWidth: 70 },
-  { key: 'valor', width: 150, minWidth: 120 },
-  { key: 'ticket', width: 140, minWidth: 110 }
-];
-
-const PEDIDO_COLUMNS = [
-  { key: 'pedido', width: 110, minWidth: 90 },
-  { key: 'fornecedor', width: 240, minWidth: 160 },
-  { key: 'status', width: 140, minWidth: 110 },
-  { key: 'obra', width: 220, minWidth: 150 },
-  { key: 'solicitacao', width: 190, minWidth: 140 },
-  { key: 'itens', width: 80, minWidth: 70 },
-  { key: 'valor', width: 150, minWidth: 120 },
-  { key: 'criado', width: 120, minWidth: 100 }
-];
 
 function readFilters(searchParams) {
   return {
@@ -98,13 +81,31 @@ function extractErrorMessage(error) {
   }
 }
 
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'data_inicio', rotulo: 'Pedido criado de' },
+  { id: 'data_fim', rotulo: 'Pedido criado até' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de custo' }
+];
+
 export default function ComprasRelatorioComprasFornecedor() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { avisos, avisar, fechar } = useAvisos();
   const [filtros, setFiltros] = useState(() => readFilters(searchParams));
   const [obras, setObras] = useState([]);
   const [relatorio, setRelatorio] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [erro, setErro] = useState('');
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     let ativo = true;
@@ -129,7 +130,6 @@ export default function ComprasRelatorioComprasFornecedor() {
     async function carregar() {
       try {
         setLoading(true);
-        setErro('');
         const data = await obterRelatorioComprasPorFornecedor(filtrosAtivos);
         if (ativo) {
           setRelatorio(data);
@@ -138,7 +138,12 @@ export default function ComprasRelatorioComprasFornecedor() {
         console.error(error);
         if (ativo) {
           setRelatorio(null);
-          setErro(extractErrorMessage(error));
+          /*
+            R19: era `alert alert-error`, classe que só existe ANINHADA no
+            CSS (`.layout-shell .alert-error`). O aviso do sistema não pode
+            depender de onde a tela foi montada.
+          */
+          avisar.erro(extractErrorMessage(error));
         }
       } finally {
         if (ativo) {
@@ -152,7 +157,7 @@ export default function ComprasRelatorioComprasFornecedor() {
     return () => {
       ativo = false;
     };
-  }, [searchParams]);
+  }, [searchParams, recarga, avisar]);
 
   const resumo = relatorio?.resumo || {};
   const fornecedores = useMemo(() => (
@@ -170,9 +175,81 @@ export default function ComprasRelatorioComprasFornecedor() {
     [topFornecedores]
   );
 
-  function aplicarFiltros(event) {
-    event.preventDefault();
-    setSearchParams(buildSearchParams(filtros));
+  /*
+    R12: obra/centro sai do `<select>` e vira marcação com etiqueta
+    removível; as datas são recorte contínuo e vão em `campos` (R16b).
+  */
+  const ativos = useMemo(() => ({
+    obra_id: new Set(filtros.obra_id ? [String(filtros.obra_id)] : [])
+  }), [filtros.obra_id]);
+
+  /*
+    `unico: true`: o backend valida `obra_id` com `parseInteger`
+    (validateCompraRelatorioComprasFornecedorQuery) — UM valor por consulta.
+  */
+  const dimensoes = useMemo(() => [
+    {
+      id: 'obra_id',
+      rotulo: 'Obra / Centro de custo',
+      unico: true,
+      opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
+    }
+  ], [obras]);
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => String(filtros[filtro.id] ?? '').trim() !== ''
+      || String(searchParams.get(filtro.id) ?? '').trim() !== '').map((filtro) => filtro.id),
+    [filtros, searchParams]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:compras-fornecedor', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      mudarCampo(id, DEFAULT_FILTERS[id] ?? '');
+      // A consulta em curso mora na URL: sem tirar a chave dali, o recorte
+      // seguiria valendo com o campo já fora da faixa.
+      if (searchParams.get(id)) {
+        const proximos = new URLSearchParams(searchParams);
+        proximos.delete(id);
+        setSearchParams(proximos);
+      }
+    }
+  });
+
+  /*
+    R23: 1 dimensão marcável + 2 datas não alcança o critério de consulta
+    cara (4+ dimensões), então o recorte aplica ao marcar. "Atualizar
+    relatorio" fica como recarga explícita do recorte atual.
+  */
+  function aplicar(proximos) {
+    setFiltros(proximos);
+    setSearchParams(buildSearchParams(proximos));
+  }
+
+  function alternarFiltro(dimensao, valor) {
+    aplicar({
+      ...filtros,
+      [dimensao]: String(filtros[dimensao]) === String(valor) ? '' : String(valor)
+    });
+  }
+
+  function mudarCampo(campo, valor) {
+    aplicar({ ...filtros, [campo]: valor });
   }
 
   function limparFiltros() {
@@ -180,292 +257,267 @@ export default function ComprasRelatorioComprasFornecedor() {
     setSearchParams(new URLSearchParams());
   }
 
+  function recarregar() {
+    setRecarga((atual) => atual + 1);
+  }
+
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <p className="eyebrow">Compras / Relatorios</p>
-            <h1 className="page-title">Compras por Fornecedor</h1>
-            <p className="page-subtitle">
-              Valor efetivamente pedido por fornecedor com base nos pedidos de compra emitidos.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/compras/relatorios" className="btn btn-outline">
-              Voltar aos relatorios
-            </Link>
-          </div>
-        </div>
-      </div>
+    <Pagina>
+      <PageHeader
+        titulo="Compras por Fornecedor"
+        contagem="Compras / Relatórios"
+        descricao="Valor efetivamente pedido por fornecedor com base nos pedidos de compra emitidos."
+        /* R11: o retorno ao hub de relatórios mora na seta do cabeçalho. */
+        voltar={{ to: '/compras/relatorios', title: 'Voltar aos relatorios' }}
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar relatorio',
+          onClick: recarregar,
+          desabilitada: loading
+        }}
+        secundarias={[{ rotulo: 'Limpar', onClick: limparFiltros }]}
+      />
 
-      <div className="mt-4 card sol-surface-card solicitacoes-filtros app-filters-card">
-        <form className="grid gap-4" onSubmit={aplicarFiltros}>
-          <div className="app-filters-grid">
-            <label className="app-filter-field">
-              <span className="app-filter-label">Obra / Centro de custo</span>
-              <select
-                className="input"
-                value={filtros.obra_id}
-                onChange={(event) => setFiltros((current) => ({ ...current, obra_id: event.target.value }))}
-              >
-                <option value="">Todos</option>
-                {obras.map((obra) => (
-                  <option key={obra.id} value={obra.id}>
-                    {obra.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Pedido criado de</span>
-              <input
-                className="input"
-                type="date"
-                value={filtros.data_inicio}
-                onChange={(event) => setFiltros((current) => ({ ...current, data_inicio: event.target.value }))}
-              />
-            </label>
+      <BlocoConteudo variante="secundario">
+        <BarraFiltros
+          campos={[
+            {
+              id: 'data_inicio',
+              rotulo: 'Pedido criado de',
+              tipo: 'date',
+              valor: filtros.data_inicio,
+              aoMudar: (valor) => mudarCampo('data_inicio', valor)
+            },
+            {
+              id: 'data_fim',
+              rotulo: 'Pedido criado até',
+              tipo: 'date',
+              valor: filtros.data_fim,
+              aoMudar: (valor) => mudarCampo('data_fim', valor)
+            }
+          ].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={ativos}
+          aoAlternar={alternarFiltro}
+          aoLimpar={limparFiltros}
+          visibilidade={visibilidadeFiltros}
+        />
+      </BlocoConteudo>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Pedido criado ate</span>
-              <input
-                className="input"
-                type="date"
-                value={filtros.data_fim}
-                onChange={(event) => setFiltros((current) => ({ ...current, data_fim: event.target.value }))}
-              />
-            </label>
-          </div>
+      <StatGrid colunas={3}>
+        <StatTile label="Pedidos" valor={formatNumber(resumo.pedidos)} sub="Pedidos emitidos" />
+        <StatTile label="Fornecedores" valor={formatNumber(resumo.fornecedores)} sub="Com pedido no período" />
+        <StatTile label="Valor pedido" valor={formatMoney(resumo.valor_total)} sub="Baseado em pedidos reais" />
+        <StatTile label="Ticket médio" valor={formatMoney(resumo.ticket_medio_pedido)} sub="Valor por pedido" />
+        <StatTile label="Concentração top 5" valor={formatPercent(resumo.concentracao_top5)} sub="Valor nos maiores fornecedores" />
+        <StatTile
+          label="Mínimo não atingido"
+          valor={formatNumber(resumo.pedidos_minimo_nao_atingido)}
+          sub="Pedidos abaixo do mínimo cadastrado"
+          tom={Number(resumo.pedidos_minimo_nao_atingido || 0) > 0 ? 'warning' : undefined}
+        />
+      </StatGrid>
 
-          <div className="app-filter-actions">
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              Atualizar relatorio
-            </button>
-            <button type="button" className="btn btn-outline" onClick={limparFiltros} disabled={loading}>
-              Limpar
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {erro ? (
-        <div className="mt-4 alert alert-error">{erro}</div>
-      ) : null}
-
-      <div className="dashboard-metric-grid mt-4">
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Pedidos</span>
-          <strong>{formatNumber(resumo.pedidos)}</strong>
-          <small>Pedidos emitidos</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Fornecedores</span>
-          <strong>{formatNumber(resumo.fornecedores)}</strong>
-          <small>Com pedido no periodo</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Valor pedido</span>
-          <strong>{formatMoney(resumo.valor_total)}</strong>
-          <small>Baseado em pedidos reais</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Ticket medio</span>
-          <strong>{formatMoney(resumo.ticket_medio_pedido)}</strong>
-          <small>Valor por pedido</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Concentracao top 5</span>
-          <strong>{formatPercent(resumo.concentracao_top5)}</strong>
-          <small>Valor nos maiores fornecedores</small>
-        </div>
-        <div className="dashboard-metric-card">
-          <span className="dashboard-metric-label">Minimo nao atingido</span>
-          <strong>{formatNumber(resumo.pedidos_minimo_nao_atingido)}</strong>
-          <small>Pedidos abaixo do minimo cadastrado</small>
-        </div>
-      </div>
-
-      <div className="mt-4 card sol-surface-card">
-        <div className="app-page-header-row">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--c-text)]">Ranking visual de fornecedores</h2>
-            <p className="page-subtitle">
-              Top 10 por valor efetivamente pedido no periodo filtrado.
-            </p>
-          </div>
-        </div>
-        {loading ? (
-          <div className="text-sm text-[var(--c-muted)] py-4">Carregando ranking...</div>
-        ) : topFornecedores.length === 0 ? (
-          <div className="app-empty-card mt-3">Sem pedidos emitidos para montar o ranking.</div>
-        ) : (
-          <div className="grid gap-3 mt-3">
-            {topFornecedores.map((item, index) => {
-              const valor = Number(item.valor_total || 0);
-              const percentual = maiorValorFornecedor > 0 ? Math.max(4, (valor / maiorValorFornecedor) * 100) : 0;
-              return (
-                <div key={`ranking-${item.key}`} className="grid gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <span className="text-xs font-bold text-[var(--c-muted)]">#{index + 1}</span>
-                      <strong className="ml-2 text-sm text-[var(--c-text)]">{item.fornecedor_nome}</strong>
-                      <span className="ml-2 text-xs text-[var(--c-muted)]">
-                        {formatNumber(item.pedidos)} pedido(s)
-                      </span>
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 3 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:compras-relatorio-compras-fornecedor" larguraPadrao="total">
+        <BlocoConteudo
+          titulo="Ranking visual de fornecedores"
+          contagem="Top 10"
+          descricao="Por valor efetivamente pedido no período filtrado."
+          variante="secundario"
+        >
+          {loading ? (
+            <div className="app-empty-card">Carregando ranking...</div>
+          ) : topFornecedores.length === 0 ? (
+            <div className="app-empty-card">Sem pedidos emitidos para montar o ranking.</div>
+          ) : (
+            <div className="grid gap-3">
+              {topFornecedores.map((item, index) => {
+                const valor = Number(item.valor_total || 0);
+                /*
+                  BARRA QUE MENTIA SOBRE O ZERO (corrigido). O cálculo era
+                  `Math.max(4, (valor / maior) * 100)`: um fornecedor com valor
+                  pedido ZERO desenhava 4% de barra — o olho lê barra como
+                  "houve compra", e não houve nenhuma. O piso existia para que
+                  valores minúsculos aparecessem, e cobrava esse preço no caso
+                  em que a leitura mais importa.
+                  Agora zero tem largura zero e o resto fica na proporção real;
+                  o número ao lado da barra continua sendo a fonte exata.
+                */
+                const percentual = maiorValorFornecedor > 0 ? (valor / maiorValorFornecedor) * 100 : 0;
+                return (
+                  <div key={`ranking-${item.key}`} className="grid gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-[var(--c-muted)]">#{index + 1}</span>
+                        <strong className="ml-2 text-sm text-[var(--c-text)]">{item.fornecedor_nome}</strong>
+                        <span className="ml-2 text-xs text-[var(--c-muted)]">
+                          {formatNumber(item.pedidos)} pedido(s)
+                        </span>
+                      </div>
+                      <strong className="text-sm tabular-nums text-[var(--c-text)]">{formatMoney(valor)}</strong>
                     </div>
-                    <strong className="text-sm tabular-nums text-[var(--c-text)]">{formatMoney(valor)}</strong>
+                    {/* R25: o trilho era `bg-slate-100` (paleta crua, sem par
+                        no tema escuro) — agora é o token de contorno.
+                        R18 (onde NÃO vale, 2): este `overflow-hidden` só
+                        recorta a FORMA da barra e não é ancestral de nada
+                        fixo. */}
+                    <div className="h-2 overflow-hidden rounded-full bg-[var(--ui-border)]">
+                      <div
+                        className="h-full rounded-full bg-[var(--c-primary)]"
+                        style={{ width: `${percentual}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[var(--c-primary)]"
-                      style={{ width: `${percentual}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </BlocoConteudo>
 
-      <div className="mt-4 card sol-surface-card overflow-hidden">
-        <h2 className="text-lg font-bold text-[var(--c-text)] mb-1">Fornecedores por valor pedido</h2>
-        <p className="page-subtitle mb-3">Ranking de fornecedores usando somente pedidos de compra emitidos.</p>
-        <div className="sol-table-wrapper">
-          <ResizableTable className="sol-table" columns={FORNECEDOR_COLUMNS} storageKey="fluxy.compras.comprasFornecedor.fornecedores.columns">
-            <thead>
-              <tr>
-                <ResizableTh columnKey="fornecedor">Fornecedor</ResizableTh>
-                <ResizableTh columnKey="pedidos" className="text-right">Pedidos</ResizableTh>
-                <ResizableTh columnKey="itens" className="text-right">Itens</ResizableTh>
-                <ResizableTh columnKey="obras">Obras/centros</ResizableTh>
-                <ResizableTh columnKey="valor" className="text-right">Valor pedido</ResizableTh>
-                <ResizableTh columnKey="ticket" className="text-right">Ticket medio</ResizableTh>
-                <ResizableTh columnKey="minimo" className="text-right">Minimo nao atingido</ResizableTh>
-                <ResizableTh columnKey="ultimo">Ultimo pedido</ResizableTh>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={8}>Carregando...</td></tr>
-              ) : fornecedores.length === 0 ? (
-                <tr><td colSpan={8}>Sem pedidos emitidos nos filtros.</td></tr>
-              ) : (
-                fornecedores.map((item) => (
-                  <tr key={item.key}>
-                    <td>
-                      <div className="font-semibold text-slate-900">{item.fornecedor_nome}</div>
-                      <div className="text-xs text-slate-500">{item.cnpj || 'Sem CNPJ'} {item.estado ? `- ${item.estado}` : ''}</div>
-                    </td>
-                    <td className="text-right">{formatNumber(item.pedidos)}</td>
-                    <td className="text-right">{formatNumber(item.itens)}</td>
-                    <td>
-                      <div className="font-semibold text-slate-900">{formatNumber(item.obras)}</div>
-                      <div className="text-xs text-slate-500">{(item.obras_nomes || []).join(', ') || '-'}</div>
-                    </td>
-                    <td className="text-right font-semibold">{formatMoney(item.valor_total)}</td>
-                    <td className="text-right">{formatMoney(item.ticket_medio)}</td>
-                    <td className="text-right">{formatNumber(item.pedidos_minimo_nao_atingido)}</td>
-                    <td>{formatDate(item.ultimo_pedido_em)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </ResizableTable>
-        </div>
-      </div>
+        {/*
+          R18: as três tabelas viviam em `card ... overflow-hidden` — scrollport
+          criado sem querer, `position: sticky` morto sem erro nenhum.
+          R25 + CelulaDupla: os pares `text-slate-900` / `text-slate-500` eram
+          a CelulaDupla escrita à mão; agora é o componente, com os tons por
+          token (`text-slate-500` é 4,34:1, abaixo do AA de 4,5:1).
+        */}
+        <BlocoConteudo
+          titulo="Fornecedores por valor pedido"
+          descricao="Ranking de fornecedores usando somente pedidos de compra emitidos."
+          variante="primario"
+          cor="var(--c-primary)"
+        >
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'fornecedor',
+                titulo: 'Fornecedor',
+                // R17: o fornecedor NOMEIA a linha do ranking.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={item.fornecedor_nome}
+                    sub={`${item.cnpj || 'Sem CNPJ'}${item.estado ? ` - ${item.estado}` : ''}`}
+                  />
+                )
+              },
+              { id: 'pedidos', titulo: 'Pedidos', tipo: 'numero', render: (item) => formatNumber(item.pedidos) },
+              { id: 'itens', titulo: 'Itens', tipo: 'numero', render: (item) => formatNumber(item.itens) },
+              {
+                id: 'obras',
+                titulo: 'Obras/centros',
+                tipo: 'texto',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={formatNumber(item.obras)}
+                    sub={(item.obras_nomes || []).join(', ') || '-'}
+                  />
+                )
+              },
+              { id: 'valor', titulo: 'Valor pedido', tipo: 'valor', render: (item) => <span className="font-semibold">{formatMoney(item.valor_total)}</span> },
+              { id: 'ticket', titulo: 'Ticket médio', tipo: 'valor', render: (item) => formatMoney(item.ticket_medio) },
+              { id: 'minimo', titulo: 'Mínimo não atingido', tipo: 'numero', render: (item) => formatNumber(item.pedidos_minimo_nao_atingido) },
+              { id: 'ultimo', titulo: 'Último pedido', tipo: 'data', render: (item) => formatDate(item.ultimo_pedido_em) }
+            ]}
+            itens={fornecedores}
+            getId={(item) => item.key}
+            carregando={loading}
+            storageKey="tabela:compras-fornecedor:fornecedores"
+            rotuloRolagem="Fornecedores por valor pedido"
+            vazio="Sem pedidos emitidos nos filtros."
+          />
+        </BlocoConteudo>
 
-      <div className="grid gap-4 lg:grid-cols-2 mt-4">
-        <div className="card sol-surface-card overflow-hidden">
-          <h2 className="text-lg font-bold text-[var(--c-text)] mb-1">Compras por obra/centro</h2>
-          <p className="page-subtitle mb-3">Onde o valor comprado por fornecedor esta concentrado.</p>
-          <div className="sol-table-wrapper">
-            <ResizableTable className="sol-table" columns={OBRA_COLUMNS} storageKey="fluxy.compras.comprasFornecedor.obras.columns">
-              <thead>
-                <tr>
-                  <ResizableTh columnKey="obra">Obra/Centro</ResizableTh>
-                  <ResizableTh columnKey="fornecedores" className="text-right">Fornecedores</ResizableTh>
-                  <ResizableTh columnKey="pedidos" className="text-right">Pedidos</ResizableTh>
-                  <ResizableTh columnKey="itens" className="text-right">Itens</ResizableTh>
-                  <ResizableTh columnKey="valor" className="text-right">Valor</ResizableTh>
-                  <ResizableTh columnKey="ticket" className="text-right">Ticket</ResizableTh>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={6}>Carregando...</td></tr>
-                ) : obrasResumo.length === 0 ? (
-                  <tr><td colSpan={6}>Sem pedidos por obra/centro nos filtros.</td></tr>
-                ) : (
-                  obrasResumo.map((item) => (
-                    <tr key={item.key}>
-                      <td className="font-semibold text-slate-900">{item.obra_nome}</td>
-                      <td className="text-right">{formatNumber(item.fornecedores)}</td>
-                      <td className="text-right">{formatNumber(item.pedidos)}</td>
-                      <td className="text-right">{formatNumber(item.itens)}</td>
-                      <td className="text-right font-semibold">{formatMoney(item.valor_total)}</td>
-                      <td className="text-right">{formatMoney(item.ticket_medio)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </ResizableTable>
-          </div>
-        </div>
+        <div data-bloco-id="compras-por-obra-centro" data-bloco-rotulo="Compras por obra/centro" className="grid gap-4 lg:grid-cols-2">
+          <BlocoConteudo
+            titulo="Compras por obra/centro"
+            descricao="Onde o valor comprado por fornecedor esta concentrado."
+          >
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'obra',
+                  titulo: 'Obra/Centro',
+                  // R17: a obra/centro NOMEIA a linha deste resumo.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => item.obra_nome
+                },
+                { id: 'fornecedores', titulo: 'Fornecedores', tipo: 'numero', render: (item) => formatNumber(item.fornecedores) },
+                { id: 'pedidos', titulo: 'Pedidos', tipo: 'numero', render: (item) => formatNumber(item.pedidos) },
+                { id: 'itens', titulo: 'Itens', tipo: 'numero', render: (item) => formatNumber(item.itens) },
+                { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => <span className="font-semibold">{formatMoney(item.valor_total)}</span> },
+                { id: 'ticket', titulo: 'Ticket', tipo: 'valor', render: (item) => formatMoney(item.ticket_medio) }
+              ]}
+              itens={obrasResumo}
+              getId={(item) => item.key}
+              carregando={loading}
+              storageKey="tabela:compras-fornecedor:obras"
+              rotuloRolagem="Compras por obra/centro"
+              vazio="Sem pedidos por obra/centro nos filtros."
+            />
+          </BlocoConteudo>
 
-        <div className="card sol-surface-card overflow-hidden">
-          <h2 className="text-lg font-bold text-[var(--c-text)] mb-1">Pedidos recentes</h2>
-          <p className="page-subtitle mb-3">Ultimos 100 pedidos usados no relatorio.</p>
-          <div className="sol-table-wrapper">
-            <ResizableTable className="sol-table" columns={PEDIDO_COLUMNS} storageKey="fluxy.compras.comprasFornecedor.pedidos.columns">
-              <thead>
-                <tr>
-                  <ResizableTh columnKey="pedido">Pedido</ResizableTh>
-                  <ResizableTh columnKey="fornecedor">Fornecedor</ResizableTh>
-                  <ResizableTh columnKey="status">Status</ResizableTh>
-                  <ResizableTh columnKey="obra">Obra/Centro</ResizableTh>
-                  <ResizableTh columnKey="solicitacao">Solicitacao</ResizableTh>
-                  <ResizableTh columnKey="itens" className="text-right">Itens</ResizableTh>
-                  <ResizableTh columnKey="valor" className="text-right">Valor</ResizableTh>
-                  <ResizableTh columnKey="criado">Criado em</ResizableTh>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={8}>Carregando...</td></tr>
-                ) : pedidos.length === 0 ? (
-                  <tr><td colSpan={8}>Sem pedidos nos filtros.</td></tr>
-                ) : (
-                  pedidos.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <Link className="font-semibold text-blue-700 hover:underline" to={`/pedidos-compra/${item.id}`}>
-                          PC #{item.id}
-                        </Link>
-                      </td>
-                      <td className="font-semibold text-slate-900">{item.fornecedor?.nome || 'Sem fornecedor'}</td>
-                      <td>{item.status_label}</td>
-                      <td>{item.obra?.nome || '-'}</td>
-                      <td>
-                        {item.solicitacao?.id ? (
-                          <Link className="font-semibold text-blue-700 hover:underline" to={`/solicitacoes-compra/${item.solicitacao.id}`}>
-                            SC #{item.solicitacao.id}
-                          </Link>
-                        ) : '-'}
-                      </td>
-                      <td className="text-right">{formatNumber(item.itens)}</td>
-                      <td className="text-right font-semibold">{formatMoney(item.valor_total)}</td>
-                      <td>{formatDate(item.criado_em)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </ResizableTable>
-          </div>
+          <BlocoConteudo
+            titulo="Pedidos recentes"
+            contagem="Últimos 100"
+            descricao="Pedidos usados no relatório."
+          >
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'pedido',
+                  titulo: 'Pedido',
+                  // R17: o pedido de compra NOMEIA o registro.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => (
+                    <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/pedidos-compra/${item.id}`}>
+                      PC #{item.id}
+                    </Link>
+                  )
+                },
+                { id: 'fornecedor', titulo: 'Fornecedor', tipo: 'texto', render: (item) => <span className="font-semibold text-[var(--c-text)]">{item.fornecedor?.nome || 'Sem fornecedor'}</span> },
+                {
+                  id: 'status',
+                  titulo: 'Status',
+                  tipo: 'status',
+                  render: (item) => <StatusBadge status={item.status_label || '-'} />
+                },
+                { id: 'obra', titulo: 'Obra/Centro', tipo: 'texto', render: (item) => item.obra?.nome || '-' },
+                {
+                  id: 'solicitacao',
+                  titulo: 'Solicitação',
+                  tipo: 'codigo',
+                  render: (item) => (item.solicitacao?.id ? (
+                    <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/solicitacoes-compra/${item.solicitacao.id}`}>
+                      SC #{item.solicitacao.id}
+                    </Link>
+                  ) : '-')
+                },
+                { id: 'itens', titulo: 'Itens', tipo: 'numero', render: (item) => formatNumber(item.itens) },
+                { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => <span className="font-semibold">{formatMoney(item.valor_total)}</span> },
+                { id: 'criado', titulo: 'Criado em', tipo: 'data', render: (item) => formatDate(item.criado_em) }
+              ]}
+              itens={pedidos}
+              carregando={loading}
+              storageKey="tabela:compras-fornecedor:pedidos"
+              rotuloRolagem="Pedidos recentes"
+              vazio="Sem pedidos nos filtros."
+            />
+          </BlocoConteudo>
         </div>
-      </div>
-    </div>
+      </BlocosPersonalizaveis>
+    </Pagina>
   );
 }

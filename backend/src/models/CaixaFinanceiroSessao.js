@@ -74,6 +74,30 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
     fechado_em: {
       type: DataTypes.DATE,
       allowNull: true
+    },
+    divergencia_status: {
+      type: DataTypes.STRING(20),
+      allowNull: true
+    },
+    divergencia_solicitada_por: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    divergencia_solicitada_em: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    divergencia_decidida_por: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    divergencia_decidida_em: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    divergencia_decisao_observacao: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   },
   {

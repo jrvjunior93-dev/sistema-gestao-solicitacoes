@@ -25,7 +25,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       obra_id: {
         type: DataTypes.INTEGER,
-        allowNull: false
+        allowNull: true
       },
       parceiro_id: {
         type: DataTypes.INTEGER,
@@ -71,6 +71,30 @@ module.exports = (sequelize, DataTypes) => {
       descricao: {
         type: DataTypes.TEXT,
         allowNull: false
+      },
+      justificativa: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
+      favorecido_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      forma_pagamento_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      favorecido_chave_pix: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+      },
+      dados_pagamento: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
+      despesa_eventual_declaracoes: {
+        type: DataTypes.TEXT,
+        allowNull: true
       },
       valor: {
         type: DataTypes.DECIMAL(12, 2),
@@ -179,6 +203,27 @@ module.exports = (sequelize, DataTypes) => {
     },
     {
       tableName: 'solicitacoes',
+      hooks: {
+        async afterUpdate(solicitacao, options) {
+          if (!solicitacao.changed('area_responsavel')) return;
+          const normalizar = (valor) => String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .replace(/[\s-]+/g, '_')
+            .toUpperCase();
+          if (normalizar(solicitacao.area_responsavel) !== 'FINANCEIRO') return;
+          if (normalizar(solicitacao.previous('area_responsavel')) === 'FINANCEIRO') return;
+
+          // Require tardio evita ciclo durante o carregamento do indice de models. Qualquer fluxo
+          // que devolva a solicitacao ao Financeiro libera os titulos na mesma transacao.
+          const { desbloquearTitulosVinculados } = require('../services/tituloBloqueioRetornoObraService');
+          await desbloquearTitulosVinculados({
+            solicitacaoId: solicitacao.id,
+            transaction: options.transaction || null
+          });
+        }
+      },
       timestamps: true
     }
   );

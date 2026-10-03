@@ -15,12 +15,14 @@ A tela passa a recarregar em conjunto o cadastro e a configuração macro após:
 - excluir apropriações;
 - importar manualmente por colagem de texto.
 
-Na interface vigente da `main`, todas as apropriações candidatas já permanecem
-visíveis e marcáveis na configuração. A promoção isolada preserva esse comportamento
-e acrescenta somente a atualização conjunta dos dois conjuntos após cada mutação.
+Todas as apropriações ativas da obra também permanecem visíveis na configuração,
+mesmo quando o nível atual é automático (`Etapa`, `Serviço` ou `Subserviço`). As
+caixas de seleção ficam disponíveis; a primeira alteração manual troca o nível para
+`Personalizado` e preserva a seleção automática como ponto de partida.
 
-A importação Excel já atualizava os dois conjuntos e foi preservada. Nenhuma regra
-de seleção, migration ou dado existente foi alterado.
+A importação Excel já atualizava os dois conjuntos e foi preservada. O backend já
+ressincronizava corretamente os níveis automáticos; nenhuma regra de seleção,
+migration ou dado existente foi alterado.
 
 ### Complemento para a configuração legada da `main`
 

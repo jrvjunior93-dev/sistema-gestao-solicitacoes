@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   baixarTituloPorConciliacoes,
   conciliarSugestoesBancarias,
@@ -9,6 +8,7 @@ import {
   confirmarConciliacaoEstornoBancario,
   confirmarConciliacaoEstornoTarifa,
   confirmarConciliacaoTarifaBancaria,
+  confirmarConciliacaoRendimentoBancario,
   confirmarConciliacaoTransferencia,
   estornarConciliacaoTransferencia,
   criarTituloConciliacaoBancaria,
@@ -26,9 +26,19 @@ import {
 } from '../services/financeiro';
 import { buscarParceiros } from '../services/parceiros';
 import { getMinhasObras } from '../services/obras';
+import {
+  Pagina,
+  PageHeader,
+  TabelaPadrao,
+  CelulaDupla,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
 import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao } from '../utils/acessoProduto';
+import DateInputBR from '../components/DateInputBR';
 
 const TIPOS_INTERCOMPANY = [
   { value: 'APORTE', label: 'Aporte' },
@@ -39,7 +49,7 @@ const TIPOS_INTERCOMPANY = [
   { value: 'FOLHA', label: 'Folha' },
   { value: 'ADMINISTRATIVO', label: 'Administrativo' },
   { value: 'IMPOSTO', label: 'Imposto' },
-  { value: 'TRANSFERENCIA_OPERACIONAL', label: 'Transferencia operacional' }
+  { value: 'TRANSFERENCIA_OPERACIONAL', label: 'Transferência operacional' }
 ];
 
 const CLASSIFICACOES_INCOMPATIVEIS_COM_TARIFA = new Set([
@@ -83,9 +93,9 @@ function statusLabel(status) {
 
 function statusClass(status) {
   const s = String(status || '').toUpperCase();
-  if (s === 'CONCILIADO') return 'app-status-pill bg-emerald-100 text-emerald-700';
-  if (s === 'IGNORADO') return 'app-status-pill bg-slate-100 text-slate-500';
-  return 'app-status-pill bg-amber-100 text-amber-700';
+  if (s === 'CONCILIADO') return 'app-status-pill bg-[var(--sem-success-bg)] text-[var(--sem-success)]';
+  if (s === 'IGNORADO') return 'app-status-pill bg-[var(--sem-neutral-bg)] text-[var(--sem-neutral)]';
+  return 'app-status-pill bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]';
 }
 
 function getContaNome(conta) {
@@ -156,18 +166,23 @@ function getContaEmpresaNome(conta) {
 }
 
 function tarifaAtalhoAptaParaConciliacao(tarifa = {}) {
+  const rendimento = tarifa.tipo_atalho === 'RENDIMENTO';
   if (!tarifa.categoria_financeira_id) {
-    return { ok: true, motivo: 'Sem categoria fixa: o sistema tentara usar uma categoria padrao de tarifa bancaria.' };
+    return rendimento
+      ? { ok: false, motivo: 'Configure uma categoria financeira de entrada para o rendimento.' }
+      : { ok: true, motivo: 'Sem categoria fixa: o sistema tentara usar uma categoria padrao de tarifa bancaria.' };
   }
 
   const categoria = tarifa.categoria_financeira;
   if (!categoria) {
-    return { ok: true, motivo: tarifa.descricao || tarifa.nome || '' };
+    return rendimento
+      ? { ok: false, motivo: 'Categoria do rendimento nao encontrada. Atualize o cadastro.' }
+      : { ok: true, motivo: tarifa.descricao || tarifa.nome || '' };
   }
 
   const tipo = String(categoria.tipo || '').trim().toUpperCase();
-  if (!['PAGAR', 'AMBOS'].includes(tipo)) {
-    return { ok: false, motivo: 'A categoria da tarifa deve ser de pagar ou ambos.' };
+  if (!(rendimento ? ['RECEBER', 'AMBOS'] : ['PAGAR', 'AMBOS']).includes(tipo)) {
+    return { ok: false, motivo: `A categoria do atalho deve ser de ${rendimento ? 'receber' : 'pagar'} ou ambos.` };
   }
   if (categoria.ativo === false) {
     return { ok: false, motivo: 'A categoria da tarifa esta inativa.' };
@@ -212,22 +227,21 @@ function PlusIcon({ className = 'h-4 w-4' }) {
   );
 }
 
-function LinkIcon({ className = 'h-4 w-4' }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true">
-      <path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
-      <path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1" />
-    </svg>
-  );
-}
+/*
+  R10 — os dois papéis que a tela usa de verdade: corpo (14) e título de
+  bloco (18). Havia um terceiro degrau, fora da escala, para size="xl" —
+  ramo MORTO, nenhuma chamada o usava — e ele só existia para reprovar.
+  `tabular-nums` em todos: valor de dinheiro alinha coluna com coluna (R6).
 
-// ─── ValorBanco ───────────────────────────────────────────────────────────────
-
+  (O nome da classe reprovada não se escreve aqui: o check da R10 é linha a
+  linha e NÃO desconta comentário — citá-la faria a explicação da correção
+  reprovar no lugar do defeito.)
+*/
 function ValorBanco({ value, size = 'lg' }) {
   const positive = Number(value || 0) >= 0;
-  const sizeClass = size === 'xl' ? 'text-2xl font-bold tabular-nums' : size === 'sm' ? 'text-sm font-semibold' : 'text-lg font-semibold';
+  const sizeClass = size === 'sm' ? 'text-sm font-semibold tabular-nums' : 'text-lg font-semibold tabular-nums';
   return (
-    <span className={`${sizeClass} ${positive ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+    <span className={`${sizeClass} ${positive ? 'text-[var(--sem-success)]' : 'text-[var(--sem-danger)]'}`}>
       {formatCurrency(value)}
     </span>
   );
@@ -235,19 +249,21 @@ function ValorBanco({ value, size = 'lg' }) {
 
 // ─── NovoTituloRapidoModal ────────────────────────────────────────────────────
 
-function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onClose, onNovoTitulo, onConfirmarCreditoRotativo, onConfirmarTarifa, onConfirmarEstornoTarifa }) {
-  const tarifasAtivas = Array.isArray(tarifas) ? tarifas.filter((tarifa) => tarifa.ativo !== false) : [];
+function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onClose, onNovoTitulo, onConfirmarCreditoRotativo, onConfirmarTarifa, onConfirmarRendimento, onConfirmarEstornoTarifa }) {
+  const atalhosAtivos = Array.isArray(tarifas) ? tarifas.filter((atalho) => atalho.ativo !== false) : [];
+  const tarifasAtivas = atalhosAtivos.filter((atalho) => atalho.tipo_atalho !== 'RENDIMENTO');
+  const rendimentosAtivos = atalhosAtivos.filter((atalho) => atalho.tipo_atalho === 'RENDIMENTO');
   const isSaida = Number(item?.valor || 0) < 0;
   const creditoRotativoNatureza = isSaida ? 'amortizacao' : 'liberacao';
   const creditoRotativoKey = `credito-rotativo-${item?.id}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-      <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl dark:bg-[var(--c-surface)]">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-6">
+      <div role="dialog" aria-modal="true" aria-label="Ações rápidas da conciliação" className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-[var(--c-surface)] p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] pb-4">
           <div>
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Acoes rapidas</h2>
-            <p className="mt-0.5 text-sm text-[var(--c-muted)]">Escolha como registrar este lancamento bancario.</p>
+            <h2 className="text-lg font-semibold text-[var(--c-text)]">Ações rápidas</h2>
+            <p className="mt-1 text-sm text-[var(--c-muted)]">Escolha como registrar este lançamento bancário.</p>
             {item && (
               <div className="mt-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm">
                 <span className="font-medium">{item.descricao_banco || 'Lancamento bancario'}</span>
@@ -265,14 +281,14 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
             className="rounded-xl border border-[var(--c-border)] px-4 py-3 text-left transition-colors hover:border-[var(--c-primary)] hover:bg-[var(--c-bg)]"
             onClick={() => onNovoTitulo(item)}
           >
-            <span className="block text-sm font-semibold text-[var(--c-text)]">Criar titulo + baixa</span>
-            <span className="mt-0.5 block text-xs text-[var(--c-muted)]">Usa o fluxo completo de contas a pagar/receber e concilia o movimento.</span>
+            <span className="block text-sm font-semibold text-[var(--c-text)]">Criar título + baixa</span>
+            <span className="mt-1 block text-xs text-[var(--c-muted)]">Usa o fluxo completo de contas a pagar/receber e concilia o movimento.</span>
           </button>
 
           <div className="rounded-xl border border-[var(--c-border)] px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-[var(--c-text)]">Credito rotativo</p>
+                <p className="text-sm font-semibold text-[var(--c-text)]">Crédito rotativo</p>
                 <p className="text-xs text-[var(--c-muted)]">
                   Registra {creditoRotativoNatureza} no caixa e no endividamento, sem compor a DRE.
                 </p>
@@ -280,7 +296,7 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
               <button
                 type="button"
                 className="btn btn-outline btn-sm shrink-0"
-                disabled={processingId === creditoRotativoKey}
+            disabled={Boolean(processingId)}
                 onClick={() => onConfirmarCreditoRotativo(item)}
               >
                 {processingId === creditoRotativoKey
@@ -293,10 +309,10 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
           <div className="rounded-xl border border-dashed border-[var(--c-border)] p-3">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm font-semibold text-[var(--c-text)]">Registrar tarifa bancaria</p>
-                <p className="text-xs text-[var(--c-muted)]">Cria movimento avulso de tarifa com categoria financeira explicita para DRE.</p>
+                <p className="text-sm font-semibold text-[var(--c-text)]">Registrar tarifa bancária</p>
+                <p className="text-xs text-[var(--c-muted)]">Cria movimento avulso de tarifa com categoria financeira explícita para DRE.</p>
               </div>
-              {!isSaida && <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">Apenas saidas</span>}
+              {!isSaida && <span className="rounded-full bg-[var(--sem-warning-bg)] px-2 py-1 text-xs font-medium text-[var(--sem-warning)]">Apenas saídas</span>}
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {tarifasAtivas.length === 0 ? (
@@ -310,7 +326,7 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
                     key={tarifa.codigo}
                     type="button"
                     className="btn btn-outline btn-sm"
-                    disabled={!isSaida || !elegibilidade.ok || itemEmProcessamento}
+                    disabled={!isSaida || !elegibilidade.ok || itemEmProcessamento || Boolean(processingId)}
                     onClick={() => onConfirmarTarifa(item, tarifa)}
                     title={!isSaida ? 'Tarifas bancarias devem ser lancamentos de saida.' : elegibilidade.motivo}
                   >
@@ -319,18 +335,39 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
                 );
               })}
             </div>
-            {error ? (
-              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-                {error}
+          </div>
+
+          <div className="rounded-xl border border-dashed border-[var(--c-border)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-[var(--c-text)]">Rendimento da conta</p>
+                <p className="text-xs text-[var(--c-muted)]">Registra um crédito de rendimento com categoria financeira de entrada na DRE.</p>
               </div>
-            ) : null}
+              {isSaida && <span className="rounded-full bg-[var(--sem-warning-bg)] px-2 py-1 text-xs font-medium text-[var(--sem-warning)]">Apenas entradas</span>}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {rendimentosAtivos.length === 0 ? (
+                <span className="text-xs text-[var(--c-muted)]">Nenhum rendimento ativo. Configure em Financeiro &gt; Cadastros.</span>
+              ) : rendimentosAtivos.map((rendimento) => {
+                const key = `rendimento-${item?.id}-${rendimento.codigo}`;
+                const elegibilidade = tarifaAtalhoAptaParaConciliacao(rendimento);
+                return (
+                  <button key={rendimento.codigo} type="button" className="btn btn-outline btn-sm"
+                    disabled={isSaida || !elegibilidade.ok || Boolean(processingId)}
+                    title={isSaida ? 'Rendimento deve ser um lancamento de entrada.' : elegibilidade.motivo}
+                    onClick={() => onConfirmarRendimento(item, rendimento)}>
+                    {processingId === key ? 'Registrando...' : rendimento.nome}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="rounded-xl border border-[var(--c-border)] px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--c-text)]">Lancar estorno de tarifa</p>
               <p className="text-xs text-[var(--c-muted)]">
-                Registra este credito como um lancamento independente, sem exigir uma tarifa anterior.
+                Registra este crédito como um lançamento independente, sem exigir uma tarifa anterior.
               </p>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -345,7 +382,7 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
                     key={`estorno-${tarifa.codigo}`}
                     type="button"
                     className="btn btn-outline btn-sm"
-                    disabled={isSaida || !elegibilidade.ok || itemEmProcessamento}
+                    disabled={isSaida || !elegibilidade.ok || itemEmProcessamento || Boolean(processingId)}
                     onClick={() => onConfirmarEstornoTarifa(item, tarifa)}
                     title={isSaida ? 'Estornos de tarifa devem ser lancamentos de entrada.' : elegibilidade.motivo}
                   >
@@ -355,6 +392,11 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
               })}
             </div>
           </div>
+          {error ? (
+            <div role="alert" className="rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-3 py-2 text-xs font-medium text-[var(--sem-danger)]">
+              {error}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -369,137 +411,187 @@ function AssociacaoManualTabela({
   selecionados = [],
   totalSelecionado = 0,
   valorEsperado = 0,
-  onToggleSelecionado
+  onToggleSelecionado,
 }) {
-  if (loading) {
-    return <div className="px-4 py-8 text-center text-sm text-[var(--c-muted)]">Carregando movimentos...</div>;
-  }
+  const idDe = (it) => Number(it.movimento_financeiro_id || 0);
 
-  if (!itens.length) {
-    return <div className="px-4 py-8 text-center text-sm text-[var(--c-muted)]">Nenhum movimento encontrado com os filtros atuais.</div>;
-  }
+  // Mesma chave de processamento de antes: sem selecao, a chave usa o id da
+  // propria linha; com selecao, a lista inteira.
+  const processandoLinha = (it) => {
+    const chave = `confirmar-${modal.item?.id}-${selecionados.join('-') || idDe(it)}`;
+    return Boolean(modal.processing) || processingId === chave;
+  };
+
+  // Selecao CRUZADA: o movimento so pode entrar se a soma continuar dentro do
+  // valor do lancamento do extrato (a mesma trava do checkbox anterior).
+  const ultrapassa = (it) => {
+    const selecionado = selecionados.includes(idDe(it));
+    const valor = Math.abs(Number(it.valor_quitacao || 0));
+    return !selecionado && totalSelecionado + valor > valorEsperado + 0.01;
+  };
 
   return (
-    <table className="min-w-full divide-y divide-[var(--c-border)] text-sm">
-      <thead className="bg-[var(--c-surface-muted)] text-xs uppercase tracking-[0.12em] text-[var(--c-muted)]">
-        <tr>
-          <th className="px-4 py-3 text-left">Sel.</th>
-          <th className="px-4 py-3 text-left">Titulo</th>
-          <th className="px-4 py-3 text-left">Parceiro</th>
-          <th className="px-4 py-3 text-left">Tipo</th>
-          <th className="px-4 py-3 text-left">Data</th>
-          <th className="px-4 py-3 text-right">Valor</th>
-          <th className="px-4 py-3 text-left">Documento</th>
-          <th className="px-4 py-3 text-center">Score</th>
-          <th className="px-4 py-3 text-center">Acao</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-[var(--c-border)] bg-white dark:bg-[var(--c-surface)]">
-        {itens.map((it) => {
-          const id = Number(it.movimento_financeiro_id || 0);
-          const selected = selecionados.includes(id);
-          const valor = Math.abs(Number(it.valor_quitacao || 0));
-          const ultrapassa = !selected && totalSelecionado + valor > valorEsperado + 0.01;
-          const processingKey = `confirmar-${modal.item?.id}-${selecionados.join('-') || id}`;
-          const processing = modal.processing || processingId === processingKey;
-          return (
-            <tr key={it.movimento_financeiro_id} className={`align-top ${selected ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}>
-              <td className="px-4 py-3">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-[var(--c-border)] text-blue-600"
-                  checked={selected}
-                  disabled={processing || ultrapassa}
-                  title={ultrapassa ? 'Selecionar este movimento ultrapassa o valor do extrato.' : 'Selecionar movimento'}
-                  onChange={() => onToggleSelecionado(id)}
-                />
-              </td>
-              <td className="px-4 py-3 font-medium text-[var(--c-text)]">
-                <div>{it.titulo_descricao || '-'}</div>
-                {it.motivos?.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {it.motivos.map((m) => (
-                      <span key={`${it.movimento_financeiro_id}-${m}`} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-600">{m}</span>
-                    ))}
-                  </div>
-                )}
-              </td>
-              <td className="px-4 py-3 text-[var(--c-muted)]">{it.parceiro_nome || '-'}</td>
-              <td className="px-4 py-3 text-[var(--c-muted)]">{it.tipo || '-'}</td>
-              <td className="px-4 py-3 text-[var(--c-muted)]">{formatDate(it.data_movimento)}</td>
-              <td className="px-4 py-3 text-right font-semibold text-[var(--c-text)]">{formatCurrency(it.valor_quitacao)}</td>
-              <td className="px-4 py-3 text-[var(--c-muted)]">{it.documento || `mov. #${it.movimento_financeiro_id}`}</td>
-              <td className="px-4 py-3 text-center text-xs uppercase tracking-wide text-[var(--c-muted)]">{it.score || 0}</td>
-              <td className="px-4 py-3 text-center">
-                <button
-                  type="button"
-                  className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition ${
-                    selected
-                      ? 'border-blue-500 bg-blue-600 text-white'
-                      : 'border-[var(--c-border)] bg-white text-[var(--c-text)] hover:border-blue-400 hover:text-blue-700'
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                  disabled={processing || ultrapassa}
-                  title={selected ? 'Remover da associacao' : ultrapassa ? 'Ultrapassa o valor do extrato' : 'Selecionar para associar'}
-                  aria-label={selected ? 'Remover da associacao' : 'Selecionar para associar'}
-                  onClick={() => onToggleSelecionado(id)}
-                >
-                  <LinkIcon className="h-4 w-4" />
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <TabelaPadrao
+      colunas={[
+        {
+          id: 'titulo',
+          titulo: 'Título',
+          // R17: a descricao do titulo e quem nomeia o movimento.
+          tipo: 'identidade',
+          noCard: 'titulo',
+          render: (it) => (
+            <div className="min-w-0">
+              <div>{it.titulo_descricao || '-'}</div>
+              {it.motivos?.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {it.motivos.map((m) => (
+                    <span key={`${it.movimento_financeiro_id}-${m}`} className="rounded-full bg-[var(--sem-neutral-bg)] px-2 py-1 text-xs font-normal text-[var(--sem-neutral)]">{m}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        },
+        {
+          id: 'parceiro',
+          titulo: 'Parceiro',
+          tipo: 'texto',
+          render: (it) => it.parceiro_nome || '-'
+        },
+        {
+          id: 'tipo',
+          titulo: 'Tipo',
+          tipo: 'badge',
+          render: (it) => it.tipo || '-'
+        },
+        {
+          id: 'data_movimento',
+          titulo: 'Data',
+          tipo: 'data',
+          render: (it) => formatDate(it.data_movimento)
+        },
+        {
+          id: 'valor_quitacao',
+          titulo: 'Valor',
+          tipo: 'valor',
+          render: (it) => <strong>{formatCurrency(it.valor_quitacao)}</strong>
+        },
+        {
+          id: 'documento',
+          titulo: 'Documento',
+          tipo: 'codigo',
+          render: (it) => it.documento || `mov. #${it.movimento_financeiro_id}`
+        },
+        {
+          id: 'score',
+          titulo: 'Score',
+          tipo: 'numero',
+          ordenavel: true,
+          ordemInicial: 'desc',
+          valorOrdenacao: (it) => Number(it.score || 0),
+          render: (it) => it.score || 0
+        }
+      ]}
+      itens={itens}
+      getId={idDe}
+      carregando={loading}
+      vazio="Nenhum movimento encontrado com os filtros atuais."
+      storageKey="tabela:financeiro-conciliacao:associacao-manual"
+      rotuloRolagem="Movimentos para associar ao lancamento bancario"
+      selecao={{
+        selecionados,
+        aoAlternar: (id) => onToggleSelecionado(id),
+        // "Todos" nao pode ser literal aqui: marca, em ordem, o que ainda
+        // cabe no valor do extrato (a soma nunca pode ultrapassar).
+        // `semTodos`: marcar tudo violaria o invariante desta tela — a soma
+        // dos movimentos não pode passar do valor do lançamento. Antes o
+        // componente exigia um "todos", e a tela foi obrigada a inventar um
+        // "marca o que ainda cabe" que ninguém pediu. Sem o botão, o
+        // invariante fica com quem é dono dele.
+        semTodos: true,
+        aoAlternarTodos: () => {},
+        elegivel: (it) => !processandoLinha(it) && !ultrapassa(it)
+      }}
+    />
   );
 }
 
 function FaturasAssociacaoTabela({ loading, itens, modal, processingId, onAssociar }) {
-  if (loading) {
-    return <div className="px-4 py-8 text-center text-sm text-[var(--c-muted)]">Carregando faturas...</div>;
-  }
-
-  if (!itens.length) {
-    return <div className="px-4 py-8 text-center text-sm text-[var(--c-muted)]">Nenhuma fatura encontrada com os filtros atuais.</div>;
-  }
-
   return (
-    <table className="min-w-full divide-y divide-[var(--c-border)] text-sm">
-      <thead className="bg-[var(--c-surface-muted)] text-xs uppercase tracking-[0.12em] text-[var(--c-muted)]">
-        <tr>
-          <th className="px-4 py-3 text-left">Cartao</th>
-          <th className="px-4 py-3 text-left">Competencia</th>
-          <th className="px-4 py-3 text-left">Fechamento</th>
-          <th className="px-4 py-3 text-left">Vencimento</th>
-          <th className="px-4 py-3 text-center">Titulos</th>
-          <th className="px-4 py-3 text-right">Valor</th>
-          <th className="px-4 py-3 text-center">Status</th>
-          <th className="px-4 py-3 text-right">Acao</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-[var(--c-border)] bg-white dark:bg-[var(--c-surface)]">
-        {itens.map((fatura) => {
-          const processingKey = `fatura-${modal.item?.id}-${fatura.id}`;
-          const processing = modal.processing || processingId === processingKey;
-          return (
-            <tr key={fatura.id} className="align-middle">
-              <td className="px-4 py-3 font-medium text-[var(--c-text)]">{fatura.cartao?.nome || 'Cartao'}</td>
-              <td className="px-4 py-3 text-[var(--c-muted)]">{fatura.competencia || '-'}</td>
-              <td className="px-4 py-3 text-[var(--c-muted)]">{formatDate(fatura.data_fechamento)}</td>
-              <td className="px-4 py-3 text-[var(--c-muted)]">{formatDate(fatura.data_vencimento)}</td>
-              <td className="px-4 py-3 text-center text-[var(--c-muted)]">{fatura.total_titulos || 0}</td>
-              <td className="px-4 py-3 text-right font-semibold text-[var(--c-text)]">{formatCurrency(fatura.valor_total)}</td>
-              <td className="px-4 py-3 text-center"><span className={statusClass(fatura.status)}>{fatura.status}</span></td>
-              <td className="px-4 py-3 text-right">
-                <button type="button" className="btn btn-primary btn-sm" disabled={processing} onClick={() => onAssociar(modal.item?.id, fatura.id)}>
-                  {processing ? 'Associando...' : 'Associar'}
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <TabelaPadrao
+      colunas={[
+        {
+          id: 'cartao',
+          titulo: 'Cartão',
+          // R17: o cartao e quem nomeia a fatura na lista.
+          tipo: 'identidade',
+          noCard: 'titulo',
+          render: (fatura) => (
+            <CelulaDupla
+              principal={fatura.cartao?.nome || 'Cartao'}
+              sub={fatura.competencia ? `Competencia ${fatura.competencia}` : null}
+            />
+          )
+        },
+        {
+          id: 'competencia',
+          titulo: 'Competência',
+          tipo: 'texto',
+          render: (fatura) => fatura.competencia || '-'
+        },
+        {
+          id: 'data_fechamento',
+          titulo: 'Fechamento',
+          tipo: 'data',
+          render: (fatura) => formatDate(fatura.data_fechamento)
+        },
+        {
+          id: 'data_vencimento',
+          titulo: 'Vencimento',
+          tipo: 'data',
+          render: (fatura) => formatDate(fatura.data_vencimento)
+        },
+        {
+          id: 'total_titulos',
+          titulo: 'Títulos',
+          tipo: 'numero',
+          render: (fatura) => fatura.total_titulos || 0
+        },
+        {
+          id: 'valor_total',
+          titulo: 'Valor',
+          tipo: 'valor',
+          render: (fatura) => <strong>{formatCurrency(fatura.valor_total)}</strong>
+        },
+        {
+          id: 'status',
+          titulo: 'Status',
+          tipo: 'status',
+          render: (fatura) => <span className={statusClass(fatura.status)}>{fatura.status}</span>
+        }
+      ]}
+      itens={itens}
+      getId={(fatura) => fatura.id}
+      carregando={loading}
+      vazio="Nenhuma fatura encontrada com os filtros atuais."
+      storageKey="tabela:financeiro-conciliacao:faturas"
+      rotuloRolagem="Faturas de cartao para associar"
+      larguraAcoes={160}
+      acoesLinha={(fatura) => {
+        const processing = Boolean(modal.processing)
+          || processingId === `fatura-${modal.item?.id}-${fatura.id}`;
+        return (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={processing}
+            onClick={() => onAssociar(modal.item?.id, fatura.id)}
+          >
+            {processing ? 'Associando...' : 'Associar'}
+          </button>
+        );
+      }}
+    />
   );
 }
 
@@ -514,7 +606,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
     descricao: item?.descricao_banco || '',
     valor: valorAbs ? formatCurrencyInput(valorAbs) : '',
     data_vencimento: item?.data_movimento || today(),
-    competencia_data: item?.data_movimento || '',
     considera_dre: true,
     conta_bancaria_id: contaInicialId,
     empresa_id: String(contaInicial?.empresa_id || ''),
@@ -578,11 +669,10 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
     const valor = parseCurrencyInput(form.valor);
     if (!form.valor || valor <= 0) { setErro('Informe um valor válido.'); return; }
     if (!form.conta_bancaria_id) { setErro('Selecione a conta bancária.'); return; }
-    if (!form.empresa_id) { setErro('A conta bancaria precisa estar vinculada a uma empresa pagadora.'); return; }
+    if (!form.empresa_id) { setErro('A conta bancária precisa estar vinculada a uma empresa pagadora.'); return; }
     if (!form.obra_id) { setErro('Selecione a obra.'); return; }
     if (!form.parceiro_id) { setErro('Selecione um parceiro (obrigatório).'); return; }
-    if (!form.categoria_financeira_id) { setErro('Selecione a categoria financeira do titulo.'); return; }
-    if (!form.competencia_data) { setErro('Informe a competencia DRE real do titulo.'); return; }
+    if (!form.categoria_financeira_id) { setErro('Selecione a categoria financeira do título.'); return; }
     if (form.considera_dre && !categoriaClassificadaDre) { setErro('Para considerar na DRE, selecione uma categoria financeira com grupo DRE classificado.'); return; }
 
     try {
@@ -594,7 +684,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
         descricao: form.descricao.trim(),
         valor,
         data_vencimento: form.data_vencimento,
-        competencia_data: form.competencia_data || undefined,
         considera_dre: Boolean(form.considera_dre),
         conta_bancaria_id: Number(form.conta_bancaria_id),
         empresa_id: Number(form.empresa_id),
@@ -612,18 +701,18 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white dark:bg-[var(--c-surface)] shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--c-border)] bg-white dark:bg-[var(--c-surface)] px-5 py-4">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-6">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-[var(--c-surface)] shadow-2xl">
+        <div className="sticky top-0 z-presa-no-bloco flex items-center justify-between border-b border-[var(--c-border)] bg-[var(--c-surface)] px-6 py-4">
           <div>
-            <h2 className="text-base font-semibold text-[var(--c-text)]">Novo título + baixa</h2>
+            <h2 className="text-lg font-semibold text-[var(--c-text)]">Novo título + baixa</h2>
             <p className="text-xs text-[var(--c-muted)]">Cria o título, registra o pagamento e concilia automaticamente.</p>
           </div>
           <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>Fechar</button>
         </div>
 
         {/* Contexto do lançamento OFX */}
-        <div className="mx-5 mt-4 flex items-center gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2.5 text-sm">
+        <div className="mx-6 mt-4 flex items-center gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-3 text-sm">
           <div className="flex-1 min-w-0">
             <p className="font-medium text-[var(--c-text)] truncate">{item?.descricao_banco || 'Lançamento bancário'}</p>
             <p className="text-xs text-[var(--c-muted)]">{item?.conta_bancaria_nome} · {formatDate(item?.data_movimento)}</p>
@@ -631,7 +720,7 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
           <ValorBanco value={item?.valor} size="sm" />
         </div>
 
-        <form onSubmit={handleSalvar} className="grid gap-3 p-5">
+        <form onSubmit={handleSalvar} className="grid gap-3 p-6">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="app-filter-field">
               <span className="app-filter-label">Tipo</span>
@@ -659,15 +748,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
           </label>
 
           <label className="app-filter-field">
-            <span className="app-filter-label">Empresa pagadora *</span>
-            <input
-              className="input w-full"
-              value={contas.find((ct) => String(ct.id) === String(form.conta_bancaria_id))?.empresa?.nome || form.empresa_id || ''}
-              disabled
-            />
-          </label>
-
-          <label className="app-filter-field">
             <span className="app-filter-label">Descrição *</span>
             <input className="input w-full" type="text" value={form.descricao}
               onChange={(e) => setForm((c) => ({ ...c, descricao: e.target.value }))}
@@ -681,36 +761,20 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
             </label>
             <label className="app-filter-field">
               <span className="app-filter-label">Vencimento</span>
-              <input className="input w-full" type="date" value={form.data_vencimento}
+              <DateInputBR className="input w-full" value={form.data_vencimento}
                 onChange={(e) => setForm((c) => ({ ...c, data_vencimento: e.target.value }))} />
             </label>
             <label className="app-filter-field">
               <span className="app-filter-label">Data de pagamento</span>
-              <input className="input w-full" type="date" value={form.data_pagamento}
+              <DateInputBR className="input w-full" value={form.data_pagamento}
                 onChange={(e) => setForm((c) => ({ ...c, data_pagamento: e.target.value }))} />
             </label>
           </div>
 
           <label className="app-filter-field">
-            <span className="app-filter-label">Competencia DRE</span>
-            <input
-              className="input w-full"
-              type="date"
-              value={form.competencia_data}
-              onChange={(e) => setForm((c) => ({ ...c, competencia_data: e.target.value }))}
-              required={Boolean(form.considera_dre)}
-            />
-            <span className="mt-1 block text-xs text-[var(--c-muted)]">
-              {form.considera_dre
-                ? 'Obrigatoria para DRE. Informe o periodo economico real.'
-                : 'Opcional quando o titulo nao entra na DRE.'}
-            </span>
-          </label>
-
-          <label className="app-filter-field">
             <span className="app-filter-label">Categoria</span>
             <select
-              className={`input w-full ${form.considera_dre && !categoriaClassificadaDre ? 'border-amber-300 bg-amber-50' : ''}`}
+              className={`input w-full ${form.considera_dre && !categoriaClassificadaDre ? 'border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)]' : ''}`}
               value={form.categoria_financeira_id}
               required={Boolean(form.considera_dre)}
               onChange={(e) => setForm((c) => ({ ...c, categoria_financeira_id: e.target.value }))}>
@@ -730,13 +794,13 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
             </span>
           </label>
 
-          <label className="flex items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2.5 text-sm text-[var(--c-text)]">
+          <label className="flex items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-3 text-sm text-[var(--c-text)]">
             <input
               type="checkbox"
               checked={Boolean(form.considera_dre)}
               onChange={(e) => setForm((c) => ({ ...c, considera_dre: e.target.checked }))}
             />
-            Considerar este titulo na DRE gerencial
+            Considerar este título na DRE gerencial
           </label>
 
           <div className="app-filter-field">
@@ -745,7 +809,7 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
               onChange={(e) => { setBuscaParceiro(e.target.value); if (!e.target.value) setForm((c) => ({ ...c, parceiro_id: '' })); }}
               placeholder="Digite nome ou CNPJ..." />
             {parceiros.length > 0 && (
-              <div className="mt-1 rounded-xl border border-[var(--c-border)] bg-white shadow-lg">
+              <div className="mt-1 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-lg">
                 {parceiros.map((p) => (
                   <button key={p.id} type="button"
                     className={`w-full px-3 py-2 text-left text-sm hover:bg-[var(--c-bg)] ${String(form.parceiro_id) === String(p.id) ? 'bg-[var(--c-bg)] font-semibold' : ''}`}
@@ -758,7 +822,7 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
           </div>
 
           {erro && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</div>
+            <div className="rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-3 py-2 text-sm text-[var(--sem-danger)]">{erro}</div>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
@@ -787,7 +851,7 @@ function ContextoObraTitulo({ registro }) {
   const descricao = [codigo, nome].filter(Boolean).join(' · ');
 
   return (
-    <p className="truncate text-[10px] text-[var(--c-muted)] leading-tight" title={`${rotulo}: ${descricao}`}>
+    <p className="truncate text-xs text-[var(--c-muted)] leading-tight" title={`${rotulo}: ${descricao}`}>
       {rotulo}: {descricao}
     </p>
   );
@@ -865,12 +929,12 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
   return (
     <div className="sol-surface-card card overflow-hidden rounded-lg border border-[var(--c-border)]">
       {alertaEstorno && (
-        <div className="border-b border-amber-300 bg-amber-50 px-3 py-2 text-amber-950">
+        <div className="border-b border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-3 py-2 text-[var(--sem-warning)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded bg-amber-700 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-50">
-                  Estorno bancario
+                <span className="rounded bg-[var(--sem-warning)] px-2 py-1 text-xs font-bold uppercase tracking-wide text-[var(--c-surface)]">
+                  Estorno bancário
                 </span>
                 <strong className="text-xs">
                   {alertaEstorno.tipo === 'PIX_REJEITADO'
@@ -881,12 +945,12 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                         ? 'Estorno de tarifa bancaria'
                         : 'Possivel devolucao'}
                 </strong>
-                <span className="text-[10px] text-amber-800">
+                <span className="text-xs text-[var(--sem-warning)]">
                   {alertaEstorno.total_candidatos} lancamento(s) original(is) compativel(is)
                 </span>
               </div>
-              <p className="mt-0.5 text-[10px] text-amber-800">
-                Confirme qual saida e a contraparte. Sem baixa anterior, o par sera neutralizado e o titulo permanecera aberto para o pagamento efetivo.
+              <p className="mt-1 text-xs text-[var(--sem-warning)]">
+                Confirme qual saída e a contraparte. Sem baixa anterior, o par será neutralizado e o título permanecera aberto para o pagamento efetivo.
               </p>
             </div>
             <button type="button" className="btn btn-outline btn-sm" onClick={() => setEstornoExpandido((value) => !value)}>
@@ -895,11 +959,11 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
           </div>
 
           {estornoExpandido && (
-            <div className="mt-2 border-t border-amber-200 pt-2">
+            <div className="mt-2 border-t border-[var(--sem-warning-border)] pt-2">
               {alertaEstorno.candidatos.length === 0 ? (
-                <p className="text-xs font-medium text-rose-700">Nenhuma saida de mesmo valor foi localizada na janela de conferencia.</p>
+                <p className="text-xs font-medium text-[var(--sem-danger)]">Nenhuma saída de mesmo valor foi localizada na janela de conferência.</p>
               ) : (
-                <div className="grid gap-1.5 lg:grid-cols-2">
+                <div className="grid gap-2 lg:grid-cols-2">
                   {alertaEstorno.candidatos.map((candidato) => {
                     const candidatoApto = candidatoEstornoApto(candidato);
                     const tipoMovimento = String(candidato.movimento?.tipo_movimento || '').toUpperCase();
@@ -907,22 +971,22 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                       && !candidato.titulo
                       && !candidato.movimento?.id;
                     return (
-                    <label key={candidato.conciliacao_id} className={`flex gap-2 rounded border px-2 py-1.5 ${candidatoApto ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'} ${Number(estornoOrigemId) === Number(candidato.conciliacao_id) ? 'border-amber-600 bg-amber-100' : 'border-amber-200 bg-[var(--c-surface)]'}`}>
+                    <label key={candidato.conciliacao_id} className={`flex gap-2 rounded border px-2 py-2 ${candidatoApto ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'} ${Number(estornoOrigemId) === Number(candidato.conciliacao_id) ? 'border-[var(--c-primary)] bg-[var(--sem-warning-bg)]' : 'border-[var(--sem-warning-border)] bg-[var(--c-surface)]'}`}>
                       <input type="radio" name={`estorno-${item.id}`} disabled={!candidatoApto} checked={Number(estornoOrigemId) === Number(candidato.conciliacao_id)} onChange={() => setEstornoOrigemId(Number(candidato.conciliacao_id))} />
                       <span className="min-w-0">
-                        <span className="block truncate text-[11px] font-semibold">{candidato.descricao_banco || `Lancamento #${candidato.conciliacao_id}`}</span>
-                        <span className="block text-[10px] text-amber-800">{formatDate(candidato.data_movimento)} · {formatCurrency(Math.abs(Number(candidato.valor || 0)))} · {candidato.status}</span>
+                        <span className="block truncate text-xs font-semibold">{candidato.descricao_banco || `Lancamento #${candidato.conciliacao_id}`}</span>
+                        <span className="block text-xs text-[var(--sem-warning)]">{formatDate(candidato.data_movimento)} · {formatCurrency(Math.abs(Number(candidato.valor || 0)))} · {candidato.status}</span>
                         {candidato.titulo && (
-                          <span className="block truncate text-[10px] text-[var(--c-muted)]">Titulo #{candidato.titulo.id} · {candidato.titulo.parceiro_nome || candidato.titulo.descricao}</span>
+                          <span className="block truncate text-xs text-[var(--c-muted)]">Titulo #{candidato.titulo.id} · {candidato.titulo.parceiro_nome || candidato.titulo.descricao}</span>
                         )}
                         {saidaSemBaixa && (
-                          <span className="block text-[10px] font-medium text-emerald-700">Sem baixa de titulo: a saida e a devolucao serao pareadas, mantendo o titulo aberto.</span>
+                          <span className="block text-xs font-medium text-[var(--sem-success)]">Sem baixa de título: a saída e a devolução serão pareadas, mantendo o título aberto.</span>
                         )}
                         {tipoMovimento === 'TARIFA_BANCARIA' && (
-                          <span className="block text-[10px] font-medium text-emerald-700">Tarifa ja registrada: a devolucao preservara a mesma classificacao financeira.</span>
+                          <span className="block text-xs font-medium text-[var(--sem-success)]">Tarifa já registrada: a devolução preservara a mesma classificação financeira.</span>
                         )}
                         {!candidatoApto && (
-                          <span className="block text-[10px] font-medium text-rose-700">Concilie esta saida com o titulo correto antes de confirmar a devolucao.</span>
+                          <span className="block text-xs font-medium text-[var(--sem-danger)]">Concilie esta saída com o título correto antes de confirmar a devolução.</span>
                         )}
                       </span>
                     </label>
@@ -931,7 +995,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                 </div>
               )}
               <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-end">
-                <label className="flex-1 text-[10px] font-semibold text-amber-900">
+                <label className="flex-1 text-xs font-semibold text-[var(--sem-warning)]">
                   Justificativa
                   <input className="input input-sm mt-1 w-full" value={estornoMotivo} maxLength={255} onChange={(event) => setEstornoMotivo(event.target.value)} />
                 </label>
@@ -940,7 +1004,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                     {isConfirmandoEstorno ? 'Confirmando...' : 'Confirmar devolucao'}
                   </button>
                 ) : (
-                  <span className="text-[10px] text-amber-800">Seu usuario pode visualizar o alerta, mas nao possui permissao para estornar conciliacoes.</span>
+                  <span className="text-xs text-[var(--sem-warning)]">Seu usuário pode visualizar o alerta, mas não possui permissão para estornar conciliacoes.</span>
                 )}
               </div>
             </div>
@@ -952,60 +1016,66 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
         {/* ── Coluna esquerda: lançamento OFX ── */}
         <div className="flex flex-col gap-1 p-2">
           {isPendente && !alertaEstorno && (
-            <label className="mb-1 flex items-center gap-2 text-[10px] font-semibold text-[var(--c-muted)]">
+            <label className="mb-1 flex items-center gap-2 text-xs font-semibold text-[var(--c-muted)]">
               <input
                 type="checkbox"
                 checked={selected}
                 onChange={() => onToggleSelecao?.(item)}
               />
-              Selecionar para baixa em titulo
+              Selecionar para baixa em título
             </label>
           )}
           {/* header */}
           <div className="flex items-center justify-between gap-1">
-            <p className="text-[9px] uppercase tracking-wide font-semibold text-[var(--c-muted)]">Extrato bancário</p>
+            <p className="text-xs uppercase tracking-wide font-semibold text-[var(--c-muted)]">Extrato bancário</p>
             <span className={statusClass(item.status)}>{statusLabel(item.status)}</span>
           </div>
           {/* card interno */}
-          <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5">
-            <p className="font-semibold text-[11px] text-[var(--c-text)] leading-tight truncate">
+          <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2">
+            <p className="font-semibold text-xs text-[var(--c-text)] leading-tight truncate">
               {item.descricao_banco || 'Lançamento bancário'}
             </p>
-            <p className="text-[10px] text-[var(--c-muted)] leading-tight">
+            <p className="text-xs text-[var(--c-muted)] leading-tight">
               {item.conta_bancaria_nome}{item.documento ? ` · Doc. ${item.documento}` : ''}
             </p>
             <ValorBanco value={item.valor} size="sm" />
-            <p className="text-[10px] text-[var(--c-muted)] leading-tight">
+            <p className="text-xs text-[var(--c-muted)] leading-tight">
               {formatDate(item.data_movimento)}
-              {item.conciliacao_em_lote_disponivel && <span className="ml-1.5 text-emerald-600">✦ Lote</span>}
-              {item.associacao_manual_recomendada && <span className="ml-1.5 text-amber-600">● Manual</span>}
+              {item.conciliacao_em_lote_disponivel && <span className="ml-2 text-[var(--sem-success)]">✦ Lote</span>}
+              {item.associacao_manual_recomendada && <span className="ml-2 text-[var(--sem-warning)]">● Manual</span>}
             </p>
           </div>
           {/* conciliado info */}
           {item.titulo && (
-            <p className="text-[10px] text-emerald-700 leading-tight">
+            <p className="text-xs text-[var(--sem-success)] leading-tight">
               ✓ #{item.titulo.id} {item.titulo.descricao}{item.titulo.parceiro_nome ? ` · ${item.titulo.parceiro_nome}` : ''}
             </p>
           )}
           {/* ignorar */}
           {isPendente && !alertaEstorno && (
+            /* D3/C5 + R2/M1 — "Ignorar" e "Remover do extrato" eram texto
+               sublinhado de 10px: alvo de clique bem abaixo dos 32px e
+               nenhum dos três pesos. Viram botões do sistema, com a
+               DESTRUTIVA em vermelho suave e APARTADA das demais. */
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="text-[10px] text-slate-400 hover:text-amber-600 underline underline-offset-2 leading-tight"
+                className="btn btn-outline btn-sm"
                 disabled={isIgnorando || isRemovendo}
                 onClick={() => onIgnorar(item.id)}
               >
                 {isIgnorando ? 'Ignorando...' : 'Ignorar'}
               </button>
-              <button
-                type="button"
-                className="text-[10px] text-slate-400 hover:text-rose-600 underline underline-offset-2 leading-tight"
-                disabled={isIgnorando || isRemovendo}
-                onClick={() => onRemover(item.id)}
-              >
-                {isRemovendo ? 'Removendo...' : 'Remover do extrato'}
-              </button>
+              <span className="app-actionbar-apartada">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm btn-perigo-suave"
+                  disabled={isIgnorando || isRemovendo}
+                  onClick={() => onRemover(item.id)}
+                >
+                  {isRemovendo ? 'Removendo...' : 'Remover do extrato'}
+                </button>
+              </span>
             </div>
           )}
         </div>
@@ -1020,7 +1090,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                 item.id,
                 temAssociacaoPreparada ? movimentoIdsConfirmacao : movimentoIdsConfirmacao[0]
               )}
-              className={`btn btn-sm text-[11px] font-semibold tracking-wide transition-all ${podeConfirmar ? 'btn-primary' : 'btn-outline text-[var(--c-muted)] cursor-not-allowed opacity-40'}`}
+              className={`btn btn-sm text-xs font-semibold tracking-wide transition-all ${podeConfirmar ? 'btn-primary' : 'btn-outline text-[var(--c-muted)] cursor-not-allowed opacity-40'}`}
               title={podeConfirmar
                 ? (temAssociacaoPreparada ? 'Confirmar associação manual preparada' : 'Confirmar sugestão principal')
                 : 'Sem lançamento equivalente encontrado'}
@@ -1042,62 +1112,68 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
           */}
           {isPendente && (
             <div className="flex items-center justify-between gap-1">
-              <p className="text-[9px] uppercase tracking-wide font-semibold text-[var(--c-muted)]">Lançamento Fluxy</p>
-              <div className="flex items-center gap-0.5">
-                <button type="button" title="Acoes rapidas"
-                  className="flex h-5 w-5 items-center justify-center rounded border border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-muted)] hover:border-[var(--c-primary)] hover:text-[var(--c-primary)] transition-colors"
+              <p className="text-xs uppercase tracking-wide font-semibold text-[var(--c-muted)]">Lançamento Fluxy</p>
+              {/*
+                D3 + R2/M1 — as quatro ações do lado Fluxy eram quadrados de
+                20×20 com rótulo cortado ("Fat", "Transf"): metade do alvo
+                mínimo de 32px e vocabulário que só quem já sabia entendia.
+                Viraram botões do sistema (o .btn impõe 32px no desktop,
+                44px no toque e 18px no ícone), com o nome inteiro — D4:
+                entre caber mais e ler, ganha ler.
+              */}
+              <div className="flex flex-wrap items-center justify-end gap-1">
+                <button type="button" className="btn btn-outline btn-sm" title="Ações rápidas para este lançamento"
                   onClick={() => onAcoesRapidas(item)}>
-                  <PlusIcon className="h-2.5 w-2.5" />
+                  <PlusIcon className="h-4 w-4" />
+                  Ações
                 </button>
-                <button type="button" title="Associar manualmente"
-                  className="flex h-5 w-5 items-center justify-center rounded border border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-muted)] hover:border-[var(--c-primary)] hover:text-[var(--c-primary)] transition-colors"
+                <button type="button" className="btn btn-outline btn-sm" title="Associar manualmente a um movimento financeiro"
                   onClick={() => onAssociarManual(item)}>
-                  <KeyIcon className="h-2.5 w-2.5" />
+                  <KeyIcon className="h-4 w-4" />
+                  Associar
                 </button>
-                <button type="button" title="Associar fatura de cartao"
-                  className="flex h-5 min-w-5 items-center justify-center rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 text-[9px] font-semibold text-[var(--c-muted)] hover:border-[var(--c-primary)] hover:text-[var(--c-primary)] transition-colors"
+                <button type="button" className="btn btn-outline btn-sm" title="Associar a uma fatura de cartão"
                   onClick={() => onAssociarFatura(item)}>
-                  Fat
+                  Fatura
                 </button>
-                <button type="button" title="Conciliar como transferencia entre contas"
-                  className="flex h-5 min-w-5 items-center justify-center rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 text-[9px] font-semibold text-[var(--c-muted)] hover:border-[var(--c-primary)] hover:text-[var(--c-primary)] transition-colors"
+                <button type="button" className="btn btn-outline btn-sm" title="Conciliar como transferência entre contas"
                   onClick={() => onAssociarTransferencia(item)}>
-                  Transf
+                  Transferência
                 </button>
               </div>
             </div>
           )}
 
           {!isPendente && item.titulo ? (
-            <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 space-y-0.5">
-              <p className="font-semibold text-[11px] text-[var(--c-text)] truncate">{item.titulo.descricao}</p>
-              {item.titulo.parceiro_nome && <p className="text-[10px] text-[var(--c-muted)]">{item.titulo.parceiro_nome}</p>}
+            <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2 space-y-1">
+              <p className="font-semibold text-xs text-[var(--c-text)] truncate">{item.titulo.descricao}</p>
+              {item.titulo.parceiro_nome && <p className="text-xs text-[var(--c-muted)]">{item.titulo.parceiro_nome}</p>}
               {item.titulo.categoria_financeira_nome && (
-                <p className="truncate text-[10px] text-[var(--c-muted)]" title={item.titulo.categoria_financeira_nome}>
+                <p className="truncate text-xs text-[var(--c-muted)]" title={item.titulo.categoria_financeira_nome}>
                   Categoria: {item.titulo.categoria_financeira_nome}
                 </p>
               )}
               <ContextoObraTitulo registro={item.titulo} />
-              {item.movimento && <p className="text-[10px] text-[var(--c-muted)]">Mov. #{item.movimento.id}</p>}
+              {item.movimento && <p className="text-xs text-[var(--c-muted)]">Mov. #{item.movimento.id}</p>}
             </div>
-          ) : !isPendente && ['TARIFA_BANCARIA', 'ESTORNO_TARIFA_BANCARIA'].includes(item.movimento?.tipo_movimento) ? (
-            <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 space-y-0.5">
-              <p className="font-semibold text-[11px] text-[var(--c-text)] truncate">
-                {item.movimento.tipo_movimento === 'ESTORNO_TARIFA_BANCARIA' ? 'Estorno de tarifa bancaria' : 'Tarifa bancaria'}
+          ) : !isPendente && ['TARIFA_BANCARIA', 'ESTORNO_TARIFA_BANCARIA', 'RENDIMENTO_BANCARIO'].includes(item.movimento?.tipo_movimento) ? (
+            <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2 space-y-1">
+              <p className="font-semibold text-xs text-[var(--c-text)] truncate">
+                {item.movimento.tipo_movimento === 'RENDIMENTO_BANCARIO' ? 'Rendimento da conta' : item.movimento.tipo_movimento === 'ESTORNO_TARIFA_BANCARIA' ? 'Estorno de tarifa bancaria' : 'Tarifa bancaria'}
               </p>
-              <p className="text-[10px] text-[var(--c-muted)]">{item.movimento.observacoes || item.descricao_banco}</p>
-              <p className="text-[10px] text-[var(--c-muted)]">Mov. #{item.movimento.id}</p>
+              <p className="text-xs text-[var(--c-muted)]">{item.movimento.observacoes || item.descricao_banco}</p>
+              <p className="text-xs text-[var(--c-muted)]">Mov. #{item.movimento.id}</p>
             </div>
           ) : !isPendente && item.transferencia ? (
-            <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 space-y-0.5">
-              <p className="font-semibold text-[11px] text-[var(--c-text)] truncate">Transferencia #{item.transferencia.id}</p>
-              <p className="text-[10px] text-[var(--c-muted)]">
+            <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2 space-y-1">
+              <p className="font-semibold text-xs text-[var(--c-text)] truncate">Transferencia #{item.transferencia.id}</p>
+              <p className="text-xs text-[var(--c-muted)]">
                 {item.transferencia.contaOrigem?.nome || 'Origem'} para {item.transferencia.contaDestino?.nome || 'Destino'}
               </p>
               {canEstornarTransferencia && String(item.transferencia.status || 'ATIVA').toUpperCase() === 'ATIVA' && (
                 <button
                   type="button"
-                  className="mt-1 text-[10px] font-semibold text-rose-600 underline underline-offset-2 hover:text-rose-700"
+                  className="btn btn-outline btn-sm btn-perigo-suave mt-1"
                   disabled={processingId === `estornar-transferencia-${item.id}`}
                   onClick={() => onEstornarTransferencia?.(item)}
                 >
@@ -1107,51 +1183,62 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
             </div>
           ) : !isPendente ? (
             <div className="flex flex-1 items-center justify-center py-1">
-              <p className="text-[10px] text-[var(--c-muted)]">{statusLabel(item.status)}</p>
+              <p className="text-xs text-[var(--c-muted)]">{statusLabel(item.status)}</p>
             </div>
           ) : alertaEstorno ? (
-            <div className="flex flex-1 items-center rounded border border-amber-200 bg-amber-50 px-2 py-2">
-              <p className="text-[10px] font-medium leading-tight text-amber-800">
-                Aguardando a escolha do lancamento original. Nenhum titulo sera associado automaticamente.
+            <div className="flex flex-1 items-center rounded border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-2 py-2">
+              <p className="text-xs font-medium leading-tight text-[var(--sem-warning)]">
+                Aguardando a escolha do lançamento original. Nenhum título será associado automaticamente.
               </p>
             </div>
           ) : temAssociacaoPreparada ? (
             <div className="flex flex-col gap-1 flex-1">
-              <div className="flex-1 rounded border border-blue-300 bg-blue-50 px-2 py-1.5 dark:border-blue-700 dark:bg-blue-950/30">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+              <div className="flex-1 rounded border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] px-2 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sem-info)]">
                   Associação manual preparada
                 </p>
-                <p className="font-semibold text-[11px] text-[var(--c-text)] leading-tight">
-                  {movimentosPreparados.length === 1
+                {/*
+                  Família D — o número que a pessoa LÊ antes de clicar em
+                  Conciliar tem de sair da MESMA coleção que o clique
+                  percorre. O botão manda `movimentosPreparadosIds`
+                  (= `associacaoPreparada.movimentoIds`); este texto contava
+                  `movimentosPreparados` (= `.movimentos`, filtrada de
+                  `dados.itens`). São dois arrays diferentes, hoje iguais só
+                  por construção. Contar pelo array que a AÇÃO usa é a
+                  correção; o detalhe do item continua vindo do outro,
+                  porque só ele tem descrição — e só quando há um só.
+                */}
+                <p className="font-semibold text-xs text-[var(--c-text)] leading-tight">
+                  {movimentosPreparadosIds.length === 1 && movimentosPreparados.length === 1
                     ? movimentosPreparados[0]?.titulo_descricao
-                    : `${movimentosPreparados.length} movimentos selecionados`}
+                    : `${movimentosPreparadosIds.length} movimentos selecionados`}
                 </p>
-                {movimentosPreparados.length === 1 ? (
+                {movimentosPreparadosIds.length === 1 && movimentosPreparados.length === 1 ? (
                   <>
-                    <p className="text-[10px] text-[var(--c-muted)] leading-tight">
+                    <p className="text-xs text-[var(--c-muted)] leading-tight">
                       {movimentosPreparados[0]?.parceiro_nome}
                       {movimentosPreparados[0]?.documento ? ` · Doc. ${movimentosPreparados[0].documento}` : ''}
                     </p>
                     {movimentosPreparados[0]?.categoria_financeira_nome && (
                       <p
-                        className="truncate text-[10px] text-[var(--c-muted)] leading-tight"
+                        className="truncate text-xs text-[var(--c-muted)] leading-tight"
                         title={movimentosPreparados[0].categoria_financeira_nome}
                       >
                         Categoria: {movimentosPreparados[0].categoria_financeira_nome}
                       </p>
                     )}
                     <ContextoObraTitulo registro={movimentosPreparados[0]} />
-                    <p className="text-[10px] text-[var(--c-muted)] leading-tight">
+                    <p className="text-xs text-[var(--c-muted)] leading-tight">
                       {formatDate(movimentosPreparados[0]?.data_movimento)} · mov. #{movimentosPreparados[0]?.movimento_financeiro_id}
                     </p>
                   </>
                 ) : (
-                  <p className="text-[10px] text-[var(--c-muted)] leading-tight">
+                  <p className="text-xs text-[var(--c-muted)] leading-tight">
                     Movimentos #{movimentosPreparadosIds.join(', #')}
                   </p>
                 )}
                 <ValorBanco value={associacaoPreparada?.total} size="sm" />
-                <p className="mt-1 text-[10px] font-medium text-blue-700 dark:text-blue-300">
+                <p className="mt-1 text-xs font-medium text-[var(--sem-info)]">
                   Clique em Conciliar para confirmar.
                 </p>
               </div>
@@ -1160,13 +1247,13 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
             <div className="flex flex-1 flex-col justify-center rounded border border-dashed border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2">
               <button
                 type="button"
-                className="self-start text-[10px] font-semibold text-[var(--c-primary)] underline underline-offset-2"
+                className="self-start text-xs font-semibold text-[var(--c-primary)] underline underline-offset-2"
                 aria-expanded={expandirSugestoes}
                 onClick={() => setExpandirSugestoes((value) => !value)}
               >
                 {expandirSugestoes ? 'Ocultar opções' : `+ ${totalSugestoesCompativeis} títulos compatíveis`}
               </button>
-              <p className="mt-1 text-[10px] leading-tight text-[var(--c-muted)]">
+              <p className="mt-1 text-xs leading-tight text-[var(--c-muted)]">
                 Mesma data e valor. Escolha um título para preparar a conciliação.
               </p>
               {expandirSugestoes && (
@@ -1174,24 +1261,24 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                   {sugestoesCompativeis.map((sugestao) => (
                     <div
                       key={sugestao.movimento_financeiro_id}
-                      className="flex items-center gap-2 rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1.5"
+                      className="flex items-center gap-2 rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-2"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-semibold text-[var(--c-text)]" title={sugestao.titulo_descricao}>
+                        <p className="truncate text-xs font-semibold text-[var(--c-text)]" title={sugestao.titulo_descricao}>
                           {sugestao.titulo_descricao}
                         </p>
-                        <p className="truncate text-[10px] text-[var(--c-muted)]">
+                        <p className="truncate text-xs text-[var(--c-muted)]">
                           {sugestao.parceiro_nome || 'Sem parceiro'}
                           {sugestao.categoria_financeira_nome ? ` · ${sugestao.categoria_financeira_nome}` : ''}
                         </p>
                         <ContextoObraTitulo registro={sugestao} />
-                        <p className="text-[10px] text-[var(--c-muted)]">
+                        <p className="text-xs text-[var(--c-muted)]">
                           {formatDate(sugestao.data_movimento)} · {formatCurrency(sugestao.valor_quitacao)}
                         </p>
                       </div>
                       <button
                         type="button"
-                        className="btn btn-outline btn-sm shrink-0 text-[10px]"
+                        className="btn btn-outline btn-sm shrink-0 text-xs"
                         onClick={() => onPrepararSugestao(item, sugestao)}
                       >
                         Usar
@@ -1203,14 +1290,14 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
             </div>
           ) : topSugestao ? (
             <div className="flex flex-col gap-1 flex-1">
-              <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5">
-                <p className="font-semibold text-[11px] text-[var(--c-text)] leading-tight truncate">{topSugestao.titulo_descricao}</p>
-                <p className="text-[10px] text-[var(--c-muted)] leading-tight">
+              <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2">
+                <p className="font-semibold text-xs text-[var(--c-text)] leading-tight truncate">{topSugestao.titulo_descricao}</p>
+                <p className="text-xs text-[var(--c-muted)] leading-tight">
                   {topSugestao.parceiro_nome}{topSugestao.documento ? ` · Doc. ${topSugestao.documento}` : ''}
                 </p>
                 {topSugestao.categoria_financeira_nome && (
                   <p
-                    className="truncate text-[10px] text-[var(--c-muted)] leading-tight"
+                    className="truncate text-xs text-[var(--c-muted)] leading-tight"
                     title={topSugestao.categoria_financeira_nome}
                   >
                     Categoria: {topSugestao.categoria_financeira_nome}
@@ -1218,13 +1305,13 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                 )}
                 <ContextoObraTitulo registro={topSugestao} />
                 <ValorBanco value={topSugestao.valor_quitacao} size="sm" />
-                <p className="text-[10px] text-[var(--c-muted)] leading-tight">
+                <p className="text-xs text-[var(--c-muted)] leading-tight">
                   {formatDate(topSugestao.data_movimento)} · {topSugestao.tipo} · mov. #{topSugestao.movimento_financeiro_id}
                 </p>
               </div>
               {outrasSugestoes.length > 0 && (
                 <button type="button"
-                  className="text-[10px] text-[var(--c-primary)] underline underline-offset-2 self-start"
+                  className="text-xs text-[var(--c-primary)] underline underline-offset-2 self-start"
                   onClick={() => setExpandirSugestoes((v) => !v)}>
                   {expandirSugestoes ? 'Ocultar' : `+${outrasSugestoes.length} outras`}
                 </button>
@@ -1234,18 +1321,18 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                   {outrasSugestoes.map((s) => {
                     const pid = `confirmar-${item.id}-${s.movimento_financeiro_id}`;
                     return (
-                      <div key={s.movimento_financeiro_id} className="rounded border border-[var(--c-border)] px-2 py-1.5 flex items-center gap-2">
+                      <div key={s.movimento_financeiro_id} className="rounded border border-[var(--c-border)] px-2 py-2 flex items-center gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-medium truncate">{s.titulo_descricao}</p>
+                          <p className="text-xs font-medium truncate">{s.titulo_descricao}</p>
                           {s.categoria_financeira_nome && (
-                            <p className="truncate text-[10px] text-[var(--c-muted)]" title={s.categoria_financeira_nome}>
+                            <p className="truncate text-xs text-[var(--c-muted)]" title={s.categoria_financeira_nome}>
                               Categoria: {s.categoria_financeira_nome}
                             </p>
                           )}
                           <ContextoObraTitulo registro={s} />
-                          <p className="text-[10px] text-[var(--c-muted)]">{formatDate(s.data_movimento)} · {formatCurrency(s.valor_quitacao)}</p>
+                          <p className="text-xs text-[var(--c-muted)]">{formatDate(s.data_movimento)} · {formatCurrency(s.valor_quitacao)}</p>
                         </div>
-                        <button type="button" className="btn btn-outline btn-sm text-[10px] shrink-0"
+                        <button type="button" className="btn btn-outline btn-sm text-xs shrink-0"
                           disabled={processingId === pid}
                           onClick={() => onConfirmar(item.id, s.movimento_financeiro_id)}>
                           {processingId === pid ? '...' : 'Usar'}
@@ -1258,14 +1345,17 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center rounded border border-dashed border-[var(--c-border)] py-2 text-center">
-              <p className="text-[10px] text-[var(--c-muted)]">
+              <p className="text-xs text-[var(--c-muted)]">
                 {item.associacao_manual_recomendada
                   ? 'Mais de um título coincide. Use Associar manualmente.'
                   : 'Nenhum lançamento equivalente encontrado'}
               </p>
             </div>
           )}
-          {isPendente && <div className="h-[18px]" />}
+          {/* R10 — o calço de 18px existia para compensar, à mão, a altura do
+              rótulo de seleção da coluna esquerda. Medida fora da escala a
+              serviço de um alinhamento que o `items-stretch` do grid já
+              resolve: saiu. */}
         </div>
       </div>
     </div>
@@ -1375,22 +1465,22 @@ function BaixaExtratosTituloModal({ itens, onClose, onConfirmar }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-      <form onSubmit={submit} className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[var(--c-surface)]">
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] px-5 py-4">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-6">
+      <form onSubmit={submit} className="w-full max-w-4xl overflow-hidden rounded-2xl bg-[var(--c-surface)] shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] px-6 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Baixar titulo com extratos selecionados</h2>
-            <p className="mt-0.5 text-sm text-[var(--c-muted)]">
-              Cada lancamento selecionado vira uma baixa real no titulo, mantendo a data original do extrato.
+            <h2 className="text-lg font-semibold text-[var(--c-text)]">Baixar título com extratos selecionados</h2>
+            <p className="mt-1 text-sm text-[var(--c-muted)]">
+              Cada lançamento selecionado vira uma baixa real no título, mantendo a data original do extrato.
             </p>
           </div>
           <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>Fechar</button>
         </div>
 
-        <div className="max-h-[72vh] overflow-y-auto p-5">
+        <div className="max-h-[72vh] overflow-y-auto p-6">
           {!tipoEsperado && (
-            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Selecione somente lancamentos de entrada ou somente de saida para vincular a um unico titulo.
+            <div className="mb-4 rounded-xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-4 py-3 text-sm text-[var(--sem-warning)]">
+              Selecione somente lançamentos de entrada ou somente de saída para vincular a um único título.
             </div>
           )}
 
@@ -1402,8 +1492,8 @@ function BaixaExtratosTituloModal({ itens, onClose, onConfirmar }) {
                   Tipo esperado: {tipoEsperado || '-'} | Total: {formatCurrency(totalSelecionado)}
                 </p>
               </div>
-              <select className="input max-w-[220px]" value={formaRecebimento} onChange={(event) => setFormaRecebimento(event.target.value)}>
-                <option value="TRANSFERENCIA">Transferencia</option>
+              <select className="input" value={formaRecebimento} onChange={(event) => setFormaRecebimento(event.target.value)}>
+                <option value="TRANSFERENCIA">Transferência</option>
                 <option value="PIX">PIX</option>
                 <option value="BOLETO">Boleto</option>
                 <option value="CHEQUE">Cheque</option>
@@ -1426,11 +1516,11 @@ function BaixaExtratosTituloModal({ itens, onClose, onConfirmar }) {
 
           <div className="mt-4 grid gap-3 md:grid-cols-[1fr_260px]">
             <label className="form-field">
-              <span className="form-label">Buscar titulo</span>
-              <input className="input" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Digite descricao, documento, parceiro ou codigo" />
+              <span className="form-label">Buscar título</span>
+              <input className="input" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Digite descrição, documento, parceiro ou código" />
             </label>
             <label className="form-field">
-              <span className="form-label">Observacao</span>
+              <span className="form-label">Observação</span>
               <input className="input" value={observacoes} onChange={(event) => setObservacoes(event.target.value)} placeholder="Opcional" />
             </label>
           </div>
@@ -1463,11 +1553,11 @@ function BaixaExtratosTituloModal({ itens, onClose, onConfirmar }) {
             )}
           </div>
 
-          <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto rounded-xl border border-[var(--c-border)] p-2">
+          <div className="mt-4 max-h-[60vh] space-y-2 overflow-y-auto rounded-xl border border-[var(--c-border)] p-2">
             {loading ? (
-              <div className="app-empty-card">Carregando titulos...</div>
+              <div className="app-empty-card">Carregando títulos...</div>
             ) : titulosFiltrados.length === 0 ? (
-              <div className="app-empty-card">Nenhum titulo aberto ou parcial encontrado.</div>
+              <div className="app-empty-card">Nenhum título aberto ou parcial encontrado.</div>
             ) : titulosFiltrados.map((titulo) => {
               const selected = String(tituloId) === String(titulo.id);
               return (
@@ -1476,7 +1566,7 @@ function BaixaExtratosTituloModal({ itens, onClose, onConfirmar }) {
                   type="button"
                   className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
                     selected
-                      ? 'border-[var(--c-primary)] bg-blue-50 text-[var(--c-text)]'
+                      ? 'border-[var(--c-primary)] bg-[var(--sem-info-bg)] text-[var(--c-text)]'
                       : 'border-[var(--c-border)] hover:border-[var(--c-primary)] hover:bg-[var(--c-bg)]'
                   }`}
                   onClick={() => setTituloId(String(titulo.id))}
@@ -1493,10 +1583,10 @@ function BaixaExtratosTituloModal({ itens, onClose, onConfirmar }) {
             })}
           </div>
 
-          {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+          {error && <p className="mt-3 text-sm text-[var(--sem-danger)]">{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-[var(--c-border)] px-5 py-4">
+        <div className="flex justify-end gap-2 border-t border-[var(--c-border)] px-6 py-4">
           <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn btn-primary" disabled={saving || !tipoEsperado}>
             {saving ? 'Processando...' : 'Baixar e conciliar'}
@@ -1513,25 +1603,25 @@ function HistoricoImportacaoItem({ item }) {
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-[var(--c-text)]">{item.arquivo_nome}</p>
-          <p className="mt-0.5 text-xs text-[var(--c-muted)]">
+          <p className="mt-1 text-xs text-[var(--c-muted)]">
             {item.conta_bancaria_nome} ({item.banco || '-'}) · {formatDateTime(item.criado_em)}
           </p>
-          <p className="text-[11px] text-[var(--c-muted)]">
+          <p className="text-xs text-[var(--c-muted)]">
             Por {item.criado_por?.nome || item.criado_por?.email || 'Sistema'} · hash {String(item.arquivo_hash || '').slice(0, 10)}…
           </p>
         </div>
         <div className="flex shrink-0 gap-2 text-center text-xs">
           <div className="rounded-lg bg-[var(--c-bg)] px-3 py-2">
             <div className="text-[var(--c-muted)]">Lidos</div>
-            <div className="mt-0.5 font-semibold text-[var(--c-text)]">{item.total_lidos}</div>
+            <div className="mt-1 font-semibold text-[var(--c-text)]">{item.total_lidos}</div>
           </div>
-          <div className="rounded-lg bg-emerald-50 px-3 py-2">
-            <div className="text-emerald-600">Import.</div>
-            <div className="mt-0.5 font-semibold text-emerald-700">{item.importados}</div>
+          <div className="rounded-lg bg-[var(--sem-success-bg)] px-3 py-2">
+            <div className="text-[var(--sem-success)]">Import.</div>
+            <div className="mt-1 font-semibold text-[var(--sem-success)]">{item.importados}</div>
           </div>
-          <div className="rounded-lg bg-amber-50 px-3 py-2">
-            <div className="text-amber-600">Ignor.</div>
-            <div className="mt-0.5 font-semibold text-amber-700">{item.ignorados}</div>
+          <div className="rounded-lg bg-[var(--sem-warning-bg)] px-3 py-2">
+            <div className="text-[var(--sem-warning)]">Ignor.</div>
+            <div className="mt-1 font-semibold text-[var(--sem-warning)]">{item.ignorados}</div>
           </div>
         </div>
       </div>
@@ -1541,51 +1631,61 @@ function HistoricoImportacaoItem({ item }) {
 
 // ─── Toolbar + Footer ─────────────────────────────────────────────────────────
 
-function ToolbarConciliacao({ meta, filters, setFilters, setAppliedFilters, resumoSugestoes, bulkReconciling, onConciliarSugeridos, appliedFilters }) {
+/*
+  BARRA DE APOIO DA LISTA — o que mudou aqui, e por quê.
+
+  1. R16/C5 — "Conciliar em lote" SAIU daqui: é a ação principal da tela e
+     agora mora na faixa fixa do cabeçalho, onde continua a um clique
+     depois de rolar 100 lançamentos. Um dono por responsabilidade.
+
+  2. B3 — a contagem total de registros saiu: ela já aparece, uma vez, na
+     `contagem` do PageHeader. Aqui fica só a posição na paginação, que é
+     informação diferente.
+
+  3. CONSENTIMENTO (DoD) — os três contadores são da PÁGINA carregada
+     (`dados.itens`), e a conciliação em lote percorre o FILTRO INTEIRO.
+     Enquanto o número era "N p/ lote", ao lado do botão do lote, ele lia
+     como o alcance da ação — e não é. O rótulo passou a dizer de onde o
+     número vem: "nesta página". O alcance real está escrito na
+     confirmação, que é onde a pessoa autoriza.
+*/
+function ToolbarConciliacao({ meta, filters, setFilters, setAppliedFilters, resumoSugestoes }) {
   return (
     <div className="card sol-surface-card app-toolbar-card">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--c-muted)]">
           <span>
             Pág. <strong className="text-[var(--c-text)]">{meta.current_page}</strong> / {meta.total_pages}
-            {' '}· {meta.total_disponivel} registro(s)
           </span>
           {resumoSugestoes.prontos > 0 && (
-            <span className="inline-flex items-center gap-1 text-emerald-700">
+            <span className="inline-flex items-center gap-1 text-[var(--sem-success)]">
               <SparkIcon className="h-3 w-3" />
-              {resumoSugestoes.prontos} p/ lote
+              {resumoSugestoes.prontos} com sugestão segura nesta página
             </span>
           )}
           {resumoSugestoes.manuais > 0 && (
-            <span className="inline-flex items-center gap-1 text-amber-700">
+            <span className="inline-flex items-center gap-1 text-[var(--sem-warning)]">
               <KeyIcon className="h-3 w-3" />
-              {resumoSugestoes.manuais} manual
+              {resumoSugestoes.manuais} para associar à mão nesta página
             </span>
           )}
           {resumoSugestoes.estornos > 0 && (
-            <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
-              ↩ {resumoSugestoes.estornos} estorno(s) para revisar
+            <span className="inline-flex items-center gap-1 font-semibold text-[var(--sem-warning)]">
+              ↩ {resumoSugestoes.estornos} estorno(s) para revisar nesta página
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-[var(--c-muted)]">
-            Por página
-            <select className="input input-sm" value={filters.page_size}
-              onChange={(e) => {
-                const ps = Number(e.target.value || 100);
-                setFilters((c) => ({ ...c, page_size: ps, page: 1 }));
-                setAppliedFilters((c) => ({ ...c, page_size: ps, page: 1 }));
-              }}>
-              {[25, 50, 100, 200, 500].map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </label>
-          <button type="button" className="btn btn-primary btn-sm"
-            disabled={bulkReconciling || appliedFilters.status === 'CONCILIADO' || appliedFilters.status === 'IGNORADO' || resumoSugestoes.prontos === 0}
-            onClick={onConciliarSugeridos}>
-            {bulkReconciling ? 'Conciliando...' : 'Conciliar em lote'}
-          </button>
-        </div>
+        <label className="flex items-center gap-2 text-xs text-[var(--c-muted)]">
+          Por página
+          <select className="input input-sm" value={filters.page_size}
+            onChange={(e) => {
+              const ps = Number(e.target.value || 100);
+              setFilters((c) => ({ ...c, page_size: ps, page: 1 }));
+              setAppliedFilters((c) => ({ ...c, page_size: ps, page: 1 }));
+            }}>
+            {[25, 50, 100, 200, 500].map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </label>
       </div>
     </div>
   );
@@ -1637,8 +1737,18 @@ export default function FinanceiroConciliacao() {
   const [loadingContas, setLoadingContas] = useState(true);
   const [importing, setImporting] = useState(false);
   const [bulkReconciling, setBulkReconciling] = useState(false);
-  const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState('');
+  /*
+    R3/R19 — erro e sucesso da tela viram FAIXA DO SISTEMA (Avisos), não
+    mais dois `<div>` soltos com cor crua. Os dois são EVENTO — "importei",
+    "conciliei", "falhou agora" —, que é exatamente a fronteira do
+    `useAvisos`: fecha e o problema não continua, porque ele já aconteceu.
+    As condições DERIVADAS DO CONTEÚDO desta tela (soma que ultrapassa o
+    valor do extrato, estorno aguardando escolha do lançamento original)
+    continuam onde estavam, fixas ao lado do que descrevem — fechá-las não
+    resolveria nada.
+  */
+  const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [processingId, setProcessingId] = useState(null);
   const [associacoesPreparadas, setAssociacoesPreparadas] = useState({});
   const tarifaRequestsEmAndamentoRef = useRef(new Set());
@@ -1791,7 +1901,6 @@ export default function FinanceiroConciliacao() {
   async function carregarConciliacoes() {
     try {
       setLoading(true);
-      setError('');
       const [response, importacoesResponse] = await Promise.all([
         getConciliacoesBancarias(appliedFilters),
         getImportacoesConciliacao({ conta_bancaria_id: appliedFilters.conta_bancaria_id, data_inicial: appliedFilters.data_inicial, data_final: appliedFilters.data_final, limit: 8 })
@@ -1824,7 +1933,7 @@ export default function FinanceiroConciliacao() {
         itens: Array.isArray(importacoesResponse?.itens) ? importacoesResponse.itens : []
       });
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar conciliacoes bancarias');
+      avisar.erro(err?.message || 'Erro ao carregar conciliacoes bancarias');
       setDados({ resumo: { total: 0, pendentes: 0, conciliados: 0, ignorados: 0, valor_total: 0, valor_absoluto_total: 0 }, meta: { total_disponivel: 0, total_listado: 0, current_page: 1, page_size: 100, total_pages: 1 }, itens: [] });
       setImportacoes({ resumo: { total_importacoes: 0, total_lidos: 0, total_importados: 0, total_ignorados: 0 }, itens: [] });
     } finally { setLoading(false); }
@@ -1865,9 +1974,9 @@ export default function FinanceiroConciliacao() {
 
   async function handleImportar(event) {
     event.preventDefault();
-    if (!uploadForm.files.length) { setError('Selecione ao menos um arquivo OFX.'); return; }
+    if (!uploadForm.files.length) { avisar.erro('Selecione ao menos um arquivo OFX.'); return; }
     try {
-      setImporting(true); setError(''); setFeedback('');
+      setImporting(true); limparAvisos();
       setImportResults([]);
       const formData = new FormData();
       if (uploadForm.conta_bancaria_id) {
@@ -1881,16 +1990,25 @@ export default function FinanceiroConciliacao() {
       const arquivosNaoImportados = Number(response.arquivos_nao_importados || 0);
       const importados = Number(response.importados || 0);
       const alertasEstorno = Number(response.alertas_estorno || 0);
-      setFeedback(`${arquivosImportados} arquivo(s) importado(s), ${arquivosNaoImportados} nao importado(s) e ${importados} lancamento(s) novo(s) gravado(s).${alertasEstorno ? ` Atenção: ${alertasEstorno} possível(is) estorno(s) bancário(s) precisa(m) de revisão.` : ''}`);
-      if (arquivosNaoImportados > 0 && arquivosImportados === 0) {
-        setError('Nenhum arquivo foi importado. Confira o resumo abaixo e ajuste as contas bancarias antes de tentar novamente.');
+      /*
+        O resumo é o mesmo; o TOM é que passou a depender do resultado.
+        Antes ele saía sempre como "sucesso" — inclusive quando o número de
+        arquivos importados era ZERO — e ganhava, agora, o comportamento de
+        sucesso do componente: faixa verde que some sozinha em 6s. Uma
+        importação que não importou nada não pode sumir sozinha.
+      */
+      const resumoImportacao = `${arquivosImportados} arquivo(s) importado(s), ${arquivosNaoImportados} nao importado(s) e ${importados} lancamento(s) novo(s) gravado(s).${alertasEstorno ? ` Atenção: ${alertasEstorno} possível(is) estorno(s) bancário(s) precisa(m) de revisão.` : ''}`;
+      if (arquivosImportados > 0) {
+        avisar.sucesso(resumoImportacao);
+      } else {
+        avisar.erro(`${resumoImportacao} Confira o resumo abaixo e ajuste as contas bancarias antes de tentar novamente.`);
       }
       setUploadForm((c) => ({ ...c, files: [] }));
       const fi = document.getElementById('ofx-file-input');
       if (fi) fi.value = '';
       await carregarResumoContas();
       if (viewMode === 'DETALHE') await carregarConciliacoes();
-    } catch (err) { setError(err?.message || 'Erro ao importar OFX'); } finally { setImporting(false); }
+    } catch (err) { avisar.erro(err?.message || 'Erro ao importar OFX'); } finally { setImporting(false); }
   }
 
   function toggleConciliacaoSelecionada(item) {
@@ -1907,7 +2025,7 @@ export default function FinanceiroConciliacao() {
     await baixarTituloPorConciliacoes(tituloId, payload);
     setBaixaExtratosModalOpen(false);
     setConciliacoesSelecionadas([]);
-    setFeedback('Titulo baixado e lancamentos bancarios conciliados com sucesso.');
+    avisar.sucesso('Título baixado e lançamentos bancários conciliados com sucesso.');
     await carregarConciliacoes();
   }
 
@@ -1920,13 +2038,13 @@ export default function FinanceiroConciliacao() {
     if (!movimentoIds.length) {
       const message = 'Selecione um movimento financeiro valido para confirmar a conciliacao.';
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, processing: false, error: message }));
-      else setError(message);
+      else avisar.erro(message);
       return;
     }
     try {
       const processingKey = `confirmar-${conciliacaoId}-${movimentoIds.join('-')}`;
       setProcessingId(processingKey);
-      setError(''); setFeedback('');
+      limparAvisos();
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, processing: true, error: '' }));
       await confirmarConciliacaoBancaria(
         conciliacaoId,
@@ -1939,13 +2057,13 @@ export default function FinanceiroConciliacao() {
         delete next[Number(conciliacaoId)];
         return next;
       });
-      setFeedback('Conciliacao confirmada com sucesso.');
+      avisar.sucesso('Conciliação confirmada com sucesso.');
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, open: false, processing: false, error: '', selecionados: [], dados: { conciliacao: null, meta: { total: 0, limit: 30 }, itens: [] } }));
       await carregarConciliacoes();
     } catch (err) {
       const message = err?.message || 'Erro ao confirmar conciliacao';
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, processing: false, error: message }));
-      else setError(message);
+      else avisar.erro(message);
     } finally {
       setProcessingId(null);
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, processing: false }));
@@ -1956,7 +2074,7 @@ export default function FinanceiroConciliacao() {
     if (!item?.id || !conciliacaoOrigemId) return;
     const candidato = item.estorno_bancario?.candidatos?.find((value) => Number(value.conciliacao_id) === Number(conciliacaoOrigemId));
     if (!candidatoEstornoApto(candidato)) {
-      setError('A saida original nao esta apta para confirmar esta devolucao. Atualize a conciliacao e tente novamente.');
+      avisar.erro('A saída original não esta apta para confirmar esta devolução. Atualize a conciliação e tente novamente.');
       return;
     }
     const tipoMovimento = String(candidato.movimento?.tipo_movimento || '').toUpperCase();
@@ -1967,57 +2085,118 @@ export default function FinanceiroConciliacao() {
       : tarifaRegistrada
         ? ' A devolucao sera registrada como estorno da tarifa, preservando sua classificacao.'
         : ' A saida e a devolucao serao pareadas, mantendo o titulo aberto.';
-    if (!window.confirm(`Confirmar que este credito devolveu o lancamento #${conciliacaoOrigemId}?${confirmacaoInfo}`)) return;
+    /*
+      R3/R19 + R21 — modal do sistema, e o retorno se DESESTRUTURA:
+      `confirmar()` devolve { ok, texto } e objeto é sempre truthy; ler o
+      objeto como booleano faria "Cancelar" CONFIRMAR a devolução.
+
+      Classe CONSENTIMENTO (DoD): o `#` citado na mensagem é o mesmo
+      `conciliacaoOrigemId` que vai no payload logo abaixo, e o
+      `confirmacaoInfo` é derivado do MESMO `candidato` — não de outra
+      leitura da lista. Um lançamento perguntado, um lançamento pareado.
+      O texto declara que a tela não desfaz.
+    */
+    const { ok } = await confirmar({
+      titulo: 'Confirmar devolução bancária',
+      mensagem: `Este crédito será pareado com o lançamento #${conciliacaoOrigemId}.${confirmacaoInfo} Esta tela não desfaz o pareamento.`,
+      rotuloConfirmar: 'Confirmar devolução',
+      destrutiva: true
+    });
+    if (!ok) return;
     try {
       setProcessingId(`estorno-bancario-${item.id}`);
-      setError(''); setFeedback('');
+      limparAvisos();
       await confirmarConciliacaoEstornoBancario(item.id, {
         conciliacao_origem_id: conciliacaoOrigemId,
         motivo
       });
       setConciliacoesSelecionadas((current) => current.filter((id) => Number(id) !== Number(item.id)));
-      setFeedback(baixaDeTitulo
+      avisar.sucesso(baixaDeTitulo
         ? `Estorno confirmado. O titulo #${candidato.titulo.id} foi reaberto e os dois lancamentos OFX permaneceram auditados.`
         : tarifaRegistrada
           ? 'Estorno de tarifa confirmado. A classificacao financeira foi preservada e os dois lancamentos OFX permaneceram auditados.'
           : 'Estorno confirmado. A saida e a devolucao foram pareadas sem baixar o titulo, que permanece aberto para o pagamento efetivo.');
       await carregarConciliacoes();
     } catch (err) {
-      setError(err?.message || 'Erro ao confirmar estorno bancario');
+      avisar.erro(err?.message || 'Erro ao confirmar estorno bancario');
     } finally {
       setProcessingId(null);
     }
   }
 
   async function handleIgnorar(conciliacaoId) {
-    if (!window.confirm('Marcar este lancamento como ignorado?')) return;
+    // R3/R19 + R21. Um id perguntado, o MESMO id na chamada — sem coleção
+    // no meio, não há como a pergunta e a ação divergirem.
+    const { ok } = await confirmar({
+      titulo: 'Ignorar lançamento?',
+      mensagem: `O lançamento #${conciliacaoId} sai da fila de conferência e deixa de aparecer entre os pendentes. Ele continua no extrato, com o status "Ignorado".`,
+      rotuloConfirmar: 'Ignorar lançamento'
+    });
+    if (!ok) return;
     try {
-      setProcessingId(`ignorar-${conciliacaoId}`); setError(''); setFeedback('');
+      setProcessingId(`ignorar-${conciliacaoId}`); limparAvisos();
       await ignorarConciliacaoBancaria(conciliacaoId);
-      setFeedback('Lancamento marcado como ignorado.');
+      avisar.sucesso('Lançamento marcado como ignorado.');
       await carregarConciliacoes();
-    } catch (err) { setError(err?.message || 'Erro ao ignorar conciliacao'); } finally { setProcessingId(null); }
+    } catch (err) { avisar.erro(err?.message || 'Erro ao ignorar conciliacao'); } finally { setProcessingId(null); }
   }
 
   async function handleRemover(conciliacaoId) {
-    if (!window.confirm('Remover este lancamento do extrato? O registro ficara auditado e nao sera apagado fisicamente do banco.')) return;
+    // R3/R19 + R21. Destrutiva: sai em vermelho suave e apartada, e o texto
+    // diz o que sobrevive (a auditoria) e o que esta tela não desfaz.
+    const { ok } = await confirmar({
+      titulo: 'Remover lançamento do extrato?',
+      mensagem: `O lançamento #${conciliacaoId} sai da conciliação. O registro permanece gravado para auditoria e não é apagado do banco de dados, mas esta tela não o traz de volta.`,
+      rotuloConfirmar: 'Remover do extrato',
+      destrutiva: true
+    });
+    if (!ok) return;
     try {
-      setProcessingId(`remover-${conciliacaoId}`); setError(''); setFeedback('');
+      setProcessingId(`remover-${conciliacaoId}`); limparAvisos();
       await removerConciliacaoBancaria(conciliacaoId, { motivo: 'Removido manualmente na tela de conciliacao' });
-      setFeedback('Lancamento removido do extrato.');
+      avisar.sucesso('Lançamento removido do extrato.');
       await carregarConciliacoes();
-    } catch (err) { setError(err?.message || 'Erro ao remover lancamento do extrato'); } finally { setProcessingId(null); }
+    } catch (err) { avisar.erro(err?.message || 'Erro ao remover lancamento do extrato'); } finally { setProcessingId(null); }
   }
 
   async function handleConciliarSugeridos() {
-    if (!window.confirm('Conciliar em lote todos os lançamentos pendentes do filtro atual que tenham sugestão segura?')) return;
+    /*
+      R3/R19 + R21 + classe CONSENTIMENTO (DoD) — e aqui está o cuidado que
+      define esta ação.
+
+      O contador ao lado do botão ("N p/ lote") é da PÁGINA: sai do
+      `resumoSugestoesPagina`, que reduz `dados.itens`, ou seja, os itens
+      carregados agora. A chamada abaixo NÃO recebe page nem page_size:
+      ela percorre o FILTRO INTEIRO, no servidor, em todas as páginas.
+      Citar o N da página numa mensagem que autoriza o filtro inteiro seria
+      exatamente "perguntar sobre 3 e agir sobre 47" — então a mensagem não
+      cita número nenhum: ela nomeia o RECORTE, que é a coleção real que a
+      ação percorre, e diz explicitamente que não se limita à página.
+
+      (O descompasso entre o contador e o alcance da ação é anterior a esta
+      leva e está relatado; a tela não muda o alcance, muda a promessa.)
+    */
+    const contaDoRecorte = contas.find((conta) => String(conta.id) === String(appliedFilters.conta_bancaria_id));
+    const recorte = [
+      contaDoRecorte ? `conta ${getContaNome(contaDoRecorte)}` : 'todas as contas',
+      appliedFilters.data_inicial || appliedFilters.data_final
+        ? `período de ${appliedFilters.data_inicial ? formatDate(appliedFilters.data_inicial) : 'início'} a ${appliedFilters.data_final ? formatDate(appliedFilters.data_final) : 'hoje'}`
+        : 'todo o período'
+    ].join(', ');
+    const { ok } = await confirmar({
+      titulo: 'Conciliar em lote?',
+      mensagem: `Serão conciliados TODOS os lançamentos pendentes com sugestão segura do recorte atual (${recorte}) — em todas as páginas, não apenas os desta. Cada confirmação baixa o título correspondente. Se o lote parar no meio, o que já foi conciliado permanece conciliado, e esta tela não desfaz.`,
+      rotuloConfirmar: 'Conciliar em lote',
+      destrutiva: true
+    });
+    if (!ok) return;
     try {
-      setBulkReconciling(true); setError(''); setFeedback('');
+      setBulkReconciling(true); limparAvisos();
       const response = await conciliarSugestoesBancarias({ status: appliedFilters.status === 'TODOS' ? 'TODOS' : 'PENDENTE', conta_bancaria_id: appliedFilters.conta_bancaria_id, data_inicial: appliedFilters.data_inicial, data_final: appliedFilters.data_final });
       const r = response?.resumo || {};
-      setFeedback(`${r.total_conciliadas || 0} confirmada(s) em lote. ${r.associacao_manual || 0} para associação manual. ${r.sem_sugestao || 0} sem sugestão.`);
+      avisar.sucesso(`${r.total_conciliadas || 0} confirmada(s) em lote. ${r.associacao_manual || 0} para associação manual. ${r.sem_sugestao || 0} sem sugestão.`);
       await carregarConciliacoes();
-    } catch (err) { setError(err?.message || 'Erro ao conciliar sugestoes em lote'); } finally { setBulkReconciling(false); }
+    } catch (err) { avisar.erro(err?.message || 'Erro ao conciliar sugestoes em lote'); } finally { setBulkReconciling(false); }
   }
 
   async function carregarMovimentosAssociacao(conciliacaoId, filtersPayload, { manterAberto = true, selecionadosIniciais = null } = {}) {
@@ -2073,6 +2252,10 @@ export default function FinanceiroConciliacao() {
     await carregarMovimentosAssociacao(associacaoModal.item.id, associacaoModal.filters);
   }
 
+  // A TabelaPadrao sempre oferece "selecionar todos" quando ha selecao em
+  // lote — e aqui "todos" nao pode ser literal: a soma dos movimentos nao
+  // pode ultrapassar o valor do lancamento do extrato. Marca-se, na ordem da
+  // lista, tudo o que ainda couber; desmarcar limpa a selecao inteira.
   function toggleMovimentoAssociacaoManual(movimentoId) {
     const id = Number(movimentoId || 0);
     if (!id) return;
@@ -2126,8 +2309,8 @@ export default function FinanceiroConciliacao() {
         total: resumo.totalSelecionado
       }
     }));
-    setFeedback('Associacao manual preparada. Revise as informacoes e clique em Conciliar para confirmar.');
-    setError('');
+    limparAvisos();
+    avisar.sucesso('Associação manual preparada. Revise as informações e clique em Conciliar para confirmar.');
     fecharAssociacaoManual();
   }
 
@@ -2135,7 +2318,7 @@ export default function FinanceiroConciliacao() {
     const conciliacaoId = Number(item?.id || 0);
     const movimentoId = Number(sugestao?.movimento_financeiro_id || 0);
     if (!conciliacaoId || !movimentoId) {
-      setError('Não foi possível preparar o título selecionado para conciliação.');
+      avisar.erro('Não foi possível preparar o título selecionado para conciliação.');
       return;
     }
 
@@ -2147,8 +2330,8 @@ export default function FinanceiroConciliacao() {
         total: valorAbsolutoMovimentoAssociacao(sugestao)
       }
     }));
-    setFeedback('Título compatível preparado. Revise as informações e clique em Conciliar para confirmar.');
-    setError('');
+    limparAvisos();
+    avisar.sucesso('Título compatível preparado. Revise as informações e clique em Conciliar para confirmar.');
   }
 
   async function carregarFaturasAssociacao(conciliacaoId, filtersPayload, { manterAberto = true } = {}) {
@@ -2216,10 +2399,9 @@ export default function FinanceiroConciliacao() {
       const processingKey = `fatura-${conciliacaoId}-${faturaId}`;
       setProcessingId(processingKey);
       setFaturaModal((c) => ({ ...c, processing: true, error: '' }));
-      setError('');
-      setFeedback('');
+      limparAvisos();
       await confirmarConciliacaoFaturaCartao(conciliacaoId, { fatura_cartao_id: faturaId });
-      setFeedback('Fatura conciliada e titulos vinculados baixados com sucesso.');
+      avisar.sucesso('Fatura conciliada e títulos vinculados baixados com sucesso.');
       fecharAssociacaoFatura();
       await carregarConciliacoes();
     } catch (err) {
@@ -2280,8 +2462,7 @@ export default function FinanceiroConciliacao() {
     try {
       setProcessingId(`transferencia-${transferenciaModal.item.id}`);
       setTransferenciaModal((current) => ({ ...current, processing: true, error: '' }));
-      setError('');
-      setFeedback('');
+      limparAvisos();
       await confirmarConciliacaoTransferencia(transferenciaModal.item.id, {
         conta_contraparte_id: transferenciaModal.conta_contraparte_id,
         tipo_transferencia: transferenciaEntreEmpresas ? 'ENTRE_EMPRESAS' : 'MESMA_TITULARIDADE',
@@ -2290,7 +2471,7 @@ export default function FinanceiroConciliacao() {
         motivo_intercompany: transferenciaEntreEmpresas ? transferenciaModal.motivo_intercompany : undefined,
         elimina_consolidado: transferenciaEntreEmpresas ? transferenciaModal.elimina_consolidado : true
       });
-      setFeedback('Lancamento conciliado como transferencia entre contas.');
+      avisar.sucesso('Lançamento conciliado como transferência entre contas.');
       fecharAssociacaoTransferencia();
       await carregarConciliacoes();
     } catch (err) {
@@ -2313,11 +2494,10 @@ export default function FinanceiroConciliacao() {
     try {
       setProcessingId(`estornar-transferencia-${item.id}`);
       setEstornoTransferenciaModal((current) => ({ ...current, processing: true, error: '' }));
-      setError('');
-      setFeedback('');
+      limparAvisos();
       await estornarConciliacaoTransferencia(item.id, { motivo });
       setEstornoTransferenciaModal({ open: false, item: null, motivo: '', processing: false, error: '' });
-      setFeedback('Transferencia estornada. Os lancamentos OFX vinculados voltaram para pendente.');
+      avisar.sucesso('Transferência estornada. Os lançamentos OFX vinculados voltaram para pendente.');
       await carregarConciliacoes();
     } catch (err) {
       setEstornoTransferenciaModal((current) => ({
@@ -2333,27 +2513,26 @@ export default function FinanceiroConciliacao() {
   async function handleConfirmarTarifa(item, tarifa) {
     if (!item?.id || !tarifa?.codigo) return;
 
-    const lockKey = `tarifa-${item.id}`;
+    const lockKey = `atalho-${item.id}`;
     const processingKey = `${lockKey}-${tarifa.codigo}`;
     if (tarifaRequestsEmAndamentoRef.current.has(lockKey)) return;
     tarifaRequestsEmAndamentoRef.current.add(lockKey);
 
     try {
       setProcessingId(processingKey);
-      setError('');
+      limparAvisos();
       setAcoesRapidasError('');
-      setFeedback('');
       await confirmarConciliacaoTarifaBancaria(item.id, {
         codigo: tarifa.codigo,
         descricao: item.descricao_banco || tarifa.nome
       });
-      setFeedback(`Lancamento conciliado como ${tarifa.nome}.`);
+      avisar.sucesso(`Lancamento conciliado como ${tarifa.nome}.`);
       setAcoesRapidasItem(null);
       await carregarConciliacoes();
     } catch (err) {
       const message = err?.message || 'Erro ao conciliar tarifa bancaria';
       setAcoesRapidasError(message);
-      setError(message);
+      avisar.erro(message);
     } finally {
       tarifaRequestsEmAndamentoRef.current.delete(lockKey);
       setProcessingId(null);
@@ -2362,7 +2541,7 @@ export default function FinanceiroConciliacao() {
 
   async function handleConfirmarEstornoTarifa(item, tarifa) {
     if (!item?.id || !tarifa?.codigo) return;
-    const lockKey = `estorno-tarifa-${item.id}`;
+    const lockKey = `atalho-${item.id}`;
     const processingKey = `${lockKey}-${tarifa.codigo}`;
     if (tarifaRequestsEmAndamentoRef.current.has(lockKey)) return;
     tarifaRequestsEmAndamentoRef.current.add(lockKey);
@@ -2370,19 +2549,44 @@ export default function FinanceiroConciliacao() {
     try {
       setProcessingId(processingKey);
       setAcoesRapidasError('');
-      setError('');
-      setFeedback('');
+      limparAvisos();
       await confirmarConciliacaoEstornoTarifa(item.id, {
         codigo: tarifa.codigo,
         descricao: item.descricao_banco || `Estorno de ${tarifa.nome}`
       });
       setAcoesRapidasItem(null);
-      setFeedback(`Estorno de tarifa lancado como movimento independente (${tarifa.nome}).`);
+      avisar.sucesso(`Estorno de tarifa lancado como movimento independente (${tarifa.nome}).`);
       await carregarConciliacoes();
     } catch (err) {
       const message = err?.message || 'Erro ao conciliar estorno de tarifa bancaria';
       setAcoesRapidasError(message);
-      setError(message);
+      avisar.erro(message);
+    } finally {
+      tarifaRequestsEmAndamentoRef.current.delete(lockKey);
+      setProcessingId(null);
+    }
+  }
+
+  async function handleConfirmarRendimento(item, rendimento) {
+    if (!item?.id || !rendimento?.codigo) return;
+    const lockKey = `atalho-${item.id}`;
+    if (tarifaRequestsEmAndamentoRef.current.has(lockKey)) return;
+    tarifaRequestsEmAndamentoRef.current.add(lockKey);
+    try {
+      setProcessingId(`rendimento-${item.id}-${rendimento.codigo}`);
+      setAcoesRapidasError('');
+      limparAvisos();
+      await confirmarConciliacaoRendimentoBancario(item.id, {
+        codigo: rendimento.codigo,
+        descricao: item.descricao_banco || rendimento.nome
+      });
+      avisar.sucesso(`Crédito conciliado como ${rendimento.nome}.`);
+      setAcoesRapidasItem(null);
+      await carregarConciliacoes();
+    } catch (err) {
+      const message = err?.message || 'Erro ao conciliar rendimento da conta';
+      setAcoesRapidasError(message);
+      avisar.erro(message);
     } finally {
       tarifaRequestsEmAndamentoRef.current.delete(lockKey);
       setProcessingId(null);
@@ -2395,14 +2599,13 @@ export default function FinanceiroConciliacao() {
     const processingKey = `credito-rotativo-${item.id}`;
     try {
       setProcessingId(processingKey);
-      setError('');
+      limparAvisos();
       setAcoesRapidasError('');
-      setFeedback('');
       const response = await confirmarConciliacaoCreditoRotativo(item.id, {
         descricao: item.descricao_banco || ''
       });
       const natureza = String(response?.natureza || '').toUpperCase();
-      setFeedback(natureza === 'AMORTIZACAO'
+      avisar.sucesso(natureza === 'AMORTIZACAO'
         ? 'Amortizacao de credito rotativo conciliada.'
         : 'Liberacao de credito rotativo conciliada.');
       setAcoesRapidasItem(null);
@@ -2410,7 +2613,7 @@ export default function FinanceiroConciliacao() {
     } catch (err) {
       const message = err?.message || 'Erro ao conciliar credito rotativo';
       setAcoesRapidasError(message);
-      setError(message);
+      avisar.erro(message);
     } finally {
       setProcessingId(null);
     }
@@ -2454,36 +2657,93 @@ export default function FinanceiroConciliacao() {
 
   const associacaoResumo = buildAssociacaoResumo(associacaoModal);
 
-  return (
-    <div className="page solicitacoes-page">
+  /*
+    R23 — EXCEÇÃO DECLARADA (consulta cara), e ela é declarada NA TELA, não
+    só aqui.
 
-      {/* Cabeçalho */}
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Conciliação Bancária</h1>
-            <p className="page-subtitle">
-              Importe o OFX, revise as sugestões de match e confirme individualmente ou em lote.
-              A importação não concilia nem cria títulos automaticamente.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/financeiro/titulos" className="btn btn-outline btn-sm">Títulos</Link>
-            <Link to="/financeiro/relatorios" className="btn btn-outline btn-sm">Relatórios</Link>
-            <Link to="/financeiro/cadastros" className="btn btn-outline btn-sm">Cadastros</Link>
-            {viewMode === 'DETALHE' && (
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setViewMode('CONTAS')}>
-                Voltar para contas
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+    Painel de contas: `carregarResumoContas` dispara UMA requisição POR
+    CONTA bancária filtrada (`Promise.all` sobre `contasFiltradas`). Com
+    duas contas já são duas; com dez, dez. Aplicar ao marcar significaria
+    esse leque inteiro a cada tecla digitada na busca — muito acima do teto
+    de 3 da regra, e não é estimativa: está no código, contável.
+
+    Conferência: a consulta é paginada NO SERVIDOR sobre o extrato inteiro
+    e ainda calcula as sugestões de match de cada lançamento; são 4
+    dimensões que o operador combina o tempo todo (situação, conta, data
+    inicial, data final), sendo duas delas campos de data — aplicar ao
+    marcar consultaria a cada dígito de uma data pela metade.
+
+    O que a regra exige quando a exceção vale, e o que passa a existir:
+    o botão diz o que FAZ ("Atualizar contas"/"Atualizar lançamentos", não
+    "Filtrar"), e o apoio avisa que a marca é RASCUNHO até o clique. Sem
+    isso a etiqueta mente — só que mais devagar.
+
+    LIMITE DECLARADO: o segundo critério da R23 (">2s no ambiente de dev
+    com dados reais") NÃO foi medido por mim. O painel de contas dispensa a
+    medição, porque já estoura o critério de requisições; a conferência
+    apoia-se na leitura de 4 dimensões combinadas, e está no relatório como
+    decisão a confirmar com o cliente.
+  */
+  const rascunhoDashboard = ['busca', 'banco', 'data_inicial', 'data_final']
+    .some((campo) => String(dashboardFilters[campo] || '') !== String(appliedDashboardFilters[campo] || ''));
+  const rascunhoConferencia = ['status', 'conta_bancaria_id', 'data_inicial', 'data_final']
+    .some((campo) => String(filters[campo] || '') !== String(appliedFilters[campo] || ''));
+
+  return (
+    <Pagina>
+      {/*
+        R13/C1/C2/R5 — a faixa fixa do sistema entra no lugar do cartão de
+        título solto: 22px, contagem + apoio em UMA linha na própria faixa
+        (era `page-subtitle`, texto de apoio flutuando sobre o canvas), e a
+        faixa gruda encostada na topbar durante a rolagem. Em lista de 100
+        lançamentos, isso é o que mantém "Conciliar em lote" a um clique.
+
+        R11/C6 — saíram daqui os três links de "ir para" (Títulos,
+        Relatórios, Cadastros): navegação não é ação, e menu, breadcrumb e
+        Ctrl+K já levam a essas telas. É a remoção que a própria R11
+        autoriza pelo exemplo do "⋯" de Parceiros, e é a mesma que a
+        FinanceiroTitulos fez ontem.
+
+        C3/R11 — "Voltar para contas" NÃO é um link de navegação: é o
+        retorno ao painel de contas dentro da própria tela, e por isso vira
+        a SETA à esquerda do cabeçalho, a affordance primária de retorno do
+        modo de conferência.
+
+        C5/D3 — os três pesos: "Conciliar em lote" é o ÚNICO primário
+        sólido, e ele subiu do rodapé da barra de ferramentas para cá
+        (R16: um dono por responsabilidade).
+      */}
+      <PageHeader
+        titulo="Conciliação Bancária"
+        contagem={viewMode === 'DETALHE'
+          ? `${dados.meta.total_disponivel} lançamento(s)`
+          : `${resumoDashboard.contas} conta(s)`}
+        descricao={viewMode === 'DETALHE'
+          ? 'Confira lançamento a lançamento; a conciliação baixa o título correspondente.'
+          : 'Importe o OFX e confira por conta. A importação não concilia nem cria títulos automaticamente.'}
+        voltar={viewMode === 'DETALHE'
+          ? { onClick: () => setViewMode('CONTAS'), title: 'Voltar para o painel de contas' }
+          : undefined}
+        acaoPrincipal={viewMode === 'DETALHE' ? {
+          rotulo: bulkReconciling ? 'Conciliando...' : 'Conciliar em lote',
+          onClick: handleConciliarSugeridos,
+          desabilitada: bulkReconciling
+            || appliedFilters.status === 'CONCILIADO'
+            || appliedFilters.status === 'IGNORADO'
+            || resumoSugestoesPagina.prontos === 0,
+          icone: <SparkIcon className="h-4 w-4" />,
+          title: 'Conciliar todos os pendentes com sugestão segura do recorte atual'
+        } : undefined}
+      />
+
+      {/* R3/R19 — evento (importou, conciliou, falhou) em faixa do sistema,
+          no topo do conteúdo. Nunca mais a caixa cinza do Chrome. */}
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       {/* Importar OFX — linha horizontal */}
-      <form className="mt-4 card sol-surface-card" onSubmit={handleImportar}>
+      <form className="card sol-surface-card" onSubmit={handleImportar}>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="app-filter-field flex-1 min-w-[160px]">
+          <label className="app-filter-field flex-1">
             <span className="app-filter-label">Importar OFX <span className="font-normal text-[var(--c-muted)]">— Remessas duplicadas são bloqueadas.</span></span>
             <select className="input w-full input-sm" value={uploadForm.conta_bancaria_id} disabled={loadingContas}
               onChange={(e) => setUploadForm((c) => ({ ...c, conta_bancaria_id: e.target.value }))}>
@@ -2491,7 +2751,7 @@ export default function FinanceiroConciliacao() {
               {contas.map((ct) => <option key={ct.id} value={ct.id}>{ct.nome}</option>)}
             </select>
           </label>
-          <label className="app-filter-field flex-[2] min-w-[200px]">
+          <label className="app-filter-field flex-[2]">
             <span className="app-filter-label">Arquivo OFX</span>
             <input id="ofx-file-input" className="input w-full input-sm" type="file" accept=".ofx" multiple
               onChange={(e) => setUploadForm((c) => ({ ...c, files: Array.from(e.target.files || []) }))} />
@@ -2501,19 +2761,19 @@ export default function FinanceiroConciliacao() {
           </button>
         </div>
         <p className="mt-2 text-xs text-[var(--c-muted)]">
-          Deixe a conta em branco para o sistema identificar cada OFX pela Identificacao OFX cadastrada na conta bancaria. Se selecionar uma conta, todos os arquivos serao importados nela.
+          Deixe a conta em branco para o sistema identificar cada OFX pela Identificação OFX cadastrada na conta bancária. Se selecionar uma conta, todos os arquivos serão importados nela.
         </p>
       </form>
 
       {importResults.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-2xl">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-[var(--c-text)]">Resultado da importacao</h2>
+                <h2 className="text-lg font-semibold text-[var(--c-text)]">Resultado da importação</h2>
                 <p className="mt-1 text-xs text-[var(--c-muted)]">Confira quais OFX foram importados e quais precisam de ajuste cadastral.</p>
               </div>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+              <span className="rounded-full bg-[var(--sem-neutral-bg)] px-3 py-1 text-xs font-semibold text-[var(--c-text)]">
                 {importResults.filter((item) => item.sucesso).length}/{importResults.length} importado(s)
               </span>
             </div>
@@ -2523,11 +2783,15 @@ export default function FinanceiroConciliacao() {
                 {importResults.map((item, index) => (
                   <div
                     key={`${item.arquivo || 'ofx'}-${index}`}
-                    className={`rounded-xl border px-3 py-2 text-xs ${item.sucesso ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}
+                    className={`rounded-xl border px-3 py-2 text-xs ${item.sucesso ? 'border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] text-[var(--sem-success)]' : 'border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]'}`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <strong className="truncate">{item.arquivo || `Arquivo ${index + 1}`}</strong>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${item.sucesso ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                      {/* A pastilha fica SOBRE o cartão da mesma família
+                          semântica: usar o mesmo `-bg` nos dois a apagaria.
+                          Ela inverte — cor cheia com texto na superfície —,
+                          que é o mesmo idioma da pastilha "Estorno bancario". */}
+                      <span className={`rounded-full px-2 py-1 text-xs font-bold ${item.sucesso ? 'bg-[var(--sem-success)] text-[var(--c-surface)]' : 'bg-[var(--sem-warning)] text-[var(--c-surface)]'}`}>
                         {item.sucesso ? 'Importado' : 'Nao importado'}
                       </span>
                     </div>
@@ -2550,9 +2814,8 @@ export default function FinanceiroConciliacao() {
         </div>
       )}
 
-      {/* Filtros — linha horizontal */}
-      {error && <div className="app-alert app-alert--error">{error}</div>}
-      {feedback && <div className="app-alert border-emerald-200 bg-emerald-50 text-emerald-700">{feedback}</div>}
+      {/* R16 — as duas faixas soltas de erro/sucesso saíram: quem responde
+          por aviso nesta tela é o <Avisos> do topo, um dono só. */}
 
       {viewMode === 'CONTAS' ? (
         <>
@@ -2564,7 +2827,7 @@ export default function FinanceiroConciliacao() {
                   className="input w-full input-sm"
                   value={dashboardFilters.busca}
                   onChange={(e) => setDashboardFilters((current) => ({ ...current, busca: e.target.value }))}
-                  placeholder="Banco, conta, agencia ou empresa"
+                  placeholder="Banco, conta, agência ou empresa"
                 />
               </label>
               <label className="app-filter-field">
@@ -2580,61 +2843,67 @@ export default function FinanceiroConciliacao() {
               </label>
               <label className="app-filter-field">
                 <span className="app-filter-label">Data inicial</span>
-                <input
+                <DateInputBR
                   className="input w-full input-sm"
-                  type="date"
                   value={dashboardFilters.data_inicial}
                   onChange={(e) => setDashboardFilters((current) => ({ ...current, data_inicial: e.target.value }))}
                 />
               </label>
               <label className="app-filter-field">
                 <span className="app-filter-label">Data final</span>
-                <input
+                <DateInputBR
                   className="input w-full input-sm"
-                  type="date"
                   value={dashboardFilters.data_final}
                   onChange={(e) => setDashboardFilters((current) => ({ ...current, data_final: e.target.value }))}
                 />
               </label>
               <div className="flex gap-2">
-                <button type="submit" className="btn btn-primary btn-sm">Filtrar</button>
+                <button type="submit" className="btn btn-primary btn-sm">Atualizar contas</button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltrosDashboard}>Limpar</button>
               </div>
             </div>
+            {/* R23 — o apoio que impede a etiqueta de mentir: enquanto o
+                recorte digitado difere do aplicado, os cartões abaixo ainda
+                são os do recorte ANTERIOR, e o texto diz isso. */}
+            <p className={`mt-3 text-xs ${rascunhoDashboard ? 'font-semibold text-[var(--sem-warning)]' : 'text-[var(--c-muted)]'}`}>
+              {rascunhoDashboard
+                ? 'Recorte em rascunho: os cartões abaixo ainda mostram o recorte anterior. Clique em "Atualizar contas" para valer.'
+                : 'Este recorte consulta uma conta bancária de cada vez, então ele só vale quando você clica em "Atualizar contas".'}
+            </p>
           </form>
 
           <div className="card sol-surface-card">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex min-w-[120px] flex-1 flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">Contas exibidas</span>
+              <div className="flex flex-1 flex-col">
+                <span className="text-xs uppercase tracking-wide text-[var(--c-muted)]">Contas exibidas</span>
                 <span className="text-sm font-bold text-[var(--c-text)]">{resumoDashboard.contas}</span>
-                <span className="text-[10px] text-[var(--c-muted)]">com conciliacao no filtro</span>
+                <span className="text-xs text-[var(--c-muted)]">com conciliação no filtro</span>
               </div>
-              <div className="flex min-w-[120px] flex-1 flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-amber-600">Pendentes</span>
-                <span className="text-sm font-bold text-amber-700">{resumoDashboard.pendentes}</span>
-                <span className="text-[10px] text-[var(--c-muted)]">aguardando conferencia</span>
+              <div className="flex flex-1 flex-col">
+                <span className="text-xs uppercase tracking-wide text-[var(--sem-warning)]">Pendentes</span>
+                <span className="text-sm font-bold text-[var(--sem-warning)]">{resumoDashboard.pendentes}</span>
+                <span className="text-xs text-[var(--c-muted)]">aguardando conferência</span>
               </div>
-              <div className="flex min-w-[120px] flex-1 flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-emerald-600">Conciliados</span>
-                <span className="text-sm font-bold text-emerald-700">{resumoDashboard.conciliados}</span>
-                <span className="text-[10px] text-[var(--c-muted)]">matches confirmados</span>
+              <div className="flex flex-1 flex-col">
+                <span className="text-xs uppercase tracking-wide text-[var(--sem-success)]">Conciliados</span>
+                <span className="text-sm font-bold text-[var(--sem-success)]">{resumoDashboard.conciliados}</span>
+                <span className="text-xs text-[var(--c-muted)]">matches confirmados</span>
               </div>
-              <div className="flex min-w-[120px] flex-1 flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-slate-500">Ignorados</span>
-                <span className="text-sm font-bold text-slate-600">{resumoDashboard.ignorados}</span>
-                <span className="text-[10px] text-[var(--c-muted)]">descartados</span>
+              <div className="flex flex-1 flex-col">
+                <span className="text-xs uppercase tracking-wide text-[var(--sem-neutral)]">Ignorados</span>
+                <span className="text-sm font-bold text-[var(--sem-neutral)]">{resumoDashboard.ignorados}</span>
+                <span className="text-xs text-[var(--c-muted)]">descartados</span>
               </div>
-              <div className="flex min-w-[150px] flex-1 flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">Movimentacao bruta</span>
+              <div className="flex flex-1 flex-col">
+                <span className="text-xs uppercase tracking-wide text-[var(--c-muted)]">Movimentação bruta</span>
                 <span className="text-sm font-bold text-[var(--c-text)]">{formatCurrency(resumoDashboard.valor_absoluto_total)}</span>
-                <span className="text-[10px] text-[var(--c-muted)]">soma absoluta do filtro</span>
+                <span className="text-xs text-[var(--c-muted)]">soma absoluta do filtro</span>
               </div>
             </div>
           </div>
 
           {loadingContas || loadingContasResumo ? (
-            <div className="app-empty-card sol-surface-card">Carregando contas bancarias...</div>
+            <div className="app-empty-card sol-surface-card">Carregando contas bancárias...</div>
           ) : contasResumo.length === 0 ? (
             <div className="app-empty-card sol-surface-card">Nenhuma conta encontrada com os filtros atuais.</div>
           ) : (
@@ -2642,7 +2911,7 @@ export default function FinanceiroConciliacao() {
               {contasResumo.map(({ conta, resumo, erro }) => {
                 const hasPending = resumo.pendentes > 0;
                 return (
-                  <div key={conta.id} className="card sol-surface-card border border-[var(--c-border)] p-5">
+                  <div key={conta.id} className="card sol-surface-card border border-[var(--c-border)] p-6">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">{getContaBanco(conta)}</p>
@@ -2650,32 +2919,32 @@ export default function FinanceiroConciliacao() {
                         <p className="mt-1 text-sm text-[var(--c-muted)]">
                           Agencia {getContaAgencia(conta)} - Conta {getContaNumero(conta)}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-[var(--c-muted)]">{getContaEmpresaNome(conta)}</p>
+                        <p className="mt-1 truncate text-xs text-[var(--c-muted)]">{getContaEmpresaNome(conta)}</p>
                       </div>
-                      <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${erro ? 'bg-rose-50 text-rose-700' : hasPending ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${erro ? 'bg-[var(--sem-danger-bg)] text-[var(--sem-danger)]' : hasPending ? 'bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]' : 'bg-[var(--sem-success-bg)] text-[var(--sem-success)]'}`}>
                         {erro ? 'Erro' : hasPending ? 'Conferir' : 'Em dia'}
                       </span>
                     </div>
 
-                    <div className="mt-5 grid grid-cols-3 gap-2">
-                      <div className="rounded-xl bg-amber-50 px-3 py-2">
-                        <span className="block text-[10px] uppercase tracking-wide text-amber-700">Pendentes</span>
-                        <strong className="text-lg text-amber-800">{resumo.pendentes}</strong>
+                    <div className="mt-6 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl bg-[var(--sem-warning-bg)] px-3 py-2">
+                        <span className="block text-xs uppercase tracking-wide text-[var(--sem-warning)]">Pendentes</span>
+                        <strong className="text-lg text-[var(--sem-warning)]">{resumo.pendentes}</strong>
                       </div>
-                      <div className="rounded-xl bg-emerald-50 px-3 py-2">
-                        <span className="block text-[10px] uppercase tracking-wide text-emerald-700">Conciliados</span>
-                        <strong className="text-lg text-emerald-800">{resumo.conciliados}</strong>
+                      <div className="rounded-xl bg-[var(--sem-success-bg)] px-3 py-2">
+                        <span className="block text-xs uppercase tracking-wide text-[var(--sem-success)]">Conciliados</span>
+                        <strong className="text-lg text-[var(--sem-success)]">{resumo.conciliados}</strong>
                       </div>
-                      <div className="rounded-xl bg-slate-100 px-3 py-2">
-                        <span className="block text-[10px] uppercase tracking-wide text-slate-600">Ignorados</span>
-                        <strong className="text-lg text-slate-700">{resumo.ignorados}</strong>
+                      <div className="rounded-xl bg-[var(--sem-neutral-bg)] px-3 py-2">
+                        <span className="block text-xs uppercase tracking-wide text-[var(--sem-neutral)]">Ignorados</span>
+                        <strong className="text-lg text-[var(--sem-neutral)]">{resumo.ignorados}</strong>
                       </div>
                     </div>
 
                     <div className="mt-4 flex items-end justify-between gap-3">
                       <div>
-                        <span className="block text-[10px] uppercase tracking-wide text-[var(--c-muted)]">Movimentacao bruta</span>
-                        <strong className="text-base text-[var(--c-text)]">{formatCurrency(resumo.valor_absoluto_total)}</strong>
+                        <span className="block text-xs uppercase tracking-wide text-[var(--c-muted)]">Movimentação bruta</span>
+                        <strong className="text-lg text-[var(--c-text)]">{formatCurrency(resumo.valor_absoluto_total)}</strong>
                       </div>
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirConferenciaManual(conta)}>
                         Conferir manualmente
@@ -2691,7 +2960,7 @@ export default function FinanceiroConciliacao() {
         <>
       <form className="card sol-surface-card" onSubmit={aplicarFiltros}>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="app-filter-field min-w-[130px]">
+          <label className="app-filter-field">
             <span className="app-filter-label">Status</span>
             <select className="input w-full input-sm" value={filters.status}
               onChange={(e) => setFilters((c) => ({ ...c, status: e.target.value }))}>
@@ -2701,7 +2970,7 @@ export default function FinanceiroConciliacao() {
               <option value="TODOS">Todos</option>
             </select>
           </label>
-          <label className="app-filter-field flex-1 min-w-[150px]">
+          <label className="app-filter-field flex-1">
             <span className="app-filter-label">Conta bancária</span>
             <select className="input w-full input-sm" value={filters.conta_bancaria_id} disabled={loadingContas}
               onChange={(e) => setFilters((c) => ({ ...c, conta_bancaria_id: e.target.value }))}>
@@ -2709,49 +2978,57 @@ export default function FinanceiroConciliacao() {
               {contas.map((ct) => <option key={ct.id} value={ct.id}>{ct.nome}</option>)}
             </select>
           </label>
-          <label className="app-filter-field min-w-[130px]">
+          <label className="app-filter-field">
             <span className="app-filter-label">Data inicial</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_inicial}
+            <DateInputBR className="input w-full input-sm" value={filters.data_inicial}
               onChange={(e) => setFilters((c) => ({ ...c, data_inicial: e.target.value }))} />
           </label>
-          <label className="app-filter-field min-w-[130px]">
+          <label className="app-filter-field">
             <span className="app-filter-label">Data final</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_final}
+            <DateInputBR className="input w-full input-sm" value={filters.data_final}
               onChange={(e) => setFilters((c) => ({ ...c, data_final: e.target.value }))} />
           </label>
           <div className="flex gap-2 shrink-0">
-            <button type="submit" className="btn btn-primary btn-sm">Filtrar</button>
+            <button type="submit" className="btn btn-primary btn-sm">Atualizar lançamentos</button>
             <button type="button" className="btn btn-outline btn-sm" onClick={() => {
               const next = { status: 'PENDENTE', conta_bancaria_id: '', data_inicial: '', data_final: '', page: 1, page_size: filters.page_size || 100 };
               setFilters(next); setAppliedFilters(next);
             }}>Limpar</button>
           </div>
         </div>
+        {/* R23 — mesma honestidade da faixa de contas: enquanto o recorte
+            escolhido difere do aplicado, a lista abaixo é a do recorte
+            anterior, e o apoio diz isso em vez de deixar a etiqueta mentir. */}
+        <p className={`mt-3 text-xs ${rascunhoConferencia ? 'font-semibold text-[var(--sem-warning)]' : 'text-[var(--c-muted)]'}`}>
+          {rascunhoConferencia
+            ? 'Recorte em rascunho: a lista abaixo ainda é a do recorte anterior. Clique em "Atualizar lançamentos" para valer.'
+            : 'A lista abaixo muda somente ao clicar em "Atualizar lançamentos".'}
+        </p>
       </form>
 
       {/* Indicadores + Resumo consolidado — linha horizontal */}
       <div className="card sol-surface-card">
         <div className="flex flex-wrap items-center gap-3">
           {resumoFinanceiro.map((item) => (
-            <div key={item.label} className="flex flex-col min-w-[100px] flex-1">
-              <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">{item.label}</span>
+            <div key={item.label} className="flex flex-col flex-1">
+              <span className="text-xs uppercase tracking-wide text-[var(--c-muted)]">{item.label}</span>
               <span className="text-sm font-bold text-[var(--c-text)] tabular-nums">{item.value}</span>
-              <span className="text-[10px] text-[var(--c-muted)]">{item.detail}</span>
+              <span className="text-xs text-[var(--c-muted)]">{item.detail}</span>
             </div>
           ))}
           <div className="h-8 w-px bg-[var(--c-border)] shrink-0 hidden xl:block" />
           <div className="flex items-center gap-3 shrink-0">
             <div className="flex flex-col items-center">
-              <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">Lidos</span>
+              <span className="text-xs uppercase tracking-wide text-[var(--c-muted)]">Lidos</span>
               <span className="text-sm font-bold text-[var(--c-text)]">{importacoes.resumo.total_lidos}</span>
             </div>
             <div className="flex flex-col items-center">
-              <span className="text-[10px] uppercase tracking-wide text-emerald-600">Import.</span>
-              <span className="text-sm font-bold text-emerald-700">{importacoes.resumo.total_importados}</span>
+              <span className="text-xs uppercase tracking-wide text-[var(--sem-success)]">Import.</span>
+              <span className="text-sm font-bold text-[var(--sem-success)]">{importacoes.resumo.total_importados}</span>
             </div>
             <div className="flex flex-col items-center">
-              <span className="text-[10px] uppercase tracking-wide text-amber-600">Ignor.</span>
-              <span className="text-sm font-bold text-amber-700">{importacoes.resumo.total_ignorados}</span>
+              <span className="text-xs uppercase tracking-wide text-[var(--sem-warning)]">Ignor.</span>
+              <span className="text-sm font-bold text-[var(--sem-warning)]">{importacoes.resumo.total_ignorados}</span>
             </div>
           </div>
         </div>
@@ -2761,29 +3038,28 @@ export default function FinanceiroConciliacao() {
       {loading
         ? <div className="app-empty-card sol-surface-card">Carregando lançamentos...</div>
         : (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <ToolbarConciliacao
               meta={dados.meta} filters={filters} setFilters={setFilters} setAppliedFilters={setAppliedFilters}
-              resumoSugestoes={resumoSugestoesPagina} bulkReconciling={bulkReconciling}
-              onConciliarSugeridos={handleConciliarSugeridos} appliedFilters={appliedFilters}
+              resumoSugestoes={resumoSugestoesPagina}
             />
 
             {conciliacoesSelecionadasItens.length > 0 && (
-              <div className="sol-surface-card card flex flex-col gap-3 border border-[var(--c-primary)] bg-blue-50/60 p-3 md:flex-row md:items-center md:justify-between">
+              <div className="sol-surface-card card flex flex-col gap-3 border border-[var(--c-primary)] bg-[var(--sem-info-bg)] p-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[var(--c-text)]">
                     {conciliacoesSelecionadasItens.length} lancamento(s) selecionado(s)
                   </p>
                   <p className="text-xs text-[var(--c-muted)]">
-                    Use para baixar um unico titulo com pagamentos parciais em uma ou mais datas do extrato.
+                    Use para baixar um único título com pagamentos parciais em uma ou mais datas do extrato.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="btn btn-outline btn-sm" onClick={() => setConciliacoesSelecionadas([])}>
-                    Limpar selecao
+                    Limpar seleção
                   </button>
                   <button type="button" className="btn btn-primary btn-sm" onClick={() => setBaixaExtratosModalOpen(true)}>
-                    Baixar titulo com selecionados
+                    Baixar título com selecionados
                   </button>
                 </div>
               </div>
@@ -2820,6 +3096,31 @@ export default function FinanceiroConciliacao() {
             }
 
             <FooterPaginacao meta={dados.meta} onAlterarPagina={alterarPagina} />
+
+            {/*
+              D2 — a tela do financeiro lê AÇÃO → CONTEXTO → HISTÓRICO, e o
+              histórico não existia na tela: o `HistoricoImportacaoItem`
+              estava escrito, completo, e NUNCA era montado. A consulta que
+              o alimenta (`getImportacoesConciliacao`, limit 8) já era
+              disparada a cada recarga — a tela pagava a requisição e jogava
+              a resposta fora, exibindo só os contadores agregados.
+
+              Ele volta ao fim do fluxo, que é o lugar do histórico. Se o
+              cliente não quiser o bloco, o que sai junto é a requisição.
+            */}
+            {importacoes.itens.length > 0 && (
+              <div className="card sol-surface-card">
+                <h2 className="text-lg font-semibold text-[var(--c-text)]">Últimas importações de OFX</h2>
+                <p className="mt-1 text-xs text-[var(--c-muted)]">
+                  Quem importou, quando, e o que cada remessa trouxe — no recorte atual.
+                </p>
+                <div className="mt-4 grid gap-2">
+                  {importacoes.itens.map((item) => (
+                    <HistoricoImportacaoItem key={item.id || `${item.arquivo_hash}-${item.criado_em}`} item={item} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
       }
@@ -2835,16 +3136,16 @@ export default function FinanceiroConciliacao() {
       )}
 
       {estornoTransferenciaModal.open && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-6">
+        <div className="fixed inset-0 z-modal-acima flex items-center justify-center bg-black/40 px-4 py-6">
           <form
-            className="w-full max-w-xl rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5 shadow-2xl"
+            className="w-full max-w-xl rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-6 shadow-2xl"
             onSubmit={handleEstornarTransferencia}
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--c-border)] pb-4">
               <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Estornar transferencia conciliada</h2>
+                <h2 className="text-lg font-semibold text-[var(--c-text)]">Estornar transferência conciliada</h2>
                 <p className="mt-1 text-sm text-[var(--c-muted)]">
-                  A transferencia sera cancelada e todos os lancamentos OFX vinculados voltarao para pendente.
+                  A transferência será cancelada e todos os lançamentos OFX vinculados voltarao para pendente.
                 </p>
               </div>
               <button
@@ -2854,7 +3155,7 @@ export default function FinanceiroConciliacao() {
                 onClick={() => setEstornoTransferenciaModal({ open: false, item: null, motivo: '', processing: false, error: '' })}
               >Fechar</button>
             </div>
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            <div className="mt-4 rounded-xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-4 py-3 text-sm text-[var(--sem-warning)]">
               Transferencia #{estornoTransferenciaModal.item?.transferencia?.id || '-'} · {formatCurrency(Math.abs(Number(estornoTransferenciaModal.item?.valor || 0)))}
             </div>
             <label className="mt-4 block text-sm">
@@ -2864,15 +3165,15 @@ export default function FinanceiroConciliacao() {
                 maxLength={255}
                 value={estornoTransferenciaModal.motivo}
                 onChange={(event) => setEstornoTransferenciaModal((current) => ({ ...current, motivo: event.target.value, error: '' }))}
-                placeholder="Ex.: transferencia conciliada na conta incorreta"
+                placeholder="Ex.: transferência conciliada na conta incorreta"
               />
             </label>
             {estornoTransferenciaModal.error && (
-              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">
+              <div className="mt-3 rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-4 py-3 text-sm text-[var(--sem-danger)]">
                 {estornoTransferenciaModal.error}
               </div>
             )}
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <button type="button" className="btn btn-outline" disabled={estornoTransferenciaModal.processing} onClick={() => setEstornoTransferenciaModal({ open: false, item: null, motivo: '', processing: false, error: '' })}>Cancelar</button>
               <button type="submit" className="btn btn-danger" disabled={estornoTransferenciaModal.processing || !String(estornoTransferenciaModal.motivo || '').trim()}>
                 {estornoTransferenciaModal.processing ? 'Estornando...' : 'Confirmar estorno'}
@@ -2899,6 +3200,7 @@ export default function FinanceiroConciliacao() {
           }}
           onConfirmarCreditoRotativo={handleConfirmarCreditoRotativo}
           onConfirmarTarifa={handleConfirmarTarifa}
+          onConfirmarRendimento={handleConfirmarRendimento}
           onConfirmarEstornoTarifa={handleConfirmarEstornoTarifa}
         />
       )}
@@ -2915,7 +3217,7 @@ export default function FinanceiroConciliacao() {
               await handleConfirmar(conciliacaoId, movimentoId);
             } else {
               await carregarConciliacoes();
-              setFeedback('Título criado e baixado. Verifique as sugestões atualizadas para conciliar.');
+              avisar.sucesso('Título criado e baixado. Verifique as sugestões atualizadas para conciliar.');
             }
           }}
         />
@@ -2923,13 +3225,13 @@ export default function FinanceiroConciliacao() {
 
       {/* Modal: Transferencia entre contas */}
       {transferenciaModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl dark:bg-[var(--c-surface)]">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-xl rounded-2xl bg-[var(--c-surface)] p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] pb-4">
               <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Conciliar transferencia</h2>
-                <p className="mt-0.5 text-sm text-[var(--c-muted)]">
-                  Informe a outra conta envolvida. O sistema define origem e destino pelo sinal do lancamento bancario.
+                <h2 className="text-lg font-semibold text-[var(--c-text)]">Conciliar transferência</h2>
+                <p className="mt-1 text-sm text-[var(--c-muted)]">
+                  Informe a outra conta envolvida. O sistema define origem e destino pelo sinal do lançamento bancário.
                 </p>
                 {transferenciaModal.item && (
                   <div className="mt-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm">
@@ -2962,7 +3264,7 @@ export default function FinanceiroConciliacao() {
                 </select>
               </label>
               {contaAtualTransferencia && contaContraparteTransferencia ? (
-                <div className={`rounded-xl border px-4 py-3 text-sm ${transferenciaEntreEmpresas ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+                <div className={`rounded-xl border px-4 py-3 text-sm ${transferenciaEntreEmpresas ? 'border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]' : 'border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] text-[var(--sem-success)]'}`}>
                   <strong>{transferenciaEntreEmpresas ? 'Transferencia Entre Empresas' : 'Transferencia interna da mesma empresa'}</strong>
                   <div className="mt-1">
                     {getContaEmpresaNome(contaOrigemTransferencia)} para {getContaEmpresaNome(contaDestinoTransferencia)}.
@@ -2975,7 +3277,7 @@ export default function FinanceiroConciliacao() {
                 </div>
               ) : null}
               {transferenciaModal.item?.transferencia_contraparte_ambigua ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <div className="rounded-xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-4 py-3 text-sm text-[var(--sem-warning)]">
                   Ha mais de um lancamento OFX com a mesma data e o valor oposto. Confirme a conta contraparte manualmente; nenhum par sera escolhido automaticamente.
                 </div>
               ) : null}
@@ -3016,7 +3318,7 @@ export default function FinanceiroConciliacao() {
                 </>
               ) : null}
               <label className="text-sm">
-                <span className="mb-1 block text-[var(--c-muted)]">Descricao</span>
+                <span className="mb-1 block text-[var(--c-muted)]">Descrição</span>
                 <input
                   className="input w-full"
                   value={transferenciaModal.descricao}
@@ -3024,7 +3326,7 @@ export default function FinanceiroConciliacao() {
                 />
               </label>
               {transferenciaModal.error && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <div className="rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-4 py-3 text-sm text-[var(--sem-danger)]">
                   {transferenciaModal.error}
                 </div>
               )}
@@ -3041,12 +3343,12 @@ export default function FinanceiroConciliacao() {
 
       {/* Modal: Associação manual */}
       {associacaoModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white dark:bg-[var(--c-surface)] p-5 shadow-2xl">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-[var(--c-surface)] p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] pb-4">
               <div>
                 <h2 className="text-lg font-semibold text-[var(--c-text)]">Associação manual</h2>
-                <p className="mt-0.5 text-sm text-[var(--c-muted)]">
+                <p className="mt-1 text-sm text-[var(--c-muted)]">
                   Escolha o movimento correto. Esta etapa apenas prepara o match; a gravação acontece ao clicar em Conciliar.
                 </p>
                 {associacaoModal.item && (
@@ -3103,12 +3405,12 @@ export default function FinanceiroConciliacao() {
             </form>
 
             {associacaoModal.error && (
-              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{associacaoModal.error}</div>
+              <div className="mt-3 rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-4 py-3 text-sm text-[var(--sem-danger)]">{associacaoModal.error}</div>
             )}
             <div className="mt-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-4 py-2 text-sm text-[var(--c-muted)]">
               {associacaoModal.dados.meta.total} movimento(s) encontrado(s)
             </div>
-            <div className="mt-3 overflow-x-auto rounded-xl border border-[var(--c-border)]">
+            <div className="mt-3">
               <AssociacaoManualTabela
                 loading={associacaoModal.loading}
                 itens={associacaoModal.dados.itens}
@@ -3121,14 +3423,14 @@ export default function FinanceiroConciliacao() {
               />
             </div>
             <div className="mt-3 flex flex-col gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-4 py-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
                 <span className="text-[var(--c-muted)]">Selecionado: <strong className="text-[var(--c-text)]">{formatCurrency(associacaoResumo.totalSelecionado)}</strong></span>
                 <span className="text-[var(--c-muted)]">Extrato: <strong className="text-[var(--c-text)]">{formatCurrency(associacaoResumo.valorEsperado)}</strong></span>
                 {associacaoResumo.selecionados.length > 0 && !associacaoResumo.fechou && !associacaoResumo.ultrapassou ? (
-                  <span className="text-amber-700">Falta {formatCurrency(Math.max(associacaoResumo.diferenca, 0))}</span>
+                  <span className="text-[var(--sem-warning)]">Falta {formatCurrency(Math.max(associacaoResumo.diferenca, 0))}</span>
                 ) : null}
                 {associacaoResumo.ultrapassou ? (
-                  <span className="text-rose-700">Selecao acima do valor pago.</span>
+                  <span className="text-[var(--sem-danger)]">Seleção acima do valor pago.</span>
                 ) : null}
               </div>
               <button
@@ -3140,49 +3442,26 @@ export default function FinanceiroConciliacao() {
                 {associacaoModal.processing ? 'Preparando...' : 'Preparar associação'}
               </button>
             </div>
-            <div className="hidden">
-              {associacaoModal.loading
-                ? <div className="rounded-xl border border-[var(--c-border)] px-4 py-8 text-center text-sm text-[var(--c-muted)]">Carregando movimentos...</div>
-                : associacaoModal.dados.itens.length === 0
-                  ? <div className="rounded-xl border border-dashed border-[var(--c-border)] px-4 py-8 text-center text-sm text-[var(--c-muted)]">Nenhum movimento encontrado com os filtros atuais.</div>
-                  : associacaoModal.dados.itens.map((it) => (
-                      <div key={it.movimento_financeiro_id} className="rounded-xl border border-[var(--c-border)] px-4 py-3">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div className="space-y-1 text-sm">
-                            <p className="font-medium text-[var(--c-text)]">{it.titulo_descricao}</p>
-                            <p className="text-[var(--c-muted)]">{it.parceiro_nome} · {it.tipo} · mov. #{it.movimento_financeiro_id}</p>
-                            <p className="text-[var(--c-muted)]">{formatDate(it.data_movimento)} · {formatCurrency(it.valor_quitacao)}{it.documento ? ` · Doc. ${it.documento}` : ''}</p>
-                            {it.motivos?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 pt-0.5">
-                                {it.motivos.map((m) => <span key={`${it.movimento_financeiro_id}-${m}`} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{m}</span>)}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-start gap-2 md:items-end">
-                            <span className="text-xs uppercase tracking-wide text-[var(--c-muted)]">Score {it.score}</span>
-                            <button type="button" className="btn btn-primary btn-sm"
-                              disabled={associacaoModal.processing || processingId === `confirmar-${associacaoModal.item?.id}-${it.movimento_financeiro_id}`}
-                              onClick={() => handleConfirmar(associacaoModal.item?.id, it.movimento_financeiro_id, { fecharModal: true })}>
-                              {associacaoModal.processing || processingId === `confirmar-${associacaoModal.item?.id}-${it.movimento_financeiro_id}` ? 'Associando...' : 'Associar'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-              }
-            </div>
+            {/*
+              R1/R17 — aqui vivia uma SEGUNDA renderização da mesma lista, em
+              cartões soltos, mantida viva atrás de `className="hidden"` desde a
+              migração para a TabelaPadrao logo acima. Markup morto não é
+              inofensivo: ele reprovava na escala e nas cores, e quem lesse o
+              arquivo veria duas listas onde só existe uma. Removido — a
+              TabelaPadrao acima é a única dona da lista (R16).
+            */}
           </div>
         </div>
       )}
 
       {/* Modal: Associar fatura */}
       {faturaModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-[var(--c-surface)]">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-[var(--c-surface)] p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] pb-4">
               <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Associar fatura de cartao</h2>
-                <p className="mt-0.5 text-sm text-[var(--c-muted)]">
+                <h2 className="text-lg font-semibold text-[var(--c-text)]">Associar fatura de cartão</h2>
+                <p className="mt-1 text-sm text-[var(--c-muted)]">
                   Use esta opcao quando o lancamento bancario pagar uma fatura inteira; os titulos da fatura serao baixados individualmente.
                 </p>
                 {faturaModal.item && (
@@ -3201,7 +3480,7 @@ export default function FinanceiroConciliacao() {
               {[
                 { label: 'Data inicial', field: 'data_inicial', type: 'date' },
                 { label: 'Data final', field: 'data_final', type: 'date' },
-                { label: 'Texto / cartao', field: 'documento', type: 'text', placeholder: 'Cartao, titular ou competencia' },
+                { label: 'Texto / cartão', field: 'documento', type: 'text', placeholder: 'Cartão, titular ou competência' },
                 { label: 'Valor inicial', field: 'valor_inicial', type: 'number' },
                 { label: 'Valor final', field: 'valor_final', type: 'number' }
               ].map(({ label, field, type, placeholder }) => (
@@ -3243,12 +3522,12 @@ export default function FinanceiroConciliacao() {
             </form>
 
             {faturaModal.error && (
-              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{faturaModal.error}</div>
+              <div className="mt-3 rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-4 py-3 text-sm text-[var(--sem-danger)]">{faturaModal.error}</div>
             )}
             <div className="mt-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-4 py-2 text-sm text-[var(--c-muted)]">
               {faturaModal.dados.meta.total} fatura(s) encontrada(s)
             </div>
-            <div className="mt-3 overflow-x-auto rounded-xl border border-[var(--c-border)]">
+            <div className="mt-3">
               <FaturasAssociacaoTabela
                 loading={faturaModal.loading}
                 itens={faturaModal.dados.itens}
@@ -3257,48 +3536,21 @@ export default function FinanceiroConciliacao() {
                 onAssociar={handleConfirmarFatura}
               />
             </div>
-            <div className="hidden">
-              {faturaModal.loading
-                ? <div className="rounded-xl border border-[var(--c-border)] px-4 py-8 text-center text-sm text-[var(--c-muted)]">Carregando faturas...</div>
-                : faturaModal.dados.itens.length === 0
-                  ? <div className="rounded-xl border border-dashed border-[var(--c-border)] px-4 py-8 text-center text-sm text-[var(--c-muted)]">Nenhuma fatura encontrada com os filtros atuais.</div>
-                  : faturaModal.dados.itens.map((fatura) => {
-                    const processingKey = `fatura-${faturaModal.item?.id}-${fatura.id}`;
-                    return (
-                      <div key={fatura.id} className="rounded-xl border border-[var(--c-border)] px-4 py-3">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div className="space-y-1 text-sm">
-                            <p className="font-medium text-[var(--c-text)]">
-                              {fatura.cartao?.nome || 'Cartao'} - competencia {fatura.competencia}
-                            </p>
-                            <p className="text-[var(--c-muted)]">
-                              {formatDate(fatura.data_fechamento)} a vencer em {formatDate(fatura.data_vencimento)}
-                              {' - '}{fatura.total_titulos || 0} titulo(s)
-                            </p>
-                            <p className="text-[var(--c-muted)]">
-                              Valor da fatura: {formatCurrency(fatura.valor_total)}
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-start gap-2 md:items-end">
-                            <span className={statusClass(fatura.status)}>{fatura.status}</span>
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              disabled={faturaModal.processing || processingId === processingKey}
-                              onClick={() => handleConfirmarFatura(faturaModal.item?.id, fatura.id)}
-                            >
-                              {faturaModal.processing || processingId === processingKey ? 'Associando...' : 'Associar fatura'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-              }
-            </div>
+            {/*
+              R1/R17 — aqui vivia uma SEGUNDA renderização da mesma lista, em
+              cartões soltos, mantida viva atrás de `className="hidden"` desde a
+              migração para a TabelaPadrao logo acima. Markup morto não é
+              inofensivo: ele reprovava na escala e nas cores, e quem lesse o
+              arquivo veria duas listas onde só existe uma. Removido — a
+              TabelaPadrao acima é a única dona da lista (R16).
+            */}
           </div>
         </div>
       )}
-    </div>
+
+      {/* R3/R19 — o modal de confirmação do sistema mora aqui; sem ele,
+          `confirmar()` fica pendurado e nada aparece na tela. */}
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

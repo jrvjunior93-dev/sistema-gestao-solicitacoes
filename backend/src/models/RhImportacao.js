@@ -10,10 +10,31 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.STRING(30),
       allowNull: false
     },
+    // PLANILHA | FORMULARIO | INDIVIDUAL — o unico rastro que distingue as origens depois que os
+    // dados se encontram na mesma estrutura (ver a migration 202608260054).
+    origem: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'PLANILHA'
+    },
     competencia: {
       type: DataTypes.STRING(7),
       allowNull: false
     },
+    periodicidade: {
+      type: DataTypes.STRING(15),
+      allowNull: true
+    },
+    periodo_inicio: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
+    },
+    periodo_fim: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
+    },
+    etapa_pagamento: { type: DataTypes.STRING(20), allowNull: true },
+    idempotency_key: { type: DataTypes.STRING(80), allowNull: true },
     empresa_grupo_id: {
       type: DataTypes.INTEGER,
       allowNull: true

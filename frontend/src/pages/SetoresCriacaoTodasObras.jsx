@@ -4,11 +4,14 @@ import {
   getSetoresCriacaoTodasObras,
   salvarSetoresCriacaoTodasObras
 } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, BlocoConteudo, Avisos, useAvisos } from '../components/padrao';
 
 export default function SetoresCriacaoTodasObras() {
   const [setores, setSetores] = useState([]);
   const [selecionados, setSelecionados] = useState(new Set());
   const [salvando, setSalvando] = useState(false);
+  // R3/R19: aviso do sistema no lugar da caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function load() {
@@ -34,6 +37,10 @@ export default function SetoresCriacaoTodasObras() {
     );
   }, [setores]);
 
+  const totalMarcados = useMemo(() => (
+    setoresOrdenados.filter(s => selecionados.has(String(s?.codigo || '').toUpperCase())).length
+  ), [setoresOrdenados, selecionados]);
+
   function alternarSetor(codigo) {
     const key = String(codigo || '').toUpperCase();
     setSelecionados(prev => {
@@ -51,32 +58,43 @@ export default function SetoresCriacaoTodasObras() {
     try {
       setSalvando(true);
       await salvarSetoresCriacaoTodasObras({ setores: Array.from(selecionados) });
-      alert('Configuração salva com sucesso.');
+      avisar.sucesso('Configuração salva com sucesso.');
     } catch (error) {
       console.error(error);
-      alert('Erro ao salvar configuração.');
+      avisar.erro('Erro ao salvar configuração.');
     } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div>
-        <h1 className="page-title">Setores com criação em todas as obras</h1>
-        <p className="page-subtitle mt-1">
-          Setores marcados podem criar solicitação em qualquer obra na tela de Nova Solicitação.
-          A visibilidade das solicitações continua seguindo as regras atuais.
-        </p>
-      </div>
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Setores com criação em todas as obras"
+        contagem={`${totalMarcados} de ${setoresOrdenados.length} selecionados`}
+        descricao="Setores marcados podem criar solicitação em qualquer obra na tela de Nova Solicitação. A visibilidade das solicitações continua seguindo as regras atuais."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar',
+          onClick: salvar,
+          desabilitada: salvando
+        }}
+      />
 
-      <div className="card space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      <BlocoConteudo
+        titulo="Setores habilitados"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {setoresOrdenados.map(setor => {
             const codigo = String(setor?.codigo || '').toUpperCase();
             const marcado = selecionados.has(codigo);
             return (
-              <label key={setor.id} className="flex items-center gap-2 text-sm">
+              <label key={setor.id} className="flex items-center gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm">
                 <input
                   type="checkbox"
                   checked={marcado}
@@ -89,18 +107,7 @@ export default function SetoresCriacaoTodasObras() {
             );
           })}
         </div>
-
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={salvar}
-            disabled={salvando}
-          >
-            {salvando ? 'Salvando...' : 'Salvar'}
-          </button>
-        </div>
-      </div>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

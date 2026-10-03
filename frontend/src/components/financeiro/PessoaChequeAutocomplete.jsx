@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HiOutlineMagnifyingGlass, HiOutlinePlus, HiOutlineXMark } from 'react-icons/hi2';
+import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { criarClienteChequeTerceiro } from '../../services/financeiro';
 import { buscarParceiros } from '../../services/parceiros';
 import { isValidCpfCnpj, maskCpfCnpj, maskPhone, onlyDigits } from '../../utils/formatters';
@@ -54,7 +55,7 @@ function ModalShell({ title, subtitle, children, onClose, maxWidth = 'max-w-3xl'
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-modal-acima flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5"
       role="dialog"
       aria-modal="true"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
@@ -84,6 +85,7 @@ export default function PessoaChequeAutocomplete({
   createButtonLabel = 'Cadastrar pessoa',
   helperText = 'Pesquise qualquer pessoa ativa por nome ou CPF/CNPJ.'
 }) {
+  const campoRef = useRef(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -140,6 +142,31 @@ export default function PessoaChequeAutocomplete({
       || (digits && onlyDigits(person?.cpf_cnpj).includes(digits))
     ));
   }, [allPeople, listQuery]);
+
+  /*
+    A LISTA FECHA AO CLICAR FORA, NAO AO PERDER O FOCO (05/09).
+
+    Saiu o `onBlur` com `setTimeout(150)` — atraso que existia so para o
+    `onClick` da pessoa (que dispara no `mouseup`) chegar antes do fechamento
+    por perda de foco. O que esse mecanismo nao cobria: rolar a pagina, clicar
+    num rotulo ou abrir outro painel com o foco preso no campo mantinham a
+    camada aberta por cima do formulario do cheque, e nao havia `Esc`.
+
+    Entrou o `useFecharAoSair`: `mousedown`/`touchstart` fora e `Escape` no
+    documento inteiro — o Esc e capacidade NOVA aqui.
+
+    O gatilho e `open`, e nao a visibilidade da lista, DE PROPOSITO: enquanto
+    `open`, o input mostra o texto digitado no lugar do rotulo da pessoa ja
+    selecionada. Fechar e o que devolve o rotulo ao campo, e isso precisa
+    valer tambem quando a lista nem chegou a aparecer (menos de 2 letras).
+
+    POR QUE A SELECAO SOBREVIVE: o ref cobre o `div` que embrulha o input, os
+    botoes de atalho E a lista, entao o `mousedown` sobre a opcao e DENTRO — o
+    hook nao fecha, a linha continua montada ate o `mouseup` e o `onClick` do
+    `PersonOption` roda. O `onMouseDown` com `preventDefault()` que a opcao ja
+    tinha continua segurando o foco no input.
+  */
+  useFecharAoSair(campoRef, open, () => setOpen(false));
 
   function selectPerson(person) {
     onSelect(person || null);
@@ -198,7 +225,7 @@ export default function PessoaChequeAutocomplete({
   }
 
   const autocomplete = open && query.trim().length >= 2 ? (
-    <div className="absolute inset-x-0 top-[calc(100%+6px)] z-[145] max-h-64 overflow-y-auto rounded-xl border border-[var(--modal-border)] bg-[var(--modal-bg)] p-1 shadow-xl">
+    <div className="absolute inset-x-0 top-[calc(100%+6px)] z-dropdown max-h-64 overflow-y-auto rounded-xl border border-[var(--modal-border)] bg-[var(--modal-bg)] p-1 shadow-xl">
       {loading ? <div className="px-3 py-3 text-sm text-[var(--c-muted)]">Consultando pessoas...</div> : null}
       {!loading && results.length ? results.map((person) => <PersonOption key={person.id} person={person} onSelect={selectPerson} />) : null}
       {!loading && !results.length ? (
@@ -214,7 +241,7 @@ export default function PessoaChequeAutocomplete({
       <label className="form-control">
         <span>{label}{required ? ' *' : ''}</span>
         <div className="flex min-w-0 gap-2">
-          <div className="relative min-w-0 flex-1">
+          <div ref={campoRef} className="relative min-w-0 flex-1">
             <input
               className="input w-full pr-20"
               aria-required={required}
@@ -222,7 +249,6 @@ export default function PessoaChequeAutocomplete({
               value={open ? query : (selected ? personLabel(selected) : query)}
               placeholder="Digite nome ou CPF/CNPJ"
               onFocus={() => { setQuery(''); setOpen(true); }}
-              onBlur={() => window.setTimeout(() => setOpen(false), 150)}
               onChange={(event) => {
                 if (selected) onSelect(null);
                 setQuery(event.target.value);

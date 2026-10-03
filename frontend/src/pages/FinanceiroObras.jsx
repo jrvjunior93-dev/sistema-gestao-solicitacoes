@@ -1,22 +1,53 @@
+import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { HiOutlineArrowDownTray, HiOutlineBuildingOffice2, HiOutlineDocumentText, HiOutlineEye, HiOutlineXMark } from 'react-icons/hi2';
+import { HiOutlineArrowDownTray, HiOutlineArrowUpTray, HiOutlineBuildingOffice2, HiOutlineDocumentText, HiOutlineEye, HiOutlineXMark } from 'react-icons/hi2';
+import OverlayModal from '../components/ui/OverlayModal';
 import {
   confirmarImportacaoCustosHistoricosObra,
+  getArquivosDoTitulo,
   getCategoriasFinanceiras,
   getRelatorioFinanceiroObras,
   gerarRelatorioFinanceiroObrasPdf,
   previewImportacaoCustosHistoricosObra
 } from '../services/financeiro';
+import { fileUrl } from '../services/api';
 import { getEmpresasGrupo } from '../services/empresasGrupo';
 import { getMinhasObras } from '../services/obras';
 import { buscarParceiros } from '../services/parceiros';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import {
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
 
-const STORAGE_KEY = 'fluxy.financeiro.financeiroObras.columnWidths';
-const IMPORT_PREVIEW_STORAGE_KEY = 'fluxy.financeiro.financeiroObras.importPreview.columnWidths';
 const IMPORT_PREVIEW_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const MODELO_IMPORTACAO_URL = `${import.meta.env.BASE_URL}modelos/modelo-importacao-financeiro-obras.xlsx`;
+
+function baixarModeloImportacao() {
+  const link = document.createElement('a');
+  link.href = MODELO_IMPORTACAO_URL;
+  link.download = 'modelo-importacao-financeiro-obras.xlsx';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+/*
+  R23 — REGIME DE CONSULTA CARA, DECLARADO.
+
+  Marcar um filtro NÃO aplica: as marcas são RASCUNHO até "Filtrar".
+  A tela tem NOVE dimensões que o usuário combina (análise,
+  data inicial, data final, tipo, busca, obra, empresa, plano
+  financeiro) e a consulta varre movimentos, títulos, histórico legado e
+  fretes do período — muito além dos "4+ dimensões" do critério.
+
+  O botão Filtrar aplica a consulta; Gerar relatório produz PDF dos filtros aplicados.
+*/
 const APOIO_RASCUNHO = 'Os filtros só valem depois de "Filtrar" — até o clique, a marca é rascunho.';
 
 function getTodayIso() {
@@ -51,40 +82,13 @@ const ANALISE_OPTIONS = [
   {
     value: 'COMPROMETIDO',
     label: 'Comprometido',
-    description: 'Baixas e historico pela data de pagamento + saldos pelo vencimento.'
+    description: 'Baixas e histórico pela data de pagamento + saldos pelo vencimento.'
   },
   {
     value: 'A_REALIZAR',
     label: 'A realizar',
     description: 'Saldo em aberto dos titulos, pela data de vencimento.'
   }
-];
-
-const TABLE_COLUMNS = [
-  { key: 'data_baixa', width: 112, minWidth: 96 },
-  { key: 'data_vencimento', width: 112, minWidth: 96 },
-  { key: 'parceiro_nome', width: 230, minWidth: 150 },
-  { key: 'titulo_parcela', width: 150, minWidth: 116 },
-  { key: 'documento', width: 220, minWidth: 140 },
-  { key: 'plano_financeiro', width: 280, minWidth: 160 },
-  { key: 'credito', width: 130, minWidth: 110 },
-  { key: 'debito', width: 130, minWidth: 110 },
-  { key: 'saldo', width: 130, minWidth: 110 },
-  { key: 'obra_nome', width: 210, minWidth: 140 },
-  { key: 'empresa_nome', width: 200, minWidth: 140 },
-  { key: 'status_titulo', width: 130, minWidth: 110 }
-];
-
-const IMPORT_PREVIEW_COLUMNS = [
-  { key: 'row_number', width: 82, minWidth: 72 },
-  { key: 'status', width: 112, minWidth: 96 },
-  { key: 'data_pagamento', width: 112, minWidth: 96 },
-  { key: 'parceiro_nome', width: 250, minWidth: 160 },
-  { key: 'documento', width: 160, minWidth: 120 },
-  { key: 'plano_financeiro', width: 260, minWidth: 160 },
-  { key: 'credito', width: 150, minWidth: 124 },
-  { key: 'debito', width: 150, minWidth: 124 },
-  { key: 'observacao', width: 260, minWidth: 160 }
 ];
 
 function compact(params = {}) {
@@ -104,15 +108,32 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
+/*
+  R25 — a pastilha de status vem dos tokens semânticos, não da paleta crua
+  do Tailwind. Os tons anteriores (sky/indigo/cyan/emerald/amber/slate)
+  não têm par no tema escuro e não passam pelo piso de contraste do
+  ThemeContext (R24). O sistema tem quatro famílias — success, warning,
+  danger, info — e uma neutra; os sete status caem nelas SEM mudar o
+  significado de nenhum: quitado = success, parcial = warning, previsão e
+  frete = info, histórico e aberto = neutro.
+*/
+const STATUS_PILL = {
+  // Classes ESCRITAS POR EXTENSO de propósito: o Tailwind varre o código
+  // atrás de literais, e classe montada por template (`bg-[var(--sem-${x})]`)
+  // nunca é gerada — o CSS sai sem ela e a pastilha fica sem cor. É a
+  // mesma família de defeito da R24: parece certo e não chega à tela.
+  success: 'app-status-pill bg-[var(--sem-success-bg)] text-[var(--sem-success)]',
+  warning: 'app-status-pill bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]',
+  info: 'app-status-pill bg-[var(--sem-info-bg)] text-[var(--sem-info)]',
+  neutral: 'app-status-pill bg-[var(--sem-neutral-bg)] text-[var(--sem-neutral)]'
+};
+
 function statusClass(value) {
   const normalized = String(value || '').toUpperCase();
-  if (normalized === 'PREVISAO') return 'app-status-pill bg-sky-100 text-sky-700';
-  if (normalized === 'HISTORICO') return 'app-status-pill bg-indigo-100 text-indigo-700';
-  if (normalized.startsWith('FRETE_')) return 'app-status-pill bg-cyan-100 text-cyan-800';
-  if (normalized === 'QUITADO') return 'app-status-pill bg-emerald-100 text-emerald-700';
-  if (normalized === 'PARCIAL') return 'app-status-pill bg-amber-100 text-amber-700';
-  if (normalized === 'ABERTO') return 'app-status-pill bg-slate-100 text-slate-700';
-  return 'app-status-pill bg-slate-100 text-slate-600';
+  if (normalized === 'QUITADO') return STATUS_PILL.success;
+  if (normalized === 'PARCIAL') return STATUS_PILL.warning;
+  if (normalized === 'PREVISAO' || normalized.startsWith('FRETE_')) return STATUS_PILL.info;
+  return STATUS_PILL.neutral;
 }
 
 function formatStatus(value) {
@@ -130,42 +151,38 @@ function csvValue(value) {
   return text;
 }
 
-function Metric({ label, value, detail, tone = 'default' }) {
-  const color = tone === 'positive' ? '#047857' : tone === 'negative' ? '#b91c1c' : 'var(--c-text)';
-  return (
-    <div className="app-metric-card">
-      <span className="app-filter-label">{label}</span>
-      <strong className="text-xl" style={{ color }}>{value}</strong>
-      <small className="text-[var(--c-muted)]">{detail}</small>
-    </div>
-  );
+/*
+  O ladrilho de dado único é o `StatTile` do sistema (StatGrid.jsx). Os
+  dois cartões locais que existiam aqui — `Metric` e `ImportMetric` —
+  traziam cada um a sua própria paleta crua, o seu próprio tamanho de
+  fonte fora da escala e, no caso do `Metric`, a classe `.app-metric-card`,
+  que NUNCA foi declarada em CSS nenhum (fantasma apontado pela prova
+  `scripts/provas/tokensExistem.mjs`): o cartão era um `div` sem estilo
+  nenhum, com o texto solto por cima do canvas (B5).
+
+  `tom` do StatTile é semântico e vem de token: success/warning/danger.
+*/
+function tomDoValor(tone) {
+  if (tone === 'positive') return 'success';
+  if (tone === 'negative') return 'danger';
+  if (tone === 'warning') return 'warning';
+  return undefined;
 }
 
-function ImportMetric({ label, value, detail, tone = 'default' }) {
-  const toneClass =
-    tone === 'positive'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-      : tone === 'negative'
-        ? 'border-rose-200 bg-rose-50 text-rose-900'
-        : tone === 'warning'
-          ? 'border-amber-200 bg-amber-50 text-amber-900'
-          : 'border-slate-200 bg-slate-50 text-slate-900';
-
-  return (
-    <div className={`rounded-lg border px-3 py-2 ${toneClass}`}>
-      <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">{label}</span>
-      <strong className="mt-1 block text-lg leading-tight">{value}</strong>
-      <small className="mt-1 block text-xs opacity-75">{detail}</small>
-    </div>
-  );
-}
-
-export default function FinanceiroObras() {
+/*
+  `embutido` — mesma leitura da FinanceiroDre: esta tela tem rota própria
+  (/financeiro/relatorios/financeiro-obras) e TAMBÉM é renderizada dentro
+  do painel do hub de Relatórios, que já desenha a faixa fixa com o título
+  do relatório escolhido. Sem esta chave são dois `.app-page-header` na
+  mesma rolagem e o mesmo título duas vezes (R16/B3). Prop opcional com
+  padrão que preserva o comportamento de hoje (R21).
+*/
+export default function FinanceiroObras({ embutido = false }) {
+  const { avisos, avisar, fechar: fecharAviso } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS);
   const [relatorio, setRelatorio] = useState({ filtros: {}, resumo: {}, linhas: [] });
-  const [pagina, setPagina] = useState(1);
-  const [tamanhoPagina, setTamanhoPagina] = useState(25);
   const [obras, setObras] = useState([]);
   const [empresas, setEmpresas] = useState([]);
   const [parceiros, setParceiros] = useState([]);
@@ -231,7 +248,6 @@ export default function FinanceiroObras() {
           resumo: data?.resumo || {},
           linhas: Array.isArray(data?.linhas) ? data.linhas : []
         });
-        setPagina(1);
       })
       .catch((err) => {
         if (!active) return;
@@ -246,14 +262,6 @@ export default function FinanceiroObras() {
       active = false;
     };
   }, [appliedFilters]);
-
-  const totalLinhas = relatorio.linhas.length;
-  const totalPaginas = tamanhoPagina === 'ALL' ? 1 : Math.max(1, Math.ceil(totalLinhas / tamanhoPagina));
-  const paginaAtual = Math.min(pagina, totalPaginas);
-  const linhasVisiveis = useMemo(() => tamanhoPagina === 'ALL'
-    ? relatorio.linhas
-    : relatorio.linhas.slice((paginaAtual - 1) * tamanhoPagina, paginaAtual * tamanhoPagina),
-  [relatorio.linhas, paginaAtual, tamanhoPagina]);
 
   useEffect(() => () => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -276,6 +284,32 @@ export default function FinanceiroObras() {
     const start = (safePage - 1) * importPreviewPageSize;
     return importPreviewRows.slice(start, start + importPreviewPageSize);
   }, [importPreviewPage, importPreviewPageSize, importPreviewRows, importPreviewTotalPages]);
+
+  /**
+   * ITEM 22 (23/08): clicando na linha, os arquivos daquele pagamento.
+   *
+   * Nem `anexos` nem `comprovantes` apontam para o titulo — as duas apontam para a SOLICITACAO. Por
+   * isso o que se ve aqui sao os arquivos da solicitacao vinculada, e por isso um titulo importado
+   * do historico ou lancado a mao aparece com uma explicacao em vez de uma janela vazia.
+   */
+  const [arquivosModal, setArquivosModal] = useState(null);
+  const [arquivosLoading, setArquivosLoading] = useState(false);
+  const [arquivosErro, setArquivosErro] = useState('');
+
+  async function abrirArquivos(linha) {
+    if (!linha?.titulo_id) return;
+    setArquivosErro('');
+    setArquivosLoading(true);
+    setArquivosModal({ carregando: true, titulo_codigo: linha.titulo_parcela || linha.titulo_id });
+    try {
+      setArquivosModal(await getArquivosDoTitulo(linha.titulo_id));
+    } catch (error) {
+      setArquivosErro(error?.message || 'Erro ao buscar os arquivos.');
+      setArquivosModal(null);
+    } finally {
+      setArquivosLoading(false);
+    }
+  }
 
   function setFilter(name, value) {
     setFilters((current) => ({ ...current, [name]: value }));
@@ -386,6 +420,18 @@ export default function FinanceiroObras() {
     }
   }
 
+  /*
+    R26 + CONSENTIMENTO (DoD) — a pré-visualização, o arquivo e as opções
+    são FIXADOS antes do `await` da confirmação. O servidor relê esse arquivo
+    e compara o digest das linhas antes de gravar; assim uma troca enquanto
+    a pergunta está aberta não importa conteúdo diferente do aprovado.
+
+    E o número citado vem da COLEÇÃO DA PRÉVIA, com o MESMO
+    critério do servidor (`status === 'VALIDA'`, obraCustoHistoricoService)
+    — não do `resumo.importaveis`, que é um número paralelo, e muito menos
+    da página visível da pré-visualização, que mostra 25 de N e seria
+    exatamente o "pergunta sobre 25 e importa 900".
+  */
   async function confirmarImportacao() {
     const lote = importPreview;
     const arquivo = importForm.file;
@@ -394,10 +440,21 @@ export default function FinanceiroObras() {
       empresa_id: importForm.empresa_id,
       categoria_financeira_id: importForm.categoria_financeira_id
     };
-    const validas = Array.isArray(lote?.linhas)
-      ? lote.linhas.filter((linha) => linha.status === 'VALIDA')
-      : [];
-    if (!validas.length || !arquivo || !lote?.preview_digest || importLoading) return;
+    const linhasDoLote = Array.isArray(lote?.linhas) ? lote.linhas : [];
+    const linhasValidas = linhasDoLote.filter(
+      (linha) => String(linha.status || '').toUpperCase() === 'VALIDA'
+    );
+    if (!linhasValidas.length || !arquivo || !lote?.preview_digest) return;
+
+    const { ok } = await confirmar({
+      titulo: 'Confirmar importação de custos históricos',
+      mensagem: `Importar ${linhasValidas.length} linha(s) valida(s) de "${lote.arquivo_nome || 'planilha'}" para o historico da obra? `
+        + 'As linhas entram no Realizado e no Comprometido do Financeiro de Obras e nao geram titulos, baixas, DRE nem movimento bancario. '
+        + 'Esta acao nao pode ser desfeita por esta tela.',
+      rotuloConfirmar: 'Importar',
+      destrutiva: true
+    });
+    if (!ok) return;
 
     setImportLoading(true);
     setImportError('');
@@ -411,13 +468,18 @@ export default function FinanceiroObras() {
       if (opcoes.categoria_financeira_id) formData.append('categoria_financeira_id', opcoes.categoria_financeira_id);
       const resultado = await confirmarImportacaoCustosHistoricosObra(formData);
       fecharImportModal();
-      const datas = validas.map((linha) => linha.data_pagamento)
+      const importados = Number(resultado?.resumo?.importados ?? linhasValidas.length);
+      const datas = linhasValidas.map((linha) => linha.data_pagamento)
         .filter((data) => /^\d{4}-\d{2}-\d{2}$/.test(String(data)))
         .sort();
-      if (Number(resultado?.resumo?.importados || 0) > 0 && datas.length) {
+      if (importados > 0 && datas.length) {
+        // A consulta inicia no mes corrente; sem ajustar o periodo, o legado
+        // recem-importado aparenta nao ter entrado no Financeiro de Obras.
         const recorte = {
           ...DEFAULT_FILTERS,
-          obra_id: String(validas[0].obra_id || ''),
+          analise: 'REALIZADO',
+          incluir_historico: '1',
+          obra_id: String(linhasValidas[0].obra_id || ''),
           data_inicial: datas[0],
           data_final: datas[datas.length - 1]
         };
@@ -426,6 +488,7 @@ export default function FinanceiroObras() {
       } else {
         setAppliedFilters((current) => ({ ...current }));
       }
+      avisar.sucesso(`${importados} linha(s) histórica(s) importada(s). A consulta Realizado foi ajustada para a obra e as datas de pagamento da planilha.`);
     } catch (err) {
       setImportError(err?.message || 'Erro ao confirmar importacao');
     } finally {
@@ -467,37 +530,89 @@ export default function FinanceiroObras() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `financeiro-obras-${filters.analise.toLowerCase()}-${filters.data_inicial || 'inicio'}-${filters.data_final || 'fim'}.csv`;
+    /*
+      O NOME DO ARQUIVO DESCREVE O QUE ESTÁ DENTRO DELE.
+
+      As linhas exportadas são `relatorio.linhas`, ou seja, o recorte
+      APLICADO. O nome vinha de `filters`, o rascunho: bastava mexer num
+      filtro sem clicar em "Gerar relatorio" para sair um CSV chamado
+      "realizado-01/01-31/01" com dados de "comprometido" de outro
+      período. Sob o regime de rascunho da R23 isso deixa de ser detalhe:
+      o arquivo sai da tela e é lido depois, longe dela.
+    */
+    link.download = `financeiro-obras-${String(appliedFilters.analise || '').toLowerCase()}-${relatorio.filtros.data_inicial || appliedFilters.data_inicial || 'inicio'}-${relatorio.filtros.data_final || appliedFilters.data_final || 'fim'}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
 
+  /*
+    D3 — as duas ações ficam VISÍVEIS, com peso declarado: importar
+    histórico é a única que ESCREVE, então é a primária sólida; exportar
+    CSV lê o que já está na tela e fica em contorno. Nenhuma vai para o
+    menu "⋯".
+  */
+  const acoesDaTela = {
+    acaoPrincipal: {
+      rotulo: 'Importar histórico',
+      icone: <HiOutlineArrowUpTray aria-hidden="true" />,
+      onClick: () => setImportModalOpen(true)
+    },
+    secundarias: [
+      {
+        rotulo: 'Baixar modelo',
+        icone: <HiOutlineArrowDownTray aria-hidden="true" />,
+        onClick: baixarModeloImportacao,
+        title: 'Baixa a planilha para importar custos históricos'
+      },
+      {
+        rotulo: 'Exportar CSV',
+        icone: <HiOutlineArrowDownTray aria-hidden="true" />,
+        onClick: exportarCsv,
+        desabilitada: !relatorio.linhas.length,
+        title: 'Exporta as linhas carregadas neste recorte'
+      }
+    ]
+  };
+
   return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Financeiro de Obras</h1>
-            <p className="page-subtitle">
-              Relatorio de custo por obra baseado nos titulos financeiros, com visao realizada, comprometida e a realizar.
-            </p>
-          </div>
-          <div className="app-page-actions">
+    <Pagina>
+      {embutido ? null : (
+        <PageHeader
+          titulo="Financeiro de Obras"
+          contagem={`${relatorio.resumo.quantidade_linhas || 0} linha(s)`}
+          descricao="Custo por obra nas visões realizada, comprometida e a realizar."
+          acaoPrincipal={acoesDaTela.acaoPrincipal}
+          secundarias={acoesDaTela.secundarias}
+        />
+      )}
+
+      {/* Embutido no hub não existe faixa fixa para pendurar as ações —
+          elas continuam VISÍVEIS num bloco próprio, nunca escondidas. */}
+      {embutido ? (
+        <div className="card sol-surface-card flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-[var(--c-muted)]">{APOIO_RASCUNHO}</span>
+          <div className="app-actionbar">
             <a className="btn btn-outline" href={MODELO_IMPORTACAO_URL} download="modelo-importacao-financeiro-obras.xlsx">
               <HiOutlineArrowDownTray aria-hidden="true" /> Baixar modelo
             </a>
-            <button type="button" className="btn btn-outline" onClick={() => setImportModalOpen(true)}>
-              Importar historico
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={exportarCsv}
+              disabled={!relatorio.linhas.length}
+            >
+              <HiOutlineArrowDownTray aria-hidden="true" /> Exportar CSV
             </button>
-            <button type="button" className="btn btn-outline" onClick={exportarCsv} disabled={!relatorio.linhas.length}>
-              <HiOutlineArrowDownTray /> Exportar CSV
+            <button type="button" className="btn btn-primary" onClick={() => setImportModalOpen(true)}>
+              <HiOutlineArrowUpTray aria-hidden="true" /> Importar historico
             </button>
-            <Link to="/financeiro/relatorios" className="btn btn-outline">Voltar para relatorios</Link>
           </div>
         </div>
-      </div>
+      ) : null}
+
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       <form className="card sol-surface-card" onSubmit={aplicarFiltros}>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -511,11 +626,11 @@ export default function FinanceiroObras() {
           </label>
           <label className="app-filter-field">
             <span className="app-filter-label">Data inicial</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_inicial} onChange={(e) => setFilter('data_inicial', e.target.value)} />
+            <DateInputBR className="input w-full input-sm" value={filters.data_inicial} onChange={(e) => setFilter('data_inicial', e.target.value)} />
           </label>
           <label className="app-filter-field">
             <span className="app-filter-label">Data final</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_final} onChange={(e) => setFilter('data_final', e.target.value)} />
+            <DateInputBR className="input w-full input-sm" value={filters.data_final} onChange={(e) => setFilter('data_final', e.target.value)} />
           </label>
           <label className="app-filter-field">
             <span className="app-filter-label">Tipo</span>
@@ -527,7 +642,7 @@ export default function FinanceiroObras() {
           </label>
           <label className="app-filter-field">
             <span className="app-filter-label">Busca</span>
-            <input className="input w-full input-sm" value={filters.q} onChange={(e) => setFilter('q', e.target.value)} placeholder="Titulo, documento, parceiro..." />
+            <input className="input w-full input-sm" value={filters.q} onChange={(e) => setFilter('q', e.target.value)} placeholder="Título, documento, parceiro..." />
           </label>
         </div>
 
@@ -572,7 +687,7 @@ export default function FinanceiroObras() {
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-start gap-2 text-sm text-[var(--c-muted)]">
-            <HiOutlineBuildingOffice2 className="mt-0.5" />
+            <HiOutlineBuildingOffice2 className="mt-1" aria-hidden="true" />
             <span>{analiseAtual.description}</span>
           </div>
           {['REALIZADO', 'COMPROMETIDO'].includes(filters.analise) ? (
@@ -586,6 +701,12 @@ export default function FinanceiroObras() {
             </label>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
+            {/*
+              R23 — o aviso por extenso mora AQUI, junto do botão. Não vai
+              para a `descricao` do PageHeader porque aquele apoio é de uma
+              linha só e trunca (R5/C2): sumiria exatamente a parte que
+              impede a leitura errada.
+            */}
             <span className="text-sm text-[var(--c-muted)]">{APOIO_RASCUNHO}</span>
             <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>Limpar</button>
             <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
@@ -603,12 +724,11 @@ export default function FinanceiroObras() {
       {error ? <div className="app-alert app-alert--error">{error}</div> : null}
 
       {pdfModalOpen ? (
-        <div role="dialog" aria-modal="true" aria-label="Relatório financeiro de obras" className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
-          <div className="card sol-surface-card flex w-full max-w-[1500px] max-h-[90vh] flex-col overflow-hidden p-0">
-            <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
+        <OverlayModal rotulo="Relatório financeiro de obras" largura="1500px" onFechar={fecharPdf}>
+          <header data-modal="cabecalho" className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
             <div>
               <h2 className="text-lg font-semibold text-[var(--c-text)]">Relatório financeiro de obras</h2>
-              <p className="text-xs text-[var(--c-muted)]">PDF de todas as linhas dos filtros aplicados, respeitando seu acesso.</p>
+              <p className="text-xs text-[var(--c-muted)]">PDF do período e dos filtros aplicados, respeitando seu acesso.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {pdfUrl ? (
@@ -627,8 +747,8 @@ export default function FinanceiroObras() {
                 <HiOutlineXMark className="h-4 w-4" />
               </button>
             </div>
-            </header>
-            <div className="min-h-0 bg-[var(--ui-surface-soft)] p-2 sm:p-3" style={{ height: 'min(75dvh, 750px)' }}>
+          </header>
+          <div className="bg-[var(--ui-surface-soft)] p-2 sm:p-3" style={{ height: 'min(75dvh, 750px)' }}>
             {pdfLoading ? (
               <div className="flex h-full items-center justify-center bg-[var(--c-surface)] text-sm font-semibold text-[var(--c-text)]">
                 Preparando o relatório filtrado...
@@ -645,26 +765,35 @@ export default function FinanceiroObras() {
               <iframe src={pdfUrl} title="Visualização do relatório financeiro de obras"
                 className="h-full w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]" />
             ) : null}
-            </div>
           </div>
-        </div>
+        </OverlayModal>
       ) : null}
 
-      <div className="app-summary-grid">
-        <Metric label="Credito" value={formatCurrency(relatorio.resumo.credito_total)} detail={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a receber no recorte' : 'Entradas no recorte'} tone="positive" />
-        <Metric label="Debito" value={formatCurrency(relatorio.resumo.debito_total)} detail={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a pagar no recorte' : 'Saidas no recorte'} tone="negative" />
-        <Metric
+      <StatGrid colunas={4}>
+        <StatTile
+          label="Crédito"
+          valor={formatCurrency(relatorio.resumo.credito_total)}
+          sub={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a receber no período' : 'Entradas no período filtrado'}
+          tom={tomDoValor('positive')}
+        />
+        <StatTile
+          label="Débito"
+          valor={formatCurrency(relatorio.resumo.debito_total)}
+          sub={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a pagar no período' : 'Saídas no período filtrado'}
+          tom={tomDoValor('negative')}
+        />
+        <StatTile
           label="Saldo"
-          value={formatCurrency(relatorio.resumo.saldo_total)}
-          detail={`${relatorio.resumo.quantidade_linhas || 0} linha(s)`}
-          tone={Number(relatorio.resumo.saldo_total || 0) >= 0 ? 'positive' : 'negative'}
+          valor={formatCurrency(relatorio.resumo.saldo_total)}
+          sub={`${relatorio.resumo.quantidade_linhas || 0} linha(s) no período filtrado`}
+          tom={tomDoValor(Number(relatorio.resumo.saldo_total || 0) >= 0 ? 'positive' : 'negative')}
         />
-        <Metric
-          label="Titulos"
-          value={String(relatorio.resumo.titulos || 0)}
-          detail={`${relatorio.resumo.movimentos || 0} baixa(s) / ${relatorio.resumo.historicos || 0} historico(s) / ${relatorio.resumo.fretes || 0} frete(s)`}
+        <StatTile
+          label="Títulos"
+          valor={String(relatorio.resumo.titulos || 0)}
+          sub={`${relatorio.resumo.movimentos || 0} baixa(s) / ${relatorio.resumo.historicos || 0} histórico(s) / ${relatorio.resumo.fretes || 0} frete(s)`}
         />
-      </div>
+      </StatGrid>
 
       <section className="card sol-surface-card app-dense-table-card financeiro-obras-detalhamento-card">
         <div className="app-dense-table-header">
@@ -675,94 +804,142 @@ export default function FinanceiroObras() {
           </p>
         </div>
 
-        <div className="app-dense-table-wrapper financeiro-obras-table-wrapper">
-          <ResizableTable columns={TABLE_COLUMNS} storageKey={STORAGE_KEY} className="app-dense-data-table financeiro-obras-table">
-            <thead>
-              <tr>
-                <ResizableTh columnKey="data_baixa">Baixa</ResizableTh>
-                <ResizableTh columnKey="data_vencimento">Vencto</ResizableTh>
-                <ResizableTh columnKey="parceiro_nome">Cliente/Fornecedor</ResizableTh>
-                <ResizableTh columnKey="titulo_parcela">Titulo/Parcela</ResizableTh>
-                <ResizableTh columnKey="documento">Documento</ResizableTh>
-                <ResizableTh columnKey="plano_financeiro">Plano financeiro</ResizableTh>
-                <ResizableTh columnKey="credito" className="text-right">Credito</ResizableTh>
-                <ResizableTh columnKey="debito" className="text-right">Debito</ResizableTh>
-                <ResizableTh columnKey="saldo" className="text-right">Saldo</ResizableTh>
-                <ResizableTh columnKey="obra_nome">Obra</ResizableTh>
-                <ResizableTh columnKey="empresa_nome">Empresa</ResizableTh>
-                <ResizableTh columnKey="status_titulo">Status</ResizableTh>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={12} className="text-center text-[var(--c-muted)]">Carregando financeiro de obras...</td>
-                </tr>
-              ) : relatorio.linhas.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="text-center text-[var(--c-muted)]">Nenhum titulo encontrado para os filtros selecionados.</td>
-                </tr>
-              ) : (
-                linhasVisiveis.map((linha) => (
-                  <tr key={linha.id}>
-                    <td>{formatDate(linha.data_baixa)}</td>
-                    <td>{formatDate(linha.data_vencimento)}</td>
-                    <td>
-                      <strong className="block text-[var(--c-text)]">{linha.parceiro_nome || '-'}</strong>
-                      <small className="text-[var(--c-muted)]">{linha.parceiro_cpf_cnpj || ''}</small>
-                    </td>
-                    <td>{linha.titulo_parcela || '-'}</td>
-                    <td className="text-xs">{linha.documento || '-'}</td>
-                    <td>
-                      <span className="line-clamp-2">{linha.plano_financeiro || '-'}</span>
-                    </td>
-                    <td className="text-right text-emerald-700 font-semibold">{linha.credito ? formatCurrency(linha.credito) : '-'}</td>
-                    <td className="text-right text-rose-700 font-semibold">{linha.debito ? formatCurrency(linha.debito) : '-'}</td>
-                    <td className="text-right font-semibold">{formatCurrency(linha.saldo)}</td>
-                    <td>{linha.obra_codigo ? `${linha.obra_codigo} - ${linha.obra_nome || ''}` : (linha.obra_nome || '-')}</td>
-                    <td>{linha.empresa_nome || '-'}</td>
-                    <td><span className={statusClass(linha.status_titulo)}>{formatStatus(linha.status_titulo)}</span></td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </ResizableTable>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] px-3 py-2 text-sm text-[var(--c-muted)]">
-          <span>
-            {totalLinhas === 0 ? 'Nenhuma linha' : `Exibindo ${tamanhoPagina === 'ALL' ? 1 : (paginaAtual - 1) * tamanhoPagina + 1}-${tamanhoPagina === 'ALL' ? totalLinhas : Math.min(paginaAtual * tamanhoPagina, totalLinhas)} de ${totalLinhas} linhas`}
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="financeiro-obras-tamanho-pagina">Linhas por página</label>
-            <select id="financeiro-obras-tamanho-pagina" className="input input-sm" value={tamanhoPagina}
-              onChange={(event) => { setTamanhoPagina(event.target.value === 'ALL' ? 'ALL' : Number(event.target.value)); setPagina(1); }}>
-              {[25, 50, 100, 200, 500].map((valor) => <option key={valor} value={valor}>{valor}</option>)}
-              <option value="ALL">Todos</option>
-            </select>
-            <button type="button" className="btn btn-outline btn-sm" disabled={paginaAtual <= 1 || tamanhoPagina === 'ALL'}
-              onClick={() => setPagina((atual) => Math.max(1, atual - 1))}>Anterior</button>
-            <span>Página {paginaAtual} de {totalPaginas}</span>
-            <button type="button" className="btn btn-outline btn-sm" disabled={paginaAtual >= totalPaginas || tamanhoPagina === 'ALL'}
-              onClick={() => setPagina((atual) => Math.min(totalPaginas, atual + 1))}>Próxima</button>
-          </div>
-        </div>
+        <TabelaPadrao
+          colunas={[
+            { id: 'data_baixa', titulo: 'Baixa', tipo: 'data', render: (linha) => formatDate(linha.data_baixa) },
+            { id: 'data_vencimento', titulo: 'Vencto', tipo: 'data', render: (linha) => formatDate(linha.data_vencimento) },
+            {
+              id: 'parceiro_nome',
+              titulo: 'Cliente/Fornecedor',
+              // R17: o parceiro NOMEIA a linha do detalhamento.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (linha) => (
+                <div data-testid={`linha-titulo-${linha.titulo_id || 'sem-titulo'}`}>
+                  <strong className="block text-[var(--c-text)]">{linha.parceiro_nome || '-'}</strong>
+                  <small className="text-[var(--c-muted)]">{linha.parceiro_cpf_cnpj || ''}</small>
+                </div>
+              )
+            },
+            { id: 'titulo_parcela', titulo: 'Título/Parcela', tipo: 'codigo', render: (linha) => linha.titulo_parcela || '-' },
+            { id: 'documento', titulo: 'Documento', tipo: 'codigo', render: (linha) => <span className="text-xs">{linha.documento || '-'}</span> },
+            { id: 'plano_financeiro', titulo: 'Plano financeiro', tipo: 'texto', render: (linha) => <span className="line-clamp-2">{linha.plano_financeiro || '-'}</span> },
+            { id: 'credito', titulo: 'Crédito', tipo: 'valor', render: (linha) => <span className="font-semibold text-[var(--sem-success)]">{linha.credito ? formatCurrency(linha.credito) : '-'}</span> },
+            { id: 'debito', titulo: 'Débito', tipo: 'valor', render: (linha) => <span className="font-semibold text-[var(--sem-danger)]">{linha.debito ? formatCurrency(linha.debito) : '-'}</span> },
+            { id: 'saldo', titulo: 'Saldo', tipo: 'valor', render: (linha) => <strong>{formatCurrency(linha.saldo)}</strong> },
+            { id: 'obra_nome', titulo: 'Obra', tipo: 'texto', render: (linha) => (linha.obra_codigo ? `${linha.obra_codigo} - ${linha.obra_nome || ''}` : (linha.obra_nome || '-')) },
+            { id: 'empresa_nome', titulo: 'Empresa', tipo: 'texto', render: (linha) => linha.empresa_nome || '-' },
+            { id: 'status_titulo', titulo: 'Status', tipo: 'status', render: (linha) => <span className={statusClass(linha.status_titulo)}>{formatStatus(linha.status_titulo)}</span> }
+          ]}
+          itens={relatorio.linhas}
+          carregando={loading}
+          aoClicarLinha={abrirArquivos}
+          storageKey="tabela:financeiro-obras:detalhamento"
+          rotuloRolagem="Detalhamento financeiro das obras"
+          vazio="Nenhum título encontrado para os filtros selecionados."
+        />
       </section>
 
-      {importModalOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
-          <div className="card sol-surface-card w-full max-w-5xl max-h-[90vh] overflow-y-auto">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar custos historicos</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  As linhas importadas entram no Realizado e no Comprometido do Financeiro de Obras e nao geram titulos, baixas, DRE ou movimento bancario.
-                </p>
-              </div>
-              <button type="button" className="btn btn-icon btn-outline" onClick={fecharImportModal} disabled={importLoading} aria-label="Fechar">
-                <HiOutlineXMark />
-              </button>
+      {/*
+        R27 — a casca é a do sistema (`OverlayModal`), no lugar do overlay
+        à mão. O corpo rolante e o cabeçalho fixo são do COMPONENTE: aqui
+        só se marca o filho com `data-modal="cabecalho"`. Nada de
+        `overflow-y` escrito na tela, e nada de fundo em paleta crua
+        (bg-slate-950/45), que não acompanha o tema (R25).
+      */}
+      {arquivosModal || arquivosErro ? (
+        <OverlayModal
+          rotulo="Arquivos do pagamento"
+          largura="var(--modal-max-w-lg, 860px)"
+          onFechar={() => { setArquivosModal(null); setArquivosErro(''); }}
+        >
+          <div
+            data-modal="cabecalho"
+            className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] p-4"
+          >
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--c-text)]">Arquivos do pagamento</h2>
+              <p className="text-sm text-[var(--c-muted)]">
+                {arquivosModal?.solicitacao_codigo
+                  ? `Titulo ${arquivosModal.titulo_codigo || ''} · solicitacao ${arquivosModal.solicitacao_codigo}`
+                  : `Titulo ${arquivosModal?.titulo_codigo || ''}`}
+              </p>
             </div>
+            <button type="button" className="btn btn-icon btn-outline shrink-0" aria-label="Fechar"
+              onClick={() => { setArquivosModal(null); setArquivosErro(''); }}>
+              <HiOutlineXMark className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
 
+          <div className="space-y-3 p-4" data-testid="modal-arquivos-titulo">
+            {arquivosErro ? <div className="app-alert app-alert--error">{arquivosErro}</div> : null}
+            {arquivosLoading ? <p className="text-sm text-[var(--c-muted)]">Carregando arquivos...</p> : null}
+
+            {/* Titulo sem solicitacao nao tem arquivo — e isso e dito, em vez de abrir uma lista
+                vazia que a pessoa leria como "os arquivos sumiram". */}
+            {arquivosModal?.motivo ? (
+              <p className="text-sm text-[var(--c-muted)]" data-testid="arquivos-motivo">{arquivosModal.motivo}</p>
+            ) : null}
+
+            {arquivosModal && !arquivosModal.motivo && !arquivosLoading
+              && (arquivosModal.arquivos || []).length === 0 ? (
+                <p className="text-sm text-[var(--c-muted)]" data-testid="arquivos-vazio">
+                  A solicitação deste pagamento não tem nenhum arquivo anexado.
+                </p>
+              ) : null}
+
+            <ul className="space-y-2">
+              {(arquivosModal?.arquivos || []).map((arquivo) => (
+                <li key={arquivo.id}
+                  className="flex items-center justify-between gap-3 rounded border border-[var(--c-border)] px-3 py-2"
+                  data-testid={`arquivo-${arquivo.id}`}>
+                  <span className="min-w-0">
+                    <strong className="block truncate text-sm text-[var(--c-text)]">{arquivo.nome}</strong>
+                    <small className="text-[var(--c-muted)]">
+                      {arquivo.origem === 'COMPROVANTE' ? 'Comprovante' : 'Anexo'}
+                      {arquivo.tipo ? ` · ${arquivo.tipo}` : ''}
+                    </small>
+                  </span>
+                  <a
+                    className="btn btn-outline btn-sm shrink-0"
+                    href={String(arquivo.caminho || '').startsWith('http') ? arquivo.caminho : fileUrl(arquivo.caminho)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Abrir
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </OverlayModal>
+      ) : null}
+
+      {/* R27 — casca do sistema; cabecalho fixo por `data-modal`, corpo
+          rolante do componente. Sem overflow-y na tela, sem overlay em
+          paleta crua. */}
+      {importModalOpen ? (
+        <OverlayModal
+          rotulo="Importar custos históricos"
+          largura="var(--modal-max-w-xl, 1120px)"
+          onFechar={importLoading ? undefined : fecharImportModal}
+        >
+          <div
+            data-modal="cabecalho"
+            className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] p-4"
+          >
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar custos históricos</h2>
+              <p className="text-sm text-[var(--c-muted)]">
+                As linhas importadas entram no Realizado e no Comprometido do Financeiro de Obras e não geram títulos, baixas, DRE ou movimento bancário.
+              </p>
+            </div>
+            <button type="button" className="btn btn-icon btn-outline shrink-0" onClick={fecharImportModal} disabled={importLoading} aria-label="Fechar">
+              <HiOutlineXMark className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="p-4">
             {importError ? <div className="app-alert app-alert--error mb-3">{importError}</div> : null}
 
             <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" onSubmit={gerarPreviewImportacao}>
@@ -781,7 +958,7 @@ export default function FinanceiroObras() {
                 </select>
               </label>
               <label className="app-filter-field">
-                <span className="app-filter-label">Empresa padrao</span>
+                <span className="app-filter-label">Empresa padrão</span>
                 <select
                   className="input w-full input-sm"
                   value={importForm.empresa_id}
@@ -795,7 +972,7 @@ export default function FinanceiroObras() {
                 </select>
               </label>
               <label className="app-filter-field">
-                <span className="app-filter-label">Plano financeiro padrao</span>
+                <span className="app-filter-label">Plano financeiro padrão</span>
                 <select
                   className="input w-full input-sm"
                   value={importForm.categoria_financeira_id}
@@ -832,25 +1009,27 @@ export default function FinanceiroObras() {
             </form>
 
             {importPreview ? (
-              <div className="mt-5 space-y-4">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                  <ImportMetric label="Importaveis" value={String(importPreview.resumo?.importaveis || 0)} detail="Linhas validas" tone="positive" />
-                  <ImportMetric label="Duplicadas" value={String(importPreview.resumo?.duplicados || 0)} detail="Ja importadas" />
-                  <ImportMetric label="Erros" value={String(importPreview.resumo?.erros || 0)} detail="Linhas ignoradas" tone={importPreview.resumo?.erros ? 'negative' : 'default'} />
-                  <ImportMetric label="Creditos" value={formatCurrency(importPreview.resumo?.credito_total)} detail="Recebido legado" tone="positive" />
-                  <ImportMetric label="Debitos" value={formatCurrency(importPreview.resumo?.debito_total)} detail="Custo legado" tone="negative" />
-                  <ImportMetric label="Total" value={formatCurrency(importPreview.resumo?.valor_total)} detail="Total importavel" />
-                </div>
+              <div className="mt-4 space-y-4">
+                {/* O resumo vem do servidor sobre a PLANILHA INTEIRA, nao
+                    sobre a pagina visivel da pre-visualizacao abaixo. */}
+                <StatGrid colunas={3}>
+                  <StatTile label="Importaveis" valor={String(importPreview.resumo?.importaveis || 0)} sub="Linhas válidas" tom={tomDoValor('positive')} />
+                  <StatTile label="Duplicadas" valor={String(importPreview.resumo?.duplicados || 0)} sub="Já importadas" tom={tomDoValor(importPreview.resumo?.duplicados ? 'warning' : 'default')} />
+                  <StatTile label="Erros" valor={String(importPreview.resumo?.erros || 0)} sub="Linhas ignoradas" tom={tomDoValor(importPreview.resumo?.erros ? 'negative' : 'default')} />
+                  <StatTile label="Créditos" valor={formatCurrency(importPreview.resumo?.credito_total)} sub="Recebido legado" tom={tomDoValor('positive')} />
+                  <StatTile label="Débitos" valor={formatCurrency(importPreview.resumo?.debito_total)} sub="Custo legado" tom={tomDoValor('negative')} />
+                  <StatTile label="Total" valor={formatCurrency(importPreview.resumo?.valor_total)} sub="Total importavel" />
+                </StatGrid>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-muted)] px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-soft)] px-3 py-2">
                   <span className="text-sm text-[var(--c-muted)]">
                     Exibindo {importPreviewPagedRows.length} de {importPreviewRows.length} linha(s) da pre-visualizacao.
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-2 text-sm text-[var(--c-muted)]">
-                      Por pagina
+                      Por página
                       <select
-                        className="input input-sm w-24"
+                        className="input input-sm"
                         value={importPreviewPageSize}
                         onChange={(event) => {
                           setImportPreviewPageSize(Number(event.target.value) || 25);
@@ -877,68 +1056,65 @@ export default function FinanceiroObras() {
                       onClick={() => setImportPreviewPage((page) => Math.min(importPreviewTotalPages, page + 1))}
                       disabled={importPreviewPage >= importPreviewTotalPages}
                     >
-                      Proxima
+                      Próxima
                     </button>
                   </div>
                 </div>
 
-                <div className="app-dense-table-wrapper max-h-[52vh] overflow-auto">
-                  <ResizableTable
-                    columns={IMPORT_PREVIEW_COLUMNS}
-                    storageKey={IMPORT_PREVIEW_STORAGE_KEY}
-                    className="app-dense-data-table"
-                  >
-                    <thead>
-                      <tr>
-                        <ResizableTh columnKey="row_number">Linha</ResizableTh>
-                        <ResizableTh columnKey="status">Status</ResizableTh>
-                        <ResizableTh columnKey="data_pagamento">Baixa</ResizableTh>
-                        <ResizableTh columnKey="parceiro_nome">Fornecedor</ResizableTh>
-                        <ResizableTh columnKey="documento">Documento</ResizableTh>
-                        <ResizableTh columnKey="plano_financeiro">Plano financeiro</ResizableTh>
-                        <ResizableTh columnKey="credito" className="text-right">Credito</ResizableTh>
-                        <ResizableTh columnKey="debito" className="text-right">Debito</ResizableTh>
-                        <ResizableTh columnKey="observacao">Observacao</ResizableTh>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importPreviewPagedRows.map((linha) => (
-                        <tr key={`${linha.row_number}-${linha.hash_linha}`}>
-                          <td>{linha.row_number}</td>
-                          <td><span className={statusClass(linha.status === 'VALIDA' ? 'QUITADO' : linha.status)}>{linha.status}</span></td>
-                          <td>{formatDate(linha.data_pagamento)}</td>
-                          <td>{linha.parceiro_nome || '-'}</td>
-                          <td>{linha.documento || '-'}</td>
-                          <td>{linha.plano_financeiro || '-'}</td>
-                          <td className="text-right font-semibold text-emerald-700">
-                            {linha.tipo === 'RECEBER' ? formatCurrency(linha.valor) : '-'}
-                          </td>
-                          <td className="text-right font-semibold text-rose-700">
-                            {linha.tipo === 'PAGAR' ? formatCurrency(linha.valor) : '-'}
-                          </td>
-                          <td className="text-xs text-[var(--c-muted)]">{linha.erros?.join(' ') || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </ResizableTable>
+                {/* R27: a rolagem e do OverlayModal; a tela nao escreve a
+                    sua. A TabelaPadrao ja rola na horizontal por conta. */}
+                <div className="app-dense-table-wrapper">
+                  <TabelaPadrao
+                    colunas={[
+                      { id: 'row_number', titulo: 'Linha', tipo: 'numero', render: (linha) => linha.row_number },
+                      { id: 'status', titulo: 'Status', tipo: 'status', render: (linha) => <span className={statusClass(linha.status === 'VALIDA' ? 'QUITADO' : linha.status)}>{linha.status}</span> },
+                      { id: 'data_pagamento', titulo: 'Baixa', tipo: 'data', render: (linha) => formatDate(linha.data_pagamento) },
+                      {
+                        id: 'parceiro_nome',
+                        titulo: 'Fornecedor',
+                        // R17: o fornecedor NOMEIA a linha da pre-visualizacao.
+                        tipo: 'identidade',
+                        noCard: 'titulo',
+                        render: (linha) => linha.parceiro_nome || '-'
+                      },
+                      { id: 'documento', titulo: 'Documento', tipo: 'codigo', render: (linha) => linha.documento || '-' },
+                      { id: 'plano_financeiro', titulo: 'Plano financeiro', tipo: 'texto', render: (linha) => linha.plano_financeiro || '-' },
+                      { id: 'credito', titulo: 'Crédito', tipo: 'valor', render: (linha) => <span className="font-semibold text-[var(--sem-success)]">{linha.tipo === 'RECEBER' ? formatCurrency(linha.valor) : '-'}</span> },
+                      { id: 'debito', titulo: 'Débito', tipo: 'valor', render: (linha) => <span className="font-semibold text-[var(--sem-danger)]">{linha.tipo === 'PAGAR' ? formatCurrency(linha.valor) : '-'}</span> },
+                      { id: 'observacao', titulo: 'Observação', tipo: 'texto', render: (linha) => <span className="text-xs text-[var(--c-muted)]">{linha.erros?.join(' ') || '-'}</span> }
+                    ]}
+                    itens={importPreviewPagedRows}
+                    getId={(linha) => `${linha.row_number}-${linha.hash_linha}`}
+                    storageKey="tabela:financeiro-obras:importacao-preview"
+                    rotuloRolagem="Pre-visualizacao da importacao de custos historicos"
+                    vazio="Nenhuma linha na pre-visualização."
+                  />
                 </div>
 
-                <div className="flex justify-end gap-2">
-                  <button type="button" className="btn btn-outline btn-sm" onClick={fecharImportModal} disabled={importLoading}>Cancelar</button>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={confirmarImportacao}
-                    disabled={importLoading || !importPreview.resumo?.importaveis || !importPreview.preview_digest}
-                  >
-                    {importLoading ? 'Importando...' : 'Confirmar importacao'}
-                  </button>
-                </div>
               </div>
             ) : null}
           </div>
-        </div>
+
+          {/* R27 — o botao que EXECUTA a acao fica fixo no rodape: era
+              exatamente ele que o modal antigo escondia quando a
+              pre-visualizacao passava da altura do painel. */}
+          {importPreview ? (
+            <div data-modal="rodape" className="flex justify-end gap-2 border-t border-[var(--c-border)] p-4">
+              <button type="button" className="btn btn-outline" onClick={fecharImportModal} disabled={importLoading}>Cancelar</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={confirmarImportacao}
+                disabled={importLoading || !importPreview.resumo?.importaveis || !importPreview.preview_digest}
+              >
+                {importLoading ? 'Importando...' : 'Confirmar importacao'}
+              </button>
+            </div>
+          ) : null}
+        </OverlayModal>
       ) : null}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

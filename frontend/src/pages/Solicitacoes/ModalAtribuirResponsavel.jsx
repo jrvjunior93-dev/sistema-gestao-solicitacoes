@@ -1,7 +1,23 @@
 import { useEffect, useState } from 'react';
 import { API_URL, authHeaders } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import OverlayModal from '../../components/ui/OverlayModal';
+import { Avisos, useAvisos, FormSecao, CampoForm } from '../../components/padrao';
+import DateInputBR from '../../components/DateInputBR';
 
+/**
+ * R9 — atribuir responsável INTERROMPE o trabalho principal (a lista de
+ * solicitações continua sendo o que a pessoa veio fazer): modal.
+ *
+ * R27 — a casca é o `OverlayModal`: corpo rolante e rodapé fixo são do
+ * componente, então "Salvar" não some quando a regra de setor/obra e o campo
+ * de prazo aparecem juntos num painel curto.
+ *
+ * R19 — `alert()` virou faixa `Avisos` dentro do painel.
+ *
+ * Os selects aqui são ENTRADA DE DADO (escolher quem assume, informar prazo),
+ * não filtro: a R12 mantém esse uso legítimo.
+ */
 export default function ModalAtribuirResponsavel({
   solicitacaoId,
   obraId,
@@ -14,6 +30,9 @@ export default function ModalAtribuirResponsavel({
   const [usuarios, setUsuarios] = useState([]);
   const [usuarioSelecionado, setUsuarioSelecionado] = useState('');
   const [prazoCompra, setPrazoCompra] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { user } = useAuth();
   const isUsuario = user?.perfil === 'USUARIO';
   const setorUsuario = user?.setor_id ? String(user.setor_id) : '';
@@ -52,100 +71,138 @@ export default function ModalAtribuirResponsavel({
 
   async function salvar() {
     if (!usuarioSelecionado) {
-      alert('Selecione um usuario');
+      avisar.erro('Selecione um usuário');
       return;
     }
     if (exigirPrazoCompra && !prazoCompra) {
-      alert('Informe o prazo para realizar o pedido.');
+      avisar.erro('Informe o prazo para realizar o pedido.');
       return;
     }
 
-    const res = await fetch(
-      `${API_URL}/solicitacoes/${solicitacaoId}/atribuir`,
-      {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          usuario_responsavel_id: usuarioSelecionado,
-          ...(exigirPrazoCompra ? { prazo_compra: prazoCompra } : {})
-        })
+    setSalvando(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/solicitacoes/${solicitacaoId}/atribuir`,
+        {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            usuario_responsavel_id: usuarioSelecionado,
+            ...(exigirPrazoCompra ? { prazo_compra: prazoCompra } : {})
+          })
+        }
+      );
+
+      if (!res.ok) {
+        let mensagem = 'Erro ao atribuir responsavel';
+        try {
+          const data = await res.json();
+          mensagem = data?.error || mensagem;
+        } catch (_) {}
+        avisar.erro(mensagem);
+        return;
       }
-    );
 
-    if (!res.ok) {
-      let mensagem = 'Erro ao atribuir responsavel';
-      try {
-        const data = await res.json();
-        mensagem = data?.error || mensagem;
-      } catch (_) {}
-      alert(mensagem);
-      return;
+      /*
+        R28 — a confirmação de gravação fica na tela. O `alert` de sucesso
+        anterior era engolido pelo `onClose()` da linha seguinte. O
+        `onSucesso()` (recarga) continua disparando no mesmo instante.
+      */
+      setSalvo(true);
+      avisar.sucesso('Responsável atribuído com sucesso.', undefined, { persistente: true });
+      onSucesso();
+    } catch (erro) {
+      console.error(erro);
+      avisar.erro('Erro ao atribuir responsável');
+    } finally {
+      setSalvando(false);
     }
-
-    alert('Responsavel atribuido com sucesso.');
-    onSucesso();
-    onClose();
   }
 
+  const regraSetor = isUsuario || isSetorObraSolicitacao || isUsuarioSetorObra;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-      <div className="card w-full max-w-md">
-        <h2 className="text-lg font-semibold mb-4">
-          Atribuir responsavel
+    <OverlayModal
+      rotulo="Atribuir responsável"
+      largura="var(--modal-max-w-sm, 480px)"
+      onFechar={onClose}
+    >
+      <div data-modal="cabecalho" className="border-b border-[var(--c-border)] p-4">
+        <h2 className="text-lg font-semibold text-[var(--c-text)]">
+          Atribuir responsável
         </h2>
-
-        <select
-          className="input w-full mb-4"
-          value={usuarioSelecionado}
-          onChange={e => setUsuarioSelecionado(e.target.value)}
-        >
-          <option value="">Selecione um usuario</option>
-
-          {usuarios.map(u => (
-            <option key={u.id} value={u.id}>
-              {u.nome}
-            </option>
-          ))}
-        </select>
-
-        {exigirPrazoCompra && (
-          <label className="block mb-4 text-sm text-[var(--c-text)]">
-            Prazo para realizar pedido
-            <input
-              className="input w-full mt-1"
-              type="date"
-              value={prazoCompra}
-              onChange={e => setPrazoCompra(e.target.value)}
-            />
-            <span className="mt-1 block text-xs text-[var(--c-muted)]">
-              Este prazo alimenta a Delegacao de Compras.
-            </span>
-          </label>
-        )}
-
-        {(isUsuario || isSetorObraSolicitacao || isUsuarioSetorObra) && (
-          <p className="mb-3 text-xs text-[var(--c-muted)]">
+        {regraSetor && (
+          /*
+            CONDIÇÃO DERIVADA DO CONTEÚDO, não evento: fica como texto fixo
+            ao lado do campo que ela restringe (nunca em `useAvisos`, que é
+            fechável e some — a regra continuaria valendo depois do clique).
+          */
+          <p className="text-sm text-[var(--c-muted)]">
             As atribuicoes devem ser para pessoas do mesmo setor.
             {(isSetorObraSolicitacao || isUsuarioSetorObra) && obraId && ' Para OBRA, somente usuarios vinculados a mesma obra.'}
           </p>
         )}
+      </div>
 
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="btn btn-outline"
-          >
-            Cancelar
-          </button>
+      <div className="p-4">
+        <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
+        <FormSecao colunas={1}>
+          <CampoForm label="Responsável" obrigatorio linha>
+            <select
+              className="input"
+              value={usuarioSelecionado}
+              onChange={e => setUsuarioSelecionado(e.target.value)}
+              disabled={salvo}
+            >
+              <option value="">Selecione um usuário</option>
+
+              {usuarios.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.nome}
+                </option>
+              ))}
+            </select>
+          </CampoForm>
+
+          {exigirPrazoCompra && (
+            <CampoForm
+              label="Prazo para realizar pedido"
+              obrigatorio
+              linha
+              hint="Este prazo alimenta a Delegacao de Compras."
+            >
+              <DateInputBR
+                className="input"
+                value={prazoCompra}
+                onChange={e => setPrazoCompra(e.target.value)}
+                disabled={salvo}
+              />
+            </CampoForm>
+          )}
+        </FormSecao>
+      </div>
+
+      <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
+        <button
+          onClick={onClose}
+          className="btn btn-outline"
+          type="button"
+        >
+          {salvo ? 'Fechar' : 'Cancelar'}
+        </button>
+
+        {!salvo && (
           <button
             onClick={salvar}
             className="btn btn-primary"
+            type="button"
+            disabled={salvando}
           >
-            Salvar
+            {salvando ? 'Salvando…' : 'Salvar'}
           </button>
-        </div>
+        )}
       </div>
-    </div>
+    </OverlayModal>
   );
 }

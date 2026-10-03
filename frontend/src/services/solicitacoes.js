@@ -1,4 +1,5 @@
-import { API_URL, authHeaders } from './api';
+import { API_URL, authHeaders, fileUrl } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
 function buildResponseError(status, fallbackMessage, data = null) {
   const details = Array.isArray(data?.errors)
@@ -31,6 +32,16 @@ export async function getSolicitacoes(params = '') {
   return res.json();
 }
 
+// Contadores das visoes da lista (Minhas / Fila do setor / Vencendo /
+// Atrasadas / Todas) — mesmo escopo de visibilidade da listagem.
+export async function getContadoresSolicitacoes() {
+  const res = await fetch(`${API_URL}/solicitacoes/contadores`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao carregar contadores das visões');
+  return res.json();
+}
+
 export async function getObrasVisiveisSolicitacoes(params = {}) {
   const query = new URLSearchParams(params).toString();
   const url = query
@@ -43,6 +54,43 @@ export async function getObrasVisiveisSolicitacoes(params = {}) {
 
   if (!res.ok) {
     throw buildResponseError(res.status, 'Erro ao buscar obras visiveis das solicitacoes', await parseJsonSafe(res));
+  }
+
+  return res.json();
+}
+
+export async function getApropriacaoPadraoSolicitacao({ obra_id, tipo_solicitacao_id }) {
+  const query = new URLSearchParams({
+    obra_id: String(obra_id || ''),
+    tipo_solicitacao_id: String(tipo_solicitacao_id || '')
+  });
+  const res = await fetch(`${API_URL}/solicitacoes/apropriacao-padrao?${query.toString()}`, {
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    throw buildResponseError(
+      res.status,
+      'Nao foi possivel resolver a apropriacao automatica da solicitacao.',
+      await parseJsonSafe(res)
+    );
+  }
+
+  return res.json();
+}
+
+export async function getSaldoDespesaEventual(obraId) {
+  const query = new URLSearchParams({ obra_id: String(obraId || '') });
+  const res = await fetch(`${API_URL}/solicitacoes/despesa-eventual/saldo?${query.toString()}`, {
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    throw buildResponseError(
+      res.status,
+      'Nao foi possivel calcular o saldo de Despesa Eventual da obra.',
+      await parseJsonSafe(res)
+    );
   }
 
   return res.json();
@@ -62,6 +110,20 @@ export async function getStatusVisiveisSolicitacoes(params = {}) {
     throw buildResponseError(res.status, 'Erro ao buscar status visiveis das solicitacoes', await parseJsonSafe(res));
   }
 
+  return res.json();
+}
+
+export async function getUsuariosAtivosCadastroObra() {
+  const res = await fetch(`${API_URL}/solicitacoes/cadastro-obra/usuarios-ativos`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    throw buildResponseError(
+      res.status,
+      'Erro ao listar usuarios ativos para o cadastro da obra',
+      await parseJsonSafe(res)
+    );
+  }
   return res.json();
 }
 
@@ -108,6 +170,15 @@ export async function createSolicitacao(data, options = {}) {
   return res.json();
 }
 
+export async function getObrasDistribuicaoCentroCusto(centroCustoId) {
+  const response = await fetch(`${API_URL}/solicitacoes/centros-custo/${centroCustoId}/obras-distribuicao`, {
+    headers: authHeaders()
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || 'Erro ao carregar obras para distribuicao do centro de custo.');
+  return data;
+}
+
 export async function getSolicitacaoById(id) {
   const res = await fetch(`${API_URL}/solicitacoes/${id}`, {
     headers: authHeaders()
@@ -115,6 +186,77 @@ export async function getSolicitacaoById(id) {
 
   if (!res.ok) {
     throw buildResponseError(res.status, 'Erro ao buscar solicitacao', await parseJsonSafe(res));
+  }
+
+  return res.json();
+}
+
+export async function getLinkSeguroAnexoSolicitacao(caminhoArquivo) {
+  const caminho = String(caminhoArquivo || '').trim();
+  if (!caminho) throw new Error('Arquivo sem endereço para visualização.');
+  if (!/^https?:\/\//i.test(caminho)) return fileUrl(caminho);
+
+  const params = new URLSearchParams({ url: caminho.replace(/%(?![0-9A-Fa-f]{2})/g, '%25') });
+  const res = await fetch(`${API_URL}/anexos/presign?${params.toString()}`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    throw buildResponseError(res.status, 'Erro ao gerar link seguro para o arquivo', await parseJsonSafe(res));
+  }
+  const data = await res.json();
+  if (!data?.url) throw new Error('Não foi possível abrir este arquivo.');
+  return data.url;
+}
+
+export async function solicitarRetornoSolicitacao(id, motivo) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/retorno`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo })
+  });
+
+  if (!res.ok) {
+    throw buildResponseError(res.status, 'Erro ao solicitar retorno da solicitacao', await parseJsonSafe(res));
+  }
+
+  return res.json();
+}
+
+export async function devolverSolicitacaoAposRetorno(id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/retorno/devolver`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    throw buildResponseError(res.status, 'Erro ao devolver a solicitacao ao setor anterior', await parseJsonSafe(res));
+  }
+
+  return res.json();
+}
+
+export async function decidirRetornoSolicitacao(pedidoId, { aprovar, motivo_decisao = '' }) {
+  const res = await fetch(`${API_URL}/solicitacoes/retornos/${pedidoId}/decisao`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ aprovar: Boolean(aprovar), motivo_decisao })
+  });
+
+  if (!res.ok) {
+    throw buildResponseError(res.status, 'Erro ao decidir o retorno da solicitacao', await parseJsonSafe(res));
+  }
+
+  return res.json();
+}
+
+export async function cancelarRetornoSolicitacao(pedidoId) {
+  const res = await fetch(`${API_URL}/solicitacoes/retornos/${pedidoId}/cancelar`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    throw buildResponseError(res.status, 'Erro ao cancelar o pedido de retorno', await parseJsonSafe(res));
   }
 
   return res.json();
@@ -155,7 +297,7 @@ export async function updateStatusSolicitacao(id, status) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return true;
@@ -169,10 +311,24 @@ export async function aprovarDiretoriaSolicitacao(id) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return true;
+}
+
+export async function aprovarSolicitacaoPorTipo(id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/aprovar`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    const payload = await parseJsonSafe(res);
+    throw buildResponseError(res.status, 'Nao foi possivel aprovar a solicitacao.', payload);
+  }
+
+  return res.json();
 }
 
 export async function adicionarPagamentoSolicitacao(id, data) {
@@ -184,7 +340,7 @@ export async function adicionarPagamentoSolicitacao(id, data) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return res.json();
@@ -213,7 +369,7 @@ export async function updateValorSolicitacao(id, valor) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return true;
@@ -270,7 +426,7 @@ export async function updateRefContratoSolicitacao(id, contrato_id) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return true;
@@ -284,7 +440,7 @@ export async function deleteSolicitacao(id) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return true;
@@ -298,7 +454,7 @@ export async function arquivarSolicitacao(id) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return true;
@@ -312,7 +468,7 @@ export async function desarquivarSolicitacao(id) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return true;
@@ -327,7 +483,7 @@ export async function arquivarSolicitacoesEmMassa(solicitacao_ids = []) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text);
+    throw new Error(mensagemDeErro(text, 'Nao foi possivel concluir a operacao.', res.status));
   }
 
   return res.json();

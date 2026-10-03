@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   obterLead,
   atualizarLead,
@@ -18,23 +18,86 @@ import {
   concluirTarefa,
   cancelarTarefa
 } from '../../../services/crm';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  StatGrid,
+  StatTile,
+  CamposComVazios,
+  FormSecao,
+  CampoForm,
+  TabelaPadrao,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import OverlayModal from '../../../components/ui/OverlayModal';
+import StatusBadge from '../../../components/StatusBadge';
 import { useAuth } from '../../../contexts/AuthContext';
 import { canRedistributeCrmLeads } from '../../../utils/acessoProduto';
+import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatters';
+import DateInputBR from '../../../components/DateInputBR';
 
+/*
+  R25/R2 — a cor do status vinha de paleta crua do Tailwind
+  (`bg-indigo-100 text-indigo-700` e mais treze variantes), que não tem par
+  definido no tema escuro nem passa pelo piso de contraste do ThemeContext.
+  Agora o mapa declara só o RÓTULO e a FAMÍLIA SEMÂNTICA; quem pinta é o
+  `StatusBadge` do sistema, com token e ícone (cor sozinha não comunica).
+  Nenhum status deixou de existir — só a fonte da cor mudou.
+*/
 const LIFECYCLE_MAP = {
-  NOVO:        { label: 'Novo',         cls: 'app-status-pill bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' },
-  CONTATO:     { label: 'Contato',      cls: 'app-status-pill bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' },
-  QUALIFICADO: { label: 'Qualificado',  cls: 'app-status-pill bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300' },
-  OPORTUNIDADE:{ label: 'Oportunidade', cls: 'app-status-pill bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' },
-  CONVERTIDO:  { label: 'Convertido',   cls: 'app-status-pill bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' },
-  PERDIDO:     { label: 'Perdido',      cls: 'app-status-pill bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300' },
-  ARQUIVADO:   { label: 'Arquivado',    cls: 'app-status-pill bg-elevated text-muted' }
+  NOVO:         { label: 'Novo',         kind: 'info' },
+  CONTATO:      { label: 'Contato',      kind: 'info' },
+  QUALIFICADO:  { label: 'Qualificado',  kind: 'info' },
+  OPORTUNIDADE: { label: 'Oportunidade', kind: 'warning' },
+  CONVERTIDO:   { label: 'Convertido',   kind: 'success' },
+  PERDIDO:      { label: 'Perdido',      kind: 'danger' },
+  ARQUIVADO:    { label: 'Arquivado',    kind: 'neutral' }
 };
 
 const TEMP_MAP = {
-  FRIO:   { label: 'Frio',   emoji: '🧊' },
-  MORNO:  { label: 'Morno',  emoji: '🟡' },
-  QUENTE: { label: 'Quente', emoji: '🔥' }
+  FRIO:   { label: 'Frio',   emoji: '🧊', kind: 'info' },
+  MORNO:  { label: 'Morno',  emoji: '🟡', kind: 'warning' },
+  QUENTE: { label: 'Quente', emoji: '🔥', kind: 'danger' }
+};
+
+const TIPO_INTERACAO_LABEL = {
+  NOTE: 'Observacao',
+  CALL: 'Ligacao',
+  WHATSAPP: 'WhatsApp',
+  EMAIL: 'E-mail',
+  MEETING: 'Reuniao'
+};
+
+const TIPO_INTERACAO_EMOJI = {
+  CALL: '📞',
+  WHATSAPP: '💬',
+  EMAIL: '📧',
+  MEETING: '📅',
+  NOTE: '📝'
+};
+
+const TIPO_TAREFA_LABEL = {
+  CALL: 'Ligacao',
+  WHATSAPP: 'WhatsApp',
+  VISIT: 'Visita',
+  EMAIL: 'E-mail',
+  PROPOSAL: 'Proposta',
+  OTHER: 'Outro'
+};
+
+const PRIORIDADE_TAREFA = {
+  HIGH: { label: 'Alta', kind: 'danger' },
+  MEDIUM: { label: 'Media', kind: 'warning' },
+  LOW: { label: 'Baixa', kind: 'info' }
+};
+
+const STATUS_TAREFA = {
+  PENDING: { label: 'Pendente', kind: 'warning' },
+  DONE: { label: 'Concluída', kind: 'success' },
+  CANCELLED: { label: 'Cancelada', kind: 'neutral' }
 };
 
 function fmt(val) {
@@ -42,17 +105,30 @@ function fmt(val) {
   return new Date(val).toLocaleString('pt-BR');
 }
 
-function fmtDate(val) {
-  if (!val) return '—';
+/*
+  B4 / `CamposComVazios`: a contagem de vazios sai da PRÓPRIA lista de
+  campos — quem devolve o travessão "—" no lugar do vazio faz o alternador
+  contar zero e o campo aparecer preenchido com um traço. Então, para
+  alimentar a lista, data ausente vira `null`, não texto.
+*/
+function fmtOuNulo(val) {
+  if (!val) return null;
+  return new Date(val).toLocaleString('pt-BR');
+}
+
+function fmtDataOuNulo(val) {
+  if (!val) return null;
   return new Date(val).toLocaleDateString('pt-BR');
 }
 
-function InfoRow({ label, value }) {
+function EtapaDoLead({ etapa }) {
+  if (!etapa) return null;
   return (
-    <div>
-      <p className="text-xs text-muted mb-0.5">{label}</p>
-      <p className="text-sm text-main font-medium">{value || '—'}</p>
-    </div>
+    <span className="inline-flex items-center gap-2">
+      {/* A cor vem do DADO (etapa cadastrada pelo usuário), não é cor à mão. */}
+      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: etapa.cor }} />
+      {etapa.nome}
+    </span>
   );
 }
 
@@ -60,6 +136,8 @@ export default function CrmLeadDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [lead, setLead] = useState(null);
   const [pipelines, setPipelines] = useState([]);
   const [motivosPerda, setMotivosPerda] = useState([]);
@@ -106,8 +184,10 @@ export default function CrmLeadDetalhe() {
       setInteractions(Array.isArray(interRes?.interactions) ? interRes.interactions : []);
       setTasks(Array.isArray(taskRes?.tasks) ? taskRes.tasks : []);
     }).catch((err) => {
-      alert(err.message || 'Erro ao carregar lead');
+      avisar.erro(err.message || 'Erro ao carregar lead');
     }).finally(() => setLoading(false));
+    // `avisar` é estável (useMemo no useAvisos) — a dependência é o lead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   async function handleAddInteraction(e) {
@@ -120,7 +200,7 @@ export default function CrmLeadDetalhe() {
       setInteractionForm({ interaction_type: 'NOTE', title: '', content: '' });
       setShowAddInteraction(false);
     } catch (err) {
-      alert(err.message || 'Erro ao registrar interacao');
+      avisar.erro(err.message || 'Erro ao registrar interacao');
     } finally {
       setSavingInteraction(false);
     }
@@ -136,7 +216,7 @@ export default function CrmLeadDetalhe() {
       setTaskForm({ title: '', task_type: 'CALL', due_at: '', priority: 'MEDIUM' });
       setShowAddTask(false);
     } catch (err) {
-      alert(err.message || 'Erro ao criar tarefa');
+      avisar.erro(err.message || 'Erro ao criar tarefa');
     } finally {
       setSavingTask(false);
     }
@@ -145,19 +225,37 @@ export default function CrmLeadDetalhe() {
   async function handleCompleteTask(taskId) {
     try {
       await concluirTarefa(taskId);
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: 'DONE' } : t));
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: 'DONE' } : t)));
     } catch (err) {
-      alert(err.message || 'Erro ao concluir tarefa');
+      avisar.erro(err.message || 'Erro ao concluir tarefa');
     }
   }
 
-  async function handleCancelTask(taskId) {
-    if (!confirm('Cancelar esta tarefa?')) return;
+  /*
+    R21 + R26 — a versão anterior era `if (!confirm('Cancelar esta tarefa?'))`,
+    com a caixa do navegador e sem dizer QUAL tarefa. Duas correções:
+    1. `useConfirmacao` devolve `{ ok, texto }` — desestruturado, senão o
+       "Cancelar" do modal seguiria com a ação (objeto é sempre truthy);
+    2. a tarefa é FIXADA numa const ANTES do `await`. O modal do sistema não
+       congela a página: a lista pode ser recarregada enquanto ele está
+       aberto, e ler o alvo depois faria perguntar sobre uma tarefa e
+       cancelar outra — consentimento válido para a ação errada.
+  */
+  async function handleCancelTask(task) {
+    const alvo = task;
+    const { ok } = await confirmar({
+      titulo: 'Cancelar tarefa',
+      mensagem: `Cancelar a tarefa "${alvo.title}"? Esta acao nao pode ser desfeita.`,
+      rotuloConfirmar: 'Cancelar tarefa',
+      rotuloCancelar: 'Manter tarefa',
+      destrutiva: true
+    });
+    if (!ok) return;
     try {
-      await cancelarTarefa(taskId);
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: 'CANCELLED' } : t));
+      await cancelarTarefa(alvo.id);
+      setTasks((prev) => prev.map((t) => (t.id === alvo.id ? { ...t, status: 'CANCELLED' } : t)));
     } catch (err) {
-      alert(err.message || 'Erro ao cancelar tarefa');
+      avisar.erro(err.message || 'Erro ao cancelar tarefa');
     }
   }
 
@@ -181,13 +279,19 @@ export default function CrmLeadDetalhe() {
   }
 
   async function salvarEdicao() {
+    const documentoErro = getCpfCnpjError(form.documento);
+    if (documentoErro) {
+      avisar.alerta(documentoErro);
+      return;
+    }
     try {
       setSaving(true);
-      const updated = await atualizarLead(id, form);
+      const updated = await atualizarLead(id, { ...form, documento: onlyDigits(form.documento) });
       setLead(updated);
       setEditando(false);
+      avisar.sucesso('Lead atualizado.');
     } catch (err) {
-      alert(err.message || 'Erro ao salvar lead');
+      avisar.erro(err.message || 'Erro ao salvar lead');
     } finally {
       setSaving(false);
     }
@@ -198,17 +302,25 @@ export default function CrmLeadDetalhe() {
       const updated = await alterarEtapaLead(id, Number(stageId));
       setLead((l) => ({ ...l, ...updated }));
     } catch (err) {
-      alert(err.message || 'Erro ao alterar etapa');
+      avisar.erro(err.message || 'Erro ao alterar etapa');
     }
   }
 
   async function handleConversao() {
-    if (!confirm('Registrar conversao deste lead?')) return;
+    // R26: o nome usado na pergunta é o mesmo que a ação usa depois.
+    const alvo = lead;
+    const { ok } = await confirmar({
+      titulo: 'Registrar conversão',
+      mensagem: `Registrar a conversao do lead "${alvo.nome}"?`,
+      rotuloConfirmar: 'Registrar conversao'
+    });
+    if (!ok) return;
     try {
       const updated = await registrarConversaoLead(id);
       setLead((l) => ({ ...l, ...updated }));
+      avisar.sucesso('Conversão registrada.');
     } catch (err) {
-      alert(err.message || 'Erro ao registrar conversao');
+      avisar.erro(err.message || 'Erro ao registrar conversao');
     }
   }
 
@@ -219,18 +331,31 @@ export default function CrmLeadDetalhe() {
       setShowLoss(false);
       setLossMotivo('');
       setLossObs('');
+      avisar.sucesso('Perda registrada.');
     } catch (err) {
-      alert(err.message || 'Erro ao registrar perda');
+      avisar.erro(err.message || 'Erro ao registrar perda');
     }
   }
 
+  /*
+    Ação DESTRUTIVA (o lead arquivado sai da listagem de leads — o serviço
+    filtra por `archived_at: null`). Confirmação em vermelho suave, com a
+    irreversibilidade declarada no texto, e o alvo fixado antes do `await`.
+  */
   async function handleArquivar() {
-    if (!confirm('Arquivar este lead?')) return;
+    const alvo = lead;
+    const { ok } = await confirmar({
+      titulo: 'Arquivar lead',
+      mensagem: `Arquivar o lead "${alvo.nome}"? Ele sai da listagem de leads e esta acao nao pode ser desfeita pela tela.`,
+      rotuloConfirmar: 'Arquivar',
+      destrutiva: true
+    });
+    if (!ok) return;
     try {
       await arquivarLead(id);
       navigate('/crm/leads');
     } catch (err) {
-      alert(err.message || 'Erro ao arquivar lead');
+      avisar.erro(err.message || 'Erro ao arquivar lead');
     }
   }
 
@@ -240,7 +365,7 @@ export default function CrmLeadDetalhe() {
       const data = await listarCandidatosRedistribuicaoCrm();
       setRedistributionCandidates(Array.isArray(data) ? data : []);
     } catch (err) {
-      alert(err.message || 'Erro ao carregar candidatos de redistribuicao');
+      avisar.erro(err.message || 'Erro ao carregar candidatos de redistribuicao');
     } finally {
       setLoadingCandidates(false);
     }
@@ -267,468 +392,604 @@ export default function CrmLeadDetalhe() {
 
       const interRes = await listarInteracoes(id);
       setInteractions(Array.isArray(interRes?.interactions) ? interRes.interactions : []);
+      avisar.sucesso('Lead redistribuido.');
     } catch (err) {
-      alert(err.message || 'Erro ao redistribuir lead');
+      avisar.erro(err.message || 'Erro ao redistribuir lead');
     } finally {
       setSavingRedistribution(false);
     }
   }
 
-  if (loading) return <div className="p-8 text-center text-muted text-sm">Carregando...</div>;
-  if (!lead) return <div className="p-8 text-center text-muted text-sm">Lead nao encontrado.</div>;
+  if (loading) {
+    return (
+      <Pagina>
+        <PageHeader titulo="Lead" voltar={{ to: '/crm/leads', title: 'Voltar para leads' }} />
+        <BlocoConteudo>
+          <p className="app-note">Carregando...</p>
+        </BlocoConteudo>
+      </Pagina>
+    );
+  }
 
-  const lifecycle = LIFECYCLE_MAP[lead.lifecycle_status] || { label: lead.lifecycle_status, cls: 'app-status-pill bg-elevated text-muted' };
+  if (!lead) {
+    return (
+      <Pagina>
+        <PageHeader titulo="Lead" voltar={{ to: '/crm/leads', title: 'Voltar para leads' }} />
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <BlocoConteudo>
+          <p className="app-note">Lead não encontrado.</p>
+        </BlocoConteudo>
+      </Pagina>
+    );
+  }
+
+  const lifecycle = LIFECYCLE_MAP[lead.lifecycle_status] || { label: lead.lifecycle_status, kind: 'neutral' };
   const temp = TEMP_MAP[lead.temperatura] || {};
   const podeRedistribuir = canRedistributeCrmLeads(user) && lead.lifecycle_status !== 'ARQUIVADO';
 
   const stagesFlat = pipelines.flatMap((p) => (p.etapas || []).map((e) => ({ ...e, pipelineNome: p.nome })));
   const candidatosDisponiveis = redistributionCandidates.filter((item) => Number(item.id) !== Number(lead.assigned_user_id));
 
+  const campoTexto = (chave, extra = {}) => (
+    <input
+      className="input w-full"
+      value={form[chave] ?? ''}
+      onChange={(e) => setForm((f) => ({ ...f, [chave]: e.target.value }))}
+      {...extra}
+    />
+  );
+
   return (
-    <div className="page solicitacoes-page">
-      {/* Header */}
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div className="flex items-start gap-3">
-            <Link to="/crm/leads" className="text-muted hover:text-main mt-0.5">←</Link>
-            <div>
-              <h1 className="page-title">{lead.nome}</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={lifecycle.cls}>{lifecycle.label}</span>
-                <span className="text-base" title={temp.label}>{temp.emoji}</span>
-                {lead.etapa && (
-                  <span className="inline-flex items-center gap-1 text-xs text-sub">
-                    <span className="w-2 h-2 rounded-full" style={{ background: lead.etapa.cor }} />
-                    {lead.etapa.nome}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
+    <Pagina>
+      {/*
+        C3/C4 (R11 revisto): tela de REGISTRO tem a seta de voltar à
+        esquerda SEMPRE, e o cabeçalho identifica o registro pelo NOME.
+        C5: um primário sólido (Editar/Salvar), secundárias em contorno,
+        destrutiva (Arquivar) apartada e a rara (Redistribuir) no "⋯".
+      */}
+      {/*
+        B3: o empreendimento de interesse NÃO vira apoio da faixa — ele já
+        aparece como campo rotulado no bloco de dados, e a mesma informação
+        duas vezes na tela é reprovação.
+      */}
+      <PageHeader
+        titulo={lead.nome}
+        /* C2: a faixa carrega o apoio que identifica O REGISTRO — quem rola a
+           página e perde o corpo de vista continua sabendo de qual lead se
+           trata e em que ponto do ciclo ele está. */
+        contagem={lifecycle.label}
+        descricao={[lead.empresa, lead.origem && `Origem: ${lead.origem}`]
+          .filter(Boolean).join(' · ') || 'Lead sem empresa e sem origem registradas.'}
+        voltar={{ to: '/crm/leads', title: 'Voltar para leads' }}
+        acaoPrincipal={editando
+          ? {
+            rotulo: saving ? 'Salvando...' : 'Salvar',
+            onClick: salvarEdicao,
+            desabilitada: saving
+          }
+          : { rotulo: 'Editar', onClick: iniciarEdicao }}
+        /* "Redistribuir lead" vinha do "⋯", que saiu do sistema (07/09):
+           é ação sobre este lead e agora é botão visível, na mesma fila das
+           outras secundárias. Cinco botões na faixa a 1920, medidos numa
+           linha só. */
+        secundarias={editando
+          ? [{ rotulo: 'Cancelar', onClick: () => setEditando(false) }]
+          : [
+            lead.lifecycle_status !== 'CONVERTIDO'
+              ? { rotulo: 'Marcar convertido', onClick: handleConversao }
+              : null,
+            !['PERDIDO', 'ARQUIVADO'].includes(lead.lifecycle_status)
+              ? { rotulo: 'Registrar perda', onClick: () => setShowLoss(true) }
+              : null,
+            podeRedistribuir
+              ? { rotulo: 'Redistribuir lead', onClick: abrirRedistribuicao }
+              : null
+          ].filter(Boolean)}
+        destrutiva={!editando && lead.lifecycle_status !== 'ARQUIVADO'
+          ? { rotulo: 'Arquivar', onClick: handleArquivar }
+          : undefined}
+      />
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {podeRedistribuir && (
-              <button onClick={abrirRedistribuicao} className="btn btn-secondary text-xs">
-                Redistribuir
-              </button>
-            )}
-            {lead.lifecycle_status !== 'CONVERTIDO' && (
-              <button onClick={handleConversao} className="btn btn-secondary text-xs text-emerald-700 dark:text-emerald-400">
-                Marcar convertido
-              </button>
-            )}
-            {!['PERDIDO', 'ARQUIVADO'].includes(lead.lifecycle_status) && (
-              <button onClick={() => setShowLoss(true)} className="btn btn-secondary text-xs text-red-600 dark:text-red-400">
-                Registrar perda
-              </button>
-            )}
-            {lead.lifecycle_status !== 'ARQUIVADO' && (
-              <button onClick={handleArquivar} className="btn btn-secondary text-xs text-muted">Arquivar</button>
-            )}
-            {!editando ? (
-              <button onClick={iniciarEdicao} className="btn btn-primary text-sm">Editar</button>
-            ) : (
-              <>
-                <button onClick={() => setEditando(false)} className="btn btn-secondary text-sm">Cancelar</button>
-                <button onClick={salvarEdicao} className="btn btn-primary text-sm" disabled={saving}>
-                  {saving ? 'Salvando...' : 'Salvar'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Coluna principal */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Dados do lead */}
-          <div className="card sol-surface-card p-5">
-            <h2 className="font-semibold text-main mb-4">Dados do Lead</h2>
-            {editando ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {[
-                  { key: 'nome', label: 'Nome', required: true },
-                  { key: 'telefone', label: 'Telefone' },
-                  { key: 'email', label: 'E-mail', type: 'email' },
-                  { key: 'documento', label: 'CPF / CNPJ' },
-                  { key: 'cidade', label: 'Cidade' },
-                  { key: 'estado', label: 'Estado', maxLength: 2 },
-                  { key: 'empreendimento_interesse', label: 'Empreendimento de interesse' },
-                  { key: 'produto_interesse', label: 'Produto de interesse' },
-                  { key: 'faixa_valor', label: 'Faixa de valor' }
-                ].map(({ key, label, type, required, maxLength }) => (
-                  <label key={key} className="app-filter-field">
-                    <span className="app-filter-label">{label}{required && <span className="text-red-500"> *</span>}</span>
-                    <input
-                      className="input"
-                      type={type || 'text'}
-                      value={form[key] || ''}
-                      maxLength={maxLength}
-                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                    />
-                  </label>
-                ))}
+      {/*
+        A pergunta central da tela: "em que ponto está este lead e o que
+        fazer com ele?". Status, temperatura, etapa e o próximo follow-up
+        são os quatro dados que decidem — vinham espalhados entre a faixa do
+        cabeçalho (status/temperatura/etapa) e o fundo do bloco de dados
+        (follow-up). Cada um continua aparecendo UMA vez (B3).
+      */}
+      <StatGrid colunas={4}>
+        <StatTile label="Status" valor={<StatusBadge status={lifecycle.label} kind={lifecycle.kind} />} />
+        <StatTile
+          label="Temperatura"
+          valor={temp.label ? `${temp.emoji} ${temp.label}` : null}
+          vazio={!temp.label}
+        />
+        <StatTile
+          label="Etapa do funil"
+          valor={lead.etapa ? <EtapaDoLead etapa={lead.etapa} /> : null}
+          vazio={!lead.etapa}
+        />
+        <StatTile
+          label="Próximo follow-up"
+          valor={fmtDataOuNulo(lead.proximo_followup_at)}
+          vazio={!lead.proximo_followup_at}
+        />
+      </StatGrid>
 
-                <label className="app-filter-field">
-                  <span className="app-filter-label">Temperatura</span>
-                  <select className="input" value={form.temperatura} onChange={(e) => setForm((f) => ({ ...f, temperatura: e.target.value }))}>
-                    <option value="FRIO">Frio</option>
-                    <option value="MORNO">Morno</option>
-                    <option value="QUENTE">Quente</option>
-                  </select>
-                </label>
-
-                <label className="app-filter-field">
-                  <span className="app-filter-label">Score (0-100)</span>
-                  <input className="input" type="number" min={0} max={100} value={form.score} onChange={(e) => setForm((f) => ({ ...f, score: e.target.value }))} />
-                </label>
-
-                <label className="app-filter-field">
-                  <span className="app-filter-label">Proximo follow-up</span>
-                  <input className="input" type="date" value={form.proximo_followup_at || ''} onChange={(e) => setForm((f) => ({ ...f, proximo_followup_at: e.target.value }))} />
-                </label>
-
-                <label className="app-filter-field sm:col-span-2">
-                  <span className="app-filter-label">Observacoes</span>
-                  <textarea className="input w-full" rows={3} value={form.observacoes} onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))} />
-                </label>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <InfoRow label="Nome" value={lead.nome} />
-                <InfoRow label="Telefone" value={lead.telefone} />
-                <InfoRow label="E-mail" value={lead.email} />
-                <InfoRow label="Documento" value={lead.documento} />
-                <InfoRow label="Cidade / Estado" value={[lead.cidade, lead.estado].filter(Boolean).join(' / ')} />
-                <InfoRow label="Empreendimento de interesse" value={lead.empreendimento_interesse} />
-                <InfoRow label="Produto de interesse" value={lead.produto_interesse} />
-                <InfoRow label="Faixa de valor" value={lead.faixa_valor} />
-                <InfoRow label="Score" value={lead.score} />
-                <InfoRow label="Observacoes" value={lead.observacoes} />
-                <InfoRow label="Proximo follow-up" value={fmtDate(lead.proximo_followup_at)} />
-              </div>
-            )}
-          </div>
-
-          {/* Origem */}
-          <div className="card sol-surface-card p-5">
-            <h2 className="font-semibold text-main mb-4">Origem</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              <InfoRow label="Tipo" value={lead.source_type?.replace('_', ' ')} />
-              <InfoRow label="Campanha" value={lead.campaign_name || lead.source_name} />
-              <InfoRow label="Adset" value={lead.adset_name} />
-              <InfoRow label="UTM Source" value={lead.utm_source} />
-              <InfoRow label="UTM Medium" value={lead.utm_medium} />
-              <InfoRow label="UTM Campaign" value={lead.utm_campaign} />
-            </div>
-          </div>
-
-          {/* Interacoes / Timeline */}
-          <div className="card sol-surface-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-main">Interacoes</h2>
-              <button
-                className="btn btn-secondary text-xs"
-                onClick={() => setShowAddInteraction((v) => !v)}
+      <BlocoConteudo
+        titulo="Dados do lead"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {editando ? (
+          <FormSecao legenda="Identificação e interesse" colunas={2}>
+            <CampoForm label="Nome" obrigatorio span={2}>
+              {campoTexto('nome', { required: true })}
+            </CampoForm>
+            <CampoForm label="Telefone">{campoTexto('telefone')}</CampoForm>
+            <CampoForm label="E-mail">{campoTexto('email', { type: 'email' })}</CampoForm>
+            <CampoForm label="CPF / CNPJ">
+              <input
+                className="input w-full"
+                value={form.documento ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, documento: maskCpfCnpj(e.target.value) }))}
+              />
+            </CampoForm>
+            <CampoForm label="Cidade">{campoTexto('cidade')}</CampoForm>
+            <CampoForm label="Estado">{campoTexto('estado', { maxLength: 2 })}</CampoForm>
+            <CampoForm label="Empreendimento de interesse">{campoTexto('empreendimento_interesse')}</CampoForm>
+            <CampoForm label="Produto de interesse">{campoTexto('produto_interesse')}</CampoForm>
+            <CampoForm label="Faixa de valor">{campoTexto('faixa_valor')}</CampoForm>
+            {/* R12: select de FORMULÁRIO (entrada de dado do registro) — legítimo. */}
+            <CampoForm label="Temperatura">
+              <select
+                className="input w-full"
+                value={form.temperatura}
+                onChange={(e) => setForm((f) => ({ ...f, temperatura: e.target.value }))}
               >
-                {showAddInteraction ? 'Cancelar' : '+ Registrar'}
-              </button>
-            </div>
-
-            {showAddInteraction && (
-              <form onSubmit={handleAddInteraction} className="mb-4 p-4 border border-base rounded-lg bg-elevated space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Tipo</span>
-                    <select
-                      className="input"
-                      value={interactionForm.interaction_type}
-                      onChange={(e) => setInteractionForm((f) => ({ ...f, interaction_type: e.target.value }))}
-                    >
-                      <option value="NOTE">Observacao</option>
-                      <option value="CALL">Ligacao</option>
-                      <option value="WHATSAPP">WhatsApp</option>
-                      <option value="EMAIL">E-mail</option>
-                      <option value="MEETING">Reuniao</option>
-                    </select>
-                  </label>
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Titulo (opcional)</span>
-                    <input
-                      className="input"
-                      placeholder="Resumo..."
-                      value={interactionForm.title}
-                      onChange={(e) => setInteractionForm((f) => ({ ...f, title: e.target.value }))}
-                    />
-                  </label>
-                </div>
-                <label className="app-filter-field">
-                  <span className="app-filter-label">Descricao</span>
-                  <textarea
-                    className="input w-full"
-                    rows={3}
-                    placeholder="Detalhes da interacao..."
-                    value={interactionForm.content}
-                    onChange={(e) => setInteractionForm((f) => ({ ...f, content: e.target.value }))}
-                  />
-                </label>
-                <div className="flex justify-end">
-                  <button type="submit" className="btn btn-primary text-sm" disabled={savingInteraction}>
-                    {savingInteraction ? 'Salvando...' : 'Salvar'}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {interactions.length === 0 ? (
-              <p className="text-sm text-muted">Nenhuma interacao registrada.</p>
-            ) : (
-              <div className="space-y-3">
-                {interactions.map((it) => (
-                  <div key={it.id} className="flex items-start gap-3 text-sm border-b border-base pb-3 last:border-0">
-                    <div className="mt-0.5 w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs">
-                        {it.interaction_type === 'CALL' ? '📞' :
-                         it.interaction_type === 'WHATSAPP' ? '💬' :
-                         it.interaction_type === 'EMAIL' ? '📧' :
-                         it.interaction_type === 'MEETING' ? '📅' : '📝'}
-                      </span>
-                    </div>
-                    <div className="flex-1">
-                      {it.title && <p className="font-medium text-main">{it.title}</p>}
-                      {it.content && <p className="text-sub mt-0.5">{it.content}</p>}
-                      <div className="flex gap-2 mt-1 text-xs text-muted">
-                        <span>{fmt(it.createdAt)}</span>
-                        {it.usuario && <span>— {it.usuario.nome}</span>}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Tarefas */}
-          <div className="card sol-surface-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-main">Tarefas</h2>
-              <button
-                className="btn btn-secondary text-xs"
-                onClick={() => setShowAddTask((v) => !v)}
-              >
-                {showAddTask ? 'Cancelar' : '+ Nova Tarefa'}
-              </button>
-            </div>
-
-            {showAddTask && (
-              <form onSubmit={handleAddTask} className="mb-4 p-4 border border-base rounded-lg bg-elevated space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="app-filter-field sm:col-span-2">
-                    <span className="app-filter-label">Titulo *</span>
-                    <input
-                      className="input"
-                      required
-                      placeholder="Ex: Ligar para o cliente"
-                      value={taskForm.title}
-                      onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
-                    />
-                  </label>
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Tipo</span>
-                    <select
-                      className="input"
-                      value={taskForm.task_type}
-                      onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}
-                    >
-                      <option value="CALL">Ligacao</option>
-                      <option value="WHATSAPP">WhatsApp</option>
-                      <option value="VISIT">Visita</option>
-                      <option value="EMAIL">E-mail</option>
-                      <option value="PROPOSAL">Proposta</option>
-                      <option value="OTHER">Outro</option>
-                    </select>
-                  </label>
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Prioridade</span>
-                    <select
-                      className="input"
-                      value={taskForm.priority}
-                      onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}
-                    >
-                      <option value="HIGH">Alta</option>
-                      <option value="MEDIUM">Media</option>
-                      <option value="LOW">Baixa</option>
-                    </select>
-                  </label>
-                  <label className="app-filter-field">
-                    <span className="app-filter-label">Prazo</span>
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={taskForm.due_at}
-                      onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))}
-                    />
-                  </label>
-                </div>
-                <div className="flex justify-end">
-                  <button type="submit" className="btn btn-primary text-sm" disabled={savingTask}>
-                    {savingTask ? 'Criando...' : 'Criar Tarefa'}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {tasks.length === 0 ? (
-              <p className="text-sm text-muted">Nenhuma tarefa criada.</p>
-            ) : (
-              <div className="space-y-2">
-                {tasks.map((task) => {
-                  const overdue = task.status === 'PENDING' && task.due_at && new Date(task.due_at) < new Date();
-                  return (
-                    <div key={task.id} className={`flex items-start justify-between gap-3 p-3 rounded-lg border ${overdue ? 'border-red-300 dark:border-red-800 bg-red-50/40 dark:bg-red-900/10' : 'border-base bg-elevated'}`}>
-                      <div className="flex-1">
-                        <p className={`text-sm font-medium ${task.status === 'DONE' ? 'line-through text-muted' : 'text-main'}`}>
-                          {task.title}
-                        </p>
-                        <div className="flex gap-2 mt-1 text-xs text-muted flex-wrap">
-                          <span>{task.task_type}</span>
-                          {task.due_at && <span className={overdue ? 'text-red-500' : ''}>Prazo: {fmt(task.due_at)}</span>}
-                          <span className={`font-medium ${task.priority === 'HIGH' ? 'text-red-500' : task.priority === 'MEDIUM' ? 'text-amber-500' : 'text-blue-400'}`}>
-                            {task.priority === 'HIGH' ? 'Alta' : task.priority === 'MEDIUM' ? 'Media' : 'Baixa'}
-                          </span>
-                        </div>
-                      </div>
-                      {task.status === 'PENDING' && (
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => handleCompleteTask(task.id)}
-                            className="btn btn-secondary text-xs text-emerald-700 dark:text-emerald-400"
-                          >
-                            OK
-                          </button>
-                          <button
-                            onClick={() => handleCancelTask(task.id)}
-                            className="btn btn-secondary text-xs text-muted"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      )}
-                      {task.status !== 'PENDING' && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${task.status === 'DONE' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-elevated text-muted'}`}>
-                          {task.status === 'DONE' ? 'Concluida' : 'Cancelada'}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Historico de auditoria */}
-          {Array.isArray(lead.auditLogs) && lead.auditLogs.length > 0 && (
-            <div className="card sol-surface-card p-5">
-              <h2 className="font-semibold text-main mb-4">Historico do Sistema</h2>
-              <div className="space-y-2">
-                {lead.auditLogs.map((log) => (
-                  <div key={log.id} className="flex items-start gap-3 text-sm border-b border-base pb-2 last:border-0">
-                    <span className="text-xs text-muted whitespace-nowrap mt-0.5">{fmt(log.createdAt)}</span>
-                    <div>
-                      <span className="font-medium text-sub">{log.event_type.replace(/_/g, ' ')}</span>
-                      {log.field_changed && (
-                        <span className="text-muted ml-1">— {log.field_changed}: {log.old_value || '—'} → {log.new_value || '—'}</span>
-                      )}
-                      {log.usuario && (
-                        <span className="text-xs text-muted ml-1">por {log.usuario.nome}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-4">
-          {/* Funil */}
-          <div className="card sol-surface-card p-5">
-            <h2 className="font-semibold text-main mb-3">Etapa do Funil</h2>
-            <select
-              className="input w-full"
-              value={lead.pipeline_stage_id || ''}
-              onChange={(e) => handleChangeStage(e.target.value)}
-              disabled={['ARQUIVADO'].includes(lead.lifecycle_status)}
-            >
-              <option value="">— Sem etapa —</option>
-              {stagesFlat.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {pipelines.length > 1 ? `${s.pipelineNome} › ` : ''}{s.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Info adicional */}
-          <div className="card sol-surface-card p-5 space-y-3">
-            <h2 className="font-semibold text-main mb-3">Informacoes</h2>
-            <InfoRow label="Responsavel" value={lead.responsavel?.nome} />
-            <InfoRow label="Criado por" value={lead.criadoPor?.nome} />
-            <InfoRow label="Cadastrado em" value={fmt(lead.createdAt)} />
-            <InfoRow label="Primeiro contato" value={fmt(lead.primeiro_contato_at)} />
-            <InfoRow label="Ultima interacao" value={fmt(lead.ultima_interacao_at)} />
-            {lead.lifecycle_status === 'CONVERTIDO' && (
-              <InfoRow label="Convertido em" value={fmt(lead.convertido_at)} />
-            )}
-            {lead.lifecycle_status === 'PERDIDO' && (
-              <>
-                <InfoRow label="Motivo de perda" value={lead.motivoPerda?.nome} />
-                <InfoRow label="Obs. perda" value={lead.motivo_perda_obs} />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Modal: Registrar perda */}
-      {showLoss && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-base rounded-xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="font-semibold text-main mb-4">Registrar Perda</h3>
-            <label className="app-filter-field mb-4">
-              <span className="app-filter-label">Motivo</span>
-              <select className="input w-full" value={lossMotivo} onChange={(e) => setLossMotivo(e.target.value)}>
-                <option value="">Selecione o motivo</option>
-                {motivosPerda.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                <option value="FRIO">Frio</option>
+                <option value="MORNO">Morno</option>
+                <option value="QUENTE">Quente</option>
               </select>
-            </label>
-            <label className="app-filter-field mb-4">
-              <span className="app-filter-label">Observacoes</span>
-              <textarea className="input w-full" rows={3} value={lossObs} onChange={(e) => setLossObs(e.target.value)} placeholder="Detalhes da perda..." />
-            </label>
-            <div className="flex justify-end gap-2">
-              <button className="btn btn-secondary text-sm" onClick={() => setShowLoss(false)}>Cancelar</button>
-              <button className="btn btn-primary text-sm bg-red-600 hover:bg-red-700" onClick={handlePerda}>Confirmar Perda</button>
+            </CampoForm>
+            <CampoForm label="Score (0-100)">
+              <input
+                className="input w-full"
+                type="number"
+                min={0}
+                max={100}
+                value={form.score}
+                onChange={(e) => setForm((f) => ({ ...f, score: e.target.value }))}
+              />
+            </CampoForm>
+            <CampoForm label="Próximo follow-up">
+              <DateInputBR
+                className="input w-full"
+                value={form.proximo_followup_at || ''}
+                onChange={(e) => setForm((f) => ({ ...f, proximo_followup_at: e.target.value }))}
+              />
+            </CampoForm>
+            <CampoForm label="Observações" tipo="texto-longo" span={2}>
+              <textarea
+                className="input w-full"
+                rows={3}
+                value={form.observacoes ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))}
+              />
+            </CampoForm>
+          </FormSecao>
+        ) : (
+          /*
+            B4 — campo vazio some com contador; a contagem sai da própria
+            lista abaixo (nada espelhado à mão).
+            B3 — "Nome" não repete aqui: já é o título da página, como no
+            molde do detalhe financeiro (o código saiu do bloco pelo mesmo
+            motivo). O dado continua no sistema e no formulário de edição.
+          */
+          <CamposComVazios
+            colunas={4}
+            campos={[
+              { label: 'Telefone', valor: lead.telefone },
+              { label: 'E-mail', valor: lead.email },
+              { label: 'Documento', valor: lead.documento },
+              { label: 'Cidade / Estado', valor: [lead.cidade, lead.estado].filter(Boolean).join(' / ') },
+              { label: 'Empreendimento de interesse', valor: lead.empreendimento_interesse, span: 2 },
+              { label: 'Produto de interesse', valor: lead.produto_interesse, span: 2 },
+              { label: 'Faixa de valor', valor: lead.faixa_valor },
+              { label: 'Score', valor: Number(lead.score) > 0 ? String(lead.score) : null },
+              { label: 'Observações', valor: lead.observacoes, span: 4 }
+            ]}
+          />
+        )}
+      </BlocoConteudo>
+
+      {/*
+        Seletor de CONTEXTO/entrada de dado (R12): muda o registro, não
+        filtra lista — select segue legítimo. A etapa aparece como
+        REFERÊNCIA no ladrilho do topo e como CAMPO EDITÁVEL aqui: mesma
+        informação com papéis diferentes, que a B3 declara não ser
+        duplicação.
+      */}
+      <BlocoConteudo titulo="Etapa do funil" variante="secundario">
+        <label className="form-group">
+          <span className="form-label">Mover para a etapa</span>
+          <select
+            className="input w-full"
+            value={lead.pipeline_stage_id || ''}
+            onChange={(e) => handleChangeStage(e.target.value)}
+            disabled={lead.lifecycle_status === 'ARQUIVADO'}
+          >
+            <option value="">— Sem etapa —</option>
+            {stagesFlat.map((s) => (
+              <option key={s.id} value={s.id}>
+                {pipelines.length > 1 ? `${s.pipelineNome} › ` : ''}{s.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+      </BlocoConteudo>
+
+      <BlocoConteudo titulo="Origem" variante="secundario">
+        <CamposComVazios
+          colunas={4}
+          campos={[
+            { label: 'Tipo', valor: lead.source_type?.replace('_', ' ') },
+            { label: 'Campanha', valor: lead.campaign_name || lead.source_name },
+            { label: 'Adset', valor: lead.adset_name },
+            { label: 'UTM Source', valor: lead.utm_source },
+            { label: 'UTM Medium', valor: lead.utm_medium },
+            { label: 'UTM Campaign', valor: lead.utm_campaign }
+          ]}
+        />
+      </BlocoConteudo>
+
+      <BlocoConteudo
+        titulo="Interações"
+        contagem={`${interactions.length} registro(s)`}
+        acoes={(
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => setShowAddInteraction((v) => !v)}
+          >
+            {showAddInteraction ? 'Cancelar' : 'Registrar interacao'}
+          </button>
+        )}
+      >
+        {showAddInteraction && (
+          <form onSubmit={handleAddInteraction} className="mb-4">
+            <FormSecao legenda="Nova interação" colunas={2}>
+              <CampoForm label="Tipo">
+                <select
+                  className="input w-full"
+                  value={interactionForm.interaction_type}
+                  onChange={(e) => setInteractionForm((f) => ({ ...f, interaction_type: e.target.value }))}
+                >
+                  {Object.entries(TIPO_INTERACAO_LABEL).map(([valor, rotulo]) => (
+                    <option key={valor} value={valor}>{rotulo}</option>
+                  ))}
+                </select>
+              </CampoForm>
+              <CampoForm label="Título (opcional)">
+                <input
+                  className="input w-full"
+                  placeholder="Resumo..."
+                  value={interactionForm.title}
+                  onChange={(e) => setInteractionForm((f) => ({ ...f, title: e.target.value }))}
+                />
+              </CampoForm>
+              <CampoForm label="Descrição" tipo="texto-longo" span={2}>
+                <textarea
+                  className="input w-full"
+                  rows={3}
+                  placeholder="Detalhes da interação..."
+                  value={interactionForm.content}
+                  onChange={(e) => setInteractionForm((f) => ({ ...f, content: e.target.value }))}
+                />
+              </CampoForm>
+            </FormSecao>
+            <div className="app-actionbar">
+              <button type="submit" className="btn btn-primary" disabled={savingInteraction}>
+                {savingInteraction ? 'Salvando...' : 'Salvar interacao'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {interactions.length === 0 ? (
+          <p className="app-note">Nenhuma interação registrada.</p>
+        ) : (
+          <div className="space-y-3">
+            {interactions.map((it) => (
+              <div key={it.id} className="flex items-start gap-3 text-sm border-b border-base pb-3 last:border-0">
+                <span className="flex-shrink-0" aria-hidden="true">
+                  {TIPO_INTERACAO_EMOJI[it.interaction_type] || TIPO_INTERACAO_EMOJI.NOTE}
+                </span>
+                <div className="flex-1">
+                  <p className="font-medium text-main">
+                    {it.title || TIPO_INTERACAO_LABEL[it.interaction_type] || it.interaction_type}
+                  </p>
+                  {it.content && <p className="text-sub mt-1">{it.content}</p>}
+                  <p className="text-xs text-muted mt-1">
+                    {fmt(it.createdAt)}
+                    {it.usuario ? ` — ${it.usuario.nome}` : ''}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </BlocoConteudo>
+
+      <BlocoConteudo
+        titulo="Tarefas"
+        contagem={`${tasks.length} tarefa(s)`}
+        acoes={(
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => setShowAddTask((v) => !v)}
+          >
+            {showAddTask ? 'Cancelar' : 'Nova tarefa'}
+          </button>
+        )}
+      >
+        {showAddTask && (
+          <form onSubmit={handleAddTask} className="mb-4">
+            <FormSecao legenda="Nova tarefa" colunas={2}>
+              <CampoForm label="Título" obrigatorio span={2}>
+                <input
+                  className="input w-full"
+                  required
+                  placeholder="Ex: Ligar para o cliente"
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
+                />
+              </CampoForm>
+              <CampoForm label="Tipo">
+                <select
+                  className="input w-full"
+                  value={taskForm.task_type}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}
+                >
+                  {Object.entries(TIPO_TAREFA_LABEL).map(([valor, rotulo]) => (
+                    <option key={valor} value={valor}>{rotulo}</option>
+                  ))}
+                </select>
+              </CampoForm>
+              <CampoForm label="Prioridade">
+                <select
+                  className="input w-full"
+                  value={taskForm.priority}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}
+                >
+                  <option value="HIGH">Alta</option>
+                  <option value="MEDIUM">Media</option>
+                  <option value="LOW">Baixa</option>
+                </select>
+              </CampoForm>
+              <CampoForm label="Prazo">
+                <input
+                  className="input w-full"
+                  type="datetime-local"
+                  value={taskForm.due_at}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))}
+                />
+              </CampoForm>
+            </FormSecao>
+            <div className="app-actionbar">
+              <button type="submit" className="btn btn-primary" disabled={savingTask}>
+                {savingTask ? 'Criando...' : 'Criar tarefa'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/*
+          R17: tabela sem coluna de identidade DECLARA a ausência
+          (`semIdentidade`). O título da tarefa é uma frase escrita pelo
+          usuário ("Ligar para o cliente") — exibi-la em maiúsculas, como a
+          coluna de identidade exige, deformaria o dado.
+        */}
+        <TabelaPadrao
+          semIdentidade
+          colunas={[
+            {
+              id: 'titulo',
+              titulo: 'Tarefa',
+              tipo: 'texto',
+              noCard: 'titulo',
+              render: (task) => (
+                <span className={task.status === 'DONE' ? 'line-through text-muted' : 'text-main'}>
+                  {task.title}
+                </span>
+              )
+            },
+            {
+              id: 'tipo',
+              titulo: 'Tipo',
+              tipo: 'texto',
+              render: (task) => TIPO_TAREFA_LABEL[task.task_type] || task.task_type
+            },
+            {
+              id: 'prazo',
+              titulo: 'Prazo',
+              tipo: 'data',
+              render: (task) => (task.due_at ? fmt(task.due_at) : '—')
+            },
+            {
+              id: 'prioridade',
+              titulo: 'Prioridade',
+              tipo: 'badge',
+              render: (task) => {
+                const p = PRIORIDADE_TAREFA[task.priority];
+                return p ? <StatusBadge status={p.label} kind={p.kind} /> : (task.priority || '—');
+              }
+            },
+            {
+              id: 'status',
+              titulo: 'Status',
+              tipo: 'status',
+              render: (task) => {
+                const s = STATUS_TAREFA[task.status] || { label: task.status, kind: 'neutral' };
+                return <StatusBadge status={s.label} kind={s.kind} />;
+              }
+            }
+          ]}
+          itens={tasks}
+          getId={(task) => task.id}
+          storageKey="tabela:crm-lead-tarefas"
+          rotuloRolagem="Tarefas do lead"
+          vazio="Nenhuma tarefa criada."
+          larguraAcoes={220}
+          urgencia={(task) => (
+            task.status === 'PENDING' && task.due_at && new Date(task.due_at) < new Date()
+              ? 'danger'
+              : null
+          )}
+          acoesLinha={(task) => (task.status === 'PENDING' ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => handleCompleteTask(task.id)}
+              >
+                Concluir
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm btn-perigo-suave"
+                onClick={() => handleCancelTask(task)}
+              >
+                Cancelar
+              </button>
+            </>
+          ) : null)}
+        />
+      </BlocoConteudo>
+
+      <BlocoConteudo titulo="Informações do registro" variante="secundario">
+        <CamposComVazios
+          colunas={4}
+          campos={[
+            { label: 'Responsável', valor: lead.responsavel?.nome },
+            { label: 'Criado por', valor: lead.criadoPor?.nome },
+            { label: 'Cadastrado em', valor: fmtOuNulo(lead.createdAt) },
+            { label: 'Primeiro contato', valor: fmtOuNulo(lead.primeiro_contato_at) },
+            { label: 'Última interação', valor: fmtOuNulo(lead.ultima_interacao_at) },
+            {
+              label: 'Convertido em',
+              contexto: lead.lifecycle_status === 'CONVERTIDO',
+              valor: fmtOuNulo(lead.convertido_at)
+            },
+            {
+              label: 'Motivo de perda',
+              contexto: lead.lifecycle_status === 'PERDIDO',
+              valor: lead.motivoPerda?.nome
+            },
+            {
+              label: 'Obs. perda',
+              contexto: lead.lifecycle_status === 'PERDIDO',
+              valor: lead.motivo_perda_obs,
+              span: 2
+            }
+          ]}
+        />
+      </BlocoConteudo>
+
+      {/* Histórico: raro/auditoria — nasce recolhido, mas o título fica à vista. */}
+      {Array.isArray(lead.auditLogs) && lead.auditLogs.length > 0 && (
+        <BlocoConteudo
+          titulo="Histórico do sistema"
+          contagem={`${lead.auditLogs.length} evento(s)`}
+          variante="secundario"
+          recolhivel
+          recolhidoPadrao
+        >
+          <div className="space-y-2">
+            {lead.auditLogs.map((log) => (
+              <div key={log.id} className="flex items-start gap-3 text-sm border-b border-base pb-2 last:border-0">
+                <span className="text-xs text-muted whitespace-nowrap">{fmt(log.createdAt)}</span>
+                <div>
+                  <span className="font-medium text-sub">{log.event_type.replace(/_/g, ' ')}</span>
+                  {log.field_changed && (
+                    <span className="text-muted ml-1">
+                      — {log.field_changed}: {log.old_value || '—'} → {log.new_value || '—'}
+                    </span>
+                  )}
+                  {log.usuario && (
+                    <span className="text-xs text-muted ml-1">por {log.usuario.nome}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </BlocoConteudo>
+      )}
+
+      {/*
+        R9 — modal, e aqui está certo: registrar perda e redistribuir
+        INTERROMPEM o trabalho principal da tela (ler e trabalhar o lead) e
+        devolvem a pessoa ao mesmo lugar. Não é a tela que existe para isso.
+        R27 fica com o componente: o OverlayModal dá corpo rolante e mantém
+        o botão de confirmar sempre visível.
+      */}
+      {showLoss && (
+        <OverlayModal
+          rotulo="Registrar perda"
+          largura="var(--modal-max-w-sm)"
+          onFechar={() => setShowLoss(false)}
+        >
+          <div className="p-6 space-y-4">
+            <h2 className="app-bloco-titulo">Registrar perda</h2>
+            <FormSecao colunas={2}>
+              <CampoForm label="Motivo" linha>
+                <select className="input w-full" value={lossMotivo} onChange={(e) => setLossMotivo(e.target.value)}>
+                  <option value="">Selecione o motivo</option>
+                  {motivosPerda.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                </select>
+              </CampoForm>
+              <CampoForm label="Observações" tipo="texto-longo" linha>
+                <textarea
+                  className="input w-full"
+                  rows={3}
+                  value={lossObs}
+                  onChange={(e) => setLossObs(e.target.value)}
+                  placeholder="Detalhes da perda..."
+                />
+              </CampoForm>
+            </FormSecao>
+            <div className="app-actionbar" data-modal="rodape">
+              <button type="button" className="btn btn-outline" onClick={() => setShowLoss(false)}>
+                Cancelar
+              </button>
+              {/* Ação de desfecho negativo: vermelho suave, nunca cor à mão. */}
+              <button type="button" className="btn btn-outline btn-perigo-suave" onClick={handlePerda}>
+                Confirmar perda
+              </button>
             </div>
           </div>
-        </div>
+        </OverlayModal>
       )}
 
       {showRedistribute && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-base rounded-xl p-6 w-full max-w-lg shadow-xl">
-            <div className="mb-4">
-              <h3 className="font-semibold text-main">Redistribuir lead</h3>
-              <p className="mt-1 text-xs text-muted">
-                Escolha um responsavel ou deixe automatico para enviar ao usuario elegivel com menor backlog.
+        <OverlayModal
+          rotulo="Redistribuir lead"
+          largura="var(--modal-max-w-md)"
+          onFechar={() => (savingRedistribution ? undefined : setShowRedistribute(false))}
+        >
+          <div className="p-6 space-y-4">
+            <div>
+              <h2 className="app-bloco-titulo">Redistribuir lead</h2>
+              <p className="app-note">
+                Escolha um responsável ou deixe automático para enviar ao usuário elegível com menor backlog.
               </p>
             </div>
 
-            <div className="space-y-4">
-              <label className="app-filter-field">
-                <span className="app-filter-label">Novo responsavel</span>
+            <FormSecao colunas={2}>
+              <CampoForm label="Novo responsável" linha>
                 <select
                   className="input w-full"
                   value={redistributionForm.assigned_user_id}
@@ -744,28 +1005,27 @@ export default function CrmLeadDetalhe() {
                     </option>
                   ))}
                 </select>
-              </label>
-
-              <label className="app-filter-field">
-                <span className="app-filter-label">Motivo da redistribuicao</span>
+              </CampoForm>
+              <CampoForm
+                label="Motivo da redistribuicao"
+                tipo="texto-longo"
+                linha
+                hint={`Responsavel atual: ${lead.responsavel?.nome || 'sem responsavel'}`}
+              >
                 <textarea
                   className="input w-full"
                   rows={3}
                   value={redistributionForm.motivo}
                   onChange={(e) => setRedistributionForm((f) => ({ ...f, motivo: e.target.value }))}
-                  placeholder="Ex: SLA vencido, ausencia do responsavel, ajuste manual de carteira..."
+                  placeholder="Ex: SLA vencido, ausencia do responsável, ajuste manual de carteira..."
                 />
-              </label>
+              </CampoForm>
+            </FormSecao>
 
-              <div className="rounded-xl border border-base bg-elevated/40 px-3 py-2 text-xs text-muted">
-                Responsavel atual: <span className="font-semibold text-main">{lead.responsavel?.nome || 'sem responsavel'}</span>
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="app-actionbar" data-modal="rodape">
               <button
                 type="button"
-                className="btn btn-secondary text-sm"
+                className="btn btn-outline"
                 onClick={() => setShowRedistribute(false)}
                 disabled={savingRedistribution}
               >
@@ -773,7 +1033,7 @@ export default function CrmLeadDetalhe() {
               </button>
               <button
                 type="button"
-                className="btn btn-primary text-sm"
+                className="btn btn-primary"
                 onClick={handleRedistribuirLead}
                 disabled={savingRedistribution || loadingCandidates}
               >
@@ -781,8 +1041,10 @@ export default function CrmLeadDetalhe() {
               </button>
             </div>
           </div>
-        </div>
+        </OverlayModal>
       )}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

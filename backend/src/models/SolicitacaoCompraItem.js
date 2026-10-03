@@ -11,6 +11,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false
       },
+      status_aprovacao: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+      },
       insumo_id: {
         type: DataTypes.INTEGER,
         allowNull: false
@@ -42,6 +46,11 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 0
       },
       desconto_rateado: {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: false,
+        defaultValue: 0
+      },
+      frete_valor: {
         type: DataTypes.DECIMAL(14, 2),
         allowNull: false,
         defaultValue: 0

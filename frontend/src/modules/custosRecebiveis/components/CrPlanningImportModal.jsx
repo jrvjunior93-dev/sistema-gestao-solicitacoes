@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineCheckCircle,
   HiOutlineExclamationTriangle,
@@ -7,9 +7,18 @@ import {
   HiOutlineTrash,
   HiOutlineXMark
 } from 'react-icons/hi2';
+import { TabelaPadrao } from '../../../components/padrao';
 import { revalidarItensPlanilhaPlanejamento } from '../services/custosRecebiveis';
+import { mensagemErroPlanilha, normalizarTextoPlanilha } from '../services/custosRecebiveisPrevisao';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// O que a importação confirmada grava (Fase 6: importar já salva).
+const SAVE_EFFECT = {
+  custos: 'os custos planejados são salvos',
+  'medicao-prevista': 'a medição prevista é salva',
+  'medicao-aprovada': 'a medição aprovada é registrada (com diferença ainda sem justificativa, fica só na tela)'
+};
 
 const TITLES = {
   custos: 'Custos planejados',
@@ -23,7 +32,7 @@ function asNumber(value) {
 }
 
 function keyOf(row, index = 0) {
-  return row.chave_importacao || row.plano_item_id || `${row.etapa_macro_codigo}-${row.descricao}-${index}`;
+  return row.chave_importacao || row.plano_item_id || `${row.descricao}-${row.unidade}-${index}`;
 }
 
 export default function CrPlanningImportModal({
@@ -40,6 +49,9 @@ export default function CrPlanningImportModal({
   const [validating, setValidating] = useState(false);
   const [requestError, setRequestError] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     setRows(preview?.itens || []);
@@ -47,9 +59,11 @@ export default function CrPlanningImportModal({
     setDirty(false);
     setRequestError('');
     setCatalogSearch('');
+    setConfirming(false);
   }, [preview]);
 
   const isCosts = tipo === 'custos';
+  const isForecast = tipo === 'medicao-prevista';
   const catalog = preview?.catalogo || [];
   const selectedIds = useMemo(
     () => new Set(rows.map((row) => Number(row.plano_item_id)).filter(Boolean)),
@@ -68,6 +82,7 @@ export default function CrPlanningImportModal({
   function markDirty(nextRows) {
     setRows(nextRows);
     setDirty(true);
+    setConfirming(false);
     setRequestError('');
   }
 
@@ -86,28 +101,26 @@ export default function CrPlanningImportModal({
     markDirty(rows.filter((_, rowIndex) => rowIndex !== index));
   }
 
+  function addFreeCost() {
+    markDirty([...rows, {
+      chave_importacao: `local-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      descricao: '',
+      unidade: '',
+      valor_unitario: '',
+      quantidade: '',
+      valor_total: 0,
+      erros: []
+    }]);
+  }
+
   function addCatalogItem(item) {
-    if (isCosts) {
-      markDirty([...rows, {
-        chave_importacao: `local-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        etapa_macro_codigo: item.codigo,
-        etapa_macro_descricao: item.descricao,
-        descricao: '',
-        unidade: '',
-        valor_unitario: '',
-        quantidade: '',
-        valor_total: 0,
-        erros: []
-      }]);
-    } else {
-      markDirty([...rows, {
-        ...item,
-        chave_importacao: `item-${item.plano_item_id}`,
-        quantidade: '',
-        valor_total: 0,
-        erros: []
-      }]);
-    }
+    markDirty([...rows, {
+      ...item,
+      chave_importacao: `item-${item.plano_item_id}`,
+      quantidade: '',
+      valor_total: 0,
+      erros: []
+    }]);
     setCatalogSearch('');
   }
 
@@ -133,13 +146,38 @@ export default function CrPlanningImportModal({
       setResult(response);
       setDirty(false);
     } catch (error) {
-      setRequestError(error.message || 'Não foi possível revalidar a prévia.');
+      setRequestError(mensagemErroPlanilha(error, 'Não foi possível revalidar a prévia.'));
     } finally {
       setValidating(false);
     }
   }
 
   const valid = Boolean(result?.resumo?.valido) && !dirty && rows.length > 0;
+
+  async function confirmImport() {
+    if (submittingRef.current || !valid) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      await onConfirm(tipo, result.itens);
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  // Previsão acima do saldo provável: só aviso (o teto é o saldo disponível).
+  function aboveProbable(row) {
+    if (!isForecast || row.saldo_provavel == null) return false;
+    const quantity = asNumber(row.quantidade);
+    return Number(row.quantidade_prevista_pendente || 0) > 0
+      && quantity > asNumber(row.saldo_provavel) + 0.0001
+      && quantity <= asNumber(row.saldo_disponivel) + 0.0001;
+  }
+
+  // A edição inline grava por ÍNDICE (updateRow/removeRow): a tabela recebe
+  // a linha já emparelhada com o seu índice na prévia.
+  const linhas = rows.map((row, index) => ({ id: keyOf(row, index), index, row }));
 
   return (
     <div className="cr-import-modal-backdrop" role="presentation">
@@ -170,19 +208,24 @@ export default function CrPlanningImportModal({
         </div>
 
         <div className="cr-import-modal__add">
-          <label>
-            <span>{isCosts ? 'Adicionar serviço em uma etapa macro' : 'Adicionar item do orçamento'}</span>
+          {isCosts ? (
+            <button type="button" className="btn btn-outline" onClick={addFreeCost}>
+              <HiOutlinePlus className="h-4 w-4" />
+              Adicionar linha livre
+            </button>
+          ) : <label>
+            <span>Adicionar item do orçamento</span>
             <div>
               <HiOutlineMagnifyingGlass className="h-4 w-4" />
               <input
                 type="search"
                 value={catalogSearch}
-                placeholder={isCosts ? 'Pesquise a etapa macro...' : 'Pesquise por código ou descrição...'}
+                placeholder="Pesquise por código ou descrição..."
                 onChange={(event) => setCatalogSearch(event.target.value)}
               />
             </div>
-          </label>
-          {catalogSearch ? (
+          </label>}
+          {!isCosts && catalogSearch ? (
             <div className="cr-import-modal__catalog">
               {availableCatalog.map((item) => (
                 <button
@@ -191,11 +234,7 @@ export default function CrPlanningImportModal({
                   onClick={() => addCatalogItem(item)}
                 >
                   <span>{item.item_codigo || item.codigo} · {item.descricao}</span>
-                  <small>
-                    {isCosts
-                      ? 'Novo custo livre nesta etapa'
-                      : `${item.unidade || 'un'} · saldo ${item.saldo_disponivel}`}
-                  </small>
+                  <small>{item.unidade || 'un'} · saldo {item.saldo_disponivel}</small>
                   <HiOutlinePlus className="h-4 w-4" />
                 </button>
               ))}
@@ -211,42 +250,93 @@ export default function CrPlanningImportModal({
               <HiOutlineExclamationTriangle className="h-4 w-4" />
               {result.erros.length} inconsistência(s) para revisar
             </summary>
-            <div>{result.erros.map((error) => <span key={error}>{error}</span>)}</div>
+            <div>{result.erros.map((error) => <span key={error}>{normalizarTextoPlanilha(error)}</span>)}</div>
           </details>
         ) : null}
 
-        <div className="cr-import-modal__table cr-table-shell">
-          <table>
-            <thead>
-              <tr>
-                <th>Etapa / item</th>
-                {isCosts ? <><th>Descrição</th><th>Unid.</th><th>Valor unit.</th></> : <><th>Unid.</th><th>Orçado</th><th>Saldo</th></>}
-                <th>Qtde.</th>
-                <th>Total</th>
-                <th aria-label="Ações" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={keyOf(row, index)} data-invalid={row.erros?.length ? 'true' : 'false'}>
-                  <td>
+        {Array.isArray(result?.avisos) && result.avisos.length ? (
+          <details className="cr-import-modal__errors" data-tone="warning" open>
+            <summary>
+              <HiOutlineExclamationTriangle className="h-4 w-4" />
+              {result.avisos.length} aviso(s) — não impedem a importação
+            </summary>
+            <div>{result.avisos.map((aviso) => <span key={aviso}>{normalizarTextoPlanilha(aviso)}</span>)}</div>
+          </details>
+        ) : null}
+
+        <div className="cr-import-modal__table">
+          <TabelaPadrao
+            /*
+              GRADE DE LANÇAMENTO, NÃO LISTA DE CONSULTA (05/09).
+              A maioria das colunas aqui é campo de digitação, não dado a ler.
+              Oferecer "escolher colunas" numa grade assim dá ao usuário como
+              esconder o campo que ele precisa preencher — e ele não descobre por
+              que o lançamento parou de funcionar. A capacidade sai DAQUI, não do
+              sistema: nas 246 tabelas de consulta ela continua.
+            */
+            colunasConfiguraveis={false}
+            colunas={[
+              {
+                id: isCosts ? 'descricao' : 'etapa',
+                titulo: isCosts ? 'Descrição' : 'Etapa / item',
+                // A descrição ou a etapa/item nomeia a linha, conforme o tipo de importação.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: ({ row, index }) => isCosts ? (
+                  <input
+                    value={row.descricao || ''}
+                    onChange={(event) => updateRow(index, 'descricao', event.target.value)}
+                  />
+                ) : (
+                  <>
                     <strong>{row.etapa_macro_codigo}</strong>
-                    <span>{isCosts ? row.etapa_macro_descricao : `${row.item_codigo} · ${row.descricao}`}</span>
-                  </td>
-                  {isCosts ? (
-                    <>
-                      <td><input value={row.descricao || ''} onChange={(event) => updateRow(index, 'descricao', event.target.value)} /></td>
-                      <td><input value={row.unidade || ''} onChange={(event) => updateRow(index, 'unidade', event.target.value)} /></td>
-                      <td><input type="number" min="0" step="0.0001" value={row.valor_unitario} onChange={(event) => updateRow(index, 'valor_unitario', event.target.value)} /></td>
-                    </>
-                  ) : (
-                    <>
-                      <td>{row.unidade || 'un'}</td>
-                      <td>{row.quantidade_orcada}</td>
-                      <td>{row.saldo_disponivel}</td>
-                    </>
-                  )}
-                  <td>
+                    <span>{row.item_codigo} · {row.descricao}</span>
+                  </>
+                )
+              },
+              ...(isCosts ? [
+                {
+                  id: 'unidade',
+                  titulo: 'Unid.',
+                  tipo: 'texto',
+                  render: ({ row, index }) => (
+                    <input
+                      value={row.unidade || ''}
+                      onChange={(event) => updateRow(index, 'unidade', event.target.value)}
+                    />
+                  )
+                },
+                {
+                  id: 'valor_unitario',
+                  titulo: 'Valor unit.',
+                  tipo: 'valor',
+                  render: ({ row, index }) => (
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      value={row.valor_unitario}
+                      onChange={(event) => updateRow(index, 'valor_unitario', event.target.value)}
+                    />
+                  )
+                }
+              ] : [
+                { id: 'unidade', titulo: 'Unid.', tipo: 'texto', render: ({ row }) => row.unidade || 'un' },
+                { id: 'quantidade_orcada', titulo: 'Orçado', tipo: 'numero', render: ({ row }) => row.quantidade_orcada },
+                { id: 'saldo_disponivel', titulo: 'Saldo', tipo: 'numero', render: ({ row }) => row.saldo_disponivel },
+                ...(isForecast ? [{
+                  id: 'saldo_provavel',
+                  titulo: 'Saldo provável',
+                  tipo: 'numero',
+                  render: ({ row }) => (row.saldo_provavel == null ? '—' : row.saldo_provavel)
+                }] : [])
+              ]),
+              {
+                id: 'quantidade',
+                titulo: 'Qtde.',
+                tipo: 'numero',
+                render: ({ row, index }) => (
+                  <>
                     <input
                       type="number"
                       min="0"
@@ -255,43 +345,86 @@ export default function CrPlanningImportModal({
                       value={row.quantidade}
                       onChange={(event) => updateRow(index, 'quantidade', event.target.value)}
                     />
-                    {row.erros?.length ? <small>{row.erros.join(' ')}</small> : null}
-                  </td>
-                  <td><strong>{currency.format(row.valor_total || 0)}</strong></td>
-                  <td>
-                    <button type="button" className="cr-icon-action" onClick={() => removeRow(index)} aria-label="Excluir item da prévia">
-                      <HiOutlineTrash className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!rows.length ? (
-                <tr><td colSpan={isCosts ? 7 : 6} className="cr-table-empty">Nenhuma linha com quantidade maior que zero.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
+                    {row.erros?.length
+                      ? <small>{row.erros.map(normalizarTextoPlanilha).join(' ')}</small>
+                      : (aboveProbable(row) ? <small data-tone="warning">Acima do saldo provável</small> : null)}
+                  </>
+                )
+              },
+              {
+                id: 'valor_total',
+                titulo: 'Total',
+                tipo: 'valor',
+                render: ({ row }) => <strong>{currency.format(row.valor_total || 0)}</strong>
+              }
+            ]}
+            itens={linhas}
+            getId={(linha) => linha.id}
+            urgencia={(linha) => (linha.row.erros?.length ? 'danger' : (aboveProbable(linha.row) ? 'warning' : null))}
+            storageKey={`tabela:custos-recebiveis-previa-importacao:${isCosts ? 'custos' : 'medicao'}`}
+            rotuloRolagem="Prévia da importação"
+            vazio="Nenhuma linha com quantidade maior que zero."
+            acoesLinha={({ index }) => (
+              <button
+                type="button"
+                className="cr-icon-action"
+                onClick={() => removeRow(index)}
+                aria-label="Excluir item da prévia"
+              >
+                <HiOutlineTrash className="h-4 w-4" />
+              </button>
+            )}
+            larguraAcoes={120}
+          />
         </div>
 
-        <footer className="cr-import-modal__footer">
-          <div data-state={valid ? 'valid' : 'pending'}>
-            {valid ? <HiOutlineCheckCircle className="h-5 w-5" /> : <HiOutlineExclamationTriangle className="h-5 w-5" />}
-            <span>{valid ? 'Todos os itens passaram na validação.' : 'Valide novamente após qualquer alteração.'}</span>
+        {confirming && valid ? (
+          <div className="cr-import-modal__confirm" role="alert">
+            <span>
+              {rows.length} item(ns) entram na tela e {SAVE_EFFECT[tipo] || 'a seção é salva'} agora.
+              Itens já lançados com o mesmo serviço são substituídos.
+            </span>
+            <div>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={submitting}
+                onClick={() => setConfirming(false)}
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={submitting}
+                onClick={confirmImport}
+              >
+                {submitting ? 'Salvando...' : 'Confirmar importação'}
+              </button>
+            </div>
           </div>
-          <div>
-            <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
-            <button type="button" className="btn btn-outline" disabled={validating} onClick={revalidate}>
-              {validating ? 'Validando...' : 'Validar novamente'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!valid || validating}
-              onClick={() => onConfirm(tipo, result.itens)}
-            >
-              Confirmar importação
-            </button>
-          </div>
-        </footer>
+        ) : (
+          <footer className="cr-import-modal__footer">
+            <div data-state={valid ? 'valid' : 'pending'}>
+              {valid ? <HiOutlineCheckCircle className="h-5 w-5" /> : <HiOutlineExclamationTriangle className="h-5 w-5" />}
+              <span>{valid ? 'Todos os itens passaram na validação.' : 'Valide novamente após qualquer alteração.'}</span>
+            </div>
+            <div>
+              <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
+              <button type="button" className="btn btn-outline" disabled={validating} onClick={revalidate}>
+                {validating ? 'Validando...' : 'Validar novamente'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!valid || validating}
+                onClick={() => setConfirming(true)}
+              >
+                {tipo === 'medicao-aprovada' ? 'Importar e registrar' : 'Importar e salvar'}
+              </button>
+            </div>
+          </footer>
+        )}
       </section>
     </div>
   );

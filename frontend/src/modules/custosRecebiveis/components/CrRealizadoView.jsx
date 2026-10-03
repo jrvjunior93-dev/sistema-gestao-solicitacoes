@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   HiOutlineArrowPath,
   HiOutlineArrowsRightLeft,
@@ -12,6 +12,7 @@ import {
   reconciliarCustoRealizado,
   reprocessarCustosRealizados
 } from '../services/custosRecebiveis';
+import { TabelaPadrao, CelulaDupla } from '../../../components/padrao';
 import CrStatusPill from './CrStatusPill';
 
 const STATUS_LABELS = {
@@ -87,6 +88,35 @@ function reconciliationTitle(item) {
   return item.titulo?.codigo || `Título #${item.titulo?.id || item.id}`;
 }
 
+/* AGRUPAMENTO POR ETAPA MACRO — a linha de grupo com colSpan escrita à mão
+   virou `agruparPor` da TabelaPadrao. A chave e o rótulo saem do próprio
+   título, para que o componente possa reagrupar sozinho. */
+function macroGroupKey(item) {
+  const macros = item.etapas_macro || [];
+  if (macros.length > 1) return 'MULTIPLAS';
+  return macros[0]?.codigo || 'SEM_ETAPA';
+}
+
+function macroGroupLabel(item) {
+  const macros = item.etapas_macro || [];
+  if (macros.length > 1) {
+    return { codigo: null, descricao: 'Rateado em mais de uma etapa macro' };
+  }
+  return {
+    codigo: macros[0]?.codigo || null,
+    descricao: macros[0]?.descricao || 'Sem etapa macro identificada'
+  };
+}
+
+// SEM_ETAPA e MULTIPLAS fecham a lista, como antes; o resto pelo código.
+function compareMacroGroups(a, b) {
+  if (a === 'SEM_ETAPA') return 1;
+  if (b === 'SEM_ETAPA') return -1;
+  if (a === 'MULTIPLAS') return 1;
+  if (b === 'MULTIPLAS') return -1;
+  return String(a).localeCompare(String(b));
+}
+
 export default function CrRealizadoView({
   obra,
   competencia,
@@ -156,32 +186,19 @@ export default function CrRealizadoView({
       ...(item.apropriacoes || []).flatMap((entry) => [entry.codigo, entry.nome])
     ].filter(Boolean).join(' ')).includes(normalizedSearch);
   }), [normalizedSearch, scopeFilter, statusFilter, titles]);
-  const groupedTitles = useMemo(() => {
-    const groups = new Map();
+  /* Uma lista SÓ, com os títulos de cada etapa macro juntos e na ordem dos
+     grupos: quem intercala a linha de grupo agora é a TabelaPadrao
+     (`agruparPor`), e ela agrupa varrendo os itens na ordem recebida. */
+  const titulosAgrupados = useMemo(() => {
+    const grupos = new Map();
     filteredTitles.forEach((item) => {
-      const macros = item.etapas_macro || [];
-      const macro = macros.length === 1 ? macros[0] : null;
-      const key = macros.length > 1 ? 'MULTIPLAS' : (macro?.codigo || 'SEM_ETAPA');
-      const current = groups.get(key) || {
-        key,
-        codigo: macro?.codigo || null,
-        descricao: macros.length > 1
-          ? 'Rateado em mais de uma etapa macro'
-          : (macro?.descricao || 'Sem etapa macro identificada'),
-        items: [],
-        total: 0
-      };
-      current.items.push(item);
-      current.total += item.ativo_no_custo ? Number(item.valor_alocado || 0) : 0;
-      groups.set(key, current);
+      const chave = macroGroupKey(item);
+      if (!grupos.has(chave)) grupos.set(chave, []);
+      grupos.get(chave).push(item);
     });
-    return [...groups.values()].sort((a, b) => {
-      if (a.key === 'SEM_ETAPA') return 1;
-      if (b.key === 'SEM_ETAPA') return -1;
-      if (a.key === 'MULTIPLAS') return 1;
-      if (b.key === 'MULTIPLAS') return -1;
-      return String(a.codigo).localeCompare(String(b.codigo));
-    });
+    return [...grupos.entries()]
+      .sort(([a], [b]) => compareMacroGroups(a, b))
+      .flatMap(([, itens]) => itens);
   }, [filteredTitles]);
 
   const statusCounts = useMemo(() => titles.reduce((accumulator, item) => {
@@ -350,91 +367,130 @@ export default function CrRealizadoView({
           )}
         </div>
 
-        <div className="cr-table-wrap">
-          <table className="cr-table cr-table--cost-ledger">
-            <thead>
-              <tr>
-                <th>Emissão / vencimento</th>
-                <th>Título / descrição</th>
-                <th>Credor</th>
-                <th>Categoria / apropriação</th>
-                <th className="is-number">Alocado</th>
-                <th className="is-number">Pago</th>
-                <th className="is-number">Saldo</th>
-                <th>Situação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="8">Carregando títulos financeiros...</td></tr>
-              ) : null}
-              {!loading && !filteredTitles.length ? (
-                <tr>
-                  <td colSpan="8">
-                    {titles.length
-                      ? 'Nenhum título corresponde aos filtros selecionados.'
-                      : 'Nenhum título a pagar está alocado a esta obra.'}
-                  </td>
-                </tr>
-              ) : null}
-              {!loading && groupedTitles.map((group) => (
-                <Fragment key={group.key}>
-                  <tr className="cr-cost-ledger__macro-row">
-                    <td colSpan="8">
-                      <span>
-                        {group.codigo ? <strong>{group.codigo}</strong> : null}
-                        <strong>{group.descricao}</strong>
-                      </span>
-                      <small>
-                        {group.items.length} título(s) · {currency(group.total)} alocado
-                      </small>
-                    </td>
-                  </tr>
-                  {group.items.map((item) => (
-                    <tr
-                      key={item.id}
-                      data-in-competence={item.em_competencia ? 'true' : 'false'}
-                      data-inactive={item.ativo_no_custo ? 'false' : 'true'}
-                    >
-                  <td data-label="Emissão / vencimento">
-                    <strong>{formatDate(item.data_referencia_custo || item.data_emissao)}</strong>
-                    <small>Vence em {formatDate(item.data_vencimento)}</small>
-                    {item.em_competencia ? <small>Emitido na competência</small> : null}
-                  </td>
-                  <td data-label="Título">
-                    <strong>{titleReference(item)}</strong>
-                    <small>{item.descricao || 'Sem descrição'}</small>
-                  </td>
-                  <td data-label="Credor">
-                    <strong>{item.parceiro?.nome || '-'}</strong>
-                    <small>{item.parceiro?.cpf_cnpj || ''}</small>
-                  </td>
-                  <td data-label="Classificação">
-                    <strong>{item.categoria?.nome || 'Sem categoria'}</strong>
-                    <small>{appropriationLabel(item)}</small>
-                  </td>
-                  <td data-label="Alocado" className="is-number">
-                    {currency(item.valor_alocado)}
-                  </td>
-                  <td data-label="Pago" className="is-number">
-                    {currency(item.valor_pago)}
-                  </td>
-                  <td data-label="Saldo" className="is-number">
-                    <strong>{currency(item.valor_saldo)}</strong>
-                  </td>
-                  <td data-label="Situação">
-                    <CrStatusPill
-                      status={item.status}
-                      label={STATUS_LABELS[item.status] || item.status}
-                    />
-                  </td>
-                    </tr>
-                  ))}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'emissao',
+              largura: 240, flex: 0,
+              titulo: 'Emissão / vencimento',
+              // Célula COMPOSTA (emissão + vencimento + marca de
+              // competência), não uma data solta: a medida é de texto.
+              tipo: 'texto',
+              render: (item) => (
+                <CelulaDupla
+                  principal={formatDate(item.data_referencia_custo || item.data_emissao)}
+                  sub={`Vence em ${formatDate(item.data_vencimento)}${item.em_competencia ? ' · emitido na competência' : ''}`}
+                />
+              )
+            },
+            {
+              id: 'titulo',
+              largura: 150,
+              titulo: 'Título / descrição',
+              // R17: o código do título NOMEIA a linha do razão de custos.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => (
+                <CelulaDupla
+                  principal={titleReference(item)}
+                  sub={item.descricao || 'Sem descrição'}
+                />
+              )
+            },
+            {
+              id: 'credor',
+              largura: 180,
+              titulo: 'Credor',
+              tipo: 'texto',
+              render: (item) => (
+                <CelulaDupla
+                  principal={item.parceiro?.nome || '-'}
+                  sub={item.parceiro?.cpf_cnpj || ''}
+                />
+              )
+            },
+            {
+              id: 'classificacao',
+              largura: 180,
+              titulo: 'Categoria / apropriação',
+              tipo: 'texto',
+              render: (item) => (
+                <CelulaDupla
+                  principal={item.categoria?.nome || 'Sem categoria'}
+                  sub={appropriationLabel(item)}
+                />
+              )
+            },
+            {
+              id: 'alocado',
+              largura: 120, minWidth: 120,
+              titulo: 'Alocado',
+              tipo: 'valor',
+              render: (item) => currency(item.valor_alocado)
+            },
+            {
+              id: 'pago',
+              largura: 120, minWidth: 120,
+              titulo: 'Pago',
+              tipo: 'valor',
+              render: (item) => currency(item.valor_pago)
+            },
+            {
+              id: 'saldo',
+              largura: 120, minWidth: 120,
+              titulo: 'Saldo',
+              tipo: 'valor',
+              render: (item) => <strong>{currency(item.valor_saldo)}</strong>
+            },
+            {
+              id: 'situacao',
+              largura: 155,
+              titulo: 'Situação',
+              tipo: 'status',
+              render: (item) => (
+                <>
+                  <CrStatusPill
+                    status={item.status}
+                    label={STATUS_LABELS[item.status] || item.status}
+                  />
+                  {item.ativo_no_custo ? null : (
+                    <small className="cr-cost-ledger__inactive-mark">Fora do custo</small>
+                  )}
+                </>
+              )
+            }
+          ]}
+          itens={titulosAgrupados}
+          getId={(item) => item.id}
+          carregando={loading}
+          // Dois vazios DISTINTOS que a tabela não tem como distinguir: só a
+          // tela sabe se a lista está vazia por filtro ou por não haver
+          // título algum alocado à obra.
+          vazio={titles.length
+            ? 'Nenhum título corresponde aos filtros selecionados.'
+            : 'Nenhum título a pagar está alocado a esta obra.'}
+          agruparPor={{
+            chave: macroGroupKey,
+            titulo: (chave, itens) => {
+              const rotulo = macroGroupLabel(itens[0] || {});
+              const total = itens.reduce(
+                (soma, item) => soma + (item.ativo_no_custo ? Number(item.valor_alocado || 0) : 0),
+                0
+              );
+              return (
+                <span className="cr-cost-ledger__macro-title">
+                  <span>
+                    {rotulo.codigo ? <strong>{rotulo.codigo}</strong> : null}
+                    <strong>{rotulo.descricao}</strong>
+                  </span>
+                  <small>{itens.length} título(s) · {currency(total)} alocado</small>
+                </span>
+              );
+            }
+          }}
+          storageKey="tabela:cr-realizado:custos-alocados"
+          rotuloRolagem="Custos financeiros alocados à obra"
+        />
 
         {(permissions.update || mappingQueue.length > 0) ? (
           <details className="cr-cost-ledger__technical">

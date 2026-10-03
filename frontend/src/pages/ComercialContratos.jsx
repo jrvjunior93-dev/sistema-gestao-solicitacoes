@@ -1,3 +1,4 @@
+import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineEye, HiOutlinePencilSquare, HiPlus, HiXMark } from 'react-icons/hi2';
 import { Link } from 'react-router-dom';
@@ -5,7 +6,19 @@ import { useAuth } from '../contexts/AuthContext';
 import ComercialContratoImportacaoPanel from '../components/comercial/ComercialContratoImportacaoPanel';
 import { buscarParceiros, criarParceiro } from '../services/parceiros';
 import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BarraFiltros,
+  alternarValorFiltro,
+  TabelaPadrao,
+  CelulaDupla,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { canImportComercialContratos } from '../utils/acessoProduto';
 import { isValidCpfCnpj, maskCep, maskCpfCnpj, maskCreci, maskPhone, normalizeCurrencyTyping, onlyDigits } from '../utils/formatters';
 import {
@@ -37,13 +50,13 @@ const PARCELA_REAJUSTE_TIPOS = [
   { value: 'REAJUSTAVEL', label: 'Reajustavel', resumo: 'R' }
 ];
 const TIPOS_DOCUMENTO_MODELO = [
-  { value: 'CONTRATO', label: 'Contrato padrao' },
+  { value: 'CONTRATO', label: 'Contrato padrão' },
   { value: 'CONTRATO_ASSINADO', label: 'Contrato assinado' }
 ];
 const MODOS_COMPOSICAO = [
   { value: 'ENTRADA', label: 'Entrada' },
   { value: 'PERIODICO', label: 'Parcelas periodicas' },
-  { value: 'MANUAL', label: 'Lancamentos manuais' }
+  { value: 'MANUAL', label: 'Lançamentos manuais' }
 ];
 const PERIODICIDADES = [
   { value: 'AVISTA', label: 'A vista', intervalMonths: 0 },
@@ -54,20 +67,9 @@ const PERIODICIDADES = [
   { value: 'PERSONALIZADA', label: 'Datas pre-definidas', intervalMonths: null }
 ];
 const CONTRATO_COMERCIAL_DRAFT_KEY = 'fluxy:comercial:contrato-venda:draft';
-const CONTRATOS_CARTEIRA_COLUMNS = [
-  { key: 'contrato', width: 190, minWidth: 140 },
-  { key: 'status', width: 200, minWidth: 140 },
-  { key: 'cliente', width: 250, minWidth: 170 },
-  { key: 'empreendimento', width: 210, minWidth: 150 },
-  { key: 'unidade', width: 160, minWidth: 120 },
-  { key: 'corretor', width: 190, minWidth: 140 },
-  { key: 'comissao', width: 100, minWidth: 84 },
-  { key: 'obra', width: 220, minWidth: 160 },
-  { key: 'valor_total', width: 145, minWidth: 120 },
-  { key: 'em_aberto', width: 145, minWidth: 120 },
-  { key: 'vencido', width: 140, minWidth: 115 },
-  { key: 'acoes', width: 104, minWidth: 96 }
-];
+// R5: o apoio da TELA mora no cabecalho (prop `descricao` do PageHeader),
+// nunca num paragrafo solto sobre o canvas.
+const DESCRICAO_TELA = 'Contratos, agenda financeira e titulos a receber integrados ao modulo financeiro.';
 
 function getOptionValue(option) {
   return String(option?.value || option || '').trim();
@@ -516,19 +518,36 @@ function buildObservacoesParcela(observacoes, detalheFormaRecebimento) {
   return partes.join('\n');
 }
 
-function statusClass(status) {
+/*
+  R25: o `statusClass()` desta tela devolvia paleta crua do Tailwind
+  (`bg-emerald-100 text-emerald-700` e irmas) — o mesmo copiar-colar que
+  aparece em outras telas do modulo. Paleta crua nao tem par no tema escuro
+  e nao passa pelo piso de contraste do ThemeContext (R24).
+
+  A pilula agora e o `StatusBadge` (fx-badge + tokens --sem-*), que traz
+  icone junto da cor (cor sozinha nao comunica para daltonico).
+
+  O que sobra aqui e so a CLASSIFICACAO SEMANTICA do status de contrato, que
+  o classificador generico do StatusBadge nao acerta sozinho: "DISTRATADO"
+  nao casa com nenhum dos padroes dele e cairia em `info`, quando nesta tela
+  ele sempre foi vermelho. Entao a familia vai explicita, no `kind`, e as
+  cores continuam significando o mesmo de antes:
+  ATIVO=sucesso, QUITADO=informacao, INADIMPLENTE=atencao,
+  DISTRATADO/CANCELADO=perigo, o resto (RASCUNHO) neutro.
+*/
+function familiaStatusContrato(status) {
   switch (String(status || '').toUpperCase()) {
     case 'ATIVO':
-      return 'bg-emerald-100 text-emerald-700';
+      return 'success';
     case 'QUITADO':
-      return 'bg-blue-100 text-blue-700';
+      return 'info';
     case 'INADIMPLENTE':
-      return 'bg-amber-100 text-amber-700';
+      return 'warning';
     case 'DISTRATADO':
     case 'CANCELADO':
-      return 'bg-rose-100 text-rose-700';
+      return 'danger';
     default:
-      return 'bg-slate-100 text-slate-600';
+      return 'neutral';
   }
 }
 
@@ -779,7 +798,9 @@ export default function ComercialContratos() {
     Array.isArray(draftLoaded?.paymentPlans) ? draftLoaded.paymentPlans : []
   ));
   const [busca, setBusca] = useState('');
-  const [statusFiltro, setStatusFiltro] = useState('');
+  // R12: o recorte de status e um CONJUNTO (marcacao multipla, conjunto
+  // vazio = todos), nao a escolha unica de um select.
+  const [statusFiltro, setStatusFiltro] = useState(() => new Set());
   const [empreendimentos, setEmpreendimentos] = useState([]);
   const [unidades, setUnidades] = useState([]);
   const [clientes, setClientes] = useState([]);
@@ -812,12 +833,38 @@ export default function ComercialContratos() {
   const [distratoForm, setDistratoForm] = useState(defaultDistratoForm());
   const [trocaForm, setTrocaForm] = useState(defaultTrocaForm());
   const [contratoAssinadoArquivo, setContratoAssinadoArquivo] = useState(null);
-  const [error, setError] = useState('');
+
+  /*
+    R3/R19: a tela tinha DUAS familias de caixa. O erro ja morava numa faixa
+    do sistema (`app-alert--error`) via estado proprio; o SUCESSO ("Contrato
+    excluido com sucesso") saia num `window.alert` do Chrome — caixa que
+    ignora tema e tokens, bloqueia a pagina, nao existe no DOM (o harness nao
+    a mede) e some sem rastro.
+
+    R16 (UM dono por responsabilidade): acrescentar a faixa de avisos ao lado
+    da faixa de erro deixaria dois lugares dizendo a mesma coisa no mesmo
+    contexto. Entao o estado `error` inteiro passou para o `useAvisos` — erro
+    e sucesso na MESMA faixa, com o tom semantico de cada um.
+  */
+  const { avisos, avisar, fechar, limpar: limparAvisos } = useAvisos();
+
+  /*
+    R19: `window.confirm` some das tres acoes destrutivas desta tela.
+    R26 (leitura obrigatoria): o confirm do navegador BLOQUEAVA a pagina —
+    nada podia mudar entre a pergunta e a acao, e o defeito era impossivel. O
+    modal do sistema nao bloqueia, e trocar a caixa pelo componente muda o
+    MODELO DE CONCORRENCIA da acao: onde o handler relesse o estado depois do
+    await, a tela perguntaria sobre o contrato A e agiria sobre o B, com a
+    trilha registrando consentimento VALIDO para o alvo errado.
+    Por isso os tres handlers abaixo fixam o alvo numa const ANTES do `await`
+    e a acao usa essa const.
+  */
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   async function carregar() {
     try {
       setLoading(true);
-      setError('');
+      limparAvisos();
       const [empreData, unidData, clientesData, corretoresData, testemunhasData, obrasData, categoriasData, contratosData, modelosData] = await Promise.all([
         getEmpreendimentosComerciais({ ativo: 1 }),
         getUnidadesComerciais({ ativo: 1 }),
@@ -857,7 +904,7 @@ export default function ComercialContratos() {
       setContratos(Array.isArray(contratosData) ? contratosData : []);
       setModelosContrato(Array.isArray(modelosData) ? modelosData : []);
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar contratos comerciais');
+      avisar.erro(err?.message || 'Erro ao carregar contratos comerciais');
     } finally {
       setLoading(false);
     }
@@ -1007,7 +1054,7 @@ export default function ComercialContratos() {
   const contratosFiltrados = useMemo(() => {
     const termo = normalizeSearch(busca);
     return contratos.filter((item) => {
-      if (statusFiltro && String(item.status) !== statusFiltro) return false;
+      if (statusFiltro.size && !statusFiltro.has(String(item.status))) return false;
       if (!termo) return true;
       const blob = normalizeSearch([
         item.numero,
@@ -1193,14 +1240,14 @@ export default function ComercialContratos() {
 
   function adicionarFormaPagamento() {
     if (isFormaComDetalhe(generator.forma_recebimento_prevista) && !String(generator.detalhe_forma_recebimento || '').trim()) {
-      setError('Descreva o bem, a permuta ou o outro recebimento antes de adicionar a forma de pagamento.');
+      avisar.erro('Descreva o bem, a permuta ou o outro recebimento antes de adicionar a forma de pagamento.');
       return;
     }
 
     const planoId = `${Date.now()}-${Math.random()}`;
     const resultado = gerarParcelasDoBloco(generator, planoId, periodicidades, form.data_assinatura);
     if (resultado.error) {
-      setError(resultado.error);
+      avisar.erro(resultado.error);
       return;
     }
 
@@ -1212,7 +1259,7 @@ export default function ComercialContratos() {
     };
     const proximosPlanos = [...paymentPlans, proximoPlano];
 
-    setError('');
+    limparAvisos();
     setPaymentPlans(proximosPlanos);
     aplicarPlanosAoContrato(proximosPlanos);
     setGenerator(defaultGenerator());
@@ -1314,7 +1361,7 @@ export default function ComercialContratos() {
     if (!parcela) return;
 
     if (Math.abs(diferencaComposicao) <= 0.009) {
-      setError('As formas de pagamento ja fecham o valor total do contrato.');
+      avisar.erro('As formas de pagamento já fecham o valor total do contrato.');
       return;
     }
 
@@ -1322,17 +1369,17 @@ export default function ComercialContratos() {
     const novoValor = roundCurrency(valorAtual + diferencaComposicao);
 
     if (novoValor < 0) {
-      setError('A diferenca e maior que o valor desta parcela. Escolha outra parcela para ajustar o fechamento.');
+      avisar.erro('A diferença e maior que o valor desta parcela. Escolha outra parcela para ajustar o fechamento.');
       return;
     }
 
-    setError('');
+    limparAvisos();
     setParcelaEditandoIndex(index);
     updateParcela(index, 'valor', formatCurrencyInput(novoValor));
   }
 
   function limparFormasPagamentoContrato() {
-    setError('');
+    limparAvisos();
     setParcelaEditandoIndex(null);
     setGenerator(defaultGenerator());
     setPaymentPlans([]);
@@ -1343,18 +1390,51 @@ export default function ComercialContratos() {
     }));
   }
 
-  function limparDadosContrato({ confirmar = true } = {}) {
-    if (confirmar) {
-      const confirmado = window.confirm('Limpar todos os dados preenchidos deste contrato? Esta acao tambem apaga as formas de pagamento do rascunho.');
-      if (!confirmado) return;
-    }
-
+  // Descarte SEM pergunta: usado depois de salvar e depois de excluir, quando
+  // o formulario ja cumpriu o que estava ali para fazer.
+  function limparDadosContrato() {
     clearStoredContratoDraft();
-    setError('');
+    limparAvisos();
     setParcelaEditandoIndex(null);
     setForm(defaultForm());
     setGenerator(defaultGenerator());
     setPaymentPlans([]);
+  }
+
+  async function confirmarLimparDadosContrato() {
+    /*
+      R26: a identificacao do rascunho sai em consts ANTES do await, e e o que
+      a mensagem cita.
+
+      Registro honesto de onde a R26 encosta no limite aqui: a acao nao e
+      "apagar o registro X" — e devolver o `form` ao padrao. Nao existe id
+      para levar do outro lado do await. O que fixa a referencia neste caso e
+      a propria clausura do React: `form` aqui e o valor do render em que o
+      botao foi clicado, e ele nao muda no meio do `await`. Nao inventei um
+      "confira se mudou" depois da confirmacao porque, pela mesma clausura,
+      esse check compararia o valor consigo mesmo — seria um check que nunca
+      morde, que e justamente o que a DoD manda nao escrever.
+    */
+    const alvoCodigo = form.numero || numeroContratoCalculado || '';
+    const alvoEmpreendimento = empreendimentoSelecionado?.nome || '';
+    const alvoFormas = (form.parcelas || []).length;
+    const identificacao = [alvoCodigo, alvoEmpreendimento].filter(Boolean).join(' · ')
+      || 'o rascunho em preenchimento';
+
+    const { ok } = await confirmar({
+      titulo: 'Limpar dados do contrato',
+      mensagem: `Limpar todos os dados preenchidos de ${identificacao}`
+        + `${alvoFormas ? `, incluindo as ${alvoFormas} parcela(s) ja montadas` : ''}?`
+        + ' O rascunho gravado no navegador tambem e apagado.'
+        + ' Esta acao nao pode ser desfeita: para recuperar, sera preciso preencher tudo de novo.',
+      rotuloConfirmar: 'Limpar dados',
+      destrutiva: true
+    });
+    // R21: `confirmar()` devolve { ok, texto } e objeto e SEMPRE truthy — lido
+    // como booleano, "Cancelar" seguiria com a limpeza.
+    if (!ok) return;
+
+    limparDadosContrato();
   }
 
   async function carregarDocumentosContrato(contratoId) {
@@ -1383,7 +1463,7 @@ export default function ComercialContratos() {
       }));
       return detalhe;
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar detalhe do contrato');
+      avisar.erro(err?.message || 'Erro ao carregar detalhe do contrato');
       return null;
     }
   }
@@ -1398,12 +1478,12 @@ export default function ComercialContratos() {
   async function handleSincronizarStatusFinanceiro(id) {
     try {
       setProcessingAction('sync');
-      setError('');
+      limparAvisos();
       const data = await sincronizarStatusFinanceiroContratoComercial(id);
       setContratoSelecionado(data);
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao sincronizar status financeiro do contrato');
+      avisar.erro(err?.message || 'Erro ao sincronizar status financeiro do contrato');
     } finally {
       setProcessingAction('');
     }
@@ -1413,14 +1493,14 @@ export default function ComercialContratos() {
     if (!contratoSelecionado?.id) return;
     try {
       setProcessingAction('distrato');
-      setError('');
+      limparAvisos();
       const data = await distratarContratoComercial(contratoSelecionado.id, distratoForm);
       setContratoSelecionado(data);
       setShowDistrato(false);
       setDistratoForm(defaultDistratoForm());
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao distratar contrato');
+      avisar.erro(err?.message || 'Erro ao distratar contrato');
     } finally {
       setProcessingAction('');
     }
@@ -1429,22 +1509,22 @@ export default function ComercialContratos() {
   async function handleTrocaUnidadeContrato() {
     if (!contratoSelecionado?.id) return;
     if ((contratoSelecionado.unidades || []).length > 1 && !trocaForm.unidade_comercial_origem_id) {
-      setError('Selecione qual unidade do contrato sera trocada.');
+      avisar.erro('Selecione qual unidade do contrato será trocada.');
       return;
     }
     if (!trocaForm.unidade_comercial_destino_id) {
-      setError('Selecione a nova unidade.');
+      avisar.erro('Selecione a nova unidade.');
       return;
     }
     const novoValor = toNumber(trocaForm.novo_valor_total);
     const valorAtual = toNumber(contratoSelecionado.valor_total);
     if (novoValor > valorAtual && !hasText(trocaForm.competencia_data)) {
-      setError('Informe a competencia DRE do ajuste quando a troca aumentar o valor do contrato.');
+      avisar.erro('Informe a competência DRE do ajuste quando a troca aumentar o valor do contrato.');
       return;
     }
     try {
       setProcessingAction('troca');
-      setError('');
+      limparAvisos();
       const data = await trocarUnidadeContratoComercial(contratoSelecionado.id, trocaForm);
       setContratoSelecionado(data);
       setShowTroca(false);
@@ -1454,35 +1534,62 @@ export default function ComercialContratos() {
       });
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao trocar unidade do contrato');
+      avisar.erro(err?.message || 'Erro ao trocar unidade do contrato');
     } finally {
       setProcessingAction('');
     }
   }
 
   async function handleExcluirContrato() {
-    if (!contratoSelecionado?.id) return;
+    /*
+      R26: o contrato sai numa const ANTES do await e TUDO daqui pra baixo usa
+      `alvo` — a mensagem cita `alvo.numero` e a exclusao manda `alvo.id`.
 
-    const confirmado = window.confirm(
-      'Excluir este contrato comercial? Esta acao cancela os titulos ainda sem baixa, libera a unidade e nao pode ser desfeita.'
-    );
-    if (!confirmado) return;
+      Por que a regra existe: com `window.confirm` a pagina ficava BLOQUEADA e
+      nada podia mudar entre a pergunta e a acao; o modal do sistema nao
+      bloqueia. Se este handler relesse o estado depois do await — por ref,
+      por variavel de modulo ou por um getter —, trocar de contrato com a
+      pergunta aberta faria a tela perguntar sobre o contrato A e EXCLUIR o B,
+      com a trilha registrando um consentimento valido para o alvo errado
+      (classe CONSENTIMENTO da DoD, que nenhum check pega).
+
+      O que este arquivo tem a mais, e nao substitui a const: sendo componente
+      de funcao, `contratoSelecionado` ja e o valor do render do clique. A
+      const torna isso EXPLICITO e sobrevive a qualquer refatoracao que troque
+      o estado por ref ou por leitura tardia — que e quando a janela abre de
+      verdade.
+    */
+    const alvo = contratoSelecionado;
+    if (!alvo?.id) return;
+
+    const { ok } = await confirmar({
+      titulo: 'Excluir contrato comercial',
+      mensagem: `Excluir o contrato ${alvo.numero || alvo.id}`
+        + `${alvo.cliente?.nome ? ` de ${alvo.cliente.nome}` : ''}?`
+        + ' Os titulos ainda sem baixa sao cancelados e a unidade e liberada.'
+        + ' Esta acao nao pode ser desfeita.',
+      rotuloConfirmar: 'Excluir contrato',
+      destrutiva: true
+    });
+    // R21: retorno desestruturado — `const ok = await confirmar(...)` compila
+    // e faz o "Cancelar" excluir o contrato, porque objeto e sempre truthy.
+    if (!ok) return;
 
     try {
       setProcessingAction('excluir');
-      setError('');
-      await excluirContratoComercial(contratoSelecionado.id);
+      limparAvisos();
+      await excluirContratoComercial(alvo.id);
       setContratoSelecionado(null);
       setDocumentosContrato([]);
       setShowDistrato(false);
       setShowTroca(false);
-      if (String(form.id || '') === String(contratoSelecionado.id)) {
-        limparDadosContrato({ confirmar: false });
+      if (String(form.id || '') === String(alvo.id)) {
+        limparDadosContrato();
       }
       await carregar();
-      window.alert('Contrato excluido com sucesso.');
+      avisar.sucesso(`Contrato ${alvo.numero || alvo.id} excluido com sucesso.`);
     } catch (err) {
-      setError(err?.message || 'Erro ao excluir contrato comercial');
+      avisar.erro(err?.message || 'Erro ao excluir contrato comercial');
     } finally {
       setProcessingAction('');
     }
@@ -1492,7 +1599,7 @@ export default function ComercialContratos() {
     if (!contratoSelecionado?.id) return;
     try {
       setProcessingAction('gerar-documento');
-      setError('');
+      limparAvisos();
       const payload = {
         tipo_documento: 'CONTRATO'
       };
@@ -1502,7 +1609,7 @@ export default function ComercialContratos() {
         await abrirDocumentoContrato(documentoGerado.id, 'pdf');
       }
     } catch (err) {
-      setError(err?.message || 'Erro ao gerar documento do contrato');
+      avisar.erro(err?.message || 'Erro ao gerar documento do contrato');
     } finally {
       setProcessingAction('');
     }
@@ -1510,30 +1617,44 @@ export default function ComercialContratos() {
 
   async function abrirDocumentoContrato(documentoId, tipo = 'pdf') {
     try {
-      setError('');
+      limparAvisos();
       const data = await getLinkDocumentoContratoComercial(documentoId, tipo);
       if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      setError(err?.message || 'Erro ao abrir documento');
+      avisar.erro(err?.message || 'Erro ao abrir documento');
     }
   }
 
   async function handleExcluirDocumentoContrato(documento) {
-    if (!documento?.id || !contratoSelecionado?.id) return;
+    // R26: DOIS alvos fixados antes do await, e nao um. O documento ja chega
+    // por parametro; o CONTRATO nao chegava — a recarga da lista depois da
+    // exclusao lia `contratoSelecionado.id`, que e outro alvo, lido em outro
+    // momento. Mensagem e acao agora citam e usam os mesmos dois.
+    const alvoDocumento = documento;
+    const alvoContratoId = contratoSelecionado?.id;
+    const alvoContratoNumero = contratoSelecionado?.numero;
+    if (!alvoDocumento?.id || !alvoContratoId) return;
 
-    const confirmado = window.confirm(
-      'Excluir este PDF gerado? O contrato comercial continua cadastrado, mas este documento sai da lista.'
-    );
-    if (!confirmado) return;
+    const { ok } = await confirmar({
+      titulo: 'Excluir PDF gerado',
+      mensagem: `Excluir o PDF "${alvoDocumento.nome || documentoTipoLabel(alvoDocumento.tipo_documento)}"`
+        + ` do contrato ${alvoContratoNumero || alvoContratoId}?`
+        + ' O contrato comercial continua cadastrado, mas este arquivo sai da lista.'
+        + ' Esta acao nao pode ser desfeita: para ter o PDF de volta sera preciso gera-lo outra vez.',
+      rotuloConfirmar: 'Excluir PDF',
+      destrutiva: true
+    });
+    // R21: desestruturado — sem isto o "Cancelar" apagaria o documento.
+    if (!ok) return;
 
     try {
-      setProcessingAction(`excluir-doc-${documento.id}`);
-      setError('');
-      await excluirDocumentoContratoComercial(documento.id);
-      await carregarDocumentosContrato(contratoSelecionado.id);
-      window.alert('Documento gerado excluido com sucesso.');
+      setProcessingAction(`excluir-doc-${alvoDocumento.id}`);
+      limparAvisos();
+      await excluirDocumentoContratoComercial(alvoDocumento.id);
+      await carregarDocumentosContrato(alvoContratoId);
+      avisar.sucesso(`PDF "${alvoDocumento.nome || 'gerado'}" excluido com sucesso.`);
     } catch (err) {
-      setError(err?.message || 'Erro ao excluir documento do contrato');
+      avisar.erro(err?.message || 'Erro ao excluir documento do contrato');
     } finally {
       setProcessingAction('');
     }
@@ -1543,12 +1664,12 @@ export default function ComercialContratos() {
     if (!contratoSelecionado?.id || !contratoAssinadoArquivo) return;
     try {
       setProcessingAction('anexar-assinado');
-      setError('');
+      limparAvisos();
       await anexarContratoAssinadoComercial(contratoSelecionado.id, contratoAssinadoArquivo);
       setContratoAssinadoArquivo(null);
       await carregarDocumentosContrato(contratoSelecionado.id);
     } catch (err) {
-      setError(err?.message || 'Erro ao anexar contrato assinado');
+      avisar.erro(err?.message || 'Erro ao anexar contrato assinado');
     } finally {
       setProcessingAction('');
     }
@@ -1632,11 +1753,11 @@ export default function ComercialContratos() {
       const tipo = pessoaRapidaModal || pessoaRapidaForm.tipo || 'cliente';
 
       if (!isValidCpfCnpj(pessoaRapidaForm.cpf_cnpj)) {
-        setError('Informe um CPF/CNPJ valido no cadastro rapido.');
+        avisar.erro('Informe um CPF/CNPJ valido no cadastro rápido.');
         return;
       }
       if (tipo === 'testemunha' && onlyDigits(pessoaRapidaForm.cpf_cnpj).length !== 11) {
-        setError('Informe um CPF valido para a testemunha.');
+        avisar.erro('Informe um CPF valido para a testemunha.');
         return;
       }
 
@@ -1644,15 +1765,15 @@ export default function ComercialContratos() {
 
       if (tipo === 'cliente' && pessoaRapidaForm.possui_conjuge) {
         if (!isValidCpfCnpj(pessoaRapidaForm.conjuge.cpf_cnpj)) {
-          setError('Informe um CPF/CNPJ valido para o conjuge.');
+          avisar.erro('Informe um CPF/CNPJ valido para o cônjuge.');
           return;
         }
         if (!String(pessoaRapidaForm.conjuge.nome || '').trim()) {
-          setError('Informe o nome do conjuge.');
+          avisar.erro('Informe o nome do cônjuge.');
           return;
         }
         if (!String(pessoaRapidaForm.conjuge.telefone || '').trim()) {
-          setError('Informe o telefone do conjuge.');
+          avisar.erro('Informe o telefone do cônjuge.');
           return;
         }
 
@@ -1704,7 +1825,7 @@ export default function ComercialContratos() {
       setTestemunhaRapidaSlot(null);
       setPessoaRapidaForm(defaultPessoaRapidaForm());
     } catch (err) {
-      setError(err?.message || 'Erro ao cadastrar pessoa');
+      avisar.erro(err?.message || 'Erro ao cadastrar pessoa');
     }
   }
 
@@ -1791,7 +1912,7 @@ export default function ComercialContratos() {
     {
       const validationMessage = form.id ? validarUnidadesContrato() : validarCriacaoContrato();
       if (validationMessage) {
-        setError(validationMessage);
+        avisar.erro(validationMessage);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
@@ -1799,7 +1920,7 @@ export default function ComercialContratos() {
     submitInFlightRef.current = true;
     try {
       setSaving(true);
-      setError('');
+      limparAvisos();
       const corretorSelecionado = corretores.find((item) => String(item.id) === String(form.corretor_parceiro_id));
       const possuiCorretor = Boolean(form.corretor_parceiro_id);
       const dadosComissao = possuiCorretor
@@ -1902,51 +2023,85 @@ export default function ComercialContratos() {
         });
       }
 
-      limparDadosContrato({ confirmar: false });
+      limparDadosContrato();
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao salvar contrato comercial');
+      avisar.erro(err?.message || 'Erro ao salvar contrato comercial');
     } finally {
       submitInFlightRef.current = false;
       setSaving(false);
     }
   }
 
+  // A MESMA faixa, renderizada em um lugar por vez (ver R16 abaixo).
+  const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
+
   if (loading) {
-    return <div className="page solicitacoes-page"><div className="app-empty-card">Carregando contratos comerciais...</div></div>;
+    // B5: o texto de carregamento tambem tem superficie e cabecalho — a faixa
+    // fixa (e o --pos-cabecalho-fixo do Pagina) ja existem antes do dado.
+    return (
+      <Pagina>
+        <PageHeader titulo="Contratos de venda" descricao={DESCRICAO_TELA} />
+        <BlocoConteudo titulo="Carteira comercial">
+          <p className="app-note">Carregando contratos comerciais...</p>
+        </BlocoConteudo>
+      </Pagina>
+    );
   }
 
   return (
-    <div className="page solicitacoes-page space-y-5 md:space-y-6">
-      <header className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Contratos de venda</h1>
-            <p className="page-subtitle">
-              Contratos, agenda financeira e titulos a receber integrados ao modulo financeiro.
-            </p>
-          </div>
-        </div>
-      </header>
+    <Pagina>
+      {/*
+        R13/C1: o cabecalho era um `<header className="app-page-header">` CRU.
+        A classe traz o sticky, mas a COMPACTACAO e estado do PageHeader e o
+        `--pos-cabecalho-fixo` (altura real da topbar) so e publicado pelo
+        `Pagina` — sem ele a faixa grudava no fallback fixo de 96px, que e a
+        origem conhecida do vao transparente entre a topbar e a faixa.
+        R5/C2: o `page-subtitle` solto virou a prop `descricao`, com escala de
+        titulo e superficie propria, em uma linha so.
+        R10: o ritmo vertical (o `space-y-5 md:space-y-6` da raiz) e do Pagina.
+      */}
+      <PageHeader
+        titulo="Contratos de venda"
+        contagem={contratosFiltrados.length === contratos.length
+          ? `${contratos.length} contrato(s)`
+          : `${contratosFiltrados.length} de ${contratos.length} contrato(s)`}
+        descricao={DESCRICAO_TELA}
+      />
 
-      {error && <div className="app-alert app-alert--error">{error}</div>}
+      {/*
+        R16: UM dono para o aviso — erro e sucesso na MESMA faixa.
+        Com o cadastro rapido aberto ela muda de lugar em vez de duplicar: o
+        modal cobre a pagina inteira, e as validacoes do cadastro rapido
+        ("Informe um CPF valido para a testemunha") disparam com ele aberto —
+        na posicao da pagina a pessoa nao veria a mensagem que explica por que
+        o salvar nao andou. Sao contextos independentes, com no maximo um
+        dono cada (e o mesmo arranjo da EmpresasGrupo, o molde).
+      */}
+      {!pessoaRapidaModal && faixaAvisos}
 
       {podeImportarSienge && <ComercialContratoImportacaoPanel onImported={carregar} />}
 
-      <section className="sol-surface-card rounded-2xl p-4 md:p-5 space-y-4">
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">{form.id ? 'Editar resumo do contrato' : 'Novo contrato comercial'}</p>
-            <p className="sol-filtros-subtitle">
-              {form.id ? 'A edicao inicial ajusta status e dados complementares.' : 'A criacao gera as parcelas e os titulos financeiros.'}
-            </p>
-          </div>
-        </div>
+      {/*
+        R9 (revista em 04/09): o formulario fica INLINE. A tela anuncia
+        "Contratos de venda" e cadastrar contrato de venda e o que ela existe
+        para fazer — tirando o formulario sobra uma lista que ninguem abriria
+        por si so. Modal aqui atrapalharia (abrir e fechar para fazer aquilo
+        que se veio fazer), nao protegeria trabalho nenhum.
+      */}
+      <BlocoConteudo
+        titulo={form.id ? 'Editar resumo do contrato' : 'Novo contrato comercial'}
+        descricao={form.id ? 'A edicao inicial ajusta status e dados complementares.' : 'A criacao gera as parcelas e os titulos financeiros.'}
+        variante="primario"
+        cor="var(--module-comercial)"
+        recolhivel={!form.id}
+        chavePreferencia={!form.id ? 'comercial:contratos:novo-contrato' : undefined}
+      >
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-[var(--c-text)]">Dados principais</h3>
-              <p className="text-xs text-[var(--c-muted)]">Identifique o empreendimento e o comprador responsavel pelo contrato.</p>
+              <p className="text-xs text-[var(--c-muted)]">Identifique o empreendimento e o comprador responsável pelo contrato.</p>
             </div>
             <div className="grid items-start gap-3 lg:grid-cols-2">
               <label className="sol-filter-field">
@@ -1960,7 +2115,12 @@ export default function ComercialContratos() {
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="sol-filter-label">Comprador principal</span>
                   {!form.id && (
-                    <button type="button" className="btn btn-outline btn-sm inline-flex h-8 w-8 items-center justify-center p-0" onClick={() => setMostrarCompradorAdicional(true)} title="Adicionar comprador">
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm inline-flex h-8 w-8 items-center justify-center p-0"
+                      onClick={() => setMostrarCompradorAdicional(true)}
+                      title="Adicionar comprador"
+                    >
                       <HiPlus className="h-4 w-4" />
                     </button>
                   )}
@@ -1978,11 +2138,13 @@ export default function ComercialContratos() {
                 />
                 {!form.id && (
                   <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirCadastroRapidoPessoa('cliente')}>
-                    Cadastro rapido
+                    Cadastro rápido
                   </button>
                 )}
                 {compradoresContrato[0]?.parceiro?.conjuge_nome && (
-                  <p className="mt-2 text-xs text-[var(--c-muted)]">Conjuge: {compradoresContrato[0].parceiro.conjuge_nome}</p>
+                  <p className="mt-2 text-xs text-[var(--c-muted)]">
+                    Conjuge: {compradoresContrato[0].parceiro.conjuge_nome}
+                  </p>
                 )}
               </div>
             </div>
@@ -1992,7 +2154,7 @@ export default function ComercialContratos() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--c-text)]">Unidades e valores</h3>
-                <p className="text-xs text-[var(--c-muted)]">O valor cadastrado e sugerido automaticamente e pode ser alterado para este contrato.</p>
+                <p className="text-xs text-[var(--c-muted)]">O valor cadastrado é sugerido automaticamente e pode ser alterado para este contrato.</p>
               </div>
               <button type="button" className="btn btn-outline btn-sm" onClick={adicionarUnidadeContrato} disabled={!form.empreendimento_id}>
                 <HiPlus className="h-4 w-4" /> Adicionar unidade
@@ -2005,7 +2167,7 @@ export default function ComercialContratos() {
                   .map((item) => String(item.unidade_comercial_id)));
                 return (
                   <div key={`${index}-${linha.unidade_comercial_id}`} className="grid gap-3 py-3 sm:grid-cols-2 lg:grid-cols-3 md:items-end">
-                    <label className="sol-filter-field">
+                    <label className="sol-filter-field lg:col-span-1">
                       <span className="sol-filter-label">Unidade {index + 1}</span>
                       <select className="input w-full" value={linha.unidade_comercial_id} onChange={(event) => atualizarUnidadeContrato(index, event.target.value)} required>
                         <option value="">Selecione</option>
@@ -2017,7 +2179,7 @@ export default function ComercialContratos() {
                     <label className="sol-filter-field">
                       <span className="sol-filter-label">Valor da Unidade *</span>
                       <input
-                        className="input w-full"
+                        className="input input-moeda w-full"
                         inputMode="decimal"
                         value={linha.valor_atribuido}
                         onChange={(event) => setForm((current) => {
@@ -2037,11 +2199,18 @@ export default function ComercialContratos() {
                         placeholder="R$ 0,00"
                       />
                     </label>
-                    <div className="flex min-h-10 flex-wrap items-center gap-2 md:justify-end">
+                    <div className="flex min-h-11 flex-wrap items-center gap-2 md:justify-end">
                       <label className="inline-flex items-center gap-2 text-sm text-[var(--c-text)]">
                         <input type="radio" name="unidade-principal" checked={Boolean(linha.principal)} onChange={() => definirUnidadePrincipal(index)} /> Principal
                       </label>
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => removerUnidadeContrato(index)} disabled={(form.unidades || []).length === 1} aria-label={`Remover unidade ${index + 1}`}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => removerUnidadeContrato(index)}
+                        disabled={(form.unidades || []).length === 1}
+                        title="Remover unidade"
+                        aria-label={`Remover unidade ${index + 1}`}
+                      >
                         <HiXMark className="h-4 w-4" /> Remover
                       </button>
                     </div>
@@ -2052,20 +2221,20 @@ export default function ComercialContratos() {
             <div className="grid items-start gap-3 sm:grid-cols-2">
               <label className="sol-filter-field">
                 <span className="sol-filter-label">Desconto</span>
-                <input className="input w-full" inputMode="decimal" value={form.desconto_concedido} onChange={(e) => setForm((c) => ({ ...c, desconto_concedido: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setForm((c) => ({ ...c, desconto_concedido: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
+                <input className="input input-moeda w-full" inputMode="decimal" value={form.desconto_concedido} onChange={(e) => setForm((c) => ({ ...c, desconto_concedido: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setForm((c) => ({ ...c, desconto_concedido: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
               </label>
               <label className="sol-filter-field">
                 <span className="sol-filter-label">Valor total do contrato</span>
-                <input className="input w-full" value={form.valor_total} readOnly aria-readonly="true" placeholder="R$ 0,00" />
+                <input className="input input-moeda w-full" value={form.valor_total} readOnly aria-readonly="true" placeholder="R$ 0,00" />
                 <span className="mt-1 text-xs text-[var(--c-muted)]">Calculado pela soma dos valores das unidades.</span>
               </label>
             </div>
             {form.empreendimento_id && unidadesDoEmpreendimento.length === 0 && (
-              <div className="text-xs text-[var(--c-muted)]">Nenhuma unidade disponivel para contrato neste empreendimento.</div>
+              <div className="text-xs text-[var(--c-muted)]">Nenhuma unidade disponível para contrato neste empreendimento.</div>
             )}
           </section>
           {!form.id && mostrarCompradorAdicional && (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50/40 p-3">
+            <div className="rounded-2xl border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="sol-filter-label">Comprador adicional</span>
                   <button
@@ -2095,11 +2264,11 @@ export default function ComercialContratos() {
                     Adicionar
                   </button>
                   <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirCadastroRapidoPessoa('cliente')}>
-                    Cadastro rapido
+                    Cadastro rápido
                   </button>
                 </div>
                 <p className="mt-2 text-xs text-[var(--c-muted)]">
-                  O comprador adicional entra no contrato e nas assinaturas. O principal continua vinculado aos titulos financeiros.
+                  O comprador adicional entra no contrato e nas assinaturas. O principal continua vinculado aos títulos financeiros.
                 </p>
             </div>
           )}
@@ -2118,13 +2287,13 @@ export default function ComercialContratos() {
                 required
               />
               {!form.id && form.empreendimento_id && !empreendimentoSelecionado?.obra_id && (
-                <span className="mt-1 text-xs text-amber-600">
+                <span className="mt-1 text-xs text-[var(--sem-warning)]">
                   Vincule uma obra no cadastro do empreendimento antes de criar o contrato.
                 </span>
               )}
             </label>
             <label className="sol-filter-field">
-              <span className="sol-filter-label">Codigo do contrato</span>
+              <span className="sol-filter-label">Código do contrato</span>
               <input
                 className="input w-full"
                 value={form.id ? form.numero : numeroContratoCalculado}
@@ -2157,7 +2326,7 @@ export default function ComercialContratos() {
                 {categoriasCompativeis.map((item) => <option key={item.id} value={item.id}>{item.nome}{item.dre_grupo ? ` - ${item.dre_grupo}` : ''}</option>)}
               </select>
               {!categoriasCompativeis.length ? (
-                <span className="mt-1 text-xs text-amber-600">Cadastre/libere uma categoria RECEBER/AMBOS marcada para DRE e com grupo DRE.</span>
+                <span className="mt-1 text-xs text-[var(--sem-warning)]">Cadastre/libere uma categoria RECEBER/AMBOS marcada para DRE e com grupo DRE.</span>
               ) : null}
             </label>
           </div>
@@ -2175,7 +2344,7 @@ export default function ComercialContratos() {
                   vagas_garagem_posicao: e.target.value === 'sim' ? c.vagas_garagem_posicao : ''
                 }))}
               >
-                <option value="nao">Nao possui</option>
+                <option value="nao">Não possui</option>
                 <option value="sim">Possui</option>
               </select>
             </label>
@@ -2186,7 +2355,7 @@ export default function ComercialContratos() {
                   <input className="input w-full" type="number" min="1" value={form.quantidade_vagas_garagem} onChange={(e) => setForm((c) => ({ ...c, quantidade_vagas_garagem: e.target.value }))} />
                 </label>
                 <label className="sol-filter-field">
-                  <span className="sol-filter-label">Posicao especifica</span>
+                  <span className="sol-filter-label">Posição especifica</span>
                   <select
                     className="input w-full"
                     value={form.vagas_garagem_posicao_especifica ? 'sim' : 'nao'}
@@ -2196,13 +2365,13 @@ export default function ComercialContratos() {
                       vagas_garagem_posicao: e.target.value === 'sim' ? c.vagas_garagem_posicao : ''
                     }))}
                   >
-                    <option value="nao">Nao</option>
+                    <option value="nao">Não</option>
                     <option value="sim">Sim</option>
                   </select>
                 </label>
                 {form.vagas_garagem_posicao_especifica && (
                   <label className="sol-filter-field">
-                    <span className="sol-filter-label">Posicao das vagas</span>
+                    <span className="sol-filter-label">Posição das vagas</span>
                     <input className="input w-full" value={form.vagas_garagem_posicao} onChange={(e) => setForm((c) => ({ ...c, vagas_garagem_posicao: e.target.value }))} placeholder="Ex.: vagas 12 e 13 / subsolo 1" />
                   </label>
                 )}
@@ -2230,13 +2399,13 @@ export default function ComercialContratos() {
                 emptyLabel="Nenhum corretor encontrado"
               />
               <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirCadastroRapidoPessoa('corretor')}>
-                Cadastro rapido
+                Cadastro rápido
               </button>
             </label>
             {form.corretor_parceiro_id && (
               <>
                 <label className="sol-filter-field">
-                  <span className="sol-filter-label">Comissao %</span>
+                  <span className="sol-filter-label">Comissão %</span>
                   <input
                     className="input w-full"
                     type="number"
@@ -2248,7 +2417,7 @@ export default function ComercialContratos() {
                   />
                 </label>
                 <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Dados da comissao</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Dados da comissão</p>
                   <p className="mt-1 text-sm text-[var(--c-text)]">
                     Competencia DRE: <strong>{form.data_assinatura ? formatDate(form.data_assinatura) : 'Informe a data de assinatura'}</strong>
                   </p>
@@ -2263,7 +2432,7 @@ export default function ComercialContratos() {
             </label>
             <label className="sol-filter-field">
               <span className="sol-filter-label">Data de assinatura</span>
-              <input className="input w-full" type="date" value={form.data_assinatura} onChange={(e) => handleDataAssinaturaChange(e.target.value)} />
+              <DateInputBR className="input w-full" value={form.data_assinatura} onChange={(e) => handleDataAssinaturaChange(e.target.value)} />
             </label>
           </div>
           <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
@@ -2287,7 +2456,7 @@ export default function ComercialContratos() {
                   emptyLabel="Nenhuma testemunha encontrada"
                 />
                 <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirCadastroRapidoPessoa('testemunha', { slot: 1 })}>
-                  Cadastro rapido
+                  Cadastro rápido
                 </button>
               </label>
               <label className="sol-filter-field">
@@ -2308,7 +2477,7 @@ export default function ComercialContratos() {
                   emptyLabel="Nenhuma testemunha encontrada"
                 />
                 <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirCadastroRapidoPessoa('testemunha', { slot: 2 })}>
-                  Cadastro rapido
+                  Cadastro rápido
                 </button>
               </label>
             </div>
@@ -2318,7 +2487,7 @@ export default function ComercialContratos() {
               <div className="mb-3">
                 <p className="text-sm font-semibold text-[var(--c-text)]">Compradores vinculados ao contrato</p>
                 <p className="text-xs text-[var(--c-muted)]">
-                  Lista de conferencia para assinaturas e dados do contrato.
+                  Lista de conferência para assinaturas e dados do contrato.
                 </p>
               </div>
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -2332,9 +2501,13 @@ export default function ComercialContratos() {
                           <p className="mt-1 text-xs text-[var(--c-muted)]">Conjuge: {item.parceiro.conjuge_nome}</p>
                         )}
                       </div>
-                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.principal ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {item.principal ? 'Principal' : `Comprador ${item.ordem}`}
-                      </span>
+                      {/* R25: a pilula crua (blue-100/slate-100) virou a
+                          etiqueta do sistema — fx-badge + tokens --sem-*,
+                          com icone junto da cor. */}
+                      <StatusBadge
+                        status={item.principal ? 'Principal' : `Comprador ${item.ordem}`}
+                        kind={item.principal ? 'info' : 'neutral'}
+                      />
                     </div>
                     {!item.principal && !form.id && (
                       <button type="button" className="btn btn-outline btn-sm mt-3" onClick={() => removerComprador(item.parceiro_id)}>
@@ -2346,18 +2519,18 @@ export default function ComercialContratos() {
               </div>
             </section>
           )}
-          <label className="sol-filter-field"><span className="sol-filter-label">Observacoes</span><textarea className="input min-h-[92px] w-full" value={form.observacoes} onChange={(e) => setForm((c) => ({ ...c, observacoes: e.target.value }))} /></label>
+          <label className="sol-filter-field"><span className="sol-filter-label">Observações</span><textarea className="input w-full" rows={3} value={form.observacoes} onChange={(e) => setForm((c) => ({ ...c, observacoes: e.target.value }))} /></label>
 
           {!form.id && (
             <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-4 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-[var(--c-text)]">Composicao das formas de pagamento</p>
+                  <p className="text-sm font-semibold text-[var(--c-text)]">Composição das formas de pagamento</p>
                   <p className="text-xs text-[var(--c-muted)]">
-                    Adicione blocos de recebimento e acompanhe a diferenca ate fechar o valor total do contrato.
+                    Adicione blocos de recebimento e acompanhe a diferença até fechar o valor total do contrato.
                   </p>
                   <p className="text-xs text-[var(--c-muted)]">
-                    Se houver entrada em dinheiro, PIX, bens ou outro formato, registre essa parte como um bloco proprio abaixo.
+                    Se houver entrada em dinheiro, PIX, bens ou outro formato, registre essa parte como um bloco próprio abaixo.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 text-sm">
@@ -2370,7 +2543,9 @@ export default function ComercialContratos() {
                   <span className="inline-flex items-center rounded-full border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]">
                     Entrada: <strong className="ml-1">{formatCurrency(valorEntradaComposicao)}</strong>
                   </span>
-                  <span className={`inline-flex items-center rounded-full border px-3 py-2 ${Math.abs(diferencaComposicao) <= 0.009 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : diferencaComposicao > 0 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
+                  {/* R25: as tres familias cruas (emerald/amber/rose) viraram
+                      os tokens semanticos correspondentes. */}
+                  <span className={`inline-flex items-center rounded-full border px-3 py-2 ${Math.abs(diferencaComposicao) <= 0.009 ? 'border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] text-[var(--sem-success)]' : diferencaComposicao > 0 ? 'border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]' : 'border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] text-[var(--sem-danger)]'}`}>
                     {Math.abs(diferencaComposicao) <= 0.009
                       ? 'Fechado'
                       : diferencaComposicao > 0
@@ -2380,8 +2555,8 @@ export default function ComercialContratos() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                <strong>Competencia DRE:</strong> {form.data_assinatura ? formatDate(form.data_assinatura) : 'informe a data de assinatura'}.
+              <div className="rounded-xl border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] px-3 py-2 text-xs text-[var(--sem-info)]">
+                <strong>Competência DRE:</strong> {form.data_assinatura ? formatDate(form.data_assinatura) : 'informe a data de assinatura'}.
                 Todas as formas de pagamento usam automaticamente a assinatura do contrato como competencia.
               </div>
 
@@ -2393,7 +2568,7 @@ export default function ComercialContratos() {
                   </select>
                 </label>
                 <label className="sol-filter-field">
-                  <span className="sol-filter-label">Descricao do bloco</span>
+                  <span className="sol-filter-label">Descrição do bloco</span>
                   <input className="input w-full" value={generator.titulo_bloco} onChange={(e) => setGenerator((c) => ({ ...c, titulo_bloco: e.target.value }))} placeholder="Ex.: Mensais, reforco anual, bens recebidos" />
                 </label>
                 <label className="sol-filter-field">
@@ -2405,7 +2580,7 @@ export default function ComercialContratos() {
                 <label className="sol-filter-field md:col-span-2">
                   <span className="sol-filter-label">Forma prevista</span>
                   <select className="input w-full" value={generator.forma_recebimento_prevista} onChange={(e) => setGenerator((c) => ({ ...c, forma_recebimento_prevista: e.target.value, detalhe_forma_recebimento: isFormaComDetalhe(e.target.value) ? c.detalhe_forma_recebimento : '' }))}>
-                    <option value="">Nao informar</option>
+                    <option value="">Não informar</option>
                     {formasRecebimento.map((item) => <option key={getOptionValue(item)} value={getOptionValue(item)}>{getOptionLabel(item)}</option>)}
                   </select>
                 </label>
@@ -2427,7 +2602,7 @@ export default function ComercialContratos() {
                     className="input w-full"
                     value={generator.detalhe_forma_recebimento}
                     onChange={(e) => setGenerator((c) => ({ ...c, detalhe_forma_recebimento: e.target.value }))}
-                    placeholder="Ex.: veiculo Corolla 2024, permuta por lote 12, credito de terceiros"
+                    placeholder="Ex.: veículo Corolla 2024, permuta por lote 12, crédito de terceiros"
                   />
                 </label>
               )}
@@ -2436,11 +2611,11 @@ export default function ComercialContratos() {
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <label className="sol-filter-field">
                     <span className="sol-filter-label">Valor da entrada</span>
-                    <input className="input w-full" inputMode="decimal" value={generator.valor_parcela} onChange={(e) => setGenerator((c) => ({ ...c, valor_parcela: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setGenerator((c) => ({ ...c, valor_parcela: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
+                    <input className="input input-moeda w-full" inputMode="decimal" value={generator.valor_parcela} onChange={(e) => setGenerator((c) => ({ ...c, valor_parcela: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setGenerator((c) => ({ ...c, valor_parcela: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
                   </label>
                   <label className="sol-filter-field">
                     <span className="sol-filter-label">Vencimento da entrada</span>
-                    <input className="input w-full" type="date" value={generator.primeiro_vencimento} onChange={(e) => setGenerator((c) => ({ ...c, primeiro_vencimento: e.target.value }))} />
+                    <DateInputBR className="input w-full" value={generator.primeiro_vencimento} onChange={(e) => setGenerator((c) => ({ ...c, primeiro_vencimento: e.target.value }))} />
                   </label>
                 </div>
               ) : getModoComposicaoTipo(generator.modo) === 'PERIODICO' ? (
@@ -2457,20 +2632,20 @@ export default function ComercialContratos() {
                 </label>
                   <label className="sol-filter-field">
                     <span className="sol-filter-label">Valor parcela</span>
-                    <input className="input w-full" inputMode="decimal" value={generator.valor_parcela} onChange={(e) => setGenerator((c) => ({ ...c, valor_parcela: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setGenerator((c) => ({ ...c, valor_parcela: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
+                    <input className="input input-moeda w-full" inputMode="decimal" value={generator.valor_parcela} onChange={(e) => setGenerator((c) => ({ ...c, valor_parcela: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setGenerator((c) => ({ ...c, valor_parcela: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
                   </label>
                   <label className="sol-filter-field">
                     <span className="sol-filter-label">Primeiro vencimento</span>
-                    <input className="input w-full" type="date" value={generator.primeiro_vencimento} onChange={(e) => setGenerator((c) => ({ ...c, primeiro_vencimento: e.target.value }))} />
+                    <DateInputBR className="input w-full" value={generator.primeiro_vencimento} onChange={(e) => setGenerator((c) => ({ ...c, primeiro_vencimento: e.target.value }))} />
                   </label>
                 </div>
               ) : (
                 <div className="space-y-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-[var(--c-text)]">Lancamentos manuais</p>
+                      <p className="text-sm font-semibold text-[var(--c-text)]">Lançamentos manuais</p>
                       <p className="text-xs text-[var(--c-muted)]">
-                        Use para bens, outros recebimentos ou parcelas com datas e valores especificos.
+                        Use para bens, outros recebimentos ou parcelas com datas e valores específicos.
                       </p>
                     </div>
                     <button type="button" className="btn btn-outline" onClick={adicionarParcelaCustomizada}>
@@ -2478,11 +2653,15 @@ export default function ComercialContratos() {
                     </button>
                   </div>
 
+                  {/* R10: a linha era
+                      `xl:grid-cols-[minmax(0,1.4fr)_150px_150px_160px_150px_auto]`.
+                      Colunas em degraus; o piso do campo de valor vem da
+                      `.input-moeda` (R6), nao de um px escrito aqui. */}
                   <div className="space-y-3">
                     {(generator.parcelas_personalizadas || []).map((item, index) => (
-                      <div key={`custom-${index}`} className="grid gap-3 rounded-2xl border border-[var(--c-border)] p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_150px_150px_160px_150px_auto]">
-                        <label className="sol-filter-field">
-                          <span className="sol-filter-label">Descricao</span>
+                      <div key={`custom-${index}`} className="grid gap-3 rounded-2xl border border-[var(--c-border)] p-3 sm:grid-cols-2 xl:grid-cols-6">
+                        <label className="sol-filter-field xl:col-span-2">
+                          <span className="sol-filter-label">Descrição</span>
                           <input className="input w-full" value={item.descricao} onChange={(e) => updateParcelaCustomizada(index, 'descricao', e.target.value)} />
                         </label>
                         <label className="sol-filter-field">
@@ -2499,11 +2678,11 @@ export default function ComercialContratos() {
                         </label>
                         <label className="sol-filter-field">
                           <span className="sol-filter-label">Vencimento</span>
-                          <input className="input w-full" type="date" value={item.data_vencimento} onChange={(e) => updateParcelaCustomizada(index, 'data_vencimento', e.target.value)} />
+                          <DateInputBR className="input w-full" value={item.data_vencimento} onChange={(e) => updateParcelaCustomizada(index, 'data_vencimento', e.target.value)} />
                         </label>
                         <label className="sol-filter-field">
                           <span className="sol-filter-label">Valor</span>
-                          <input className="input w-full" inputMode="decimal" value={item.valor} onChange={(e) => updateParcelaCustomizada(index, 'valor', normalizeCurrencyTyping(e.target.value))} onBlur={(e) => updateParcelaCustomizada(index, 'valor', formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
+                          <input className="input input-moeda w-full" inputMode="decimal" value={item.valor} onChange={(e) => updateParcelaCustomizada(index, 'valor', normalizeCurrencyTyping(e.target.value))} onBlur={(e) => updateParcelaCustomizada(index, 'valor', formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
                         </label>
                         <div className="flex items-end">
                           <button type="button" className="btn btn-outline w-full" onClick={() => removerParcelaCustomizada(index)}>
@@ -2534,20 +2713,15 @@ export default function ComercialContratos() {
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                                Forma {index + 1}
-                              </span>
-                              <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                                {getModoComposicaoLabel(plano.modo, modosComposicao)}
-                              </span>
+                              {/* R25/R10: quatro pilulas de paleta crua com
+                                  `px-2.5` (10px, fora da escala) viraram a
+                                  etiqueta do sistema — medida e cor sao dela. */}
+                              <StatusBadge status={`Forma ${index + 1}`} kind="neutral" />
+                              <StatusBadge status={getModoComposicaoLabel(plano.modo, modosComposicao)} kind="info" />
                               {plano.forma_recebimento_prevista && (
-                                <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                  {plano.forma_recebimento_prevista}
-                                </span>
+                                <StatusBadge status={plano.forma_recebimento_prevista} kind="success" />
                               )}
-                              <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
-                                {plano.reajuste_tipo === 'REAJUSTAVEL' ? 'Reajustavel (R)' : 'Fixa (F)'}
-                              </span>
+                              <StatusBadge status={plano.reajuste_tipo === 'REAJUSTAVEL' ? 'Reajustavel (R)' : 'Fixa (F)'} kind="info" />
                             </div>
                             <div className="text-sm font-semibold text-[var(--c-text)]">
                               {plano.titulo_bloco || 'Composicao sem descricao'}
@@ -2589,7 +2763,7 @@ export default function ComercialContratos() {
                           </div>
                           <button
                             type="button"
-                            className="btn btn-outline btn-sm inline-flex shrink-0 items-center gap-1.5"
+                            className="btn btn-outline btn-sm inline-flex shrink-0 items-center gap-2"
                             onClick={() => setParcelaEditandoIndex(isEditing ? null : index)}
                             title={isEditing ? 'Concluir edicao da parcela' : 'Editar parcela'}
                           >
@@ -2600,7 +2774,7 @@ export default function ComercialContratos() {
 
                         <div className="grid gap-3 sm:grid-cols-2">
                           <label className="space-y-1 text-xs font-semibold text-[var(--c-muted)] sm:col-span-2">
-                            Descricao
+                            Descrição
                             {isEditing ? (
                               <input className="input w-full" value={item.descricao} onChange={(e) => updateParcela(index, 'descricao', e.target.value)} />
                             ) : <span className="block text-sm font-medium text-[var(--c-text)]">{item.descricao || '-'}</span>}
@@ -2617,7 +2791,7 @@ export default function ComercialContratos() {
                             Forma
                             {isEditing ? (
                               <select className="input w-full" value={item.forma_recebimento_prevista || ''} onChange={(e) => updateParcela(index, 'forma_recebimento_prevista', e.target.value)}>
-                                <option value="">Nao informar</option>
+                                <option value="">Não informar</option>
                                 {formasRecebimento.map((forma) => <option key={getOptionValue(forma)} value={getOptionValue(forma)}>{getOptionLabel(forma)}</option>)}
                               </select>
                             ) : <span className="block text-sm font-medium text-[var(--c-text)]">{item.forma_recebimento_prevista || '-'}</span>}
@@ -2636,17 +2810,17 @@ export default function ComercialContratos() {
                           <label className="space-y-1 text-xs font-semibold text-[var(--c-muted)]">
                             Vencimento
                             {isEditing ? (
-                              <input className="input w-full" type="date" value={item.data_vencimento} onChange={(e) => updateParcela(index, 'data_vencimento', e.target.value)} />
+                              <DateInputBR className="input w-full" value={item.data_vencimento} onChange={(e) => updateParcela(index, 'data_vencimento', e.target.value)} />
                             ) : <span className="block text-sm font-medium text-[var(--c-text)]">{formatDate(item.data_vencimento)}</span>}
                           </label>
                           <label className="space-y-1 text-xs font-semibold text-[var(--c-muted)]">
-                            Competencia DRE
+                            Competência DRE
                             <span className="block text-sm font-medium text-[var(--c-text)]">{formatDate(form.data_assinatura)}</span>
                           </label>
                           <label className="space-y-1 text-xs font-semibold text-[var(--c-muted)]">
                             Valor
                             {isEditing ? (
-                              <input className="input w-full text-right" inputMode="decimal" value={item.valor || formatCurrencyInput(item.valor_original)} onChange={(e) => updateParcela(index, 'valor', normalizeCurrencyTyping(e.target.value))} onBlur={(e) => updateParcela(index, 'valor', formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
+                              <input className="input input-moeda w-full" inputMode="decimal" value={item.valor || formatCurrencyInput(item.valor_original)} onChange={(e) => updateParcela(index, 'valor', normalizeCurrencyTyping(e.target.value))} onBlur={(e) => updateParcela(index, 'valor', formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
                             ) : <span className="block text-sm font-semibold text-[var(--c-text)]">{formatCurrency(item.valor || item.valor_original)}</span>}
                           </label>
                           <label className="space-y-1 text-xs font-semibold text-[var(--c-muted)] sm:col-span-2">
@@ -2659,7 +2833,7 @@ export default function ComercialContratos() {
 
                         {isEditing && canAdjust && (
                           <button type="button" className="btn btn-primary btn-sm mt-3 w-full" onClick={() => ajustarParcelaParaFechamento(index)}>
-                            Fechar diferenca
+                            Fechar diferença
                           </button>
                         )}
                       </article>
@@ -2668,122 +2842,171 @@ export default function ComercialContratos() {
                 </div>
               )}
 
+              {/* Mesma agenda de parcelas do bloco de cards acima, agora em
+                  tabela para telas largas (o bloco `xl:hidden` continua sendo
+                  a versao de edicao no celular, com rotulo por campo). */}
               {form.parcelas.length > 0 && (
-                <div className="hidden overflow-x-auto rounded-2xl border border-[var(--c-border)] xl:block">
-                  <table className="min-w-[1180px] text-sm">
-                    <thead className="bg-[var(--c-bg)] text-[var(--c-muted)]">
-                      <tr>
-                        <th className="px-3 py-3 text-left">Descricao</th>
-                        <th className="px-3 py-3 text-left">Tipo</th>
-                        <th className="px-3 py-3 text-left">Forma</th>
-                        <th className="px-3 py-3 text-left">Reajuste</th>
-                        <th className="px-3 py-3 text-left">Detalhe</th>
-                        <th className="px-3 py-3 text-left">Vencimento</th>
-                        <th className="px-3 py-3 text-left">Competencia DRE</th>
-                        <th className="px-3 py-3 text-right">Valor</th>
-                        <th className="px-3 py-3 text-right">Acoes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {form.parcelas.map((item, index) => (
-                        (() => {
-                          const isEditing = parcelaEditandoIndex === index;
+                <div className="hidden xl:block">
+                  <TabelaPadrao
+                    /*
+                      GRADE DE LANÇAMENTO, NÃO LISTA DE CONSULTA (05/09).
+                      A maioria das colunas aqui é campo de digitação, não dado a ler.
+                      Oferecer "escolher colunas" numa grade assim dá ao usuário como
+                      esconder o campo que ele precisa preencher — e ele não descobre por
+                      que o lançamento parou de funcionar. A capacidade sai DAQUI, não do
+                      sistema: nas 246 tabelas de consulta ela continua.
+                    */
+                    colunasConfiguraveis={false}
+                    colunas={[
+                      {
+                        id: 'descricao',
+                        titulo: 'Descrição',
+                        // R17: a descricao e quem nomeia a parcela.
+                        tipo: 'identidade',
+                        noCard: 'titulo',
+                        render: (item) => (
+                          parcelaEditandoIndex === item.__indice ? (
+                            <input className="input w-full" value={item.descricao} onChange={(e) => updateParcela(item.__indice, 'descricao', e.target.value)} />
+                          ) : (
+                            <span className="font-medium text-[var(--c-text)]">{item.descricao || '-'}</span>
+                          )
+                        )
+                      },
+                      {
+                        id: 'tipo_parcela',
+                        titulo: 'Tipo',
+                        tipo: 'texto',
+                        render: (item) => (
+                          parcelaEditandoIndex === item.__indice ? (
+                            <select className="input w-full" value={item.tipo_parcela} onChange={(e) => updateParcela(item.__indice, 'tipo_parcela', e.target.value)}>
+                              {parcelaTipos.map((tipo) => <option key={getOptionValue(tipo)} value={getOptionValue(tipo)}>{getOptionLabel(tipo)}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-[var(--c-muted)]">{item.tipo_parcela || '-'}</span>
+                          )
+                        )
+                      },
+                      {
+                        id: 'forma_recebimento_prevista',
+                        titulo: 'Forma',
+                        tipo: 'texto',
+                        render: (item) => (
+                          parcelaEditandoIndex === item.__indice ? (
+                            <select className="input w-full" value={item.forma_recebimento_prevista || ''} onChange={(e) => updateParcela(item.__indice, 'forma_recebimento_prevista', e.target.value)}>
+                              <option value="">Não informar</option>
+                              {formasRecebimento.map((forma) => <option key={getOptionValue(forma)} value={getOptionValue(forma)}>{getOptionLabel(forma)}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-[var(--c-muted)]">{item.forma_recebimento_prevista || '-'}</span>
+                          )
+                        )
+                      },
+                      {
+                        id: 'reajuste_tipo',
+                        titulo: 'Reajuste',
+                        tipo: 'texto',
+                        render: (item) => {
                           const reajusteLabel = getOptionLabel(parcelaReajusteTipos.find((tipo) => getOptionValue(tipo) === (item.reajuste_tipo || 'FIXA'))) || item.reajuste_tipo || 'Fixa';
-                          const canAdjust = Math.abs(diferencaComposicao) > 0.009;
-
-                          return (
-                            <tr key={`${item.descricao}-${index}`} className={`border-t border-[var(--c-border)] ${isEditing ? 'bg-blue-50/50' : ''}`}>
-                              <td className="px-3 py-3">
-                                {isEditing ? (
-                                  <input className="input w-full" value={item.descricao} onChange={(e) => updateParcela(index, 'descricao', e.target.value)} />
-                                ) : (
-                                  <span className="font-medium text-[var(--c-text)]">{item.descricao || '-'}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3">
-                                {isEditing ? (
-                                  <select className="input w-full" value={item.tipo_parcela} onChange={(e) => updateParcela(index, 'tipo_parcela', e.target.value)}>
-                                    {parcelaTipos.map((tipo) => <option key={getOptionValue(tipo)} value={getOptionValue(tipo)}>{getOptionLabel(tipo)}</option>)}
-                                  </select>
-                                ) : (
-                                  <span className="text-[var(--c-muted)]">{item.tipo_parcela || '-'}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3">
-                                {isEditing ? (
-                                  <select className="input w-full" value={item.forma_recebimento_prevista || ''} onChange={(e) => updateParcela(index, 'forma_recebimento_prevista', e.target.value)}>
-                                    <option value="">Nao informar</option>
-                                    {formasRecebimento.map((forma) => <option key={getOptionValue(forma)} value={getOptionValue(forma)}>{getOptionLabel(forma)}</option>)}
-                                  </select>
-                                ) : (
-                                  <span className="text-[var(--c-muted)]">{item.forma_recebimento_prevista || '-'}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3">
-                                {isEditing ? (
-                                  <select className="input w-full" value={item.reajuste_tipo || 'FIXA'} onChange={(e) => updateParcela(index, 'reajuste_tipo', e.target.value)}>
-                                    {parcelaReajusteTipos.map((tipo) => {
-                                      const resumo = getOptionResumo(tipo);
-                                      return <option key={getOptionValue(tipo)} value={getOptionValue(tipo)}>{getOptionLabel(tipo)}{resumo ? ` (${resumo})` : ''}</option>;
-                                    })}
-                                  </select>
-                                ) : (
-                                  <span className="text-[var(--c-muted)]">{reajusteLabel}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3">
-                                {isEditing ? (
-                                  <input className="input w-full" value={item.observacoes || ''} onChange={(e) => updateParcela(index, 'observacoes', e.target.value)} placeholder="Detalhe do bem, permuta ou outro recebimento" />
-                                ) : (
-                                  <span className="text-[var(--c-muted)]">{item.observacoes || '-'}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3">
-                                {isEditing ? (
-                                  <input className="input w-full" type="date" value={item.data_vencimento} onChange={(e) => updateParcela(index, 'data_vencimento', e.target.value)} />
-                                ) : (
-                                  <span className="text-[var(--c-muted)]">{formatDate(item.data_vencimento)}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3">
-                                <span className="text-[var(--c-muted)]">{formatDate(form.data_assinatura)}</span>
-                              </td>
-                              <td className="px-3 py-3 text-right">
-                                {isEditing ? (
-                                  <input className="input w-full text-right" inputMode="decimal" value={item.valor || formatCurrencyInput(item.valor_original)} onChange={(e) => updateParcela(index, 'valor', normalizeCurrencyTyping(e.target.value))} onBlur={(e) => updateParcela(index, 'valor', formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
-                                ) : (
-                                  <span className="font-semibold text-[var(--c-text)]">{formatCurrency(item.valor || item.valor_original)}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3">
-                                <div className="flex min-w-[176px] flex-wrap justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline btn-sm inline-flex items-center gap-1.5"
-                                    onClick={() => setParcelaEditandoIndex(isEditing ? null : index)}
-                                    title={isEditing ? 'Concluir edicao da parcela' : 'Editar parcela'}
-                                  >
-                                    <HiOutlinePencilSquare className="h-4 w-4" />
-                                    {isEditing ? 'Concluir' : 'Editar'}
-                                  </button>
-                                  {isEditing && canAdjust && (
-                                    <button
-                                      type="button"
-                                      className="btn btn-primary btn-sm"
-                                      onClick={() => ajustarParcelaParaFechamento(index)}
-                                      title="Ajusta esta parcela pela diferenca entre a agenda e o valor total do contrato."
-                                    >
-                                      Fechar diferenca
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
+                          return parcelaEditandoIndex === item.__indice ? (
+                            <select className="input w-full" value={item.reajuste_tipo || 'FIXA'} onChange={(e) => updateParcela(item.__indice, 'reajuste_tipo', e.target.value)}>
+                              {parcelaReajusteTipos.map((tipo) => {
+                                const resumo = getOptionResumo(tipo);
+                                return <option key={getOptionValue(tipo)} value={getOptionValue(tipo)}>{getOptionLabel(tipo)}{resumo ? ` (${resumo})` : ''}</option>;
+                              })}
+                            </select>
+                          ) : (
+                            <span className="text-[var(--c-muted)]">{reajusteLabel}</span>
                           );
-                        })()
-                      ))}
-                    </tbody>
-                  </table>
+                        }
+                      },
+                      {
+                        id: 'observacoes',
+                        titulo: 'Detalhe',
+                        tipo: 'texto',
+                        render: (item) => (
+                          parcelaEditandoIndex === item.__indice ? (
+                            <input className="input w-full" value={item.observacoes || ''} onChange={(e) => updateParcela(item.__indice, 'observacoes', e.target.value)} placeholder="Detalhe do bem, permuta ou outro recebimento" />
+                          ) : (
+                            <span className="text-[var(--c-muted)]">{item.observacoes || '-'}</span>
+                          )
+                        )
+                      },
+                      {
+                        id: 'data_vencimento',
+                        titulo: 'Vencimento',
+                        tipo: 'data',
+                        render: (item) => (
+                          parcelaEditandoIndex === item.__indice ? (
+                            <DateInputBR className="input w-full" value={item.data_vencimento} onChange={(e) => updateParcela(item.__indice, 'data_vencimento', e.target.value)} />
+                          ) : (
+                            <span className="text-[var(--c-muted)]">{formatDate(item.data_vencimento)}</span>
+                          )
+                        )
+                      },
+                      {
+                        id: 'competencia_dre',
+                        titulo: 'Competência DRE',
+                        tipo: 'data',
+                        render: () => <span className="text-[var(--c-muted)]">{formatDate(form.data_assinatura)}</span>
+                      },
+                      {
+                        id: 'valor',
+                        titulo: 'Valor',
+                        tipo: 'valor',
+                        render: (item) => (
+                          parcelaEditandoIndex === item.__indice ? (
+                            <input
+                              className="input input-moeda w-full"
+                              inputMode="decimal"
+                              value={item.valor || formatCurrencyInput(item.valor_original)}
+                              onChange={(e) => updateParcela(item.__indice, 'valor', normalizeCurrencyTyping(e.target.value))}
+                              onBlur={(e) => updateParcela(item.__indice, 'valor', formatCurrencyInput(e.target.value))}
+                              placeholder="R$ 0,00"
+                            />
+                          ) : (
+                            <span className="font-semibold text-[var(--c-text)]">{formatCurrency(item.valor || item.valor_original)}</span>
+                          )
+                        )
+                      }
+                    ]}
+                    // `__indice` carrega a posicao na agenda: `updateParcela` e
+                    // `parcelaEditandoIndex` trabalham por indice, e a parcela
+                    // recem-gerada ainda nao tem id proprio.
+                    itens={form.parcelas.map((item, index) => ({ ...item, __indice: index }))}
+                    getId={(item) => item.__indice}
+                    storageKey="tabela:comercial-contratos:parcelas-edicao"
+                    rotuloRolagem="Agenda de parcelas do contrato"
+                    vazio="Nenhuma parcela na agenda."
+                    linhaSelecionada={(item) => item.__indice === parcelaEditandoIndex}
+                    larguraAcoes={300}
+                    acoesLinha={(item) => {
+                      const isEditing = parcelaEditandoIndex === item.__indice;
+                      const canAdjust = Math.abs(diferencaComposicao) > 0.009;
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm inline-flex items-center gap-2"
+                            onClick={() => setParcelaEditandoIndex(isEditing ? null : item.__indice)}
+                            title={isEditing ? 'Concluir edicao da parcela' : 'Editar parcela'}
+                          >
+                            <HiOutlinePencilSquare className="h-4 w-4" />
+                            {isEditing ? 'Concluir' : 'Editar'}
+                          </button>
+                          {isEditing && canAdjust && (
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => ajustarParcelaParaFechamento(item.__indice)}
+                              title="Ajusta esta parcela pela diferença entre a agenda e o valor total do contrato."
+                            >
+                              Fechar diferença
+                            </button>
+                          )}
+                        </>
+                      );
+                    }}
+                  />
                 </div>
               )}
 
@@ -2791,7 +3014,7 @@ export default function ComercialContratos() {
                 <section className="space-y-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 md:p-4">
                   <div>
                     <h4 className="font-semibold text-[var(--c-text)]">Dados dos cheques</h4>
-                    <p className="mt-1 text-sm text-[var(--c-muted)]">Informe os dados de cada cheque. Ao criar o contrato, os documentos serao registrados automaticamente na Carteira de Cheques.</p>
+                    <p className="mt-1 text-sm text-[var(--c-muted)]">Informe os dados de cada cheque. Ao criar o contrato, os documentos serão registrados automaticamente na Carteira de Cheques.</p>
                   </div>
                   {form.parcelas.map((item, index) => {
                     if (!isChequeForma(item.forma_recebimento_prevista)) return null;
@@ -2821,7 +3044,7 @@ export default function ComercialContratos() {
                             <input className="input w-full" value={item.cheque_conta || ''} onChange={(e) => updateParcela(index, 'cheque_conta', e.target.value)} />
                           </label>
                           <label className="space-y-1 text-sm text-[var(--c-text)]">Data de emissao *
-                            <input className="input w-full" type="date" value={item.cheque_data_emissao || ''} onChange={(e) => updateParcela(index, 'cheque_data_emissao', e.target.value)} />
+                            <DateInputBR className="input w-full" value={item.cheque_data_emissao || ''} onChange={(e) => updateParcela(index, 'cheque_data_emissao', e.target.value)} />
                           </label>
                         </div>
                       </article>
@@ -2842,216 +3065,295 @@ export default function ComercialContratos() {
               </button>
             )}
             {!form.id && (
-              <button type="button" className="btn btn-outline border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => limparDadosContrato()} disabled={saving}>
+              // C5/R25: a destrutiva fica apartada e em vermelho SUAVE do
+              // sistema (btn-perigo-suave), nao em paleta crua rose-*.
+              <button type="button" className="btn btn-outline btn-perigo-suave" onClick={confirmarLimparDadosContrato} disabled={saving}>
                 Limpar dados do contrato
               </button>
             )}
           </div>
         </form>
-      </section>
+      </BlocoConteudo>
 
-      <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Carteira comercial</p>
-            <p className="sol-filtros-subtitle">Contratos de venda com acesso rapido ao financeiro.</p>
-          </div>
-          <div className="sol-filtros-meta">
-            <span>Total listado {contratosFiltrados.length}</span>
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Status</span>
-            <select className="input w-full" value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value)}>
-              <option value="">Todos</option>
-              {STATUS_CONTRATO.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
-          <label className="sol-filter-field">
-            <span className="sol-filter-label">Busca</span>
-            <input className="input w-full" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Contrato, cliente ou unidade" />
-          </label>
-        </div>
-
-        <div className="app-table-shell mt-4 overflow-hidden rounded-xl border border-[var(--c-border)]">
-          {contratosFiltrados.length === 0 ? (
-            <div className="app-empty-card">Nenhum contrato comercial encontrado.</div>
-          ) : (
-            <ResizableTable
-              columns={CONTRATOS_CARTEIRA_COLUMNS}
-              storageKey="fluxy.comercial.contratos.carteira.columns"
-              className="table"
-              scrollLabel="Carteira de contratos comerciais com colunas redimensionaveis"
-            >
-              <thead>
-                <tr>
-                  <ResizableTh columnKey="contrato">Contrato</ResizableTh>
-                  <ResizableTh columnKey="status">Status</ResizableTh>
-                  <ResizableTh columnKey="cliente">Cliente</ResizableTh>
-                  <ResizableTh columnKey="empreendimento">Empreendimento</ResizableTh>
-                  <ResizableTh columnKey="unidade">Torre / unidade</ResizableTh>
-                  <ResizableTh columnKey="corretor">Corretor</ResizableTh>
-                  <ResizableTh columnKey="comissao" className="text-right">Comissao</ResizableTh>
-                  <ResizableTh columnKey="obra">Obra</ResizableTh>
-                  <ResizableTh columnKey="valor_total" className="text-right">Valor total</ResizableTh>
-                  <ResizableTh columnKey="em_aberto" className="text-right">Em aberto</ResizableTh>
-                  <ResizableTh columnKey="vencido" className="text-right">Vencido</ResizableTh>
-                  <ResizableTh columnKey="acoes" className="text-center">Acoes</ResizableTh>
-                </tr>
-              </thead>
-              <tbody>
-                {contratosFiltrados.map((item) => (
-                  <tr key={item.id}>
-                    <td className="font-semibold text-[var(--c-text)]" title={item.numero || ''}>{item.numero || '-'}</td>
-                    <td>
-                      <div className="flex flex-col items-start gap-1.5">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(item.status)}`}>{item.status}</span>
-                      {item.indicadoresFinanceiros?.status_sugerido && item.indicadoresFinanceiros.status_sugerido !== item.status && (
-                          <span className="inline-flex max-w-full rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700" title={`Financeiro sugere ${item.indicadoresFinanceiros.status_sugerido}`}>
-                            Sugere {item.indicadoresFinanceiros.status_sugerido}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td title={item.cliente?.nome || ''}>{item.cliente?.nome || '-'}</td>
-                    <td title={item.empreendimento?.nome || ''}>{item.empreendimento?.nome || '-'}</td>
-                    <td title={[item.unidadeComercial?.torre, item.unidadeComercial?.codigo].filter(Boolean).join(' - ')}>
-                      {[item.unidadeComercial?.torre, item.unidadeComercial?.codigo].filter(Boolean).join(' - ') || '-'}
-                    </td>
-                    <td title={item.corretor_nome || ''}>{item.corretor_nome || '-'}</td>
-                    <td className="text-right">
-                      {Number(item.comissao_percentual || 0) > 0 ? `${Number(item.comissao_percentual).toLocaleString('pt-BR')}%` : '-'}
-                    </td>
-                    <td title={item.obra?.nome || ''}>{item.obra?.nome || '-'}</td>
-                    <td className="text-right font-medium tabular-nums">{formatCurrency(item.valor_total)}</td>
-                    <td className="text-right font-medium tabular-nums">{formatCurrency(item.indicadoresFinanceiros?.valor_em_aberto || 0)}</td>
-                    <td className="text-right font-medium tabular-nums">{formatCurrency(item.indicadoresFinanceiros?.valor_vencido || 0)}</td>
-                    <td>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm inline-flex h-9 w-9 items-center justify-center p-0"
-                          onClick={() => selecionarContrato(item.id)}
-                          title="Abrir detalhes"
-                          aria-label={`Abrir detalhes do contrato ${item.numero}`}
-                        >
-                          <HiOutlineEye className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm inline-flex h-9 w-9 items-center justify-center p-0"
-                          onClick={() => editarContrato(item.id)}
-                          title="Editar resumo"
-                          aria-label={`Editar resumo do contrato ${item.numero}`}
-                        >
-                          <HiOutlinePencilSquare className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </ResizableTable>
+      <BlocoConteudo
+        titulo="Carteira comercial"
+        descricao="Contratos de venda com acesso rápido ao financeiro."
+      >
+        {/*
+          R12: o recorte era um `<select>` de Status com a busca solta ao lado
+          — as duas coisas que a regra proibe. Agora e a BarraFiltros: busca
+          unica em cima ocupando a faixa e, abaixo, o filtro por MARCACAO com
+          etiquetas removiveis.
+          R23/F3: o recorte e em memoria (`contratosFiltrados` e um useMemo
+          sobre a lista ja carregada), entao marcar APLICA na hora — nao ha
+          botao "Atualizar" nem requisicao por dimensao, e a etiqueta nunca
+          aparece antes de a lista mudar.
+          B3: a contagem do recorte mora no cabecalho fixo (uma vez so); o
+          "Total listado" que ficava aqui era o MESMO numero repetido.
+        */}
+        <BarraFiltros
+          busca={{
+            valor: busca,
+            aoMudar: setBusca,
+            placeholder: 'Buscar contrato, cliente, unidade, empreendimento ou corretor'
+          }}
+          filtros={[{
+            id: 'status',
+            rotulo: 'Status',
+            opcoes: STATUS_CONTRATO.map((item) => ({ valor: item, rotulo: item }))
+          }]}
+          ativos={{ status: statusFiltro }}
+          aoAlternar={(dim, valor, opcoes) => setStatusFiltro(
+            alternarValorFiltro({ status: statusFiltro }, dim, valor, opcoes).status
           )}
+          aoLimpar={() => setStatusFiltro(new Set())}
+        />
+
+        {/* R18: o container antes tinha `overflow-hidden`, que cria contexto de
+            rolagem e mata o sticky do cabecalho e da coluna fixa da tabela.
+            A propria TabelaPadrao ja traz o shell com a area de rolagem. */}
+        <div className="mt-4">
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'contrato',
+                titulo: 'Contrato',
+                // R17: o numero do contrato e quem nomeia o registro.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                ordenavel: true,
+                valorOrdenacao: (item) => item.numero || '',
+                render: (item) => <span title={item.numero || ''}>{item.numero || '-'}</span>
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                ordenavel: true,
+                valorOrdenacao: (item) => item.status || '',
+                render: (item) => (
+                  <div className="flex flex-col items-start gap-2">
+                    {/* R25: a pilula crua do statusClass() virou StatusBadge;
+                        a familia semantica vai explicita no `kind` para a cor
+                        continuar significando o mesmo (DISTRATADO segue
+                        vermelho, que o classificador generico nao acerta). */}
+                    <StatusBadge status={item.status} kind={familiaStatusContrato(item.status)} />
+                    {item.indicadoresFinanceiros?.status_sugerido && item.indicadoresFinanceiros.status_sugerido !== item.status && (
+                      <span title={`Financeiro sugere ${item.indicadoresFinanceiros.status_sugerido}`}>
+                        <StatusBadge status={`Sugere ${item.indicadoresFinanceiros.status_sugerido}`} kind="warning" />
+                      </span>
+                    )}
+                  </div>
+                )
+              },
+              {
+                id: 'cliente',
+                titulo: 'Cliente',
+                tipo: 'texto',
+                ordenavel: true,
+                valorOrdenacao: (item) => item.cliente?.nome || '',
+                render: (item) => <span title={item.cliente?.nome || ''}>{item.cliente?.nome || '-'}</span>
+              },
+              {
+                id: 'empreendimento',
+                titulo: 'Empreendimento',
+                tipo: 'texto',
+                ordenavel: true,
+                valorOrdenacao: (item) => item.empreendimento?.nome || '',
+                render: (item) => <span title={item.empreendimento?.nome || ''}>{item.empreendimento?.nome || '-'}</span>
+              },
+              {
+                id: 'unidade',
+                titulo: 'Torre / unidade',
+                tipo: 'texto',
+                render: (item) => {
+                  const rotulo = [item.unidadeComercial?.torre, item.unidadeComercial?.codigo].filter(Boolean).join(' - ');
+                  return <span title={rotulo}>{rotulo || '-'}</span>;
+                }
+              },
+              {
+                id: 'corretor',
+                titulo: 'Corretor',
+                tipo: 'texto',
+                render: (item) => <span title={item.corretor_nome || ''}>{item.corretor_nome || '-'}</span>
+              },
+              {
+                id: 'comissao',
+                titulo: 'Comissão',
+                tipo: 'numero',
+                render: (item) => (
+                  Number(item.comissao_percentual || 0) > 0
+                    ? `${Number(item.comissao_percentual).toLocaleString('pt-BR')}%`
+                    : '-'
+                )
+              },
+              {
+                id: 'obra',
+                titulo: 'Obra',
+                tipo: 'texto',
+                render: (item) => <span title={item.obra?.nome || ''}>{item.obra?.nome || '-'}</span>
+              },
+              {
+                id: 'valor_total',
+                titulo: 'Valor total',
+                tipo: 'valor',
+                ordenavel: true,
+                ordemInicial: 'desc',
+                valorOrdenacao: (item) => Number(item.valor_total || 0),
+                render: (item) => <span className="font-medium tabular-nums">{formatCurrency(item.valor_total)}</span>
+              },
+              {
+                id: 'em_aberto',
+                titulo: 'Em aberto',
+                tipo: 'valor',
+                ordenavel: true,
+                ordemInicial: 'desc',
+                valorOrdenacao: (item) => Number(item.indicadoresFinanceiros?.valor_em_aberto || 0),
+                render: (item) => <span className="font-medium tabular-nums">{formatCurrency(item.indicadoresFinanceiros?.valor_em_aberto || 0)}</span>
+              },
+              {
+                id: 'vencido',
+                titulo: 'Vencido',
+                tipo: 'valor',
+                ordenavel: true,
+                ordemInicial: 'desc',
+                valorOrdenacao: (item) => Number(item.indicadoresFinanceiros?.valor_vencido || 0),
+                render: (item) => <span className="font-medium tabular-nums">{formatCurrency(item.indicadoresFinanceiros?.valor_vencido || 0)}</span>
+              }
+            ]}
+            itens={contratosFiltrados}
+            getId={(item) => item.id}
+            storageKey="tabela:comercial-contratos:carteira"
+            rotuloRolagem="Carteira de contratos comerciais com colunas redimensionaveis"
+            vazio="Nenhum contrato comercial encontrado."
+            colunasConfiguraveis
+            larguraAcoes={140}
+            acoesLinha={(item) => (
+              <>
+                {/* R10: `h-9 w-9` (36px) nao e degrau da escala. O alvo de
+                    clique minimo (32px no mouse, 44px no toque) ja e imposto
+                    pelo `.btn` (R2) — a tela nao escreve a medida. */}
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm btn-icon inline-flex items-center justify-center"
+                  onClick={() => selecionarContrato(item.id)}
+                  title="Abrir detalhes"
+                  aria-label={`Abrir detalhes do contrato ${item.numero}`}
+                >
+                  <HiOutlineEye className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm btn-icon inline-flex items-center justify-center"
+                  onClick={() => editarContrato(item.id)}
+                  title="Editar resumo"
+                  aria-label={`Editar resumo do contrato ${item.numero}`}
+                >
+                  <HiOutlinePencilSquare className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          />
         </div>
-      </section>
+      </BlocoConteudo>
 
       {contratoSelecionado && (
-        <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-          <div className="sol-filtros-head">
-            <div>
-              <p className="sol-filtros-title">Detalhe do contrato {contratoSelecionado.numero}</p>
-              <p className="sol-filtros-subtitle">Parcelas geradas e acesso aos titulos do financeiro.</p>
-            </div>
-          </div>
+        <BlocoConteudo
+          titulo={`Detalhe do contrato ${contratoSelecionado.numero}`}
+          descricao="Parcelas geradas e acesso aos títulos do financeiro."
+          recolhivel
+          chavePreferencia="comercial:contratos:detalhe"
+        >
+          <div className="mt-4 grid items-start gap-4 xl:grid-cols-3">
+            <section className="overflow-hidden rounded-xl border border-[var(--c-border)] xl:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--c-bg)] px-3 py-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Unidades vinculadas</div>
+                <span className="text-xs text-[var(--c-muted)]">{(contratoSelecionado.unidades || []).length} unidade(s)</span>
+              </div>
+              <div className="divide-y divide-[var(--c-border)]">
+                {(contratoSelecionado.unidades || []).map((item) => (
+                  <div key={item.unidade_comercial_id} className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-2 2xl:grid-cols-4 2xl:items-center">
+                    <span className="font-medium text-[var(--c-text)] sm:col-span-2 2xl:col-span-1">{buildUnidadeOptionLabel(item.unidade)}</span>
+                    <span className="text-[var(--c-muted)] tabular-nums">Cadastro: {formatCurrency(item.valor_cadastro_referencia)}</span>
+                    <span className="font-medium text-[var(--c-text)] tabular-nums">Valor da unidade: {formatCurrency(item.valor_atribuido)}</span>
+                    <span className="text-xs text-[var(--c-muted)] 2xl:text-right">{item.principal ? 'Unidade principal' : 'Unidade adicional'}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-          <div className="mt-4 overflow-hidden rounded-xl border border-[var(--c-border)]">
-            <div className="bg-[var(--c-bg)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Unidades vinculadas</div>
-            <div className="divide-y divide-[var(--c-border)]">
-              {(contratoSelecionado.unidades || []).map((item) => (
-                <div key={item.unidade_comercial_id} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_170px_170px_auto]">
-                  <span className="font-medium text-[var(--c-text)]">{buildUnidadeOptionLabel(item.unidade)}</span>
-                  <span className="text-[var(--c-muted)]">Cadastro: {formatCurrency(item.valor_cadastro_referencia)}</span>
-                  <span className="text-[var(--c-text)]">Valor da unidade: {formatCurrency(item.valor_atribuido)}</span>
-                  <span className="text-xs text-[var(--c-muted)]">{item.principal ? 'Principal' : ''}</span>
+            <aside className="overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Situação financeira</span>
+                <StatusBadge status={contratoSelecionado.indicadoresFinanceiros?.status_sugerido || contratoSelecionado.status} />
+              </div>
+              <dl className="divide-y divide-[var(--c-border)] text-sm">
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <dt className="text-[var(--c-muted)]">Valor em aberto</dt>
+                  <dd className="font-semibold tabular-nums text-[var(--c-text)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_em_aberto || 0)}</dd>
                 </div>
-              ))}
-            </div>
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <dt className="text-[var(--c-muted)]">Valor vencido</dt>
+                  <dd className="font-semibold tabular-nums text-[var(--sem-danger)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_vencido || 0)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <dt className="text-[var(--c-muted)]">Próximo vencimento</dt>
+                  <dd className="font-semibold text-[var(--c-text)]">{formatDate(contratoSelecionado.indicadoresFinanceiros?.proximo_vencimento)}</dd>
+                </div>
+              </dl>
+            </aside>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Corretor</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{contratoSelecionado.corretor_nome || '-'}</div>
+          <dl className="mt-4 grid overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] sm:grid-cols-2 xl:grid-cols-3">
+            <div className="min-w-0 border-b border-[var(--c-border)] p-3 sm:border-r xl:border-b-0">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Corretor</dt>
+              <dd className="mt-1 truncate text-sm font-medium text-[var(--c-text)]" title={contratoSelecionado.corretor_nome || ''}>{contratoSelecionado.corretor_nome || '-'}</dd>
             </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Comissao</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">
+            <div className="border-b border-[var(--c-border)] p-3 xl:border-b-0 xl:border-r">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Comissão</dt>
+              <dd className="mt-1 text-sm font-medium text-[var(--c-text)]">
                 {Number(contratoSelecionado.comissao_percentual || 0) > 0
                   ? `${Number(contratoSelecionado.comissao_percentual).toLocaleString('pt-BR')}%`
                   : '-'}
-              </div>
-              <div className="mt-1 text-xs text-[var(--c-muted)]">
-                Competencia DRE: {formatDate(contratoSelecionado.competencia_comissao_data)}
-              </div>
+                <span className="ml-2 text-xs font-normal text-[var(--c-muted)]">DRE: {formatDate(contratoSelecionado.competencia_comissao_data)}</span>
+              </dd>
             </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Titulo comissao</div>
-              <div className="mt-2">
+            <div className="p-3 sm:col-span-2 xl:col-span-1">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Título da comissão</dt>
+              <dd className="mt-1">
                 {contratoSelecionado.tituloFinanceiroComissao?.id ? (
-                  <Link className="btn btn-outline" to={`/financeiro/titulos/${contratoSelecionado.tituloFinanceiroComissao.id}`}>
-                    Abrir titulo da comissao
+                  <Link className="btn btn-outline btn-sm" to={`/financeiro/titulos/${contratoSelecionado.tituloFinanceiroComissao.id}`}>
+                    Abrir título
                   </Link>
                 ) : (
-                  <span className="text-sm text-[var(--c-muted)]">Nao gerado</span>
+                  <span className="text-sm text-[var(--c-muted)]">Não gerado</span>
                 )}
-              </div>
+              </dd>
             </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Status sugerido</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{contratoSelecionado.indicadoresFinanceiros?.status_sugerido || contratoSelecionado.status}</div>
-            </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor em aberto</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_em_aberto || 0)}</div>
-            </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor vencido</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_vencido || 0)}</div>
-            </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Proximo vencimento</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{formatDate(contratoSelecionado.indicadoresFinanceiros?.proximo_vencimento)}</div>
-            </div>
-          </div>
+          </dl>
 
           {(contratoSelecionado.data_distrato || contratoSelecionado.motivo_distrato) && (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+            <div className="mt-4 rounded-2xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] p-4 text-sm text-[var(--sem-danger)]">
               <strong>Distrato registrado.</strong> Data: {formatDate(contratoSelecionado.data_distrato)}. Motivo: {contratoSelecionado.motivo_distrato || '-'}
             </div>
           )}
 
-          <div className="mt-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--c-text)]">Acoes operacionais do contrato</p>
+          <div className="mt-4 space-y-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 sm:p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--c-text)]">Ações operacionais do contrato</p>
                 <p className="text-xs text-[var(--c-muted)]">Controle inadimplencia, distrato guiado e troca de unidade com ajuste financeiro.</p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn btn-outline" onClick={() => handleSincronizarStatusFinanceiro(contratoSelecionado.id)} disabled={processingAction === 'sync'}>
+              <div className="grid w-full gap-2 sm:flex sm:flex-wrap lg:w-auto lg:justify-end">
+                <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={() => handleSincronizarStatusFinanceiro(contratoSelecionado.id)} disabled={processingAction === 'sync'}>
                   {processingAction === 'sync' ? 'Sincronizando...' : 'Sincronizar status financeiro'}
                 </button>
                 {!['DISTRATADO', 'CANCELADO'].includes(String(contratoSelecionado.status || '').toUpperCase()) && (
                   <>
-                    <button type="button" className="btn btn-outline" onClick={() => { setShowTroca((value) => !value); setShowDistrato(false); }}>
+                    <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={() => { setShowTroca((value) => !value); setShowDistrato(false); }}>
                       {showTroca ? 'Fechar troca' : 'Trocar unidade'}
                     </button>
-                    <button type="button" className="btn btn-outline" onClick={() => { setShowDistrato((value) => !value); setShowTroca(false); }}>
+                    <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={() => { setShowDistrato((value) => !value); setShowTroca(false); }}>
                       {showDistrato ? 'Fechar distrato' : 'Distratar contrato'}
                     </button>
                   </>
@@ -3059,7 +3361,7 @@ export default function ComercialContratos() {
                 {isSuperadmin && (
                   <button
                     type="button"
-                    className="btn btn-outline border-rose-200 text-rose-700 hover:bg-rose-50"
+                    className="btn btn-outline btn-perigo-suave w-full sm:w-auto"
                     onClick={handleExcluirContrato}
                     disabled={processingAction === 'excluir' || possuiContratoAssinado}
                     title={possuiContratoAssinado ? 'Contratos assinados nao podem ser excluidos.' : 'Excluir contrato nao assinado'}
@@ -3074,7 +3376,7 @@ export default function ComercialContratos() {
               <div className="grid gap-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-4 md:grid-cols-6">
                 {(contratoSelecionado.unidades || []).length > 1 && (
                   <label className="sol-filter-field">
-                    <span className="sol-filter-label">Unidade que sera trocada</span>
+                    <span className="sol-filter-label">Unidade que será trocada</span>
                     <select className="input w-full" value={trocaForm.unidade_comercial_origem_id} onChange={(e) => setTrocaForm((current) => ({ ...current, unidade_comercial_origem_id: e.target.value }))}>
                       <option value="">Selecione</option>
                       {(contratoSelecionado.unidades || []).map((item) => <option key={item.unidade_comercial_id} value={item.unidade_comercial_id}>{buildUnidadeOptionLabel(item.unidade)}</option>)}
@@ -3090,18 +3392,18 @@ export default function ComercialContratos() {
                 </label>
                 <label className="sol-filter-field">
                   <span className="sol-filter-label">Novo valor total</span>
-                  <input className="input w-full" inputMode="decimal" value={trocaForm.novo_valor_total} onChange={(e) => setTrocaForm((current) => ({ ...current, novo_valor_total: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setTrocaForm((current) => ({ ...current, novo_valor_total: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
+                  <input className="input input-moeda w-full" inputMode="decimal" value={trocaForm.novo_valor_total} onChange={(e) => setTrocaForm((current) => ({ ...current, novo_valor_total: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setTrocaForm((current) => ({ ...current, novo_valor_total: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
                 </label>
                 <label className="sol-filter-field">
                   <span className="sol-filter-label">Data efetiva</span>
-                  <input className="input w-full" type="date" value={trocaForm.data_efetiva} onChange={(e) => setTrocaForm((current) => ({ ...current, data_efetiva: e.target.value }))} />
+                  <DateInputBR className="input w-full" value={trocaForm.data_efetiva} onChange={(e) => setTrocaForm((current) => ({ ...current, data_efetiva: e.target.value }))} />
                 </label>
                 <label className="sol-filter-field">
-                  <span className="sol-filter-label">Competencia DRE do ajuste</span>
-                  <input className="input w-full" type="date" value={trocaForm.competencia_data} onChange={(e) => setTrocaForm((current) => ({ ...current, competencia_data: e.target.value }))} />
+                  <span className="sol-filter-label">Competência DRE do ajuste</span>
+                  <DateInputBR className="input w-full" value={trocaForm.competencia_data} onChange={(e) => setTrocaForm((current) => ({ ...current, competencia_data: e.target.value }))} />
                 </label>
                 <label className="sol-filter-field">
-                  <span className="sol-filter-label">Observacoes</span>
+                  <span className="sol-filter-label">Observações</span>
                   <input className="input w-full" value={trocaForm.observacoes} onChange={(e) => setTrocaForm((current) => ({ ...current, observacoes: e.target.value }))} />
                 </label>
                 <div className="md:col-span-5">
@@ -3113,18 +3415,18 @@ export default function ComercialContratos() {
             )}
 
             {showDistrato && (
-              <div className="grid gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 md:grid-cols-3">
+              <div className="grid gap-3 rounded-2xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] p-4 md:grid-cols-3">
                 <label className="sol-filter-field">
                   <span className="sol-filter-label">Data do distrato</span>
-                  <input className="input w-full" type="date" value={distratoForm.data_distrato} onChange={(e) => setDistratoForm((current) => ({ ...current, data_distrato: e.target.value }))} />
+                  <DateInputBR className="input w-full" value={distratoForm.data_distrato} onChange={(e) => setDistratoForm((current) => ({ ...current, data_distrato: e.target.value }))} />
                 </label>
                 <label className="sol-filter-field md:col-span-2">
                   <span className="sol-filter-label">Motivo</span>
                   <input className="input w-full" value={distratoForm.motivo_distrato} onChange={(e) => setDistratoForm((current) => ({ ...current, motivo_distrato: e.target.value }))} />
                 </label>
                 <label className="sol-filter-field md:col-span-3">
-                  <span className="sol-filter-label">Observacoes</span>
-                  <textarea className="input min-h-[92px] w-full" value={distratoForm.observacoes} onChange={(e) => setDistratoForm((current) => ({ ...current, observacoes: e.target.value }))} />
+                  <span className="sol-filter-label">Observações</span>
+                  <textarea className="input w-full" rows={3} value={distratoForm.observacoes} onChange={(e) => setDistratoForm((current) => ({ ...current, observacoes: e.target.value }))} />
                 </label>
                 <div className="md:col-span-3">
                   <button type="button" className="btn btn-primary" onClick={handleDistratarContrato} disabled={processingAction === 'distrato'}>
@@ -3135,18 +3437,18 @@ export default function ComercialContratos() {
             )}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+          <div className="mt-4 space-y-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 sm:p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--c-text)]">Documentos e assinatura digital</p>
                 <p className="text-xs text-[var(--c-muted)]">
-                  Ao gerar contrato, o PDF sai com Quadro Resumo primeiro e Contrato na sequencia.
+                  Ao gerar contrato, o PDF sai com Quadro Resumo primeiro e Contrato na sequência.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid w-full gap-2 sm:flex sm:flex-wrap lg:w-auto lg:justify-end">
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-primary w-full sm:w-auto"
                   onClick={handleGerarDocumentoContrato}
                   disabled={
                     processingAction === 'gerar-documento'
@@ -3157,7 +3459,7 @@ export default function ComercialContratos() {
                 >
                   {processingAction === 'gerar-documento' ? 'Gerando PDF...' : 'Gerar PDF completo'}
                 </button>
-                <label className="btn btn-outline cursor-pointer">
+                <label className="btn btn-outline w-full cursor-pointer sm:w-auto">
                   <input
                     className="sr-only"
                     type="file"
@@ -3169,7 +3471,7 @@ export default function ComercialContratos() {
                 </label>
                 <button
                   type="button"
-                  className="btn btn-outline"
+                  className="btn btn-outline w-full sm:w-auto"
                   onClick={handleAnexarContratoAssinado}
                   disabled={possuiContratoAssinado || !contratoAssinadoArquivo || processingAction === 'anexar-assinado'}
                 >
@@ -3179,7 +3481,7 @@ export default function ComercialContratos() {
             </div>
 
             {modelosDoContratoSelecionado.length === 0 && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <div className="rounded-2xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] p-3 text-sm text-[var(--sem-warning)]">
                 Cadastre um modelo DOCX para este empreendimento e tipo de documento antes de gerar o PDF.
                 <Link className="btn btn-outline btn-sm ml-2" to="/comercial/modelos-contrato">
                   Abrir modelos
@@ -3188,14 +3490,14 @@ export default function ComercialContratos() {
             )}
 
             {!possuiModeloQuadroResumoSelecionado && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Para gerar o contrato completo, cadastre tambem um modelo ativo de Quadro Resumo para este empreendimento.
+              <div className="rounded-2xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] p-3 text-sm text-[var(--sem-warning)]">
+                Para gerar o contrato completo, cadastre também um modelo ativo de Quadro Resumo para este empreendimento.
               </div>
             )}
 
             {possuiContratoAssinado && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                Este contrato ja possui documento assinado digitalmente. Uma nova geracao fica bloqueada para preservar o arquivo assinado.
+              <div className="rounded-2xl border border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] p-3 text-sm text-[var(--sem-success)]">
+                Este contrato já possui documento assinado digitalmente. Uma nova geração fica bloqueada para preservar o arquivo assinado.
               </div>
             )}
 
@@ -3214,11 +3516,13 @@ export default function ComercialContratos() {
                         <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">{documentoTipoLabel(documento.tipo_documento)}</div>
                         <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{documento.nome}</div>
                         <div className="mt-1 text-xs text-[var(--c-muted)]">Status: {documento.status}</div>
-                        {documento.erro && <div className="mt-2 text-xs text-rose-600">{documento.erro}</div>}
+                        {documento.erro && <div className="mt-2 text-xs text-[var(--sem-danger)]">{documento.erro}</div>}
                       </div>
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(documento.status)}`}>
-                        {documento.status}
-                      </span>
+                      {/* R25: o statusClass() so conhecia status de CONTRATO —
+                          status de documento (GERADO, ASSINADO, ERRO) caia no
+                          cinza padrao. O StatusBadge classifica pelo texto e
+                          da a cor certa a cada um. */}
+                      <StatusBadge status={documento.status} />
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button type="button" className="btn btn-outline" onClick={() => abrirDocumentoContrato(documento.id, 'pdf')}>
@@ -3227,7 +3531,7 @@ export default function ComercialContratos() {
                       {isSuperadmin && (
                         <button
                           type="button"
-                          className="btn btn-outline border-rose-200 text-rose-700 hover:bg-rose-50"
+                          className="btn btn-outline btn-perigo-suave"
                           onClick={() => handleExcluirDocumentoContrato(documento)}
                           disabled={processingAction === `excluir-doc-${documento.id}` || documentoAssinado}
                           title={documentoAssinado ? 'Documentos assinados nao podem ser excluidos.' : 'Excluir PDF gerado'}
@@ -3245,65 +3549,103 @@ export default function ComercialContratos() {
             </div>
           </div>
 
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-[var(--c-border)]">
-            <table className="min-w-[1180px] text-sm">
-              <thead className="bg-[var(--c-bg)] text-[var(--c-muted)]">
-                <tr>
-                  <th className="px-4 py-3 text-left">Seq.</th>
-                  <th className="px-4 py-3 text-left">Descricao</th>
-                  <th className="px-4 py-3 text-left">Forma prevista</th>
-                  <th className="px-4 py-3 text-left">Reajuste</th>
-                  <th className="px-4 py-3 text-left">Detalhe</th>
-                  <th className="px-4 py-3 text-left">Vencimento</th>
-                  <th className="px-4 py-3 text-left">Competencia DRE</th>
-                  <th className="px-4 py-3 text-right">Valor</th>
-                  <th className="px-4 py-3 text-left">Status financeiro</th>
-                  <th className="px-4 py-3 text-right">Acao</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(contratoSelecionado.parcelas || []).map((parcela) => {
-                  const cheque = parcela.tituloFinanceiro?.chequesTerceiros?.[0];
-                  return (
-                  <tr key={parcela.id} className="border-t border-[var(--c-border)]">
-                    <td className="px-4 py-3 text-[var(--c-text)]">{parcela.sequencia}</td>
-                    <td className="px-4 py-3 text-[var(--c-text)]">{parcela.descricao}</td>
-                    <td className="px-4 py-3 text-[var(--c-text)]">
-                      <div>{parcela.forma_recebimento_prevista || '-'}</div>
-                      {cheque && (
-                        <div className="mt-1 max-w-[280px] text-xs leading-relaxed text-[var(--c-muted)]">
-                          Cheque {cheque.numero_cheque} · {cheque.banco || 'Banco nao informado'} · {cheque.titular_nome || 'Titular nao informado'} · {cheque.titular_documento ? maskCpfCnpj(cheque.titular_documento) : 'Documento nao informado'}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-[var(--c-text)]">{String(parcela.reajuste_tipo || 'FIXA') === 'REAJUSTAVEL' ? 'Reajustavel (R)' : 'Fixa (F)'}</td>
-                    <td className="px-4 py-3 text-[var(--c-text)]">{parcela.observacoes || '-'}</td>
-                    <td className="px-4 py-3 text-[var(--c-text)]">{formatDate(parcela.tituloFinanceiro?.data_vencimento || parcela.data_vencimento)}</td>
-                    <td className="px-4 py-3 text-[var(--c-text)]">{formatDate(parcela.competencia_data || parcela.tituloFinanceiro?.competencia_data)}</td>
-                    <td className="px-4 py-3 text-right text-[var(--c-text)]">{formatCurrency(parcela.valor_original)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(parcela.tituloFinanceiro?.status || 'ABERTO')}`}>
-                        {parcela.tituloFinanceiro?.status || 'ABERTO'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {parcela.tituloFinanceiro?.id ? (
-                        <Link className="btn btn-outline" to={`/financeiro/titulos/${parcela.tituloFinanceiro.id}`}>
-                          Abrir titulo
-                        </Link>
-                      ) : (
-                        <span className="text-[var(--c-muted)]">-</span>
-                      )}
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="mt-4">
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'sequencia',
+                  titulo: 'Seq.',
+                  tipo: 'numero',
+                  render: (parcela) => parcela.sequencia
+                },
+                {
+                  id: 'descricao',
+                  titulo: 'Descrição',
+                  // R17: a descricao e quem nomeia a parcela.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (parcela) => parcela.descricao
+                },
+                {
+                  id: 'forma_recebimento_prevista',
+                  titulo: 'Forma prevista',
+                  tipo: 'texto',
+                  render: (parcela) => {
+                    const cheque = parcela.tituloFinanceiro?.chequesTerceiros?.[0];
+                    return (
+                      <CelulaDupla
+                        principal={parcela.forma_recebimento_prevista || '-'}
+                        sub={cheque
+                          ? `Cheque ${cheque.numero_cheque} · ${cheque.banco || 'Banco nao informado'} · ${cheque.titular_nome || 'Titular nao informado'} · ${cheque.titular_documento ? maskCpfCnpj(cheque.titular_documento) : 'Documento nao informado'}`
+                          : null}
+                      />
+                    );
+                  }
+                },
+                {
+                  id: 'reajuste_tipo',
+                  titulo: 'Reajuste',
+                  tipo: 'texto',
+                  render: (parcela) => (
+                    String(parcela.reajuste_tipo || 'FIXA') === 'REAJUSTAVEL' ? 'Reajustavel (R)' : 'Fixa (F)'
+                  )
+                },
+                {
+                  id: 'observacoes',
+                  titulo: 'Detalhe',
+                  tipo: 'texto',
+                  render: (parcela) => parcela.observacoes || '-'
+                },
+                {
+                  id: 'data_vencimento',
+                  titulo: 'Vencimento',
+                  tipo: 'data',
+                  render: (parcela) => formatDate(parcela.tituloFinanceiro?.data_vencimento || parcela.data_vencimento)
+                },
+                {
+                  id: 'competencia_data',
+                  titulo: 'Competência DRE',
+                  tipo: 'data',
+                  render: (parcela) => formatDate(parcela.competencia_data || parcela.tituloFinanceiro?.competencia_data)
+                },
+                {
+                  id: 'valor_original',
+                  titulo: 'Valor',
+                  tipo: 'valor',
+                  ordenavel: true,
+                  ordemInicial: 'desc',
+                  valorOrdenacao: (parcela) => Number(parcela.valor_original || 0),
+                  render: (parcela) => formatCurrency(parcela.valor_original)
+                },
+                {
+                  id: 'status_financeiro',
+                  titulo: 'Status financeiro',
+                  tipo: 'status',
+                  render: (parcela) => (
+                    <StatusBadge status={parcela.tituloFinanceiro?.status || 'ABERTO'} />
+                  )
+                }
+              ]}
+              itens={contratoSelecionado.parcelas || []}
+              getId={(parcela) => parcela.id}
+              storageKey="tabela:comercial-contratos:parcelas-contrato"
+              rotuloRolagem="Parcelas do contrato comercial"
+              vazio="Nenhuma parcela gerada para este contrato."
+              larguraAcoes={160}
+              acoesLinha={(parcela) => (
+                parcela.tituloFinanceiro?.id ? (
+                  <Link className="btn btn-outline btn-sm" to={`/financeiro/titulos/${parcela.tituloFinanceiro.id}`}>
+                    Abrir título
+                  </Link>
+                ) : (
+                  <span className="text-[var(--c-muted)]">-</span>
+                )
+              )}
+            />
           </div>
 
-          <div className="mt-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <div className="text-sm font-semibold text-[var(--c-text)]">Historico operacional</div>
+          <div className="mt-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 sm:p-4">
+            <div className="text-sm font-semibold text-[var(--c-text)]">Histórico operacional</div>
             <div className="mt-3 space-y-3">
               {(contratoSelecionado.eventos || []).length === 0 ? (
                 <div className="text-sm text-[var(--c-muted)]">Nenhum evento comercial registrado para este contrato.</div>
@@ -3311,24 +3653,27 @@ export default function ComercialContratos() {
                 (contratoSelecionado.eventos || []).map((evento) => (
                   <article key={`${evento.id}-${evento.data_evento}`} className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
                     <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{evento.tipo_evento}</span>
+                      <StatusBadge status={evento.tipo_evento} kind="neutral" />
                       <span className="text-[var(--c-muted)]">{formatDate(evento.data_evento)}</span>
                       <span className="text-[var(--c-muted)]">{evento.criadoPor?.nome || '-'}</span>
                     </div>
                     <div className="mt-2 text-sm font-medium text-[var(--c-text)]">{evento.descricao}</div>
+                    {/* R25: o bloco era `bg-slate-950/90 text-slate-100` —
+                        preto fixo que no tema escuro some no fundo. Agora e a
+                        superficie rebaixada do sistema. */}
                     {evento.metadata && (
-                      <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950/90 p-3 text-xs text-slate-100">{JSON.stringify(evento.metadata, null, 2)}</pre>
+                      <pre className="mt-2 overflow-x-auto rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-2)] p-3 text-xs text-[var(--c-text)]">{JSON.stringify(evento.metadata, null, 2)}</pre>
                     )}
                   </article>
                 ))
               )}
             </div>
           </div>
-        </section>
+        </BlocoConteudo>
       )}
 
       {pessoaRapidaModal && (
-        <div className="quick-person-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="quick-person-overlay fixed inset-0 z-modal flex items-center justify-center p-4">
           <div className="quick-person-dialog w-full">
             <div className="quick-person-header">
               <div>
@@ -3346,10 +3691,11 @@ export default function ComercialContratos() {
             </div>
 
             <div className="quick-person-body">
+              {faixaAvisos}
               <section className="quick-person-section">
                 <div className="quick-person-section-head">
-                  <h3>Identificacao</h3>
-                  <p>Dados minimos para criar a pessoa e vincular ao contrato.</p>
+                  <h3>Identificação</h3>
+                  <p>Dados mínimos para criar a pessoa e vincular ao contrato.</p>
                 </div>
                 <div className="quick-person-grid quick-person-grid-main">
               <label className="sol-filter-field">
@@ -3360,11 +3706,11 @@ export default function ComercialContratos() {
                   onChange={(e) => setPessoaRapidaForm((current) => ({ ...current, cpf_cnpj: maskCpfCnpj(e.target.value) }))}
                   onBlur={() => {
                     if (pessoaRapidaModal === 'testemunha' && pessoaRapidaForm.cpf_cnpj && onlyDigits(pessoaRapidaForm.cpf_cnpj).length !== 11) {
-                      setError('Informe um CPF valido para a testemunha.');
+                      avisar.erro('Informe um CPF valido para a testemunha.');
                       return;
                     }
                     if (pessoaRapidaForm.cpf_cnpj && !isValidCpfCnpj(pessoaRapidaForm.cpf_cnpj)) {
-                      setError('Informe um CPF/CNPJ valido no cadastro rapido.');
+                      avisar.erro('Informe um CPF/CNPJ valido no cadastro rápido.');
                     }
                   }}
                   required
@@ -3422,9 +3768,8 @@ export default function ComercialContratos() {
                   <div className="quick-person-grid">
                 <label className="sol-filter-field">
                   <span className="sol-filter-label">Nascimento</span>
-                  <input
+                  <DateInputBR
                     className="input w-full"
-                    type="date"
                     value={pessoaRapidaForm.data_nascimento}
                     onChange={(e) => setPessoaRapidaForm((current) => ({ ...current, data_nascimento: e.target.value }))}
                   />
@@ -3472,8 +3817,8 @@ export default function ComercialContratos() {
                     }))}
                   />
                   <span>
-                    <strong>Possui conjuge</strong>
-                    <small>Cadastra o conjuge como uma segunda pessoa no sistema.</small>
+                    <strong>Possui cônjuge</strong>
+                    <small>Cadastra o cônjuge como uma segunda pessoa no sistema.</small>
                   </span>
                 </label>
                   </div>
@@ -3483,12 +3828,12 @@ export default function ComercialContratos() {
               {pessoaRapidaModal !== 'testemunha' && (
                 <section className="quick-person-section">
                   <div className="quick-person-section-head">
-                    <h3>Endereco</h3>
-                    <p>Preenche rua, numero, bairro, cidade, UF e CEP nos documentos.</p>
+                    <h3>Endereço</h3>
+                    <p>Preenche rua, número, bairro, cidade, UF e CEP nos documentos.</p>
                   </div>
                   <div className="quick-person-grid">
                     <label className="sol-filter-field quick-span-2">
-                      <span className="sol-filter-label">Endereco</span>
+                      <span className="sol-filter-label">Endereço</span>
                       <input
                         className="input w-full"
                         value={pessoaRapidaForm.endereco}
@@ -3496,7 +3841,7 @@ export default function ComercialContratos() {
                       />
                     </label>
                     <label className="sol-filter-field">
-                      <span className="sol-filter-label">Numero</span>
+                      <span className="sol-filter-label">Número</span>
                       <input
                         className="input w-full"
                         value={pessoaRapidaForm.numero}
@@ -3552,7 +3897,7 @@ export default function ComercialContratos() {
                 <>
                   <section className="quick-person-section">
                     <div className="quick-person-section-head">
-                      <h3>Conjuge</h3>
+                      <h3>Cônjuge</h3>
                       <p>Cria uma segunda pessoa ativa e vincula ao cliente principal.</p>
                     </div>
                     <div className="quick-person-grid quick-person-grid-main">
@@ -3564,7 +3909,7 @@ export default function ComercialContratos() {
                           onChange={(e) => atualizarConjugeRapido('cpf_cnpj', maskCpfCnpj(e.target.value))}
                           onBlur={() => {
                             if (pessoaRapidaForm.conjuge.cpf_cnpj && !isValidCpfCnpj(pessoaRapidaForm.conjuge.cpf_cnpj)) {
-                              setError('Informe um CPF/CNPJ valido para o conjuge.');
+                              avisar.erro('Informe um CPF/CNPJ valido para o cônjuge.');
                             }
                           }}
                         />
@@ -3598,15 +3943,14 @@ export default function ComercialContratos() {
 
                   <section className="quick-person-section">
                     <div className="quick-person-section-head">
-                      <h3>Dados civis do conjuge</h3>
+                      <h3>Dados civis do cônjuge</h3>
                       <p>Usado nos contratos quando o modelo exigir assinatura do casal.</p>
                     </div>
                     <div className="quick-person-grid">
                       <label className="sol-filter-field">
                         <span className="sol-filter-label">Nascimento</span>
-                        <input
+                        <DateInputBR
                           className="input w-full"
-                          type="date"
                           value={pessoaRapidaForm.conjuge.data_nascimento}
                           onChange={(e) => atualizarConjugeRapido('data_nascimento', e.target.value)}
                         />
@@ -3640,12 +3984,12 @@ export default function ComercialContratos() {
 
                   <section className="quick-person-section">
                     <div className="quick-person-section-head">
-                      <h3>Endereco do conjuge</h3>
-                      <p>Pode repetir o endereco do cliente ou guardar um endereco proprio.</p>
+                      <h3>Endereço do cônjuge</h3>
+                      <p>Pode repetir o endereço do cliente ou guardar um endereço próprio.</p>
                     </div>
                     <div className="quick-person-grid">
                       <label className="sol-filter-field quick-span-2">
-                        <span className="sol-filter-label">Endereco</span>
+                        <span className="sol-filter-label">Endereço</span>
                         <input
                           className="input w-full"
                           value={pessoaRapidaForm.conjuge.endereco}
@@ -3653,7 +3997,7 @@ export default function ComercialContratos() {
                         />
                       </label>
                       <label className="sol-filter-field">
-                        <span className="sol-filter-label">Numero</span>
+                        <span className="sol-filter-label">Número</span>
                         <input
                           className="input w-full"
                           value={pessoaRapidaForm.conjuge.numero}
@@ -3730,6 +4074,10 @@ export default function ComercialContratos() {
           </div>
         </div>
       )}
-    </div>
+
+      {/* R19/R21/R26: o modal de confirmacao do sistema, no lugar das tres
+          caixas `window.confirm`. */}
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

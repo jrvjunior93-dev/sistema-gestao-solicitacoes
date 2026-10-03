@@ -53,9 +53,9 @@ function validateBeneficiaryPayload() {
   const data = validatePaymentBeneficiaryCreateBody({
     parceiro_id: '10',
     nome: 'Fornecedor Teste',
-    cpf_cnpj: '12345678000199',
+    cpf_cnpj: '11.222.333/0001-81',
     pix_tipo_chave: 'cnpj',
-    pix_chave: '12345678000199',
+    pix_chave: '11222333000181',
     ativo: 'true'
   });
 
@@ -69,7 +69,7 @@ function validateBeneficiaryPayload() {
     () => validatePaymentBeneficiaryCreateBody({
       parceiro_id: 1,
       nome: 'Sem PIX',
-      cpf_cnpj: '12345678901'
+      cpf_cnpj: '52998224725'
     }),
     'Tipo de chave PIX e obrigatorio'
   );
@@ -78,9 +78,9 @@ function validateBeneficiaryPayload() {
     () => validatePaymentBeneficiaryCreateBody({
       parceiro_id: 1,
       nome: 'Fornecedor',
-      cpf_cnpj: '12345678901',
+      cpf_cnpj: '52998224725',
       pix_tipo_chave: 'CPF',
-      pix_chave: '12345678901',
+      pix_chave: '52998224725',
       client_secret: 'nao permitido'
     }),
     'campos nao permitidos'
@@ -132,7 +132,7 @@ function validatePaymentAccountPayload() {
     conta_bancaria_id: '1',
     empresa_id: '2',
     provider_id: '3',
-    cnpj_pagador: '12.345.678/0001-99',
+    cnpj_pagador: '11.222.333/0001-81',
     ambiente: 'homologacao',
     ativo: 'sim'
   });
@@ -142,7 +142,7 @@ function validatePaymentAccountPayload() {
   assert.strictEqual(account.provider_id, 3);
   assert.strictEqual(account.ambiente, 'HOMOLOGACAO');
   assert.strictEqual(account.ativo, true);
-  assert.strictEqual(account.cnpj_pagador, '12.345.678/0001-99');
+  assert.strictEqual(account.cnpj_pagador, '11222333000181');
 }
 
 function validateRoutesAndCriticalGuards() {
@@ -260,7 +260,7 @@ async function validateBancoDoBrasilProvider() {
       conta: '56789',
       tipo_conta: 'CORRENTE',
       convenio: 'CONV-TESTE',
-      cnpj_pagador: '12.345.678/0001-99',
+      cnpj_pagador: '11.222.333/0001-81',
       client_id_ref: 'aws/secret/client-id',
       client_secret_ref: 'aws/secret/client-secret',
       certificate_ref: 'aws/secret/cert'
@@ -284,9 +284,9 @@ async function validateBancoDoBrasilProvider() {
         correlation_id: 'intent-corr-1',
         beneficiary_snapshot: {
           nome: 'Fornecedor Teste',
-          cpf_cnpj: '12345678000199',
+          cpf_cnpj: '11222333000181',
           pix_tipo_chave: 'CNPJ',
-          pix_chave: '12345678000199'
+          pix_chave: '11222333000181'
         }
       }
     }]
@@ -297,7 +297,7 @@ async function validateBancoDoBrasilProvider() {
   assert.strictEqual(auth.mode, bancoDoBrasilProvider.MOCK_MODE);
 
   const snapshot = bancoDoBrasilProvider.buildBatchRequestSnapshot(batch, context);
-  assert.strictEqual(snapshot.account.cnpj_pagador, '12345678000199');
+  assert.strictEqual(snapshot.account.cnpj_pagador, '11222333000181');
   assert(!String(snapshot.account.client_secret_ref || '').includes('client-secret'), 'Referencia sensivel nao foi mascarada.');
   assert.strictEqual(snapshot.items[0].favorecido.pix_tipo_chave, 'CNPJ');
 
@@ -344,7 +344,7 @@ function validateBancoDoBrasilSandboxProvider() {
         correlation_id: 'intent-corr-77',
         beneficiary_snapshot: {
           nome: 'Fornecedor PIX',
-          cpf_cnpj: '12345678000199',
+          cpf_cnpj: '11222333000181',
           pix_tipo_chave: 'EMAIL',
           pix_chave: 'financeiro@example.com'
         },

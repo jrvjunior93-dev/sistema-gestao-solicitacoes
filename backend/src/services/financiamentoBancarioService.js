@@ -161,9 +161,8 @@ function buildInclude({ includeParcelas = true } = {}) {
 }
 
 async function carregarReferencias(req, payload) {
-  const [conta, empresa, parceiro, categoria] = await Promise.all([
+  const [conta, parceiro, categoria] = await Promise.all([
     ContaBancaria.findByPk(payload.conta_bancaria_id),
-    EmpresaGrupo.findByPk(payload.empresa_id),
     Parceiro.findByPk(payload.parceiro_id),
     CategoriaFinanceira.findByPk(payload.categoria_financeira_id)
   ]);
@@ -175,13 +174,9 @@ async function carregarReferencias(req, payload) {
     throw createHttpError(400, 'A conta bancaria selecionada nao possui empresa vinculada.');
   }
 
-  if (!empresa || empresa.ativo === false) {
-    throw createHttpError(400, 'Empresa do grupo invalida ou inativa.');
-  }
+  const empresa = await EmpresaGrupo.findByPk(Number(conta.empresa_id));
+  if (!empresa || empresa.ativo === false) throw createHttpError(400, 'Empresa vinculada a conta bancaria invalida ou inativa.');
   await assertEmpresaScope(req, empresa.id);
-  if (Number(conta.empresa_id) !== Number(empresa.id)) {
-    throw createHttpError(400, 'A conta do credito deve pertencer a empresa do grupo selecionada.');
-  }
 
   if (!parceiro || parceiro.ativo === false || parceiro.fornecedor === false) {
     throw createHttpError(400, 'Instituicao financeira invalida. Cadastre o banco como fornecedor ativo.');

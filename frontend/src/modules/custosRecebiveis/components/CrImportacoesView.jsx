@@ -1,11 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineArrowDownTray,
   HiOutlineCheckCircle,
   HiOutlineDocumentArrowUp,
   HiOutlineExclamationCircle
 } from 'react-icons/hi2';
+import {
+  BarraFiltros,
+  BlocoConteudo,
+  CelulaDupla,
+  TabelaPadrao,
+  alternarValorFiltro
+} from '../../../components/padrao';
+import {
+  consultaIndisponivel,
+  listarPlanosResumo,
+  mensagemLegivel
+} from '../services/custosRecebiveis';
+import CrPlanoWorkspace from './CrPlanoWorkspace';
 import CrStatusPill from './CrStatusPill';
+import { formatarDataHora, normalizarBusca, rotuloObra } from './CrFormatos';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -74,7 +88,31 @@ function PreviewSummary({ preview }) {
   );
 }
 
-export default function CrImportacoesView({
+const SITUACAO_PLANILHA = {
+  SEM_PLANILHA: 'Sem planilha',
+  PUBLICADA: 'Publicada',
+  RASCUNHO: 'Rascunho a publicar'
+};
+
+const FILTRO_SITUACAO = Object.entries(SITUACAO_PLANILHA).map(([valor, rotulo]) => ({ valor, rotulo }));
+
+// Sem a consulta geral (servidor antigo), a situação vem do cadastro da obra.
+const SITUACAO_POR_ORCAMENTO = {
+  ORCAMENTO_PUBLICADO: 'PUBLICADA',
+  RASCUNHO: 'RASCUNHO'
+};
+
+function situacaoDoPlano(item) {
+  if (item.rascunhos?.length) return 'RASCUNHO';
+  if (item.vigente) return 'PUBLICADA';
+  return 'SEM_PLANILHA';
+}
+
+/*
+  Novo arquivo da obra aberta: validar e importar como rascunho, e o
+  histórico de versões. Mesmo fluxo de antes, agora abaixo da planilha.
+*/
+function ImportacaoDaObra({
   obra,
   data,
   canImport,
@@ -117,7 +155,7 @@ export default function CrImportacoesView({
   }
 
   async function handleImport() {
-    if (!canConfirmImport) return;
+    if (!canConfirmImport || importing) return;
     const result = await onImport(file, reason);
     if (result) {
       setPreview(null);
@@ -127,23 +165,16 @@ export default function CrImportacoesView({
     }
   }
 
-  if (!obra) {
-    return (
-      <section className="cr-section cr-empty-state cr-empty-state--large">
-        <HiOutlineDocumentArrowUp className="h-7 w-7" />
-        <strong>Selecione uma obra</strong>
-        <span>Use o seletor de contexto acima para consultar ou importar versões da estrutura micro.</span>
-      </section>
-    );
-  }
-
   return (
-    <div className="cr-import-layout">
+    <div className="cr-import-layout" id="cr-importar-arquivo">
       <section className="cr-section">
         <div className="cr-section-heading">
           <div>
             <h2>Nova importação</h2>
-            <p>Valide primeiro. A importação só cria uma nova versão após a conferência do arquivo.</p>
+            <p className="cr-warning-text">
+              Mantenha os códigos dos itens ao gerar nova versão: item com código novo recomeça
+              do zero a medição já aprovada.
+            </p>
           </div>
           {canImport ? (
             <button type="button" className="btn btn-outline" onClick={onDownloadModel}>
@@ -155,7 +186,7 @@ export default function CrImportacoesView({
 
         {!canImport ? (
           <div className="cr-feedback" data-tone="warning">
-            Você possui acesso de leitura, mas não tem permissão para importar estruturas.
+            Acesso somente leitura: sem permissão para importar planilhas.
           </div>
         ) : (
           <div className="cr-import-form">
@@ -182,7 +213,7 @@ export default function CrImportacoesView({
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder={hasPreviousPlan
-                  ? 'Explique por que uma nova versão está sendo criada'
+                  ? 'Por que uma nova versão está sendo criada'
                   : 'Opcional na primeira importação'}
               />
             </label>
@@ -220,77 +251,268 @@ export default function CrImportacoesView({
         <div className="cr-section-heading">
           <div>
             <h2>Histórico de versões</h2>
-            <p>Cada reimportação preserva as versões anteriores e sua trilha de origem.</p>
           </div>
         </div>
-        {(data?.planos || []).length === 0 ? (
-          <div className="cr-empty-state">Nenhuma versão importada para esta obra.</div>
-        ) : (
-          <>
-            <div className="cr-table-shell cr-desktop-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Versão</th>
-                    <th>Arquivo</th>
-                    <th>Importado por</th>
-                    <th>Data</th>
-                    <th>Linhas</th>
-                    <th>Situação</th>
-                    <th aria-label="Ação" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data.planos || []).map((plan) => {
-                    const importInfo = importsByPlan.get(Number(plan.id));
-                    return (
-                      <tr key={plan.id}>
-                        <td><strong>v{plan.versao}</strong></td>
-                        <td>{importInfo?.arquivo_nome || '-'}</td>
-                        <td>{importInfo?.usuario?.nome || '-'}</td>
-                        <td>{formatDate(importInfo?.createdAt || plan.createdAt)}</td>
-                        <td>
-                          {importInfo
-                            ? `${importInfo.linhas_validas}/${importInfo.linhas_total}`
-                            : '-'}
-                        </td>
-                        <td><CrStatusPill status={plan.situacao} /></td>
-                        <td className="text-right">
-                          <button type="button" className="btn btn-outline" onClick={() => onOpenPlan(plan.id)}>
-                            Abrir
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="cr-mobile-list">
-              {(data.planos || []).map((plan) => {
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'versao',
+              titulo: 'Versão',
+              // R17: a versão importada NOMEIA a linha do histórico.
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (plan) => <strong>v{plan.versao}</strong>
+            },
+            {
+              id: 'arquivo',
+              titulo: 'Arquivo',
+              tipo: 'texto',
+              render: (plan) => importsByPlan.get(Number(plan.id))?.arquivo_nome || '-'
+            },
+            {
+              id: 'usuario',
+              titulo: 'Importado por',
+              tipo: 'texto',
+              render: (plan) => importsByPlan.get(Number(plan.id))?.usuario?.nome || '-'
+            },
+            {
+              id: 'data',
+              titulo: 'Data',
+              tipo: 'data',
+              render: (plan) => formatDate(importsByPlan.get(Number(plan.id))?.createdAt || plan.createdAt)
+            },
+            {
+              id: 'linhas',
+              titulo: 'Linhas',
+              tipo: 'numero',
+              render: (plan) => {
                 const importInfo = importsByPlan.get(Number(plan.id));
-                return (
-                  <article className="cr-mobile-record" key={plan.id}>
-                    <div className="flex items-center justify-between gap-3">
-                      <strong className="text-base text-[var(--c-text)]">Versão v{plan.versao}</strong>
-                      <CrStatusPill status={plan.situacao} />
-                    </div>
-                    <dl className="cr-mobile-record-grid">
-                      <div><dt>Arquivo</dt><dd>{importInfo?.arquivo_nome || '-'}</dd></div>
-                      <div><dt>Linhas válidas</dt><dd>{importInfo?.linhas_validas ?? '-'}</dd></div>
-                      <div><dt>Importado por</dt><dd>{importInfo?.usuario?.nome || '-'}</dd></div>
-                      <div><dt>Data</dt><dd>{formatDate(importInfo?.createdAt || plan.createdAt)}</dd></div>
-                    </dl>
-                    <button type="button" className="btn btn-outline w-full" onClick={() => onOpenPlan(plan.id)}>
-                      Abrir estrutura
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-          </>
-        )}
+                return importInfo ? `${importInfo.linhas_validas}/${importInfo.linhas_total}` : '-';
+              }
+            },
+            {
+              id: 'situacao',
+              titulo: 'Situação',
+              tipo: 'badge',
+              render: (plan) => <CrStatusPill status={plan.situacao} />
+            }
+          ]}
+          itens={data?.planos || []}
+          getId={(plan) => plan.id}
+          storageKey="tabela:custos-recebiveis-importacoes:historico"
+          rotuloRolagem="Histórico de versões"
+          vazio="Nenhuma versão importada para esta obra."
+          acoesLinha={(plan) => (
+            <button type="button" className="btn btn-outline" onClick={() => onOpenPlan(plan.id)}>
+              Abrir
+            </button>
+          )}
+          larguraAcoes={140}
+        />
       </section>
     </div>
+  );
+}
+
+/*
+  Importações (Fase 4): a lista de todas as obras com a situação da planilha
+  abre sem escolher obra. "Abrir" traz, logo abaixo, a planilha da obra
+  (versões e "Publicar versão", que antes só existiam na tela de Obras) e a
+  importação de um novo arquivo.
+*/
+export default function CrImportacoesView({
+  obras = [],
+  obra,
+  versao = 0,
+  data,
+  planLoading,
+  planError,
+  canImport,
+  canPublish,
+  validating,
+  importing,
+  publishing,
+  feedback,
+  onSelectObra,
+  onSelectPlan,
+  onReloadPlan,
+  onDownloadModel,
+  onValidate,
+  onImport,
+  onPublish
+}) {
+  const [planos, setPlanos] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState('');
+  const [busca, setBusca] = useState('');
+  const [ativos, setAtivos] = useState({});
+
+  const load = useCallback(async () => {
+    try {
+      setCarregando(true);
+      setErro('');
+      const response = await listarPlanosResumo();
+      setPlanos(Array.isArray(response?.items) ? response.items : []);
+    } catch (error) {
+      setPlanos(null);
+      // Sem a consulta geral a lista continua pelas obras do escopo.
+      if (!consultaIndisponivel(error)) {
+        setErro(mensagemLegivel(error, 'Não foi possível carregar as planilhas das obras.'));
+      }
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load, versao]);
+
+  const linhas = useMemo(() => {
+    const fonte = Array.isArray(planos)
+      ? planos.map((item) => ({ ...item, situacao: situacaoDoPlano(item), resumo: true }))
+      : obras.map((item) => ({
+        obra: item,
+        vigente: null,
+        rascunhos: [],
+        situacao: SITUACAO_POR_ORCAMENTO[String(item.situacao_orcamento || '').toUpperCase()] || 'SEM_PLANILHA',
+        resumo: false
+      }));
+    const termo = normalizarBusca(busca);
+    const situacoes = ativos.situacao || new Set();
+    return fonte.filter((item) => (
+      (!termo || normalizarBusca(`${item.obra?.codigo} ${item.obra?.nome}`).includes(termo))
+      && (!situacoes.size || situacoes.has(item.situacao))
+    ));
+  }, [planos, obras, busca, ativos]);
+
+  const pendentes = linhas.filter((item) => item.situacao === 'RASCUNHO').length;
+
+  function abrir(obraId) {
+    onSelectObra(obraId);
+    requestAnimationFrame(() => {
+      document.getElementById('cr-workspace-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  function irParaImportacao() {
+    document.getElementById('cr-importar-arquivo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  return (
+    <>
+      <BlocoConteudo
+        titulo="Importações"
+        contagem={`${linhas.length} obra(s) · ${pendentes} com rascunho`}
+      >
+        <BarraFiltros
+          busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Nome ou código da obra' }}
+          filtros={[{ id: 'situacao', rotulo: 'Situação', opcoes: FILTRO_SITUACAO }]}
+          ativos={ativos}
+          aoAlternar={(dimensao, valor, opcoes) => setAtivos(
+            (current) => alternarValorFiltro(current, dimensao, valor, opcoes)
+          )}
+          aoLimpar={() => { setBusca(''); setAtivos({}); }}
+        />
+        {erro ? <p className="cr-faixa-aviso" role="status">{erro}</p> : null}
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'obra',
+              titulo: 'Obra',
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => rotuloObra(item.obra)
+            },
+            {
+              id: 'situacao',
+              titulo: 'Situação',
+              tipo: 'status',
+              render: (item) => (
+                <span
+                  className="cr-status-pill"
+                  data-status={item.situacao === 'SEM_PLANILHA' ? 'NEUTRO' : item.situacao}
+                >
+                  {SITUACAO_PLANILHA[item.situacao]}
+                </span>
+              )
+            },
+            {
+              id: 'vigente',
+              titulo: 'Versão vigente',
+              tipo: 'texto',
+              render: (item) => (item.vigente ? (
+                <CelulaDupla
+                  principal={`v${item.vigente.versao} · ${item.vigente.total_itens} item(ns)`}
+                  sub={`publicada ${formatarDataHora(item.vigente.publicado_em)}`}
+                />
+              ) : '—')
+            },
+            {
+              id: 'rascunhos',
+              titulo: 'Rascunhos',
+              tipo: 'texto',
+              render: (item) => (item.rascunhos?.length
+                ? item.rascunhos.map((rascunho) => `v${rascunho.versao}`).join(', ')
+                : '—')
+            },
+            {
+              id: 'importacao',
+              titulo: 'Última importação',
+              tipo: 'texto',
+              render: (item) => (item.resumo ? formatarDataHora(item.ultima_importacao_em) : '—')
+            }
+          ]}
+          itens={linhas}
+          getId={(item) => item.obra?.id}
+          storageKey="tabela:custos-recebiveis-importacoes:obras"
+          rotuloRolagem="Planilhas das obras"
+          carregando={carregando}
+          vazio={erro ? 'Não foi possível carregar a lista.' : 'Nenhuma obra encontrada.'}
+          acoesLinha={(item) => (Number(item.obra?.id) === Number(obra?.id) ? (
+            <button type="button" className="btn btn-outline" onClick={() => onSelectObra(null)}>
+              Fechar
+            </button>
+          ) : (
+            <button type="button" className="btn btn-outline" onClick={() => abrir(item.obra?.id)}>
+              Abrir
+            </button>
+          ))}
+          larguraAcoes={120}
+        />
+      </BlocoConteudo>
+
+      {obra?.id ? (
+        <div id="cr-workspace-anchor" className="cr-arquivos-obra">
+          <CrPlanoWorkspace
+            data={data}
+            loading={planLoading}
+            error={planError}
+            canImport={canImport}
+            canPublish={canPublish}
+            publishing={publishing}
+            onReload={onReloadPlan}
+            onSelectPlan={onSelectPlan}
+            onOpenImport={irParaImportacao}
+            onDownloadModel={onDownloadModel}
+            onPublish={onPublish}
+            onClose={() => onSelectObra(null)}
+          />
+          <ImportacaoDaObra
+            obra={obra}
+            data={data}
+            canImport={canImport}
+            validating={validating}
+            importing={importing}
+            feedback={feedback}
+            onDownloadModel={onDownloadModel}
+            onValidate={onValidate}
+            onImport={onImport}
+            onOpenPlan={(planId) => {
+              onSelectPlan(planId);
+              document.getElementById('cr-workspace-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }

@@ -1,4 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  TabelaPadrao,
+  CelulaDupla,
+  FormSecao,
+  CampoForm,
+  Avisos,
+  useAvisos
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import {
   atualizarEmpreendimentoComercial,
   criarEmpreendimentoComercial,
@@ -55,12 +67,17 @@ export default function ComercialEmpreendimentos() {
   const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  // R22: hook usado é hook importado — o useRef está no import acima. A
+  // referência serve à ação da faixa fixa e ao "Editar" da linha (levar o
+  // foco ao formulário, que fica ACIMA da lista), não a medida nenhuma.
+  const campoNomeRef = useRef(null);
+  // R3/R19: a faixa de aviso do sistema no lugar do <div> de erro montado à
+  // mão — mesmo tom semântico, fechável, e medível pelo harness.
+  const { avisos, avisar, fechar } = useAvisos();
 
   async function carregar() {
     try {
       setLoading(true);
-      setError('');
       const [empreendimentosData, obrasData] = await Promise.all([
         getEmpreendimentosComerciais(),
         getObrasComerciais()
@@ -68,7 +85,7 @@ export default function ComercialEmpreendimentos() {
       setEmpreendimentos(Array.isArray(empreendimentosData) ? empreendimentosData : []);
       setObras(Array.isArray(obrasData) ? obrasData : []);
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar empreendimentos');
+      avisar.erro(err?.message || 'Erro ao carregar empreendimentos');
     } finally {
       setLoading(false);
     }
@@ -93,15 +110,35 @@ export default function ComercialEmpreendimentos() {
     });
   }, [busca, empreendimentos]);
 
+  // O formulário fica ACIMA da lista: sem levar o foco até ele, clicar em
+  // "Editar" no fim de uma lista longa não muda nada na tela que a pessoa
+  // está vendo — a edição acontece fora do campo de visão (R15: capacidade
+  // sem sinal não existe).
+  function focarFormulario() {
+    campoNomeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // preventScroll: quem rola é o scrollIntoView suave; sem ele o foco dá
+    // um salto seco por cima da rolagem.
+    campoNomeRef.current?.focus({ preventScroll: true });
+  }
+
+  function novoEmpreendimento() {
+    setForm(defaultForm());
+    focarFormulario();
+  }
+
+  function editarEmpreendimento(item) {
+    setForm(pickForm(item));
+    focarFormulario();
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     try {
       setSaving(true);
-      setError('');
 
       const nome = String(form.nome || '').trim();
       if (!nome) {
-        setError('Informe o nome do empreendimento.');
+        avisar.erro('Informe o nome do empreendimento.');
         return;
       }
 
@@ -126,154 +163,214 @@ export default function ComercialEmpreendimentos() {
       }
 
       setForm(defaultForm());
+      avisar.sucesso('Empreendimento salvo.');
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao salvar empreendimento');
+      avisar.erro(err?.message || 'Erro ao salvar empreendimento');
     } finally {
       setSaving(false);
     }
   }
 
+  /*
+    R1/R17 — a lista era um <article> por registro, com os campos soltos em
+    <span>: sem colunas declaradas, sem redimensionamento e sem largura
+    salva por usuário. Toda listagem de registros é TabelaPadrao, e cada
+    coluna declara o que ELA É (`tipo`) — a medida e o alinhamento são do
+    componente (R1/R10/R14). Nenhum dado do card saiu: código, obra, cidade,
+    endereço, descrição e situação continuam na tela, agrupados em
+    CelulaDupla onde eram dois dados da mesma família.
+  */
+  const colunas = [
+    {
+      id: 'empreendimento',
+      titulo: 'Empreendimento',
+      // R17: IDENTIDADE — o nome é o que nomeia o registro desta lista
+      // (o código é secundário e vai como sub da mesma célula).
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => (
+        <CelulaDupla principal={item.nome} sub={item.codigo ? `Cód. ${item.codigo}` : null} />
+      )
+    },
+    {
+      id: 'obra',
+      titulo: 'Obra vinculada',
+      tipo: 'texto',
+      render: (item) => item.obra?.nome || 'Sem vinculo'
+    },
+    {
+      id: 'local',
+      titulo: 'Localização',
+      tipo: 'texto',
+      render: (item) => (
+        <CelulaDupla
+          principal={[item.cidade, item.estado].filter(Boolean).join(' / ') || '-'}
+          sub={[item.endereco, item.numero].filter(Boolean).join(', ') || null}
+        />
+      )
+    },
+    {
+      id: 'descricao',
+      titulo: 'Descrição',
+      tipo: 'texto',
+      // T6: texto longo trunca com o texto completo no tooltip.
+      render: (item) => (
+        <span title={item.descricao || undefined}>{item.descricao || '-'}</span>
+      )
+    },
+    {
+      id: 'situacao',
+      titulo: 'Situação',
+      tipo: 'status',
+      // R25: o par bg-emerald-100/text-emerald-700 (e o bg-slate-100 do
+      // inativo) era paleta crua — sem par no tema escuro e fora do piso de
+      // contraste. O StatusBadge resolve família, ícone e cor por token.
+      render: (item) => <StatusBadge status={item.ativo ? 'Ativo' : 'Inativo'} />
+    }
+  ];
+
   return (
-    <div className="page solicitacoes-page space-y-5 md:space-y-6">
-      <header className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Empreendimentos</h1>
-            <p className="page-subtitle">
-              Base comercial para agrupar unidades, contratos de venda e carteira do cliente.
-            </p>
-          </div>
-        </div>
-      </header>
+    <Pagina>
+      {/* R13/C1/R5: o cabeçalho era `app-page-header` cru (faixa sem
+          compactação) com o apoio num `page-subtitle` solto. Título,
+          contagem e apoio passam a viver no PageHeader, na faixa fixa que
+          compacta e não some — e a ação principal fica a um clique mesmo no
+          fim da lista. */}
+      <PageHeader
+        titulo="Empreendimentos"
+        contagem={loading ? null : `${listaFiltrada.length} empreendimento(s)`}
+        descricao="Base comercial para agrupar unidades, contratos de venda e carteira do cliente."
+        acaoPrincipal={{ rotulo: 'Novo empreendimento', onClick: novoEmpreendimento }}
+      />
 
-      {error && (
-        <div className="app-alert app-alert--error">
-          {error}
-        </div>
-      )}
+      {/* R16: UM dono para a faixa de avisos, logo abaixo do cabeçalho —
+          vista tanto por quem cadastra quanto por quem lê a lista. */}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      {loading ? (
-        <div className="app-empty-card">Carregando empreendimentos...</div>
-      ) : (
-        <div className="grid gap-6 xl:grid-cols-[440px_minmax(0,1fr)]">
-          <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">
-              {form.id ? 'Editar empreendimento' : 'Novo empreendimento'}
-            </h2>
+      {/*
+        R9 (revista em 04/09) — FORMULÁRIO INLINE, E NÃO EM MODAL.
 
-            <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Obra vinculada</span>
-                <select
-                  className="input w-full"
-                  value={form.obra_id}
-                  onChange={(event) => setForm((current) => ({ ...current, obra_id: event.target.value }))}
-                >
-                  <option value="">Sem vinculo operacional</option>
-                  {obras.map((obra) => (
-                    <option key={obra.id} value={obra.id}>
-                      {obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
+        O critério da R9 não é a frequência do cadastro: é o que a tela
+        existe para fazer. Esta tela existe PARA cadastrar empreendimentos —
+        pelo teste da regra, tirando o formulário sobra uma lista que
+        ninguém abriria por si só. Em tela assim o modal é atrito: obriga a
+        abrir e fechar para fazer exatamente aquilo que a pessoa veio fazer.
+        Modal fica reservado ao cadastro que INTERROMPE outro trabalho.
+        Não mover para OverlayModal: cinco telas foram movidas por essa
+        leitura errada em 04/09 e tiveram de voltar.
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Codigo</span>
-                  <input
-                    className="input w-full"
-                    value={form.codigo}
-                    onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value }))}
-                    placeholder="Ex.: EMP-001"
-                  />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">UF</span>
-                  <input
-                    className="input w-full"
-                    maxLength={2}
-                    value={form.estado}
-                    onChange={(event) => setForm((current) => ({ ...current, estado: event.target.value.toUpperCase() }))}
-                    placeholder="UF"
-                  />
-                </label>
-              </div>
+        ARRANJO — empilhado, e não nas duas colunas de antes: as colunas
+        vinham de um grid com largura em px (`xl:grid-cols-[440px_...]`),
+        que é medida à mão (R10), e espremiam a listagem em meia tela. A
+        tabela precisa da largura inteira; a ordem de leitura passa a ser a
+        ordem do trabalho (cadastrar → conferir a lista).
+      */}
+      <BlocoConteudo titulo={form.id ? 'Editar empreendimento' : 'Novo empreendimento'}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <FormSecao legenda="Identificação" colunas={2}>
+            <CampoForm label="Obra vinculada" span={2} hint="Vinculo operacional opcional.">
+              {/* R12: select de FORMULÁRIO (entrada de dado do registro),
+                  não filtro de lista — segue legítimo. */}
+              <select
+                className="input w-full"
+                value={form.obra_id}
+                onChange={(event) => setForm((current) => ({ ...current, obra_id: event.target.value }))}
+              >
+                <option value="">Sem vínculo operacional</option>
+                {obras.map((obra) => (
+                  <option key={obra.id} value={obra.id}>
+                    {obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome}
+                  </option>
+                ))}
+              </select>
+            </CampoForm>
 
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Nome</span>
-                <input
-                  className="input w-full"
-                  value={form.nome}
-                  onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))}
-                  required
-                  placeholder="Nome do empreendimento"
-                />
-              </label>
+            <CampoForm label="Nome" obrigatorio span={2}>
+              <input
+                ref={campoNomeRef}
+                className="input w-full"
+                value={form.nome}
+                onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))}
+                required
+                placeholder="Nome do empreendimento"
+              />
+            </CampoForm>
 
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Descricao</span>
-                <textarea
-                  className="input min-h-[96px] w-full"
-                  value={form.descricao}
-                  onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))}
-                  placeholder="Resumo comercial e operacional"
-                />
-              </label>
+            <CampoForm label="Código">
+              <input
+                className="input w-full"
+                value={form.codigo}
+                onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value }))}
+                placeholder="Ex.: EMP-001"
+              />
+            </CampoForm>
 
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_96px]">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Endereco</span>
-                  <input
-                    className="input w-full"
-                    value={form.endereco}
-                    onChange={(event) => setForm((current) => ({ ...current, endereco: event.target.value }))}
-                    placeholder="Rua / avenida"
-                  />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Numero</span>
-                  <input
-                    className="input w-full"
-                    value={form.numero}
-                    onChange={(event) => setForm((current) => ({ ...current, numero: event.target.value }))}
-                    placeholder="Numero"
-                  />
-                </label>
-              </div>
+            <CampoForm label="UF">
+              <input
+                className="input w-full"
+                maxLength={2}
+                value={form.estado}
+                onChange={(event) => setForm((current) => ({ ...current, estado: event.target.value.toUpperCase() }))}
+                placeholder="UF"
+              />
+            </CampoForm>
 
-              <div className="grid gap-3 md:grid-cols-3">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Bairro</span>
-                  <input
-                    className="input w-full"
-                    value={form.bairro}
-                    onChange={(event) => setForm((current) => ({ ...current, bairro: event.target.value }))}
-                    placeholder="Bairro"
-                  />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Cidade</span>
-                  <input
-                    className="input w-full"
-                    value={form.cidade}
-                    onChange={(event) => setForm((current) => ({ ...current, cidade: event.target.value }))}
-                    placeholder="Cidade"
-                  />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">CEP</span>
-                  <input
-                    className="input w-full"
-                    value={form.cep}
-                    onChange={(event) => setForm((current) => ({ ...current, cep: maskCep(event.target.value) }))}
-                    placeholder="CEP"
-                  />
-                </label>
-              </div>
+            <CampoForm label="Descrição" tipo="texto-longo" span={2}>
+              {/* R10: a altura do textarea vem da folha do sistema
+                  (textarea.input), não do `min-h-[96px]` que estava aqui. */}
+              <textarea
+                className="input w-full"
+                value={form.descricao}
+                onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))}
+                placeholder="Resumo comercial e operacional"
+              />
+            </CampoForm>
+          </FormSecao>
 
-              <label className="inline-flex items-center gap-2 text-sm text-[var(--c-text)]">
+          <FormSecao legenda="Endereço" colunas={2}>
+            <CampoForm label="Endereço" span={2}>
+              <input
+                className="input w-full"
+                value={form.endereco}
+                onChange={(event) => setForm((current) => ({ ...current, endereco: event.target.value }))}
+                placeholder="Rua / avenida"
+              />
+            </CampoForm>
+            <CampoForm label="Número">
+              <input
+                className="input w-full"
+                value={form.numero}
+                onChange={(event) => setForm((current) => ({ ...current, numero: event.target.value }))}
+                placeholder="Número"
+              />
+            </CampoForm>
+            <CampoForm label="Bairro">
+              <input
+                className="input w-full"
+                value={form.bairro}
+                onChange={(event) => setForm((current) => ({ ...current, bairro: event.target.value }))}
+                placeholder="Bairro"
+              />
+            </CampoForm>
+            <CampoForm label="Cidade">
+              <input
+                className="input w-full"
+                value={form.cidade}
+                onChange={(event) => setForm((current) => ({ ...current, cidade: event.target.value }))}
+                placeholder="Cidade"
+              />
+            </CampoForm>
+            <CampoForm label="CEP">
+              <input
+                className="input w-full"
+                value={form.cep}
+                onChange={(event) => setForm((current) => ({ ...current, cep: maskCep(event.target.value) }))}
+                placeholder="CEP"
+              />
+            </CampoForm>
+            <div className="form-campo--linha">
+              <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={form.ativo}
@@ -281,84 +378,76 @@ export default function ComercialEmpreendimentos() {
                 />
                 Empreendimento ativo
               </label>
-
-              <div className="flex flex-wrap gap-2">
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Salvando...' : (form.id ? 'Salvar alteracoes' : 'Criar empreendimento')}
-                </button>
-                <button type="button" className="btn btn-outline" onClick={() => setForm(defaultForm())}>
-                  Limpar
-                </button>
-              </div>
-            </form>
-          </section>
-
-          <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-            <div className="sol-filtros-head">
-              <div>
-                <p className="sol-filtros-title">Empreendimentos cadastrados</p>
-                <p className="sol-filtros-subtitle">
-                  Estrutura comercial pronta para unidades, reservas e contratos.
-                </p>
-              </div>
-              <div className="sol-filtros-meta">
-                <span>Total listado {listaFiltrada.length}</span>
-              </div>
             </div>
+          </FormSecao>
 
-            <label className="sol-filter-field mt-4">
-              <span className="sol-filter-label">Busca</span>
-              <input
-                className="input w-full"
-                value={busca}
-                onChange={(event) => setBusca(event.target.value)}
-                placeholder="Nome, codigo, cidade ou obra"
-              />
-            </label>
+          <div className="app-actionbar">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Salvando...' : (form.id ? 'Salvar alteracoes' : 'Criar empreendimento')}
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => setForm(defaultForm())}>
+              Limpar
+            </button>
+          </div>
+        </form>
+      </BlocoConteudo>
 
-            <div className="mt-4 space-y-3">
-              {listaFiltrada.length === 0 ? (
-                <div className="app-empty-card">Nenhum empreendimento encontrado.</div>
-              ) : (
-                listaFiltrada.map((item) => (
-                  <article
-                    key={item.id}
-                    className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-semibold text-[var(--c-text)]">{item.nome}</h3>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${item.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                            {item.ativo ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </div>
-                        <div className="grid gap-2 text-sm text-[var(--c-muted)] md:grid-cols-2">
-                          <span>Codigo: {item.codigo || '-'}</span>
-                          <span>Obra: {item.obra?.nome || 'Sem vinculo'}</span>
-                          <span>Cidade: {[item.cidade, item.estado].filter(Boolean).join(' / ') || '-'}</span>
-                          <span>Endereco: {[item.endereco, item.numero].filter(Boolean).join(', ') || '-'}</span>
-                        </div>
-                        {item.descricao && (
-                          <p className="text-sm text-[var(--c-muted)]">{item.descricao}</p>
-                        )}
-                      </div>
+      <BlocoConteudo
+        titulo="Empreendimentos cadastrados"
+        descricao="Estrutura comercial pronta para unidades, reservas e contratos."
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/*
+          R3: a busca ocupa a faixa — `.app-busca` cresce de 220 a 480px e
+          nunca fica pequena com vazio ao lado; antes era `input w-full`.
+          Ela vale AQUI porque este é o campo de busca de verdade da tela
+          (recorta a listagem inteira): `.app-busca` é classe de LARGURA, não
+          de papel — pô-la num campo que não busca é o engano que já quebrou
+          duas telas deste projeto.
+          R16/F1: é a ÚNICA busca deste contexto. Não há BarraFiltros porque
+          não há dimensão de recorte marcável nesta tela — só busca textual.
+        */}
+        {/* F4: o vão entre a busca e a tabela é um degrau da escala (16px),
+            o mesmo que a BarraFiltros aplica sozinha nas telas que a usam. */}
+        <div className="space-y-4">
+          <input
+            className="input app-busca"
+            value={busca}
+            onChange={(event) => setBusca(event.target.value)}
+            placeholder="Buscar nome, código, cidade ou obra"
+            aria-label="Buscar nome, código, cidade ou obra"
+          />
 
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => setForm(pickForm(item))}
-                      >
-                        Editar
-                      </button>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-          </section>
+          {/* A1: a ação da linha é um <button> focável ("Editar"), e a linha
+              inteira também é acionável por teclado (o TabelaPadrao dá
+              tabIndex + Enter/Espaço quando recebe aoClicarLinha). */}
+          <TabelaPadrao
+            colunas={colunas}
+            itens={listaFiltrada}
+            carregando={loading}
+            getId={(item) => item.id}
+            storageKey="tabela:comercial-empreendimentos"
+            rotuloRolagem="Empreendimentos cadastrados"
+            larguraAcoes={110}
+            colunasConfiguraveis
+            aoClicarLinha={editarEmpreendimento}
+            vazio={{
+              title: 'Nenhum empreendimento encontrado',
+              message: 'Cadastre o primeiro empreendimento para liberar unidades, reservas e contratos.'
+            }}
+            acoesLinha={(item) => (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => editarEmpreendimento(item)}
+              >
+                Editar
+              </button>
+            )}
+          />
         </div>
-      )}
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

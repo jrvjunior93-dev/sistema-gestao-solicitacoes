@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   getComercialCategoriasContrato,
   salvarComercialCategoriasContrato
 } from '../services/configuracoesSistema';
+import {
+  Pagina,
+  PageHeader,
+  Avisos,
+  BlocoConteudo,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
+
+const DESCRICAO = 'Selecione categorias financeiras e opcoes exibidas na forma de pagamento do contrato de venda.';
 
 function toggleId(list, id, checked) {
   const current = new Set((list || []).map(Number));
@@ -48,22 +57,26 @@ function getOptionPayload(config) {
   };
 }
 
-function CategoriaChecklist({ title, description, categorias, selectedIds, onChange }) {
+function CategoriaChecklist({ title, description, categorias, selectedIds, onChange, variante = 'neutro' }) {
   const selected = new Set((selectedIds || []).map(Number));
   const allIds = (categorias || []).map((categoria) => Number(categoria.id)).filter(Number.isFinite);
 
   return (
-    <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-      <div className="sol-filtros-head">
-        <div>
-          <p className="sol-filtros-title">{title}</p>
-          <p className="sol-filtros-subtitle">{description}</p>
-        </div>
-        <span className="sol-filtros-meta">{selected.size} selecionada(s)</span>
-      </div>
-
+    // B1: era `section.sol-surface-card` com `sol-filtros-head/-title/
+    // -subtitle/-meta` — o cartão antigo das telas de solicitação. A migração
+    // de ontem trocou o cabeçalho e a página pelos componentes padrão e
+    // DEIXOU os cartões do corpo como estavam. Agora é `BlocoConteudo`: o
+    // título vai no degrau de bloco (18px), o apoio na prop `descricao` e a
+    // contagem na prop `contagem` (R5) — que é o mesmo "N selecionada(s)"
+    // que o `sol-filtros-meta` mostrava.
+    <BlocoConteudo
+      titulo={title}
+      descricao={description}
+      contagem={`${selected.size} selecionada(s)`}
+      variante={variante}
+    >
       {(categorias || []).length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mb-4 flex flex-wrap gap-2">
           <button type="button" className="btn btn-outline btn-sm" onClick={() => onChange(allIds)}>
             Marcar todos
           </button>
@@ -73,7 +86,7 @@ function CategoriaChecklist({ title, description, categorias, selectedIds, onCha
         </div>
       )}
 
-      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {(categorias || []).map((categoria) => (
           <label
             key={categoria.id}
@@ -94,9 +107,9 @@ function CategoriaChecklist({ title, description, categorias, selectedIds, onCha
       </div>
 
       {(categorias || []).length === 0 && (
-        <div className="app-empty-card mt-4">Nenhuma categoria financeira compativel encontrada.</div>
+        <div className="app-empty-card">Nenhuma categoria financeira compatível encontrada.</div>
       )}
-    </section>
+    </BlocoConteudo>
   );
 }
 
@@ -104,43 +117,53 @@ function CategoriaSelect({ title, description, categorias, value, onChange }) {
   const selected = Number(value || 0);
 
   return (
-    <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-      <div className="sol-filtros-head">
-        <div>
-          <p className="sol-filtros-title">{title}</p>
-          <p className="sol-filtros-subtitle">{description}</p>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <label className="sol-filter-field">
-          <span className="sol-filter-label">Categoria financeira</span>
-          <select
-            className="input w-full"
-            value={selected ? String(selected) : ''}
-            onChange={(event) => onChange(event.target.value ? Number(event.target.value) : '')}
-          >
-            <option value="">Selecione uma categoria para comissão</option>
-            {(categorias || []).map((categoria) => (
-              <option key={categoria.id} value={Number(categoria.id)}>
-                {categoria.nome}{categoria.tipo ? ` - ${categoria.tipo}` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    // B1: mesmo caso do CategoriaChecklist — cartão legado virou bloco padrão.
+    <BlocoConteudo titulo={title} descricao={description}>
+      {/* R12: seletor de CONTEXTO/formulário (qual categoria recebe a
+          comissão), não filtro de lista — continua sendo select. */}
+      <label className="sol-filter-field">
+        <span className="sol-filter-label">Categoria financeira</span>
+        <select
+          className="input w-full"
+          value={selected ? String(selected) : ''}
+          onChange={(event) => onChange(event.target.value ? Number(event.target.value) : '')}
+        >
+          <option value="">Selecione uma categoria para comissão</option>
+          {(categorias || []).map((categoria) => (
+            <option key={categoria.id} value={Number(categoria.id)}>
+              {categoria.nome}{categoria.tipo ? ` - ${categoria.tipo}` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {(categorias || []).length === 0 && (
         <div className="app-empty-card mt-4">Nenhuma categoria financeira compatível encontrada.</div>
       )}
-    </section>
+    </BlocoConteudo>
   );
+}
+
+// Linha sem NADA digitado: nao ha o que proteger. Decisao registrada na tela
+// irma (AutomacaoStatusSetor): confirmacao protege o que a pessoa escreveu, e
+// perguntar sobre o vazio e so atrito. `ativo` entra no teste porque
+// desmarcar a caixa tambem e um ato da pessoa sobre aquela linha — a linha em
+// branco e a que saiu do "Adicionar opcao" e ficou intocada.
+function opcaoEmBranco(item) {
+  if (!item) return true;
+  const preenchido = [item.value, item.label, item.resumo, item.intervalMonths]
+    .some((valor) => String(valor ?? '').trim() !== '');
+  return !preenchido && item.ativo !== false;
 }
 
 function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
   const showResumo = groupKey === 'reajustes';
   const showInterval = groupKey === 'periodicidades';
   const ativos = (itens || []).filter((item) => item.ativo !== false).length;
+  // CONSENTIMENTO: "Excluir" apagava a linha inteira (codigo, nome, resumo,
+  // intervalo) num clique, e nao ha desfazer — a opcao so volta se for
+  // digitada de novo. Mesmo tratamento da tela irma AutomacaoStatusSetor.
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   function updateItem(index, patch) {
     onChange((itens || []).map((item, itemIndex) => (
@@ -152,8 +175,39 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
     onChange([...(itens || []), createOptionTemplate(groupKey)]);
   }
 
-  function removeItem(index) {
-    onChange((itens || []).filter((_, itemIndex) => itemIndex !== index));
+  // Nomeia a linha como a pessoa a ve: nome exibido, senao codigo, senao a
+  // posicao. Indice cru ("item 3") nao identifica nada para ela.
+  function descreverOpcao(item, index) {
+    const nome = String(item?.label || '').trim();
+    const codigo = String(item?.value || '').trim();
+    if (nome && codigo) return `"${nome}" (${codigo})`;
+    if (nome) return `"${nome}"`;
+    if (codigo) return `"${codigo}"`;
+    return `a opcao ${index + 1}`;
+  }
+
+  async function removeItem(index) {
+    // R26: o alvo sai numa const ANTES do await. O modal do sistema nao
+    // bloqueia a tela — reler a lista pelo indice depois da confirmacao faria
+    // perguntar por uma linha e apagar outra se algo tivesse mudado no meio.
+    const alvo = (itens || [])[index];
+    if (!alvo) return;
+
+    if (!opcaoEmBranco(alvo)) {
+      const { ok } = await confirmar({
+        titulo: `Excluir ${title.toLowerCase()}`,
+        mensagem: `Excluir ${descreverOpcao(alvo, index)}? Esta acao nao pode ser desfeita: a opcao sai da lista e, para recupera-la, sera preciso cadastra-la de novo.`,
+        rotuloConfirmar: 'Excluir',
+        destrutiva: true
+      });
+      if (!ok) return;
+    }
+
+    // Remove pela IDENTIDADE do alvo, sobre a lista viva (o onChange do pai
+    // aceita atualizador — vide updateOptionGroup). Pelo indice, uma edicao
+    // feita em outra linha enquanto o modal estava aberto seria descartada
+    // junto. Se o alvo ja nao estiver la, a lista fica como esta.
+    onChange((atuais) => (atuais || []).filter((item) => item !== alvo));
   }
 
   function markAll(ativo) {
@@ -161,17 +215,12 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
   }
 
   return (
-    <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-      <div className="sol-filtros-head">
-        <div>
-          <p className="sol-filtros-title">{title}</p>
-          <p className="sol-filtros-subtitle">{description}</p>
-        </div>
-        <span className="sol-filtros-meta">{ativos} ativa(s)</span>
-      </div>
-
+    // B1: mesmo caso das duas de cima — o cartão legado (`sol-surface-card`)
+    // não é bloco para o harness nem para o sistema. Vira `BlocoConteudo`, e
+    // o "N ativa(s)" do `sol-filtros-meta` vira a prop `contagem` (R5).
+    <BlocoConteudo titulo={title} descricao={description} contagem={`${ativos} ativa(s)`}>
       {(itens || []).length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mb-4 flex flex-wrap gap-2">
           <button type="button" className="btn btn-outline btn-sm" onClick={() => markAll(true)}>
             Marcar todos
           </button>
@@ -181,7 +230,7 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
         </div>
       )}
 
-      <div className="mt-4 space-y-3">
+      <div className="space-y-3">
         {(itens || []).map((item, index) => (
           <div
             key={`${groupKey}-${index}`}
@@ -196,7 +245,7 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
               Ativo
             </label>
             <label className="sol-filter-field">
-              <span className="sol-filter-label">Codigo</span>
+              <span className="sol-filter-label">Código</span>
               <input
                 className="input w-full uppercase"
                 value={item.value || ''}
@@ -214,7 +263,7 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
               />
             </label>
             <div className="flex items-end">
-              <button type="button" className="btn btn-outline w-full border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => removeItem(index)}>
+              <button type="button" className="btn btn-outline btn-perigo-suave w-full" onClick={() => removeItem(index)}>
                 Excluir
               </button>
             </div>
@@ -222,7 +271,7 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
             {(showResumo || showInterval) && (
               <div className="md:col-start-2 md:col-span-2">
                 {showResumo && (
-                  <label className="sol-filter-field max-w-[220px]">
+                  <label className="sol-filter-field">
                     <span className="sol-filter-label">Resumo no contrato</span>
                     <input
                       className="input w-full uppercase"
@@ -233,7 +282,7 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
                   </label>
                 )}
                 {showInterval && (
-                  <label className="sol-filter-field max-w-[220px]">
+                  <label className="sol-filter-field">
                     <span className="sol-filter-label">Intervalo em meses</span>
                     <input
                       className="input w-full"
@@ -253,21 +302,28 @@ function OpcoesCrud({ title, description, groupKey, itens, onChange }) {
 
       <div className="mt-4">
         <button type="button" className="btn btn-outline" onClick={addItem}>
-          Adicionar opcao
+          Adicionar opção
         </button>
       </div>
 
       {(itens || []).length === 0 && (
-        <div className="app-empty-card mt-4">Nenhuma opcao cadastrada.</div>
+        <div className="app-empty-card mt-4">Nenhuma opção cadastrada.</div>
       )}
-    </section>
+
+      {/* Cada bloco tem a sua confirmacao; o OverlayModal sai por portal, e so
+          uma fica aberta por vez porque so um botao e clicado por vez. */}
+      {elementoConfirmacao}
+    </BlocoConteudo>
   );
 }
 
 export default function ConfiguracoesComercialCategorias() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  // R3: o erro era um <div className="app-alert app-alert--error"> montado à
+  // mão e o sucesso era um alert() do navegador. Os dois passam a ser aviso
+  // do sistema — mesmo tom semântico, mensurável pelo harness, fechável.
+  const { avisos, avisar, fechar } = useAvisos();
   const [config, setConfig] = useState({
     contrato_venda_categoria_ids: [],
     comissao_categoria_id: '',
@@ -294,7 +350,7 @@ export default function ConfiguracoesComercialCategorias() {
           opcoes_pagamento: nextConfig.opcoes_pagamento || {}
         });
       } catch (err) {
-        if (active) setError(err?.message || 'Erro ao carregar configuracao comercial');
+        if (active) avisar.erro(err?.message || 'Erro ao carregar configuracao comercial');
       } finally {
         if (active) setLoading(false);
       }
@@ -308,7 +364,6 @@ export default function ConfiguracoesComercialCategorias() {
   async function handleSave() {
     try {
       setSaving(true);
-      setError('');
       const data = await salvarComercialCategoriasContrato({
         contrato_venda_categoria_ids: config.contrato_venda_categoria_ids,
         comissao_categoria_id: config.comissao_categoria_id,
@@ -323,66 +378,81 @@ export default function ConfiguracoesComercialCategorias() {
           comissao_categoria_id: data.comissao_categoria_id || ''
         }));
       }
-      alert('Categorias comerciais atualizadas com sucesso.');
+      avisar.sucesso('Categorias comerciais atualizadas com sucesso.');
     } catch (err) {
-      setError(err?.message || 'Erro ao salvar configuracao comercial');
+      avisar.erro(err?.message || 'Erro ao salvar configuracao comercial');
     } finally {
       setSaving(false);
     }
   }
 
+  // B5: no carregamento o texto tambem precisa de moldura. Antes era uma
+  // frase solta dentro do Pagina — sem cabecalho e sem a faixa de avisos, de
+  // modo que um erro de carga (o unico aviso que pode chegar aqui) nao teria
+  // onde aparecer enquanto `loading` fosse verdadeiro. Mesmo arranjo da tela
+  // irma AutomacaoStatusSetor: Pagina + PageHeader + Avisos + BlocoConteudo.
   if (loading) {
     return (
-      <div className="page solicitacoes-page">
-        <div className="app-empty-card">Carregando categorias comerciais...</div>
-      </div>
+      <Pagina>
+        <PageHeader titulo="Categorias comerciais" descricao={DESCRICAO} />
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <BlocoConteudo titulo="Opções do contrato de venda" variante="primario" cor="var(--c-primary)">
+          <p className="app-note">Carregando categorias comerciais...</p>
+        </BlocoConteudo>
+      </Pagina>
     );
   }
 
   return (
-    <div className="page solicitacoes-page space-y-5 md:space-y-6">
-      <header className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Categorias comerciais</h1>
-            <p className="page-subtitle">
-              Selecione categorias financeiras e opcoes exibidas na forma de pagamento do contrato de venda.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link className="btn btn-outline" to="/financeiro/cadastros">
-              Abrir cadastros financeiros
-            </Link>
-            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? 'Salvando...' : 'Salvar configuracao'}
-            </button>
-          </div>
-        </div>
-      </header>
+    // C1: a tela usava .app-page-header SEM o Pagina. Essa classe é sticky em
+    // --pos-cabecalho-fixo, e quem mede a topbar e publica essa variável é só
+    // o Pagina — sem ele a faixa grudava no fallback de 96px, que é a origem
+    // do vão transparente. C2/R10: o título vem do PageHeader (22px), não de
+    // um text-xl escrito aqui; M2/R10: o ritmo vertical é do Pagina.
+    <Pagina>
+      <PageHeader
+        titulo="Categorias comerciais"
+        descricao={DESCRICAO}
+        acaoPrincipal={{
+          rotulo: saving ? 'Salvando...' : 'Salvar configuracao',
+          onClick: handleSave,
+          desabilitada: saving
+        }}
+      />
+      {/* C6/R11 (decisão do cliente, 04/09): o "Abrir cadastros financeiros"
+          saiu da barra de ações — ela é para ações SOBRE ESTA TELA, e caminho
+          para outra tela mora no hub/breadcrumb/Ctrl+K. O destino já tem porta
+          no menu (navigationConfig, item fin-cadastros), então remover não
+          cria porta ausente; e o bloco "Origem das configuracoes" abaixo
+          continua dizendo, em texto, que o cadastro é no Financeiro. */}
 
-      {error && <div className="app-alert app-alert--error">{error}</div>}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Origem das configuracoes</p>
-            <p className="sol-filtros-subtitle">
-              Cadastre e mantenha as categorias no Financeiro. Aqui o Comercial escolhe quais categorias e quais opcoes aparecem no contrato.
-            </p>
-          </div>
-        </div>
-      </section>
+      {/* B5/B1: o texto de contexto continua com superfície própria — só que
+          agora a superfície é a do sistema. `secundario` porque ele recua:
+          explica de onde vêm os dados, não é o trabalho da tela. */}
+      <BlocoConteudo
+        titulo="Origem das configurações"
+        descricao="Cadastre e mantenha as categorias no Financeiro. Aqui o Comercial escolhe quais categorias e quais opções aparecem no contrato."
+        variante="secundario"
+      />
 
+      {/* B2: ESTE é o bloco principal da tela carregada — é ele que responde
+          a pergunta que traz alguém aqui ("quais categorias aparecem no
+          contrato de venda?"). O ramo de carregamento já marcava um primário;
+          o ramo carregado ficou sem nenhum quando os cartões legados não
+          eram blocos. UM por tela: os demais seguem neutros/secundários. */}
       <CategoriaChecklist
         title="Contrato de venda"
         description="Categorias de contas a receber exibidas no campo Categoria financeira."
         categorias={config.categorias_contrato || []}
         selectedIds={config.contrato_venda_categoria_ids || []}
         onChange={(ids) => setConfig((current) => ({ ...current, contrato_venda_categoria_ids: ids }))}
+        variante="primario"
       />
 
       <CategoriaSelect
-        title="Comissao (global)"
+        title="Comissão (global)"
         description="Categoria única usada em todos os contratos com corretor. Não é exibida na tela de contratos."
         categorias={config.categorias_comissao || []}
         value={config.comissao_categoria_id || ''}
@@ -430,6 +500,6 @@ export default function ConfiguracoesComercialCategorias() {
           onChange={(values) => setConfig((current) => updateOptionGroup(current, 'periodicidades', values))}
         />
       </section>
-    </div>
+    </Pagina>
   );
 }

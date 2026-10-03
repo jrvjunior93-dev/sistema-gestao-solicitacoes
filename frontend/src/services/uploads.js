@@ -1,6 +1,6 @@
 import { API_URL, authHeaders } from './api';
 
-export async function uploadArquivos({ files, tipo, solicitacao_id = null }) {
+export async function uploadArquivos({ files, tipo, solicitacao_id = null, medicao_id = null, criacao_upload_token = null }) {
   const formData = new FormData();
 
   for (const file of files) {
@@ -9,6 +9,12 @@ export async function uploadArquivos({ files, tipo, solicitacao_id = null }) {
 
   if (solicitacao_id) {
     formData.append('solicitacao_id', solicitacao_id);
+  }
+  if (medicao_id) {
+    formData.append('medicao_id', medicao_id);
+  }
+  if (criacao_upload_token) {
+    formData.append('criacao_upload_token', criacao_upload_token);
   }
 
   formData.append('tipo', tipo);

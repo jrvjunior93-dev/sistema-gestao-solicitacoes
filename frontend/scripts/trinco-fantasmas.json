@@ -1,0 +1,17 @@
+{
+  "regra": "TOKEN E CLASSE FANTASMA",
+  "criado_em": "2026-09-04",
+  "porque": "Token e classe que a tela usa e que NUNCA foram declarados. O CSS nao resolve, a declaracao e descartada, e o estilo nunca chega a tela. Classe fantasma e pior que valor errado: parece intencao. O numero SO DESCE.",
+  "nomes": {
+    ".cr-governance": 1,
+    ".cr-inline-state": 2,
+    ".cr-macro-planning-group": 2,
+    ".cr-modal--compact": 1,
+    ".cr-planning-workspace": 1,
+    ".cr-subitem": 1,
+    ".form-field": 79,
+    ".form-help": 1,
+    ".la-cards-grupo": 1
+  },
+  "_nota": "GRUPO B — nomes de classe que NAO PINTAM E ESTA CERTO ASSIM (06/09). Os 3 do grupo A sairam daqui porque eram nome ERRADO de variante: `app-alert--success` nao existia e a confirmacao saia com a cor E o icone de AVISO; `alert alert-danger` so existe dentro do cartao de login, entao fora dele a faixa de erro nao pintava NADA; `badge badge-soft` idem. Nesses tres, a classe que faltava era a que carrega o SIGNIFICADO. Os que ficam sao marcacao semantica: envolucro que agrupa, sem cor nem forma propria — quem desenha sao as classes de dentro. `.form-field` tem 68 usos, nunca foi declarada, e as telas funcionam. Classe sem regra CSS nao quebra nada; token de cor inexistente SEMPRE quebra, e por isso a prova passou a separar as duas familias. O numero SO DESCE: classe fantasma nova reprova, porque a proxima pode ser do grupo A."
+}

@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { lerSegredoTotp, segredoIlegivel, MENSAGEM_ILEGIVEL } = require('./mfaSecretService');
 const { PaymentApproval, PaymentBatch, PaymentBatchItem, PaymentIntent, User, sequelize } = require('../models');
 const { verifyTotpCode } = require('./mfaService');
 const { validatePaymentBatchIntegrity } = require('./paymentBatchIntegrityService');
@@ -17,7 +18,15 @@ async function verifyMfaStepUp(req, codigo) {
     attributes: ['id', 'mfa_totp_enabled', 'mfa_totp_secret']
   });
 
-  if (!user?.mfa_totp_enabled || !user?.mfa_totp_secret) {
+  if (!user?.mfa_totp_enabled) {
+    throw createHttpError(403, 'MFA obrigatorio para esta operacao.');
+  }
+  // Aprovacao de pagamento e o lugar onde um segredo ilegivel jamais pode virar liberacao.
+  const segredo = lerSegredoTotp(user);
+  if (segredoIlegivel(segredo)) {
+    throw createHttpError(503, MENSAGEM_ILEGIVEL);
+  }
+  if (!segredo) {
     throw createHttpError(403, 'MFA obrigatorio para esta operacao.');
   }
 
@@ -26,7 +35,7 @@ async function verifyMfaStepUp(req, codigo) {
     throw createHttpError(400, 'Codigo MFA deve ter 6 digitos.');
   }
 
-  if (!verifyTotpCode(user.mfa_totp_secret, normalizedCode)) {
+  if (!verifyTotpCode(segredo, normalizedCode)) {
     throw createHttpError(403, 'Codigo MFA invalido.');
   }
 

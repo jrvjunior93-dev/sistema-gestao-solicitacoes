@@ -36,7 +36,7 @@ body {
 
 .layout-shell.fluxy-app-shell > .layout-shell-backdrop {
   position: fixed;
-  z-index: 0;
+  z-index: var(--z-base);
 }
 
 .layout-main :where(
@@ -163,6 +163,26 @@ body {
   max-width: 100%;
 }
 
+/*
+ * Nova Solicitação é uma tela de digitação, não uma listagem panorâmica.
+ * O teto já existia no desenho da página, mas era neutralizado pelo
+ * `max-width: 100%` transversal acima quando esta folha carregava por
+ * último. A especificidade contextual restaura o conforto de leitura sem
+ * impedir que a página use toda a largura disponível em telas menores.
+ */
+.layout-main .solicitacao-nova-page {
+  width: 100%;
+  max-width: var(--nova-solicitacao-largura-maxima);
+  margin-inline: auto;
+}
+
+.layout-main .solicitacao-nova-page .nova-solicitacao-form-padrao,
+.layout-main .solicitacao-nova-page .nova-solicitacao-form-padrao > * {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .layout-main :where([role="listbox"], .autocomplete-dropdown, .dropdown-menu) {
   max-width: min(calc(100vw - 1.5rem), 42rem);
   max-height: min(22rem, calc(100dvh - 10rem));
@@ -182,7 +202,7 @@ body {
     top: max(0.7rem, env(safe-area-inset-top));
     bottom: max(0.7rem, env(safe-area-inset-bottom));
     left: max(0.7rem, env(safe-area-inset-left));
-    z-index: 40;
+    z-index: var(--z-sidebar);
     height: auto;
     max-height: calc(100dvh - max(1.4rem, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
     margin: 0;
@@ -191,7 +211,7 @@ body {
 
   .layout-shell.fluxy-app-shell > .sidebar-overlay {
     position: fixed !important;
-    z-index: 30;
+    z-index: var(--z-veu);
   }
 
   .layout-shell.fluxy-app-shell > .layout-main {
@@ -272,7 +292,9 @@ body {
     padding-right: max(0.75rem, env(safe-area-inset-right));
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     padding-left: max(0.75rem, env(safe-area-inset-left));
-    overflow-y: auto;
+    align-items: safe center;
+    justify-content: safe center;
+    overflow: auto;
     overscroll-behavior: contain;
   }
 
@@ -284,7 +306,7 @@ body {
 
   .modal-body {
     min-height: 0;
-    overflow-y: auto;
+    overflow: auto;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -339,7 +361,7 @@ body {
   }
 
   .topbar-title {
-    font-size: clamp(1rem, 5vw, 1.25rem);
+    font-size: var(--fonte-bloco);
   }
 
   .topbar-menu-button,
@@ -445,16 +467,17 @@ body {
 
   .modal-overlay,
   .app-modal-overlay {
-    align-items: flex-end;
-    padding: 0;
+    align-items: safe center;
+    justify-content: safe center;
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
   }
 
   .modal-dialog,
   .app-modal-surface {
     width: 100%;
-    max-width: 100%;
-    max-height: calc(100dvh - env(safe-area-inset-top));
-    border-radius: 1rem 1rem 0 0;
+    max-width: calc(100vw - max(1.5rem, env(safe-area-inset-left) + env(safe-area-inset-right)));
+    max-height: calc(100dvh - max(1.5rem, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    border-radius: 1rem;
   }
 
   .modal-header,

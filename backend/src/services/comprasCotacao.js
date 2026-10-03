@@ -22,6 +22,35 @@ function normalizeText(value) {
     .toUpperCase();
 }
 
+function numeroCotacao(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function obterQuantidadeBaseFinanceiraCotacao({
+  quantidadeSolicitada,
+  quantidadeDisponivel,
+  escopoDisponibilidade
+}) {
+  const quantidade = normalizeText(escopoDisponibilidade) === 'OFERTA_SALDO'
+    ? quantidadeDisponivel
+    : quantidadeSolicitada;
+  return Math.max(0, numeroCotacao(quantidade));
+}
+
+function calcularValorMercadoriasCotacao({
+  quantidadeSolicitada,
+  quantidadeDisponivel,
+  escopoDisponibilidade,
+  precoUnitario
+}) {
+  return obterQuantidadeBaseFinanceiraCotacao({
+    quantidadeSolicitada,
+    quantidadeDisponivel,
+    escopoDisponibilidade
+  }) * Math.max(0, numeroCotacao(precoUnitario));
+}
+
 const STATUS_SOLICITACAO_COMPRA_TERMINAIS = new Set([
   'CANCELADA',
   'CANCELADO',
@@ -97,7 +126,9 @@ function buildCotacaoItemKey(itemTipo, itemReferenciaId) {
 }
 
 function obterItensCotaveis(solicitacao) {
-  const itens = (solicitacao?.itens || []).map((item) => {
+  const itens = (solicitacao?.itens || [])
+    .filter((item) => !item.status_aprovacao || item.status_aprovacao === 'APROVADO')
+    .map((item) => {
     const apropriacoes = construirResumoApropriacoes(item);
     return {
       id: Number(item.id),
@@ -106,7 +137,7 @@ function obterItensCotaveis(solicitacao) {
       item_referencia_id: obterItemReferenciaId(item),
       nome: item.insumo?.nome || '-',
       quantidade: Number(item.quantidade || 0),
-      unidade: item.unidade?.sigla || '-',
+      unidade: item.unidade_sigla_manual || item.unidade?.sigla || item.unidade?.nome || '-',
       especificacao: item.especificacao || '',
       necessario_para: item.necessario_para || null,
       link_produto: item.link_produto || null,
@@ -117,7 +148,9 @@ function obterItensCotaveis(solicitacao) {
     };
   });
 
-  const itensManuais = (solicitacao?.itensManuais || []).map((item) => {
+  const itensManuais = (solicitacao?.itensManuais || [])
+    .filter((item) => !item.status_aprovacao || item.status_aprovacao === 'APROVADO')
+    .map((item) => {
     const apropriacoes = construirResumoApropriacoes(item);
     return {
       id: Number(item.id),
@@ -399,6 +432,7 @@ module.exports = {
   assertCotacaoFornecedorAtiva,
   assertSolicitacaoCompraAceitaCotacao,
   buildCotacaoItemKey,
+  calcularValorMercadoriasCotacao,
   carregarSolicitacaoCompraCompleta,
   filtrarItensCotaveisPorSelecao,
   gerarModeloCotacaoCsv,
@@ -410,6 +444,7 @@ module.exports = {
   isSolicitacaoCompraTerminal,
   normalizeText,
   obterCodigoProdutoCotacao,
+  obterQuantidadeBaseFinanceiraCotacao,
   obterItensCotaveis,
   obterItensCotaveisDaCotacao,
   parseCsvRows,

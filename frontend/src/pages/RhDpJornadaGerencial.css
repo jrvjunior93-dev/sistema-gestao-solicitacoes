@@ -1,0 +1,42 @@
+.rh-gerencial { display: grid; gap: 12px; }
+.rh-gerencial-etapas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rh-gerencial-etapas span { display: flex; align-items: center; gap: 7px; padding: 6px 10px; color: var(--c-text-muted, #64748b); font-size: 12px; border-bottom: 2px solid transparent; }
+.rh-gerencial-etapas span.ativo { color: var(--c-primary, #2f4ed3); border-color: var(--c-primary, #2f4ed3); font-weight: 700; }
+.rh-gerencial-etapas span.concluido { color: var(--c-success, #176b47); }
+.rh-gerencial-etapas b { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; border: 1px solid currentColor; font-size: 11px; }
+.rh-gerencial-painel { background: var(--c-surface, #fff); border: 1px solid var(--c-border, #dce4ee); border-radius: 12px; padding: 14px; min-width: 0; }
+.rh-gerencial-titulo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.rh-gerencial-titulo h2 { margin: 0; font-size: 15px; line-height: 1.3; color: var(--c-text, #172238); }
+.rh-gerencial-titulo span, .rh-gerencial-rodape span { color: var(--c-text-muted, #64748b); font-size: 12px; }
+.rh-gerencial-acoes { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+.rh-gerencial-filtros { display: grid; grid-template-columns: minmax(240px, 2fr) minmax(160px, 1fr) auto; gap: 10px; align-items: end; }
+.rh-gerencial label:not(.rh-gerencial-pessoa) { display: grid; gap: 4px; font-size: 11px; font-weight: 650; color: var(--c-text-muted, #64748b); }
+.rh-gerencial input:not([type='checkbox']), .rh-gerencial select { width: 100%; min-height: 36px; padding: 6px 9px; border: 1px solid var(--c-border, #dce4ee); border-radius: 7px; background: var(--c-surface, #fff); color: var(--c-text, #172238); font-size: 13px; }
+.rh-gerencial input:focus-visible, .rh-gerencial select:focus-visible, .rh-gerencial summary:focus-visible { outline: 2px solid var(--c-primary, #2f4ed3); outline-offset: 2px; }
+.rh-gerencial-lista { display: grid; gap: 7px; }
+.rh-gerencial-linha { border: 1px solid var(--c-border, #dce4ee); border-radius: 8px; padding: 10px; background: var(--c-surface, #fff); }
+.rh-gerencial-linha.selecionada { border-color: var(--c-primary, #2f4ed3); background: color-mix(in srgb, var(--c-primary, #2f4ed3) 3%, var(--c-surface, #fff)); }
+.rh-gerencial-pessoa { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.rh-gerencial-pessoa input { width: 16px; height: 16px; flex: none; }
+.rh-gerencial-pessoa span { display: grid; gap: 2px; min-width: 0; }
+.rh-gerencial-pessoa strong { font-size: 13px; color: var(--c-text, #172238); overflow-wrap: anywhere; }
+.rh-gerencial-pessoa small { color: var(--c-text-muted, #64748b); font-size: 11px; }
+.rh-gerencial-campos { display: grid; grid-template-columns: minmax(160px, 2fr) repeat(3, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+.rh-gerencial-extras, .rh-gerencial-dias { margin-top: 9px; border-top: 1px solid var(--c-border, #dce4ee); padding-top: 7px; }
+.rh-gerencial summary { cursor: pointer; color: var(--c-primary, #2f4ed3); font-size: 12px; font-weight: 650; width: fit-content; }
+.rh-gerencial-dias > div { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.rh-gerencial-dias label { display: inline-flex !important; align-items: center; gap: 4px; padding: 5px 7px; border: 1px solid var(--c-border, #dce4ee); border-radius: 6px; font-size: 12px !important; }
+.rh-gerencial-pendente { color: var(--c-text-muted, #64748b); font-size: 12px; margin-left: 26px; }
+.rh-gerencial-rodape { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 13px; }
+.rh-gerencial-rodape span { margin-right: auto; }
+.rh-gerencial-revisao { display: grid; gap: 4px; }
+.rh-gerencial-revisao > div { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(170px, 1fr) auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--c-border, #dce4ee); font-size: 12px; }
+.rh-gerencial-revisao small { color: var(--c-text-muted, #64748b); }
+@media (max-width: 760px) {
+  .rh-gerencial-filtros { grid-template-columns: 1fr 1fr; }
+  .rh-gerencial-filtros label:first-child { grid-column: 1 / -1; }
+  .rh-gerencial-filtros button { grid-column: 1 / -1; }
+  .rh-gerencial-campos { grid-template-columns: 1fr 1fr; }
+  .rh-gerencial-campos label:first-child { grid-column: 1 / -1; }
+  .rh-gerencial-revisao > div { grid-template-columns: 1fr; gap: 2px; }
+}

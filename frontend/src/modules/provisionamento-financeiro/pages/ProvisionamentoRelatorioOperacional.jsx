@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ResizableTable, ResizableTh } from '../../../components/ResizableTable';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 import {
   getDashboardProvisionamentoFinanceiro,
   getProvisionamentoFinanceiroContexto,
@@ -18,23 +31,21 @@ const DEFAULT_FILTERS = {
   data_final: ''
 };
 
-const GROUP_COLUMNS = [
-  { key: 'label', width: 260, minWidth: 170 },
-  { key: 'quantidade', width: 110, minWidth: 90 },
-  { key: 'valor', width: 160, minWidth: 120 },
-  { key: 'participacao', width: 130, minWidth: 110 }
+const LIMITE_ANALITICO = 200;
+
+const STATUS_OPCOES = [
+  { valor: 'previsto', rotulo: 'Previsto' },
+  { valor: 'em_analise', rotulo: 'Em analise' },
+  { valor: 'aprovado', rotulo: 'Aprovado' },
+  { valor: 'realizado', rotulo: 'Realizado' },
+  { valor: 'cancelado', rotulo: 'Cancelado' }
 ];
 
-const ITEM_COLUMNS = [
-  { key: 'codigo', width: 130, minWidth: 110 },
-  { key: 'data', width: 125, minWidth: 110 },
-  { key: 'obra', width: 260, minWidth: 180 },
-  { key: 'categoria', width: 220, minWidth: 160 },
-  { key: 'descricao', width: 320, minWidth: 220 },
-  { key: 'credor', width: 220, minWidth: 160 },
-  { key: 'status', width: 120, minWidth: 100 },
-  { key: 'prioridade', width: 120, minWidth: 100 },
-  { key: 'valor', width: 150, minWidth: 120 }
+const PRIORIDADE_OPCOES = [
+  { valor: 'baixa', rotulo: 'Baixa' },
+  { valor: 'media', rotulo: 'Media' },
+  { valor: 'alta', rotulo: 'Alta' },
+  { valor: 'critica', rotulo: 'Critica' }
 ];
 
 function formatarData(valor) {
@@ -76,6 +87,20 @@ function formatarPrioridade(valor) {
   return labels[String(valor || '').toLowerCase()] || '-';
 }
 
+/*
+  R25 — o mapa de tons crus (blue/emerald/amber/rose/slate) do Card antigo
+  vira FAMÍLIA SEMÂNTICA. Cancelado é neutro (decisão registrada, não erro)
+  e realizado/aprovado é sucesso; a classificação automática do StatusBadge
+  não conhece o vocabulário deste módulo.
+*/
+function familiaStatus(valor) {
+  const normalizado = String(valor || '').toLowerCase();
+  if (normalizado === 'realizado' || normalizado === 'aprovado') return 'success';
+  if (normalizado === 'cancelado') return 'neutral';
+  if (normalizado === 'em_analise') return 'info';
+  return 'warning';
+}
+
 function percentual(valor, total) {
   const base = Number(total || 0);
   if (!base) return '0,00%';
@@ -85,82 +110,129 @@ function percentual(valor, total) {
   })}%`;
 }
 
-function Card({ label, value, hint, tone = 'blue' }) {
-  const toneClass = {
-    blue: 'border-blue-200 bg-blue-50/70 text-blue-950',
-    green: 'border-emerald-200 bg-emerald-50/70 text-emerald-950',
-    amber: 'border-amber-200 bg-amber-50/70 text-amber-950',
-    red: 'border-rose-200 bg-rose-50/70 text-rose-950',
-    slate: 'border-slate-200 bg-slate-50 text-slate-950'
-  }[tone] || 'border-blue-200 bg-blue-50/70 text-blue-950';
-
+/*
+  Bloco de agrupamento: o mesmo recorte visto por obra, categoria, status e
+  semana. A coluna de VALOR é `tipo: 'valor'` (190px, à direita,
+  tabular-nums) — módulo de dinheiro, valor nunca trunca (T7).
+*/
+function BlocoAgrupado({ titulo, descricao, linhas, total, storageKey, rotulo }) {
   return (
-    <div className={`rounded-lg border p-4 shadow-sm ${toneClass}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
-    </div>
+    <BlocoConteudo
+      titulo={titulo}
+      /* C2 × B3: o TOTAL do recorte está na faixa; aqui fica o número que só
+         este bloco responde — quantas linhas o agrupamento tem. */
+      contagem={`${linhas.length} linha(s)`}
+      descricao={descricao}
+      variante="secundario"
+    >
+      <TabelaPadrao
+        colunas={[
+          {
+            id: 'label',
+            titulo: 'Descrição',
+            // R17: o rótulo NOMEIA a linha do agrupamento (obra, categoria,
+            // status ou semana, conforme o bloco).
+            tipo: 'identidade',
+            noCard: 'titulo',
+            render: (linha) => rotulo(linha)
+          },
+          {
+            id: 'quantidade',
+            titulo: 'Qtd.',
+            tipo: 'numero',
+            render: (linha) => Number(linha.quantidade || 0).toLocaleString('pt-BR')
+          },
+          {
+            id: 'valor',
+            titulo: 'Valor',
+            tipo: 'valor',
+            render: (linha) => formatarMoedaBRL(Number(linha.total_valor || 0))
+          },
+          {
+            id: 'participacao',
+            titulo: 'Participação',
+            tipo: 'numero',
+            render: (linha) => percentual(Number(linha.total_valor || 0), total)
+          }
+        ]}
+        itens={linhas}
+        getId={(linha) => rotulo(linha)}
+        storageKey={storageKey}
+        rotuloRolagem={titulo}
+        vazio="Sem dados para os filtros."
+      />
+    </BlocoConteudo>
   );
 }
 
-function GroupTable({ title, rows, total, storageKey, labelResolver }) {
-  return (
-    <section className="card sol-surface-card app-table-shell">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-        <span className="text-xs text-slate-500">{rows.length} linha(s)</span>
-      </div>
-      <div className="table-wrapper">
-        <ResizableTable className="sol-table" columns={GROUP_COLUMNS} storageKey={storageKey}>
-          <thead>
-            <tr>
-              <ResizableTh columnKey="label">Descricao</ResizableTh>
-              <ResizableTh columnKey="quantidade" className="text-right">Qtd.</ResizableTh>
-              <ResizableTh columnKey="valor" className="text-right">Valor</ResizableTh>
-              <ResizableTh columnKey="participacao" className="text-right">Participacao</ResizableTh>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan="4" className="px-3 py-6 text-center text-sm text-slate-500">Sem dados para os filtros.</td>
-              </tr>
-            )}
-            {rows.map((row, index) => {
-              const value = Number(row.total_valor || 0);
-              return (
-                <tr key={`${labelResolver(row)}-${index}`}>
-                  <td className="px-3 py-2 font-semibold text-slate-900">{labelResolver(row)}</td>
-                  <td className="px-3 py-2 text-right">{Number(row.quantidade || 0).toLocaleString('pt-BR')}</td>
-                  <td className="px-3 py-2 text-right">{formatarMoedaBRL(value)}</td>
-                  <td className="px-3 py-2 text-right">{percentual(value, total)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </ResizableTable>
-      </div>
-    </section>
-  );
-}
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'data_inicial', rotulo: 'Data inicial' },
+  { id: 'data_final', rotulo: 'Data final' },
+  { id: 'obra_id', rotulo: 'Obra/Centro' },
+  { id: 'categoria_macro_id', rotulo: 'Categoria macro' },
+  { id: 'status', rotulo: 'Status' },
+  { id: 'prioridade', rotulo: 'Prioridade' }
+];
 
 export default function ProvisionamentoRelatorioOperacional() {
+  const { avisos, avisar, fechar } = useAvisos();
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [lista, setLista] = useState([]);
   const [filtros, setFiltros] = useState(DEFAULT_FILTERS);
+  const [filtrosAplicados, setFiltrosAplicados] = useState(DEFAULT_FILTERS);
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => String(filtros[filtro.id] ?? '').trim() !== ''
+      || String(filtrosAplicados[filtro.id] ?? '').trim() !== '').map((filtro) => filtro.id),
+    [filtros, filtrosAplicados]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:provisionamento-relatorio-operacional', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      /* O rascunho E o recorte em curso: é o segundo que a consulta usa,
+         e um filtro escondido não pode seguir recortando a lista. */
+      setFiltros((atual) => ({ ...atual, [id]: DEFAULT_FILTERS[id] ?? '' }));
+      setFiltrosAplicados((atual) => ({ ...atual, [id]: DEFAULT_FILTERS[id] ?? '' }));
+    }
+  });
   const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState('');
 
   const obras = useMemo(() => (
     Array.isArray(contexto?.obras_acesso) ? contexto.obras_acesso : []
   ), [contexto]);
 
-  async function carregar(params = filtros) {
+  async function carregar(params) {
     try {
       setLoading(true);
-      setErro('');
       const [dashboardData, listaData] = await Promise.all([
         getDashboardProvisionamentoFinanceiro(params),
         listarProvisoesFinanceiras({
@@ -168,14 +240,14 @@ export default function ProvisionamentoRelatorioOperacional() {
           sort_by: 'data_prevista_desembolso',
           sort_dir: 'ASC',
           page: 1,
-          limit: 200
+          limit: LIMITE_ANALITICO
         })
       ]);
       setDashboard(dashboardData);
       setLista(Array.isArray(listaData?.items) ? listaData.items : []);
     } catch (error) {
       console.error(error);
-      setErro(error?.message || 'Erro ao carregar relatorio de provisionamento.');
+      avisar.erro(error?.message || 'Erro ao carregar relatorio de provisionamento.');
     } finally {
       setLoading(false);
     }
@@ -193,243 +265,344 @@ export default function ProvisionamentoRelatorioOperacional() {
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       } catch (error) {
         console.error(error);
-        setErro(error?.message || 'Erro ao carregar contexto do provisionamento.');
+        avisar.erro(error?.message || 'Erro ao carregar contexto do provisionamento.');
         setLoading(false);
       }
     }
 
     carregarBase();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!contexto) return;
-    carregar(filtros);
+    carregar(filtrosAplicados);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contexto]);
+  }, [contexto, filtrosAplicados]);
 
   const totalPeriodo = Number(dashboard?.cards?.total_periodo || 0);
   const abertas = Number(dashboard?.cards?.quantidade_abertas || 0);
-  const vencidas = dashboard?.alertas?.vencidas_nao_tratadas?.itens || [];
-  const criticas = dashboard?.alertas?.itens_criticos_proximos?.itens || [];
-  const porMes = dashboard?.graficos?.por_mes || [];
+  const vencidas = useMemo(() => dashboard?.alertas?.vencidas_nao_tratadas?.itens || [], [dashboard]);
+  const criticas = useMemo(() => dashboard?.alertas?.itens_criticos_proximos?.itens || [], [dashboard]);
+  const concentracaoAlta = useMemo(() => dashboard?.alertas?.obras_concentracao_alta || [], [dashboard]);
+  const porMes = useMemo(() => dashboard?.graficos?.por_mes || [], [dashboard]);
   const maiorMes = Math.max(...porMes.map((item) => Number(item.total_valor || 0)), 1);
 
-  function onChange(event) {
-    const { name, value } = event.target;
-    setFiltros((prev) => ({ ...prev, [name]: value }));
+  /*
+    R12 — os seis recortes enumeráveis viram MARCAÇÃO com etiqueta
+    removível. O endpoint aceita UM valor por chave (obra_id, status…), por
+    isso as dimensões declaram `unico: true`: a marca fica REDONDA e marcar
+    outro valor substitui. Marcação múltipla aqui mostraria duas etiquetas e
+    mandaria um filtro só — capacidade aparente sem efeito (R15).
+  */
+  const ativos = useMemo(() => ({
+    obra_id: new Set(filtros.obra_id ? [String(filtros.obra_id)] : []),
+    categoria_macro_id: new Set(filtros.categoria_macro_id ? [String(filtros.categoria_macro_id)] : []),
+    status: new Set(filtros.status ? [String(filtros.status)] : []),
+    prioridade: new Set(filtros.prioridade ? [String(filtros.prioridade)] : [])
+  }), [filtros]);
+
+  const dimensoes = useMemo(() => [
+    {
+      id: 'obra_id',
+      rotulo: 'Obra/Centro',
+      unico: true,
+      opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: formatarObra(obra) }))
+    },
+    {
+      id: 'categoria_macro_id',
+      rotulo: 'Categoria macro',
+      unico: true,
+      opcoes: categorias.map((categoria) => ({ valor: String(categoria.id), rotulo: categoria.nome }))
+    },
+    { id: 'status', rotulo: 'Status', unico: true, opcoes: STATUS_OPCOES },
+    { id: 'prioridade', rotulo: 'Prioridade', unico: true, opcoes: PRIORIDADE_OPCOES }
+  ], [obras, categorias]);
+
+  function alternarFiltro(dimensao, valor) {
+    setFiltros((atual) => ({
+      ...atual,
+      [dimensao]: String(atual[dimensao]) === String(valor) ? '' : String(valor)
+    }));
   }
 
-  async function onSubmit(event) {
-    event.preventDefault();
-    await carregar(filtros);
+  function atualizarCampo(campo, valor) {
+    setFiltros((atual) => ({ ...atual, [campo]: valor }));
   }
 
-  async function limpar() {
+  function aplicarFiltros() {
+    // R26/consentimento: o recorte que vai para o servidor é o que está na
+    // tela NO MOMENTO DO CLIQUE, fixado numa const antes de qualquer await.
+    const recorte = filtros;
+    setFiltrosAplicados(recorte);
+  }
+
+  function limparFiltros() {
     setFiltros(DEFAULT_FILTERS);
-    await carregar(DEFAULT_FILTERS);
+    setFiltrosAplicados(DEFAULT_FILTERS);
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="sol-page-header">
-        <div>
-          <p className="eyebrow">Provisionamento / Relatorios</p>
-          <h1 className="page-title">Painel operacional de provisionamento</h1>
-          <p className="page-subtitle">
-            Pressao futura de caixa, vencidos nao tratados, prioridades e concentracao por obra e categoria.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/provisoes-financeiras/relatorios" className="btn btn-outline">Voltar aos relatorios</Link>
-          <Link to="/provisoes-financeiras" className="btn btn-primary">Lista de provisoes</Link>
-        </div>
-      </div>
+    <Pagina>
+      {/*
+        R11/C6 — os dois links da barra de ações ("Voltar aos relatorios" e
+        "Lista de provisoes") saíram: são CAMINHO PARA OUTRA TELA, e o lugar
+        deles é o hub do módulo, o breadcrumb e o Ctrl+K. Conferido antes de
+        remover, como a regra exige: `/provisoes-financeiras/relatorios`
+        (`prov-relatorios`) e `/provisoes-financeiras` (`prov-lista`) são
+        itens de PRIMEIRO nível do menu do módulo no `navigationConfig`, e o
+        hub de relatórios lista este painel. Nenhuma porta foi perdida.
 
-      <form onSubmit={onSubmit} className="card sol-surface-card rounded-xl p-4 md:p-5">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <label className="grid gap-1 text-sm">
-            <span>Obra/Centro</span>
-            <select name="obra_id" value={filtros.obra_id} onChange={onChange} className="input">
-              <option value="">Todas</option>
-              {obras.map((obra) => (
-                <option key={obra.id} value={obra.id}>{formatarObra(obra)}</option>
-              ))}
-            </select>
-          </label>
+        C2/R5 — título, contagem e apoio na faixa fixa. A faixa fica com o
+        TOTAL do recorte (critério C2 × B3 de 05/09); os blocos abaixo ficam
+        com os recortes.
 
-          <label className="grid gap-1 text-sm xl:col-span-2">
-            <span>Categoria macro</span>
-            <select name="categoria_macro_id" value={filtros.categoria_macro_id} onChange={onChange} className="input">
-              <option value="">Todas</option>
-              {categorias.map((categoria) => (
-                <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
-              ))}
-            </select>
-          </label>
+        R23 — esta tela é a EXCEÇÃO declarada (SEIS dimensões + agregação
+        pesada em duas consultas), então a marca é RASCUNHO até o clique. A
+        regra exige que a tela AVISE isso: sem o aviso, a etiqueta aparece ao
+        marcar e a pessoa lê como filtro já aplicado, o que é mentira.
+      */}
+      <PageHeader
+        titulo="Painel operacional de provisionamento"
+        contagem={loading ? null : `${formatarMoedaBRL(totalPeriodo)} previstos`}
+        descricao="Marque o recorte e clique em Atualizar relatório: com seis filtros, a consulta so roda no clique."
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar relatorio',
+          onClick: aplicarFiltros,
+          desabilitada: loading
+        }}
+        secundarias={[{ rotulo: 'Limpar', onClick: limparFiltros, desabilitada: loading }]}
+      />
 
-          <label className="grid gap-1 text-sm">
-            <span>Status</span>
-            <select name="status" value={filtros.status} onChange={onChange} className="input">
-              <option value="">Todos</option>
-              <option value="previsto">Previsto</option>
-              <option value="em_analise">Em analise</option>
-              <option value="aprovado">Aprovado</option>
-              <option value="realizado">Realizado</option>
-              <option value="cancelado">Cancelado</option>
-            </select>
-          </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-          <label className="grid gap-1 text-sm">
-            <span>Prioridade</span>
-            <select name="prioridade" value={filtros.prioridade} onChange={onChange} className="input">
-              <option value="">Todas</option>
-              <option value="baixa">Baixa</option>
-              <option value="media">Media</option>
-              <option value="alta">Alta</option>
-              <option value="critica">Critica</option>
-            </select>
-          </label>
+      <BlocoConteudo variante="secundario">
+        {/* R12/R16b: recorte enumerável em marcação; data inicial/final são
+            contínuas e não têm lista fechada — vão em `campos`. */}
+        <BarraFiltros
+          campos={[
+            {
+              id: 'data_inicial',
+              rotulo: 'Data inicial',
+              tipo: 'date',
+              valor: filtros.data_inicial,
+              aoMudar: (valor) => atualizarCampo('data_inicial', valor)
+            },
+            {
+              id: 'data_final',
+              rotulo: 'Data final',
+              tipo: 'date',
+              valor: filtros.data_final,
+              aoMudar: (valor) => atualizarCampo('data_final', valor)
+            }
+          ].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={ativos}
+          aoAlternar={alternarFiltro}
+          aoLimpar={limparFiltros}
+          visibilidade={visibilidadeFiltros}
+        />
+      </BlocoConteudo>
 
-          <label className="grid gap-1 text-sm">
-            <span>Data inicial</span>
-            <input name="data_inicial" type="date" value={filtros.data_inicial} onChange={onChange} className="input" />
-          </label>
+      {/*
+        MÓDULO DE DINHEIRO — os oito cartões de paleta crua viraram
+        StatTile com TOM SEMÂNTICO por token (R25/M3). Os valores usam o
+        `.app-stat-valor`, que já é tabular.
 
-          <label className="grid gap-1 text-sm">
-            <span>Data final</span>
-            <input name="data_final" type="date" value={filtros.data_final} onChange={onChange} className="input" />
-          </label>
-        </div>
+        B3/C2: o total previsto vive na FAIXA (é o número que acompanha a
+        pessoa ao rolar); aqui ficam os RECORTES — janelas de 7 e 30 dias,
+        vencidas, abertas, críticas, concentração e o tamanho da amostra
+        analítica.
+      */}
+      <StatGrid colunas={4}>
+        <StatTile
+          label="Próximos 7 dias"
+          valor={formatarMoedaBRL(dashboard?.cards?.total_proximos_7_dias || 0)}
+          sub="Pressão imediata de caixa"
+          tom="warning"
+        />
+        <StatTile
+          label="Próximos 30 dias"
+          valor={formatarMoedaBRL(dashboard?.cards?.total_proximos_30_dias || 0)}
+          sub="Pressão de curto prazo"
+        />
+        <StatTile
+          label="Vencidas não tratadas"
+          valor={String(vencidas.length)}
+          sub="Previstas/em analise já vencidas"
+          tom={vencidas.length ? 'danger' : 'success'}
+        />
+        <StatTile
+          label="Críticas próximas"
+          valor={String(criticas.length)}
+          sub="Prioridade critica nos próximos 7 dias"
+          tom={criticas.length ? 'danger' : 'success'}
+        />
+        <StatTile
+          label="Abertas"
+          valor={String(abertas)}
+          sub="Previstas, em analise ou aprovadas"
+        />
+        <StatTile
+          label="Concentração alta"
+          valor={String(concentracaoAlta.length)}
+          sub="Obras acima do limiar do dashboard"
+          tom={concentracaoAlta.length ? 'warning' : undefined}
+        />
+        <StatTile
+          label="Analítico carregado"
+          valor={String(lista.length)}
+          sub={`Primeiros ${LIMITE_ANALITICO} itens do recorte`}
+        />
+      </StatGrid>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Atualizando...' : 'Atualizar relatorio'}
-          </button>
-          <button type="button" className="btn btn-outline" onClick={limpar} disabled={loading}>Limpar</button>
-        </div>
-      </form>
-
-      {erro && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{erro}</div>
-      )}
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Card label="Total previsto" value={formatarMoedaBRL(totalPeriodo)} hint="Provisoes nao canceladas no recorte" />
-        <Card label="Proximos 7 dias" value={formatarMoedaBRL(dashboard?.cards?.total_proximos_7_dias || 0)} hint="Pressao imediata de caixa" tone="amber" />
-        <Card label="Proximos 30 dias" value={formatarMoedaBRL(dashboard?.cards?.total_proximos_30_dias || 0)} hint="Pressao de curto prazo" tone="blue" />
-        <Card label="Vencidas nao tratadas" value={String(vencidas.length)} hint="Previstas/em analise vencidas" tone={vencidas.length ? 'red' : 'green'} />
-        <Card label="Abertas" value={String(abertas)} hint="Previstas, em analise ou aprovadas" tone="slate" />
-        <Card label="Criticas proximas" value={String(criticas.length)} hint="Prioridade critica nos proximos 7 dias" tone={criticas.length ? 'red' : 'green'} />
-        <Card label="Analitico carregado" value={String(lista.length)} hint="Primeiros 200 itens do recorte" tone="slate" />
-        <Card label="Concentracao alta" value={String(dashboard?.alertas?.obras_concentracao_alta?.length || 0)} hint="Obras acima do limiar do dashboard" tone="amber" />
-      </div>
-
-      <section className="card sol-surface-card rounded-xl p-4">
-        <div className="mb-3">
-          <h2 className="text-base font-semibold text-slate-950">Curva mensal prevista</h2>
-          <p className="text-sm text-slate-500">Valores por data prevista de desembolso, sem provisoes canceladas.</p>
-        </div>
-        <div className="space-y-3">
-          {porMes.length === 0 && <p className="text-sm text-slate-500">Sem dados no recorte atual.</p>}
-          {porMes.map((item) => (
-            <div key={item.mes} className="grid gap-2 md:grid-cols-[96px_minmax(0,1fr)_150px] md:items-center">
-              <span className="text-sm font-semibold text-slate-700">{formatarMes(item.mes)}</span>
-              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-blue-600"
-                  style={{ width: `${Math.max((Number(item.total_valor || 0) / maiorMes) * 100, 4)}%` }}
-                />
-              </div>
-              <span className="text-right text-sm font-semibold text-slate-900">{formatarMoedaBRL(item.total_valor)}</span>
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 6 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:provisionamento-relatorio-operacional" larguraPadrao="total">
+        <BlocoConteudo
+          titulo="Curva mensal prevista"
+          descricao="Valores por data prevista de desembolso, sem provisões canceladas."
+          variante="primario"
+          cor="var(--c-primary)"
+        >
+          {porMes.length === 0 ? (
+            <p className="text-sm text-[var(--c-muted)]">Sem dados no recorte atual.</p>
+          ) : (
+            <div className="space-y-3">
+              {porMes.map((item) => {
+                const valor = Number(item.total_valor || 0);
+                const largura = Math.max((valor / maiorMes) * 100, 4);
+                return (
+                  <div key={item.mes} className="space-y-1">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="font-semibold text-[var(--c-text)]">{formatarMes(item.mes)}</span>
+                      {/* Valor em barra também é dinheiro: tabular, para os
+                          meses alinharem coluna a coluna. */}
+                      <span className="font-semibold tabular-nums text-[var(--c-text)]">{formatarMoedaBRL(valor)}</span>
+                    </div>
+                    {/* A largura em % é DADO (a proporção da barra), não medida
+                        de layout — por isso continua no style; a altura é o
+                        degrau de 8px da escala e as cores são token.
+                        R8: previsto = azul (--c-primary). Não há série
+                        realizada nesta tela, então não há vermelho.
+                        R18 (onde NÃO vale, 2): o overflow aqui só recorta a
+                        FORMA da barra e não é ancestral de nada fixo. */}
+                    <div className="h-2 overflow-hidden rounded-full bg-[var(--ui-border)]">
+                      <div className="h-full rounded-full bg-[var(--c-primary)]" style={{ width: `${largura}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
-      </section>
+          )}
+        </BlocoConteudo>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <GroupTable
-          title="Por obra/centro"
-          rows={dashboard?.graficos?.por_obra || []}
+        <BlocoAgrupado data-bloco-id="por-obra-centro" data-bloco-rotulo="Por obra/centro"
+          titulo="Por obra/centro"
+          descricao="Onde a previsão esta concentrada."
+          linhas={dashboard?.graficos?.por_obra || []}
           total={totalPeriodo}
-          storageKey="fluxy.provisionamento.operacional.obras.columns"
-          labelResolver={(row) => formatarObra(row.obra)}
+          storageKey="tabela:provisionamento-relatorio-operacional:por-obra"
+          rotulo={(linha) => formatarObra(linha.obra)}
         />
-        <GroupTable
-          title="Por categoria macro"
-          rows={dashboard?.graficos?.por_categoria || []}
-          total={totalPeriodo}
-          storageKey="fluxy.provisionamento.operacional.categorias.columns"
-          labelResolver={(row) => row.categoria?.nome || 'Sem categoria'}
-        />
-        <GroupTable
-          title="Pipeline por status"
-          rows={dashboard?.graficos?.pipeline_status || []}
-          total={totalPeriodo}
-          storageKey="fluxy.provisionamento.operacional.status.columns"
-          labelResolver={(row) => formatarStatus(row.status)}
-        />
-        <GroupTable
-          title="Curva semanal"
-          rows={dashboard?.graficos?.curva_semanal || []}
-          total={totalPeriodo}
-          storageKey="fluxy.provisionamento.operacional.semanas.columns"
-          labelResolver={(row) => row.semana_label || row.semana_inicio}
-        />
-      </div>
 
-      <section className="card sol-surface-card app-table-shell">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-slate-950">Analitico do recorte</h2>
-            <p className="text-sm text-slate-500">Primeiros 200 provisionamentos ordenados pela data prevista mais proxima.</p>
-          </div>
-          <span className="text-xs text-slate-500">{lista.length} item(ns)</span>
-        </div>
+        <BlocoAgrupado data-bloco-id="por-categoria-macro" data-bloco-rotulo="Por categoria macro"
+          titulo="Por categoria macro"
+          descricao="Composição da previsão por natureza de gasto."
+          linhas={dashboard?.graficos?.por_categoria || []}
+          total={totalPeriodo}
+          storageKey="tabela:provisionamento-relatorio-operacional:por-categoria"
+          rotulo={(linha) => linha.categoria?.nome || 'Sem categoria'}
+        />
 
-        <div className="table-wrapper">
-          <ResizableTable
-            className="sol-table"
-            columns={ITEM_COLUMNS}
-            storageKey="fluxy.provisionamento.operacional.analitico.columns"
-          >
-            <thead>
-              <tr>
-                <ResizableTh columnKey="codigo">Codigo</ResizableTh>
-                <ResizableTh columnKey="data">Data prevista</ResizableTh>
-                <ResizableTh columnKey="obra">Obra/Centro</ResizableTh>
-                <ResizableTh columnKey="categoria">Categoria</ResizableTh>
-                <ResizableTh columnKey="descricao">Descricao</ResizableTh>
-                <ResizableTh columnKey="credor">Credor</ResizableTh>
-                <ResizableTh columnKey="status">Status</ResizableTh>
-                <ResizableTh columnKey="prioridade">Prioridade</ResizableTh>
-                <ResizableTh columnKey="valor" className="text-right">Valor</ResizableTh>
-              </tr>
-            </thead>
-            <tbody>
-              {lista.length === 0 && (
-                <tr>
-                  <td colSpan="9" className="px-3 py-6 text-center text-sm text-slate-500">Nenhum provisionamento encontrado.</td>
-                </tr>
-              )}
-              {lista.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-3 py-2 font-semibold text-blue-700">
-                    <Link to={`/provisoes-financeiras/${item.id}`}>{item.codigo}</Link>
-                  </td>
-                  <td className="px-3 py-2">{formatarData(item.data_prevista_desembolso)}</td>
-                  <td className="px-3 py-2">{formatarObra(item.obra)}</td>
-                  <td className="px-3 py-2">{item.categoriaMacro?.nome || '-'}</td>
-                  <td className="px-3 py-2">{item.descricao || '-'}</td>
-                  <td className="px-3 py-2">{item.fornecedor_texto || '-'}</td>
-                  <td className="px-3 py-2">{formatarStatus(item.status)}</td>
-                  <td className="px-3 py-2">{formatarPrioridade(item.prioridade)}</td>
-                  <td className="px-3 py-2 text-right">{formatarMoedaBRL(item.valor_previsto)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </ResizableTable>
-        </div>
-      </section>
-    </div>
+        <BlocoAgrupado data-bloco-id="pipeline-por-status" data-bloco-rotulo="Pipeline por status"
+          titulo="Pipeline por status"
+          descricao="Quanto já passou por analise e aprovação."
+          linhas={dashboard?.graficos?.pipeline_status || []}
+          total={totalPeriodo}
+          storageKey="tabela:provisionamento-relatorio-operacional:pipeline-status"
+          rotulo={(linha) => formatarStatus(linha.status)}
+        />
+
+        <BlocoAgrupado data-bloco-id="curva-semanal" data-bloco-rotulo="Curva semanal"
+          titulo="Curva semanal"
+          descricao="Distribuição da previsão nas próximas semanas do recorte."
+          linhas={dashboard?.graficos?.curva_semanal || []}
+          total={totalPeriodo}
+          storageKey="tabela:provisionamento-relatorio-operacional:curva-semanal"
+          rotulo={(linha) => linha.semana_label || linha.semana_inicio}
+        />
+
+        <BlocoConteudo
+          titulo="Analítico do recorte"
+          contagem={`${lista.length} item(ns)`}
+          descricao={`Primeiros ${LIMITE_ANALITICO} provisionamentos ordenados pela data prevista mais próxima.`}
+        >
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'codigo',
+                titulo: 'Código',
+                // R17: o código NOMEIA o provisionamento da linha.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                /* "Onde a navegação mora" (04/09): o link para o REGISTRO
+                   relacionado fica no corpo, junto do dado que o origina —
+                   nunca na barra de ações. A cor vem de token (R25). */
+                render: (item) => (
+                  <Link className="font-semibold text-[var(--c-primary)]" to={`/provisoes-financeiras/${item.id}`}>
+                    {item.codigo}
+                  </Link>
+                )
+              },
+              {
+                id: 'data',
+                titulo: 'Data prevista',
+                tipo: 'data',
+                render: (item) => formatarData(item.data_prevista_desembolso)
+              },
+              { id: 'obra', titulo: 'Obra/Centro', tipo: 'texto', render: (item) => formatarObra(item.obra) },
+              { id: 'categoria', titulo: 'Categoria', tipo: 'texto', render: (item) => item.categoriaMacro?.nome || '-' },
+              {
+                id: 'descricao',
+                titulo: 'Descrição',
+                tipo: 'texto',
+                // T6: texto longo trunca com o conteúdo completo no tooltip.
+                render: (item) => <span title={item.descricao || undefined}>{item.descricao || '-'}</span>
+              },
+              { id: 'credor', titulo: 'Credor', tipo: 'texto', render: (item) => item.fornecedor_texto || '-' },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (item) => <StatusBadge status={formatarStatus(item.status)} kind={familiaStatus(item.status)} />
+              },
+              { id: 'prioridade', titulo: 'Prioridade', tipo: 'badge', render: (item) => formatarPrioridade(item.prioridade) },
+              {
+                id: 'valor',
+                titulo: 'Valor',
+                // R1/R17/T7 — dinheiro: 190px, à direita, tabular-nums, e
+                // NUNCA trunca.
+                tipo: 'valor',
+                render: (item) => formatarMoedaBRL(item.valor_previsto)
+              }
+            ]}
+            itens={lista}
+            getId={(item) => item.id}
+            carregando={loading}
+            storageKey="tabela:provisionamento-relatorio-operacional:analitico"
+            rotuloRolagem="Analitico do recorte"
+            colunasConfiguraveis
+            vazio="Nenhum provisionamento encontrado."
+          />
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
+    </Pagina>
   );
 }

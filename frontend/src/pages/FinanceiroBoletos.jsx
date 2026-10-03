@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { HiOutlineArrowPath, HiOutlineEye } from 'react-icons/hi2';
 import {
   baixarBoletoCaixaHomologacaoCsv,
   baixarBoletoCaixaHomologacaoPacote,
@@ -21,10 +22,27 @@ import { buscarParceiros } from '../services/parceiros';
 import { useAuth } from '../contexts/AuthContext';
 import { hasEnabledModule } from '../utils/acessoProduto';
 import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
+import OverlayModal from '../components/ui/OverlayModal';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BarraFiltros,
+  alternarValorFiltro,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  Avisos,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../components/padrao';
+// R25: a ficha de compensação é PAPEL, não tela — a decisão e os valores
+// moram em um lugar só, com o motivo escrito.
+import '../styles/boleto-ficha.css';
 
 const STATUS_OPTIONS = [
-  { value: '', label: 'Todos elegiveis' },
-  { value: 'PENDENTE_EMISSAO', label: 'Pendente emissao' },
+  { value: '', label: 'Todos elegíveis' },
+  { value: 'PENDENTE_EMISSAO', label: 'Pendente emissão' },
   { value: 'EMITIDO', label: 'Emitido' },
   { value: 'CANCELADO', label: 'Cancelado' }
 ];
@@ -145,12 +163,12 @@ function BarcodeSvg({ value }) {
     <svg
       viewBox={`0 0 ${x} ${height}`}
       preserveAspectRatio="xMinYMid meet"
-      className="h-16 w-full bg-white"
+      className="boleto-codigo-barras"
       role="img"
-      aria-label="Codigo de barras do boleto"
+      aria-label="Código de barras do boleto"
     >
       {bars.map((bar, index) => (
-        <rect key={`${bar.x}-${index}`} x={bar.x} y="0" width={bar.width} height={height} fill="#000" />
+        <rect key={`${bar.x}-${index}`} x={bar.x} y="0" width={bar.width} height={height} fill="currentColor" />
       ))}
     </svg>
   );
@@ -173,126 +191,126 @@ function BoletoPrintView({ detalhe }) {
   if (!boleto.codigo_barras) {
     return (
       <div className="app-empty-card">
-        Gere o boleto para visualizar a ficha de compensacao.
+        Gere o boleto para visualizar a ficha de compensação.
       </div>
     );
   }
 
   return (
-    <section className="boleto-print rounded-2xl border border-[var(--c-border)] bg-white p-5 text-slate-950 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-300 pb-3">
+    <section className="boleto-print rounded-2xl border border-[color:var(--boleto-regua)] p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--boleto-regua)] pb-3">
         <div>
-          <div className="text-xl font-bold">CAIXA</div>
-          <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Banco {boleto.codigo_banco || '104-0'}</div>
+          <div className="text-lg font-bold">CAIXA</div>
+          <div className="text-xs uppercase tracking-[0.18em] text-[var(--boleto-rotulo)]">Banco {boleto.codigo_banco || '104-0'}</div>
         </div>
         {boleto.modo_teste && (
-          <div className="rounded-full border border-amber-400 bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
-            Boleto de teste - nao registrado
+          <div className="rounded-full border border-[color:var(--boleto-aviso)] px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-[var(--boleto-aviso)]">
+            Boleto de teste - não registrado
           </div>
         )}
-        <div className="text-right font-mono text-lg font-semibold">{boleto.linha_digitavel}</div>
+        <div className="text-right font-mono text-sm font-semibold">{boleto.linha_digitavel}</div>
       </div>
 
-      <div className="grid border-b border-slate-300 text-xs md:grid-cols-[2fr_1fr]">
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Local de pagamento</span>
+      <div className="grid border-b border-[color:var(--boleto-regua)] text-xs md:grid-cols-[2fr_1fr]">
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Local de pagamento</span>
           <strong>{boleto.local_pagamento || '-'}</strong>
         </div>
         <div className="p-2">
-          <span className="block text-slate-500">Vencimento</span>
+          <span className="block text-[var(--boleto-rotulo)]">Vencimento</span>
           <strong>{formatDate(titulo.data_vencimento)}</strong>
         </div>
       </div>
 
-      <div className="grid border-b border-slate-300 text-xs md:grid-cols-[2fr_1fr]">
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Beneficiario</span>
+      <div className="grid border-b border-[color:var(--boleto-regua)] text-xs md:grid-cols-[2fr_1fr]">
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Beneficiario</span>
           <strong>{beneficiario.nome || '-'}</strong>
           <div>{formatCpfCnpj(beneficiario.cpf_cnpj)}</div>
           <div>{beneficiario.endereco || '-'}</div>
         </div>
         <div className="p-2">
-          <span className="block text-slate-500">Agencia / Codigo do beneficiario</span>
+          <span className="block text-[var(--boleto-rotulo)]">Agência / Código do beneficiario</span>
           <strong>{boleto.agencia_codigo_beneficiario || '-'}</strong>
         </div>
       </div>
 
-      <div className="grid border-b border-slate-300 text-xs md:grid-cols-5">
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Data documento</span>
+      <div className="grid border-b border-[color:var(--boleto-regua)] text-xs md:grid-cols-5">
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Data documento</span>
           <strong>{formatDate(titulo.data_emissao)}</strong>
         </div>
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Nr. documento</span>
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Nr. documento</span>
           <strong>{titulo.numero_documento || titulo.id}</strong>
         </div>
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Especie doc</span>
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Especie doc</span>
           <strong>DS</strong>
         </div>
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Aceite</span>
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Aceite</span>
           <strong>N</strong>
         </div>
         <div className="p-2">
-          <span className="block text-slate-500">Nosso numero</span>
+          <span className="block text-[var(--boleto-rotulo)]">Nosso número</span>
           <strong>{boleto.nosso_numero || titulo.nosso_numero || '-'}</strong>
         </div>
       </div>
 
-      <div className="grid border-b border-slate-300 text-xs md:grid-cols-5">
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Uso do banco</span>
+      <div className="grid border-b border-[color:var(--boleto-regua)] text-xs md:grid-cols-5">
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Uso do banco</span>
           <strong>-</strong>
         </div>
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Carteira</span>
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Carteira</span>
           <strong>RG</strong>
         </div>
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Especie moeda</span>
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Especie moeda</span>
           <strong>R$</strong>
         </div>
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Quantidade moeda</span>
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Quantidade moeda</span>
           <strong>-</strong>
         </div>
         <div className="p-2">
-          <span className="block text-slate-500">(=) Valor documento</span>
+          <span className="block text-[var(--boleto-rotulo)]">(=) Valor documento</span>
           <strong>{formatCurrency(titulo.valor_saldo || titulo.valor_original)}</strong>
         </div>
       </div>
 
-      <div className="grid min-h-[120px] border-b border-slate-300 text-xs md:grid-cols-[2fr_1fr]">
-        <div className="border-r border-slate-300 p-2">
-          <span className="block text-slate-500">Instrucoes</span>
+      <div className="boleto-instrucoes grid border-b border-[color:var(--boleto-regua)] text-xs md:grid-cols-[2fr_1fr]">
+        <div className="border-r border-[color:var(--boleto-regua)] p-2">
+          <span className="block text-[var(--boleto-rotulo)]">Instruções</span>
           <strong>Instrucoes (Texto de Responsabilidade do Beneficiario)</strong>
           {boleto.modo_teste && (
-            <p className="mt-1 font-semibold text-amber-700">
-              BOLETO DE TESTE. Nao usar para cobranca real e nao distribuir ao pagador.
+            <p className="mt-1 font-semibold text-[var(--boleto-aviso)]">
+              BOLETO DE TESTE. Não usar para cobrança real e não distribuir ao pagador.
             </p>
           )}
-          <p className="mt-1">Nao receber apos o vencimento sem autorizacao do beneficiario.</p>
+          <p className="mt-1">Não receber após o vencimento sem autorização do beneficiario.</p>
           <p>{titulo.descricao}</p>
         </div>
         <div className="grid grid-rows-4">
-          <div className="border-b border-slate-300 p-2">
-            <span className="block text-slate-500">(-) Desconto / Abatimento</span>
+          <div className="border-b border-[color:var(--boleto-regua)] p-2">
+            <span className="block text-[var(--boleto-rotulo)]">(-) Desconto / Abatimento</span>
           </div>
-          <div className="border-b border-slate-300 p-2">
-            <span className="block text-slate-500">(+) Juros / Multa</span>
+          <div className="border-b border-[color:var(--boleto-regua)] p-2">
+            <span className="block text-[var(--boleto-rotulo)]">(+) Juros / Multa</span>
           </div>
-          <div className="border-b border-slate-300 p-2">
-            <span className="block text-slate-500">(=) Valor cobrado</span>
+          <div className="border-b border-[color:var(--boleto-regua)] p-2">
+            <span className="block text-[var(--boleto-rotulo)]">(=) Valor cobrado</span>
           </div>
           <div className="p-2">
-            <span className="block text-slate-500">Autenticacao mecanica</span>
+            <span className="block text-[var(--boleto-rotulo)]">Autenticacao mecanica</span>
           </div>
         </div>
       </div>
 
-      <div className="border-b border-slate-300 p-2 text-xs">
-        <span className="block text-slate-500">Pagador</span>
+      <div className="border-b border-[color:var(--boleto-regua)] p-2 text-xs">
+        <span className="block text-[var(--boleto-rotulo)]">Pagador</span>
         <strong>{pagador.nome || '-'}</strong>
         <div>{formatCpfCnpj(pagador.cpf_cnpj)}</div>
         <div>{enderecoPagador || '-'}</div>
@@ -300,15 +318,41 @@ function BoletoPrintView({ detalhe }) {
 
       <div className="grid items-end gap-4 pt-4 md:grid-cols-[minmax(0,1fr)_220px]">
         <BarcodeSvg value={boleto.codigo_barras} />
-        <div className="text-right text-xs font-semibold">Autenticacao Mecanica - Ficha de Compensacao</div>
+        <div className="text-right text-xs font-semibold">Autenticacao Mecanica - Ficha de Compensação</div>
       </div>
 
-      <div className="mt-2 break-all font-mono text-xs text-slate-600">
+      <div className="mt-2 break-all font-mono text-xs text-[var(--boleto-rotulo)]">
         Linha digitavel: {boleto.linha_digitavel}
       </div>
     </section>
   );
 }
+
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'q', rotulo: 'Busca', obrigatorio: true },
+  { id: 'codigo', rotulo: 'Título' },
+  { id: 'numero_documento', rotulo: 'N. documento' },
+  { id: 'vencimento_inicial', rotulo: 'Vencimento início' },
+  { id: 'vencimento_final', rotulo: 'Vencimento fim' },
+  { id: 'status_cobranca', rotulo: 'Status cobrança' },
+  { id: 'origem', rotulo: 'Origem' },
+  { id: 'empreendimento_id', rotulo: 'Empreendimento' }
+];
 
 export default function FinanceiroBoletos() {
   const { user } = useAuth();
@@ -322,13 +366,58 @@ export default function FinanceiroBoletos() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(null);
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      const padrao = String(DEFAULT_FILTERS[filtro.id] ?? '');
+      const rascunho = String(filters[filtro.id] ?? '');
+      const emCurso = String(appliedFilters?.[filtro.id] ?? '');
+      return (rascunho !== '' && rascunho !== padrao) || (emCurso !== '' && emCurso !== padrao);
+    }).map((filtro) => filtro.id),
+    [filters, appliedFilters]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:financeiro-boletos', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      /* O rascunho E a consulta em curso: escondido é escondido dos dois
+         lados, senão a lista continua recortada sem campo na faixa. */
+      updateFilter(id, DEFAULT_FILTERS[id] ?? '');
+      setAppliedFilters((atual) => (atual ? { ...atual, [id]: DEFAULT_FILTERS[id] ?? '' } : atual));
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [gerandoId, setGerandoId] = useState(null);
   const [baixandoPdfId, setBaixandoPdfId] = useState(null);
   const [gerandoMassa, setGerandoMassa] = useState(false);
-  const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState('');
+  /*
+    R19 — as quatro faixas de tom próprio desta tela (`error`, `feedback`,
+    `cnabFeedback` e as duas classes FANTASMA `.app-alert--info` e
+    `.app-alert--warning`, que nunca existiram no CSS e portanto nunca
+    estilizaram nada) viraram a faixa do sistema.
+
+    A fronteira do `Avisos` separou o que passava por elas: gerou, baixou,
+    importou, falhou — EVENTO, e evento é aviso empilhável e fechável. O
+    que sobrou (configuração pendente, ambiente de teste, emissão real
+    bloqueada) é CONDIÇÃO: fecha e o problema continua, então continua como
+    bloco fixo no fluxo, logo abaixo do cabeçalho.
+  */
   const [resultadoMassa, setResultadoMassa] = useState(null);
   const [conveniosCaixa, setConveniosCaixa] = useState([]);
   const [convenioSelecionadoId, setConvenioSelecionadoId] = useState('');
@@ -340,8 +429,8 @@ export default function FinanceiroBoletos() {
   const [baixandoRemessaId, setBaixandoRemessaId] = useState(null);
   const [baixandoHomologacaoId, setBaixandoHomologacaoId] = useState(null);
   const [baixandoPacoteId, setBaixandoPacoteId] = useState(null);
-  const [cnabFeedback, setCnabFeedback] = useState('');
   const retornoInputRef = useRef(null);
+  const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
 
   function prepararFiltrosBoleto(rawFilters = filters) {
     const boletoFilters = { ...rawFilters };
@@ -357,7 +446,6 @@ export default function FinanceiroBoletos() {
   async function carregarBase() {
     try {
       setLoadingOptions(true);
-      setError('');
       const [
         configData,
         empreendimentosData,
@@ -382,7 +470,7 @@ export default function FinanceiroBoletos() {
       setRetornosCaixa(Array.isArray(retornosData) ? retornosData : []);
       setConvenioSelecionadoId((current) => current || String(listaConvenios[0]?.id || ''));
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar configuracoes de boletos');
+      avisar.erro(err?.message || 'Erro ao carregar configuracoes de boletos');
     } finally {
       setLoadingOptions(false);
     }
@@ -398,7 +486,6 @@ export default function FinanceiroBoletos() {
 
     try {
       setLoading(true);
-      setError('');
       const titulosData = await getTitulosParaBoleto(prepararFiltrosBoleto(nextFilters));
       const listaTitulos = Array.isArray(titulosData) ? titulosData : [];
       setTitulos(listaTitulos);
@@ -407,7 +494,7 @@ export default function FinanceiroBoletos() {
         return current.filter((id) => idsVisiveis.has(Number(id)));
       });
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar boletos');
+      avisar.erro(err?.message || 'Erro ao carregar boletos');
     } finally {
       setLoading(false);
     }
@@ -452,7 +539,6 @@ export default function FinanceiroBoletos() {
     const ids = new Set(selecionados.map(Number));
     return titulos.filter((item) => ids.has(Number(item.id)));
   }, [selecionados, titulos]);
-  const todosSelecionados = titulos.length > 0 && titulos.every((item) => selecionados.map(Number).includes(Number(item.id)));
 
   function updateFilter(field, value) {
     setFilters((current) => ({ ...current, [field]: value }));
@@ -464,7 +550,7 @@ export default function FinanceiroBoletos() {
     setAppliedFilters(nextFilters);
     setSelecionados([]);
     setResultadoMassa(null);
-    setFeedback('');
+    limparAvisos();
     carregarTitulos(nextFilters);
   }
 
@@ -474,8 +560,7 @@ export default function FinanceiroBoletos() {
     setTitulos([]);
     setSelecionados([]);
     setResultadoMassa(null);
-    setFeedback('');
-    setError('');
+    limparAvisos();
     setLoading(false);
   }
 
@@ -501,42 +586,37 @@ export default function FinanceiroBoletos() {
     });
   }
 
-  function toggleTodos(checked) {
-    setSelecionados(checked ? titulos.map((item) => Number(item.id)) : []);
-  }
-
   async function selecionarTitulo(titulo) {
     try {
-      setError('');
-      setFeedback('');
+      limparAvisos();
       const data = await getBoletoTitulo(titulo.id);
       setDetalhe(data);
       setPreviewOpen(true);
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar boleto');
+      avisar.erro(err?.message || 'Erro ao carregar boleto');
     }
   }
 
   async function onGerar(titulo) {
     const configIssue = getConfigIssueMessage(config, 'gerar o boleto');
     if (configIssue) {
-      setError(configIssue);
-      setFeedback('');
+      // AVISO (alerta): responde ao clique. A CONDIÇÃO que o gerou continua
+      // declarada no bloco fixo de estado da integração, que não fecha.
+      avisar.alerta(configIssue);
       return;
     }
 
     try {
       setGerandoId(titulo.id);
-      setError('');
-      setFeedback('');
+      limparAvisos();
       setResultadoMassa(null);
       const data = await gerarBoletoTitulo(titulo.id);
       setDetalhe(data);
       setPreviewOpen(true);
       await carregarTitulos(appliedFilters);
-      setFeedback(`Boleto do titulo #${titulo.id} gerado com sucesso.`);
+      avisar.sucesso(`Boleto do titulo #${titulo.id} gerado com sucesso.`);
     } catch (err) {
-      setError(err?.message || 'Erro ao gerar boleto');
+      avisar.erro(err?.message || 'Erro ao gerar boleto');
     } finally {
       setGerandoId(null);
     }
@@ -545,21 +625,20 @@ export default function FinanceiroBoletos() {
   async function onGerarAmostra(titulo) {
     const configIssue = getConfigIssueMessage(config, 'gerar a amostra');
     if (configIssue) {
-      setError(configIssue);
-      setFeedback('');
+      avisar.alerta(configIssue);
       return;
     }
 
     try {
       setGerandoId(titulo.id);
-      setError('');
-      setFeedback('');
+      limparAvisos();
       const data = await gerarAmostraBoletoTitulo(titulo.id);
       setDetalhe(data);
       setPreviewOpen(true);
-      setFeedback(`Amostra do titulo #${titulo.id} gerada com sucesso.`);
+      // Amostra nao grava nada (nao entra na lista, sem carregarTitulos): o preview que abre ja mostra o resultado.
+      avisar.sucesso(`Amostra do titulo #${titulo.id} gerada com sucesso.`, undefined, { efemero: true });
     } catch (err) {
-      setError(err?.message || 'Erro ao gerar amostra de boleto');
+      avisar.erro(err?.message || 'Erro ao gerar amostra de boleto');
     } finally {
       setGerandoId(null);
     }
@@ -568,8 +647,7 @@ export default function FinanceiroBoletos() {
   async function onBaixarPdf(titulo, { amostra = false } = {}) {
     try {
       setBaixandoPdfId(titulo.id);
-      setError('');
-      setFeedback('');
+      limparAvisos();
       const data = await baixarPdfBoletoTitulo(titulo.id, { amostra });
       const url = URL.createObjectURL(data.blob);
       const link = document.createElement('a');
@@ -579,9 +657,10 @@ export default function FinanceiroBoletos() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setFeedback(`PDF do titulo #${titulo.id} baixado com sucesso.`);
+      // Download simples: o navegador ja mostra que baixou, nada foi gravado no sistema.
+      avisar.sucesso(`PDF do titulo #${titulo.id} baixado com sucesso.`, undefined, { efemero: true });
     } catch (err) {
-      setError(err?.message || 'Erro ao baixar PDF do boleto');
+      avisar.erro(err?.message || 'Erro ao baixar PDF do boleto');
     } finally {
       setBaixandoPdfId(null);
     }
@@ -589,23 +668,20 @@ export default function FinanceiroBoletos() {
 
   async function onGerarMassa() {
     if (!titulosSelecionados.length) {
-      setError('Selecione ao menos um titulo para gerar boletos em massa.');
-      setFeedback('');
+      avisar.alerta('Selecione ao menos um título para gerar boletos em massa.');
       return;
     }
 
     const configIssue = getConfigIssueMessage(config);
     if (configIssue) {
-      setError(configIssue);
-      setFeedback('');
+      avisar.alerta(configIssue);
       setResultadoMassa(null);
       return;
     }
 
     try {
       setGerandoMassa(true);
-      setError('');
-      setFeedback('');
+      limparAvisos();
       setResultadoMassa(null);
       let ultimoDetalhe = null;
       const sucessos = [];
@@ -634,16 +710,16 @@ export default function FinanceiroBoletos() {
       setResultadoMassa({ sucessos, falhas });
 
       if (sucessos.length) {
-        setFeedback(`${sucessos.length} boleto(s) gerado(s) com sucesso.`);
+        avisar.sucesso(`${sucessos.length} boleto(s) gerado(s) com sucesso.`);
       }
       if (falhas.length) {
-        setError(`${falhas.length} boleto(s) nao foram gerados. Veja os motivos no resumo abaixo.`);
+        avisar.erro(`${falhas.length} boleto(s) nao foram gerados. Veja os motivos no resumo abaixo.`);
       }
       if (!sucessos.length && !falhas.length) {
-        setError('Nenhum boleto foi processado.');
+        avisar.alerta('Nenhum boleto foi processado.');
       }
     } catch (err) {
-      setError(err?.message || 'Erro ao gerar boletos em massa');
+      avisar.erro(err?.message || 'Erro ao gerar boletos em massa');
     } finally {
       setGerandoId(null);
       setGerandoMassa(false);
@@ -652,21 +728,18 @@ export default function FinanceiroBoletos() {
 
   async function onGerarRemessa() {
     if (!selecionados.length) {
-      setError('Selecione os titulos com boleto gerado para montar a remessa.');
-      setCnabFeedback('');
+      avisar.alerta('Selecione os títulos com boleto gerado para montar a remessa.');
       return;
     }
 
     if (!convenioSelecionadoId) {
-      setError('Cadastre ou selecione um convenio Caixa antes de gerar a remessa.');
-      setCnabFeedback('');
+      avisar.alerta('Cadastre ou selecione um convênio Caixa antes de gerar a remessa.');
       return;
     }
 
     try {
       setGerandoRemessa(true);
-      setError('');
-      setCnabFeedback('');
+      limparAvisos();
       const data = await gerarBoletoCaixaRemessa({
         convenioId: convenioSelecionadoId,
         tituloIds: selecionados
@@ -680,11 +753,11 @@ export default function FinanceiroBoletos() {
       link.remove();
       URL.revokeObjectURL(url);
       setSelecionados([]);
-      setCnabFeedback(`Remessa ${data.filename} gerada para homologacao. Hash ${data.hash || '-'}.`);
+      avisar.sucesso(`Remessa ${data.filename} gerada para homologacao. Hash ${data.hash || '-'}.`);
       await carregarBase();
       await carregarTitulos(appliedFilters);
     } catch (err) {
-      setError(err?.message || 'Erro ao gerar remessa Caixa');
+      avisar.erro(err?.message || 'Erro ao gerar remessa Caixa');
     } finally {
       setGerandoRemessa(false);
     }
@@ -693,21 +766,18 @@ export default function FinanceiroBoletos() {
   async function onImportarRetorno() {
     if (!retornoFile) {
       retornoInputRef.current?.click();
-      setError('');
-      setCnabFeedback('');
+      limparAvisos();
       return;
     }
 
     if (!convenioSelecionadoId) {
-      setError('Selecione o convenio Caixa para importar o retorno.');
-      setCnabFeedback('');
+      avisar.alerta('Selecione o convênio Caixa para importar o retorno.');
       return;
     }
 
     try {
       setImportandoRetorno(true);
-      setError('');
-      setCnabFeedback('');
+      limparAvisos();
       const data = await importarBoletoCaixaRetorno({
         convenioId: convenioSelecionadoId,
         file: retornoFile
@@ -715,13 +785,13 @@ export default function FinanceiroBoletos() {
       const quantidade = data?.parsed?.ocorrencias?.length || data?.retorno?.quantidade_ocorrencias || 0;
       const baixas = Number(data?.baixas_aplicadas || 0);
       setRetornoFile(null);
-      setCnabFeedback(data?.duplicate
+      avisar.sucesso(data?.duplicate
         ? 'Retorno ja importado anteriormente. Nenhuma duplicidade foi criada.'
         : `Retorno importado com ${quantidade} ocorrencia(s) e ${baixas} baixa(s) financeira(s) aplicada(s).`);
       await carregarBase();
       await carregarTitulos(appliedFilters);
     } catch (err) {
-      setError(err?.message || 'Erro ao importar retorno Caixa');
+      avisar.erro(err?.message || 'Erro ao importar retorno Caixa');
     } finally {
       setImportandoRetorno(false);
     }
@@ -741,15 +811,18 @@ export default function FinanceiroBoletos() {
   async function onBaixarRemessa(item) {
     try {
       setBaixandoRemessaId(item.id);
-      setError('');
-      setCnabFeedback('');
+      limparAvisos();
       const data = await baixarBoletoCaixaRemessa(item.id);
       await salvarBlob(data);
-      setCnabFeedback(data.hashConfere
-        ? `Remessa #${item.numero_remessa} baixada com hash conferido.`
-        : `Remessa #${item.numero_remessa} baixada, mas o hash regenerado difere do original. Confira o relatorio.`);
+      // Hash divergente é ALERTA, não sucesso: o arquivo baixou, mas o
+      // conteúdo não confere com o original registrado.
+      if (data.hashConfere) {
+        avisar.sucesso(`Remessa #${item.numero_remessa} baixada com hash conferido.`);
+      } else {
+        avisar.alerta(`Remessa #${item.numero_remessa} baixada, mas o hash regenerado difere do original. Confira o relatorio.`);
+      }
     } catch (err) {
-      setError(err?.message || 'Erro ao baixar remessa Caixa');
+      avisar.erro(err?.message || 'Erro ao baixar remessa Caixa');
     } finally {
       setBaixandoRemessaId(null);
     }
@@ -758,13 +831,13 @@ export default function FinanceiroBoletos() {
   async function onBaixarHomologacao(item) {
     try {
       setBaixandoHomologacaoId(item.id);
-      setError('');
-      setCnabFeedback('');
+      limparAvisos();
       const data = await baixarBoletoCaixaHomologacaoCsv(item.id);
       await salvarBlob(data);
-      setCnabFeedback(`Relatorio de homologacao da remessa #${item.numero_remessa} baixado.`);
+      // Download simples, sem checagem de hash: o navegador ja mostra que baixou.
+      avisar.sucesso(`Relatorio de homologacao da remessa #${item.numero_remessa} baixado.`, undefined, { efemero: true });
     } catch (err) {
-      setError(err?.message || 'Erro ao baixar relatorio de homologacao Caixa');
+      avisar.erro(err?.message || 'Erro ao baixar relatorio de homologacao Caixa');
     } finally {
       setBaixandoHomologacaoId(null);
     }
@@ -773,91 +846,167 @@ export default function FinanceiroBoletos() {
   async function onBaixarPacoteHomologacao(item) {
     try {
       setBaixandoPacoteId(item.id);
-      setError('');
-      setCnabFeedback('');
+      limparAvisos();
       const data = await baixarBoletoCaixaHomologacaoPacote(item.id);
       await salvarBlob(data);
-      setCnabFeedback(data.hashConfere
-        ? `Pacote de homologacao da remessa #${item.numero_remessa} baixado com hash conferido.`
-        : `Pacote de homologacao da remessa #${item.numero_remessa} baixado, mas o hash regenerado difere do original.`);
+      if (data.hashConfere) {
+        avisar.sucesso(`Pacote de homologacao da remessa #${item.numero_remessa} baixado com hash conferido.`);
+      } else {
+        avisar.alerta(`Pacote de homologacao da remessa #${item.numero_remessa} baixado, mas o hash regenerado difere do original.`);
+      }
     } catch (err) {
-      setError(err?.message || 'Erro ao baixar pacote de homologacao Caixa');
+      avisar.erro(err?.message || 'Erro ao baixar pacote de homologacao Caixa');
     } finally {
       setBaixandoPacoteId(null);
     }
   }
 
+
+  /*
+    R23 — EXCEÇÃO DECLARADA (consulta cara), e ela já era o comportamento
+    desta tela: a lista só carrega ao clicar em "Consultar". São NOVE
+    dimensões de recorte que o usuário combina (título, busca, documento,
+    status, empreendimento, cliente, origem e as duas pontas do
+    vencimento) — muito acima do teto de 3 requisições da regra, que a
+    própria regra traduz como "4+ dimensões que o usuário costuma
+    combinar".
+
+    O que faltava era o que a R23 exige da exceção: que ela SE DECLARE na
+    tela. Agora as marcas ficam visíveis como etiquetas de RASCUNHO, o
+    apoio do bloco avisa que a marca só vale no clique, e o botão diz o que
+    faz. Sem isso a etiqueta afirmaria um recorte que a lista ainda não
+    tem — a mentira que a F3 descreve, só que mais devagar.
+  */
+  const filtrosRascunho = useMemo(() => ({
+    status_cobranca: new Set(filters.status_cobranca ? [String(filters.status_cobranca)] : []),
+    origem: new Set(filters.origem && filters.origem !== 'TODOS' ? [String(filters.origem)] : []),
+    empreendimento_id: new Set(filters.empreendimento_id ? [String(filters.empreendimento_id)] : [])
+  }), [filters.status_cobranca, filters.origem, filters.empreendimento_id]);
+
+  function alternarFiltroRascunho(dimensao, valor, opcoes) {
+    const proximo = alternarValorFiltro(filtrosRascunho, dimensao, valor, opcoes);
+    const status = [...(proximo.status_cobranca || [])][0] || '';
+    const origem = [...(proximo.origem || [])][0] || 'TODOS';
+    const empreendimento = [...(proximo.empreendimento_id || [])][0] || '';
+    setFilters((current) => ({
+      ...current,
+      status_cobranca: status,
+      origem,
+      // Acoplamento preservado do comportamento anterior: origem MANUAL não
+      // combina com empreendimento comercial.
+      empreendimento_id: origem === 'MANUAL' ? '' : empreendimento
+    }));
+  }
+
+  const recorteEmRascunho = Boolean(appliedFilters)
+    && JSON.stringify(filters) !== JSON.stringify(appliedFilters);
+
+  const dimensoesRascunho = [
+    {
+      id: 'status_cobranca',
+      rotulo: 'Status cobrança',
+      unico: true,
+      opcoes: STATUS_OPTIONS.filter((item) => item.value).map((item) => ({ valor: item.value, rotulo: item.label }))
+    },
+    comercialHabilitado ? {
+      id: 'origem',
+      rotulo: 'Origem',
+      unico: true,
+      opcoes: [
+        { valor: 'COMERCIAL', rotulo: 'Contratos de venda' },
+        { valor: 'MANUAL', rotulo: 'Manual' }
+      ]
+    } : null,
+    comercialHabilitado && filters.origem !== 'MANUAL' ? {
+      id: 'empreendimento_id',
+      rotulo: 'Empreendimento',
+      unico: true,
+      opcoes: empreendimentos.map((item) => ({
+        valor: String(item.id),
+        rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
+      }))
+    } : null
+  ].filter(Boolean);
+
+  const condicoesDaIntegracao = [
+    config && !config.configurado ? {
+      id: 'configuracao',
+      titulo: 'Configuração de boletos pendente',
+      cor: 'var(--sem-warning)',
+      texto: `Configure ${getConfigIssues(config).join(', ')} no backend/.env antes de gerar boletos.`
+    } : null,
+    config?.modo_teste ? {
+      id: 'modo_teste',
+      titulo: 'Ambiente de boletos em TESTE',
+      cor: 'var(--sem-info)',
+      texto: 'A geração e local: não registra nem envia boletos para a Caixa.'
+    } : null,
+    config?.emissao_real_bloqueada ? {
+      id: 'emissao_bloqueada',
+      titulo: 'Emissão real bloqueada',
+      cor: 'var(--sem-warning)',
+      texto: 'Defina CAIXA_BOLETO_HOMOLOGADO=true somente após homologação formal com a Caixa.'
+    } : null
+  ].filter(Boolean);
+
   return (
-    <div className="page solicitacoes-page space-y-5 md:space-y-6">
-      <style>
-        {`
-          @media print {
-            body * { visibility: hidden; }
-            .boleto-print, .boleto-print * { visibility: visible; }
-            .boleto-print { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border-radius: 0 !important; }
+    <Pagina>
+      {/* R13/C1/C2/R5 — o cabeçalho era um `.app-page-header` copiado à mão,
+          com título fora da escala e o apoio num `page-subtitle` solto (que
+          a R5 reprova). Agora é o componente: título em 22px, contagem e
+          apoio numa linha na própria faixa, ações com os três pesos.
+
+          R11/C6 — saiu daqui o link "Ver titulos": navegação não é ação, e
+          o menu, o breadcrumb e o Ctrl+K já levam à tela de títulos. É a
+          mesma remoção que a R11 autoriza pelo exemplo do "⋯" de Parceiros
+          e que a FinanceiroTitulos aplicou a quatro links em 03/09. */}
+      <PageHeader
+        titulo="Geração de boletos"
+        /* C2: contagem é número em todos os estados; o "ainda não
+           consultei" vive na descrição, que é onde essa informação cabe. */
+        contagem={`${hasConsulted ? titulos.length : 0} título(s) no resultado`}
+        descricao={`${hasConsulted ? '' : 'Consulta ainda nao executada. '}${comercialHabilitado
+          ? 'Emissao Caixa SIGCB a partir dos titulos a receber comerciais ou manuais.'
+          : 'Emissao Caixa SIGCB a partir dos titulos a receber manuais.'}`}
+        secundarias={[
+          {
+            rotulo: 'Atualizar',
+            onClick: atualizarConsulta,
+            icone: <HiOutlineArrowPath className="h-4 w-4" aria-hidden="true" />
           }
-        `}
-      </style>
+        ]}
+      />
 
-      <header className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Geracao de boletos</h1>
-            <p className="page-subtitle">
-              {comercialHabilitado
-                ? 'Emissao Caixa SIGCB a partir dos titulos a receber comerciais ou manuais.'
-                : 'Emissao Caixa SIGCB a partir dos titulos a receber manuais.'}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-outline" onClick={atualizarConsulta}>Atualizar</button>
-            <Link to="/financeiro/titulos" className="btn btn-outline">Ver titulos</Link>
-          </div>
-        </div>
-      </header>
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
-      {error && <div className="app-alert app-alert--error">{error}</div>}
-      {feedback && <div className="app-alert border-emerald-200 bg-emerald-50 text-emerald-700">{feedback}</div>}
+      {/*
+        CONDIÇÃO, não aviso (fronteira do `Avisos`): configuração pendente,
+        ambiente de teste e emissão bloqueada continuam verdadeiras depois
+        de qualquer clique — fechá-las esconderia o motivo pelo qual a
+        geração vai falhar, e elas voltariam a cada recarga. Ficam como
+        bloco fixo no fluxo, ao lado do que descrevem.
+      */}
+      {condicoesDaIntegracao.map((condicao) => (
+        <BlocoConteudo key={condicao.id} titulo={condicao.titulo} variante="primario" cor={condicao.cor}>
+          <p className="text-sm text-[var(--c-muted)]">{condicao.texto}</p>
+        </BlocoConteudo>
+      ))}
 
-      {config && !config.configurado && (
-        <div className="app-alert app-alert--warning">
-          Configure {getConfigIssues(config).join(', ')} no backend/.env antes de gerar boletos.
-        </div>
-      )}
-
-      {config?.modo_teste && (
-        <div className="app-alert app-alert--info">
-          Ambiente de boletos em TESTE. A geracao e local, nao registra nem envia boletos para a Caixa.
-        </div>
-      )}
-
-      {config?.emissao_real_bloqueada && (
-        <div className="app-alert app-alert--warning">
-          Emissao real bloqueada: defina CAIXA_BOLETO_HOMOLOGADO=true somente apos homologacao formal com a Caixa.
-        </div>
-      )}
-
-      {cnabFeedback && (
-        <div className="app-alert border-emerald-200 bg-emerald-50 text-emerald-700">{cnabFeedback}</div>
-      )}
-
-      <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Remessa e retorno Caixa</p>
-            <p className="sol-filtros-subtitle">Use depois de gerar os boletos e antes da homologacao na agencia.</p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs text-[var(--c-muted)]">
-            <span className="rounded-full bg-[var(--c-bg)] px-3 py-1">Remessas {remessasCaixa.length}</span>
-            <span className="rounded-full bg-[var(--c-bg)] px-3 py-1">Retornos {retornosCaixa.length}</span>
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
+      <BlocoConteudo
+        titulo="Remessa e retorno Caixa"
+        contagem={`${remessasCaixa.length} remessa(s) · ${retornosCaixa.length} retorno(s)`}
+        descricao="Use depois de gerar os boletos e antes da homologação na agência."
+        variante="secundario"
+        recolhivel
+      >
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3">
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
               <label className="sol-filter-field">
-                <span className="sol-filter-label">Convenio Caixa</span>
+                <span className="sol-filter-label">Convênio Caixa</span>
+                {/* R12: seletor de CONTEXTO — escolhe SOB QUAL convênio a
+                    remessa é montada, e o arquivo herda a escolha. A regra
+                    declara esse uso legítimo; não é filtro de lista. */}
                 <select
                   className="input w-full"
                   value={convenioSelecionadoId}
@@ -883,11 +1032,11 @@ export default function FinanceiroBoletos() {
               </button>
             </div>
             <p className="mt-2 text-xs text-[var(--c-muted)]">
-              A remessa usa os titulos selecionados na tabela. Gere o boleto antes de montar o arquivo CNAB.
+              A remessa usa os títulos selecionados na tabela. Gere o boleto antes de montar o arquivo CNAB.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
+          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3">
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
               <label className="sol-filter-field">
                 <span className="sol-filter-label">Retorno Caixa</span>
@@ -924,263 +1073,181 @@ export default function FinanceiroBoletos() {
               </button>
             </div>
             <p className="mt-2 text-xs text-[var(--c-muted)]">
-              Liquidacoes do retorno baixam os titulos vinculados de forma idempotente, sem duplicar movimentos ja aplicados.
+              Liquidacoes do retorno baixam os títulos vinculados de forma idempotente, sem duplicar movimentos já aplicados.
             </p>
           </div>
         </div>
 
         {remessasCaixa.length > 0 && (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--c-border)]">
-            <table className="min-w-full divide-y divide-[var(--c-border)] text-sm">
-              <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">
-                <tr>
-                  <th className="px-4 py-3">Ultimas remessas</th>
-                  <th className="px-4 py-3">Arquivo</th>
-                  <th className="px-4 py-3">Boletos</th>
-                  <th className="px-4 py-3 text-right">Valor</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Evidencias</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-border)]">
-                {remessasCaixa.slice(0, 5).map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3 font-semibold">#{item.numero_remessa}</td>
-                    <td className="px-4 py-3">{item.nome_arquivo}</td>
-                    <td className="px-4 py-3">{item.quantidade_boletos}</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(item.valor_total)}</td>
-                    <td className="px-4 py-3">{item.status}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => onBaixarRemessa(item)}
-                          disabled={baixandoRemessaId === item.id || baixandoHomologacaoId === item.id || baixandoPacoteId === item.id}
-                        >
-                          {baixandoRemessaId === item.id ? 'REM...' : 'REM'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => onBaixarHomologacao(item)}
-                          disabled={baixandoRemessaId === item.id || baixandoHomologacaoId === item.id || baixandoPacoteId === item.id}
-                        >
-                          {baixandoHomologacaoId === item.id ? 'CSV...' : 'CSV'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          onClick={() => onBaixarPacoteHomologacao(item)}
-                          disabled={baixandoRemessaId === item.id || baixandoHomologacaoId === item.id || baixandoPacoteId === item.id}
-                        >
-                          {baixandoPacoteId === item.id ? 'ZIP...' : 'ZIP'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-4">
+            <TabelaPadrao
+              colunas={[
+                { id: 'numero', titulo: 'Últimas remessas', tipo: 'codigo', render: (item) => <strong>#{item.numero_remessa}</strong> },
+                {
+                  id: 'arquivo',
+                  titulo: 'Arquivo',
+                  // R17: o nome do arquivo NOMEIA a remessa.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => item.nome_arquivo
+                },
+                { id: 'boletos', titulo: 'Boletos', tipo: 'numero', render: (item) => item.quantidade_boletos },
+                { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => formatCurrency(item.valor_total) },
+                { id: 'status', titulo: 'Status', tipo: 'status', render: (item) => <span className="badge badge-muted">{item.status}</span> }
+              ]}
+              itens={remessasCaixa.slice(0, 5)}
+              storageKey="tabela:financeiro-boletos:remessas"
+              rotuloRolagem="Ultimas remessas de cobranca"
+              larguraAcoes={260}
+              acoesLinha={(item) => (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => onBaixarRemessa(item)}
+                    title="Baixar o arquivo de remessa CNAB"
+                    disabled={baixandoRemessaId === item.id || baixandoHomologacaoId === item.id || baixandoPacoteId === item.id}
+                  >
+                    {baixandoRemessaId === item.id ? 'REM...' : 'REM'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => onBaixarHomologacao(item)}
+                    title="Baixar o relatório de homologação em CSV"
+                    disabled={baixandoRemessaId === item.id || baixandoHomologacaoId === item.id || baixandoPacoteId === item.id}
+                  >
+                    {baixandoHomologacaoId === item.id ? 'CSV...' : 'CSV'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => onBaixarPacoteHomologacao(item)}
+                    title="Baixar o pacote completo de homologação"
+                    disabled={baixandoRemessaId === item.id || baixandoHomologacaoId === item.id || baixandoPacoteId === item.id}
+                  >
+                    {baixandoPacoteId === item.id ? 'ZIP...' : 'ZIP'}
+                  </button>
+                </>
+              )}
+            />
           </div>
         )}
-      </section>
+      </BlocoConteudo>
 
-      <form className="sol-surface-card rounded-2xl p-4 md:p-5" onSubmit={aplicarFiltros}>
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Filtros</p>
-            <p className="sol-filtros-subtitle">A lista abaixo atualiza somente ao consultar.</p>
-          </div>
-          <button type="submit" className="btn btn-primary btn-sm" disabled={loadingOptions}>
-            Consultar
-          </button>
-        </div>
+      <BlocoConteudo
+        titulo="Consulta de títulos elegíveis"
+        variante="secundario"
+        descricao={recorteEmRascunho
+          ? 'As marcas abaixo sao RASCUNHO: a lista so muda quando voce clicar em Consultar.'
+          : 'A lista abaixo atualiza somente ao consultar — marcar um filtro nao recarrega sozinho.'}
+      >
+        <form onSubmit={aplicarFiltros}>
+          {/*
+            R12/F1/F3 — os recortes ENUMERÁVEIS (status, origem,
+            empreendimento) saíram do `select` de escolha única e viraram
+            marcação com etiqueta removível: com select o estado do filtro
+            é invisível; com marcação ele é legível de imediato.
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-12">
-          <label className="sol-filter-field xl:col-span-2">
-            <span className="sol-filter-label">Titulo</span>
-            <input
-              className="input w-full"
-              value={filters.codigo}
-              onChange={(event) => updateFilter('codigo', event.target.value)}
-              placeholder="TIT-000001"
-            />
-          </label>
-          <label className="sol-filter-field xl:col-span-4">
-            <span className="sol-filter-label">Busca</span>
-            <input
-              className="input w-full"
-              value={filters.q}
-              onChange={(event) => updateFilter('q', event.target.value)}
-              placeholder="Cliente, obra, documento, nosso numero ou linha digitavel"
-            />
-          </label>
-          <label className="sol-filter-field xl:col-span-2">
-            <span className="sol-filter-label">N. documento</span>
-            <input
-              className="input w-full"
-              value={filters.numero_documento}
-              onChange={(event) => updateFilter('numero_documento', event.target.value)}
-              placeholder="Ex.: EPIE/01"
-            />
-          </label>
-          <label className="sol-filter-field xl:col-span-2">
-            <span className="sol-filter-label">Status cobranca</span>
-            <select
-              className="input w-full"
-              value={filters.status_cobranca}
-              onChange={(event) => updateFilter('status_cobranca', event.target.value)}
-            >
-              {STATUS_OPTIONS.map((item) => (
-                <option key={item.value || 'todos'} value={item.value}>{item.label}</option>
-              ))}
-            </select>
-          </label>
-          {comercialHabilitado && (
-            <label className="sol-filter-field xl:col-span-3">
-              <span className="sol-filter-label">Empreendimento</span>
-              <select
-                className="input w-full"
-                value={filters.empreendimento_id}
-                onChange={(event) => updateFilter('empreendimento_id', event.target.value)}
-                disabled={filters.origem === 'MANUAL' || loadingOptions}
-              >
-                <option value="">Todos</option>
-                {empreendimentos.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <ParceiroAutocomplete
-            className="sol-filter-field xl:col-span-3"
-            label="Cliente"
-            value={filters.parceiro_id}
-            options={clientes}
-            onChange={(nextValue) => updateFilter('parceiro_id', nextValue)}
-            disabled={loadingOptions}
-            placeholder="Digite o cliente"
-            emptyLabel="Nenhum cliente encontrado"
+            Cada um vira UM parâmetro do serviço, então os três são
+            `unico` (marca redonda — a forma diz que só cabe uma). Título,
+            documento e as duas pontas do vencimento são CONTÍNUOS, não
+            enumeráveis: ficam em `campos`, o espaço que a BarraFiltros
+            declara para eles. O cliente continua no autocomplete, que é a
+            forma certa para uma lista de centenas de parceiros — marcação
+            ali seria um menu impossível de ler.
+          */}
+          <BarraFiltros
+            busca={visibilidadeFiltros.ehVisivel('q') ? {
+              valor: filters.q,
+              aoMudar: (valor) => updateFilter('q', valor),
+              placeholder: 'Cliente, obra, documento, nosso número ou linha digitável'
+            } : null}
+            campos={[
+              { id: 'codigo', rotulo: 'Título', tipo: 'text', valor: filters.codigo, aoMudar: (valor) => updateFilter('codigo', valor) },
+              { id: 'numero_documento', rotulo: 'N. documento', tipo: 'text', valor: filters.numero_documento, aoMudar: (valor) => updateFilter('numero_documento', valor) },
+              { id: 'vencimento_inicial', rotulo: 'Vencimento início', tipo: 'date', valor: filters.vencimento_inicial, aoMudar: (valor) => updateFilter('vencimento_inicial', valor) },
+              { id: 'vencimento_final', rotulo: 'Vencimento fim', tipo: 'date', valor: filters.vencimento_final, aoMudar: (valor) => updateFilter('vencimento_final', valor) }
+            ].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+            filtros={dimensoesRascunho.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+            ativos={filtrosRascunho}
+            aoAlternar={alternarFiltroRascunho}
+            aoLimpar={() => setFilters((current) => ({
+              ...current,
+              status_cobranca: '',
+              origem: 'TODOS',
+              empreendimento_id: ''
+            }))}
+            /* Só as marcas: o recorte inteiro (com busca, datas e resultado)
+               é do botão "Limpar consulta", abaixo. */
+            visibilidade={visibilidadeFiltros}
           />
-          {comercialHabilitado && (
-            <label className="sol-filter-field xl:col-span-2">
-              <span className="sol-filter-label">Origem</span>
-              <select
-                className="input w-full"
-                value={filters.origem}
-                onChange={(event) => setFilters((current) => ({
-                  ...current,
-                  origem: event.target.value,
-                  empreendimento_id: event.target.value === 'MANUAL' ? '' : current.empreendimento_id
-                }))}
-              >
-                <option value="TODOS">Todos</option>
-                <option value="COMERCIAL">Contratos de venda</option>
-                <option value="MANUAL">Manual</option>
-              </select>
-            </label>
-          )}
-          <label className="sol-filter-field xl:col-span-2">
-            <span className="sol-filter-label">Vencimento inicio</span>
-            <input
-              className="input w-full"
-              type="date"
-              value={filters.vencimento_inicial}
-              onChange={(event) => updateFilter('vencimento_inicial', event.target.value)}
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <ParceiroAutocomplete
+              className="sol-filter-field"
+              label="Cliente"
+              value={filters.parceiro_id}
+              options={clientes}
+              onChange={(nextValue) => updateFilter('parceiro_id', nextValue)}
+              disabled={loadingOptions}
+              placeholder="Digite o cliente"
+              emptyLabel="Nenhum cliente encontrado"
             />
-          </label>
-          <label className="sol-filter-field xl:col-span-2">
-            <span className="sol-filter-label">Vencimento fim</span>
-            <input
-              className="input w-full"
-              type="date"
-              value={filters.vencimento_final}
-              onChange={(event) => updateFilter('vencimento_final', event.target.value)}
-            />
-          </label>
-        </div>
+          </div>
 
-        <div className="mt-4 flex flex-col gap-3 border-t border-[var(--c-border)] pt-3 md:flex-row md:items-center md:justify-between">
-          <div className="text-xs text-[var(--c-muted)]">
-            {hasConsulted ? `${titulos.length} titulo(s) no resultado atual.` : 'A tabela fica vazia ate voce consultar.'}
+          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--c-border)] pt-3 md:flex-row md:items-center md:justify-between">
+            {/* B3 — a contagem do resultado já está na faixa fixa e no
+                ladrilho; aqui o apoio fala só do ESTADO da consulta, que é
+                informação diferente. */}
+            <div className="text-xs text-[var(--c-muted)]">
+              {hasConsulted
+                ? (recorteEmRascunho ? 'Ha marcas em rascunho: clique em Consultar para aplica-las.' : 'A lista abaixo reflete a ultima consulta.')
+                : 'A tabela fica vazia ate voce consultar.'}
+            </div>
+            {/* D3/C5: dois pesos visíveis — "Consultar" é a primária sólida
+                (é ela que faz a marca valer), "Limpar" a secundária. */}
+            <div className="flex flex-wrap gap-2">
+              {/* R16 — dois limpadores com escopos DIFERENTES, cada um
+                  rotulado pelo que faz: o "Limpar tudo" da faixa de
+                  etiquetas tira as MARCAS; este devolve a tela ao estado
+                  inicial e esvazia o resultado já consultado. Rótulo igual
+                  para escopos diferentes é que seria defeito. */}
+              <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>
+                Limpar consulta
+              </button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={loadingOptions}>
+                Consultar
+              </button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>
-              Limpar
-            </button>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={loadingOptions}>
-              Consultar
-            </button>
-          </div>
-        </div>
-      </form>
+        </form>
+      </BlocoConteudo>
 
-      <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-        <div className="grid gap-3 md:grid-cols-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Titulos elegiveis</p>
-            <strong className="text-xl text-[var(--c-text)]">{resumo.total}</strong>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor em aberto</p>
-            <strong className="text-xl text-[var(--c-text)]">{formatCurrency(resumo.valor)}</strong>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Ja emitidos</p>
-            <strong className="text-xl text-[var(--c-text)]">{resumo.emitidos}</strong>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Ambiente</p>
-            <strong className="text-xl text-[var(--c-text)]">{config?.ambiente || 'TESTE'}</strong>
-          </div>
-        </div>
-      </section>
+      {/* M2/R10: o ladrilho do sistema no lugar dos quatro números com
+          escala escrita na tela. Os rótulos dizem que o número é do
+          RESULTADO consultado, não da carteira inteira — `resumo` soma
+          `titulos`, que é o que a consulta trouxe. */}
+      <StatGrid colunas={4}>
+        <StatTile label="Títulos no resultado" valor={String(resumo.total)} />
+        <StatTile label="Valor em aberto no resultado" valor={formatCurrency(resumo.valor)} />
+        <StatTile label="Já emitidos no resultado" valor={String(resumo.emitidos)} />
+        <StatTile label="Ambiente" valor={config?.ambiente || 'TESTE'} />
+      </StatGrid>
 
-      <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-        <div className="sol-filtros-head">
-          <div>
-            <p className="sol-filtros-title">Titulos para boleto</p>
-            <p className="sol-filtros-subtitle">
-              {!hasConsulted
-                ? 'Aplique um filtro para carregar os boletos elegiveis.'
-                : comercialHabilitado
-                  ? 'Contas a receber comerciais ou manuais com saldo em aberto.'
-                  : 'Contas a receber manuais com saldo em aberto.'}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="sol-filtros-meta">Selecionados {selecionados.length}</span>
-            <span className="sol-filtros-meta">Total {titulos.length}</span>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-[var(--c-text)]">
-            <input
-              type="checkbox"
-              checked={todosSelecionados}
-              onChange={(event) => toggleTodos(event.target.checked)}
-              disabled={!titulos.length || gerandoMassa}
-            />
-            Selecionar todos
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelecionados([])} disabled={!selecionados.length || gerandoMassa}>
-              Limpar selecao
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={onGerarMassa} disabled={!selecionados.length || gerandoMassa}>
-              {gerandoMassa ? 'Gerando boletos...' : `Gerar boletos selecionados (${selecionados.length})`}
-            </button>
-          </div>
-        </div>
-
+      <BlocoConteudo
+        titulo="Títulos para boleto"
+        contagem={`${titulosSelecionados.length} selecionado(s) de ${titulos.length}`}
+        descricao={!hasConsulted
+          ? 'Aplique um filtro para carregar os boletos elegiveis.'
+          : comercialHabilitado
+            ? 'Contas a receber comerciais ou manuais com saldo em aberto.'
+            : 'Contas a receber manuais com saldo em aberto.'}
+      >
         {resultadoMassa && (
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-              <div className="font-semibold">Gerados: {resultadoMassa.sucessos.length}</div>
+          <div className="mb-4 grid gap-3 md:grid-cols-2">
+            <div className="tarja tarja--success rounded-2xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3 text-sm">
+              <div className="font-semibold text-[var(--sem-success)]">Gerados: {resultadoMassa.sucessos.length}</div>
               {resultadoMassa.sucessos.length ? (
                 <ul className="mt-2 space-y-1">
                   {resultadoMassa.sucessos.slice(0, 8).map((item) => (
@@ -1191,8 +1258,8 @@ export default function FinanceiroBoletos() {
                 <p className="mt-2">Nenhum boleto gerado neste lote.</p>
               )}
             </div>
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-              <div className="font-semibold">Nao gerados: {resultadoMassa.falhas.length}</div>
+            <div className="tarja tarja--danger rounded-2xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3 text-sm">
+              <div className="font-semibold text-[var(--sem-danger)]">Nao gerados: {resultadoMassa.falhas.length}</div>
               {resultadoMassa.falhas.length ? (
                 <ul className="mt-2 space-y-1">
                   {resultadoMassa.falhas.map((item) => (
@@ -1206,152 +1273,195 @@ export default function FinanceiroBoletos() {
           </div>
         )}
 
-        <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)]">
-          {!hasConsulted ? (
-            <div className="app-empty-card m-4">
-              Nenhum filtro aplicado. Use os filtros acima e clique em Consultar para listar os boletos.
-            </div>
-          ) : loading ? (
-            <div className="app-empty-card m-4">Carregando titulos...</div>
-          ) : titulos.length === 0 ? (
-            <div className="app-empty-card m-4">Nenhum titulo elegivel encontrado para os filtros aplicados.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-[var(--c-border)] text-sm">
-                <thead className="bg-[var(--c-bg)] text-left text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">
-                  <tr>
-                    <th className="w-12 px-4 py-3">
-                      <span className="sr-only">Selecionar</span>
-                    </th>
-                    <th className="px-4 py-3">Titulo</th>
-                    <th className="px-4 py-3">Cliente</th>
-                    {comercialHabilitado && <th className="px-4 py-3">Origem</th>}
-                    {comercialHabilitado && <th className="px-4 py-3">Empreendimento</th>}
-                    <th className="px-4 py-3">Vencimento</th>
-                    <th className="px-4 py-3 text-right">Saldo</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Boleto</th>
-                    <th className="px-4 py-3 text-right">Acoes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-border)]">
-                  {titulos.map((titulo) => (
-                    <tr key={titulo.id} className="align-top hover:bg-[var(--c-bg)]/70">
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selecionados.map(Number).includes(Number(titulo.id))}
-                          onChange={(event) => toggleSelecionado(titulo.id, event.target.checked)}
-                          disabled={gerandoMassa}
-                          aria-label={`Selecionar titulo ${titulo.id}`}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link className="font-semibold text-blue-700 hover:underline" to={`/financeiro/titulos/${titulo.id}`}>
-                          {titulo.codigo || `#${titulo.id}`} {titulo.numero_documento ? `- ${titulo.numero_documento}` : ''}
-                        </Link>
-                        <p className="mt-1 max-w-[340px] text-xs text-[var(--c-muted)]">{titulo.descricao}</p>
-                      </td>
-                      <td className="px-4 py-3 text-[var(--c-text)]">{titulo.parceiro?.nome || '-'}</td>
-                      {comercialHabilitado && (
-                        <td className="px-4 py-3 text-[var(--c-muted)]">
-                          {titulo.parcelasComerciais?.length ? 'Comercial' : 'Manual'}
-                        </td>
-                      )}
-                      {comercialHabilitado && (
-                        <td className="px-4 py-3 text-[var(--c-muted)]">
-                          {titulo.parcelasComerciais?.[0]?.contrato?.empreendimento?.nome || '-'}
-                        </td>
-                      )}
-                      <td className="px-4 py-3 text-[var(--c-text)]">{formatDate(titulo.data_vencimento)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-[var(--c-text)]">{formatCurrency(titulo.valor_saldo)}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          {titulo.status_cobranca || 'NAO_APLICAVEL'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-[var(--c-muted)]">
-                        <div>{titulo.nosso_numero ? `Nosso numero: ${titulo.nosso_numero}` : 'Nao emitido'}</div>
-                        {titulo.codigo_barras && <div className="mt-1 text-emerald-700">Codigo gerado</div>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            onClick={() => selecionarTitulo(titulo)}
-                            title="Visualizar boleto"
-                            aria-label={`Visualizar boleto do titulo ${titulo.id}`}
-                          >
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                              <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
-                              <circle cx="12" cy="12" r="3" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            disabled={gerandoId === titulo.id || gerandoMassa}
-                            onClick={() => onGerarAmostra(titulo)}
-                            title="Gerar amostra para homologacao"
-                          >
-                            Amostra
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            disabled={baixandoPdfId === titulo.id || gerandoMassa}
-                            onClick={() => onBaixarPdf(titulo, { amostra: !titulo.codigo_barras })}
-                            title={titulo.codigo_barras ? 'Baixar PDF do boleto' : 'Baixar PDF de amostra'}
-                          >
-                            {baixandoPdfId === titulo.id ? 'PDF...' : 'PDF'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            disabled={gerandoId === titulo.id || gerandoMassa}
-                            onClick={() => onGerar(titulo)}
-                          >
-                            {gerandoId === titulo.id ? 'Gerando...' : (titulo.codigo_barras ? 'Regerar' : 'Gerar')}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
+        {!hasConsulted ? (
+          <div className="app-empty-card">
+            Nenhum filtro aplicado. Use os filtros acima e clique em Consultar para listar os boletos.
+          </div>
+        ) : (
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'titulo',
+                titulo: 'Título',
+                tipo: 'codigo',
+                render: (titulo) => (
+                  <div>
+                    <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/financeiro/titulos/${titulo.id}`}>
+                      {titulo.codigo || `#${titulo.id}`} {titulo.numero_documento ? `- ${titulo.numero_documento}` : ''}
+                    </Link>
+                    <p className="mt-1 text-xs text-[var(--c-muted)]">{titulo.descricao}</p>
+                  </div>
+                )
+              },
+              {
+                id: 'cliente',
+                titulo: 'Cliente',
+                // R17: o cliente NOMEIA o titulo a cobrar.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (titulo) => titulo.parceiro?.nome || '-'
+              },
+              ...(comercialHabilitado ? [
+                {
+                  id: 'origem',
+                  titulo: 'Origem',
+                  tipo: 'badge',
+                  render: (titulo) => (titulo.parcelasComerciais?.length ? 'Comercial' : 'Manual')
+                },
+                {
+                  id: 'empreendimento',
+                  titulo: 'Empreendimento',
+                  tipo: 'texto',
+                  render: (titulo) => titulo.parcelasComerciais?.[0]?.contrato?.empreendimento?.nome || '-'
+                }
+              ] : []),
+              { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', render: (titulo) => formatDate(titulo.data_vencimento) },
+              { id: 'saldo', titulo: 'Saldo', tipo: 'valor', render: (titulo) => formatCurrency(titulo.valor_saldo) },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (titulo) => (
+                  <span className="badge badge-muted">
+                    {titulo.status_cobranca || 'NAO_APLICAVEL'}
+                  </span>
+                )
+              },
+              {
+                id: 'boleto',
+                titulo: 'Boleto',
+                tipo: 'texto',
+                render: (titulo) => (
+                  <div className="text-xs text-[var(--c-muted)]">
+                    <div>{titulo.nosso_numero ? `Nosso numero: ${titulo.nosso_numero}` : 'Nao emitido'}</div>
+                    {titulo.codigo_barras && <div className="mt-1 text-[var(--sem-success)]">Código gerado</div>}
+                  </div>
+                )
+              }
+            ]}
+            itens={titulos}
+            /*
+              `getId` NORMALIZA o id para número, e isso é o que faz a
+              seleção funcionar: o componente marca a linha com
+              `selecionados.has(getId(item))`, sem converter nada. O resto
+              desta tela sempre comparou com `Number(...)`; se o serviço
+              devolver `id` como string, um Set de números nunca casaria com
+              a chave string e o checkbox jamais apareceria marcado — com o
+              lote seguindo vazio, calado.
+            */
+            getId={(titulo) => Number(titulo.id)}
+            carregando={loading}
+            vazio="Nenhum título elegível encontrado para os filtros aplicados."
+            storageKey="tabela:financeiro-boletos:titulos"
+            rotuloRolagem="Titulos elegiveis para boleto"
+            larguraAcoes={320}
+            /*
+              R16b — a seleção em lote é do componente. A coluna de checkbox
+              desenhada à mão e a barra "Selecionar todos" acima da tabela
+              eram DOIS donos da mesma responsabilidade (R16); a marca do
+              cabeçalho, com o estado indeterminado, é a mesma capacidade,
+              declarada uma vez só.
+            */
+            selecao={{
+              selecionados: selecionados.map(Number),
+              aoAlternar: (id) => toggleSelecionado(id, !selecionados.map(Number).includes(Number(id))),
+              aoAlternarTodos: (marcar, ids) => setSelecionados(marcar ? ids.map(Number) : [])
+            }}
+            acoesTabela={(
+              <>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelecionados([])} disabled={!selecionados.length || gerandoMassa}>
+                  Limpar seleção
+                </button>
+                {/*
+                  CONSENTIMENTO: o número deste rótulo vem de
+                  `titulosSelecionados` — a MESMA coleção que `onGerarMassa`
+                  percorre no `for`. Antes o botão contava `selecionados`
+                  (ids crus) e a ação percorria `titulosSelecionados` (ids
+                  cruzados com a página carregada): dois conjuntos com nomes
+                  diferentes, e nada garantia que fossem o mesmo número.
+                */}
+                <button type="button" className="btn btn-primary btn-sm" onClick={onGerarMassa} disabled={!titulosSelecionados.length || gerandoMassa}>
+                  {gerandoMassa ? 'Gerando boletos...' : `Gerar boletos selecionados (${titulosSelecionados.length})`}
+                </button>
+              </>
+            )}
+            acoesLinha={(titulo) => (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => selecionarTitulo(titulo)}
+                  title="Visualizar boleto"
+                  aria-label={`Visualizar boleto do título ${titulo.id}`}
+                >
+                  <HiOutlineEye className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={gerandoId === titulo.id || gerandoMassa}
+                  onClick={() => onGerarAmostra(titulo)}
+                  title="Gerar amostra para homologação"
+                >
+                  Amostra
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={baixandoPdfId === titulo.id || gerandoMassa}
+                  onClick={() => onBaixarPdf(titulo, { amostra: !titulo.codigo_barras })}
+                  title={titulo.codigo_barras ? 'Baixar PDF do boleto' : 'Baixar PDF de amostra'}
+                >
+                  {baixandoPdfId === titulo.id ? 'PDF...' : 'PDF'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={gerandoId === titulo.id || gerandoMassa}
+                  onClick={() => onGerar(titulo)}
+                >
+                  {gerandoId === titulo.id ? 'Gerando...' : (titulo.codigo_barras ? 'Regerar' : 'Gerar')}
+                </button>
+              </>
+            )}
+          />
+        )}
+      </BlocoConteudo>
 
+      {/* R18: a casca do sistema no lugar do overlay à mão. O painel recorta
+          com `clip`, nunca `hidden` — o `overflow-hidden` que estava aqui
+          era ancestral do conteúdo rolável da pré-visualização. */}
       {previewOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 py-6">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Pre-visualizacao do boleto</p>
-                <p className="text-xs text-slate-500">A amostra deve ser homologada pela Caixa antes do uso em massa.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn btn-outline btn-sm" disabled={!detalhe?.boleto?.codigo_barras} onClick={() => window.print()}>
-                  Imprimir
-                </button>
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => setPreviewOpen(false)}>
-                  Fechar
-                </button>
-              </div>
+        <OverlayModal
+          rotulo="Pre-visualização do boleto"
+          largura="var(--modal-max-w-xl, 1080px)"
+          onFechar={() => setPreviewOpen(false)}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
+            <div>
+              <p className="app-confirmacao-titulo">Pre-visualização do boleto</p>
+              <p className="text-xs text-[var(--c-muted)]">A amostra deve ser homologada pela Caixa antes do uso em massa.</p>
             </div>
-            <div className="max-h-[calc(92vh-76px)] overflow-auto bg-slate-50 p-4">
-              {detalhe ? (
-                <BoletoPrintView detalhe={detalhe} />
-              ) : (
-                <div className="app-empty-card">Selecione ou gere um boleto para visualizar.</div>
-              )}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn btn-outline btn-sm" disabled={!detalhe?.boleto?.codigo_barras} onClick={() => window.print()}>
+                Imprimir
+              </button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setPreviewOpen(false)}>
+                Fechar
+              </button>
             </div>
           </div>
-        </div>
+          {/* O painel recorta com `clip` (R18): quem rola é o corpo — e a
+              ficha inteira precisa caber na leitura antes de imprimir. */}
+          <div className="boleto-preview-fundo min-h-0 overflow-y-auto p-4">
+            {detalhe ? (
+              <BoletoPrintView detalhe={detalhe} />
+            ) : (
+              <div className="app-empty-card">Selecione ou gere um boleto para visualizar.</div>
+            )}
+          </div>
+        </OverlayModal>
       )}
-    </div>
+    </Pagina>
   );
 }

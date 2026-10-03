@@ -5,21 +5,24 @@ import {
   deletarApropriacao as deletarApropriacaoCompartilhada,
   listarApropriacoes as listarApropriacoesCompartilhadas
 } from './apropriacoes';
+import { mensagemDeErro } from './erroDeResposta';
 
 function handleJsonResponse(response, fallbackMessage) {
   return response.text().then((text) => {
     if (!response.ok) {
-      let message = text;
       let parsed = null;
 
       try {
         parsed = text ? JSON.parse(text) : null;
-        message = parsed?.error || parsed?.message || text;
       } catch {
-        // Mantem o texto original quando a resposta nao for JSON.
+        /* Corpo que não é JSON: quem decide o que mostrar é o
+           `erroDeResposta`. Aqui o texto cru virava a mensagem. */
       }
 
-      const error = new Error(message || fallbackMessage);
+      const error = new Error(mensagemDeErro(text, fallbackMessage, response.status));
+      error.status = response.status;
+      error.code = parsed?.code;
+      error.details = parsed?.details;
       if (parsed?.erros) {
         error.erros = parsed.erros;
       }
@@ -33,7 +36,7 @@ function handleJsonResponse(response, fallbackMessage) {
 async function downloadResponse(response, fallbackName, fallbackMessage) {
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || fallbackMessage);
+    throw new Error(mensagemDeErro(text, fallbackMessage, response.status));
   }
 
   const blob = await response.blob();
@@ -250,6 +253,53 @@ export async function obterCompraDiretaPorSolicitacao(solicitacaoId) {
   return handleJsonResponse(response, 'Erro ao buscar compra direta vinculada');
 }
 
+export async function obterSolicitacaoCompraPorSolicitacao(solicitacaoId) {
+  const response = await fetch(`${API_URL}/compras/solicitacoes/por-solicitacao/${solicitacaoId}`, {
+    headers: authHeaders()
+  });
+  return handleJsonResponse(response, 'Erro ao buscar itens vinculados a solicitacao');
+}
+
+export async function obterEtapasCompraSolicitacao(solicitacaoId) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-etapas`, { headers: authHeaders() });
+  return handleJsonResponse(response, 'Erro ao carregar etapas da compra');
+}
+
+export async function registrarEntregaPedido(solicitacaoId, pedidoId, data) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/pedidos-compra/${pedidoId}/entregas`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao atualizar acompanhamento da entrega');
+}
+
+export async function decidirItemCompraSolicitacao(solicitacaoId, tipo, itemId, data) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-itens/${tipo}/${itemId}/decisao`, {
+    method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao decidir item da compra');
+}
+
+export async function comentarEtapaCompraSolicitacao(solicitacaoId, data) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-etapas/comentarios`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao comentar etapa da compra');
+}
+
+export async function marcarComentariosEtapaCompraComoLidos(solicitacaoId, data) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-etapas/comentarios/leitura`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao registrar leitura dos comentários');
+}
+
+export async function receberItemCompraSolicitacao(solicitacaoId, pedidoId, itemId, data) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/pedidos-compra/${pedidoId}/itens/${itemId}/recebimentos`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao registrar entrega do item');
+}
+
 export async function inativarSolicitacaoCompra(id) {
   const response = await fetch(`${API_URL}/compras/solicitacoes/${id}`, {
     method: 'DELETE',
@@ -282,6 +332,15 @@ export async function encaminharSolicitacaoCompraParaCompras(id) {
     headers: authHeaders()
   });
   return handleJsonResponse(response, 'Erro ao enviar solicitacao de compra para Compras');
+}
+
+export async function aprovarItensCompraSolicitacaoEmLote(solicitacaoId, itens) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-itens/aprovacao-lote`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ itens })
+  });
+  return handleJsonResponse(response, 'Erro ao aprovar os itens selecionados');
 }
 
 export async function encaminharSolicitacoesCompraParaCompras(ids = []) {
@@ -657,6 +716,73 @@ export async function reabrirPedidoCompraParaCotacao(id, data) {
   return handleJsonResponse(response, 'Erro ao reabrir pedido para cotacao');
 }
 
+function pedidoFinanceiroIdempotencyKey(prefix, pedidoId) {
+  const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}:${pedidoId}:${random}`;
+}
+
+export async function adotarFinanceiroPedidoCompra(id) {
+  const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/adotar-legado`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  return handleJsonResponse(response, 'Erro ao iniciar a gestao financeira do pedido');
+}
+
+export async function criarPrevisoesPedidoCompra(id, data) {
+  const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/previsoes`, {
+    method: 'POST',
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': pedidoFinanceiroIdempotencyKey('previsao', id)
+    }),
+    body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao criar as previsoes do pedido');
+}
+
+export async function reparcelarPrevisoesPedidoCompra(id, data) {
+  const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/previsoes/reparcelar`, {
+    method: 'POST',
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': pedidoFinanceiroIdempotencyKey('reparcelamento', id)
+    }),
+    body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao alterar as parcelas das previsoes do pedido');
+}
+
+export async function liberarTitulosPedidoCompra(id, data) {
+  const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/liberar`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao liberar os titulos do pedido');
+}
+
+export async function solicitarReaberturaPedidoCompra(id, data) {
+  const response = await fetch(`${API_URL}/compras/pedidos/${id}/reaberturas`, {
+    method: 'POST',
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': pedidoFinanceiroIdempotencyKey('reabertura', id)
+    }),
+    body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao solicitar a reabertura do pedido');
+}
+
+export async function decidirReaberturaPedidoCompra(id, reaberturaId, data) {
+  const response = await fetch(`${API_URL}/compras/pedidos/${id}/reaberturas/${reaberturaId}/decisao`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao decidir a reabertura do pedido');
+}
+
 export async function atualizarStatusPedidosCompraEmLote(data) {
   const response = await fetch(`${API_URL}/compras/pedidos/status-lote`, {
     method: 'PATCH',
@@ -675,6 +801,14 @@ export async function atualizarQuantidadeItemSolicitacaoCompra(id, itemId, data)
   return handleJsonResponse(response, 'Erro ao atualizar quantidade do item da solicitacao de compra');
 }
 
+export async function cadastrarUnidadeItemSolicitacaoCompra(id, itemId) {
+  const response = await fetch(`${API_URL}/compras/solicitacoes/${id}/itens/${itemId}/cadastrar-unidade`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  return handleJsonResponse(response, 'Erro ao cadastrar a unidade informada no item');
+}
+
 export async function atualizarApropriacoesItemSolicitacaoCompra(id, itemId, data) {
   const response = await fetch(`${API_URL}/compras/solicitacoes/${id}/itens/${itemId}/apropriacoes`, {
     method: 'PATCH',
@@ -682,6 +816,15 @@ export async function atualizarApropriacoesItemSolicitacaoCompra(id, itemId, dat
     body: JSON.stringify(data)
   });
   return handleJsonResponse(response, 'Erro ao atualizar apropriacoes do item da solicitacao de compra');
+}
+
+export async function catalogarItemManualSolicitacaoCompra(id, itemId, data) {
+  const response = await fetch(`${API_URL}/compras/solicitacoes/${id}/itens-manuais/${itemId}/catalogar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao catalogar item manual');
 }
 
 export async function cancelarPedidoCompra(id, data = {}) {

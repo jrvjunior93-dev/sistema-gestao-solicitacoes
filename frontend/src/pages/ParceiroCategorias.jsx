@@ -5,6 +5,17 @@ import {
   desativarCategoriaParceiro,
   listarCategoriasParceiro
 } from '../services/parceiros';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  TabelaPadrao,
+  FormSecao,
+  CampoForm,
+  BarraFiltros
+} from '../components/padrao';
+import OverlayModal from '../components/ui/OverlayModal';
+import StatusBadge from '../components/StatusBadge';
 
 function defaultCategoriaForm() {
   return {
@@ -22,10 +33,6 @@ function pickCategoriaFormData(categoria = {}) {
   };
 }
 
-function statusClass(ativo) {
-  return ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700';
-}
-
 function normalizeSearchText(value) {
   return String(value || '')
     .normalize('NFD')
@@ -36,6 +43,7 @@ function normalizeSearchText(value) {
 export default function ParceiroCategorias() {
   const [categorias, setCategorias] = useState([]);
   const [categoriaForm, setCategoriaForm] = useState(defaultCategoriaForm());
+  const [formAberto, setFormAberto] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -70,6 +78,21 @@ export default function ParceiroCategorias() {
     });
   }, [categorias, filtro]);
 
+  function abrirNovaCategoria() {
+    setCategoriaForm(defaultCategoriaForm());
+    setFormAberto(true);
+  }
+
+  function abrirEdicao(categoria) {
+    setCategoriaForm(pickCategoriaFormData(categoria));
+    setFormAberto(true);
+  }
+
+  function fecharForm() {
+    setCategoriaForm(defaultCategoriaForm());
+    setFormAberto(false);
+  }
+
   async function handleSalvarCategoria(event) {
     event.preventDefault();
     try {
@@ -82,6 +105,7 @@ export default function ParceiroCategorias() {
         await criarCategoriaParceiro(payload);
       }
       setCategoriaForm(defaultCategoriaForm());
+      setFormAberto(false);
       await carregar();
     } catch (err) {
       setError(err?.message || 'Erro ao salvar categoria de parceiro');
@@ -103,109 +127,146 @@ export default function ParceiroCategorias() {
     }
   }
 
+  const colunas = [
+    {
+      id: 'nome',
+      titulo: 'Categoria',
+      // Nome de categoria é identificação: exibido em maiúsculas (só exibição).
+      tipo: 'identidade',
+      noCard: 'titulo',
+      // O "ID {id}" saiu da vista (aparecia sob o nome); o dado continua
+      // disponível no title (tooltip) da célula.
+      render: (categoria) => <span title={`ID ${categoria.id}`}>{categoria.nome}</span>
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      render: (categoria) => <StatusBadge status={categoria.ativo ? 'Ativa' : 'Inativa'} />
+    }
+  ];
+
   return (
-    <div className="page solicitacoes-page">
-      <div>
-        <h1 className="page-title">Categorias de Parceiro</h1>
-        <p className="text-sm text-[var(--c-muted)]">
-          Use categorias para agrupar fornecedores e facilitar o envio de cotacoes.
-        </p>
-      </div>
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Categorias de Parceiro"
+        contagem={loading ? null : `${categorias.length} categoria(s)`}
+        descricao="Use categorias para agrupar fornecedores e facilitar o envio de cotações."
+        acaoPrincipal={{ rotulo: 'Nova categoria', onClick: abrirNovaCategoria }}
+      />
 
       {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="app-alert app-alert--error">
           {error}
         </div>
       )}
 
-      {loading ? (
-        <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-8 text-center text-sm text-[var(--c-muted)]">
-          Carregando categorias de parceiro...
-        </div>
-      ) : (
-        <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">
-              {categoriaForm.id ? 'Editar categoria' : 'Nova categoria'}
-            </h2>
-            <form className="mt-4 space-y-3" onSubmit={handleSalvarCategoria}>
-              <input
-                className="input w-full"
-                placeholder="Nome da categoria"
-                value={categoriaForm.nome}
-                onChange={(e) => setCategoriaForm((c) => ({ ...c, nome: e.target.value }))}
-                required
-              />
-              <label className="flex items-center gap-2 text-sm text-[var(--c-text)]">
-                <input
-                  type="checkbox"
-                  checked={categoriaForm.ativo}
-                  onChange={(e) => setCategoriaForm((c) => ({ ...c, ativo: e.target.checked }))}
-                />
-                Categoria ativa
-              </label>
-              <div className="flex gap-2">
+      {/* R9 (docs/REGRAS-LAYOUT.md): cadastro raro abre em MODAL pela ação
+          principal do cabeçalho (e pela edição na linha); a lista é o
+          bloco primário PERMANENTE. O ritmo vertical vem do Pagina. */}
+      {formAberto && (
+        <OverlayModal
+          key={categoriaForm.id || 'nova'}
+          rotulo={categoriaForm.id ? 'Editar categoria' : 'Nova categoria'}
+          onFechar={fecharForm}
+        >
+          <div className="flex items-center justify-between border-b border-[var(--c-border)] px-4 py-3">
+            <h3 className="text-lg font-semibold text-[var(--c-text)]">
+              {categoriaForm.id ? `Editar categoria — ${categoriaForm.nome || ''}` : 'Nova categoria'}
+            </h3>
+            <button type="button" className="btn btn-outline btn-sm" onClick={fecharForm}>
+              Fechar
+            </button>
+          </div>
+          <div className="overflow-y-auto px-4 py-3">
+            <form className="space-y-4" onSubmit={handleSalvarCategoria}>
+              <FormSecao legenda="Identificação" colunas={2}>
+                <CampoForm label="Nome da categoria" obrigatorio>
+                  <input
+                    className="input w-full"
+                    placeholder="Ex: Material eletrico"
+                    value={categoriaForm.nome}
+                    onChange={(e) => setCategoriaForm((c) => ({ ...c, nome: e.target.value }))}
+                    required
+                  />
+                </CampoForm>
+                <CampoForm label="Situação">
+                  <label className="flex items-center gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={categoriaForm.ativo}
+                      onChange={(e) => setCategoriaForm((c) => ({ ...c, ativo: e.target.checked }))}
+                    />
+                    Categoria ativa
+                  </label>
+                </CampoForm>
+              </FormSecao>
+
+              <div className="app-actionbar">
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Salvando...' : (categoriaForm.id ? 'Salvar alteracoes' : 'Criar categoria')}
                 </button>
-                {categoriaForm.id && (
-                  <button type="button" className="btn btn-outline" onClick={() => setCategoriaForm(defaultCategoriaForm())}>
-                    Cancelar
-                  </button>
-                )}
+                <button type="button" className="btn btn-outline" onClick={fecharForm}>
+                  Cancelar
+                </button>
               </div>
             </form>
           </div>
-
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold text-[var(--c-text)]">Categorias cadastradas</h2>
-              <input
-                className="input w-[220px]"
-                placeholder="Buscar categoria"
-                value={filtro}
-                onChange={(e) => setFiltro(e.target.value)}
-              />
-            </div>
-
-            {categoriasFiltradas.length === 0 ? (
-              <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-8 text-center text-sm text-[var(--c-muted)]">
-                Nenhuma categoria cadastrada.
-              </div>
-            ) : categoriasFiltradas.map((categoria) => (
-              <div key={categoria.id} className="rounded-xl border border-[var(--c-border)] px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="font-medium text-[var(--c-text)]">{categoria.nome}</div>
-                    <div className="text-xs text-[var(--c-muted)]">ID {categoria.id}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(categoria.ativo)}`}>
-                      {categoria.ativo ? 'ATIVA' : 'INATIVA'}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      onClick={() => setCategoriaForm(pickCategoriaFormData(categoria))}
-                    >
-                      Editar
-                    </button>
-                    {categoria.ativo && (
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => handleDesativar(categoria)}
-                      >
-                        Desativar
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        </OverlayModal>
       )}
-    </div>
+
+      <BlocoConteudo
+        titulo="Categorias cadastradas"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/* F1: UMA busca, ocupando a largura da faixa (padrão BarraFiltros). */}
+        <BarraFiltros
+          busca={{
+            valor: filtro,
+            aoMudar: setFiltro,
+            placeholder: 'Buscar categoria'
+          }}
+        />
+        <TabelaPadrao
+          colunas={colunas}
+          itens={categoriasFiltradas}
+          carregando={loading}
+          storageKey="tabela:parceiro-categorias"
+          larguraAcoes={210}
+          aoClicarLinha={abrirEdicao}
+          vazio={{
+            title: filtro ? 'Nenhuma categoria encontrada' : 'Nenhuma categoria cadastrada',
+            message: filtro
+              ? 'Ajuste a busca para ver outras categorias.'
+              : 'Use "Nova categoria" para criar a primeira.'
+          }}
+          acoesLinha={(categoria) => (
+            <>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => abrirEdicao(categoria)}
+              >
+                Editar
+              </button>
+              {categoria.ativo && (
+                <span className="app-actionbar-apartada">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm btn-perigo-suave"
+                    onClick={() => handleDesativar(categoria)}
+                  >
+                    Desativar
+                  </button>
+                </span>
+              )}
+            </>
+          )}
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

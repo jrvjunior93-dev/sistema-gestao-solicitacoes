@@ -11,6 +11,7 @@ const {
   FISCAL_DOCUMENT_TYPES,
   FISCAL_SYNC_STATUSES
 } = require('../constants/fiscalPermissions');
+const { onlyDigits, isValidCnpj } = require('../../../utils/cpfCnpj');
 
 const FISCAL_DOCUMENT_SOURCES = ['sefaz_distribution', 'manual_upload', 'batch_import'];
 const FISCAL_MANIFESTATION_STATUSES = [
@@ -23,7 +24,7 @@ const FISCAL_MANIFESTATION_STATUSES = [
 ];
 
 function digitsOnly(value) {
-  return String(value || '').replace(/\D/g, '');
+  return onlyDigits(value);
 }
 
 function parseOptionalInteger(value, fieldName) {
@@ -68,8 +69,8 @@ function parseCnpj(value, { required = false } = {}) {
     if (required) throw new ValidationError('CNPJ e obrigatorio.');
     return null;
   }
-  if (!/^\d{14}$/.test(normalized)) {
-    throw new ValidationError('CNPJ deve conter 14 digitos.');
+  if (!isValidCnpj(normalized)) {
+    throw new ValidationError('CNPJ invalido.');
   }
   return normalized;
 }
@@ -139,17 +140,26 @@ function validateFiscalCompanyCreateBody(body = {}) {
 }
 
 function validateFiscalCompanyUpdateBody(body = {}) {
-  const parsed = validateFiscalCompanyCreateBody({
-    ...body,
-    razao_social: body.razao_social ?? 'placeholder',
-    cnpj: body.cnpj ?? '00000000000000',
-    uf: body.uf ?? 'ES'
-  });
-
-  const allowed = Object.keys(body);
+  ensureAllowedKeys(body, [
+    'empresa_id', 'razao_social', 'nome_fantasia', 'cnpj', 'uf',
+    'inscricao_estadual', 'ambiente_sefaz', 'ativo',
+    'modulo_fiscal_habilitado', 'observacoes'
+  ], 'Empresa fiscal');
+  const parsed = {
+    empresa_id: body.empresa_id === undefined ? undefined : parseOptionalInteger(body.empresa_id, 'Empresa do grupo'),
+    razao_social: body.razao_social === undefined ? undefined : sanitizeString(body.razao_social, 'Razao social', { required: true, max: 180 }),
+    nome_fantasia: body.nome_fantasia === undefined ? undefined : (sanitizeString(body.nome_fantasia, 'Nome fantasia', { max: 180 }) || null),
+    cnpj: body.cnpj === undefined ? undefined : parseCnpj(body.cnpj, { required: true }),
+    uf: body.uf === undefined ? undefined : parseUf(body.uf, { required: true }),
+    inscricao_estadual: body.inscricao_estadual === undefined ? undefined : (sanitizeString(body.inscricao_estadual, 'Inscricao estadual', { max: 40 }) || null),
+    ambiente_sefaz: body.ambiente_sefaz === undefined ? undefined : parseEnum(body.ambiente_sefaz, 'Ambiente SEFAZ', FISCAL_AMBIENTES_SEFAZ),
+    ativo: parseOptionalBoolean(body.ativo),
+    modulo_fiscal_habilitado: parseOptionalBoolean(body.modulo_fiscal_habilitado),
+    observacoes: body.observacoes === undefined ? undefined : (sanitizeString(body.observacoes, 'Observacoes', { max: 2000 }) || null)
+  };
   const result = {};
-  allowed.forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+  Object.keys(body).forEach((key) => {
+    if (parsed[key] !== undefined) {
       result[key] = parsed[key];
     }
   });

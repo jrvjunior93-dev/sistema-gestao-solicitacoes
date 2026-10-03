@@ -31,6 +31,8 @@ const allowedProfiles = {
     '.jpeg',
     '.rar'
   ]),
+  // Negociacao detalhada do contrato acima do limite: so o documento em si.
+  contrato_negociacao: new Set(['.docx', '.pdf']),
   ofx: new Set(['.ofx']),
   fiscal_file: new Set(['.pdf', '.png', '.jpg', '.jpeg']),
   fiscal_xml: new Set(['.xml', '.zip']),
@@ -92,6 +94,53 @@ function containsTextFragment(buffer, fragment) {
   return buffer.toString('utf8', 0, Math.min(buffer.length, 64 * 1024)).includes(fragment);
 }
 
+/**
+ * Marcadores de macro e de objeto embutido dentro de um pacote Office Open XML.
+ *
+ * A busca e por NOME DE ENTRADA do ZIP, e isso e deliberado: os nomes ficam em claro nos cabecalhos
+ * locais e no diretorio central, enquanto o CONTEUDO das entradas (inclusive o
+ * `[Content_Types].xml`, que declararia o content-type de macro) esta comprimido com DEFLATE.
+ * Procurar pela string `macroEnabled` nao acharia nada num arquivo real.
+ *
+ * Um `.docm` renomeado para `.docx` cai aqui pelo mesmo motivo: todo `.docm` carrega
+ * `word/vbaProject.bin`.
+ */
+const MARCADORES_MACRO = [
+  Buffer.from('vbaProject.bin'),
+  Buffer.from('vbaData.xml'),
+  Buffer.from('macroEnabled')
+];
+
+const MARCADORES_OBJETO_EMBUTIDO = [
+  Buffer.from('oleObject'),
+  Buffer.from('embeddings/')
+];
+
+function contemMarcador(buffer, marcadores) {
+  // `Buffer.includes` varre o buffer INTEIRO em codigo nativo. A checagem de estrutura abaixo olha
+  // so os primeiros 512 KB; se a deteccao de macro fizesse o mesmo, bastaria empurrar o
+  // `vbaProject.bin` para depois desse ponto para escapar dela.
+  return Buffer.isBuffer(buffer) && marcadores.some((marcador) => buffer.includes(marcador));
+}
+
+function assertSemMacroOuObjetoEmbutido(buffer) {
+  if (contemMarcador(buffer, MARCADORES_MACRO)) {
+    throw new UploadSecurityError(
+      'Arquivo com macro nao e aceito. Salve o documento sem macros (.docx) e envie novamente.',
+      400,
+      'UPLOAD_MACRO_BLOCKED'
+    );
+  }
+
+  if (contemMarcador(buffer, MARCADORES_OBJETO_EMBUTIDO)) {
+    throw new UploadSecurityError(
+      'Arquivo com objeto embutido nao e aceito. Remova anexos incorporados ao documento e envie novamente.',
+      400,
+      'UPLOAD_EMBEDDED_OBJECT_BLOCKED'
+    );
+  }
+}
+
 function assertOfficeOpenXml(buffer, extension) {
   if (!hasZipSignature(buffer)) {
     throw new UploadSecurityError('Conteudo do arquivo nao corresponde ao tipo informado.', 400, 'UPLOAD_BINARY_MISMATCH');
@@ -108,6 +157,10 @@ function assertOfficeOpenXml(buffer, extension) {
   if (!matches.every((fragment) => body.includes(fragment))) {
     throw new UploadSecurityError('Arquivo Office invalido ou corrompido.', 400, 'UPLOAD_BINARY_MISMATCH');
   }
+
+  // Vale para TODO Office Open XML do sistema, nao so para o anexo do contrato: um .docx com macro
+  // era aceito em qualquer upload ate aqui.
+  assertSemMacroOuObjetoEmbutido(buffer);
 }
 
 function assertDocumentBinary(file) {

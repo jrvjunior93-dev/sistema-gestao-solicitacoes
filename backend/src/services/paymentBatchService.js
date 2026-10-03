@@ -31,7 +31,8 @@ const {
   validateBeneficiaryComplete,
   validatePaymentAccount,
   validateTituloEligibleForPayment,
-  validateUserCanPrepareBatch
+  validateUserCanPrepareBatch,
+  tituloEstaBloqueado
 } = require('./paymentEligibilityService');
 
 function createHttpError(statusCode, message) {
@@ -210,6 +211,9 @@ async function listarTitulosElegiveis(req, filters = {}) {
     const pendencias = [];
 
     if (activeIntent) pendencias.push('Titulo ja possui pagamento ativo.');
+    if (tituloEstaBloqueado(plain)) {
+      pendencias.push(plain.bloqueio_retorno_motivo || 'Baixa bloqueada por pedido de retorno da Obra.');
+    }
     if (!beneficiary) pendencias.push('Favorecido bancario nao cadastrado.');
     if (beneficiary && (!beneficiary.pix_tipo_chave || !beneficiary.pix_chave)) {
       pendencias.push('Favorecido sem chave PIX completa.');
@@ -289,11 +293,20 @@ async function createBatchFromTitulos(req, payload = {}) {
     let total = 0;
     let sequencia = 1;
     for (const titulo of titulos) {
-      const beneficiary = await PaymentBeneficiary.findOne({
-        where: { parceiro_id: titulo.parceiro_id, ativo: true },
-        order: [['updatedAt', 'DESC'], ['id', 'DESC']],
-        transaction
-      });
+      const beneficiary = titulo.payment_beneficiary_id
+        ? await PaymentBeneficiary.findOne({
+            where: {
+              id: titulo.payment_beneficiary_id,
+              parceiro_id: titulo.parceiro_id,
+              ativo: true
+            },
+            transaction
+          })
+        : await PaymentBeneficiary.findOne({
+            where: { parceiro_id: titulo.parceiro_id, ativo: true },
+            order: [['updatedAt', 'DESC'], ['id', 'DESC']],
+            transaction
+          });
 
       await validateBeneficiaryComplete(beneficiary);
       await validateTituloEligibleForPayment(titulo, { beneficiary, transaction });

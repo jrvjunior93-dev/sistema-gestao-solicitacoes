@@ -35,8 +35,28 @@ function matchesOriginPattern(origin, pattern) {
   return regex.test(origin);
 }
 
+/**
+ * Origem da MAQUINA DE DESENVOLVIMENTO — inclusive quando ela e alcancada pela rede local (21/08).
+ *
+ * Antes so `localhost` e `127.0.0.1` passavam, e abrir o sistema de outro aparelho da rede
+ * (`http://192.168.1.66:5273`) era recusado com 403 e `[CORS_BLOCKED]` no log.
+ *
+ * As faixas aceitas sao as PRIVADAS da RFC 1918 — 10.x, 172.16–31.x e 192.168.x —, que por
+ * definicao nao roteiam na internet: quem chega por um endereco desses esta na mesma rede fisica.
+ * Faixa, e nao IP fixo, porque o endereco da maquina vem de DHCP e muda sozinho.
+ *
+ * Vale SO fora de producao: `isProduction` guarda a chamada, e la as origens continuam vindo da
+ * configuracao da instalacao. Sem essa guarda, isto seria um buraco atras de um proxy reverso.
+ *
+ * `CORS_ALLOWED_ORIGINS` nao resolveria: o `allowed_origins` que vale em tempo de execucao vem da
+ * linha `INSTALACAO_CONFIG` no banco (os dominios de producao), e a variavel de ambiente so serve
+ * de padrao quando essa linha nao existe. Mexer nela para liberar um IP local sujaria a
+ * configuracao que vai para producao.
+ */
 function isLocalOrigin(origin) {
-  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(origin || '').trim());
+  const limpo = String(origin || '').trim();
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(limpo)) return true;
+  return /^http:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/i.test(limpo);
 }
 
 function createCorsBlockedError(origin) {
@@ -82,7 +102,7 @@ const corsOptions = {
     'Idempotency-Key',
     'X-Audit-Session-Id'
   ],
-  exposedHeaders: ['X-CSRF-Token', 'X-Idempotent-Replay'],
+  exposedHeaders: ['X-CSRF-Token', 'X-Idempotent-Replay', 'X-Painel-Valores-Ocultos', 'Retry-After'],
   credentials: true
 };
 app.use(cors(corsOptions));

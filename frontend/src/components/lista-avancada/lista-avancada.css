@@ -1,0 +1,987 @@
+/* =====================================================================
+   LISTA AVANÇADA — estilos do componente reutilizável
+   Usa apenas tokens do design system (docs/DESIGN-SYSTEM.md).
+   ---------------------------------------------------------------------
+   R30 (05/09) — A LINHA ACIMA ERA FALSA PARA TIPOGRAFIA.
+
+   O cabecalho dizia "usa apenas tokens", e usava — de cor, de borda, de
+   superficie. De TAMANHO nao: 27 das 28 declaracoes de `font-size` desta
+   folha escreviam o pixel a mao, em 8 tamanhos distintos (11px, 11,5px,
+   12px, 12,5px, 13px, 13,5px, 14px, 10px), e 6 delas ficavam abaixo do
+   piso de 12px. Um componente REUTILIZAVEL espalha o defeito por toda tela
+   que o importa, e por isso ele pesa mais que o mesmo erro numa tela so.
+
+   As 27 passaram aos degraus: D1 (12px) para rotulo, contador, cabecalho
+   de coluna e subtexto; D2 (14px) para corpo, celula e texto de botao.
+   Nao restou meio-degrau: 12,5px e 13,5px nao existem mais aqui.
+   ===================================================================== */
+.la-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* =====================================================================
+   BARRA DE CONTROLES EM TRÊS NÍVEIS (peso visual decrescente)
+   Nível 1: busca + visualização · Nível 2: visões · Nível 3: filtros.
+   Hierarquia por FORMA: raio total nas visões, raio médio (10px) nos
+   controles de visualização, raio pequeno (7px) nos filtros.
+   ===================================================================== */
+
+/* ---------- NÍVEL 1: busca à esquerda, visualização à direita ---------- */
+.la-nivel1 {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* O wrapper herda o espaço que a busca ocupava; o aviso, quando existe,
+   fica discreto logo abaixo do campo, sem empurrar os controles. */
+.la-busca-wrap {
+  flex: 1;
+  min-width: 240px;
+  max-width: 640px;
+}
+
+.la-busca-aviso {
+  margin: 4px 2px 0;
+  font-size: var(--fonte-detalhe);
+  line-height: 1.35;
+  color: var(--c-muted, #64748b);
+}
+
+.la-busca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 240px;
+  max-width: 640px;
+  padding: 0 12px;
+  height: 40px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--app-muted-color);
+}
+
+/* O input interno é INVISÍVEL como caixa: a cápsula .la-busca é a única
+   camada (um fundo, uma borda, um raio). O prefixo .la-root garante a
+   vitória sobre a regra genérica de inputs do shell. */
+.la-root .la-busca input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  min-height: 0;
+  padding: 0;
+  font-size: var(--fonte-corpo);
+  color: var(--input-text);
+  min-width: 0;
+}
+
+.la-root .la-busca input::placeholder {
+  color: var(--app-muted-color);
+}
+
+/* Foco: borda de destaque discreta na própria cápsula, sem glow. */
+.la-busca:focus-within {
+  border-color: var(--c-primary);
+}
+
+.la-busca > svg { width: 17px; height: 17px; flex-shrink: 0; }
+.la-busca button {
+  display: inline-flex;
+  border: none;
+  background: none;
+  color: var(--app-muted-color);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.la-vis-controles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.la-agrupar-wrap { position: relative; }
+
+/* Controle SEGMENTADO Tabela/Cards: dois segmentos numa moldura só —
+   alternativas mutuamente exclusivas, o ativo em destaque. */
+/*
+  ALVO MÍNIMO NO CONTROLE SEGMENTADO (05/09) — M1/R2.
+
+  Os dois botões de modo de visualização mediam 81×30px: a altura fixa de
+  38px do grupo, menos a borda (2px) e o respiro interno (6px), sobrava 30
+  para o botão. Dois pixels abaixo do piso, nas duas maiores listagens do
+  sistema (Solicitações e Solicitações Arquivadas).
+
+  A altura sai do grupo e vai para o BOTÃO, via `--alvo-clique` — que é o
+  token do piso (32px no mouse, 44px no toque). Com o respiro em 2px a
+  conta fecha nos mesmos 38px de antes no mouse (32 + 4 + 2), então a
+  fileira continua alinhada com os botões de contorno ao lado; no toque os
+  dois crescem juntos, porque o `.la-btn` passa a usar o mesmo token.
+*/
+.la-modo {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--btn-outline-border);
+  border-radius: 10px;
+  overflow: clip;
+  background: var(--btn-outline-bg);
+  padding: 2px;
+  gap: 2px;
+  box-sizing: border-box;
+}
+
+.la-modo button {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--alvo-clique, 32px);
+  gap: 5px;
+  padding: 0 11px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--app-muted-color);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.la-modo button.ativo {
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.la-modo svg { width: 15px; height: 15px; }
+
+/* Botões de contorno do nível 1 (Colunas, Agrupar, Páginas): mesma
+   altura do controle segmentado, raio médio. */
+.la-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* Mesma altura do controle segmentado ao lado, agora derivada do token
+     do alvo mínimo em vez de um 38 cravado — no toque os dois crescem
+     juntos e a fileira não desalinha. */
+  min-height: calc(var(--alvo-clique, 32px) + 6px);
+  padding: 0 12px;
+  border: 1px solid var(--btn-outline-border);
+  border-radius: 10px;
+  background: var(--btn-outline-bg);
+  color: var(--btn-outline-text);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.la-btn:hover { background: var(--btn-outline-hover); }
+.la-btn.ativo {
+  background: var(--sem-info-bg);
+  border-color: var(--sem-info-border);
+  color: var(--sem-info);
+}
+.la-btn--danger { color: var(--sem-danger); border-color: var(--sem-danger-border); }
+.la-btn svg { width: 14px; height: 14px; }
+.la-btn:focus-visible,
+.la-visao:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
+
+/* "Limpar tudo" é BOTÃO, e alvo de clique tem mínimo (32px; 44 em toque).
+   Media 84×27. O × da etiqueta ao lado foi corrigido em 02/09 e este ficou:
+   correção pela metade é correção que o próximo check pega. */
+.la-link {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: var(--app-link-color);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  min-height: 32px;
+}
+
+@media (pointer: coarse) {
+  .la-link { min-height: 44px; }
+}
+
+.la-link:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- NÍVEL 2: visões — o maior destaque depois da busca ----- */
+.la-visoes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.la-visao {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--btn-outline-border);
+  border-radius: 999px;
+  background: var(--ui-surface);
+  color: var(--btn-outline-text);
+  font-size: var(--fonte-corpo);
+  font-weight: 650;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.la-visao:hover { border-color: var(--ui-border-strong); }
+
+.la-visao.ativa {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+
+.la-visao-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 23px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--sem-neutral-bg);
+  color: var(--sem-neutral);
+}
+
+/* Contador com cor semântica quando faz sentido (ex.: Vencendo âmbar,
+   Atrasadas vermelho) — só na pílula inativa; na ativa o fundo sólido
+   primário manda e o contador fica translúcido. */
+.la-visao-n--warning { background: var(--sem-warning-bg); color: var(--sem-warning); }
+.la-visao-n--danger { background: var(--sem-danger-bg); color: var(--sem-danger); }
+
+.la-visao.ativa .la-visao-n {
+  background: rgba(255, 255, 255, 0.22);
+  color: inherit;
+}
+
+/* ---------- NÍVEL 3: filtros — secundários e leves ---------- */
+.la-filtros-linha {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.la-filtros-rotulo {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--app-subtle-color, var(--app-muted-color));
+  margin-right: 2px;
+}
+
+/* Botão de filtro: menor que as pílulas de visão, sem borda, fundo de
+   superfície suave, raio pequeno. */
+.la-filtro-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  /* R2: alvo de clique mínimo (32px) — valia para .btn, vale aqui também. */
+  height: 32px;
+  min-width: var(--alvo-clique, 32px);
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--ui-surface-soft);
+  color: var(--app-body-color);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.la-filtro-btn:hover { background: var(--sem-neutral-bg); }
+.la-filtro-btn.ativo {
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
+}
+.la-filtro-btn svg { width: 13px; height: 13px; }
+.la-filtro-btn:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
+
+.la-rapido-wrap { position: relative; }
+
+.la-rapido-pop,
+.la-colunas-pop {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--modal-border);
+  border-radius: 12px;
+  background: var(--modal-bg);
+  box-shadow: var(--ui-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.la-colunas-wrap { position: relative; }
+.la-colunas-pop { left: auto; right: 0; }
+
+/* Marcar/desmarcar todas: fica ACIMA da busca e das opções, separado por uma
+   linha, para não se confundir com uma opção da lista. */
+.la-rapido-lote {
+  display: flex;
+  gap: var(--esp-3);
+  padding: 0 var(--esp-1) var(--esp-2);
+  margin-bottom: var(--esp-1);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+/* Campo de busca do menu de marcação: aparece só em dimensão com muitas
+   opções (ver FiltroRapido). Gruda no topo para não sumir na rolagem — e
+   `clip` em vez de `hidden` no pai, pela R18, é o que deixa isso funcionar. */
+.la-rapido-busca {
+  position: sticky;
+  /* O menu tem 8px de recuo interno: colando em `top: 0` sobraria uma fresta
+     por onde as opções passariam por cima ao rolar. Sobe o recuo. */
+  top: calc(var(--esp-2) * -1);
+  z-index: var(--z-conteudo);
+  width: 100%;
+  margin-bottom: var(--esp-1);
+  padding: var(--esp-2);
+  font-size: var(--fonte-corpo);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-1);
+  background: var(--ui-surface);
+  color: var(--c-text);
+}
+
+.la-rapido-pop label,
+.la-colunas-pop label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: var(--fonte-corpo);
+  color: var(--app-body-color);
+  cursor: pointer;
+}
+
+.la-rapido-pop label:hover,
+.la-colunas-pop label:hover { background: var(--ui-surface-soft); }
+
+.la-filtro-salvo {
+  display: inline-flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid var(--sem-info-border);
+  border-radius: 7px;
+  overflow: clip;
+  background: var(--sem-info-bg);
+}
+
+.la-filtro-salvo > button:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 650;
+  color: var(--sem-info);
+  cursor: pointer;
+}
+
+.la-filtro-salvo svg { width: 13px; height: 13px; }
+
+.la-filtro-salvo-x {
+  border: none;
+  border-left: 1px solid var(--sem-info-border);
+  background: none;
+  color: var(--sem-info);
+  padding: 0 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.la-salvar-filtro {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.la-root .la-salvar-filtro input {
+  height: 30px;
+  min-height: 0;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--input-text);
+  padding: 0 10px;
+  font-size: var(--fonte-corpo);
+  width: 170px;
+  box-shadow: none;
+}
+
+/* ---------- etiquetas dos filtros ativos ---------- */
+.la-etiquetas {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.la-etiqueta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sem-info-border);
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+}
+
+.la-etiqueta-dim { opacity: 0.75; font-weight: 500; }
+
+/* O × de remover é ALVO DE CLIQUE, não enfeite: 2px de padding sobre um
+   ícone de 13px dava 17×17 — abaixo dos 32px de desktop e MUITO abaixo dos
+   44px de toque. No celular, com a etiqueta quebrando em duas linhas, ele
+   virava praticamente intocável. A área cresce sem engordar a pílula:
+   o ícone continua 13px, o alvo é que passa a caber o dedo. */
+.la-etiqueta button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  /* Sangra sobre o padding da pílula em vez de esticá-la. */
+  margin: -8px -4px -8px 0;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+@media (pointer: coarse) {
+  .la-etiqueta button {
+    margin: -12px -6px -12px 0;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+.la-etiqueta button:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: -2px;
+  border-radius: 999px;
+}
+
+.la-etiqueta svg { width: 13px; height: 13px; }
+
+/* ---------- barra de lote ---------- */
+.la-lote {
+  position: sticky;
+  top: 64px;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--sem-info-border);
+  border-radius: 12px;
+  background: var(--sem-info-bg);
+}
+
+.la-lote-contador {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  color: var(--sem-info);
+}
+
+.la-lote-contador button {
+  display: inline-flex;
+  border: 1px solid var(--sem-info-border);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.la-lote-contador svg { width: 13px; height: 13px; }
+
+/* ---------- tabela ---------- */
+.la-tabela-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+
+.la-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fonte-corpo);
+}
+
+.la-tabela th {
+  position: relative;
+  text-align: left;
+  padding: 0;
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface-soft);
+  color: var(--app-muted-color);
+  font-size: var(--fonte-detalhe);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.la-th-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  padding: 10px;
+  cursor: pointer;
+  overflow: clip;
+}
+
+.la-th-btn:disabled { cursor: default; }
+.la-th-btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+.la-th-btn span { overflow: hidden; text-overflow: ellipsis; }
+
+.la-resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: var(--z-alca);
+  touch-action: none;
+}
+
+.la-resize:hover { background: var(--ui-focus-ring); }
+
+.la-th-check, .la-td-check { width: 36px; text-align: center; padding: 8px 6px; }
+
+/* SEMPRE UMA LINHA por registro: truncar com reticências, nunca quebrar */
+.la-linha { cursor: pointer; }
+.la-linha:hover td { background: var(--ui-surface-soft); }
+.la-linha.selecionada td { background: var(--sem-info-bg); }
+.la-linha:focus-visible { outline: 2px solid var(--c-primary); outline-offset: -2px; }
+
+.la-td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--app-body-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.la-td-principal {
+  font-weight: 750;
+  color: var(--app-heading-color);
+  letter-spacing: 0.01em;
+}
+
+/* tarja de urgência na lateral esquerda da linha */
+.la-linha td:first-child { position: relative; }
+.la-linha td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: transparent;
+}
+.la-linha.la-urgencia-danger td:first-child::before { background: var(--sem-danger); }
+.la-linha.la-urgencia-warning td:first-child::before { background: var(--sem-warning); }
+.la-linha.la-urgencia-retorno td { background: var(--sem-danger-bg); }
+.la-linha.la-urgencia-entrega td, .la-card.la-urgencia-entrega { background: var(--sem-warning-bg); }
+.la-linha.la-urgencia-entrega td:first-child::before, .la-card.la-urgencia-entrega::before { background: var(--sem-warning); }
+.la-linha.la-urgencia-retorno:hover td {
+  background: color-mix(in srgb, var(--sem-danger) 15%, var(--ui-surface));
+}
+.la-linha.la-urgencia-retorno td:first-child::before { background: var(--sem-danger); }
+
+.sol-codigo-retorno,
+.sol-card-compacto-codigo {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sol-retorno-pendente {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--sem-danger-border);
+  border-radius: 999px;
+  background: var(--ui-surface);
+  color: var(--sem-danger);
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.sol-atencao-pendente {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(320px, 100%);
+  min-width: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--sem-danger-border);
+  border-radius: 6px;
+  background: var(--ui-surface);
+  color: var(--sem-danger);
+  font-size: var(--fonte-detalhe);
+  font-weight: 650;
+  line-height: var(--lh-detalhe);
+}
+
+.sol-atencao-pendente-prefixo {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.sol-atencao-pendente-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.la-grupo-linha td {
+  padding: 8px 12px;
+  background: var(--ui-surface-soft);
+  border-bottom: 1px solid var(--ui-border);
+  font-size: var(--fonte-detalhe);
+  font-weight: 750;
+  color: var(--app-muted-color);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ---------- cards (desktop opcional + mobile forçado) ---------- */
+.la-cards { display: flex; flex-direction: column; gap: 12px; }
+.la-grupo-titulo {
+  margin: 4px 0 0;
+  font-size: var(--fonte-detalhe);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--app-muted-color);
+}
+.la-grupo-titulo span { font-weight: 500; }
+
+.la-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 767px) {
+  .la-cards-grid { grid-template-columns: 1fr; }
+
+  /* Empilhado: busca -> visões -> Filtrar/Exibir */
+  .la-busca { max-width: none; }
+
+  /*
+    A FAIXA DE VISÕES QUEBRA EM LINHAS TAMBÉM NO CELULAR (06/09).
+
+    Aqui ela virava `flex-wrap: nowrap; overflow-x: auto` — uma tira que
+    rola na horizontal. O revisor separado registrou como SUSPEITA (S4):
+    "nenhuma visão parece selecionada — a faixa rola na horizontal e o chip
+    ativo fica fora da tela, sem pista de que há rolagem". Medido, a
+    suspeita se confirmou e não é acidente de dado:
+
+      solicitacoes @390  faixa 369px, conteúdo 608px, scrollLeft 0
+                         chip ativo ("Todas") em 530→608px — FORA DA TELA
+
+    E é por CONSTRUÇÃO: a tela declara "Todas" como a ÚLTIMA das cinco
+    visões e abre com `visaoInicial="todas"`. Toda vez que alguém abre
+    `solicitacoes` num celular, a visão em que ele está é a única que ele
+    não vê — e a tira não dá sinal nenhum de que há mais coisa à direita.
+    A pessoa lê "nenhuma selecionada".
+
+    O QUE NÃO SERVIA COMO CONSERTO, e por quê:
+      - rolar o chip ativo para dentro no primeiro render resolveria, mas
+        mora no JS da `ListaAvancada` — arquivo em reescrita por outra
+        frente nesta mesma leva (a passagem de acentuação), e cruzar ali
+        seria trocar um defeito por um conflito;
+      - `order: -1` no chip ativo o traria para o começo da tira sem JS, e
+        embaralharia a ordem das visões a cada troca — estado escondido
+        vira estado que se mexe.
+
+    O que resta é o que a folha JÁ FAZ acima de 768px: quebrar em linhas.
+    Não é regra nova — é a regra base desta classe (`flex-wrap: wrap`, lá em
+    cima), e o que sai é a EXCEÇÃO do celular. Custo medido: a faixa passa
+    de 44px para 94px de altura em 390px, em duas linhas. É a troca que o
+    cliente já decidiu em 02/09 — "mais rolagem é aceitável, apertar os
+    olhos não" —, e aqui não era nem apertar os olhos: era não ver.
+  */
+  .la-visao { flex-shrink: 0; }
+}
+
+.la-mobile-linha {
+  display: flex;
+  gap: 8px;
+}
+
+.la-mobile-wrap { position: relative; flex: 1; }
+.la-mobile-wrap > .la-btn { width: 100%; justify-content: center; }
+
+.la-mobile-painel {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 240px;
+  padding: 10px;
+  border: 1px solid var(--modal-border);
+  border-radius: 12px;
+  background: var(--modal-bg);
+  box-shadow: var(--ui-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.la-mobile-painel .la-btn,
+.la-mobile-painel .la-filtro-btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.la-mobile-painel .la-colunas-wrap,
+.la-mobile-painel .la-agrupar-wrap,
+.la-mobile-painel .la-rapido-wrap { width: 100%; }
+
+.la-mobile-painel .la-colunas-pop,
+.la-mobile-painel .la-rapido-pop {
+  position: static;
+  box-shadow: none;
+  border-style: dashed;
+  max-height: 220px;
+}
+
+.la-card {
+  position: relative;
+  display: block;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  cursor: pointer;
+  overflow: clip;
+}
+
+.la-card:hover { border-color: var(--ui-border-strong); box-shadow: var(--ui-shadow-sm); }
+.la-card:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
+
+.la-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: transparent;
+}
+.la-card.la-urgencia-danger::before { background: var(--sem-danger); }
+.la-card.la-urgencia-warning::before { background: var(--sem-warning); }
+.la-card.la-urgencia-retorno {
+  border-color: var(--sem-danger-border);
+  background: var(--sem-danger-bg);
+}
+.la-card.la-urgencia-retorno:hover {
+  border-color: var(--sem-danger);
+  background: color-mix(in srgb, var(--sem-danger) 15%, var(--ui-surface));
+}
+.la-card.la-urgencia-retorno::before { background: var(--sem-danger); }
+
+.la-card-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: var(--z-conteudo);
+}
+
+/* ---------- estados/rodapé ---------- */
+.la-vazio {
+  margin: 0;
+  padding: 20px;
+  text-align: center;
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+}
+
+.la-carregando {
+  padding: 14px;
+  text-align: center;
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+}
+
+.la-paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+}
+
+.la-sentinela { min-height: 8px; text-align: center; }
+.la-fim { font-size: var(--fonte-detalhe); color: var(--app-subtle-color); }
+
+.la-avancados {
+  border: 1px dashed var(--ui-border-strong);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+/* ---------- card compacto de solicitação (exemplo de renderCard) ---------- */
+.sol-card-compacto {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sol-card-compacto-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 26px; /* espaço do checkbox de lote */
+}
+
+.sol-card-compacto-codigo {
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--app-heading-color);
+}
+
+.sol-card-compacto-meio {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sol-card-compacto-obra {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--app-muted-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sol-card-compacto-descricao {
+  font-size: var(--fonte-corpo);
+  color: var(--app-body-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sol-card-compacto-base {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fonte-detalhe);
+}
+
+.sol-card-compacto-valor {
+  font-weight: 750;
+  color: var(--app-number-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.sol-card-compacto-venc {
+  color: var(--app-muted-color);
+}
+
+/* Itens do menu Colunas: arrastáveis para reordenar */
+.la-colunas-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: grab;
+}
+
+.la-colunas-arrastar {
+  font-size: var(--fonte-detalhe);
+  letter-spacing: -2px;
+  color: var(--c-muted);
+  user-select: none;
+}
+
+/* Cabeçalho arrastável para reposicionar a coluna */
+.la-tabela th[draggable='true'] {
+  cursor: grab;
+}
+
+/* Ícone pequeno de "alternável" no botão Páginas/Rolagem */
+.la-btn .la-btn-alternar {
+  width: 11px;
+  height: 11px;
+  opacity: 0.55;
+}

@@ -1,5 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  TabelaPadrao,
+  CelulaDupla,
+  BarraFiltros,
+  Avisos,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 import { getFiscalCompanies, getFiscalDivergences } from '../services/fiscalApi';
 
 const divergenceTypes = [
@@ -23,10 +35,28 @@ const severityLabels = {
   critical: 'Critica'
 };
 
+// A severidade é escala de risco, não estado de fluxo: sem o mapa, a
+// classificação automática do StatusBadge joga as quatro na mesma família e
+// a distinção que a tela tinha se perde (mesmo caso da ComercialUnidades).
+const FAMILIA_SEVERIDADE = {
+  low: 'neutral',
+  medium: 'info',
+  high: 'warning',
+  critical: 'danger'
+};
+
 const statusLabels = {
   open: 'Aberta',
   resolved: 'Resolvida',
   ignored: 'Ignorada'
+};
+
+const FILTROS_VAZIOS = {
+  q: '',
+  company_id: '',
+  status: '',
+  severity: '',
+  divergence_type: ''
 };
 
 function formatMoney(value) {
@@ -38,23 +68,84 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString('pt-BR');
 }
 
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'q', rotulo: 'Busca', obrigatorio: true },
+  { id: 'company_id', rotulo: 'Empresa' },
+  { id: 'status', rotulo: 'Status' },
+  { id: 'severity', rotulo: 'Severidade' },
+  { id: 'divergence_type', rotulo: 'Tipo' }
+];
+
+/*
+  O recorte com que a tela ABRE. Ele existe para o `preenchidos` do painel:
+  o valor que o SISTEMA propõe (`status: 'open'`) NÃO conta como preenchido,
+  senão ele revelaria de volta, a cada abertura, exatamente o filtro que a
+  pessoa escondeu — o mesmo cuidado da consulta de títulos.
+*/
+const FILTROS_INICIAIS = { ...FILTROS_VAZIOS, status: 'open' };
+
 export default function FiscalDivergences() {
   const [items, setItems] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
-  const [filters, setFilters] = useState({
-    q: '',
-    company_id: '',
-    status: 'open',
-    severity: '',
-    divergence_type: ''
+  const [filters, setFilters] = useState({ ...FILTROS_VAZIOS, status: 'open' });
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      const valor = String(filters[filtro.id] ?? '').trim();
+      return valor !== '' && valor !== String(FILTROS_INICIAIS[filtro.id] ?? '');
+    }).map((filtro) => filtro.id),
+    [filters]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:divergencias-fiscais', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      // A lista desta tela é buscada por `load`, não por efeito sobre o
+      // estado: limpar sem recarregar deixaria a consulta em curso recortada
+      // por um critério que já saiu da faixa.
+      const proximos = { ...filters, [id]: '' };
+      setFilters(proximos);
+      load(proximos);
+    }
   });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // R3/R19: a faixa de erro pintada à mão (border-red-200/bg-red-50) vira o
+  // aviso do sistema, com tom semântico e botão de fechar de verdade.
+  const { avisos, avisar, fechar } = useAvisos();
 
   const load = async (nextFilters = filters) => {
     setLoading(true);
-    setError('');
     try {
       const [divergencesResult, companiesResult] = await Promise.all([
         getFiscalDivergences(nextFilters),
@@ -64,154 +155,241 @@ export default function FiscalDivergences() {
       setPagination(divergencesResult?.pagination || { total: 0, page: 1, pages: 1 });
       setCompanies(companiesResult?.data || []);
     } catch (err) {
-      setError(err.message || 'Erro ao buscar divergencias fiscais');
+      avisar.erro(err.message || 'Erro ao buscar divergencias fiscais');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    let mounted = true;
-    load().finally(() => {
-      if (!mounted) return;
-    });
-    return () => {
-      mounted = false;
-    };
+    load({ ...FILTROS_VAZIOS, status: 'open' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /*
+    R12 — os cinco <select> de escolha única viram marcação com etiqueta
+    removível. Todas as dimensões são `unico: true`: o serviço aceita UM
+    valor por parâmetro (`severity=high`), e marcação múltipla mandaria
+    filtro nenhum enquanto o usuário veria duas etiquetas.
+    As marcas são derivadas do MESMO payload que vai para a API — não há
+    estado paralelo que possa divergir dele.
+  */
+  const ativos = useMemo(() => ({
+    company_id: filters.company_id ? new Set([String(filters.company_id)]) : new Set(),
+    status: filters.status ? new Set([filters.status]) : new Set(),
+    severity: filters.severity ? new Set([filters.severity]) : new Set(),
+    divergence_type: filters.divergence_type ? new Set([filters.divergence_type]) : new Set()
+  }), [filters]);
 
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
   };
 
-  const submitFilters = async (event) => {
-    event.preventDefault();
-    await load(filters);
+  const alternarMarca = (dimensao, valor) => {
+    setFilters((current) => ({
+      ...current,
+      [dimensao]: String(current[dimensao] || '') === String(valor) ? '' : String(valor)
+    }));
   };
 
-  const clearFilters = async () => {
-    const emptyFilters = {
-      q: '',
-      company_id: '',
-      status: '',
-      severity: '',
-      divergence_type: ''
-    };
-    setFilters(emptyFilters);
-    await load(emptyFilters);
+  const limparFiltros = async () => {
+    setFilters(FILTROS_VAZIOS);
+    await load(FILTROS_VAZIOS);
   };
 
   return (
-    <div className="fiscal-page space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Fiscal</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-950 dark:text-white">Divergencias fiscais</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-            Visao centralizada das divergencias registradas nos documentos fiscais. Esta tela ainda nao altera pedidos, recebimentos ou financeiro.
-          </p>
-        </div>
-        <Link className="btn-secondary" to="/fiscal/documentos">Voltar para documentos</Link>
-      </div>
+    <Pagina>
+      {/*
+        R13/C1/C2 — cabeçalho na faixa fixa, com a contagem TOTAL da consulta
+        (o `${total} divergencia(s)` que ficava numa tarja acima da tabela
+        sai de lá: mesmo número duas vezes é B3, e a faixa é onde ele
+        acompanha a pessoa na rolagem).
+      */}
+      <PageHeader
+        titulo="Divergências fiscais"
+        contagem={loading ? null : `${pagination.total || 0} divergencia(s)`}
+        descricao="Visão centralizada das divergências registradas nos documentos fiscais. Esta tela ainda não altera pedidos, recebimentos ou financeiro."
+      />
 
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <form onSubmit={submitFilters} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <input
-            className="input"
-            placeholder="Busca por nota, fornecedor ou descricao"
-            value={filters.q}
-            onChange={(event) => updateFilter('q', event.target.value)}
-          />
-          <select className="input" value={filters.company_id} onChange={(event) => updateFilter('company_id', event.target.value)}>
-            <option value="">Todas as empresas</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>{company.razao_social}</option>
-            ))}
-          </select>
-          <select className="input" value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}>
-            <option value="">Todos os status</option>
-            <option value="open">Aberta</option>
-            <option value="resolved">Resolvida</option>
-            <option value="ignored">Ignorada</option>
-          </select>
-          <select className="input" value={filters.severity} onChange={(event) => updateFilter('severity', event.target.value)}>
-            <option value="">Todas as severidades</option>
-            <option value="low">Baixa</option>
-            <option value="medium">Media</option>
-            <option value="high">Alta</option>
-            <option value="critical">Critica</option>
-          </select>
-          <select className="input" value={filters.divergence_type} onChange={(event) => updateFilter('divergence_type', event.target.value)}>
-            <option value="">Todos os tipos</option>
-            {divergenceTypes.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="mt-3 flex justify-end gap-2">
-          <button className="btn-secondary" type="button" onClick={clearFilters}>Limpar</button>
-          <button className="btn-primary" type="submit">Filtrar</button>
-        </div>
-      </form>
+      {/*
+        R18 — o card que embrulhava a tabela tinha `overflow-hidden`, que
+        cria scrollport e mata o sticky do cabeçalho e da coluna fixa sem
+        erro nenhum no console. O BlocoConteudo não recorta.
+      */}
+      <BlocoConteudo
+        titulo="Divergências registradas"
+        variante="primario"
+        cor="var(--module-fiscal)"
+      >
+        <BarraFiltros
+          busca={visibilidadeFiltros.ehVisivel('q') ? {
+            valor: filters.q,
+            aoMudar: (valor) => updateFilter('q', valor),
+            placeholder: 'Buscar por nota, fornecedor ou descrição'
+          } : null}
+          filtros={[
+            {
+              id: 'company_id',
+              rotulo: 'Empresa',
+              unico: true,
+              opcoes: companies.map((company) => ({ valor: String(company.id), rotulo: company.razao_social }))
+            },
+            {
+              id: 'status',
+              rotulo: 'Status',
+              unico: true,
+              opcoes: Object.entries(statusLabels).map(([valor, rotulo]) => ({ valor, rotulo }))
+            },
+            {
+              id: 'severity',
+              rotulo: 'Severidade',
+              unico: true,
+              opcoes: Object.entries(severityLabels).map(([valor, rotulo]) => ({ valor, rotulo }))
+            },
+            {
+              id: 'divergence_type',
+              rotulo: 'Tipo',
+              unico: true,
+              opcoes: divergenceTypes.map(([valor, rotulo]) => ({ valor, rotulo }))
+            }
+          ].filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={ativos}
+          aoAlternar={(dimensao, valor) => alternarMarca(dimensao, valor)}
+          aoLimpar={limparFiltros}
+          visibilidade={visibilidadeFiltros}
+        />
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-          {loading ? 'Carregando divergencias...' : `${pagination.total || 0} divergencia(s) encontrada(s)`}
+        {/*
+          R23 — mesma exceção declarada da tela de Documentos, pelo mesmo
+          critério: quatro dimensões marcáveis mais a busca, todas
+          combinadas no servidor. Aplicar ao marcar dispararia mais de três
+          consultas para montar um recorte comum. As marcas são RASCUNHO até
+          o clique, o botão diz o que faz e o apoio avisa — sem esse aviso a
+          etiqueta afirmaria um recorte que a lista ainda não tem.
+        */}
+        <div className="app-actionbar">
+          <span className="text-xs text-[var(--c-muted)]">
+            O recorte marcado acima so vale depois de clicar em Atualizar lista.
+          </span>
+          <button className="btn btn-outline" type="button" onClick={limparFiltros}>
+            Limpar
+          </button>
+          <button className="btn btn-primary" type="button" onClick={() => load(filters)}>
+            Atualizar lista
+          </button>
         </div>
-        <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500 dark:bg-slate-950/40">
-            <tr>
-              <th className="px-4 py-3">Documento</th>
-              <th className="px-4 py-3">Fornecedor</th>
-              <th className="px-4 py-3">Tipo</th>
-              <th className="px-4 py-3">Severidade</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Descricao</th>
-              <th className="px-4 py-3">Valores</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {loading ? (
-              <tr><td className="px-4 py-5 text-slate-500" colSpan={7}>Carregando divergencias...</td></tr>
-            ) : items.length ? items.map((item) => {
-              const document = item.document || {};
-              const company = document.company || {};
-              const typeLabel = divergenceTypes.find(([value]) => value === item.divergence_type)?.[1] || item.divergence_type;
-              return (
-                <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40">
-                  <td className="px-4 py-3">
-                    <Link className="font-semibold text-slate-950 hover:text-blue-600 dark:text-white" to={`/fiscal/documentos/${document.id}`}>
-                      {document.document_number || document.access_key || `Documento ${document.id}`}
-                    </Link>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {formatDate(document.emission_date)} - {formatMoney(document.total_value)}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-400">{company.razao_social || '-'}</div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                    <div className="font-medium text-slate-950 dark:text-white">{document.issuer_name || '-'}</div>
-                    <div className="text-xs text-slate-500">{document.issuer_cnpj || '-'}</div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{typeLabel}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{severityLabels[item.severity] || item.severity}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{statusLabels[item.status] || item.status}</td>
-                  <td className="max-w-[320px] px-4 py-3 text-slate-600 dark:text-slate-300">
-                    <div className="line-clamp-3">{item.description}</div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    <div>Esperado: {item.expected_value || '-'}</div>
-                    <div>Encontrado: {item.actual_value || '-'}</div>
-                  </td>
-                </tr>
-              );
-            }) : (
-              <tr><td className="px-4 py-5 text-slate-500" colSpan={7}>Nenhuma divergencia fiscal encontrada.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+
+        {/*
+          R17 — a coluna "Documento" empilhava número, data de emissão, VALOR
+          MONETÁRIO e razão social dentro da mesma célula. Valor formatado em
+          coluna que não declara `tipo: 'valor'` é reprovação (T7: dinheiro
+          nunca trunca), e a data ali dentro não alinhava com nada. Cada dado
+          passou a ter a sua coluna, com o papel declarado — nenhum saiu.
+        */}
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'documento',
+              titulo: 'Documento',
+              tipo: 'codigo',
+              render: (item) => {
+                const documento = item.document || {};
+                return (
+                  <Link
+                    className="text-[var(--c-primary)] hover:underline"
+                    to={`/fiscal/documentos/${documento.id}`}
+                  >
+                    {documento.document_number || documento.access_key || `Documento ${documento.id}`}
+                  </Link>
+                );
+              }
+            },
+            {
+              id: 'fornecedor',
+              titulo: 'Fornecedor',
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => (
+                <CelulaDupla
+                  principal={item.document?.issuer_name || '-'}
+                  sub={item.document?.issuer_cnpj || '-'}
+                />
+              )
+            },
+            {
+              id: 'empresa',
+              titulo: 'Empresa',
+              tipo: 'texto',
+              render: (item) => item.document?.company?.razao_social || '-'
+            },
+            {
+              id: 'emissao',
+              titulo: 'Emissão',
+              tipo: 'data',
+              render: (item) => formatDate(item.document?.emission_date)
+            },
+            {
+              id: 'valor_documento',
+              titulo: 'Valor do documento',
+              tipo: 'valor',
+              render: (item) => formatMoney(item.document?.total_value)
+            },
+            {
+              id: 'tipo',
+              titulo: 'Tipo',
+              tipo: 'texto',
+              render: (item) => divergenceTypes.find(([value]) => value === item.divergence_type)?.[1] || item.divergence_type
+            },
+            {
+              id: 'severidade',
+              titulo: 'Severidade',
+              tipo: 'badge',
+              render: (item) => (
+                <StatusBadge
+                  status={severityLabels[item.severity] || item.severity}
+                  kind={FAMILIA_SEVERIDADE[item.severity] || 'neutral'}
+                />
+              )
+            },
+            {
+              id: 'status',
+              titulo: 'Status',
+              tipo: 'status',
+              render: (item) => <StatusBadge status={statusLabels[item.status] || item.status} />
+            },
+            {
+              id: 'descricao',
+              titulo: 'Descrição',
+              tipo: 'texto',
+              // T6: texto longo trunca com o conteúdo completo no tooltip.
+              render: (item) => (
+                <span className="line-clamp-3" title={item.description || undefined}>
+                  {item.description || '-'}
+                </span>
+              )
+            },
+            {
+              id: 'valores',
+              titulo: 'Esperado / encontrado',
+              tipo: 'texto',
+              render: (item) => (
+                <CelulaDupla
+                  principal={`Esperado: ${item.expected_value || '-'}`}
+                  sub={`Encontrado: ${item.actual_value || '-'}`}
+                />
+              )
+            }
+          ]}
+          itens={items}
+          carregando={loading}
+          vazio="Nenhuma divergência fiscal encontrada."
+          storageKey="tabela:divergencias-fiscais"
+          rotuloRolagem="Divergencias fiscais"
+          colunasConfiguraveis
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

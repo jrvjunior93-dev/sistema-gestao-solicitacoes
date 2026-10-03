@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  StatGrid,
+  StatTile,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
+import {
   gerarRecomendacoesSst,
   getSstCentroOperacional,
   getSstInteligenciaOperacional,
@@ -13,35 +25,70 @@ function fmt(value) {
   return Number(value || 0).toLocaleString('pt-BR');
 }
 
-function RiskPill({ value }) {
-  const tone = {
-    EXCELENTE: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    CONTROLADO: 'bg-sky-100 text-sky-800 border-sky-200',
-    ATENCAO: 'bg-amber-100 text-amber-800 border-amber-200',
-    CRITICO: 'bg-rose-100 text-rose-800 border-rose-200',
-    CRITICA: 'bg-rose-100 text-rose-800 border-rose-200',
-    EMERGENCIAL: 'bg-red-100 text-red-900 border-red-200'
-  }[value] || 'bg-[var(--c-surface)] text-[var(--c-text)] border-[var(--c-border)]';
-  return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>{value || 'SEM NIVEL'}</span>;
+/*
+  R25 — o RiskPill local montava seis classes de paleta crua
+  (emerald/sky/amber/rose/red-100…-800) fora do tema escuro e do piso de
+  contraste. Vira StatusBadge, com a família vinda deste mapa explícito: a
+  classificação automática do badge jogaria CRITICO e ATENCAO na mesma
+  família, e é justamente a distinção de nível que o centro operacional
+  existe para mostrar. Mesmo mapa das telas irmãs (Heatmap e Executivo).
+*/
+const FAMILIA_CRITICIDADE = {
+  EXCELENTE: 'success',
+  BAIXA: 'success',
+  CONTROLADO: 'info',
+  MEDIA: 'info',
+  ATENCAO: 'warning',
+  ALTA: 'warning',
+  CRITICO: 'danger',
+  CRITICA: 'danger',
+  EMERGENCIAL: 'danger'
+};
+
+function familiaCriticidade(valor) {
+  return FAMILIA_CRITICIDADE[String(valor || '').toUpperCase()] || 'neutral';
 }
 
-function Metric({ label, value, detail }) {
-  return (
-    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--c-text)]">{value}</p>
-      {detail ? <p className="mt-1 text-xs text-[var(--c-muted)]">{detail}</p> : null}
-    </div>
-  );
-}
+// Cada processamento é gravação em lote no backend: o rótulo da confirmação
+// diz o que vai acontecer, nunca "OK".
+const ACOES = {
+  score: {
+    rotulo: 'Recalcular score',
+    ocupado: 'Calculando...',
+    titulo: 'Recalcular score SST',
+    mensagem: 'Recalcula o score de todos os colaboradores avaliados do grupo. O valor atual será substituído.',
+    confirmar: 'Recalcular'
+  },
+  recomendacoes: {
+    rotulo: 'Gerar recomendações',
+    ocupado: 'Gerando...',
+    titulo: 'Gerar recomendações operacionais',
+    mensagem: 'Gera novas recomendações a partir dos sinais operacionais do momento.',
+    confirmar: 'Gerar'
+  },
+  workflows: {
+    rotulo: 'Workflows',
+    ocupado: 'Processando...',
+    titulo: 'Processar workflows SST',
+    mensagem: 'Processa até 30 workflows pendentes, executando as etapas já programadas.',
+    confirmar: 'Processar'
+  },
+  automacoes: {
+    rotulo: 'Automações',
+    ocupado: 'Orquestrando...',
+    titulo: 'Processar automações SST',
+    mensagem: 'Executa até 30 automações pendentes, que podem criar pendências, bloqueios e notificações.',
+    confirmar: 'Processar'
+  }
+};
 
 export default function SstCentroOperacional() {
   const [data, setData] = useState(null);
   const [inteligencia, setInteligencia] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   function load() {
     setLoading(true);
@@ -49,9 +96,8 @@ export default function SstCentroOperacional() {
       .then(([centro, intel]) => {
         setData(centro);
         setInteligencia(intel);
-        setError('');
       })
-      .catch((err) => setError(err.message || 'Erro ao carregar centro operacional SST'))
+      .catch((err) => avisar.erro(err?.message || 'Erro ao carregar centro operacional SST'))
       .finally(() => setLoading(false));
   }
 
@@ -60,116 +106,178 @@ export default function SstCentroOperacional() {
   }, []);
 
   async function runAction(kind) {
-    setBusy(kind);
-    setMessage('');
-    setError('');
+    /*
+      R26 — o alvo da ação é fixado ANTES do await: `tipo` e `definicao`
+      saem do argumento, não de estado que a tela pode ter trocado enquanto
+      o modal esteve aberto (o modal do sistema não congela a página).
+      R21 — `const { ok } = await confirmar(...)`: o retorno é `{ ok, texto }`
+      e objeto é sempre verdadeiro; lido como booleano, "Cancelar"
+      processaria o lote assim mesmo.
+    */
+    const tipo = kind;
+    const definicao = ACOES[tipo];
+    if (!definicao) return;
+
+    const { ok } = await confirmar({
+      titulo: definicao.titulo,
+      mensagem: definicao.mensagem,
+      rotuloConfirmar: definicao.confirmar
+    });
+    if (!ok) return;
+
+    setBusy(tipo);
     try {
-      if (kind === 'score') await recalcularScoreSst();
-      if (kind === 'recomendacoes') await gerarRecomendacoesSst();
-      if (kind === 'workflows') await processarWorkflowsSst({ limit: 30 });
-      if (kind === 'automacoes') await processarAutomacoesSst({ limit: 30 });
-      setMessage('Processamento concluido.');
+      if (tipo === 'score') await recalcularScoreSst();
+      if (tipo === 'recomendacoes') await gerarRecomendacoesSst();
+      if (tipo === 'workflows') await processarWorkflowsSst({ limit: 30 });
+      if (tipo === 'automacoes') await processarAutomacoesSst({ limit: 30 });
+      avisar.sucesso('Processamento concluído.');
       load();
     } catch (err) {
-      setError(err.message || 'Erro ao processar acao SST');
+      avisar.erro(err?.message || 'Erro ao processar acao SST');
     } finally {
       setBusy('');
     }
+  }
+
+  function acao(kind, extras = {}) {
+    const definicao = ACOES[kind];
+    return {
+      rotulo: busy === kind ? definicao.ocupado : definicao.rotulo,
+      onClick: () => runAction(kind),
+      desabilitada: Boolean(busy),
+      ...extras
+    };
   }
 
   const resumo = data?.resumo || {};
   const topHeatmap = useMemo(() => (data?.heatmap_corporativo || []).slice(0, 6), [data]);
   const sinais = inteligencia?.sinais || [];
   const recomendacoes = inteligencia?.recomendacoes || [];
+  const topRecomendacoes = recomendacoes.slice(0, 6);
 
   return (
-    <div className="sst-page space-y-6">
-      <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--c-muted)]">Centro operacional SST</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--c-text)]">Risco, conformidade e automacoes em uma tela</h1>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--c-muted)]">
-              Visao corporativa multiempresa, com heatmap, score, sinais operacionais e recomendacoes geradas pelo backend.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-outline" onClick={() => runAction('score')} disabled={!!busy}>{busy === 'score' ? 'Calculando...' : 'Recalcular score'}</button>
-            <button type="button" className="btn btn-outline" onClick={() => runAction('recomendacoes')} disabled={!!busy}>{busy === 'recomendacoes' ? 'Gerando...' : 'Gerar recomendacoes'}</button>
-            <button type="button" className="btn btn-outline" onClick={() => runAction('workflows')} disabled={!!busy}>{busy === 'workflows' ? 'Processando...' : 'Workflows'}</button>
-            <button type="button" className="btn btn-primary" onClick={() => runAction('automacoes')} disabled={!!busy}>{busy === 'automacoes' ? 'Orquestrando...' : 'Automacoes'}</button>
-          </div>
-        </div>
-      </section>
+    <Pagina>
+      <PageHeader
+        titulo="Risco, conformidade e automações em uma tela"
+        contagem={loading ? 'Carregando' : `${fmt(resumo.obras_mapeadas)} obra(s) mapeada(s)`}
+        descricao="Visão corporativa multiempresa, com heatmap, score, sinais operacionais e recomendações geradas pelo backend."
+        acaoPrincipal={acao('automacoes')}
+        secundarias={[acao('score'), acao('recomendacoes'), acao('workflows')]}
+      />
 
-      {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</div> : null}
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">{message}</div> : null}
-      {loading ? <p className="text-sm text-[var(--c-muted)]">Carregando centro operacional...</p> : null}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <Metric label="Compliance" value={`${resumo.compliance_geral ?? 100}%`} detail={resumo.nivel || 'CONTROLADO'} />
-        <Metric label="Empresas" value={fmt(resumo.empresas_mapeadas)} detail="Base do grupo" />
-        <Metric label="Obras" value={fmt(resumo.obras_mapeadas)} detail="Obras e centros" />
-        <Metric label="Pendencias" value={fmt(resumo.pendencias_abertas)} detail="Abertas" />
-        <Metric label="Bloqueios" value={fmt(resumo.bloqueios_abertos)} detail="Ativos" />
-        <Metric label="Riscos" value={fmt(resumo.riscos_criticos)} detail="Altos ou criticos" />
-      </section>
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 4 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:sst-centro-operacional" larguraPadrao="total">
+        <BlocoConteudo
+          titulo="Resumo corporativo"
+          variante="primario"
+          cor="var(--module-sst)"
+          descricao={resumo.nivel ? `Nivel atual: ${resumo.nivel}.` : 'Base consolidada do grupo.'}
+        >
+          <StatGrid colunas={3}>
+            <StatTile label="Compliance" valor={`${resumo.compliance_geral ?? 100}%`} sub={resumo.nivel || 'CONTROLADO'} />
+            <StatTile label="Empresas" valor={fmt(resumo.empresas_mapeadas)} sub="Base do grupo" />
+            <StatTile label="Obras" valor={fmt(resumo.obras_mapeadas)} sub="Obras e centros" />
+            <StatTile
+              label="Pendências"
+              valor={fmt(resumo.pendencias_abertas)}
+              sub="Abertas"
+              tom={resumo.pendencias_abertas ? 'warning' : undefined}
+            />
+            <StatTile
+              label="Bloqueios"
+              valor={fmt(resumo.bloqueios_abertos)}
+              sub="Ativos"
+              tom={resumo.bloqueios_abertos ? 'danger' : undefined}
+            />
+            <StatTile
+              label="Riscos"
+              valor={fmt(resumo.riscos_criticos)}
+              sub="Altos ou críticos"
+              tom={resumo.riscos_criticos ? 'danger' : undefined}
+            />
+          </StatGrid>
+        </BlocoConteudo>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Heatmap corporativo</h2>
-            <Link to="/sst/relatorios/heatmap" className="text-sm font-semibold text-blue-600">Abrir mapa</Link>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {/*
+          Os três blocos abaixo estavam em duas colunas com fração à mão
+          (`xl:grid-cols-[1.2fr_0.8fr]` — medida escrita na tela, R10). Agora
+          empilham em largura total: apoio não fica lado a lado com o
+          principal, e o mapa por obra deixa de disputar meia tela.
+        */}
+        <BlocoConteudo
+          titulo="Heatmap corporativo"
+          contagem={`${topHeatmap.length} de ${(data?.heatmap_corporativo || []).length} obra(s)`}
+          descricao="As obras de maior índice de risco; o mapa completo fica na tela de heatmap."
+          acoes={<Link to="/sst/relatorios/heatmap" className="btn btn-outline btn-sm">Abrir mapa</Link>}
+        >
+          <div className="grid gap-3 md:grid-cols-2">
             {topHeatmap.map((item) => (
-              <div key={`${item.obra_id || 'sem'}-${item.obra}`} className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-[var(--c-text)]">{item.obra}</p>
-                    <p className="mt-1 text-xs text-[var(--c-muted)]">Indice {item.indice_risco} com {item.pendencias} pendencia(s)</p>
-                  </div>
-                  <RiskPill value={item.criticidade} />
-                </div>
-              </div>
+              <BlocoConteudo
+                key={`${item.obra_id || 'sem'}-${item.obra}`}
+                variante="secundario"
+                className={`tarja tarja--${familiaCriticidade(item.criticidade)}`}
+                titulo={item.obra}
+                descricao={`Índice ${item.indice_risco} com ${item.pendencias} pendência(s)`}
+                acoes={<StatusBadge status={item.criticidade || 'SEM NIVEL'} kind={familiaCriticidade(item.criticidade)} />}
+              />
             ))}
-            {!topHeatmap.length ? <p className="text-sm text-[var(--c-muted)]">Nenhum ponto critico no heatmap.</p> : null}
+            {!topHeatmap.length ? <p className="text-sm text-muted">Nenhum ponto crítico no heatmap.</p> : null}
           </div>
-        </div>
+        </BlocoConteudo>
 
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-          <h2 className="text-lg font-semibold text-[var(--c-text)]">Sinais operacionais</h2>
-          <div className="mt-4 space-y-3">
+        <BlocoConteudo
+          titulo="Sinais operacionais"
+          contagem={`${sinais.length} sinal(is)`}
+          descricao="Gerados pelo motor de inteligencia a partir do estado atual."
+        >
+          <div className="grid gap-3 md:grid-cols-2">
             {sinais.map((item, index) => (
-              <div key={`${item.tipo}-${index}`} className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-[var(--c-text)]">{item.tipo}</p>
-                  <RiskPill value={item.criticidade} />
-                </div>
-                <p className="mt-2 text-sm text-[var(--c-muted)]">{item.mensagem}</p>
-              </div>
+              <BlocoConteudo
+                key={`${item.tipo}-${index}`}
+                variante="secundario"
+                className={`tarja tarja--${familiaCriticidade(item.criticidade)}`}
+                titulo={item.tipo}
+                descricao={item.mensagem}
+                acoes={<StatusBadge status={item.criticidade || 'SEM NIVEL'} kind={familiaCriticidade(item.criticidade)} />}
+              />
             ))}
-            {!sinais.length ? <p className="text-sm text-[var(--c-muted)]">Nenhum sinal critico gerado pelo motor.</p> : null}
+            {!sinais.length ? <p className="text-sm text-muted">Nenhum sinal crítico gerado pelo motor.</p> : null}
           </div>
-        </div>
-      </section>
+        </BlocoConteudo>
 
-      <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[var(--c-text)]">Recomendacoes operacionais</h2>
-          <Link to="/sst/recomendacoes" className="text-sm font-semibold text-blue-600">Ver lista</Link>
-        </div>
-        <div className="mt-4 grid gap-3 xl:grid-cols-3">
-          {recomendacoes.slice(0, 6).map((item) => (
-            <div key={item.id || `${item.tipo_recomendacao}-${item.titulo}`} className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <RiskPill value={item.criticidade} />
-              <p className="mt-3 font-semibold text-[var(--c-text)]">{item.titulo}</p>
-              <p className="mt-2 text-sm text-[var(--c-muted)]">{item.acao_sugerida || item.descricao}</p>
-            </div>
-          ))}
-          {!recomendacoes.length ? <p className="text-sm text-[var(--c-muted)]">Nenhuma recomendacao gerada.</p> : null}
-        </div>
-      </section>
-    </div>
+        <BlocoConteudo
+          titulo="Recomendações operacionais"
+          contagem={`${topRecomendacoes.length} de ${recomendacoes.length} recomendação(oes)`}
+          descricao="Ação sugerida pelo backend para os sinais de maior criticidade."
+          acoes={<Link to="/sst/recomendacoes" className="btn btn-outline btn-sm">Ver lista</Link>}
+        >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {topRecomendacoes.map((item) => (
+              <BlocoConteudo
+                key={item.id || `${item.tipo_recomendacao}-${item.titulo}`}
+                variante="secundario"
+                className={`tarja tarja--${familiaCriticidade(item.criticidade)}`}
+                titulo={item.titulo}
+                descricao={item.acao_sugerida || item.descricao}
+                acoes={<StatusBadge status={item.criticidade || 'SEM NIVEL'} kind={familiaCriticidade(item.criticidade)} />}
+              />
+            ))}
+            {!recomendacoes.length ? <p className="text-sm text-muted">Nenhuma recomendação gerada.</p> : null}
+          </div>
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

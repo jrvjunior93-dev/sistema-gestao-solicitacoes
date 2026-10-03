@@ -71,7 +71,8 @@ module.exports = {
         error.status = 403;
         throw error;
       }
-      return res.json(await movimentarCheque(req, req.params.id, req.body || {}));
+      const idempotencyKey = String(req.get('Idempotency-Key') || '').trim();
+      return res.json(await movimentarCheque(req, req.params.id, req.body || {}, idempotencyKey));
     }
     catch (error) { return erro(res, error, 'Erro ao movimentar cheque'); }
   },

@@ -13,26 +13,51 @@ import {
   getEsocialLotesSst,
   validarXmlEsocialSst
 } from '../services/sst';
+import {
+  Avisos,
+  BlocoConteudo,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 
-function statusClass(status) {
-  const value = String(status || '').toUpperCase();
-  if (value.includes('VALID') || value.includes('GERADO') || value.includes('ASSINADO')) return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200';
-  if (value.includes('BLOQUEADO') || value.includes('PENDENCIA')) return 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-200';
-  if (value.includes('ERRO') || value.includes('INVALIDO')) return 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-200';
-  return 'border-[var(--c-border)] bg-[var(--c-surface-muted)] text-[var(--c-text)]';
+/*
+  R2/R25 — o status do eSocial é vocabulário próprio da integração
+  (GERADO, ASSINADO, BLOQUEADO_PRODUCAO, PENDENCIA_XSD…), que o classificador
+  automático do StatusBadge não conhece: ele leria "BLOQUEADO_PRODUCAO" como
+  perigo quando aqui é o estado ESPERADO desta fase, e "PENDENCIA" como
+  atenção genérica. Então a família é declarada aqui, e a cor sai do token —
+  as classes emerald/amber/rose que a tela escrevia à mão saíram.
+*/
+function familiaStatusEsocial(status) {
+  const valor = String(status || '').toUpperCase();
+  if (valor.includes('ERRO') || valor.includes('INVALIDO') || valor.includes('REJEIT')) return 'danger';
+  if (valor.includes('BLOQUEADO') || valor.includes('PENDENCIA')) return 'warning';
+  if (valor.includes('VALID') || valor.includes('GERADO') || valor.includes('ASSINADO') || valor.includes('TRANSMITIDO')) return 'success';
+  return 'neutral';
+}
+
+function CelulaStatus({ valor }) {
+  if (!valor) return '-';
+  return <StatusBadge status={valor} kind={familiaStatusEsocial(valor)} />;
 }
 
 export default function SstEsocial() {
   const { user } = useAuth();
   const { isVisible } = useUiVisibility();
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const canManage = canManageSstArea(user, 'esocial');
   const [eventos, setEventos] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
   const [certStatus, setCertStatus] = useState(null);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -48,9 +73,8 @@ export default function SstEsocial() {
       setEventos(eventosPayload.rows || []);
       setLotes(lotesPayload.rows || []);
       setCertStatus(certPayload);
-      setError('');
     } catch (err) {
-      setError(err.message || 'Erro ao carregar eSocial SST');
+      avisar.erro(err.message || 'Erro ao carregar eSocial SST');
     } finally {
       setLoading(false);
     }
@@ -58,187 +82,259 @@ export default function SstEsocial() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const runEventAction = async (eventId, action, label) => {
     setActionId(`${label}-${eventId}`);
     try {
       const payload = await action(eventId);
-      setMessage(`${label}: ${payload.status || payload?.evento?.status || 'concluido'}.`);
+      avisar.sucesso(`${label}: ${payload.status || payload?.evento?.status || 'concluido'}.`);
       await load();
     } catch (err) {
-      setError(err.message || `Erro em ${label}`);
+      avisar.erro(err.message || `Erro em ${label}`);
     } finally {
       setActionId('');
     }
   };
 
   const createBatch = async () => {
+    // R26: o lote é montado sobre a seleção FIXADA aqui. O modal não congela a
+    // tela — sem esta cópia, marcar/desmarcar um evento com a confirmação
+    // aberta faria a pergunta valer para uma seleção e o envio para outra.
+    const eventosDoLote = [...selected];
+    if (!eventosDoLote.length) return;
+    // R21: o retorno de confirmar() é objeto — SEMPRE desestruturado.
+    const { ok } = await confirmar({
+      titulo: 'Criar lote restrito',
+      mensagem: `Criar lote restrito com ${eventosDoLote.length} evento(s) selecionado(s)? O lote nasce apto a ser transmitido no ambiente restrito.`,
+      rotuloConfirmar: 'Criar lote'
+    });
+    if (!ok) return;
     setActionId('lote');
     try {
-      const payload = await criarLoteRestritaEsocialSst(selected);
-      setMessage(`Lote restrito criado: #${payload.id}.`);
+      const payload = await criarLoteRestritaEsocialSst(eventosDoLote);
+      avisar.sucesso(`Lote restrito criado: #${payload.id}.`);
       setSelected([]);
       await load();
     } catch (err) {
-      setError(err.message || 'Erro ao criar lote restrito');
+      avisar.erro(err.message || 'Erro ao criar lote restrito');
     } finally {
       setActionId('');
     }
   };
 
-  const runBatchAction = async (loteId, action, label) => {
-    setActionId(`${label}-${loteId}`);
+  const runBatchAction = async (lote, action, label) => {
+    // R26: o lote alvo é fixado ANTES do await — a mensagem e a ação falam do
+    // MESMO registro, ainda que a lista se recarregue com o modal aberto.
+    const alvo = lote;
+    if (label === 'Enviar restrita') {
+      const { ok } = await confirmar({
+        titulo: 'Enviar lote na produção restrita',
+        mensagem: `Transmitir o lote #${alvo.id} para o ambiente restrito do eSocial? A transmissão sai do sistema e é registrada no órgão.`,
+        rotuloConfirmar: 'Enviar restrita'
+      });
+      if (!ok) return;
+    }
+    setActionId(`${label}-${alvo.id}`);
     try {
-      const payload = await action(loteId);
-      setMessage(`${label}: ${payload.status || 'concluido'}.`);
+      const payload = await action(alvo.id);
+      avisar.sucesso(`${label}: ${payload.status || 'concluido'}.`);
       await load();
     } catch (err) {
-      setError(err.message || `Erro em ${label}`);
+      avisar.erro(err.message || `Erro em ${label}`);
     } finally {
       setActionId('');
     }
+  };
+
+  const alternarSelecionado = (id) => {
+    setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  };
+
+  const alternarTodos = (marcar, ids) => {
+    setSelected(marcar ? ids : []);
   };
 
   return (
-    <div className="sst-page space-y-5">
-      <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--c-muted)]">SST / eSocial</p>
-        <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-[var(--c-text)]">Integração eSocial controlada</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--c-muted)]">
-              Geração, validação, assinatura e transmissão restrita dos eventos S-2210, S-2220 e S-2240 com produção oficial bloqueada.
-            </p>
-          </div>
-          <button type="button" onClick={load} className="rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm font-semibold text-[var(--c-text)] hover:bg-[var(--c-surface-muted)]">
-            Atualizar
-          </button>
-        </div>
-      </section>
+    <Pagina className="sst-page">
+      <PageHeader
+        titulo="Integração eSocial controlada"
+        descricao="Geração, validação, assinatura e transmissão restrita dos eventos S-2210, S-2220 e S-2240 com produção oficial bloqueada."
+        acaoPrincipal={{ rotulo: 'Atualizar', onClick: load }}
+        secundarias={isVisible('sst.esocial.acoes_xml') && canManage ? [{
+          rotulo: actionId === 'lote' ? 'Gerando...' : `Criar lote (${selected.length})`,
+          onClick: createBatch,
+          desabilitada: !selected.length || actionId === 'lote',
+          title: 'Cria um lote restrito com os eventos marcados na lista'
+        }] : []}
+      />
 
-      {error ? <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div> : null}
-      {message ? <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">{message}</div> : null}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Ambiente</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--c-text)]">Produção restrita</p>
-          <p className="mt-1 text-sm text-[var(--c-muted)]">Produção oficial permanece bloqueada por regra de backend.</p>
-        </div>
+      <StatGrid colunas={3}>
+        <StatTile label="Ambiente" valor="Produção restrita" sub="Produção oficial permanece bloqueada por regra de backend." />
         {isVisible('sst.esocial.certificado') ? (
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Certificado A1</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--c-text)]">{certStatus?.status || 'Nao validado'}</p>
-          <p className="mt-1 text-sm text-[var(--c-muted)]">{certStatus?.errors?.[0] || 'Metadados seguros, sem expor senha ou caminho.'}</p>
-        </div>
+          <StatTile
+            label="Certificado A1"
+            valor={certStatus?.status || 'Nao validado'}
+            sub={certStatus?.errors?.[0] || 'Metadados seguros, sem expor senha ou caminho.'}
+            tom={certStatus?.valid ? 'success' : 'warning'}
+          />
         ) : null}
-        {isVisible('sst.esocial.acoes_xml') && canManage ? (
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">Lote restrito</p>
-          <button
-            type="button"
-            disabled={!selected.length || actionId === 'lote'}
-            onClick={createBatch}
-            className="mt-3 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-600"
-          >
-            {actionId === 'lote' ? 'Gerando...' : `Criar lote (${selected.length})`}
-          </button>
-        </div>
-        ) : null}
-      </section>
+        <StatTile
+          label="Eventos preparados"
+          valor={loading ? '...' : eventos.length}
+          sub={`${lotes.length} lote(s) restrito(s)`}
+        />
+      </StatGrid>
 
       {isVisible('sst.esocial.tabela') ? (
-      <section className="overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] shadow-sm">
-        <div className="flex items-center justify-between border-b border-[var(--c-border)] px-5 py-4">
-          <h2 className="text-lg font-semibold text-[var(--c-text)]">Eventos preparados</h2>
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--c-muted)]">{loading ? 'Carregando' : `${eventos.length} evento(s)`}</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-[var(--c-surface-muted)] text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">
-              <tr>
-                {canManage ? <th className="px-4 py-3">Selecionar</th> : null}
-                <th className="px-4 py-3">Evento</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Ambiente</th>
-                <th className="px-4 py-3">Protocolo</th>
-                {canManage ? <th className="px-4 py-3">Ações</th> : null}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-border)]">
-              {eventos.map((evento) => (
-                <tr key={evento.id}>
-                  {canManage ? (
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedSet.has(evento.id)}
-                        onChange={(event) => setSelected((current) => (event.target.checked ? [...current, evento.id] : current.filter((id) => id !== evento.id)))}
-                      />
-                    </td>
-                  ) : null}
-                  <td className="px-4 py-3 font-semibold text-[var(--c-text)]">{evento.tipo_evento}</td>
-                  <td className="px-4 py-3"><span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClass(evento.status)}`}>{evento.status}</span></td>
-                  <td className="px-4 py-3 text-[var(--c-muted)]">{evento.ambiente || '-'}</td>
-                  <td className="px-4 py-3 text-[var(--c-muted)]">{evento.protocolo || '-'}</td>
-                  {canManage ? (
-                    <td className="space-x-3 whitespace-nowrap px-4 py-3">
-                      <button type="button" disabled={Boolean(actionId)} onClick={() => runEventAction(evento.id, gerarXmlEsocialSst, 'Gerar XML')} className="text-sm font-semibold text-sky-700 disabled:opacity-50">Gerar XML</button>
-                      <button type="button" disabled={Boolean(actionId)} onClick={() => runEventAction(evento.id, validarXmlEsocialSst, 'Validar XML')} className="text-sm font-semibold text-emerald-700 disabled:opacity-50">Validar</button>
-                      <button type="button" disabled={Boolean(actionId)} onClick={() => runEventAction(evento.id, assinarXmlEsocialSst, 'Assinar XML')} className="text-sm font-semibold text-indigo-700 disabled:opacity-50">Assinar</button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-              {!eventos.length && !loading ? (
-                <tr><td className="px-4 py-8 text-center text-sm text-[var(--c-muted)]" colSpan={canManage ? 6 : 4}>Nenhum evento preparado.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <BlocoConteudo
+          titulo="Eventos preparados"
+          contagem={loading ? 'Carregando' : `${eventos.length} evento(s)`}
+          variante="primario"
+          cor="var(--sem-info)"
+        >
+          <TabelaPadrao
+            // R16b — a marcação em lote é capacidade do componente (com
+            // "todos" no cabeçalho e estado indeterminado); a coluna de
+            // checkbox montada à mão dentro de um `tipo: 'status'` saiu.
+            selecao={canManage ? {
+              selecionados: selectedSet,
+              aoAlternar: (id) => alternarSelecionado(id),
+              aoAlternarTodos: alternarTodos
+            } : undefined}
+            colunas={[
+              {
+                id: 'evento',
+                titulo: 'Evento',
+                // R17: o tipo do evento (S-2210/S-2220/S-2240) é o que nomeia
+                // a linha para quem opera a integração.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (evento) => evento.tipo_evento
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (evento) => <CelulaStatus valor={evento.status} />
+              },
+              {
+                id: 'ambiente',
+                titulo: 'Ambiente',
+                tipo: 'texto',
+                render: (evento) => evento.ambiente || '-'
+              },
+              {
+                id: 'protocolo',
+                titulo: 'Protocolo',
+                tipo: 'codigo',
+                render: (evento) => evento.protocolo || '-'
+              }
+            ]}
+            itens={eventos}
+            carregando={loading}
+            vazio="Nenhum evento preparado."
+            storageKey="tabela:sst-esocial:eventos"
+            rotuloRolagem="Eventos preparados"
+            larguraAcoes={320}
+            acoesLinha={canManage ? (evento) => (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={Boolean(actionId)}
+                  onClick={() => runEventAction(evento.id, gerarXmlEsocialSst, 'Gerar XML')}
+                >
+                  Gerar XML
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={Boolean(actionId)}
+                  onClick={() => runEventAction(evento.id, validarXmlEsocialSst, 'Validar XML')}
+                >
+                  Validar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={Boolean(actionId)}
+                  onClick={() => runEventAction(evento.id, assinarXmlEsocialSst, 'Assinar XML')}
+                >
+                  Assinar
+                </button>
+              </>
+            ) : undefined}
+          />
+        </BlocoConteudo>
       ) : null}
 
       {isVisible('sst.esocial.lotes') ? (
-      <section className="overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] shadow-sm">
-        <div className="border-b border-[var(--c-border)] px-5 py-4">
-          <h2 className="text-lg font-semibold text-[var(--c-text)]">Lotes restritos</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-[var(--c-surface-muted)] text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">
-              <tr>
-                <th className="px-4 py-3">Lote</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Ambiente</th>
-                <th className="px-4 py-3">Protocolo</th>
-                {canManage ? <th className="px-4 py-3">Ações</th> : null}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-border)]">
-              {lotes.map((lote) => (
-                <tr key={lote.id}>
-                  <td className="px-4 py-3 font-semibold text-[var(--c-text)]">#{lote.id}</td>
-                  <td className="px-4 py-3"><span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClass(lote.status)}`}>{lote.status}</span></td>
-                  <td className="px-4 py-3 text-[var(--c-muted)]">{lote.ambiente}</td>
-                  <td className="px-4 py-3 text-[var(--c-muted)]">{lote.protocolo || '-'}</td>
-                  {canManage ? (
-                    <td className="space-x-3 whitespace-nowrap px-4 py-3">
-                      <button type="button" disabled={Boolean(actionId)} onClick={() => runBatchAction(lote.id, enviarLoteRestritaEsocialSst, 'Enviar restrita')} className="text-sm font-semibold text-sky-700 disabled:opacity-50">Enviar restrita</button>
-                      <button type="button" disabled={Boolean(actionId)} onClick={() => runBatchAction(lote.id, consultarRetornoEsocialSst, 'Consultar retorno')} className="text-sm font-semibold text-emerald-700 disabled:opacity-50">Consultar</button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-              {!lotes.length && !loading ? (
-                <tr><td className="px-4 py-8 text-center text-sm text-[var(--c-muted)]" colSpan={canManage ? 5 : 4}>Nenhum lote restrito criado.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <BlocoConteudo titulo="Lotes restritos" contagem={`${lotes.length} lote(s)`}>
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'lote',
+                titulo: 'Lote',
+                // R17: o lote não tem nome próprio — o número é a identidade
+                // que o operador usa para falar dele com o órgão.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (lote) => `#${lote.id}`
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (lote) => <CelulaStatus valor={lote.status} />
+              },
+              {
+                id: 'ambiente',
+                titulo: 'Ambiente',
+                tipo: 'texto',
+                render: (lote) => lote.ambiente
+              },
+              {
+                id: 'protocolo',
+                titulo: 'Protocolo',
+                tipo: 'codigo',
+                render: (lote) => lote.protocolo || '-'
+              }
+            ]}
+            itens={lotes}
+            carregando={loading}
+            vazio="Nenhum lote restrito criado."
+            storageKey="tabela:sst-esocial:lotes"
+            rotuloRolagem="Lotes restritos"
+            larguraAcoes={280}
+            acoesLinha={canManage ? (lote) => (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={Boolean(actionId)}
+                  onClick={() => runBatchAction(lote, enviarLoteRestritaEsocialSst, 'Enviar restrita')}
+                >
+                  Enviar restrita
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={Boolean(actionId)}
+                  onClick={() => runBatchAction(lote, consultarRetornoEsocialSst, 'Consultar retorno')}
+                >
+                  Consultar
+                </button>
+              </>
+            ) : undefined}
+          />
+        </BlocoConteudo>
       ) : null}
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

@@ -31,7 +31,7 @@ export default function StatusResumo({ items = DEFAULTS }) {
             {item.label}
           </p>
           <p
-            className="text-2xl font-bold leading-none"
+            className="text-3xl font-bold leading-none"
             style={{ color: item.cor ?? 'var(--c-text)' }}
           >
             {item.quantidade ?? 0}

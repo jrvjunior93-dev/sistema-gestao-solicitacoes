@@ -4,6 +4,7 @@ import {
   getProvisionamentoFluxoConfig,
   salvarProvisionamentoFluxoConfig
 } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, Avisos, useAvisos } from '../components/padrao';
 
 const DEFAULT_CONFIG = {
   modo_operacional: 'INFORMATIVO',
@@ -17,6 +18,8 @@ const DEFAULT_CONFIG = {
   permitir_multiplas_provisoes_por_solicitacao: true,
   tipos_solicitacao_exigem_provisao: []
 };
+
+const DESCRICAO = 'Controle quando o provisionamento deve ser apenas informativo e quando passa a orientar solicitacoes.';
 
 const MODOS = [
   {
@@ -51,6 +54,9 @@ export default function ConfiguracoesProvisionamentoFluxo() {
   const [tipos, setTipos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // R3/R19: as três caixas do navegador viraram aviso do sistema — faixa
+  // dentro da página, com tom semântico, fechável e visível ao harness.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     let active = true;
@@ -67,7 +73,7 @@ export default function ConfiguracoesProvisionamentoFluxo() {
       } catch (error) {
         console.error(error);
         if (active) {
-          alert(error.message || 'Erro ao carregar configuracao do provisionamento.');
+          avisar.erro(error.message || 'Erro ao carregar configuracao do provisionamento.');
         }
       } finally {
         if (active) {
@@ -151,39 +157,51 @@ export default function ConfiguracoesProvisionamentoFluxo() {
       setSaving(true);
       const data = await salvarProvisionamentoFluxoConfig(config);
       setConfig(normalizarConfig(data));
-      alert('Configuracao salva com sucesso.');
+      avisar.sucesso('Configuração salva com sucesso.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao salvar configuracao.');
+      avisar.erro(error.message || 'Erro ao salvar configuracao.');
     } finally {
       setSaving(false);
     }
   }
 
+  // B5: estava a meio caminho — dentro do `Pagina`, mas sem cabecalho e sem
+  // faixa de avisos. Quem carrega ficava sem titulo e, pior, sem superficie
+  // onde uma falha no carregamento pudesse aparecer.
+  //
+  // Sem contagem tambem aqui: este cabecalho nao tem contagem em nenhum dos
+  // dois estados, e inventar uma ("0 tipo(s)") afirmaria algo que a tela
+  // ainda nao apurou.
   if (loading) {
-    return <div className="card">Carregando configuracao do provisionamento...</div>;
+    return (
+      <Pagina>
+        <PageHeader titulo="Fluxo do Provisionamento" descricao={DESCRICAO} />
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <div className="app-empty-card">Carregando configuração do provisionamento...</div>
+      </Pagina>
+    );
   }
 
   return (
-    <div className="config-page solicitacoes-page space-y-5 md:space-y-6">
-      <header className="config-page-header">
-        <div className="config-page-header-row">
-          <div>
-            <h1 className="config-page-title">Fluxo do Provisionamento</h1>
-            <p className="config-page-subtitle">
-              Controle quando o provisionamento deve ser apenas informativo e quando passa a orientar solicitacoes.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={salvar}
-            disabled={saving}
-          >
-            {saving ? 'Salvando...' : 'Salvar configuracao'}
-          </button>
-        </div>
-      </header>
+    // C1/R13: o cabeçalho era .config-page-header, que NÃO é sticky em
+    // nenhuma das duas definições de CSS — a ação principal sumia ao rolar.
+    // Passa a ser a faixa fixa do sistema (PageHeader dentro do Pagina, que
+    // é quem mede a topbar e publica --pos-cabecalho-fixo). C5: a ação
+    // principal é botão cheio via `acaoPrincipal`, não um btn-sm à mão.
+    // M2/R10: o ritmo vertical vem do Pagina, não de space-y na raiz.
+    <Pagina>
+      <PageHeader
+        titulo="Fluxo do Provisionamento"
+        descricao={DESCRICAO}
+        acaoPrincipal={{
+          rotulo: saving ? 'Salvando...' : 'Salvar configuracao',
+          onClick: salvar,
+          desabilitada: saving
+        }}
+      />
+
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
       <section className="config-summary-card">
         <div>
@@ -198,17 +216,20 @@ export default function ConfiguracoesProvisionamentoFluxo() {
           <button
             key={modo.value}
             type="button"
+            // R25: o azul do estado selecionado vem do token de informação
+            // (--sem-info-*) e do primário do tema; paleta crua não tem par
+            // no tema escuro nem passa pelo piso de contraste do ThemeContext.
             className={`rounded-2xl border p-4 text-left transition ${
               config.modo_operacional === modo.value
-                ? 'border-blue-300 bg-blue-50 text-blue-950'
-                : 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text)] hover:border-blue-200'
+                ? 'border-[var(--c-primary)] bg-[var(--sem-info-bg)] text-[var(--c-text)]'
+                : 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text)] hover:border-[var(--c-primary)]'
             }`}
             onClick={() => updateConfig('modo_operacional', modo.value)}
           >
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-muted)]">
               Modo operacional
             </span>
-            <strong className="mt-2 block text-base">{modo.title}</strong>
+            <strong className="mt-2 block text-lg">{modo.title}</strong>
             <span className="mt-2 block text-sm text-[var(--c-muted)]">{modo.description}</span>
           </button>
         ))}
@@ -220,11 +241,11 @@ export default function ConfiguracoesProvisionamentoFluxo() {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-muted)]">
               Regras de controle
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-[var(--c-text)]">Aprovacao, vencimento e bloqueios</h2>
+            <h2 className="mt-1 text-lg font-semibold text-[var(--c-text)]">Aprovação, vencimento e bloqueios</h2>
           </div>
 
           <ConfigToggle
-            title="Aprovacao ativa"
+            title="Aprovação ativa"
             description="Libera o uso gerencial dos estados de analise e aprovacao."
             checked={config.aprovacao_ativa}
             disabled={modoInformativo}
@@ -238,42 +259,42 @@ export default function ConfiguracoesProvisionamentoFluxo() {
             onChange={(checked) => updateConfig('controle_vencimento_ativo', checked)}
           />
           <ConfigToggle
-            title="Integrar com solicitacoes"
+            title="Integrar com solicitações"
             description="Permite que solicitacoes sejam vinculadas a provisoes por registro estruturado."
             checked={config.integracao_solicitacoes_ativa}
             disabled={!modoIntegrado}
             onChange={(checked) => updateConfig('integracao_solicitacoes_ativa', checked)}
           />
           <ConfigToggle
-            title="Exigir provisao na solicitacao"
+            title="Exigir provisão na solicitação"
             description="Torna a selecao de provisao obrigatoria para os tipos marcados."
             checked={config.exigir_provisao_na_solicitacao}
             disabled={!modoIntegrado || !config.integracao_solicitacoes_ativa}
             onChange={(checked) => updateConfig('exigir_provisao_na_solicitacao', checked)}
           />
           <ConfigToggle
-            title="Bloquear solicitacao sem provisao"
+            title="Bloquear solicitação sem provisão"
             description="Impede o envio de solicitacoes de tipos marcados quando o vinculo nao existir."
             checked={config.bloquear_solicitacao_sem_provisao}
             disabled={!modoIntegrado || !config.integracao_solicitacoes_ativa || !config.exigir_provisao_na_solicitacao}
             onChange={(checked) => updateConfig('bloquear_solicitacao_sem_provisao', checked)}
           />
           <ConfigToggle
-            title="Validar saldo da provisao"
+            title="Validar saldo da provisão"
             description="Reserva validacao futura para comparar valor solicitado com saldo disponivel."
             checked={config.validar_saldo_provisao}
             disabled={!modoIntegrado || !config.integracao_solicitacoes_ativa}
             onChange={(checked) => updateConfig('validar_saldo_provisao', checked)}
           />
           <ConfigToggle
-            title="Somente provisoes aprovadas"
+            title="Somente provisões aprovadas"
             description="Restringe o vinculo a provisoes aprovadas quando o fluxo de aprovacao estiver ativo."
             checked={config.somente_provisoes_aprovadas}
             disabled={!modoIntegrado || !config.integracao_solicitacoes_ativa || !config.aprovacao_ativa}
             onChange={(checked) => updateConfig('somente_provisoes_aprovadas', checked)}
           />
           <ConfigToggle
-            title="Permitir multiplas provisoes por solicitacao"
+            title="Permitir múltiplas provisões por solicitação"
             description="Mantem a arquitetura aberta para uma solicitacao consumir mais de uma provisao."
             checked={config.permitir_multiplas_provisoes_por_solicitacao}
             disabled={!modoIntegrado || !config.integracao_solicitacoes_ativa}
@@ -281,8 +302,8 @@ export default function ConfiguracoesProvisionamentoFluxo() {
           />
 
           {modoControlado ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              O modo controlado prepara aprovacao e vencimento sem exigir provisao nas solicitacoes.
+            <div className="rounded-xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-4 py-3 text-sm text-[var(--sem-warning)]">
+              O modo controlado prepara aprovação e vencimento sem exigir provisão nas solicitações.
             </div>
           ) : null}
         </div>
@@ -292,13 +313,13 @@ export default function ConfiguracoesProvisionamentoFluxo() {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-muted)]">
               Tipos integrados
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-[var(--c-text)]">Solicitacoes que exigem provisao</h2>
+            <h2 className="mt-1 text-lg font-semibold text-[var(--c-text)]">Solicitações que exigem provisão</h2>
             <p className="mt-1 text-sm text-[var(--c-muted)]">
               A lista so tem efeito quando o modo integrado e a exigencia estiverem ativos.
             </p>
           </div>
 
-          <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
+          <div className="max-h-[60vh] space-y-2 overflow-auto pr-1">
             {tipos.map((tipo) => {
               const checked = config.tipos_solicitacao_exigem_provisao.includes(Number(tipo.id));
               return (
@@ -306,7 +327,7 @@ export default function ConfiguracoesProvisionamentoFluxo() {
                   key={tipo.id}
                   className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 text-sm ${
                     checked
-                      ? 'border-blue-200 bg-blue-50 text-blue-950'
+                      ? 'border-[var(--c-primary)] bg-[var(--sem-info-bg)] text-[var(--c-text)]'
                       : 'border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-text)]'
                   } ${!modoIntegrado ? 'opacity-60' : ''}`}
                 >
@@ -329,13 +350,13 @@ export default function ConfiguracoesProvisionamentoFluxo() {
 
             {!tipos.length ? (
               <p className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-3 text-sm text-[var(--c-muted)]">
-                Nenhum tipo de solicitacao ativo encontrado.
+                Nenhum tipo de solicitação ativo encontrado.
               </p>
             ) : null}
           </div>
         </aside>
       </section>
-    </div>
+    </Pagina>
   );
 }
 

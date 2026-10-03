@@ -10,6 +10,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false
     },
+    // PI-16: a qual MEDICAO este registro pertence. Com uma solicitacao por contrato, sem isto
+    // os documentos e comentarios de todas as medicoes viram uma pilha unica sem dono. Nulo
+    // quando pertence a propria solicitacao (abertura, minuta, contrato assinado) e em toda a
+    // trilha legada.
+    medicao_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
 
     tipo: {
       type: DataTypes.STRING,

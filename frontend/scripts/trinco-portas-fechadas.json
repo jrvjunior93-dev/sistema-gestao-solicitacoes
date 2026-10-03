@@ -1,0 +1,9 @@
+{
+  "regra": "PORTA QUE NAO ABRE",
+  "criado_em": "2026-09-05",
+  "porque": "Rota que existe, esta no menu e cujo link funciona — mas cuja guarda (ou a propria tela) redireciona por CONFIGURACAO, nao por permissao. Descoberto quando a matriz reprovou 12 telas de SST recem-migradas: todas redirecionam para /sst/pgr porque SST_SIMPLIFIED_MODE e true por padrao e nao existe .env no repositorio. Migrar tela assim e trabalho que ninguem consegue abrir. O numero SO DESCE: porta nova que nao abre reprova na hora. 05/09: ZERADO. O cliente mandou desligar o modo simplificado do SST (D1), as 12 telas voltaram ao menu e as portas abriram. A varredura tambem passou a LER o valor da constante em vez de so encontrar a guarda no codigo — antes ela acusaria as 13 mesmo com o modo desligado, que e medir o indicador em vez da coisa.",
+  "decisao_pendente": "O cliente precisa dizer se o modo simplificado deve mesmo esconder essas 12 telas. Se sim, elas saem do menu e do manifesto. Se nao, a constante muda. Nao as duas coisas.",
+  "total_em": 13,
+  "rotas": [],
+  "atualizado_em": "2026-09-05"
+}

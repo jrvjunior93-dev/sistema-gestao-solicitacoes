@@ -123,7 +123,10 @@ function montarItensSolicitacaoImportados({
   necessarioParaPadrao = ''
 } = {}) {
   const insumosPorCodigo = buildMap(insumos, (insumo) => [insumo.codigo]);
-  const insumosPorNome = buildMap(insumos, (insumo) => [insumo.nome]);
+  const insumosPorNome = buildMap(insumos, (insumo) => [
+    insumo.nome,
+    ...(insumo.aliases || []).map((entry) => entry.alias)
+  ]);
   const unidadesMap = buildMap(unidades, (unidade) => [unidade.sigla, unidade.nome]);
   const apropriacoesMap = buildMap(
     apropriacoes.filter(apropriacaoPodeReceberLancamento),

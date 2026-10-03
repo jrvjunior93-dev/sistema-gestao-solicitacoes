@@ -5,12 +5,13 @@ const { allSheetsToArrayRows, createWorkbookBuffer } = require('../utils/excelWo
 const { parseValorMonetario, spreadsheetDisplayValue } = require('../utils/valorMonetario');
 const { registrarEventoSeguranca } = require('../services/securityLogService');
 const {
-  listarCandidatasMacro,
-  obraPermiteConfiguracaoMacro,
+  mapaNiveisHierarquia,
+  normalizarNivelApropriacaoFormulario,
   ordenarApropriacoes,
+  selecionarApropriacoesPorNivel,
   selecionarApropriacoesOperacionais,
   selecionarApropriacoesOperacionaisPorObra,
-  sugerirIdsMacros
+  sincronizarNivelApropriacaoFormulario
 } = require('../services/apropriacaoSelecaoService');
 
 function parseBoolean(value, fallback = false) {
@@ -39,6 +40,17 @@ function parseValorOrcado(value, fallback = 0) {
 
 function normalizarCodigoApropriacao(value) {
   return String(spreadsheetDisplayValue(value) || '').trim().replace(/\s+/g, '');
+}
+
+function parseListaJson(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function codigoEhPaiDe(codigoPai, codigoFilho) {
@@ -202,6 +214,77 @@ async function extrairLinhasXlsx(file) {
   }));
 }
 
+async function montarPreviaImportacao({ obra, linhas }) {
+  const existentes = await Apropriacao.findAll({
+    where: { obra_id: obra.id, ativo: true },
+    attributes: [
+      'id', 'codigo', 'descricao', 'valor_orcado', 'somadora', 'macro_formulario',
+      'ordem_planilha', 'apropriacao_pai_id', 'ativo'
+    ],
+    raw: true
+  });
+  const codigoPorId = new Map(existentes.map((item) => [Number(item.id), item.codigo]));
+  const porCodigo = new Map(existentes.map((item) => [String(item.codigo), {
+    ...item,
+    id: String(item.codigo),
+    apropriacao_pai_id: codigoPorId.get(Number(item.apropriacao_pai_id)) || null,
+    origem_previa: 'CADASTRADA'
+  }]));
+
+  for (const linha of linhas) {
+    const anterior = porCodigo.get(String(linha.codigo)) || {};
+    porCodigo.set(String(linha.codigo), {
+      ...anterior,
+      id: String(linha.codigo),
+      codigo: linha.codigo,
+      descricao: linha.descricao || anterior.descricao || null,
+      valor_orcado: linha.valor_orcado,
+      somadora: linha.somadora,
+      ordem_planilha: Number(linha.ordem_planilha || anterior.ordem_planilha || 0),
+      apropriacao_pai_id: linha.codigo_apropriacao_pai || null,
+      macro_formulario: Boolean(anterior.macro_formulario),
+      ativo: true,
+      origem_previa: anterior.codigo ? 'ATUALIZADA' : 'NOVA'
+    });
+  }
+
+  const todos = [...porCodigo.values()];
+  const codigos = new Set(todos.map((item) => String(item.codigo)));
+  for (const item of todos) {
+    if (!item.apropriacao_pai_id || !codigos.has(String(item.apropriacao_pai_id))) {
+      item.apropriacao_pai_id = todos
+        .filter((candidato) => codigoEhPaiDe(candidato.codigo, item.codigo))
+        .sort((a, b) => String(b.codigo).length - String(a.codigo).length)[0]?.codigo || null;
+    }
+  }
+  const idsComFilhos = new Set(todos.map((item) => item.apropriacao_pai_id).filter(Boolean).map(String));
+  todos.forEach((item) => {
+    item.somadora = item.somadora == null
+      ? idsComFilhos.has(String(item.id))
+      : Boolean(item.somadora || idsComFilhos.has(String(item.id)));
+  });
+
+  const ordenadas = ordenarApropriacoes(todos);
+  const niveis = mapaNiveisHierarquia(ordenadas);
+  const itens = ordenadas.map((item) => ({
+    ...item,
+    nivel_hierarquia: Number(niveis.get(String(item.id)) || 0) + 1
+  }));
+  const opcoes = ['ETAPA', 'SERVICO', 'SUBSERVICO'].map((nivel) => ({
+    nivel,
+    apropriacao_codigos: selecionarApropriacoesPorNivel(itens, nivel).map((item) => item.codigo)
+  }));
+
+  return {
+    obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome },
+    nivel_atual: normalizarNivelApropriacaoFormulario(obra.nivel_apropriacao_formulario, null),
+    total_arquivo: linhas.length,
+    total_resultante: itens.length,
+    itens,
+    opcoes
+  };
+}
+
 async function validarObra(obraId) {
   const obra = await Obra.findByPk(obraId);
   if (!obra) {
@@ -215,6 +298,20 @@ async function validarObra(obraId) {
     throw error;
   }
   return obra;
+}
+
+async function ressincronizarNivelPadraoDaObra(obraId, transaction = null) {
+  const obra = await Obra.findByPk(Number(obraId), { transaction });
+  const nivel = normalizarNivelApropriacaoFormulario(
+    obra?.nivel_apropriacao_formulario,
+    null
+  );
+  if (!nivel || nivel === 'PERSONALIZADO') return null;
+  return sincronizarNivelApropriacaoFormulario({
+    obraId: Number(obraId),
+    nivel,
+    transaction
+  });
 }
 
 async function resolverObraId(linha, obraIdPadrao, cache) {
@@ -419,6 +516,7 @@ module.exports = {
         apropriacaoPaiId,
         codigoPai
       });
+      await ressincronizarNivelPadraoDaObra(obra_id);
 
       return res.status(201).json(data);
     } catch (error) {
@@ -436,6 +534,7 @@ module.exports = {
         return res.status(404).json({ error: 'Apropriacao nao encontrada' });
       }
 
+      const obraIdAnterior = Number(apropriacao.obra_id);
       const obraId = req.body?.obra_id || apropriacao.obra_id;
       const codigo = req.body?.codigo != null ? normalizarCodigoApropriacao(req.body.codigo) : apropriacao.codigo;
       const descricao = req.body?.descricao != null ? String(req.body.descricao).trim() : apropriacao.descricao;
@@ -460,6 +559,10 @@ module.exports = {
         apropriacaoPaiId,
         codigoPai
       });
+      await ressincronizarNivelPadraoDaObra(obraId);
+      if (obraIdAnterior !== Number(obraId)) {
+        await ressincronizarNivelPadraoDaObra(obraIdAnterior);
+      }
 
       return res.json(data);
     } catch (error) {
@@ -480,8 +583,28 @@ module.exports = {
       }
 
       const obraIdPadrao = req.body?.obra_id ? Number(req.body.obra_id) : null;
+      const nivelFormulario = normalizarNivelApropriacaoFormulario(
+        req.body?.nivel_apropriacao_formulario,
+        null
+      );
+      const codigosPersonalizados = [...new Set(
+        parseListaJson(req.body?.apropriacao_codigos)
+          .map(normalizarCodigoApropriacao)
+          .filter(Boolean)
+      )];
       if (obraIdPadrao) {
         await validarObra(obraIdPadrao);
+      }
+      if (req.body?.nivel_apropriacao_formulario && !nivelFormulario) {
+        return res.status(400).json({ error: 'Nivel de apropriacao dos formularios invalido.' });
+      }
+      if (nivelFormulario && !obraIdPadrao) {
+        return res.status(400).json({
+          error: 'Selecione uma obra para configurar o nivel durante a importacao.'
+        });
+      }
+      if (nivelFormulario === 'PERSONALIZADO' && !codigosPersonalizados.length) {
+        return res.status(400).json({ error: 'Marque ao menos uma apropriacao na configuracao personalizada.' });
       }
 
       const obraCache = new Map();
@@ -567,19 +690,98 @@ module.exports = {
           });
         }
 
-        return { criados, atualizados, somadorasIdentificadas };
+        let configuracao = null;
+        if (nivelFormulario && obraIdPadrao) {
+          let apropriacaoIds = [];
+          if (nivelFormulario === 'PERSONALIZADO') {
+            const selecionadas = await Apropriacao.findAll({
+              where: {
+                obra_id: obraIdPadrao,
+                codigo: { [Op.in]: codigosPersonalizados },
+                ativo: true
+              },
+              attributes: ['id', 'codigo'],
+              transaction
+            });
+            const codigosEncontrados = new Set(selecionadas.map((item) => String(item.codigo)));
+            const ausentes = codigosPersonalizados.filter((codigo) => !codigosEncontrados.has(String(codigo)));
+            if (ausentes.length) {
+              const error = new Error(`Apropriacoes personalizadas nao encontradas: ${ausentes.join(', ')}`);
+              error.statusCode = 400;
+              throw error;
+            }
+            apropriacaoIds = selecionadas.map((item) => Number(item.id));
+          }
+
+          const sincronizada = await sincronizarNivelApropriacaoFormulario({
+            obraId: obraIdPadrao,
+            nivel: nivelFormulario,
+            apropriacaoIds,
+            transaction
+          });
+          configuracao = {
+            nivel: sincronizada.nivel,
+            apropriacao_ids: sincronizada.apropriacaoIds
+          };
+        }
+
+        return { criados, atualizados, somadorasIdentificadas, configuracao };
       });
+
+      if (resultado.configuracao) {
+        await registrarEventoSeguranca({
+          req,
+          usuarioId: req.user?.id || null,
+          tipoEvento: 'APROPRIACAO_IMPORTACAO_NIVEL_CONFIGURADO',
+          recursoTipo: 'OBRA',
+          recursoId: obraIdPadrao,
+          status: 'SUCCESS',
+          descricao: 'Importacao de apropriacoes e nivel dos formularios confirmados',
+          metadata: {
+            nivel: resultado.configuracao.nivel,
+            apropriacao_ids: resultado.configuracao.apropriacao_ids,
+            arquivo: req.file?.originalname || null
+          }
+        });
+      }
 
       return res.json({
         importados: resultado.criados + resultado.atualizados,
         criados: resultado.criados,
         atualizados: resultado.atualizados,
         somadoras_identificadas: resultado.somadorasIdentificadas,
+        configuracao_formularios: resultado.configuracao,
         erros
       });
     } catch (error) {
       console.error(error);
       return res.status(error.statusCode || 500).json({ error: error.message || 'Erro ao importar apropriacoes' });
+    }
+  },
+
+  async previewImportacaoXlsx(req, res) {
+    try {
+      if (!req.file?.buffer) {
+        return res.status(400).json({ error: 'Arquivo Excel e obrigatorio' });
+      }
+
+      const obraId = Number(req.body?.obra_id || 0);
+      if (!obraId) {
+        return res.status(400).json({ error: 'Selecione uma obra para visualizar a importacao.' });
+      }
+
+      const obra = await validarObra(obraId);
+      const linhas = await extrairLinhasXlsx(req.file);
+      if (!linhas.length) {
+        return res.status(400).json({ error: 'Nenhuma apropriacao encontrada no arquivo.' });
+      }
+
+      return res.json(await montarPreviaImportacao({ obra, linhas }));
+    } catch (error) {
+      console.error(error);
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Erro ao analisar a importacao de apropriacoes.'
+      });
     }
   },
 
@@ -591,12 +793,6 @@ module.exports = {
       }
 
       const obra = await validarObra(obraId);
-      if (!obraPermiteConfiguracaoMacro(obra)) {
-        return res.status(400).json({
-          error: 'A configuracao de etapas macro esta liberada somente para as obras 109 e 110.'
-        });
-      }
-
       const apropriacoes = ordenarApropriacoes(await Apropriacao.findAll({
         where: { obra_id: obraId, ativo: true },
         include: [{
@@ -610,13 +806,29 @@ module.exports = {
       const selecionados = apropriacoes
         .filter((item) => item.macro_formulario === true)
         .map((item) => Number(item.id));
+      const niveis = mapaNiveisHierarquia(apropriacoes);
+      const candidatas = apropriacoes.map((item) => ({
+        ...item.get({ plain: true }),
+        nivel_hierarquia: Number(niveis.get(String(item.id)) || 0) + 1
+      }));
+      const opcoes = ['ETAPA', 'SERVICO', 'SUBSERVICO'].map((nivel) => ({
+        nivel,
+        apropriacao_ids: selecionarApropriacoesPorNivel(apropriacoes, nivel)
+          .map((item) => Number(item.id))
+      }));
+      const nivelAtual = normalizarNivelApropriacaoFormulario(
+        obra.nivel_apropriacao_formulario,
+        selecionados.length ? 'PERSONALIZADO' : null
+      );
 
       return res.json({
         obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome },
-        configurada: selecionados.length > 0,
+        configurada: Boolean(nivelAtual),
+        nivel_apropriacao_formulario: nivelAtual,
         apropriacao_ids: selecionados,
-        sugestao_ids: sugerirIdsMacros(apropriacoes),
-        candidatas: listarCandidatasMacro(apropriacoes)
+        sugestao_ids: opcoes.find((opcao) => opcao.nivel === 'ETAPA')?.apropriacao_ids || [],
+        opcoes,
+        candidatas
       });
     } catch (error) {
       console.error(error);
@@ -629,41 +841,30 @@ module.exports = {
   async salvarConfiguracaoMacros(req, res) {
     try {
       const obraId = Number(req.body?.obra_id || 0);
+      const nivel = normalizarNivelApropriacaoFormulario(
+        req.body?.nivel_apropriacao_formulario,
+        req.body?.nivel_apropriacao_formulario ? null : 'PERSONALIZADO'
+      );
       const ids = [...new Set(
         (Array.isArray(req.body?.apropriacao_ids) ? req.body.apropriacao_ids : [])
           .map(Number)
           .filter((id) => Number.isInteger(id) && id > 0)
       )];
-      if (!obraId || !ids.length) {
-        return res.status(400).json({ error: 'Selecione ao menos uma etapa macro.' });
+      if (!obraId || !nivel) {
+        return res.status(400).json({ error: 'Selecione o nivel de apropriacao dos formularios.' });
+      }
+      if (nivel === 'PERSONALIZADO' && !ids.length) {
+        return res.status(400).json({ error: 'Selecione ao menos uma apropriacao.' });
       }
 
       const obra = await validarObra(obraId);
-      if (!obraPermiteConfiguracaoMacro(obra)) {
-        return res.status(400).json({
-          error: 'A configuracao de etapas macro esta liberada somente para as obras 109 e 110.'
+      const resultado = await sequelize.transaction(async (transaction) => {
+        return sincronizarNivelApropriacaoFormulario({
+          obraId,
+          nivel,
+          apropriacaoIds: ids,
+          transaction
         });
-      }
-
-      const existentes = await Apropriacao.findAll({
-        where: { id: { [Op.in]: ids }, obra_id: obraId, ativo: true },
-        attributes: ['id']
-      });
-      if (existentes.length !== ids.length) {
-        return res.status(400).json({
-          error: 'Uma ou mais etapas selecionadas nao pertencem a esta obra ou estao inativas.'
-        });
-      }
-
-      await sequelize.transaction(async (transaction) => {
-        await Apropriacao.update(
-          { macro_formulario: false },
-          { where: { obra_id: obraId, macro_formulario: true }, transaction }
-        );
-        await Apropriacao.update(
-          { macro_formulario: true },
-          { where: { obra_id: obraId, id: { [Op.in]: ids }, ativo: true }, transaction }
-        );
       });
 
       await registrarEventoSeguranca({
@@ -673,15 +874,20 @@ module.exports = {
         recursoTipo: 'OBRA',
         recursoId: obraId,
         status: 'SUCCESS',
-        descricao: 'Etapas macro dos formularios operacionais configuradas',
-        metadata: { obra_codigo: obra.codigo, apropriacao_ids: ids }
+        descricao: 'Nivel de apropriacao dos formularios operacionais configurado',
+        metadata: {
+          obra_codigo: obra.codigo,
+          nivel,
+          apropriacao_ids: resultado.apropriacaoIds
+        }
       });
 
       return res.json({
         obra_id: obraId,
         configurada: true,
-        apropriacao_ids: ids,
-        total: ids.length
+        nivel_apropriacao_formulario: nivel,
+        apropriacao_ids: resultado.apropriacaoIds,
+        total: resultado.apropriacaoIds.length
       });
     } catch (error) {
       console.error(error);
@@ -701,6 +907,7 @@ module.exports = {
       }
 
       await apropriacao.update({ ativo: false });
+      await ressincronizarNivelPadraoDaObra(apropriacao.obra_id);
       return res.sendStatus(204);
     } catch (error) {
       console.error(error);

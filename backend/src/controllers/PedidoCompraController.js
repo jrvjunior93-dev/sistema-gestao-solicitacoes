@@ -1,4 +1,5 @@
-const { PedidoCompra, SolicitacaoCompra, User } = require('../models');
+const { PedidoCompra, SolicitacaoCompra, Solicitacao, User } = require('../models');
+const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
 const {
   adicionarRespostaAoPedido,
   atualizarPedidoItem,
@@ -27,6 +28,7 @@ const {
 const {
   getUserObraScopeIds,
   canAccessSolicitacaoCompraByScope,
+  canAnexarEspelhoComprasPedidos,
   canAlterarStatusComprasPedidos,
   canAuditComprasPedidos,
   canCancelarComprasPedidos,
@@ -40,6 +42,7 @@ const {
   canViewAllComprasScope,
   canViewComprasDelegacao,
   canViewComprasPedidos,
+  canViewPedidoCompraFinanceiro,
   normalizeToken
 } = require('../services/authorizationService');
 const { renderPedidoCompraPdf } = require('../services/pedidoCompraPdf');
@@ -79,9 +82,12 @@ async function validarAcessoPedidos(req, res, options = {}) {
 
   const exigeGestao = options.gerenciar === true;
   const exigeAuditoria = options.auditoria === true;
+  const exigeAnexarEspelho = options.anexarEspelho === true;
   let permitido = await podeVisualizarPedidos(usuario);
   if (exigeAuditoria) {
     permitido = await canAuditComprasPedidos(usuario);
+  } else if (exigeAnexarEspelho) {
+    permitido = await canAnexarEspelhoComprasPedidos(usuario);
   } else if (exigeGestao) {
     permitido = await podeGerenciarPedidos(usuario);
   }
@@ -90,9 +96,11 @@ async function validarAcessoPedidos(req, res, options = {}) {
     res.status(403).json({
       error: exigeAuditoria
         ? 'Acesso negado a auditoria dos pedidos de compra'
+        : (exigeAnexarEspelho
+          ? 'Acesso negado para anexar o espelho do pedido de compra'
         : (exigeGestao
           ? 'Apenas compras pode gerenciar pedidos de compra'
-          : 'Acesso negado aos pedidos de compra')
+          : 'Acesso negado aos pedidos de compra'))
     });
     return null;
   }
@@ -126,7 +134,10 @@ async function buildHistoricoPrecoScope(req) {
 }
 
 async function validarEscopoPedidoCompra(usuario, pedido, res) {
-  if (await canAccessSolicitacaoCompraByScope(usuario, pedido?.solicitacao)) {
+  if (
+    await canViewPedidoCompraFinanceiro(usuario)
+    || await canAccessSolicitacaoCompraByScope(usuario, pedido?.solicitacao)
+  ) {
     return true;
   }
 
@@ -209,13 +220,17 @@ module.exports = {
         return;
       }
 
-      const podeVerEscopoCompleto = await canViewAllComprasScope(usuario);
+      const podeVerEscopoCompleto = (
+        await canViewAllComprasScope(usuario)
+        || await canViewPedidoCompraFinanceiro(usuario)
+      );
       const pedidos = await listarPedidos({
         solicitacaoId: req.query?.solicitacao_id,
         obraId: req.query?.obra_id,
         status: req.query?.status,
         q: req.query?.q,
         visao: req.query?.visao,
+        statusFinanceiro: req.query?.status_financeiro,
         obraIds: req.compraScopeObraIds,
         compradorResponsavelId: podeVerEscopoCompleto ? null : usuario.id,
         solicitanteId: podeVerEscopoCompleto ? null : usuario.id
@@ -753,9 +768,23 @@ module.exports = {
       });
 
       await transaction.commit();
+      try {
+        const pedido = await PedidoCompra.findByPk(req.params.id);
+        const compra = pedido && await SolicitacaoCompra.findByPk(pedido.solicitacao_compra_id);
+        const principal = compra?.solicitacao_principal_id
+          ? await Solicitacao.findByPk(compra.solicitacao_principal_id) : null;
+        if (principal) await registrarAtencaoSolicitacao({
+          solicitacao: principal,
+          atorId: usuario.id,
+          tipo: 'COMENTARIO_PEDIDO',
+          resumo: `${usuario.nome || 'Usuário'} comentou no pedido #${pedido.id}`
+        });
+      } catch (atencaoError) {
+        console.error('Comentario do pedido salvo, mas destaque da solicitacao falhou:', atencaoError);
+      }
       return res.json({ ok: true });
     } catch (error) {
-      await transaction.rollback();
+      if (!transaction.finished) await transaction.rollback();
       console.error(error);
       return responderErroController(res, error, 'Erro ao comentar pedido', { status: 400 });
     }
@@ -765,15 +794,10 @@ module.exports = {
     const transaction = await PedidoCompra.sequelize.transaction();
 
     try {
-      const usuario = await validarAcessoPedidos(req, res, { gerenciar: true });
+      const usuario = await validarAcessoPedidos(req, res, { anexarEspelho: true });
       if (!usuario) {
         await transaction.rollback();
         return;
-      }
-
-      if (!(await canRegistrarFreteComprasPedidos(usuario))) {
-        await transaction.rollback();
-        return res.status(403).json({ error: 'Acesso negado para editar frete do pedido' });
       }
 
       if (!(await carregarPedidoCompraNoEscopo(req, res, usuario, req.params.id))) {

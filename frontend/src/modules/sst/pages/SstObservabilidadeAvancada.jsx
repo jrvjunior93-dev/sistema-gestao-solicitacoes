@@ -6,6 +6,19 @@ import {
   limparCacheExpiradoSst,
   processarWorkerSst
 } from '../services/sst';
+import {
+  Avisos,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 
 const DEFAULT_JOBS = [
   'SstScoreRecalculationJob',
@@ -20,122 +33,101 @@ function fmt(value) {
   return Number(value || 0).toLocaleString('pt-BR');
 }
 
-function statusTone(value) {
-  const status = String(value || '').toUpperCase();
-  if (['CONTROLADO', 'SUCESSO', 'ATIVO', 'REGISTRADO'].includes(status)) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (['ATENCAO', 'PENDENTE', 'PROCESSANDO', 'ERRO'].includes(status)) return 'border-amber-200 bg-amber-50 text-amber-700';
-  if (['CRITICO', 'CRITICA', 'DEAD_LETTER', 'BLOQUEADO'].includes(status)) return 'border-rose-200 bg-rose-50 text-rose-700';
-  return 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text)]';
+/*
+  R2/R25 — a cor de severidade sai de token pelo StatusBadge; as classes
+  emerald/amber/rose que a tela escrevia à mão saíram.
+
+  O mapa é EXPLÍCITO porque o vocabulário é de fila e qualidade, e a
+  classificação automática erraria dois casos que importam: ERRO estava no
+  mesmo balde de ATENCAO (era amarelo) e DEAD_LETTER não é lido por regra
+  nenhuma. Aqui ERRO é danger, e DEAD_LETTER também: job que morreu na fila
+  não é atenção, é perda.
+*/
+const FAMILIA_STATUS_FILA = {
+  CONTROLADO: 'success',
+  SUCESSO: 'success',
+  ATIVO: 'success',
+  REGISTRADO: 'success',
+  ATENCAO: 'warning',
+  PENDENTE: 'warning',
+  PROCESSANDO: 'info',
+  ERRO: 'danger',
+  CRITICO: 'danger',
+  CRITICA: 'danger',
+  DEAD_LETTER: 'danger',
+  BLOQUEADO: 'danger'
+};
+
+function EtiquetaStatus({ valor }) {
+  const chave = String(valor || 'SEM_STATUS').toUpperCase();
+  return <StatusBadge status={chave.replaceAll('_', ' ')} kind={FAMILIA_STATUS_FILA[chave]} />;
 }
 
-function Pill({ value }) {
-  const label = String(value || 'SEM_STATUS').replaceAll('_', ' ');
-  return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(value)}`}>{label}</span>;
-}
-
-function Card({ label, value, detail }) {
+/* Contadores por chave: ladrilho de dado único (StatTile). */
+function GradeContadores({ itens, vazio = 'Sem dados para exibir.' }) {
+  const linhas = Object.entries(itens || {});
+  if (!linhas.length) return <p className="text-sm text-muted">{vazio}</p>;
   return (
-    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--c-text)]">{value}</p>
-      {detail ? <p className="mt-1 text-xs text-[var(--c-muted)]">{detail}</p> : null}
-    </div>
-  );
-}
-
-function StatusList({ title, items }) {
-  const rows = Object.entries(items || {});
-  return (
-    <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-      <h2 className="text-lg font-semibold text-[var(--c-text)]">{title}</h2>
-      <div className="mt-4 space-y-2">
-        {rows.map(([key, value]) => (
-          <div key={key} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-muted)]">{key.replaceAll('_', ' ')}</span>
-            <span className="text-sm font-semibold text-[var(--c-text)]">{fmt(value)}</span>
-          </div>
-        ))}
-        {!rows.length ? <p className="text-sm text-[var(--c-muted)]">Sem dados para exibir.</p> : null}
-      </div>
-    </section>
-  );
-}
-
-function PerformanceList({ items }) {
-  return (
-    <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-      <h2 className="text-lg font-semibold text-[var(--c-text)]">Performance recente</h2>
-      <div className="mt-4 max-h-80 overflow-y-auto rounded-lg border border-[var(--c-border)]">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-[var(--c-surface-muted)] text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">
-            <tr>
-              <th className="px-3 py-3">Metrica</th>
-              <th className="px-3 py-3">Grupo</th>
-              <th className="px-3 py-3">Valor</th>
-              <th className="px-3 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-border)]">
-            {(items || []).map((item) => (
-              <tr key={item.id} className="bg-[var(--c-bg)] text-[var(--c-text)]">
-                <td className="px-3 py-3 font-semibold">{item.metric_name}</td>
-                <td className="px-3 py-3 text-[var(--c-muted)]">{item.metric_group || item.scope_type || 'SISTEMA'}</td>
-                <td className="px-3 py-3">{fmt(item.value)} {item.unit || ''}</td>
-                <td className="px-3 py-3"><Pill value={item.status || 'REGISTRADO'} /></td>
-              </tr>
-            ))}
-            {!(items || []).length ? (
-              <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-sm text-[var(--c-muted)]">Nenhuma metrica recente registrada.</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <StatGrid colunas={2}>
+      {linhas.map(([chave, valor]) => (
+        <StatTile key={chave} label={String(chave).replaceAll('_', ' ')} valor={fmt(valor)} />
+      ))}
+    </StatGrid>
   );
 }
 
 export default function SstObservabilidadeAvancada() {
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
 
   const load = () => {
     setLoading(true);
     getSstObservabilidadeAvancada()
       .then((payload) => {
         setData(payload);
-        setError('');
       })
-      .catch((err) => setError(err.message || 'Erro ao carregar observabilidade avancada SST'))
+      .catch((err) => avisar.erro(err.message || 'Erro ao carregar observabilidade avancada SST'))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function runAction(name, action, successMessage) {
     setBusy(name);
-    setMessage('');
-    setError('');
     try {
       const result = await action();
-      setMessage(typeof successMessage === 'function' ? successMessage(result) : successMessage);
+      avisar.sucesso(typeof successMessage === 'function' ? successMessage(result) : successMessage);
       load();
     } catch (err) {
-      setError(err.message || 'Erro ao executar acao SST');
+      avisar.erro(err.message || 'Erro ao executar acao SST');
     } finally {
       setBusy('');
     }
   }
 
-  async function enqueueDefaultJobs() {
+  /*
+    A LISTA VEM POR PARÂMETRO, NÃO POR ESCOPO (05/09).
+
+    Antes, a confirmação citava `jobs` (cópia de DEFAULT_JOBS) e o laço lia
+    DEFAULT_JOBS de novo, pelo escopo. Dava o mesmo resultado hoje, por sorte
+    de ser a mesma constante — e a varredura de cancelamento acusou, com
+    razão: ela não tem como provar que dois nomes apontam para o mesmo array,
+    e o próximo que fizer de `jobs` um subconjunto filtrado teria a pessoa
+    autorizando três e o laço enfileirando seis.
+
+    Passar a lista faz o consentimento e a ação serem o MESMO objeto, não duas
+    leituras do mesmo nome — a mesma correção aplicada aos lotes de
+    Solicitações nesta rodada.
+  */
+  async function enqueueDefaultJobs(jobsAutorizados) {
     const results = [];
-    for (const job_type of DEFAULT_JOBS) {
+    for (const job_type of jobsAutorizados) {
       results.push(await enfileirarJobSst({ job_type, payload: { origem: 'observabilidade_avancada' } }));
     }
     return results;
@@ -157,107 +149,172 @@ export default function SstObservabilidadeAvancada() {
     jobsAtrasados: data?.performance?.jobs_atrasados
   }), [snapshot, cache, data]);
 
+  /*
+    CONSENTIMENTO — o botão dizia só "Enfileirar jobs" e enfileirava SEIS
+    tipos fixos, sem dizer quais. Quem clica autoriza uma coisa e acontece
+    outra (seis). A confirmação nomeia a lista antes de qualquer gravação.
+    R26: a lista é constante de módulo, fixada fora do await por construção.
+  */
+  async function confirmarEnfileirar() {
+    const jobs = [...DEFAULT_JOBS];
+    // R21: o retorno de confirmar() é objeto — SEMPRE desestruturado.
+    const { ok } = await confirmar({
+      titulo: 'Enfileirar jobs padrão',
+      mensagem: `Enfileirar ${jobs.length} job(s) na fila ${data?.filas?.queue_name || 'sst-default'}: ${jobs.join(', ')}.`,
+      rotuloConfirmar: 'Enfileirar'
+    });
+    if (!ok) return;
+    runAction('enqueue', () => enqueueDefaultJobs(jobs), (items) => `${fmt(items.filter((item) => item.enfileirado).length)} job(s) enfileirado(s).`);
+  }
+
+  async function confirmarLimparCache() {
+    const expiradas = cache.expiradas;
+    const { ok } = await confirmar({
+      titulo: 'Limpar cache expirado',
+      mensagem: `Remover as ${fmt(expiradas)} entrada(s) de cache expiradas? A remoção é definitiva; as entradas são recalculadas na próxima consulta.`,
+      rotuloConfirmar: 'Limpar cache',
+      destrutiva: true
+    });
+    if (!ok) return;
+    runAction('cache', limparCacheExpiradoSst, (result) => `${fmt(result.removidos)} entrada(s) removida(s).`);
+  }
+
   return (
-    <div className="sst-page space-y-6">
-      <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--c-muted)]">SST enterprise</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--c-text)]">Observabilidade avancada</h1>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--c-muted)]">
-              Painel corporativo para filas, jobs, cache, qualidade, governanca, performance e readiness de escala.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Pill value={readiness.nivel} />
-            <button
-              type="button"
-              className="btn btn-outline"
-              disabled={Boolean(busy)}
-              onClick={() => runAction('enqueue', enqueueDefaultJobs, (items) => `${fmt(items.filter((item) => item.enfileirado).length)} job(s) enfileirado(s).`)}
-            >
-              {busy === 'enqueue' ? 'Enfileirando...' : 'Enfileirar jobs'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={Boolean(busy)}
-              onClick={() => runAction('worker', () => processarWorkerSst({ limit: 10 }), (result) => `${fmt(result.processados)} job(s) processado(s).`)}
-            >
-              {busy === 'worker' ? 'Processando...' : 'Processar worker'}
-            </button>
-          </div>
-        </div>
-      </section>
+    <Pagina className="sst-page">
+      <PageHeader
+        titulo="Observabilidade avançada"
+        contagem={readiness.nivel ? String(readiness.nivel).replaceAll('_', ' ') : null}
+        descricao="Painel corporativo para filas, jobs, cache, qualidade, governança, performance e readiness de escala."
+        acaoPrincipal={{
+          rotulo: busy === 'worker' ? 'Processando...' : 'Processar worker',
+          onClick: () => runAction('worker', () => processarWorkerSst({ limit: 10 }), (result) => `${fmt(result.processados)} job(s) processado(s).`),
+          desabilitada: Boolean(busy),
+          title: 'Processa até 10 jobs pendentes da fila'
+        }}
+        secundarias={[
+          {
+            rotulo: busy === 'enqueue' ? 'Enfileirando...' : 'Enfileirar jobs',
+            onClick: confirmarEnfileirar,
+            desabilitada: Boolean(busy)
+          },
+          {
+            rotulo: busy === 'quality' ? 'Verificando...' : 'Rodar quality check',
+            onClick: () => runAction('quality', executarQualityCheckSst, (result) => `${fmt(result.issues_criadas)} issue(s) de qualidade criada(s).`),
+            desabilitada: Boolean(busy)
+          }
+        ]}
+        destrutiva={{
+          rotulo: busy === 'cache' ? 'Limpando...' : 'Limpar cache expirado',
+          onClick: confirmarLimparCache,
+          desabilitada: Boolean(busy)
+        }}
+      />
 
-      {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</div> : null}
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">{message}</div> : null}
-      {loading ? <p className="text-sm text-[var(--c-muted)]">Carregando observabilidade avancada...</p> : null}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <Card label="Pendentes" value={fmt(cards.pendentes)} detail={filas.queue_name || 'sst-default'} />
-        <Card label="Processando" value={fmt(cards.processando)} detail={filas.workers?.mode || 'database-backed'} />
-        <Card label="Falhas" value={fmt(cards.falhas)} detail={`${fmt(cards.deadLetter)} dead letter`} />
-        <Card label="Cache ativo" value={fmt(cards.cacheAtivo)} detail={`${fmt(cache.expiradas)} expiradas`} />
-        <Card label="Jobs atrasados" value={fmt(cards.jobsAtrasados)} detail={readiness.observacao} />
-        <Card label="Readiness" value={readiness.nivel || 'SEM_DADOS'} detail={producao?.readiness?.nivel} />
-      </section>
+      {loading ? <div className="app-empty-card">Carregando observabilidade avançada...</div> : null}
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-[var(--c-text)]">Operacao controlada</h2>
-              <p className="mt-1 text-sm text-[var(--c-muted)]">Acoes administrativas para manter a camada enterprise saudavel.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="btn btn-outline"
-                disabled={Boolean(busy)}
-                onClick={() => runAction('quality', executarQualityCheckSst, (result) => `${fmt(result.issues_criadas)} issue(s) de qualidade criada(s).`)}
-              >
-                {busy === 'quality' ? 'Verificando...' : 'Rodar quality check'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline"
-                disabled={Boolean(busy)}
-                onClick={() => runAction('cache', limparCacheExpiradoSst, (result) => `${fmt(result.removidos)} entrada(s) removida(s).`)}
-              >
-                {busy === 'cache' ? 'Limpando...' : 'Limpar cache expirado'}
-              </button>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Worker</p>
-              <p className="mt-2 text-sm font-semibold text-[var(--c-text)]">{filas.workers?.worker_id || 'sem worker'}</p>
-              <p className="mt-1 text-xs text-[var(--c-muted)]">BullMQ ready: {filas.workers?.bullmq_ready ? 'sim' : 'nao'}</p>
-            </div>
-            <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">Fila</p>
-              <p className="mt-2 text-sm font-semibold text-[var(--c-text)]">{filas.queue_name || 'sst-default'}</p>
-              <p className="mt-1 text-xs text-[var(--c-muted)]">Media {fmt(snapshot.avg_duration_ms)} ms</p>
-            </div>
-            <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--c-muted)]">eSocial</p>
-              <p className="mt-2 text-sm font-semibold text-[var(--c-text)]">Transmissao bloqueada</p>
-              <p className="mt-1 text-xs text-[var(--c-muted)]">Apenas dominio operacional SST.</p>
-            </div>
-          </div>
-        </section>
+      <StatGrid colunas={3}>
+        <StatTile label="Pendentes" valor={fmt(cards.pendentes)} sub={filas.queue_name || 'sst-default'} />
+        <StatTile label="Processando" valor={fmt(cards.processando)} sub={filas.workers?.mode || 'database-backed'} />
+        <StatTile
+          label="Falhas"
+          valor={fmt(cards.falhas)}
+          sub={`${fmt(cards.deadLetter)} dead letter`}
+          tom={cards.falhas || cards.deadLetter ? 'danger' : 'success'}
+        />
+        <StatTile label="Cache ativo" valor={fmt(cards.cacheAtivo)} sub={`${fmt(cache.expiradas)} expiradas`} />
+        <StatTile
+          label="Jobs atrasados"
+          valor={fmt(cards.jobsAtrasados)}
+          sub={readiness.observacao}
+          tom={cards.jobsAtrasados ? 'warning' : undefined}
+        />
+        <StatTile label="Readiness" valor={readiness.nivel || 'SEM_DADOS'} sub={producao?.readiness?.nivel} />
+      </StatGrid>
 
-        <StatusList title="Status dos jobs" items={filas.status} />
-      </section>
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 6 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:sst-observabilidade-avancada" larguraPadrao="total">
+        <BlocoConteudo
+          titulo="Operação controlada"
+          descricao="Ações administrativas para manter a camada enterprise saudavel — os botoes ficam na faixa do cabeçalho, sempre a um clique."
+          variante="primario"
+          cor="var(--sem-info)"
+          acoes={<EtiquetaStatus valor={readiness.nivel} />}
+        >
+          <StatGrid colunas={3}>
+            <StatTile label="Worker" valor={filas.workers?.worker_id || 'sem worker'} sub={`BullMQ ready: ${filas.workers?.bullmq_ready ? 'sim' : 'nao'}`} />
+            <StatTile label="Fila" valor={filas.queue_name || 'sst-default'} sub={`Media ${fmt(snapshot.avg_duration_ms)} ms`} />
+            <StatTile label="eSocial" valor="Transmissao bloqueada" sub="Apenas dominio operacional SST." />
+          </StatGrid>
+        </BlocoConteudo>
 
-      <section className="grid gap-4 xl:grid-cols-3">
-        <StatusList title="Qualidade operacional" items={qualidade.ABERTA || qualidade} />
-        <StatusList title="Governanca por acao" items={governanca.acoes} />
-        <StatusList title="Governanca por criticidade" items={governanca.criticidades} />
-      </section>
+        <BlocoConteudo titulo="Status dos jobs">
+          <GradeContadores itens={filas.status} />
+        </BlocoConteudo>
 
-      <PerformanceList items={data?.performance?.recentes} />
-    </div>
+        <BlocoConteudo titulo="Qualidade operacional">
+          <GradeContadores itens={qualidade.ABERTA || qualidade} />
+        </BlocoConteudo>
+
+        <BlocoConteudo titulo="Governança por ação" recolhivel chavePreferencia="bloco:sst-observabilidade-avancada:governanca-por-acao" recolhidoPadrao>
+          <GradeContadores itens={governanca.acoes} />
+        </BlocoConteudo>
+
+        <BlocoConteudo titulo="Governança por criticidade" recolhivel chavePreferencia="bloco:sst-observabilidade-avancada:governanca-por-criticidade" recolhidoPadrao>
+          <GradeContadores itens={governanca.criticidades} />
+        </BlocoConteudo>
+
+        <BlocoConteudo
+          titulo="Performance recente"
+          contagem={`${(data?.performance?.recentes || []).length} métrica(s)`}
+        >
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'metrica',
+                titulo: 'Métrica',
+                // R17: a métrica é cadastrada com nome próprio (metric_name) —
+                // é ele que nomeia a linha.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => item.metric_name
+              },
+              {
+                id: 'grupo',
+                titulo: 'Grupo',
+                tipo: 'texto',
+                render: (item) => item.metric_group || item.scope_type || 'SISTEMA'
+              },
+              {
+                id: 'valor',
+                titulo: 'Valor',
+                tipo: 'numero',
+                render: (item) => `${fmt(item.value)} ${item.unit || ''}`.trim()
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (item) => <EtiquetaStatus valor={item.status || 'REGISTRADO'} />
+              }
+            ]}
+            itens={data?.performance?.recentes || []}
+            vazio="Nenhuma métrica recente registrada."
+            storageKey="tabela:sst-observabilidade-avancada:performance"
+            rotuloRolagem="Performance recente"
+          />
+        </BlocoConteudo>
+      </BlocosPersonalizaveis>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

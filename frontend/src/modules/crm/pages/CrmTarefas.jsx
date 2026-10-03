@@ -1,27 +1,57 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listarTarefas, concluirTarefa, cancelarTarefa } from '../../../services/crm';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  TabelaPadrao,
+  BarraFiltros,
+  alternarValorFiltro,
+  Paginacao,
+  Avisos,
+  useAvisos,
+  useConfirmacao,
+  useFiltrosVisiveis
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 
+const POR_PAGINA = 50;
+
+/*
+  R25 — a paleta crua do antigo STATUS_MAP (amber/emerald/red/slate) vira
+  FAMÍLIA SEMÂNTICA do StatusBadge, que resolve cor, ícone e contraste por
+  token. O mapa continua EXPLÍCITO porque a classificação automática do
+  StatusBadge leria "Vencida" e "Cancelada" pelo texto e não conhece o
+  estado derivado (PENDING + prazo no passado = OVERDUE), que é justamente
+  a distinção que esta tela tinha e não pode perder.
+*/
 const STATUS_MAP = {
-  PENDING:   { label: 'Pendente',  cls: 'app-status-pill bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' },
-  DONE:      { label: 'Concluida', cls: 'app-status-pill bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' },
-  OVERDUE:   { label: 'Vencida',   cls: 'app-status-pill bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300' },
-  CANCELLED: { label: 'Cancelada', cls: 'app-status-pill bg-elevated text-muted' }
+  PENDING: { label: 'Pendente', familia: 'warning' },
+  DONE: { label: 'Concluída', familia: 'success' },
+  OVERDUE: { label: 'Vencida', familia: 'danger' },
+  CANCELLED: { label: 'Cancelada', familia: 'neutral' }
 };
 
 const PRIORITY_MAP = {
-  HIGH:   { label: 'Alta',   cls: 'text-red-500' },
-  MEDIUM: { label: 'Media',  cls: 'text-amber-500' },
-  LOW:    { label: 'Baixa',  cls: 'text-blue-400' }
+  HIGH: { label: 'Alta', familia: 'danger' },
+  MEDIUM: { label: 'Media', familia: 'warning' },
+  LOW: { label: 'Baixa', familia: 'info' }
 };
 
 const TYPE_MAP = {
-  CALL:     'Ligacao',
-  VISIT:    'Visita',
+  CALL: 'Ligacao',
+  VISIT: 'Visita',
   WHATSAPP: 'WhatsApp',
-  EMAIL:    'E-mail',
+  EMAIL: 'E-mail',
   PROPOSAL: 'Proposta',
-  OTHER:    'Outro'
+  OTHER: 'Outro'
+};
+
+const FILTROS_VAZIOS = {
+  status: new Set(),
+  task_type: new Set(),
+  vencidas: new Set()
 };
 
 function fmt(val) {
@@ -33,187 +63,309 @@ function isOverdue(task) {
   return task.status === 'PENDING' && task.due_at && new Date(task.due_at) < new Date();
 }
 
+/*
+  R12 — o recorte virou MARCAÇÃO, mas o serviço (`GET /crm/tasks`) aceita UM
+  valor por parâmetro (`status=PENDING`). Marcar dois valores mandaria um
+  parâmetro repetido que o backend ignora: capacidade aparente sem efeito
+  (a família da R15). Por isso as três dimensões são `unico: true` — a marca
+  é redonda, marcar outra substitui, e a etiqueta afirma o que filtra de
+  verdade.
+*/
+function primeiroValor(conjunto) {
+  if (!conjunto || conjunto.size === 0) return '';
+  return [...conjunto][0];
+}
+
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'status', rotulo: 'Status' },
+  { id: 'task_type', rotulo: 'Tipo' },
+  { id: 'vencidas', rotulo: 'Prazo' }
+];
+
 export default function CrmTarefas() {
   const [tasks, setTasks] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ status: '', task_type: '', vencidas: '' });
+  const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => (filtros[filtro.id]?.size || 0) > 0).map((filtro) => filtro.id),
+    [filtros]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:crm-tarefas', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      setPage(1);
+      setFiltros((atual) => ({ ...atual, [id]: new Set() }));
+    }
+  });
+  // R19/R3: faixa de aviso do sistema no lugar do alert() do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
+  // R21: `confirmar()` devolve OBJETO — todo uso abaixo DESESTRUTURA.
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
+
+  const params = useMemo(() => ({
+    status: primeiroValor(filtros.status),
+    task_type: primeiroValor(filtros.task_type),
+    vencidas: primeiroValor(filtros.vencidas)
+  }), [filtros]);
 
   const load = useCallback(() => {
     setLoading(true);
-    const params = { page, limit: 50, ...filters };
-    listarTarefas(params)
+    listarTarefas({ page, limit: POR_PAGINA, ...params })
       .then(({ tasks: t, total: tot }) => {
         setTasks(t || []);
         setTotal(tot || 0);
       })
-      .catch((err) => alert(err.message || 'Erro ao carregar tarefas'))
+      .catch((err) => avisar.erro(err.message || 'Erro ao carregar tarefas'))
       .finally(() => setLoading(false));
-  }, [page, filters]);
+  }, [page, params, avisar]);
 
   useEffect(() => { load(); }, [load]);
 
-  function setFilter(k) {
-    return (e) => {
-      setPage(1);
-      setFilters((f) => ({ ...f, [k]: e.target.value }));
-    };
+  // R23: marcar aplica na hora (uma requisição por recorte, bem abaixo do
+  // critério de consulta cara) — e volta para a primeira página, senão a
+  // etiqueta afirma um recorte e a tela mostra a página 3 do anterior.
+  function alternarFiltro(dimensao, valor, opcoes) {
+    setPage(1);
+    setFiltros((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes));
   }
 
-  async function handleComplete(id) {
+  function limparFiltros() {
+    setPage(1);
+    setFiltros(FILTROS_VAZIOS);
+  }
+
+  /*
+    R26 — o alvo é fixado numa `const` ANTES do `await`: o modal do sistema
+    NÃO congela a página (o `window.confirm` congelava), então a lista pode
+    recarregar embaixo enquanto a pergunta está aberta. Perguntar por uma
+    tarefa e concluir outra é defeito de CONSENTIMENTO — a trilha registra
+    uma autorização válida para a ação errada.
+  */
+  async function handleComplete(task) {
+    const alvo = task;
+    /*
+      SEM CONFIRMAÇÃO (05/09): concluir tarefa é a ação DE ROTINA pela qual
+      esta tela existe, e não é destrutiva — o registro continua lá, muda de
+      estado. Perguntar em toda conclusão vira ruído, e pergunta que vira
+      ruído deixa de ser lida. Fica a confirmação do CANCELAR, logo abaixo,
+      que é o caminho que tira a tarefa da fila.
+    */
     try {
-      await concluirTarefa(id);
+      await concluirTarefa(alvo.id);
+      avisar.sucesso(`Tarefa "${alvo.title}" concluida.`);
       load();
     } catch (err) {
-      alert(err.message || 'Erro ao concluir tarefa');
+      avisar.erro(err.message || 'Erro ao concluir tarefa');
     }
   }
 
-  async function handleCancel(id) {
-    if (!confirm('Cancelar esta tarefa?')) return;
+  async function handleCancel(task) {
+    const alvo = task;
+    const { ok } = await confirmar({
+      titulo: 'Cancelar tarefa',
+      mensagem: `Cancelar "${alvo.title}"? A tarefa deixa de aparecer como pendente.`,
+      rotuloConfirmar: 'Cancelar tarefa',
+      destrutiva: true
+    });
+    if (!ok) return;
     try {
-      await cancelarTarefa(id);
+      await cancelarTarefa(alvo.id);
+      avisar.sucesso(`Tarefa "${alvo.title}" cancelada.`);
       load();
     } catch (err) {
-      alert(err.message || 'Erro ao cancelar tarefa');
+      avisar.erro(err.message || 'Erro ao cancelar tarefa');
     }
   }
+
+  const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Tarefas CRM</h1>
-            <p className="page-subtitle">{total} tarefa{total !== 1 ? 's' : ''} encontrada{total !== 1 ? 's' : ''}.</p>
-          </div>
-          <Link to="/crm/dashboard" className="btn btn-secondary text-sm">Dashboard</Link>
-        </div>
-      </div>
+    <Pagina>
+      <PageHeader
+        titulo="Tarefas CRM"
+        contagem={`${total} tarefa${total !== 1 ? 's' : ''}`}
+        descricao="Agenda de contatos, visitas e propostas do funil comercial."
+        /* "Dashboard" saiu daqui (C6/R11): caminho para OUTRA tela não é ação
+           desta. `crm-dashboard` já é destino do navigationConfig. */
+      />
 
-      {/* Filtros */}
-      <div className="card sol-surface-card p-4 mt-3">
-        <div className="flex flex-wrap gap-3">
-          <label className="app-filter-field">
-            <span className="app-filter-label">Status</span>
-            <select className="input" value={filters.status} onChange={setFilter('status')}>
-              <option value="">Todos</option>
-              <option value="PENDING">Pendente</option>
-              <option value="DONE">Concluida</option>
-              <option value="CANCELLED">Cancelada</option>
-            </select>
-          </label>
-          <label className="app-filter-field">
-            <span className="app-filter-label">Tipo</span>
-            <select className="input" value={filters.task_type} onChange={setFilter('task_type')}>
-              <option value="">Todos</option>
-              {Object.entries(TYPE_MAP).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
-            </select>
-          </label>
-          <label className="app-filter-field">
-            <span className="app-filter-label">Vencidas</span>
-            <select className="input" value={filters.vencidas} onChange={setFilter('vencidas')}>
-              <option value="">Todas</option>
-              <option value="true">Apenas vencidas</option>
-            </select>
-          </label>
-          {(filters.status || filters.task_type || filters.vencidas) && (
-            <button
-              className="btn btn-secondary text-sm self-end"
-              onClick={() => { setFilters({ status: '', task_type: '', vencidas: '' }); setPage(1); }}
-            >
-              Limpar
-            </button>
-          )}
-        </div>
-      </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      {/* Lista */}
-      <div className="card sol-surface-card mt-3 overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-muted text-sm">Carregando...</div>
-        ) : tasks.length === 0 ? (
-          <div className="p-8 text-center text-muted text-sm">Nenhuma tarefa encontrada.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="app-table w-full">
-              <thead>
-                <tr>
-                  <th>Tarefa</th>
-                  <th>Lead</th>
-                  <th>Tipo</th>
-                  <th>Prioridade</th>
-                  <th>Responsavel</th>
-                  <th>Prazo</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((task) => {
-                  const overdue = isOverdue(task);
-                  const statusKey = overdue ? 'OVERDUE' : task.status;
-                  const statusInfo = STATUS_MAP[statusKey] || STATUS_MAP.PENDING;
-                  const priorityInfo = PRIORITY_MAP[task.priority] || PRIORITY_MAP.MEDIUM;
-                  return (
-                    <tr key={task.id} className={overdue ? 'bg-red-50/30 dark:bg-red-900/10' : ''}>
-                      <td className="font-medium text-main">{task.title}</td>
-                      <td>
-                        {task.lead ? (
-                          <Link to={`/crm/leads/${task.lead.id}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
-                            {task.lead.nome}
-                          </Link>
-                        ) : '—'}
-                      </td>
-                      <td className="text-sm text-sub">{TYPE_MAP[task.task_type] || task.task_type}</td>
-                      <td>
-                        <span className={`text-sm font-medium ${priorityInfo.cls}`}>{priorityInfo.label}</span>
-                      </td>
-                      <td className="text-sm text-sub">{task.responsavel?.nome || '—'}</td>
-                      <td className={`text-sm whitespace-nowrap ${overdue ? 'text-red-500 font-medium' : 'text-sub'}`}>
-                        {fmt(task.due_at)}
-                      </td>
-                      <td><span className={statusInfo.cls}>{statusInfo.label}</span></td>
-                      <td>
-                        <div className="flex gap-1">
-                          {task.status === 'PENDING' && (
-                            <>
-                              <button
-                                onClick={() => handleComplete(task.id)}
-                                className="btn btn-secondary text-xs text-emerald-700 dark:text-emerald-400"
-                              >
-                                Concluir
-                              </button>
-                              <button
-                                onClick={() => handleCancel(task.id)}
-                                className="btn btn-secondary text-xs text-red-600 dark:text-red-400"
-                              >
-                                Cancelar
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <BlocoConteudo
+        variante="primario"
+        cor="var(--sem-info)"
+        titulo="Tarefas"
+        contagem={`${tasks.length} em tela`}
+        descricao="Concluir e cancelar pedem confirmação antes de gravar."
+      >
+        <BarraFiltros
+          filtros={[
+            {
+              id: 'status',
+              rotulo: 'Status',
+              unico: true,
+              opcoes: [
+                { valor: 'PENDING', rotulo: 'Pendente' },
+                { valor: 'DONE', rotulo: 'Concluída' },
+                { valor: 'CANCELLED', rotulo: 'Cancelada' }
+              ]
+            },
+            {
+              id: 'task_type',
+              rotulo: 'Tipo',
+              unico: true,
+              opcoes: Object.entries(TYPE_MAP).map(([valor, rotulo]) => ({ valor, rotulo }))
+            },
+            {
+              id: 'vencidas',
+              rotulo: 'Prazo',
+              unico: true,
+              opcoes: [{ valor: 'true', rotulo: 'Apenas vencidas' }]
+            }
+          ].filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={filtros}
+          aoAlternar={alternarFiltro}
+          aoLimpar={limparFiltros}
+          visibilidade={visibilidadeFiltros}
+        />
 
-      {/* Paginacao */}
-      {total > 50 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button className="btn btn-secondary text-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</button>
-          <span className="text-sm text-muted self-center">Pagina {page}</span>
-          <button className="btn btn-secondary text-sm" disabled={page * 50 >= total} onClick={() => setPage(p => p + 1)}>Proxima</button>
-        </div>
-      )}
-    </div>
+        <TabelaPadrao
+          // Rodape "N de M" (05/09): esta lista vem PAGINADA do servidor, entao
+          // o que esta a vista e uma fatia — sem o total, quem rola nao sabe se
+          // adianta continuar.
+          total={Number(total || 0)}
+          rotuloRegistro="tarefa"
+          colunas={[
+            {
+              id: 'titulo',
+              titulo: 'Tarefa',
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (task) => <span className="font-medium text-main">{task.title}</span>
+            },
+            {
+              id: 'lead',
+              titulo: 'Lead',
+              tipo: 'texto',
+              render: (task) => (task.lead ? (
+                <Link
+                  to={`/crm/leads/${task.lead.id}`}
+                  className="text-[var(--c-primary)] hover:underline"
+                >
+                  {task.lead.nome}
+                </Link>
+              ) : '—')
+            },
+            {
+              id: 'tipo',
+              titulo: 'Tipo',
+              tipo: 'texto',
+              render: (task) => <span className="text-sub">{TYPE_MAP[task.task_type] || task.task_type}</span>
+            },
+            {
+              id: 'prioridade',
+              titulo: 'Prioridade',
+              tipo: 'badge',
+              render: (task) => {
+                const prioridade = PRIORITY_MAP[task.priority] || PRIORITY_MAP.MEDIUM;
+                return <StatusBadge status={prioridade.label} kind={prioridade.familia} />;
+              }
+            },
+            {
+              id: 'responsavel',
+              titulo: 'Responsável',
+              tipo: 'texto',
+              render: (task) => <span className="text-sub">{task.responsavel?.nome || '—'}</span>
+            },
+            {
+              id: 'prazo',
+              titulo: 'Prazo',
+              tipo: 'data',
+              render: (task) => (
+                <span className={`whitespace-nowrap ${isOverdue(task) ? 'text-[var(--sem-danger)] font-medium' : 'text-sub'}`}>
+                  {fmt(task.due_at)}
+                </span>
+              )
+            },
+            {
+              id: 'status',
+              titulo: 'Status',
+              tipo: 'status',
+              render: (task) => {
+                const info = STATUS_MAP[isOverdue(task) ? 'OVERDUE' : task.status] || STATUS_MAP.PENDING;
+                return <StatusBadge status={info.label} kind={info.familia} />;
+              }
+            }
+          ]}
+          itens={tasks}
+          getId={(task) => task.id}
+          carregando={loading}
+          vazio="Nenhuma tarefa encontrada."
+          storageKey="tabela:crm-tarefas"
+          rotuloRolagem="Tarefas CRM"
+          urgencia={(task) => (isOverdue(task) ? 'danger' : null)}
+          acoesLinha={(task) => (task.status === 'PENDING' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => handleComplete(task)}
+                className="btn btn-outline btn-sm"
+              >
+                Concluir
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCancel(task)}
+                className="btn btn-outline btn-perigo-suave btn-sm"
+              >
+                Cancelar
+              </button>
+            </>
+          ) : null)}
+          larguraAcoes={200}
+        />
+
+        <Paginacao
+          pagina={page}
+          totalPaginas={totalPaginas}
+          total={total}
+          rotuloRegistro="tarefa"
+          carregando={loading}
+          aoMudarPagina={setPage}
+        />
+      </BlocoConteudo>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

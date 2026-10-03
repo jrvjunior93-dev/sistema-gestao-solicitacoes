@@ -51,11 +51,34 @@ Detalhes tecnicos e cenarios de aceite estao em [`PLANO_IMPORTACAO_TITULOS_PAGAR
 - nova baixa depois do estorno e uma nova operacao auditada;
 - comprovantes e conciliacoes vinculados precisam ser revistos.
 
-## Caixa fisico
+## Fila manual de pagamentos
 
-O controle de dinheiro fisico usa contas do tipo `CAIXA_INTERNO`, com abertura, livro de entradas e saidas, estorno auditado de lancamentos manuais e fechamento por saldo contado. Esse fluxo e independente do OFX; contas bancarias que utilizam controle diario preservam a exigencia anterior de conferencia bancaria.
+A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Contas a Pagar, quem possui `financeiro.fila_pagamentos.preparar` seleciona titulos abertos e os encaminha para a fila; o operador pode ter acesso somente a essa tela pelas permissoes do grupo `financeiro.fila_pagamentos`.
 
-Regras operacionais, endpoints e matriz de smoke test: [`CAIXA_FISICO_ABERTURA_FECHAMENTO.md`](./CAIXA_FISICO_ABERTURA_FECHAMENTO.md).
+- a tela operacional e uma tabela responsiva com rolagem horizontal, sem modal de baixa;
+- cada linha mostra titulo, credor/favorecido, documento, PIX ou codigo do boleto, vencimento, saldo e forma de pagamento;
+- o operador informa data da baixa, conta pagadora e valor efetivamente pago; a empresa e derivada da conta bancaria e validada contra a empresa do titulo;
+- valor exato registra baixa total, valor menor registra baixa parcial e cria alerta de divergencia, valor maior nao baixa e permanece divergente;
+- `NAO_PAGO` mantem o titulo aberto e exige motivo;
+- a grade de Contas a Pagar mostra na propria linha os estados `Em fila de pagamento`, `Pagamento nao realizado` e `Pagamento divergente`;
+- titulos de cartao continuam no fluxo da fatura e nao entram nesta fila;
+- o lote usa uma unica transacao e locks por titulo/item: se uma linha falhar, nenhuma baixa do lote e confirmada;
+- uma chave de idempotencia protege criacao e processamento contra clique ou envio repetido.
+
+Permissoes independentes: `visualizar`, `preparar`, `baixar`, `reportar` e `resolver`. Elas nao liberam as demais telas do Financeiro.
+
+### Autorização do proprietário antes da fila
+
+A branch `refactor/frontend` possui uma primeira implementação completa e ainda inativa da
+camada opcional de autorização do proprietário por PWA e passkey antes do ingresso na Fila
+de Pagamentos. Ela inclui dossiê isolado, segregação entre preparador e autorizador,
+revalidação material, WebAuthn, Web Push genérico, revogação de dispositivo, auditoria e
+reuso transacional da fila atual. O contrato, estado de homologação e limites estão em
+[`AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`](./AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md).
+
+Enquanto `PAYMENT_OWNER_APPROVAL_MODE=OFF`, a fila manual descrita acima continua sendo a
+regra operacional vigente, sem mudança de comportamento. Nenhuma migration, configuração
+de ambiente ou ativação foi executada por esta implementação local.
 
 ## Cheques de terceiros e baixa com multiplas fontes
 
@@ -67,12 +90,31 @@ Regras, endpoints, permissoes e limites: [`CARTEIRA_CHEQUES_BAIXA_COMPOSTA.md`](
 
 ## Relatorios
 
-- previsto: titulos abertos ou parciais;
+- previsto: titulos `PREVISAO`, `ABERTO` ou `PARCIAL`, conforme periodo e data de corte;
 - realizado: movimentos ativos;
 - movimentos estornados nao compoem realizado;
 - DRE por competencia e fluxo de caixa por movimento nao podem usar a mesma data sem regra explicita;
 - Resultado de Obras deve refletir estorno imediatamente;
 - toda agregacao deve permitir rastrear o lancamento de origem.
+
+### Fluxo de caixa previsto x realizado
+
+- historico planejado preserva o valor original do titulo para datas ja alcancadas;
+- projecao futura usa o saldo ainda aberto e nao repete titulo quitado;
+- realizado usa `data_movimento` e nunca trata data futura como baixa;
+- comparativo limita previsto e realizado a mesma data de corte;
+- datas futuras do realizado aparecem como indisponiveis, nao como zero acumulado;
+- seletor oferece periodos historicos, atuais, futuros e intervalo personalizado;
+- nas visoes por natureza, entradas sao verdes e saidas vermelhas; no comparativo,
+  as cores distinguem previsto e realizado.
+
+## Contrato de venda recebido por cheque
+
+Quando a forma efetiva do contrato de venda e cheque, o titulo a receber deve nascer
+quitado e o cheque permanece em carteira/custodia. A quitacao e o cadastro do cheque
+sao atomicos e idempotentes. Devolucao do cheque reabre a obrigacao vinculada, sem
+apagar a baixa ou a trilha anterior; os novos cheques podem compor nova baixa conforme
+as regras da baixa composta.
 
 ## Conciliacao OFX
 

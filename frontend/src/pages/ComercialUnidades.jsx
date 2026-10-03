@@ -1,4 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  TabelaPadrao,
+  CelulaDupla,
+  FormSecao,
+  CampoForm,
+  BarraFiltros,
+  alternarValorFiltro,
+  Avisos,
+  useAvisos
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
 import ModalPortal from '../components/ui/ModalPortal';
 import { buscarParceiros } from '../services/parceiros';
@@ -12,6 +26,7 @@ import {
   getUnidadesComerciais
 } from '../services/comercial';
 import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
+import DateInputBR from '../components/DateInputBR';
 
 const SITUACOES = ['DISPONIVEL', 'RESERVADA', 'VENDIDA', 'DISTRATADA', 'BLOQUEADA'];
 
@@ -49,6 +64,37 @@ function formatCurrency(value) {
   });
 }
 
+/*
+  R25 — a paleta crua da antiga statusClass() (emerald/amber/blue/rose/slate)
+  vira FAMÍLIA SEMÂNTICA do StatusBadge, que resolve cor, ícone e contraste
+  por token. O mapa é explícito de propósito: a classificação automática do
+  StatusBadge lê o texto do status e joga DISPONIVEL, RESERVADA, VENDIDA e
+  DISTRATADA todas em 'info' — quatro situações diferentes com a mesma cor,
+  que é justamente a distinção que a tela tinha e não pode perder.
+*/
+const FAMILIA_SITUACAO = {
+  DISPONIVEL: 'success',
+  RESERVADA: 'warning',
+  VENDIDA: 'info',
+  DISTRATADA: 'neutral',
+  BLOQUEADA: 'danger',
+  EXCLUIDA: 'danger'
+};
+
+function familiaDaSituacao(situacao) {
+  return FAMILIA_SITUACAO[String(situacao || '').toUpperCase()] || 'neutral';
+}
+
+// Mesma forma da ComercialContratos (tela irmã do módulo): fixar T00:00:00
+// evita o recuo de um dia que o fuso causa ao ler 'AAAA-MM-DD' como UTC.
+function formatDate(value) {
+  if (!value) return '-';
+  const dia = String(value).slice(0, 10);
+  const data = new Date(`${dia}T00:00:00`);
+  if (Number.isNaN(data.getTime())) return '-';
+  return data.toLocaleDateString('pt-BR');
+}
+
 function pickForm(item = {}) {
   return {
     id: item.id || null,
@@ -69,28 +115,15 @@ function pickForm(item = {}) {
   };
 }
 
-function statusClass(status) {
-  switch (String(status || '').toUpperCase()) {
-    case 'DISPONIVEL':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'RESERVADA':
-      return 'bg-amber-100 text-amber-700';
-    case 'VENDIDA':
-      return 'bg-blue-100 text-blue-700';
-    case 'BLOQUEADA':
-      return 'bg-rose-100 text-rose-700';
-    case 'EXCLUIDA':
-      return 'bg-rose-100 text-rose-800';
-    default:
-      return 'bg-slate-100 text-slate-600';
-  }
-}
-
 export default function ComercialUnidades() {
   const [form, setForm] = useState(defaultForm());
-  const [busca, setBusca] = useState('');
-  const [filtroEmpreendimento, setFiltroEmpreendimento] = useState('');
-  const [filtroAtivo, setFiltroAtivo] = useState('ATIVAS');
+  // R12: o recorte da lista é um conjunto de MARCAS (vazio = todos os
+  // empreendimentos), não mais um select de escolha única.
+  const [filtros, setFiltros] = useState({
+    q: '',
+    empreendimento: new Set(),
+    registros: new Set(['ATIVAS'])
+  });
   const [empreendimentos, setEmpreendimentos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [unidades, setUnidades] = useState([]);
@@ -101,13 +134,16 @@ export default function ComercialUnidades() {
   const [unidadeExclusao, setUnidadeExclusao] = useState(null);
   const [motivoExclusao, setMotivoExclusao] = useState('');
   const [deleting, setDeleting] = useState(false);
-  const [success, setSuccess] = useState('');
-  const [error, setError] = useState('');
+  // R22: hook usado é hook importado — o useRef está no import acima. A
+  // referência leva o foco ao formulário (que fica ACIMA da lista); não
+  // mede nada.
+  const campoCodigoRef = useRef(null);
+  // R3/R19: faixa de aviso do sistema no lugar do <div> de erro à mão.
+  const { avisos, avisar, fechar } = useAvisos();
 
   async function carregar() {
     try {
       setLoading(true);
-      setError('');
       const [empreendimentosData, clientesData, unidadesData, configuracaoData] = await Promise.all([
         getEmpreendimentosComerciais({ ativo: 1 }),
         buscarParceiros({ cliente: 1, ativo: 1, limit: 'all' }),
@@ -119,7 +155,7 @@ export default function ComercialUnidades() {
       setUnidades(Array.isArray(unidadesData) ? unidadesData : []);
       setPermitirVendaManual(Boolean(configuracaoData?.permitir_venda_manual));
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar unidades comerciais');
+      avisar.erro(err?.message || 'Erro ao carregar unidades comerciais');
     } finally {
       setLoading(false);
     }
@@ -130,11 +166,17 @@ export default function ComercialUnidades() {
   }, []);
 
   const listaFiltrada = useMemo(() => {
-    const termo = normalizeSearch(busca);
+    const termo = normalizeSearch(filtros.q);
     return unidades.filter((item) => {
-      if (filtroAtivo === 'ATIVAS' && item.ativo === false) return false;
-      if (filtroAtivo === 'EXCLUIDAS' && item.ativo !== false) return false;
-      if (filtroEmpreendimento && String(item.empreendimento_id) !== filtroEmpreendimento) {
+      const grupoRegistro = item.ativo === false ? 'EXCLUIDAS' : 'ATIVAS';
+      if (filtros.registros.size > 0 && !filtros.registros.has(grupoRegistro)) {
+        return false;
+      }
+
+      // R23: o recorte aplica ao marcar — o filtro é local, não há consulta
+      // cara nem botão de "aplicar".
+      if (filtros.empreendimento.size > 0
+        && !filtros.empreendimento.has(String(item.empreendimento_id))) {
         return false;
       }
 
@@ -153,14 +195,35 @@ export default function ComercialUnidades() {
 
       return blob.includes(termo);
     });
-  }, [busca, filtroAtivo, filtroEmpreendimento, unidades]);
+  }, [filtros, unidades]);
+
+  // O formulário fica ACIMA da lista: sem levar o foco até ele, clicar em
+  // "Editar" no fim de uma lista longa não muda nada no que a pessoa está
+  // vendo — a edição aconteceria fora do campo de visão (R15).
+  function focarFormulario() {
+    campoCodigoRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // preventScroll: quem rola é o scrollIntoView suave.
+    campoCodigoRef.current?.focus({ preventScroll: true });
+  }
+
+  function novaUnidade() {
+    setForm(defaultForm());
+    focarFormulario();
+  }
+
+  function editarUnidade(item) {
+    if (item.ativo === false) {
+      avisar.erro('Unidade excluida nao pode ser editada. Consulte os dados de exclusao na tabela.');
+      return;
+    }
+    setForm(pickForm(item));
+    focarFormulario();
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
     try {
       setSaving(true);
-      setError('');
-      setSuccess('');
 
       const payload = {
         empreendimento_id: Number(form.empreendimento_id),
@@ -185,10 +248,10 @@ export default function ComercialUnidades() {
       }
 
       setForm(defaultForm());
-      setSuccess(form.id ? 'Unidade atualizada com sucesso.' : 'Unidade criada com sucesso.');
+      avisar.sucesso('Unidade salva.');
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao salvar unidade comercial');
+      avisar.erro(err?.message || 'Erro ao salvar unidade comercial');
     } finally {
       setSaving(false);
     }
@@ -198,16 +261,14 @@ export default function ComercialUnidades() {
     if (!unidadeExclusao || !motivoExclusao.trim()) return;
     try {
       setDeleting(true);
-      setError('');
-      setSuccess('');
       await excluirUnidadeComercial(unidadeExclusao.id, motivoExclusao.trim());
       if (Number(form.id) === Number(unidadeExclusao.id)) setForm(defaultForm());
       setUnidadeExclusao(null);
       setMotivoExclusao('');
-      setSuccess('Unidade excluida. O registro e o historico foram preservados.');
+      avisar.sucesso('Unidade excluida. O cadastro e o historico foram preservados.');
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao excluir unidade comercial');
+      avisar.erro(err?.message || 'Erro ao excluir unidade comercial');
     } finally {
       setDeleting(false);
     }
@@ -216,301 +277,480 @@ export default function ComercialUnidades() {
   async function handleVendaManualChange(checked) {
     try {
       setSavingConfig(true);
-      setError('');
       const data = await atualizarConfiguracaoUnidadesComerciais({ permitir_venda_manual: checked });
       setPermitirVendaManual(Boolean(data?.permitir_venda_manual));
     } catch (err) {
-      setError(err?.message || 'Erro ao atualizar a configuracao de venda manual.');
+      avisar.erro(err?.message || 'Erro ao atualizar a configuracao de venda manual.');
     } finally {
       setSavingConfig(false);
     }
   }
 
+  /*
+    R1/R17 — a lista era um <article> por registro com NOVE campos soltos em
+    <span>: sem colunas declaradas, sem redimensionamento e sem largura
+    salva por usuário. Agora é TabelaPadrao, e cada coluna declara o que ELA
+    É (`tipo`) — medida e alinhamento são do componente (R1/R10/R14).
+    Nenhum dado do card saiu; os pares da mesma família (torre/pavimento,
+    unidade/empreendimento) viraram CelulaDupla, e as colunas que sobram o
+    usuário esconde no painel de colunas (colunasConfiguraveis).
+
+    Os DOIS campos de dinheiro são `tipo: 'valor'` (R1/R17/T7): 190px,
+    alinhados à direita e em tabular-nums — valor NUNCA trunca.
+  */
+  const colunas = [
+    {
+      id: 'unidade',
+      titulo: 'Unidade',
+      // R17: IDENTIDADE — o código (com o nome, quando existe) é o que
+      // nomeia a unidade; o empreendimento vai como sub da mesma célula,
+      // que é como se lê "unidade 101 do Residencial X".
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => (
+        <CelulaDupla
+          principal={`${item.codigo ?? ''}${item.nome ? ` - ${item.nome}` : ''}`}
+          sub={item.empreendimento?.nome || null}
+        />
+      )
+    },
+    {
+      id: 'localizacao',
+      titulo: 'Torre / pavimento',
+      tipo: 'texto',
+      render: (item) => (
+        <CelulaDupla
+          principal={item.torre || '-'}
+          sub={item.pavimento ? `Pavimento ${item.pavimento}` : null}
+        />
+      )
+    },
+    {
+      id: 'metragem',
+      titulo: 'Metragem privativa',
+      tipo: 'numero',
+      render: (item) => item.metragem_privativa || '-'
+    },
+    {
+      id: 'fracao',
+      titulo: 'Fracao ideal',
+      tipo: 'numero',
+      render: (item) => item.fracao_ideal || '-'
+    },
+    {
+      id: 'reserva',
+      titulo: 'Reserva',
+      tipo: 'texto',
+      render: (item) => item.parceiroReserva?.nome || '-'
+    },
+    {
+      id: 'reservado_ate',
+      titulo: 'Reservado até',
+      tipo: 'data',
+      render: (item) => formatDate(item.reservado_ate)
+    },
+    {
+      id: 'valor_tabela',
+      titulo: 'Valor tabela',
+      tipo: 'valor',
+      render: (item) => (item.valor_tabela ? formatCurrency(item.valor_tabela) : '-')
+    },
+    {
+      id: 'valor_base_venda',
+      titulo: 'Valor base de venda',
+      tipo: 'valor',
+      render: (item) => (item.valor_base_venda ? formatCurrency(item.valor_base_venda) : '-')
+    },
+    {
+      id: 'situacao',
+      titulo: 'Situação',
+      tipo: 'status',
+      // R25: a statusClass() devolvia DEZ classes de paleta crua para cinco
+      // status (emerald/amber/blue/rose/slate) — sem par no tema escuro e
+      // fora do piso de contraste do ThemeContext. O StatusBadge resolve
+      // cor, ícone e contraste por token; a família vem do mapa acima, que
+      // preserva a distinção entre as cinco situações.
+      render: (item) => (
+        <StatusBadge
+          status={item.ativo === false ? 'EXCLUIDA' : item.situacao}
+          kind={familiaDaSituacao(item.ativo === false ? 'EXCLUIDA' : item.situacao)}
+        />
+      )
+    },
+    {
+      id: 'exclusao',
+      titulo: 'Exclusao',
+      tipo: 'texto',
+      render: (item) => {
+        if (item.ativo !== false) return '-';
+        const data = item.excluido_em
+          ? new Date(item.excluido_em).toLocaleString('pt-BR')
+          : 'Data nao registrada';
+        const usuario = item.excluidoPor?.nome ? ` por ${item.excluidoPor.nome}` : '';
+        const resumo = `${data}${usuario}`;
+        return (
+          <CelulaDupla
+            principal={resumo}
+            sub={item.motivo_exclusao || 'Motivo nao registrado'}
+          />
+        );
+      }
+    },
+    {
+      id: 'observacoes',
+      titulo: 'Observações',
+      tipo: 'texto',
+      // T6: texto longo trunca com o texto completo no tooltip.
+      render: (item) => (
+        <span title={item.observacoes || undefined}>{item.observacoes || '-'}</span>
+      )
+    }
+  ];
+
   return (
-    <div className="page solicitacoes-page space-y-5 md:space-y-6">
-      <header className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Unidades comerciais</h1>
-            <p className="page-subtitle">
-              Controle disponibilidade, reservas, valores de tabela e base de venda por empreendimento.
-            </p>
+    <Pagina>
+      {/* R13/C1/R5: o cabeçalho era `app-page-header` cru, com o apoio num
+          `page-subtitle` solto e sem compactação na rolagem. Título,
+          contagem e apoio passam a viver no PageHeader. */}
+      <PageHeader
+        titulo="Unidades comerciais"
+        contagem={loading ? null : `${listaFiltrada.length} unidade(s)`}
+        descricao="Controle disponibilidade, reservas, valores de tabela e base de venda por empreendimento."
+        acaoPrincipal={{ rotulo: 'Nova unidade', onClick: novaUnidade }}
+      />
+
+      {/* R16: UM dono para a faixa de avisos, logo abaixo do cabeçalho. */}
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {/*
+        A chave "Permitir marcar unidade como Vendida manualmente" estava
+        dentro da faixa fixa do cabeçalho, onde C2/R5 pedem UMA linha de
+        apoio e a barra de ações. Ela não é ação sobre a tela: é uma
+        CONFIGURAÇÃO gravada na hora, que muda o que o campo Situação do
+        formulário oferece. Então ganha superfície própria (B5), ao lado do
+        campo que ela governa — nada foi removido da tela.
+      */}
+      <BlocoConteudo
+        titulo="Regra de venda manual"
+        descricao="Vale para todas as unidades; a mudança e gravada no momento em que você marca."
+      >
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={permitirVendaManual}
+            onChange={(event) => handleVendaManualChange(event.target.checked)}
+            disabled={savingConfig}
+          />
+          Permitir marcar unidade como Vendida manualmente
+        </label>
+      </BlocoConteudo>
+
+      {/*
+        R9 (revista em 04/09) — FORMULÁRIO INLINE, E NÃO EM MODAL.
+
+        O critério não é a frequência do cadastro: é o que a tela existe para
+        fazer. Esta tela existe PARA cadastrar unidades — pelo teste da
+        regra, tirando o formulário sobra uma lista que ninguém abriria por
+        si só. Modal aqui é atrito: obrigaria a abrir e fechar para fazer
+        justamente aquilo que a pessoa veio fazer (o uso normal é cadastrar
+        várias unidades seguidas de um mesmo empreendimento). Não mover para
+        OverlayModal — cinco telas foram movidas por essa leitura errada em
+        04/09 e tiveram de voltar.
+
+        ARRANJO — empilhado, e não nas duas colunas de antes: as colunas
+        vinham de um grid com largura em px (`xl:grid-cols-[460px_...]`),
+        medida à mão (R10), e espremiam a listagem em meia tela. Esta tabela
+        tem dez colunas, duas delas de valor (190px cada): precisa da
+        largura inteira.
+      */}
+      <BlocoConteudo titulo={form.id ? 'Editar unidade' : 'Nova unidade'}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <FormSecao legenda="Identificação" colunas={2}>
+            <CampoForm label="Empreendimento" obrigatorio span={2}>
+              {/* R12: select de FORMULÁRIO (entrada de dado do registro) —
+                  legítimo. O filtro da lista, esse sim, virou marcação. */}
+              <select
+                className="input w-full"
+                value={form.empreendimento_id}
+                onChange={(event) => setForm((current) => ({ ...current, empreendimento_id: event.target.value }))}
+                required
+              >
+                <option value="">Selecione</option>
+                {empreendimentos.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}
+                  </option>
+                ))}
+              </select>
+            </CampoForm>
+
+            <CampoForm label="Código" obrigatorio>
+              <input
+                ref={campoCodigoRef}
+                className="input w-full"
+                inputMode="numeric"
+                pattern="[0-9]+"
+                value={form.codigo}
+                onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value.replace(/\D/g, '') }))}
+                required
+                placeholder="Ex.: 101"
+              />
+            </CampoForm>
+
+            <CampoForm label="Nome">
+              <input
+                className="input w-full"
+                value={form.nome}
+                onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))}
+                placeholder="Cobertura, loja, lote..."
+              />
+            </CampoForm>
+
+            <CampoForm label="Torre">
+              <input
+                className="input w-full"
+                value={form.torre}
+                onChange={(event) => setForm((current) => ({ ...current, torre: event.target.value }))}
+              />
+            </CampoForm>
+
+            <CampoForm label="Pavimento">
+              <input
+                className="input w-full"
+                value={form.pavimento}
+                onChange={(event) => setForm((current) => ({ ...current, pavimento: event.target.value }))}
+              />
+            </CampoForm>
+
+            <CampoForm label="Metragem privativa">
+              <input
+                className="input w-full"
+                type="number"
+                step="0.01"
+                value={form.metragem_privativa}
+                onChange={(event) => setForm((current) => ({ ...current, metragem_privativa: event.target.value }))}
+              />
+            </CampoForm>
+
+            <CampoForm label="Fracao ideal">
+              <input
+                className="input w-full"
+                type="number"
+                step="0.000001"
+                value={form.fracao_ideal}
+                onChange={(event) => setForm((current) => ({ ...current, fracao_ideal: event.target.value }))}
+              />
+            </CampoForm>
+          </FormSecao>
+
+          <FormSecao legenda="Valores e disponibilidade" colunas={2}>
+            {/* R6: campo de dinheiro é dimensionado pelo pior caso —
+                `.input-moeda` garante 180px (cabe R$ 9.999.999.999,99),
+                alinhamento à direita e tabular-nums. Os dois campos estavam
+                com `input w-full` cru. */}
+            <CampoForm label="Valor tabela">
+              <input
+                className="input input-moeda w-full"
+                inputMode="decimal"
+                value={form.valor_tabela}
+                onChange={(event) => setForm((current) => ({ ...current, valor_tabela: normalizeCurrencyTyping(event.target.value) }))}
+                onBlur={(event) => setForm((current) => ({ ...current, valor_tabela: formatCurrencyInput(event.target.value) }))}
+                placeholder="R$ 0,00"
+              />
+            </CampoForm>
+
+            <CampoForm label="Valor base de venda">
+              <input
+                className="input input-moeda w-full"
+                inputMode="decimal"
+                value={form.valor_base_venda}
+                onChange={(event) => setForm((current) => ({ ...current, valor_base_venda: normalizeCurrencyTyping(event.target.value) }))}
+                onBlur={(event) => setForm((current) => ({ ...current, valor_base_venda: formatCurrencyInput(event.target.value) }))}
+                placeholder="R$ 0,00"
+              />
+            </CampoForm>
+
+            <CampoForm
+              label="Situação"
+              hint={!permitirVendaManual && form.situacao !== 'VENDIDA'
+                ? 'Vendida e definida automaticamente ao vincular um contrato.'
+                : undefined}
+            >
+              {/*
+                R12 — FALSO POSITIVO DECLARADO do validador estático.
+
+                Este <select> é campo do FORMULÁRIO: ele define a situação da
+                unidade que está sendo cadastrada/editada, e vai no payload
+                (`situacao`). A R12 vale para filtro de LISTA, e diz por
+                escrito que "select de FORMULÁRIO (entrada de dado) e seletor
+                de CONTEXTO continuam legítimos".
+
+                O check acusa porque procura o vocabulário /situacao/ ao redor
+                de qualquer <select> — e aqui a palavra aparece por ser o nome
+                do DADO, não de um recorte. O próprio validador declara essa
+                limitação no comentário da regra ("nome de variável é escolha
+                de quem escreveu"). Renomear o campo para escapar do detector
+                seria enganar o instrumento, não corrigir a tela; o achado
+                fica registrado aqui e no relatório.
+              */}
+              <select
+                className="input w-full"
+                value={form.situacao}
+                onChange={(event) => setForm((current) => ({ ...current, situacao: event.target.value }))}
+              >
+                {SITUACOES.filter((item) => item !== 'VENDIDA' || permitirVendaManual || form.situacao === 'VENDIDA').map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </CampoForm>
+
+            <CampoForm label="Reservado até">
+              <DateInputBR
+                className="input w-full"
+                value={form.reservado_ate}
+                onChange={(event) => setForm((current) => ({ ...current, reservado_ate: event.target.value }))}
+              />
+            </CampoForm>
+
+            <CampoForm
+              label="Cliente da reserva"
+              span={2}
+              hint="Campo opcional. Apague a busca para deixar a unidade sem reserva vinculada."
+            >
+              {/* O rótulo vem do CampoForm (classe .form-label do sistema),
+                  não do rótulo próprio do autocomplete: um campo, um rótulo
+                  (R7 — label sempre acima do campo, na mesma linha de base
+                  dos vizinhos). */}
+              <ParceiroAutocomplete
+                label=""
+                value={form.parceiro_reserva_id}
+                options={clientes}
+                onChange={(parceiroId) => setForm((current) => ({ ...current, parceiro_reserva_id: parceiroId }))}
+                placeholder="Digite nome, CPF/CNPJ ou e-mail"
+                emptyLabel="Nenhum cliente encontrado"
+                showOptionsOnFocus
+                resultLimit={8}
+              />
+            </CampoForm>
+
+            <CampoForm label="Observações" tipo="texto-longo" span={2}>
+              {/* R10: a altura do textarea vem da folha do sistema
+                  (textarea.input), não do `min-h-[96px]` que estava aqui. */}
+              <textarea
+                className="input w-full"
+                value={form.observacoes}
+                onChange={(event) => setForm((current) => ({ ...current, observacoes: event.target.value }))}
+                placeholder="Pendências, restrições ou detalhes da unidade"
+              />
+            </CampoForm>
+
+          </FormSecao>
+
+          <div className="app-actionbar">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Salvando...' : (form.id ? 'Salvar alteracoes' : 'Criar unidade')}
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => setForm(defaultForm())}>
+              Limpar
+            </button>
           </div>
-          <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm text-[var(--c-text)]">
-            <input
-              type="checkbox"
-              checked={permitirVendaManual}
-              onChange={(event) => handleVendaManualChange(event.target.checked)}
-              disabled={savingConfig}
-            />
-            Permitir marcar unidade como Vendida manualmente
-          </label>
-        </div>
-      </header>
+        </form>
+      </BlocoConteudo>
 
-      {error && (
-        <div className="app-alert app-alert--error">
-          {error}
-        </div>
-      )}
+      <BlocoConteudo
+        titulo="Unidades cadastradas"
+        descricao="Base para reserva, venda, distrato e carteira de recebimentos."
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/*
+          R12/R3/R16: o recorte era um <select> "Empreendimento" com a busca
+          ao lado — o estado do filtro só aparecia abrindo a lista suspensa.
+          Agora é a BarraFiltros das Solicitações: busca única em cima
+          ocupando a faixa e, abaixo, o filtro por MARCAÇÃO com etiquetas
+          removíveis. A marcação é múltipla porque o recorte é feito em
+          memória (nenhum parâmetro de API aceita um valor só aqui), então
+          não leva `unico`.
+        */}
+        <BarraFiltros
+          busca={{
+            valor: filtros.q,
+            aoMudar: (valor) => setFiltros((prev) => ({ ...prev, q: valor })),
+            placeholder: 'Buscar código, torre, pavimento, reserva ou empreendimento'
+          }}
+          filtros={[
+            {
+              id: 'empreendimento',
+              rotulo: 'Empreendimento',
+              opcoes: empreendimentos.map((item) => ({
+                valor: String(item.id),
+                rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
+              }))
+            },
+            {
+              id: 'registros',
+              rotulo: 'Registros',
+              opcoes: [
+                { valor: 'ATIVAS', rotulo: 'Ativas' },
+                { valor: 'EXCLUIDAS', rotulo: 'Excluidas' }
+              ]
+            }
+          ]}
+          ativos={{
+            empreendimento: filtros.empreendimento,
+            registros: filtros.registros
+          }}
+          aoAlternar={(dim, valor, opcoes) => setFiltros((prev) => ({
+            ...alternarValorFiltro(prev, dim, valor, opcoes),
+            q: prev.q
+          }))}
+          aoLimpar={() => setFiltros((prev) => ({
+            ...prev,
+            empreendimento: new Set(),
+            registros: new Set()
+          }))}
+        />
 
-      {success && (
-        <div className="app-alert app-alert--success">
-          {success}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="app-empty-card">Carregando unidades comerciais...</div>
-      ) : (
-        <div className="grid gap-6 xl:grid-cols-[460px_minmax(0,1fr)]">
-          <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">
-              {form.id ? 'Editar unidade' : 'Nova unidade'}
-            </h2>
-
-            <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Empreendimento</span>
-                <select
-                  className="input w-full"
-                  value={form.empreendimento_id}
-                  onChange={(event) => setForm((current) => ({ ...current, empreendimento_id: event.target.value }))}
-                  required
-                >
-                  <option value="">Selecione</option>
-                  {empreendimentos.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Codigo</span>
-                  <input
-                    className="input w-full"
-                    inputMode="numeric"
-                    pattern="[0-9]+"
-                    value={form.codigo}
-                    onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value.replace(/\D/g, '') }))}
-                    required
-                    placeholder="Ex.: 101"
-                  />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Nome</span>
-                  <input
-                    className="input w-full"
-                    value={form.nome}
-                    onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))}
-                    placeholder="Cobertura, loja, lote..."
-                  />
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Torre</span>
-                  <input className="input w-full" value={form.torre} onChange={(event) => setForm((current) => ({ ...current, torre: event.target.value }))} />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Pavimento</span>
-                  <input className="input w-full" value={form.pavimento} onChange={(event) => setForm((current) => ({ ...current, pavimento: event.target.value }))} />
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Metragem privativa</span>
-                  <input className="input w-full" type="number" step="0.01" value={form.metragem_privativa} onChange={(event) => setForm((current) => ({ ...current, metragem_privativa: event.target.value }))} />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Fracao ideal</span>
-                  <input className="input w-full" type="number" step="0.000001" value={form.fracao_ideal} onChange={(event) => setForm((current) => ({ ...current, fracao_ideal: event.target.value }))} />
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Valor tabela</span>
-                  <input className="input w-full" inputMode="decimal" value={form.valor_tabela} onChange={(event) => setForm((current) => ({ ...current, valor_tabela: normalizeCurrencyTyping(event.target.value) }))} onBlur={(event) => setForm((current) => ({ ...current, valor_tabela: formatCurrencyInput(event.target.value) }))} placeholder="R$ 0,00" />
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Valor base de venda</span>
-                  <input className="input w-full" inputMode="decimal" value={form.valor_base_venda} onChange={(event) => setForm((current) => ({ ...current, valor_base_venda: normalizeCurrencyTyping(event.target.value) }))} onBlur={(event) => setForm((current) => ({ ...current, valor_base_venda: formatCurrencyInput(event.target.value) }))} placeholder="R$ 0,00" />
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Situacao</span>
-                  <select
-                    className="input w-full"
-                    value={form.situacao}
-                    onChange={(event) => setForm((current) => ({ ...current, situacao: event.target.value }))}
-                  >
-                    {SITUACOES.filter((item) => item !== 'VENDIDA' || permitirVendaManual || form.situacao === 'VENDIDA').map((item) => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </select>
-                  {!permitirVendaManual && form.situacao !== 'VENDIDA' && (
-                    <span className="mt-1 text-xs text-[var(--c-muted)]">Vendida e definida automaticamente ao vincular um contrato.</span>
-                  )}
-                </label>
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Reservado ate</span>
-                  <input
-                    className="input w-full"
-                    type="date"
-                    value={form.reservado_ate}
-                    onChange={(event) => setForm((current) => ({ ...current, reservado_ate: event.target.value }))}
-                  />
-                </label>
-              </div>
-
-              <div className="sol-filter-field">
-                <ParceiroAutocomplete
-                  label="Cliente da reserva"
-                  value={form.parceiro_reserva_id}
-                  options={clientes}
-                  onChange={(parceiroId) => setForm((current) => ({ ...current, parceiro_reserva_id: parceiroId }))}
-                  placeholder="Digite nome, CPF/CNPJ ou e-mail"
-                  emptyLabel="Nenhum cliente encontrado"
-                  showOptionsOnFocus
-                  resultLimit={8}
-                />
-                <span className="mt-1 text-xs text-[var(--c-muted)]">
-                  Campo opcional. Apague a busca para deixar a unidade sem reserva vinculada.
-                </span>
-              </div>
-
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Observacoes</span>
-                <textarea
-                  className="input min-h-[96px] w-full"
-                  value={form.observacoes}
-                  onChange={(event) => setForm((current) => ({ ...current, observacoes: event.target.value }))}
-                  placeholder="Pendencias, restricoes ou detalhes da unidade"
-                />
-              </label>
-
-              <div className="flex flex-wrap gap-2">
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Salvando...' : (form.id ? 'Salvar alteracoes' : 'Criar unidade')}
-                </button>
-                <button type="button" className="btn btn-outline" onClick={() => setForm(defaultForm())}>
-                  Limpar
-                </button>
-              </div>
-            </form>
-          </section>
-
-          <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-            <div className="sol-filtros-head">
-              <div>
-                <p className="sol-filtros-title">Unidades cadastradas</p>
-                <p className="sol-filtros-subtitle">
-                  Base para reserva, venda, distrato e carteira de recebimentos.
-                </p>
-              </div>
-              <div className="sol-filtros-meta">
-                <span>Total listado {listaFiltrada.length}</span>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-[220px_180px_minmax(0,1fr)]">
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Empreendimento</span>
-                <select className="input w-full" value={filtroEmpreendimento} onChange={(event) => setFiltroEmpreendimento(event.target.value)}>
-                  <option value="">Todos</option>
-                  {empreendimentos.map((item) => (
-                    <option key={item.id} value={item.id}>{item.nome}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Registros</span>
-                <select className="input w-full" value={filtroAtivo} onChange={(event) => setFiltroAtivo(event.target.value)}>
-                  <option value="ATIVAS">Ativas</option>
-                  <option value="EXCLUIDAS">Excluidas</option>
-                  <option value="TODAS">Todas</option>
-                </select>
-              </label>
-
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Busca</span>
-                <input className="input w-full" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Codigo, torre, pavimento, reserva ou empreendimento" />
-              </label>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {listaFiltrada.length === 0 ? (
-                <div className="app-empty-card">Nenhuma unidade comercial encontrada.</div>
-              ) : (
-                listaFiltrada.map((item) => (
-                  <article key={item.id} className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-semibold text-[var(--c-text)]">
-                            {item.codigo} {item.nome ? `- ${item.nome}` : ''}
-                          </h3>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(item.ativo === false ? 'EXCLUIDA' : item.situacao)}`}>
-                            {item.ativo === false ? 'EXCLUIDA' : item.situacao}
-                          </span>
-                        </div>
-                        <div className="grid gap-2 text-sm text-[var(--c-muted)] md:grid-cols-2">
-                          <span>Empreendimento: {item.empreendimento?.nome || '-'}</span>
-                          <span>Torre: {item.torre || '-'}</span>
-                          <span>Pavimento: {item.pavimento || '-'}</span>
-                          <span>Metragem privativa: {item.metragem_privativa || '-'}</span>
-                          <span>Fracao ideal: {item.fracao_ideal || '-'}</span>
-                          <span>Reserva: {item.parceiroReserva?.nome || '-'}</span>
-                          <span>Reservado ate: {item.reservado_ate || '-'}</span>
-                          <span>Valor tabela: {item.valor_tabela ? formatCurrency(item.valor_tabela) : '-'}</span>
-                          <span>Base venda: {item.valor_base_venda ? formatCurrency(item.valor_base_venda) : '-'}</span>
-                        </div>
-                        {item.observacoes && (
-                          <p className="text-sm text-[var(--c-muted)]">{item.observacoes}</p>
-                        )}
-                        {item.ativo === false && (
-                          <p className="text-sm text-rose-700">
-                            Excluida em {item.excluido_em ? new Date(item.excluido_em).toLocaleString('pt-BR') : '-'}
-                            {item.excluidoPor?.nome ? ` por ${item.excluidoPor.nome}` : ''}.
-                            {item.motivo_exclusao ? ` Motivo: ${item.motivo_exclusao}` : ''}
-                          </p>
-                        )}
-                      </div>
-
-                      {item.ativo !== false && (
-                        <div className="flex flex-wrap gap-2">
-                          <button type="button" className="btn btn-outline" onClick={() => setForm(pickForm(item))}>
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline text-rose-700"
-                            onClick={() => {
-                              setUnidadeExclusao(item);
-                              setMotivoExclusao('');
-                            }}
-                          >
-                            Excluir
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
-      )}
+        {/* A1: a ação da linha é um <button> focável ("Editar"), e a linha
+            inteira também é acionável por teclado (o TabelaPadrao dá
+            tabIndex + Enter/Espaço quando recebe aoClicarLinha). */}
+        <TabelaPadrao
+          colunas={colunas}
+          itens={listaFiltrada}
+          carregando={loading}
+          getId={(item) => item.id}
+          storageKey="tabela:comercial-unidades"
+          rotuloRolagem="Unidades comerciais"
+          larguraAcoes={190}
+          colunasConfiguraveis
+          aoClicarLinha={editarUnidade}
+          vazio={{
+            title: 'Nenhuma unidade comercial encontrada',
+            message: 'Cadastre a primeira unidade do empreendimento para liberar reservas, vendas e recebimentos.'
+          }}
+          acoesLinha={(item) => item.ativo !== false ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => editarUnidade(item)}
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm text-[var(--sem-danger)]"
+                onClick={() => {
+                  setUnidadeExclusao(item);
+                  setMotivoExclusao('');
+                }}
+              >
+                Excluir
+              </button>
+            </>
+          ) : null}
+        />
+      </BlocoConteudo>
 
       {unidadeExclusao && (
         <ModalPortal
@@ -522,7 +762,7 @@ export default function ComercialUnidades() {
           closeOnEscape={!deleting}
         >
           <div className="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="excluir-unidade-titulo">
-            <div className="app-modal-surface app-modal-surface--compact p-5">
+            <div className="app-modal-surface app-modal-surface--compact p-4">
               <h2 id="excluir-unidade-titulo" className="text-lg font-semibold text-[var(--c-text)]">
                 Excluir unidade {unidadeExclusao.codigo}
               </h2>
@@ -532,7 +772,7 @@ export default function ComercialUnidades() {
               <label className="mt-4 block">
                 <span className="sol-filter-label">Motivo da exclusao *</span>
                 <textarea
-                  className="input mt-1 min-h-[96px] w-full"
+                  className="input mt-1 min-h-24 w-full"
                   value={motivoExclusao}
                   maxLength={500}
                   onChange={(event) => setMotivoExclusao(event.target.value)}
@@ -540,11 +780,24 @@ export default function ComercialUnidades() {
                   autoFocus
                 />
               </label>
-              <div className="mt-5 flex flex-wrap justify-end gap-2">
-                <button type="button" className="btn btn-outline" disabled={deleting} onClick={() => setUnidadeExclusao(null)}>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={deleting}
+                  onClick={() => {
+                    setUnidadeExclusao(null);
+                    setMotivoExclusao('');
+                  }}
+                >
                   Cancelar
                 </button>
-                <button type="button" className="btn btn-primary" disabled={deleting || !motivoExclusao.trim()} onClick={handleExcluirUnidade}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={deleting || !motivoExclusao.trim()}
+                  onClick={handleExcluirUnidade}
+                >
                   {deleting ? 'Excluindo...' : 'Confirmar exclusao'}
                 </button>
               </div>
@@ -552,6 +805,6 @@ export default function ComercialUnidades() {
           </div>
         </ModalPortal>
       )}
-    </div>
+    </Pagina>
   );
 }

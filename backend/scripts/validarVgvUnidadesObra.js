@@ -1,13 +1,18 @@
 const assert = require('node:assert/strict');
 const { Op } = require('sequelize');
-const { Obra, TituloFinanceiro, ObraCustoHistorico, UnidadeComercial } = require('../src/models');
+const {
+  Obra, TituloFinanceiro, TituloFinanceiroRateio,
+  ObraCustoHistorico, UnidadeComercial, ContratoComercial
+} = require('../src/models');
 const controller = require('../src/controllers/ResultadoObrasController');
 
 const original = {
   obras: Obra.findAll,
   titulos: TituloFinanceiro.findAll,
+  rateios: TituloFinanceiroRateio.findAll,
   historicos: ObraCustoHistorico.findAll,
-  unidades: UnidadeComercial.findAll
+  unidades: UnidadeComercial.findAll,
+  contratos: ContratoComercial.findAll
 };
 
 async function main() {
@@ -15,8 +20,9 @@ async function main() {
     { id: 1, classificacao: 'PRIVADA', vgv: null, margem_custo_esperada: 20 },
     { id: 2, classificacao: 'PRIVADA', vgv: '1000000.00' },
     { id: 3, classificacao: 'PRIVADA', vgv: '0.00' },
-    { id: 4, classificacao: 'PUBLICA', planilha_geral: '800000.00' }
+    { id: 4, classificacao: 'PUBLICA', planilha_geral: '800000.00', margem_custo_esperada: 30 }
   ];
+  ContratoComercial.findAll = async () => [];
   UnidadeComercial.findAll = async (options) => {
     assert.equal(options.where.ativo, true);
     assert.equal(options.where.excluido_em, null);
@@ -34,6 +40,7 @@ async function main() {
     { obra_id: 1, tipo: 'RECEBER', total_valor_original: '600000.00', total_valor_baixado: '200000.00', total_valor_saldo: '400000.00', quantidade: 1 },
     { obra_id: 3, tipo: 'RECEBER', total_valor_original: '100000.00', total_valor_baixado: '20000.00', total_valor_saldo: '80000.00', quantidade: 1 }
   ];
+  TituloFinanceiroRateio.findAll = async () => [];
   ObraCustoHistorico.findAll = async () => [];
 
   let resultado;
@@ -47,6 +54,7 @@ async function main() {
   assert.equal(resultado[0].vgv_origem, 'UNIDADES');
   assert.equal(resultado[0].vgv_unidades_total, 2);
   assert.equal(resultado[0].falta_receber, 500000.4);
+  assert.equal(resultado[0].valor_total_resultado, 700000.4);
   assert.ok(Math.abs(resultado[0].orcamento - 560000.32) < 0.001);
 
   assert.equal(resultado[1].vgv_efetivo, 1000000);
@@ -56,6 +64,8 @@ async function main() {
   assert.equal(resultado[2].vgv_unidades_sem_valor, 1);
   assert.equal(resultado[2].falta_receber, 80000, 'Sem VGV completo, prevalece o saldo dos titulos');
   assert.equal(resultado[3].planilha_geral, 800000);
+  assert.equal(resultado[3].orcamento, 560000);
+  assert.equal(resultado[3].valor_total_resultado, 800000);
   assert.equal(resultado[3].falta_receber, 800000);
   console.log('VGV privado: base de venda de unidades ativas, sem soma parcial nem alteracao do cadastro.');
 }
@@ -66,6 +76,8 @@ main().catch((error) => {
 }).finally(() => {
   Obra.findAll = original.obras;
   TituloFinanceiro.findAll = original.titulos;
+  TituloFinanceiroRateio.findAll = original.rateios;
   ObraCustoHistorico.findAll = original.historicos;
   UnidadeComercial.findAll = original.unidades;
+  ContratoComercial.findAll = original.contratos;
 });

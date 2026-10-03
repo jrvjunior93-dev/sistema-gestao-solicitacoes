@@ -38,9 +38,12 @@ export const CUSTOS_RECEBIVEIS_TABS = Object.freeze([
     hidden: true
   },
   {
+    // Fase 4: sem aba própria — chega-se aos meses pelo card da obra
+    // (Dashboard do administrador, "Minhas obras" do engenheiro).
     id: 'planejamento',
     label: 'Planejamento mensal',
-    permission: CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_VIEW
+    permission: CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_VIEW,
+    hidden: true
   },
   {
     id: 'comparativo',
@@ -60,14 +63,16 @@ export const CUSTOS_RECEBIVEIS_TABS = Object.freeze([
     permission: CUSTOS_RECEBIVEIS_PERMISSIONS.OBRIGACOES_VIEW
   },
   {
-    id: 'importacoes',
-    label: 'Importações',
-    permission: CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_IMPORT
-  },
-  {
-    id: 'exportacoes',
-    label: 'Exportações',
-    permission: CUSTOS_RECEBIVEIS_PERMISSIONS.REPORT_EXPORT
+    // Fase 4: Importações e Exportações numa aba só, uma faixa para cada.
+    // Abre para quem tem QUALQUER uma das permissões; cada faixa confere a sua.
+    id: 'arquivos',
+    label: 'Importações e exportações',
+    permission: CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_VIEW,
+    anyOf: [
+      CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_IMPORT,
+      CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_PUBLISH,
+      CUSTOS_RECEBIVEIS_PERMISSIONS.REPORT_EXPORT
+    ]
   },
   {
     id: 'auditoria',
@@ -81,6 +86,37 @@ export const CUSTOS_RECEBIVEIS_TABS = Object.freeze([
   }
 ]);
 
+// Endereços antigos continuam valendo: `?aba=importacoes` e `?aba=exportacoes`
+// abrem a aba única de arquivos.
+export const CUSTOS_RECEBIVEIS_TAB_ALIASES = Object.freeze({
+  importacoes: 'arquivos',
+  exportacoes: 'arquivos'
+});
+
+export const OBRIGACAO_TIPO_LABELS = Object.freeze({
+  CUSTO_PREVISTO: 'Custos planejados',
+  RECEITA_PREVISTA: 'Medição prevista',
+  MEDICAO_CONSOLIDADA: 'Medição aprovada',
+  PLANEJAMENTO: 'Planejamento',
+  MEDICAO_APROVADA: 'Medição aprovada'
+});
+
+export const OBRIGACAO_SITUACAO_LABELS = Object.freeze({
+  PENDENTE: 'Pendente',
+  VENCIDA: 'Vencida',
+  CUMPRIDA: 'Cumprida',
+  CUMPRIDA_COM_ATRASO: 'Cumprida com atraso',
+  DISPENSADA: 'Dispensada'
+});
+
+export const DECISAO_SITUACAO_LABELS = Object.freeze({
+  SOLICITADA: 'Aguardando',
+  APROVADA: 'Aprovada',
+  NEGADA: 'Negada',
+  EXPIRADA: 'Expirada',
+  CANCELADA: 'Cancelada'
+});
+
 export const PLANO_SITUACAO_LABELS = Object.freeze({
   RASCUNHO: 'Rascunho',
   PUBLICADA: 'Publicada',
@@ -92,6 +128,7 @@ export const COMPETENCIA_ESTADO_LABELS = Object.freeze({
   EM_PREENCHIMENTO: 'Em preenchimento',
   FINALIZADA: 'Finalizada',
   REABERTA: 'Reaberta',
+  VENCIDA: 'Vencida',
   NAO_INICIADA: 'Não iniciada'
 });
 

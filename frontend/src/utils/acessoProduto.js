@@ -143,6 +143,7 @@ export function canAccessCompras(user) {
       'compras.solicitacoes.encaminhar_compras',
       'compras.solicitacoes.editar_itens',
       'compras.solicitacoes.editar_quantidade',
+      'compras.solicitacoes.editar_apropriacoes_itens',
       'compras.solicitacoes.gerar_pedidos',
       'compras.pedidos.visualizar',
       'compras.pedidos.criar',
@@ -198,6 +199,7 @@ export function canViewCompraSolicitacoes(user) {
       'compras.solicitacoes.encaminhar_compras',
       'compras.solicitacoes.editar_itens',
       'compras.solicitacoes.editar_quantidade',
+      'compras.solicitacoes.editar_apropriacoes_itens',
       'compras.solicitacoes.gerar_pedidos',
       'compras.delegacao.visualizar',
       'compras.delegacao.gerenciar'
@@ -267,7 +269,12 @@ export function canEditarApropriacoesItemSolicitacaoCompra(user) {
   if (!hasEnabledModule(user, 'COMPRAS')) return false;
   if (isBusinessAdmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasPermissao(user, 'compras.solicitacoes.editar_apropriacoes_itens');
+    return hasAnyPermissao(user, [
+      'compras.solicitacoes.editar_apropriacoes_itens',
+      'compras.solicitacoes.editar_itens',
+      'compras.solicitacoes.gerenciar',
+      'compras.solicitacoes.gerar_pedidos'
+    ]);
   }
   return false;
 }
@@ -277,6 +284,15 @@ export function canEditarApropriacoesItemCompraDireta(user) {
   if (isBusinessAdmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
     return hasPermissao(user, 'compras.compra_direta.editar_apropriacoes_itens');
+  }
+  return false;
+}
+
+export function canCatalogarItensManuaisCompras(user) {
+  if (!hasEnabledModule(user, 'COMPRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'compras.insumos.catalogar_itens_manuais');
   }
   return false;
 }
@@ -310,6 +326,15 @@ export function canManageComprasPedidos(user) {
       'compras.pedidos.criar',
       'compras.pedidos.aprovar'
     ]);
+  }
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+export function canAnexarEspelhoComprasPedidos(user) {
+  if (!hasEnabledModule(user, 'COMPRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'compras.pedidos.anexar_espelho');
   }
   return userHasSetorCapability(user, 'eh_setor_compras');
 }
@@ -419,11 +444,67 @@ export function canViewComprasPedidos(user) {
       'compras.pedidos.registrar_frete',
       'compras.pedidos.cancelar_frete',
       'compras.pedidos.auditoria',
+      'compras.pedidos.financeiro.visualizar',
+      'compras.pedidos.financeiro.anexar_documentos',
+      'compras.pedidos.financeiro.gerar_previsao',
+      'compras.pedidos.financeiro.liberar_pagamento',
+      'compras.pedidos.financeiro.aprovar_reabertura',
       'compras.relatorios.visualizar',
       'compras.relatorios.pedidos'
     ]);
   }
   return canAccessCompras(user);
+}
+
+export function canViewPedidoCompraFinanceiro(user) {
+  if (!hasEnabledModule(user, 'COMPRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasAnyPermissao(user, [
+      'compras.pedidos.financeiro.visualizar',
+      'compras.pedidos.financeiro.anexar_documentos',
+      'compras.pedidos.financeiro.gerar_previsao',
+      'compras.pedidos.financeiro.liberar_pagamento',
+      'compras.pedidos.financeiro.aprovar_reabertura'
+    ]);
+  }
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+export function canAnexarDocumentoPedidoCompraFinanceiro(user) {
+  if (!hasEnabledModule(user, 'COMPRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'compras.pedidos.financeiro.anexar_documentos');
+  }
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+export function canGerarPrevisaoPedidoCompraFinanceiro(user) {
+  if (!hasEnabledModule(user, 'COMPRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'compras.pedidos.financeiro.gerar_previsao');
+  }
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+export function canLiberarPedidoCompraFinanceiro(user) {
+  if (!hasEnabledModule(user, 'COMPRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'compras.pedidos.financeiro.liberar_pagamento');
+  }
+  return userHasSetorCapability(user, 'eh_setor_geo');
+}
+
+export function canAprovarReaberturaPedidoCompraFinanceiro(user) {
+  if (!hasEnabledModule(user, 'COMPRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'compras.pedidos.financeiro.aprovar_reabertura');
+  }
+  return userHasSetorCapability(user, 'eh_setor_geo');
 }
 
 export function canCreateComprasPedidos(user) {
@@ -609,6 +690,45 @@ export function canAccessDashboard(user) {
   return isBusinessAdmin(user) || canAccessFinanceiro(user) || perfil === 'ADMIN';
 }
 
+export function canAccessPainelGestor(user) {
+  return isBusinessAdmin(user) || hasAnyExplicitPermissao(user, ['painel_gestor.acessar']);
+}
+
+export function canViewPainelGestorResultadoObras(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.resultado_obras.visualizar'])
+  );
+}
+
+export function canViewPainelGestorCustosRecebiveis(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.custos_recebiveis.visualizar'])
+  );
+}
+
+export function canViewPainelGestorSaldos(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.saldos.visualizar'])
+  );
+}
+
+export function canInformPainelGestorSaldos(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.saldos.informar'])
+  );
+}
+
+export function canCorrectPainelGestorSaldos(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.saldos.corrigir'])
+  );
+}
+
 const FINANCEIRO_RELATORIOS_KEYS = [
   'financeiro.relatorios.visualizar',
   'financeiro.relatorios.grupo_consolidado',
@@ -629,61 +749,8 @@ export function canAccessFinanceiro(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
-      'financeiro.titulos.visualizar',
-      'financeiro.titulos.criar',
-      'financeiro.titulos.importar',
-      'financeiro.titulos.exportar',
-      'financeiro.titulos.importar_codigos',
-      'financeiro.titulos.baixar',
-      'financeiro.titulos.excluir',
-      'financeiro.titulos.estornar',
-      'financeiro.comprovantes.excluir',
-      'financeiro.cheques.visualizar',
-      'financeiro.cheques.cadastrar',
-      'financeiro.cheques.importar',
-      'financeiro.cheques.depositar',
-      'financeiro.cheques.devolver',
-      'financeiro.cheques.cancelar',
-      'financeiro.cheques.transferir',
-      'financeiro.baixas_compostas.visualizar',
-      'financeiro.baixas_compostas.criar',
-      'financeiro.baixas_compostas.confirmar',
-      'financeiro.baixas_compostas.estornar',
-      ...FINANCEIRO_RELATORIOS_KEYS,
-      'financeiro.conciliacao.visualizar',
-      'financeiro.conciliacao.importar',
-      'financeiro.conciliacao.conciliar',
-      'financeiro.conciliacao.estornar',
-      'financeiro.bancos.visualizar',
-      'financeiro.bancos.auditar',
-      'financeiro.bancos.conciliar',
-      'financeiro.bancos.remessas',
-      'financeiro.bancos.retornos',
-      'financeiro.bancos.configurar',
-      'financeiro.cadastros.visualizar',
-      'financeiro.cadastros.gerenciar',
-      'financeiro.pagamentos.visualizar',
-      'financeiro.pagamentos.preparar',
-      'financeiro.pagamentos.aprovar',
-      'financeiro.pagamentos.rejeitar',
-      'financeiro.pagamentos.enviar_banco',
-      'financeiro.pagamentos.sincronizar_banco',
-      'financeiro.pagamentos.cancelar',
-      'financeiro.pagamentos.reprocessar',
-      'financeiro.pagamentos.confirmar_baixa',
-      'financeiro.pagamentos.auditar',
-      'financeiro.pagamentos.configurar',
-      'financeiro.dda.visualizar',
-      'financeiro.dda.sincronizar',
-      'financeiro.dda.vincular',
-      'financeiro.dda.ignorar',
-      'financeiro.dda.auditar',
-      'financeiro.dda.configurar',
-      'financeiro.favorecidos.visualizar',
-      'financeiro.favorecidos.gerenciar',
-      'financeiro.favorecidos.auditar'
-    ]);
+    return (Array.isArray(user?.areas_permissoes) ? user.areas_permissoes : [])
+      .some((permission) => String(permission || '').trim().toLowerCase().startsWith('financeiro.'));
   }
 
   return (
@@ -692,6 +759,21 @@ export function canAccessFinanceiro(user) {
     userHasSetorCapability(user, 'eh_setor_financeiro')
   );
 }
+
+function canFinanceiroCaixa(user, permissionKey) {
+  if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) return hasPermissao(user, permissionKey);
+  return canAccessFinanceiro(user);
+}
+
+export const canViewFinanceiroCaixas = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.visualizar');
+export const canConfirmFinanceiroCaixaConciliacao = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.confirmar_conciliacao');
+export const canOpenFinanceiroCaixa = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.abrir');
+export const canMoveFinanceiroCaixa = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.movimentar');
+export const canReverseFinanceiroCaixaMovement = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.estornar');
+export const canCloseFinanceiroCaixa = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.fechar');
+export const canDecideFinanceiroCaixaDivergence = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.decidir_divergencia');
 
 export function canViewFinanceiroRelatorios(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
@@ -712,6 +794,10 @@ export function canViewFinanceiroRelatorio(user, permissionKey) {
 }
 
 export function canViewSolicitacaoFinanceiro(user) {
+  // A aba dentro da solicitacao e uma leitura operacional da propria Obra. Isto nao habilita o
+  // modulo Financeiro nem qualquer acao financeira fora da tela de detalhes.
+  if (userHasSetorCapability(user, 'eh_setor_obra')) return true;
+
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (canAccessFinanceiro(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
@@ -779,6 +865,35 @@ export function canAccessPagamentos(user) {
 
   return canAccessFinanceiro(user) || userHasPaymentApprovalDirectorate(user);
 }
+
+function canFilaPagamentos(user, permissionKey) {
+  if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) return hasPermissao(user, permissionKey);
+  return userHasSetorCapability(user, 'eh_setor_financeiro') || normalizeToken(user?.perfil) === 'FINANCEIRO';
+}
+
+export function canAccessFilaPagamentos(user) {
+  if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasAnyPermissao(user, [
+      'financeiro.fila_pagamentos.visualizar',
+      'financeiro.fila_pagamentos.preparar',
+      'financeiro.fila_pagamentos.importar_comprovantes',
+      'financeiro.fila_pagamentos.baixar',
+      'financeiro.fila_pagamentos.reportar',
+      'financeiro.fila_pagamentos.resolver'
+    ]);
+  }
+  return userHasSetorCapability(user, 'eh_setor_financeiro') || normalizeToken(user?.perfil) === 'FINANCEIRO';
+}
+
+export const canPrepareFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.preparar');
+export const canImportarComprovantesFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.importar_comprovantes');
+export const canBaixarFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.baixar');
+export const canReportarFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.reportar');
+export const canResolverFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.resolver');
 
 export function canAccessFinanceiroDda(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
@@ -923,6 +1038,13 @@ export function canAccessCadastroObras(user) {
   ]);
 }
 
+export function canManageCadastroObras(user) {
+  if (!hasEnabledModule(user, 'OBRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (canManageConfiguracoesArea(user, 'cadastros')) return true;
+  return hasAnyExplicitPermissao(user, ['obras.cadastro.gerenciar']);
+}
+
 export function canAccessGestaoObras(user) {
   if (!hasEnabledModule(user, 'OBRAS')) return false;
   if (isBusinessAdmin(user)) return true;
@@ -933,6 +1055,12 @@ export function canAccessGestaoObras(user) {
     ]);
   }
   return canAccessCadastroObras(user);
+}
+
+export function canManageGestaoObrasApropriacoes(user) {
+  if (!hasEnabledModule(user, 'OBRAS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  return hasAnyExplicitPermissao(user, ['obras.gestao.apropriacoes']);
 }
 
 export function canAccessContratos(user) {
@@ -1007,11 +1135,13 @@ const RH_DP_AREA_PERMISSION_KEYS = [
   'rh_dp.colaboradores.editar',
   'rh_dp.documentos.visualizar',
   'rh_dp.documentos.gerenciar',
+  'rh_dp.eventos_recorrentes.visualizar',
   'rh_dp.importacoes.executar',
   'rh_dp.apuracao.visualizar',
   'rh_dp.apuracao.editar',
   'rh_dp.fechamento.executar',
   'rh_dp.fechamento.reabrir',
+  'rh_dp.ticket.gerar',
   'rh_dp.obrigacoes.visualizar',
   'rh_dp.relatorios.visualizar'
 ];
@@ -1027,12 +1157,14 @@ const RH_DP_LEGACY_TO_AREA = {
   rh_dp_apuracao_edit: ['rh_dp.apuracao.editar'],
   rh_dp_fechamento_execute: ['rh_dp.fechamento.executar'],
   rh_dp_fechamento_reopen: ['rh_dp.fechamento.reabrir'],
+  rh_dp_ticket_generate: ['rh_dp.ticket.gerar'],
   rh_dp_obrigacoes_view: ['rh_dp.obrigacoes.visualizar']
 };
 
 export function canAccessRhDp(user) {
   if (!hasEnabledModule(user, 'RH_DP')) return false;
   if (isBusinessAdmin(user)) return true;
+  if (userHasSetorCapability(user, 'eh_setor_obra')) return true;
   if (hasConfiguredAreaPermissions(user)) {
     return hasAnyPermissao(user, RH_DP_AREA_PERMISSION_KEYS);
   }
@@ -1069,6 +1201,7 @@ export function hasRhDpCapability(user, capability) {
 
 export function canAccessRhDpDashboard(user) {
   if (!canAccessRhDp(user)) return false;
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   if (hasConfiguredAreaPermissions(user)) {
     return hasAnyPermissao(user, ['rh_dp.dashboard.visualizar', 'rh_dp.relatorios.visualizar']);
   }
@@ -1078,6 +1211,7 @@ export function canAccessRhDpDashboard(user) {
 export function canAccessRhDpEmpresas(user) {
   if (!hasEnabledModule(user, 'RH_DP')) return false;
   if (isBusinessAdmin(user)) return true;
+  if (userHasSetorCapability(user, 'eh_setor_obra')) return false;
   if (hasConfiguredAreaPermissions(user)) {
     return hasPermissao(user, 'rh_dp.empresas.gerenciar');
   }
@@ -1085,6 +1219,8 @@ export function canAccessRhDpEmpresas(user) {
 }
 
 export function canViewRhDpColaboradores(user) {
+  if (!canAccessRhDp(user)) return false;
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return true;
   return canAccessRhDp(user) && (
     hasRhDpCapability(user, 'rh_dp_colaboradores_view') ||
     hasRhDpCapability(user, 'rh_dp_colaboradores_edit')
@@ -1092,21 +1228,35 @@ export function canViewRhDpColaboradores(user) {
 }
 
 export function canManageRhDpColaboradores(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_colaboradores_edit');
 }
 
+export function canAccessRhDpCadastroColaboradores(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
+  return canViewRhDpColaboradores(user);
+}
+
 export function canViewRhDpDocumentos(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && (
     hasRhDpCapability(user, 'rh_dp_documentos_view') ||
     hasRhDpCapability(user, 'rh_dp_documentos_manage')
   );
 }
 
+export function canViewRhDpEventosRecorrentes(user) {
+  if (!canAccessRhDp(user)) return false;
+  return hasAnyExplicitPermissao(user, ['rh_dp.eventos_recorrentes.visualizar']);
+}
+
 export function canManageRhDpDocumentos(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_documentos_manage');
 }
 
 export function canExecuteRhDpImportacoes(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_importacoes_execute');
 }
 
@@ -1123,6 +1273,7 @@ export function canEditRhDpApuracao(user) {
 }
 
 export function canViewRhDpObrigacoes(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && (
     hasRhDpCapability(user, 'rh_dp_obrigacoes_view') ||
     hasRhDpCapability(user, 'rh_dp_fechamento_execute') ||
@@ -1131,11 +1282,18 @@ export function canViewRhDpObrigacoes(user) {
 }
 
 export function canExecuteRhDpFechamento(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_fechamento_execute');
 }
 
 export function canReopenRhDpFechamento(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_fechamento_reopen');
+}
+
+export function canGenerateRhDpTicket(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
+  return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_ticket_generate');
 }
 
 export function canViewProvisionamentos(user) {
@@ -1184,6 +1342,12 @@ export function canAccessBiblioteca(user) {
   return true;
 }
 
+export function canManageBiblioteca(user) {
+  if (!hasEnabledModule(user, 'BIBLIOTECA_MODELOS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  return hasAnyExplicitPermissao(user, ['biblioteca.geral.gerenciar']);
+}
+
 export function canAccessTreinamento(user) {
   if (!hasEnabledModule(user, 'TREINAMENTO')) return false;
   if (isBusinessAdmin(user)) return true;
@@ -1227,6 +1391,15 @@ export function canAccessComunicacao(user) {
       'comunicacao.geral.visualizar',
       'comunicacao.geral.enviar'
     ]);
+  }
+  return true;
+}
+
+export function canSendComunicacao(user) {
+  if (!hasEnabledModule(user, 'COMUNICACAO_INTERNA')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'comunicacao.geral.enviar');
   }
   return true;
 }
@@ -1522,6 +1695,8 @@ const CONFIGURACOES_VIEW_KEYS = [
 
 export function canAccessConfiguracoes(user) {
   if (isBusinessAdmin(user)) return true;
+  // O acompanhamento interno de Contas a Pagar tem cadastro proprio em Configuracoes.
+  if (canAccessFinanceiro(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
     return hasAnyPermissao(user, CONFIGURACOES_VIEW_KEYS);
   }
@@ -1689,14 +1864,29 @@ export function canManageCrmConfiguracoes(user) {
 export function hasPermissao(user, permKey) {
   if (isBusinessAdmin(user)) return true;
   const lista = user?.areas_permissoes;
-  // Sem configuração = acesso completo (compatibilidade com instalações existentes)
-  if (!Array.isArray(lista) || lista.length === 0) return true;
+  // O backend informa explicitamente se existe configuracao. Assim uma lista
+  // vazia configurada significa "sem permissoes", enquanto a ausencia de
+  // configuracao continua com o acesso legado por compatibilidade.
+  if (!hasConfiguredAreaPermissions(user)) return true;
+  if (!Array.isArray(lista)) return false;
   return lista.includes(String(permKey).toLowerCase());
 }
 
 export function hasConfiguredAreaPermissions(user) {
+  if (typeof user?.areas_permissoes_configuradas === 'boolean') {
+    return user.areas_permissoes_configuradas;
+  }
   const lista = user?.areas_permissoes;
   return Array.isArray(lista) && lista.length > 0;
+}
+
+export function canAccessAutorizacoesPagamento(user) {
+  const capability = user?.autorizacao_pagamentos;
+  return Boolean(capability?.enabled && (capability.can_view || capability.can_prepare || capability.can_decide || capability.can_configure));
+}
+
+export function devePrepararAutorizacaoPagamento(user) {
+  return Boolean(user?.autorizacao_pagamentos?.enabled && user?.autorizacao_pagamentos?.prepare_required);
 }
 
 export function hasAnyPermissao(user, permKeys = []) {

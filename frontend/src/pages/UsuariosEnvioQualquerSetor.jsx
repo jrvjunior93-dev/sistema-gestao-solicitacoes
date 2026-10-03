@@ -3,6 +3,8 @@ import {
   getUsuariosEnvioQualquerSetor,
   salvarUsuariosEnvioQualquerSetor
 } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, BlocoConteudo, TabelaPadrao, CelulaDupla, BarraFiltros, Avisos, useAvisos } from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 
 function normalizarTexto(valor) {
   return String(valor || '')
@@ -18,6 +20,8 @@ export default function UsuariosEnvioQualquerSetor() {
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  // R3 (02/09): aviso do sistema no lugar da caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function carregar() {
@@ -33,7 +37,7 @@ export default function UsuariosEnvioQualquerSetor() {
         ));
       } catch (error) {
         console.error(error);
-        alert('Erro ao carregar usuarios com permissao especial de envio.');
+        avisar.erro('Erro ao carregar usuários com permissão especial de envio.');
       } finally {
         setCarregando(false);
       }
@@ -91,86 +95,99 @@ export default function UsuariosEnvioQualquerSetor() {
         ...usuario,
         pode_enviar_qualquer_setor: selecionados.has(String(usuario.id))
       })));
-      alert('Configuracao salva com sucesso.');
+      avisar.sucesso('Configuração salva com sucesso.');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao salvar permissao especial de envio.');
+      avisar.erro(error?.message || 'Erro ao salvar permissao especial de envio.');
     } finally {
       setSalvando(false);
     }
   }
 
+  const colunas = [
+    {
+      id: 'liberado',
+      sempreVisivel: true,
+      titulo: 'Liberado',
+      tipo: 'status',
+      render: (usuario) => (
+        <input
+          type="checkbox"
+          checked={selecionados.has(String(usuario.id))}
+          onChange={() => alternarUsuario(usuario.id)}
+          aria-label={`Liberar envio livre para ${usuario.nome}`}
+        />
+      )
+    },
+    {
+      id: 'usuario',
+      titulo: 'Usuário',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (usuario) => <CelulaDupla principal={usuario.nome} sub={usuario.email} />
+    },
+    {
+      id: 'perfil',
+      titulo: 'Perfil',
+      tipo: 'badge',
+      render: (usuario) => String(usuario.perfil || '').toUpperCase() || '-'
+    },
+    {
+      id: 'setor',
+      titulo: 'Setor',
+      tipo: 'badge',
+      render: (usuario) => usuario?.setor?.nome || usuario?.setor?.codigo || '-'
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      render: (usuario) => <StatusBadge status={usuario?.ativo !== false ? 'Ativo' : 'Inativo'} />
+    }
+  ];
+
   return (
-    <div className="page max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="page-title">Envio livre entre setores</h1>
-        <p className="page-subtitle">
-          Libera usuarios especificos para enviar solicitacoes a outro setor mesmo quando elas nao estao no setor atual deles.
-          Usuarios do setor OBRA continuam fora desta regra.
-        </p>
-      </div>
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Envio livre entre setores"
+        contagem={`${selecionados.size} marcado(s)`}
+        descricao="Libera usuários específicos para enviar solicitações a outro setor mesmo quando elas não estão no setor atual deles. Usuários do setor OBRA continuam fora desta regra."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar',
+          onClick: salvar,
+          desabilitada: salvando || carregando
+        }}
+        secundarias={[
+          { rotulo: 'Selecionar filtrados', onClick: selecionarFiltrados },
+          { rotulo: 'Limpar filtrados', onClick: limparFiltrados }
+        ]}
+      />
 
-      <div className="card space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <label className="form-field w-full md:max-w-md">
-            <span className="form-label">Buscar usuario</span>
-            <input
-              className="input"
-              placeholder="Nome, email, perfil ou setor"
-              value={busca}
-              onChange={event => setBusca(event.target.value)}
-            />
-          </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" className="btn btn-outline" onClick={selecionarFiltrados}>Selecionar filtrados</button>
-            <button type="button" className="btn btn-outline" onClick={limparFiltrados}>Limpar filtrados</button>
-          </div>
-        </div>
-
-        <p className="text-sm text-[var(--c-muted)]">Usuarios marcados: <strong>{selecionados.size}</strong></p>
-
-        {carregando ? (
-          <p className="text-sm text-[var(--c-muted)]">Carregando usuarios...</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-2">
-            {usuariosFiltrados.map(usuario => {
-              const marcado = selecionados.has(String(usuario.id));
-              const setorLabel = usuario?.setor?.nome || usuario?.setor?.codigo || '-';
-              const ativo = usuario?.ativo !== false;
-
-              return (
-                <label key={usuario.id} className="flex items-start gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-card)] p-3 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={marcado}
-                    onChange={() => alternarUsuario(usuario.id)}
-                  />
-                  <span className="grid gap-1">
-                    <span className="font-semibold text-[var(--c-text)]">
-                      {usuario.nome}{!ativo ? ' (inativo)' : ''}
-                    </span>
-                    <span className="text-[var(--c-muted)]">
-                      {usuario.email} - {String(usuario.perfil || '').toUpperCase()} - {setorLabel}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-
-            {usuariosFiltrados.length === 0 && (
-              <p className="text-sm text-[var(--c-muted)]">Nenhum usuario encontrado.</p>
-            )}
-          </div>
-        )}
-
-        <div className="flex justify-end">
-          <button type="button" className="btn btn-primary" onClick={salvar} disabled={salvando || carregando}>
-            {salvando ? 'Salvando...' : 'Salvar'}
-          </button>
-        </div>
-      </div>
-    </div>
+      <BlocoConteudo
+        titulo="Usuários"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/* F1: UMA busca, ocupando a largura da faixa (padrão BarraFiltros). */}
+        <BarraFiltros
+          busca={{
+            valor: busca,
+            aoMudar: setBusca,
+            placeholder: 'Nome, email, perfil ou setor'
+          }}
+        />
+        <TabelaPadrao
+          colunas={colunas}
+          itens={usuariosFiltrados}
+          carregando={carregando}
+          storageKey="tabela:usuarios-envio-livre"
+          vazio={{ title: 'Nenhum usuario encontrado' }}
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

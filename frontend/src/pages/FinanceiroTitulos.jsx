@@ -1,66 +1,96 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   HiOutlineAdjustmentsHorizontal,
   HiOutlineArrowDownTray,
   HiOutlineArrowUpTray,
-  HiOutlineDocumentChartBar,
+  HiOutlineChevronDown,
   HiOutlineDocumentText,
   HiOutlineEye,
+  HiOutlineExclamationTriangle,
   HiOutlineMagnifyingGlass,
   HiOutlinePencilSquare,
   HiOutlinePlus,
-  HiOutlineSparkles,
   HiOutlineXMark
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { useFecharAoSair } from '../hooks/useFecharAoSair';
+import StatusBadge from '../components/StatusBadge';
 import {
   baixarTituloFinanceiro,
+  atribuirStatusInternoContasPagar,
   baixarTitulosFinanceirosEmMassaParcelado,
   getCategoriasFinanceiras,
   getCartoesFinanceiros,
   getChequesTerceiros,
   getContasBancarias,
   getFretesPedidosPendentesFinanceiro,
+  getStatusInternosContasPagar,
   getFormasPagamentoFinanceiras,
   getTitulosFinanceiros,
+  enviarTitulosFilaPagamentos,
   gerarRelatorioTitulosFinanceirosPdf,
   excluirTitulosFinanceirosEmMassa,
   exportarModeloImportacaoTitulosPagar,
   importarCodigosBarrasTitulos
 } from '../services/financeiro';
 import { getMinhasObras } from '../services/obras';
+import { criarAutorizacaoPagamento } from '../services/pagamentoAutorizacao';
 import { buscarParceiros } from '../services/parceiros';
-import { getEmpresasGrupo } from '../services/empresasGrupo';
 import { normalizeCurrencyTyping } from '../utils/formatters';
-import { canDeleteTitulosFinanceiros, canImportTitulosFinanceiros, hasPermissao } from '../utils/acessoProduto';
+import {
+  canDeleteTitulosFinanceiros,
+  canImportTitulosFinanceiros,
+  canPrepareFilaPagamentos,
+  canResolverFilaPagamentos,
+  devePrepararAutorizacaoPagamento,
+  hasPermissao
+} from '../utils/acessoProduto';
 import FinanceiroTitulosImportacaoPanel from '../components/financeiro/FinanceiroTitulosImportacaoPanel';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
+import TituloNegociacaoModal, { podeNegociarTitulos } from '../components/financeiro/TituloNegociacaoModal';
 import ChequePagamentoFields from '../components/financeiro/ChequePagamentoFields';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  StatGrid,
+  StatTile,
+  Paginacao,
+  TabelaPadrao,
+  CelulaDupla,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
+import PainelFiltrosVisiveis, { useFiltrosVisiveis } from '../components/padrao/PainelFiltrosVisiveis';
+import { usePreferenciaDeLista, TIPO_GERAL } from '../contexts/PreferenciasContext';
+import DateInputBR from '../components/DateInputBR';
 
 const FILTER_STORAGE_KEY = 'fluxy.financeiro.titulos.filters';
 const FILTER_VISIBILITY_STORAGE_PREFIX = 'fluxy.financeiro.titulos.visibleFilters';
-const COLUMN_ORDER_STORAGE_PREFIX = 'fluxy.financeiro.titulos.columnOrder';
-const COLUMN_WIDTH_STORAGE_PREFIX = 'fluxy.financeiro.titulos.columnWidths';
-const TABLE_COLUMN_WIDTHS = {
-  Titulo: 190,
-  Status: 110,
-  Tipo: 90,
-  Documento: 140,
-  Credor: 200,
-  Cliente: 200,
-  Obra: 180,
-  Categoria: 180,
-  'Forma pagamento': 170,
-  Origem: 140,
-  Emissao: 110,
-  Vencimento: 120,
-  'Valor total': 130,
-  Saldo: 130,
-  Acoes: 112
-};
+/* COLUNAS DA GRADE — a escolha (quais e em que ordem) é do usuário, pelo
+   painel "Colunas" da TabelaPadrao, que salva em `<storageKey>:colunas`.
+   Substitui `tableHeaders`/`moverColuna` e as chaves antigas
+   "fluxy.financeiro.titulos.columnOrder/columnWidths", mantidas à mão.
+   A largura de cada coluna vem do `tipo` (R1/R6/R7) — a tela não mede. */
+const IDS_COLUNAS_TITULOS = [
+  'titulo',
+  'status',
+  'status_interno_pagar',
+  'tipo',
+  'documento',
+  'parceiro',
+  'obra',
+  'categoria',
+  'forma_pagamento',
+  'origem',
+  'emissao',
+  'vencimento',
+  'valor_total',
+  'saldo'
+];
 const PAGE_SIZE_OPTIONS = ['25', '50', '100', '150', '200', 'all'];
 const NATUREZAS_INTERCOMPANY_BAIXA = [
   {
@@ -73,7 +103,7 @@ const NATUREZAS_INTERCOMPANY_BAIXA = [
   },
   {
     value: 'TRANSFERENCIA_INTERNA',
-    label: 'Transferencia interna entre empresas',
+    label: 'Transferência interna entre empresas',
     description: 'Use para cobertura de caixa ou envio de recurso entre empresas. Nao entra na DRE consolidada.',
     tipo_intercompany: 'COBERTURA_CAIXA',
     elimina_consolidado: true,
@@ -81,7 +111,7 @@ const NATUREZAS_INTERCOMPANY_BAIXA = [
   },
   {
     value: 'REEMBOLSO_COMPENSACAO',
-    label: 'Reembolso ou compensacao entre empresas',
+    label: 'Reembolso ou compensação entre empresas',
     description: 'Use para acerto/reembolso interno. Mantem o rastro sem tratar como despesa operacional da obra.',
     tipo_intercompany: 'REEMBOLSO',
     elimina_consolidado: true,
@@ -89,25 +119,181 @@ const NATUREZAS_INTERCOMPANY_BAIXA = [
   }
 ];
 
+/*
+  OS 15 FILTROS DESTA TELA, E DUAS MUDANÇAS DE 05/09.
+
+  1) O CONJUNTO INICIAL APROVADO PELO CLIENTE — `rotulo` + `padrao: false`
+     (nasce escondido). Os cinco à vista são os que respondem à pergunta da
+     tela: busca rápida, status, obra e as duas pontas do VENCIMENTO. Os
+     outros dez ficam a um clique no painel "Filtros visíveis". O padrão
+     vale SÓ para quem nunca configurou — quem já tem escolha salva mantém
+     a dele, aqui e no banco.
+
+  2) EMISSÃO E VENCIMENTO TROCAM DE GRUPO, e isso é correção de
+     significado, não arrumação. Emissão era `basic` (aberta sempre) e
+     vencimento era `advanced` (atrás de "Mais filtros"). Para quem paga e
+     cobra contas a pergunta da tela é "o que vence e quanto soma" — a data
+     de emissão é do documento, o vencimento é do compromisso. A ordem
+     estava invertida em três endereços (`/financeiro/titulos`,
+     `?tipo=pagar` e `?tipo=receber`).
+
+  `obrigatorio` em `q`: a busca rápida é o único caminho para achar um
+  título pelo que a pessoa lembra dele. Mesma família da coluna de
+  identidade travada da TabelaPadrao — o resto continua escondível,
+  inclusive "Status", que nasce preenchido (ABERTO) e é justamente um dos
+  que mais se quer tirar da faixa.
+
+  `defaultVisibleWhenMissing` SAIU porque `padrao` faz o mesmo trabalho e
+  faz melhor: a reconciliação do painel único trata todo id que a
+  preferência não cita — não só os dois marcados à mão — pelo padrão que a
+  tela declara. Filtro novo continua aparecendo sozinho; nenhum some.
+*/
 const FILTER_DEFINITIONS = [
-  { id: 'codigo', label: 'Titulo', group: 'basic', span: 'xl:col-span-2' },
-  { id: 'q', label: 'Busca rapida', group: 'basic', span: 'xl:col-span-4' },
-  { id: 'status', label: 'Status', group: 'basic', span: 'xl:col-span-2' },
-  { id: 'numero_documento', label: 'N. documento', group: 'basic', span: 'xl:col-span-2' },
-  { id: 'parceiro_id', label: 'Cliente/Credor', group: 'basic', span: 'xl:col-span-4' },
-  { id: 'obra_id', label: 'Obra', group: 'basic', span: 'xl:col-span-4' },
-  { id: 'valor_min', label: 'Valor mínimo', group: 'advanced', span: 'xl:col-span-2' },
-  { id: 'valor_max', label: 'Valor máximo', group: 'advanced', span: 'xl:col-span-2' },
-  { id: 'data_emissao_inicial', label: 'Emissao inicio', group: 'basic', span: 'xl:col-span-2' },
-  { id: 'data_emissao_final', label: 'Emissao fim', group: 'basic', span: 'xl:col-span-2' },
-  { id: 'categoria_financeira_id', label: 'Categoria financeira', group: 'advanced', span: 'xl:col-span-3' },
-  { id: 'forma_pagamento_id', label: 'Forma de pagamento', group: 'advanced', span: 'xl:col-span-3', defaultVisibleWhenMissing: true },
-  { id: 'cartao_id', label: 'Cartao', group: 'advanced', span: 'xl:col-span-3', defaultVisibleWhenMissing: true },
-  { id: 'vencimento_inicial', label: 'Vencimento inicio', group: 'advanced', span: 'xl:col-span-2' },
-  { id: 'vencimento_final', label: 'Vencimento fim', group: 'advanced', span: 'xl:col-span-2' }
+  { id: 'q', rotulo: 'Busca rápida', group: 'basic', span: 'xl:col-span-4', obrigatorio: true },
+  { id: 'status', rotulo: 'Status', group: 'basic', span: 'xl:col-span-2' },
+  { id: 'obra_id', rotulo: 'Obra', group: 'basic', span: 'xl:col-span-4' },
+  { id: 'vencimento_inicial', rotulo: 'Vencimento início', group: 'basic', span: 'xl:col-span-2' },
+  { id: 'vencimento_final', rotulo: 'Vencimento fim', group: 'basic', span: 'xl:col-span-2' },
+  { id: 'codigo', rotulo: 'Título', group: 'basic', span: 'xl:col-span-2', padrao: false },
+  { id: 'numero_documento', rotulo: 'N. documento', group: 'basic', span: 'xl:col-span-2', padrao: false },
+  { id: 'parceiro_id', rotulo: 'Cliente/Credor', group: 'basic', span: 'xl:col-span-4', padrao: false },
+  { id: 'data_emissao_inicial', rotulo: 'Emissão início', group: 'advanced', span: 'xl:col-span-2', padrao: false },
+  { id: 'data_emissao_final', rotulo: 'Emissão fim', group: 'advanced', span: 'xl:col-span-2', padrao: false },
+  { id: 'valor_min', rotulo: 'Valor mínimo', group: 'advanced', span: 'xl:col-span-2', padrao: false },
+  { id: 'valor_max', rotulo: 'Valor máximo', group: 'advanced', span: 'xl:col-span-2', padrao: false },
+  { id: 'categoria_financeira_id', rotulo: 'Categoria financeira', group: 'advanced', span: 'xl:col-span-3', padrao: false },
+  { id: 'forma_pagamento_id', rotulo: 'Forma de pagamento', group: 'advanced', span: 'xl:col-span-3', padrao: false },
+  { id: 'cartao_id', rotulo: 'Cartão', group: 'advanced', span: 'xl:col-span-3', padrao: false }
 ];
 
-const DEFAULT_VISIBLE_FILTER_IDS = FILTER_DEFINITIONS.map((item) => item.id);
+const STATUS_FILTER_OPTIONS = [
+  { value: 'EM_ABERTO', label: 'Em aberto (previsão + aberto + parcial)' },
+  { value: 'VENCIDO', label: 'Vencidos (previsão + aberto + parcial)' },
+  { value: 'PREVISAO', label: 'Previsão' },
+  { value: 'PREVISAO_VENCIDA', label: 'Previsão - vencida' },
+  { value: 'ABERTO', label: 'Aberto' },
+  { value: 'ABERTO_VENCIDO', label: 'Aberto - vencido' },
+  { value: 'PARCIAL', label: 'Parcial' },
+  { value: 'PARCIAL_VENCIDO', label: 'Parcial - vencido' },
+  { value: 'QUITADO', label: 'Quitado' },
+  { value: 'CANCELADO', label: 'Cancelado' },
+  { value: 'ESTORNADO', label: 'Estornado' },
+  { value: 'RENEGOCIADO', label: 'Renegociado' }
+];
+
+function parseStatusFilterValues(value) {
+  return [...new Set(String(value || '')
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean))];
+}
+
+function StatusFilterMultiSelect({ className = '', value, onChange }) {
+  const wrapRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const selectedValues = useMemo(() => parseStatusFilterValues(value), [value]);
+  const selectedSet = useMemo(() => new Set(selectedValues), [selectedValues]);
+  const selectedLabels = STATUS_FILTER_OPTIONS
+    .filter((option) => selectedSet.has(option.value))
+    .map((option) => option.label);
+  const summary = selectedLabels.length === 0
+    ? 'Todos'
+    : selectedLabels.length === 1
+      ? selectedLabels[0]
+      : `${selectedLabels.length} selecionados`;
+
+  useFecharAoSair(wrapRef, open, () => setOpen(false));
+
+  function toggleStatus(status) {
+    const next = new Set(selectedSet);
+    if (next.has(status)) next.delete(status);
+    else next.add(status);
+    onChange(STATUS_FILTER_OPTIONS
+      .map((option) => option.value)
+      .filter((optionValue) => next.has(optionValue))
+      .join(','));
+  }
+
+  return (
+    <div ref={wrapRef} className={`${className} relative ${open ? 'z-dropdown' : 'z-base'}`}>
+      <span className="app-filter-label">Status</span>
+      <button
+        type="button"
+        className="input input-sm flex w-full items-center justify-between gap-2 text-left"
+        onClick={() => setOpen((current) => !current)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="min-w-0 truncate">{summary}</span>
+        <HiOutlineChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+
+      {open ? (
+        <div
+          className="absolute left-0 top-full z-dropdown mt-1 max-h-80 min-w-full overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl sm:min-w-80"
+          role="listbox"
+          aria-label="Selecionar status"
+          aria-multiselectable="true"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--c-border)] px-2 py-2">
+            <span className="text-xs font-semibold text-[var(--c-muted)]">
+              {selectedValues.length ? `${selectedValues.length} selecionado(s)` : 'Todos os status'}
+            </span>
+            {selectedValues.length ? (
+              <button type="button" className="btn btn-ghost btn-xs" onClick={() => onChange('')}>
+                Limpar
+              </button>
+            ) : null}
+          </div>
+          {STATUS_FILTER_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--c-text)] hover:bg-[var(--c-bg)]"
+              role="option"
+              aria-selected={selectedSet.has(option.value)}
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0 accent-[var(--c-primary)]"
+                checked={selectedSet.has(option.value)}
+                onChange={() => toggleStatus(option.value)}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/*
+  D2 (decisão do cliente) — PORTA ÚNICA COM O RECORTE NA URL.
+
+  Antes existiam três rotas para esta mesma tela e o recorte chegava por
+  uma PROP invisível (`tipoFixo="RECEBER"` no App.jsx). Prop de rota não é
+  endereço: não dá para favoritar "só a pagar", não dá para mandar o link
+  por mensagem, e a tela não sabe dizer ao usuário de onde veio o corte.
+
+  Agora o recorte é `?tipo=receber|pagar` sobre `/financeiro/titulos`, e as
+  duas rotas antigas redirecionam preservando o corte (R20, no App.jsx) —
+  favorito, atalho fixado e tela inicial continuam chegando.
+
+  A prop continua aceita (R21: não se muda contrato de componente no meio
+  do caminho), mas a URL VENCE quando as duas falam: endereço é o que a
+  pessoa vê e compartilha.
+*/
+const RECORTES_TIPO = { RECEBER: 'receber', PAGAR: 'pagar' };
+
+function lerRecorteDaUrl(search) {
+  const bruto = String(new URLSearchParams(search).get('tipo') || '').trim().toUpperCase();
+  return bruto === 'PAGAR' || bruto === 'RECEBER' ? bruto : null;
+}
+
+function caminhoDoRecorte(tipo) {
+  const slug = RECORTES_TIPO[String(tipo || '').toUpperCase()];
+  return slug ? `/financeiro/titulos?tipo=${slug}` : '/financeiro/titulos';
+}
 
 function getDefaultFilters(tipo = 'RECEBER') {
   return {
@@ -191,6 +377,7 @@ function FinanceiroFilterAutocomplete({
   browseDescription = 'Pesquise ou percorra todas as opcoes disponiveis.',
   browseListClassName = ''
 }) {
+  const campoRef = useRef(null);
   const selected = useMemo(
     () => options.find((item) => String(item?.id) === String(value || '')) || null,
     [options, value]
@@ -244,6 +431,29 @@ function FinanceiroFilterAutocomplete({
     };
   }, [browseOpen]);
 
+  /*
+    O FILTRO FECHA AO CLICAR FORA, NAO AO PERDER O FOCO (05/09).
+
+    Era `onBlur` com `setTimeout(120)`, e o atraso so existia para a opcao
+    (que escolhe no proprio `onMouseDown`) ganhar do fechamento por foco.
+    Fechar por foco deixava de fora o uso comum desta barra: rolar a lista de
+    titulos, clicar num rotulo de outro filtro ou abrir outra caixa com o
+    foco preso no campo mantinham a camada aberta — e ela sobe o `z-index` da
+    coluna inteira (`z-dropdown`), tapando os filtros vizinhos. Nao havia `Esc`
+    para o autocomplete (so para o modal "ver todas"); agora ha.
+
+    POR QUE A SELECAO SOBREVIVE: o ref cobre a coluna inteira do filtro —
+    input, botao de lupa e lista —, entao clicar numa opcao e clique DENTRO e
+    o hook nao fecha no `mousedown`. Cada opcao ja escolhia no proprio
+    `onMouseDown` com `preventDefault()`, que roda antes do listener do
+    documento e segura o foco no campo.
+
+    Fechar e so `setOpen(false)`: o input mostra `selectedLabel` quando
+    fechado e o efeito acima devolve a `query` ao rotulo do que esta
+    selecionado, entao nao fica texto de busca solto no filtro.
+  */
+  useFecharAoSair(campoRef, open && !disabled, () => setOpen(false));
+
   const handleSelect = (nextValue, nextLabel = '') => {
     onChange(nextValue);
     setQuery(nextLabel);
@@ -252,11 +462,11 @@ function FinanceiroFilterAutocomplete({
   };
 
   return (
-    <div key={label} className={`${className} relative ${open ? 'z-[60]' : 'z-0'}`}>
+    <div key={label} ref={campoRef} className={`${className} relative ${open ? 'z-dropdown' : 'z-base'}`}>
       <span className="app-filter-label">{label}</span>
       <div className="relative">
         <input
-          className={`${inputClassName} ${browseEnabled ? 'pr-10' : ''}`}
+          className={`${inputClassName} ${browseEnabled ? 'pr-12' : ''}`}
           value={open ? query : selectedLabel}
           onFocus={() => {
             setQuery(selectedLabel);
@@ -269,9 +479,6 @@ function FinanceiroFilterAutocomplete({
             }
             setOpen(true);
           }}
-          onBlur={() => {
-            window.setTimeout(() => setOpen(false), 120);
-          }}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
@@ -281,7 +488,7 @@ function FinanceiroFilterAutocomplete({
         {browseEnabled ? (
           <button
             type="button"
-            className="absolute right-1 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-primary)] shadow-sm transition-colors hover:border-[var(--c-primary)] hover:bg-[var(--c-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)] disabled:opacity-50"
+            className="absolute right-1 top-1/2 z-conteudo flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-primary)] shadow-sm transition-colors hover:border-[var(--c-primary)] hover:bg-[var(--c-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)] disabled:opacity-50"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
               setOpen(false);
@@ -289,18 +496,18 @@ function FinanceiroFilterAutocomplete({
               setBrowseOpen(true);
             }}
             disabled={disabled}
-            title={`Ver todas as opcoes de ${label.toLowerCase()}`}
-            aria-label={`Ver todas as opcoes de ${label.toLowerCase()}`}
+            title={`Ver todas as opções de ${label.toLowerCase()}`}
+            aria-label={`Ver todas as opções de ${label.toLowerCase()}`}
           >
             <HiOutlineMagnifyingGlass className="h-4 w-4" />
           </button>
         ) : null}
       </div>
       {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-64 overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-950">
+        <div className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-64 overflow-auto rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl">
           <button
             type="button"
-            className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+            className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-[var(--c-text)] hover:bg-[var(--c-bg)]"
             onMouseDown={(event) => {
               event.preventDefault();
               handleSelect('', '');
@@ -309,7 +516,7 @@ function FinanceiroFilterAutocomplete({
             {allLabel}
           </button>
           {filteredOptions.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500 dark:text-slate-400">{emptyLabel}</div>
+            <div className="px-3 py-3 text-sm text-[var(--c-muted)]">{emptyLabel}</div>
           ) : (
             filteredOptions.map((item) => {
               const itemLabel = getLabel(item);
@@ -318,7 +525,7 @@ function FinanceiroFilterAutocomplete({
                 <button
                   key={item.id}
                   type="button"
-                  className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                  className="w-full rounded-xl px-3 py-2 text-left text-sm text-[var(--c-text)] hover:bg-[var(--c-bg)]"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     handleSelect(String(item.id), itemLabel);
@@ -326,7 +533,7 @@ function FinanceiroFilterAutocomplete({
                 >
                   <span className="block font-semibold">{itemLabel}</span>
                   {description ? (
-                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{description}</span>
+                    <span className="block truncate text-xs text-[var(--c-muted)]">{description}</span>
                   ) : null}
                 </button>
               );
@@ -336,7 +543,7 @@ function FinanceiroFilterAutocomplete({
       )}
       {browseEnabled && browseOpen ? createPortal(
         <div
-          className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:p-4"
+          className="fixed inset-0 z-modal-acima flex items-center justify-center bg-[var(--modal-overlay)] p-0 backdrop-blur-sm sm:p-4"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setBrowseOpen(false);
@@ -348,28 +555,28 @@ function FinanceiroFilterAutocomplete({
             aria-modal="true"
             aria-label={browseTitle}
           >
-            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--c-border)] px-4 py-4 sm:px-5">
+            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--c-border)] px-4 py-4">
               <div>
-                <h2 className="text-base font-semibold text-[var(--c-text)] sm:text-lg">{browseTitle}</h2>
-                <p className="mt-0.5 text-xs text-[var(--c-muted)]">{browseDescription}</p>
+                <h2 className="text-lg font-semibold text-[var(--c-text)]">{browseTitle}</h2>
+                <p className="mt-1 text-xs text-[var(--c-muted)]">{browseDescription}</p>
               </div>
               <button
                 type="button"
-                className="btn btn-outline btn-sm btn-square shrink-0"
+                className="btn btn-outline btn-sm shrink-0"
                 onClick={() => setBrowseOpen(false)}
                 title="Fechar"
                 aria-label="Fechar"
               >
-                <HiOutlineXMark className="h-5 w-5" />
+                <HiOutlineXMark className="h-4 w-4" />
               </button>
             </header>
 
-            <div className="shrink-0 border-b border-[var(--c-border)] px-4 py-3 sm:px-5">
+            <div className="shrink-0 border-b border-[var(--c-border)] px-4 py-3">
               <label className="app-filter-field">
                 <span className="app-filter-label">Pesquisar</span>
                 <div className="relative">
                   <input
-                    className="input w-full pr-10"
+                    className="input w-full pr-12"
                     value={browseQuery}
                     onChange={(event) => setBrowseQuery(event.target.value)}
                     placeholder={placeholder}
@@ -387,13 +594,13 @@ function FinanceiroFilterAutocomplete({
                     className="font-semibold text-[var(--c-primary)] hover:underline"
                     onClick={() => handleSelect('', '')}
                   >
-                    Limpar selecao
+                    Limpar seleção
                   </button>
                 ) : null}
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-3 py-3 sm:px-5">
+            <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-3 py-3">
               {browseOptions.length === 0 ? (
                 <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-[var(--c-border)] px-4 text-center text-sm text-[var(--c-muted)]">
                   {emptyLabel}. Tente pesquisar por outro codigo, nome ou grupo.
@@ -410,7 +617,7 @@ function FinanceiroFilterAutocomplete({
                         type="button"
                         className={`flex w-full items-start justify-between gap-4 px-3 py-3 text-left transition-colors sm:px-4 ${
                           isSelected
-                            ? 'bg-blue-50 text-blue-950 dark:bg-blue-950/40 dark:text-blue-100'
+                            ? 'bg-[var(--sem-info-bg)] text-[var(--sem-info)]'
                             : 'text-[var(--c-text)] hover:bg-[var(--c-bg)]'
                         }`}
                         onClick={() => handleSelect(String(item.id), itemLabel)}
@@ -418,11 +625,11 @@ function FinanceiroFilterAutocomplete({
                         <span className="min-w-0">
                           <span className="block text-sm font-semibold">{itemLabel}</span>
                           {description ? (
-                            <span className="mt-0.5 block text-xs text-[var(--c-muted)]">{description}</span>
+                            <span className="mt-1 block text-xs text-[var(--c-muted)]">{description}</span>
                           ) : null}
                         </span>
                         {isSelected ? (
-                          <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700 dark:bg-blue-900 dark:text-blue-200">
+                          <span className="badge badge-info shrink-0 uppercase tracking-wide">
                             Selecionada
                           </span>
                         ) : null}
@@ -460,56 +667,88 @@ function getVisibilityStorageKey(user, storagePrefix = FILTER_VISIBILITY_STORAGE
   return `${storagePrefix}.${userToken}`;
 }
 
-function loadVisibleFilterIds(user, storagePrefix = FILTER_VISIBILITY_STORAGE_PREFIX) {
+/*
+  A CHAVE ANTIGA DO NAVEGADOR, LIDA SÓ COMO `legado` (05/09).
+
+  A escolha de quais filtros aparecem passa a morar no BANCO (tipo
+  `filtros`, pelo `PreferenciasContext`) — é a metade do N53 que ainda
+  estava aberta. "Esconder limpa" já tinha tirado do envio a diferença que
+  a máquina fazia, mas a ESCOLHA continuava por navegador: quem escondia
+  "Obra" no desktop e abria a mesma tela no notebook via outra faixa e, ao
+  consultar, outro total.
+
+  Esta função responde a uma coisa só: "o que este usuário já tinha
+  configurado NESTA máquina". `null` quando não há nada — e a distinção
+  importa, porque só quem nunca configurou recebe o conjunto inicial
+  aprovado pelo cliente. A chave NÃO é apagada: é a rede de rollback.
+*/
+function lerLegadoFiltrosVisiveis(user, storagePrefix = FILTER_VISIBILITY_STORAGE_PREFIX) {
   try {
     const stored = localStorage.getItem(getVisibilityStorageKey(user, storagePrefix));
     const parsed = stored ? JSON.parse(stored) : null;
-    if (!Array.isArray(parsed)) {
-      return DEFAULT_VISIBLE_FILTER_IDS;
-    }
-
+    if (!Array.isArray(parsed)) return null;
     const allowed = new Set(FILTER_DEFINITIONS.map((item) => item.id));
     const normalized = parsed.filter((id) => allowed.has(id));
-    FILTER_DEFINITIONS
-      .filter((item) => item.defaultVisibleWhenMissing && !normalized.includes(item.id))
-      .forEach((item) => normalized.push(item.id));
-    return normalized.length > 0 ? normalized : DEFAULT_VISIBLE_FILTER_IDS;
+    return normalized.length > 0 ? normalized : null;
   } catch (error) {
-    return DEFAULT_VISIBLE_FILTER_IDS;
+    return null;
   }
 }
 
-function getColumnOrderStorageKey(user, fixedTipo = null) {
-  const userToken = user?.id || user?.email || 'anonimo';
-  const scope = fixedTipo ? fixedTipo.toLowerCase() : 'geral';
-  return `${COLUMN_ORDER_STORAGE_PREFIX}.${scope}.${userToken}`;
+/*
+  N53 (05/09) — `pickVisibleFilters` SAIU DAQUI. A projeção não acabou: mudou
+  de lugar, e é essa mudança que fecha o achado.
+
+  O QUE ELA FAZIA: recortava o PAYLOAD. O filtro escondido deixava de ser
+  enviado ao servidor. Esconder "Obra" para desafogar a faixa fazia a consulta
+  passar a trazer TODAS as obras, e o total subir. O mesmo usuário, com os
+  mesmos campos preenchidos, obtinha listas diferentes conforme a máquina —
+  porque a escolha de "quais filtros aparecem" mora no navegador. Medido e
+  registrado como N53, classificado CRÍTICO pelo cliente em 05/09: número
+  errado chegando a quem decide, sem nada na tela que denuncie.
+
+  O QUE ENTRA NO LUGAR: o recorte desce um nível e passa a valer sobre o
+  VALOR, não sobre o envio — esconder LIMPA (é o contrato que a tela de
+  Provisionamentos já cumpre). Com isso, filtro invisível já está vazio, o
+  `compactFilters` sozinho não manda nada dele, e o que a pessoa lê na faixa
+  passa a ser o recorte INTEIRO da consulta.
+
+  As duas funções abaixo separam de ONDE o valor veio, porque o tratamento
+  honesto é diferente:
+  - valor que o SISTEMA propõe (o padrão `status: 'ABERTO'`) NÃO ressuscita
+    campo escondido — nasce vazio, senão bastava recarregar a tela para o
+    filtro invisível voltar a restringir;
+  - valor que o USUÁRIO montou (salvo no navegador, ou vindo do link do Hub)
+    NÃO é jogado fora — o campo reaparece, para ele ver o que restringe.
+*/
+const CHAVES_DO_FILTRO = {
+  // Cartão só existe dentro de uma forma de pagamento: `setFilter` já zera um
+  // quando o outro muda, e esconder segue a MESMA dependência — senão sobra
+  // um cartão recortando a lista sem a forma que o explica.
+  forma_pagamento_id: ['forma_pagamento_id', 'cartao_id']
+};
+
+function chavesDoFiltro(filterId) {
+  return CHAVES_DO_FILTRO[filterId] || [filterId];
 }
 
-function getColumnWidthStorageKey(user, fixedTipo = null) {
-  const userToken = user?.id || user?.email || 'anonimo';
-  const scope = fixedTipo ? fixedTipo.toLowerCase() : 'geral';
-  return `${COLUMN_WIDTH_STORAGE_PREFIX}.${scope}.${userToken}`;
+/* Preenchido = tem valor em QUALQUER uma das fontes passadas (rascunho do
+   formulário e/ou consulta em curso). É o que o painel de visibilidade avisa
+   antes do clique: esconder este aqui limpa alguma coisa. */
+function filtroPreenchido(filterId, ...fontes) {
+  return chavesDoFiltro(filterId).some((chave) => fontes.some(
+    (fonte) => String(fonte?.[chave] ?? '').trim() !== ''
+  ));
 }
 
-function loadColumnOrder(user, fixedTipo, headers) {
-  try {
-    const stored = localStorage.getItem(getColumnOrderStorageKey(user, fixedTipo));
-    const parsed = stored ? JSON.parse(stored) : null;
-    if (!Array.isArray(parsed)) return headers;
-    const allowed = new Set(headers);
-    const ordered = parsed.filter((header) => allowed.has(header));
-    const missing = headers.filter((header) => !ordered.includes(header));
-    return [...ordered, ...missing];
-  } catch (error) {
-    return headers;
-  }
-}
-
-function pickVisibleFilters(filters, visibleFilterIds) {
+/* Aplica a regra "invisível não restringe" a um conjunto de filtros PADRÃO. */
+function limparFiltrosInvisiveis(filters, visibleFilterIds) {
   const visible = new Set(visibleFilterIds);
-  return Object.fromEntries(
-    Object.entries(filters).filter(([key]) => key === 'tipo' || visible.has(key))
-  );
+  const vazios = {};
+  FILTER_DEFINITIONS
+    .filter((item) => !visible.has(item.id))
+    .forEach((item) => chavesDoFiltro(item.id).forEach((chave) => { vazios[chave] = ''; }));
+  return { ...filters, ...vazios };
 }
 
 function formatCurrency(value) {
@@ -603,15 +842,13 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-function statusClass(status) {
-  const normalized = String(status || '').trim().toUpperCase();
-  if (normalized === 'PREVISAO') return 'app-status-pill bg-sky-100 text-sky-700';
-  if (normalized === 'QUITADO') return 'app-status-pill bg-emerald-100 text-emerald-700';
-  if (normalized === 'PARCIAL') return 'app-status-pill bg-amber-100 text-amber-700';
-  if (normalized === 'CANCELADO' || normalized === 'ESTORNADO') return 'app-status-pill bg-rose-100 text-rose-700';
-  return 'app-status-pill bg-slate-100 text-slate-700';
-}
-
+/*
+  R25 — `statusClass()` foi REMOVIDA (03/09): código morto, sem uma única
+  chamada no arquivo, carregando cinco pares de cor crua (sky/emerald/amber/
+  rose/slate) que o tema escuro não acompanha e que não passam pelo piso de
+  contraste do ThemeContext. Quem pinta status nesta tela é o `StatusBadge`,
+  que já lê token — a função só existia para reprovar.
+*/
 function isOverdue(titulo) {
   const normalized = String(titulo?.status || '').trim().toUpperCase();
   if (!['PREVISAO', 'ABERTO', 'PARCIAL'].includes(normalized)) return false;
@@ -726,7 +963,19 @@ function getCartaoLabel(cartao) {
 }
 
 function isTituloBaixavel(titulo) {
-  return ['ABERTO', 'PARCIAL'].includes(String(titulo?.status || '').trim().toUpperCase()) && Number(titulo?.valor_saldo || 0) > 0;
+  return !isTituloBloqueadoRetornoObra(titulo)
+    && !getFilaPagamentoAtiva(titulo)
+    && ['ABERTO', 'PARCIAL'].includes(String(titulo?.status || '').trim().toUpperCase())
+    && Number(titulo?.valor_saldo || 0) > 0;
+}
+
+function getFilaPagamentoAtiva(titulo) {
+  const items = Array.isArray(titulo?.filaPagamentosManuais) ? titulo.filaPagamentosManuais : [];
+  return items.find((item) => ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(String(item?.status || '').toUpperCase())) || null;
+}
+
+function isTituloBloqueadoRetornoObra(titulo) {
+  return titulo?.bloqueado_retorno_obra === true || Number(titulo?.bloqueado_retorno_obra) === 1;
 }
 
 function isTituloExcluivel(titulo) {
@@ -734,6 +983,7 @@ function isTituloExcluivel(titulo) {
 }
 
 function isTituloEditavel(titulo) {
+  if (titulo?.renegociacao_id || titulo?.renegociado_por_id) return false;
   return ['PREVISAO', 'ABERTO'].includes(String(titulo?.status || '').trim().toUpperCase()) && Number(titulo?.valor_baixado || 0) === 0;
 }
 
@@ -796,9 +1046,9 @@ function buildBaixaMassaParcelas(total = 0, quantidade = 2, dataInicial = today(
   });
 }
 
-function buildBaixaMassaForm(contasBancarias = [], total = 0) {
+function buildBaixaMassaForm(total = 0, empresaId = '') {
   return {
-    empresa_id: '',
+    empresa_id: String(empresaId || ''),
     conta_bancaria_id: '',
     cartao_id: '',
     forma_pagamento_id: '',
@@ -830,16 +1080,32 @@ function buildBaixaMassaForm(contasBancarias = [], total = 0) {
 
 export default function FinanceiroTitulos({ tipoFixo = null }) {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { avisos, avisar, fechar: fecharAviso } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const canDeleteTitulos = canDeleteTitulosFinanceiros(user);
+  const canNegociar = hasPermissao(user, 'financeiro.titulos.renegociar');
+  const [titulosNegociacao, setTitulosNegociacao] = useState(null);
   const canImportTitulos = canImportTitulosFinanceiros(user);
-  const canAccessCadastros = hasPermissao(user, 'financeiro.cadastros.visualizar');
+  const canPrepareFila = canPrepareFilaPagamentos(user);
+  // `financeiro.cadastros.visualizar` só existia aqui para pintar um link
+  // de "ir para Cadastros" — link que a R11 tirou da barra de ações. A
+  // permissão continua sendo cobrada onde a tela de cadastros mora
+  // (FinanceiroRoute + o próprio menu); aqui não sobrou uso.
   const canExportTitulos = hasPermissao(user, 'financeiro.titulos.exportar');
   const canImportCodigos = hasPermissao(user, 'financeiro.titulos.importar_codigos');
   const canCreateBaixaComposta = hasPermissao(user, 'financeiro.baixas_compostas.criar')
     && hasPermissao(user, 'financeiro.baixas_compostas.confirmar');
-  const fixedTipo = ['PAGAR', 'RECEBER'].includes(String(tipoFixo || '').toUpperCase())
-    ? String(tipoFixo).toUpperCase()
-    : null;
+  // D2: o recorte mora na URL. A prop `tipoFixo` sobrevive como fallback
+  // (contrato antigo do componente, R21), mas o endereço tem a palavra
+  // final — é ele que a pessoa favorita, compartilha e fixa como tela
+  // inicial.
+  const recorteDaUrl = lerRecorteDaUrl(location.search);
+  const fixedTipo = recorteDaUrl
+    || (['PAGAR', 'RECEBER'].includes(String(tipoFixo || '').toUpperCase())
+      ? String(tipoFixo).toUpperCase()
+      : null);
   const filterStorageKey = fixedTipo ? `${FILTER_STORAGE_KEY}.${fixedTipo.toLowerCase()}` : FILTER_STORAGE_KEY;
   const visibilityStoragePrefix = fixedTipo
     ? `${FILTER_VISIBILITY_STORAGE_PREFIX}.${fixedTipo.toLowerCase()}`
@@ -854,19 +1120,87 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     : fixedTipo === 'RECEBER'
       ? 'Consulte, baixe e acompanhe os recebimentos em aberto ou quitados.'
       : 'Filtre a carteira antes de operar baixas, boletos e integracoes.';
-  const [saveFilterCache, setSaveFilterCache] = useState(true);
+  /*
+    O ULTIMO FILTRO CONSULTADO AGORA E DO USUARIO, NAO DO NAVEGADOR (06/09).
+
+    Aqui morava `saveFilterCache`, o estado da caixa "Salvar filtro neste
+    navegador", e o valor consultado ia para o localStorage. Decisao do
+    cliente, com a frase que resolve o desenho: "nao e escolha que o usuario
+    precise fazer: ele espera que a configuracao dele acompanhe".
+
+    Isso fecha o achado N53. O defeito nao era so o armazenamento: era
+    transformar um defeito em pergunta. A pessoa nao tem como saber que
+    marcar aquela caixa NAO faz o filtro acompanha-la para outra maquina —
+    o rotulo diz "neste navegador", mas a expectativa e a contraria.
+
+    Precedencia, a mesma do resto da leva: banco > espelho local > padrao.
+    O espelho continua sendo escrito na chave ANTIGA, e por isso a migracao
+    e automatica: quem ja tinha filtro guardado nesta maquina o encontra na
+    primeira abertura, e a partir dai ele viaja.
+  */
+  const chavePreferencias = `tabela:financeiro-titulos:${fixedTipo ? String(fixedTipo).toLowerCase() : 'geral'}`;
+  const [filtroGravado, definirFiltroGravado] = usePreferenciaDeLista(chavePreferencias, TIPO_GERAL);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [filterChooserOpen, setFilterChooserOpen] = useState(false);
-  const [visibleFilterIds, setVisibleFilterIds] = useState(() => loadVisibleFilterIds(user, visibilityStoragePrefix));
   const [draftFilters, setDraftFilters] = useState(() => {
+    /* Sem a máscara de visibilidade aqui (05/09): ela precisa da escolha do
+       usuário, e a escolha agora vem do `PreferenciasContext` — que é um
+       hook, e hook não roda dentro do inicializador de outro estado. Quem
+       aplica a máscara é o efeito de montagem logo abaixo, e ele roda ANTES
+       de qualquer consulta: `appliedFilters` nasce `null`, então nenhum
+       número chega à tela com o padrão bruto. */
     try {
       const stored = localStorage.getItem(filterStorageKey);
-      return normalizeFilters(stored ? JSON.parse(stored) : getDefaultFilters(fixedTipo || 'RECEBER'), fixedTipo);
+      const padrao = getDefaultFilters(fixedTipo || 'RECEBER');
+      return normalizeFilters(stored ? JSON.parse(stored) : padrao, fixedTipo);
     } catch (error) {
       return getDefaultFilters(fixedTipo || 'RECEBER');
     }
   });
   const [appliedFilters, setAppliedFilters] = useState(null);
+  /*
+    N53 (05/09) — filtro com valor é filtro VISÍVEL, nas DUAS fontes.
+
+    O rascunho do formulário e a consulta em curso. Um valor pode chegar do
+    rascunho salvo no navegador ou do link do Hub e cair sobre um filtro
+    escondido — e era esse par que fazia a mesma consulta responder números
+    diferentes em máquinas diferentes. O painel REVELA em vez de apagar: o
+    recorte foi o usuário que montou, então ele aparece na faixa. Depois
+    disso vale a invariante que o resto do arquivo assume: nenhum filtro
+    invisível carrega valor.
+  */
+  const preenchidosVisiveis = useMemo(
+    () => FILTER_DEFINITIONS
+      .filter((item) => filtroPreenchido(item.id, draftFilters, appliedFilters))
+      .map((item) => item.id),
+    [draftFilters, appliedFilters]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que a TabelaPadrao desta carteira
+    já usa (`tabela:financeiro-titulos:<carteira>`): é a mesma lista
+    respondendo a duas perguntas (quais colunas, quais filtros), e o
+    contexto separa as duas pelo TIPO. Uma chave por carteira, porque os
+    três endereços são três recortes de trabalho distintos.
+  */
+  /* Lido uma vez por usuário e carteira: é a chave ANTIGA do navegador, e
+     ela não muda enquanto a pessoa não trocar de sessão ou de recorte. */
+  const legadoFiltrosVisiveis = useMemo(
+    () => lerLegadoFiltrosVisiveis(user, visibilityStoragePrefix),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id, user?.email, visibilityStoragePrefix]
+  );
+  const visibilidadeFiltros = useFiltrosVisiveis(
+    `tabela:financeiro-titulos:${fixedTipo ? String(fixedTipo).toLowerCase() : 'geral'}`,
+    FILTER_DEFINITIONS,
+    {
+      preenchidos: preenchidosVisiveis,
+      legado: legadoFiltrosVisiveis,
+      // N53: o filtro escondido não pode continuar restringindo — nem por
+      // ser enviado escondido, nem por deixar de ser enviado. Ele fica VAZIO,
+      // no rascunho E na consulta em curso.
+      aoEsconder: (filterId) => limparValorDoFiltro(filterId)
+    }
+  );
+  const visibleFilterIds = visibilidadeFiltros.visiveis;
   const [obras, setObras] = useState([]);
   const [parceiros, setParceiros] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -874,17 +1208,26 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [contasBancarias, setContasBancarias] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [chequesTerceiros, setChequesTerceiros] = useState([]);
-  const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [titulos, setTitulos] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: '25', total: 0, total_pages: 0 });
+  const [ordenacao, setOrdenacao] = useState(null);
+  const ordenarTitulos = useCallback((coluna, direcao) => {
+    const proxima = coluna && direcao ? { coluna, direcao } : null;
+    setOrdenacao((atual) => atual?.coluna === proxima?.coluna && atual?.direcao === proxima?.direcao ? atual : proxima);
+    setPagination((atual) => atual.page === 1 ? atual : { ...atual, page: 1 });
+  }, []);
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState('');
   const [selectedTituloIds, setSelectedTituloIds] = useState([]);
+  const [statusInternosPagar, setStatusInternosPagar] = useState([]);
+  const [statusEmMassa, setStatusEmMassa] = useState('');
+  const [alterandoStatusInterno, setAlterandoStatusInterno] = useState(false);
   const [modalBaixaMassaOpen, setModalBaixaMassaOpen] = useState(false);
   const [modalBaixaCompostaOpen, setModalBaixaCompostaOpen] = useState(false);
-  const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm([]));
+  const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm());
   const [savingBaixaMassa, setSavingBaixaMassa] = useState(false);
+  const [sendingFilaPagamentos, setSendingFilaPagamentos] = useState(false);
   const [importandoCodigos, setImportandoCodigos] = useState(false);
   const [fretesPendentes, setFretesPendentes] = useState([]);
   const [loadingFretesPendentes, setLoadingFretesPendentes] = useState(false);
@@ -909,10 +1252,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       getFormasPagamentoFinanceiras().catch(() => []),
       getContasBancarias().catch(() => []),
       getCartoesFinanceiros().catch(() => []),
-      getChequesTerceiros({ status: 'EM_CARTEIRA', limit: 300 }).catch(() => []),
-      getEmpresasGrupo({ ativo: true }).catch(() => [])
+      getChequesTerceiros({ status: 'EM_CARTEIRA', limit: 300 }).catch(() => [])
     ])
-      .then(([obrasData, parceirosData, categoriasData, formasData, contasData, cartoesData, chequesData, empresasData]) => {
+      .then(([obrasData, parceirosData, categoriasData, formasData, contasData, cartoesData, chequesData]) => {
         if (!active) return;
         setObras(normalizeOptionList(obrasData));
         setParceiros(normalizeOptionList(parceirosData));
@@ -922,7 +1264,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         setContasBancarias(contasNormalizadas);
         setCartoes(normalizeOptionList(cartoesData));
         setChequesTerceiros(normalizeOptionList(chequesData));
-        setEmpresasGrupo(normalizeOptionList(empresasData));
       })
       .finally(() => {
         if (active) {
@@ -974,12 +1315,18 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     };
   }, [relatorioModalOpen]);
 
+  /*
+    O efeito que RELIA a escolha na troca de usuário saiu (05/09): a
+    preferência é indexada por usuário NO SERVIDOR, e o
+    `PreferenciasContext` descarta a memória inteira no logout. Ler de novo
+    aqui seria repetir no navegador uma separação que o banco já faz.
+  */
   useEffect(() => {
-    setVisibleFilterIds(loadVisibleFilterIds(user, visibilityStoragePrefix));
-    setFilterChooserOpen(false);
-  }, [user?.id, user?.email, visibilityStoragePrefix]);
-
-  useEffect(() => {
+    /* A máscara "padrão não ressuscita filtro escondido" saiu daqui e ganhou
+       efeito próprio, logo abaixo. Este continua sendo o efeito de TROCA DE
+       CARTEIRA: ele zera consulta, seleção e paginação, e por isso não pode
+       reagir à visibilidade — esconder um campo apagaria a consulta que a
+       pessoa está lendo, o oposto do que a N53 pede. */
     const defaults = getDefaultFilters(fixedTipo || 'RECEBER');
     let nextFilters = defaults;
 
@@ -999,6 +1346,142 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setSelectedTituloIds([]);
   }, [filterStorageKey, fixedTipo]);
 
+  /*
+    N53 (05/09) — O PADRÃO DO SISTEMA NÃO RESSUSCITA FILTRO ESCONDIDO, NEM
+    QUANDO A ESCOLHA CHEGA DEPOIS.
+
+    `status` nasce em ABERTO. Quem escondeu "Status" veria o filtro
+    invisível voltar a recortar a lista na recarga seguinte — e, pior, ele
+    voltaria VISÍVEL, porque um filtro com valor é revelado pela
+    reconciliação. O padrão desfaria a escolha da pessoa toda vez.
+
+    Por que EFEITO, e não máscara no estado inicial: a escolha vem do banco
+    e chega depois do primeiro desenho. Na primeira abertura de uma máquina
+    nova não há semente local, então mascarar só na montagem usaria o padrão
+    da tela como se fosse a escolha do usuário — e a preferência que chegasse
+    um instante depois seria derrotada pelo valor que ela mesma deveria ter
+    apagado. Reagindo a `escolhidos`, a regra vale no instante em que a
+    verdade sobre "escondido" existe, seja ela síncrona ou não.
+
+    Três limites, para não ir além do que a regra diz:
+      - só age com a consulta AINDA NÃO FEITA (`appliedFilters` nulo) — com
+        uma lista à vista, quem limpa é `aoEsconder`, na ação da pessoa;
+      - só apaga valor IDÊNTICO ao padrão do sistema. Valor que o usuário
+        montou não é jogado fora: ele revela o campo, como sempre;
+      - só olha `escolhidos` (a preferência), nunca `visiveis` — senão a
+        própria revelação impediria a limpeza que a causa.
+  */
+  const escolhidosFiltros = visibilidadeFiltros.escolhidos;
+  const assinaturaEscolhidos = escolhidosFiltros.join(',');
+  useEffect(() => {
+    if (appliedFilters) return;
+    const padraoDoSistema = getDefaultFilters(fixedTipo || 'RECEBER');
+    setDraftFilters((atual) => {
+      const vazios = {};
+      FILTER_DEFINITIONS
+        .filter((item) => !escolhidosFiltros.includes(item.id))
+        .forEach((item) => chavesDoFiltro(item.id).forEach((chave) => {
+          const proposto = String(padraoDoSistema[chave] ?? '');
+          if (proposto !== '' && String(atual?.[chave] ?? '') === proposto) vazios[chave] = '';
+        }));
+      // Mesmo objeto quando não há o que limpar: sem isto o efeito pediria
+      // um render a cada carga de preferência, com o estado parado.
+      return Object.keys(vazios).length > 0 ? { ...atual, ...vazios } : atual;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assinaturaEscolhidos, appliedFilters, fixedTipo]);
+
+  /*
+    O FILTRO GRAVADO VOLTA DO BANCO (29/09). Ele era gravado (definirFiltroGravado)
+    mas nunca lido: a tela so semeava do localStorage, e numa maquina nova o
+    filtro nao acompanhava a pessoa. Aplica o valor que chega da carga unica
+    enquanto nenhuma consulta foi feita (link do Hub e consulta ja feita
+    vencem), uma vez por valor — para nao atropelar o que a pessoa digitar
+    depois.
+  */
+  const filtroGravadoAplicadoRef = useRef(null);
+  useEffect(() => {
+    if (appliedFilters) return;
+    const valores = filtroGravado?.valores;
+    if (!valores || typeof valores !== 'object') return;
+    const assinatura = `${chavePreferencias}|${JSON.stringify(valores)}`;
+    if (filtroGravadoAplicadoRef.current === assinatura) return;
+    filtroGravadoAplicadoRef.current = assinatura;
+    setDraftFilters(normalizeFilters(valores, fixedTipo));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroGravado, appliedFilters, chavePreferencias, fixedTipo]);
+
+  /*
+    A RECONCILIAÇÃO "filtro com valor é filtro visível" deixou de ser um
+    efeito (05/09): ela virou LEITURA, em `preenchidosVisiveis` acima. Como
+    efeito ela empurrava a revelação para dentro do estado — e a revelação é
+    consequência dos VALORES, não escolha do usuário; guardá-la faria a
+    preferência gravar o que a pessoa nunca clicou. Lida em render, ela
+    revela sem gravar, e some sozinha quando o valor sai.
+  */
+
+  // Links das pendências do Hub chegam com a tela já filtrada:
+  // ?vencidos=1 (vencimento até ontem) ou ?vencendo_ate=AAAA-MM-DD
+  // (vencimento entre hoje e a data limite). Títulos em aberto.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const vencidos = params.get('vencidos') === '1';
+    const vencendoAte = params.get('vencendo_ate');
+    // ?q= chega da busca universal (Ctrl+K): abre a lista já filtrada.
+    const buscaUrl = String(params.get('q') || '').trim();
+    const temParamsDiretos = ['status', 'obra_id', 'vencimento_inicial', 'vencimento_final']
+      .some((chave) => params.get(chave) !== null);
+    if (!vencidos && !vencendoAte && !buscaUrl && !temParamsDiretos) return;
+
+    const hoje = new Date();
+    const isoLocal = (date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    // 'EM_ABERTO' = previsão+aberto+parcial — o MESMO conjunto de
+    // status que os contadores de pendência somam (o backend expande).
+    const sobrescritas = {};
+    if (buscaUrl) {
+      // Busca por código (Para resolver agora / Ctrl+K): acha o título
+      // em qualquer status.
+      sobrescritas.q = buscaUrl;
+      sobrescritas.status = '';
+    }
+    if (vencidos) {
+      const ontem = new Date(hoje);
+      ontem.setDate(ontem.getDate() - 1);
+      sobrescritas.status = 'EM_ABERTO';
+      sobrescritas.vencimento_final = isoLocal(ontem);
+      sobrescritas.vencimento_inicial = '';
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(String(vencendoAte || ''))) {
+      sobrescritas.status = 'EM_ABERTO';
+      sobrescritas.vencimento_inicial = isoLocal(hoje);
+      sobrescritas.vencimento_final = vencendoAte;
+    }
+
+    // Parâmetros diretos (resumo por obra do Hub): mesmo recorte da soma.
+    for (const chave of ['status', 'obra_id', 'vencimento_inicial', 'vencimento_final']) {
+      const valor = params.get(chave);
+      if (valor !== null) sobrescritas[chave] = valor;
+    }
+    if (Object.keys(sobrescritas).length === 0) return;
+
+    /* A revelação dos campos que o link do Hub preenche NÃO precisa mais
+       ser feita aqui: `preenchidosVisiveis` lê os valores em render, então
+       todo campo que o link escreveu aparece na faixa sozinho — e some
+       quando o valor sai, em vez de ficar marcado para sempre. */
+    // Os links do Hub SUBSTITUEM os filtros salvos (não se misturam a
+    // eles): a lista abre mostrando exatamente o conjunto contado.
+    const proximos = normalizeFilters(sobrescritas, fixedTipo);
+    setDraftFilters(proximos);
+    setAppliedFilters(proximos);
+    setPagination((current) => ({ ...current, page: 1 }));
+    // roda apenas em resposta à mudança da URL
+  }, [location.search, fixedTipo]);
+
   useEffect(() => {
     if (!appliedFilters) {
       setTitulos([]);
@@ -1011,7 +1494,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setError('');
 
     getTitulosFinanceiros({
-      ...compactFilters(pickVisibleFilters(appliedFilters, visibleFilterIds)),
+      ...compactFilters(appliedFilters),
+      ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
       paginated: 1,
       page: pagination.page,
       limit: pagination.limit
@@ -1051,7 +1535,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     return () => {
       active = false;
     };
-  }, [appliedFilters, pagination.page, pagination.limit, visibleFilterIds]);
+    // N53 (05/09): `visibleFilterIds` SAIU das dependências, e a ausência dele
+    // é a prova da correção — a consulta não depende mais de qual campo está
+    // à vista. Enquanto dependia, mudar a aparência refazia a busca com outro
+    // conjunto de parâmetros e devolvia outro total.
+  }, [appliedFilters, pagination.page, pagination.limit, ordenacao]);
 
   const categoriasFiltradas = useMemo(() => {
     const tipo = String(draftFilters.tipo || '').toUpperCase();
@@ -1107,7 +1595,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }, [parceiros, draftFilters.tipo]);
 
   const resumo = useMemo(() => titulos.reduce((acc, item) => {
-    acc.total += Number(item.valor_original || 0);
+    acc.total += Number((item.renegociado_por_id ? item.valor_baixado : item.valor_original) || 0);
     acc.saldo += Number(item.valor_saldo || 0);
     acc.quantidade += 1;
     if (isOverdue(item)) {
@@ -1124,6 +1612,25 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }), [titulos]);
 
   const hasConsulted = Boolean(appliedFilters);
+  /*
+    C2/B3 — a contagem da TELA mora na faixa fixa, e mora só lá. O que o
+    bloco de resultado diz é outra coisa: em que página se está. Antes o
+    mesmo número aparecia duas vezes com nomes diferentes.
+
+    `pagination.total` é o total do RECORTE (o backend devolve a contagem
+    junto da página); `titulos.length` é o que veio nesta página, e só
+    entra quando não há paginação.
+  */
+  /*
+    C2 — a contagem é NÚMERO, em todos os estados. Antes ela era `null`
+    até a primeira consulta, e a faixa nascia sem apoio numérico: o preview
+    mediu exatamente esse estado e reprovou. "Ainda não consultei" é uma
+    informação legítima, mas ela pertence à DESCRIÇÃO; o lugar da contagem
+    é para quantos títulos o recorte tem, e antes da consulta são zero.
+  */
+  const contagemCabecalho = hasConsulted && !loading
+    ? `${Number(pagination.total || titulos.length)} titulo(s)`
+    : '0 titulo(s)';
   const visibleFilterSet = useMemo(() => new Set(visibleFilterIds), [visibleFilterIds]);
   const basicVisibleFilters = useMemo(
     () => FILTER_DEFINITIONS.filter((item) => item.group === 'basic' && visibleFilterSet.has(item.id)),
@@ -1135,48 +1642,32 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   );
   const tipoAtual = fixedTipo || draftFilters.tipo;
   const tipoReferencia = fixedTipo || appliedFilters?.tipo || draftFilters.tipo;
+  useEffect(() => {
+    if (fixedTipo !== 'PAGAR') return;
+    getStatusInternosContasPagar()
+      .then((dados) => setStatusInternosPagar(Array.isArray(dados) ? dados : []))
+      .catch((error) => avisar.erro(error?.message || 'Não foi possível carregar os status internos.'));
+  }, [fixedTipo]);
   const mostrarFretesPendentes = String(tipoReferencia || '').toUpperCase() === 'PAGAR';
   const tipoLabel = tipoReferencia === 'PAGAR' ? 'a pagar' : 'a receber';
   const parceiroLabel = tipoAtual === 'PAGAR' ? 'Credor' : 'Cliente';
   const parceiroResultadoLabel = tipoReferencia === 'PAGAR' ? 'Credor' : 'Cliente';
   const categoriasLabel = tipoAtual === 'PAGAR' ? 'contas a pagar' : 'contas a receber';
   const showTipoColumn = !fixedTipo;
-  const baseTableHeaders = useMemo(() => [
-    'Titulo',
-    'Status',
-    ...(showTipoColumn ? ['Tipo'] : []),
-    'Documento',
-    parceiroResultadoLabel,
-    'Obra',
-    'Categoria',
-    'Forma pagamento',
-    'Origem',
-    'Emissao',
-    'Vencimento',
-    'Valor total',
-    'Saldo',
-    'Acoes'
-  ], [showTipoColumn, parceiroResultadoLabel]);
-  const [columnOrder, setColumnOrder] = useState(() => loadColumnOrder(user, fixedTipo, baseTableHeaders));
-  const tableHeaders = useMemo(() => {
-    const allowed = new Set(baseTableHeaders);
-    const ordered = columnOrder.filter((header) => allowed.has(header));
-    const missing = baseTableHeaders.filter((header) => !ordered.includes(header));
-    return [...ordered, ...missing];
-  }, [baseTableHeaders, columnOrder]);
-  const resizableTableColumns = useMemo(() => [
-    { key: '__select__', width: 48, minWidth: 44 },
-    ...tableHeaders.map((header) => ({
-      key: header,
-      width: TABLE_COLUMN_WIDTHS[header] || 140,
-      minWidth: header === 'Acoes' ? 96 : 80
-    }))
-  ], [tableHeaders]);
-  const columnWidthStorageKey = useMemo(
-    () => getColumnWidthStorageKey(user, fixedTipo),
-    [fixedTipo, user]
-  );
-  const totalColunas = 1 + tableHeaders.length;
+  // A escolha de colunas do usuário mora na TabelaPadrao; a tela guarda só
+  // o RESULTADO (ids visíveis, na ordem escolhida) porque precisa agir
+  // sobre ele — o CSV exporta exatamente as colunas à vista.
+  const [colunasVisiveisIds, setColunasVisiveisIds] = useState(null);
+  const aoMudarColunas = useCallback((ids) => setColunasVisiveisIds(ids), []);
+  const idsColunasExport = useMemo(() => {
+    const disponiveis = IDS_COLUNAS_TITULOS.filter((id) => id === 'tipo'
+      ? showTipoColumn : id === 'status_interno_pagar' ? fixedTipo === 'PAGAR' : true);
+    if (!colunasVisiveisIds) return disponiveis;
+    return colunasVisiveisIds.filter((id) => disponiveis.includes(id));
+  }, [colunasVisiveisIds, showTipoColumn, fixedTipo]);
+  // Uma chave por escopo da tela (geral / pagar / receber): a escolha de
+  // colunas e as larguras de "contas a pagar" não valem para "a receber".
+  const tabelaStorageKey = `tabela:financeiro-titulos:${fixedTipo ? String(fixedTipo).toLowerCase() : 'geral'}`;
   const titulosBaixaveis = useMemo(() => titulos.filter(isTituloBaixavel), [titulos]);
   const selectedTituloSet = useMemo(() => new Set(selectedTituloIds.map((id) => Number(id))), [selectedTituloIds]);
   const selectedTitulos = useMemo(
@@ -1204,9 +1695,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }, [baixaMassaForm.empresa_id, selectedTitulosBaixaveis]);
   const baixaMassaMostrarIntercompany = baixaMassaTemEmpresaDiferente || baixaMassaForm.intercompany;
   const contasBancariasBaixaMassa = useMemo(() => {
-    if (!baixaMassaForm.empresa_id) return [];
-    return contasBancarias.filter((conta) => String(conta.empresa_id || '') === String(baixaMassaForm.empresa_id));
-  }, [baixaMassaForm.empresa_id, contasBancarias]);
+    return contasBancarias.filter((conta) => conta.ativo !== false);
+  }, [contasBancarias]);
   const baixaMassaUsaDinheiro = String(baixaMassaForm.forma_recebimento || '').toUpperCase() === 'DINHEIRO';
   const contasFinanceirasCompativeisBaixaMassa = useMemo(
     () => baixaMassaUsaDinheiro
@@ -1225,12 +1715,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     [cartoes, baixaMassaForm.cartao_id]
   );
   const cartoesBaixaMassa = useMemo(() => cartoes.filter((cartao) => {
-    if (cartao.ativo === false) return false;
-    if (!baixaMassaForm.empresa_id) return true;
-    if (!isCartaoDebito(cartao)) return true;
-    const contaCartao = contasBancarias.find((conta) => String(conta.id) === String(cartao.conta_bancaria_id));
-    return String(contaCartao?.empresa_id || '') === String(baixaMassaForm.empresa_id);
-  }), [baixaMassaForm.empresa_id, cartoes, contasBancarias]);
+    return cartao.ativo !== false;
+  }), [cartoes]);
   const baixaMassaUsaCartao = isCartaoForma(baixaMassaForm.forma_recebimento);
   const baixaMassaCartaoDebito = baixaMassaUsaCartao && isCartaoDebito(selectedCartaoBaixaMassa);
   const baixaMassaFormaParcelavel = baixaMassaUsaCartao || isChequeForma(baixaMassaForm.forma_recebimento);
@@ -1252,7 +1738,30 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     (baixaMassaForm.parcelas || []).reduce((total, parcela) => total + parseCurrencyInput(parcela.valor), 0)
   ), [baixaMassaForm.parcelas]);
   const baixaMassaDiferencaParcelas = roundValue(selectedSaldo - baixaMassaTotalParcelas);
-  const allBaixaveisSelected = titulosBaixaveis.length > 0 && titulosBaixaveis.every((titulo) => selectedTituloSet.has(Number(titulo.id)));
+
+  function aplicarEmpresaFonteBaixaMassa(current, empresaFonteId) {
+    const empresaResolvidaId = String(empresaFonteId || baixaMassaEmpresasTitulo[0] || '');
+    const empresaDiferente = Boolean(empresaResolvidaId && selectedTitulosBaixaveis.some((titulo) => {
+      const empresaTituloId = getEmpresaTituloId(titulo);
+      return empresaTituloId && String(empresaTituloId) !== empresaResolvidaId;
+    }));
+    const base = {
+      ...current,
+      empresa_id: empresaResolvidaId,
+      intercompany: empresaDiferente || current.intercompany
+    };
+    return empresaDiferente
+      ? applyNaturezaBaixaIntercompany(base, current.natureza_intercompany_baixa || 'OPERACIONAL_TERCEIRO')
+      : base;
+  }
+
+  function selecionarContaBaixaMassa(contaBancariaId) {
+    const conta = contasBancarias.find((item) => String(item.id) === String(contaBancariaId));
+    setBaixaMassaForm((current) => aplicarEmpresaFonteBaixaMassa({
+      ...current,
+      conta_bancaria_id: contaBancariaId
+    }, conta?.empresa_id));
+  }
 
   useEffect(() => {
     if (!mostrarFretesPendentes) {
@@ -1336,162 +1845,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     return `/financeiro/titulos/novo?${params.toString()}`;
   }
 
-  useEffect(() => {
-    setColumnOrder((current) => {
-      const allowed = new Set(baseTableHeaders);
-      const ordered = current.filter((header) => allowed.has(header));
-      const missing = baseTableHeaders.filter((header) => !ordered.includes(header));
-      return [...ordered, ...missing];
-    });
-  }, [baseTableHeaders]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(getColumnOrderStorageKey(user, fixedTipo), JSON.stringify(tableHeaders));
-    } catch (error) {
-      // Mantem a tabela funcional mesmo quando o navegador bloqueia storage.
-    }
-  }, [fixedTipo, tableHeaders, user]);
-
-  function moverColuna(header, direction) {
-    setColumnOrder(() => {
-      const ordered = tableHeaders.slice();
-      const index = ordered.indexOf(header);
-      const nextIndex = direction === 'left' ? index - 1 : index + 1;
-      if (index < 0 || nextIndex < 0 || nextIndex >= ordered.length) return ordered;
-      [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
-      return ordered;
-    });
-  }
-
-  function renderTituloCell(titulo, header) {
-    switch (header) {
-      case 'Titulo':
-        return (
-          <td className="px-3 py-2 whitespace-nowrap">
-            <Link
-              className="font-semibold text-[var(--c-primary)] hover:underline"
-              to={`/financeiro/titulos/${titulo.id}`}
-            >
-              {getTituloCodigo(titulo)}
-            </Link>
-            <div className="max-w-[220px] truncate text-[10px] text-[var(--c-muted)]">
-              {titulo.descricao || '-'}
-            </div>
-          </td>
-        );
-      case 'Status':
-        return (
-          <td className="px-3 py-2 whitespace-nowrap">
-            <span className={statusClass(titulo.status)}>{titulo.status}</span>
-          </td>
-        );
-      case 'Tipo':
-        return <td className="px-3 py-2 font-medium text-[var(--c-muted)] whitespace-nowrap">{titulo.tipo}</td>;
-      case 'Documento':
-        return <td className="px-3 py-2 whitespace-nowrap">{titulo.numero_documento || '-'}</td>;
-      case parceiroResultadoLabel:
-        return (
-          <td className="px-3 py-2">
-            <div className="max-w-[180px] truncate font-medium text-[var(--c-text)]">{titulo.parceiro?.nome || '-'}</div>
-            <div className="text-[10px] text-[var(--c-muted)]">{titulo.parceiro?.cpf_cnpj || ''}</div>
-          </td>
-        );
-      case 'Obra':
-        return (
-          <td className="px-3 py-2">
-            <div className="max-w-[150px] truncate text-[var(--c-muted)]">{titulo.obra?.nome || '-'}</div>
-          </td>
-        );
-      case 'Categoria':
-        return (
-          <td className="px-3 py-2">
-            <div className="max-w-[150px] truncate text-[var(--c-muted)]">{titulo.categoriaFinanceira?.nome || '-'}</div>
-          </td>
-        );
-      case 'Forma pagamento':
-        return (
-          <td className="px-3 py-2">
-            <div className="max-w-[160px] truncate text-[var(--c-muted)]">
-              {titulo.formaPagamento?.nome || '-'}
-            </div>
-            {titulo.formaPagamento?.codigo ? (
-              <div className="text-[10px] text-[var(--c-muted)]">{titulo.formaPagamento.codigo}</div>
-            ) : null}
-          </td>
-        );
-      case 'Origem':
-        return (
-          <td className="px-3 py-2 whitespace-nowrap">
-            {titulo.solicitacao?.id ? (
-              <Link
-                className="text-[var(--c-primary)] hover:underline"
-                to={`/solicitacoes/${titulo.solicitacao.id}`}
-              >
-                {titulo.solicitacao.codigo || `#${titulo.solicitacao.id}`}
-              </Link>
-            ) : (
-              getOrigemTitulo(titulo)
-            )}
-          </td>
-        );
-      case 'Emissao':
-        return <td className="px-3 py-2 whitespace-nowrap text-[var(--c-muted)]">{formatDate(titulo.data_emissao)}</td>;
-      case 'Vencimento':
-        return (
-          <td className={`px-3 py-2 whitespace-nowrap ${isOverdue(titulo) ? 'font-semibold text-rose-600' : 'text-[var(--c-text)]'}`}>
-            {formatDate(titulo.data_vencimento)}
-          </td>
-        );
-      case 'Valor total':
-        return (
-          <td className="px-3 py-2 whitespace-nowrap text-[var(--c-text)] tabular-nums">
-            {formatCurrency(titulo.valor_original)}
-          </td>
-        );
-      case 'Saldo':
-        return (
-          <td className="px-3 py-2 whitespace-nowrap font-semibold text-[var(--c-text)] tabular-nums">
-            {formatCurrency(titulo.valor_saldo)}
-          </td>
-        );
-      case 'Acoes':
-        return (
-          <td className="px-3 py-2 whitespace-nowrap">
-            <div className="flex items-center gap-2">
-              <Link
-                className="btn btn-outline btn-sm"
-                to={`/financeiro/titulos/${titulo.id}`}
-                title="Abrir titulo"
-              >
-                <HiOutlineEye className="h-4 w-4" />
-              </Link>
-              {isTituloEditavel(titulo) ? (
-                <Link
-                  className="btn btn-outline btn-sm"
-                  to={`/financeiro/titulos/${titulo.id}/editar`}
-                  title="Editar informacoes do titulo"
-                >
-                  <HiOutlinePencilSquare className="h-4 w-4" />
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm opacity-50"
-                  disabled
-                  title="Somente titulos em aberto e sem baixa podem ser editados"
-                >
-                  <HiOutlinePencilSquare className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </td>
-        );
-      default:
-        return <td className="px-3 py-2">-</td>;
-    }
-  }
-
   function setFilter(name, value) {
     setDraftFilters((current) => {
       const next = {
@@ -1505,17 +1858,26 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     });
   }
 
-  function setTipoFiltro(tipo) {
-    if (fixedTipo) return;
-    setDraftFilters({
-      ...getDefaultFilters(),
-      tipo
-    });
-    setAppliedFilters(null);
-    setTitulos([]);
-    setLoading(false);
-    setError('');
-    setSelectedTituloIds([]);
+  /*
+    D2: trocar de carteira é trocar de ENDEREÇO, não mexer num campo do
+    formulário. O clique navega para `/financeiro/titulos?tipo=…` e quem
+    reage é o efeito que já existia para `fixedTipo` — ele zera consulta,
+    seleção e paginação exatamente como esta função fazia à mão. Assim o
+    recorte tem um dono só (R16): a URL.
+  */
+  function irParaRecorte(tipo) {
+    // Clicar no botão JÁ ACESO não faz nada. Sem esta guarda, quem chega em
+    // `/financeiro/titulos` (sem recorte na URL, operando no padrão "a
+    // receber") e clicasse em "A receber" navegaria para `?tipo=receber` e
+    // veria a consulta inteira ser zerada pelo efeito de troca de carteira —
+    // um botão aceso apagando o trabalho de quem o clicou.
+    if ((fixedTipo || draftFilters.tipo) === tipo) return;
+    const destino = caminhoDoRecorte(tipo);
+    if (`${location.pathname}${location.search}` === destino) return;
+    // `replace`: trocar de carteira é refazer a mesma consulta, não avançar
+    // uma tela. Empilhar cada troca faria o Voltar percorrer carteira por
+    // carteira até sair da lista.
+    navigate(destino, { replace: true });
   }
 
   function submitFilters(event) {
@@ -1527,8 +1889,15 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       setError('O valor mínimo não pode ser maior que o valor máximo.');
       return;
     }
-    const visibleFilters = pickVisibleFilters(normalized, visibleFilterIds);
-    if (Object.keys(compactFilters(visibleFilters)).length === 0) {
+    /*
+      N53 (05/09): a guarda passa a medir o QUE VAI SER ENVIADO, e não uma
+      projeção separada. Antes ela lia `pickVisibleFilters(...)`, que sempre
+      preservava `tipo` — e `tipo` nunca é vazio, então a mensagem já não
+      podia aparecer. Fica como está para não estreitar consulta que hoje
+      passa (esconder tudo continua consultando a carteira inteira), mas
+      agora ela olha para o payload de verdade.
+    */
+    if (Object.keys(compactFilters(normalized)).length === 0) {
       setError('Selecione ao menos um filtro visivel antes de consultar.');
       setTitulos([]);
       setAppliedFilters(null);
@@ -1537,15 +1906,18 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
     setAppliedFilters(normalized);
     setPagination((current) => ({ ...current, page: 1, total: 0, total_pages: 0 }));
-    if (saveFilterCache) {
+    /* Banco (viaja com a pessoa) E espelho local (semeia o proximo desenho
+       antes da carga unica responder, e e a rede de rollback). */
+    definirFiltroGravado({ valores: normalized });
+    try {
       localStorage.setItem(filterStorageKey, JSON.stringify(normalized));
-    } else {
-      localStorage.removeItem(filterStorageKey);
-    }
+    } catch { /* sem storage: o banco ja tem */ }
   }
 
   function clearFilters() {
-    const defaults = getDefaultFilters(fixedTipo || 'RECEBER');
+    // N53 (05/09): "Limpar" devolve o padrão, e o padrão respeita o que está
+    // escondido — senão o botão faria o filtro invisível voltar a recortar.
+    const defaults = limparFiltrosInvisiveis(getDefaultFilters(fixedTipo || 'RECEBER'), escolhidosFiltros);
     setDraftFilters(defaults);
     setAppliedFilters(null);
     setTitulos([]);
@@ -1553,11 +1925,14 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setLoading(false);
     setError('');
     setSelectedTituloIds([]);
-    localStorage.removeItem(filterStorageKey);
+    /* "Limpar" apaga o registro nos DOIS, senao a proxima abertura
+       ressuscitaria do banco o filtro que a pessoa acabou de limpar. */
+    definirFiltroGravado(null);
+    try { localStorage.removeItem(filterStorageKey); } catch { /* sem storage */ }
   }
 
   function toggleTituloSelecionado(titulo, checked) {
-    if (!isTituloBaixavel(titulo)) return;
+    if (fixedTipo === 'PAGAR' ? titulo.tipo !== 'PAGAR' : !isTituloBaixavel(titulo)) return;
     const tituloId = Number(titulo.id);
     setSelectedTituloIds((current) => {
       const set = new Set(current.map((id) => Number(id)));
@@ -1571,7 +1946,24 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }
 
   function toggleTodosBaixaveis(checked) {
-    setSelectedTituloIds(checked ? titulosBaixaveis.map((titulo) => Number(titulo.id)) : []);
+    setSelectedTituloIds(checked ? (fixedTipo === 'PAGAR' ? titulos.filter((titulo) => titulo.tipo === 'PAGAR') : titulosBaixaveis)
+      .map((titulo) => Number(titulo.id)) : []);
+  }
+
+  async function alterarStatusInterno(ids, status) {
+    if (fixedTipo !== 'PAGAR' || !ids.length || alterandoStatusInterno) return;
+    setAlterandoStatusInterno(true);
+    try {
+      await atribuirStatusInternoContasPagar(ids, status === '__CLEAR__' ? null : status);
+      setTitulos((atuais) => atuais.map((titulo) => ids.includes(Number(titulo.id))
+        ? { ...titulo, status_interno_pagar: status === '__CLEAR__' ? null : status } : titulo));
+      avisar.sucesso(ids.length === 1 ? 'Status interno atualizado.' : `${ids.length} status internos atualizados.`);
+      setStatusEmMassa('');
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível alterar o status interno.');
+    } finally {
+      setAlterandoStatusInterno(false);
+    }
   }
 
   function abrirModalBaixaMassa() {
@@ -1581,8 +1973,52 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     }
 
     setError('');
-    setBaixaMassaForm(buildBaixaMassaForm(contasBancarias, selectedSaldo));
+    setBaixaMassaForm(buildBaixaMassaForm(selectedSaldo, baixaMassaEmpresasTitulo[0]));
     setModalBaixaMassaOpen(true);
+  }
+
+  async function enviarSelecionadosParaPagamento() {
+    if (!canPrepareFila || tipoReferencia !== 'PAGAR') return;
+    if (selectedTitulosBaixaveis.length === 0) {
+      setError('Selecione ao menos um titulo em aberto ou parcial para enviar ao pagamento.');
+      return;
+    }
+    const requerAutorizacao = devePrepararAutorizacaoPagamento(user);
+    const { ok } = await confirmar({
+      titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
+      mensagem: requerAutorizacao
+        ? `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, serão reunidos em um dossiê para decisão do proprietário.`
+        : `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, ficarão disponíveis na Fila de Pagamentos.`,
+      rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
+    });
+    if (!ok) return;
+
+    const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setSendingFilaPagamentos(true);
+    setError('');
+    try {
+      const tituloIds = selectedTitulosBaixaveis.map((titulo) => Number(titulo.id));
+      const result = requerAutorizacao
+        ? await criarAutorizacaoPagamento(tituloIds, `titulos-${random}`)
+        : await enviarTitulosFilaPagamentos(tituloIds, `titulos-${random}`);
+      avisar.sucesso(requerAutorizacao
+        ? `Lote ${result?.codigo || ''} enviado ao proprietário para autorização.`
+        : `${result?.quantidade || selectedTitulosBaixaveis.length} título(s) enviado(s) para a Fila de Pagamentos.`);
+      const data = await getTitulosFinanceiros({
+        ...compactFilters(appliedFilters),
+        ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
+        paginated: 1,
+        page: pagination.page,
+        limit: pagination.limit
+      });
+      setTitulos(Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : []);
+      if (data?.pagination) setPagination((current) => ({ ...current, ...data.pagination }));
+      setSelectedTituloIds([]);
+    } catch (err) {
+      setError(err?.message || 'Erro ao enviar os títulos para pagamento.');
+    } finally {
+      setSendingFilaPagamentos(false);
+    }
   }
 
   async function excluirTitulosSelecionados() {
@@ -1596,10 +2032,22 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       return;
     }
 
-    const confirmado = window.confirm(
-      `Excluir ${selectedTitulosExcluiveis.length} titulo(s) selecionado(s)? Eles sairao das telas e relatorios, mas ficarao preservados para auditoria.`
-    );
-    if (!confirmado) return;
+    /*
+      R19 + R21: modal do sistema, e o retorno se DESESTRUTURA. `confirmar()`
+      devolve { ok, texto } — objeto é sempre truthy, e ler o objeto como
+      booleano faria "Cancelar" EXCLUIR os títulos.
+
+      DoD (classe "consentimento"): o número citado e a coleção percorrida
+      pela ação são a MESMA — `selectedTitulosExcluiveis`, lida no mesmo
+      momento — e o texto declara que a tela não desfaz.
+    */
+    const { ok } = await confirmar({
+      titulo: 'Excluir títulos selecionados?',
+      mensagem: `${selectedTitulosExcluiveis.length} título(s) sairão das telas e dos relatórios, e ficarão preservados apenas para auditoria. Esta tela não desfaz a exclusão.`,
+      rotuloConfirmar: 'Excluir títulos',
+      destrutiva: true
+    });
+    if (!ok) return;
 
     try {
       setLoading(true);
@@ -1610,7 +2058,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       });
 
       const data = await getTitulosFinanceiros({
-        ...compactFilters(pickVisibleFilters(appliedFilters, visibleFilterIds)),
+        ...compactFilters(appliedFilters),
+        ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
         paginated: 1,
         page: pagination.page,
         limit: pagination.limit
@@ -1694,11 +2143,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
     if (!baixaMassaForm.forma_pagamento_id || !baixaMassaForm.forma_recebimento) {
       setError(`Informe a ${baixaMassaFormaLabel.toLowerCase()} da baixa em massa.`);
-      return;
-    }
-
-    if (!baixaMassaForm.empresa_id) {
-      setError('Informe a empresa pagadora da baixa em massa.');
       return;
     }
 
@@ -1839,7 +2283,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       }
 
       const data = await getTitulosFinanceiros({
-        ...compactFilters(pickVisibleFilters(appliedFilters, visibleFilterIds)),
+        ...compactFilters(appliedFilters),
+        ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
         paginated: 1,
         page: pagination.page,
         limit: pagination.limit
@@ -1860,7 +2305,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         setError(`Alguns titulos nao foram baixados: ${falhas.join(' | ')}`);
       } else {
         setError('');
-        alert(`${selectedTitulosBaixaveis.length} titulo(s) baixado(s) com sucesso.`);
+        // R19: faixa do sistema, dentro da página, some sozinha em 6s.
+        avisar.sucesso(`${selectedTitulosBaixaveis.length} titulo(s) baixado(s) com sucesso.`);
       }
     } catch (err) {
       setError(err?.message || 'Erro ao registrar baixas em massa.');
@@ -1872,57 +2318,62 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   function getTituloExportColumns() {
     const columns = [{ key: 'id', value: (titulo) => titulo.id || '' }];
 
-    tableHeaders.forEach((header) => {
-      switch (header) {
-        case 'Titulo':
+    // O CSV exporta EXATAMENTE as colunas à vista, na ordem escolhida — a
+    // TabelaPadrao devolve a escolha em `aoMudarColunas`.
+    idsColunasExport.forEach((id) => {
+      switch (id) {
+        case 'titulo':
           columns.push(
             { key: 'codigo', value: (titulo) => getTituloCodigo(titulo) },
             { key: 'descricao', value: (titulo) => titulo.descricao || '' }
           );
           break;
-        case 'Status':
+        case 'status':
           columns.push({ key: 'status', value: (titulo) => titulo.status || '' });
           break;
-        case 'Tipo':
+        case 'status_interno_pagar':
+          columns.push({ key: 'status_interno_pagar', value: (titulo) => titulo.status_interno_pagar || '' });
+          break;
+        case 'tipo':
           columns.push({ key: 'tipo', value: (titulo) => titulo.tipo || '' });
           break;
-        case 'Documento':
+        case 'documento':
           columns.push({ key: 'numero_documento', value: (titulo) => titulo.numero_documento || '' });
           break;
-        case parceiroResultadoLabel:
+        case 'parceiro':
           columns.push(
             { key: 'credor_cliente', value: (titulo) => titulo.parceiro?.nome || '' },
             { key: 'documento_parceiro', value: (titulo) => titulo.parceiro?.cpf_cnpj || '' }
           );
           break;
-        case 'Obra':
+        case 'obra':
           columns.push({ key: 'obra', value: (titulo) => titulo.obra?.nome || '' });
           break;
-        case 'Categoria':
+        case 'categoria':
           columns.push({ key: 'categoria_financeira', value: (titulo) => titulo.categoriaFinanceira?.nome || '' });
           break;
-        case 'Forma pagamento':
+        case 'forma_pagamento':
           columns.push(
             { key: 'forma_pagamento', value: (titulo) => titulo.formaPagamento?.nome || '' },
             { key: 'forma_pagamento_codigo', value: (titulo) => titulo.formaPagamento?.codigo || '' }
           );
           break;
-        case 'Origem':
+        case 'origem':
           columns.push({
             key: 'origem',
             value: (titulo) => titulo.solicitacao?.codigo || getOrigemTitulo(titulo) || ''
           });
           break;
-        case 'Emissao':
+        case 'emissao':
           columns.push({ key: 'emissao', value: (titulo) => formatDate(titulo.data_emissao) });
           break;
-        case 'Vencimento':
+        case 'vencimento':
           columns.push({ key: 'vencimento', value: (titulo) => formatDate(titulo.data_vencimento) });
           break;
-        case 'Valor total':
+        case 'valor_total':
           columns.push({ key: 'valor_total', value: (titulo) => formatCurrencyForExport(titulo.valor_original) });
           break;
-        case 'Saldo':
+        case 'saldo':
           columns.push({ key: 'valor_saldo', value: (titulo) => formatCurrencyForExport(titulo.valor_saldo) });
           break;
         default:
@@ -1965,7 +2416,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
     try {
       const result = await gerarRelatorioTitulosFinanceirosPdf(
-        compactFilters(pickVisibleFilters(appliedFilters, visibleFilterIds))
+        compactFilters(appliedFilters)
       );
       const objectUrl = URL.createObjectURL(result.blob);
       if (relatorioRequestIdRef.current !== requestId) {
@@ -2035,7 +2486,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       const resultado = await importarCodigosBarrasTitulos({ itens });
       if (appliedFilters) {
         const data = await getTitulosFinanceiros({
-          ...compactFilters(pickVisibleFilters(appliedFilters, visibleFilterIds)),
+          ...compactFilters(appliedFilters),
+          ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
           paginated: 1,
           page: pagination.page,
           limit: pagination.limit
@@ -2052,9 +2504,18 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       }
 
       const erros = Array.isArray(resultado?.erros) && resultado.erros.length > 0
-        ? `\n\nPendencias:\n${resultado.erros.slice(0, 10).map((item) => `Linha ${item.linha}: ${item.erro}`).join('\n')}`
+        ? ` Pendencias: ${resultado.erros.slice(0, 10).map((item) => `linha ${item.linha}: ${item.erro}`).join('; ')}.`
         : '';
-      alert(`Importacao concluida. Importados: ${resultado?.importados || 0}. Ignorados: ${resultado?.ignorados || 0}.${erros}`);
+      /*
+        R19: a caixa do navegador some sem rastro. Como a importação pode
+        voltar com pendências, o resultado COM pendência fica como alerta
+        (espera ser fechado) e o resultado limpo como sucesso (some em 6s):
+        o peso do aviso acompanha o que aconteceu, coisa que o alert() dava
+        de graça ao sucesso e ao erro.
+      */
+      const resumoImportacao = `Importacao concluida. Importados: ${resultado?.importados || 0}. Ignorados: ${resultado?.ignorados || 0}.${erros}`;
+      if (erros) avisar.alerta(resumoImportacao);
+      else avisar.sucesso(resumoImportacao);
     } catch (err) {
       setError(err?.message || 'Erro ao importar codigos de barras.');
     } finally {
@@ -2083,28 +2544,38 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     }
   }
 
-  function persistVisibleFilters(nextIds) {
-    const normalized = nextIds.length > 0 ? nextIds : DEFAULT_VISIBLE_FILTER_IDS;
-    setVisibleFilterIds(normalized);
-    localStorage.setItem(getVisibilityStorageKey(user, visibilityStoragePrefix), JSON.stringify(normalized));
+  /*
+    N53 (05/09) — ESCONDER LIMPA, e limpa nos DOIS lugares.
+
+    O rascunho do formulário E a consulta em curso. Limpar só o rascunho
+    deixaria a lista à vista recortada por um critério que não está mais em
+    campo nenhum — que é a metade do achado que a tela de Solicitações
+    tinha. Como a busca depende de `appliedFilters`, apagar ali refaz a
+    consulta na hora: a lista alarga junto com a faixa, e o número que a
+    pessoa lê volta a corresponder ao que ela vê.
+
+    Se não havia valor, nada muda: `appliedFilters` é devolvido igual e a
+    consulta não é refeita.
+  */
+  function limparValorDoFiltro(filterId) {
+    const vazios = Object.fromEntries(chavesDoFiltro(filterId).map((chave) => [chave, '']));
+    setDraftFilters((current) => ({ ...current, ...vazios }));
+    setAppliedFilters((current) => {
+      if (!current) return current;
+      if (!filtroPreenchido(filterId, current)) return current;
+      return { ...current, ...vazios };
+    });
   }
 
-  function toggleVisibleFilter(filterId) {
-    const current = new Set(visibleFilterIds);
-    if (current.has(filterId)) {
-      current.delete(filterId);
-    } else {
-      current.add(filterId);
-    }
-
-    persistVisibleFilters(FILTER_DEFINITIONS
-      .map((item) => item.id)
-      .filter((id) => current.has(id)));
-  }
-
-  function resetVisibleFilters() {
-    persistVisibleFilters(DEFAULT_VISIBLE_FILTER_IDS);
-  }
+  /*
+    `toggleVisibleFilter`/`resetVisibleFilters`/`persistVisibleFilters`
+    saíram (05/09): as três viraram uma superfície só, o
+    `PainelFiltrosVisiveis`, que as três telas com o seletor usam. A
+    gravação no `localStorage` que morava aqui virou gravação no BANCO — é o
+    miolo do N53, porque a escolha mexe no resultado da consulta e por
+    máquina ela dava listas diferentes para a mesma pessoa. `limparValorDoFiltro`
+    fica: ele é o `aoEsconder` que a tela entrega ao painel.
+  */
 
   function renderFilterField(filter) {
     const commonClass = `app-filter-field ${filter.span || ''}`;
@@ -2113,7 +2584,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       case 'codigo':
         return (
           <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Titulo</span>
+            <span className="app-filter-label">Título</span>
             <input
               className="input w-full input-sm"
               value={draftFilters.codigo}
@@ -2125,7 +2596,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       case 'q':
         return (
           <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Busca rapida</span>
+            <span className="app-filter-label">Busca rápida</span>
             <input
               className="input w-full input-sm"
               value={draftFilters.q}
@@ -2136,22 +2607,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         );
       case 'status':
         return (
-          <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Status</span>
-            <select
-              className="input w-full input-sm"
-              value={draftFilters.status}
-              onChange={(event) => setFilter('status', event.target.value)}
-            >
-              <option value="">Todos</option>
-              <option value="PREVISAO">Previsao</option>
-              <option value="ABERTO">Aberto</option>
-              <option value="PARCIAL">Parcial</option>
-              <option value="QUITADO">Quitado</option>
-              <option value="CANCELADO">Cancelado</option>
-              <option value="ESTORNADO">Estornado</option>
-            </select>
-          </label>
+          <StatusFilterMultiSelect
+            key={filter.id}
+            className={commonClass}
+            value={draftFilters.status}
+            onChange={(value) => setFilter('status', value)}
+          />
         );
       case 'numero_documento':
         return (
@@ -2191,7 +2652,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             browseDescription={draftFilters.tipo === 'PAGAR'
               ? 'Lista unificada de credores cadastrados e fornecedores vinculados ao cadastro central.'
               : 'Pesquise por nome ou CPF/CNPJ e selecione o cliente.'}
-            browseListClassName="min-w-[620px]"
+            browseListClassName="min-w-full"
           />
         );
       case 'obra_id':
@@ -2205,7 +2666,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             options={obras}
             onChange={(nextValue) => setFilter('obra_id', nextValue)}
             disabled={loadingOptions}
-            placeholder="Digite nome ou codigo da obra"
+            placeholder="Digite nome ou código da obra"
             allLabel="Todas as obras"
             emptyLabel="Nenhuma obra encontrada"
             getLabel={(obra) => [obra?.codigo, obra?.nome].filter(Boolean).join(' - ') || obra?.nome || ''}
@@ -2245,10 +2706,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       case 'data_emissao_inicial':
         return (
           <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Emissao inicio</span>
-            <input
+            <span className="app-filter-label">Emissão início</span>
+            <DateInputBR
               className="input w-full input-sm"
-              type="date"
               value={draftFilters.data_emissao_inicial}
               onChange={(event) => setFilter('data_emissao_inicial', event.target.value)}
             />
@@ -2257,10 +2717,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       case 'data_emissao_final':
         return (
           <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Emissao fim</span>
-            <input
+            <span className="app-filter-label">Emissão fim</span>
+            <DateInputBR
               className="input w-full input-sm"
-              type="date"
               value={draftFilters.data_emissao_final}
               onChange={(event) => setFilter('data_emissao_final', event.target.value)}
             />
@@ -2277,7 +2736,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             options={categoriasFiltradas}
             onChange={(nextValue) => setFilter('categoria_financeira_id', nextValue)}
             disabled={loadingOptions}
-            placeholder="Digite codigo, nome ou grupo DRE"
+            placeholder="Digite código, nome ou grupo DRE"
             allLabel={`Todas as categorias de ${categoriasLabel}`}
             emptyLabel="Nenhuma categoria encontrada"
             getLabel={(categoria) => (
@@ -2312,14 +2771,14 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         if (!filtroFormaPagamentoUsaCartao) return null;
         return (
           <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Cartao</span>
+            <span className="app-filter-label">Cartão</span>
             <select
               className="input w-full input-sm"
               value={draftFilters.cartao_id}
               onChange={(event) => setFilter('cartao_id', event.target.value)}
               disabled={loadingOptions}
             >
-              <option value="">Todos os cartoes</option>
+              <option value="">Todos os cartões</option>
               {cartoesFiltro.map((cartao) => (
                 <option key={cartao.id} value={cartao.id}>
                   {getCartaoLabel(cartao)}
@@ -2331,10 +2790,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       case 'vencimento_inicial':
         return (
           <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Vencimento inicio</span>
-            <input
+            <span className="app-filter-label">Vencimento início</span>
+            <DateInputBR
               className="input w-full input-sm"
-              type="date"
               value={draftFilters.vencimento_inicial}
               onChange={(event) => setFilter('vencimento_inicial', event.target.value)}
             />
@@ -2344,9 +2802,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         return (
           <label key={filter.id} className={commonClass}>
             <span className="app-filter-label">Vencimento fim</span>
-            <input
+            <DateInputBR
               className="input w-full input-sm"
-              type="date"
               value={draftFilters.vencimento_final}
               onChange={(event) => setFilter('vencimento_final', event.target.value)}
             />
@@ -2358,41 +2815,47 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header-row">
-        <div>
-          <h1 className="page-title">{pageTitle}</h1>
-          <p className="page-subtitle">{pageSubtitle}</p>
-        </div>
-        <div className="app-page-actions">
-          {fixedTipo === 'PAGAR' && canImportTitulos && (
-            <>
-              <button type="button" className="btn btn-outline btn-sm" onClick={exportarModeloImportacao} disabled={exportingModel}>
-                <HiOutlineArrowDownTray className="h-4 w-4" />
-                {exportingModel ? 'Exportando...' : 'Exportar modelo'}
-              </button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setImportPanelOpen((current) => !current)}>
-                <HiOutlineArrowUpTray className="h-4 w-4" />
-                Importar planilha
-              </button>
-            </>
-          )}
-          <Link to="/financeiro/relatorios" className="btn btn-outline btn-sm">
-            <HiOutlineDocumentChartBar className="h-4 w-4" />
-            Relatorios
-          </Link>
-          <Link to="/financeiro/baixas" className="btn btn-outline btn-sm">
-            Baixas
-          </Link>
-          <Link to="/financeiro/conciliacao" className="btn btn-outline btn-sm">
-            Conciliacao OFX
-          </Link>
-          <Link to={`/financeiro/titulos/novo?tipo=${fixedTipo || draftFilters.tipo || 'RECEBER'}`} className="btn btn-primary btn-sm">
-            <HiOutlinePlus className="h-4 w-4" />
-            Novo titulo
-          </Link>
-        </div>
-      </div>
+    <Pagina>
+      {/*
+        R13/C1/C2 — faixa fixa do sistema no lugar da linha solta de título:
+        título em 22px, contagem + apoio em UMA linha na própria faixa (R5),
+        e as ações com os três pesos (D3/C5). Antes o cabeçalho rolava para
+        fora e "Novo titulo" sumia em lista longa.
+
+        R11/C6 — saíram daqui os quatro links de "ir para" (Relatórios,
+        Baixas, Conciliação OFX, Cadastros): navegação não é ação, e o menu,
+        o breadcrumb e o Ctrl+K já levam a essas telas. A remoção é a que a
+        própria R11 autoriza pelo exemplo do "⋯" de Parceiros.
+      */}
+      <PageHeader
+        titulo={pageTitle}
+        contagem={contagemCabecalho}
+        descricao={pageSubtitle}
+        acaoPrincipal={{
+          rotulo: 'Novo título',
+          to: `/financeiro/titulos/novo?tipo=${fixedTipo || draftFilters.tipo || 'RECEBER'}`,
+          icone: <HiOutlinePlus className="h-4 w-4" />
+        }}
+        secundarias={fixedTipo === 'PAGAR' && canImportTitulos ? [
+          {
+            rotulo: exportingModel ? 'Exportando...' : 'Exportar modelo',
+            onClick: exportarModeloImportacao,
+            desabilitada: exportingModel,
+            icone: <HiOutlineArrowDownTray className="h-4 w-4" />
+          },
+          {
+            rotulo: importPanelOpen ? 'Fechar importacao' : 'Importar planilha',
+            onClick: () => setImportPanelOpen((current) => !current),
+            icone: <HiOutlineArrowUpTray className="h-4 w-4" />
+          }
+        ] : []}
+      />
+
+      {/* R19: sucesso e resultado de importação em faixa do sistema, no topo
+          do conteúdo — não mais na caixa cinza do navegador. O ERRO continua
+          em `error`, que é a mesma condição lida dentro do modal de baixa em
+          massa: um dono por responsabilidade (R16). */}
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       {fixedTipo === 'PAGAR' && canImportTitulos && importPanelOpen && (
         <FinanceiroTitulosImportacaoPanel
@@ -2404,47 +2867,74 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         />
       )}
 
-      <form className="card sol-surface-card app-toolbar-card relative z-20 overflow-visible" onSubmit={submitFilters}>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-[var(--c-text)]">Consulta de titulos {tipoLabel}</h2>
-              <p className="text-xs text-[var(--c-muted)]">A lista abaixo atualiza somente ao consultar.</p>
-            </div>
-            <label className="inline-flex items-center gap-2 text-sm text-[var(--c-text)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[var(--c-primary)]"
-                checked={saveFilterCache}
-                onChange={(event) => setSaveFilterCache(event.target.checked)}
-              />
-              Salvar filtro neste navegador
-            </label>
-          </div>
+      {/*
+        R23 — EXCEÇÃO DECLARADA (consulta cara). Esta tela tem 15 dimensões
+        de filtro e a consulta é paginada NO SERVIDOR sobre a carteira
+        inteira: marcar um filtro por vez dispararia uma requisição por
+        marca, muito acima do teto de 3 da regra. Por isso as marcas ficam
+        em RASCUNHO e o recorte só vale no clique — e o botão diz o que faz
+        ("Consultar"), com o apoio avisando que a lista só muda ali.
+      */}
+      <BlocoConteudo
+        titulo={`Consulta de títulos ${tipoLabel}`}
+        descricao="A lista abaixo atualiza somente ao consultar."
+        variante="secundario"
+        controles={(
+          <>
+            {/*
+              OS CONTROLES DO BLOCO SUBIRAM PARA A FAIXA DO TÍTULO (06/09,
+              regra do cliente). Medido nesta tela, antes: o cabeçalho
+              entregava o lado direito ao vazio (só a caixa "Salvar filtro"
+              na ponta) e os controles — Carteira, "Mais filtros", "Filtros
+              visíveis" e "Limpar" — ocupavam DUAS linhas do corpo, uma em
+              cima dos campos e outra embaixo deles. Agora eles moram no
+              cabeçalho, pela prop `controles` do BlocoConteudo, e o corpo
+              fica com o que ele é: os campos do recorte.
 
-          {fixedTipo ? (
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-1 text-xs font-semibold text-[var(--c-muted)]">
-              Carteira fixa: {fixedTipo === 'PAGAR' ? 'Contas a pagar' : 'Contas a receber'}
-            </div>
-          ) : (
+              O "Consultar" NÃO subiu: ele é o `submit` do formulário e o
+              fim do fluxo — continua à direita, embaixo dos campos, que é
+              onde o cliente pediu.
+            */}
+            {/*
+              D2 — SELETOR DE RECORTE, e ele é o ÚNICO dono da carteira nesta
+              tela (R16). Antes havia dois arranjos: uma pastilha morta
+              "Carteira fixa: …" quando a prop vinha da rota, e um par de
+              botões que só mexia num campo do formulário quando não vinha.
+              Agora é um controle só, sempre visível, que NAVEGA — o endereço
+              passa a dizer o recorte, então dá para favoritar, compartilhar
+              e fixar como tela inicial "só a pagar".
+
+              Seletor de CONTEXTO, não filtro de lista: a R12 continua valendo
+              para os filtros abaixo.
+            */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <span className="app-filter-label">Tipo</span>
-              <div className="inline-grid w-full max-w-[220px] grid-cols-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-1">
+              <span className="app-filter-label">Carteira</span>
+              <div className="inline-grid w-full grid-cols-2 gap-1 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-1 sm:w-auto">
+                {/*
+                  DUAS opções, e não três: NÃO existe "todas as carteiras"
+                  nesta consulta. O backend recebe sempre `tipo` (a tela manda
+                  RECEBER por padrão), então uma terceira opção "Todas"
+                  mostraria só os a receber com um rótulo dizendo o contrário —
+                  o usuário leria "todas" e veria metade. Se o cliente quiser a
+                  carteira inteira, é filtro novo no serviço, não rótulo novo
+                  aqui. (Registrado no relatório.)
+                */}
                 {[
-                  { value: 'RECEBER', label: 'Receber' },
-                  { value: 'PAGAR', label: 'Pagar' }
+                  { value: 'RECEBER', label: 'A receber' },
+                  { value: 'PAGAR', label: 'A pagar' }
                 ].map((option) => {
-                  const active = draftFilters.tipo === option.value;
+                  // Sem `?tipo` na URL a tela opera no padrão do formulário —
+                  // é o que o `getDefaultFilters` já fazia. O botão aceso diz
+                  // qual carteira está de fato sendo consultada, venha ela do
+                  // endereço ou do padrão.
+                  const active = (fixedTipo || draftFilters.tipo) === option.value;
                   return (
                     <button
                       key={option.value}
                       type="button"
-                      className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
-                        active
-                          ? 'bg-[var(--c-primary)] text-white shadow-sm'
-                          : 'text-[var(--c-muted)] hover:bg-[var(--c-surface)] hover:text-[var(--c-text)]'
-                      }`}
-                      onClick={() => setTipoFiltro(option.value)}
+                      aria-pressed={active}
+                      className={`btn btn-sm ${active ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => irParaRecorte(option.value)}
                     >
                       {option.label}
                     </button>
@@ -2452,13 +2942,48 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 })}
               </div>
             </div>
-          )}
-
+            <div className="flex flex-wrap items-center gap-2">
+              {/*
+                "Mais filtros" só aparece quando HÁ filtro avançado à vista
+                (05/09). Com o conjunto inicial aprovado, os dez escondidos
+                incluem todos os avançados: o botão abriria uma gaveta vazia,
+                que é a capacidade aparente da R15. Ele volta sozinho no
+                instante em que a pessoa revela um deles no painel.
+              */}
+              {advancedVisibleFilters.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setAdvancedOpen((current) => !current)}
+                >
+                  <HiOutlineAdjustmentsHorizontal className="h-4 w-4" />
+                  {advancedOpen ? 'Menos filtros' : 'Mais filtros'}
+                </button>
+              ) : null}
+              {/*
+                O MODAL DE TELA CHEIA VIROU O PAINEL PADRÃO (05/09). Ele era
+                o terceiro desenho da mesma ideia no sistema — modal aqui,
+                menu de marcação nas Solicitações, bloco recolhível nos
+                Provisionamentos. Um modal para escolher quais campos ficam
+                à vista também tirava a faixa da tela justamente enquanto a
+                pessoa decidia sobre ela.
+              */}
+              <PainelFiltrosVisiveis visibilidade={visibilidadeFiltros} />
+              <button type="button" className="btn btn-outline btn-sm" onClick={clearFilters}>
+                <HiOutlineXMark className="h-4 w-4" />
+                Limpar
+              </button>
+            </div>
+          </>
+        )}
+      >
+      <form className="relative overflow-visible" onSubmit={submitFilters}>
+        <div className="flex flex-col gap-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
             {basicVisibleFilters.map((filter) => renderFilterField(filter))}
             {basicVisibleFilters.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[var(--c-border)] px-3 py-4 text-sm text-[var(--c-muted)] xl:col-span-12">
-                Nenhum filtro principal visivel. Use o olho em filtros para escolher os campos.
+                Nenhum filtro principal visivel. Use “Filtros visiveis” para escolher os campos.
               </div>
             ) : null}
           </div>
@@ -2471,31 +2996,10 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-[var(--c-border)] pt-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={() => setAdvancedOpen((current) => !current)}
-              >
-                <HiOutlineAdjustmentsHorizontal className="h-4 w-4" />
-                {advancedOpen ? 'Menos filtros' : 'Mais filtros'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={() => setFilterChooserOpen(true)}
-                title="Escolher filtros visiveis"
-              >
-                <HiOutlineEye className="h-4 w-4" />
-                Filtros
-              </button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={clearFilters}>
-                <HiOutlineXMark className="h-4 w-4" />
-                Limpar
-              </button>
-            </div>
-
+          {/* Só o "Consultar" mora aqui agora — os outros controles subiram
+              para a faixa do título. `justify-end` porque não há mais par
+              do lado esquerdo para o `justify-between` separar. */}
+          <div className="flex flex-col gap-3 border-t border-[var(--c-border)] pt-3 md:flex-row md:items-center md:justify-end">
             <button type="submit" className="btn btn-primary btn-sm">
               <HiOutlineMagnifyingGlass className="h-4 w-4" />
               Consultar
@@ -2503,255 +3007,215 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
           </div>
         </div>
       </form>
+      </BlocoConteudo>
 
-      {filterChooserOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
-              <div>
-                <div className="text-sm font-semibold text-[var(--c-text)]">Filtros visiveis</div>
-                <div className="text-[11px] text-[var(--c-muted)]">Salvo apenas para este usuario neste navegador.</div>
-              </div>
-              <button
-                type="button"
-                className="rounded-md p-1 text-[var(--c-muted)] hover:bg-[var(--c-bg)] hover:text-[var(--c-text)]"
-                onClick={() => setFilterChooserOpen(false)}
-                title="Fechar"
-              >
-                <HiOutlineXMark className="h-5 w-5" />
-              </button>
-            </div>
+      {/*
+        StatGrid/StatTile (M2/R10): o ladrilho do sistema no lugar de quatro
+        cards à mão cujo rótulo tinha dez pixels — fora da escala e abaixo do
+        piso de 12px em conteúdo. (Escrito por extenso de propósito: o check
+        da R10 lê linha a linha SEM cortar comentário, então citar a classe
+        aqui reprovaria a própria explicação da regra. A R25 já aprendeu a
+        cortar; a R10 ainda não.)
 
-            <div className="max-h-[60vh] space-y-1 overflow-y-auto px-3 py-3">
-              {FILTER_DEFINITIONS.map((filter) => {
-                const checked = visibleFilterSet.has(filter.id);
-                return (
-                  <label
-                    key={filter.id}
-                    className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-2 text-sm hover:bg-[var(--c-bg)]"
-                  >
-                    <span className="text-[var(--c-text)]">{filter.label}</span>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-[var(--c-primary)]"
-                      checked={checked}
-                      onChange={() => toggleVisibleFilter(filter.id)}
-                    />
-                  </label>
-                );
-              })}
-            </div>
-
-            <div className="flex justify-between border-t border-[var(--c-border)] px-4 py-3">
-              <button type="button" className="btn btn-outline btn-sm" onClick={resetVisibleFilters}>
-                Restaurar
-              </button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => setFilterChooserOpen(false)}>
-                Aplicar
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="relative z-0 grid gap-3 md:grid-cols-4">
-        {[
-          { label: 'Titulos filtrados', value: String(resumo.quantidade), icon: HiOutlineDocumentText },
-          { label: 'Valor total', value: formatCurrency(resumo.total), icon: HiOutlineSparkles },
-          { label: 'Saldo em aberto', value: formatCurrency(resumo.saldo), icon: HiOutlineDocumentChartBar },
-          { label: 'Vencidos', value: formatCurrency(resumo.vencido), sub: `${resumo.quantidadeVencida} titulo(s)`, icon: HiOutlineAdjustmentsHorizontal }
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <div key={item.label} className="card sol-surface-card">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">{item.label}</span>
-                  <div className="mt-1 text-lg font-semibold text-[var(--c-text)] tabular-nums">{item.value}</div>
-                  {item.sub ? <div className="text-xs text-[var(--c-muted)]">{item.sub}</div> : null}
-                </div>
-                <Icon className="h-5 w-5 text-[var(--c-primary)]" />
-              </div>
-            </div>
-          );
-        })}
-      </div>
+        RÓTULOS CORRIGIDOS, e é uma correção de SIGNIFICADO, não de forma:
+        `resumo` soma `titulos`, que é a PÁGINA carregada — não a carteira
+        filtrada. "Valor total" sobre 25 de 4.000 títulos afirma um total que
+        não é o total. O endpoint paginado devolve só `{ data, pagination }`,
+        sem agregado, então o número não dá para consertar aqui: o que dá
+        para consertar é ele parar de mentir sobre o que é. O total do
+        recorte vive na contagem da faixa fixa e no relatório em PDF.
+        (Registrado no relatório: o agregado do recorte pede endpoint novo.)
+      */}
+      <StatGrid colunas={4}>
+        <StatTile label="Títulos nesta página" valor={String(resumo.quantidade)} sub={contagemCabecalho ? `${contagemCabecalho} no recorte` : null} />
+        <StatTile label="Valor desta página" valor={formatCurrency(resumo.total)} />
+        <StatTile label="Saldo em aberto nesta página" valor={formatCurrency(resumo.saldo)} />
+        <StatTile
+          label="Vencidos nesta página"
+          valor={formatCurrency(resumo.vencido)}
+          sub={`${resumo.quantidadeVencida} título(s)`}
+          tom={resumo.quantidadeVencida > 0 ? 'danger' : undefined}
+        />
+      </StatGrid>
 
       {error ? <div className="app-alert app-alert--error">{error}</div> : null}
 
       {mostrarFretesPendentes ? (
-        <div className="sol-surface-card card">
-          <div className="flex flex-col gap-2 border-b border-[var(--c-border)] px-3 py-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--c-text)]">Fretes de pedidos pendentes</h2>
-              <p className="text-xs text-[var(--c-muted)]">
-                Fretes pagos a terceiro registrados em compras e ainda sem titulo financeiro vinculado.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="badge badge-info">
-                {loadingFretesPendentes ? 'Atualizando' : `${fretesPendentes.length} pendente(s)`}
-              </span>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={carregarFretesPendentesFinanceiro}
-                disabled={loadingFretesPendentes}
-              >
-                Atualizar fretes
-              </button>
-            </div>
-          </div>
-
+        <BlocoConteudo
+          titulo="Fretes de pedidos pendentes"
+          contagem={loadingFretesPendentes ? 'Atualizando…' : `${fretesPendentes.length} pendente(s)`}
+          descricao="Fretes pagos a terceiro registrados em compras e ainda sem título financeiro vinculado."
+          variante="secundario"
+          acoes={(
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={carregarFretesPendentesFinanceiro}
+              disabled={loadingFretesPendentes}
+            >
+              Atualizar fretes
+            </button>
+          )}
+        >
           {erroFretesPendentes ? (
-            <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="app-alert app-alert--error">
               {erroFretesPendentes}
             </div>
           ) : null}
 
-          {fretesPendentes.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-[var(--c-border)] bg-[var(--c-bg)] text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--c-muted)]">
-                    <th className="px-3 py-2">Pedido</th>
-                    <th className="px-3 py-2">Solicitacao</th>
-                    <th className="px-3 py-2">Obra</th>
-                    <th className="px-3 py-2">Transportador</th>
-                    <th className="px-3 py-2">Vencimento</th>
-                    <th className="px-3 py-2 text-right">Valor</th>
-                    <th className="px-3 py-2 text-right">Acao</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-border)]">
-                  {fretesPendentes.map((frete) => {
-                    const pedidoCodigo = `PC-${String(frete.pedido_compra_id || frete.pedido?.id || '').padStart(5, '0')}`;
-                    return (
-                      <tr key={frete.id} className="align-top hover:bg-[var(--c-bg)]">
-                        <td className="px-3 py-2 font-semibold text-[var(--c-text)]">{pedidoCodigo}</td>
-                        <td className="px-3 py-2">
-                          {frete.solicitacaoPrincipal?.id ? (
-                            <Link
-                              className="font-medium text-[var(--c-primary)] hover:underline"
-                              to={`/solicitacoes/${frete.solicitacaoPrincipal.id}`}
-                            >
-                              {frete.solicitacaoPrincipal.codigo || `#${frete.solicitacaoPrincipal.id}`}
-                            </Link>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-[var(--c-muted)]">{frete.obra?.nome || '-'}</td>
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-[var(--c-text)]">
-                            {frete.parceiro?.nome || frete.fornecedor?.nome || frete.dados_pagamento?.transportador_nome || 'Credor a definir'}
-                          </div>
-                          <div className="text-[10px] text-[var(--c-muted)]">
-                            {frete.parceiro?.cpf_cnpj || frete.fornecedor?.cnpj || frete.dados_pagamento?.transportador_cpf_cnpj || ''}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-[var(--c-text)]">{formatDate(frete.data_vencimento)}</td>
-                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-[var(--c-text)]">
-                          {formatCurrency(frete.valor_total)}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <Link className="btn btn-primary btn-sm" to={buildFreteTituloUrl(frete)}>
-                            Gerar titulo
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="px-3 py-5 text-sm text-[var(--c-muted)]">
-              {loadingFretesPendentes ? 'Carregando fretes pendentes...' : 'Nenhum frete de terceiro pendente de titulo.'}
-            </div>
-          )}
-        </div>
+          <div>
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'pedido',
+                  titulo: 'Pedido',
+                  tipo: 'codigo',
+                  render: (frete) => (
+                    <strong className="text-[var(--c-text)]">
+                      {`PC-${String(frete.pedido_compra_id || frete.pedido?.id || '').padStart(5, '0')}`}
+                    </strong>
+                  )
+                },
+                {
+                  id: 'solicitacao',
+                  titulo: 'Solicitação',
+                  tipo: 'codigo',
+                  render: (frete) => (frete.solicitacaoPrincipal?.id ? (
+                    <Link
+                      className="font-medium text-[var(--c-primary)] hover:underline"
+                      to={`/solicitacoes/${frete.solicitacaoPrincipal.id}`}
+                    >
+                      {frete.solicitacaoPrincipal.codigo || `#${frete.solicitacaoPrincipal.id}`}
+                    </Link>
+                  ) : '-')
+                },
+                {
+                  id: 'obra',
+                  titulo: 'Obra',
+                  tipo: 'texto',
+                  render: (frete) => <span className="text-[var(--c-muted)]">{frete.obra?.nome || '-'}</span>
+                },
+                {
+                  id: 'transportador',
+                  titulo: 'Transportador',
+                  // R17: o credor do frete NOMEIA a linha pendente de titulo.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  /*
+                    A COLUNA DE CONTEUDO DESTA TABELA E O TRANSPORTADOR.
+
+                    Medido no preview: "TRANSPORTADOR" quebrava em duas
+                    linhas enquanto "OBRA" segurava 732px de folga. As duas
+                    nascem com `flexPadrao` (texto e identidade), e sem peso
+                    explicito a sobra vai para a PRIMEIRA — que aqui e a
+                    obra, e nao precisava de nada perto disso.
+
+                    A folga de 732px e o que da confianca na troca: e quatro
+                    vezes a largura-base da coluna, entao a obra continua
+                    folgada mesmo devolvendo tudo. (Na `RhDpApuracao` a folga
+                    era de 215px e a mesma troca INVERTEU o problema — ali as
+                    duas colunas precisavam de espaco, e o componente so sabe
+                    dar tudo a uma. Esse caso esta registrado para a leva do
+                    TabelaPadrao.)
+                  */
+                  flex: 2,
+                  render: (frete) => (
+                    <div>
+                      <div className="font-medium text-[var(--c-text)]">
+                        {frete.parceiro?.nome || frete.fornecedor?.nome || frete.dados_pagamento?.transportador_nome || 'Credor a definir'}
+                      </div>
+                      <div className="text-xs text-[var(--c-muted)]">
+                        {frete.parceiro?.cpf_cnpj || frete.fornecedor?.cnpj || frete.dados_pagamento?.transportador_cpf_cnpj || ''}
+                      </div>
+                    </div>
+                  )
+                },
+                {
+                  id: 'vencimento',
+                  titulo: 'Vencimento',
+                  tipo: 'data',
+                  render: (frete) => formatDate(frete.data_vencimento)
+                },
+                {
+                  id: 'valor',
+                  titulo: 'Valor',
+                  tipo: 'valor',
+                  render: (frete) => <strong className="tabular-nums text-[var(--c-text)]">{formatCurrency(frete.valor_total)}</strong>
+                }
+              ]}
+              itens={fretesPendentes}
+              carregando={loadingFretesPendentes}
+              acoesLinha={(frete) => (
+                <Link className="btn btn-primary btn-sm" to={buildFreteTituloUrl(frete)}>
+                  Gerar título
+                </Link>
+              )}
+              larguraAcoes={160}
+              storageKey="tabela:financeiro-titulos:fretes-pendentes"
+              rotuloRolagem="Fretes de pedidos pendentes de titulo"
+              vazio="Nenhum frete de terceiro pendente de título."
+            />
+          </div>
+        </BlocoConteudo>
       ) : null}
 
-      <div className="sol-surface-card card overflow-hidden">
-        <div className="flex flex-col gap-2 border-b border-[var(--c-border)] px-3 py-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--c-text)]">Resultado da consulta</h2>
-            <p className="text-xs text-[var(--c-muted)]">
-              {!hasConsulted
-                ? 'Aplique um filtro para carregar os titulos.'
-                : loading
-                  ? 'Carregando titulos...'
-                  : `${titulos.length} de ${pagination.total || titulos.length} titulo(s) exibido(s).`}
-            </p>
-          </div>
+      {/*
+        B2 — este é o bloco PRIMÁRIO da tela: é ele que responde à pergunta
+        central ("quais títulos entram no recorte?"). Os demais são
+        secundários.
+
+        B3 — o apoio aqui NÃO repete a contagem da faixa fixa: a faixa diz
+        quantos títulos o recorte tem, este bloco diz em que ponto da
+        listagem se está. Antes os dois diziam o mesmo número.
+      */}
+      <BlocoConteudo
+        titulo="Resultado da consulta"
+        variante="primario"
+        cor="var(--module-financeiro)"
+        descricao={!hasConsulted
+          ? 'Aplique um filtro para carregar os titulos.'
+          : loading
+            ? 'Carregando titulos...'
+            : pagination.limit === 'all'
+              ? `${titulos.length} titulo(s) em pagina unica.`
+              : `Pagina ${pagination.page || 1} de ${pagination.total_pages || 1}, com ${titulos.length} titulo(s) a vista.`}
+        acoes={(
+          /*
+            D3/C5 — a barra de ações do bloco carrega só AÇÕES, com os três
+            pesos: um primário sólido (Baixar selecionados), os secundários
+            em contorno e a destrutiva apartada em vermelho suave. A
+            PAGINAÇÃO saiu daqui: ela não é ação sobre os títulos, é posição
+            na lista, e foi para o rodapé da tabela no componente `Paginacao`
+            (R16b) — que ainda diz a POSIÇÃO e o TOTAL, coisa que o "3/12"
+            antigo não dizia.
+          */
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-[var(--c-muted)]">
-              <span>Por pagina</span>
-              <select
-                className="input input-sm w-[96px]"
-                value={String(pagination.limit || '25')}
-                onChange={(event) => {
-                  const nextLimit = event.target.value;
-                  setPagination((current) => ({
-                    ...current,
-                    limit: nextLimit,
-                    page: 1
-                  }));
-                }}
-                disabled={!hasConsulted || loading}
-              >
-                {PAGE_SIZE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'all' ? 'Todos' : option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex items-center gap-1 text-xs text-[var(--c-muted)]">
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                disabled={!hasConsulted || loading || Number(pagination.page || 1) <= 1}
-                onClick={() => setPagination((current) => ({
-                  ...current,
-                  page: Math.max(Number(current.page || 1) - 1, 1)
-                }))}
-              >
-                Anterior
-              </button>
-              <span className="px-1">
-                {pagination.limit === 'all'
-                  ? 'Todos'
-                  : `${pagination.page || 1}/${pagination.total_pages || 1}`}
-              </span>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                disabled={
-                  !hasConsulted ||
-                  loading ||
-                  pagination.limit === 'all' ||
-                  Number(pagination.page || 1) >= Number(pagination.total_pages || 1)
-                }
-                onClick={() => setPagination((current) => ({
-                  ...current,
-                  page: Number(current.page || 1) + 1
-                }))}
-              >
-                Proxima
-              </button>
-            </div>
             <button
               type="button"
               className="btn btn-primary btn-sm"
               onClick={abrirModalBaixaMassa}
               disabled={selectedTitulosBaixaveis.length === 0 || savingBaixaMassa}
-              title="Baixar titulos selecionados"
+              title="Baixar títulos selecionados"
             >
               Baixar selecionados
               {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
             </button>
+            {canNegociar && <button type="button" className="btn btn-outline btn-sm"
+              disabled={!podeNegociarTitulos(selectedTitulos, 2) || savingBaixaMassa}
+              title="Selecione de 2 a 100 títulos com saldo, do mesmo parceiro, empresa e tipo"
+              onClick={() => setTitulosNegociacao([...selectedTitulos])}>Negociar selecionados</button>}
+            {canPrepareFila && tipoReferencia === 'PAGAR' ? (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={enviarSelecionadosParaPagamento}
+                disabled={selectedTitulosBaixaveis.length === 0 || savingBaixaMassa || sendingFilaPagamentos}
+                title="Disponibilizar os títulos na fila operacional de pagamento"
+              >
+                {sendingFilaPagamentos ? 'Enviando...' : (devePrepararAutorizacaoPagamento(user) ? 'Solicitar autorização' : 'Enviar para pagamento')}
+                {!sendingFilaPagamentos && selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
+              </button>
+            ) : null}
             {canCreateBaixaComposta ? (
               <button
                 type="button"
@@ -2766,27 +3230,26 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             ) : null}
             <button
               type="button"
-              className="btn btn-outline btn-sm text-rose-700 hover:border-rose-300 hover:bg-rose-50"
+              className="btn btn-outline btn-sm btn-perigo-suave"
               onClick={excluirTitulosSelecionados}
               disabled={!canDeleteTitulos || selectedTitulosExcluiveis.length === 0 || loading || savingBaixaMassa}
-              title="Excluir titulos selecionados sem apagar o registro do banco"
+              title="Excluir títulos selecionados sem apagar o registro do banco"
             >
               Excluir selecionados
               {selectedTitulosExcluiveis.length > 0 ? ` (${selectedTitulosExcluiveis.length})` : ''}
             </button>
-            {canAccessCadastros ? (
-              <Link to="/financeiro/cadastros" className="btn btn-outline btn-sm">Cadastros</Link>
-            ) : null}
-            <Link to="/financeiro/baixas" className="btn btn-outline btn-sm">Baixas</Link>
+            {/* R11/C6: "Cadastros" e "Baixas" eram links de NAVEGAÇÃO na
+                barra de ações da lista — menu, breadcrumb e Ctrl+K já levam
+                lá. Saíram junto com os do cabeçalho. */}
             {canExportTitulos ? (
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={exportarTitulos}
                 disabled={loading}
-                title="Exporta os titulos listados com as colunas visiveis e campos de boleto para preenchimento"
+                title="Exporta os títulos listados com as colunas visíveis e campos de boleto para preenchimento"
               >
-                Exportar titulos
+                Exportar títulos
               </button>
             ) : null}
             {canImportCodigos ? (
@@ -2803,7 +3266,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             ) : null}
             <button
               type="button"
-              className="btn btn-outline btn-sm gap-1.5"
+              className="btn btn-outline btn-sm gap-2"
               onClick={abrirRelatorio}
               disabled={!hasConsulted || loading || relatorioLoading}
               title={hasConsulted
@@ -2814,142 +3277,356 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {relatorioLoading ? 'Gerando...' : 'Gerar relatorio'}
             </button>
           </div>
-        </div>
-
-        {selectedTitulosBaixaveis.length > 0 ? (
-          <div className="flex flex-col gap-2 border-b border-[var(--c-border)] bg-[var(--c-bg)]/70 px-3 py-2 text-xs md:flex-row md:items-center md:justify-between">
+        )}
+      >
+        {selectedTitulos.length > 0 ? (
+          <div className="mb-4 flex flex-col gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm md:flex-row md:items-center md:justify-between">
             <div className="font-medium text-[var(--c-text)]">
-              {selectedTitulosBaixaveis.length} titulo(s) selecionado(s) para baixa
+              {selectedTitulos.length} título(s) selecionado(s)
+              {selectedTitulosBaixaveis.length > 0 ? ` · ${selectedTitulosBaixaveis.length} elegível(is) para baixa` : ''}
               {canDeleteTitulos && selectedTitulosExcluiveis.length > 0 ? ` / ${selectedTitulosExcluiveis.length} para exclusao` : ''}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[var(--c-muted)]">
+              {fixedTipo === 'PAGAR' ? (
+                <>
+                  <select className="input input-sm" aria-label="Status interno para títulos selecionados" value={statusEmMassa} onChange={(event) => setStatusEmMassa(event.target.value)}>
+                    <option value="">Escolha um status interno</option>
+                    {statusInternosPagar.map((item) => <option key={item} value={item}>{item}</option>)}
+                    <option value="__CLEAR__">Sem status interno</option>
+                  </select>
+                  <button type="button" className="btn btn-outline btn-sm" disabled={!statusEmMassa || alterandoStatusInterno} onClick={() => alterarStatusInterno(selectedTitulos.filter((titulo) => titulo.tipo === 'PAGAR').map((titulo) => Number(titulo.id)), statusEmMassa)}>
+                    {alterandoStatusInterno ? 'Aplicando...' : 'Aplicar em selecionados'}
+                  </button>
+                </>
+              ) : null}
               <span>Saldo selecionado: <strong className="text-[var(--c-text)]">{formatCurrency(selectedSaldo)}</strong></span>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelectedTituloIds([])}>
-                Limpar selecao
+                Limpar seleção
               </button>
             </div>
           </div>
         ) : null}
 
-        <div className="overflow-x-auto">
-          <ResizableTable
-            columns={resizableTableColumns}
-            storageKey={columnWidthStorageKey}
-            className="text-xs"
-          >
-            <thead>
-              <tr className="border-b border-[var(--c-border)] bg-[var(--c-bg)]">
-                <ResizableTh
-                  columnKey="__select__"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--c-muted)] whitespace-nowrap"
-                >
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-[var(--c-primary)]"
-                    checked={allBaixaveisSelected}
-                    disabled={titulosBaixaveis.length === 0}
-                    onChange={(event) => toggleTodosBaixaveis(event.target.checked)}
-                    title="Selecionar todos os titulos filtrados baixaveis"
+        {fixedTipo === 'PAGAR' ? (
+          <div className="mb-2 flex justify-end">
+            <Link className="text-xs text-[var(--c-primary)] underline" to="/configuracoes-status-internos-pagar">Configurar status internos</Link>
+          </div>
+        ) : null}
+
+        <div>
+          <TabelaPadrao
+            // Rodape "N de M" (05/09): esta lista vem PAGINADA do servidor, entao
+            // o que esta a vista e uma fatia — sem o total, quem rola nao sabe se
+            // adianta continuar.
+            total={Number(pagination.total || titulos.length)}
+            rotuloRegistro="titulo"
+            colunas={[
+              {
+                id: 'titulo',
+                titulo: 'Título',
+                ordenavel: true,
+                // R17: o codigo do titulo nomeia o registro desta lista.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (titulo) => (
+                  <CelulaDupla
+                    title={`${getTituloCodigo(titulo)}${titulo.descricao ? ` — ${titulo.descricao}` : ''}`}
+                    principal={(
+                      <Link
+                        className="font-semibold text-[var(--c-primary)] hover:underline"
+                        to={`/financeiro/titulos/${titulo.id}`}
+                      >
+                        {getTituloCodigo(titulo)}
+                      </Link>
+                    )}
+                    sub={titulo.descricao || '-'}
                   />
-                </ResizableTh>
-                {tableHeaders.map((header) => (
-                  <ResizableTh
-                    key={header}
-                    columnKey={header}
-                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--c-muted)] whitespace-nowrap"
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      <span>{header}</span>
-                      <span className="inline-flex rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] normal-case shadow-sm">
-                        <button
-                          type="button"
-                          className="px-1 text-[10px] leading-4 text-[var(--c-muted)] hover:text-[var(--c-primary)] disabled:opacity-30"
-                          onClick={() => moverColuna(header, 'left')}
-                          disabled={tableHeaders.indexOf(header) === 0}
-                          title="Mover coluna para esquerda"
-                        >
-                          {'<'}
-                        </button>
-                        <button
-                          type="button"
-                          className="border-l border-[var(--c-border)] px-1 text-[10px] leading-4 text-[var(--c-muted)] hover:text-[var(--c-primary)] disabled:opacity-30"
-                          onClick={() => moverColuna(header, 'right')}
-                          disabled={tableHeaders.indexOf(header) === tableHeaders.length - 1}
-                          title="Mover coluna para direita"
-                        >
-                          {'>'}
-                        </button>
+                )
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                ordenavel: true,
+                tipo: 'status',
+                render: (titulo) => (
+                  <div className="flex flex-col items-start gap-1">
+                    {isOverdue(titulo)
+                      ? <StatusBadge status={`${titulo.status} · VENCIDO`} kind="danger" />
+                      : <StatusBadge status={titulo.status} />}
+                    {isTituloBloqueadoRetornoObra(titulo) ? (
+                      <span
+                        className="badge badge-warning"
+                        title={titulo.bloqueio_retorno_motivo || 'Baixa bloqueada por pedido de retorno da Obra'}
+                      >
+                        Retorno solicitado pela Obra
                       </span>
-                    </span>
-                  </ResizableTh>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-border)]">
-              {!hasConsulted ? (
-                <tr>
-                  <td colSpan={totalColunas} className="px-3 py-10 text-center">
-                    <div className="mx-auto max-w-md">
-                      <div className="text-sm font-medium text-[var(--c-text)]">Nenhum filtro aplicado</div>
-                      <p className="mt-1 text-xs text-[var(--c-muted)]">
-                        A tabela fica vazia ate voce consultar os titulos com os filtros desejados.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : null}
-
-              {loading ? (
-                <tr>
-                  <td colSpan={totalColunas} className="px-3 py-8 text-center text-[var(--c-muted)]">
-                    Carregando...
-                  </td>
-                </tr>
-              ) : null}
-
-              {hasConsulted && !loading && titulos.length === 0 ? (
-                <tr>
-                  <td colSpan={totalColunas} className="px-3 py-10 text-center">
-                    <div className="mx-auto max-w-md">
-                      <div className="text-sm font-medium text-[var(--c-text)]">Nenhum titulo encontrado</div>
-                      <p className="mt-1 text-xs text-[var(--c-muted)]">
-                        Ajuste os filtros ou limpe a consulta para ampliar o resultado.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : null}
-
-              {!loading && titulos.map((titulo) => (
-                <tr
-                  key={titulo.id}
-                  className={`align-top transition-colors hover:bg-[var(--c-bg)] ${
-                    selectedTituloSet.has(Number(titulo.id)) ? 'bg-blue-50/60' : isOverdue(titulo) ? 'bg-rose-50/40' : ''
-                  }`}
+                    ) : null}
+                    {getFilaPagamentoAtiva(titulo) ? (
+                      <span
+                        className={`badge ${getFilaPagamentoAtiva(titulo).status === 'DIVERGENTE' ? 'badge-danger' : getFilaPagamentoAtiva(titulo).status === 'NAO_PAGO' ? 'badge-warning' : 'badge-info'}`}
+                        title={getFilaPagamentoAtiva(titulo).motivo || 'Título encaminhado para a fila de pagamentos'}
+                      >
+                        {getFilaPagamentoAtiva(titulo).status === 'DIVERGENTE'
+                          ? 'Pagamento divergente'
+                          : getFilaPagamentoAtiva(titulo).status === 'NAO_PAGO'
+                            ? 'Pagamento não realizado'
+                            : 'Em fila de pagamento'}
+                      </span>
+                    ) : null}
+                  </div>
+                )
+              },
+              ...(fixedTipo === 'PAGAR' ? [{
+                id: 'status_interno_pagar',
+                titulo: 'Status interno',
+                ordenavel: true,
+                tipo: 'texto',
+                render: (titulo) => (
+                  <select
+                    className="input input-sm min-w-40"
+                    aria-label={`Status interno de ${getTituloCodigo(titulo)}`}
+                    value={titulo.status_interno_pagar || ''}
+                    disabled={alterandoStatusInterno}
+                    onChange={(event) => alterarStatusInterno([Number(titulo.id)], event.target.value || '__CLEAR__')}
+                  >
+                    <option value="">Sem status interno</option>
+                    {statusInternosPagar.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                )
+              }] : []),
+              ...(showTipoColumn ? [{
+                id: 'tipo',
+                titulo: 'Tipo',
+                ordenavel: true,
+                tipo: 'texto',
+                render: (titulo) => <span className="font-medium text-[var(--c-muted)]">{titulo.tipo}</span>
+              }] : []),
+              {
+                id: 'documento',
+                titulo: 'Documento',
+                ordenavel: true,
+                tipo: 'codigo',
+                render: (titulo) => titulo.numero_documento || '-'
+              },
+              {
+                id: 'parceiro',
+                titulo: parceiroResultadoLabel,
+                ordenavel: true,
+                tipo: 'texto',
+                render: (titulo) => (
+                  <CelulaDupla
+                    principal={titulo.parceiro?.nome || '-'}
+                    sub={titulo.parceiro?.cpf_cnpj || ''}
+                  />
+                )
+              },
+              {
+                id: 'obra',
+                titulo: 'Obra',
+                ordenavel: true,
+                tipo: 'texto',
+                  render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || (titulo.renegociacao_id && titulo.possui_rateio ? 'Várias obras · rateado' : '-')}</span>
+              },
+              {
+                id: 'categoria',
+                titulo: 'Categoria',
+                ordenavel: true,
+                tipo: 'texto',
+                render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.categoriaFinanceira?.nome || '-'}</span>
+              },
+              {
+                id: 'forma_pagamento',
+                titulo: 'Forma pagamento',
+                ordenavel: true,
+                tipo: 'texto',
+                render: (titulo) => (
+                  <CelulaDupla
+                    principal={titulo.formaPagamento?.nome || '-'}
+                    sub={titulo.formaPagamento?.codigo || ''}
+                  />
+                )
+              },
+              {
+                id: 'origem',
+                titulo: 'Origem',
+                ordenavel: true,
+                tipo: 'codigo',
+                render: (titulo) => (titulo.solicitacao?.id ? (
+                  <Link
+                    className="text-[var(--c-primary)] hover:underline"
+                    to={`/solicitacoes/${titulo.solicitacao.id}`}
+                  >
+                    {titulo.solicitacao.codigo || `#${titulo.solicitacao.id}`}
+                  </Link>
+                ) : getOrigemTitulo(titulo))
+              },
+              {
+                id: 'emissao',
+                titulo: 'Emissão',
+                ordenavel: true,
+                ordemInicial: 'desc',
+                tipo: 'data',
+                render: (titulo) => <span className="text-[var(--c-muted)]">{formatDate(titulo.data_emissao)}</span>
+              },
+              {
+                id: 'vencimento',
+                titulo: 'Vencimento',
+                ordenavel: true,
+                tipo: 'data',
+                render: (titulo) => (
+                  <span className={isOverdue(titulo) ? 'font-semibold text-[var(--sem-danger)]' : 'text-[var(--c-text)]'}>
+                    {formatDate(titulo.data_vencimento)}
+                  </span>
+                )
+              },
+              {
+                id: 'valor_total',
+                titulo: 'Valor total',
+                ordenavel: true,
+                ordemInicial: 'desc',
+                tipo: 'valor',
+                render: (titulo) => formatCurrency(titulo.valor_original)
+              },
+              {
+                id: 'saldo',
+                titulo: 'Saldo',
+                ordenavel: true,
+                ordemInicial: 'desc',
+                tipo: 'valor',
+                render: (titulo) => <strong className="text-[var(--c-text)]">{formatCurrency(titulo.valor_saldo)}</strong>
+              }
+            ]}
+            itens={titulos}
+            aoOrdenar={ordenarTitulos}
+            getId={(titulo) => Number(titulo.id)}
+            carregando={loading}
+            // TRÊS estados distintos: carregando (acima), "sem filtro
+            // aplicado" e "nada encontrado" — o segundo e o terceiro são a
+            // mesma prop `vazio`, decidida pela tela, porque só ela sabe se
+            // já houve consulta.
+            vazio={hasConsulted
+              ? {
+                title: 'Nenhum titulo encontrado',
+                message: 'Ajuste os filtros ou limpe a consulta para ampliar o resultado.'
+              }
+              : {
+                title: 'Nenhum filtro aplicado',
+                message: 'A tabela fica vazia ate voce consultar os titulos com os filtros desejados.'
+              }}
+            urgencia={(titulo) => (
+              getFilaPagamentoAtiva(titulo)?.status === 'DIVERGENTE'
+                ? 'danger'
+                : ['NAO_PAGO', 'PENDENTE'].includes(getFilaPagamentoAtiva(titulo)?.status)
+                  ? 'warning'
+                  : isTituloBloqueadoRetornoObra(titulo)
+                    ? 'warning'
+                    : isOverdue(titulo) ? 'danger' : null
+            )}
+            colunasConfiguraveis
+            aoMudarColunas={aoMudarColunas}
+            storageKey={tabelaStorageKey}
+            rotuloRolagem={`Titulos ${tipoLabel}`}
+            selecao={{
+              selecionados: selectedTituloIds.map((id) => Number(id)),
+              elegivel: (titulo) => fixedTipo === 'PAGAR' ? titulo.tipo === 'PAGAR' : isTituloBaixavel(titulo),
+              aoAlternar: (id, titulo) => toggleTituloSelecionado(titulo, !selectedTituloSet.has(Number(id))),
+              aoAlternarTodos: (marcar) => toggleTodosBaixaveis(marcar)
+            }}
+            larguraAcoes={canNegociar ? 240 : 160}
+            acoesLinha={(titulo) => (
+              <>
+                {canNegociar && podeNegociarTitulos([titulo]) && <button type="button"
+                  className="btn btn-outline btn-sm" onClick={() => setTitulosNegociacao([titulo])}
+                  title="Parcelar o saldo deste título">Parcelar</button>}
+                <Link
+                  className="btn btn-outline btn-sm"
+                  to={`/financeiro/titulos/${titulo.id}`}
+                  title="Abrir título"
                 >
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-[var(--c-primary)]"
-                      checked={selectedTituloSet.has(Number(titulo.id))}
-                      disabled={!isTituloBaixavel(titulo)}
-                      onChange={(event) => toggleTituloSelecionado(titulo, event.target.checked)}
-                      title={isTituloBaixavel(titulo) ? 'Selecionar titulo para baixa' : 'Somente titulos abertos ou parciais podem ser baixados'}
-                    />
-                  </td>
-                  {tableHeaders.map((header) => (
-                    <Fragment key={header}>{renderTituloCell(titulo, header)}</Fragment>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </ResizableTable>
+                  <HiOutlineEye className="h-4 w-4" />
+                </Link>
+                {getFilaPagamentoAtiva(titulo)?.status === 'DIVERGENTE' && canResolverFilaPagamentos(user) ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm text-[var(--sem-danger)]"
+                    onClick={() => navigate(`/financeiro/fila-pagamentos?status=DIVERGENTE&q=${encodeURIComponent(getTituloCodigo(titulo))}`)}
+                    title="Revisar e autorizar divergência de pagamento"
+                  >
+                    <HiOutlineExclamationTriangle className="h-4 w-4" />
+                  </button>
+                ) : null}
+                {isTituloEditavel(titulo) ? (
+                  <Link
+                    className="btn btn-outline btn-sm"
+                    to={`/financeiro/titulos/${titulo.id}/editar`}
+                    title="Editar informações do título"
+                  >
+                    <HiOutlinePencilSquare className="h-4 w-4" />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm opacity-50"
+                    disabled
+                    title="Somente títulos em aberto e sem baixa podem ser editados"
+                  >
+                    <HiOutlinePencilSquare className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            )}
+          />
         </div>
-      </div>
+
+        {/*
+          Rodapé de lista paginada no componente do sistema (R16b). O antigo
+          "3/12" ficava no cabeçalho do bloco, misturado às ações, e não
+          dizia o total — quem estava na página 3 não sabia se valia
+          continuar clicando. O `Paginacao` some sozinho quando há uma página
+          só, então nada aparece antes da primeira consulta.
+
+          O "por página" fica ao lado, porque é a mesma decisão: quanto se lê
+          de cada vez.
+        */}
+        {hasConsulted ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] pt-3">
+            <label className="flex items-center gap-2 text-sm text-[var(--c-muted)]">
+              <span>Por página</span>
+              <select
+                className="input input-sm"
+                value={String(pagination.limit || '25')}
+                onChange={(event) => {
+                  const nextLimit = event.target.value;
+                  setPagination((current) => ({
+                    ...current,
+                    limit: nextLimit,
+                    page: 1
+                  }));
+                }}
+                disabled={loading}
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'Todos' : option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Paginacao
+              pagina={Number(pagination.page || 1)}
+              totalPaginas={pagination.limit === 'all' ? 1 : Number(pagination.total_pages || 1)}
+              total={Number(pagination.total || titulos.length)}
+              rotuloRegistro="titulo"
+              carregando={loading}
+              aoMudarPagina={(proxima) => setPagination((current) => ({ ...current, page: proxima }))}
+            />
+          </div>
+        ) : null}
+      </BlocoConteudo>
 
       {relatorioModalOpen ? (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:p-4"
+          className="fixed inset-0 z-modal flex items-center justify-center bg-[var(--modal-overlay)] p-0 backdrop-blur-sm sm:p-4"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) fecharRelatorio();
@@ -2961,18 +3638,18 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             aria-modal="true"
             aria-labelledby="relatorio-titulos-title"
           >
-            <header className="flex shrink-0 flex-col gap-3 border-b border-[var(--c-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <header className="flex shrink-0 flex-col gap-3 border-b border-[var(--c-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                    <HiOutlineDocumentText className="h-5 w-5" />
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--sem-info-bg)] text-[var(--sem-info)]">
+                    <HiOutlineDocumentText className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <h2 id="relatorio-titulos-title" className="truncate text-base font-semibold text-[var(--c-text)] sm:text-lg">
+                    <h2 id="relatorio-titulos-title" className="truncate text-lg font-semibold text-[var(--c-text)]">
                       Relatorio de {pageTitle}
                     </h2>
                     <p className="text-xs text-[var(--c-muted)]">
-                      Todos os titulos encontrados pelos filtros aplicados, respeitando seu escopo de acesso.
+                      Todos os títulos encontrados pelos filtros aplicados, respeitando seu escopo de acesso.
                     </p>
                   </div>
                 </div>
@@ -2980,12 +3657,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 {relatorioPdfUrl ? (
                   <>
-                    <button type="button" className="btn btn-outline btn-sm gap-1.5" onClick={abrirRelatorioNovaAba}>
+                    <button type="button" className="btn btn-outline btn-sm gap-2" onClick={abrirRelatorioNovaAba}>
                       <HiOutlineEye className="h-4 w-4" />
                       <span className="hidden sm:inline">Abrir em nova aba</span>
                       <span className="sm:hidden">Abrir</span>
                     </button>
-                    <button type="button" className="btn btn-primary btn-sm gap-1.5" onClick={baixarRelatorio}>
+                    <button type="button" className="btn btn-primary btn-sm gap-2" onClick={baixarRelatorio}>
                       <HiOutlineArrowDownTray className="h-4 w-4" />
                       Baixar PDF
                     </button>
@@ -2993,30 +3670,30 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 ) : null}
                 <button
                   type="button"
-                  className="btn btn-outline btn-sm btn-square"
+                  className="btn btn-outline btn-sm"
                   onClick={fecharRelatorio}
-                  title="Fechar relatorio"
-                  aria-label="Fechar relatorio"
+                  title="Fechar relatório"
+                  aria-label="Fechar relatório"
                 >
-                  <HiOutlineXMark className="h-5 w-5" />
+                  <HiOutlineXMark className="h-4 w-4" />
                 </button>
               </div>
             </header>
 
-            <div className="min-h-0 flex-1 bg-slate-200 p-2 sm:p-3">
+            <div className="min-h-0 flex-1 bg-[var(--c-bg)] p-2 sm:p-3">
               {relatorioLoading ? (
-                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-slate-300 bg-white">
+                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
                   <div className="text-center">
                     <span className="loading loading-spinner loading-md text-primary" aria-hidden="true" />
-                    <p className="mt-3 text-sm font-semibold text-slate-800">Preparando o relatorio completo...</p>
-                    <p className="mt-1 text-xs text-slate-500">Aguarde enquanto os titulos filtrados sao consolidados.</p>
+                    <p className="mt-3 text-sm font-semibold text-[var(--c-text)]">Preparando o relatório completo...</p>
+                    <p className="mt-1 text-xs text-[var(--c-muted)]">Aguarde enquanto os títulos filtrados são consolidados.</p>
                   </div>
                 </div>
               ) : relatorioError ? (
-                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-rose-200 bg-white p-5">
+                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-[var(--sem-danger-border)] bg-[var(--c-surface)] p-4">
                   <div className="max-w-md text-center">
-                    <h3 className="text-sm font-semibold text-rose-700">Nao foi possivel gerar o relatorio</h3>
-                    <p className="mt-2 text-sm text-slate-600">{relatorioError}</p>
+                    <h3 className="text-sm font-semibold text-[var(--sem-danger)]">Não foi possível gerar o relatório</h3>
+                    <p className="mt-2 text-sm text-[var(--c-muted)]">{relatorioError}</p>
                     <button type="button" className="btn btn-outline btn-sm mt-4" onClick={abrirRelatorio}>
                       Tentar novamente
                     </button>
@@ -3025,8 +3702,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               ) : relatorioPdfUrl ? (
                 <iframe
                   src={relatorioPdfUrl}
-                  title={`Visualizacao do relatorio de ${pageTitle.toLowerCase()}`}
-                  className="h-full min-h-64 w-full rounded-lg border border-slate-300 bg-white"
+                  title={`Visualização do relatório de ${pageTitle.toLowerCase()}`}
+                  className="h-full min-h-64 w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]"
                 />
               ) : null}
             </div>
@@ -3054,7 +3731,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 disabled={savingBaixaMassa}
                 aria-label="Fechar baixa em massa"
               >
-                <HiOutlineXMark className="h-5 w-5" />
+                <HiOutlineXMark className="h-4 w-4" />
               </button>
             </div>
 
@@ -3062,9 +3739,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="app-filter-field">
                   <span className="app-filter-label">Data da baixa</span>
-                  <input
+                  <DateInputBR
                     className="input w-full input-sm"
-                    type="date"
                     value={baixaMassaForm.data_movimento}
                     onChange={(event) => setBaixaMassaForm((current) => ({
                       ...current,
@@ -3122,59 +3798,29 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   ) : null}
                 </label>
 
-                <label className="app-filter-field md:col-span-2">
-                  <span className="app-filter-label">Empresa pagadora</span>
-                  <select
-                    className="input w-full input-sm"
-                    value={baixaMassaForm.empresa_id}
-                    onChange={(event) => {
-                      const empresaSelecionada = event.target.value;
-                      const empresaDiferente = Boolean(empresaSelecionada && selectedTitulosBaixaveis.some((titulo) => {
-                        const empresaTituloId = getEmpresaTituloId(titulo);
-                        return empresaTituloId && String(empresaTituloId) !== String(empresaSelecionada);
-                      }));
-                      setBaixaMassaForm((current) => {
-                        const base = {
-                          ...current,
-                          empresa_id: empresaSelecionada,
-                          conta_bancaria_id: '',
-                          cartao_id: '',
-                          intercompany: empresaDiferente || current.intercompany
-                        };
-                        return empresaDiferente
-                          ? applyNaturezaBaixaIntercompany(base, current.natureza_intercompany_baixa || 'OPERACIONAL_TERCEIRO')
-                          : base;
-                      });
-                    }}
-                    required
-                  >
-                    <option value="">Selecione</option>
-                    {empresasGrupo.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>
-                        {empresa.nome || empresa.razao_social || `Empresa #${empresa.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
                 {baixaMassaUsaCartao ? (
                   <label className="app-filter-field md:col-span-2">
-                    <span className="app-filter-label">Cartao utilizado</span>
+                    <span className="app-filter-label">Cartão utilizado</span>
                     <select
                       className="input w-full input-sm"
                       value={baixaMassaForm.cartao_id}
                       onChange={(event) => {
                         const cartaoSelecionado = cartoes.find((cartao) => String(cartao.id) === String(event.target.value));
-                        const contaCartao = isCartaoDebito(cartaoSelecionado) ? String(cartaoSelecionado?.conta_bancaria_id || '') : '';
-                        setBaixaMassaForm((current) => ({
-                          ...current,
-                          cartao_id: event.target.value,
-                          conta_bancaria_id: current.parcelado ? current.conta_bancaria_id : contaCartao
-                        }));
+                        const contaCartao = contasBancarias.find((conta) => String(conta.id) === String(cartaoSelecionado?.conta_bancaria_id));
+                        const contaCartaoId = isCartaoDebito(cartaoSelecionado) ? String(contaCartao?.id || '') : '';
+                        setBaixaMassaForm((current) => {
+                          const contaEfetivaId = current.parcelado ? current.conta_bancaria_id : contaCartaoId;
+                          const contaEfetiva = contasBancarias.find((conta) => String(conta.id) === String(contaEfetivaId));
+                          return aplicarEmpresaFonteBaixaMassa({
+                            ...current,
+                            cartao_id: event.target.value,
+                            conta_bancaria_id: contaEfetivaId
+                          }, contaEfetiva?.empresa_id || contaCartao?.empresa_id);
+                        });
                       }}
                       required
                     >
-                      <option value="">Selecione o cartao</option>
+                      <option value="">Selecione o cartão</option>
                       {cartoesBaixaMassa.map((cartao) => (
                         <option key={cartao.id} value={cartao.id}>
                           {getCartaoLabel(cartao)}
@@ -3183,7 +3829,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                     </select>
                     {baixaMassaCartaoDebito ? (
                       <span className="mt-1 block text-xs text-[var(--c-muted)]">
-                        Cartao de debito baixa pela conta bancaria vinculada ao cartao.
+                        Cartão de débito baixa pela conta bancária vinculada ao cartão.
                       </span>
                     ) : null}
                   </label>
@@ -3194,10 +3840,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   <select
                     className="input w-full input-sm"
                     value={baixaMassaForm.conta_bancaria_id}
-                    onChange={(event) => setBaixaMassaForm((current) => ({ ...current, conta_bancaria_id: event.target.value }))}
+                    onChange={(event) => selecionarContaBaixaMassa(event.target.value)}
                     required={baixaMassaParcelada || (contaBancariaObrigatoria(baixaMassaForm.forma_recebimento) && !baixaMassaUsaChequeTerceiro) || baixaMassaCartaoDebito}
                     disabled={
-                      !baixaMassaForm.empresa_id ||
                       (!baixaMassaParcelada && (baixaMassaUsaCartao || !contaBancariaObrigatoria(baixaMassaForm.forma_recebimento)))
                     }
                   >
@@ -3208,20 +3853,21 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                         ? (baixaMassaCartaoDebito ? 'Conta vinculada ao cartao' : 'Cartao de credito sem baixa bancaria imediata')
                         : baixaMassaUsaDinheiro
                         ? 'Selecione o caixa fisico'
-                        : (baixaMassaForm.empresa_id ? 'Sem conta bancaria' : 'Selecione a empresa pagadora')}
+                        : 'Selecione uma conta bancaria'}
                     </option>
                     {contasFinanceirasCompativeisBaixaMassa.map((conta) => (
                       <option key={conta.id} value={conta.id}>
                         {conta.nome}
                         {conta.banco ? ` - ${conta.banco}` : ''}
+                        {conta.empresa?.nome ? ` - ${conta.empresa.nome}` : ''}
                       </option>
                     ))}
                   </select>
                   {baixaMassaUsaDinheiro ? (
                     <span className="mt-1 block text-xs text-[var(--c-muted)]">
                       O caixa deve estar aberto e abranger a data informada para o pagamento.
-                      {baixaMassaForm.empresa_id && contasFinanceirasCompativeisBaixaMassa.length === 0
-                        ? ' Nenhum caixa fisico ativo foi encontrado para esta empresa.'
+                      {contasFinanceirasCompativeisBaixaMassa.length === 0
+                        ? ' Nenhum caixa fisico ativo foi encontrado.'
                         : ''}
                     </span>
                   ) : null}
@@ -3255,7 +3901,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                     <span>
                       <span className="block font-semibold">Baixa Entre Empresas</span>
                       <span className="block text-xs text-[var(--c-muted)]">
-                        Use quando a empresa pagadora/recebedora for diferente da empresa do titulo.
+                        Use quando a empresa pagadora/recebedora for diferente da empresa do título.
                       </span>
                     </span>
                   </label>
@@ -3315,9 +3961,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                         onChange={(event) => setBaixaMassaParcelamentoAtivo(event.target.checked)}
                       />
                       <span>
-                        Agrupar titulos e gerar parcelas para conciliacao
+                        Agrupar títulos e gerar parcelas para conciliação
                         <span className="mt-1 block text-xs font-normal text-[var(--c-muted)]">
-                          Use para cheque ou cartao quando varios titulos forem pagos em parcelas. Os titulos originais serao quitados e cada parcela ficara disponivel para conciliacao pela data e valor.
+                          Use para cheque ou cartão quando varios títulos forem pagos em parcelas. Os títulos originais serão quitados e cada parcela ficará disponível para conciliação pela data e valor.
                         </span>
                       </span>
                     </label>
@@ -3348,7 +3994,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                       <span>
                         Usar cheque de terceiro em carteira
                         <span className="mt-1 block text-xs font-normal text-[var(--c-muted)]">
-                          Selecione um cheque recebido anteriormente para pagar estes titulos.
+                          Selecione um cheque recebido anteriormente para pagar estes títulos.
                         </span>
                       </span>
                     </label>
@@ -3367,10 +4013,16 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                     <select
                       className="input w-full input-sm"
                       value={baixaMassaForm.cheque_terceiro_id || ''}
-                      onChange={(event) => setBaixaMassaForm((current) => ({ ...current, cheque_terceiro_id: event.target.value }))}
+                      onChange={(event) => {
+                        const cheque = chequesTerceirosDisponiveis.find((item) => String(item.id) === String(event.target.value));
+                        setBaixaMassaForm((current) => aplicarEmpresaFonteBaixaMassa({
+                          ...current,
+                          cheque_terceiro_id: event.target.value
+                        }, cheque?.empresa_id));
+                      }}
                       required
                     >
-                      <option value="">Selecione um cheque disponivel</option>
+                      <option value="">Selecione um cheque disponível</option>
                       {chequesTerceirosDisponiveis.map((cheque) => (
                         <option key={cheque.id} value={cheque.id}>
                           {formatChequeTerceiroLabel(cheque)}
@@ -3395,7 +4047,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
                 {!baixaMassaParcelada ? (
                   <label className="app-filter-field md:col-span-2">
-                    <span className="app-filter-label">Desconto por titulo</span>
+                    <span className="app-filter-label">Desconto por título</span>
                     <input
                       className="input w-full input-sm"
                       value={baixaMassaForm.desconto}
@@ -3408,7 +4060,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 {baixaMassaParcelada ? (
                   <div className="md:col-span-2 space-y-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                      <label className="app-filter-field w-full sm:max-w-[220px]">
+                      <label className="app-filter-field w-full sm:w-auto">
                         <span className="app-filter-label">Quantidade de parcelas</span>
                         <input
                           className="input w-full input-sm"
@@ -3447,9 +4099,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                           <div className="grid gap-2 md:grid-cols-3">
                             <label className="app-filter-field">
                               <span className="app-filter-label">Data da parcela</span>
-                              <input
+                              <DateInputBR
                                 className="input w-full input-sm"
-                                type="date"
                                 value={parcela.data_movimento}
                                 onChange={(event) => updateBaixaMassaParcela(index, 'data_movimento', event.target.value)}
                                 required
@@ -3472,7 +4123,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                                 className="input w-full input-sm"
                                 value={parcela.documento_referencia}
                                 onChange={(event) => updateBaixaMassaParcela(index, 'documento_referencia', event.target.value)}
-                                placeholder="Referencia da parcela"
+                                placeholder="Referência da parcela"
                               />
                             </label>
                           </div>
@@ -3488,7 +4139,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                                     onChange={(event) => updateBaixaMassaParcela(index, 'cheque_terceiro_id', event.target.value)}
                                     required
                                   >
-                                    <option value="">Selecione um cheque disponivel</option>
+                                    <option value="">Selecione um cheque disponível</option>
                                     {chequesTerceirosDisponiveis.map((cheque) => (
                                       <option key={cheque.id} value={cheque.id}>
                                         {formatChequeTerceiroLabel(cheque)}
@@ -3515,18 +4166,29 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 ) : null}
 
                 <label className="app-filter-field md:col-span-2">
-                  <span className="app-filter-label">Observacoes</span>
+                  <span className="app-filter-label">Observações</span>
                   <textarea
-                    className="input min-h-[92px] w-full"
+                    /*
+                      R10/R21: a altura era noventa e dois pixels soltos numa
+                      classe arbitrária (escrito por extenso porque o check
+                      da R10 não corta comentário e reprovaria o exemplo).
+                      Não existe classe de textarea no sistema de componentes
+                      (lacuna registrada no relatório), então a altura passa
+                      a ser dita em LINHAS DE TEXTO pelo `rows` — que é a
+                      unidade certa para um campo de texto e não é medida à
+                      mão. Três linhas ficam na mesma faixa dos 92px.
+                    */
+                    rows={3}
+                    className="input w-full"
                     value={baixaMassaForm.observacoes}
                     onChange={(event) => setBaixaMassaForm((current) => ({ ...current, observacoes: event.target.value }))}
-                    placeholder="Ex.: Baixa em massa conforme extrato bancario."
+                    placeholder="Ex.: Baixa em massa conforme extrato bancário."
                   />
                 </label>
               </div>
 
               <div className="finance-operation-notice finance-operation-notice--warning text-xs">
-                <strong>Conferencia:</strong> a baixa em massa quita os titulos selecionados conforme a forma informada. Para cheque ou cartao parcelado, as parcelas geradas ficam disponiveis para conciliacao.
+                <strong>Conferência:</strong> a baixa em massa quita os titulos selecionados conforme a forma informada. Para cheque ou cartao parcelado, as parcelas geradas ficam disponiveis para conciliacao.
               </div>
 
               {error ? <p className="finance-operation-notice finance-operation-notice--danger">{error}</p> : null}
@@ -3547,7 +4209,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   className="btn btn-primary"
                   disabled={
                     savingBaixaMassa ||
-                    !baixaMassaForm.empresa_id ||
                     (baixaMassaUsaCartao && !baixaMassaForm.cartao_id) ||
                     (baixaMassaParcelada && !baixaMassaForm.conta_bancaria_id) ||
                     (!baixaMassaParcelada && baixaMassaCartaoDebito && !baixaMassaForm.conta_bancaria_id) ||
@@ -3573,7 +4234,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
           contas={contasBancarias}
           cartoes={cartoes}
           cheques={chequesTerceirosDisponiveis}
-          empresas={empresasGrupo}
           onClose={() => setModalBaixaCompostaOpen(false)}
           onConfirmed={() => {
             setSelectedTituloIds([]);
@@ -3583,12 +4243,20 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       ) : null}
 
       {importandoCodigos ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm">
-          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] px-5 py-4 text-sm font-semibold text-[var(--c-text)] shadow-xl">
-            Importando codigos de barras...
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-[var(--modal-overlay)] px-4 backdrop-blur-sm">
+          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-4 text-sm font-semibold text-[var(--c-text)] shadow-xl">
+            Importando códigos de barras...
           </div>
         </div>
       ) : null}
-    </div>
+
+      {/* R19: modal de confirmação do sistema (exclusão em massa). */}
+      {titulosNegociacao && <TituloNegociacaoModal titulos={titulosNegociacao}
+        onClose={() => setTitulosNegociacao(null)} onConfirmed={() => {
+          setSelectedTituloIds([]);
+          setAppliedFilters(current => current ? { ...current } : current);
+        }} />}
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

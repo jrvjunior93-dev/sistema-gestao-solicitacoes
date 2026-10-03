@@ -31,30 +31,49 @@ const CAMPOS_NOVA_SOLICITACAO = [
     id: 'credor',
     label: 'Credor',
     descricao: 'Pessoa ou empresa vinculada como credor.',
-    visivelPadrao: true,
-    obrigatorioPadrao: false
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_credor !== false,
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_credor)
   },
   {
     id: 'cadastro_credor',
     label: 'Cadastro de credor',
     descricao: 'Permite cadastrar um novo credor durante a abertura da solicitacao.',
-    visivelPadrao: false,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo),
     obrigatorioPadrao: false,
     permiteObrigatorio: false
+  },
+  {
+    id: 'favorecido',
+    label: 'Favorecido',
+    descricao: 'Pessoa ou empresa que recebera o pagamento.',
+    excetoFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_favorecido),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_favorecido)
+  },
+  {
+    id: 'forma_pagamento',
+    label: 'Forma de pagamento',
+    descricao: 'Forma prevista para o pagamento da solicitacao.',
+    excetoFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_forma_pagamento),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_forma_pagamento)
   },
   {
     id: 'apropriacao_principal',
     label: 'Apropriacao principal',
     descricao: 'Apropriacao da solicitacao na obra.',
-    visivelPadrao: (behavior, contexto) => Boolean(contexto?.apropriacoesDisponiveis && behavior.mostrar_apropriacao_principal),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_apropriacao_principal)
+    visivelPadrao: (behavior, contexto) => Boolean(
+      contexto?.apropriacoesDisponiveis
+      && (behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_apropriacao_principal)
+    ),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_apropriacao_principal)
   },
   {
     id: 'subtipo',
     label: 'Subtipo',
     descricao: 'Subtipo de contrato ou classificacao complementar.',
-    visivelPadrao: (behavior) => Boolean(behavior.mostrar_subtipo),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_subtipo)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_subtipo),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_subtipo)
   },
   {
     id: 'contrato',
@@ -78,13 +97,13 @@ const CAMPOS_NOVA_SOLICITACAO = [
     id: 'valor',
     label: 'Valor',
     descricao: 'Valor da solicitacao.',
-    visivelPadrao: (behavior) => Boolean(behavior.mostrar_valor),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_valor)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_valor),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_valor)
   },
   {
     id: 'data_vencimento',
-    label: 'Data de vencimento',
-    descricao: 'Prazo ou vencimento esperado.',
+    label: 'Data da solicitacao',
+    descricao: 'Prazo operacional exibido como data de resposta ou de pagamento, conforme o tipo.',
     visivelPadrao: true,
     obrigatorioPadrao: true
   },
@@ -127,19 +146,74 @@ const CAMPOS_NOVA_SOLICITACAO = [
     obrigatorioPadrao: (behavior) => Boolean(behavior.exige_itens_apropriacao)
   },
   {
+    id: 'contrato_objeto',
+    label: 'Objeto do contrato',
+    descricao: 'Define o que esta sendo contratado no novo fluxo.',
+    somenteFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo),
+    obrigatorioPadrao: false
+  },
+  {
+    id: 'contrato_justificativa',
+    label: 'Justificativa da contratacao',
+    descricao: 'Registra por que a contratacao e necessaria.',
+    somenteFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo),
+    obrigatorioPadrao: false
+  },
+  {
+    id: 'contrato_responsavel',
+    label: 'Responsavel pela contratacao',
+    descricao: 'Usuario responsavel pelo acompanhamento da contratacao.',
+    somenteFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo),
+    obrigatorioPadrao: false
+  },
+  {
+    id: 'contrato_vigencia_inicio',
+    label: 'Vigencia inicial do contrato',
+    descricao: 'Data de inicio da vigencia contratual.',
+    somenteFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo),
+    obrigatorioPadrao: false
+  },
+  {
+    id: 'contrato_vigencia_fim',
+    label: 'Vigencia final do contrato',
+    descricao: 'Data final da vigencia contratual.',
+    somenteFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo),
+    obrigatorioPadrao: false
+  },
+  {
+    id: 'pessoas_vinculadas',
+    label: 'Usuarios com acesso a obra',
+    descricao: 'Usuarios ativos que receberao acesso quando a nova obra for cadastrada.',
+    somenteFluxoCadastroObra: true,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_cadastro_obra),
+    obrigatorioPadrao: (behavior) => Boolean(behavior.usa_fluxo_cadastro_obra)
+  },
+  {
     id: 'descricao',
-    label: 'Descricao',
-    descricao: 'Descricao textual da solicitacao.',
+    label: 'Titulo',
+    descricao: 'Titulo curto usado para identificar a solicitacao.',
     visivelPadrao: (behavior) => behavior.mostrar_descricao !== false,
     obrigatorioPadrao: (behavior) => Boolean(behavior.exige_descricao)
+  },
+  {
+    id: 'justificativa',
+    label: 'Justificativa',
+    descricao: 'Motivo e necessidade da solicitacao.',
+    excetoFluxoContratoNovo: true,
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_justificativa),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_justificativa)
   },
   {
     id: 'anexos',
     label: 'Anexos',
     descricao: 'Arquivos anexados na abertura da solicitacao.',
-    visivelPadrao: true,
-    obrigatorioPadrao: false,
-    permiteObrigatorio: false
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_anexos !== false,
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_anexos)
   }
 ];
 
@@ -248,28 +322,55 @@ function normalizarConfigCampos(raw) {
   return { regras };
 }
 
-function obterRegraCampos(config, tipoId, areaResponsavel) {
-  const tipoKey = normalizarTipoKey(tipoId);
-  const areaKey = normalizarAreaKey(areaResponsavel);
+/**
+ * Chave da regra por SUBTIPO: `tipo:subtipo` (ex.: "33:26").
+ *
+ * O escopo de contratos pede conjuntos de campos diferentes para Abertura, Solicitacao e os
+ * Termos Aditivos — todos do mesmo tipo. A regra do subtipo tem precedencia sobre a do tipo e,
+ * quando nao existe, o tipo continua valendo: nenhuma configuracao ja feita muda de
+ * comportamento, e tipo sem subtipo segue exatamente como sempre foi.
+ */
+function chaveTipoSubtipo(tipoId, subtipoId) {
+  const tipo = normalizarTipoKey(tipoId);
+  const sub = normalizarTipoKey(subtipoId);
+  return tipo && sub ? `${tipo}:${sub}` : null;
+}
 
-  return (
-    config?.regras?.[areaKey]?.tipos?.[tipoKey]?.campos ||
-    config?.regras?.__GLOBAL__?.tipos?.[tipoKey]?.campos ||
-    config?.regras?.[tipoKey]?.campos ||
-    {}
-  );
+function normalizarAreasKey(value) {
+  const valores = Array.isArray(value) ? value : [value];
+  return [...new Set(valores.map(normalizarAreaKey).filter(Boolean))];
+}
+
+function obterRegraCampos(config, tipoId, areaResponsavel, subtipoId) {
+  const tipoKey = normalizarTipoKey(tipoId);
+  const subKey = chaveTipoSubtipo(tipoId, subtipoId);
+  const areas = normalizarAreasKey(areaResponsavel);
+  const candidatosPorArea = areas.flatMap((areaKey) => [
+    subKey && config?.regras?.[areaKey]?.tipos?.[subKey]?.campos,
+    config?.regras?.[areaKey]?.tipos?.[tipoKey]?.campos
+  ]);
+
+  // Ordem: subtipo antes do tipo, dentro de cada nivel (area -> global -> legado).
+  const candidatos = [
+    ...candidatosPorArea,
+    subKey && config?.regras?.__GLOBAL__?.tipos?.[subKey]?.campos,
+    config?.regras?.__GLOBAL__?.tipos?.[tipoKey]?.campos,
+    subKey && config?.regras?.[subKey]?.campos,
+    config?.regras?.[tipoKey]?.campos
+  ];
+
+  return candidatos.find((c) => c && typeof c === 'object') || {};
 }
 
 function obterRegraTipo(config, tipoId, areaResponsavel) {
   const tipoKey = normalizarTipoKey(tipoId);
-  const areaKey = normalizarAreaKey(areaResponsavel);
+  const areas = normalizarAreasKey(areaResponsavel);
 
-  return (
-    config?.regras?.[areaKey]?.tipos?.[tipoKey] ||
-    config?.regras?.__GLOBAL__?.tipos?.[tipoKey] ||
-    config?.regras?.[tipoKey] ||
-    {}
-  );
+  return [
+    ...areas.map((areaKey) => config?.regras?.[areaKey]?.tipos?.[tipoKey]),
+    config?.regras?.__GLOBAL__?.tipos?.[tipoKey],
+    config?.regras?.[tipoKey]
+  ].find((regra) => regra && typeof regra === 'object') || {};
 }
 
 function obterOpcoesNovaSolicitacao(config, tipoId, areaResponsavel) {
@@ -312,7 +413,7 @@ function resolverCamposNovaSolicitacao(comportamentoTipo, config, tipoId, contex
     apropriacoesDisponiveis: contexto.apropriacoesDisponiveis !== false,
     solicitacaoCompra
   };
-  const regrasTipo = obterRegraCampos(config, tipoId, contexto.areaResponsavel);
+  const regrasTipo = obterRegraCampos(config, tipoId, contexto.areaResponsavel, contexto.tipoSubId);
   const campos = {};
 
   CAMPOS_NOVA_SOLICITACAO.forEach((definicao) => {
@@ -342,6 +443,30 @@ function resolverCamposNovaSolicitacao(comportamentoTipo, config, tipoId, contex
     };
   });
 
+  if (behavior.usa_apropriacao_automatica_obra === true) {
+    ['contrato', 'apropriacoes_contrato', 'apropriacao_principal'].forEach((campoId) => {
+      campos[campoId] = {
+        ...campos[campoId],
+        visivel: false,
+        obrigatorio: false
+      };
+    });
+  }
+
+  if (behavior.usa_fluxo_cadastro_obra === true) {
+    const camposVisiveis = new Set(['descricao', 'pessoas_vinculadas', 'anexos']);
+    const camposObrigatorios = new Set(['descricao', 'pessoas_vinculadas']);
+    Object.keys(campos).forEach((campoId) => {
+      campos[campoId] = {
+        ...campos[campoId],
+        visivel: camposVisiveis.has(campoId),
+        obrigatorio: camposObrigatorios.has(campoId),
+        visivel_padrao: camposVisiveis.has(campoId),
+        obrigatorio_padrao: camposObrigatorios.has(campoId)
+      };
+    });
+  }
+
   return campos;
 }
 
@@ -352,7 +477,10 @@ function montarPayloadConfigCampos(config) {
       label: campo.label,
       descricao: campo.descricao,
       fixo: Boolean(campo.fixo),
-      permite_obrigatorio: campo.permiteObrigatorio !== false
+      permite_obrigatorio: campo.permiteObrigatorio !== false,
+      somente_fluxo_contrato_novo: campo.somenteFluxoContratoNovo === true,
+      somente_fluxo_cadastro_obra: campo.somenteFluxoCadastroObra === true,
+      exceto_fluxo_contrato_novo: campo.excetoFluxoContratoNovo === true
     })),
     opcoes_disponiveis: OPCOES_NOVA_SOLICITACAO,
     regras: normalizarConfigCampos(config).regras
@@ -361,6 +489,8 @@ function montarPayloadConfigCampos(config) {
 
 module.exports = {
   CAMPOS_NOVA_SOLICITACAO,
+  chaveTipoSubtipo,
+  obterRegraCampos,
   CHAVE_NOVA_SOLICITACAO_CAMPOS,
   montarPayloadConfigCampos,
   obterConfigCamposNovaSolicitacao,

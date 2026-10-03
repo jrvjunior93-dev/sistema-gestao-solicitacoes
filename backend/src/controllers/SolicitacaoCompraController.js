@@ -4,8 +4,10 @@ const { Op, fn, col } = require('sequelize');
 const {
   Anexo,
   Apropriacao,
+  Categoria,
   Historico,
   Insumo,
+  InsumoAlias,
   Obra,
   Parceiro,
   FornecedorCompra,
@@ -33,11 +35,14 @@ const { createWorkbookBuffer, sheetToJsonRows } = require('../utils/excelWorkboo
 const { getPresignedUrl, uploadToS3 } = require('../services/s3');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { normalizeOriginalName } = require('../utils/fileName');
+const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
 const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
 const { findSetorByCapability, resolveSetorPersistenciaValue, userHasSetorCapability } = require('../services/setorCapabilityService');
 const { normalizeTipoSolicitacaoBehavior, normalizeTipoSolicitacaoCodigo } = require('../services/tipoSolicitacaoBehaviorService');
+const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
 const {
   buildCotacaoItemKey,
+  calcularValorMercadoriasCotacao,
   carregarSolicitacaoCompraCompleta,
   isSolicitacaoCompraTerminal,
   gerarTokenCotacao,
@@ -59,6 +64,7 @@ const {
   buildCompraItemKey,
   calcularDisponibilidadeFornecedorItem,
   montarMapaAlocacoesAtivasPorFornecedorItem,
+  montarMapaAlocacoesAtivasPorResposta,
   montarMapaAlocacoesAtivasPorItem
 } = require('../services/comprasDisponibilidadeService');
 const { isPedidoCompraStatusLocked } = require('../services/pedidoCompraStatusConfig');
@@ -73,6 +79,7 @@ const {
   canAccessCompras,
   canAccessSolicitacaoCompraByScope,
   canAlterarQuantidadeSolicitacaoCompra,
+  canEditarItensSolicitacaoCompra,
   canEditarApropriacoesItemCompraDireta,
   canEditarApropriacoesItemSolicitacaoCompra,
   canEncaminharCompraSolicitacoes,
@@ -386,7 +393,7 @@ async function validarAcessoCompras(usuario) {
 
 async function buscarTipoSolicitacaoCompra(transaction) {
   const tipos = await TipoSolicitacao.findAll({
-    attributes: ['id', 'nome', 'ativo', 'codigo_interno', 'comportamento'],
+    attributes: ['id', 'nome', 'ativo', 'codigo_interno', 'comportamento', 'disponivel_para_obras'],
     transaction
   });
 
@@ -407,6 +414,7 @@ async function buscarTipoSolicitacaoCompra(transaction) {
       nome: 'Solicitação de Compra',
       codigo_interno: 'SOLICITACAO_DE_COMPRA',
       comportamento: JSON.stringify(normalizeTipoSolicitacaoBehavior({ codigo_interno: 'SOLICITACAO_DE_COMPRA' })),
+      disponivel_para_obras: true,
       ativo: true
     },
     { transaction }
@@ -434,11 +442,11 @@ async function buscarSetorGerenciaProcessos(transaction) {
 }
 
 async function montarFluxoAprovacaoCompra({ transaction }) {
-  const setorCompras = await buscarSetorCompras(transaction);
+  const setorGerenciaProcessos = await buscarSetorGerenciaProcessos(transaction);
 
   return {
     usaFluxoDiretoria: false,
-    areaResponsavel: setorCompras,
+    areaResponsavel: setorGerenciaProcessos,
     diretoriaFluxoCodigo: null,
     setorDestinoPosAprovacao: null
   };
@@ -458,7 +466,7 @@ async function montarFluxoAprovacaoCompraDireta({ transaction }) {
 async function buscarTipoSolicitacaoCompraDireta(tipoSolicitacaoId, transaction) {
   if (tipoSolicitacaoId) {
     const tipoInformado = await TipoSolicitacao.findByPk(tipoSolicitacaoId, {
-      attributes: ['id', 'nome', 'ativo', 'codigo_interno', 'comportamento'],
+      attributes: ['id', 'nome', 'ativo', 'codigo_interno', 'comportamento', 'disponivel_para_obras'],
       transaction
     });
 
@@ -468,7 +476,7 @@ async function buscarTipoSolicitacaoCompraDireta(tipoSolicitacaoId, transaction)
   }
 
   const tipos = await TipoSolicitacao.findAll({
-    attributes: ['id', 'nome', 'ativo', 'codigo_interno', 'comportamento'],
+    attributes: ['id', 'nome', 'ativo', 'codigo_interno', 'comportamento', 'disponivel_para_obras'],
     transaction
   });
 
@@ -489,6 +497,7 @@ async function buscarTipoSolicitacaoCompraDireta(tipoSolicitacaoId, transaction)
       nome: 'Compra Direta',
       codigo_interno: 'COMPRA_DIRETA',
       comportamento: JSON.stringify(normalizeTipoSolicitacaoBehavior({ codigo_interno: 'COMPRA_DIRETA' })),
+      disponivel_para_obras: true,
       ativo: true
     },
     { transaction }
@@ -515,6 +524,12 @@ function isStatusSolicitacaoCompraLiberadoParaCompras(status) {
     return true;
   }
   return normalizado.startsWith('PEDIDO_');
+}
+
+function isStatusSolicitacaoCompraAguardandoRevisaoGeo(status) {
+  return ['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(
+    normalizeFluxoTokenCompra(status)
+  );
 }
 
 function isSolicitacaoCompraCancelada(solicitacao) {
@@ -593,6 +608,54 @@ async function podeAcompanharCompraAntesLiberacao(usuario, solicitacao, transact
   return !ehSetorCompras;
 }
 
+async function podeGerenciarCompraNaFilaGeo(usuario, solicitacao, transaction = null) {
+  if (!solicitacao || isSolicitacaoCompraDireta(solicitacao)) return false;
+  if (!isStatusSolicitacaoCompraAguardandoRevisaoGeo(solicitacao.status)) return false;
+  if (!(await userHasSetorCapability(usuario, 'eh_setor_geo'))) return false;
+
+  const possuiPermissao = (
+    await canEditarItensSolicitacaoCompra(usuario)
+    || await canEncaminharCompraSolicitacoes(usuario)
+  );
+  if (!possuiPermissao) return false;
+
+  const principal = solicitacao.solicitacaoPrincipal || (
+    Number(solicitacao.solicitacao_principal_id || 0) > 0
+      ? await Solicitacao.findByPk(solicitacao.solicitacao_principal_id, {
+          attributes: ['id', 'area_responsavel', 'status_global'],
+          transaction
+        })
+      : null
+  );
+  if (!principal) return false;
+
+  const setorGeo = await buscarSetorGerenciaProcessos(transaction);
+  return normalizeFluxoTokenCompra(principal.area_responsavel) === normalizeFluxoTokenCompra(setorGeo);
+}
+
+async function validarEtapaGerenciamentoItens(usuario, solicitacao, res, transaction = null) {
+  if (isBusinessAdmin(usuario)) return true;
+
+  const [ehSetorGeo, ehSetorCompras] = await Promise.all([
+    userHasSetorCapability(usuario, 'eh_setor_geo'),
+    userHasSetorCapability(usuario, 'eh_setor_compras')
+  ]);
+
+  if (!ehSetorGeo && !ehSetorCompras) {
+    res.status(403).json({ error: 'Apenas GEO ou Compras pode gerenciar os itens da solicitacao de compra.' });
+    return false;
+  }
+
+  if (ehSetorGeo && !ehSetorCompras && !(await podeGerenciarCompraNaFilaGeo(usuario, solicitacao, transaction))) {
+    res.status(403).json({
+      error: 'GEO pode gerenciar os itens somente enquanto a solicitacao aguarda revisao no proprio setor.'
+    });
+    return false;
+  }
+
+  return true;
+}
+
 async function carregarSolicitacaoCompra(id) {
   return SolicitacaoCompra.findByPk(id, {
     include: [
@@ -618,6 +681,16 @@ async function carregarSolicitacaoCompra(id) {
         separate: true,
         include: [
           { model: Apropriacao, as: 'apropriacao', attributes: APROPRIACAO_ATTRIBUTES },
+          {
+            model: Insumo,
+            as: 'insumoCatalogado',
+            attributes: ['id', 'nome', 'codigo', 'descricao', 'unidade_id', 'unidade_manual', 'categoria_id', 'ativo'],
+            include: [
+              { model: Unidade, as: 'unidade', attributes: ['id', 'nome', 'sigla'] },
+              { model: Categoria, as: 'categoria', attributes: ['id', 'nome'] }
+            ]
+          },
+          { model: User, as: 'catalogador', attributes: ['id', 'nome', 'email'] },
           buildIncludeRateiosItemManual()
         ]
       },
@@ -656,6 +729,7 @@ async function carregarSolicitacaoCompra(id) {
               'observacao',
               'quantidade_minima_item',
               'quantidade_disponivel',
+              'escopo_disponibilidade',
               'ipi_valor',
               'icms_valor',
               'st_valor',
@@ -690,6 +764,7 @@ async function carregarSolicitacaoCompra(id) {
         attributes: [
           'id',
           'fornecedor_compra_id',
+          'resposta_item_id',
           'item_tipo',
           'solicitacao_compra_item_id',
           'solicitacao_compra_item_manual_id',
@@ -907,12 +982,20 @@ function prepararItemCompraPayload({
     valor_total: arredondarMoeda(
       parseValorMonetario(item?.valor_total) || quantidade * parseValorMonetario(item?.valor_unitario)
     ),
+    frete_valor: arredondarMoeda(parseValorMonetario(item?.frete_valor)),
     especificacao: item?.especificacao || '',
     necessario_para: item?.necessario_para || necessarioParaPadrao || null,
     link_produto: item?.link_produto || null,
     arquivo_url: item?.arquivo_url || null,
     arquivo_nome_original: item?.arquivo_nome_original || null
   };
+
+  const unidadeManual = String(item?.unidade_sigla_manual || '').trim();
+  if (unidadeManual.length > 50) {
+    return {
+      erro: `Item ${index + 1}: a unidade deve ter no maximo 50 caracteres.`
+    };
+  }
 
   if (item?.manual || !item?.insumo_id) {
     if (!String(item?.nome_manual || '').trim() || !String(item?.unidade_sigla_manual || '').trim()) {
@@ -938,13 +1021,19 @@ function prepararItemCompraPayload({
     };
   }
 
+  if (!Number(item?.unidade_id) && !unidadeManual) {
+    return {
+      erro: `Item ${index + 1}: informe uma unidade cadastrada ou uma UN livre.`
+    };
+  }
+
   return {
     manual: false,
     item: {
       ...baseItem,
       insumo_id: Number(item.insumo_id),
-      unidade_id: item?.unidade_id ? Number(item.unidade_id) : null,
-      unidade_sigla_manual: item?.unidade_sigla_manual || null
+      unidade_id: unidadeManual ? null : (item?.unidade_id ? Number(item.unidade_id) : null),
+      unidade_sigla_manual: unidadeManual || null
     },
     rateios
   };
@@ -959,6 +1048,7 @@ function obterLinhasPdf(solicitacao) {
     quantidade: item.quantidade,
     valor_unitario: item.valor_unitario,
     valor_total: item.valor_total,
+    frete_valor: item.frete_valor,
     especificacao: item.especificacao || '-',
     apropriacao: construirResumoApropriacoes(item).linhas.join('\n') || '-',
     necessario_para: item.necessario_para,
@@ -975,6 +1065,7 @@ function obterLinhasPdf(solicitacao) {
     quantidade: item.quantidade,
     valor_unitario: item.valor_unitario,
     valor_total: item.valor_total,
+    frete_valor: item.frete_valor,
     especificacao: item.especificacao || '-',
     apropriacao: construirResumoApropriacoes(item).linhas.join('\n') || '-',
     necessario_para: item.necessario_para,
@@ -1045,7 +1136,7 @@ function limitarTextoPdf(texto, limite = 160) {
 
 function obterDadosCabecalhoCompraDireta(solicitacao) {
   const descricaoPrincipal = solicitacao?.solicitacaoPrincipal?.descricao || '';
-  const valor = Number(solicitacao?.valor_fechado || solicitacao?.solicitacaoPrincipal?.valor || 0);
+  const valor = Number(solicitacao?.solicitacaoPrincipal?.valor || solicitacao?.valor_fechado || 0);
 
   return {
     valorTotal: `R$ ${formatCurrencyPdf(valor)}`,
@@ -1057,6 +1148,10 @@ function obterDadosCabecalhoCompraDireta(solicitacao) {
 function isFormaPagamentoBoleto(forma) {
   const texto = normalizeTextCompra(`${forma?.codigo || ''} ${forma?.nome || ''} ${forma?.tipo || ''}`);
   return Boolean(forma?.gera_boleto) || texto.includes('BOLETO');
+}
+
+function isFormaPagamentoPix(forma) {
+  return normalizeTextCompra(`${forma?.codigo || ''} ${forma?.nome || ''} ${forma?.tipo || ''}`).includes('PIX');
 }
 
 function isFormaPagamentoFopag(forma) {
@@ -1071,6 +1166,10 @@ function formatarFormaPagamentoResumo(forma) {
 
 function isAnexoBoletoCompraDireta(anexo) {
   return normalizeTextCompra(anexo?.tipo_documento || '') === 'BOLETO';
+}
+
+function isAnexoBoletoFreteCompraDireta(anexo) {
+  return normalizeTextCompra(anexo?.tipo_documento || '') === 'FRETE_BOLETO';
 }
 
 function buildRespostaItemKey(itemTipo, itemReferenciaId) {
@@ -1246,12 +1345,18 @@ function selecionarPayloadItensCotacao(entry, itensPayload, itensCotaveis) {
 async function carregarItensCotaveisDiretos(solicitacaoCompraId, transaction) {
   const [itens, itensManuais] = await Promise.all([
     SolicitacaoCompraItem.findAll({
-      where: { solicitacao_compra_id: solicitacaoCompraId },
+      where: {
+        solicitacao_compra_id: solicitacaoCompraId,
+        [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'APROVADO' }]
+      },
       attributes: ['id'],
       transaction
     }),
     SolicitacaoCompraItemManual.findAll({
-      where: { solicitacao_compra_id: solicitacaoCompraId },
+      where: {
+        solicitacao_compra_id: solicitacaoCompraId,
+        [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'APROVADO' }]
+      },
       attributes: ['id'],
       transaction
     })
@@ -1273,6 +1378,7 @@ function montarComparativoSolicitacao(solicitacao) {
   const itens = obterItensCotaveis(solicitacao);
   const mapaAlocacoesPorItem = montarMapaAlocacoesAtivasPorItem(solicitacao.alocacoes || []);
   const mapaAlocacoesPorFornecedorItem = montarMapaAlocacoesAtivasPorFornecedorItem(solicitacao.alocacoes || []);
+  const mapaAlocacoesPorResposta = montarMapaAlocacoesAtivasPorResposta(solicitacao.alocacoes || []);
   const fornecedoresAtivos = (solicitacao.fornecedores || []).filter(
     (cotacaoFornecedor) => !['CANCELADA', 'CANCELADO'].includes(normalizeTextCompra(cotacaoFornecedor.status))
   );
@@ -1327,9 +1433,10 @@ function montarComparativoSolicitacao(solicitacao) {
       );
       const disponibilidadeFornecedor = calcularDisponibilidadeFornecedorItem({
         fornecedorCompraId: cotacaoFornecedor.fornecedor_compra_id,
-        item,
+        item: resposta || item,
         quantidadeDisponivel,
-        mapaAlocacoesFornecedorItem: mapaAlocacoesPorFornecedorItem
+        mapaAlocacoesFornecedorItem: mapaAlocacoesPorFornecedorItem,
+        mapaAlocacoesResposta: mapaAlocacoesPorResposta
       });
 
       return {
@@ -1360,6 +1467,7 @@ function montarComparativoSolicitacao(solicitacao) {
         observacao: resposta?.observacao || '',
         quantidade_minima_item: resposta?.quantidade_minima_item ?? null,
         quantidade_disponivel: quantidadeDisponivel,
+        escopo_disponibilidade: resposta?.escopo_disponibilidade || 'ACUMULADA',
         saldo_disponivel_fornecedor: disponibilidadeFornecedor.saldo_disponivel,
         ipi_valor: Number(resposta?.ipi_valor || 0),
         icms_valor: Number(resposta?.icms_valor || 0),
@@ -1367,8 +1475,12 @@ function montarComparativoSolicitacao(solicitacao) {
         frete_item_valor: Number(resposta?.frete_valor || 0),
         valor_total_cotado: resposta
           ? arredondarMoeda(
-              Number(resposta.quantidade_disponivel ?? (resposta.disponivel ? item.quantidade : 0))
-              * Number(resposta.preco || 0)
+              calcularValorMercadoriasCotacao({
+                quantidadeSolicitada: item.quantidade,
+                quantidadeDisponivel: resposta.quantidade_disponivel,
+                escopoDisponibilidade: resposta.escopo_disponibilidade,
+                precoUnitario: resposta.preco
+              })
               + Number(resposta.ipi_valor || 0)
               + Number(resposta.icms_valor || 0)
               + Number(resposta.st_valor || 0)
@@ -1581,7 +1693,7 @@ function desenharCabecalhoFicha(doc, solicitacao) {
   return y + totalHeaderHeight + 8;
 }
 
-function desenharCabecalhoTabela(doc, y, colWidths, colX, compraDireta = false) {
+function desenharCabecalhoTabela(doc, y, colWidths, colX, compraDireta = false, fretePorItem = false) {
   const headerHeight = 18;
   doc.save();
   doc.rect(PDF_PAGE.left, y, PDF_PAGE.width, headerHeight).fillAndStroke('#d6deec', '#000000');
@@ -1592,7 +1704,16 @@ function desenharCabecalhoTabela(doc, y, colWidths, colX, compraDireta = false) 
   }
 
   const labels = compraDireta
-    ? [
+    ? fretePorItem ? [
+        'ITEM',
+        'INSUMO',
+        'UNIDADE',
+        'QTD',
+        'VALOR UNIT.',
+        'VALOR TOTAL',
+        'FRETE',
+        'APROPRIACAO'
+      ] : [
         'ITEM',
         'INSUMO',
         'UNIDADE',
@@ -1675,8 +1796,11 @@ function desenharBlocoObservacoes(doc, y, solicitacao) {
 
 async function renderPdfSolicitacaoCompra(doc, solicitacao) {
   const compraDireta = isSolicitacaoCompraDireta(solicitacao);
+  const fretePorItem = compraDireta && normalizeTextCompra(solicitacao?.frete_modo) === 'POR_ITEM';
   const colWidths = compraDireta
-    ? [38, 230, 70, 62, 92, 100, 210]
+    ? fretePorItem
+      ? [34, 180, 58, 52, 78, 86, 78, 236]
+      : [38, 230, 70, 62, 92, 100, 210]
     : [38, 160, 56, 62, 132, 84, 90, 180];
   const colX = [PDF_PAGE.left];
   for (let index = 1; index < colWidths.length; index += 1) {
@@ -1685,7 +1809,7 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
   const linhas = obterLinhasPdf(solicitacao);
   const anexosVisuais = await obterAnexosVisuaisPdf(linhas);
   const anexosVisuaisMap = new Map(anexosVisuais.map((anexo) => [anexo.index, anexo]));
-  let y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta);
+  let y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta, fretePorItem);
 
   linhas.forEach((item, index) => {
     const anexoVisualNaCelula = !compraDireta && !item.link_produto ? anexosVisuaisMap.get(index) : null;
@@ -1694,7 +1818,7 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
 
     doc.fontSize(8).font('Helvetica');
     const especificacaoIndex = compraDireta ? null : 4;
-    const apropriacaoIndex = compraDireta ? 6 : 5;
+    const apropriacaoIndex = compraDireta ? (fretePorItem ? 7 : 6) : 5;
     const anexoIndex = compraDireta ? null : 7;
     const alturaNome = doc.heightOfString(nomeItem, { width: colWidths[1] - 10 });
     const alturaEspecificacao = compraDireta
@@ -1717,7 +1841,7 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
 
     if (y + rowHeight + 72 > PDF_PAGE.bottomLimit) {
       doc.addPage({ margin: 40, size: 'A4', layout: 'landscape' });
-      y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta);
+      y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta, fretePorItem);
     }
 
     doc.rect(PDF_PAGE.left, y, PDF_PAGE.width, rowHeight).stroke('#000000');
@@ -1752,6 +1876,12 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
         align: 'center',
         paddingX: 3
       });
+      if (fretePorItem) {
+        desenharTextoNaCelula(doc, `R$ ${formatCurrencyPdf(item.frete_valor)}`, colX[6], y, colWidths[6], rowHeight, {
+          align: 'center',
+          paddingX: 3
+        });
+      }
     }
 
     if (!compraDireta) {
@@ -1897,7 +2027,9 @@ async function anexarArquivosCabecalhoSolicitacao({ anexos = [], solicitacaoPrin
         .map((anexo) => ({
           arquivo_url: String(anexo?.arquivo_url || '').trim(),
           arquivo_nome_original: normalizeOriginalName(anexo?.arquivo_nome_original || anexo?.nome_original || 'anexo-compra-direta'),
-          tipo_documento: isAnexoBoletoCompraDireta(anexo) ? 'BOLETO' : 'NOTA_FISCAL_GUIA'
+          tipo_documento: isAnexoBoletoFreteCompraDireta(anexo)
+            ? 'FRETE_BOLETO'
+            : isAnexoBoletoCompraDireta(anexo) ? 'BOLETO' : 'NOTA_FISCAL_GUIA'
         }))
         .filter((anexo) => anexo.arquivo_url)
         .slice(0, 20)
@@ -1928,7 +2060,9 @@ async function anexarArquivosCabecalhoSolicitacao({ anexos = [], solicitacaoPrin
         metadata: JSON.stringify({
           anexo_id: anexo.id,
           caminho: anexoPayload.arquivo_url,
-          origem: anexoPayload.tipo_documento === 'BOLETO' ? 'COMPRA_DIRETA_BOLETO' : 'COMPRA_DIRETA_NOTA_FISCAL',
+          origem: anexoPayload.tipo_documento === 'FRETE_BOLETO'
+            ? 'COMPRA_DIRETA_FRETE_BOLETO'
+            : anexoPayload.tipo_documento === 'BOLETO' ? 'COMPRA_DIRETA_BOLETO' : 'COMPRA_DIRETA_NOTA_FISCAL',
           tipo_documento: anexoPayload.tipo_documento
         })
       });
@@ -1943,6 +2077,10 @@ async function anexarArquivosCabecalhoSolicitacao({ anexos = [], solicitacaoPrin
 }
 
 async function validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction = null) {
+  if (await podeGerenciarCompraNaFilaGeo(usuario, solicitacao, transaction)) {
+    return true;
+  }
+
   if (await canAccessSolicitacaoCompraByScope(usuario, solicitacao)) {
     return true;
   }
@@ -1992,10 +2130,36 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
   }
 
   const statusAtual = normalizeTextCompra(solicitacao.status);
-  if (['INATIVA', 'ENCERRADO', 'FINALIZADA'].includes(statusAtual) || statusAtual.startsWith('PEDIDO_')) {
+  if (isStatusSolicitacaoCompraLiberadoParaCompras(statusAtual)) {
     const codigo = `SC-${String(solicitacao.id).padStart(5, '0')}`;
-    const error = new Error(`${codigo} nao pode ser encaminhada para Compras no status atual.`);
+    const error = new Error(`${codigo} ja foi liberada para o setor de Compras.`);
     error.statusCode = 400;
+    throw error;
+  }
+  if (!isStatusSolicitacaoCompraAguardandoRevisaoGeo(statusAtual)) {
+    const codigo = `SC-${String(solicitacao.id).padStart(5, '0')}`;
+    const error = new Error(`${codigo} nao esta pendente de revisao do GEO.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const whereAprovados = {
+    solicitacao_compra_id: solicitacao.id,
+    status_aprovacao: 'APROVADO'
+  };
+  const wherePendentes = {
+    solicitacao_compra_id: solicitacao.id,
+    [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'PENDENTE' }]
+  };
+  const [itensAprovados, itensManuaisAprovados, itensPendentes, itensManuaisPendentes] = await Promise.all([
+    SolicitacaoCompraItem.count({ where: whereAprovados, transaction }),
+    SolicitacaoCompraItemManual.count({ where: whereAprovados, transaction }),
+    SolicitacaoCompraItem.findAll({ where: wherePendentes, attributes: ['id'], transaction }),
+    SolicitacaoCompraItemManual.findAll({ where: wherePendentes, attributes: ['id'], transaction })
+  ]);
+  if (itensAprovados + itensManuaisAprovados === 0) {
+    const error = new Error('Aprove ao menos um item no GEO antes de encaminhar para Compras.');
+    error.statusCode = 409;
     throw error;
   }
 
@@ -2005,23 +2169,55 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
     throw error;
   }
 
+  if (!isBusinessAdmin(usuario)) {
+    const ehSetorGeo = await userHasSetorCapability(usuario, 'eh_setor_geo');
+    if (!ehSetorGeo) {
+      const error = new Error('Apenas GEO pode concluir a revisao e encaminhar a solicitacao para Compras.');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  const filtrosSemDecisao = [];
+  if (itensPendentes.length) filtrosSemDecisao.push({ solicitacao_compra_item_id: { [Op.in]: itensPendentes.map((item) => item.id) } });
+  if (itensManuaisPendentes.length) filtrosSemDecisao.push({ solicitacao_compra_item_manual_id: { [Op.in]: itensManuaisPendentes.map((item) => item.id) } });
+  if (filtrosSemDecisao.length) {
+    const [emCotacao, emPedido] = await Promise.all([
+      SolicitacaoCompraFornecedorItem.findOne({ where: { [Op.or]: filtrosSemDecisao }, transaction }),
+      PedidoCompraItem.findOne({ where: { [Op.or]: filtrosSemDecisao }, transaction })
+    ]);
+    if (emCotacao || emPedido) {
+      const error = new Error('Ha item sem decisao ja vinculado a cotacao ou pedido. Revise essa compra antes de encaminhar.');
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
   const setorCompras = await buscarSetorCompras(transaction);
+  const setorGeo = await buscarSetorGerenciaProcessos(transaction);
   const liberadoEm = solicitacao.liberado_para_compra_em || new Date();
   const statusAnteriorCompra = solicitacao.status;
 
-  await solicitacao.update(
-    {
-      status: 'LIBERADO_PARA_COMPRA',
-      liberado_para_compra_em: liberadoEm,
-      comprador_responsavel_id: null,
-      prazo_compra: null,
-      delegado_por: null,
-      delegado_em: null,
-      motivo_atraso: null,
-      motivo_atraso_em: null
-    },
-    { transaction }
-  );
+  const totalRejeitadosImplicitamente = itensPendentes.length + itensManuaisPendentes.length;
+  if (totalRejeitadosImplicitamente > 0) {
+    await SolicitacaoCompraItem.update({ status_aprovacao: 'REJEITADO' }, { where: wherePendentes, transaction });
+    await SolicitacaoCompraItemManual.update({ status_aprovacao: 'REJEITADO' }, { where: wherePendentes, transaction });
+    if (solicitacao.solicitacao_principal_id) {
+      await Historico.create({
+        solicitacao_id: solicitacao.solicitacao_principal_id,
+        usuario_responsavel_id: usuario.id,
+        setor: usuario.setor_id || setorGeo,
+        acao: 'ITENS_COMPRA_REJEITADOS_GEO_IMPLICITO',
+        descricao: `${totalRejeitadosImplicitamente} item(ns) sem aprovacao explicita registrado(s) como rejeitado(s) na analise externa antes do encaminhamento a Compras.`,
+        metadata: JSON.stringify({
+          solicitacao_compra_id: solicitacao.id,
+          itens_cadastrados: itensPendentes.map((item) => item.id),
+          itens_manuais: itensManuaisPendentes.map((item) => item.id),
+          origem: 'ANALISE_GEO_EXTERNA'
+        })
+      }, { transaction });
+    }
+  }
 
   let historicoPrincipal = null;
   if (Number(solicitacao.solicitacao_principal_id || 0) > 0) {
@@ -2034,7 +2230,8 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
         'fluxo_aprovacao_diretoria',
         'aprovada_diretoria_em'
       ],
-      transaction
+      transaction,
+      lock: transaction.LOCK.UPDATE
     });
 
     if (principal?.fluxo_aprovacao_diretoria && !principal.aprovada_diretoria_em) {
@@ -2044,6 +2241,15 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
     }
 
     if (principal) {
+      if (
+        !isBusinessAdmin(usuario)
+        && normalizeFluxoTokenCompra(principal.area_responsavel) !== normalizeFluxoTokenCompra(setorGeo)
+      ) {
+        const error = new Error('A solicitacao principal nao esta mais no setor GEO para ser encaminhada.');
+        error.statusCode = 400;
+        throw error;
+      }
+
       const statusAnteriorPrincipal = principal.status_global;
       const areaAnteriorPrincipal = principal.area_responsavel;
       await principal.update(
@@ -2067,13 +2273,36 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
             solicitacao_compra_id: solicitacao.id,
             area_anterior: areaAnteriorPrincipal,
             area_nova: setorCompras,
-            origem: 'AJUSTE_MANUAL_FILA_COMPRAS'
+            origem: 'REVISAO_GEO'
           })
+        },
+        { transaction }
+      );
+
+      await StatusArea.create(
+        {
+          solicitacao_id: principal.id,
+          setor: setorCompras,
+          status: 'LIBERADO',
+          observacao: 'Solicitacao de compra revisada pelo GEO e encaminhada para Compras'
         },
         { transaction }
       );
     }
   }
+  await solicitacao.update(
+    {
+      status: 'LIBERADO_PARA_COMPRA',
+      liberado_para_compra_em: liberadoEm,
+      comprador_responsavel_id: null,
+      prazo_compra: null,
+      delegado_por: null,
+      delegado_em: null,
+      motivo_atraso: null,
+      motivo_atraso_em: null
+    },
+    { transaction }
+  );
 
   await PedidoCompra.update(
     {
@@ -2096,6 +2325,7 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
       status_novo: 'LIBERADO_PARA_COMPRA',
       setor_destino: setorCompras,
       responsavel_removido: true,
+      rejeitados_implicitamente: totalRejeitadosImplicitamente,
       historico_id: historicoPrincipal?.id || null
     },
     transaction
@@ -2226,7 +2456,10 @@ module.exports = {
       const [insumos, unidades, apropriacoes] = await Promise.all([
         Insumo.findAll({
           where: { ativo: true },
-          include: [{ model: Unidade, as: 'unidade' }]
+          include: [
+            { model: Unidade, as: 'unidade' },
+            { model: InsumoAlias, as: 'aliases', where: { ativo: true }, required: false }
+          ]
         }),
         Unidade.findAll(),
         Apropriacao.findAll({
@@ -2325,7 +2558,13 @@ module.exports = {
       }
 
       const [insumos, unidades, apropriacoes] = await Promise.all([
-        Insumo.findAll({ include: [{ model: Unidade, as: 'unidade' }] }),
+        Insumo.findAll({
+          where: { ativo: true },
+          include: [
+            { model: Unidade, as: 'unidade' },
+            { model: InsumoAlias, as: 'aliases', where: { ativo: true }, required: false }
+          ]
+        }),
         Unidade.findAll(),
         Apropriacao.findAll({
           where: { obra_id: obraId },
@@ -2336,7 +2575,8 @@ module.exports = {
       const insumosMap = buildCompraDiretaImportMap(insumos, (insumo) => [
         insumo.nome,
         insumo.codigo,
-        insumo.id ? String(insumo.id) : ''
+        insumo.id ? String(insumo.id) : '',
+        ...(insumo.aliases || []).map((entry) => entry.alias)
       ]);
       const unidadesMap = buildCompraDiretaImportMap(unidades, (unidade) => [
         unidade.sigla,
@@ -2447,6 +2687,14 @@ module.exports = {
 
       const { obra_id, contexto, visao } = req.query;
       const statusOcultos = ['INATIVA'];
+      const [ehSetorGeo, ehSetorCompras, podeEditarItens, podeEncaminharCompras, podeVisualizarEscopoCompleto] = await Promise.all([
+        userHasSetorCapability(usuario, 'eh_setor_geo'),
+        userHasSetorCapability(usuario, 'eh_setor_compras'),
+        canEditarItensSolicitacaoCompra(usuario),
+        canEncaminharCompraSolicitacoes(usuario),
+        canViewAllComprasScope(usuario)
+      ]);
+      const podeRevisarFilaGeo = ehSetorGeo && (podeEditarItens || podeEncaminharCompras);
       const where = {
         origem: { [Op.ne]: 'COMPRA_DIRETA' },
         status: {
@@ -2462,10 +2710,30 @@ module.exports = {
         : false;
       if (contextoDelegacao && !podeGerenciarDelegacao) {
         where.comprador_responsavel_id = usuario.id;
-      } else if (!contextoDelegacao && !(await canViewAllComprasScope(usuario))) {
-        where[Op.or] = [
+      } else if (!contextoDelegacao && !podeVisualizarEscopoCompleto) {
+        const escopoRestrito = [
           { comprador_responsavel_id: usuario.id },
           { solicitante_id: usuario.id }
+        ];
+        if (podeRevisarFilaGeo) {
+          const setorGeo = await buscarSetorGerenciaProcessos();
+          escopoRestrito.push({ '$solicitacaoPrincipal.area_responsavel$': setorGeo });
+        }
+        where[Op.or] = escopoRestrito;
+      }
+
+      if (!isSuperadmin(usuario) && ehSetorCompras && !ehSetorGeo) {
+        where[Op.and] = [
+          {
+            [Op.or]: [
+              {
+                status: {
+                  [Op.notIn]: ['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE']
+                }
+              },
+              { solicitante_id: usuario.id }
+            ]
+          }
         ];
       }
       const obraIdsEscopo = Array.isArray(req.compraScopeObraIds)
@@ -2545,10 +2813,6 @@ module.exports = {
       });
 
       const solicitacoesVisiveis = [];
-      const [ehSetorGeo, ehSetorCompras] = await Promise.all([
-        userHasSetorCapability(usuario, 'eh_setor_geo'),
-        userHasSetorCapability(usuario, 'eh_setor_compras')
-      ]);
       const contextoAcompanhamento = {
         superadmin: isSuperadmin(usuario),
         ehSetorGeo,
@@ -2927,7 +3191,8 @@ module.exports = {
 
       const solicitacoes = await SolicitacaoCompra.findAll({
         where: { id: { [Op.in]: solicitacaoIds } },
-        transaction
+        transaction,
+        lock: transaction.LOCK.UPDATE
       });
 
       if (solicitacoes.length !== solicitacaoIds.length) {
@@ -2947,6 +3212,14 @@ module.exports = {
       }
 
       await transaction.commit();
+
+      solicitacaoIds.forEach((solicitacaoCompraId) => {
+        void publishComprasRealtimeEventSafe({
+          action: 'SOLICITACAO_ENCAMINHADA_COMPRAS',
+          solicitacaoCompraId,
+          actor: usuario
+        });
+      });
 
       if (solicitacaoIds.length === 1) {
         const atualizada = await carregarSolicitacaoCompra(solicitacaoIds[0]);
@@ -3008,7 +3281,10 @@ module.exports = {
       });
 
       if (!vinculada) {
-        return res.status(404).json({ error: 'Compra direta vinculada nao encontrada' });
+        return res.status(404).json({
+          error: 'Esta compra direta e legada e nao possui itens estruturados para gerenciamento.',
+          code: 'COMPRA_LEGADA_SEM_ITENS_ESTRUTURADOS'
+        });
       }
 
       const solicitacao = await carregarSolicitacaoCompra(vinculada.id);
@@ -3028,6 +3304,52 @@ module.exports = {
     }
   },
 
+  async showPorSolicitacaoPrincipal(req, res) {
+    try {
+      const usuario = await validarAcesso(req, res);
+      if (!usuario) return;
+
+      const vinculada = await SolicitacaoCompra.findOne({
+        where: {
+          solicitacao_principal_id: Number(req.params.solicitacaoId)
+        },
+        attributes: ['id'],
+        order: [['createdAt', 'DESC']]
+      });
+
+      if (!vinculada) {
+        return res.status(404).json({
+          error: 'Esta solicitacao e legada e nao possui itens estruturados para gerenciamento.',
+          code: 'COMPRA_LEGADA_SEM_ITENS_ESTRUTURADOS'
+        });
+      }
+
+      const solicitacao = await carregarSolicitacaoCompra(vinculada.id);
+      if (!solicitacao) {
+        return res.status(404).json({ error: 'Solicitacao de compra nao encontrada' });
+      }
+
+      if (!isSolicitacaoCompraDireta(solicitacao)) {
+        if (!podeAcompanharCompraAguardandoDiretoria(usuario, solicitacao)) {
+          return responderCompraAguardandoDiretoria(res);
+        }
+
+        if (!(await podeAcompanharCompraAntesLiberacao(usuario, solicitacao))) {
+          return responderCompraAguardandoLiberacao(res);
+        }
+      }
+
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res))) {
+        return;
+      }
+
+      return res.json(solicitacao);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar itens vinculados a solicitacao' });
+    }
+  },
+
   async atualizarQuantidadeItem(req, res) {
     const transaction = await SolicitacaoCompra.sequelize.transaction();
 
@@ -3040,7 +3362,7 @@ module.exports = {
 
       if (!(await canAlterarQuantidadeSolicitacaoCompra(usuario))) {
         await transaction.rollback();
-        return res.status(403).json({ error: 'Apenas compras pode alterar itens da solicitacao de compra' });
+        return res.status(403).json({ error: 'Acesso negado para gerenciar itens da solicitacao de compra.' });
       }
 
       const solicitacao = await carregarSolicitacaoCompra(req.params.id);
@@ -3052,6 +3374,11 @@ module.exports = {
       if (isSolicitacaoCompraDireta(solicitacao)) {
         await transaction.rollback();
         return responderCompraDiretaForaDoFluxoCompras(res);
+      }
+
+      if (!(await validarEtapaGerenciamentoItens(usuario, solicitacao, res, transaction))) {
+        await transaction.rollback();
+        return;
       }
 
       if (['CANCELADA', 'CANCELADO'].includes(String(solicitacao.status || '').toUpperCase())) {
@@ -3183,6 +3510,117 @@ module.exports = {
     }
   },
 
+  async cadastrarUnidadeItem(req, res) {
+    const transaction = await SolicitacaoCompra.sequelize.transaction();
+
+    try {
+      const usuario = await validarAcesso(req, res);
+      if (!usuario) {
+        await transaction.rollback();
+        return;
+      }
+
+      const solicitacao = await carregarSolicitacaoCompra(req.params.id);
+      if (!solicitacao) {
+        await transaction.rollback();
+        return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const compraDireta = isSolicitacaoCompraDireta(solicitacao);
+      const podeGerenciar = await canEditarItensSolicitacaoCompra(usuario)
+        || (compraDireta && await canEditarApropriacoesItemCompraDireta(usuario));
+      if (!podeGerenciar) {
+        await transaction.rollback();
+        return res.status(403).json({ error: 'Acesso negado para cadastrar a unidade informada no item.' });
+      }
+
+      if (['CANCELADA', 'CANCELADO', 'INATIVA'].includes(String(solicitacao.status || '').toUpperCase())) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'Solicitacao cancelada ou inativa nao permite cadastrar unidade de item.' });
+      }
+
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction))) {
+        await transaction.rollback();
+        return;
+      }
+
+      const item = await SolicitacaoCompraItem.findOne({
+        where: {
+          id: Number(req.params.itemId),
+          solicitacao_compra_id: Number(solicitacao.id)
+        },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!item) {
+        await transaction.rollback();
+        return res.status(404).json({ error: 'Item cadastrado da solicitacao de compra nao encontrado.' });
+      }
+
+      const unidadeLivre = String(item.unidade_sigla_manual || '').replace(/\s+/g, ' ').trim();
+      if (!unidadeLivre) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'Este item nao possui uma UN livre pendente de cadastro.' });
+      }
+      if (unidadeLivre.length > 50) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'A UN livre deve ter no maximo 50 caracteres.' });
+      }
+
+      const tokenUnidade = normalizeTextCompra(unidadeLivre);
+      const unidades = await Unidade.findAll({
+        attributes: ['id', 'nome', 'sigla', 'ativo'],
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      let unidade = unidades.find((registro) => (
+        normalizeTextCompra(registro.sigla) === tokenUnidade
+        || normalizeTextCompra(registro.nome) === tokenUnidade
+      ));
+      const unidadeJaExistia = Boolean(unidade);
+
+      if (unidade) {
+        if (unidade.ativo === false) {
+          await unidade.update({ ativo: true }, { transaction });
+        }
+      } else {
+        unidade = await Unidade.create({
+          nome: unidadeLivre,
+          sigla: unidadeLivre,
+          ativo: true
+        }, { transaction });
+      }
+
+      await item.update({
+        unidade_id: Number(unidade.id),
+        unidade_sigla_manual: null
+      }, { transaction });
+
+      await registrarLogSolicitacaoCompra({
+        solicitacaoCompraId: solicitacao.id,
+        usuarioId: usuario.id,
+        tipoAcao: 'ITEM_UNIDADE_CADASTRADA',
+        descricao: `${unidadeJaExistia ? 'Unidade existente vinculada' : 'Unidade cadastrada'} ao item ${item.id}`,
+        metadados: {
+          item_id: item.id,
+          item_tipo: 'CADASTRADO',
+          unidade_id: unidade.id,
+          unidade_informada: unidadeLivre,
+          unidade_ja_existia: unidadeJaExistia
+        },
+        transaction
+      });
+
+      await transaction.commit();
+      const atualizada = await carregarSolicitacaoCompra(req.params.id);
+      return res.json(atualizada);
+    } catch (error) {
+      await transaction.rollback();
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao cadastrar a unidade informada no item.' });
+    }
+  },
+
   async atualizarApropriacoesItem(req, res) {
     const transaction = await SolicitacaoCompra.sequelize.transaction();
 
@@ -3211,6 +3649,10 @@ module.exports = {
       if (!podeEditar) {
         await transaction.rollback();
         return res.status(403).json({ error: 'Acesso negado para alterar apropriacoes dos itens.' });
+      }
+      if (!compraDireta && !(await validarEtapaGerenciamentoItens(usuario, solicitacao, res, transaction))) {
+        await transaction.rollback();
+        return;
       }
 
       if (!compraDireta && isCompraAguardandoDiretoria(solicitacao)) {
@@ -3456,10 +3898,23 @@ module.exports = {
       }
 
       await transaction.commit();
+      if (solicitacao.solicitacao_principal_id) {
+        try {
+          const principal = await Solicitacao.findByPk(solicitacao.solicitacao_principal_id);
+          if (principal) await registrarAtencaoSolicitacao({
+            solicitacao: principal,
+            atorId: usuario.id,
+            tipo: 'COMENTARIO_COTACAO',
+            resumo: `${usuario.nome || 'Usuário'} comentou na cotação`
+          });
+        } catch (atencaoError) {
+          console.error('Comentario da cotacao salvo, mas destaque da solicitacao falhou:', atencaoError);
+        }
+      }
       const atualizada = await carregarSolicitacaoCompra(req.params.id);
       return res.json(atualizada);
     } catch (error) {
-      await transaction.rollback();
+      if (!transaction.finished) await transaction.rollback();
       console.error(error);
       return res.status(500).json({ error: 'Erro ao registrar comentario da cotacao' });
     }
@@ -3485,16 +3940,24 @@ module.exports = {
         origem,
         tipo_solicitacao_id,
         parceiro_id,
+        favorecido_id,
+        favorecido_chave_pix,
         forma_pagamento_ids,
+        formas_pagamento,
         desconto_total,
         anexos_cabecalho,
         frete_tipo,
+        frete_modo,
         frete_valor,
         frete_data_vencimento,
         frete_parceiro_id,
-        frete_dados_pagamento
+        frete_dados_pagamento,
+        frete_forma_pagamento_id,
+        frete_favorecido_id,
+        frete_favorecido_chave_pix
       } = req.body;
       const compraDireta = normalizeTextCompra(origem) === 'COMPRA_DIRETA';
+
 
       if (!obra_id || !Array.isArray(itens) || itens.length === 0) {
         await transaction.rollback();
@@ -3511,6 +3974,8 @@ module.exports = {
         await transaction.rollback();
         return res.status(400).json({ error: 'Obra nao encontrada' });
       }
+
+      await require('../services/pedidoEntregaService').assertObraPodeCriarCompra(obra_id, transaction);
 
       const itensPreparados = [];
       const itensManuaisPreparados = [];
@@ -3586,8 +4051,38 @@ module.exports = {
         return res.status(400).json({ error: 'Selecione um tipo de frete valido.' });
       }
 
+      const freteModoCompraDireta = compraDireta && freteTipoCompraDireta !== 'SEM_FRETE'
+        ? String(frete_modo || 'GLOBAL').trim().toUpperCase()
+        : 'GLOBAL';
+      if (!['GLOBAL', 'POR_ITEM'].includes(freteModoCompraDireta)) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'Selecione um modo de frete valido.' });
+      }
+
+      if (freteModoCompraDireta === 'POR_ITEM') {
+        for (const [index, item] of itens.entries()) {
+          if (item?.frete_valor === null || item?.frete_valor === undefined || String(item.frete_valor).trim() === '') {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Item ${index + 1}: informe o frete do item, mesmo que seja zero.` });
+          }
+          if (parseValorMonetario(item.frete_valor) < 0) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Item ${index + 1}: o frete do item nao pode ser negativo.` });
+          }
+        }
+      } else {
+        entradasCompraDireta.forEach((entry) => {
+          entry.item.frete_valor = 0;
+        });
+      }
+
       const freteValorCompraDireta = compraDireta && freteTipoCompraDireta !== 'SEM_FRETE'
-        ? arredondarMoeda(parseValorMonetario(frete_valor))
+        ? freteModoCompraDireta === 'POR_ITEM'
+          ? arredondarMoeda(entradasCompraDireta.reduce(
+              (total, entry) => total + Number(entry.item.frete_valor || 0),
+              0
+            ))
+          : arredondarMoeda(parseValorMonetario(frete_valor))
         : 0;
       if (freteTipoCompraDireta !== 'SEM_FRETE' && freteValorCompraDireta <= 0) {
         await transaction.rollback();
@@ -3601,12 +4096,15 @@ module.exports = {
         await transaction.rollback();
         return res.status(400).json({ error: 'Informe a data para pagamento do frete.' });
       }
-      if (freteTipoCompraDireta === 'TERCEIRO' && !String(frete_dados_pagamento || '').trim()) {
+      if (freteTipoCompraDireta === 'TERCEIRO' && !frete_forma_pagamento_id && !String(frete_dados_pagamento || '').trim()) {
         await transaction.rollback();
         return res.status(400).json({ error: 'Informe os dados para pagamento do frete.' });
       }
 
       let freteCredorCompraDireta = null;
+      let freteFormaPagamentoCompraDireta = null;
+      let freteFavorecidoCompraDireta = null;
+      let freteChavePixCompraDireta = null;
       if (freteTipoCompraDireta === 'TERCEIRO') {
         freteCredorCompraDireta = await Parceiro.findByPk(frete_parceiro_id, {
           attributes: ['id', 'nome', 'cpf_cnpj', 'ativo', 'fornecedor'],
@@ -3616,13 +4114,52 @@ module.exports = {
           await transaction.rollback();
           return res.status(400).json({ error: 'Selecione um credor ativo para o frete pago a terceiro.' });
         }
+        if (frete_forma_pagamento_id) {
+          freteFormaPagamentoCompraDireta = await FormaPagamentoFinanceira.findByPk(frete_forma_pagamento_id, {
+            attributes: ['id', 'nome', 'codigo', 'tipo', 'gera_boleto', 'ativo'], transaction
+          });
+          if (!freteFormaPagamentoCompraDireta || freteFormaPagamentoCompraDireta.ativo === false
+            || isFormaPagamentoFopag(freteFormaPagamentoCompraDireta)) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Selecione uma forma de pagamento ativa para o frete.' });
+          }
+          if (isFormaPagamentoBoleto(freteFormaPagamentoCompraDireta)) {
+            const boletosFrete = Array.isArray(anexos_cabecalho)
+              ? anexos_cabecalho.filter(isAnexoBoletoFreteCompraDireta) : [];
+            if (!boletosFrete.some((anexo) => String(anexo?.arquivo_url || '').trim())) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Anexe o boleto do frete.' });
+            }
+          } else {
+            freteFavorecidoCompraDireta = await Parceiro.findByPk(frete_favorecido_id, {
+              attributes: ['id', 'nome', 'cpf_cnpj', 'ativo'], transaction
+            });
+            if (!freteFavorecidoCompraDireta || freteFavorecidoCompraDireta.ativo === false) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Selecione um favorecido ativo para o frete.' });
+            }
+            if (isFormaPagamentoPix(freteFormaPagamentoCompraDireta)) {
+              freteChavePixCompraDireta = String(frete_favorecido_chave_pix || '').trim();
+              if (!freteChavePixCompraDireta) {
+                await transaction.rollback();
+                return res.status(400).json({ error: 'Digite a chave PIX do frete.' });
+              }
+            }
+          }
+        }
       }
 
       const valorTotalSolicitacaoCompraDireta = compraDireta
-        ? arredondarMoeda(valorTotalCompraDireta + (freteTipoCompraDireta === 'TERCEIRO' ? freteValorCompraDireta : 0))
+        ? arredondarMoeda(valorTotalCompraDireta + (freteTipoCompraDireta !== 'SEM_FRETE' ? freteValorCompraDireta : 0))
+        : 0;
+      const valorTotalFornecedorCompraDireta = compraDireta
+        ? arredondarMoeda(valorTotalCompraDireta + (freteTipoCompraDireta === 'EMBUTIDO' ? freteValorCompraDireta : 0))
         : 0;
 
       let formasPagamentoCompraDireta = [];
+      let detalhesPagamentoCompraDireta = [];
+      let favorecidoCompraDireta = null;
+      let chavePixCompraDireta = null;
       if (compraDireta) {
         const formaPagamentoIds = Array.isArray(forma_pagamento_ids)
           ? forma_pagamento_ids.map((id) => Number(id)).filter((id) => id > 0)
@@ -3658,6 +4195,69 @@ module.exports = {
             return res.status(400).json({ error: 'Anexe o boleto para criar a compra direta com forma de pagamento boleto.' });
           }
         }
+
+        if (formas_pagamento) {
+          const idsInformados = formas_pagamento.map((forma) => Number(forma.id));
+          const totalInformado = arredondarMoeda(formas_pagamento.reduce((soma, forma) => soma + Number(forma.valor || 0), 0));
+          if (idsInformados.length !== formaPagamentoIds.length
+            || new Set(idsInformados).size !== idsInformados.length
+            || idsInformados.some((id) => !formaPagamentoIds.includes(id))
+            || totalInformado !== valorTotalFornecedorCompraDireta) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Distribua o valor total da compra entre as formas de pagamento selecionadas.' });
+          }
+        }
+
+        const payloadPorForma = new Map(
+          (Array.isArray(formas_pagamento) ? formas_pagamento : [])
+            .map((item) => [Number(item.id), item])
+        );
+        const favorecidosPorId = new Map();
+        for (const forma of formasPagamentoCompraDireta) {
+          const payloadForma = payloadPorForma.get(Number(forma.id)) || {};
+          if (isFormaPagamentoBoleto(forma)) {
+            detalhesPagamentoCompraDireta.push({ forma_id: forma.id, boleto: true });
+            continue;
+          }
+
+          const favorecidoFormaId = Number(payloadForma.favorecido_id || favorecido_id || 0);
+          if (!favorecidoFormaId) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Selecione o favorecido para ${formatarFormaPagamentoResumo(forma)}.` });
+          }
+          let favorecidoForma = favorecidosPorId.get(favorecidoFormaId);
+          if (!favorecidoForma) {
+            favorecidoForma = await Parceiro.findByPk(favorecidoFormaId, {
+              attributes: ['id', 'nome', 'cpf_cnpj', 'ativo'], transaction
+            });
+            if (!favorecidoForma || favorecidoForma.ativo === false) {
+              await transaction.rollback();
+              return res.status(400).json({ error: `Selecione um favorecido ativo para ${formatarFormaPagamentoResumo(forma)}.` });
+            }
+            favorecidosPorId.set(favorecidoFormaId, favorecidoForma);
+          }
+
+          const chavePixForma = String(payloadForma.chave_pix || favorecido_chave_pix || '').trim();
+          const dadosPagamentoForma = String(payloadForma.dados_pagamento || dados_pagamento || '').trim();
+          if (isFormaPagamentoPix(forma) && !chavePixForma) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Digite a chave PIX para ${formatarFormaPagamentoResumo(forma)}.` });
+          }
+          if (!isFormaPagamentoPix(forma) && !dadosPagamentoForma) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Informe os dados para pagamento por ${formatarFormaPagamentoResumo(forma)}.` });
+          }
+
+          detalhesPagamentoCompraDireta.push({
+            forma_id: forma.id,
+            favorecido: favorecidoForma,
+            chave_pix: isFormaPagamentoPix(forma) ? chavePixForma : null,
+            dados_pagamento: isFormaPagamentoPix(forma) ? null : dadosPagamentoForma,
+            boleto: false
+          });
+          if (!favorecidoCompraDireta) favorecidoCompraDireta = favorecidoForma;
+          if (!chavePixCompraDireta && isFormaPagamentoPix(forma)) chavePixCompraDireta = chavePixForma;
+        }
       }
 
       let parceiroCompraDireta = null;
@@ -3676,6 +4276,7 @@ module.exports = {
       const tipoSolicitacao = compraDireta
         ? await buscarTipoSolicitacaoCompraDireta(tipo_solicitacao_id, transaction)
         : await buscarTipoSolicitacaoCompra(transaction);
+      await assertTipoDisponivelNoDestino(obra, tipoSolicitacao, { transaction });
       const fluxoCompra = compraDireta
         ? await montarFluxoAprovacaoCompraDireta({
             transaction
@@ -3683,7 +4284,7 @@ module.exports = {
         : await montarFluxoAprovacaoCompra({
             transaction
           });
-      const statusInicialCompra = compraDireta ? 'ENVIADO' : 'LIBERADO_PARA_COMPRA';
+      const statusInicialCompra = compraDireta ? 'ENVIADO' : 'PENDENTE';
 
       const solicitacaoCompra = await SolicitacaoCompra.create(
         {
@@ -3697,15 +4298,33 @@ module.exports = {
           observacoes: observacoes || null,
           necessario_para: necessario_para || null,
           link_geral: link_geral || null,
-          valor_fechado: compraDireta ? valorTotalCompraDireta : 0,
+          valor_fechado: compraDireta ? valorTotalFornecedorCompraDireta : 0,
           desconto_total: compraDireta ? descontoTotalCompraDireta : 0,
           frete_tipo: freteTipoCompraDireta,
+          frete_modo: freteModoCompraDireta,
           frete_valor: freteValorCompraDireta,
           frete_data_vencimento: freteTipoCompraDireta === 'TERCEIRO' ? frete_data_vencimento : null,
           frete_parceiro_id: freteTipoCompraDireta === 'TERCEIRO' ? freteCredorCompraDireta.id : null,
           frete_dados_pagamento: freteTipoCompraDireta === 'TERCEIRO'
             ? String(frete_dados_pagamento || '').trim()
-            : null
+            : null,
+          formas_pagamento_json: compraDireta ? formasPagamentoCompraDireta.map((forma) => ({
+            id: forma.id,
+            nome: forma.nome,
+            codigo: forma.codigo,
+            valor: formas_pagamento?.find((item) => Number(item.id) === Number(forma.id))?.valor
+              ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null),
+            favorecido_id: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.id || null,
+            favorecido_nome: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.nome || null,
+            favorecido_cpf_cnpj: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.cpf_cnpj || null,
+            chave_pix: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.chave_pix || null,
+            dados_pagamento: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.dados_pagamento || null,
+            boleto: Boolean(detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.boleto)
+          })) : null,
+          dados_pagamento: compraDireta ? String(dados_pagamento || '').trim() || null : null,
+          frete_forma_pagamento_id: freteTipoCompraDireta === 'TERCEIRO' ? freteFormaPagamentoCompraDireta?.id || null : null,
+          frete_favorecido_id: freteTipoCompraDireta === 'TERCEIRO' ? freteFavorecidoCompraDireta?.id || null : null,
+          frete_favorecido_chave_pix: freteTipoCompraDireta === 'TERCEIRO' ? freteChavePixCompraDireta : null
         },
         { transaction }
       );
@@ -3714,6 +4333,7 @@ module.exports = {
         const itemCriado = await SolicitacaoCompraItem.create(
           {
             ...entry.item,
+            status_aprovacao: compraDireta ? null : 'PENDENTE',
             solicitacao_compra_id: solicitacaoCompra.id
           },
           { transaction }
@@ -3733,6 +4353,7 @@ module.exports = {
         const itemCriado = await SolicitacaoCompraItemManual.create(
           {
             ...entry.item,
+            status_aprovacao: compraDireta ? null : 'PENDENTE',
             solicitacao_compra_id: solicitacaoCompra.id
           },
           { transaction }
@@ -3774,7 +4395,15 @@ module.exports = {
         id: forma.id,
         nome: formatarFormaPagamentoResumo(forma),
         codigo: forma.codigo || null,
-        gera_boleto: Boolean(forma.gera_boleto) || isFormaPagamentoBoleto(forma)
+        gera_boleto: Boolean(forma.gera_boleto) || isFormaPagamentoBoleto(forma),
+        valor: formas_pagamento?.find((item) => Number(item.id) === Number(forma.id))?.valor
+          ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null),
+        favorecido_id: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.id || null,
+        favorecido_nome: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.nome || null,
+        favorecido_cpf_cnpj: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.cpf_cnpj || null,
+        chave_pix: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.chave_pix || null,
+        dados_pagamento: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.dados_pagamento || null,
+        boleto: Boolean(detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.boleto)
       }));
 
       const descricao = [
@@ -3787,10 +4416,10 @@ module.exports = {
         compraDireta && descontoTotalCompraDireta > 0 ? `Desconto concedido: R$ ${formatCurrencyPdf(descontoTotalCompraDireta)}` : null,
         compraDireta ? `Valor liquido dos itens: R$ ${formatCurrencyPdf(valorTotalCompraDireta)}` : null,
         compraDireta && freteTipoCompraDireta === 'EMBUTIDO'
-          ? `Frete embutido nos itens${freteValorCompraDireta > 0 ? `: R$ ${formatCurrencyPdf(freteValorCompraDireta)}` : ''}`
+          ? `Frete embutido devido ao credor principal (${freteModoCompraDireta === 'POR_ITEM' ? 'por item' : 'valor total'})${freteValorCompraDireta > 0 ? `: R$ ${formatCurrencyPdf(freteValorCompraDireta)}` : ''}`
           : null,
         compraDireta && freteTipoCompraDireta === 'TERCEIRO'
-          ? `Frete pago a terceiro: R$ ${formatCurrencyPdf(freteValorCompraDireta)} - Credor: ${freteCredorCompraDireta.nome || freteCredorCompraDireta.cpf_cnpj || freteCredorCompraDireta.id} - Vencimento: ${frete_data_vencimento} - Dados: ${String(frete_dados_pagamento || '').trim()}`
+          ? `Frete pago a terceiro (${freteModoCompraDireta === 'POR_ITEM' ? 'por item' : 'valor total'}): R$ ${formatCurrencyPdf(freteValorCompraDireta)} - Credor: ${freteCredorCompraDireta.nome || freteCredorCompraDireta.cpf_cnpj || freteCredorCompraDireta.id} - Vencimento: ${frete_data_vencimento} - Dados: ${String(frete_dados_pagamento || '').trim()}`
           : null,
         compraDireta ? `Valor total da solicitacao: R$ ${formatCurrencyPdf(valorTotalSolicitacaoCompraDireta)}` : null,
         observacoes ? `Observações: ${observacoes}` : null
@@ -3803,6 +4432,8 @@ module.exports = {
           codigo,
           obra_id,
           parceiro_id: compraDireta ? parceiroCompraDireta?.id || null : null,
+          favorecido_id: compraDireta ? favorecidoCompraDireta?.id || null : null,
+          favorecido_chave_pix: compraDireta ? chavePixCompraDireta : null,
           tipo_solicitacao_id: tipoSolicitacao.id,
           descricao,
           valor: compraDireta ? valorTotalSolicitacaoCompraDireta : null,
@@ -3839,12 +4470,14 @@ module.exports = {
             origem: compraDireta ? 'COMPRA_DIRETA' : 'MODULO_COMPRAS',
             solicitacao_compra_origem: compraDireta ? 'COMPRA_DIRETA' : 'NORMAL',
             parceiro_id: compraDireta ? parceiroCompraDireta?.id || null : null,
+            favorecido_id: compraDireta ? favorecidoCompraDireta?.id || null : null,
             formas_pagamento: compraDireta ? formasPagamentoMetadata : undefined,
             dados_pagamento: compraDireta ? dados_pagamento || null : undefined,
             valor_bruto: compraDireta ? valorBrutoCompraDireta : null,
             desconto_total: compraDireta ? descontoTotalCompraDireta : null,
             valor_total_itens: compraDireta ? valorTotalCompraDireta : null,
             frete_tipo: compraDireta ? freteTipoCompraDireta : null,
+            frete_modo: compraDireta ? freteModoCompraDireta : null,
             frete_valor: compraDireta ? freteValorCompraDireta : null,
             frete_parceiro_id: compraDireta ? freteCredorCompraDireta?.id || null : null,
             frete_data_vencimento: compraDireta ? frete_data_vencimento || null : null,
@@ -3864,7 +4497,9 @@ module.exports = {
           status: 'PENDENTE',
           observacao: fluxoCompra.usaFluxoDiretoria
             ? `${compraDireta ? 'Compra direta' : 'Solicitacao de compra'} aguardando aprovacao da diretoria`
-            : `${compraDireta ? 'Compra direta' : 'Solicitacao de compra'} criada`
+            : compraDireta
+              ? 'Compra direta criada'
+              : 'Solicitacao de compra criada e aguardando revisao do GEO'
         },
         { transaction }
       );
@@ -3885,6 +4520,7 @@ module.exports = {
           desconto_total: compraDireta ? descontoTotalCompraDireta : null,
           valor_total_itens: compraDireta ? valorTotalCompraDireta : null,
           frete_tipo: compraDireta ? freteTipoCompraDireta : null,
+          frete_modo: compraDireta ? freteModoCompraDireta : null,
           frete_valor: compraDireta ? freteValorCompraDireta : null,
           frete_parceiro_id: compraDireta ? freteCredorCompraDireta?.id || null : null,
           frete_data_vencimento: compraDireta ? frete_data_vencimento || null : null,
@@ -3930,6 +4566,7 @@ module.exports = {
         desconto_total: compraDireta ? descontoTotalCompraDireta : null,
         valor_total_itens: compraDireta ? valorTotalCompraDireta : null,
         frete_tipo: compraDireta ? freteTipoCompraDireta : null,
+        frete_modo: compraDireta ? freteModoCompraDireta : null,
         frete_valor: compraDireta ? freteValorCompraDireta : null,
         frete_credor: compraDireta && freteCredorCompraDireta ? {
           id: freteCredorCompraDireta.id,
@@ -3942,7 +4579,10 @@ module.exports = {
     } catch (error) {
       await transaction.rollback();
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao criar solicitacao de compra' });
+      const status = Number(error?.statusCode) || 500;
+      return res.status(status).json({
+        error: status >= 500 ? 'Erro ao criar solicitacao de compra' : error.message
+      });
     }
   },
 
@@ -4495,8 +5135,20 @@ module.exports = {
         return;
       }
 
+      const { hojeBrasil, previsaoDaCotacao } = require('../services/pedidoEntregaDomain');
+      const dataBase = hojeBrasil();
+      const feriados = await require('../services/pedidoEntregaService').calendarioEntrega();
       return res.json({
         solicitacao,
+        previsoes_entrega: (solicitacao.fornecedores || []).map((cotacao) => ({
+          fornecedor_id: Number(cotacao.fornecedor_compra_id),
+          cotacao_fornecedor_id: cotacao.id,
+          fornecedor_nome: cotacao.fornecedor?.nome || `Fornecedor #${cotacao.fornecedor_compra_id}`,
+          prazo_entrega_dias: cotacao.prazo_entrega_dias,
+          prazo_entrega_tipo: cotacao.prazo_entrega_tipo,
+          data_base: dataBase,
+          previsao_calculada: previsaoDaCotacao(cotacao, dataBase, feriados)
+        })),
         comparativo: (solicitacao.fornecedores || []).length > 0
           ? montarComparativoSolicitacao(solicitacao)
           : null
@@ -4585,6 +5237,8 @@ module.exports = {
         fechamentoParcialConfirmado: req.body?.fechamento_parcial_confirmado === true,
         fechamentoExcedenteConfirmado: req.body?.fechamento_excedente_confirmado === true,
         justificativaExcedente: req.body?.justificativa_excedente,
+        previsaoEntrega: req.body?.previsao_entrega,
+        previsoesEntrega: req.body?.previsoes_entrega,
         permitirParcial: podeFecharParcial,
         permitirFinal: podeEncerrarDefinitivamente,
         transaction

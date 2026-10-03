@@ -1,4 +1,5 @@
 import { API_URL, authHeaders } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
 export async function uploadComprovantes(files) {
   const formData = new FormData();
@@ -28,7 +29,7 @@ export async function getComprovantesPendentes() {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || 'Erro ao buscar pendentes');
+    throw new Error(mensagemDeErro(text, 'Erro ao buscar pendentes', res.status));
   }
   return res.json();
 }
@@ -40,7 +41,7 @@ export async function buscarSolicitacoesParaComprovante(q = '') {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || 'Erro ao buscar solicitacoes');
+    throw new Error(mensagemDeErro(text, 'Erro ao buscar solicitacoes', res.status));
   }
   return res.json();
 }
@@ -53,7 +54,7 @@ export async function vincularComprovante(id, solicitacao_id) {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || 'Erro ao vincular comprovante');
+    throw new Error(mensagemDeErro(text, 'Erro ao vincular comprovante', res.status));
   }
   return res.json();
 }
@@ -65,6 +66,6 @@ export async function excluirComprovante(id) {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || 'Erro ao excluir comprovante');
+    throw new Error(mensagemDeErro(text, 'Erro ao excluir comprovante', res.status));
   }
 }

@@ -1,0 +1,9 @@
+{
+  "regra": "R36",
+  "criado_em": "2026-09-07",
+  "porque": "Decisao do cliente (07/09): o menu \"...\" sai de TODAS as telas. \"Clicar num botao para aparecer outro botao nao tem logica, e ha espaco de sobra na faixa.\" A folga foi MEDIDA, nao suposta: as nove telas que usavam o menu na faixa foram remontadas com todos os itens visiveis e medidas a 1920, 1366 e 390 - uma linha nas duas primeiras larguras, 2 ou 3 linhas a 390 pelo flex-wrap que a barra ja tinha, sem NENHUM rotulo cortado e sem rolagem lateral da pagina. A prop `mais` do PageHeader deixou de existir. Sobrou UM ponto, e ele esta aqui porque NAO cabe: a celula de acoes da lista de Solicitacoes. Medido com o CSS real, os seis botoes visiveis (Ver, Assumir, Atribuir, Enviar, Arquivar, Excluir) pedem 478px de largura natural e a coluna tem 296px uteis - e `.app-tabela td .app-actionbar` e `flex-wrap: nowrap`, entao o que nao cabe nao quebra: CINCO dos seis rotulos saem cortados. O caso foi levado ao cliente em vez de decidido aqui, como ele pediu. Este numero so pode diminuir.",
+  "total_em": 1,
+  "arquivos": {
+    "src/pages/Solicitacoes/LinhaSolicitacao.jsx": 1
+  }
+}

@@ -13,7 +13,10 @@ export function getFallbackRoute(pathname = '/') {
   if (path.startsWith('/financeiro') || path.startsWith('/comprovantes')) return '/financeiro/titulos';
   if (path.startsWith('/comercial')) return '/comercial/contratos';
   if (path.startsWith('/crm')) return '/crm/dashboard';
-  if (path.startsWith('/rh-dp')) return '/rh-dp';
+  // D3 (02/09): o RH/DP não tem tela de "Início" própria — o hub do módulo
+  // é o índice. (/rh-dp ainda redireciona para cá, mas mandar direto evita
+  // o salto duplo em erro de rota.)
+  if (path.startsWith('/rh-dp')) return '/hub/rhdp';
   if (path.startsWith('/sst')) return '/sst';
   if (path.startsWith('/fiscal')) return '/fiscal';
   if (path.startsWith('/provisoes-financeiras')) return '/provisoes-financeiras';
@@ -26,7 +29,8 @@ export function getFallbackRoute(pathname = '/') {
   if (path.startsWith('/biblioteca') || path.startsWith('/arquivos-modelos')) return '/arquivos-modelos';
   if (path.startsWith('/solicitacoes')) return '/solicitacoes';
 
-  return '/solicitacoes';
+  // Sem contexto de módulo, o destino padrão é a Home (Hub Principal).
+  return '/';
 }
 
 export function hasSafeBrowserHistory() {

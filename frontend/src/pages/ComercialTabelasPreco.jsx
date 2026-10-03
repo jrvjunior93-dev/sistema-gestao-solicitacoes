@@ -1,4 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import DateInputBR from '../components/DateInputBR';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  CampoForm,
+  CelulaDupla,
+  FormSecao,
+  PageHeader,
+  Pagina,
+  TabelaPadrao,
+  alternarValorFiltro,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import {
   ativarTabelaPrecoComercial,
   atualizarTabelaPrecoComercial,
@@ -8,10 +24,19 @@ import {
   getUnidadesComerciais
 } from '../services/comercial';
 
+const DESCRICAO = 'Estruture e ative tabelas comerciais por empreendimento sem depender de ajuste manual unidade por unidade.';
+
 const STATUS_TABELA = ['RASCUNHO', 'ATIVA', 'ARQUIVADA'];
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatDate(value) {
+  const iso = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return value || '-';
+  const [ano, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${ano}`;
 }
 
 function toNumber(value) {
@@ -79,31 +104,77 @@ function pickForm(item = {}) {
   };
 }
 
-function statusClass(status) {
-  switch (String(status || '').toUpperCase()) {
-    case 'ATIVA':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'ARQUIVADA':
-      return 'bg-slate-100 text-slate-700';
-    default:
-      return 'bg-amber-100 text-amber-700';
-  }
-}
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'q', rotulo: 'Busca', obrigatorio: true },
+  { id: 'empreendimento', rotulo: 'Empreendimento' },
+  { id: 'status', rotulo: 'Status' }
+];
 
 export default function ComercialTabelasPreco() {
   const [form, setForm] = useState(defaultForm());
   const [empreendimentos, setEmpreendimentos] = useState([]);
   const [unidades, setUnidades] = useState([]);
   const [tabelas, setTabelas] = useState([]);
-  const [filtroEmpreendimento, setFiltroEmpreendimento] = useState('');
+  // R12: o recorte da lista é um CONJUNTO por dimensão (vazio = todas), e
+  // não a escolha única de um select.
+  const [filtros, setFiltros] = useState({ q: '', empreendimento: new Set(), status: new Set() });
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      const valor = filtros[filtro.id];
+      return valor instanceof Set ? valor.size > 0 : String(valor ?? '').trim() !== '';
+    }).map((filtro) => filtro.id),
+    [filtros]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:comercial-tabelas-preco', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      setFiltros((atual) => ({ ...atual, [id]: atual[id] instanceof Set ? new Set() : '' }));
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  // R3/R19: erro de carga e de gravação viram faixa do sistema (Avisos), que
+  // tem superfície própria e existe também durante o carregamento (B5).
+  const { avisos, avisar, fechar } = useAvisos();
+  // R22: hook usado é hook importado. A referência serve à ação da faixa
+  // fixa (levar o foco ao formulário), não a medida nenhuma.
+  const campoNomeRef = useRef(null);
 
   async function carregar() {
     try {
       setLoading(true);
-      setError('');
       const [empreData, unidadesData, tabelasData] = await Promise.all([
         getEmpreendimentosComerciais({ ativo: 1 }),
         getUnidadesComerciais({ ativo: 1 }),
@@ -113,7 +184,8 @@ export default function ComercialTabelasPreco() {
       setUnidades(Array.isArray(unidadesData) ? unidadesData : []);
       setTabelas(Array.isArray(tabelasData) ? tabelasData : []);
     } catch (err) {
-      setError(err?.message || 'Erro ao carregar tabelas de preco');
+      console.error(err);
+      avisar.erro(err?.message || 'Erro ao carregar tabelas de preco');
     } finally {
       setLoading(false);
     }
@@ -129,9 +201,18 @@ export default function ComercialTabelasPreco() {
   );
 
   const tabelasFiltradas = useMemo(() => {
-    if (!filtroEmpreendimento) return tabelas;
-    return tabelas.filter((item) => String(item.empreendimento_id) === String(filtroEmpreendimento));
-  }, [filtroEmpreendimento, tabelas]);
+    const busca = filtros.q.trim().toLowerCase();
+    return tabelas.filter((item) => {
+      if (filtros.empreendimento.size && !filtros.empreendimento.has(String(item.empreendimento_id))) return false;
+      if (filtros.status.size && !filtros.status.has(String(item.status || '').toUpperCase())) return false;
+      if (!busca) return true;
+      const alvo = [item.nome, item.codigo, item.empreendimento?.nome]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return alvo.includes(busca);
+    });
+  }, [filtros, tabelas]);
 
   const unidadesJaSelecionadas = useMemo(
     () => new Set((form.itens || []).map((item) => String(item.unidade_comercial_id))),
@@ -167,11 +248,24 @@ export default function ComercialTabelasPreco() {
     }));
   }
 
+  // A ação da faixa fixa não abre nada: o formulário já está na tela (R9).
+  // Ela limpa o rascunho e LEVA O FOCO até ele — o que serve para quem está
+  // no fim de uma lista longa (R13: a ação principal a um clique).
+  function irParaCadastro() {
+    setForm(defaultForm());
+    campoNomeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    campoNomeRef.current?.focus({ preventScroll: true });
+  }
+
+  function editarTabela(item) {
+    setForm(pickForm(item));
+    campoNomeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     try {
       setSaving(true);
-      setError('');
 
       const payload = {
         empreendimento_id: Number(form.empreendimento_id),
@@ -196,9 +290,11 @@ export default function ComercialTabelasPreco() {
       }
 
       setForm(defaultForm());
+      avisar.sucesso(form.id ? 'Tabela de preco salva.' : 'Tabela de preco criada.');
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao salvar tabela de preco');
+      console.error(err);
+      avisar.erro(err?.message || 'Erro ao salvar tabela de preco');
     } finally {
       setSaving(false);
     }
@@ -207,197 +303,362 @@ export default function ComercialTabelasPreco() {
   async function ativarTabela(id) {
     try {
       await ativarTabelaPrecoComercial(id);
+      avisar.sucesso('Tabela ativada.');
       await carregar();
     } catch (err) {
-      setError(err?.message || 'Erro ao ativar tabela');
+      console.error(err);
+      avisar.erro(err?.message || 'Erro ao ativar tabela');
     }
   }
 
+  /*
+    R1/R17 — a listagem virou TabelaPadrao.
+
+    Os cards à mão repetiam os mesmos seis dados por registro (nome, status,
+    empreendimento, código, vigência e quantidade de itens) em posições
+    fixas: é lista tabular desenhada como card. Na tabela cada coluna declara
+    o `tipo` e a medida vem do componente (R1/R10) — nada de 180px escrito na
+    tela —, a coluna de quantidade ganha `tabular-nums`, o nome trunca com
+    tooltip (T6) e no celular o MESMO markup vira card (X1).
+  */
+  const colunas = [
+    {
+      id: 'tabela',
+      titulo: 'Tabela',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => (
+        <CelulaDupla
+          principal={item.nome || 'Sem nome'}
+          sub={item.codigo ? `Cód. ${item.codigo}` : null}
+        />
+      )
+    },
+    {
+      id: 'empreendimento',
+      titulo: 'Empreendimento',
+      tipo: 'texto',
+      // A sobra da linha vai para a coluna de identidade (R1).
+      flex: false,
+      render: (item) => item.empreendimento?.nome || '-'
+    },
+    {
+      id: 'vigencia',
+      titulo: 'Vigência',
+      tipo: 'texto',
+      flex: false,
+      render: (item) => (
+        <CelulaDupla
+          principal={`Inicio: ${formatDate(item.vigencia_inicio)}`}
+          sub={`Fim: ${item.vigencia_fim ? formatDate(item.vigencia_fim) : 'sem prazo'}`}
+        />
+      )
+    },
+    {
+      id: 'itens',
+      titulo: 'Itens',
+      tipo: 'numero',
+      render: (item) => item.itens?.length || 0
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      // R25: as seis classes de paleta crua do statusClass() saíram — o tom
+      // é o do sistema, com ícone junto da cor (StatusBadge).
+      render: (item) => <StatusBadge status={item.status} />
+    }
+  ];
+
+  /*
+    B5 — no carregamento a tela também tem cabeçalho e superfície.
+
+    Antes o estado de carga devolvia um card solto sobre o canvas: sem faixa
+    fixa, sem título e sem lugar onde um erro de carga pudesse aparecer. A
+    `contagem` fica NULA de propósito: passar `0` afirmaria "0 tabelas", e a
+    tela ainda não sabe quantas são.
+  */
   if (loading) {
-    return <div className="page solicitacoes-page"><div className="app-empty-card">Carregando tabelas de preco...</div></div>;
+    return (
+      <Pagina>
+        <PageHeader titulo="Tabelas de preço" descricao={DESCRICAO} />
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <BlocoConteudo titulo="Tabelas cadastradas" variante="primario" cor="var(--module-comercial)">
+          <p className="app-note">Carregando tabelas de preço...</p>
+        </BlocoConteudo>
+      </Pagina>
+    );
   }
 
   return (
-    <div className="page solicitacoes-page space-y-5 md:space-y-6">
-      <header className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Tabelas de preco</h1>
-            <p className="page-subtitle">
-              Estruture e ative tabelas comerciais por empreendimento sem depender de ajuste manual unidade por unidade.
-            </p>
-          </div>
-        </div>
-      </header>
+    <Pagina>
+      {/* C1/C2/R5/R13: título, contagem e apoio na faixa fixa do topo, com
+          superfície própria — o <p class="page-subtitle"> solto sobre o
+          canvas saiu. O ritmo vertical da raiz é do Pagina (R10). */}
+      <PageHeader
+        titulo="Tabelas de preço"
+        contagem={`${tabelasFiltradas.length} de ${tabelas.length} tabela(s)`}
+        descricao={DESCRICAO}
+        acaoPrincipal={{ rotulo: 'Nova tabela', onClick: irParaCadastro }}
+      />
 
-      {error && <div className="app-alert app-alert--error">{error}</div>}
+      {/* R16: UM dono para a faixa de avisos — logo abaixo do cabeçalho. */}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <div className="grid gap-6 xl:grid-cols-[520px_minmax(0,1fr)]">
-        <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-          <div className="sol-filtros-head">
+      {/*
+        R9 (revista em 04/09) — FORMULÁRIO INLINE, E NÃO EM MODAL.
+
+        Esta tela existe PARA montar tabela de preço: tire o formulário e o
+        que sobra é uma lista que ninguém abriria por si só. Modal fica
+        reservado ao cadastro que INTERROMPE outro trabalho.
+
+        ARRANJO — empilhado, e não em duas colunas. O par
+        `grid-cols-[520px_minmax(0,1fr)]` escrevia a medida na tela (R10) e,
+        de quebra, espremia as duas metades: o editor de itens tem três
+        campos por unidade (dois deles de dinheiro, com piso de 180px pela
+        R6) e a lista tem cinco colunas. Em largura inteira os dois cabem sem
+        apertar — R10: quando "cabe mais" briga com "lê-se melhor", vence a
+        leitura.
+      */}
+      <BlocoConteudo titulo={form.id ? 'Editar tabela de preco' : 'Nova tabela de preco'}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <p className="app-note">A tabela ativa pode atualizar o valor de tabela das unidades automaticamente.</p>
+
+          {/* R12: estes selects são ENTRADA DE DADO da tabela que se está
+              cadastrando, não recorte de lista — select de formulário segue
+              legítimo. */}
+          <FormSecao legenda="Identificação" colunas={2}>
+            <CampoForm label="Nome" obrigatorio>
+              <input
+                ref={campoNomeRef}
+                className="input w-full"
+                value={form.nome}
+                onChange={(e) => setForm((current) => ({ ...current, nome: e.target.value }))}
+                required
+              />
+            </CampoForm>
+            <CampoForm label="Código">
+              <input
+                className="input w-full"
+                value={form.codigo}
+                onChange={(e) => setForm((current) => ({ ...current, codigo: e.target.value }))}
+              />
+            </CampoForm>
+            <CampoForm label="Empreendimento" obrigatorio hint="Trocar o empreendimento limpa os itens já escolhidos.">
+              <select
+                className="input w-full"
+                value={form.empreendimento_id}
+                onChange={(e) => setForm((current) => ({ ...current, empreendimento_id: e.target.value, itens: [] }))}
+                required
+              >
+                <option value="">Selecione</option>
+                {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+              </select>
+            </CampoForm>
+            <CampoForm label="Status">
+              <select
+                className="input w-full"
+                value={form.status}
+                onChange={(e) => setForm((current) => ({ ...current, status: e.target.value }))}
+              >
+                {STATUS_TABELA.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </CampoForm>
+          </FormSecao>
+
+          <FormSecao legenda="Vigência" colunas={2}>
+            <CampoForm label="Vigência inicial">
+              <DateInputBR
+                className="input w-full"
+                value={form.vigencia_inicio}
+                onChange={(e) => setForm((current) => ({ ...current, vigencia_inicio: e.target.value }))}
+              />
+            </CampoForm>
+            <CampoForm label="Vigência final" hint="Em branco = sem prazo de fim.">
+              <DateInputBR
+                className="input w-full"
+                value={form.vigencia_fim}
+                onChange={(e) => setForm((current) => ({ ...current, vigencia_fim: e.target.value }))}
+              />
+            </CampoForm>
+            <CampoForm label="Observações" tipo="observacao">
+              <textarea
+                className="input w-full"
+                rows={3}
+                value={form.observacoes}
+                onChange={(e) => setForm((current) => ({ ...current, observacoes: e.target.value }))}
+              />
+            </CampoForm>
+          </FormSecao>
+
+          {/*
+            Itens da tabela — R6/R10.
+
+            A linha de item era um grid com as larguras escritas na tela
+            (`160px_180px_180px_...`) e os dois campos de dinheiro com
+            `input w-full`, sem `.input-moeda`. Agora cada unidade é uma
+            seção de formulário: a distribuição vem do `form-grid` e os dois
+            campos de dinheiro carregam `.input-moeda` (piso de 180px,
+            alinhado à direita, `tabular-nums`). O código da unidade, que
+            antes ficava num campo desabilitado só para ser lido, é a legenda
+            da seção — o dado continua à vista, sem um controle que não faz
+            nada.
+          */}
+          <div className="space-y-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
             <div>
-              <p className="sol-filtros-title">{form.id ? 'Editar tabela de preco' : 'Nova tabela de preco'}</p>
-              <p className="sol-filtros-subtitle">A tabela ativa pode atualizar o valor de tabela das unidades automaticamente.</p>
-            </div>
-          </div>
-
-          <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Empreendimento</span>
-                <select className="input w-full" value={form.empreendimento_id} onChange={(e) => setForm((current) => ({ ...current, empreendimento_id: e.target.value, itens: [] }))} required>
-                  <option value="">Selecione</option>
-                  {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
-                </select>
-              </label>
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Status</span>
-                <select className="input w-full" value={form.status} onChange={(e) => setForm((current) => ({ ...current, status: e.target.value }))}>
-                  {STATUS_TABELA.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </label>
+              <p className="text-sm font-semibold text-[var(--c-text)]">Itens da tabela</p>
+              <p className="text-xs text-[var(--c-muted)]">
+                Selecione as unidades e defina os valores comerciais dessa tabela.
+              </p>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Codigo</span>
-                <input className="input w-full" value={form.codigo} onChange={(e) => setForm((current) => ({ ...current, codigo: e.target.value }))} />
-              </label>
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Nome</span>
-                <input className="input w-full" value={form.nome} onChange={(e) => setForm((current) => ({ ...current, nome: e.target.value }))} required />
-              </label>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Vigencia inicial</span>
-                <input className="input w-full" type="date" value={form.vigencia_inicio} onChange={(e) => setForm((current) => ({ ...current, vigencia_inicio: e.target.value }))} />
-              </label>
-              <label className="sol-filter-field">
-                <span className="sol-filter-label">Vigencia final</span>
-                <input className="input w-full" type="date" value={form.vigencia_fim} onChange={(e) => setForm((current) => ({ ...current, vigencia_fim: e.target.value }))} />
-              </label>
-            </div>
-
-            <label className="sol-filter-field">
-              <span className="sol-filter-label">Observacoes</span>
-              <textarea className="input min-h-[96px] w-full" value={form.observacoes} onChange={(e) => setForm((current) => ({ ...current, observacoes: e.target.value }))} />
-            </label>
-
-            <div className="space-y-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-[var(--c-text)]">Itens da tabela</p>
-                  <p className="text-xs text-[var(--c-muted)]">Selecione as unidades e defina os valores comerciais dessa tabela.</p>
-                </div>
-              </div>
-
-              {form.empreendimento_id ? (
-                <div className="flex flex-wrap gap-2">
-                  {unidadesDoEmpreendimento.filter((item) => !unidadesJaSelecionadas.has(String(item.id))).map((item) => (
-                    <button key={item.id} type="button" className="btn btn-outline" onClick={() => adicionarUnidade(item)}>
+            {form.empreendimento_id ? (
+              <div className="flex flex-wrap gap-2">
+                {unidadesDoEmpreendimento
+                  .filter((item) => !unidadesJaSelecionadas.has(String(item.id)))
+                  .map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => adicionarUnidade(item)}
+                    >
                       + {item.codigo}
                     </button>
                   ))}
-                </div>
-              ) : (
-                <div className="text-sm text-[var(--c-muted)]">Selecione um empreendimento para adicionar unidades.</div>
-              )}
+              </div>
+            ) : (
+              <p className="app-note">Selecione um empreendimento para adicionar unidades.</p>
+            )}
 
+            {(form.itens || []).length > 0 && (
               <div className="space-y-3">
-                {(form.itens || []).map((item, index) => {
-                  const unidade = unidadesDoEmpreendimento.find((registro) => String(registro.id) === String(item.unidade_comercial_id));
+                {form.itens.map((item, index) => {
+                  const unidade = unidadesDoEmpreendimento.find(
+                    (registro) => String(registro.id) === String(item.unidade_comercial_id)
+                  );
                   return (
-                    <div key={`${item.unidade_comercial_id}-${index}`} className="grid gap-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 md:grid-cols-[160px_180px_180px_minmax(0,1fr)_auto]">
-                      <label className="sol-filter-field">
-                        <span className="sol-filter-label">Unidade</span>
-                        <input className="input w-full" value={unidade?.codigo || item.unidade_comercial_id} disabled />
-                      </label>
-                      <label className="sol-filter-field">
-                        <span className="sol-filter-label">Valor tabela</span>
-                        <input className="input w-full" inputMode="decimal" value={item.valor_tabela} onChange={(e) => atualizarItem(index, 'valor_tabela', e.target.value)} onBlur={(e) => atualizarItem(index, 'valor_tabela', formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
-                      </label>
-                      <label className="sol-filter-field">
-                        <span className="sol-filter-label">Valor minimo</span>
-                        <input className="input w-full" inputMode="decimal" value={item.valor_minimo} onChange={(e) => atualizarItem(index, 'valor_minimo', e.target.value)} onBlur={(e) => atualizarItem(index, 'valor_minimo', formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
-                      </label>
-                      <label className="sol-filter-field">
-                        <span className="sol-filter-label">Observacoes</span>
-                        <input className="input w-full" value={item.observacoes} onChange={(e) => atualizarItem(index, 'observacoes', e.target.value)} />
-                      </label>
-                      <div className="flex items-end">
-                        <button type="button" className="btn btn-outline w-full" onClick={() => removerItem(index)}>Remover</button>
+                    <div
+                      key={`${item.unidade_comercial_id}-${index}`}
+                      className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3"
+                    >
+                      <FormSecao legenda={`Unidade ${unidade?.codigo || item.unidade_comercial_id}`} colunas={3}>
+                        <CampoForm label="Valor tabela">
+                          <input
+                            className="input input-moeda w-full"
+                            inputMode="decimal"
+                            value={item.valor_tabela}
+                            onChange={(e) => atualizarItem(index, 'valor_tabela', e.target.value)}
+                            onBlur={(e) => atualizarItem(index, 'valor_tabela', formatCurrencyInput(e.target.value))}
+                            placeholder="R$ 0,00"
+                          />
+                        </CampoForm>
+                        <CampoForm label="Valor mínimo">
+                          <input
+                            className="input input-moeda w-full"
+                            inputMode="decimal"
+                            value={item.valor_minimo}
+                            onChange={(e) => atualizarItem(index, 'valor_minimo', e.target.value)}
+                            onBlur={(e) => atualizarItem(index, 'valor_minimo', formatCurrencyInput(e.target.value))}
+                            placeholder="R$ 0,00"
+                          />
+                        </CampoForm>
+                        <CampoForm label="Observações">
+                          <input
+                            className="input w-full"
+                            value={item.observacoes}
+                            onChange={(e) => atualizarItem(index, 'observacoes', e.target.value)}
+                          />
+                        </CampoForm>
+                      </FormSecao>
+
+                      <div className="app-actionbar">
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => removerItem(index)}
+                        >
+                          Remover unidade
+                        </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Salvando...' : form.id ? 'Salvar tabela' : 'Criar tabela'}
-              </button>
-              <button type="button" className="btn btn-outline" onClick={() => setForm(defaultForm())}>Limpar</button>
-            </div>
-          </form>
-        </section>
-
-        <section className="sol-surface-card rounded-2xl p-4 md:p-5">
-          <div className="sol-filtros-head">
-            <div>
-              <p className="sol-filtros-title">Tabelas cadastradas</p>
-              <p className="sol-filtros-subtitle">Ative a tabela vigente e mantenha o historico comercial por empreendimento.</p>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-[260px_minmax(0,1fr)]">
-            <label className="sol-filter-field">
-              <span className="sol-filter-label">Empreendimento</span>
-              <select className="input w-full" value={filtroEmpreendimento} onChange={(e) => setFiltroEmpreendimento(e.target.value)}>
-                <option value="">Todos</option>
-                {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {tabelasFiltradas.length === 0 ? (
-              <div className="app-empty-card">Nenhuma tabela de preco cadastrada.</div>
-            ) : (
-              tabelasFiltradas.map((item) => (
-                <article key={item.id} className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-sm">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-[var(--c-text)]">{item.nome}</h3>
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(item.status)}`}>{item.status}</span>
-                      </div>
-                      <div className="grid gap-2 text-sm text-[var(--c-muted)] md:grid-cols-2">
-                        <span>Empreendimento: {item.empreendimento?.nome || '-'}</span>
-                        <span>Codigo: {item.codigo || '-'}</span>
-                        <span>Vigencia: {item.vigencia_inicio || '-'} ate {item.vigencia_fim || '-'}</span>
-                        <span>Itens: {item.itens?.length || 0}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {item.status !== 'ATIVA' && (
-                        <button type="button" className="btn btn-outline" onClick={() => ativarTabela(item.id)}>
-                          Ativar
-                        </button>
-                      )}
-                      <button type="button" className="btn btn-outline" onClick={() => setForm(pickForm(item))}>
-                        Editar
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))
             )}
           </div>
-        </section>
-      </div>
-    </div>
+
+          <div className="app-actionbar">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Salvando...' : form.id ? 'Salvar tabela' : 'Criar tabela'}
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => setForm(defaultForm())}>
+              Limpar
+            </button>
+          </div>
+        </form>
+      </BlocoConteudo>
+
+      <BlocoConteudo
+        titulo="Tabelas cadastradas"
+        descricao="Ative a tabela vigente e mantenha o histórico comercial por empreendimento."
+        variante="primario"
+        cor="var(--module-comercial)"
+      >
+        {/* R12/R3: busca larga em cima + filtros por marcação com etiquetas
+            removíveis — o <select> "Empreendimento" de recorte saiu. O
+            filtro aplica ao marcar (R23: recorte local, sem consulta cara). */}
+        <BarraFiltros
+          busca={visibilidadeFiltros.ehVisivel('q') ? {
+            valor: filtros.q,
+            aoMudar: (valor) => setFiltros((prev) => ({ ...prev, q: valor })),
+            placeholder: 'Buscar por nome, código ou empreendimento'
+          } : null}
+          filtros={[
+            {
+              id: 'empreendimento',
+              rotulo: 'Empreendimento',
+              opcoes: empreendimentos.map((item) => ({ valor: String(item.id), rotulo: item.nome }))
+            },
+            {
+              id: 'status',
+              rotulo: 'Status',
+              opcoes: STATUS_TABELA.map((item) => ({ valor: item, rotulo: item }))
+            }
+          ].filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={{ empreendimento: filtros.empreendimento, status: filtros.status }}
+          aoAlternar={(dim, valor, opcoes) => setFiltros((prev) => ({
+            ...alternarValorFiltro(prev, dim, valor, opcoes),
+            q: prev.q
+          }))}
+          aoLimpar={() => setFiltros((prev) => ({ ...prev, empreendimento: new Set(), status: new Set() }))}
+          visibilidade={visibilidadeFiltros}
+        />
+
+        <TabelaPadrao
+          colunas={colunas}
+          itens={tabelasFiltradas}
+          storageKey="tabela:comercial-tabelas-preco"
+          rotuloRolagem="Tabelas de preco"
+          larguraAcoes={200}
+          vazio={{
+            title: 'Nenhuma tabela de preco cadastrada',
+            message: 'Monte a primeira tabela acima para o empreendimento passar a ter valor de tabela e valor minimo por unidade.'
+          }}
+          acoesLinha={(item) => (
+            <>
+              {item.status !== 'ATIVA' && (
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => ativarTabela(item.id)}>
+                  Ativar
+                </button>
+              )}{' '}
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => editarTabela(item)}>
+                Editar
+              </button>
+            </>
+          )}
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

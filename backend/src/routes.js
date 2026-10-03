@@ -7,6 +7,7 @@ const router = express.Router();
 const permit = require('./middlewares/permissions');
 const csrfProtection = require('./middlewares/csrf');
 const requireMfaCompletion = require('./middlewares/requireMfaCompletion');
+const controleDiarioFinanceiro = require('./middlewares/controleDiarioFinanceiro');
 const requireCustosRecebiveisCompletion = require('./modules/custosRecebiveis/middlewares/requireCustosRecebiveisCompletion');
 const { auditSuccess } = require('./middlewares/audit');
 const { createRateLimit } = require('./middlewares/rateLimit');
@@ -28,7 +29,10 @@ const {
   validateForgotPasswordBody,
   validateMfaCodeBody,
   validateMfaLoginBody,
+  validateNumericIdAndSlugParams,
   validateNumericIdParam,
+  validateNumericIdParams,
+  validateCompraItemDecisionParams,
   validatePasswordChangeBody,
   validateResetPasswordBody,
   validatePresignQuery
@@ -67,8 +71,14 @@ const {
   validateCompraPedidoFreteBody,
   validateCompraPedidoRemanejarBody,
   validateCompraPedidoReabrirBody,
+  validateCompraPedidoPrevisoesBody,
+  validateCompraPedidoDocumentoFinanceiroBody,
+  validateCompraPedidoLiberarTitulosBody,
+  validateCompraPedidoReaberturaParams,
+  validateCompraPedidoDecisaoReaberturaBody,
   validateCompraPedidoStatusBody,
   validateCompraPedidoStatusBatchBody,
+  validateCompraCatalogarItemManualBody,
   validateCompraSolicitacaoItemApropriacoesBody,
   validateCompraSolicitacaoItemQuantidadeBody,
   validateCompraSolicitacaoItemQuantidadeParams,
@@ -102,6 +112,7 @@ const {
   validateSolicitacaoDataVencimentoBody,
   validateSolicitacaoEnviarSetorBody,
   validateSolicitacaoEnviarSetorMassaBody,
+  validateSolicitacaoFavorecidoCreateBody,
   validateSolicitacaoPedidoBody,
   validateSolicitacaoRefContratoBody,
   validateSolicitacaoResponsavelBody,
@@ -128,9 +139,11 @@ const {
 } = require('./validators/commercialValidators');
 const {
   validateRhApuracaoCreateBody,
+  validateRhApuracaoMultiobraBody,
   validateRhApuracaoItemParams,
   validateRhApuracaoItemUpdateBody,
   validateRhApuracaoQuery,
+  validateRhJornadasMultiobraQuery,
   validateRhColaboradorCreateBody,
   validateRhColaboradorQuery,
   validateRhColaboradorUpdateBody,
@@ -184,6 +197,7 @@ const {
   validateFinanceConciliacaoMovimentosQuery,
   validateFinanceConciliacaoQuery,
   validateFinanceConciliacaoTarifaBody,
+  validateFinanceConciliacaoRendimentoBody,
   validateFinanceConciliacaoTransferenciaBody,
   validateFinanceConciliacaoEstornoTransferenciaBody,
   validateFinanceCaixaAberturaBody,
@@ -228,6 +242,12 @@ const {
   validatePaymentBatchCreateBody,
   validatePaymentBeneficiaryCreateBody,
   validatePaymentBeneficiaryUpdateBody,
+  validateManualPaymentQueueCreateBody,
+  validateManualPaymentQueueApproveBody,
+  validateManualPaymentQueueProcessBody,
+  validateManualPaymentQueueQuery,
+  validateManualPaymentQueueResolveBody,
+  validateManualPaymentQueueResultBody,
   validatePaymentCancelBody,
   validatePaymentRejectBody,
   validatePaymentMfaBody
@@ -241,26 +261,34 @@ const {
 const { env } = require('./config/env');
 const {
   canAccessBoletos,
-    canAccessPagamentos,
-    canAccessProvisoes,
-    canAlterarQuantidadeSolicitacaoCompra,
-    canAlterarStatusComprasPedidos,
-    canApprovePagamentos,
-    canRejectPagamentos,
-    canAuditPaymentBeneficiaries,
+  canAccessFilaPagamentos,
+  canAccessPagamentos,
+  canAccessProvisoes,
+  canAlterarQuantidadeSolicitacaoCompra,
+  canAlterarStatusComprasPedidos,
+  canAnexarDocumentoPedidoCompraFinanceiro,
+  canAprovarReaberturaPedidoCompraFinanceiro,
+  canApprovePagamentos,
+  canRejectPagamentos,
+  canAuditPaymentBeneficiaries,
   canAuditPagamentos,
   canConfigurePagamentos,
   canCancelarComprasPedidos,
   canCancelarComprasCotacoes,
   canCancelarFreteComprasPedidos,
+  canAnexarEspelhoComprasPedidos,
+  canCatalogarItensManuaisCompras,
   canConfirmarBaixaPagamento,
+  canBaixarFilaPagamentos,
   canCreateCompraSolicitacao,
   canCreateProvisoes,
   canAccessFinanceiro,
   canAccessFinanceiroRelatorio,
   canImportTitulosFinanceiros,
+  canImportarComprovantesFilaPagamentos,
   canImportComercialContratos,
   userHasAreaPermission,
+  userHasAnyRhDpCapability,
   canViewSolicitacaoFinanceiro,
   canAccessTreinamento,
   canAccessComprovantes,
@@ -268,6 +296,7 @@ const {
   canCreateComercialContratos,
   canCreateCrmLeads,
   canEditarItensComprasPedidos,
+  canGerarPrevisaoPedidoCompraFinanceiro,
   canEncerrarSemPedidoComprasCotacoes,
   canFecharComprasCotacoes,
   canExportCrmLeads,
@@ -276,6 +305,9 @@ const {
   canManageComercialContratos,
   canManageComercialEmpreendimentos,
   canManageConfiguracoesArea,
+  canManageCadastroObras,
+  canManageGestaoObrasApropriacoes,
+  canManageBiblioteca,
   canManageComprasConfiguracoes,
   canManageComprasDelegacao,
   canManageComprasFornecedores,
@@ -304,11 +336,15 @@ const {
   canManageComprasCotacoes,
   canOperateComprasCotacoes,
   canManageComprasPedidos,
+  canLiberarPedidoCompraFinanceiro,
   canReabrirComprasCotacoes,
   canReabrirComprasPedidos,
   canRegistrarFreteComprasPedidos,
   canRemanejarComprasPedidos,
   canPreparePagamentos,
+  canPrepareFilaPagamentos,
+  canReportarFilaPagamentos,
+  canResolverFilaPagamentos,
   canSendPagamentosBanco,
   canSyncPagamentosBanco,
   canViewProvisoes,
@@ -322,6 +358,11 @@ const {
   canViewComprasCotacoes,
   canViewComprasPedidos,
   canViewComprasRelatorios,
+  canViewCadastroObras,
+  canViewGestaoObras,
+  canViewBiblioteca,
+  canViewComunicacao,
+  canSendComunicacao,
   canViewCrmAtendimento,
   canViewCrmAutomacoes,
   canViewCrmConfiguracoes,
@@ -330,18 +371,27 @@ const {
   canViewIntegracaoSienge,
   canViewRhDpApuracao,
   canViewRhDpColaboradores,
+  canViewRhDpDashboard,
+  userHasStrictAreaPermission,
   canViewRhDpDocumentos,
+  canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   canViewSolicitacoesRelatorioOperacional
 } = require('./services/authorizationService');
+const { userBelongsToDpSetor } = require('./services/setorCapabilityService');
 
 const uploadComprovantes = require('./config/uploadComprovantes');
+const uploadComprovantesPagamento = require('./config/uploadComprovantesPagamento');
+const uploadNegociacaoContrato = require('./config/uploadNegociacaoContrato');
+const uploadDocumentacaoJuridica = require('./config/uploadDocumentacaoJuridica');
 const uploadOfx = require('./config/uploadOfx');
 const uploadCnab = require('./config/uploadCnab');
 const uploadTreinamentoFile = require('./config/uploadTreinamentoFile');
 
 // Controllers
 const SolicitacaoController = require('./controllers/SolicitacaoController');
+const RecargaCartaoController = require('./controllers/RecargaCartaoController');
+const SolicitacaoRetornoController = require('./controllers/SolicitacaoRetornoController');
 const RelatorioSolicitacoesController = require('./controllers/RelatorioSolicitacoesController');
 const PrioridadeDiretoriaController = require('./controllers/PrioridadeDiretoriaController');
 const UsuarioController = require('./controllers/UsuarioController');
@@ -349,8 +399,18 @@ const CargoController = require('./controllers/CargoController');
 const SetorController = require('./controllers/SetorController');
 const ObraController = require('./controllers/ObraController');
 const TipoSolicitacaoController = require('./controllers/TipoSolicitacaoController');
+const TipoSolicitacaoDisponibilidadeController = require('./controllers/TipoSolicitacaoDisponibilidadeController');
+const ListaPreferenciasController = require('./controllers/ListaPreferenciasController');
+const BuscaController = require('./controllers/BuscaController');
+const TelaInicialController = require('./controllers/TelaInicialController');
+const AtalhoSetorController = require('./controllers/AtalhoSetorController');
+const DetalheLayoutController = require('./controllers/DetalheLayoutController');
+const AcaoPrincipalSetorController = require('./controllers/AcaoPrincipalSetorController');
 const DashboardController = require('./controllers/DashboardController');
+const DashboardPendenciasController = require('./controllers/DashboardPendenciasController');
+const HomeBlocosController = require('./controllers/HomeBlocosController');
 const AuthController = require('./controllers/AuthController');
+const DevUserSwitchController = require('./controllers/DevUserSwitchController');
 const LiveUpdatesController = require('./controllers/LiveUpdatesController');
 const InstalacaoController = require('./controllers/InstalacaoController');
 const ContratoController = require('./controllers/ContratoController');
@@ -362,6 +422,8 @@ const AnexoController = require('./controllers/AnexoController');
 const NotificacaoController = require('./controllers/NotificacaoController');
 const SetorPermissaoController = require('./controllers/SetorPermissaoController');
 const ConfiguracaoSistemaController = require('./controllers/ConfiguracaoSistemaController');
+const ObraTipoApropriacaoController = require('./controllers/ObraTipoApropriacaoController');
+const ContratoFluxoNovoController = require('./controllers/ContratoFluxoNovoController');
 const UiVisibilityConfigController = require('./controllers/UiVisibilityConfigController');
 const ConversaInternaController = require('./controllers/ConversaInternaController');
 const ArquivoModeloController = require('./controllers/ArquivoModeloController');
@@ -369,11 +431,14 @@ const TreinamentoController = require('./controllers/TreinamentoController');
 const UnidadeController = require('./controllers/UnidadeController');
 const CategoriaController = require('./controllers/CategoriaController');
 const InsumoController = require('./controllers/InsumoController');
+const InsumoManualCatalogacaoController = require('./controllers/InsumoManualCatalogacaoController');
 const ApropriacaoController = require('./controllers/ApropriacaoController');
 const SolicitacaoCompraController = require('./controllers/SolicitacaoCompraController');
+const SolicitacaoCompraEtapasController = require('./controllers/SolicitacaoCompraEtapasController');
 const FornecedorCompraController = require('./controllers/FornecedorCompraController');
 const CotacaoFornecedorController = require('./controllers/CotacaoFornecedorController');
 const PedidoCompraController = require('./controllers/PedidoCompraController');
+const PedidoCompraFinanceiroController = require('./controllers/PedidoCompraFinanceiroController');
 const RelatorioComprasController = require('./controllers/RelatorioComprasController');
 const ParceiroController = require('./controllers/ParceiroController');
 const ParceiroCategoriaController = require('./controllers/ParceiroCategoriaController');
@@ -389,6 +454,10 @@ const ProvisaoCategoriaMacroController = require('./controllers/ProvisaoCategori
 const ProvisaoFinanceiraDashboardController = require('./controllers/ProvisaoFinanceiraDashboardController');
 const RhEmpresaGrupoController = require('./controllers/RhEmpresaGrupoController');
 const RhColaboradorController = require('./controllers/RhColaboradorController');
+const RhSolicitacaoController = require('./controllers/RhSolicitacaoController');
+const RhTransferenciaController = require('./controllers/RhTransferenciaController');
+const RhJornadaController = require('./controllers/RhJornadaController');
+const RhTicketController = require('./controllers/RhTicketController');
 const RhDocumentoController = require('./controllers/RhDocumentoController');
 const RhImportacaoController = require('./controllers/RhImportacaoController');
 const RhApuracaoController = require('./controllers/RhApuracaoController');
@@ -412,11 +481,16 @@ const TransferenciaFinanceiraController = require('./controllers/TransferenciaFi
 const TarifaBancariaConfigController = require('./controllers/TarifaBancariaConfigController');
 const ResultadoObrasController = require('./controllers/ResultadoObrasController');
 const ResultadoCentrosCustoController = require('./controllers/ResultadoCentrosCustoController');
+const DistribuicaoCentroCustoRelatorioController = require('./controllers/DistribuicaoCentroCustoRelatorioController');
+const SolicitacaoCentroCustoDistribuicaoController = require('./controllers/SolicitacaoCentroCustoDistribuicaoController');
+const PainelGestorController = require('./controllers/PainelGestorController');
 const PermissoesAreasController = require('./controllers/PermissoesAreasController');
 const BoletoController = require('./controllers/BoletoController');
 const BoletoCaixaCnabController = require('./controllers/BoletoCaixaCnabController');
 const PaymentBeneficiaryController = require('./controllers/PaymentBeneficiaryController');
 const PaymentController = require('./controllers/PaymentController');
+const PagamentoManualFilaController = require('./controllers/PagamentoManualFilaController');
+const PagamentoAutorizacaoController = require('./controllers/PagamentoAutorizacaoController');
 const FinanceiroDdaController = require('./controllers/FinanceiroDdaController');
 const CrmLeadsController = require('./controllers/CrmLeadsController');
 const CrmPipelineController = require('./controllers/CrmPipelineController');
@@ -561,6 +635,9 @@ router.use(auditoriaOperacional);
 router.get('/auth/me', AuthController.me);
 router.post('/auth/logout', AuthController.logout);
 router.post('/auth/heartbeat', AuthController.heartbeat);
+router.get('/auth/dev-user-switch', requireMfaCompletion, requireCustosRecebiveisCompletion, DevUserSwitchController.status);
+router.post('/auth/dev-user-switch/assume', requireMfaCompletion, requireCustosRecebiveisCompletion, criticalRateLimit, DevUserSwitchController.assume);
+router.post('/auth/dev-user-switch/restore', criticalRateLimit, DevUserSwitchController.restore);
 router.post('/auth/mfa/setup', AuthController.mfaSetup);
 router.post('/auth/mfa/enable', validateRequest({ body: validateMfaCodeBody }), AuthController.mfaEnable);
 router.post('/auth/mfa/disable', validateRequest({ body: validateMfaCodeBody }), AuthController.mfaDisable);
@@ -573,6 +650,7 @@ router.get('/usuarios-lista', UsuarioController.listaPublica);
 router.use('/solicitacoes', requireEnabledModule('SOLICITACOES'));
 router.use('/compras', requireEnabledModule('COMPRAS'));
 router.use('/financeiro', requireEnabledModule('FINANCEIRO'));
+router.use('/financeiro', controleDiarioFinanceiro);
 router.use('/comprovantes', requireEnabledModule('FINANCEIRO'));
 router.use('/contratos', requireEnabledModule('CONTRATOS'));
 router.use('/comercial', requireEnabledModule('COMERCIAL'));
@@ -597,12 +675,25 @@ router.use('/conversas-internas', requireEnabledModule('COMUNICACAO_INTERNA'));
 // -------------------------------------------------------------------
 // ARQUIVOS MODELOS
 // -------------------------------------------------------------------
-router.get('/arquivos-modelos/contexto', ArquivoModeloController.contexto);
-router.get('/arquivos-modelos/admins', ArquivoModeloController.listarAdmins);
-router.get('/arquivos-modelos', ArquivoModeloController.listarArquivos);
-router.post('/arquivos-modelos/upload', uploadRateLimit, uploadComprovantes.single('file'), ArquivoModeloController.upload);
-router.get('/arquivos-modelos/:id/link', validateRequest({ params: validateNumericIdParam('id', 'Arquivo modelo') }), ArquivoModeloController.obterLink);
-router.delete('/arquivos-modelos/:id', validateRequest({ params: validateNumericIdParam('id', 'Arquivo modelo') }), ArquivoModeloController.remover);
+const allowBibliotecaRead = permit({
+  resource: 'BIBLIOTECA_MODELOS_READ',
+  custom: async (req) => (
+    (await canViewBiblioteca(req.user)) ? true : 'Acesso negado para visualizar a biblioteca de modelos'
+  )
+});
+const allowBibliotecaManage = permit({
+  resource: 'BIBLIOTECA_MODELOS_MANAGE',
+  custom: async (req) => (
+    (await canManageBiblioteca(req.user)) ? true : 'Acesso negado para gerenciar a biblioteca de modelos'
+  )
+});
+
+router.get('/arquivos-modelos/contexto', allowBibliotecaRead, ArquivoModeloController.contexto);
+router.get('/arquivos-modelos/admins', allowBibliotecaRead, ArquivoModeloController.listarAdmins);
+router.get('/arquivos-modelos', allowBibliotecaRead, ArquivoModeloController.listarArquivos);
+router.post('/arquivos-modelos/upload', allowBibliotecaManage, uploadRateLimit, uploadComprovantes.single('file'), ArquivoModeloController.upload);
+router.get('/arquivos-modelos/:id/link', allowBibliotecaRead, validateRequest({ params: validateNumericIdParam('id', 'Arquivo modelo') }), ArquivoModeloController.obterLink);
+router.delete('/arquivos-modelos/:id', allowBibliotecaManage, validateRequest({ params: validateNumericIdParam('id', 'Arquivo modelo') }), ArquivoModeloController.remover);
 router.post('/arquivos-modelos/paginas', permit(['SUPERADMIN']), ArquivoModeloController.criarPagina);
 router.patch('/arquivos-modelos/paginas', permit(['SUPERADMIN']), ArquivoModeloController.salvarPaginas);
 router.patch('/arquivos-modelos/paginas/:codigo/ativar', permit(['SUPERADMIN']), ArquivoModeloController.ativarPagina);
@@ -702,6 +793,34 @@ const allowConciliacaoCorrigirConta = allowFinanceiroArea(
 const allowConciliacaoEstornar = allowFinanceiroArea(
   'FINANCEIRO_CONCILIACAO_ESTORNAR',
   ['financeiro.conciliacao.estornar']
+);
+const allowCaixasVisualizar = allowFinanceiroArea(
+  'FINANCEIRO_CAIXAS_VISUALIZAR',
+  ['financeiro.caixas.visualizar']
+);
+const allowCaixasConfirmarConciliacao = allowFinanceiroArea(
+  'FINANCEIRO_CAIXAS_CONFIRMAR_CONCILIACAO',
+  ['financeiro.caixas.confirmar_conciliacao']
+);
+const allowCaixasAbrir = allowFinanceiroArea(
+  'FINANCEIRO_CAIXAS_ABRIR',
+  ['financeiro.caixas.abrir']
+);
+const allowCaixasMovimentar = allowFinanceiroArea(
+  'FINANCEIRO_CAIXAS_MOVIMENTAR',
+  ['financeiro.caixas.movimentar']
+);
+const allowCaixasEstornar = allowFinanceiroArea(
+  'FINANCEIRO_CAIXAS_ESTORNAR',
+  ['financeiro.caixas.estornar']
+);
+const allowCaixasFechar = allowFinanceiroArea(
+  'FINANCEIRO_CAIXAS_FECHAR',
+  ['financeiro.caixas.fechar']
+);
+const allowCaixasDecidirDivergencia = allowFinanceiroArea(
+  'FINANCEIRO_CAIXAS_DECIDIR_DIVERGENCIA',
+  ['financeiro.caixas.decidir_divergencia']
 );
 const allowDdaVisualizar = allowFinanceiroArea(
   'FINANCEIRO_DDA_VISUALIZAR',
@@ -828,6 +947,36 @@ const allowPagamentosAudit = allowPaymentAction(
   canAuditPagamentos,
   'Acesso negado para auditar pagamentos bancarios'
 );
+const allowFilaPagamentosRead = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_READ',
+  canAccessFilaPagamentos,
+  'Acesso negado para visualizar a fila de pagamentos'
+);
+const allowFilaPagamentosPrepare = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_PREPARE',
+  canPrepareFilaPagamentos,
+  'Acesso negado para enviar titulos para pagamento'
+);
+const allowFilaPagamentosImportarComprovantes = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_IMPORTAR_COMPROVANTES',
+  canImportarComprovantesFilaPagamentos,
+  'Acesso negado para importar comprovantes da fila de pagamentos'
+);
+const allowFilaPagamentosBaixa = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_BAIXA',
+  canBaixarFilaPagamentos,
+  'Acesso negado para registrar baixas da fila'
+);
+const allowFilaPagamentosReportar = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_REPORTAR',
+  canReportarFilaPagamentos,
+  'Acesso negado para informar o resultado do pagamento'
+);
+const allowFilaPagamentosResolver = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_RESOLVER',
+  canResolverFilaPagamentos,
+  'Acesso negado para resolver divergencias de pagamento'
+);
 const allowFavorecidosRead = allowPaymentAction(
   'FINANCEIRO_FAVORECIDOS',
   canViewPaymentBeneficiaries,
@@ -879,6 +1028,11 @@ const allowCompraSolicitacoesAlterarQuantidade = allowPaymentAction(
   canAlterarQuantidadeSolicitacaoCompra,
   'Acesso negado para alterar quantidade de itens da solicitacao de compra'
 );
+const allowComprasCatalogarItensManuais = allowPaymentAction(
+  'COMPRAS_INSUMOS_CATALOGAR_MANUAIS',
+  canCatalogarItensManuaisCompras,
+  'Acesso negado para catalogar itens manuais de compras'
+);
 const allowCompraSolicitacoesEncaminhar = allowPaymentAction(
   'COMPRAS_SOLICITACOES_ENCAMINHAR',
   canEncaminharCompraSolicitacoes,
@@ -895,6 +1049,8 @@ const allowCompraSolicitacoesUpload = allowPaymentAction(
     await canCreateCompraSolicitacao(user)
     || await canManageCompraSolicitacoes(user)
     || await canManageComprasPedidos(user)
+    || await canAnexarDocumentoPedidoCompraFinanceiro(user)
+    || await canGerarPrevisaoPedidoCompraFinanceiro(user)
   ),
   'Acesso negado para enviar anexos de compras'
 );
@@ -907,6 +1063,40 @@ const allowComprasPedidosManage = allowPaymentAction(
   'COMPRAS_PEDIDOS_MANAGE',
   canManageComprasPedidos,
   'Acesso negado para gerenciar pedidos de compra'
+);
+const allowComprasPedidosFinanceiroPrevisao = allowPaymentAction(
+  'COMPRAS_PEDIDOS_FINANCEIRO_PREVISAO',
+  canGerarPrevisaoPedidoCompraFinanceiro,
+  'Acesso negado para gerar previsoes financeiras do pedido'
+);
+const allowComprasPedidosFinanceiroDocumento = allowPaymentAction(
+  'COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO',
+  canAnexarDocumentoPedidoCompraFinanceiro,
+  'Acesso negado para anexar documentos financeiros do pedido'
+);
+const allowComprasPedidosFinanceiroComprovacaoOpcional = permit({
+  resource: 'COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO',
+  custom: async (req) => {
+    if (!req.body?.comprovacao) return true;
+    return (await canAnexarDocumentoPedidoCompraFinanceiro(req.user))
+      ? true
+      : 'Acesso negado para anexar a comprovacao da compra';
+  }
+});
+const allowComprasPedidosFinanceiroLiberar = allowPaymentAction(
+  'COMPRAS_PEDIDOS_FINANCEIRO_LIBERAR',
+  canLiberarPedidoCompraFinanceiro,
+  'Acesso negado para liberar titulos do pedido'
+);
+const allowComprasPedidosFinanceiroReabertura = allowPaymentAction(
+  'COMPRAS_PEDIDOS_FINANCEIRO_REABERTURA',
+  canAprovarReaberturaPedidoCompraFinanceiro,
+  'Acesso negado para decidir a reabertura financeira do pedido'
+);
+const allowComprasPedidosAnexarEspelho = allowPaymentAction(
+  'COMPRAS_PEDIDOS_ANEXAR_ESPELHO',
+  canAnexarEspelhoComprasPedidos,
+  'Acesso negado para anexar o espelho do pedido de compra'
 );
 const allowComprasPedidosAlterarStatus = allowPaymentAction(
   'COMPRAS_PEDIDOS_ALTERAR_STATUS',
@@ -937,6 +1127,21 @@ const allowComprasPedidosFrete = allowPaymentAction(
   'COMPRAS_PEDIDOS_FRETE',
   canRegistrarFreteComprasPedidos,
   'Acesso negado para registrar frete de pedidos de compra'
+);
+const allowObrasCadastroManage = allowPaymentAction(
+  'OBRAS_CADASTRO_MANAGE',
+  canManageCadastroObras,
+  'Acesso negado para criar ou editar obras'
+);
+const allowObrasGestaoRead = allowPaymentAction(
+  'OBRAS_GESTAO_READ',
+  canViewGestaoObras,
+  'Acesso negado para a gestao de obras'
+);
+const allowObrasGestaoApropriacoes = allowPaymentAction(
+  'OBRAS_GESTAO_APROPRIACOES',
+  canManageGestaoObrasApropriacoes,
+  'Acesso negado para alterar apropriacoes da gestao de obras'
 );
 const allowComprasPedidosCancelarFrete = allowPaymentAction(
   'COMPRAS_PEDIDOS_CANCELAR_FRETE',
@@ -1155,13 +1360,14 @@ router.post('/treinamento/:id/upload', allowTreinamentoManage, uploadRateLimit, 
 router.get('/treinamento/:id/arquivo', allowTreinamentoRead, validateRequest({ params: validateNumericIdParam('id', 'Conteudo de treinamento') }), TreinamentoController.arquivoUrl);
 
 router.get('/apropriacoes', requireAnyEnabledModule(['OBRAS', 'SOLICITACOES', 'COMPRAS', 'FINANCEIRO']), ApropriacaoController.index);
-router.get('/apropriacoes/macros-configuracao', requireEnabledModule('OBRAS'), allowBusinessAdmin, ApropriacaoController.configuracaoMacros);
-router.patch('/apropriacoes/macros-configuracao', requireEnabledModule('OBRAS'), allowBusinessAdmin, criticalRateLimit, ApropriacaoController.salvarConfiguracaoMacros);
+router.get('/apropriacoes/macros-configuracao', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, ApropriacaoController.configuracaoMacros);
+router.patch('/apropriacoes/macros-configuracao', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, criticalRateLimit, ApropriacaoController.salvarConfiguracaoMacros);
 router.get('/apropriacoes/modelo-xlsx', requireEnabledModule('OBRAS'), permit(['SUPERADMIN']), ApropriacaoController.modeloXlsx);
+router.post('/apropriacoes/importar-xlsx/preview', requireEnabledModule('OBRAS'), allowBusinessAdmin, uploadRateLimit, uploadComprovantes.single('file'), ApropriacaoController.previewImportacaoXlsx);
 router.post('/apropriacoes/importar-xlsx', requireEnabledModule('OBRAS'), allowBusinessAdmin, uploadRateLimit, uploadComprovantes.single('file'), ApropriacaoController.importarXlsx);
-router.post('/apropriacoes', requireEnabledModule('OBRAS'), allowBusinessAdmin, ApropriacaoController.create);
-router.put('/apropriacoes/:id', requireEnabledModule('OBRAS'), allowBusinessAdmin, ApropriacaoController.update);
-router.delete('/apropriacoes/:id', requireEnabledModule('OBRAS'), allowBusinessAdmin, ApropriacaoController.destroy);
+router.post('/apropriacoes', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, ApropriacaoController.create);
+router.put('/apropriacoes/:id', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, ApropriacaoController.update);
+router.delete('/apropriacoes/:id', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, ApropriacaoController.destroy);
 const allowProvisoesModule = permit({
   resource: 'PROVISOES',
   custom: async (req) => (
@@ -1314,6 +1520,14 @@ const allowRhDpColaboradoresRead = permit({
       : 'Acesso negado para colaboradores do RH/DP'
   )
 });
+const allowRhDpDashboardRead = permit({
+  resource: 'RH_DP_RELATORIOS',
+  custom: async (req) => (
+    (await canViewRhDpDashboard(req.user))
+      ? true
+      : 'Acesso negado para relatorios do RH/DP'
+  )
+});
 const allowRhDpColaboradoresWrite = permit({
   resource: 'RH_DP_COLABORADORES',
   custom: async (req) => (
@@ -1322,6 +1536,65 @@ const allowRhDpColaboradoresWrite = permit({
       : 'Acesso negado para edicao de colaboradores do RH/DP'
   )
 });
+/**
+ * PEDIDO DE PESSOAL (Fase 6 do modulo DP, 26/08).
+ *
+ * ONDE E ESTRITO E ONDE NAO E: SUPERADMIN possui acesso funcional global. Para ADMINISTRADOR e
+ * os demais perfis, `userHasStrictAreaPermission` exige concessao nominal para aprovar alteracao
+ * salarial. Assim, o acesso amplo de outros perfis administrativos nao autoriza aumento salarial.
+ *
+ * Para abrir, decidir e anexar, estrito era ERRADO por dois motivos:
+ *
+ * 1. sao operacoes ordinarias do modulo. Trancar o administrador fora delas nao protege nada —
+ *    ele consegue conceder a permissao a si mesmo em dois cliques. So atrapalha a operacao;
+ * 2. o FRONTEND usa `hasAnyExplicitPermissao`, que libera para administrador. Backend estrito com
+ *    frontend permissivo produz o pior resultado possivel: o botao aparece e a acao falha. Quem
+ *    clica conclui que o sistema esta quebrado, e nao que lhe falta permissao.
+ *
+ * Entao: `userHasAreaPermission` (com atalho de perfil) nas ordinarias, estrito so no salario.
+ */
+const allowRhDpSolicitacaoAbrir = permit({
+  resource: 'RH_DP_SOLICITACOES',
+  custom: async (req) => (
+    (await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.abrir']))
+      ? true
+      : 'Acesso negado: abrir solicitacao de pessoal exige permissao especifica'
+  )
+});
+const allowRhDpSolicitacaoDecidir = permit({
+  resource: 'RH_DP_SOLICITACOES',
+  custom: async (req) => (
+    (await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.decidir']))
+      ? true
+      : 'Acesso negado: decidir solicitacao de pessoal exige permissao especifica'
+  )
+});
+// Ver a lista exige apenas poder ver colaborador: a visibilidade por obra e aplicada no controller.
+const allowRhDpSolicitacaoVer = permit({
+  resource: 'RH_DP_SOLICITACOES',
+  custom: async (req) => (
+    (await canViewRhDpColaboradores(req.user))
+      ? true
+      : 'Acesso negado para solicitacoes de pessoal'
+  )
+});
+const allowRhDpEventosRecorrentesManage = permit({
+  resource: 'RH_DP_EVENTOS_RECORRENTES',
+  custom: async (req) => (
+    (await userBelongsToDpSetor(req.user))
+      ? true
+      : 'Acesso negado: a gestao de eventos recorrentes e exclusiva do Departamento Pessoal'
+  )
+});
+const allowRhDpEventosRecorrentesView = permit({
+  resource: 'RH_DP_EVENTOS_RECORRENTES',
+  custom: async (req) => (
+    (await canViewRhDpEventosRecorrentes(req.user))
+      ? true
+      : 'Acesso negado: visualize eventos recorrentes somente com a permissao granular correspondente'
+  )
+});
+
 const allowRhDpDocumentosRead = permit({
   resource: 'RH_DP_DOCUMENTOS',
   custom: async (req) => (
@@ -1386,6 +1659,24 @@ const allowRhDpFechamentoReopen = permit({
       : 'Acesso negado para reabrir fechamento do RH/DP'
   )
 });
+const allowRhDpTicketManage = permit({
+  resource: 'RH_DP_TICKETS',
+  custom: async (req) => (
+    (await userHasAreaPermission(req.user, ['rh_dp.ticket.gerar']))
+    || (await userHasAnyRhDpCapability(req.user, ['rh_dp_ticket_generate']))
+      ? true
+      : 'Acesso negado para gerar lotes de ticket do RH/DP'
+  )
+});
+const allowRhDpFinanceCategoryRead = permit({
+  resource: 'RH_DP_FINANCEIRO_CATEGORIAS',
+  custom: async (req) => (
+    (await canExecuteRhDpFechamento(req.user))
+    || (await userHasAreaPermission(req.user, ['rh_dp.ticket.gerar']))
+    || (await userHasAnyRhDpCapability(req.user, ['rh_dp_ticket_generate']))
+    || 'Acesso negado para categorias financeiras do RH/DP'
+  )
+});
 const allowIntegracaoSiengeRead = permit({
   resource: 'INTEGRACAO_SIENGE',
   custom: async (req) => (
@@ -1417,15 +1708,40 @@ const allowIntegracaoSiengeConfigManage = permit({
 // -------------------------------------------------------------------
 
 router.post('/solicitacoes', validateRequest({ body: validateSolicitacaoCreateBody }), SolicitacaoController.create);
+router.get('/solicitacoes/centros-custo/:id/obras-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.obrasElegiveis);
+router.get('/recargas-cartao/meus-cartoes', RecargaCartaoController.meusCartoes);
+router.get('/recargas-cartao/cartoes/:id/contexto', validateRequest({ params: validateNumericIdParam('id', 'Cartao de recarga') }), RecargaCartaoController.contextoCartao);
+router.get('/recargas-cartao/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.contextoSolicitacao);
+router.patch('/recargas-cartao/solicitacoes/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.editarPendente);
+router.post('/recargas-cartao/solicitacoes/:id/prestacao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.enviarPrestacao);
+router.patch('/recargas-cartao/solicitacoes/:id/prestacao/rateios', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.editarRateiosPrestacao);
+router.post('/recargas-cartao/solicitacoes/:id/prestacao/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.decidirPrestacao);
+router.get('/configuracoes/cartoes-recarga', RecargaCartaoController.adminIndex);
+router.post('/configuracoes/cartoes-recarga', criticalRateLimit, RecargaCartaoController.adminCreate);
+router.patch('/configuracoes/cartoes-recarga/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Cartao de recarga') }), RecargaCartaoController.adminUpdate);
 router.get('/solicitacoes/filtros/obras', SolicitacaoController.obrasVisiveis);
+router.get('/solicitacoes/apropriacao-padrao', ObraTipoApropriacaoController.resolverParaSolicitacao);
+router.get('/solicitacoes/despesa-eventual/saldo', SolicitacaoController.saldoDespesaEventual);
 router.get('/solicitacoes/filtros/status', SolicitacaoController.statusVisiveis);
+router.get('/solicitacoes/cadastro-obra/usuarios-ativos', SolicitacaoController.usuariosAtivosCadastroObra);
 router.get('/solicitacoes', SolicitacaoController.index);
+// Contadores das visoes da lista — MESMO escopo da listagem (pacote B3).
+// Registrada antes de /solicitacoes/:id para nao casar como id.
+router.get('/solicitacoes/contadores', SolicitacaoController.contadores);
 router.get('/solicitacoes/resumo', SolicitacaoController.resumo);
 router.get('/solicitacoes/relatorios/operacional', allowSolicitacoesRelatorioOperacional, RelatorioSolicitacoesController.operacional);
 router.get('/solicitacoes/:id/resumo-lista', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.resumoLista);
 router.get('/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.show);
+router.get('/solicitacoes/:id/compra-etapas', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.listar);
+router.patch('/solicitacoes/:id/compra-itens/aprovacao-lote', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.aprovarItensEmLote);
+router.patch('/solicitacoes/:id/compra-itens/:tipo/:itemId/decisao', criticalRateLimit, validateRequest({ params: validateCompraItemDecisionParams }), SolicitacaoCompraEtapasController.decidirItem);
+router.post('/solicitacoes/:id/compra-etapas/comentarios/leitura', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.marcarLeituraComentario);
+router.post('/solicitacoes/:id/compra-etapas/comentarios', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.comentar);
+router.post('/solicitacoes/:id/pedidos-compra/:pedidoId/itens/:itemId/recebimentos', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'pedidoId', 'itemId'], 'Recebimento de item') }), require('./controllers/PedidoEntregaController').receberItem);
+router.post('/solicitacoes/:id/pedidos-compra/:pedidoId/entregas', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'pedidoId'], 'Entrega de pedido') }), require('./controllers/PedidoEntregaController').operar);
 router.patch('/solicitacoes/:id/status', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoStatusBody }), auditSuccess({ eventType: 'SOLICITACAO_STATUS_UPDATED', resourceType: 'SOLICITACAO', description: 'Status da solicitacao atualizado', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.updateStatus);
 router.post('/solicitacoes/:id/aprovar-diretoria', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_DIRETORIA_APPROVED', resourceType: 'SOLICITACAO', description: 'Solicitacao aprovada pela diretoria', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.aprovarDiretoria);
+router.post('/solicitacoes/:id/aprovar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_APPROVED', resourceType: 'SOLICITACAO', description: 'Solicitacao aprovada e encaminhada conforme o tipo', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.aprovarPorTipo);
 router.post('/solicitacoes/:id/pagamentos', requireEnabledModule('FINANCEIRO'), validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_PAYMENT_ADDED', resourceType: 'SOLICITACAO', description: 'Pagamento informado na solicitacao', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.adicionarPagamento);
 router.patch('/solicitacoes/:id/pedido', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoPedidoBody }), auditSuccess({ eventType: 'SOLICITACAO_PEDIDO_UPDATED', resourceType: 'SOLICITACAO', description: 'Numero do pedido atualizado', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarNumeroPedido);
 router.patch('/solicitacoes/:id/ref-contrato', requireEnabledModule('CONTRATOS'), validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoRefContratoBody }), auditSuccess({ eventType: 'SOLICITACAO_CONTRATO_UPDATED', resourceType: 'SOLICITACAO', description: 'Referencia de contrato atualizada', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarRefContrato);
@@ -1435,9 +1751,14 @@ router.patch('/solicitacoes/:id/apropriacoes', criticalRateLimit, validateReques
 router.patch('/solicitacoes/:id/credor', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoCredorBody }), auditSuccess({ eventType: 'SOLICITACAO_CREDOR_UPDATED', resourceType: 'SOLICITACAO', description: 'Credor da solicitacao atualizado', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarCredor);
 router.post('/solicitacoes/:id/credor/cadastrar', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoCredorCreateBody }), auditSuccess({ eventType: 'SOLICITACAO_CREDOR_CREATED_AND_LINKED', resourceType: 'SOLICITACAO', description: 'Credor cadastrado e vinculado a solicitacao', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.cadastrarCredorFinanceiro);
 router.post('/solicitacoes/credores', auditSuccess({ eventType: 'SOLICITACAO_CREDOR_CREATED', resourceType: 'PARCEIRO', description: 'Credor criado durante abertura de solicitacao' }), ParceiroController.createCredorNovaSolicitacao);
+router.post('/solicitacoes/favorecidos', criticalRateLimit, validateRequest({ body: validateSolicitacaoFavorecidoCreateBody }), auditSuccess({ eventType: 'SOLICITACAO_FAVORECIDO_CREATED', resourceType: 'PARCEIRO', description: 'Favorecido cadastrado durante abertura de solicitacao' }), ParceiroController.createFavorecidoNovaSolicitacao);
 router.patch('/solicitacoes/arquivar-massa', validateRequest({ body: validateSolicitacaoArquivarMassaBody }), auditSuccess({ eventType: 'SOLICITACAO_ARCHIVED_BATCH', resourceType: 'SOLICITACAO', description: 'Solicitacoes arquivadas em massa', metadataResolver: (req) => ({ solicitacao_ids: req.body?.solicitacao_ids || [] }) }), SolicitacaoController.arquivarEmMassa);
 router.post('/solicitacoes/enviar-setor-massa', validateRequest({ body: validateSolicitacaoEnviarSetorMassaBody }), auditSuccess({ eventType: 'SOLICITACAO_SENT_BATCH', resourceType: 'SOLICITACAO', description: 'Solicitacoes enviadas em massa para outro setor', metadataResolver: (req) => ({ solicitacao_ids: req.body?.solicitacao_ids || [], setor_destino: req.body?.setor_destino || null }) }), SolicitacaoController.enviarParaSetorEmMassa);
 router.post('/solicitacoes/:id/comentarios', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoComentarioBody }), auditSuccess({ eventType: 'SOLICITACAO_COMMENTED', resourceType: 'SOLICITACAO', description: 'Comentario adicionado na solicitacao', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.adicionarComentario);
+router.post('/solicitacoes/:id/retorno', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_RETURN_REQUESTED', resourceType: 'SOLICITACAO', description: 'Retorno da solicitacao solicitado', resourceIdResolver: (req) => req.params.id }), SolicitacaoRetornoController.solicitar);
+router.post('/solicitacoes/:id/retorno/devolver', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_RETURN_SENT_BACK', resourceType: 'SOLICITACAO', description: 'Solicitacao devolvida ao setor que aprovou o retorno', resourceIdResolver: (req) => req.params.id }), SolicitacaoRetornoController.devolver);
+router.post('/solicitacoes/retornos/:pedidoId/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('pedidoId', 'Pedido de retorno') }), auditSuccess({ eventType: 'SOLICITACAO_RETURN_DECIDED', resourceType: 'SOLICITACAO_RETORNO', description: 'Pedido de retorno decidido', resourceIdResolver: (req) => req.params.pedidoId }), SolicitacaoRetornoController.decidir);
+router.post('/solicitacoes/retornos/:pedidoId/cancelar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('pedidoId', 'Pedido de retorno') }), auditSuccess({ eventType: 'SOLICITACAO_RETURN_CANCELLED', resourceType: 'SOLICITACAO_RETORNO', description: 'Pedido de retorno cancelado', resourceIdResolver: (req) => req.params.pedidoId }), SolicitacaoRetornoController.cancelar);
 router.delete('/solicitacoes/:id/comentarios/:historicoId', auditSuccess({ eventType: 'SOLICITACAO_COMMENT_REMOVED', resourceType: 'SOLICITACAO', description: 'Comentario removido da solicitacao', resourceIdResolver: (req) => req.params.id, metadataResolver: (req) => ({ historico_id: req.params.historicoId }) }), SolicitacaoController.removerComentario);
 router.patch('/solicitacoes/:id/pendencia-financeira', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_FINANCIAL_DEADLINE_FLAG_UPDATED', resourceType: 'SOLICITACAO', description: 'Pendencia financeira da solicitacao atualizada', resourceIdResolver: (req) => req.params.id, metadataResolver: (req) => ({ marcar: Boolean(req.body?.marcar), tipo: req.body?.tipo || null }) }), SolicitacaoController.atualizarPendenciaFinanceira);
 router.post('/solicitacoes/:id/enviar-setor', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoEnviarSetorBody }), auditSuccess({ eventType: 'SOLICITACAO_SENT_TO_SECTOR', resourceType: 'SOLICITACAO', description: 'Solicitacao enviada para outro setor', resourceIdResolver: (req) => req.params.id, metadataResolver: (req) => ({ setor_destino: req.body?.setor_destino || null }) }), SolicitacaoController.enviarParaSetor);
@@ -1602,12 +1923,12 @@ router.patch('/setores/:id/desativar', allowConfiguracoesCadastros, validateRequ
 
 router.get('/obras', ObraController.index);
 router.get('/obras/minhas', ObraController.minhas);
-router.get('/obras/gestao', requireEnabledModule('OBRAS'), ObraController.gestaoIndex);
-router.get('/obras/:id/gestao', requireEnabledModule('OBRAS'), validateRequest({ params: validateNumericIdParam('id', 'Obra') }), ObraController.gestaoShow);
-router.post('/obras', allowConfiguracoesCadastros, ObraController.create);
-router.patch('/obras/:id', allowConfiguracoesCadastros, ObraController.update);
-router.patch('/obras/:id/ativar', allowConfiguracoesCadastros, ObraController.ativar);
-router.patch('/obras/:id/desativar', allowConfiguracoesCadastros, ObraController.desativar);
+router.get('/obras/gestao', requireEnabledModule('OBRAS'), allowObrasGestaoRead, ObraController.gestaoIndex);
+router.get('/obras/:id/gestao', requireEnabledModule('OBRAS'), allowObrasGestaoRead, validateRequest({ params: validateNumericIdParam('id', 'Obra') }), ObraController.gestaoShow);
+router.post('/obras', allowObrasCadastroManage, ObraController.create);
+router.patch('/obras/:id', allowObrasCadastroManage, ObraController.update);
+router.patch('/obras/:id/ativar', allowObrasCadastroManage, ObraController.ativar);
+router.patch('/obras/:id/desativar', allowObrasCadastroManage, ObraController.desativar);
 
 // -------------------------------------------------------------------
 // PARCEIROS
@@ -1694,14 +2015,78 @@ router.patch('/empresas-grupo/:id', allowConfiguracoesCadastros, criticalRateLim
 router.get('/rh/empresas-grupo', allowRhDpEmpresasManage, validateRequest({ query: validateRhEmpresaGrupoQuery }), RhEmpresaGrupoController.index);
 router.post('/rh/empresas-grupo', allowRhDpEmpresasManage, criticalRateLimit, validateRequest({ body: validateRhEmpresaGrupoCreateBody }), RhEmpresaGrupoController.create);
 router.patch('/rh/empresas-grupo/:id', allowRhDpEmpresasManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Empresa do grupo RH/DP'), body: validateRhEmpresaGrupoUpdateBody }), RhEmpresaGrupoController.update);
-router.get('/rh/relatorios/operacional', allowRhDpColaboradoresRead, validateRequest({ query: validateRhRelatorioOperacionalQuery }), RhRelatorioController.operacional);
+router.get('/rh/relatorios/operacional', allowRhDpDashboardRead, validateRequest({ query: validateRhRelatorioOperacionalQuery }), RhRelatorioController.operacional);
 router.get('/rh/colaboradores', allowRhDpColaboradoresRead, validateRequest({ query: validateRhColaboradorQuery }), RhColaboradorController.index);
 router.get('/rh/colaboradores/:id', allowRhDpColaboradoresRead, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhColaboradorController.show);
 router.post('/rh/colaboradores', allowRhDpColaboradoresWrite, criticalRateLimit, validateRequest({ body: validateRhColaboradorCreateBody }), RhColaboradorController.create);
 router.patch('/rh/colaboradores/:id', allowRhDpColaboradoresWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP'), body: validateRhColaboradorUpdateBody }), RhColaboradorController.update);
 router.post('/rh/colaboradores/importar-massa', allowRhDpColaboradoresWrite, uploadRateLimit, uploadComprovantes.single('file'), RhColaboradorController.importarMassa);
+
+// --- Pedido de pessoal: a Obra pede, o DP decide (Fase 6 do modulo DP, 26/08) ---
+// Aprovação de transferência usa os responsáveis vigentes, não a permissão de decidir do DP.
+router.get('/rh/transferencias/configuracao', allowRhDpSolicitacaoVer, RhTransferenciaController.configuracao);
+router.get('/rh/transferencias/diretorio', allowRhDpSolicitacaoVer, RhTransferenciaController.diretorio);
+router.get('/rh/transferencias', allowRhDpSolicitacaoVer, RhTransferenciaController.index);
+router.post('/rh/transferencias/leituras', allowRhDpSolicitacaoVer, RhTransferenciaController.marcarListaLida);
+router.post('/rh/transferencias', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.create);
+router.get('/rh/transferencias/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Transferencia') }), RhTransferenciaController.show);
+router.post('/rh/transferencias/:id/:acao', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.agir);
+router.get('/rh/solicitacoes', allowRhDpSolicitacaoVer, RhSolicitacaoController.index);
+router.get('/rh/solicitacoes/checklist', allowRhDpSolicitacaoVer, RhSolicitacaoController.checklistDoTipo);
+router.get('/rh/solicitacoes/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.show);
+router.get('/rh/solicitacoes/:id/jornada', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.jornada);
+router.get('/rh/solicitacoes/:id/conferencia', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.conferencia);
+router.post('/rh/solicitacoes', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhSolicitacaoController.create);
+// A autorizacao fina continua no controller: somente DP ou usuario vinculado a obra da solicitacao
+// passa. A permissao de visualizacao e a correta para a colaboracao no detalhe; exigir "abrir"
+// impedia um usuario envolvido de comentar/anexar numa solicitacao que ele podia consultar.
+router.post('/rh/solicitacoes/:id/anexos', allowRhDpSolicitacaoVer, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.anexar);
+router.post('/rh/solicitacoes/:id/aprovar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.aprovar);
+router.post('/rh/solicitacoes/:id/rejeitar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.rejeitar);
+router.post('/rh/solicitacoes/:id/reenviar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.reenviar);
+router.post('/rh/solicitacoes/:id/cancelar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.cancelar);
+router.post('/rh/solicitacoes/:id/comentar', allowRhDpSolicitacaoVer, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.comentar);
+router.post('/rh/solicitacoes/:id/solicitar-retorno', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.solicitarRetorno);
+// --- Fases 9 a 11 do DP (27/08). O checklist do TIPO vem antes do `:id` de proposito: sem barra
+// numerica, `/rh/solicitacoes/checklist` seria capturado por `/rh/solicitacoes/:id` se viesse depois.
+router.post('/rh/solicitacoes/:id/enviar', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.enviar);
+router.post('/rh/solicitacoes/:id/checklist', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.marcarChecklist);
+router.get('/rh/cargos', allowRhDpSolicitacaoVer, RhSolicitacaoController.cargos);
+router.get('/rh/colaboradores/:colaboradorId/apontamentos', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('colaboradorId', 'Colaborador') }), RhSolicitacaoController.apontamentos);
+
+// Anexos: a obra manda, o DP ATESTA antes de virar documento do colaborador (26/08).
+router.get('/rh/solicitacoes/:id/anexos', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.listarAnexos);
+router.get('/rh/solicitacoes/:id/anexos/:anexoId/link', allowRhDpSolicitacaoVer, RhSolicitacaoController.obterLinkAnexo);
+router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacaoDecidir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.validar);
+
+// --- Jornada por formulario, pagamento individual e historicos (Fases 4 e 5) ---
+router.get('/rh/jornada/modelo', allowRhDpSolicitacaoVer, RhJornadaController.modelo);
+router.post('/rh/jornada/importar', allowRhDpSolicitacaoAbrir, uploadRateLimit, criticalRateLimit, uploadComprovantes.fields([{ name: 'planilha', maxCount: 1 }, { name: 'fichas', maxCount: 20 }]), RhJornadaController.importar);
+router.get('/rh/jornada/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetencia);
+router.get('/rh/jornada/gerencial/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetenciaGerencial);
+router.get('/rh/jornada/edicoes/pendentes', allowRhDpSolicitacaoDecidir, RhJornadaController.listarEdicoesPendentes);
+router.post('/rh/jornada', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.registrar);
+router.post('/rh/jornada/gerencial', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.registrarGerencial);
+router.post('/rh/jornada/individual', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.pagamentoIndividual);
+router.post('/rh/jornada/edicoes/solicitar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.solicitarEdicao);
+router.post('/rh/jornada/edicoes/:id/decidir', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de edicao da jornada') }), RhJornadaController.decidirEdicao);
+router.get('/rh/tickets/status', allowRhDpTicketManage, RhTicketController.status);
+router.get('/rh/tickets/vencimento', allowRhDpTicketManage, RhTicketController.vencimento);
+router.post('/rh/tickets', requireEnabledModule('FINANCEIRO'), allowRhDpTicketManage, uploadRateLimit, criticalRateLimit, uploadComprovantes.single('boleto'), RhTicketController.create);
+router.get('/rh/colaboradores/:id/eventos-recorrentes', allowRhDpEventosRecorrentesView, allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.eventosDoColaborador);
+// A Obra acompanha, em modo somente leitura, os eventos dos colaboradores lotados nas obras em
+// que o usuario possui vinculo. O controller injeta esse escopo e o servico aplica o filtro no
+// banco. Edicao e cancelamento continuam protegidos pelo middleware exclusivo do DP abaixo.
+router.get('/rh/eventos-recorrentes', allowRhDpEventosRecorrentesView, allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
+router.patch('/rh/eventos-recorrentes/:id', allowRhDpEventosRecorrentesView, allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
+router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpEventosRecorrentesView, allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
+router.get('/rh/apuracao-eventos/:id/itens', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Linha da folha') }), RhJornadaController.itensDaFolha);
+router.get('/rh/colaboradores/:id/historico-vinculo', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeVinculo);
+router.get('/rh/colaboradores/:id/historico-salario', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeSalario);
 router.get('/rh/documentos/tipos', allowRhDpDocumentosRead, validateRequest({ query: validateRhDocumentoTipoQuery }), RhDocumentoController.listarTipos);
 router.get('/rh/documentos', allowRhDpDocumentosRead, validateRequest({ query: validateRhDocumentoQuery }), RhDocumentoController.index);
+router.get('/rh/colaboradores/:colaboradorId/dossie', allowRhDpDocumentosRead, validateRequest({ params: validateNumericIdParam('colaboradorId', 'Colaborador RH/DP') }), RhDocumentoController.dossie);
+router.get('/rh/colaboradores/:colaboradorId/dossie/:origem/:arquivoId/link', allowRhDpDocumentosRead, RhDocumentoController.obterLinkDossie);
 router.get('/rh/documentos/:id', allowRhDpDocumentosRead, validateRequest({ params: validateNumericIdParam('id', 'Documento RH/DP') }), RhDocumentoController.show);
 router.get('/rh/documentos/:id/link', allowRhDpDocumentosRead, validateRequest({ params: validateNumericIdParam('id', 'Documento RH/DP') }), RhDocumentoController.obterLink);
 router.post('/rh/documentos', allowRhDpDocumentosWrite, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ body: validateRhDocumentoCreateBody }), RhDocumentoController.create);
@@ -1711,6 +2096,9 @@ router.get('/rh/importacoes', allowRhDpImportacoes, validateRequest({ query: val
 router.get('/rh/importacoes/:id', allowRhDpImportacoes, validateRequest({ params: validateNumericIdParam('id', 'Importacao RH/DP') }), RhImportacaoController.show);
 router.post('/rh/importacoes/preview', allowRhDpImportacoes, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ body: validateRhImportacaoCreateBody }), RhImportacaoController.createPreview);
 router.post('/rh/importacoes/:id/confirmar', allowRhDpImportacoes, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Importacao RH/DP') }), RhImportacaoController.confirmar);
+router.get('/rh/apuracoes/categorias-financeiras', requireEnabledModule('FINANCEIRO'), allowRhDpFinanceCategoryRead, RhApuracaoController.categoriasFinanceiras);
+router.get('/rh/apuracoes/multiobra', allowRhDpApuracaoRead, validateRequest({ query: validateRhJornadasMultiobraQuery }), RhApuracaoController.jornadasMultiobra);
+router.post('/rh/apuracoes/multiobra/consolidar', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ body: validateRhApuracaoMultiobraBody }), RhApuracaoController.consolidarMultiobra);
 router.get('/rh/apuracoes', allowRhDpApuracaoRead, validateRequest({ query: validateRhApuracaoQuery }), RhApuracaoController.index);
 router.get('/rh/apuracoes/:id', allowRhDpApuracaoRead, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP') }), RhApuracaoController.show);
 router.post('/rh/apuracoes', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ body: validateRhApuracaoCreateBody }), RhApuracaoController.create);
@@ -1718,6 +2106,8 @@ router.patch('/rh/apuracoes/:id/itens/:itemId', allowRhDpApuracaoWrite, critical
 router.post('/rh/apuracoes/:id/conferir', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP') }), RhApuracaoController.conferir);
 router.get('/rh/fechamentos', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, validateRequest({ query: validateRhFechamentoQuery }), RhFechamentoController.index);
 router.get('/rh/fechamentos/:id', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, validateRequest({ params: validateNumericIdParam('id', 'Fechamento RH/DP') }), RhFechamentoController.show);
+router.get('/rh/fechamentos/:id/comprovantes/:filaId', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, RhFechamentoController.obterComprovante);
+router.get('/rh/fechamentos/:id/comprovantes/:filaId/:comprovanteId', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, RhFechamentoController.obterComprovante);
 router.post('/rh/fechamentos/:id/reabrir', requireEnabledModule('FINANCEIRO'), allowRhDpFechamentoReopen, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Fechamento RH/DP'), body: validateRhReabrirFechamentoBody }), RhFechamentoController.reabrir);
 router.post('/rh/apuracoes/:id/fechar', requireEnabledModule('FINANCEIRO'), allowRhDpFechamentoExecute, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP'), body: validateRhFecharApuracaoBody }), RhFechamentoController.fecharApuracao);
 
@@ -1748,6 +2138,35 @@ router.put('/financeiro/favorecidos/:id', allowFavorecidosManage, criticalRateLi
 router.delete('/financeiro/favorecidos/:id', allowFavorecidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.destroy);
 router.post('/financeiro/favorecidos/:id/validar', allowFavorecidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.validate);
 router.get('/financeiro/favorecidos/:id/auditoria', allowFavorecidosAudit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.auditoria);
+router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueQuery }), PagamentoManualFilaController.index);
+router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
+router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), PagamentoManualFilaController.arquivosSolicitacao);
+router.get('/financeiro/fila-pagamentos/:id/comprovante', validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.comprovante);
+router.get('/financeiro/fila-pagamentos/:id/comprovantes/:comprovanteId', PagamentoManualFilaController.comprovanteAdicional);
+router.post('/financeiro/fila-pagamentos/:id/comprovante', allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.anexarComprovante);
+router.post('/financeiro/fila-pagamentos/comprovantes/preview', allowFilaPagamentosImportarComprovantes, uploadRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.previewComprovantes);
+router.post('/financeiro/fila-pagamentos/comprovantes/vincular', allowFilaPagamentosImportarComprovantes, criticalRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.vincularComprovantes);
+router.post('/financeiro/fila-pagamentos', allowFilaPagamentosPrepare, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueCreateBody }), PagamentoManualFilaController.create);
+router.post('/financeiro/fila-pagamentos/baixar', allowFilaPagamentosBaixa, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueProcessBody }), PagamentoManualFilaController.baixar);
+router.post('/financeiro/fila-pagamentos/aprovar-divergencias', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueApproveBody }), PagamentoManualFilaController.aprovarDivergencias);
+router.post('/financeiro/fila-pagamentos/:id/resultado', allowFilaPagamentosReportar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResultBody }), PagamentoManualFilaController.resultado);
+router.post('/financeiro/fila-pagamentos/:id/resolver', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResolveBody }), PagamentoManualFilaController.resolver);
+router.get('/financeiro/autorizacoes-pagamento/capabilities', PagamentoAutorizacaoController.capabilities);
+router.get('/financeiro/autorizacoes-pagamento', PagamentoAutorizacaoController.index);
+router.post('/financeiro/autorizacoes-pagamento', criticalRateLimit, PagamentoAutorizacaoController.create);
+router.get('/financeiro/autorizacoes-pagamento/documentos/:id', validateRequest({ params: validateNumericIdParam('id', 'Documento') }), PagamentoAutorizacaoController.document);
+router.post('/financeiro/autorizacoes-pagamento/passkeys/registro/opcoes', criticalRateLimit, PagamentoAutorizacaoController.registrationOptions);
+router.post('/financeiro/autorizacoes-pagamento/passkeys/registro/verificar', criticalRateLimit, PagamentoAutorizacaoController.verifyRegistration);
+router.get('/financeiro/autorizacoes-pagamento/passkeys', PagamentoAutorizacaoController.passkeys);
+router.delete('/financeiro/autorizacoes-pagamento/passkeys/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Passkey') }), PagamentoAutorizacaoController.revokePasskey);
+router.post('/financeiro/autorizacoes-pagamento/push/assinar', criticalRateLimit, PagamentoAutorizacaoController.subscribePush);
+router.post('/financeiro/autorizacoes-pagamento/push/remover', criticalRateLimit, PagamentoAutorizacaoController.unsubscribePush);
+router.get('/financeiro/autorizacoes-pagamento/autorizadores', PagamentoAutorizacaoController.authorizers);
+router.put('/financeiro/autorizacoes-pagamento/autorizadores', criticalRateLimit, PagamentoAutorizacaoController.saveAuthorizer);
+router.get('/financeiro/autorizacoes-pagamento/:id', validateRequest({ params: validateNumericIdParam('id', 'Lote') }), PagamentoAutorizacaoController.show);
+router.post('/financeiro/autorizacoes-pagamento/:id/autenticacao/opcoes', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Lote') }), PagamentoAutorizacaoController.authenticationOptions);
+router.post('/financeiro/autorizacoes-pagamento/:id/decidir', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Lote') }), PagamentoAutorizacaoController.decide);
+router.post('/financeiro/autorizacoes-pagamento/:id/enfileirar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Lote') }), PagamentoAutorizacaoController.enqueue);
 router.get('/financeiro/pagamentos/titulos-elegiveis', allowPagamentosPrepare, PaymentController.titulosElegiveis);
 router.get('/financeiro/pagamentos/bb/health', allowPagamentosRead, PaymentController.bbHealth);
 router.post('/financeiro/pagamentos/lotes', allowPagamentosPrepare, criticalRateLimit, validateRequest({ body: validatePaymentBatchCreateBody }), PaymentController.criarLote);
@@ -1798,17 +2217,20 @@ router.post('/financeiro/conciliacoes/:id/confirmar-transferencia', allowFinance
 router.post('/financeiro/conciliacoes/:id/estornar-transferencia', allowConciliacaoEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoTransferenciaBody }), ConciliacaoBancariaController.estornarTransferencia);
 router.post('/financeiro/conciliacoes/:id/estornar', allowConciliacaoEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoTransferenciaBody }), ConciliacaoBancariaController.estornar);
 router.post('/financeiro/conciliacoes/:id/confirmar-tarifa', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoTarifaBody }), ConciliacaoBancariaController.confirmarTarifa);
+router.post('/financeiro/conciliacoes/:id/confirmar-rendimento', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoRendimentoBody }), ConciliacaoBancariaController.confirmarRendimento);
 router.get('/financeiro/conciliacoes/:id/tarifas-estorno', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria') }), ConciliacaoBancariaController.tarifasEstorno);
 router.post('/financeiro/conciliacoes/:id/confirmar-estorno-tarifa', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoTarifaBody }), ConciliacaoBancariaController.confirmarEstornoTarifa);
 router.post('/financeiro/conciliacoes/:id/confirmar-estorno-bancario', allowConciliacaoEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoBancarioBody }), ConciliacaoBancariaController.confirmarEstornoBancario);
 router.post('/financeiro/conciliacoes/:id/confirmar-credito-rotativo', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoCreditoRotativoBody }), ConciliacaoBancariaController.confirmarCreditoRotativo);
-router.get('/financeiro/caixas', allowFinanceiro, validateRequest({ query: validateFinanceCaixaQuery }), CaixaFinanceiroController.index);
-router.post('/financeiro/caixas/confirmar-conciliacao-dia', allowFinanceiro, criticalRateLimit, CaixaFinanceiroController.confirmarConciliacaoDia);
-router.post('/financeiro/caixas/abrir', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceCaixaAberturaBody }), CaixaFinanceiroController.abrir);
-router.get('/financeiro/caixas/:id', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro') }), CaixaFinanceiroController.show);
-router.post('/financeiro/caixas/:id/movimentos', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro'), body: validateFinanceCaixaMovimentoBody }), CaixaFinanceiroController.registrarMovimento);
-router.post('/financeiro/caixas/:id/movimentos/:movimentoId/estornar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateFinanceCaixaMovimentoParams, body: validateFinanceCaixaMovimentoEstornoBody }), CaixaFinanceiroController.estornarMovimento);
-router.post('/financeiro/caixas/:id/fechar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro'), body: validateFinanceCaixaFechamentoBody }), CaixaFinanceiroController.fechar);
+router.get('/financeiro/caixas', allowCaixasVisualizar, validateRequest({ query: validateFinanceCaixaQuery }), CaixaFinanceiroController.index);
+router.get('/financeiro/caixas-painel-diario', allowCaixasVisualizar, CaixaFinanceiroController.painelDiario);
+router.post('/financeiro/caixas/confirmar-conciliacao-dia', allowCaixasConfirmarConciliacao, criticalRateLimit, CaixaFinanceiroController.confirmarConciliacaoDia);
+router.post('/financeiro/caixas/abrir', allowCaixasAbrir, criticalRateLimit, uploadRateLimit, uploadComprovantes.single('comprovante'), validateRequest({ body: validateFinanceCaixaAberturaBody }), CaixaFinanceiroController.abrir);
+router.get('/financeiro/caixas/:id', allowCaixasVisualizar, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro') }), CaixaFinanceiroController.show);
+router.post('/financeiro/caixas/:id/movimentos', allowCaixasMovimentar, criticalRateLimit, uploadRateLimit, uploadComprovantes.single('comprovante'), validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro'), body: validateFinanceCaixaMovimentoBody }), CaixaFinanceiroController.registrarMovimento);
+router.post('/financeiro/caixas/:id/movimentos/:movimentoId/estornar', allowCaixasEstornar, criticalRateLimit, validateRequest({ params: validateFinanceCaixaMovimentoParams, body: validateFinanceCaixaMovimentoEstornoBody }), CaixaFinanceiroController.estornarMovimento);
+router.post('/financeiro/caixas/:id/fechar', allowCaixasFechar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro'), body: validateFinanceCaixaFechamentoBody }), CaixaFinanceiroController.fechar);
+router.post('/financeiro/caixas/:id/decidir-divergencia', allowCaixasDecidirDivergencia, criticalRateLimit, CaixaFinanceiroController.decidirDivergencia);
 router.get('/financeiro/transferencias', allowFinanceiro, validateRequest({ query: validateFinanceTransferenciaQuery }), TransferenciaFinanceiraController.index);
 router.post('/financeiro/transferencias', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceTransferenciaBody }), TransferenciaFinanceiraController.create);
 router.post('/financeiro/transferencias/:id/cancelar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Transferencia financeira'), body: validateFinanceTransferenciaCancelBody }), TransferenciaFinanceiraController.cancelar);
@@ -1818,6 +2240,9 @@ router.get('/financeiro/relatorios/fluxo-consolidado', allowFinanceiroRelatorio(
 router.get('/financeiro/relatorios/analitico', allowFinanceiroRelatorio(['financeiro.relatorios.analitico']), validateRequest({ query: validateFinanceRelatorioAnaliticoQuery }), RelatorioFinanceiroController.analitico);
 router.get('/financeiro/relatorios/financeiro-obras', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), validateRequest({ query: validateFinanceiroObrasQuery }), RelatorioFinanceiroController.financeiroObras);
 router.get('/financeiro/relatorios/financeiro-obras/pdf', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), validateRequest({ query: validateFinanceiroObrasQuery }), RelatorioFinanceiroController.financeiroObrasPdf);
+// Item 22 (23/08): os arquivos da linha. MESMA permissao do relatorio — quem le o relatorio pode
+// nao ter acesso ao modulo de solicitacoes, e tomaria 403 clicando numa linha do proprio relatorio.
+router.get('/financeiro/relatorios/financeiro-obras/titulos/:id/arquivos', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), validateRequest({ params: validateNumericIdParam('id', 'Titulo') }), RelatorioFinanceiroController.arquivosDoTitulo);
 router.get('/financeiro/relatorios/financeiro-obras/importacoes-historicas', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), ObraCustoHistoricoController.importacoes);
 router.post('/financeiro/relatorios/financeiro-obras/importacoes-historicas/preview', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), uploadRateLimit, uploadComprovantes.single('file'), ObraCustoHistoricoController.preview);
 router.post('/financeiro/relatorios/financeiro-obras/importacoes-historicas/confirmar', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), criticalRateLimit, uploadComprovantes.single('file'), ObraCustoHistoricoController.confirmar);
@@ -1831,6 +2256,20 @@ router.get('/financeiro/relatorios/movimentacao-contas', allowFinanceiroRelatori
 router.get('/financeiro/relatorios/conciliacao-contas', allowFinanceiroRelatorio(['financeiro.relatorios.conciliacao_contas']), validateRequest({ query: validateFinanceRelatorioConciliacaoQuery }), RelatorioFinanceiroController.conciliacaoContas);
 router.get('/financeiro/relatorios/resultado-obras', allowFinanceiroRelatorio(['financeiro.relatorios.resultado_obras']), ResultadoObrasController.index);
 router.get('/financeiro/relatorios/centros-custo', allowFinanceiroRelatorio(['financeiro.relatorios.centros_custo']), ResultadoCentrosCustoController.index);
+router.get('/financeiro/relatorios/centros-custo/distribuicao-obras', allowFinanceiroRelatorio(['financeiro.relatorios.centros_custo']), DistribuicaoCentroCustoRelatorioController.index);
+router.get('/painel-gestor/obras', PainelGestorController.obras);
+router.get('/painel-gestor/resultado-obras', PainelGestorController.resultadoObras);
+router.get('/painel-gestor/custos-recebiveis', PainelGestorController.custosRecebiveis);
+router.get('/painel-gestor/saldos', PainelGestorController.saldos);
+router.get('/painel-gestor/saldos/preenchimento', PainelGestorController.preenchimentoSaldos);
+router.post('/painel-gestor/saldos', criticalRateLimit, PainelGestorController.salvarSaldos);
+router.get('/painel-gestor/olho', PainelGestorController.olhoEstado);
+router.post('/painel-gestor/olho/fechar', criticalRateLimit, PainelGestorController.olhoFechar);
+router.post('/painel-gestor/olho/abrir', criticalRateLimit, PainelGestorController.olhoAbrir);
+// Senha unica do olho do Painel do Gestor: mesmo criterio das configuracoes gravadas em
+// ConfiguracaoSistema (ex.: areas-obra) -> allowConfiguracoesStatusVinculos.
+router.get('/configuracoes/painel-gestor/pin', allowConfiguracoesStatusVinculos, PainelGestorController.pinConfiguracao);
+router.put('/configuracoes/painel-gestor/pin', allowConfiguracoesStatusVinculos, criticalRateLimit, PainelGestorController.pinDefinir);
 router.get('/financeiro/baixas', allowFinanceiro, validateRequest({ query: validateFinanceBaixasQuery }), TituloFinanceiroController.baixas);
 router.get('/financeiro/financiamentos-bancarios', allowFinanceiro, validateRequest({ query: validateFinanceFinanciamentoBancarioQuery }), FinanciamentoBancarioController.index);
 router.post('/financeiro/financiamentos-bancarios', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceFinanciamentoBancarioCreateBody }), FinanciamentoBancarioController.create);
@@ -1839,6 +2278,12 @@ router.get('/financeiro/financiamentos-bancarios/:id/auditoria', allowFinanceiro
 router.post('/financeiro/financiamentos-bancarios/:id/gerar-titulos', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Financiamento bancario') }), FinanciamentoBancarioController.gerarTitulos);
 router.patch('/financeiro/financiamentos-bancarios/parcelas/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Parcela do financiamento bancario') }), FinanciamentoBancarioController.atualizarParcela);
 router.get('/financeiro/titulos', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery }), TituloFinanceiroController.index);
+router.get('/financeiro/status-internos-pagar', allowFinanceiro, require('./controllers/StatusInternoContasPagarController').index);
+router.post('/financeiro/status-internos-pagar', allowFinanceiro, criticalRateLimit, require('./controllers/StatusInternoContasPagarController').create);
+router.patch('/financeiro/titulos/status-interno-pagar', allowFinanceiro, criticalRateLimit, require('./controllers/StatusInternoContasPagarController').atribuir);
+router.post('/financeiro/titulos/negociacoes/preview', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').preview);
+router.post('/financeiro/titulos/negociacoes/confirmar', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').confirmar);
+router.get('/financeiro/titulos/:id/negociacao', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/TituloRenegociacaoController').consultar);
 router.get('/financeiro/titulos/relatorio.pdf', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery }), TituloFinanceiroController.relatorioPdf);
 router.post('/financeiro/titulos', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceTituloCreateBody }), TituloFinanceiroController.create);
 router.get('/financeiro/titulos/importacoes/modelo', allowTituloImportar, TituloFinanceiroImportacaoController.modelo);
@@ -1960,6 +2405,7 @@ router.post(
 router.get('/compras/solicitacoes-diretas/modelo-itens-xlsx', allowCompraSolicitacoesCreate, SolicitacaoCompraController.modeloCompraDiretaXlsx);
 router.post('/compras/solicitacoes-diretas/importar-itens-xlsx', allowCompraSolicitacoesCreate, uploadRateLimit, uploadComprovantes.single('file'), SolicitacaoCompraController.importarCompraDiretaXlsx);
 router.get('/compras/solicitacoes-diretas/por-solicitacao/:solicitacaoId', allowCompraSolicitacoesCreateFlowRead, validateRequest({ params: validateNumericIdParam('solicitacaoId', 'Solicitacao principal') }), SolicitacaoCompraController.showCompraDiretaPorSolicitacao);
+router.get('/compras/solicitacoes/por-solicitacao/:solicitacaoId', allowCompraSolicitacoesCreateFlowRead, validateRequest({ params: validateNumericIdParam('solicitacaoId', 'Solicitacao principal') }), SolicitacaoCompraController.showPorSolicitacaoPrincipal);
 router.get('/compras/solicitacoes', allowCompraSolicitacoesOrDelegacaoRead, validateRequest({ query: validateCompraQuery }), scopeCompraListAccess, SolicitacaoCompraController.index);
 router.post('/compras/solicitacoes/inativar-massa', allowCompraSolicitacoesDelete, criticalRateLimit, validateRequest({ body: validateCompraSolicitacaoInativarMassaBody }), scopeCompraListAccess, SolicitacaoCompraController.inativar);
 router.post('/compras/solicitacoes/encaminhar-compras-massa', allowCompraSolicitacoesEncaminhar, criticalRateLimit, validateRequest({ body: validateCompraSolicitacaoEncaminharComprasMassaBody }), scopeCompraListAccess, SolicitacaoCompraController.encaminharParaCompras);
@@ -1985,7 +2431,21 @@ router.patch('/compras/solicitacoes/:id/recusar', allowCompraSolicitacoesManage,
 router.patch('/compras/solicitacoes/:id/encerrar', allowComprasCotacoesEncerrar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra'), body: validateCompraEncerrarBody }), requireCompraAccess, SolicitacaoCompraController.encerrar);
 router.patch('/compras/solicitacoes/:id/encerrar-sem-pedido', requireEnabledModule('COTACOES'), allowComprasCotacoesEncerrarSemPedido, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra'), body: validateCompraEncerrarSemPedidoBody }), requireCompraAccess, SolicitacaoCompraController.encerrarSemPedido);
 router.patch('/compras/solicitacoes/:id/itens/:itemId/quantidade', allowCompraSolicitacoesAlterarQuantidade, criticalRateLimit, validateRequest({ params: validateCompraSolicitacaoItemQuantidadeParams, body: validateCompraSolicitacaoItemQuantidadeBody }), requireCompraAccess, SolicitacaoCompraController.atualizarQuantidadeItem);
+router.post('/compras/solicitacoes/:id/itens/:itemId/cadastrar-unidade', allowCompraSolicitacoesCreateFlowRead, criticalRateLimit, validateRequest({ params: validateCompraSolicitacaoItemQuantidadeParams }), requireCompraAccess, SolicitacaoCompraController.cadastrarUnidadeItem);
 router.patch('/compras/solicitacoes/:id/itens/:itemId/apropriacoes', allowCompraSolicitacoesCreateFlowRead, criticalRateLimit, validateRequest({ params: validateCompraSolicitacaoItemQuantidadeParams, body: validateCompraSolicitacaoItemApropriacoesBody }), requireCompraAccess, SolicitacaoCompraController.atualizarApropriacoesItem);
+router.post(
+  '/compras/solicitacoes/:id/itens-manuais/:itemId/catalogar',
+  allowComprasCatalogarItensManuais,
+  criticalRateLimit,
+  validateRequest({ params: validateCompraSolicitacaoItemQuantidadeParams, body: validateCompraCatalogarItemManualBody }),
+  requireCompraAccess,
+  auditSuccess({
+    eventType: 'COMPRA_ITEM_MANUAL_CATALOGADO',
+    resourceType: 'SOLICITACAO_COMPRA',
+    description: 'Item manual vinculado ao cadastro oficial de insumos'
+  }),
+  InsumoManualCatalogacaoController.catalogar
+);
 router.post('/compras/solicitacoes/:id/comentarios', allowCompraSolicitacoesManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra'), body: validateCompraCotacaoComentarioBody }), requireCompraAccess, SolicitacaoCompraController.comentar);
 router.get('/compras/delegacao/usuarios', allowComprasDelegacaoManage, PedidoCompraController.usuariosDelegacao);
 router.patch('/compras/solicitacoes/:id/delegar', allowComprasDelegacaoRead, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra'), body: validateCompraDelegacaoBody }), requireCompraAccess, PedidoCompraController.delegarSolicitacao);
@@ -2007,10 +2467,17 @@ router.get('/compras/pedidos/:id', allowComprasPedidosRead, validateRequest({ pa
 router.post('/compras/pedidos/:id/itens', allowComprasPedidosEditarItens, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoItemAddBody }), requirePedidoCompraAccess, PedidoCompraController.addItem);
 router.patch('/compras/pedidos/:id/status', allowComprasPedidosAlterarStatus, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoStatusBody }), requirePedidoCompraAccess, PedidoCompraController.updateStatus);
 router.patch('/compras/pedidos/:id/reabrir-cotacao', allowComprasPedidosReabrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoReabrirBody }), requirePedidoCompraAccess, PedidoCompraController.reabrirCotacao);
+router.post('/compras/pedidos/:id/financeiro/adotar-legado', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra') }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.adotarLegado);
+router.post('/compras/pedidos/:id/financeiro/previsoes', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), allowComprasPedidosFinanceiroComprovacaoOpcional, requirePedidoCompraAccess, PedidoCompraFinanceiroController.criarPrevisoes);
+router.post('/compras/pedidos/:id/financeiro/previsoes/reparcelar', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), allowComprasPedidosFinanceiroComprovacaoOpcional, requirePedidoCompraAccess, PedidoCompraFinanceiroController.reparcelarPrevisoes);
+router.post('/compras/pedidos/:id/financeiro/documentos', allowComprasPedidosFinanceiroDocumento, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoDocumentoFinanceiroBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.registrarDocumento);
+router.patch('/compras/pedidos/:id/financeiro/liberar', allowComprasPedidosFinanceiroLiberar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoLiberarTitulosBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.liberarTitulos);
+router.post('/compras/pedidos/:id/reaberturas', allowComprasPedidosReabrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoReabrirBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.solicitarReabertura);
+router.patch('/compras/pedidos/:id/reaberturas/:reaberturaId/decisao', allowComprasPedidosFinanceiroReabertura, criticalRateLimit, validateRequest({ params: validateCompraPedidoReaberturaParams, body: validateCompraPedidoDecisaoReaberturaBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.decidirReabertura);
 router.patch('/compras/pedidos/:id/cancelar', allowComprasPedidosCancelar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoCancelBody }), requirePedidoCompraAccess, PedidoCompraController.cancel);
 router.patch('/compras/pedidos/:id/itens-cancelar', allowComprasPedidosCancelar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoCancelBody }), requirePedidoCompraAccess, PedidoCompraController.cancelItems);
 router.post('/compras/pedidos/:id/comentarios', allowComprasPedidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoComentarioBody }), requirePedidoCompraAccess, PedidoCompraController.comentar);
-router.patch('/compras/pedidos/:id/espelho', allowComprasPedidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoEspelhoBody }), requirePedidoCompraAccess, PedidoCompraController.anexarEspelho);
+router.patch('/compras/pedidos/:id/espelho', allowComprasPedidosAnexarEspelho, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoEspelhoBody }), requirePedidoCompraAccess, PedidoCompraController.anexarEspelho);
 router.post('/compras/pedidos/:id/fretes', allowComprasPedidosFrete, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoFreteBody }), requirePedidoCompraAccess, PedidoCompraController.registrarFrete);
 router.patch('/compras/pedidos/:id/fretes/:freteId', allowComprasPedidosFrete, criticalRateLimit, validateRequest({ params: validateCompraPedidoFreteParams, body: validateCompraPedidoFreteBody }), requirePedidoCompraAccess, PedidoCompraController.atualizarFrete);
 router.post('/compras/pedidos/:id/fretes/:freteId/cancelar', allowComprasPedidosCancelarFrete, criticalRateLimit, validateRequest({ params: validateCompraPedidoFreteParams, body: validateCompraPedidoFreteCancelBody }), requirePedidoCompraAccess, PedidoCompraController.cancelarFrete);
@@ -2024,6 +2491,9 @@ router.get('/compras/pedidos/:id/pdf', allowComprasPedidosRead, validateRequest(
 // -------------------------------------------------------------------
 
 router.get('/tipos-solicitacao', TipoSolicitacaoController.index);
+router.get('/tipos-solicitacao/disponiveis', TipoSolicitacaoDisponibilidadeController.disponiveis);
+router.get('/configuracoes/tipos-solicitacao-por-destino', allowConfiguracoesStatusVinculos, TipoSolicitacaoDisponibilidadeController.configuracao);
+router.patch('/configuracoes/tipos-solicitacao-por-destino', allowConfiguracoesStatusVinculos, TipoSolicitacaoDisponibilidadeController.atualizarConfiguracao);
 router.post('/tipos-solicitacao', allowConfiguracoesCadastros, TipoSolicitacaoController.create);
 router.patch('/tipos-solicitacao/:id', allowConfiguracoesCadastros, TipoSolicitacaoController.update);
 router.patch('/tipos-solicitacao/:id/ativar', allowConfiguracoesCadastros, TipoSolicitacaoController.ativar);
@@ -2083,6 +2553,9 @@ router.get('/configuracoes/setores-visiveis-usuario', allowConfiguracoesStatusVi
 router.patch('/configuracoes/setores-visiveis-usuario', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateSetoresVisiveisPorUsuario);
 router.get('/configuracoes/tipos-solicitacao-por-setor', ConfiguracaoSistemaController.getTiposSolicitacaoPorSetor);
 router.patch('/configuracoes/tipos-solicitacao-por-setor', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateTiposSolicitacaoPorSetor);
+router.get('/configuracoes/obra-tipo-apropriacao', allowConfiguracoesStatusVinculos, ObraTipoApropriacaoController.index);
+router.get('/configuracoes/obra-tipo-apropriacao/obras/:obraId/apropriacoes', allowConfiguracoesStatusVinculos, ObraTipoApropriacaoController.apropriacoesDaObra);
+router.patch('/configuracoes/obra-tipo-apropriacao', allowConfiguracoesStatusVinculos, ObraTipoApropriacaoController.salvar);
 router.get('/configuracoes/nova-solicitacao-campos', ConfiguracaoSistemaController.getCamposNovaSolicitacao);
 router.patch('/configuracoes/nova-solicitacao-campos', allowConfiguracoesSolicitacoes, ConfiguracaoSistemaController.updateCamposNovaSolicitacao);
 router.get('/configuracoes/nova-solicitacao-automacao-destino', ConfiguracaoSistemaController.getAutomacaoDestinoNovaSolicitacao);
@@ -2095,12 +2568,85 @@ router.get('/configuracoes/tipos-compartilhados-setor', ConfiguracaoSistemaContr
 router.patch('/configuracoes/tipos-compartilhados-setor', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateTiposCompartilhadosSetor);
 router.get('/configuracoes/automacao-status-setor', ConfiguracaoSistemaController.getAutomacaoStatusSetor);
 router.patch('/configuracoes/automacao-status-setor', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateAutomacaoStatusSetor);
+router.get('/configuracoes/aprovacao-solicitacao-por-tipo', ConfiguracaoSistemaController.getAprovacaoSolicitacaoPorTipo);
+router.patch('/configuracoes/aprovacao-solicitacao-por-tipo', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateAprovacaoSolicitacaoPorTipo);
+router.get('/configuracoes/dev-user-switch', permit(['SUPERADMIN']), DevUserSwitchController.config);
+router.patch('/configuracoes/dev-user-switch', permit(['SUPERADMIN']), criticalRateLimit, DevUserSwitchController.updateConfig);
+
+// Preferencias e filtros salvos das listas (ListaAvancada) — sempre do
+// proprio usuario autenticado; nao ha como ler ou escrever registro de
+// outra pessoa (pacote B1 de docs/PROPOSTA-BACKEND.md).
+// Rotas legadas (sem tipo no caminho): continuam valendo e caem no tipo
+// 'geral', que e onde as linhas ja gravadas estao. Aceitam ?tipo= para o
+// front migrar sem trocar de caminho.
+router.get('/listas/:lista/preferencias', ListaPreferenciasController.getPreferencias);
+router.put('/listas/:lista/preferencias', ListaPreferenciasController.putPreferencias);
+// Reset da tela inteira (todos os tipos da lista). 204 mesmo sem linha.
+router.delete('/listas/:lista/preferencias', ListaPreferenciasController.resetPreferenciasLista);
+// Um tipo por vez: colunas, larguras, filtros, blocos, visual, geral.
+router.get('/listas/:lista/preferencias/:tipo', ListaPreferenciasController.getPreferencias);
+router.put('/listas/:lista/preferencias/:tipo', ListaPreferenciasController.putPreferencias);
+router.delete('/listas/:lista/preferencias/:tipo', ListaPreferenciasController.resetPreferenciaTipo);
+router.get('/listas/:lista/filtros', ListaPreferenciasController.listarFiltros);
+router.post('/listas/:lista/filtros', ListaPreferenciasController.salvarFiltro);
+router.delete('/listas/:lista/filtros/:id', ListaPreferenciasController.excluirFiltro);
+
+// Preferencias do PROPRIO usuario, em bloco. Nenhuma destas rotas aceita
+// id de usuario no caminho, na query ou no corpo — o dono e sempre
+// req.user.id. Nao existe rota administrativa para resetar preferencia
+// de terceiro; se um dia for pedida, nasce com gate de permissao.
+//
+// GET: carga unica, todas as listas do usuario numa consulta so, para a
+// tela com varias tabelas nao fazer uma chamada de rede por tabela.
+router.get('/me/preferencias', ListaPreferenciasController.getMinhasPreferencias);
+// DELETE: reset de tudo. 204 mesmo quando nao havia linha.
+router.delete('/me/preferencias', ListaPreferenciasController.resetMinhasPreferencias);
+// POST: adocao em lote do que hoje esta no localStorage do usuario; cada
+// entrada passa pela MESMA validacao do caminho unitario.
+router.post('/me/preferencias/adotar', ListaPreferenciasController.adotarPreferencias);
+
+// Busca universal (Ctrl+K): grupos gateados pela permissao da tela
+// correspondente; grupo sem permissao nem e consultado (pacote B2).
+router.get('/busca', BuscaController.index);
+
+// Blocos opcionais da Home (pacote B6): dados sob demanda, um bloco por
+// chamada, cada um gateado pelas permissoes e escopos da tela de origem.
+router.get('/home/blocos/:bloco', HomeBlocosController.show);
+
+// Pendencias do usuario no Hub (pacote B3): consultas nomeadas, gateadas
+// pelas permissoes das telas de destino; contador e lista compartilham o
+// mesmo recorte (pendenciasVisoes + escopo da listagem). Somente leitura.
+router.get('/dashboard/pendencias', DashboardPendenciasController.index);
+
+// Tela inicial escolhida pelo usuario (pacote B5) — validada no backend
+// contra a fonte unica de navegacao compilada (mesmas regras do
+// frontend); fail-closed: sem permissao/rota, limpa e cai na Home.
+router.get('/me/tela-inicial', TelaInicialController.get);
+router.put('/me/tela-inicial', TelaInicialController.put);
+router.delete('/me/tela-inicial', TelaInicialController.delete);
+
+// Configuracao por setor (pacote B4): leitura aberta a autenticados
+// (metadado de interface); escrita gateada pelo MESMO gate de
+// configuracoes dos demais vinculos de status — nenhuma permissao nova.
+router.get('/configuracoes/atalhos-setor', AtalhoSetorController.index);
+router.post('/configuracoes/atalhos-setor', allowConfiguracoesStatusVinculos, AtalhoSetorController.store);
+router.put('/configuracoes/atalhos-setor/:id', allowConfiguracoesStatusVinculos, AtalhoSetorController.update);
+router.delete('/configuracoes/atalhos-setor/:id', allowConfiguracoesStatusVinculos, AtalhoSetorController.destroy);
+router.get('/configuracoes/detalhe-layout', DetalheLayoutController.index);
+router.put('/configuracoes/detalhe-layout/:setor', allowConfiguracoesStatusVinculos, DetalheLayoutController.upsert);
+router.delete('/configuracoes/detalhe-layout/:setor', allowConfiguracoesStatusVinculos, DetalheLayoutController.destroy);
+router.get('/configuracoes/acoes-principais', AcaoPrincipalSetorController.index);
+router.post('/configuracoes/acoes-principais', allowConfiguracoesStatusVinculos, AcaoPrincipalSetorController.store);
+router.put('/configuracoes/acoes-principais/:id', allowConfiguracoesStatusVinculos, AcaoPrincipalSetorController.update);
+router.delete('/configuracoes/acoes-principais/:id', allowConfiguracoesStatusVinculos, AcaoPrincipalSetorController.destroy);
 router.get('/configuracoes/setores-criacao-todas-obras', ConfiguracaoSistemaController.getSetoresCriacaoTodasObras);
 router.patch('/configuracoes/setores-criacao-todas-obras', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateSetoresCriacaoTodasObras);
 router.get('/configuracoes/setores-acesso-todas-obras', ConfiguracaoSistemaController.getSetoresAcessoTodasObras);
 router.patch('/configuracoes/setores-acesso-todas-obras', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateSetoresAcessoTodasObras);
 router.get('/configuracoes/usuarios-acesso-financeiro', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.getUsuariosAcessoFinanceiro);
 router.patch('/configuracoes/usuarios-acesso-financeiro', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateUsuariosAcessoFinanceiro);
+router.get('/configuracoes/controle-diario-contas', permit(['SUPERADMIN']), ConfiguracaoSistemaController.getCaixaDiarioConfig);
+router.patch('/configuracoes/controle-diario-contas', permit(['SUPERADMIN']), criticalRateLimit, ConfiguracaoSistemaController.updateCaixaDiarioConfig);
 router.get('/configuracoes/usuarios-envio-qualquer-setor', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.getUsuariosEnvioQualquerSetor);
 router.patch('/configuracoes/usuarios-envio-qualquer-setor', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateUsuariosEnvioQualquerSetor);
 router.get('/configuracoes/usuarios-permissoes-rh-dp', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.getUsuariosPermissoesRhDp);
@@ -2114,6 +2660,24 @@ router.get('/configuracoes/cotacoes', requireEnabledModule('COTACOES'), allowCom
 router.patch('/configuracoes/cotacoes', requireEnabledModule('COTACOES'), allowComprasConfiguracoesManage, ConfiguracaoSistemaController.setCotacoesConfig);
 router.get('/configuracoes/status-pedidos-compra', allowComprasPedidosRead, ConfiguracaoSistemaController.getStatusPedidosCompra);
 router.patch('/configuracoes/status-pedidos-compra', allowComprasConfiguracoesManage, ConfiguracaoSistemaController.setStatusPedidosCompra);
+router.get('/configuracoes/categorias-titulos-pedidos-compra', permit(['SUPERADMIN']), ConfiguracaoSistemaController.getCategoriasTitulosPedidosCompra);
+router.patch('/configuracoes/categorias-titulos-pedidos-compra', permit(['SUPERADMIN']), criticalRateLimit, ConfiguracaoSistemaController.setCategoriasTitulosPedidosCompra);
+// Limite que decide se o contrato passa pelo JURIDICO (PI-1). Configuravel pela Diretoria.
+// Formas de pagamento que a medicao oferece (item 9, 23/08). A configuracao cura a lista; o cadastro
+// financeiro continua sendo a fonte.
+router.get('/configuracoes/formas-pagamento-medicao', allowConfiguracoesGeral, ConfiguracaoSistemaController.getFormasPagamentoMedicao);
+router.patch('/configuracoes/formas-pagamento-medicao', allowConfiguracoesGeral, criticalRateLimit, ConfiguracaoSistemaController.setFormasPagamentoMedicao);
+router.get('/configuracoes/despesa-eventual-limites', allowConfiguracoesGeral, ConfiguracaoSistemaController.getDespesaEventualLimites);
+router.patch('/configuracoes/despesa-eventual-limites', allowConfiguracoesGeral, criticalRateLimit, ConfiguracaoSistemaController.setDespesaEventualLimites);
+// Item 21 (23/08): cortes e cores do alerta de saldo do contrato.
+router.get('/configuracoes/alerta-saldo-contrato', allowConfiguracoesGeral, ConfiguracaoSistemaController.getAlertaSaldoContrato);
+router.patch('/configuracoes/alerta-saldo-contrato', allowConfiguracoesGeral, criticalRateLimit, ConfiguracaoSistemaController.setAlertaSaldoContrato);
+// A tela da medicao le a lista JA filtrada — sem permissao de configuracao, que quem mede nao tem.
+router.get('/contratos/medicoes/formas-pagamento', ContratoFluxoNovoController.formasPagamentoDaMedicao);
+router.get('/configuracoes/contrato-limite-juridico', allowConfiguracoesGeral, ConfiguracaoSistemaController.getContratoLimiteJuridico);
+router.patch('/configuracoes/contrato-limite-juridico', allowConfiguracoesGeral, ConfiguracaoSistemaController.setContratoLimiteJuridico);
+router.get('/configuracoes/contrato-obra-categorias', allowConfiguracoesGeral, ConfiguracaoSistemaController.getContratoObraCategorias);
+router.patch('/configuracoes/contrato-obra-categorias', allowConfiguracoesGeral, ConfiguracaoSistemaController.setContratoObraCategorias);
 router.get('/configuracoes/comercial-categorias-contrato', allowConfiguracoesGeral, ConfiguracaoSistemaController.getComercialCategoriasContrato);
 router.patch('/configuracoes/comercial-categorias-contrato', allowConfiguracoesGeral, ConfiguracaoSistemaController.setComercialCategoriasContrato);
 router.get('/configuracoes/provisionamento-fluxo', requireEnabledModule('PROVISOES'), allowConfiguracoesGeral, ConfiguracaoSistemaController.getProvisionamentoFluxo);
@@ -2131,11 +2695,65 @@ router.get('/contratos', validateRequest({ query: validateContratoQuery }), Cont
 router.get('/contratos/resumo', validateRequest({ query: validateContratoQuery }), ContratoController.resumo);
 router.get('/contratos/relatorios/operacional', validateRequest({ query: validateContratoRelatorioOperacionalQuery }), ContratoController.relatorioOperacional);
 router.get('/contratos/exportar-csv', validateRequest({ query: validateContratoQuery }), ContratoController.exportarCsv);
+router.get('/contratos/:id/detalhe-operacional', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.detalheOperacional);
 router.get('/contratos/:id/solicitacoes', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.solicitacoes);
 router.get('/contratos/:id/anexos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.listarAnexos);
+// Parcelas do contrato (leitura) — usada pela Medicao para decidir a trilha e montar a lista.
+router.get('/contratos/:id/parcelas', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoFluxoNovoController.listarParcelas);
 router.post('/contratos', validateRequest({ body: validateContratoCreateBody }), requireContratoBodyObraAccess, ContratoController.create);
+// Fluxo novo de contratos (wireframe 1). Permissoes e regras no servico, auditadas.
+// Opcoes do formulario de contrato (responsaveis e condicoes de pagamento). Sem permissao
+// administrativa de proposito: quem abre contrato e o usuario da OBRA, e as rotas antigas
+// (`/usuarios` e `/financeiro/formas-pagamento`) exigiam acessos que ele nao tem — os selects
+// vinham vazios, em silencio.
+router.get('/contratos/fluxo-novo/opcoes', ContratoFluxoNovoController.opcoesDoFormulario);
+router.get('/contratos/fluxo-novo/limite-juridico', ContratoFluxoNovoController.limiteJuridico);
+router.get('/contratos/fluxo-novo/categorias', ContratoFluxoNovoController.categorias);
+// Conferencia e correcao do cadastro do contratado, exigido acima do limite (20/08).
+router.get('/contratos/credores/conferencia', ContratoFluxoNovoController.conferirCredores);
+router.patch('/contratos/credores/:id/cadastro', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Parceiro') }), ContratoFluxoNovoController.completarCredor);
+// Consulta externa de CNPJ. Desligada por padrao (`CNPJ_LOOKUP_URL` vazia => 501).
+router.get('/contratos/credores/cnpj/:cnpj', ContratoFluxoNovoController.consultarCnpj);
+router.post('/contratos/fluxo-novo', criticalRateLimit, requireContratoBodyObraAccess, ContratoFluxoNovoController.criar);
+router.post('/contratos/fluxo-novo/:id/aprovar', criticalRateLimit, ContratoFluxoNovoController.aprovar);
+router.post('/contratos/fluxo-novo/:id/reenviar', criticalRateLimit, ContratoFluxoNovoController.reenviar);
+router.post('/contratos/fluxo-novo/:id/rejeitar', criticalRateLimit, ContratoFluxoNovoController.rejeitar);
+// Quebra de contrato: zera o saldo e exclui titulos em aberto. Permissao propria no servico.
+// Etapas do JURIDICO acima do limite (minuta / assinado). Permissao propria no servico.
+router.post('/contratos/fluxo-novo/:id/juridico', criticalRateLimit, ContratoFluxoNovoController.juridico);
+// Editar uma medicao ja criada (valor e vencimento). `contratos.medicao.editar_valor` e conferida
+// no servico, junto da regra de redistribuicao — a rota nao duplica a decisao.
+// Aprovar a medicao: leva a solicitacao a LIBERADO e a encaminha ao Financeiro (item 25, 23/08).
+router.post('/contratos/medicoes/:id/aprovar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.aprovarMedicao);
+router.put('/contratos/medicoes/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.atualizarMedicao);
+// Termo aditivo: teto de 25% sobre o valor original, acumulando os aprovados (PI-12).
+// Termo aditivo (PI-15): vale para contrato do fluxo ANTIGO e do NOVO, entao as rotas nao ficam
+// sob o prefixo `fluxo-novo` — o prefixo seria uma mentira sobre o alcance. As tres rotas antigas
+// seguem logo abaixo apenas por compatibilidade, apontando para os mesmos handlers.
+router.get('/contratos/:id/aditivos/teto', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoFluxoNovoController.tetoAditivo);
+router.post('/contratos/:id/aditivos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, uploadRateLimit, uploadNegociacaoContrato.single('negociacao'), ContratoFluxoNovoController.criarAditivo);
+router.post('/contratos/aditivos/:aditivoId/decisao', validateRequest({ params: validateNumericIdParam('aditivoId', 'Aditivo') }), criticalRateLimit, ContratoFluxoNovoController.decidirAditivo);
+// Listar e cancelar (item 26, 23/08). A listagem nao existia — o aditivo era pedido e sumia da tela.
+router.get('/contratos/:id/aditivos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoFluxoNovoController.listarAditivos);
+router.post('/contratos/aditivos/:aditivoId/cancelar', validateRequest({ params: validateNumericIdParam('aditivoId', 'Aditivo') }), criticalRateLimit, ContratoFluxoNovoController.cancelarAditivo);
+
+router.get('/contratos/fluxo-novo/:id/aditivos/teto', requireContratoAccess, ContratoFluxoNovoController.tetoAditivo);
+router.post('/contratos/fluxo-novo/:id/aditivos', criticalRateLimit, requireContratoAccess, uploadRateLimit, uploadNegociacaoContrato.single('negociacao'), ContratoFluxoNovoController.criarAditivo);
+router.post('/contratos/fluxo-novo/aditivos/:aditivoId/decisao', criticalRateLimit, ContratoFluxoNovoController.decidirAditivo);
+router.get('/contratos/fluxo-novo/:id/aditivos', requireContratoAccess, ContratoFluxoNovoController.listarAditivos);
+router.post('/contratos/fluxo-novo/aditivos/:aditivoId/cancelar', criticalRateLimit, ContratoFluxoNovoController.cancelarAditivo);
+// PI-16: cancelar a solicitacao do contrato e TERMINAL, por permissao granular
+// (`contratos.solicitacao.cancelar`). Rejeitar, que devolve para ajuste, e a rota de rejeicao.
+router.patch('/contratos/:id/apropriacoes', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.atualizarApropriacoes);
+router.post('/contratos/:id/solicitacao/cancelar', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.cancelarSolicitacao);
+router.post('/contratos/:id/rescindir', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.encerrar);
+// Alias mantido para clientes antigos. Agora recebe a mesma protecao de escopo de obra.
+router.post('/contratos/fluxo-novo/:id/encerrar', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.encerrar);
 router.post('/contratos/importar-massa', permit(['SUPERADMIN']), uploadRateLimit, uploadComprovantes.single('file'), ContratoController.importarMassa);
 router.post('/contratos/importar-apropriacoes', permit(['SUPERADMIN']), uploadRateLimit, uploadComprovantes.single('file'), ContratoController.importarApropriacoes);
+router.post('/contratos/:id/minuta', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, uploadRateLimit, uploadNegociacaoContrato.single('file'), auditSuccess({ eventType: 'CONTRACT_DRAFT_UPLOADED', resourceType: 'CONTRATO', description: 'Minuta do contrato enviada', resourceIdResolver: (req) => req.params.id }), ContratoController.uploadMinuta);
+router.post('/contratos/:id/negociacao', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, uploadRateLimit, uploadNegociacaoContrato.single('file'), auditSuccess({ eventType: 'CONTRACT_NEGOTIATION_UPLOADED', resourceType: 'CONTRATO', description: 'Documento de negociacao detalhada enviado', resourceIdResolver: (req) => req.params.id }), ContratoController.uploadNegociacao);
+router.post('/contratos/:id/documentacao-juridica/:tipo', validateRequest({ params: validateNumericIdAndSlugParams('id', 'tipo', ['cartao-cnpj', 'ato-constitutivo', 'representante-legal'], 'Documento juridico') }), requireContratoAccess, uploadRateLimit, uploadDocumentacaoJuridica.single('file'), auditSuccess({ eventType: 'CONTRACT_LEGAL_DOCUMENT_UPLOADED', resourceType: 'CONTRATO', description: 'Documento juridico de abertura enviado', resourceIdResolver: (req) => req.params.id }), ContratoController.uploadDocumentacaoJuridica);
 router.post('/contratos/:id/anexos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, uploadRateLimit, uploadComprovantes.array('files'), auditSuccess({ eventType: 'CONTRACT_FILE_UPLOADED', resourceType: 'CONTRATO', description: 'Anexo de contrato enviado', resourceIdResolver: (req) => req.params.id }), ContratoController.uploadAnexos);
 router.patch('/contratos/:id', validateRequest({ params: validateNumericIdParam('id', 'Contrato'), body: validateContratoUpdateBody }), requireContratoAccess, requireContratoOptionalBodyObraAccess, auditSuccess({ eventType: 'CONTRACT_UPDATED', resourceType: 'CONTRATO', description: 'Contrato atualizado', resourceIdResolver: (req) => req.params.id }), ContratoController.update);
 router.delete('/contratos/:id', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, auditSuccess({ eventType: 'CONTRACT_DELETED', resourceType: 'CONTRATO', description: 'Contrato excluido', resourceIdResolver: (req) => req.params.id }), ContratoController.excluir);
@@ -2225,23 +2843,34 @@ router.get('/dashboard/executivo', DashboardController.executivo);
 // -------------------------------------------------------------------
 // CONVERSAS INTERNAS (CHAT UNIFICADO)
 // -------------------------------------------------------------------
-router.get('/conversas-internas/destinatarios', ConversaInternaController.opcoesDestinatario);
-router.get('/conversas-internas/resumo', ConversaInternaController.resumo);
-router.get('/conversas-internas/entrada', ConversaInternaController.listar);
-router.get('/conversas-internas/saida', ConversaInternaController.listar);
-router.get('/conversas-internas', ConversaInternaController.listar);
-router.get('/conversas-internas/:id/mensagens', ConversaInternaController.listarMensagens);
-router.post('/conversas-internas/:id/lida', ConversaInternaController.marcarLida);
-router.get('/conversas-internas/:id', ConversaInternaController.detalhar);
-router.post('/conversas-internas', uploadRateLimit, uploadComprovantes.array('files'), ConversaInternaController.criar);
-router.post('/conversas-internas/massa', uploadRateLimit, uploadComprovantes.array('files'), ConversaInternaController.criarEmMassa);
-router.post('/conversas-internas/:id/mensagens', uploadRateLimit, uploadComprovantes.array('files'), ConversaInternaController.responder);
-router.post('/conversas-internas/:id/participantes', ConversaInternaController.adicionarParticipantes);
-router.patch('/conversas-internas/arquivar-massa', ConversaInternaController.arquivarMassa);
-router.patch('/conversas-internas/desarquivar-massa', ConversaInternaController.desarquivarMassa);
-router.patch('/conversas-internas/:id/concluir', ConversaInternaController.concluir);
-router.patch('/conversas-internas/:id/reabrir', ConversaInternaController.reabrir);
-router.patch('/conversas-internas/mensagens/:mensagemId', ConversaInternaController.editarMensagem);
-router.delete('/conversas-internas/mensagens/:mensagemId', ConversaInternaController.deletarMensagem);
+const allowComunicacaoRead = allowPaymentAction(
+  'COMUNICACAO_INTERNA_READ',
+  canViewComunicacao,
+  'Acesso negado para visualizar a comunicacao interna'
+);
+const allowComunicacaoSend = allowPaymentAction(
+  'COMUNICACAO_INTERNA_SEND',
+  canSendComunicacao,
+  'Acesso negado para enviar ou alterar mensagens internas'
+);
+
+router.get('/conversas-internas/destinatarios', allowComunicacaoRead, ConversaInternaController.opcoesDestinatario);
+router.get('/conversas-internas/resumo', allowComunicacaoRead, ConversaInternaController.resumo);
+router.get('/conversas-internas/entrada', allowComunicacaoRead, ConversaInternaController.listar);
+router.get('/conversas-internas/saida', allowComunicacaoRead, ConversaInternaController.listar);
+router.get('/conversas-internas', allowComunicacaoRead, ConversaInternaController.listar);
+router.get('/conversas-internas/:id/mensagens', allowComunicacaoRead, ConversaInternaController.listarMensagens);
+router.post('/conversas-internas/:id/lida', allowComunicacaoRead, ConversaInternaController.marcarLida);
+router.get('/conversas-internas/:id', allowComunicacaoRead, ConversaInternaController.detalhar);
+router.post('/conversas-internas', allowComunicacaoSend, uploadRateLimit, uploadComprovantes.array('files'), ConversaInternaController.criar);
+router.post('/conversas-internas/massa', allowComunicacaoSend, uploadRateLimit, uploadComprovantes.array('files'), ConversaInternaController.criarEmMassa);
+router.post('/conversas-internas/:id/mensagens', allowComunicacaoSend, uploadRateLimit, uploadComprovantes.array('files'), ConversaInternaController.responder);
+router.post('/conversas-internas/:id/participantes', allowComunicacaoSend, ConversaInternaController.adicionarParticipantes);
+router.patch('/conversas-internas/arquivar-massa', allowComunicacaoRead, ConversaInternaController.arquivarMassa);
+router.patch('/conversas-internas/desarquivar-massa', allowComunicacaoRead, ConversaInternaController.desarquivarMassa);
+router.patch('/conversas-internas/:id/concluir', allowComunicacaoSend, ConversaInternaController.concluir);
+router.patch('/conversas-internas/:id/reabrir', allowComunicacaoSend, ConversaInternaController.reabrir);
+router.patch('/conversas-internas/mensagens/:mensagemId', allowComunicacaoSend, ConversaInternaController.editarMensagem);
+router.delete('/conversas-internas/mensagens/:mensagemId', allowComunicacaoSend, ConversaInternaController.deletarMensagem);
 
 module.exports = router;

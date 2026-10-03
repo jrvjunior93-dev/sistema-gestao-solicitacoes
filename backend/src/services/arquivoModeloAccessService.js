@@ -1,5 +1,9 @@
 const { ConfiguracaoSistema, Setor } = require('../models');
-const { isAdministrador, isSuperadmin } = require('./authorizationService');
+const {
+  canManageBiblioteca,
+  isAdministrador,
+  isSuperadmin
+} = require('./authorizationService');
 
 const KEY_PAGINAS = 'ARQUIVOS_MODELOS_PAGINAS';
 const KEY_UPLOADERS = 'ARQUIVOS_MODELOS_UPLOADERS';
@@ -138,7 +142,11 @@ async function getUserAllowedPageCodes(user) {
 }
 
 async function canUploadArquivoModeloPage(user, paginaCodigo, uploadersByPagina = null) {
-  if (isSuperadmin(user)) return true;
+  // A permissao granular representa gerenciamento da biblioteca inteira e deve
+  // funcionar independentemente do perfil nominal do usuario. A regra legada
+  // por setor/pagina continua valendo apenas para perfis administrativos que
+  // nao receberam a permissao granular.
+  if (await canManageBiblioteca(user)) return true;
   if (!isAdminRole(user)) return false;
 
   const codigoPagina = normalizarCodigo(paginaCodigo);

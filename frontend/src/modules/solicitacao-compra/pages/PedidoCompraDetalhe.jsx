@@ -1,5 +1,7 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import DateInputBR from '../../../components/DateInputBR';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
 import {
   adicionarItemPedidoCompra,
   atualizarStatusPedidoCompra,
@@ -15,6 +17,7 @@ import {
   obterPedidoCompra,
   registrarFretePedidoCompra,
   reabrirPedidoCompraParaCotacao,
+  solicitarReaberturaPedidoCompra,
   removerItemPedidoCompra,
   remanejarItemPedidoCompra,
   uploadAnexoTemporarioCompra
@@ -24,9 +27,12 @@ import { buscarParceiros } from '../../../services/parceiros';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   canAlterarStatusComprasPedidos,
+  canAnexarEspelhoComprasPedidos,
   canCancelarComprasPedidos,
   canCancelarFreteComprasPedidos,
   canEditarItensComprasPedidos,
+  canManageComprasPedidos,
+  canViewPedidoCompraFinanceiro,
   canReabrirComprasPedidos,
   canRegistrarFreteComprasPedidos,
   canRemanejarComprasPedidos,
@@ -35,6 +41,26 @@ import {
 import { useSafeNavigateBack } from '../../../utils/navigation';
 import { isValidCpfCnpj, maskCpfCnpj, maskPhone, onlyDigits } from '../../../utils/formatters';
 import CompraPreviewModal from '../components/CompraPreviewModal';
+import PedidoCompraFinanceiro from '../components/PedidoCompraFinanceiro';
+import OverlayModal from '../../../components/ui/OverlayModal';
+import '../../../styles/compras-relatorio-apoio.css';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  StatGrid,
+  StatTile,
+  CamposComVazios,
+  TabelaPadrao,
+  CelulaDupla,
+  FormSecao,
+  CampoForm,
+  BarraFiltros,
+  alternarValorFiltro,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../../../components/padrao';
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -167,14 +193,6 @@ function formatVariationPercent(value, fallback = 'Sem historico') {
   })}%`;
 }
 
-function getVariationTextClass(value) {
-  if (value === null || value === undefined || Math.abs(value) < 0.005) {
-    return 'text-[var(--c-muted)]';
-  }
-
-  return value > 0 ? 'text-red-600' : 'text-emerald-700';
-}
-
 function buildItemPriceContext(item, currentUnitPriceOverride = undefined) {
   const contexto = item?.contexto_preco || {};
   const precoCotado = toNullableNumber(contexto.preco_cotado);
@@ -189,6 +207,57 @@ function buildItemPriceContext(item, currentUnitPriceOverride = undefined) {
     ultimoPrecoCompra,
     variacaoUltimaCompra: calculateVariationPercent(precoAtual, ultimoPrecoCompra)
   };
+}
+
+/*
+  R25: a variação de preço saía em paleta crua (text-red-600 / text-emerald-700),
+  que não tem par no tema escuro nem passa pelo piso de contraste do
+  ThemeContext. O significado é semântico — preço acima da última compra é
+  perda, abaixo é ganho — então a cor vem dos tokens semânticos.
+*/
+function getVariationTextClass(value) {
+  if (value === null || value === undefined || Math.abs(value) < 0.005) {
+    return 'text-[var(--c-muted)]';
+  }
+
+  return value > 0 ? 'text-[var(--sem-danger)]' : 'text-[var(--sem-success)]';
+}
+
+/*
+  Pílula de situação com TOM semântico por token (R25). Antes cada ponto da
+  tela montava a própria combinação de paleta crua (bg-amber-100 +
+  text-amber-700, bg-slate-100 + text-slate-700…), repetida em cinco lugares.
+*/
+const TONS_PILULA = {
+  neutro: { background: 'var(--sem-neutral-bg)', color: 'var(--sem-neutral)' },
+  atencao: { background: 'var(--sem-warning-bg)', color: 'var(--sem-warning)' },
+  sucesso: { background: 'var(--sem-success-bg)', color: 'var(--sem-success)' },
+  info: { background: 'var(--sem-info-bg)', color: 'var(--sem-info)' }
+};
+
+function Pilula({ tom = 'neutro', children }) {
+  return (
+    <span className="app-status-pill" style={TONS_PILULA[tom] || TONS_PILULA.neutro}>
+      {children}
+    </span>
+  );
+}
+
+/*
+  Faixa de CONDIÇÃO derivada do conteúdo (a fronteira declarada no useAvisos):
+  ela descreve o estado do que está na tela e não some com um clique — por
+  isso não é `avisar.*`, é superfície fixa ao lado do dado que descreve.
+*/
+function FaixaCondicao({ tom = 'atencao', children }) {
+  const cores = TONS_PILULA[tom] || TONS_PILULA.atencao;
+  return (
+    <div
+      className="rounded-xl px-3 py-2 text-xs"
+      style={{ background: cores.background, color: cores.color }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function formatQuantityIntegerPart(value) {
@@ -367,23 +436,34 @@ function normalizeBrazilianQuantityOnBlur(value) {
 
 function getItemSituacao(item) {
   if (item?.removido) {
-    return {
-      label: 'Removido',
-      className: 'app-status-pill bg-slate-100 text-slate-700'
-    };
+    return { label: 'Removido', tom: 'neutro' };
   }
 
   if (isItemAbaixoMinimo(item)) {
-    return {
-      label: 'Atencao',
-      className: 'app-status-pill bg-amber-100 text-amber-700'
-    };
+    return { label: 'Atenção', tom: 'atencao' };
   }
 
-  return {
-    label: 'Ativo',
-    className: 'app-status-pill bg-emerald-100 text-emerald-700'
-  };
+  return { label: 'Ativo', tom: 'sucesso' };
+}
+
+/*
+  R12 — o recorte da lista de itens virou MARCAÇÃO múltipla. Antes era um
+  `<select>` de escolha única com ATIVOS/ATENCAO/REMOVIDOS/TODOS: o estado do
+  filtro só era visível abrindo a lista. Aqui as três situações são marcáveis
+  e combináveis; conjunto VAZIO = o antigo "Todos", que deixa de ser uma opção
+  escondida na lista e passa a ser o estado sem etiqueta nenhuma.
+*/
+const OPCOES_SITUACAO_ITEM = [
+  { valor: 'ATIVOS', rotulo: 'Ativos' },
+  { valor: 'ATENCAO', rotulo: 'Atenção' },
+  { valor: 'REMOVIDOS', rotulo: 'Removidos' }
+];
+
+function itemAtendeSituacao(item, valor) {
+  if (valor === 'ATIVOS') return !item.removido;
+  if (valor === 'ATENCAO') return Boolean(isItemAbaixoMinimo(item));
+  if (valor === 'REMOVIDOS') return Boolean(item.removido);
+  return true;
 }
 
 export default function PedidoCompraDetalhe() {
@@ -391,14 +471,19 @@ export default function PedidoCompraDetalhe() {
   const navigate = useNavigate();
   const navigateBack = useSafeNavigateBack('/pedidos-compra');
   const { user } = useAuth();
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const businessAdmin = isBusinessAdmin(user);
   const podeEditarItensPedido = canEditarItensComprasPedidos(user);
+  const podeComentarPedido = canManageComprasPedidos(user);
+  const podeAnexarEspelhoPedido = canAnexarEspelhoComprasPedidos(user);
   const podeAlterarStatusPedido = canAlterarStatusComprasPedidos(user);
   const podeCancelarPedido = canCancelarComprasPedidos(user);
   const podeReabrirPedido = canReabrirComprasPedidos(user);
   const podeRegistrarFretePedido = canRegistrarFreteComprasPedidos(user);
   const podeCancelarFretePedido = canCancelarFreteComprasPedidos(user);
   const podeRemanejarPedido = canRemanejarComprasPedidos(user);
+  const podeGerenciarFinanceiroPedido = canViewPedidoCompraFinanceiro(user);
   const podeGerenciarPedido = Boolean(
     podeEditarItensPedido ||
     podeAlterarStatusPedido ||
@@ -421,7 +506,7 @@ export default function PedidoCompraDetalhe() {
   const [previewPedido, setPreviewPedido] = useState(null);
   const [edicoes, setEdicoes] = useState({});
   const [buscaItens, setBuscaItens] = useState('');
-  const [filtroItens, setFiltroItens] = useState('ATIVOS');
+  const [filtrosItens, setFiltrosItens] = useState(() => ({ situacao: new Set(['ATIVOS']) }));
   const [modalEdicaoAberto, setModalEdicaoAberto] = useState(false);
   const [itemEditandoId, setItemEditandoId] = useState(null);
   const [comentarioPedido, setComentarioPedido] = useState('');
@@ -448,8 +533,32 @@ export default function PedidoCompraDetalhe() {
   const [buscaFornecedorFrete, setBuscaFornecedorFrete] = useState('');
   const [fornecedoresFrete, setFornecedoresFrete] = useState([]);
   const [credorFreteSelecionado, setCredorFreteSelecionado] = useState(null);
+  /*
+    A LISTA DE CREDORES DO FRETE NÃO FECHAVA DE JEITO NENHUM (05/09).
+
+    Não havia estado de aberta: a camada existia sempre que
+    `fornecedoresFrete.length` fosse maior que zero e o credor ainda não
+    tivesse sido escolhido. Ou seja, só saía da tela ao SELECIONAR alguém
+    ou ao apagar a busca abaixo de dois caracteres. Como é `absolute z-dropdown`
+    dentro do modal de frete, ela cobria o bloco de "Cadastro rápido do
+    credor/transportador" logo abaixo — quem quisesse cadastrar um credor
+    novo tinha de apagar o que digitou para enxergar o formulário.
+
+    Agora existe `listaCredorFreteAberta`: digitar ou apertar "Buscar"
+    abre, clicar fora e `Esc` fecham. A busca continua onde estava — o
+    termo não é perdido ao dispensar a lista.
+
+    PROTEÇÃO DA SELEÇÃO, que é o ponto delicado deste arquivo: o hook
+    fecha no `mousedown` e o `onClick` da opção só dispara no `mouseup`.
+    O ref envolve o campo E a lista (clique na opção é DENTRO, então o
+    hook não fecha), e a opção recebeu `onMouseDown` com `preventDefault`
+    — esta tela tinha zero dessas proteções, e sem elas o clique morreria
+    no meio: a camada fecharia e o credor nunca seria escolhido.
+  */
+  const credorFreteRef = useRef(null);
+  const [listaCredorFreteAberta, setListaCredorFreteAberta] = useState(false);
+  useFecharAoSair(credorFreteRef, listaCredorFreteAberta, () => setListaCredorFreteAberta(false));
   const [buscandoFornecedoresFrete, setBuscandoFornecedoresFrete] = useState(false);
-  const itemSelecionadoId = itemEditandoId;
   const buscaItensDeferred = useDeferredValue(buscaItens);
 
   async function carregar() {
@@ -462,7 +571,7 @@ export default function PedidoCompraDetalhe() {
       setPedido(data || null);
       setStatusOptions(Array.isArray(dataStatus) ? dataStatus : []);
       if (String(data?.status || '').toUpperCase() === 'CANCELADO') {
-        setFiltroItens('TODOS');
+        setFiltrosItens({ situacao: new Set() });
       }
 
       const proximasEdicoes = {};
@@ -476,7 +585,7 @@ export default function PedidoCompraDetalhe() {
       setEdicoes(proximasEdicoes);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar pedido de compra');
+      avisar.erro(error.message || 'Erro ao carregar pedido de compra');
     } finally {
       setLoading(false);
     }
@@ -509,19 +618,11 @@ export default function PedidoCompraDetalhe() {
   }, [pedido]);
   const itensFiltrados = useMemo(() => {
     const termo = String(buscaItensDeferred || '').trim().toLowerCase();
+    const situacoes = filtrosItens.situacao || new Set();
 
     return (pedido?.itens || []).filter((item) => {
-      if (filtroItens === 'ATIVOS' && item.removido) {
+      if (situacoes.size && ![...situacoes].some((valor) => itemAtendeSituacao(item, valor))) {
         return false;
-      }
-      if (filtroItens === 'ATENCAO' && !isItemAbaixoMinimo(item)) {
-        return false;
-      }
-      if (filtroItens === 'REMOVIDOS' && !item.removido) {
-        return false;
-      }
-      if (filtroItens === 'TODOS') {
-        // sem filtro adicional
       }
 
       if (!termo) {
@@ -530,7 +631,7 @@ export default function PedidoCompraDetalhe() {
 
       return buildItemSearchText(item).includes(termo);
     });
-  }, [buscaItensDeferred, filtroItens, pedido]);
+  }, [buscaItensDeferred, filtrosItens, pedido]);
   const itemEditando = useMemo(
     () => (pedido?.itens || []).find((item) => item.id === itemEditandoId) || null,
     [itemEditandoId, pedido]
@@ -545,6 +646,7 @@ export default function PedidoCompraDetalhe() {
   const pedidoCancelado = String(pedido?.status || '').toUpperCase() === 'CANCELADO';
   const remanejamentoBloqueado = Boolean(!podeRemanejarPedido || (edicaoBloqueadaPorStatus && !pedidoCancelado));
   const podeReabrirCotacao = Boolean(podeReabrirPedido && edicaoBloqueadaPorStatus && !pedidoCancelado);
+  const reaberturaPendenteGeo = String(pedido?.financeiro?.reabertura?.status || '').toUpperCase() === 'PENDENTE';
   const permiteFreteEmbutido = !edicaoBloqueadaPorStatus;
   const statusSelectOptions = useMemo(() => {
     const ativos = (statusOptions || []).filter((item) => item?.ativo !== false);
@@ -575,6 +677,13 @@ export default function PedidoCompraDetalhe() {
     return String(frete?.status_financeiro || '').toUpperCase();
   }
 
+  function tomDoFrete(frete) {
+    const status = getFreteStatus(frete);
+    if (status === 'CANCELADO') return 'neutro';
+    if (status === 'PENDENTE_TITULO') return 'atencao';
+    return 'sucesso';
+  }
+
   function fretePermiteControle(frete) {
     const status = getFreteStatus(frete);
     return podeRegistrarFretePedido && !frete?.tituloFinanceiro?.id && !frete?.titulo_financeiro_id && !['TITULO_GERADO', 'CANCELADO'].includes(status);
@@ -596,6 +705,15 @@ export default function PedidoCompraDetalhe() {
       setItemEditandoId(null);
     }
   }, [itemEditandoId, pedido]);
+
+  function alternarFiltroItens(dimensao, valor, opcoes) {
+    setFiltrosItens((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes));
+  }
+
+  function limparFiltrosItens() {
+    setBuscaItens('');
+    setFiltrosItens({ situacao: new Set() });
+  }
 
   function atualizarEdicaoItem(itemId, changes) {
     setEdicoes((current) => ({
@@ -627,7 +745,12 @@ export default function PedidoCompraDetalhe() {
       params.set('item_id', String(itemId));
     }
 
-    navigate(`/relatorios/administrativos?${params.toString()}`);
+    // A auditoria tem UMA rota (04/09). Antes existiam duas servindo o mesmo
+    // componente, com os mesmos guardas e os mesmos parametros de query; a
+    // /relatorios/administrativos nao tinha porta no menu e so era alcancada
+    // por este botao. Ficou a que tem porta — o card "Auditoria de compras"
+    // do hub de Relatorios de Compras.
+    navigate(`/compras/relatorios/auditoria?${params.toString()}`);
   }
 
   function abrirModalFrete(momento = 'FECHAMENTO') {
@@ -646,7 +769,7 @@ export default function PedidoCompraDetalhe() {
 
   function abrirEdicaoFrete(frete) {
     if (!fretePermiteControle(frete)) {
-      alert('Este frete nao pode ser editado porque ja foi cancelado ou possui titulo financeiro vinculado.');
+      avisar.alerta('Este frete não pode ser editado porque já foi cancelado ou possui título financeiro vinculado.');
       return;
     }
 
@@ -803,7 +926,7 @@ export default function PedidoCompraDetalhe() {
       setFornecedoresFrete([...parceiros, ...fornecedores].slice(0, 12));
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao buscar credores de frete');
+      avisar.erro(error.message || 'Erro ao buscar credores de frete');
     } finally {
       setBuscandoFornecedoresFrete(false);
     }
@@ -830,13 +953,13 @@ export default function PedidoCompraDetalhe() {
   async function handleRegistrarFrete() {
     const valorTotal = parseBrazilianMoney(freteForm.valor_total);
     if (!valorTotal || valorTotal <= 0) {
-      alert('Informe o valor do frete.');
+      avisar.alerta('Informe o valor do frete.');
       return;
     }
 
     const tipo = String(freteForm.tipo || '').toUpperCase();
     if (tipo === 'EMBUTIDO' && !permiteFreteEmbutido) {
-      alert('Pedido fechado aceita apenas frete pago a terceiro.');
+      avisar.alerta('Pedido fechado aceita apenas frete pago a terceiro.');
       return;
     }
 
@@ -857,7 +980,7 @@ export default function PedidoCompraDetalhe() {
         .filter((rateio) => rateio.pedido_compra_item_id > 0 && rateio.valor_rateado > 0);
       const totalRateado = rateios.reduce((total, rateio) => total + rateio.valor_rateado, 0);
       if (!rateios.length || Math.abs(totalRateado - valorTotal) > 0.01) {
-        alert('A soma do frete informado nos itens precisa ser igual ao valor total do frete.');
+        avisar.alerta('A soma do frete informado nos itens precisa ser igual ao valor total do frete.');
         return;
       }
       payload.rateios = rateios;
@@ -865,7 +988,7 @@ export default function PedidoCompraDetalhe() {
 
     if (tipo === 'TERCEIRO') {
       if (!freteForm.data_vencimento) {
-        alert('Informe a data de vencimento do frete pago a terceiro.');
+        avisar.alerta('Informe a data de vencimento do frete pago a terceiro.');
         return;
       }
       const fornecedorId = Number(freteForm.fornecedor_compra_id || 0);
@@ -879,19 +1002,19 @@ export default function PedidoCompraDetalhe() {
         payload.parceiro_id = parceiroId;
       } else if (novoFornecedor.nome || novoFornecedor.cpf_cnpj) {
         if (!String(novoFornecedor.nome || '').trim()) {
-          alert('Informe o nome do credor/transportador.');
+          avisar.alerta('Informe o nome do credor/transportador.');
           return;
         }
         if (!isValidCpfCnpj(novoFornecedor.cpf_cnpj)) {
-          alert('Informe um CPF/CNPJ valido para o credor/transportador.');
+          avisar.alerta('Informe um CPF/CNPJ valido para o credor/transportador.');
           return;
         }
         if (!String(novoFornecedor.whatsapp || '').trim()) {
-          alert('Informe o telefone do credor/transportador.');
+          avisar.alerta('Informe o telefone do credor/transportador.');
           return;
         }
         if (!isValidEmail(novoFornecedor.email)) {
-          alert('Informe um e-mail valido para o credor/transportador.');
+          avisar.alerta('Informe um e-mail valido para o credor/transportador.');
           return;
         }
         payload.novo_fornecedor = {
@@ -901,20 +1024,20 @@ export default function PedidoCompraDetalhe() {
           telefone: onlyDigits(novoFornecedor.whatsapp)
         };
       } else {
-        alert('Selecione ou cadastre o fornecedor/transportador do frete.');
+        avisar.alerta('Selecione ou cadastre o fornecedor/transportador do frete.');
         return;
       }
 
       if (dadosPagamento.documento && !isValidCpfCnpj(dadosPagamento.documento)) {
-        alert('Informe um CPF/CNPJ valido para o favorecido.');
+        avisar.alerta('Informe um CPF/CNPJ valido para o favorecido.');
         return;
       }
       if (String(dadosPagamento.tipo_chave_pix || '').toUpperCase() === 'EMAIL' && dadosPagamento.pix && !isValidEmail(dadosPagamento.pix)) {
-        alert('Informe uma chave PIX de e-mail valida.');
+        avisar.alerta('Informe uma chave PIX de e-mail valida.');
         return;
       }
       if (['CPF', 'CNPJ'].includes(String(dadosPagamento.tipo_chave_pix || '').toUpperCase()) && dadosPagamento.pix && !isValidCpfCnpj(dadosPagamento.pix)) {
-        alert('Informe uma chave PIX CPF/CNPJ valida.');
+        avisar.alerta('Informe uma chave PIX CPF/CNPJ valida.');
         return;
       }
 
@@ -934,39 +1057,64 @@ export default function PedidoCompraDetalhe() {
         ? await atualizarFretePedidoCompra(id, freteEditandoId, payload)
         : await registrarFretePedidoCompra(id, payload);
       setPedido(data || null);
+      const editou = Boolean(freteEditandoId);
       fecharModalFrete(true);
-      alert(freteEditandoId
+      avisar.sucesso(editou
         ? 'Frete atualizado com auditoria registrada.'
         : tipo === 'TERCEIRO'
         ? 'Frete registrado e pendencia criada para o financeiro.'
         : 'Frete embutido registrado para rateio de custo.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao registrar frete do pedido');
+      avisar.erro(error.message || 'Erro ao registrar frete do pedido');
     } finally {
       setSalvandoFrete(false);
     }
   }
 
+  /*
+    CANCELAMENTO DE FRETE — consentimento E justificativa saíram do
+    `window.prompt` (R19) e viraram um passo só do modal do sistema, com a
+    justificativa em CAMPO de verdade e obrigatória (`campo.obrigatorio`), do
+    jeito que a auditoria já exigia.
+
+    R26: `freteAlvo`/`freteId` fixam o alvo ANTES do `await`. Com o
+    `window.prompt` a página ficava bloqueada e essa janela não existia; o
+    modal do sistema NÃO bloqueia — a lista de fretes segue clicável, e sem a
+    fixação a tela poderia perguntar sobre um frete e cancelar outro.
+  */
   async function handleCancelarFrete(frete) {
-    if (!fretePermiteCancelamento(frete)) {
-      alert('Este frete nao pode ser cancelado porque ja foi cancelado ou possui titulo financeiro vinculado.');
+    const freteAlvo = frete;
+    const freteId = freteAlvo?.id;
+
+    if (!fretePermiteCancelamento(freteAlvo)) {
+      avisar.alerta('Este frete não pode ser cancelado porque já foi cancelado ou possui título financeiro vinculado.');
       return;
     }
 
-    const motivo = window.prompt('Informe o motivo do cancelamento do frete:');
-    if (!motivo || !motivo.trim()) {
+    const { ok, texto } = await confirmar({
+      titulo: 'Cancelar frete do pedido',
+      mensagem: `Cancelar o frete de ${formatMoney(freteAlvo.valor_total)} deste pedido? Esta acao nao pode ser desfeita e fica registrada na auditoria.`,
+      rotuloConfirmar: 'Cancelar frete',
+      destrutiva: true,
+      campo: { rotulo: 'Motivo do cancelamento do frete', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
+
+    const motivo = String(texto || '').trim();
+    if (!motivo) {
+      avisar.alerta('Informe o motivo do cancelamento do frete.');
       return;
     }
 
     try {
       setSalvandoFrete(true);
-      const data = await cancelarFretePedidoCompra(id, frete.id, { motivo: motivo.trim() });
+      const data = await cancelarFretePedidoCompra(id, freteId, { motivo });
       setPedido(data || null);
-      alert('Frete cancelado com auditoria registrada.');
+      avisar.sucesso('Frete cancelado com auditoria registrada.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao cancelar frete do pedido');
+      avisar.erro(error.message || 'Erro ao cancelar frete do pedido');
     } finally {
       setSalvandoFrete(false);
     }
@@ -984,10 +1132,10 @@ export default function PedidoCompraDetalhe() {
       const data = await atualizarItemPedidoCompra(id, itemId, payload);
       setPedido(data || null);
       fecharModalEdicao();
-      alert('Item atualizado com auditoria registrada.');
+      avisar.sucesso('Item atualizado com auditoria registrada.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao atualizar item do pedido');
+      avisar.erro(error.message || 'Erro ao atualizar item do pedido');
     } finally {
       setSavingItemId(null);
     }
@@ -998,25 +1146,40 @@ export default function PedidoCompraDetalhe() {
       setAddingRespostaId(respostaItemId);
       const data = await adicionarItemPedidoCompra(id, { resposta_item_id: respostaItemId });
       setPedido(data || null);
-      alert('Item adicionado ao pedido.');
+      avisar.sucesso('Item adicionado ao pedido.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao adicionar item ao pedido');
+      avisar.erro(error.message || 'Erro ao adicionar item ao pedido');
     } finally {
       setAddingRespostaId(null);
     }
   }
 
+  /*
+    R26: o item é fixado numa const ANTES da confirmação. O modal não congela
+    a tela — a lista continua clicável atrás dele, e o item aberto pode trocar.
+  */
   async function handleRemoverItem(itemId) {
+    const alvoId = itemId;
+    const alvo = (pedido?.itens || []).find((item) => item.id === alvoId) || null;
+
+    const { ok } = await confirmar({
+      titulo: 'Remover item do pedido',
+      mensagem: `Remover "${alvo?.descricao || `item ${alvoId}`}" deste pedido? Esta acao nao pode ser desfeita; o item continua visivel para consulta no historico.`,
+      rotuloConfirmar: 'Remover item',
+      destrutiva: true
+    });
+    if (!ok) return;
+
     try {
-      setRemovingItemId(itemId);
-      const data = await removerItemPedidoCompra(id, itemId);
+      setRemovingItemId(alvoId);
+      const data = await removerItemPedidoCompra(id, alvoId);
       setPedido(data || null);
       fecharModalEdicao();
-      alert('Item removido do pedido.');
+      avisar.sucesso('Item removido do pedido.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao remover item do pedido');
+      avisar.erro(error.message || 'Erro ao remover item do pedido');
     } finally {
       setRemovingItemId(null);
     }
@@ -1027,47 +1190,71 @@ export default function PedidoCompraDetalhe() {
       return;
     }
 
+    const payload = { status };
     if (String(status).toUpperCase() === 'CANCELADO') {
-      await handleCancelarPedido();
-      return;
+      const { ok, texto } = await confirmar({
+        titulo: 'Cancelar pedido de compra',
+        mensagem: 'O cancelamento libera os itens para uma nova compra e preserva o pedido no histórico. Informe o motivo para concluir.',
+        rotuloConfirmar: 'Cancelar pedido',
+        destrutiva: true,
+        campo: { rotulo: 'Motivo do cancelamento', obrigatorio: true, multilinha: true }
+      });
+      if (!ok) return;
+      payload.motivo = String(texto || '').trim();
     }
 
     try {
       setSavingStatus(true);
-      const data = await atualizarStatusPedidoCompra(id, { status });
+      const data = await atualizarStatusPedidoCompra(id, payload);
       setPedido(data || null);
-      alert('Status do pedido atualizado com sucesso.');
+      avisar.sucesso('Status do pedido atualizado com sucesso.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao atualizar status do pedido');
+      avisar.erro(error.message || 'Erro ao atualizar status do pedido');
     } finally {
       setSavingStatus(false);
     }
   }
 
+  /*
+    REABERTURA DO PEDIDO — eram DUAS caixas do navegador em sequência
+    (`window.confirm` e `window.prompt`), com o motivo obrigatório e gravado
+    em auditoria pedido numa caixa do Chrome que o harness não mede e que não
+    deixa rastro no DOM. Agora é UM passo do modal do sistema: consentimento e
+    justificativa juntos, com validação visível (`campo.obrigatorio`).
+  */
   async function handleReabrirCotacao() {
-    const confirmou = window.confirm(
-      'Reabrir este pedido para edicao ou cancelamento? A cotacao vinculada voltara para edicao e a acao ficara registrada no historico.'
-    );
-    if (!confirmou) return;
+    const exigeAprovacaoGeo = Boolean(pedido?.financeiro?.reabertura_exige_geo);
+    const { ok, texto } = await confirmar({
+      titulo: exigeAprovacaoGeo ? 'Solicitar reabertura ao GEO' : 'Reabrir pedido para edição ou cancelamento',
+      mensagem: exigeAprovacaoGeo
+        ? 'Este pedido possui histórico financeiro. Informe o motivo para o GEO analisar a reabertura; nenhum título será alterado antes da aprovação.'
+        : 'Reabrir este pedido para edição ou cancelamento? A cotação vinculada voltará para edição e a ação ficará registrada no histórico.',
+      rotuloConfirmar: exigeAprovacaoGeo ? 'Enviar ao GEO' : 'Reabrir pedido',
+      campo: { rotulo: 'Motivo da reabertura', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
 
-    const motivo = window.prompt('Informe o motivo para reabrir este pedido para edicao ou cancelamento.');
-    if (motivo === null) return;
-
-    const motivoNormalizado = motivo.trim();
+    const motivoNormalizado = String(texto || '').trim();
     if (!motivoNormalizado) {
-      alert('Informe o motivo da reabertura.');
+      avisar.alerta('Informe o motivo da reabertura.');
       return;
     }
 
     try {
       setReabrindoCotacao(true);
-      const data = await reabrirPedidoCompraParaCotacao(id, { motivo: motivoNormalizado });
-      setPedido(data || null);
-      alert('Pedido reaberto para edicao ou cancelamento.');
+      if (exigeAprovacaoGeo) {
+        await solicitarReaberturaPedidoCompra(id, { motivo: motivoNormalizado });
+        await carregar();
+        avisar.sucesso('Pedido de reabertura enviado ao GEO.');
+      } else {
+        const data = await reabrirPedidoCompraParaCotacao(id, { motivo: motivoNormalizado });
+        setPedido(data || null);
+        avisar.sucesso('Pedido reaberto para edição ou cancelamento.');
+      }
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao reabrir pedido');
+      avisar.erro(error.message || 'Erro ao reabrir pedido');
     } finally {
       setReabrindoCotacao(false);
     }
@@ -1080,7 +1267,7 @@ export default function PedidoCompraDetalhe() {
       triggerBlobDownload(blob, `pedido-compra-PC-${String(id).padStart(5, '0')}.pdf`);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao baixar PDF do pedido');
+      avisar.erro(error.message || 'Erro ao baixar PDF do pedido');
     } finally {
       setBaixandoPdf(false);
     }
@@ -1100,7 +1287,7 @@ export default function PedidoCompraDetalhe() {
       });
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao visualizar PDF do pedido');
+      avisar.erro(error.message || 'Erro ao visualizar PDF do pedido');
     } finally {
       setVisualizandoPdf(false);
     }
@@ -1143,11 +1330,11 @@ export default function PedidoCompraDetalhe() {
           'noopener,noreferrer'
         );
       } else {
-        alert('PDF baixado. Cadastre o WhatsApp do fornecedor para abrir o envio automaticamente.');
+        avisar.informacao('PDF baixado. Cadastre o WhatsApp do fornecedor para abrir o envio automaticamente.');
       }
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao preparar envio do pedido');
+      avisar.erro(error.message || 'Erro ao preparar envio do pedido');
     } finally {
       setEnviandoPedido(false);
     }
@@ -1161,7 +1348,7 @@ export default function PedidoCompraDetalhe() {
     ));
   }
 
-  async function handleCancelarPedido() {
+  function handleCancelarPedido() {
     setCancelamentoPedidoForm({
       motivo: '',
       cancelar_cotacao: true,
@@ -1172,9 +1359,12 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function confirmarCancelamentoPedido() {
-    const motivoNormalizado = String(cancelamentoPedidoForm.motivo || '').trim();
+    // R26: o formulário inteiro é fixado antes da chamada — o modal não
+    // congela a tela e os checkboxes seguem clicáveis enquanto ela corre.
+    const formCancelamento = cancelamentoPedidoForm;
+    const motivoNormalizado = String(formCancelamento.motivo || '').trim();
     if (!motivoNormalizado) {
-      alert('Informe o motivo do cancelamento do pedido.');
+      avisar.alerta('Informe o motivo do cancelamento do pedido.');
       return;
     }
 
@@ -1182,61 +1372,94 @@ export default function PedidoCompraDetalhe() {
       setCancelandoPedido(true);
       const data = await cancelarPedidoCompra(id, {
         motivo: motivoNormalizado,
-        cancelar_cotacao: cancelamentoPedidoForm.cancelar_cotacao,
-        cancelar_solicitacao_compra: cancelamentoPedidoForm.cancelar_solicitacao_compra,
-        cancelar_solicitacao_principal: cancelamentoPedidoForm.cancelar_solicitacao_principal
+        cancelar_cotacao: formCancelamento.cancelar_cotacao,
+        cancelar_solicitacao_compra: formCancelamento.cancelar_solicitacao_compra,
+        cancelar_solicitacao_principal: formCancelamento.cancelar_solicitacao_principal
       });
       setPedido(data || null);
       setModalCancelamentoAberto(false);
-      alert('Cancelamento registrado. O historico da solicitacao foi atualizado.');
+      avisar.sucesso('Cancelamento registrado. O histórico da solicitação foi atualizado.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao cancelar pedido');
+      avisar.erro(error.message || 'Erro ao cancelar pedido');
     } finally {
       setCancelandoPedido(false);
     }
   }
 
+  /*
+    CANCELAMENTO EM LOTE DE ITENS — a classe CONSENTIMENTO da DoD.
+
+    1. `alvos` fixa a marcação numa const ANTES do `await` (R26) e é ELA que
+       vai para a chamada. Nada relê `itensSelecionadosCancelamento` depois da
+       confirmação: o número que a barra contou, o número que a mensagem cita
+       e o conjunto que o serviço recebe são o MESMO — é o "pergunta sobre 3,
+       cancela 47" que este projeto persegue.
+    2. O motivo era pedido em `window.prompt` e `if (motivo === null) return`
+       deixava passar string VAZIA: cancelamento com efeito financeiro entrava
+       na auditoria SEM justificativa. Agora o campo é obrigatório no modal e
+       ainda é validado aqui.
+    3. `cancelarItensPedidoCompra` é UMA chamada em lote (não há laço item a
+       item), então não existe sucesso parcial a contar deste lado: ou o
+       serviço aceita o lote inteiro, ou nenhum item é cancelado.
+  */
   async function handleCancelarItensSelecionados() {
-    if (!itensSelecionadosCancelamento.length) {
-      alert('Selecione ao menos um item ativo para cancelar.');
+    const alvos = [...itensSelecionadosCancelamento];
+    const itensAlvo = (pedido?.itens || []).filter((item) => alvos.includes(item.id));
+
+    if (!alvos.length) {
+      avisar.alerta('Selecione ao menos um item ativo para cancelar.');
       return;
     }
 
-    const motivo = window.prompt('Informe o motivo do cancelamento dos itens selecionados.');
-    if (motivo === null) return;
+    const amostra = itensAlvo.slice(0, 3).map((item) => item.descricao).filter(Boolean).join('; ');
+    const { ok, texto } = await confirmar({
+      titulo: 'Cancelar itens do pedido',
+      mensagem: `Cancelar ${alvos.length} item(ns) marcado(s) deste pedido? Esta acao nao pode ser desfeita: as quantidades voltam para remanejamento na cotacao.${amostra ? ` Itens: ${amostra}${itensAlvo.length > 3 ? ' e outros' : ''}.` : ''}`,
+      rotuloConfirmar: `Cancelar ${alvos.length} item(ns)`,
+      destrutiva: true,
+      campo: { rotulo: 'Motivo do cancelamento dos itens', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
+
+    const motivo = String(texto || '').trim();
+    if (!motivo) {
+      avisar.alerta('Informe o motivo do cancelamento dos itens.');
+      return;
+    }
 
     try {
       setCancelandoItens(true);
       const data = await cancelarItensPedidoCompra(id, {
-        item_ids: itensSelecionadosCancelamento,
+        item_ids: alvos,
         motivo
       });
       setPedido(data || null);
       setItensSelecionadosCancelamento([]);
-      alert('Itens cancelados. As quantidades ficam disponiveis para remanejamento na cotacao.');
+      avisar.sucesso(`${alvos.length} item(ns) cancelado(s). As quantidades ficam disponiveis para remanejamento na cotacao.`);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao cancelar itens');
+      avisar.erro(error.message || `Erro ao cancelar os ${alvos.length} item(ns) marcados. Nenhum item foi cancelado.`);
     } finally {
       setCancelandoItens(false);
     }
   }
 
   async function handleSalvarComentarioPedido() {
-    if (!comentarioPedido.trim()) {
-      alert('Digite o comentario do pedido.');
+    const textoComentario = comentarioPedido;
+    if (!textoComentario.trim()) {
+      avisar.alerta('Digite o comentário do pedido.');
       return;
     }
 
     try {
       setSalvandoComentario(true);
-      await comentarPedidoCompra(id, { comentario: comentarioPedido });
+      await comentarPedidoCompra(id, { comentario: textoComentario });
       setComentarioPedido('');
-      alert('Comentario registrado no pedido e no historico da solicitacao.');
+      avisar.sucesso('Comentário registrado no pedido e no histórico da solicitação.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao registrar comentario');
+      avisar.erro(error.message || 'Erro ao registrar comentario');
     } finally {
       setSalvandoComentario(false);
     }
@@ -1255,10 +1478,10 @@ export default function PedidoCompraDetalhe() {
         arquivo_nome_original: upload?.arquivo_nome_original || file.name
       });
       setPedido(data || null);
-      alert('Espelho anexado ao pedido e ao historico da solicitacao.');
+      avisar.sucesso('Espelho anexado ao pedido e ao histórico da solicitação.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao anexar espelho do fornecedor');
+      avisar.erro(error.message || 'Erro ao anexar espelho do fornecedor');
     } finally {
       setAnexandoEspelho(false);
     }
@@ -1267,7 +1490,7 @@ export default function PedidoCompraDetalhe() {
   async function handleRemanejarItemAtual() {
     if (!itemEditando) return;
     if (!remanejoSelecionado) {
-      alert('Selecione o fornecedor/resposta de destino.');
+      avisar.alerta('Selecione o fornecedor/resposta de destino.');
       return;
     }
 
@@ -1284,12 +1507,12 @@ export default function PedidoCompraDetalhe() {
       : quantidadeMaxima;
 
     if (quantidadeInformada <= 0) {
-      alert('Informe uma quantidade maior que zero para remanejar.');
+      avisar.alerta('Informe uma quantidade maior que zero para remanejar.');
       return;
     }
 
     if (quantidadeInformada > quantidadeMaximaEfetiva) {
-      alert(`A quantidade remanejada nao pode ser maior que ${formatQuantityLabel(quantidadeMaximaEfetiva, itemEditando.unidade)}. Esse limite considera o item de origem e o saldo atual do fornecedor de destino.`);
+      avisar.alerta(`A quantidade remanejada nao pode ser maior que ${formatQuantityLabel(quantidadeMaximaEfetiva, itemEditando.unidade)}. Esse limite considera o item de origem e o saldo atual do fornecedor de destino.`);
       return;
     }
 
@@ -1304,10 +1527,10 @@ export default function PedidoCompraDetalhe() {
       setRemanejoSelecionado('');
       setRemanejoQuantidade('');
       fecharModalEdicao();
-      alert('Item remanejado para o fornecedor selecionado.');
+      avisar.sucesso('Item remanejado para o fornecedor selecionado.');
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao remanejar item');
+      avisar.erro(error.message || 'Erro ao remanejar item');
     } finally {
       setRemanejandoItem(false);
     }
@@ -1315,20 +1538,24 @@ export default function PedidoCompraDetalhe() {
 
   if (loading) {
     return (
-      <div className="page solicitacoes-page">
+      <Pagina>
         <div className="app-empty-card sol-surface-card">Carregando...</div>
-      </div>
+      </Pagina>
     );
   }
 
   if (!pedido) {
     return (
-      <div className="page solicitacoes-page">
-        <div className="app-empty-card sol-surface-card">Pedido de compra nao encontrado.</div>
-      </div>
+      <Pagina>
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <div className="app-empty-card sol-surface-card">Pedido de compra não encontrado.</div>
+        {elementoConfirmacao}
+      </Pagina>
     );
   }
 
+  const codigoPedido = `PC-${String(pedido.id).padStart(5, '0')}`;
+  const codigoSolicitacao = `SC-${String(pedido.solicitacao_compra_id).padStart(5, '0')}`;
   const edicaoItemAtual = itemEditando ? edicoes[itemEditando.id] || {} : {};
   const itemEditandoAbaixoMinimo = isItemAbaixoMinimo(itemEditando);
   const itemEditandoSituacao = getItemSituacao(itemEditando);
@@ -1366,697 +1593,677 @@ export default function PedidoCompraDetalhe() {
       )
     : 0;
 
-  return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Pedido de Compra</h1>
-            <p className="page-subtitle">
-              PC-{String(pedido.id).padStart(5, '0')} - gestao de itens em lista compacta, edicao em modal e auditoria
-              dedicada no painel administrativo.
-            </p>
-          </div>
-          <div className="app-page-actions items-end">
-            <div className="min-w-[260px]">
-              <label className="mb-1 block text-xs font-medium uppercase tracking-[0.12em] text-[var(--c-muted)]">
-                Status do pedido
-              </label>
-              <select
-                className="input"
-                value={pedido.status || ''}
-                onChange={(event) => handleAtualizarStatus(event.target.value)}
-                disabled={!podeAlterarStatusPedido || savingStatus || pedidoCancelado}
-              >
-                {statusSelectOptions.map((status) => (
-                  <option key={status.codigo} value={status.codigo}>
-                    {status.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {businessAdmin ? (
-              <button type="button" className="btn btn-outline" onClick={() => abrirAuditoria()}>
-                Painel de auditoria
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-outline" onClick={handleVisualizarPdf} disabled={visualizandoPdf}>
-              {visualizandoPdf ? 'Abrindo pedido...' : 'Ver pedido'}
-            </button>
-            <button type="button" className="btn btn-outline" onClick={handleBaixarPdf} disabled={baixandoPdf}>
-              {baixandoPdf ? 'Gerando PDF...' : 'Baixar PDF'}
-            </button>
-            {!pedidoCancelado ? (
-              <button type="button" className="btn btn-primary" onClick={handleEnviarPedido} disabled={enviandoPedido}>
-                {enviandoPedido ? 'Preparando envio...' : 'Enviar pedido'}
-              </button>
-            ) : null}
-            {podeReabrirCotacao ? (
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={handleReabrirCotacao}
-                disabled={reabrindoCotacao}
-              >
-                {reabrindoCotacao ? 'Reabrindo...' : 'Reabrir pedido'}
-              </button>
-            ) : null}
-            {podeCancelarPedido ? (
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={handleCancelarPedido}
-                disabled={pedidoCancelado || cancelandoPedido}
-              >
-                {cancelandoPedido ? 'Cancelando...' : 'Cancelar pedido'}
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-outline" onClick={() => navigateBack('/pedidos-compra')}>
-              Voltar
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => navigate(`/solicitacoes-compra/${pedido.solicitacao_compra_id}`)}
-            >
-              Abrir solicitacao
-            </button>
-          </div>
-        </div>
-      </div>
+  const acoesSecundarias = [
+    {
+      rotulo: visualizandoPdf ? 'Abrindo pedido...' : 'Ver pedido',
+      onClick: handleVisualizarPdf,
+      desabilitada: visualizandoPdf
+    },
+    {
+      rotulo: baixandoPdf ? 'Gerando PDF...' : 'Baixar PDF',
+      onClick: handleBaixarPdf,
+      desabilitada: baixandoPdf
+    },
+    podeReabrirCotacao ? {
+      rotulo: reaberturaPendenteGeo
+        ? 'Reabertura aguardando GEO'
+        : reabrindoCotacao
+        ? 'Processando...'
+        : (pedido?.financeiro?.reabertura_exige_geo ? 'Solicitar reabertura ao GEO' : 'Reabrir pedido'),
+      onClick: handleReabrirCotacao,
+      desabilitada: reabrindoCotacao || reaberturaPendenteGeo
+    } : null
+  ].filter(Boolean);
 
-      {!podeGerenciarPedido ? (
-        <div className="app-alert mt-4">
-          Voce esta visualizando este pedido. Alteracoes de status e itens ficam restritas ao setor de compras.
+  /*
+    R13/C4: a faixa fixa mostra o NOME do registro (o fornecedor) com o código
+    ao lado — número sem nome é defeito. O apoio (contagem/descrição) vive nas
+    props do PageHeader, não num parágrafo solto (R5).
+  */
+  const camposResumo = [
+    { label: 'Fornecedor', valor: pedido.fornecedor?.nome || '' },
+    {
+      label: 'Status',
+      valor: (
+        <span style={{ color: statusAtual?.cor || undefined }}>
+          {formatStatusLabel(pedido.status, statusMap)}
+        </span>
+      )
+    },
+    { label: 'Obra', valor: pedido.obra?.nome || '' },
+    {
+      /*
+        "Onde a NAVEGAÇÃO mora" (04/09): link para o REGISTRO RELACIONADO vai
+        no corpo, junto do dado que o origina — nunca na barra de ações. O
+        botão "Abrir solicitacao" da faixa virou o próprio código clicável.
+      */
+      label: 'Solicitação',
+      valor: (
+        <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/solicitacoes-compra/${pedido.solicitacao_compra_id}`}>
+          {codigoSolicitacao}
+        </Link>
+      ),
+      sub: 'Abrir a solicitação de compra de origem'
+    },
+    {
+      label: 'Rodada de fechamento',
+      valor: pedido.fechamento
+        ? `${pedido.fechamento.numero_rodada} - ${String(pedido.fechamento.tipo || '').toLowerCase()}`
+        : '',
+      contexto: Boolean(pedido.fechamento)
+    },
+    {
+      label: 'Total da aquisicao',
+      valor: formatMoney(pedido.valor_total),
+      sub: 'Itens, tributos, DIFAL e fretes'
+    },
+    {
+      label: 'Total devido ao fornecedor',
+      valor: formatMoney(pedido.valor_total_fornecedor ?? pedido.valor_total),
+      sub: 'Frete de terceiro fica separado'
+    },
+    { label: 'Mercadorias', valor: formatMoney(pedido.valor_mercadorias) },
+    { label: 'IPI + ICMS + ST', valor: formatMoney(pedido.valor_tributos) },
+    { label: 'DIFAL rateado', valor: formatMoney(pedido.difal_total) },
+    {
+      label: 'Frete deste pedido',
+      valor: pedido.frete_tipo_cotacao === 'SEM_FRETE'
+        ? 'Sem frete'
+        : `${pedido.frete_tipo_cotacao === 'TERCEIRO' ? 'Pago a terceiro' : 'Embutido'} - ${formatMoney(pedido.frete_total ?? pedido.frete_valor_cotacao)}`,
+      sub: [
+        pedido.frete_tipo_cotacao !== 'SEM_FRETE'
+          ? `Lancamento ${pedido.frete_modo_cotacao === 'POR_ITEM' ? 'por item' : 'global'}`
+          : null,
+        pedido.frete_data_vencimento ? `Vencimento: ${formatDate(pedido.frete_data_vencimento)}` : null,
+        (pedido.frete_transportador_nome || pedido.frete_transportador_cpf_cnpj)
+          ? `Transportador: ${pedido.frete_transportador_nome || 'Nao informado'}${pedido.frete_transportador_cpf_cnpj ? ` - ${pedido.frete_transportador_cpf_cnpj}` : ''}`
+          : null
+      ].filter(Boolean).join(' · ') || undefined
+    },
+    { label: 'Itens ativos', valor: String(itensAtivos.length) },
+    {
+      label: 'Pedido mínimo do fornecedor',
+      valor: pedido.valor_minimo_pedido ? formatMoney(pedido.valor_minimo_pedido) : ''
+    },
+    { label: 'Condicao de pagamento', valor: pedido.condicao_pagamento || '' },
+    { label: 'Criado por', valor: pedido.criador?.nome || '' }
+  ];
+
+  /*
+    C1 (05/09): o apoio longo empurrava a barra de acoes para uma SEGUNDA
+    linha da faixa — 94px onde o teto e 72. Mesma causa e mesmo conserto dos
+    tres relatorios de Compras: a conta de quebra do flex usa o texto
+    INTEIRO do apoio, porque ele e `nowrap` para poder truncar.
+  */
+  return (
+    <Pagina className="apoio-linha-unica">
+      <PageHeader
+        titulo={pedido.fornecedor?.nome ? `${pedido.fornecedor.nome} — ${codigoPedido}` : codigoPedido}
+        contagem={`${resumoItens.total} item(ns)`}
+        descricao="Gestão de itens, frete, comentários e cancelamento deste pedido de compra."
+        voltar={{ onClick: () => navigateBack('/pedidos-compra'), title: 'Voltar para pedidos de compra' }}
+        acaoPrincipal={!pedidoCancelado ? {
+          rotulo: enviandoPedido ? 'Preparando envio...' : 'Enviar pedido',
+          onClick: handleEnviarPedido,
+          desabilitada: enviandoPedido
+        } : null}
+        secundarias={acoesSecundarias}
+        destrutiva={podeCancelarPedido ? {
+          rotulo: cancelandoPedido ? 'Cancelando...' : 'Cancelar pedido',
+          onClick: handleCancelarPedido,
+          desabilitada: pedidoCancelado || cancelandoPedido
+        } : null}
+      />
+
+      {/* R16: UM dono para a faixa de avisos, logo abaixo do cabeçalho. */}
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {!podeGerenciarPedido && !podeGerenciarFinanceiroPedido ? (
+        <div className="app-alert">
+          Você esta visualizando este pedido. Alterações de status e itens ficam restritas ao setor de compras.
+        </div>
+      ) : !podeGerenciarPedido && podeGerenciarFinanceiroPedido ? (
+        <div className="app-alert">
+          A gestão operacional e a criação dos títulos permanecem com Compras. Você pode consultar o pedido e executar apenas as ações liberadas por sua permissão.
         </div>
       ) : null}
 
       {edicaoBloqueadaPorStatus ? (
-        <div className="app-alert mt-4">
+        <div className="app-alert">
           {pedido.edicao_bloqueada_motivo === 'COTACAO_ENCERRADA'
             ? 'Este pedido foi criado antes do fechamento automatico e esta vinculado a uma cotacao ja encerrada. Reabra o pedido para editar itens ou cancelar.'
             : `O status atual do pedido bloqueia edicao. Enquanto ele estiver em "${formatStatusLabel(pedido.status, statusMap)}", os itens nao poderao ser alterados, adicionados ou removidos.`}
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="grid gap-4">
-          <div className="card sol-surface-card">
-            <div className="card-header">
-              <h2 className="font-semibold">Resumo</h2>
-            </div>
-            <div className="grid gap-3 text-sm">
-              <div>
-                <div className="text-[var(--c-muted)]">Fornecedor</div>
-                <div className="font-semibold">{pedido.fornecedor?.nome || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Status</div>
-                <div className="font-semibold" style={{ color: statusAtual?.cor || undefined }}>
-                  {formatStatusLabel(pedido.status, statusMap)}
-                </div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Obra</div>
-                <div className="font-semibold">{pedido.obra?.nome || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Solicitacao</div>
-                <div className="font-semibold">
-                  SC-{String(pedido.solicitacao_compra_id).padStart(5, '0')}
-                </div>
-              </div>
-              {pedido.fechamento ? (
-                <div>
-                  <div className="text-[var(--c-muted)]">Rodada de fechamento</div>
-                  <div className="font-semibold">
-                    {pedido.fechamento.numero_rodada} - {String(pedido.fechamento.tipo || '').toLowerCase()}
-                  </div>
-                  {Number(pedido.fechamento.quantidade_excedente || 0) > 0 ? (
-                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      <div className="font-semibold">
-                        Quantidade excedente autorizada: {formatQuantityLabel(pedido.fechamento.quantidade_excedente)}
-                      </div>
-                      <div className="mt-1">Justificativa: {pedido.fechamento.justificativa_excedente || '-'}</div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              <div>
-                <div className="text-[var(--c-muted)]">Total da aquisicao</div>
-                <div className="font-semibold">{formatMoney(pedido.valor_total)}</div>
-                <div className="text-xs text-[var(--c-muted)]">Itens, tributos, DIFAL e fretes</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Total devido ao fornecedor</div>
-                <div className="font-semibold">{formatMoney(pedido.valor_total_fornecedor ?? pedido.valor_total)}</div>
-                <div className="text-xs text-[var(--c-muted)]">Frete de terceiro fica separado</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Mercadorias</div>
-                <div className="font-semibold">{formatMoney(pedido.valor_mercadorias)}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">IPI + ICMS + ST</div>
-                <div className="font-semibold">{formatMoney(pedido.valor_tributos)}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">DIFAL rateado</div>
-                <div className="font-semibold">{formatMoney(pedido.difal_total)}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Frete deste pedido</div>
-                <div className="font-semibold">
-                  {pedido.frete_tipo_cotacao === 'SEM_FRETE'
-                    ? 'Sem frete'
-                    : `${pedido.frete_tipo_cotacao === 'TERCEIRO' ? 'Pago a terceiro' : 'Embutido'} - ${formatMoney(pedido.frete_total ?? pedido.frete_valor_cotacao)}`}
-                </div>
-                {pedido.frete_tipo_cotacao !== 'SEM_FRETE' ? (
-                  <div className="text-xs text-[var(--c-muted)]">
-                    Lancamento {pedido.frete_modo_cotacao === 'POR_ITEM' ? 'por item' : 'global'}
-                  </div>
-                ) : null}
-                {pedido.frete_data_vencimento ? (
-                  <div className="text-xs text-[var(--c-muted)]">Vencimento: {formatDate(pedido.frete_data_vencimento)}</div>
-                ) : null}
-                {pedido.frete_transportador_nome || pedido.frete_transportador_cpf_cnpj ? (
-                  <div className="text-xs text-[var(--c-muted)]">
-                    Transportador: {pedido.frete_transportador_nome || 'Nao informado'}
-                    {pedido.frete_transportador_cpf_cnpj ? ` - ${pedido.frete_transportador_cpf_cnpj}` : ''}
-                  </div>
-                ) : null}
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Itens ativos</div>
-                <div className="font-semibold">{itensAtivos.length}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Pedido minimo do fornecedor</div>
-                <div className="font-semibold">
-                  {pedido.valor_minimo_pedido ? formatMoney(pedido.valor_minimo_pedido) : '-'}
-                </div>
-                {!pedido.atingiu_pedido_minimo ? (
-                  <div className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    O valor atual ainda nao atinge o pedido minimo informado pelo fornecedor.
-                  </div>
-                ) : null}
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Condicao de pagamento</div>
-                <div className="break-words font-semibold">{pedido.condicao_pagamento || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Criado por</div>
-                <div className="font-semibold">{pedido.criador?.nome || '-'}</div>
-              </div>
-            </div>
-          </div>
+      <BlocoConteudo
+        titulo="Resumo do pedido"
+        variante="primario"
+        cor="var(--module-compras)"
+        descricao="Fornecedor, valores e vínculos deste pedido de compra."
+        acoes={businessAdmin ? (
+          <button type="button" className="btn btn-outline" onClick={() => abrirAuditoria()}>
+            Auditoria do pedido
+          </button>
+        ) : null}
+      >
+        {/*
+          R12: select de FORMULÁRIO — escreve o status DO REGISTRO, não recorta
+          lista nenhuma. Saiu da barra de ações do cabeçalho (onde campo de
+          entrada não é ação) e virou campo de verdade, com rótulo e alinhamento
+          do CampoForm.
+        */}
+        {pedido.solicitacao?.solicitacao_principal_id && <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/solicitacoes/${pedido.solicitacao.solicitacao_principal_id}`)}>Acompanhar entregas na solicitação</button>
+          <span className="text-[var(--c-muted)]">Confirme a previsão, registre recebimentos e trate o saldo por item.</span>
+        </div>}
+        <FormSecao colunas={2}>
+          <CampoForm label="Status do pedido" hint="A troca de status grava auditoria e pode bloquear a edicao dos itens.">
+            <select
+              className="input w-full"
+              value={pedido.status || ''}
+              onChange={(event) => handleAtualizarStatus(event.target.value)}
+              disabled={!podeAlterarStatusPedido || savingStatus || pedidoCancelado}
+            >
+              {statusSelectOptions.map((status) => (
+                <option key={status.codigo} value={status.codigo}>
+                  {status.nome}
+                </option>
+              ))}
+            </select>
+          </CampoForm>
+        </FormSecao>
 
-          <div className="card sol-surface-card">
-            <div className="card-header flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-semibold">Fretes do pedido</h2>
-                <p className="text-xs text-[var(--c-muted)]">
-                  Custo rateado nos itens para acompanhamento da obra.
-                </p>
-              </div>
-              {podeRegistrarFretePedido && !pedidoCancelado ? (
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => abrirModalFrete('FECHAMENTO')}
-                  disabled={salvandoFrete}
-                >
-                  Registrar frete
-                </button>
-              ) : null}
-            </div>
-
-            <div className="grid gap-3 text-sm">
-              <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-                <div className="text-[var(--c-muted)]">Total de frete rateado</div>
-                <div className="mt-1 text-lg font-semibold">{formatMoney(totalFretesPedido)}</div>
-                {fretesPendentesFinanceiro.length ? (
-                  <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    {fretesPendentesFinanceiro.length} frete(s) aguardando geracao de titulo pelo financeiro.
-                  </div>
-                ) : null}
-              </div>
-
-              {fretesPedido.length ? (
-                <div className="app-list-stack">
-                  {fretesPedido.map((frete) => (
-                    <div key={frete.id} className="app-list-card">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="font-semibold">
-                          {String(frete.tipo || '').replace(/_/g, ' ')}
-                        </div>
-                        <span className={`app-status-pill ${
-                          String(frete.status_financeiro || '').toUpperCase() === 'CANCELADO'
-                            ? 'bg-slate-100 text-slate-600'
-                            : String(frete.status_financeiro || '').toUpperCase() === 'PENDENTE_TITULO'
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {String(frete.status_financeiro || 'REGISTRADO').replace(/_/g, ' ')}
-                        </span>
-                      </div>
-                      <div className="mt-1 font-semibold">{formatMoney(frete.valor_total)}</div>
-                      <div className="mt-1 text-xs text-[var(--c-muted)]">
-                        {frete.fornecedor?.nome || frete.parceiro?.nome ? `${frete.fornecedor?.nome || frete.parceiro?.nome} - ` : ''}
-                        {frete.rateios?.length || 0} item(ns) com frete · {frete.criterio_rateio === 'POR_ITEM' ? 'valor informado por item' : 'rateio proporcional'}
-                        {frete.data_vencimento ? ` - vence em ${formatDate(frete.data_vencimento)}` : ''}
-                      </div>
-                      {frete.tituloFinanceiro?.id ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
-                            Titulo gerado
-                          </span>
-                          <Link
-                            className="font-semibold text-[var(--c-primary)] hover:underline"
-                            to={`/financeiro/titulos/${frete.tituloFinanceiro.id}`}
-                          >
-                            {frete.tituloFinanceiro.codigo || `Titulo #${frete.tituloFinanceiro.id}`}
-                          </Link>
-                        </div>
-                      ) : null}
-                      {(fretePermiteControle(frete) || fretePermiteCancelamento(frete)) ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          {fretePermiteControle(frete) ? (
-                            <button
-                              type="button"
-                              className="btn btn-outline !py-1 text-xs"
-                              onClick={() => abrirEdicaoFrete(frete)}
-                              disabled={salvandoFrete}
-                            >
-                              Editar frete
-                            </button>
-                          ) : null}
-                          {fretePermiteCancelamento(frete) ? (
-                            <button
-                              type="button"
-                              className="btn btn-outline !py-1 text-xs text-red-600"
-                              onClick={() => handleCancelarFrete(frete)}
-                              disabled={salvandoFrete}
-                            >
-                              Cancelar frete
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="app-empty-card py-5 text-sm">
-                  Nenhum frete registrado para este pedido.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {podeEditarItensPedido ? (
-            <div className="card sol-surface-card">
-              <div className="card-header">
-                <h2 className="font-semibold">Historico operacional</h2>
-              </div>
-              <div className="grid gap-4">
-                <label className="grid gap-2 text-sm font-medium">
-                  Comentario do pedido
-                  <textarea
-                    className="input min-h-[110px]"
-                    value={comentarioPedido}
-                    onChange={(event) => setComentarioPedido(event.target.value)}
-                    placeholder="Registre alinhamentos, pendencias ou informacoes para a obra."
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-outline justify-center"
-                  onClick={handleSalvarComentarioPedido}
-                  disabled={salvandoComentario || !comentarioPedido.trim()}
-                >
-                  {salvandoComentario ? 'Registrando...' : 'Registrar comentario'}
-                </button>
-
-                <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-sm">
-                  <div className="font-semibold">Espelho do pedido do fornecedor</div>
-                  <p className="mt-1 text-xs text-[var(--c-muted)]">
-                    Anexe aqui o comprovante/espelho enviado pelo fornecedor. Ele tambem aparece no historico da solicitacao.
-                  </p>
-                  {pedido.espelho_fornecedor_url ? (
-                    <div className="mt-2 text-xs text-[var(--c-muted)]">
-                      Anexado: <span className="font-semibold text-[var(--c-text)]">{pedido.espelho_fornecedor_nome || 'arquivo'}</span>
-                    </div>
-                  ) : null}
-                  <label className="btn btn-outline mt-3 w-full cursor-pointer justify-center">
-                    {anexandoEspelho ? 'Anexando...' : 'Anexar espelho'}
-                    <input type="file" className="hidden" onChange={handleAnexarEspelho} disabled={anexandoEspelho} />
-                  </label>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {podeEditarItensPedido ? (
-            <div className="card sol-surface-card">
-              <div className="card-header">
-                <h2 className="font-semibold">Itens cotados disponiveis</h2>
-              </div>
-              {pedido.candidatos_adicao?.length ? (
-                <div className="app-list-stack">
-                  {pedido.candidatos_adicao.map((item) => (
-                    <div key={item.resposta_item_id} className="app-list-card">
-                      <div className="font-medium">{item.descricao}</div>
-                      <div className="mt-1 text-sm text-[var(--c-muted)]">
-                        {formatQuantityLabel(item.quantidade_solicitada, item.unidade)} - {formatMoney(item.preco_unitario)}
-                      </div>
-                      <div className="mt-1 text-xs text-[var(--c-muted)]">
-                        Minimo do item: {formatQuantityLabel(item.quantidade_minima_item, item.unidade)} - Prazo: {item.prazo || '-'}
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-outline mt-3"
-                        onClick={() => handleAdicionarResposta(item.resposta_item_id)}
-                        disabled={pedidoBloqueado || addingRespostaId === item.resposta_item_id}
-                      >
-                        {addingRespostaId === item.resposta_item_id ? 'Adicionando...' : 'Adicionar ao pedido'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="app-empty-card py-6">
-                  Todos os itens cotados desse fornecedor ja foram usados ou nao ha respostas adicionais disponiveis.
-                </div>
-              )}
-            </div>
-          ) : null}
+        <div className="mt-4">
+          <CamposComVazios campos={camposResumo} colunas={4} />
         </div>
 
-        <div className="grid gap-4">
-          <div className="card sol-surface-card">
-            <div className="card-header flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-semibold">Itens do pedido</h2>
-                <p className="text-sm text-[var(--c-muted)]">
-                  Filtros no topo, linhas compactas para escala e edicao concentrada em modal.
-                </p>
-              </div>
-              <span className="text-sm text-[var(--c-muted)]">
-                {itensFiltrados.length} visivel(is) de {resumoItens.total} item(ns)
+        {pedido.fechamento && Number(pedido.fechamento.quantidade_excedente || 0) > 0 ? (
+          <div className="mt-3">
+            <FaixaCondicao tom="atencao">
+              <span className="font-semibold">
+                Quantidade excedente autorizada: {formatQuantityLabel(pedido.fechamento.quantidade_excedente)}
               </span>
-            </div>
+              <span className="mt-1 block">Justificativa: {pedido.fechamento.justificativa_excedente || '-'}</span>
+            </FaixaCondicao>
+          </div>
+        ) : null}
 
-            <div className="solicitacoes-filtros app-filters-card rounded-xl p-4">
-              <div className="app-filters-grid">
-                <label className="app-filter-field">
-                  <span className="app-filter-label">Buscar item</span>
-                  <input
-                    className="input"
-                    value={buscaItens}
-                    onChange={(event) => setBuscaItens(event.target.value)}
-                    placeholder="Descricao, origem ou unidade"
-                  />
-                </label>
+        {!pedido.atingiu_pedido_minimo ? (
+          <div className="mt-3">
+            <FaixaCondicao tom="atencao">
+              O valor atual ainda não atinge o pedido mínimo informado pelo fornecedor.
+            </FaixaCondicao>
+          </div>
+        ) : null}
+      </BlocoConteudo>
 
-                <label className="app-filter-field">
-                  <span className="app-filter-label">Situacao</span>
-                  <select
-                    className="input"
-                    value={filtroItens}
-                    onChange={(event) => setFiltroItens(event.target.value)}
-                  >
-                    <option value="ATIVOS">Ativos</option>
-                    <option value="ATENCAO">Atencao</option>
-                    <option value="REMOVIDOS">Removidos</option>
-                    <option value="TODOS">Todos</option>
-                  </select>
-                </label>
-              </div>
+      <PedidoCompraFinanceiro
+        pedido={pedido}
+        user={user}
+        avisar={avisar}
+        onAtualizar={carregar}
+      />
 
-              <div className="app-page-actions justify-end">
+      <BlocoConteudo
+        titulo="Itens do pedido"
+        contagem={`${itensFiltrados.length} visível(is)`}
+        descricao="Marque itens para cancelar em lote; a edição de cada item abre em modal."
+      >
+        <StatGrid colunas={4}>
+          <StatTile label="Ativos" valor={resumoItens.ativos} sub="Itens operacionais" />
+          <StatTile label="Atenção" valor={resumoItens.atencao} sub="Abaixo do mínimo" tom={resumoItens.atencao ? 'warning' : undefined} />
+          <StatTile label="Removidos" valor={resumoItens.removidos} sub="Mantidos para histórico" />
+          <StatTile label="Valor total" valor={formatMoney(pedido.valor_total)} sub="Total da aquisição com frete" />
+        </StatGrid>
+
+        <div className="mt-4">
+          <BarraFiltros
+            busca={{
+              valor: buscaItens,
+              aoMudar: setBuscaItens,
+              placeholder: 'Buscar por descrição, origem ou unidade'
+            }}
+            filtros={[{ id: 'situacao', rotulo: 'Situação', opcoes: OPCOES_SITUACAO_ITEM }]}
+            ativos={filtrosItens}
+            aoAlternar={alternarFiltroItens}
+            aoLimpar={limparFiltrosItens}
+          />
+        </div>
+
+        {podeCancelarPedido ? (
+          <div className="app-actionbar mt-4 justify-end">
+            <button
+              type="button"
+              className="btn btn-outline btn-perigo-suave"
+              onClick={handleCancelarItensSelecionados}
+              disabled={pedidoBloqueado || cancelandoItens || itensSelecionadosCancelamento.length === 0}
+            >
+              {cancelandoItens ? 'Cancelando...' : `Cancelar itens (${itensSelecionadosCancelamento.length})`}
+            </button>
+          </div>
+        ) : null}
+
+        <div className="mt-4">
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'item',
+                titulo: 'Item',
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => {
+                  const precoContext = buildItemPriceContext(item);
+                  return (
+                    <CelulaDupla
+                      title={item.descricao}
+                      principal={item.descricao}
+                      sub={(
+                        <>
+                          <span className="block">
+                            Minimo: {formatQuantityLabel(item.quantidade_minima_item, item.unidade)}
+                          </span>
+                          <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                            <span>
+                              Cotado: <span className="font-semibold text-[var(--c-text)]">{formatUnitPrice(precoContext.precoCotado, item.unidade)}</span>
+                            </span>
+                            <span>
+                              Atual: <span className="font-semibold text-[var(--c-text)]">{formatUnitPrice(precoContext.precoAtual, item.unidade)}</span>
+                            </span>
+                            <span>
+                              Ult. compra: <span className="font-semibold text-[var(--c-text)]">{formatUnitPrice(precoContext.ultimoPrecoCompra, item.unidade, 'Sem historico')}</span>
+                            </span>
+                            <span>
+                              Var.: <span className={`font-semibold ${getVariationTextClass(precoContext.variacaoUltimaCompra)}`}>{formatVariationPercent(precoContext.variacaoUltimaCompra)}</span>
+                            </span>
+                            <span>Mercadoria: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.valor_mercadoria)}</span></span>
+                            <span>IPI: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.ipi_valor)}</span></span>
+                            <span>ICMS: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.icms_valor)}</span></span>
+                            <span>ST: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.st_valor)}</span></span>
+                            <span>DIFAL: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.difal_rateado)}</span></span>
+                          </span>
+                        </>
+                      )}
+                    />
+                  );
+                }
+              },
+              {
+                id: 'origem',
+                titulo: 'Origem',
+                tipo: 'texto',
+                render: (item) => item.origem || '-'
+              },
+              {
+                id: 'solicitado',
+                titulo: 'Solicitado',
+                tipo: 'numero',
+                render: (item) => formatQuantityLabel(item.quantidade_solicitada, item.unidade)
+              },
+              {
+                id: 'pedido',
+                titulo: 'Pedido',
+                tipo: 'numero',
+                render: (item) => formatQuantityLabel(item.quantidade_pedido, item.unidade)
+              },
+              {
+                id: 'itens',
+                titulo: 'Itens',
+                tipo: 'valor',
+                render: (item) => formatMoney(item.valor_total)
+              },
+              {
+                id: 'frete',
+                titulo: 'Frete',
+                tipo: 'valor',
+                render: (item) => formatMoney(item.frete_rateado)
+              },
+              {
+                id: 'total_aquisicao',
+                titulo: 'Total aquisição',
+                tipo: 'valor',
+                render: (item) => formatMoney(Number(item.valor_total || 0) + Number(item.frete_rateado || 0))
+              },
+              {
+                id: 'situacao',
+                titulo: 'Situação',
+                tipo: 'status',
+                render: (item) => {
+                  const situacao = getItemSituacao(item);
+                  return <Pilula tom={situacao.tom}>{situacao.label}</Pilula>;
+                }
+              }
+            ]}
+            itens={itensFiltrados}
+            vazio="Nenhum item encontrado com os filtros atuais."
+            storageKey="tabela:pedido-compra-detalhe:itens"
+            rotuloRolagem="Itens do pedido"
+            /*
+              R16b (capacidade 3): a marcação em lote é do componente. A coluna
+              de checkbox montada à mão saiu — com ela vinha o "todos" ausente
+              e o estado indeterminado que ninguém desenhava.
+            */
+            selecao={podeCancelarPedido ? {
+              selecionados: itensSelecionadosCancelamento,
+              aoAlternar: (itemId) => toggleItemCancelamento(itemId),
+              aoAlternarTodos: (marcar, ids) => setItensSelecionadosCancelamento(marcar ? [...ids] : []),
+              elegivel: (item) => !item.removido && !pedidoBloqueado
+            } : undefined}
+            acoesLinha={(item) => (
+              <>
                 <button
                   type="button"
                   className="btn btn-outline"
-                  onClick={() => {
-                    setBuscaItens('');
-                    setFiltroItens('ATIVOS');
-                  }}
+                  onClick={() => abrirModalEdicao(item.id)}
                 >
-                  Limpar filtros
+                  {podeEditarItensPedido && !item.removido ? 'Editar' : 'Ver item'}
                 </button>
                 {businessAdmin ? (
-                  <button type="button" className="btn btn-outline" onClick={() => abrirAuditoria()}>
-                    Auditoria do pedido
-                  </button>
-                ) : null}
-                {podeCancelarPedido ? (
                   <button
                     type="button"
                     className="btn btn-outline"
-                    onClick={handleCancelarItensSelecionados}
-                    disabled={pedidoBloqueado || cancelandoItens || itensSelecionadosCancelamento.length === 0}
+                    onClick={() => abrirAuditoria(item.id)}
                   >
-                    {cancelandoItens ? 'Cancelando...' : `Cancelar itens (${itensSelecionadosCancelamento.length})`}
+                    Auditoria
                   </button>
                 ) : null}
-              </div>
-            </div>
-
-            <div className="mt-4 app-summary-grid">
-              <div className="app-summary-card">
-                <span className="app-summary-label">Ativos</span>
-                <strong className="app-summary-value">{resumoItens.ativos}</strong>
-                <span className="app-summary-subvalue">Itens operacionais</span>
-              </div>
-              <div className="app-summary-card">
-                <span className="app-summary-label">Atencao</span>
-                <strong className="app-summary-value">{resumoItens.atencao}</strong>
-                <span className="app-summary-subvalue">Abaixo do minimo</span>
-              </div>
-              <div className="app-summary-card">
-                <span className="app-summary-label">Removidos</span>
-                <strong className="app-summary-value">{resumoItens.removidos}</strong>
-                <span className="app-summary-subvalue">Mantidos para historico</span>
-              </div>
-              <div className="app-summary-card">
-                <span className="app-summary-label">Valor total</span>
-                <strong className="app-summary-value">{formatMoney(pedido.valor_total)}</strong>
-                <span className="app-summary-subvalue">Total da aquisicao com frete</span>
-              </div>
-            </div>
-
-            {itensFiltrados.length ? (
-              <div className="mt-4 app-table-shell compras-responsive-table">
-                <table className="table min-w-[900px]">
-                  <thead>
-                    <tr>
-                      {podeCancelarPedido ? <th className="w-10">Sel.</th> : null}
-                      <th>Item</th>
-                      <th>Origem</th>
-                      <th>Solicitado</th>
-                      <th>Pedido</th>
-                      <th>Itens</th>
-                      <th>Frete</th>
-                      <th>Total aquisicao</th>
-                      <th>Situacao</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {itensFiltrados.map((item) => {
-                      const situacao = getItemSituacao(item);
-                      const precoContext = buildItemPriceContext(item);
-
-                      return (
-                        <tr key={item.id} className={item.removido ? 'opacity-80' : ''}>
-                          {podeCancelarPedido ? (
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={itensSelecionadosCancelamento.includes(item.id)}
-                                disabled={item.removido || pedidoBloqueado}
-                                onChange={() => toggleItemCancelamento(item.id)}
-                              />
-                            </td>
-                          ) : null}
-                          <td>
-                            <div className="font-medium">{item.descricao}</div>
-                            <div className="text-xs text-[var(--c-muted)]">
-                              Minimo: {formatQuantityLabel(item.quantidade_minima_item, item.unidade)}
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--c-muted)]">
-                              <span>
-                                Cotado: <span className="font-semibold text-[var(--c-text)]">{formatUnitPrice(precoContext.precoCotado, item.unidade)}</span>
-                              </span>
-                              <span>
-                                Atual: <span className="font-semibold text-[var(--c-text)]">{formatUnitPrice(precoContext.precoAtual, item.unidade)}</span>
-                              </span>
-                              <span>
-                                Ult. compra: <span className="font-semibold text-[var(--c-text)]">{formatUnitPrice(precoContext.ultimoPrecoCompra, item.unidade, 'Sem historico')}</span>
-                              </span>
-                              <span>
-                                Var.: <span className={`font-semibold ${getVariationTextClass(precoContext.variacaoUltimaCompra)}`}>{formatVariationPercent(precoContext.variacaoUltimaCompra)}</span>
-                              </span>
-                              <span>Mercadoria: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.valor_mercadoria)}</span></span>
-                              <span>IPI: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.ipi_valor)}</span></span>
-                              <span>ICMS: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.icms_valor)}</span></span>
-                              <span>ST: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.st_valor)}</span></span>
-                              <span>DIFAL: <span className="font-semibold text-[var(--c-text)]">{formatMoney(item.difal_rateado)}</span></span>
-                            </div>
-                          </td>
-                          <td>{item.origem || '-'}</td>
-                          <td>{formatQuantityLabel(item.quantidade_solicitada, item.unidade)}</td>
-                          <td>{formatQuantityLabel(item.quantidade_pedido, item.unidade)}</td>
-                          <td>{formatMoney(item.valor_total)}</td>
-                          <td>{formatMoney(item.frete_rateado)}</td>
-                          <td>{formatMoney(Number(item.valor_total || 0) + Number(item.frete_rateado || 0))}</td>
-                          <td>
-                            <span className={situacao.className}>{situacao.label}</span>
-                          </td>
-                          <td className="whitespace-nowrap">
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                className="btn btn-outline"
-                                onClick={() => abrirModalEdicao(item.id)}
-                              >
-                                {podeEditarItensPedido && !item.removido ? 'Editar' : 'Ver item'}
-                              </button>
-                              {businessAdmin ? (
-                                <button
-                                  type="button"
-                                  className="btn btn-outline"
-                                  onClick={() => abrirAuditoria(item.id)}
-                                >
-                                  Auditoria
-                                </button>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="mt-4 app-empty-card">
-                Nenhum item encontrado com os filtros atuais.
-              </div>
+              </>
             )}
-          </div>
+            larguraAcoes={260}
+          />
         </div>
-      </div>
+      </BlocoConteudo>
 
-      {modalEdicaoAberto && itemEditando ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" style={{ background: 'rgba(0, 0, 0, 0.45)' }}>
-          <div
-            className="flex w-full flex-col rounded-2xl border"
-            style={{
-              background: 'var(--ui-surface)',
-              borderColor: 'var(--ui-border)',
-              boxShadow: '0 30px 60px rgba(0,0,0,0.2)',
-              maxHeight: 'calc(100vh - 32px)',
-              maxWidth: '1080px',
-              overflow: 'hidden'
-            }}
+      <BlocoConteudo
+        titulo="Fretes do pedido"
+        contagem={`${fretesPedido.length} frete(s)`}
+        descricao="Custo rateado nos itens para acompanhamento da obra."
+        acoes={podeRegistrarFretePedido && !pedidoCancelado ? (
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => abrirModalFrete('FECHAMENTO')}
+            disabled={salvandoFrete}
           >
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3 sm:px-5">
-              <div>
-                <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>
-                  {podeEditarItensPedido && !itemEditando.removido ? 'Editar item do pedido' : 'Detalhes do item'}
-                </h2>
-                <p className="mt-0.5 text-xs" style={{ color: 'var(--c-muted)' }}>
-                  PC-{String(pedido.id).padStart(5, '0')} - {itemEditando.descricao}
-                </p>
-              </div>
-              <button type="button" className="btn btn-outline" onClick={fecharModalEdicao} disabled={modalProcessando}>
-                Fechar
-              </button>
-            </div>
+            Registrar frete
+          </button>
+        ) : null}
+      >
+        <StatGrid colunas={2}>
+          <StatTile
+            label="Total de frete rateado"
+            valor={formatMoney(totalFretesPedido)}
+            sub="Não inclui fretes cancelados"
+          />
+          <StatTile
+            label="Aguardando o financeiro"
+            valor={`${fretesPendentesFinanceiro.length} frete(s)`}
+            sub="Pendentes de geração de título"
+            tom={fretesPendentesFinanceiro.length ? 'warning' : undefined}
+          />
+        </StatGrid>
 
-            <div className="overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
-              {itemEditando.removido ? (
-                <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[var(--c-muted)]">
+        {fretesPedido.length ? (
+          <div className="app-list-stack mt-4">
+            {fretesPedido.map((frete) => (
+              <div key={frete.id} className="app-list-card">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-semibold">
+                    {String(frete.tipo || '').replace(/_/g, ' ')}
+                  </div>
+                  <Pilula tom={tomDoFrete(frete)}>
+                    {String(frete.status_financeiro || 'REGISTRADO').replace(/_/g, ' ')}
+                  </Pilula>
+                </div>
+                <div className="mt-1 font-semibold tabular-nums">{formatMoney(frete.valor_total)}</div>
+                <div className="mt-1 text-xs text-[var(--c-muted)]">
+                  {frete.fornecedor?.nome || frete.parceiro?.nome ? `${frete.fornecedor?.nome || frete.parceiro?.nome} - ` : ''}
+                  {frete.rateios?.length || 0} item(ns) com frete · {frete.criterio_rateio === 'POR_ITEM' ? 'valor informado por item' : 'rateio proporcional'}
+                  {frete.data_vencimento ? ` - vence em ${formatDate(frete.data_vencimento)}` : ''}
+                </div>
+                {frete.tituloFinanceiro?.id ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <Pilula tom="sucesso">Título gerado</Pilula>
+                    <Link
+                      className="font-semibold text-[var(--c-primary)] hover:underline"
+                      to={`/financeiro/titulos/${frete.tituloFinanceiro.id}`}
+                    >
+                      {frete.tituloFinanceiro.codigo || `Titulo #${frete.tituloFinanceiro.id}`}
+                    </Link>
+                  </div>
+                ) : null}
+                {(fretePermiteControle(frete) || fretePermiteCancelamento(frete)) ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {fretePermiteControle(frete) ? (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => abrirEdicaoFrete(frete)}
+                        disabled={salvandoFrete}
+                      >
+                        Editar frete
+                      </button>
+                    ) : null}
+                    {fretePermiteCancelamento(frete) ? (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-perigo-suave"
+                        onClick={() => handleCancelarFrete(frete)}
+                        disabled={salvandoFrete}
+                      >
+                        Cancelar frete
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="app-empty-card mt-4 py-4 text-sm">
+            Nenhum frete registrado para este pedido.
+          </div>
+        )}
+      </BlocoConteudo>
+
+      {podeEditarItensPedido ? (
+        <BlocoConteudo
+          titulo="Itens cotados disponíveis"
+          variante="secundario"
+          contagem={`${pedido.candidatos_adicao?.length || 0} candidato(s)`}
+          descricao="Respostas do fornecedor que ainda podem entrar neste pedido."
+          recolhivel
+          recolhidoPadrao={!pedido.candidatos_adicao?.length}
+        >
+          {pedido.candidatos_adicao?.length ? (
+            <div className="app-list-stack">
+              {pedido.candidatos_adicao.map((item) => (
+                <div key={item.resposta_item_id} className="app-list-card">
+                  <div className="font-medium">{item.descricao}</div>
+                  <div className="mt-1 text-sm text-[var(--c-muted)]">
+                    {formatQuantityLabel(item.quantidade_solicitada, item.unidade)} - {formatMoney(item.preco_unitario)}
+                  </div>
+                  <div className="mt-1 text-xs text-[var(--c-muted)]">
+                    Minimo do item: {formatQuantityLabel(item.quantidade_minima_item, item.unidade)} - Prazo: {item.prazo || '-'}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline mt-3"
+                    onClick={() => handleAdicionarResposta(item.resposta_item_id)}
+                    disabled={pedidoBloqueado || addingRespostaId === item.resposta_item_id}
+                  >
+                    {addingRespostaId === item.resposta_item_id ? 'Adicionando...' : 'Adicionar ao pedido'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="app-empty-card py-6">
+              Todos os itens cotados desse fornecedor já foram usados ou não ha respostas adicionais disponíveis.
+            </div>
+          )}
+        </BlocoConteudo>
+      ) : null}
+
+      {podeComentarPedido || podeAnexarEspelhoPedido ? (
+        <BlocoConteudo
+          titulo="Histórico operacional"
+          variante="secundario"
+          descricao="Comentários e espelho do fornecedor aparecem também no histórico da solicitação."
+        >
+          <div className="grid gap-4">
+            {podeComentarPedido ? (
+              <FormSecao colunas={1}>
+                <CampoForm label="Comentário do pedido" tipo="texto-longo">
+                  <textarea
+                    className="input w-full"
+                    rows={4}
+                    value={comentarioPedido}
+                    onChange={(event) => setComentarioPedido(event.target.value)}
+                    placeholder="Registre alinhamentos, pendências ou informações para a obra."
+                  />
+                </CampoForm>
+                <div className="app-actionbar">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={handleSalvarComentarioPedido}
+                    disabled={salvandoComentario || !comentarioPedido.trim()}
+                  >
+                    {salvandoComentario ? 'Registrando...' : 'Registrar comentario'}
+                  </button>
+                </div>
+              </FormSecao>
+            ) : null}
+
+            {podeAnexarEspelhoPedido ? (
+              <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-sm">
+                <div className="font-semibold">Espelho do pedido do fornecedor</div>
+                <p className="mt-1 text-xs text-[var(--c-muted)]">
+                  Anexe aqui o comprovante/espelho enviado pelo fornecedor. Ele também aparece no histórico da solicitação.
+                </p>
+                {pedido.espelho_fornecedor_url ? (
+                  <div className="mt-2 text-xs text-[var(--c-muted)]">
+                    Anexado: <span className="font-semibold text-[var(--c-text)]">{pedido.espelho_fornecedor_nome || 'arquivo'}</span>
+                  </div>
+                ) : null}
+                <label className="btn btn-outline mt-3 w-full cursor-pointer justify-center">
+                  {anexandoEspelho ? 'Anexando...' : 'Anexar espelho'}
+                  <input type="file" className="hidden" onChange={handleAnexarEspelho} disabled={anexandoEspelho} />
+                </label>
+              </div>
+            ) : null}
+          </div>
+        </BlocoConteudo>
+      ) : null}
+
+      {/*
+        R27: os três modais desta tela eram painéis feitos à mão, com
+        `overflow: hidden` (que mata sticky, R18), `maxHeight`/`maxWidth` em px
+        e `rgba()` cru no fundo. Agora são `OverlayModal`, com o corpo rolando
+        entre `data-modal="cabecalho"` e `data-modal="rodape"` — o botão que
+        executa a ação não sai de vista por conteúdo alto.
+      */}
+      {modalEdicaoAberto && itemEditando ? (
+        <OverlayModal
+          largura="var(--modal-max-w-xl, 1120px)"
+          rotulo={podeEditarItensPedido && !itemEditando.removido ? 'Editar item do pedido' : 'Detalhes do item'}
+          onFechar={modalProcessando ? undefined : fecharModalEdicao}
+        >
+          <div data-modal="cabecalho" className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>
+                {podeEditarItensPedido && !itemEditando.removido ? 'Editar item do pedido' : 'Detalhes do item'}
+              </h2>
+              <p className="mt-1 text-xs" style={{ color: 'var(--c-muted)' }}>
+                {codigoPedido} - {itemEditando.descricao}
+              </p>
+            </div>
+            <button type="button" className="btn btn-outline" onClick={fecharModalEdicao} disabled={modalProcessando}>
+              Fechar
+            </button>
+          </div>
+
+          <div className="px-4 py-4">
+            {itemEditando.removido ? (
+              <div className="mb-3">
+                <FaixaCondicao tom="neutro">
                   {pedidoCancelado
                     ? 'Este item pertence a um pedido cancelado. O histórico permanece preservado e o saldo liberado pode ser remanejado para outro fornecedor da mesma cotação.'
                     : 'Este item foi removido do pedido. Ele permanece visível para consulta, mas a trilha detalhada agora fica no painel administrativo de relatórios.'}
-                </div>
-              ) : null}
+                </FaixaCondicao>
+              </div>
+            ) : null}
 
-              {itemEditandoAbaixoMinimo ? (
-                <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  A quantidade atual do pedido ainda esta abaixo do minimo definido para este item.
-                </div>
-              ) : null}
+            {itemEditandoAbaixoMinimo ? (
+              <div className="mb-3">
+                <FaixaCondicao tom="atencao">
+                  A quantidade atual do pedido ainda esta abaixo do mínimo definido para este item.
+                </FaixaCondicao>
+              </div>
+            ) : null}
 
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
-                <div className="grid gap-3">
-                  {!itemEditando.removido ? (
-                    <>
-                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px]">
-                      <label className="grid gap-2 text-sm font-medium">
-                        Quantidade do pedido
-                        <input
-                          className="input h-11"
-                          type="text"
-                          inputMode="decimal"
-                          value={edicaoItemAtual.quantidade_pedido ?? ''}
-                          disabled={pedidoBloqueado}
-                          onChange={(event) =>
-                            atualizarEdicaoItem(itemEditando.id, {
-                              quantidade_pedido: maskBrazilianQuantityInput(event.target.value)
-                            })
-                          }
-                          onBlur={(event) =>
-                            atualizarEdicaoItem(itemEditando.id, {
-                              quantidade_pedido: normalizeBrazilianQuantityOnBlur(event.target.value)
-                            })
-                          }
-                          placeholder="Ex.: 1.250 ou 1.250,50"
-                        />
-                        <span className="text-xs text-[var(--c-muted)]">
-                          Use `.` para milhar e `,` para decimal, com no maximo 2 casas apos a virgula.
-                        </span>
-                      </label>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-3 lg:col-span-2">
+                {!itemEditando.removido ? (
+                  <FormSecao colunas={3}>
+                    <CampoForm
+                      label="Quantidade do pedido"
+                      hint="Use `.` para milhar e `,` para decimal, com no maximo 2 casas apos a virgula."
+                    >
+                      <input
+                        className="input w-full"
+                        type="text"
+                        inputMode="decimal"
+                        value={edicaoItemAtual.quantidade_pedido ?? ''}
+                        disabled={pedidoBloqueado}
+                        onChange={(event) =>
+                          atualizarEdicaoItem(itemEditando.id, {
+                            quantidade_pedido: maskBrazilianQuantityInput(event.target.value)
+                          })
+                        }
+                        onBlur={(event) =>
+                          atualizarEdicaoItem(itemEditando.id, {
+                            quantidade_pedido: normalizeBrazilianQuantityOnBlur(event.target.value)
+                          })
+                        }
+                        placeholder="Ex.: 1.250 ou 1.250,50"
+                      />
+                    </CampoForm>
 
-                      <label className="grid gap-2 text-sm font-medium">
-                        Preco unitario
-                        <input
-                          className="input h-11"
-                          type="text"
-                          inputMode="decimal"
-                          value={edicaoItemAtual.preco_unitario ?? ''}
-                          disabled={pedidoBloqueado}
-                          onChange={(event) =>
-                            atualizarEdicaoItem(itemEditando.id, {
-                              preco_unitario: sanitizeMoneyInput(event.target.value)
-                            })
-                          }
-                          onBlur={(event) =>
-                            atualizarEdicaoItem(itemEditando.id, {
-                              preco_unitario: formatMoneyInput(event.target.value)
-                            })
-                          }
-                        />
-                      </label>
+                    {/* R6: campo de dinheiro usa .input-moeda (mín. 180px, à direita, tabular). */}
+                    <CampoForm label="Preço unitário">
+                      <input
+                        className="input input-moeda"
+                        type="text"
+                        inputMode="decimal"
+                        value={edicaoItemAtual.preco_unitario ?? ''}
+                        disabled={pedidoBloqueado}
+                        onChange={(event) =>
+                          atualizarEdicaoItem(itemEditando.id, {
+                            preco_unitario: sanitizeMoneyInput(event.target.value)
+                          })
+                        }
+                        onBlur={(event) =>
+                          atualizarEdicaoItem(itemEditando.id, {
+                            preco_unitario: formatMoneyInput(event.target.value)
+                          })
+                        }
+                      />
+                    </CampoForm>
 
-                      <div className="grid gap-2 text-sm font-medium">
-                        <span>Valor recalculado</span>
-                        <div className="input flex h-11 items-center bg-slate-50">
-                          {formatMoney(
-                            parseBrazilianQuantity(edicaoItemAtual.quantidade_pedido) * (parseBrazilianMoney(edicaoItemAtual.preco_unitario) || 0)
-                          )}
-                        </div>
+                    <CampoForm label="Valor recalculado">
+                      <div className="input input-moeda flex items-center">
+                        {formatMoney(
+                          parseBrazilianQuantity(edicaoItemAtual.quantidade_pedido) * (parseBrazilianMoney(edicaoItemAtual.preco_unitario) || 0)
+                        )}
                       </div>
-                    </div>
+                    </CampoForm>
 
-                    <label className="grid gap-2 text-sm font-medium">
-                      Observacoes do item
+                    <CampoForm label="Observações do item" tipo="texto-longo">
                       <textarea
-                        className="input min-h-[84px]"
+                        className="input w-full"
+                        rows={3}
                         value={edicaoItemAtual.observacoes ?? ''}
                         disabled={pedidoBloqueado}
                         onChange={(event) =>
@@ -2065,24 +2272,24 @@ export default function PedidoCompraDetalhe() {
                           })
                         }
                       />
-                    </label>
-                  </>
+                    </CampoForm>
+                  </FormSecao>
                 ) : (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-[var(--c-muted)]">
+                  <FaixaCondicao tom="neutro">
                     Item removido do fluxo ativo. Use o atalho de auditoria para consultar toda a trilha historica.
-                  </div>
+                  </FaixaCondicao>
                 )}
               </div>
 
               <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-                <div className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--c-muted)]">
+                <div className="text-xs font-medium uppercase text-[var(--c-muted)]">
                   Resumo do item
                 </div>
                 <div className="mt-3 grid gap-2 text-xs">
                   <div>
-                    <div className="text-[var(--c-muted)]">Situacao</div>
+                    <div className="text-[var(--c-muted)]">Situação</div>
                     <div className="mt-1">
-                      <span className={itemEditandoSituacao.className}>{itemEditandoSituacao.label}</span>
+                      <Pilula tom={itemEditandoSituacao.tom}>{itemEditandoSituacao.label}</Pilula>
                     </div>
                   </div>
                   <div>
@@ -2098,30 +2305,30 @@ export default function PedidoCompraDetalhe() {
                     <div className="font-semibold">{formatQuantityLabel(itemEditando.quantidade_pedido, itemEditando.unidade)}</div>
                   </div>
                   <div>
-                    <div className="text-[var(--c-muted)]">Minimo</div>
+                    <div className="text-[var(--c-muted)]">Mínimo</div>
                     <div className="font-semibold">{formatQuantityLabel(itemEditando.quantidade_minima_item, itemEditando.unidade)}</div>
                   </div>
                   <div>
                     <div className="text-[var(--c-muted)]">Cotado pelo fornecedor</div>
-                    <div className="font-semibold">{formatUnitPrice(itemEditandoPrecoContext?.precoCotado, itemEditando.unidade)}</div>
+                    <div className="font-semibold tabular-nums">{formatUnitPrice(itemEditandoPrecoContext?.precoCotado, itemEditando.unidade)}</div>
                   </div>
                   <div>
-                    <div className="text-[var(--c-muted)]">Preco atual do pedido</div>
-                    <div className="font-semibold">{formatUnitPrice(itemEditandoPrecoContext?.precoAtual, itemEditando.unidade)}</div>
+                    <div className="text-[var(--c-muted)]">Preço atual do pedido</div>
+                    <div className="font-semibold tabular-nums">{formatUnitPrice(itemEditandoPrecoContext?.precoAtual, itemEditando.unidade)}</div>
                   </div>
                   <div>
                     <div className="text-[var(--c-muted)]">Ult. compra</div>
-                    <div className="font-semibold">{formatUnitPrice(itemEditandoPrecoContext?.ultimoPrecoCompra, itemEditando.unidade, 'Sem historico')}</div>
+                    <div className="font-semibold tabular-nums">{formatUnitPrice(itemEditandoPrecoContext?.ultimoPrecoCompra, itemEditando.unidade, 'Sem historico')}</div>
                   </div>
                   <div>
                     <div className="text-[var(--c-muted)]">Variacao x ult. compra</div>
-                    <div className={`font-semibold ${getVariationTextClass(itemEditandoPrecoContext?.variacaoUltimaCompra)}`}>
+                    <div className={`font-semibold tabular-nums ${getVariationTextClass(itemEditandoPrecoContext?.variacaoUltimaCompra)}`}>
                       {formatVariationPercent(itemEditandoPrecoContext?.variacaoUltimaCompra)}
                     </div>
                   </div>
                   <div>
                     <div className="text-[var(--c-muted)]">Valor total atual</div>
-                    <div className="font-semibold">{formatMoney(itemEditandoValorTotalAtual)}</div>
+                    <div className="font-semibold tabular-nums">{formatMoney(itemEditandoValorTotalAtual)}</div>
                   </div>
                 </div>
 
@@ -2138,19 +2345,26 @@ export default function PedidoCompraDetalhe() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-semibold">Remanejar quantidade para outro fornecedor</h3>
-                    <p className="mt-0.5 text-xs text-[var(--c-muted)]">
+                    <p className="mt-1 text-xs text-[var(--c-muted)]">
                       {pedidoCancelado
                         ? 'Selecione outro fornecedor respondido. O pedido cancelado continua preservado e um pedido de destino recebe a quantidade escolhida.'
                         : 'Use quando parte ou todo o item precisar voltar para a cotação e seguir em outro pedido.'}
                     </p>
                   </div>
-                  <span className="app-status-pill bg-blue-50 text-blue-700">
+                  <Pilula tom="info">
                     Max. {formatQuantityLabel(quantidadeMaximaRemanejamento, itemEditando.unidade)}
-                  </span>
+                  </Pilula>
                 </div>
-                <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_150px_auto]">
+                {/*
+                  R12: seletor de CONTEXTO — escolhe o ALVO da chamada de
+                  remanejamento (para qual resposta do fornecedor a quantidade
+                  vai), não recorta lista nenhuma. A própria R12 declara esse
+                  caso como select legítimo.
+                */}
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
                   <select
-                    className="input h-11"
+                    className="input w-full"
+                    aria-label="Resposta de destino do remanejamento"
                     value={remanejoSelecionado}
                     onChange={(event) => setRemanejoSelecionado(event.target.value)}
                     disabled={remanejamentoBloqueado || remanejandoItem || candidatosRemanejamentoItem.length === 0}
@@ -2165,9 +2379,10 @@ export default function PedidoCompraDetalhe() {
                     ))}
                   </select>
                   <input
-                    className="input h-11"
+                    className="input w-full"
                     type="text"
                     inputMode="decimal"
+                    aria-label="Quantidade a remanejar"
                     value={remanejoQuantidade}
                     onChange={(event) => setRemanejoQuantidade(maskBrazilianQuantityInput(event.target.value))}
                     onBlur={(event) => setRemanejoQuantidade(normalizeBrazilianQuantityOnBlur(event.target.value))}
@@ -2185,77 +2400,75 @@ export default function PedidoCompraDetalhe() {
                 </div>
               </div>
             ) : null}
+          </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-[var(--c-muted)]">
-                  A trilha de auditoria saiu desta tela para evitar sobrecarga visual em pedidos grandes.
-                </div>
-                <div className="flex flex-wrap gap-2">
-                {podeEditarItensPedido && !itemEditando.removido ? (
+          <div data-modal="rodape" className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] px-4 py-3">
+            <div className="text-xs text-[var(--c-muted)]">
+              A trilha de auditoria saiu desta tela para evitar sobrecarga visual em pedidos grandes.
+            </div>
+            <div className="app-actionbar">
+              <button type="button" className="btn btn-outline" onClick={fecharModalEdicao} disabled={modalProcessando}>
+                Cancelar
+              </button>
+              {podeEditarItensPedido && !itemEditando.removido ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => handleSalvarItem(itemEditando.id)}
+                  disabled={pedidoBloqueado || savingItemId === itemEditando.id}
+                >
+                  {savingItemId === itemEditando.id ? 'Salvando...' : 'Salvar ajustes'}
+                </button>
+              ) : null}
+              {podeEditarItensPedido && !itemEditando.removido ? (
+                <span className="app-actionbar-apartada">
                   <button
                     type="button"
-                    className="btn btn-outline"
+                    className="btn btn-outline btn-perigo-suave"
                     onClick={() => handleRemoverItem(itemEditando.id)}
                     disabled={pedidoBloqueado || removingItemId === itemEditando.id}
                   >
                     {removingItemId === itemEditando.id ? 'Removendo...' : 'Remover item'}
                   </button>
-                ) : null}
-                <button type="button" className="btn btn-outline" onClick={fecharModalEdicao} disabled={modalProcessando}>
-                  Cancelar
-                </button>
-                {podeEditarItensPedido && !itemEditando.removido ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => handleSalvarItem(itemEditando.id)}
-                    disabled={pedidoBloqueado || savingItemId === itemEditando.id}
-                  >
-                    {savingItemId === itemEditando.id ? 'Salvando...' : 'Salvar ajustes'}
-                  </button>
-                ) : null}
-                </div>
-              </div>
+                </span>
+              ) : null}
             </div>
           </div>
-        </div>
+        </OverlayModal>
       ) : null}
 
       {modalCancelamentoAberto ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" style={{ background: 'rgba(0, 0, 0, 0.45)' }}>
-          <div
-            className="w-full rounded-2xl border"
-            style={{
-              background: 'var(--ui-surface)',
-              borderColor: 'var(--ui-border)',
-              boxShadow: '0 30px 60px rgba(0,0,0,0.2)',
-              maxWidth: '720px'
-            }}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] px-5 py-4">
-              <div>
-                <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>
-                  Cancelar pedido
-                </h2>
-                <p className="mt-1 text-xs" style={{ color: 'var(--c-muted)' }}>
-                  O historico sera preservado. Se houver titulo financeiro ou frete com titulo, o sistema bloqueara a acao.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setModalCancelamentoAberto(false)}
-                disabled={cancelandoPedido}
-              >
-                Fechar
-              </button>
+        <OverlayModal
+          largura="var(--modal-max-w-md, 640px)"
+          rotulo="Cancelar pedido"
+          onFechar={cancelandoPedido ? undefined : () => setModalCancelamentoAberto(false)}
+        >
+          <div data-modal="cabecalho" className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>
+                Cancelar pedido {codigoPedido}
+              </h2>
+              <p className="mt-1 text-xs" style={{ color: 'var(--c-muted)' }}>
+                O histórico será preservado. Se houver título financeiro ou frete com título, o sistema bloqueara a ação.
+                Esta acao nao pode ser desfeita.
+              </p>
             </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setModalCancelamentoAberto(false)}
+              disabled={cancelandoPedido}
+            >
+              Fechar
+            </button>
+          </div>
 
-            <div className="space-y-4 px-5 py-4">
-              <label className="grid gap-2 text-sm font-medium">
-                Motivo do cancelamento *
+          <div className="space-y-4 px-4 py-4">
+            <FormSecao colunas={1}>
+              <CampoForm label="Motivo do cancelamento" obrigatorio tipo="texto-longo">
                 <textarea
-                  className="input min-h-[96px]"
+                  className="input w-full"
+                  rows={4}
                   value={cancelamentoPedidoForm.motivo}
                   onChange={(event) => setCancelamentoPedidoForm((current) => ({
                     ...current,
@@ -2264,355 +2477,363 @@ export default function PedidoCompraDetalhe() {
                   placeholder="Explique por que este pedido esta sendo cancelado."
                   disabled={cancelandoPedido}
                 />
-              </label>
+              </CampoForm>
+            </FormSecao>
 
-              <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-3">
-                <p className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>
-                  Alcance do cancelamento
-                </p>
-                <div className="mt-3 grid gap-3">
-                  <label className="flex items-start gap-3 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={cancelamentoPedidoForm.cancelar_cotacao}
-                      onChange={(event) => setCancelamentoPedidoForm((current) => ({
-                        ...current,
-                        cancelar_cotacao: event.target.checked
-                      }))}
-                      disabled={cancelandoPedido}
-                    />
-                    <span>
-                      <strong>Cancelar cotacao vinculada</strong>
-                      <span className="block text-xs text-[var(--c-muted)]">
-                        Marca os links/respostas da cotacao como cancelados e evita nova interacao no fluxo.
-                      </span>
+            <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
+              <p className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>
+                Alcance do cancelamento
+              </p>
+              <div className="mt-3 grid gap-3">
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={cancelamentoPedidoForm.cancelar_cotacao}
+                    onChange={(event) => setCancelamentoPedidoForm((current) => ({
+                      ...current,
+                      cancelar_cotacao: event.target.checked
+                    }))}
+                    disabled={cancelandoPedido}
+                  />
+                  <span>
+                    <strong>Cancelar cotação vinculada</strong>
+                    <span className="block text-xs text-[var(--c-muted)]">
+                      Marca os links/respostas da cotação como cancelados e evita nova interação no fluxo.
                     </span>
-                  </label>
+                  </span>
+                </label>
 
-                  <label className="flex items-start gap-3 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={cancelamentoPedidoForm.cancelar_solicitacao_compra}
-                      onChange={(event) => setCancelamentoPedidoForm((current) => ({
-                        ...current,
-                        cancelar_solicitacao_compra: event.target.checked
-                      }))}
-                      disabled={cancelandoPedido}
-                    />
-                    <span>
-                      <strong>Cancelar solicitacao de compra</strong>
-                      <span className="block text-xs text-[var(--c-muted)]">
-                        Remove a SC do painel de delegacao, mantendo a consulta nas telas historicas.
-                      </span>
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={cancelamentoPedidoForm.cancelar_solicitacao_compra}
+                    onChange={(event) => setCancelamentoPedidoForm((current) => ({
+                      ...current,
+                      cancelar_solicitacao_compra: event.target.checked
+                    }))}
+                    disabled={cancelandoPedido}
+                  />
+                  <span>
+                    <strong>Cancelar solicitação de compra</strong>
+                    <span className="block text-xs text-[var(--c-muted)]">
+                      Remove a SC do painel de delegação, mantendo a consulta nas telas historicas.
                     </span>
-                  </label>
+                  </span>
+                </label>
 
-                  <label className="flex items-start gap-3 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={cancelamentoPedidoForm.cancelar_solicitacao_principal}
-                      onChange={(event) => setCancelamentoPedidoForm((current) => ({
-                        ...current,
-                        cancelar_solicitacao_principal: event.target.checked
-                      }))}
-                      disabled={cancelandoPedido}
-                    />
-                    <span>
-                      <strong>Cancelar tambem a solicitacao principal</strong>
-                      <span className="block text-xs text-[var(--c-muted)]">
-                        Use somente quando a solicitacao normal nao deve seguir em nenhum outro setor.
-                      </span>
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={cancelamentoPedidoForm.cancelar_solicitacao_principal}
+                    onChange={(event) => setCancelamentoPedidoForm((current) => ({
+                      ...current,
+                      cancelar_solicitacao_principal: event.target.checked
+                    }))}
+                    disabled={cancelandoPedido}
+                  />
+                  <span>
+                    <strong>Cancelar também a solicitação principal</strong>
+                    <span className="block text-xs text-[var(--c-muted)]">
+                      Use somente quando a solicitação normal não deve seguir em nenhum outro setor.
                     </span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => setModalCancelamentoAberto(false)}
-                  disabled={cancelandoPedido}
-                >
-                  Voltar
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={confirmarCancelamentoPedido}
-                  disabled={cancelandoPedido}
-                >
-                  {cancelandoPedido ? 'Cancelando...' : 'Confirmar cancelamento'}
-                </button>
+                  </span>
+                </label>
               </div>
             </div>
           </div>
-        </div>
+
+          <div data-modal="rodape" className="app-actionbar justify-end border-t border-[var(--c-border)] px-4 py-3">
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setModalCancelamentoAberto(false)}
+              disabled={cancelandoPedido}
+            >
+              Voltar
+            </button>
+            <span className="app-actionbar-apartada">
+              <button
+                type="button"
+                className="btn btn-outline btn-perigo-suave"
+                onClick={confirmarCancelamentoPedido}
+                disabled={cancelandoPedido}
+              >
+                {cancelandoPedido ? 'Cancelando...' : 'Confirmar cancelamento'}
+              </button>
+            </span>
+          </div>
+        </OverlayModal>
       ) : null}
 
       {modalFreteAberto ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" style={{ background: 'rgba(0, 0, 0, 0.45)' }}>
-          <div
-            className="flex w-full flex-col rounded-2xl border"
-            style={{
-              background: 'var(--ui-surface)',
-              borderColor: 'var(--ui-border)',
-              boxShadow: '0 30px 60px rgba(0,0,0,0.2)',
-              maxHeight: 'calc(100vh - 32px)',
-              maxWidth: '880px',
-              overflow: 'hidden'
-            }}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3 sm:px-5">
-              <div>
-                <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>
-                  {freteEditandoId ? 'Editar frete do pedido' : 'Registrar frete do pedido'}
-                </h2>
-                <p className="mt-0.5 text-xs" style={{ color: 'var(--c-muted)' }}>
-                  {freteEditandoId
-                    ? 'A correcao recalcula o rateio e registra auditoria no historico.'
-                    : 'O frete sera rateado por valor dos itens. Frete de terceiro cria pendencia para o financeiro.'}
-                </p>
-              </div>
-              <button type="button" className="btn btn-outline" onClick={() => fecharModalFrete()} disabled={salvandoFrete}>
-                Fechar
-              </button>
+        <OverlayModal
+          largura="var(--modal-max-w-lg, 860px)"
+          rotulo={freteEditandoId ? 'Editar frete do pedido' : 'Registrar frete do pedido'}
+          onFechar={salvandoFrete ? undefined : () => fecharModalFrete()}
+        >
+          <div data-modal="cabecalho" className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>
+                {freteEditandoId ? 'Editar frete do pedido' : 'Registrar frete do pedido'}
+              </h2>
+              <p className="mt-1 text-xs" style={{ color: 'var(--c-muted)' }}>
+                {freteEditandoId
+                  ? 'A correcao recalcula o rateio e registra auditoria no historico.'
+                  : 'O frete sera rateado por valor dos itens. Frete de terceiro cria pendencia para o financeiro.'}
+              </p>
             </div>
+            <button type="button" className="btn btn-outline" onClick={() => fecharModalFrete()} disabled={salvandoFrete}>
+              Fechar
+            </button>
+          </div>
 
-            <div className="overflow-y-auto px-4 py-4 sm:px-5">
-              <div className="grid gap-4 md:grid-cols-3">
-                <label className="grid gap-2 text-sm font-medium">
-                  Tipo de frete
-                  <select
-                    className="input"
-                    value={freteForm.tipo}
-                    onChange={(event) => atualizarFreteForm({ tipo: event.target.value })}
-                    disabled={salvandoFrete || Boolean(freteEditandoId)}
-                  >
-                    {permiteFreteEmbutido ? <option value="EMBUTIDO">Embutido no pedido</option> : null}
-                    <option value="TERCEIRO">Pago a terceiro</option>
-                  </select>
-                  {!permiteFreteEmbutido ? (
-                    <span className="text-xs font-normal text-[var(--c-muted)]">
-                      Pedido fechado aceita somente frete pago a terceiro.
-                    </span>
-                  ) : null}
-                </label>
+          <div className="px-4 py-4">
+            {/* Campos de FORMULÁRIO — escrevem o registro do frete (R12). */}
+            <FormSecao colunas={3}>
+              <CampoForm
+                label="Tipo de frete"
+                hint={!permiteFreteEmbutido ? 'Pedido fechado aceita somente frete pago a terceiro.' : undefined}
+              >
+                <select
+                  className="input w-full"
+                  value={freteForm.tipo}
+                  onChange={(event) => atualizarFreteForm({ tipo: event.target.value })}
+                  disabled={salvandoFrete || Boolean(freteEditandoId)}
+                >
+                  {permiteFreteEmbutido ? <option value="EMBUTIDO">Embutido no pedido</option> : null}
+                  <option value="TERCEIRO">Pago a terceiro</option>
+                </select>
+              </CampoForm>
 
-                <label className="grid gap-2 text-sm font-medium">
-                  Momento
-                  <select
-                    className="input"
-                    value={freteForm.momento}
-                    onChange={(event) => atualizarFreteForm({ momento: event.target.value })}
-                    disabled={salvandoFrete || !permiteFreteEmbutido || Boolean(freteEditandoId)}
-                  >
-                    {permiteFreteEmbutido ? <option value="FECHAMENTO">No fechamento</option> : null}
-                    <option value="POSTERIOR">Informado depois</option>
-                  </select>
-                  {!permiteFreteEmbutido ? (
-                    <span className="text-xs font-normal text-[var(--c-muted)]">
-                      Frete de pedido fechado fica registrado como informado depois.
-                    </span>
-                  ) : null}
-                </label>
+              <CampoForm
+                label="Momento"
+                hint={!permiteFreteEmbutido ? 'Frete de pedido fechado fica registrado como informado depois.' : undefined}
+              >
+                <select
+                  className="input w-full"
+                  value={freteForm.momento}
+                  onChange={(event) => atualizarFreteForm({ momento: event.target.value })}
+                  disabled={salvandoFrete || !permiteFreteEmbutido || Boolean(freteEditandoId)}
+                >
+                  {permiteFreteEmbutido ? <option value="FECHAMENTO">No fechamento</option> : null}
+                  <option value="POSTERIOR">Informado depois</option>
+                </select>
+              </CampoForm>
 
-                <label className="grid gap-2 text-sm font-medium">
-                  Valor total do frete
-                  <input
-                    className="input"
-                    inputMode="decimal"
-                    value={freteForm.valor_total}
-                    onChange={(event) => atualizarFreteForm({ valor_total: sanitizeMoneyInput(event.target.value) })}
-                    onBlur={(event) => atualizarFreteForm({ valor_total: formatMoneyInput(event.target.value) })}
-                    placeholder="R$ 0,00"
-                    disabled={salvandoFrete}
-                  />
-                </label>
-
-                {freteForm.tipo === 'TERCEIRO' ? (
-                  <label className="grid gap-2 text-sm font-medium">
-                    Data de vencimento
-                    <input
-                      className="input"
-                      type="date"
-                      value={freteForm.data_vencimento}
-                      onChange={(event) => atualizarFreteForm({ data_vencimento: event.target.value })}
-                      disabled={salvandoFrete}
-                      required
-                    />
-                  </label>
-                ) : null}
-              </div>
-
-              <div className="mt-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="font-semibold">Rateio do frete</div>
-                    <p className="mt-1 text-xs text-[var(--c-muted)]">
-                      {freteForm.criterio_rateio === 'POR_ITEM'
-                        ? 'O valor foi informado por item na cotacao. Ajuste os valores abaixo quando necessario.'
-                        : 'O sistema distribui o valor proporcionalmente ao valor dos itens ativos do pedido.'}
-                    </p>
-                  </div>
-                  <span className="app-status-pill bg-blue-50 text-blue-700">
-                    {freteForm.criterio_rateio === 'POR_ITEM' ? 'Informado por item' : 'Proporcional aos itens'}
-                  </span>
-                </div>
-                {freteForm.criterio_rateio === 'POR_ITEM' ? (
-                  <div className="mt-3 grid gap-2">
-                    {(freteForm.rateios || []).map((rateio) => (
-                      <label
-                        key={rateio.pedido_compra_item_id}
-                        className="grid items-center gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_150px]"
-                      >
-                        <span className="min-w-0 truncate text-xs font-medium" title={rateio.descricao}>
-                          {rateio.descricao}
-                        </span>
-                        <input
-                          className="input h-9 text-right text-sm"
-                          inputMode="decimal"
-                          value={rateio.valor_rateado}
-                          onChange={(event) => atualizarRateioFrete(
-                            rateio.pedido_compra_item_id,
-                            sanitizeMoneyInput(event.target.value)
-                          )}
-                          onBlur={(event) => atualizarRateioFrete(
-                            rateio.pedido_compra_item_id,
-                            formatMoneyInput(event.target.value)
-                          )}
-                          disabled={salvandoFrete}
-                          aria-label={`Frete do item ${rateio.descricao}`}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <CampoForm label="Valor total do frete" obrigatorio>
+                <input
+                  className="input input-moeda"
+                  inputMode="decimal"
+                  value={freteForm.valor_total}
+                  onChange={(event) => atualizarFreteForm({ valor_total: sanitizeMoneyInput(event.target.value) })}
+                  onBlur={(event) => atualizarFreteForm({ valor_total: formatMoneyInput(event.target.value) })}
+                  placeholder="R$ 0,00"
+                  disabled={salvandoFrete}
+                />
+              </CampoForm>
 
               {freteForm.tipo === 'TERCEIRO' ? (
-                <div className="mt-4 grid gap-4">
-                  <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-                    <div className="font-semibold">Credor/transportador</div>
-                    <p className="mt-1 text-xs text-[var(--c-muted)]">
-                      Pesquise no cadastro de credores ou informe os dados para cadastro rapido.
-                    </p>
+                <CampoForm label="Data de vencimento" obrigatorio>
+                  <DateInputBR
+                    className="input w-full"
+                    value={freteForm.data_vencimento}
+                    onChange={(event) => atualizarFreteForm({ data_vencimento: event.target.value })}
+                    disabled={salvandoFrete}
+                    required
+                  />
+                </CampoForm>
+              ) : null}
+            </FormSecao>
 
-                    <div className="relative mt-3">
-                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                        <input
-                          className="input"
-                          value={buscaFornecedorFrete}
-                          onChange={(event) => {
+            <div className="mt-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-semibold">Rateio do frete</div>
+                  <p className="mt-1 text-xs text-[var(--c-muted)]">
+                    {freteForm.criterio_rateio === 'POR_ITEM'
+                      ? 'O valor foi informado por item na cotacao. Ajuste os valores abaixo quando necessario.'
+                      : 'O sistema distribui o valor proporcionalmente ao valor dos itens ativos do pedido.'}
+                  </p>
+                </div>
+                <Pilula tom="info">
+                  {freteForm.criterio_rateio === 'POR_ITEM' ? 'Informado por item' : 'Proporcional aos itens'}
+                </Pilula>
+              </div>
+              {freteForm.criterio_rateio === 'POR_ITEM' ? (
+                <div className="mt-3 grid gap-2">
+                  {(freteForm.rateios || []).map((rateio) => (
+                    <label
+                      key={rateio.pedido_compra_item_id}
+                      className="grid items-center gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 sm:grid-cols-3"
+                    >
+                      <span className="min-w-0 truncate text-xs font-medium sm:col-span-2" title={rateio.descricao}>
+                        {rateio.descricao}
+                      </span>
+                      <input
+                        className="input input-moeda text-sm"
+                        inputMode="decimal"
+                        value={rateio.valor_rateado}
+                        onChange={(event) => atualizarRateioFrete(
+                          rateio.pedido_compra_item_id,
+                          sanitizeMoneyInput(event.target.value)
+                        )}
+                        onBlur={(event) => atualizarRateioFrete(
+                          rateio.pedido_compra_item_id,
+                          formatMoneyInput(event.target.value)
+                        )}
+                        disabled={salvandoFrete}
+                        aria-label={`Frete do item ${rateio.descricao}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {freteForm.tipo === 'TERCEIRO' ? (
+              <div className="mt-4 grid gap-4">
+                <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
+                  <div className="font-semibold">Credor/transportador</div>
+                  <p className="mt-1 text-xs text-[var(--c-muted)]">
+                    Pesquise no cadastro de credores ou informe os dados para cadastro rápido.
+                  </p>
+
+                  <div className="relative mt-3" ref={credorFreteRef}>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <input
+                        className="input w-full"
+                        value={buscaFornecedorFrete}
+                        aria-label="Buscar credor do frete"
+                        onFocus={() => setListaCredorFreteAberta(true)}
+                        onChange={(event) => {
+                          setListaCredorFreteAberta(true);
+                          setBuscaFornecedorFrete(event.target.value);
+                          if (credorFreteSelecionado) {
+                            limparCredorFrete();
                             setBuscaFornecedorFrete(event.target.value);
-                            if (credorFreteSelecionado) {
-                              limparCredorFrete();
-                              setBuscaFornecedorFrete(event.target.value);
-                            }
-                          }}
-                          placeholder="Buscar credor por nome, CPF/CNPJ, email ou telefone"
-                          disabled={salvandoFrete}
-                          autoComplete="off"
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => handleBuscarFornecedorFrete()}
-                          disabled={buscandoFornecedoresFrete || salvandoFrete}
-                        >
-                          {buscandoFornecedoresFrete ? 'Buscando...' : 'Buscar'}
+                          }
+                        }}
+                        placeholder="Buscar credor por nome, CPF/CNPJ, email ou telefone"
+                        disabled={salvandoFrete}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => {
+                          setListaCredorFreteAberta(true);
+                          handleBuscarFornecedorFrete();
+                        }}
+                        disabled={buscandoFornecedoresFrete || salvandoFrete}
+                      >
+                        {buscandoFornecedoresFrete ? 'Buscando...' : 'Buscar'}
+                      </button>
+                    </div>
+
+                    {credorFreteSelecionado ? (
+                      <div
+                        className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm"
+                        style={{ background: 'var(--sem-success-bg)', color: 'var(--sem-success)' }}
+                      >
+                        <span className="font-semibold">{formatarCredorFrete(credorFreteSelecionado)}</span>
+                        <button type="button" className="btn btn-outline" onClick={limparCredorFrete} disabled={salvandoFrete}>
+                          Trocar
                         </button>
                       </div>
+                    ) : null}
 
-                      {credorFreteSelecionado ? (
-                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                          <span className="font-semibold">{formatarCredorFrete(credorFreteSelecionado)}</span>
-                          <button type="button" className="btn btn-outline !py-1 text-xs" onClick={limparCredorFrete} disabled={salvandoFrete}>
-                            Trocar
+                    {!credorFreteSelecionado && listaCredorFreteAberta && fornecedoresFrete.length ? (
+                      <div className="absolute left-0 right-0 top-full z-dropdown mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface)] shadow-xl">
+                        {fornecedoresFrete.map((credor) => (
+                          <button
+                            key={`${credor.origem_frete || 'credor'}:${credor.id}`}
+                            type="button"
+                            className="block w-full border-b border-[var(--c-border)] px-3 py-2 text-left text-sm last:border-b-0 hover:bg-[var(--c-surface)]"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => selecionarCredorFrete(credor)}
+                            disabled={salvandoFrete}
+                          >
+                            <span className="block font-semibold text-[var(--c-text)]">{formatarCredorFrete(credor)}</span>
+                            <span className="block text-xs text-[var(--c-muted)]">
+                              {credor.email || 'Sem e-mail'} {credor.telefone ? `- ${maskPhone(credor.telefone)}` : ''}
+                            </span>
                           </button>
-                        </div>
-                      ) : null}
-
-                      {!credorFreteSelecionado && fornecedoresFrete.length ? (
-                        <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface)] shadow-xl">
-                          {fornecedoresFrete.map((credor) => (
-                            <button
-                              key={`${credor.origem_frete || 'credor'}:${credor.id}`}
-                              type="button"
-                              className="block w-full border-b border-[var(--c-border)] px-3 py-2 text-left text-sm last:border-b-0 hover:bg-[var(--c-surface)]"
-                              onClick={() => selecionarCredorFrete(credor)}
-                              disabled={salvandoFrete}
-                            >
-                              <span className="block font-semibold text-[var(--c-text)]">{formatarCredorFrete(credor)}</span>
-                              <span className="block text-xs text-[var(--c-muted)]">
-                                {credor.email || 'Sem e-mail'} {credor.telefone ? `- ${maskPhone(credor.telefone)}` : ''}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
+                </div>
 
-                  {!freteForm.fornecedor_compra_id && !freteForm.parceiro_id ? (
-                    <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-                      <div className="font-semibold">Cadastro rapido do credor/transportador</div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {!freteForm.fornecedor_compra_id && !freteForm.parceiro_id ? (
+                  <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
+                    <div className="font-semibold">Cadastro rápido do credor/transportador</div>
+                    <FormSecao colunas={2}>
+                      <CampoForm label="Nome do fornecedor">
                         <input
-                          className="input"
+                          className="input w-full"
                           value={freteForm.novo_fornecedor.nome}
                           onChange={(event) => atualizarNovoFornecedorFrete({ nome: event.target.value })}
                           placeholder="Nome do fornecedor"
                           disabled={salvandoFrete}
                         />
+                      </CampoForm>
+                      <CampoForm label="CPF/CNPJ">
                         <input
-                          className="input"
+                          className="input w-full"
                           value={freteForm.novo_fornecedor.cpf_cnpj}
                           onChange={(event) => atualizarNovoFornecedorFrete({ cpf_cnpj: maskCpfCnpj(event.target.value) })}
                           onBlur={(event) => {
                             if (event.target.value && !isValidCpfCnpj(event.target.value)) {
-                              alert('CPF/CNPJ invalido para o credor/transportador.');
+                              avisar.alerta('CPF/CNPJ inválido para o credor/transportador.');
                             }
                           }}
                           placeholder="CPF/CNPJ"
                           disabled={salvandoFrete}
                         />
+                      </CampoForm>
+                      <CampoForm label="WhatsApp/telefone">
                         <input
-                          className="input"
+                          className="input w-full"
                           value={freteForm.novo_fornecedor.whatsapp}
                           onChange={(event) => atualizarNovoFornecedorFrete({ whatsapp: maskPhone(event.target.value) })}
                           placeholder="WhatsApp/telefone"
                           disabled={salvandoFrete}
                         />
+                      </CampoForm>
+                      <CampoForm label="Email">
                         <input
-                          className="input"
+                          className="input w-full"
                           type="email"
                           value={freteForm.novo_fornecedor.email}
                           onChange={(event) => atualizarNovoFornecedorFrete({ email: event.target.value.trim().toLowerCase() })}
                           onBlur={(event) => {
                             if (event.target.value && !isValidEmail(event.target.value)) {
-                              alert('E-mail invalido para o credor/transportador.');
+                              avisar.alerta('E-mail inválido para o credor/transportador.');
                             }
                           }}
                           placeholder="Email"
                           disabled={salvandoFrete}
                         />
+                      </CampoForm>
+                      <CampoForm label="Contato" span={2}>
                         <input
-                          className="input md:col-span-2"
+                          className="input w-full"
                           value={freteForm.novo_fornecedor.contato}
                           onChange={(event) => atualizarNovoFornecedorFrete({ contato: event.target.value })}
                           placeholder="Contato"
                           disabled={salvandoFrete}
                         />
-                      </div>
-                    </div>
-                  ) : null}
+                      </CampoForm>
+                    </FormSecao>
+                  </div>
+                ) : null}
 
-                  <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-                    <div className="font-semibold">Dados para pagamento do frete</div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
+                  <div className="font-semibold">Dados para pagamento do frete</div>
+                  <FormSecao colunas={2}>
+                    <CampoForm label="Tipo de chave PIX">
                       <select
-                        className="input"
+                        className="input w-full"
                         value={freteForm.dados_pagamento.tipo_chave_pix}
                         onChange={(event) => atualizarDadosPagamentoFrete({
                           tipo_chave_pix: event.target.value,
@@ -2626,8 +2847,10 @@ export default function PedidoCompraDetalhe() {
                         <option value="EMAIL">Chave e-mail</option>
                         <option value="ALEATORIA">Chave aleatoria</option>
                       </select>
+                    </CampoForm>
+                    <CampoForm label="Chave PIX">
                       <input
-                        className="input"
+                        className="input w-full"
                         value={freteForm.dados_pagamento.pix}
                         onChange={(event) => atualizarDadosPagamentoFrete({
                           pix: maskPixKey(event.target.value, freteForm.dados_pagamento.tipo_chave_pix)
@@ -2635,83 +2858,101 @@ export default function PedidoCompraDetalhe() {
                         placeholder="Chave PIX"
                         disabled={salvandoFrete}
                       />
+                    </CampoForm>
+                    <CampoForm label="Favorecido">
                       <input
-                        className="input"
+                        className="input w-full"
                         value={freteForm.dados_pagamento.favorecido}
                         onChange={(event) => atualizarDadosPagamentoFrete({ favorecido: event.target.value })}
                         placeholder="Favorecido"
                         disabled={salvandoFrete}
                       />
+                    </CampoForm>
+                    <CampoForm label="CPF/CNPJ do favorecido">
                       <input
-                        className="input"
+                        className="input w-full"
                         value={freteForm.dados_pagamento.documento}
                         onChange={(event) => atualizarDadosPagamentoFrete({ documento: maskCpfCnpj(event.target.value) })}
                         onBlur={(event) => {
                           if (event.target.value && !isValidCpfCnpj(event.target.value)) {
-                            alert('CPF/CNPJ invalido para o favorecido.');
+                            avisar.alerta('CPF/CNPJ inválido para o favorecido.');
                           }
                         }}
                         placeholder="CPF/CNPJ do favorecido"
                         disabled={salvandoFrete}
                       />
+                    </CampoForm>
+                    <CampoForm label="Banco">
                       <input
-                        className="input"
+                        className="input w-full"
                         value={freteForm.dados_pagamento.banco}
                         onChange={(event) => atualizarDadosPagamentoFrete({ banco: event.target.value })}
                         placeholder="Banco"
                         disabled={salvandoFrete}
                       />
+                    </CampoForm>
+                    <CampoForm label="Agência">
                       <input
-                        className="input"
+                        className="input w-full"
                         value={freteForm.dados_pagamento.agencia}
                         onChange={(event) => atualizarDadosPagamentoFrete({ agencia: event.target.value })}
-                        placeholder="Agencia"
+                        placeholder="Agência"
                         disabled={salvandoFrete}
                       />
+                    </CampoForm>
+                    <CampoForm label="Conta">
                       <input
-                        className="input"
+                        className="input w-full"
                         value={freteForm.dados_pagamento.conta}
                         onChange={(event) => atualizarDadosPagamentoFrete({ conta: event.target.value })}
                         placeholder="Conta"
                         disabled={salvandoFrete}
                       />
+                    </CampoForm>
+                    <CampoForm label="Observações para o financeiro" tipo="texto-longo">
                       <textarea
-                        className="input min-h-[80px] md:col-span-2"
+                        className="input w-full"
+                        rows={3}
                         value={freteForm.dados_pagamento.observacoes}
                         onChange={(event) => atualizarDadosPagamentoFrete({ observacoes: event.target.value })}
-                        placeholder="Observacoes para o financeiro"
+                        placeholder="Observações para o financeiro"
                         disabled={salvandoFrete}
                       />
-                    </div>
-                  </div>
+                    </CampoForm>
+                  </FormSecao>
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
-              <label className="mt-4 grid gap-2 text-sm font-medium">
-                Observacoes do frete
-                <textarea
-                  className="input min-h-[90px]"
-                  value={freteForm.observacoes}
-                  onChange={(event) => atualizarFreteForm({ observacoes: event.target.value })}
-                  placeholder="Ex.: frete embutido na negociacao ou frete pago diretamente a transportador."
-                  disabled={salvandoFrete}
-                />
-              </label>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--c-border)] px-4 py-3 sm:px-5">
-              <button type="button" className="btn btn-outline" onClick={() => fecharModalFrete()} disabled={salvandoFrete}>
-                Cancelar
-              </button>
-              <button type="button" className="btn btn-primary" onClick={handleRegistrarFrete} disabled={salvandoFrete}>
-                {salvandoFrete ? 'Salvando...' : freteEditandoId ? 'Salvar correcao' : 'Registrar frete'}
-              </button>
+            <div className="mt-4">
+              <FormSecao colunas={1}>
+                <CampoForm label="Observações do frete" tipo="texto-longo">
+                  <textarea
+                    className="input w-full"
+                    rows={3}
+                    value={freteForm.observacoes}
+                    onChange={(event) => atualizarFreteForm({ observacoes: event.target.value })}
+                    placeholder="Ex.: frete embutido na negociação ou frete pago diretamente a transportador."
+                    disabled={salvandoFrete}
+                  />
+                </CampoForm>
+              </FormSecao>
             </div>
           </div>
-        </div>
+
+          <div data-modal="rodape" className="app-actionbar justify-end border-t border-[var(--c-border)] px-4 py-3">
+            <button type="button" className="btn btn-outline" onClick={() => fecharModalFrete()} disabled={salvandoFrete}>
+              Cancelar
+            </button>
+            <button type="button" className="btn btn-primary" onClick={handleRegistrarFrete} disabled={salvandoFrete}>
+              {salvandoFrete ? 'Salvando...' : freteEditandoId ? 'Salvar correcao' : 'Registrar frete'}
+            </button>
+          </div>
+        </OverlayModal>
       ) : null}
 
       <CompraPreviewModal preview={previewPedido} onClose={() => setPreviewPedido(null)} />
-    </div>
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

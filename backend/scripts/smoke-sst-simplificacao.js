@@ -79,12 +79,27 @@ async function run() {
     path.resolve(__dirname, '../../frontend/src/layout/Layout.jsx'),
     'utf8'
   );
+  const navigationSource = fs.readFileSync(
+    path.resolve(__dirname, '../../frontend/src/navigation/navigationConfig.jsx'),
+    'utf8'
+  );
 
   assert.match(appSource, /SST_SIMPLIFIED_MODE/);
   assert.match(appSource, /function SstLegacyRoute/);
   assert.match(appSource, /<SstLegacyRoute><SstEsocial \/><\/SstLegacyRoute>/);
-  assert.match(layoutSource, /SST_NAV\.map/);
-  assert.match(layoutSource, /sstAccess && SST_SIMPLIFIED_MODE/);
+  assert.match(
+    layoutSource,
+    /findActiveNode, getVisibleModule, resolveLabel.*navigationConfig/,
+    'O layout deve consumir a fonte unica de navegacao.'
+  );
+  assert.match(navigationSource, /function sstChildrenSimplified\(\)/);
+  assert.match(navigationSource, /return SST_NAV\.map/);
+  assert.match(navigationSource, /gate: \(user\) => canAccessSst\(user\)/);
+  assert.match(
+    navigationSource,
+    /children: SST_SIMPLIFIED_MODE \? sstChildrenSimplified\(\) : sstChildrenFull\(\)/,
+    'O catalogo deve alternar a navegacao SST conforme o modo simplificado.'
+  );
 
   const models = require('../src/models');
   assert.ok(models.SstLtcat, 'O model SstLtcat deve carregar no bootstrap.');

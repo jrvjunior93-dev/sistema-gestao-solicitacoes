@@ -5,85 +5,118 @@ import {
   homologarWorkflowsSst,
   simularHomologacaoSst
 } from '../services/sst';
+import {
+  Avisos,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 
 function fmt(value) {
   return Number(value || 0).toLocaleString('pt-BR');
 }
 
-function StatusPill({ value }) {
-  const status = String(value || 'SEM_STATUS').toUpperCase();
-  const tone = {
-    OK: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    CONTROLADO: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    CONCLUIDO: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    ATIVA: 'border-sky-200 bg-sky-50 text-sky-700',
-    ATIVO: 'border-sky-200 bg-sky-50 text-sky-700',
-    ATENCAO: 'border-amber-200 bg-amber-50 text-amber-700',
-    PENDENTE: 'border-amber-200 bg-amber-50 text-amber-700',
-    DESATIVADA: 'border-slate-200 bg-slate-50 text-slate-700',
-    ERRO: 'border-rose-200 bg-rose-50 text-rose-700',
-    BLOQUEADO: 'border-rose-200 bg-rose-50 text-rose-700'
-  }[status] || 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text)]';
-  return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>{status}</span>;
+/*
+  R2/R25 — o mapa de cor crua (emerald/sky/amber/slate/rose escritos na tela)
+  saiu; a família semântica é declarada e a cor vem do token pelo StatusBadge.
+  O mapa é explícito porque o vocabulário é técnico-operacional: a
+  classificação automática leria CONTROLADO como informação e DESATIVADA como
+  neutro por acaso, não por decisão. Valor fora do mapa cai na classificação
+  automática do componente.
+*/
+const FAMILIA_STATUS_OBSERVABILIDADE = {
+  OK: 'success',
+  CONTROLADO: 'success',
+  CONCLUIDO: 'success',
+  ATIVA: 'info',
+  ATIVO: 'info',
+  ATENCAO: 'warning',
+  PENDENTE: 'warning',
+  DESATIVADA: 'neutral',
+  ERRO: 'danger',
+  BLOQUEADO: 'danger'
+};
+
+function EtiquetaStatus({ valor }) {
+  const chave = String(valor || 'SEM_STATUS').toUpperCase();
+  return <StatusBadge status={chave.replaceAll('_', ' ')} kind={FAMILIA_STATUS_OBSERVABILIDADE[chave]} />;
 }
 
-function Metric({ label, value, detail }) {
+/* Contadores por chave: ladrilho de dado único (StatTile) — um par
+   nome/valor não vira tabela só para caber num quadro. */
+function GradeContadores({ itens, vazio = 'Sem registros.' }) {
+  const linhas = Object.entries(itens || {});
+  if (!linhas.length) return <p className="text-sm text-muted">{vazio}</p>;
   return (
-    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-muted)]">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--c-text)]">{value}</p>
-      {detail ? <p className="mt-1 text-xs text-[var(--c-muted)]">{detail}</p> : null}
-    </div>
+    <StatGrid colunas={2}>
+      {linhas.map(([chave, valor]) => (
+        <StatTile key={chave} label={String(chave).replaceAll('_', ' ')} valor={fmt(valor)} />
+      ))}
+    </StatGrid>
   );
 }
 
-function StatusList({ title, data }) {
-  const entries = Object.entries(data || {});
+function TabelaLogs({ titulo, logs, chaveTabela }) {
   return (
-    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-      <h3 className="text-sm font-semibold text-[var(--c-text)]">{title}</h3>
-      <div className="mt-3 space-y-2">
-        {entries.map(([key, value]) => (
-          <div key={key} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-muted)]">{key}</span>
-            <span className="text-sm font-semibold text-[var(--c-text)]">{fmt(value)}</span>
-          </div>
-        ))}
-        {!entries.length ? <p className="text-sm text-[var(--c-muted)]">Sem registros.</p> : null}
-      </div>
-    </div>
-  );
-}
-
-function LogList({ title, logs }) {
-  return (
-    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-4">
-      <h3 className="text-sm font-semibold text-[var(--c-text)]">{title}</h3>
-      <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-        {(logs || []).map((log) => (
-          <div key={`${title}-${log.id}`} className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--c-text)]">{log.acao || log.automacao || log.integracao || log.tipo_bloqueio || 'Registro'}</p>
-                <p className="mt-1 text-xs text-[var(--c-muted)]">{log.mensagem || log.erro || 'Sem mensagem.'}</p>
-              </div>
-              <StatusPill value={log.status} />
-            </div>
-          </div>
-        ))}
-        {!(logs || []).length ? <p className="text-sm text-[var(--c-muted)]">Nenhum log recente.</p> : null}
-      </div>
-    </div>
+    /* A chave vem do `chaveTabela`, que já é o identificador estável deste
+       painel (é ele que nomeia a preferência da tabela lá dentro): título
+       é texto de tela e muda; identificador não. Sem ele o recolhimento
+       continuaria como sempre foi — aberto de novo a cada F5. */
+    <BlocoConteudo
+      titulo={titulo}
+      contagem={`${(logs || []).length} registro(s)`}
+      recolhivel
+      chavePreferencia={`bloco:sst-observabilidade:${chaveTabela}`}
+      recolhidoPadrao={!(logs || []).length}
+    >
+      <TabelaPadrao
+        // R17: a linha é um EVENTO de log (ação/automação/integração +
+        // mensagem + status), não um registro com nome próprio — e o nome da
+        // automação/integração precisa manter a caixa em que foi gravado.
+        // A ausência de identidade é declarada, não silenciosa.
+        semIdentidade
+        colunas={[
+          {
+            id: 'registro',
+            titulo: 'Registro',
+            tipo: 'texto',
+            noCard: 'titulo',
+            render: (log) => log.acao || log.automacao || log.integracao || log.tipo_bloqueio || 'Registro'
+          },
+          {
+            id: 'mensagem',
+            titulo: 'Mensagem',
+            tipo: 'texto',
+            render: (log) => log.mensagem || log.erro || 'Sem mensagem.'
+          },
+          {
+            id: 'status',
+            titulo: 'Status',
+            tipo: 'status',
+            render: (log) => <EtiquetaStatus valor={log.status} />
+          }
+        ]}
+        itens={logs || []}
+        vazio="Nenhum log recente."
+        storageKey={`tabela:sst-observabilidade:${chaveTabela}`}
+        rotuloRolagem={titulo}
+      />
+    </BlocoConteudo>
   );
 }
 
 export default function SstObservabilidade() {
+  const { avisos, avisar, fechar } = useAvisos();
   const [data, setData] = useState(null);
   const [checklist, setChecklist] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
 
   function load() {
     setLoading(true);
@@ -91,119 +124,185 @@ export default function SstObservabilidade() {
       .then(([observabilidade, checklistData]) => {
         setData(observabilidade);
         setChecklist(checklistData);
-        setError('');
       })
-      .catch((err) => setError(err.message || 'Erro ao carregar observabilidade SST'))
+      .catch((err) => avisar.erro(err.message || 'Erro ao carregar observabilidade SST'))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function run(kind) {
     setBusy(kind);
-    setError('');
-    setMessage('');
     try {
       if (kind === 'workflows') await homologarWorkflowsSst({ dry_run: true });
       if (kind === 'simular') await simularHomologacaoSst();
-      setMessage('Homologacao executada em modo analitico.');
+      avisar.sucesso('Homologação executada em modo analítico.');
       load();
     } catch (err) {
-      setError(err.message || 'Erro ao executar homologacao SST');
+      avisar.erro(err.message || 'Erro ao executar homologacao SST');
     } finally {
       setBusy('');
     }
   }
 
   const cards = data?.cards || {};
-  const flags = useMemo(() => Object.entries(data?.flags || {}), [data]);
+  const flags = useMemo(
+    () => Object.entries(data?.flags || {}).map(([nome, ativa]) => ({ nome, ativa })),
+    [data]
+  );
   const checks = checklist?.checks || [];
 
   return (
-    <div className="sst-page space-y-6">
-      <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--c-muted)]">Observabilidade SST</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--c-text)]">Homologacao, logs e saude operacional</h1>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--c-muted)]">
-              Monitoramento tecnico-operacional de workflows, automacoes, integracoes controladas, bloqueios e flags.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-outline" disabled={!!busy} onClick={() => run('workflows')}>
-              {busy === 'workflows' ? 'Validando...' : 'Homologar workflows'}
-            </button>
-            <button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => run('simular')}>
-              {busy === 'simular' ? 'Simulando...' : 'Simular massa'}
-            </button>
-          </div>
-        </div>
-      </section>
+    <Pagina className="sst-page">
+      <PageHeader
+        titulo="Homologação, logs e saúde operacional"
+        contagem={checklist?.status_geral || null}
+        descricao="Monitoramento técnico-operacional de workflows, automações, integrações controladas, bloqueios e flags."
+        acaoPrincipal={{
+          rotulo: busy === 'simular' ? 'Simulando...' : 'Simular massa',
+          onClick: () => run('simular'),
+          desabilitada: Boolean(busy)
+        }}
+        secundarias={[{
+          /*
+            O rótulo antigo dizia "Homologar workflows", mas a chamada é
+            `homologarWorkflowsSst({ dry_run: true })`: nada é homologado, só
+            validado. Rótulo que promete gravação e executa simulação é defeito
+            de significado — o texto passou a dizer o que a ação faz.
+          */
+          rotulo: busy === 'workflows' ? 'Validando...' : 'Homologar workflows (simulação)',
+          onClick: () => run('workflows'),
+          desabilitada: Boolean(busy),
+          title: 'Executa a homologação em modo analítico (dry run): valida os workflows sem gravar nada.'
+        }]}
+      />
 
-      {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</div> : null}
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">{message}</div> : null}
-      {loading ? <p className="text-sm text-[var(--c-muted)]">Carregando observabilidade...</p> : null}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
-        <Metric label="Eventos abertos" value={fmt(cards.eventos_abertos)} />
-        <Metric label="Notificacoes" value={fmt(cards.notificacoes_nao_lidas)} detail="Nao lidas" />
-        <Metric label="Pendencias" value={fmt(cards.pendencias_abertas)} detail={`${fmt(cards.pendencias_criticas)} criticas`} />
-        <Metric label="Bloqueios" value={fmt(cards.bloqueios_abertos)} />
-        <Metric label="Scores" value={fmt(cards.scores_registrados)} />
-        <Metric label="Erros" value={fmt(cards.erros_operacionais)} detail={data?.saude_operacional?.nivel} />
-        <Metric label="Checks" value={checklist?.status_geral || '...'} detail={`${fmt(checklist?.pendencias)} pendencias`} />
-      </section>
+      {loading ? <div className="app-empty-card">Carregando observabilidade...</div> : null}
 
-      <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-          <h2 className="text-lg font-semibold text-[var(--c-text)]">Feature flags</h2>
-          <div className="mt-4 grid gap-2">
-            {flags.map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-muted)]">{key}</span>
-                <StatusPill value={value ? 'ATIVA' : 'DESATIVADA'} />
-              </div>
-            ))}
-          </div>
-        </div>
+      <StatGrid colunas={4}>
+        <StatTile label="Eventos abertos" valor={fmt(cards.eventos_abertos)} />
+        <StatTile label="Notificações" valor={fmt(cards.notificacoes_nao_lidas)} sub="Não lidas" />
+        <StatTile
+          label="Pendências"
+          valor={fmt(cards.pendencias_abertas)}
+          sub={`${fmt(cards.pendencias_criticas)} críticas`}
+          tom={cards.pendencias_criticas ? 'danger' : undefined}
+        />
+        <StatTile label="Bloqueios" valor={fmt(cards.bloqueios_abertos)} tom={cards.bloqueios_abertos ? 'warning' : undefined} />
+        <StatTile label="Scores" valor={fmt(cards.scores_registrados)} />
+        <StatTile
+          label="Erros"
+          valor={fmt(cards.erros_operacionais)}
+          sub={data?.saude_operacional?.nivel}
+          tom={cards.erros_operacionais ? 'danger' : 'success'}
+        />
+        <StatTile label="Checks" valor={checklist?.status_geral || '...'} sub={`${fmt(checklist?.pendencias)} pendências`} />
+      </StatGrid>
 
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-[var(--c-text)]">Checklist de homologacao</h2>
-            <StatusPill value={checklist?.status_geral} />
-          </div>
-          <div className="mt-4 grid gap-2">
-            {checks.map((item) => (
-              <div key={item.name} className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--c-text)]">{item.name}</p>
-                    {item.details ? <p className="mt-1 text-xs text-[var(--c-muted)]">{typeof item.details === 'string' ? item.details : JSON.stringify(item.details)}</p> : null}
-                  </div>
-                  <StatusPill value={item.status} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/*
+        BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+        em que ligar isto é SEGURO: estes 10 blocos são leituras
+        independentes — sem ordem obrigatória entre si, sem botão de gravar
+        dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+        sendo o do código; a preferência guarda só o DESVIO. No celular o
+        modo não existe (arrastar é HTML5 nativo e não responde a toque).
+      */}
+      <BlocosPersonalizaveis chave="blocos:sst-observabilidade" larguraPadrao="total">
+        <BlocoConteudo
+          titulo="Checklist de homologação"
+          contagem={`${checks.length} check(s)`}
+          variante="primario"
+          cor="var(--sem-info)"
+          acoes={<EtiquetaStatus valor={checklist?.status_geral} />}
+        >
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'check',
+                titulo: 'Check',
+                // R17: o check de homologação tem nome próprio — é ele que
+                // identifica a linha na matriz.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => item.name
+              },
+              {
+                id: 'detalhes',
+                titulo: 'Detalhes',
+                tipo: 'texto',
+                render: (item) => (
+                  item.details
+                    ? (typeof item.details === 'string' ? item.details : JSON.stringify(item.details))
+                    : '-'
+                )
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (item) => <EtiquetaStatus valor={item.status} />
+              }
+            ]}
+            itens={checks}
+            getId={(item) => item.name}
+            vazio="Nenhum check publicado."
+            storageKey="tabela:sst-observabilidade:checklist"
+            rotuloRolagem="Checklist de homologacao"
+          />
+        </BlocoConteudo>
 
-      <section className="grid gap-4 xl:grid-cols-4">
-        <StatusList title="Workflows" data={data?.status?.workflows} />
-        <StatusList title="Logs de workflow" data={data?.status?.workflow_logs} />
-        <StatusList title="Logs de automacao" data={data?.status?.automation_logs} />
-        <StatusList title="Logs de integracao" data={data?.status?.integration_logs} />
-      </section>
+        <BlocoConteudo titulo="Feature flags" contagem={`${flags.length} flag(s)`}>
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'flag',
+                titulo: 'Flag',
+                // R17: a flag TEM nome próprio — é ele que identifica a linha.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => item.nome
+              },
+              {
+                id: 'estado',
+                titulo: 'Estado',
+                tipo: 'status',
+                render: (item) => <EtiquetaStatus valor={item.ativa ? 'ATIVA' : 'DESATIVADA'} />
+              }
+            ]}
+            itens={flags}
+            getId={(item) => item.nome}
+            vazio="Nenhuma feature flag publicada."
+            storageKey="tabela:sst-observabilidade:flags"
+            rotuloRolagem="Feature flags"
+          />
+        </BlocoConteudo>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <LogList title="Workflows recentes" logs={data?.ultimos_logs?.workflows} />
-        <LogList title="Automacoes recentes" logs={data?.ultimos_logs?.automacoes} />
-        <LogList title="Integracoes recentes" logs={data?.ultimos_logs?.integracoes} />
-        <LogList title="Bloqueios recentes" logs={data?.ultimos_logs?.bloqueios} />
-      </section>
-    </div>
+        <BlocoConteudo titulo="Workflows por status">
+          <GradeContadores itens={data?.status?.workflows} />
+        </BlocoConteudo>
+
+        <BlocoConteudo titulo="Logs de workflow por status">
+          <GradeContadores itens={data?.status?.workflow_logs} />
+        </BlocoConteudo>
+
+        <BlocoConteudo titulo="Logs de automação por status">
+          <GradeContadores itens={data?.status?.automation_logs} />
+        </BlocoConteudo>
+
+        <BlocoConteudo titulo="Logs de integração por status">
+          <GradeContadores itens={data?.status?.integration_logs} />
+        </BlocoConteudo>
+
+        <TabelaLogs data-bloco-id="workflows-recentes" data-bloco-rotulo="Workflows recentes" titulo="Workflows recentes" logs={data?.ultimos_logs?.workflows} chaveTabela="logs-workflows" />
+        <TabelaLogs data-bloco-id="automacoes-recentes" data-bloco-rotulo="Automacoes recentes" titulo="Automações recentes" logs={data?.ultimos_logs?.automacoes} chaveTabela="logs-automacoes" />
+        <TabelaLogs data-bloco-id="integracoes-recentes" data-bloco-rotulo="Integracoes recentes" titulo="Integrações recentes" logs={data?.ultimos_logs?.integracoes} chaveTabela="logs-integracoes" />
+        <TabelaLogs data-bloco-id="bloqueios-recentes" data-bloco-rotulo="Bloqueios recentes" titulo="Bloqueios recentes" logs={data?.ultimos_logs?.bloqueios} chaveTabela="logs-bloqueios" />
+      </BlocosPersonalizaveis>
+    </Pagina>
   );
 }

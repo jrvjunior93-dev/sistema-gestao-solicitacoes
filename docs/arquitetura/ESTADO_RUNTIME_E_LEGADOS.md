@@ -1,12 +1,15 @@
 # Estado do Runtime e Codigos Legados
 
-Data da verificacao: 2026-07-20.
+Data da ultima reconciliacao documental: 2026-09-30.
 
 Este documento separa comportamento vigente de codigo mantido apenas por compatibilidade. Presenca em model, migration, rota, menu ou catalogo nao transforma um recurso descontinuado em regra de negocio valida.
 
 ## Catalogo de modulos
 
-`backend/src/services/moduleConfigService.js` possui 17 entradas. Dezesseis correspondem aos dominios operacionais documentados; `INTEGRACAO_SIENGE` permanece no catalogo somente como legado desabilitado. Essa entrada nao deve ser ativada nem usada por novas funcionalidades.
+`backend/src/services/moduleConfigService.js` possui 18 entradas. Dezessete correspondem
+a dominios operacionais documentados; a integracao ERP antiga permanece no catalogo
+somente como legado desabilitado. Essa entrada nao deve ser ativada nem usada por novas
+funcionalidades.
 
 Dependencias vigentes declaradas no catalogo:
 
@@ -19,7 +22,7 @@ O estado efetivo vem da chave `MODULOS_HABILITADOS` no banco. Os valores padrao 
 
 ## Integracoes descontinuadas
 
-### SIENGE
+### Integracao ERP antiga
 
 A integracao nao faz mais parte do produto. Ainda existem catalogo, models, migrations, services, validators, controllers, rotas sob `/integracoes/sienge`, campos e referencias de interface. A remocao fisica precisa ser uma tarefa propria, com inventario de tabelas, dados, permissoes, rotas e consumidores.
 
@@ -27,7 +30,8 @@ No fluxo de Compras:
 
 - `PATCH /compras/solicitacoes/:id/integrar` retorna `410` antes de qualquer logica antiga;
 - `PATCH /compras/solicitacoes/:id/liberar` retorna `410` antes de qualquer logica antiga;
-- novas solicitacoes de compra nascem diretamente em `LIBERADO_PARA_COMPRA`; campos e regras de diretoria atendem somente registros antigos ja marcados com esse fluxo;
+- novas solicitacoes de compra normais nascem `PENDENTE` em GEO, onde usuarios com permissao granular revisam quantidades e apropriacoes; somente o encaminhamento explicito do GEO muda a compra para `LIBERADO_PARA_COMPRA` no setor de Compras;
+- campos e regras de diretoria atendem somente registros antigos ja marcados com esse fluxo;
 - campos como `numero_sienge`, `integrado_sienge` e `data_integracao_sienge` ainda existem e nao podem ser removidos sem migration e busca de consumidores;
 - `numero_sienge` ainda aparece em compatibilidades de numero da compra; renomear ou excluir exige migracao de dados e contrato.
 

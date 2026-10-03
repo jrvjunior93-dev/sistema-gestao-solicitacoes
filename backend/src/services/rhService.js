@@ -12,6 +12,19 @@ const {
   sequelize
 } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
+const rhVinculoObraService = require('./rhVinculoObraService');
+const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
+
+/**
+ * Importado por funcao, e nao no topo: `rhSolicitacaoService` requer `rhVinculoObraService`, que
+ * requer os models — e este arquivo e requerido pelo controller que tambem chega la. Trazer o
+ * modulo inteiro aqui em cima fecha um ciclo de require, e o sintoma de ciclo em CommonJS e um
+ * objeto vazio em tempo de execucao, nao um erro no boot: falha longe da causa.
+ */
+function pedidosAbertosPorColaborador(obraIds) {
+  // eslint-disable-next-line global-require
+  return require('./rhSolicitacaoService').pedidosAbertosPorColaborador(obraIds);
+}
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
 const {
@@ -90,6 +103,13 @@ const DOCUMENTO_INCLUDE = [
 
 function normalizeDigits(value) {
   return String(value || '').replace(/\D+/g, '');
+}
+
+function normalizeCpfSearch(value) {
+  const termo = String(value || '').trim();
+  // Matriculas como `QA-RHDP-001` possuem digitos, mas nao sao uma busca de CPF. Extrair `001`
+  // nesses casos amplia o OR para qualquer CPF que contenha essa sequencia e polui o resultado.
+  return termo && /^[\d.\-/\s]+$/.test(termo) ? normalizeDigits(termo) : '';
 }
 
 function normalizeToken(value) {
@@ -652,7 +672,7 @@ function buildDocumentoWhere(filters = {}) {
   }
 
   if (filters.q) {
-    const digits = normalizeDigits(filters.q);
+    const digits = normalizeCpfSearch(filters.q);
     const terms = [
       { nome_original: { [Op.like]: `%${filters.q}%` } },
       { observacoes: { [Op.like]: `%${filters.q}%` } },
@@ -917,6 +937,20 @@ async function atualizarEmpresaGrupoRh(id, data, user) {
 
 async function listarColaboradoresRh(filters = {}) {
   const where = {};
+  const obraIdsPermitidas = Array.isArray(filters.obra_ids)
+    ? [...new Set(filters.obra_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+    : null;
+
+  if (Array.isArray(obraIdsPermitidas) && obraIdsPermitidas.length === 0) {
+    return [];
+  }
+
+  if (filters.obra_id && Array.isArray(obraIdsPermitidas)) {
+    const obraSolicitada = Number(filters.obra_id);
+    if (!obraIdsPermitidas.includes(obraSolicitada)) {
+      throw new ValidationError('Acesso negado aos colaboradores desta obra.', 403);
+    }
+  }
 
   if (filters.q) {
     const digits = normalizeDigits(filters.q);
@@ -935,7 +969,9 @@ async function listarColaboradoresRh(filters = {}) {
   if (filters.empresa_grupo_id) {
     where.empresa_grupo_id = filters.empresa_grupo_id;
   }
-  if (filters.obra_id) {
+  if (Array.isArray(obraIdsPermitidas)) {
+    where.obra_id = { [Op.in]: obraIdsPermitidas };
+  } else if (filters.obra_id) {
     where.obra_id = filters.obra_id;
   }
   if (filters.setor_id) {
@@ -948,19 +984,78 @@ async function listarColaboradoresRh(filters = {}) {
     where.status = filters.status;
   }
 
-  return RhColaborador.findAll({
+  const colaboradores = await RhColaborador.findAll({
     where,
     include: COLABORADOR_INCLUDE,
     order: [['nome', 'ASC']]
   });
+
+  /**
+   * PEDIDOS EM ABERTO EMBUTIDOS, E QUEM TEM PEDIDO VEM PRIMEIRO (Fase 2, 25/08).
+   *
+   * Requisito do cliente para a tela consolidada: "uma lista de colaboradores que, quando tiver
+   * alguma solicitacao para aquele colaborador, ele seja posicionado primeiro na lista e ganhe
+   * destaque visual e de status".
+   *
+   * UMA consulta para todos os pedidos abertos, e nao uma por linha. A alternativa obvia — perguntar
+   * "tem pedido?" para cada colaborador — faria 137 consultas para montar a tela, e a tela que
+   * existe para dar AGILIDADE seria a mais lenta do modulo. O indice
+   * `(colaborador_id, situacao)` nasceu na migration por causa disto.
+   *
+   * `filters.obra_ids` e a visibilidade: quem nao tem `rh_dp.solicitacoes.ver_todas` recebe aqui a
+   * lista das obras dele. Nulo significa "todas" — e quem decide isso e o chamador, para que a
+   * regra de visibilidade fique em um lugar so.
+   *
+   * A ordenacao por nome CONTINUA valendo dentro de cada grupo: quem tem pedido em ordem
+   * alfabetica, depois quem nao tem em ordem alfabetica. Sem isso a lista mudaria de ordem a cada
+   * pedido novo e ninguem acharia mais ninguem.
+   */
+  const abertosPorColaborador = await pedidosAbertosPorColaborador(obraIdsPermitidas);
+
+  const comPedido = [];
+  const semPedido = [];
+
+  for (const colaborador of colaboradores) {
+    const pedidos = abertosPorColaborador.get(colaborador.id) || [];
+    const plano = colaborador.get({ plain: true });
+
+    plano.solicitacoes_abertas = pedidos.map((pedido) => ({
+      id: pedido.id,
+      tipo: pedido.tipo,
+      situacao: pedido.situacao,
+      obra_id: pedido.obra_id,
+      criada_em: pedido.createdAt
+    }));
+    plano.tem_solicitacao_aberta = pedidos.length > 0;
+
+    (pedidos.length ? comPedido : semPedido).push(plano);
+  }
+
+  return [...comPedido, ...semPedido];
 }
 
-async function detalharColaboradorRh(id) {
-  const colaborador = await RhColaborador.findByPk(id, {
+async function detalharColaboradorRh(id, options = {}) {
+  const obraIdsPermitidas = Array.isArray(options.obra_ids)
+    ? [...new Set(options.obra_ids.map(Number).filter((obraId) => Number.isInteger(obraId) && obraId > 0))]
+    : null;
+  const where = { id };
+
+  if (Array.isArray(obraIdsPermitidas)) {
+    if (!obraIdsPermitidas.length) {
+      throw new ValidationError('Acesso negado a este colaborador.', 403);
+    }
+    where.obra_id = { [Op.in]: obraIdsPermitidas };
+  }
+
+  const colaborador = await RhColaborador.findOne({
+    where,
     include: COLABORADOR_INCLUDE
   });
 
   if (!colaborador) {
+    if (Array.isArray(obraIdsPermitidas)) {
+      throw new ValidationError('Acesso negado a este colaborador.', 403);
+    }
     throw new ValidationError('Colaborador nao encontrado.', 404);
   }
 
@@ -969,6 +1064,9 @@ async function detalharColaboradorRh(id) {
 
 async function criarColaboradorRh(data, user) {
   return sequelize.transaction(async (transaction) => {
+    if (data.forma_calculo_gerencial === 'DIARIA' && !(Number(data.valor_diaria) > 0)) {
+      throw new ValidationError('Informe o valor da diaria para colaboradores com calculo por diaria.');
+    }
     await ensureEmpresaGrupoExists(data.empresa_grupo_id, transaction);
     await ensureObraExists(data.obra_id, transaction);
     await ensureSetorExists(data.setor_id, transaction);
@@ -979,6 +1077,9 @@ async function criarColaboradorRh(data, user) {
     const created = await RhColaborador.create(
       {
         ...data,
+        pagamento_automatico_40_60: data.forma_calculo_gerencial === 'DIARIA'
+          ? false
+          : Boolean(data.pagamento_automatico_40_60),
         data_inicio: data.data_inicio || data.data_admissao,
         parceiro_id: parceiro?.id || null,
         pagamento: undefined,
@@ -988,7 +1089,25 @@ async function criarColaboradorRh(data, user) {
       { transaction }
     );
 
+    if (String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON') {
+      await rhCalculoHistoricoService.registrarInicial(created, user?.id, transaction);
+    }
+
     await upsertPagamentoColaborador(created.id, data.pagamento, transaction);
+
+    // Abre o vinculo de lotacao. `obra_id` no colaborador continua sendo a obra corrente; esta
+    // linha e o comeco do historico, que responde "onde ele estava naquele dia" (Fase 1, 25/08).
+    await rhVinculoObraService.registrarVinculo(
+      {
+        colaboradorId: created.id,
+        obraId: created.obra_id,
+        setorId: created.setor_id,
+        vigenciaInicio: created.data_admissao || created.data_inicio,
+        motivo: 'ADMISSAO',
+        criadoPor: user?.id || null
+      },
+      transaction
+    );
 
     return RhColaborador.findByPk(created.id, {
       include: COLABORADOR_INCLUDE,
@@ -999,7 +1118,7 @@ async function criarColaboradorRh(data, user) {
 
 async function atualizarColaboradorRh(id, data, user) {
   return sequelize.transaction(async (transaction) => {
-    const colaborador = await RhColaborador.findByPk(id, { transaction });
+    const colaborador = await RhColaborador.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!colaborador) {
       throw new ValidationError('Colaborador nao encontrado.', 404);
     }
@@ -1015,6 +1134,59 @@ async function atualizarColaboradorRh(id, data, user) {
     }
 
     await assertUniqueColaborador(data, colaborador.id, transaction);
+
+    /**
+     * A PORTA DOS FUNDOS FECHA AQUI (Fase 2 do modulo DP, 25/08).
+     *
+     * Decisao do cliente: trocar a obra de um colaborador passa a exigir solicitacao formal — a
+     * Obra pede, o DP decide. Enquanto a edicao direta continuasse existindo ao lado do fluxo, o
+     * processo seria OPCIONAL, e opcional e o mesmo que inexistente: bastaria abrir o cadastro
+     * para contornar a aprovacao, e o historico de lotacao nasceria com buracos.
+     *
+     * Fecha SEM periodo de convivencia porque o modulo RH/DP nao e operado pela empresa hoje —
+     * nao ha usuario para quebrar. Em modulo vivo isto exigiria transicao.
+     *
+     * A via nova e `rhSolicitacaoService`, tipo TROCA_OBRA, provada pela suite 50.
+     *
+     * `salario_base` NAO e fechado aqui, de proposito: a alteracao salarial so ganha fluxo na
+     * Fase 5, e fechar antes deixaria o salario impossivel de corrigir por qualquer caminho.
+     */
+    if (Object.prototype.hasOwnProperty.call(data, 'obra_id')) {
+      const obraPedida = data.obra_id === null || data.obra_id === '' ? null : Number(data.obra_id);
+      const obraAtual = colaborador.obra_id === null ? null : Number(colaborador.obra_id);
+      if (obraPedida !== obraAtual) {
+        throw new ValidationError(
+          'A obra do colaborador nao e alterada pelo cadastro. Abra uma solicitacao de troca de '
+          + 'obra pela aba Transferencias entre obras, para aprovacao do outro responsavel.'
+        );
+      }
+    }
+
+    /**
+     * O SALARIO FECHA NA FASE 5, agora que existe o que o substitua.
+     *
+     * Na Fase 2 deixei esta porta aberta de proposito: a alteracao salarial ainda nao tinha fluxo, e
+     * fechar antes teria deixado o salario impossivel de corrigir por qualquer caminho. Agora o
+     * pedido ALTERACAO_SALARIAL existe, exige a permissao de Diretoria e grava historico com
+     * vigencia — entao a edicao direta deixa de ter justificativa.
+     *
+     * O que muda em relacao a obra: aqui a mensagem cita a DIRETORIA, porque quem decide nao e o DP.
+     */
+    if (Object.prototype.hasOwnProperty.call(data, 'salario_base')) {
+      const pedido = data.salario_base === null || data.salario_base === '' ? null : Number(data.salario_base);
+      const atual = colaborador.salario_base === null ? null : Number(colaborador.salario_base);
+      if (pedido !== atual) {
+        throw new ValidationError(
+          'O salario nao e alterado pelo cadastro. Abra uma solicitacao de alteracao salarial: '
+          + 'a decisao e da Diretoria.'
+        );
+      }
+    }
+
+    // Lidos ANTES do update: depois dele o valor antigo desaparece, e e a comparacao com o antigo
+    // que diz se houve troca de obra ou desligamento (Fase 1, 25/08).
+    const obraAnterior = colaborador.obra_id === null ? null : Number(colaborador.obra_id);
+    const demissaoAnterior = colaborador.data_demissao || null;
 
     const collaboratorPayload = Object.fromEntries(
       Object.entries({
@@ -1036,12 +1208,72 @@ async function atualizarColaboradorRh(id, data, user) {
         status: data.status,
         salario_base: data.salario_base,
         valor_contratual: data.valor_contratual,
+        forma_calculo_gerencial: data.forma_calculo_gerencial,
+        valor_diaria: data.valor_diaria,
+        valor_ticket: data.valor_ticket,
+        pagamento_automatico_40_60: data.pagamento_automatico_40_60,
         observacoes: data.observacoes,
         atualizado_por: user?.id || null
       }).filter(([, value]) => value !== undefined)
     );
 
+    const formaCalculoResultante = collaboratorPayload.forma_calculo_gerencial
+      || colaborador.forma_calculo_gerencial
+      || 'MENSAL';
+    const valorDiariaResultante = collaboratorPayload.valor_diaria !== undefined
+      ? collaboratorPayload.valor_diaria
+      : colaborador.valor_diaria;
+    if (formaCalculoResultante === 'DIARIA' && !(Number(valorDiariaResultante) > 0)) {
+      throw new ValidationError('Informe o valor da diaria para colaboradores com calculo por diaria.');
+    }
+    if (formaCalculoResultante === 'DIARIA') {
+      collaboratorPayload.pagamento_automatico_40_60 = false;
+    }
+
+    const calculoAnterior = colaborador.get({ plain: true });
     await colaborador.update(collaboratorPayload, { transaction });
+    if (String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON') {
+      await rhCalculoHistoricoService.registrarMudanca(
+        calculoAnterior,
+        colaborador,
+        data.calculo_vigencia_inicio,
+        user?.id,
+        transaction
+      );
+    }
+
+    // REDE DE SEGURANCA (Fase 1, mantida na Fase 2).
+    //
+    // Depois da trava acima, a obra nao muda mais por este caminho — este bloco deixou de ser a via
+    // normal. Fica porque e barato e porque a alternativa seria confiar que a trava nunca sera
+    // contornada por um caminho novo. Se algum dia a obra mudar por aqui, o vinculo e gravado em
+    // vez de o historico perder a transferencia em silencio.
+    const obraNova = colaborador.obra_id === null ? null : Number(colaborador.obra_id);
+    if (obraNova !== obraAnterior) {
+      await rhVinculoObraService.registrarVinculo(
+        {
+          colaboradorId: colaborador.id,
+          obraId: colaborador.obra_id,
+          setorId: colaborador.setor_id,
+          motivo: 'TROCA_OBRA',
+          criadoPor: user?.id || null
+        },
+        transaction
+      );
+    }
+
+    // Desligamento fecha o vinculo aberto — no PROPRIO dia da demissao, que ainda e trabalhado.
+    if (colaborador.data_demissao && !demissaoAnterior) {
+      await rhVinculoObraService.encerrarVinculo(
+        {
+          colaboradorId: colaborador.id,
+          dataFim: colaborador.data_demissao,
+          motivo: 'DEMISSAO'
+        },
+        transaction
+      );
+    }
+
     const pagamento = await upsertPagamentoColaborador(colaborador.id, data.pagamento, transaction);
     const parceiro = await sincronizarParceiroColaborador(
       {
@@ -1362,6 +1594,20 @@ async function importarColaboradoresRh(file, user) {
           pickImportValue(row, ['valor_contratual', 'valor_contrato']),
           'Valor contratual'
         ) || undefined,
+        forma_calculo_gerencial: normalizeToken(
+          pickImportValue(row, ['forma_calculo_gerencial', 'forma_calculo', 'calculo'])
+        ) || 'MENSAL',
+        valor_diaria: parseImportDecimal(
+          pickImportValue(row, ['valor_diaria', 'diaria']),
+          'Valor da diaria'
+        ) || undefined,
+        pagamento_automatico_40_60: ['SIM', 'S', 'TRUE', '1'].includes(normalizeToken(
+          pickImportValue(row, ['pagamento_automatico_40_60', 'automatico_40_60', '40_60'])
+        )),
+        valor_ticket: parseImportDecimal(
+          pickImportValue(row, ['valor_ticket', 'ticket']),
+          'Valor do ticket'
+        ) || undefined,
         observacoes: String(pickImportValue(row, ['observacoes']) || '').trim() || undefined,
         pagamento: {
           favorecido_nome: String(
@@ -1395,6 +1641,12 @@ async function importarColaboradoresRh(file, user) {
       }
       if (!['ATIVO', 'INATIVO', 'AFASTADO'].includes(payload.status)) {
         throw new ValidationError('Status invalido.');
+      }
+      if (!['MENSAL', 'DIARIA'].includes(payload.forma_calculo_gerencial)) {
+        throw new ValidationError('Forma de calculo gerencial invalida. Use MENSAL ou DIARIA.');
+      }
+      if (payload.valor_ticket !== undefined && Number(payload.valor_ticket) < 0) {
+        throw new ValidationError('Valor do ticket nao pode ser negativo.');
       }
 
       await criarColaboradorRh(payload, user);
@@ -1430,5 +1682,6 @@ module.exports = {
   listarEmpresasGrupoRh,
   listarTiposDocumentoRh,
   obterLinkDocumentoRh,
-  substituirDocumentoRh
+  substituirDocumentoRh,
+  __test: { normalizeCpfSearch }
 };

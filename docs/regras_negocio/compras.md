@@ -7,7 +7,9 @@
 - cada item precisa de apropriacao valida e o rateio deve fechar a quantidade solicitada;
 - apropriacoes pertencem a Obras e sao referenciadas por Compras;
 - alteracao de quantidade ou apropriacao depois da criacao exige permissao especifica, validacao de escopo e auditoria;
-- novas compras nao passam por aprovacao da diretoria: a normal nasce `LIBERADO_PARA_COMPRA` em Compras e a direta nasce `ENVIADO` em Gerencia de Processos;
+- novas compras nao passam por aprovacao da diretoria: a normal nasce `PENDENTE` em GEO para revisao de quantidades e apropriacoes e a direta nasce `ENVIADO` em Gerencia de Processos;
+- a permissao `compras.solicitacoes.editar_itens` autoriza o GEO a revisar quantidades e apropriacoes enquanto a solicitacao principal permanece no proprio setor;
+- o envio para Compras exige `compras.solicitacoes.encaminhar_compras`, muda o registro operacional para `LIBERADO_PARA_COMPRA` e libera a cotacao;
 - campos e endpoints de diretoria permanecem somente para compatibilidade de registros antigos ja marcados com esse fluxo;
 - os endpoints antigos de integracao e liberacao manual respondem `410` e nao fazem parte do fluxo vigente.
 
@@ -85,7 +87,8 @@
 - uma edicao isolada da resposta nao reescreve pedidos ja gerados; a atualizacao ocorre apenas quando o proprio pedido e reutilizado ou reaberto pelo fluxo operacional, sempre com auditoria dos valores anterior e novo;
 - o backfill de pedidos historicos prioriza o log de resposta existente na data de criacao e usa a cotacao atual apenas como compatibilidade quando nao houver historico suficiente;
 - reabrir pedido exige permissao e motivo, retorna o pedido ao status aberto configurado e serve para permitir edicao de quantidade, preco, itens e remanejamento; a reabertura nao cancela nem reduz as alocacoes existentes;
-- pedido com titulo financeiro ou frete com titulo vinculado nao pode ser reaberto: o efeito financeiro precisa ser tratado antes;
+- pedido sem historico de titulo pode ser reaberto diretamente por Compras; se ja teve titulo, a reabertura depende de solicitacao e aprovacao do GEO;
+- o GEO somente aprova a reabertura quando os titulos vinculados estiverem em previsao, cancelados ou estornados; previsoes ativas sao canceladas atomicamente, enquanto titulo aberto, parcial ou quitado exige regularizacao previa do Financeiro;
 - quando a compra estava encerrada, a reabertura coloca a solicitacao em revisao (`FECHAMENTO_PARCIAL` quando existem alocacoes) e marca a cotacao do fornecedor como `REABERTA`;
 - itens podem ser removidos, alterados, adicionados ou remanejados dentro do universo elegivel;
 - remanejamento transfere a quantidade entre fornecedores sem aumentar a quantidade total comprada: reduz ou cancela a alocacao de origem e cria uma alocacao ativa no destino;
@@ -103,6 +106,10 @@
 - o total da aquisicao inclui itens, tributos, DIFAL e fretes; o total devido ao fornecedor inclui somente o frete embutido, pois o frete pago a terceiro segue separado;
 - frete pago a terceiro gera pendencia para Contas a Pagar; se a cotacao nao identificar o transportador, o Financeiro define o credor ao gerar o titulo;
 - pedidos historicos com frete embutido global sao migrados para a nova composicao sem alterar itens ou gerar novo titulo.
+- cada pedido fechado com fornecedor entra separadamente na gestao financeira do GEO, mesmo quando a solicitacao de compra ainda possui outros pedidos em negociacao;
+- o GEO pode criar uma ou mais previsoes que somem exatamente o total devido ao fornecedor, anexar a confirmacao comercial/fiscal e liberar seletivamente os titulos para pagamento;
+- a confirmacao do fornecedor e obrigatoria antes de um titulo passar de previsao para aberto;
+- pedidos legados nao sao alterados automaticamente e precisam ser adotados expressamente pelo GEO para o novo fluxo.
 
 ## Delegacao
 

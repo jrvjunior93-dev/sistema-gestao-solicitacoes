@@ -1,0 +1,51 @@
+/* Faixa global de obra travada (Custos e Recebiveis, 29/09/2026). Fica fora
+   de .cr-page, entao usa os tokens globais do sistema. */
+.cr-travada-faixa {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.cr-travada-faixa__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--c-danger) 45%, var(--ui-border));
+  border-left-width: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c-danger) 8%, var(--ui-surface));
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  line-height: 1.35;
+}
+
+.cr-travada-faixa__item > svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--c-danger);
+}
+
+.cr-travada-faixa__item > span {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.cr-travada-faixa__item strong {
+  color: var(--c-danger);
+}
+
+.cr-travada-faixa__item[data-estado="observacao"],
+.cr-travada-faixa__item[data-estado="liberada"] {
+  border-color: color-mix(in srgb, var(--c-warning) 45%, var(--ui-border));
+  background: color-mix(in srgb, var(--c-warning) 8%, var(--ui-surface));
+}
+
+.cr-travada-faixa__item[data-estado="observacao"] > svg,
+.cr-travada-faixa__item[data-estado="observacao"] strong,
+.cr-travada-faixa__item[data-estado="liberada"] > svg,
+.cr-travada-faixa__item[data-estado="liberada"] strong {
+  color: var(--c-warning);
+}

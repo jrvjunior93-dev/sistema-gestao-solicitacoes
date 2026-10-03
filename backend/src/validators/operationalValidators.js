@@ -3,9 +3,28 @@ const {
   ValidationError,
   sanitizeString
 } = require('../middlewares/validation');
+const { onlyDigits, isValidCpfCnpj, isValidPixDocument } = require('../utils/cpfCnpj');
 
 function isBlank(value) {
   return value == null || String(value).trim() === '';
+}
+
+function parseCpfCnpj(value, fieldName, { required = false } = {}) {
+  if (isBlank(value)) {
+    if (required) throw new ValidationError(`${fieldName} e obrigatorio.`);
+    return undefined;
+  }
+  if (!isValidCpfCnpj(value)) throw new ValidationError(`${fieldName} invalido.`);
+  return onlyDigits(value);
+}
+
+function parsePixDocument(value, type, fieldName = 'Chave PIX', { required = false } = {}) {
+  const parsed = parseOptionalText(value, fieldName, 180, { required });
+  const normalizedType = String(type || '').trim().toUpperCase();
+  if (parsed && !isValidPixDocument(parsed, normalizedType)) {
+    throw new ValidationError(`${fieldName} ${normalizedType} invalida.`);
+  }
+  return parsed && ['CPF', 'CNPJ'].includes(normalizedType) ? onlyDigits(parsed) : parsed;
 }
 
 function parseInteger(value, fieldName, { required = false, positiveOnly = true } = {}) {
@@ -221,7 +240,7 @@ function validateContratoQuery(query = {}) {
 function validateContratoRelatorioOperacionalQuery(query = {}) {
   ensureAllowedKeys(
     query,
-    ['obra_id', 'ref', 'codigo', 'ativo', 'data_inicio', 'data_fim'],
+    ['obra_id', 'ref', 'codigo', 'ativo', 'status_operacional', 'data_inicio', 'data_fim'],
     'Relatorio operacional de contratos'
   );
 
@@ -232,11 +251,17 @@ function validateContratoRelatorioOperacionalQuery(query = {}) {
     throw new ValidationError('Data inicial nao pode ser maior que a data final.');
   }
 
+  const statusOperacional = parseOptionalText(query.status_operacional, 'Status operacional', 30);
+  if (statusOperacional && !['ATIVO', 'TOTALMENTE_MEDIDO', 'CONCLUIDO', 'RESCINDIDO'].includes(statusOperacional)) {
+    throw new ValidationError('Status operacional de contrato invalido.');
+  }
+
   return {
     obra_id: parseInteger(query.obra_id, 'Obra'),
     ref: parseOptionalText(query.ref, 'Referencia', 255),
     codigo: parseOptionalText(query.codigo, 'Codigo', 255),
     ativo: parseBoolean(query.ativo, 'Ativo'),
+    status_operacional: statusOperacional,
     data_inicio: dataInicio,
     data_fim: dataFim
   };
@@ -384,6 +409,8 @@ function validateCompraQuery(query = {}) {
         'obra_id',
         'tipo_solicitacao_id',
         'parceiro_id',
+        'favorecido_id',
+        'favorecido_chave_pix',
         'necessario_para',
         'observacoes',
         'dados_pagamento',
@@ -391,13 +418,18 @@ function validateCompraQuery(query = {}) {
         'itens',
         'origem',
         'forma_pagamento_ids',
+        'formas_pagamento',
         'desconto_total',
         'anexos_cabecalho',
         'frete_tipo',
+        'frete_modo',
         'frete_valor',
         'frete_data_vencimento',
         'frete_parceiro_id',
-        'frete_dados_pagamento'
+        'frete_dados_pagamento',
+        'frete_forma_pagamento_id',
+        'frete_favorecido_id',
+        'frete_favorecido_chave_pix'
       ],
       'Compra direta'
     );
@@ -424,23 +456,57 @@ function validateCompraQuery(query = {}) {
       required: true,
       maxItems: 20
     });
+    if (body.formas_pagamento !== undefined && !Array.isArray(body.formas_pagamento)) {
+      throw new ValidationError('Valores por forma de pagamento invalidos.');
+    }
+    const formasPagamento = Array.isArray(body.formas_pagamento)
+      ? body.formas_pagamento.map((item, index) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            throw new ValidationError(`Forma de pagamento ${index + 1} invalida.`);
+          }
+          ensureAllowedKeys(
+            item,
+            ['id', 'valor', 'favorecido_id', 'chave_pix', 'dados_pagamento'],
+            `Forma de pagamento ${index + 1}`
+          );
+          const formaNormalizada = {
+            id: parseInteger(item.id, `Forma de pagamento ${index + 1}`, { required: true }),
+            valor: parseDecimal(item.valor, `Valor da forma de pagamento ${index + 1}`, { min: 0.01, scale: 2, required: true })
+          };
+          const favorecidoId = parseInteger(item.favorecido_id, `Favorecido da forma de pagamento ${index + 1}`, { positiveOnly: true });
+          const chavePix = parseOptionalText(item.chave_pix, `Chave PIX da forma de pagamento ${index + 1}`, 255);
+          const dadosPagamento = parseOptionalText(item.dados_pagamento, `Dados da forma de pagamento ${index + 1}`, 1500);
+
+          if (favorecidoId !== undefined && favorecidoId !== null) formaNormalizada.favorecido_id = favorecidoId;
+          if (chavePix !== undefined && chavePix !== null) formaNormalizada.chave_pix = chavePix;
+          if (dadosPagamento !== undefined && dadosPagamento !== null) formaNormalizada.dados_pagamento = dadosPagamento;
+          return formaNormalizada;
+        })
+      : null;
 
     return {
       obra_id: parseInteger(body.obra_id, 'Obra', { required: true }),
       tipo_solicitacao_id: parseInteger(body.tipo_solicitacao_id, 'Tipo de solicitacao', { positiveOnly: true }),
       parceiro_id: parseInteger(body.parceiro_id, 'Credor', { positiveOnly: true }),
+      favorecido_id: parseInteger(body.favorecido_id, 'Favorecido', { positiveOnly: true }),
+      favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', 255),
       necessario_para: parseDateOnly(body.necessario_para, 'Data de vencimento', { required: true }),
       observacoes: parseOptionalText(body.observacoes, 'Observacoes', 5000),
       dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 1500),
       link_geral: parseOptionalUrl(body.link_geral, 'Link geral'),
       origem: 'COMPRA_DIRETA',
       forma_pagamento_ids: formaPagamentoIds,
+      formas_pagamento: formasPagamento,
       desconto_total: parseDecimal(body.desconto_total, 'Desconto concedido', { min: 0, scale: 2 }) || 0,
       frete_tipo: parseOptionalText(body.frete_tipo, 'Tipo de frete', 20),
+      frete_modo: parseOptionalText(body.frete_modo, 'Modo do frete', 20),
       frete_valor: parseDecimal(body.frete_valor, 'Valor do frete', { min: 0, scale: 2 }) || 0,
       frete_data_vencimento: parseDateOnly(body.frete_data_vencimento, 'Vencimento do frete'),
       frete_parceiro_id: parseInteger(body.frete_parceiro_id, 'Credor do frete', { positiveOnly: true }),
       frete_dados_pagamento: parseOptionalText(body.frete_dados_pagamento, 'Dados para pagamento do frete', 1500),
+      frete_forma_pagamento_id: parseInteger(body.frete_forma_pagamento_id, 'Forma de pagamento do frete', { positiveOnly: true }),
+      frete_favorecido_id: parseInteger(body.frete_favorecido_id, 'Favorecido do frete', { positiveOnly: true }),
+      frete_favorecido_chave_pix: parseOptionalText(body.frete_favorecido_chave_pix, 'Chave PIX do frete', 255),
       anexos_cabecalho: body.anexos_cabecalho || [],
       itens: body.itens
     };
@@ -532,7 +598,7 @@ function validateCompraEnviarBody(body = {}) {
     const fornecedorId = parseInteger(entry.fornecedor_id, 'Fornecedor', { positiveOnly: true });
     const parceiroId = parseInteger(entry.parceiro_id, 'Parceiro', { positiveOnly: true });
     const nome = parseOptionalText(entry.nome, 'Nome do fornecedor', 255);
-    const cnpj = parseOptionalText(entry.cnpj || entry.documento, 'CPF/CNPJ do fornecedor', 30);
+    const cnpj = parseCpfCnpj(entry.cnpj || entry.documento, 'CPF/CNPJ do fornecedor');
     const email = parseOptionalText(entry.email, 'Email do fornecedor', 255);
     const whatsapp = parseOptionalText(entry.whatsapp, 'WhatsApp do fornecedor', 100);
     const contato = parseOptionalText(entry.contato, 'Contato do fornecedor', 255);
@@ -602,6 +668,7 @@ function validateCompraCotacaoRespostaInternaBody(body = {}) {
       'frete_transportador_nome',
       'frete_transportador_cpf_cnpj',
       'observacao_resposta',
+      'nova_oferta_saldo',
       'finalizar'
     ],
     'Resposta interna da cotacao'
@@ -706,6 +773,7 @@ function validateCompraCotacaoRespostaInternaBody(body = {}) {
 
   return {
     itens,
+    nova_oferta_saldo: parseBoolean(body.nova_oferta_saldo, 'Nova oferta para o saldo'),
     valor_minimo_pedido: parseDecimal(body.valor_minimo_pedido, 'Valor minimo do pedido', {
       min: 0,
       scale: 2,
@@ -736,7 +804,7 @@ function validateCompraCotacaoRespostaInternaBody(body = {}) {
     }) || 0,
     frete_data_vencimento: parseDateOnly(body.frete_data_vencimento, 'Data para pagamento do frete'),
     frete_transportador_nome: parseOptionalText(body.frete_transportador_nome, 'Transportador', 255),
-    frete_transportador_cpf_cnpj: parseOptionalText(body.frete_transportador_cpf_cnpj, 'CPF/CNPJ do transportador', 30),
+    frete_transportador_cpf_cnpj: parseCpfCnpj(body.frete_transportador_cpf_cnpj, 'CPF/CNPJ do transportador'),
     observacao_resposta: parseOptionalText(body.observacao_resposta, 'Observacao da resposta', 5000),
     finalizar: body.finalizar !== false
   };
@@ -751,6 +819,8 @@ function validateCompraEncerrarBody(body = {}) {
       'fechamento_parcial_confirmado',
       'justificativa',
       'fechamento_excedente_confirmado',
+      'previsao_entrega',
+      'previsoes_entrega',
       'justificativa_excedente'
     ],
     'Encerramento da cotacao'
@@ -768,11 +838,36 @@ function validateCompraEncerrarBody(body = {}) {
     throw new ValidationError('Quantidade de vencedores excede o limite permitido.');
   }
 
+  let previsoesEntrega;
+  if (body.previsoes_entrega !== undefined) {
+    if (!Array.isArray(body.previsoes_entrega) || !body.previsoes_entrega.length || body.previsoes_entrega.length > 500) {
+      throw new ValidationError('Informe as previsões confirmadas por fornecedor.');
+    }
+    const ids = new Set();
+    previsoesEntrega = body.previsoes_entrega.map((entrada) => {
+      if (!entrada || typeof entrada !== 'object' || Array.isArray(entrada)) throw new ValidationError('Previsão de fornecedor inválida.');
+      ensureAllowedKeys(entrada, ['fornecedor_id', 'data_base', 'previsao', 'previsao_calculada', 'confirmada'], 'Previsão de entrega');
+      const id = parseInteger(entrada.fornecedor_id, 'Fornecedor', { required: true });
+      if (ids.has(id)) throw new ValidationError('Fornecedor repetido nas previsões.');
+      ids.add(id);
+      if (entrada.confirmada !== true) throw new ValidationError('Confirme a data de cada fornecedor.');
+      const { dataValida } = require('../services/pedidoEntregaDomain');
+      if (!dataValida(entrada.data_base) || !dataValida(entrada.previsao)
+        || (!isBlank(entrada.previsao_calculada) && !dataValida(entrada.previsao_calculada))) {
+        throw new ValidationError('Data de previsão inválida.');
+      }
+      return { fornecedor_id: id, data_base: parseDateOnly(entrada.data_base, 'Data base', { required: true }),
+        previsao: parseDateOnly(entrada.previsao, 'Previsão confirmada', { required: true }),
+        previsao_calculada: parseDateOnly(entrada.previsao_calculada, 'Previsão calculada'), confirmada: true };
+    });
+  }
   return {
+    previsoes_entrega: previsoesEntrega,
     fechamento_parcial_confirmado: parseBoolean(
       body.fechamento_parcial_confirmado,
       'Confirmacao do fechamento parcial'
     ) || false,
+    previsao_entrega: parseOptionalText(body.previsao_entrega, 'Previsao de entrega', 10),
     justificativa: parseOptionalText(body.justificativa, 'Justificativa', 2000),
     fechamento_excedente_confirmado: parseBoolean(
       body.fechamento_excedente_confirmado,
@@ -837,7 +932,7 @@ function validateCompraEncerrarSemPedidoBody(body = {}) {
 }
 
 function validateCompraPedidoQuery(query = {}) {
-  ensureAllowedKeys(query, ['obra_id', 'solicitacao_id', 'status', 'q', 'visao'], 'Consulta de pedidos de compra');
+  ensureAllowedKeys(query, ['obra_id', 'solicitacao_id', 'status', 'status_financeiro', 'q', 'visao'], 'Consulta de pedidos de compra');
 
   const visao = parseOptionalText(query.visao, 'Visao', 40);
   const visaoNormalizada = visao ? String(visao).trim().toLowerCase() : undefined;
@@ -849,6 +944,7 @@ function validateCompraPedidoQuery(query = {}) {
     obra_id: parseInteger(query.obra_id, 'Obra'),
     solicitacao_id: parseInteger(query.solicitacao_id, 'Solicitacao de compra'),
     status: parseOptionalText(query.status, 'Status', 40),
+    status_financeiro: parseOptionalText(query.status_financeiro, 'Status financeiro', 40),
     q: parseOptionalText(query.q, 'Busca', 120),
     visao: visaoNormalizada
   };
@@ -1128,6 +1224,140 @@ function validateCompraPedidoReabrirBody(body = {}) {
   };
 }
 
+function validateCompraPedidoPrevisoesBody(body = {}) {
+  ensureAllowedKeys(body, [
+    'categoria_financeira_id', 'descricao', 'parcelas', 'comprovacao',
+    'forma_pagamento_id', 'favorecido_pagamento_id', 'chave_pix', 'dados_pagamento',
+    'boletos', 'fretes'
+  ], 'Previsoes financeiras do pedido');
+  if (!Array.isArray(body.parcelas) || body.parcelas.length === 0) {
+    throw new ValidationError('Informe ao menos uma parcela da previsao.');
+  }
+  if (body.parcelas.length > 120) {
+    throw new ValidationError('A previsao nao pode possuir mais de 120 parcelas.');
+  }
+  const comprovacao = body.comprovacao == null
+    ? null
+    : validateCompraPedidoDocumentoFinanceiroBody(body.comprovacao);
+  const validarBoletos = (boletos, contexto) => {
+    if (boletos == null) return [];
+    if (!Array.isArray(boletos) || boletos.length > 120) {
+      throw new ValidationError(`${contexto} deve possuir no maximo 120 arquivos.`);
+    }
+    return boletos.map((boleto, index) => {
+      ensureAllowedKeys(boleto || {}, ['arquivo_url', 'arquivo_nome'], `${contexto} ${index + 1}`);
+      return {
+        arquivo_url: parseOptionalText(boleto?.arquivo_url, `URL de ${contexto.toLowerCase()} ${index + 1}`, 2000, { required: true }),
+        arquivo_nome: parseOptionalText(boleto?.arquivo_nome, `Nome de ${contexto.toLowerCase()} ${index + 1}`, 255, { required: true })
+      };
+    });
+  };
+  const validarParcelas = (parcelas, contexto) => {
+    if (!Array.isArray(parcelas) || parcelas.length === 0) {
+      throw new ValidationError(`Informe ao menos uma parcela de ${contexto}.`);
+    }
+    if (parcelas.length > 120) throw new ValidationError(`${contexto} nao pode possuir mais de 120 parcelas.`);
+    return parcelas.map((parcela, index) => {
+      ensureAllowedKeys(parcela || {}, ['valor', 'data_vencimento'], `Parcela ${index + 1} de ${contexto}`);
+      return {
+        valor: parseDecimal(parcela?.valor, `Valor da parcela ${index + 1} de ${contexto}`, {
+          required: true,
+          min: 0.01,
+          scale: 2,
+          brazilianFormat: true
+        }),
+        data_vencimento: parseDateOnly(parcela?.data_vencimento, `Vencimento da parcela ${index + 1} de ${contexto}`, { required: true })
+      };
+    });
+  };
+  const fretes = body.fretes == null ? [] : body.fretes;
+  if (!Array.isArray(fretes) || fretes.length > 50) {
+    throw new ValidationError('A configuracao nao pode possuir mais de 50 fretes.');
+  }
+  return {
+    categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira', { required: true }),
+    descricao: parseOptionalText(body.descricao, 'Descricao', 255),
+    forma_pagamento_id: parseInteger(body.forma_pagamento_id, 'Forma de pagamento', { required: true }),
+    favorecido_pagamento_id: parseInteger(body.favorecido_pagamento_id, 'Favorecido', { required: true }),
+    chave_pix: parseOptionalText(body.chave_pix, 'Chave PIX', 255),
+    dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
+    boletos: validarBoletos(body.boletos, 'Boletos da compra'),
+    comprovacao,
+    parcelas: validarParcelas(body.parcelas, 'a compra'),
+    fretes: fretes.map((frete, freteIndex) => {
+      ensureAllowedKeys(frete || {}, [
+        'frete_id', 'descricao', 'forma_pagamento_id', 'favorecido_pagamento_id',
+        'chave_pix', 'dados_pagamento', 'boletos', 'parcelas'
+      ], `Frete ${freteIndex + 1}`);
+      return {
+        frete_id: parseInteger(frete?.frete_id, `Frete ${freteIndex + 1}`, { required: true }),
+        descricao: parseOptionalText(frete?.descricao, `Descricao do frete ${freteIndex + 1}`, 255),
+        forma_pagamento_id: parseInteger(frete?.forma_pagamento_id, `Forma de pagamento do frete ${freteIndex + 1}`, { required: true }),
+        favorecido_pagamento_id: parseInteger(frete?.favorecido_pagamento_id, `Favorecido do frete ${freteIndex + 1}`, { required: true }),
+        chave_pix: parseOptionalText(frete?.chave_pix, `Chave PIX do frete ${freteIndex + 1}`, 255),
+        dados_pagamento: parseOptionalText(frete?.dados_pagamento, `Dados para pagamento do frete ${freteIndex + 1}`, 2000),
+        boletos: validarBoletos(frete?.boletos, `Boletos do frete ${freteIndex + 1}`),
+        parcelas: validarParcelas(frete?.parcelas, `o frete ${freteIndex + 1}`)
+      };
+    })
+  };
+}
+
+function validateCompraPedidoDocumentoFinanceiroBody(body = {}) {
+  ensureAllowedKeys(
+    body,
+    ['tipo', 'numero_documento', 'arquivo_url', 'arquivo_nome', 'observacoes'],
+    'Documento financeiro do pedido'
+  );
+  const tipo = parseOptionalText(body.tipo, 'Tipo do documento', 30, { required: true }).toUpperCase();
+  if (!['NOTA_FISCAL', 'COMPROVANTE_COMPRA', 'OUTRA_CONFIRMACAO'].includes(tipo)) {
+    throw new ValidationError('Tipo de documento financeiro invalido.');
+  }
+  const arquivoUrl = parseOptionalText(body.arquivo_url, 'URL do arquivo', 2000);
+  const observacoes = parseOptionalText(body.observacoes, 'Observacoes', 2000);
+  const numeroDocumento = parseOptionalText(body.numero_documento, 'Numero do documento', 120);
+  if (!arquivoUrl && !observacoes && !numeroDocumento) {
+    throw new ValidationError('Informe o numero, anexe um arquivo ou descreva a comprovacao da compra.');
+  }
+  return {
+    tipo,
+    numero_documento: numeroDocumento,
+    arquivo_url: arquivoUrl,
+    arquivo_nome: parseOptionalText(body.arquivo_nome, 'Nome do arquivo', 255),
+    observacoes
+  };
+}
+
+function validateCompraPedidoLiberarTitulosBody(body = {}) {
+  ensureAllowedKeys(body, ['titulo_ids', 'forma_pagamento_id'], 'Liberacao financeira do pedido');
+  if (!Array.isArray(body.titulo_ids) || body.titulo_ids.length === 0) {
+    throw new ValidationError('Selecione ao menos uma previsao para liberar.');
+  }
+  return {
+    titulo_ids: [...new Set(body.titulo_ids.map((id) => parseInteger(id, 'Titulo financeiro', { required: true })))],
+    forma_pagamento_id: parseInteger(body.forma_pagamento_id, 'Forma de pagamento', { required: true })
+  };
+}
+
+function validateCompraPedidoReaberturaParams(params = {}) {
+  return {
+    id: parseInteger(params.id, 'Pedido de compra', { required: true }),
+    reaberturaId: parseInteger(params.reaberturaId, 'Pedido de reabertura', { required: true })
+  };
+}
+
+function validateCompraPedidoDecisaoReaberturaBody(body = {}) {
+  ensureAllowedKeys(body, ['decisao', 'motivo'], 'Decisao de reabertura do pedido');
+  const decisao = parseOptionalText(body.decisao, 'Decisao', 20, { required: true }).toUpperCase();
+  if (!['APROVAR', 'REJEITAR'].includes(decisao)) {
+    throw new ValidationError('Decisao de reabertura invalida.');
+  }
+  return {
+    decisao,
+    motivo: parseOptionalText(body.motivo, 'Motivo da decisao', 1000, { required: true })
+  };
+}
+
 function validateCompraPedidoStatusBatchBody(body = {}) {
   ensureAllowedKeys(body, ['pedido_ids', 'status'], 'Atualizacao em lote de pedidos');
 
@@ -1192,6 +1422,54 @@ function validateCompraSolicitacaoItemApropriacoesBody(body = {}) {
     apropriacoes: Array.isArray(body.apropriacoes) ? body.apropriacoes : undefined,
     motivo: parseOptionalText(body.motivo, 'Motivo da alteracao', 1000, { required: true })
   };
+}
+
+function validateCompraCatalogarItemManualBody(body = {}) {
+  ensureAllowedKeys(
+    body,
+    [
+      'acao',
+      'insumo_id',
+      'nome',
+      'descricao',
+      'unidade_id',
+      'unidade_manual',
+      'categoria_id',
+      'motivo',
+      'corrigir_vinculo',
+      'confirmar_novo_duplicado'
+    ],
+    'Catalogacao do item manual'
+  );
+
+  const acao = parseOptionalText(body.acao, 'Acao de catalogacao', 30, { required: true }).toUpperCase();
+  if (!['CRIAR_INSUMO', 'VINCULAR_EXISTENTE'].includes(acao)) {
+    throw new ValidationError('Acao de catalogacao invalida.');
+  }
+
+  const payload = {
+    acao,
+    motivo: parseOptionalText(body.motivo, 'Motivo da catalogacao', 1000),
+    corrigir_vinculo: parseBoolean(body.corrigir_vinculo, 'Corrigir vinculo') || false,
+    confirmar_novo_duplicado: parseBoolean(body.confirmar_novo_duplicado, 'Confirmar novo duplicado') || false
+  };
+
+  if (acao === 'VINCULAR_EXISTENTE') {
+    payload.insumo_id = parseInteger(body.insumo_id, 'Insumo existente', { required: true });
+    return payload;
+  }
+
+  payload.nome = parseOptionalText(body.nome, 'Nome do insumo', 255, { required: true });
+  payload.descricao = parseOptionalText(body.descricao, 'Descricao do insumo', 5000);
+  payload.unidade_id = parseInteger(body.unidade_id, 'Unidade', { required: false });
+  payload.unidade_manual = parseOptionalText(body.unidade_manual, 'Unidade manual', 50);
+  payload.categoria_id = parseInteger(body.categoria_id, 'Categoria', { required: false });
+
+  if (!payload.unidade_id && !payload.unidade_manual) {
+    throw new ValidationError('Selecione uma unidade ou informe a unidade manual.');
+  }
+
+  return payload;
 }
 
 function validateCompraSolicitacaoInativarMassaBody(body = {}) {
@@ -1334,7 +1612,7 @@ function validateCompraPedidoFreteBody(body = {}) {
   const novoFornecedor = body.novo_fornecedor && typeof body.novo_fornecedor === 'object'
     ? {
         nome: parseOptionalText(body.novo_fornecedor.nome, 'Nome do fornecedor', 160),
-        cpf_cnpj: parseOptionalText(body.novo_fornecedor.cpf_cnpj, 'CPF/CNPJ do fornecedor', 32),
+        cpf_cnpj: parseCpfCnpj(body.novo_fornecedor.cpf_cnpj, 'CPF/CNPJ do fornecedor'),
         whatsapp: parseOptionalText(body.novo_fornecedor.whatsapp, 'WhatsApp do fornecedor', 32),
         telefone: parseOptionalText(body.novo_fornecedor.telefone, 'Telefone do fornecedor', 32),
         email: parseOptionalText(body.novo_fornecedor.email, 'Email do fornecedor', 160),
@@ -1355,13 +1633,13 @@ function validateCompraPedidoFreteBody(body = {}) {
 
   const dadosPagamento = body.dados_pagamento && typeof body.dados_pagamento === 'object'
     ? {
-        pix: parseOptionalText(body.dados_pagamento.pix, 'PIX', 180),
+        pix: parsePixDocument(body.dados_pagamento.pix, body.dados_pagamento.tipo_chave_pix),
         tipo_chave_pix: parseOptionalText(body.dados_pagamento.tipo_chave_pix, 'Tipo da chave PIX', 30),
         banco: parseOptionalText(body.dados_pagamento.banco, 'Banco', 120),
         agencia: parseOptionalText(body.dados_pagamento.agencia, 'Agencia', 60),
         conta: parseOptionalText(body.dados_pagamento.conta, 'Conta', 80),
         favorecido: parseOptionalText(body.dados_pagamento.favorecido, 'Favorecido', 160),
-        documento: parseOptionalText(body.dados_pagamento.documento, 'Documento', 60),
+        documento: parseCpfCnpj(body.dados_pagamento.documento, 'CPF/CNPJ do favorecido'),
         observacoes: parseOptionalText(body.dados_pagamento.observacoes, 'Observacoes de pagamento', 1000)
       }
     : parseOptionalText(body.dados_pagamento, 'Dados de pagamento', 1000);
@@ -1475,8 +1753,16 @@ function validateSolicitacaoCreateBody(body = {}) {
       'tipo_macro_id',
       'tipo_sub_id',
       'descricao',
+      'justificativa',
       'valor',
       'parceiro_id',
+      'favorecido_id',
+      'forma_pagamento_id',
+      'favorecido_chave_pix',
+      'dados_pagamento',
+      'boleto_anexo_nome',
+      'despesa_eventual_declaracoes',
+      'cartao_recarga_id',
       'apropriacao_id',
       'area_responsavel',
       'diretoria_fluxo_codigo',
@@ -1488,31 +1774,133 @@ function validateSolicitacaoCreateBody(body = {}) {
       'data_fim_medicao',
       'itens_apropriacao',
       'ref_contrato_abertura',
-      'apropriacoes_rateio'
+      'apropriacoes_rateio',
+      'distribuicao_centro_custo',
+      // Wireframe 2: parcelas do contrato do fluxo novo consumidas por esta medicao.
+      'medicao_parcelas',
+      // Dados de pagamento DA MEDICAO (itens 5 e 9, 23/08): favorecido, chave PIX, forma, contato e
+      // o aceite. A lista de campos permitidos e uma allowlist — campo novo que nao entra aqui e
+      // recusado com "contem campos nao permitidos", sem chegar ao controller.
+      'medicao_pagamento',
+      'cadastro_obra_usuario_ids',
+      'cadastro_obra_dados',
+      'cadastro_obra_documentos_nomes',
+      // Nomes dos arquivos selecionados antes da criacao. O upload real continua na rota de
+      // anexos; a aprovacao da medicao confere o registro efetivamente gravado.
+      'anexos_pendentes_nomes'
     ],
     'Solicitacao'
   );
 
   return {
-    obra_id: parseInteger(body.obra_id, 'Obra', { required: true }),
+    // CADASTRO DE OBRA e o unico fluxo que nasce sem obra/centro de custo. O controller
+    // confirma o comportamento do tipo antes de aceitar a ausencia; os demais continuam
+    // obrigatorios no servidor.
+    obra_id: parseInteger(body.obra_id, 'Obra'),
     tipo_solicitacao_id: parseInteger(body.tipo_solicitacao_id, 'Tipo de solicitacao', { required: true }),
     tipo_macro_id: parseInteger(body.tipo_macro_id, 'Tipo macro'),
     tipo_sub_id: parseInteger(body.tipo_sub_id, 'Tipo sub'),
     descricao: body.descricao == null ? undefined : String(body.descricao),
+    justificativa: parseOptionalText(body.justificativa, 'Justificativa', 5000),
     valor: body.valor === '' || body.valor == null ? undefined : parseDecimal(body.valor, 'Valor', { min: 0 }),
     parceiro_id: parseInteger(body.parceiro_id, 'Parceiro'),
+    favorecido_id: parseInteger(body.favorecido_id, 'Favorecido'),
+    forma_pagamento_id: parseInteger(body.forma_pagamento_id, 'Forma de pagamento'),
+    favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', 255),
+    dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
+    boleto_anexo_nome: parseOptionalText(body.boleto_anexo_nome, 'Arquivo do boleto', 255),
+    despesa_eventual_declaracoes: body.despesa_eventual_declaracoes && typeof body.despesa_eventual_declaracoes === 'object'
+      ? {
+          despesa_pontual_nao_recorrente: body.despesa_eventual_declaracoes.despesa_pontual_nao_recorrente === true,
+          sem_vinculo_contratual: body.despesa_eventual_declaracoes.sem_vinculo_contratual === true,
+          nao_fracionada: body.despesa_eventual_declaracoes.nao_fracionada === true
+        }
+      : undefined,
+    cartao_recarga_id: parseInteger(body.cartao_recarga_id, 'Cartao de recarga'),
     apropriacao_id: parseInteger(body.apropriacao_id, 'Apropriacao'),
-    area_responsavel: parseOptionalText(body.area_responsavel, 'Area responsavel', 120, { required: true }),
+    // Compatibilidade temporaria com frontends anteriores: o campo ainda e aceito, mas o
+    // controller nao confia nele e sempre deriva o destino GEO no servidor.
+    area_responsavel: parseOptionalText(body.area_responsavel, 'Area responsavel', 120),
     diretoria_fluxo_codigo: parseOptionalText(body.diretoria_fluxo_codigo, 'Diretoria de aprovacao', 120),
     codigo_contrato: parseOptionalText(body.codigo_contrato, 'Codigo do contrato', 255),
     contrato_id: parseInteger(body.contrato_id, 'Contrato'),
-    data_vencimento: parseCurrentOrFutureDateOnly(body.data_vencimento, 'Data de vencimento'),
+    data_vencimento: parseCurrentOrFutureDateOnly(body.data_vencimento, 'Data da solicitacao'),
     data_demissao: parseDateOnly(body.data_demissao, 'Data de demissao'),
     data_inicio_medicao: parseDateOnly(body.data_inicio_medicao, 'Data inicial da medicao'),
     data_fim_medicao: parseDateOnly(body.data_fim_medicao, 'Data final da medicao'),
     itens_apropriacao: parseOptionalText(body.itens_apropriacao, 'Itens de apropriacao', 5000),
     ref_contrato_abertura: parseOptionalText(body.ref_contrato_abertura, 'Ref. do contrato', 255),
-    apropriacoes_rateio: Array.isArray(body.apropriacoes_rateio) ? body.apropriacoes_rateio : undefined
+    cadastro_obra_usuario_ids: parseIdArray(
+      body.cadastro_obra_usuario_ids,
+      'Pessoas vinculadas',
+      { maxItems: 500 }
+    ),
+    cadastro_obra_dados: (() => {
+      const dados = body.cadastro_obra_dados;
+      if (dados === undefined) return undefined;
+      if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
+        throw new ValidationError('Dados do cadastro da obra invalidos.');
+      }
+      ensureAllowedKeys(
+        dados,
+        ['tipo_obra', 'fase_obra', 'valor_obra', 'responsavel_tecnico', 'responsavel_tecnico_id', 'endereco'],
+        'Dados do cadastro da obra'
+      );
+      return {
+        tipo_obra: parseOptionalText(dados.tipo_obra, 'Tipo da obra', 20),
+        fase_obra: parseOptionalText(dados.fase_obra, 'Fase da obra', 30),
+        valor_obra: dados.valor_obra === '' || dados.valor_obra == null
+          ? undefined
+          : parseDecimal(dados.valor_obra, 'Valor da obra', { min: 0 }),
+        responsavel_tecnico: parseOptionalText(dados.responsavel_tecnico, 'Responsavel tecnico', 160),
+        // Compatibilidade com clientes anteriores ao campo textual. O controller converte o
+        // usuario legado no nome correspondente sem voltar a misturar acesso com responsabilidade.
+        responsavel_tecnico_id: parseInteger(dados.responsavel_tecnico_id, 'Responsavel tecnico'),
+        endereco: parseOptionalText(dados.endereco, 'Endereco da obra', 2000)
+      };
+    })(),
+    cadastro_obra_documentos_nomes: (() => {
+      if (body.cadastro_obra_documentos_nomes === undefined) return undefined;
+      if (!Array.isArray(body.cadastro_obra_documentos_nomes)
+        || body.cadastro_obra_documentos_nomes.length > 50) {
+        throw new ValidationError('Lista de documentos da obra invalida.');
+      }
+      return body.cadastro_obra_documentos_nomes
+        .map((nome) => parseOptionalText(nome, 'Documento da obra', 255))
+        .filter(Boolean);
+    })(),
+    apropriacoes_rateio: Array.isArray(body.apropriacoes_rateio) ? body.apropriacoes_rateio : undefined,
+    distribuicao_centro_custo: (() => {
+      const distribuicao = body.distribuicao_centro_custo;
+      if (!distribuicao || typeof distribuicao !== 'object' || Array.isArray(distribuicao)) return undefined;
+      const itens = Array.isArray(distribuicao.itens) ? distribuicao.itens : [];
+      if (itens.length > 500) throw new ValidationError('A distribuicao do centro de custo excede o limite permitido.');
+      return {
+        criterio: parseOptionalText(distribuicao.criterio, 'Criterio da distribuicao', 20),
+        abrangencia: parseOptionalText(distribuicao.abrangencia, 'Abrangencia da distribuicao', 20),
+        todas: distribuicao.todas === true,
+        itens: itens.map((item) => ({
+          obra_id: parseInteger(item?.obra_id, 'Obra da distribuicao'),
+          percentual: item?.percentual,
+          valor: item?.valor
+        }))
+      };
+    })(),
+    medicao_parcelas: Array.isArray(body.medicao_parcelas) ? body.medicao_parcelas : undefined,
+    // Repassado como veio: quem valida campo a campo e `validarDadosDePagamento`, no servico, junto
+    // da regra de negocio. Duplicar a validacao aqui criaria duas versoes da mesma exigencia.
+    medicao_pagamento: body.medicao_pagamento && typeof body.medicao_pagamento === 'object'
+      ? body.medicao_pagamento
+      : undefined,
+    anexos_pendentes_nomes: (() => {
+      if (!Array.isArray(body.anexos_pendentes_nomes)) return undefined;
+      if (body.anexos_pendentes_nomes.length > 20) {
+        throw new ValidationError('Anexos da medicao excedem o limite permitido.');
+      }
+      return body.anexos_pendentes_nomes
+        .map((nome) => parseOptionalText(nome, 'Nome do anexo da medicao', 255))
+        .filter(Boolean);
+    })()
   };
 }
 
@@ -1562,7 +1950,7 @@ function validateSolicitacaoDataVencimentoBody(body = {}) {
   ensureAllowedKeys(body, ['data_vencimento'], 'Atualizacao de data de vencimento');
 
   return {
-    data_vencimento: parseCurrentOrFutureDateOnly(body.data_vencimento, 'Data de vencimento')
+    data_vencimento: parseCurrentOrFutureDateOnly(body.data_vencimento, 'Data da solicitacao')
   };
 }
 
@@ -1585,9 +1973,29 @@ function validateSolicitacaoCredorCreateBody(body = {}) {
 
   return {
     nome: sanitizeString(body.nome, 'Nome do credor', { required: true, max: 255 }),
-    cpf_cnpj: sanitizeString(body.cpf_cnpj, 'CPF/CNPJ', { required: true, max: 32 }),
+    cpf_cnpj: parseCpfCnpj(body.cpf_cnpj, 'CPF/CNPJ', { required: true }),
     telefone: sanitizeString(body.telefone, 'Telefone', { required: true, max: 32 }),
     email: sanitizeString(body.email, 'Email', { max: 255 })
+  };
+}
+
+function validateSolicitacaoFavorecidoCreateBody(body = {}) {
+  ensureAllowedKeys(
+    body,
+    ['nome', 'telefone', 'chave_pix', 'tipo_chave_pix', 'area_responsavel', 'tipo_solicitacao_id', 'tipo_sub_id'],
+    'Cadastro rapido de favorecido'
+  );
+
+  const tipoChavePix = sanitizeString(body.tipo_chave_pix, 'Tipo da chave PIX', { max: 20 });
+
+  return {
+    nome: sanitizeString(body.nome, 'Nome do favorecido', { required: true, max: 255 }),
+    telefone: sanitizeString(body.telefone, 'Telefone do favorecido', { required: true, max: 32 }),
+    chave_pix: parsePixDocument(body.chave_pix, tipoChavePix, 'Chave PIX do favorecido', { required: true }),
+    tipo_chave_pix: tipoChavePix,
+    area_responsavel: sanitizeString(body.area_responsavel, 'Area responsavel', { required: true, max: 120 }),
+    tipo_solicitacao_id: parseInteger(body.tipo_solicitacao_id, 'Tipo de solicitacao', { required: true }),
+    tipo_sub_id: parseInteger(body.tipo_sub_id, 'Subtipo de solicitacao')
   };
 }
 
@@ -1672,11 +2080,17 @@ module.exports = {
   validateCompraPedidoFreteBody,
   validateCompraPedidoRemanejarBody,
   validateCompraPedidoReabrirBody,
+  validateCompraPedidoPrevisoesBody,
+  validateCompraPedidoDocumentoFinanceiroBody,
+  validateCompraPedidoLiberarTitulosBody,
+  validateCompraPedidoReaberturaParams,
+  validateCompraPedidoDecisaoReaberturaBody,
   validateCompraPedidoStatusBody,
   validateCompraPedidoStatusBatchBody,
   validateCompraSolicitacaoItemQuantidadeBody,
   validateCompraSolicitacaoItemQuantidadeParams,
   validateCompraSolicitacaoItemApropriacoesBody,
+  validateCompraCatalogarItemManualBody,
   validateCompraSolicitacaoInativarMassaBody,
   validateCompraSolicitacaoEncaminharComprasMassaBody,
   validateCompraPedidoItemUpdateBody,
@@ -1704,6 +2118,7 @@ module.exports = {
   validateSolicitacaoApropriacoesBody,
   validateSolicitacaoCredorCreateBody,
   validateSolicitacaoCredorBody,
+  validateSolicitacaoFavorecidoCreateBody,
   validateSolicitacaoDataVencimentoBody,
   validateSolicitacaoEnviarSetorBody,
   validateSolicitacaoEnviarSetorMassaBody,

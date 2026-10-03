@@ -1,0 +1,2484 @@
+/* =====================================================================
+   DESIGN TOKENS — sistema de cores sóbrio (ver docs/DESIGN-SYSTEM.md)
+   ---------------------------------------------------------------------
+   Camada única de tokens semânticos, de identidade de módulo e de
+   status. Nenhum componente deve usar cor solta: sempre var(--...).
+   Todos os pares texto/fundo abaixo foram validados WCAG AA
+   (>= 4.5:1 texto normal, >= 3:1 ícones e texto grande) nos dois temas.
+   ===================================================================== */
+
+:root {
+  /* --- Semânticas (claro) — o significado NUNCA muda de tela para tela.
+     danger  = erro, falha, bloqueio, exclusão, vencido
+     warning = atenção, pendência, aguardando ação, prazo próximo
+     success = sucesso, aprovado, pago, concluído
+     info    = informação, ação primária neutra, em andamento
+     neutral = inativo, cancelado, arquivado */
+  --sem-danger: #b32020;
+  --sem-danger-bg: #fdeceb;
+  --sem-danger-border: #f3c9c7;
+  --sem-warning: #9a5b06;
+  --sem-warning-bg: #f7f2eb;
+  --sem-warning-border: #e6d6c1;
+  --sem-success: #116149;
+  --sem-success-bg: #ecf2f0;
+  --sem-success-border: #c4d8d2;
+  --sem-info: #22447f;
+  --sem-info-bg: #edf0f5;
+  --sem-info-border: #c8d0df;
+  --sem-neutral: #5b6472;
+  --sem-neutral-bg: #f2f3f4;
+  --sem-neutral-border: #d6d8dc;
+
+  /* --- Identidade por módulo (claro) — usada APENAS no ícone.
+     Card permanece neutro (superfície e borda padrão do sistema).
+     Famílias: operação (azuis), dinheiro (terrosos/verdes),
+     relacionamento (roxos), estrutura (ardósia). Sem tons avermelhados:
+     vermelho é exclusivo de erro. */
+  --module-painel: #2d5c8f;
+  --module-solicitacoes: #3a5f9e;
+  --module-comunicacao: #256f7a;
+  --module-biblioteca: #1d6f66;
+  --module-treinamento: #4a5da8;
+  --module-provisionamento: #37607d;
+  --module-sst: #1f5170;
+  --module-compras: #8a5a12;
+  --module-financeiro: #146152;
+  --module-custos-recebiveis: #2f6b57;
+  --module-fiscal: #3f6a5a;
+  --module-contratos: #7a5a2e;
+  --module-rhdp: #4d6b33;
+  --module-crm: #5b4a91;
+  --module-comercial: #6b4f8f;
+  --module-cadastros: #4f5a68;
+  --module-administracao: #3f4650;
+  --module-configuracoes: #59626e;
+  --module-conta: #5b6472;
+}
+
+.dark {
+  /* --- Semânticas (escuro) — derivadas dos tons claros, clareadas até
+     atingir AA sobre o PRÓPRIO FUNDO SEMÂNTICO, não sobre a superfície.
+
+     O comentário antigo dizia "sobre a superfície escura (#152136)" e
+     afirmava que os pares estavam validados. Medido em 03/09: três não
+     estavam. `danger` dava 4,42:1, `success` 4,46:1 e `info` 4,49:1 sobre
+     os respectivos `-bg` — todos abaixo dos 4,5:1 de AA, o último por
+     0,01. A conta certa é contra o fundo em que o texto de fato aparece
+     (o `-bg` da própria família), não contra a superfície da página.
+
+     Os três foram clareados um passo, com folga deliberada até 4,6:1 para
+     não voltarem a raspar o limite. Medidas em
+     `scripts/provas/contrasteDosTokens.mjs`, que roda no test:responsive
+     e reprova se qualquer par cair abaixo de 4,5:1. */
+  --sem-danger: #d47171;
+  --sem-danger-bg: #2d2133;
+  --sem-danger-border: #51212e;
+  --sem-warning: #bd945d;
+  --sem-warning-bg: #292a2f;
+  --sem-warning-border: #483724;
+  --sem-success: #669b8c;
+  --sem-success-bg: #142b39;
+  --sem-success-border: #13393d;
+  --sem-info: #7a90b5;
+  --sem-info-bg: #172641;
+  --sem-info-border: #1a2e52;
+  --sem-neutral: #949aa3;
+  --sem-neutral-bg: #202b3f;
+  --sem-neutral-border: #303a4d;
+
+  /* --- Identidade por módulo (escuro) — >= 3:1 sobre superfície escura */
+  --module-painel: #6c8db1;
+  --module-solicitacoes: #758fbb;
+  --module-comunicacao: #669aa2;
+  --module-biblioteca: #619a94;
+  --module-treinamento: #808ec2;
+  --module-provisionamento: #7390a4;
+  --module-sst: #62859b;
+  --module-compras: #ad8c59;
+  --module-financeiro: #5b9086;
+  --module-custos-recebiveis: #6f9b8c;
+  --module-fiscal: #79978c;
+  --module-contratos: #a28c6d;
+  --module-rhdp: #829770;
+  --module-crm: #8c80b2;
+  --module-comercial: #9784b1;
+  --module-cadastros: #848c95;
+  --module-administracao: #797e85;
+  --module-configuracoes: #8b919a;
+  --module-conta: #8c939c;
+}
+
+/* =====================================================================
+   ETIQUETA DE STATUS (pílula suave) — formato único em todas as listas.
+   Fundo suave da família + texto na cor semântica escura + ícone.
+   Nunca cor sólida em etiqueta de lista.
+   ===================================================================== */
+.fx-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sem-neutral-border);
+  background: var(--sem-neutral-bg);
+  color: var(--sem-neutral);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  line-height: 1.5;
+  max-width: 100%;
+  /*
+    A ETIQUETA QUEBRA EM LINHAS — ela não pode CORTAR (06/09).
+
+    Aqui havia `white-space: nowrap` com `overflow: clip`, e a justificativa
+    escrita era que o recorte "acontece dentro da pílula (e o `title` da
+    célula, posto pelo T6, carrega o texto inteiro)". As duas metades dessa
+    justificativa caíram:
+
+    1. O RECORTE NÃO DÁ SINAL. A pílula tem borda arredondada e fecha
+       normalmente no ponto do corte — não há reticência, não há borda
+       cortada, não há nada. Em `pedidos-compra` TODO pedido lia "Fechado
+       com" (o status é "Fechado com o fornecedor") e em
+       `solicitacao-compra-detalhe`, a 390, o cartão STATUS lia "LIBERADO
+       PARA C". O texto parece completo e não é: mente sem avisar, que é
+       pior que ilegível.
+
+    2. O `title` NÃO EXISTE NO TOQUE. É a mesma lição que o
+       `.app-bloco-lead` já registrou nesta leva ("no toque não há hover, e
+       `title` não abre: a metade que tornava a reticência honesta some").
+       A resposta lá foi QUEBRAR EM LINHAS; é a mesma resposta aqui, e por
+       isso não é um quarto jeito de resolver — é o jeito que a folha já
+       escolheu.
+
+    O QUE A MEDIÇÃO MOSTROU (06/09, `provaEtiquetaCabe.mjs`): o corpo de
+    status do sistema tem 95 rótulos; a coluna de 132px comportava a MEDIANA
+    deles. Metade do vocabulário era cortada em silêncio, e não só o de
+    compras. Nenhuma largura fixa resolve — o rótulo mais largo do sistema
+    ("AGUARDANDO CONFIRMACAO BAIXA") pede 264px, e o administrador pode
+    cadastrar um nome maior ainda em Configurações. Então a largura da
+    coluna cobre o vocabulário que o sistema INSTALA (ver `TIPOS_COLUNA` na
+    `TabelaPadrao`) e a quebra cobre o resto, sem teto.
+
+    `overflow-wrap: break-word` para o rótulo que é um token só (código de
+    status sem espaço): quebrado em duas linhas ele continua inteiro na
+    tela; cortado, não.
+
+    `overflow: clip` fica de guarda — R18, não criar scrollport à toa.
+  */
+  white-space: normal;
+  overflow-wrap: break-word;
+  overflow: clip;
+}
+
+.fx-badge > svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.fx-badge--danger {
+  background: var(--sem-danger-bg);
+  border-color: var(--sem-danger-border);
+  color: var(--sem-danger);
+}
+
+.fx-badge--warning {
+  background: var(--sem-warning-bg);
+  border-color: var(--sem-warning-border);
+  color: var(--sem-warning);
+}
+
+.fx-badge--success {
+  background: var(--sem-success-bg);
+  border-color: var(--sem-success-border);
+  color: var(--sem-success);
+}
+
+.fx-badge--info {
+  background: var(--sem-info-bg);
+  border-color: var(--sem-info-border);
+  color: var(--sem-info);
+}
+
+.fx-badge--neutral {
+  background: var(--sem-neutral-bg);
+  border-color: var(--sem-neutral-border);
+  color: var(--sem-neutral);
+}
+
+/* =====================================================================
+   HUBS DE NAVEGAÇÃO (nível 1 e nível 2)
+   ===================================================================== */
+/* HUB PRINCIPAL E HUB DE MÓDULO MIGRARAM PARA `Pagina`/`PageHeader` (05/09,
+   mesmo commit para as duas telas). O ritmo vertical, o respiro do topo e a
+   faixa fixa passaram a vir dos componentes padrão; da tela sobra só a
+   LARGURA ÚTIL — os mesmos 1520px que a `.hub-page` já usava como div
+   própria, para os cards de módulo/subitem não perderem a quarta coluna
+   nos monitores largos.
+   Especificidade dupla de propósito: `responsive-system.css` carrega
+   DEPOIS e tem um `.layout-main :where(…, .page, …) { max-width: 100% }`
+   que empataria com um seletor de uma classe só e venceria por ordem. */
+.app-pagina.hub-home-page,
+.app-pagina.hub-page {
+  max-width: 1520px;
+  margin-inline: auto;
+}
+
+/* Blocos personalizáveis da Home (mesmo motor do detalhe). A superfície,
+   o padding e o vão entre eles vêm do `BlocoConteudo`/`Pagina` desde a
+   migração de 05/09 — as margens que cada bloco carregava saíram com
+   elas, senão somariam ao vão do componente. */
+.hub-bloco {
+  min-width: 0;
+}
+
+/* O que MORREU aqui em 05/09, e por quê: `.hub-personalizar-toolbar`,
+   `.hub-adicionar-pop` e `.hub-adicionar-grupo*` desenhavam a barra de
+   personalização e o catálogo "Adicionar bloco" da Home. Esse desenho não é
+   mais da tela — é do `components/padrao/BlocosPersonalizaveis.jsx`, com o
+   prefixo neutro `app-blocos-*` (em index.css), o mesmo que o detalhe da
+   solicitação usa. Regra morta que fica vira armadilha: parece que a Home
+   tem estilo próprio de personalização, e ela não tem mais. */
+
+/* Largura "Normal" = meia largura em telas largas; abaixo disso a
+   coluna única volta (largura não se aplica no mobile). */
+.hub-blocos-colunas {
+  display: grid;
+  grid-template-columns: 1fr;
+  /* O MESMO vão do `Pagina` entre blocos (--esp-4): antes o espaçamento
+     vertical vinha da margem que cada seção da Home carregava, e essas
+     margens saíram junto com as cascas. Linha zerada aqui = blocos
+     colados. */
+  gap: var(--esp-4);
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .hub-blocos-colunas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/*
+  CARTÃO DENTRO DE BLOCO RECUA UM TOM (05/09).
+
+  Com a Home dentro de `BlocoConteudo`, os cards que antes flutuavam
+  sobre o canvas acinzentado passaram a ficar em cima do branco do bloco
+  — branco sobre branco, distinguidos só pela borda. O sistema já resolve
+  isso no ladrilho padrão (`.app-stat` usa `--ui-surface-2`), e é esse
+  tratamento que se aplica aqui.
+
+  O hub de MÓDULO (nível 2) migrou depois (mesmo dia) e caiu na mesma
+  regra: a grade de subitens também mora dentro de um `BlocoConteudo`
+  agora, então `.hub-card` recua junto — não existe mais "fora de bloco"
+  nos dois níveis de hub. O card tracejado "Adicionar" (só da Home) fica
+  de fora porque o fundo dele é a ausência de fundo.
+*/
+.app-bloco .hub-card,
+.app-bloco .hub-pendencia-cartao,
+.app-bloco .hub-resolver-item,
+.app-bloco .hub-obras-resumo-item,
+.app-bloco .hub-atalho-card:not(.hub-atalho-card--adicionar) {
+  background: var(--ui-surface-2);
+}
+
+.hub-subtitle {
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+  margin: 4px 0 0;
+}
+
+.hub-grid {
+  /* zeragem da lista: veio do `style` inline da Home, que o validador
+     estático reprova (R10 — medida, mesmo 0, não se escreve na tela). */
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* NO MÁXIMO 4 colunas em telas grandes; 3, 2 e 1 conforme estreita.
+     Vale igual no modo normal e no de personalização — ocultar um card
+     reorganiza os demais mantendo as 4 colunas. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 1279px) {
+  .hub-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1023px) {
+  .hub-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .hub-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card NEUTRO: mesma superfície do sistema, borda padrão.
+   A cor de identidade aparece apenas no ícone. */
+.hub-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  min-height: 76px; /* alvo de toque confortável (>= 44px com folga) */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  text-align: left;
+  text-decoration: none;
+  color: var(--card-text);
+  box-shadow: var(--ui-shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
+}
+
+.hub-card:hover {
+  border-color: var(--ui-border-strong);
+  box-shadow: var(--ui-shadow-md);
+  transform: translateY(-1px);
+}
+
+.hub-card:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+.hub-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background: var(--ui-surface-soft);
+  color: var(--hub-accent, var(--sem-neutral));
+}
+
+.hub-card-icon > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.hub-card-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.hub-card-label {
+  display: block;
+  font-size: var(--fonte-corpo);
+  font-weight: 650;
+  color: var(--card-text);
+  margin: 2px 0 3px;
+}
+
+.hub-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fonte-detalhe);
+  line-height: 1.4;
+  color: var(--card-muted);
+}
+
+/* Contador discreto de pendências no card (neutro ou atenção,
+   nunca a cor de identidade do módulo). */
+.hub-card-count {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  background: var(--sem-warning-bg);
+  border: 1px solid var(--sem-warning-border);
+  color: var(--sem-warning);
+}
+
+.hub-card-count--neutral {
+  background: var(--sem-neutral-bg);
+  border-color: var(--sem-neutral-border);
+  color: var(--sem-neutral);
+}
+
+/* --- Faixa "Suas pendências" ------------------------------------- */
+/*
+  SEM CASCA PRÓPRIA (05/09) — vale para as cinco seções da Home
+  (`.hub-pendencias`, `.hub-atalhos`, `.hub-resolver`, `.hub-obras-resumo`
+  e `.hub-extra`).
+
+  Cada uma desenhava à mão o cartão branco sobre o canvas: fundo, borda,
+  raio e sombra iguais aos do sistema, com nome próprio. Era exatamente
+  por isso que a B1 reprovava a tela inicial dizendo "nenhum bloco na
+  tela" — ela procura a SUPERFÍCIE PADRÃO (`.app-bloco`) e aqui havia
+  cinco cópias dela com outro nome.
+
+  Agora cada bloco da Home é um `BlocoConteudo`, e estas seções são só o
+  conteúdo dentro dele — cartão dentro de cartão seria a dobra que a
+  migração veio desfazer.
+*/
+
+/* Título de bloco da Home: o mesmo degrau do `.app-bloco-titulo` do
+   sistema (18px, `--fonte-bloco`), porque agora ele É o título de um
+   bloco. Era 13px em caixa alta — uma "sobrancelha" que ficava abaixo do
+   piso da escala e quebrava a hierarquia página 22 > bloco 18 > corpo 14
+   (R10) justamente na primeira tela do sistema. */
+.hub-pendencias-title {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  margin: 0 0 var(--esp-3);
+  font-size: var(--fonte-bloco);
+  line-height: var(--lh-titulo);
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.hub-pendencias-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hub-pendencia-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--sem-warning-border);
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  text-decoration: none;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.hub-pendencia-item:hover {
+  filter: brightness(0.97);
+  transform: translateY(-1px);
+}
+
+.hub-pendencia-item:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+.hub-pendencia-item--danger {
+  border-color: var(--sem-danger-border);
+  background: var(--sem-danger-bg);
+  color: var(--sem-danger);
+}
+
+.hub-pendencia-item > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.hub-pendencia-count {
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* =====================================================================
+   TOPBAR: breadcrumb + Início + busca global
+   ===================================================================== */
+.fx-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px clamp(14px, 3vw, 28px);
+  padding-top: calc(10px + var(--safe-area-top));
+  background: var(--ui-surface);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+/*
+  A NAVEGAÇÃO DECLARA A LARGURA DE QUE PRECISA — base 52rem, não zero.
+  ---------------------------------------------------------------------
+  O DEFEITO QUE ISTO FECHA (medido em 06/09, `provaBarraDoTopo.mjs`): a
+  390px os botões redondos da barra se atravessavam — a casinha sobre a
+  lua, a lupa sobre o suporte, a estrela sobre o balão, o sino sobre a
+  casinha e sobre o "»" — e a trilha sumia inteira (0px de largura útil).
+
+  A CAUSA, e ela é uma linha de CSS: `flex: 1` é `flex: 1 1 0%`, base
+  ZERO. Com `min-width: 0` por cima, o tamanho hipotético desta caixa
+  para efeito de QUEBRA DE LINHA também é zero — então a barra nunca
+  quebrava por causa da navegação. A bandeja cabia sozinha, a barra
+  ficava numa linha só, e a navegação recebia apenas a sobra (67px
+  medidos a 390 nas rotas de Compras) enquanto os filhos dela — marca,
+  Início, Buscar, estrela, casinha, "»" — somam ~250px e NÃO encolhem.
+  O excedente não empurra nada: ele transborda e é PINTADO POR CIMA da
+  bandeja, que começa logo ali. Daí "os botões se atravessam".
+
+  E foi por isso que o defeito parecia ser "das telas de Compras": não
+  é. A barra é UMA SÓ (`.fx-topbar`, no `Layout.jsx`). O que muda é a
+  LARGURA DA BANDEJA — `compras-responsive.css` encolhe `.theme-toggle`
+  para 2,35rem dentro do escopo do módulo, a bandeja cai de 340px para
+  264px e passa a caber na mesma linha. Nas outras rotas ela não cabe,
+  quebra para a segunda linha e a colisão não acontece — mas ali a
+  estrela, a casinha e o "»" saíam PELA DIREITA da janela (medidos em
+  x 366..470 numa janela de 390) e o `overflow-x: clip` do shell os
+  comia. Mesmo defeito, dois sintomas.
+
+  A CORREÇÃO É A BASE: uma base DECLARADA no lugar de `flex: 1`, que é
+  `flex: 1 1 0%`. É a base que entra na decisão de quebra — então,
+  quando a navegação não cabe ao lado da bandeja, quem quebra é a
+  BANDEJA. É o que esta barra já sabia fazer (`flex-wrap: wrap`, logo
+  acima) e o que ela já fazia em 165 das 193 telas, por acidente da
+  largura da bandeja delas. Agora faz sempre, por declaração.
+
+  `min-width: 0` FICA. Ele não é o defeito: depois da quebra a navegação
+  tem a fileira inteira, e aí encolher a trilha (a única caixa da barra
+  que encolhe, e que tem rolagem própria) é o comportamento certo.
+
+  E A BASE É 52rem, NÃO `auto`. Com `auto` a base é o conteúdo INTEIRO,
+  trilha completa incluída, e aí a barra quebra cedo demais: a 1366px
+  (o notebook) as 16 telas medidas passavam de uma fileira para duas,
+  quando bastava a trilha andar ~77px e usar a rolagem que ela já tem.
+
+  832px é o degrau MEDIDO, não escolhido: a 1366px a barra tem 1267px
+  úteis e a bandeja ocupa 408px, então a navegação cabe ao lado dela até
+  849px. 832 passa com 17px de folga; 864 e 880 não passavam, e a barra
+  do notebook virava duas fileiras nas 16 telas medidas. Acima (1440,
+  1920) nada muda; abaixo (1280, 1024, 768, 390) a bandeja quebra, que é
+  o que tem de acontecer.
+
+  O número vem com uma garantia junto, e é ela que o torna seguro: o
+  conteúdo INCOMPRESSÍVEL da navegação (marca 141 + divisor 9 + Início
+  86 + Buscar 159 + os três botões de tela 105, mais os vãos) soma
+  ~642px. Como a barra só fica numa fileira quando a navegação recebe
+  pelo menos a base, nessa situação ela nunca recebe menos de 832px —
+  190px de folga sobre o que não encolhe, e é essa folga que vira
+  trilha. Quem absorve a diferença é a trilha, que tem rolagem própria;
+  quando nem isso basta, a bandeja quebra.
+
+  NÃO use `min-width: min-content` aqui — foi a primeira tentativa e ela
+  mede errado: o `min-content` da navegação inclui o da TRILHA, que é a
+  soma dos degraus dela (~306px, cada um `white-space: nowrap`), e o
+  `min-width: 0` da trilha não abaixa isso (mínimo é piso, não teto).
+  Medido a 390px: a navegação ficava com 559px de largura numa barra de
+  341px e os três botões de tela saíam pela direita da janela.
+*/
+.fx-topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 52rem;
+  min-width: 0;
+}
+
+.fx-home-btn,
+.fx-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--btn-outline-border);
+  background: var(--btn-outline-bg);
+  color: var(--btn-outline-text);
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.fx-home-btn:hover,
+.fx-search-btn:hover {
+  background: var(--btn-outline-hover);
+}
+
+.fx-home-btn:focus-visible,
+.fx-search-btn:focus-visible,
+.fx-breadcrumb a:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+.fx-search-kbd {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-surface-soft);
+  color: var(--app-muted-color);
+}
+
+/*
+  A TRILHA TEM PISO TAMBÉM. Ela é a única caixa da barra que pode
+  encolher (as outras são botões que não encolhem), então TODA a
+  diferença cai nela — e a 1024px ela chegava a 10px de largura, que é
+  o mesmo que sumir. O piso a impede de desaparecer e, por tabela,
+  obriga a barra a quebrar mais cedo, que é o comportamento certo: uma
+  segunda fileira lê-se; uma trilha de 10px não.
+
+  SEM PISO EM PIXEL, e isso foi medido antes de ser escrito. Um piso
+  (`min-width: 120px`) parecia proteger a trilha, mas ele briga com a
+  quebra: em telas de trilha curta (a Home, com só "Início") ele reserva
+  espaço que o conteúdo não usa e empurra o botão "»" para fora da
+  janela — medido a 1024px, "Mais 3 atalhos" sobrando 0×32 de 32×32.
+  Com a base `auto` da navegação a trilha já está protegida por
+  construção: a barra quebra ANTES de espremê-la, e depois da quebra ela
+  fica com o que sobra da fileira (87px a 390px, 182px a 768px).
+
+  ATUALIZADO EM 07/09 — a última frase deste bloco dizia "sempre com
+  rolagem própria para o resto do caminho", e essa rolagem era o defeito:
+  ver a nota da própria `.fx-breadcrumb`, logo abaixo. Abaixo de 1024px a
+  trilha não mora mais nesta sobra; ela tem fileira própria.
+*/
+/*
+  A TRILHA QUEBRA EM LINHAS — ela NÃO esconde caminho atrás de rolagem
+  (07/09).
+  ---------------------------------------------------------------------
+  O QUE ESTAVA AQUI: `overflow-x: auto` com `scrollbar-width: none`, numa
+  caixa que fica com a SOBRA da fileira. O caminho era cortado no meio da
+  palavra, sem reticências, sem barra de rolagem, sem tooltip — sem pista
+  nenhuma de que havia cortado. Medido nas 174 telas do manifesto que têm
+  rota fixa, com o `Layout` real e o CSS real:
+
+    @390   167 telas com degrau cortado — 161 delas com um degrau
+           INTEIRAMENTE invisível (0px de 56 a 213px). A caixa tem 79px.
+    @768   166 cortadas, 132 com degrau invisível. A caixa tem 140px.
+    @1366   87 cortadas, nenhuma invisível. A caixa tem ~294px.
+    @1920    0 — lá a trilha cabe.
+
+  É o "Início > Cadastros >" com separador solto que o revisor separado
+  fotografou em `obras` e `usuarios`: o terceiro degrau existe, ocupa
+  76px, e ZERO deles estão na tela. Não são três comportamentos; é um só,
+  e onde ele corta depende só do comprimento dos rótulos.
+
+  E A ROLAGEM NÃO ERA SAÍDA, em nenhuma das duas pontas: no ponteiro não
+  há rolagem horizontal (roda de mouse não rola em X, e a barra estava
+  escondida por `scrollbar-width: none`); no toque o arrasto existe, mas
+  sem pista nenhuma de que há mais caminho — foi exatamente por isso que a
+  faixa de visões perdeu a tira horizontal dela (`lista-avancada.css`,
+  06/09). E, ao contrário do apoio de bloco, a trilha nem `title` tinha.
+
+  A SOLUÇÃO É A QUE O SISTEMA JÁ USOU DUAS VEZES nesta leva, com a mesma
+  conta paga pela decisão do cliente de 02/09 ("mais rolagem é aceitável,
+  apertar os olhos não"):
+    - `.app-bloco-lead` — quebra em linhas no celular em vez de truncar;
+    - `.la-visoes` — quebra em linhas no celular em vez de rolar.
+  Aqui é a mesma. E ela é conservadora por construção: `flex-wrap` só age
+  quando não cabe — a 1920px nenhuma das 174 telas muda de altura.
+*/
+.fx-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+}
+
+/*
+  DE ONDE VEM A LARGURA PARA QUEBRAR — e por que a trilha nasce em DOIS
+  lugares no `Layout.jsx`.
+
+  Quebrar em linhas só resolve se a linha couber o degrau mais largo do
+  sistema — 265px, "Visibilidade de Dashboards e Tabelas". Dentro da
+  navegação a trilha fica com a sobra: 79px a 390, 140px a 768. Ali a
+  quebra não esconde mais nada, mas pinta os degraus POR CIMA da estrela e
+  do "»" — medido, e a `provaBarraDoTopo` reprova (par sobreposto em
+  `/solicitacoes` a 390).
+
+  Então abaixo de 1024px a trilha usa a FILEIRA INTEIRA da barra — 341px a
+  390 e 695px a 768, medidos. 1024 não é número novo: é a fronteira em que
+  o shell já troca de forma (`responsive-system.css` — abaixo dela o menu
+  vira gaveta). De 1024 para cima a trilha volta para dentro da navegação,
+  onde a caixa nunca desce de 294px (varrido de 1024 a 1920 de 40 em 40px;
+  o piso cai a 1366, quando a barra volta a caber em uma fileira só) e a
+  quebra por dentro basta.
+
+  O QUE FOI DESCARTADO, por medição e não por gosto:
+    - `flex-wrap: wrap` na `.fx-topbar-nav`. Resolve, e APAGA A MORDIDA da
+      `provaBarraDoTopo`: com a navegação quebrando por dentro, a folha de
+      antes de 06/09 (`flex: 1 1 0%`) deixa de sobrepor botão nenhum e a
+      prova para de reprovar em 3 das 4 larguras em que o defeito foi
+      medido. Ainda por cima custa uma fileira a mais — barra de 213 a
+      250px a 390, contra 162 a 202px por aqui —, porque a área de atalhos
+      é empurrada para baixo da trilha.
+    - `order` para trazer os atalhos de volta para a primeira fileira.
+      Economiza 44px e inverte a ordem de foco em relação à ordem visual.
+      Não se paga acessibilidade com altura de barra.
+*/
+@media (max-width: 1023px) {
+  .fx-breadcrumb.fx-breadcrumb--dentro { display: none; }
+}
+
+@media (min-width: 1024px) {
+  .fx-breadcrumb.fx-breadcrumb--fileira { display: none; }
+}
+
+/* Base 100% para abrir fileira nova dentro da barra, que já sabe quebrar
+   (`.fx-topbar`, `flex-wrap: wrap`). */
+.fx-breadcrumb--fileira {
+  flex: 1 1 100%;
+}
+
+/*
+  O DEGRAU QUEBRA SOZINHO QUANDO NEM ELE CABE — e isto é o que torna a
+  regra acima verdadeira POR CONSTRUÇÃO, e não por coincidência de 29px.
+
+  A quebra em linhas só resolve enquanto a linha couber o degrau mais
+  largo. Hoje o mais largo tem 265px ("Visibilidade de Dashboards e
+  Tabelas") e o piso da caixa de 1024 para cima é 294px — 29px de folga,
+  que um rótulo novo come sem avisar. Com `white-space: normal`, um degrau
+  que sozinho não cabe na linha quebra o PRÓPRIO texto em vez de vazar por
+  cima do vizinho.
+
+  E ele só age nesse caso: com `flex-wrap: wrap`, a quebra de linha é
+  decidida pelo tamanho MÁXIMO de cada degrau, então um degrau que caberia
+  numa linha vai para a linha seguinte inteiro. Encolher só acontece quando
+  o degrau, sozinho, é maior que a linha — que é exatamente a hora em que
+  se quer que ele quebre. Medido: nenhuma das 174 telas muda de altura por
+  causa desta declaração.
+*/
+.fx-breadcrumb a {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 8px;
+  min-height: 36px;
+  border-radius: 8px;
+  color: var(--app-muted-color);
+  text-decoration: none;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.fx-breadcrumb a:hover {
+  background: var(--ui-surface-soft);
+  color: var(--app-body-color);
+}
+
+.fx-breadcrumb-current {
+  padding: 6px 8px;
+  font-weight: 700;
+  color: var(--app-heading-color);
+  /* Mesma razão do degrau clicável, logo acima. */
+  white-space: normal;
+}
+
+.fx-breadcrumb-sep {
+  color: var(--app-subtle-color);
+  flex-shrink: 0;
+}
+
+.fx-topbar-tray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  /* A bandeja também quebra por dentro: seis botões a 50px não cabem em
+     uma fileira de 341px, e sem isto o último saía pela direita. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* =====================================================================
+   ABAS INTERNAS: contexto de trabalho persistente na sessão
+   ===================================================================== */
+.fx-workspace-tabs {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0 calc(clamp(14px, 3vw, 28px) * -1) -10px;
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface-soft);
+}
+
+.fx-workspace-tabs-scroll {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border-strong) transparent;
+}
+
+.fx-workspace-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 1 220px;
+  min-width: 140px;
+  max-width: 260px;
+  min-height: 40px;
+  padding: 7px 10px 7px 16px;
+  border: 0;
+  border-right: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--app-muted-color);
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.fx-workspace-tab::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: transparent;
+}
+
+.fx-workspace-tab:hover {
+  background: var(--ui-surface);
+  color: var(--app-body-color);
+}
+
+.fx-workspace-tab.is-active {
+  background: var(--ui-surface);
+  color: var(--app-heading-color);
+  font-weight: 700;
+}
+
+.fx-workspace-tab.is-active::after {
+  background: var(--c-primary);
+}
+
+.fx-workspace-tab:focus-visible,
+.fx-workspace-tab-new:focus-visible {
+  z-index: var(--z-conteudo);
+  outline: 2px solid var(--c-primary);
+  outline-offset: -3px;
+}
+
+.fx-workspace-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fx-workspace-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: var(--app-subtle-color);
+}
+
+.fx-workspace-tab-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fx-workspace-tab:hover .fx-workspace-tab-close,
+.fx-workspace-tab.is-active .fx-workspace-tab-close {
+  color: var(--app-muted-color);
+}
+
+.fx-workspace-tab-close:hover {
+  background: var(--ui-surface-soft);
+  color: var(--app-heading-color);
+}
+
+.fx-workspace-tab-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 40px;
+  border: 0;
+  border-right: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: var(--ui-surface);
+  color: var(--app-muted-color);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.fx-workspace-tab-new:hover:not(:disabled) {
+  background: var(--btn-outline-hover);
+  color: var(--c-primary);
+}
+
+.fx-workspace-tab-new:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.fx-workspace-tab-new svg {
+  width: 19px;
+  height: 19px;
+}
+
+@media (max-width: 640px) {
+  .fx-workspace-tab {
+    flex-basis: 180px;
+    min-width: 128px;
+    max-width: 190px;
+    padding-left: 12px;
+  }
+}
+
+@media (pointer: coarse) {
+  .fx-workspace-tab,
+  .fx-workspace-tab-new {
+    min-height: 44px;
+  }
+}
+
+
+/* =====================================================================
+   BUSCA GLOBAL (Ctrl+K)
+   ===================================================================== */
+.fx-cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: var(--modal-overlay);
+}
+
+.fx-cmdk {
+  width: 100%;
+  max-width: 560px;
+  background: var(--modal-bg);
+  border: 1px solid var(--modal-border);
+  border-radius: 14px;
+  box-shadow: var(--modal-shadow);
+  overflow: clip;
+}
+
+.fx-cmdk-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--app-muted-color);
+}
+
+.fx-cmdk-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--fonte-corpo);
+  color: var(--app-body-color);
+}
+
+.fx-cmdk-mode {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-primary) 10%, var(--ui-surface));
+  color: var(--c-primary);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.fx-cmdk-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+
+.fx-cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  min-height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--app-body-color);
+  font-size: var(--fonte-corpo);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fx-cmdk-item[aria-selected='true'],
+.fx-cmdk-item:hover {
+  background: var(--ui-surface-soft);
+}
+
+.fx-cmdk-item > svg,
+.fx-cmdk-item .fx-cmdk-item-main > svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: var(--fx-cmdk-accent, var(--sem-neutral));
+}
+
+.fx-cmdk-item-module {
+  margin-left: auto;
+  font-size: var(--fonte-detalhe);
+  color: var(--app-muted-color);
+  white-space: nowrap;
+}
+
+.fx-cmdk-empty {
+  padding: 22px 16px;
+  text-align: center;
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+}
+
+.fx-cmdk-hint {
+  display: flex;
+  gap: 14px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--ui-border);
+  font-size: var(--fonte-detalhe);
+  color: var(--app-subtle-color);
+}
+
+/* =====================================================================
+   PENDÊNCIAS COMO CARTÕES (Home) — número em destaque + tarja lateral
+   ===================================================================== */
+.hub-pendencias-list--cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.hub-pendencia-cartao {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 68px;
+  padding: 10px 14px 10px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  text-decoration: none;
+  overflow: clip;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+/* Tarja de urgência lateral: âmbar por padrão, vermelha no danger. */
+.hub-pendencia-cartao::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--sem-warning);
+}
+
+.hub-pendencia-cartao--danger::before {
+  background: var(--sem-danger);
+}
+
+.hub-pendencia-cartao:hover {
+  filter: brightness(0.98);
+  transform: translateY(-1px);
+}
+
+.hub-pendencia-cartao:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+/*
+  R30 / DECISAO 1 DO CLIENTE (05/09) — O QUINTO DEGRAU, E POR QUE ELE EXISTE.
+
+  Este numero tinha 24px; `.hub-gasto-valor` tinha 20px; `.dash-kpi-value`,
+  `.dashboard-metric-value` e `.rh-pessoal-alerta-numero` andavam entre 20,8px
+  e 32px, cada um com o seu. Cinco numeros grandes, cinco tamanhos, nenhum
+  degrau — e a saida obvia (achatar todos para o 22 do titulo de tela) foi
+  RECUSADA pelo cliente: o painel perderia o unico elemento que ele existe
+  para mostrar, e o 22 deixaria de significar "titulo desta tela".
+
+  A saida foi criar o degrau que faltava: D5 = 30px, para o numero grande de
+  painel, e so para ele. CONTE O DEGRAU, NAO O VALOR — os cinco no D5 sao UM
+  degrau, nao cinco tamanhos, e a Home pode encher a tela de numeros de 30px
+  sem violar nada.
+*/
+.hub-pendencia-cartao-numero {
+  font-size: var(--fonte-destaque);
+  line-height: var(--lh-destaque);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--sem-warning);
+}
+
+.hub-pendencia-cartao--danger .hub-pendencia-cartao-numero {
+  color: var(--sem-danger);
+}
+
+.hub-pendencia-cartao-rotulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  color: var(--app-muted-color);
+}
+
+.hub-pendencia-cartao-rotulo > svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.hub-pendencia-cartao-criterio {
+  margin-left: 20px;
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  color: var(--app-muted-color);
+}
+
+.hub-card-count--danger {
+  background: var(--sem-danger-bg);
+  border-color: var(--sem-danger-border);
+  color: var(--sem-danger);
+}
+
+.hub-subtitle--papel {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* =====================================================================
+   ATALHOS — barra do topo (estrela, fileira de ícones, painel »)
+   ===================================================================== */
+/*
+  A ÁREA DE ATALHOS RESERVA O QUE É FIXO. Era `flex: 1` (base ZERO) com
+  `min-width: 0`: os três botões de tela (estrela, casinha, "»") não
+  encolhem, então com a área espremida a zero eles simplesmente saíam
+  para fora dela — por cima da bandeja numa linha só, ou para fora da
+  janela quando a bandeja quebrava.
+
+  `flex: 1 0 auto` diz as duas coisas de uma vez: a base é o conteúdo
+  FIXO (a fileira tem base zero e não entra nela), e a área não encolhe
+  abaixo disso. Continua crescendo com a sobra — é dessa sobra que a
+  fileira de ícones tira quantos cabem.
+*/
+.fx-atalhos-area {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 0 auto;
+  min-width: 0;
+  overflow: visible;
+}
+
+.fx-fixar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--app-muted-color);
+  cursor: pointer;
+}
+
+.fx-fixar-btn:hover {
+  background: var(--ui-surface-soft);
+}
+
+.fx-fixar-btn--ativo {
+  color: var(--sem-warning);
+}
+
+/* Botão "minha tela inicial" — mora ao lado da estrela mas não compete
+   com ela: contorno mais apagado quando inativo e, quando ativo, casa
+   preenchida na cor primária (a estrela ativa é âmbar). */
+.fx-inicial-btn {
+  opacity: 0.72;
+}
+
+.fx-inicial-btn:hover,
+.fx-inicial-btn--ativo {
+  opacity: 1;
+}
+
+.fx-inicial-btn--ativo {
+  color: var(--c-primary);
+}
+
+.fx-inicial-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fx-atalhos-divisor {
+  width: 1px;
+  height: 22px;
+  flex-shrink: 0;
+  background: var(--ui-border);
+  margin: 0 4px;
+}
+
+/*
+  A FILEIRA É O ITEM FLEXÍVEL DA ÁREA — base zero, e é a largura dela
+  que o `AtalhosTopbar` mede para saber quantos ícones cabem. Base zero
+  também é o que mantém a conta sem laço: o tamanho da área não depende
+  de quantos ícones a fileira mostra.
+*/
+.fx-atalhos-fileira {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: clip;
+}
+
+.fx-atalho-icone {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: var(--atalho-cor);
+  text-decoration: none;
+}
+
+.fx-atalho-icone:hover {
+  background: var(--ui-surface-soft);
+}
+
+.fx-atalho-icone > svg {
+  width: 18px;
+  height: 18px;
+}
+
+.fx-atalho-cadeado {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 10px;
+  height: 10px;
+  color: var(--app-muted-color);
+}
+
+.fx-atalhos-mais-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.fx-atalhos-mais {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* R2 (REGRAS-LAYOUT): alvo mínimo de 32px. */
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--ui-border);
+  border-radius: 9px;
+  background: var(--ui-surface);
+  color: var(--app-muted-color);
+  cursor: pointer;
+}
+
+.fx-atalhos-mais:hover {
+  background: var(--ui-surface-soft);
+}
+
+.fx-atalhos-painel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-dropdown);
+  min-width: 240px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow-md, 0 8px 24px rgba(15, 23, 42, 0.12));
+}
+
+.fx-atalhos-painel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fx-atalhos-painel-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  color: var(--app-text-color, var(--c-text));
+  text-decoration: none;
+}
+
+.fx-atalhos-painel-item:hover {
+  background: var(--ui-surface-soft);
+}
+
+.fx-atalhos-painel-item > svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: var(--atalho-cor);
+}
+
+.fx-atalho-cadeado-lista {
+  margin-left: auto;
+  width: 13px;
+  height: 13px;
+  color: var(--app-muted-color);
+}
+
+.fx-atalhos-painel-gerenciar {
+  display: block;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--ui-border);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  color: var(--c-primary);
+  text-decoration: none;
+}
+
+@media (max-width: 767px) {
+  .fx-atalhos-fileira,
+  .fx-atalhos-divisor {
+    display: none;
+  }
+}
+
+/* =====================================================================
+   ATALHOS — seção "Seus atalhos" da Home
+   (superfície: o `BlocoConteudo` que a envolve — ver .hub-pendencias)
+   ===================================================================== */
+
+.hub-atalhos-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* M1/R2 — é botão, e botão tem alvo mínimo de clique. O desenho continua
+   sendo o de um link (sem borda, sem fundo); o que cresce é a ÁREA.
+   Mesmo arranjo do `.app-campos-toggle` do sistema. */
+.hub-atalhos-vertodos {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--alvo-clique);
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  color: var(--c-primary);
+  cursor: pointer;
+}
+
+.hub-atalhos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Card de atalho: menor que o card de módulo; identidade só no ícone. */
+.hub-atalho-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--card-border);
+  border-radius: 11px;
+  background: var(--ui-surface);
+  min-height: 52px;
+}
+
+.hub-atalho-card[draggable='true'] {
+  cursor: grab;
+}
+
+.hub-atalho-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  /* O rótulo para antes do alvo do "×"/cadeado (acima), que agora ocupa
+     `--alvo-clique` a partir de `--esp-1` da borda. */
+  padding: 8px calc(var(--alvo-clique) + var(--esp-2)) 8px 10px;
+  text-decoration: none;
+  color: var(--app-text-color, var(--c-text));
+}
+
+.hub-atalho-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--atalho-cor) 12%, transparent);
+  color: var(--atalho-cor);
+}
+
+.hub-atalho-icone > svg {
+  width: 17px;
+  height: 17px;
+}
+
+.hub-atalho-rotulo {
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/*
+  M1 (05/09) — o "×" do atalho media 20×20px: quatro alvos abaixo do
+  mínimo na PRIMEIRA tela do sistema, e o dedo no celular tinha 20px para
+  acertar entre o card inteiro (que navega) e o botão (que remove).
+
+  O que cresce é a ÁREA, não o desenho: a caixa passa a ser
+  `--alvo-clique` (32px no mouse, 44px no toque, sozinha, pelo token) e o
+  ícone continua com 13px. É o mesmo arranjo dos botões só-ícone do
+  sistema (`.alert-close`, `.app-tabela-expandir`, `.app-mais-menu`):
+  fundo transparente, realce só no hover.
+*/
+.hub-atalho-remover,
+.hub-atalho-cadeado {
+  position: absolute;
+  top: var(--esp-1);
+  right: var(--esp-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--alvo-clique);
+  height: var(--alvo-clique);
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-muted-color);
+  cursor: pointer;
+}
+
+.hub-atalho-cadeado {
+  cursor: default;
+}
+
+.hub-atalho-remover:hover {
+  background: var(--sem-danger-bg);
+  color: var(--sem-danger);
+}
+
+.hub-atalho-remover > svg,
+.hub-atalho-cadeado > svg {
+  width: 13px;
+  height: 13px;
+}
+
+.hub-atalho-card--adicionar {
+  border-style: dashed;
+  background: transparent;
+}
+
+.hub-atalho-adicionar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 50px;
+  border: none;
+  background: none;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  color: var(--app-muted-color);
+  cursor: pointer;
+}
+
+.hub-atalho-adicionar > svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Modal "Adicionar atalho" */
+.hub-atalhos-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.hub-atalhos-modal {
+  width: min(560px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 14px;
+  box-shadow: var(--ui-shadow-md, 0 16px 40px rgba(15, 23, 42, 0.2));
+}
+
+.hub-atalhos-modal-topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+/* Fora do card, o mesmo botão fecha o modal — e o alvo mínimo vale igual
+   (media 28px). */
+.hub-atalhos-modal-topo .hub-atalho-remover {
+  position: static;
+  width: var(--alvo-clique);
+  height: var(--alvo-clique);
+}
+
+.hub-atalhos-modal-busca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  color: var(--app-muted-color);
+}
+
+.hub-atalhos-modal-busca > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.hub-atalhos-modal-busca input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--fonte-corpo);
+  color: var(--app-text-color, var(--c-text));
+}
+
+.hub-atalhos-modal-lista {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.hub-atalhos-modal-vazio {
+  padding: 14px 10px;
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+}
+
+.hub-atalhos-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  text-align: left;
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  color: var(--app-text-color, var(--c-text));
+  cursor: pointer;
+}
+
+.hub-atalhos-modal-item:hover {
+  background: var(--ui-surface-soft);
+}
+
+.hub-atalhos-modal-item > svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: var(--atalho-cor);
+}
+
+.hub-atalhos-modal-item-rotulo {
+  flex: 1;
+  min-width: 0;
+}
+
+.hub-atalhos-modal-item-modulo {
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  color: var(--app-muted-color);
+  white-space: nowrap;
+}
+
+/* =====================================================================
+   BUSCA UNIVERSAL — grupos, destaque e ações rápidas
+   ===================================================================== */
+.fx-cmdk-grupo-titulo {
+  margin: 8px 6px 3px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-muted-color);
+}
+
+.fx-cmdk-grupo ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fx-cmdk-item-main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.fx-cmdk-item-titulo {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fx-cmdk-item mark,
+.fx-cmdk-vertodos mark {
+  background: color-mix(in srgb, var(--sem-warning) 28%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.fx-cmdk-item--ativo {
+  background: var(--ui-surface-soft);
+}
+
+.fx-cmdk-item-acoes {
+  display: inline-flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.fx-cmdk-acao {
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background: var(--ui-surface);
+  padding: 3px 9px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  color: var(--c-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fx-cmdk-acao:hover {
+  border-color: var(--c-primary);
+}
+
+.fx-cmdk-vertodos {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  color: var(--c-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.fx-cmdk-vertodos > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fx-cmdk-buscando {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid var(--ui-border);
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  animation: fx-cmdk-spin 0.7s linear infinite;
+}
+
+@keyframes fx-cmdk-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Selo de estado fora do fluxo ativo (arquivada/cancelada) na busca */
+.fx-cmdk-selo {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--sem-neutral-border);
+  background: var(--sem-neutral-bg);
+  color: var(--sem-neutral);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* =====================================================================
+   MARCA NA BARRA DO TOPO — CSC + Fluxy, âncora do canto superior
+   esquerdo. Discreta, sem sombras nem efeitos (D9); clique = Início.
+   ===================================================================== */
+.fx-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  text-decoration: none;
+  padding: 2px 2px 2px 0;
+}
+
+/* Seletor composto: `responsive-system.css` tem
+   `.layout-main :where(img, ...) { height: auto }` com a MESMA
+   especificidade de uma classe simples, e a ordem de injeção das
+   folhas varia no dev — duas classes garantem a vitória sempre. */
+.fx-brand .fx-brand-csc {
+  height: 26px;
+  width: auto;
+  display: block;
+}
+
+.fx-brand .fx-brand-fluxy {
+  height: 22px;
+  width: auto;
+  display: block;
+}
+
+.fx-brand-nome {
+  font-size: var(--fonte-bloco);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--app-heading-color);
+  line-height: 1;
+}
+
+.fx-brand-divisor {
+  width: 1px;
+  height: 24px;
+  flex-shrink: 0;
+  background: var(--ui-border);
+  margin: 0 6px 0 2px;
+}
+
+@media (max-width: 767px) {
+  /* No mobile fica só o símbolo do Fluxy. */
+  .fx-brand .fx-brand-csc,
+  .fx-brand .fx-brand-nome {
+    display: none;
+  }
+}
+
+/* =====================================================================
+   HOME — "Para resolver agora": o trabalho em si, em lista compacta
+   (superfície: o `BlocoConteudo` que a envolve — ver .hub-pendencias)
+   ===================================================================== */
+
+.hub-resolver-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hub-resolver-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) 1fr auto;
+  gap: 4px 14px;
+  align-items: center;
+  min-height: 44px;
+  padding: 7px 12px 7px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  text-decoration: none;
+  color: var(--card-text);
+  overflow: clip;
+}
+
+/* Tarja de urgência lateral — a mesma linguagem das listas. */
+.hub-resolver-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.hub-resolver-item--danger::before { background: var(--sem-danger); }
+.hub-resolver-item--warning::before { background: var(--sem-warning); }
+
+.hub-resolver-item:hover {
+  border-color: var(--c-primary);
+}
+
+.hub-resolver-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hub-resolver-id strong {
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.hub-resolver-contexto {
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  color: var(--app-muted-color);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-resolver-oque {
+  min-width: 0;
+  font-size: var(--fonte-detalhe);
+  color: var(--card-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-resolver-fim {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.hub-resolver-valor {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hub-resolver-prazo {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  color: var(--sem-warning);
+  white-space: nowrap;
+}
+
+.hub-resolver-prazo--danger {
+  color: var(--sem-danger);
+}
+
+@media (max-width: 640px) {
+  /* Mobile: identificação em cima, prazo/valor embaixo — sem esmagar. */
+  .hub-resolver-item {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 8px 10px 8px 14px;
+  }
+  .hub-resolver-oque {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .hub-resolver-fim {
+    justify-content: space-between;
+  }
+}
+
+/* =====================================================================
+   HOME — faixa gerencial "A pagar no mês, por obra" (telas largas)
+   (superfície: o `BlocoConteudo` que a envolve — ver .hub-pendencias)
+   ===================================================================== */
+
+.hub-obras-resumo-lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hub-obras-resumo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  text-decoration: none;
+  color: var(--card-text);
+}
+
+.hub-obras-resumo-item:hover {
+  border-color: var(--c-primary);
+}
+
+.hub-obras-resumo-nome {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-obras-resumo-total {
+  font-size: var(--fonte-bloco);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.hub-obras-resumo-qtd {
+  font-size: var(--fonte-detalhe);
+  color: var(--app-muted-color);
+}
+
+/* A regra "só quando sobra espaço em telas largas" saiu daqui em 05/09:
+   esconder o CONTEÚDO deixava a casca do `BlocoConteudo` vazia na tela.
+   Quem decide agora é a Home (`temLarguraGerencial`, HomeHub.jsx) — o
+   bloco não é montado abaixo de 1280px. Duas cópias da mesma regra em
+   camadas diferentes é como ela some de vista. */
+
+/* =====================================================================
+   HOME — blocos opcionais (carregamento sob demanda)
+   (superfície: o `BlocoConteudo` que a envolve — ver .hub-pendencias)
+   ===================================================================== */
+
+.hub-extra-estado {
+  margin: 2px 0 0;
+  font-size: var(--fonte-corpo);
+  color: var(--app-muted-color);
+}
+
+.hub-extra-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hub-extra-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  color: var(--app-text-color);
+  font-size: var(--fonte-corpo);
+}
+
+.hub-extra-item:hover {
+  background: var(--ui-surface-soft);
+  border-color: var(--ui-border);
+}
+
+.hub-extra-item-id {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 84px;
+}
+
+.hub-extra-item-id strong {
+  font-size: var(--fonte-detalhe);
+  color: var(--app-heading-color);
+}
+
+.hub-extra-item-contexto {
+  font-size: var(--fonte-detalhe);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--app-muted-color);
+}
+
+.hub-extra-item-texto {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hub-extra-item-fim {
+  flex-shrink: 0;
+  font-size: var(--fonte-detalhe);
+  color: var(--app-muted-color);
+}
+
+.hub-extra-valor {
+  font-weight: 700;
+  color: var(--app-heading-color);
+}
+
+.hub-extra-valor--danger {
+  color: var(--sem-danger);
+}
+
+.hub-extra-selo {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--sem-success-border, var(--ui-border));
+  background: var(--sem-success-bg, var(--ui-surface-soft));
+  color: var(--sem-success, var(--app-muted-color));
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.hub-extra-ponto {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  vertical-align: middle;
+}
+
+/* Barras proporcionais de contas a pagar por período */
+.hub-grafico {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hub-grafico-linha {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: var(--fonte-detalhe);
+  color: var(--app-text-color);
+}
+
+.hub-grafico-linha:hover {
+  background: var(--ui-surface-soft);
+}
+
+.hub-grafico-rotulo {
+  color: var(--app-muted-color);
+  font-weight: 600;
+}
+
+.hub-grafico-trilha {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ui-surface-soft);
+  overflow: clip;
+}
+
+.hub-grafico-barra {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c-primary);
+  opacity: 0.75;
+}
+
+.hub-grafico-barra--danger {
+  background: var(--sem-danger);
+}
+
+.hub-grafico-valor {
+  font-weight: 700;
+  font-size: var(--fonte-detalhe);
+  color: var(--app-heading-color);
+}
+
+/* Calendário de vencimentos da semana */
+.hub-calendario {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.hub-calendario-dia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  border: 1px solid var(--ui-border);
+  text-decoration: none;
+  color: var(--app-muted-color);
+  min-width: 0;
+}
+
+.hub-calendario-dia--tem {
+  border-color: var(--sem-warning-border, var(--sem-warning));
+  background: var(--sem-warning-bg, transparent);
+  color: var(--app-text-color);
+}
+
+.hub-calendario-dia:hover {
+  border-color: var(--c-primary);
+}
+
+.hub-calendario-semana {
+  font-size: var(--fonte-detalhe);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hub-calendario-numero {
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  color: var(--app-heading-color);
+}
+
+.hub-calendario-qtd {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.hub-calendario-total {
+  font-size: var(--fonte-detalhe);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Gasto do mês vs mês anterior */
+.hub-gasto {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.hub-gasto-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hub-gasto-rotulo {
+  font-size: var(--fonte-detalhe);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--app-muted-color);
+  font-weight: 700;
+}
+
+.hub-gasto-valor {
+  font-size: var(--fonte-destaque);
+  font-weight: 800;
+  color: var(--app-heading-color);
+}
+
+.hub-gasto-valor--anterior {
+  color: var(--app-muted-color);
+  font-weight: 700;
+}
+
+.hub-gasto-qtd {
+  font-size: var(--fonte-detalhe);
+  color: var(--app-muted-color);
+}
+
+.hub-gasto-variacao {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+}
+
+.hub-gasto-variacao--alta {
+  background: var(--sem-danger-bg, transparent);
+  color: var(--sem-danger);
+}
+
+.hub-gasto-variacao--baixa {
+  background: var(--sem-success-bg, transparent);
+  color: var(--sem-success, var(--app-text-color));
+}
+
+/* Compras pendentes */
+.hub-compras-contadores {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.hub-compras-contador {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-border);
+  font-size: var(--fonte-detalhe);
+  color: var(--app-text-color);
+  text-decoration: none;
+}
+
+.hub-compras-contador:hover {
+  border-color: var(--c-primary);
+}
+
+.hub-compras-contador strong {
+  color: var(--app-heading-color);
+}
+
+/* Indicadores executivos compactos */
+.hub-indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.hub-indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ui-border);
+  text-decoration: none;
+}
+
+.hub-indicador:hover {
+  border-color: var(--c-primary);
+}
+
+.hub-indicador-rotulo {
+  font-size: var(--fonte-detalhe);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--app-muted-color);
+  font-weight: 700;
+}
+
+.hub-indicador-valor {
+  font-size: var(--fonte-bloco);
+  font-weight: 800;
+  color: var(--app-heading-color);
+}
+
+/* Módulos personalizáveis (cards ocultáveis/reordenáveis) */
+.hub-modulos-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+
+.hub-modulo-card-editavel {
+  position: relative;
+  cursor: grab;
+}
+
+.hub-modulo-card-editavel > a {
+  pointer-events: none;
+}
+
+/*
+  A CAIXA CRESCE, O DESENHO NÃO (05/09) — M1/R2.
+
+  O botão tinha 22×22px: quatro alvos abaixo do mínimo na PRIMEIRA tela do
+  sistema, e o dedo no celular tinha 22px para acertar entre "abrir o
+  módulo" (o card inteiro) e "ocultar o módulo" (este botão). Errar aqui
+  esconde um módulo sem querer.
+
+  O círculo de 22px é assim de propósito — ele fica encavalado no canto do
+  card, e crescer o DESENHO para 32px o transformaria num botão que disputa
+  atenção com o card. Então quem cresce é a CAIXA: o botão passa a medir
+  `--alvo-clique` (32px no mouse, 44px no toque, pelo token) e o círculo
+  branco com borda é desenhado por um `::before` centrado, com as mesmas
+  medidas de antes.
+
+  Primeira tentativa, registrada porque quase entrou: expandir a área com um
+  `::after` maior, mantendo o botão em 22px. Funciona para o dedo e NÃO para
+  a medição — `getBoundingClientRect()` do botão ignora pseudo-elemento, e o
+  M1 continuaria (com razão) lendo 22×22. Área de toque que não aparece na
+  caixa do elemento é melhoria que ninguém consegue verificar.
+
+  O deslocamento do canto acompanha o token: o círculo tem de ficar onde
+  sempre esteve, então a caixa recua metade do que cresceu.
+*/
+.hub-modulo-remover {
+  --hub-remover-desenho: 22px;
+  position: absolute;
+  top: calc(-7px - (var(--alvo-clique) - var(--hub-remover-desenho)) / 2);
+  right: calc(-7px - (var(--alvo-clique) - var(--hub-remover-desenho)) / 2);
+  z-index: var(--z-conteudo-acima);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--alvo-clique);
+  height: var(--alvo-clique);
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--app-muted-color);
+  font-size: var(--fonte-corpo);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hub-modulo-remover::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: var(--z-atras);
+  width: var(--hub-remover-desenho);
+  height: var(--hub-remover-desenho);
+  border-radius: 999px;
+  border: 1px solid var(--ui-border);
+  background: var(--card-bg);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+/* O realce do hover mora no DESENHO, que agora é o pseudo-elemento. */
+.hub-modulo-remover:hover {
+  color: var(--sem-danger);
+}
+
+.hub-modulo-remover:hover::before {
+  border-color: var(--sem-danger);
+}
+
+/* Toast único do "módulo continua no Ctrl+K" */
+.hub-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(92vw, 520px);
+  padding: 11px 16px;
+  border-radius: 12px;
+  background: var(--app-heading-color);
+  color: var(--ui-surface);
+  font-size: var(--fonte-corpo);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.25);
+}
+
+/* M1/R2 — o "×" que fecha o aviso também é botão. */
+.hub-toast button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--alvo-clique);
+  min-height: var(--alvo-clique);
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: var(--fonte-bloco);
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.hub-toast button:hover {
+  opacity: 1;
+}

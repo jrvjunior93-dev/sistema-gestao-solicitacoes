@@ -6,11 +6,13 @@ const {
   listarColaboradoresRh
 } = require('../services/rhService');
 const { responderErroController } = require('../utils/controllerError');
+const { getRhDpObraScopeIds } = require('../services/authorizationService');
 
 module.exports = {
   async index(req, res) {
     try {
-      const data = await listarColaboradoresRh(req.query || {});
+      const obraIds = await getRhDpObraScopeIds(req.user);
+      const data = await listarColaboradoresRh({ ...(req.query || {}), obra_ids: obraIds });
       return res.json(data);
     } catch (error) {
       console.error(error);
@@ -20,7 +22,8 @@ module.exports = {
 
   async show(req, res) {
     try {
-      const data = await detalharColaboradorRh(req.params.id);
+      const obraIds = await getRhDpObraScopeIds(req.user);
+      const data = await detalharColaboradorRh(req.params.id, { obra_ids: obraIds });
       return res.json(data);
     } catch (error) {
       console.error(error);

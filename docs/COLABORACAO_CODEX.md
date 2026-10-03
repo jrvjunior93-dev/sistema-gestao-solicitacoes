@@ -111,8 +111,10 @@ Se dois trabalhos tocam o mesmo arquivo, usar apenas uma destas abordagens:
 - manter coerencia com as regras existentes do sistema
 
 ### Etapa 4. Validar
-- frontend: `npm run build`
-- backend: validacao de sintaxe e testes rapidos do fluxo alterado
+- frontend: teste especifico e `npm run build`
+- backend: validacao de sintaxe, teste especifico e prova transacional quando aplicavel
+- documentacao: `cd backend && npm run test:docs`
+- todos os fluxos: `git diff --check`, caso negativo de permissao e protecao contra duplo envio quando a operacao for critica
 - revisar impacto em:
   - permissao
   - filtros
@@ -121,27 +123,23 @@ Se dois trabalhos tocam o mesmo arquivo, usar apenas uma destas abordagens:
   - historico
 
 ### Etapa 5. Encerrar ownership
-- commitar
+- registrar validacoes, riscos e proximo passo em handoff
 - liberar arquivos
-- registrar breve resumo do que foi alterado
+- commitar ou enviar somente se o usuario tiver solicitado
 
 ---
 
-## 6. Padrao de branch
+## 6. Branch e checkout compartilhado
 
-Para trabalho em dupla, usar branches separadas por escopo.
-
-Formato sugerido:
-- `feat/frontend-filtros-nome-da-tarefa`
-- `feat/backend-status-nome-da-tarefa`
-- `fix/frontend-layout-nome-da-tarefa`
-- `fix/backend-upload-nome-da-tarefa`
-- `docs/colaboracao-e-regras`
-
-Regras:
-- nao trabalhar os dois diretamente em `main`
-- merge para `main` apenas depois de validacao
-- se os dois trabalhos dependem entre si, integrar primeiro em branch comum de validacao
+- `main` e producao e nao recebe trabalho simultaneo direto;
+- a reforma integrada ocorre em `refactor/frontend`;
+- dois agentes podem trabalhar no mesmo checkout somente com ownership de arquivos sem
+  sobreposicao e preservando alteracoes locais de terceiros;
+- branches ou worktrees separados continuam recomendados quando os fluxos dependem dos
+  mesmos arquivos centrais ou precisam de isolamento;
+- a promocao de `refactor/frontend` para `main` segue
+  `docs/arquitetura/promocao_refactor_frontend_para_main.md` e pode ser isolada por escopo;
+- commit, push, merge, migration, reinicio e deploy dependem do pedido da tarefa.
 
 ---
 
@@ -246,10 +244,9 @@ Sempre atualizar documentacao quando houver:
 - alteracao de fluxo entre setores
 - mudanca de comportamento em tela critica
 
-Arquivos sugeridos:
-- `AGENTS.md`
-- `docs/COLABORACAO_CODEX.md`
-- `docs/README.md`
+Atualize o `README.md` canonico do modulo afetado. Use `AGENTS.md`, este guia e o indice
+geral somente quando a regra transversal realmente mudar. Handoffs complementam o
+canonico; nao o substituem.
 
 ---
 

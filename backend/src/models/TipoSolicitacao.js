@@ -12,6 +12,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT('long'),
       allowNull: true
     },
+    disponivel_para_obras: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true
+    },
     ativo: {
       type: DataTypes.BOOLEAN,
       defaultValue: true

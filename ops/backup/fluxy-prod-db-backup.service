@@ -1,0 +1,12 @@
+[Unit]
+Description=Fluxy production MySQL backup to encrypted Google Drive
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=fluxy-backup
+Group=fluxy-backup
+EnvironmentFile=/etc/fluxy/backup-prod-db.env
+ExecStart=/opt/fluxy-backup/backup-prod-db.sh
+UMask=0077

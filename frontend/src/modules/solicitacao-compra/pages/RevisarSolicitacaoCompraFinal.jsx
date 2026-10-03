@@ -2,15 +2,39 @@ import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { baixarPdfSolicitacaoCompra, obterUrlAssinadaCompra } from '../../../services/compras';
 import CompraPreviewModal from '../components/CompraPreviewModal';
+import {
+  Avisos,
+  BlocoConteudo,
+  CamposComVazios,
+  Pagina,
+  PageHeader,
+  TabelaPadrao,
+  useAvisos
+} from '../../../components/padrao';
 import { criarPreviewCompra } from '../utils/preview';
 import { montarLinhasResumoApropriacao } from '../utils/apropriacoes';
 
+/**
+ * RECIBO DA SOLICITAÇÃO GRAVADA — e é só isso que ela é.
+ *
+ * Chega aqui quem JÁ criou o registro: a tela lê o que veio no
+ * `location.state` da navegação e imprime. Não decide, não valida, não
+ * grava — não existe checkpoint nenhum nela.
+ *
+ * Registro para quem for mexer depois: um levantamento mediu 16 linhas e 10
+ * classes em comum entre esta tela e a `RevisarSolicitacaoCompra`, e a
+ * semelhança é enganosa. Aquela é o CHECKPOINT antes de gravar (checklist,
+ * autorização, botão que cria); esta é o COMPROVANTE depois de gravado. São
+ * papéis opostos no mesmo fluxo, e unificá-las pelo texto que compartilham
+ * juntaria a tela que pergunta com a tela que responde.
+ */
 export default function RevisarSolicitacaoCompraFinal() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [baixando, setBaixando] = useState(false);
   const [previewArquivo, setPreviewArquivo] = useState(null);
+  const { avisos, avisar, fechar } = useAvisos();
   const resultado = location.state?.resultado || null;
   const resumo = location.state?.resumo || null;
   const compraDireta = String(resultado?.origem || '').toUpperCase() === 'COMPRA_DIRETA';
@@ -18,6 +42,17 @@ export default function RevisarSolicitacaoCompraFinal() {
   const codigo = useMemo(
     () => resultado?.codigo || `SC-${String(id || '').padStart(5, '0')}`,
     [id, resultado]
+  );
+
+  const quantidadeItens = resultado?.quantidade_itens || resumo?.itens?.length || 0;
+
+  // A tabela do recibo enxerga só o item; a chave da linha vem resolvida.
+  const itensRecibo = useMemo(
+    () => (resumo?.itens || []).map((item, index) => ({
+      ...item,
+      __chave: `${item.manual ? 'manual' : item.insumo_id}-${index}`
+    })),
+    [resumo]
   );
 
   async function handleAbrirPdf() {
@@ -32,7 +67,7 @@ export default function RevisarSolicitacaoCompraFinal() {
       }));
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao abrir PDF');
+      avisar.erro(error.message || 'Erro ao abrir PDF');
     } finally {
       setBaixando(false);
     }
@@ -42,7 +77,7 @@ export default function RevisarSolicitacaoCompraFinal() {
     try {
       const url = await obterUrlAssinadaCompra(item?.arquivo_url);
       if (!url) {
-        alert('Arquivo nao encontrado.');
+        avisar.erro('Arquivo não encontrado.');
         return;
       }
 
@@ -53,134 +88,134 @@ export default function RevisarSolicitacaoCompraFinal() {
       }));
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao abrir arquivo do item');
+      avisar.erro(error.message || 'Erro ao abrir arquivo do item');
     }
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div>
-        <h1 className="page-title">{compraDireta ? 'Compra Direta Criada' : 'Solicitacao de Compra Criada'}</h1>
-        <p className="page-subtitle">
-          {compraDireta
-            ? 'A compra direta gerou uma solicitacao no fluxo principal com PDF e anexos para pagamento.'
-            : 'O registro foi criado no modulo compras e ja gerou uma solicitacao no fluxo principal.'}
-        </p>
-      </div>
+    <Pagina>
+      <Avisos avisos={avisos} aoFechar={fechar} />
+      {/*
+        As duas ações secundárias não são atalho de módulo vestido de ação
+        (C6): são a continuação do trabalho que acabou de terminar aqui.
+        Um recibo sem saída deixa a pessoa parada no comprovante.
+      */}
+      <PageHeader
+        titulo={compraDireta ? 'Compra Direta Criada' : 'Solicitacao de Compra Criada'}
+        contagem={`${quantidadeItens} item(ns)`}
+        descricao={compraDireta
+          ? 'A compra direta gerou uma solicitacao no fluxo principal com PDF e anexos para pagamento.'
+          : 'O registro foi criado no modulo compras e ja gerou uma solicitacao no fluxo principal.'}
+        acaoPrincipal={{
+          rotulo: baixando ? 'Abrindo PDF...' : 'Abrir PDF',
+          onClick: handleAbrirPdf,
+          desabilitada: baixando
+        }}
+        secundarias={[
+          { rotulo: 'Ir para solicitações', onClick: () => navigate('/solicitacoes') },
+          {
+            rotulo: compraDireta ? 'Nova compra direta' : 'Nova solicitacao',
+            onClick: () => navigate(compraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova')
+          }
+        ]}
+      />
 
-      <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <div className="card">
-          <div className="card-header">
-            <h2 className="font-semibold">Confirmacao</h2>
-          </div>
+      <BlocoConteudo variante="primario" cor="var(--sem-success)" titulo="Confirmação">
+        <CamposComVazios
+          colunas={3}
+          campos={[
+            { label: 'Código principal', valor: codigo, tom: 'success' },
+            { label: 'ID da solicitação de compra', valor: resultado?.id || id },
+            { label: 'Solicitação principal vinculada', valor: resultado?.solicitacao_principal_id },
+            { label: 'Obra', valor: resumo?.obra_nome },
+            { label: 'Solicitante', valor: resumo?.solicitante_nome }
+          ]}
+        />
+      </BlocoConteudo>
 
-          <div className="grid gap-4 text-sm">
-            <div>
-              <div className="text-[var(--c-muted)]">Codigo principal</div>
-              <div className="font-semibold">{codigo}</div>
-            </div>
-            <div>
-              <div className="text-[var(--c-muted)]">ID da solicitacao de compra</div>
-              <div className="font-semibold">{resultado?.id || id}</div>
-            </div>
-            <div>
-              <div className="text-[var(--c-muted)]">Solicitacao principal vinculada</div>
-              <div className="font-semibold">{resultado?.solicitacao_principal_id || '-'}</div>
-            </div>
-            <div>
-              <div className="text-[var(--c-muted)]">Quantidade de itens</div>
-              <div className="font-semibold">
-                {resultado?.quantidade_itens || resumo?.itens?.length || 0}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-2">
-            <button type="button" className="btn btn-primary" onClick={handleAbrirPdf} disabled={baixando}>
-              {baixando ? 'Abrindo PDF...' : 'Abrir PDF'}
-            </button>
-            <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes')}>
-              Ir para solicitacoes
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => navigate(compraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova')}
-            >
-              {compraDireta ? 'Nova compra direta' : 'Nova solicitacao'}
-            </button>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <h2 className="font-semibold">Resumo enviado</h2>
-          </div>
-
-          {resumo ? (
-            <div className="grid gap-4 text-sm">
-              <div>
-                <div className="text-[var(--c-muted)]">Obra</div>
-                <div className="font-medium">{resumo.obra_nome || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Solicitante</div>
-                <div className="font-medium">{resumo.solicitante_nome || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[var(--c-muted)]">Itens</div>
-                <ul className="grid gap-2">
-                  {resumo.itens?.map((item, index) => (
-                    <li
-                      key={`${item.manual ? 'manual' : item.insumo_id}-${index}`}
-                      className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2"
-                      >
-                        <div className="font-medium">{item.insumo_nome}</div>
-                      <div className="text-[var(--c-muted)]">
-                        {item.quantidade} {item.unidade_sigla || ''}
-                      </div>
-                      <div className="mt-1 grid gap-1 text-xs text-[var(--c-muted)]">
-                        {montarLinhasResumoApropriacao(item).map((linha, linhaIndex) => (
-                          <div key={`${linha}-${linhaIndex}`}>{linha}</div>
-                        ))}
-                      </div>
-                      {(item.link_produto || item.arquivo_url) && (
-                        <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                          {item.link_produto && (
-                            <a
-                              href={item.link_produto}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:underline"
-                            >
-                              Abrir link do produto
-                            </a>
-                          )}
-                          {item.arquivo_url && (
-                            <button
-                              type="button"
-                              className="text-blue-600 hover:underline"
-                              onClick={() => handleAbrirArquivo(item)}
-                            >
-                              {item.arquivo_nome_original || 'Abrir arquivo'}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-[var(--c-muted)]">
-              Resumo nao disponivel nesta navegacao. O PDF pode ser aberto normalmente.
-            </div>
-          )}
-        </div>
-      </div>
+      <BlocoConteudo
+        variante="secundario"
+        titulo="Resumo enviado"
+        descricao="O que foi gravado nesta solicitação, como saiu no documento."
+      >
+        {resumo ? (
+          /*
+            Tabela PRÓPRIA do recibo — mesma estrutura padrão, `storageKey`
+            próprio. Não é a tabela da tela de revisão reaproveitada: os
+            itens aqui são leitura de comprovante, sem edição e sem
+            checkpoint.
+          */
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'item',
+                titulo: 'Item',
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => item.insumo_nome
+              },
+              {
+                id: 'quantidade',
+                titulo: 'Quantidade',
+                tipo: 'numero',
+                render: (item) => `${item.quantidade} ${item.unidade_sigla || ''}`.trim()
+              },
+              {
+                id: 'apropriacao',
+                titulo: 'Apropriação',
+                tipo: 'texto',
+                render: (item) => {
+                  const linhas = montarLinhasResumoApropriacao(item);
+                  if (!linhas.length) return '-';
+                  return (
+                    <div className="grid gap-1 text-xs text-[var(--c-muted)]">
+                      {linhas.map((linha, linhaIndex) => (
+                        <div key={`${linha}-${linhaIndex}`}>{linha}</div>
+                      ))}
+                    </div>
+                  );
+                }
+              }
+            ]}
+            itens={itensRecibo}
+            getId={(item) => item.__chave}
+            vazio="Nenhum item registrado nesta solicitação."
+            storageKey="tabela:solicitacao-compra-finalizada:itens"
+            rotuloRolagem="Itens da solicitacao criada"
+            acoesLinha={(item) => (
+              <>
+                {item.link_produto ? (
+                  <a
+                    href={item.link_produto}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-outline"
+                  >
+                    Abrir link
+                  </a>
+                ) : null}
+                {item.arquivo_url ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => handleAbrirArquivo(item)}
+                    title={item.arquivo_nome_original || 'Abrir arquivo'}
+                  >
+                    <span className="truncate">{item.arquivo_nome_original || 'Abrir arquivo'}</span>
+                  </button>
+                ) : null}
+              </>
+            )}
+            larguraAcoes={280}
+          />
+        ) : (
+          <p className="text-sm text-[var(--c-muted)]">
+            Resumo não disponível nesta navegação. O PDF pode ser aberto normalmente.
+          </p>
+        )}
+      </BlocoConteudo>
 
       <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
-    </div>
+    </Pagina>
   );
 }

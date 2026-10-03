@@ -1,10 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineEye } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { listarPedidosCompra } from '../../../services/compras';
 import { getStatusPedidosCompra } from '../../../services/configuracoesSistema';
 import { getObras } from '../../../services/obras';
 import useComprasRealtimeRefresh from '../hooks/useComprasRealtimeRefresh';
+import StatusBadge from '../../../components/StatusBadge';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  alternarValorFiltro,
+  useAvisos,
+  useFiltrosVisiveis
+} from '../../../components/padrao';
+import { chaveStatusCompra, familiaStatusCompra } from '../utils/statusCompras';
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -14,21 +29,27 @@ function formatMoney(value) {
 }
 
 function formatStatusLabel(value, statusMap) {
-  return statusMap[String(value || '').toUpperCase()]?.nome || String(value || '-').replace(/_/g, ' ').toUpperCase();
+  return statusMap[chaveStatusCompra(value)]?.nome || String(value || '-').replace(/_/g, ' ').toUpperCase();
 }
 
-function statusClass(status, statusMap) {
-  const config = statusMap[String(status || '').toUpperCase()];
+/*
+  Família semântica da etiqueta do pedido, em três degraus e NESTA ordem:
 
-  if (config?.bloqueia_edicao) {
-    return 'app-status-pill bg-slate-100 text-slate-700';
-  }
-
-  if (String(status || '').toUpperCase() === 'ABERTO') {
-    return 'app-status-pill bg-blue-100 text-blue-700';
-  }
-
-  return 'app-status-pill bg-emerald-100 text-emerald-700';
+  1. o mapa semântico do módulo (`utils/statusCompras.js`), que conhece
+     CANCELADO — antes ele não era tratado aqui e um pedido cancelado cujo
+     status configurado NÃO bloqueia edição caía no `return 'success'` final:
+     saía VERDE. "Morreu" com a cor de "deu certo";
+  2. `bloqueia_edicao` da configuração, que continua valendo para status
+     criados pelo administrador (o ciclo terminou, ninguém mexe mais):
+     neutro;
+  3. sem nenhum dos dois, `undefined` — o classificador do StatusBadge
+     decide, em vez de a tela inventar uma cor para o que não conhece.
+*/
+function statusKind(status, statusMap) {
+  const familia = familiaStatusCompra(status);
+  if (familia) return familia;
+  if (statusMap[chaveStatusCompra(status)]?.bloqueia_edicao) return 'neutral';
+  return undefined;
 }
 
 const STATUS_PEDIDOS_FALLBACK = [
@@ -39,6 +60,23 @@ const STATUS_PEDIDOS_FALLBACK = [
   { codigo: 'FECHADO_FORNECEDOR', nome: 'Fechado com o fornecedor', ativo: true },
   { codigo: 'CANCELADO', nome: 'Cancelado', ativo: true }
 ];
+
+const STATUS_FINANCEIRO_OPTIONS = [
+  ['AGUARDANDO_GEO', 'Legado aguardando revisão'],
+  ['AGUARDANDO_PREVISAO', 'Aguardando títulos de Compras'],
+  ['LEGADO_PENDENTE_REVISAO', 'Legado pendente de revisão'],
+  ['PREVISAO_CRIADA', 'Previsão criada'],
+  ['PARCIALMENTE_LIBERADO', 'Parcialmente liberado'],
+  ['LIBERADO_FINANCEIRO', 'Títulos criados'],
+  ['PAGO_PARCIALMENTE', 'Pago parcialmente'],
+  ['CONCLUIDO', 'Concluído'],
+  ['CORRECAO_SOLICITADA', 'Reabertura solicitada']
+].map(([valor, rotulo]) => ({ valor, rotulo }));
+
+function formatStatusFinanceiro(value) {
+  return STATUS_FINANCEIRO_OPTIONS.find((item) => item.valor === value)?.rotulo
+    || String(value || 'Não iniciado').replace(/_/g, ' ');
+}
 
 async function carregarStatusPedidosComFallback() {
   try {
@@ -51,27 +89,92 @@ async function carregarStatusPedidosComFallback() {
   }
 }
 
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
+
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+
+  `obrigatorio` na busca livre: é o único caminho para achar um registro
+  pelo que a pessoa lembra dele. Mesma família da coluna de identidade
+  travada da TabelaPadrao — aparece na lista, marcada e sem desmarcar.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'busca', rotulo: 'Busca', obrigatorio: true },
+  { id: 'status', rotulo: 'Status' },
+  { id: 'status_financeiro', rotulo: 'Financeiro GEO' },
+  { id: 'obra_id', rotulo: 'Obra' }
+];
+
 export default function PedidosCompra() {
   const navigate = useNavigate();
+  const { avisos, avisar, fechar } = useAvisos();
   const [pedidos, setPedidos] = useState([]);
   const [obras, setObras] = useState([]);
   const [statusOptions, setStatusOptions] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filtrosVisiveis, setFiltrosVisiveis] = useState(false);
-  const [filtros, setFiltros] = useState({
-    q: '',
-    status: '',
-    obra_id: ''
+  const [busca, setBusca] = useState('');
+
+  /*
+    `unico: true` nas duas dimensões, verificado NO SERVIÇO: o
+    `listarPedidos` (backend/src/services/pedidoCompraService.js) faz
+    `where.status = String(status)` e `where.obra_id = Number(obraId)` — UM
+    valor cada. Marcação múltipla mostraria duas etiquetas e mandaria um
+    valor só: a lista não estreitaria e a etiqueta mentiria (R15).
+  */
+  const [ativos, setAtivos] = useState({ status: new Set(), status_financeiro: new Set(), obra_id: new Set() });
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => (filtro.id === 'busca'
+      ? busca.trim() !== ''
+      : (ativos[filtro.id]?.size || 0) > 0)).map((filtro) => filtro.id),
+    [busca, ativos]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:pedidos-compra', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => setAtivos((atuais) => ({ ...atuais, [id]: new Set() }))
   });
 
+  const status = useMemo(() => [...(ativos.status || [])][0] || '', [ativos.status]);
+  const statusFinanceiro = useMemo(() => [...(ativos.status_financeiro || [])][0] || '', [ativos.status_financeiro]);
+  const obraId = useMemo(() => [...(ativos.obra_id || [])][0] || '', [ativos.obra_id]);
+
+  // O recorte corrente numa ref: o refresh em tempo real e o botão
+  // "Atualizar" reconsultam o MESMO recorte que está na tela.
+  const recorteRef = useRef({ q: '', status: '', status_financeiro: '', obra_id: '' });
+  recorteRef.current = { q: busca, status, status_financeiro: statusFinanceiro, obra_id: obraId };
+
   async function carregar() {
+    const recorte = recorteRef.current;
     try {
       setLoading(true);
       const [dataPedidos, dataObras, dataStatus] = await Promise.all([
         listarPedidosCompra({
-          q: filtros.q || undefined,
-          status: filtros.status || undefined,
-          obra_id: filtros.obra_id || undefined,
+          q: recorte.q || undefined,
+          status: recorte.status || undefined,
+          status_financeiro: recorte.status_financeiro || undefined,
+          obra_id: recorte.obra_id || undefined,
           visao: 'resumo'
         }),
         getObras(),
@@ -83,246 +186,217 @@ export default function PedidosCompra() {
       setStatusOptions(Array.isArray(dataStatus) ? dataStatus : []);
     } catch (error) {
       console.error(error);
-      alert(error.message || 'Erro ao carregar pedidos de compra');
+      avisar.erro(error?.message || 'Erro ao carregar pedidos de compra');
     } finally {
       setLoading(false);
     }
   }
 
+  /*
+    R23: 3 dimensões e consulta simples — o recorte aplica AO MARCAR, sem
+    botão de "aplicar", e a etiqueta nunca afirma um filtro que ainda não
+    vale. A busca textual tem a espera de digitação de 350ms prevista pela
+    própria regra.
+  */
   useEffect(() => {
-    carregar();
-  }, []);
+    const timer = window.setTimeout(() => {
+      carregar();
+    }, busca ? 350 : 0);
+    return () => window.clearTimeout(timer);
+  }, [busca, status, statusFinanceiro, obraId]);
 
   useComprasRealtimeRefresh(carregar);
 
   const statusMap = useMemo(
-    () => Object.fromEntries((statusOptions || []).map((item) => [String(item.codigo || '').toUpperCase(), item])),
+    () => Object.fromEntries((statusOptions || []).map((item) => [chaveStatusCompra(item.codigo), item])),
     [statusOptions]
   );
+
+  const dimensoes = useMemo(() => [
+    {
+      id: 'status',
+      rotulo: 'Status',
+      unico: true,
+      opcoes: statusOptions
+        .filter((item) => item?.ativo !== false)
+        .map((item) => ({ valor: String(item.codigo), rotulo: item.nome }))
+    },
+    {
+      id: 'obra_id',
+      rotulo: 'Obra',
+      unico: true,
+      opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
+    },
+    {
+      id: 'status_financeiro',
+      rotulo: 'Financeiro GEO',
+      unico: true,
+      opcoes: STATUS_FINANCEIRO_OPTIONS
+    }
+  ], [statusOptions, obras]);
+
+  function alternarFiltro(dimensao, valor, opcoes) {
+    setAtivos((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes));
+  }
+
+  function limparFiltros() {
+    setAtivos({ status: new Set(), status_financeiro: new Set(), obra_id: new Set() });
+    setBusca('');
+  }
+
   const totalPedidos = pedidos.length;
   const totalValor = pedidos.reduce((acc, pedido) => acc + Number(pedido.valor_total || 0), 0);
 
+  const colunas = [
+    {
+      id: 'pedido',
+      titulo: 'Pedido',
+      tipo: 'codigo',
+      render: (pedido) => `PC-${String(pedido.id).padStart(5, '0')}`
+    },
+    {
+      id: 'fornecedor',
+      titulo: 'Fornecedor',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (pedido) => pedido.fornecedor?.nome || '-'
+    },
+    {
+      id: 'obra',
+      titulo: 'Obra',
+      tipo: 'texto',
+      render: (pedido) => pedido.obra?.nome || '-'
+    },
+    {
+      id: 'solicitacao',
+      titulo: 'Solicitação',
+      tipo: 'codigo',
+      render: (pedido) => `SC-${String(pedido.solicitacao_compra_id || pedido.solicitacao?.id || '').padStart(5, '0')}`
+    },
+    {
+      id: 'itens_ativos',
+      titulo: 'Itens ativos',
+      tipo: 'numero',
+      render: (pedido) => (
+        pedido.itens_ativos_count
+          ?? (pedido.itens || []).filter((item) => !item.removido).length
+      )
+    },
+    {
+      id: 'valor_total',
+      titulo: 'Valor total',
+      tipo: 'valor',
+      render: (pedido) => formatMoney(pedido.valor_total)
+    },
+    {
+      id: 'pedido_minimo',
+      titulo: 'Pedido mínimo',
+      tipo: 'valor',
+      render: (pedido) => (
+        <>
+          {pedido.valor_minimo_pedido ? formatMoney(pedido.valor_minimo_pedido) : '-'}
+          {!pedido.atingiu_pedido_minimo ? (
+            // R25: `text-amber-700` era paleta crua (sem par no tema escuro,
+            // fora do piso de contraste). O aviso continua âmbar, agora pelo
+            // token semântico.
+            <div className="text-xs font-medium" style={{ color: 'var(--sem-warning)' }}>
+              Não atingido
+            </div>
+          ) : null}
+        </>
+      )
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      render: (pedido) => (
+        <StatusBadge
+          status={formatStatusLabel(pedido.status, statusMap)}
+          kind={statusKind(pedido.status, statusMap)}
+        />
+      )
+    },
+    {
+      id: 'financeiro_geo',
+      titulo: 'Títulos do pedido',
+      tipo: 'status',
+      render: (pedido) => (
+        <StatusBadge
+          status={formatStatusFinanceiro(pedido.financeiro?.status)}
+          kind={['CONCLUIDO', 'LIBERADO_FINANCEIRO'].includes(pedido.financeiro?.status) ? 'success' : 'neutral'}
+        />
+      )
+    }
+  ];
+
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Pedidos de Compra</h1>
-            <p className="page-subtitle">
-              Consulta dos pedidos gerados a partir das cotacoes encerradas, com gestao restrita ao setor de compras.
-            </p>
-          </div>
-        </div>
-      </div>
+    <Pagina>
+      <PageHeader
+        titulo="Pedidos de Compra"
+        contagem={loading ? null : `${totalPedidos} pedido(s)`}
+        descricao="Compras acompanha o pedido e cria seus títulos. O GEO autoriza o envio para pagamento pelo Contas a Pagar."
+        secundarias={[
+          {
+            rotulo: loading ? 'Buscando...' : 'Atualizar',
+            onClick: carregar,
+            desabilitada: loading
+          }
+        ]}
+      />
 
-      <div className="mt-4 card sol-surface-card solicitacoes-filtros app-filters-card">
-        <div className="sol-filtros-head">
-          <div>
-            <h2 className="font-semibold text-[var(--c-text)]">Filtros</h2>
-            <p className="text-sm text-[var(--c-muted)]">
-              Busque por fornecedor, obra, numero do pedido ou status da negociacao.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-outline compras-mobile-filter-toggle"
-            aria-expanded={filtrosVisiveis}
-            onClick={() => setFiltrosVisiveis((atual) => !atual)}
-          >
-            {filtrosVisiveis ? 'Ocultar filtros' : 'Exibir filtros'}
-          </button>
-        </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-        <div className={`compras-filter-content ${filtrosVisiveis ? 'is-open' : ''}`}>
-          <div className="app-filters-grid">
-            <label className="app-filter-field">
-              <span className="app-filter-label">Busca geral</span>
-              <input
-                className="input"
-                placeholder="Fornecedor, obra ou pedido"
-                value={filtros.q}
-                onChange={(event) => setFiltros((atual) => ({ ...atual, q: event.target.value }))}
-              />
-            </label>
+      {/* R12: os dois `<select>` (status e obra) viram marcação; o botão
+          "Exibir/Ocultar filtros", que só encolhia a grade no celular, virou
+          o recolher do bloco. */}
+      <BlocoConteudo titulo="Filtros" variante="secundario" recolhivel>
+        <BarraFiltros
+          busca={visibilidadeFiltros.ehVisivel('busca') ? {
+            valor: busca,
+            aoMudar: setBusca,
+            placeholder: 'Fornecedor, obra ou pedido'
+          } : null}
+          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          ativos={ativos}
+          aoAlternar={alternarFiltro}
+          aoLimpar={limparFiltros}
+          visibilidade={visibilidadeFiltros}
+        />
+      </BlocoConteudo>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Status</span>
-              <select
-                className="input"
-                value={filtros.status}
-                onChange={(event) => setFiltros((atual) => ({ ...atual, status: event.target.value }))}
-              >
-                <option value="">Todos os status</option>
-                {statusOptions
-                  .filter((item) => item?.ativo !== false)
-                  .map((status) => (
-                    <option key={status.codigo} value={status.codigo}>
-                      {status.nome}
-                    </option>
-                  ))}
-              </select>
-            </label>
+      <StatGrid colunas={2}>
+        <StatTile label="Pedidos listados" valor={totalPedidos} />
+        <StatTile label="Valor total em pedidos" valor={formatMoney(totalValor)} />
+      </StatGrid>
 
-            <label className="app-filter-field">
-              <span className="app-filter-label">Obra</span>
-              <select
-                className="input"
-                value={filtros.obra_id}
-                onChange={(event) => setFiltros((atual) => ({ ...atual, obra_id: event.target.value }))}
-              >
-                <option value="">Todas as obras</option>
-                {obras.map((obra) => (
-                  <option key={obra.id} value={obra.id}>
-                    {obra.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="app-page-actions justify-end">
+      <BlocoConteudo
+        titulo="Lista de pedidos"
+        variante="primario"
+        cor="var(--sem-info)"
+        contagem={`${pedidos.length} registro(s)`}
+      >
+        <TabelaPadrao
+          colunas={colunas}
+          itens={pedidos}
+          carregando={loading}
+          vazio="Nenhum pedido de compra encontrado para os filtros informados."
+          storageKey="tabela:pedidos-compra"
+          rotuloRolagem="Lista de pedidos"
+          acoesLinha={(pedido) => (
             <button
               type="button"
-              className="btn btn-outline"
-              onClick={() => setFiltros({ q: '', status: '', obra_id: '' })}
+              className="btn btn-outline btn-sm"
+              onClick={() => navigate(`/pedidos-compra/${pedido.id}`)}
+              title="Abrir pedido"
+              aria-label={`Abrir pedido PC-${String(pedido.id).padStart(5, '0')}`}
             >
-              Limpar filtros
+              <HiOutlineEye />
             </button>
-            <button type="button" className="btn btn-primary" onClick={carregar} disabled={loading}>
-              {loading ? 'Buscando...' : 'Buscar'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 app-summary-grid">
-        <div className="app-summary-card">
-          <div className="app-summary-label">Pedidos listados</div>
-          <div className="app-summary-value">{totalPedidos}</div>
-        </div>
-        <div className="app-summary-card">
-          <div className="app-summary-label">Valor total em pedidos</div>
-          <div className="app-summary-value">{formatMoney(totalValor)}</div>
-        </div>
-      </div>
-
-      <div className="mt-4 card sol-surface-card compras-table-card compras-adaptive-list">
-        <div className="card-header flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-semibold">Lista de pedidos</h2>
-          <span className="text-sm text-[var(--c-muted)]">{pedidos.length} registro(s)</span>
-        </div>
-
-        {loading ? (
-          <div className="app-empty-card">Carregando...</div>
-        ) : pedidos.length === 0 ? (
-          <div className="app-empty-card">Nenhum pedido de compra encontrado para os filtros informados.</div>
-        ) : (
-          <div className="compras-table-wrapper">
-            <table className="compras-data-table compras-data-table-pedidos">
-              <colgroup>
-                <col className="compras-col-codigo" />
-                <col className="compras-col-fornecedor" />
-                <col className="compras-col-obra" />
-                <col className="compras-col-codigo" />
-                <col className="compras-col-numero" />
-                <col className="compras-col-valor" />
-                <col className="compras-col-valor" />
-                <col className="compras-col-status" />
-                <col className="compras-col-acoes" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Pedido</th>
-                  <th>Fornecedor</th>
-                  <th>Obra</th>
-                  <th>Solicitacao</th>
-                  <th>Itens ativos</th>
-                  <th>Valor total</th>
-                  <th>Pedido minimo</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidos.map((pedido) => {
-                  const itensAtivos = pedido.itens_ativos_count
-                    ?? (pedido.itens || []).filter((item) => !item.removido).length;
-
-                  return (
-                    <tr key={pedido.id}>
-                      <td>PC-{String(pedido.id).padStart(5, '0')}</td>
-                      <td>{pedido.fornecedor?.nome || '-'}</td>
-                      <td>{pedido.obra?.nome || '-'}</td>
-                      <td>
-                        SC-{String(pedido.solicitacao_compra_id || pedido.solicitacao?.id || '').padStart(5, '0')}
-                      </td>
-                      <td>{itensAtivos}</td>
-                      <td>{formatMoney(pedido.valor_total)}</td>
-                      <td>
-                        {pedido.valor_minimo_pedido ? formatMoney(pedido.valor_minimo_pedido) : '-'}
-                        {!pedido.atingiu_pedido_minimo ? (
-                          <div className="text-xs font-medium text-amber-700">Nao atingido</div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <span className={statusClass(pedido.status, statusMap)}>
-                          {formatStatusLabel(pedido.status, statusMap)}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="compras-icon-action"
-                          onClick={() => navigate(`/pedidos-compra/${pedido.id}`)}
-                          title="Abrir pedido"
-                          aria-label={`Abrir pedido PC-${String(pedido.id).padStart(5, '0')}`}
-                        >
-                          <HiOutlineEye />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {!loading && pedidos.length > 0 ? (
-          <div className="compras-mobile-list" aria-label="Pedidos de compra">
-            {pedidos.map((pedido) => {
-              const itensAtivos = pedido.itens_ativos_count
-                ?? (pedido.itens || []).filter((item) => !item.removido).length;
-              const codigoPedido = `PC-${String(pedido.id).padStart(5, '0')}`;
-
-              return (
-                <article key={`mobile-${pedido.id}`} className="compras-mobile-record">
-                  <div className="compras-mobile-record-head">
-                    <div className="compras-mobile-record-title">
-                      <strong>{codigoPedido}</strong>
-                      <span>{pedido.fornecedor?.nome || '-'}</span>
-                    </div>
-                    <span className={statusClass(pedido.status, statusMap)}>
-                      {formatStatusLabel(pedido.status, statusMap)}
-                    </span>
-                  </div>
-                  <div className="compras-mobile-record-grid">
-                    <div className="compras-mobile-field"><span>Obra</span><strong>{pedido.obra?.nome || '-'}</strong></div>
-                    <div className="compras-mobile-field"><span>Solicitacao</span><strong>SC-{String(pedido.solicitacao_compra_id || pedido.solicitacao?.id || '').padStart(5, '0')}</strong></div>
-                    <div className="compras-mobile-field"><span>Itens ativos</span><strong>{itensAtivos}</strong></div>
-                    <div className="compras-mobile-field"><span>Valor total</span><strong>{formatMoney(pedido.valor_total)}</strong></div>
-                    <div className="compras-mobile-field"><span>Pedido minimo</span><strong>{pedido.valor_minimo_pedido ? formatMoney(pedido.valor_minimo_pedido) : '-'}</strong></div>
-                  </div>
-                  <div className="compras-mobile-record-actions">
-                    <button type="button" className="btn btn-outline" onClick={() => navigate(`/pedidos-compra/${pedido.id}`)}>
-                      Abrir pedido
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-    </div>
+          )}
+          larguraAcoes={120}
+        />
+      </BlocoConteudo>
+    </Pagina>
   );
 }

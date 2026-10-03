@@ -6,7 +6,7 @@ import {
 } from '../services/configuracoesSistema';
 
 const CLASSIFICACOES = [
-  { value: 'PUBLICA', label: 'Obras publicas' },
+  { value: 'PUBLICA', label: 'Obras públicas' },
   { value: 'PRIVADA', label: 'Obras privadas' }
 ];
 
@@ -58,15 +58,15 @@ export default function AprovacaoDiretoria() {
   }
 
   if (loading) {
-    return <p>Carregando configuracoes...</p>;
+    return <p>Carregando configurações...</p>;
   }
 
   return (
     <div className="page max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="page-title">Aprovacao por Diretoria</h1>
+        <h1 className="page-title">Aprovação por Diretoria</h1>
         <p className="page-subtitle">
-          Define qual diretoria recebe a solicitacao primeiro conforme a classificacao da obra.
+          Define qual diretoria recebe a solicitação primeiro conforme a classificação da obra.
           A area responsavel escolhida na Nova Solicitacao permanece como destino final apos a aprovacao.
         </p>
       </div>
@@ -95,14 +95,14 @@ export default function AprovacaoDiretoria() {
                 })}
               </select>
               <span className="form-help">
-                Obras com essa classificacao entram primeiro na diretoria definida aqui.
+                Obras com essa classificação entram primeiro na diretoria definida aqui.
               </span>
             </label>
           ))}
         </div>
 
-        <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-4 text-sm text-[var(--c-muted)]">
-          Fluxo aplicado: usuario cria a solicitacao, seleciona a area responsavel final e o sistema envia primeiro para a diretoria da obra.
+        <div className="rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-2)] p-4 text-sm text-[var(--c-muted)]">
+          Fluxo aplicado: usuário cria a solicitação, seleciona a área responsável final e o sistema envia primeiro para a diretoria da obra.
           Depois da aprovacao, a solicitacao segue automaticamente para a area responsavel escolhida.
         </div>
 

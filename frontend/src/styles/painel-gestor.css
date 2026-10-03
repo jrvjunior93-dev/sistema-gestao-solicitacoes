@@ -1,0 +1,1122 @@
+.pg-tabs {
+  display: flex;
+  gap: .25rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pg-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 2.65rem;
+  padding: .65rem .9rem;
+  border-bottom: 2px solid transparent;
+  color: var(--c-muted);
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pg-tabs button svg { width: 1rem; height: 1rem; }
+.pg-tabs button:hover { color: var(--c-text); }
+.pg-tabs button.is-active { border-color: var(--c-primary); color: var(--c-primary); }
+
+.pg-tab-stack { display: grid; gap: 1rem; }
+
+/* No painel executivo, os resumos mensais seguem a mesma leitura dos cards
+   de Resultado de Obras: identidade no topo, métricas abertas em duas
+   colunas e cores reservadas ao significado financeiro. */
+.cr-ops-dashboard--gestor .cr-portfolio-planning__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--esp-4);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card {
+  border-color: var(--ui-border-strong);
+  border-radius: var(--raio-3);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card[data-alert="true"] {
+  border-color: color-mix(in srgb, var(--c-warning) 42%, var(--ui-border-strong));
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header {
+  min-height: 4.65rem;
+  padding: var(--esp-3) var(--esp-4);
+  border-bottom-color: var(--ui-border);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header > div {
+  gap: var(--esp-1);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header span:not(.cr-status-pill) {
+  color: var(--c-muted);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header h3 {
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  text-transform: uppercase;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metrics {
+  gap: var(--esp-4) var(--esp-6);
+  padding: var(--esp-4);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric {
+  display: grid;
+  align-content: start;
+  gap: var(--esp-1);
+  padding: 0;
+  border: 0;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric dt {
+  color: var(--texto-apoio-aa);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric dd {
+  margin: 0;
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="context"] dd {
+  color: var(--c-primary);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="positive"] dd {
+  color: var(--c-success);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="warning"] dd {
+  color: var(--c-warning);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="negative"] dd {
+  color: var(--c-danger);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__footer {
+  min-height: 3.4rem;
+  padding: var(--esp-3) var(--esp-4);
+  border-top-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__signals span {
+  border-radius: var(--raio-3);
+}
+
+.pg-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1.6fr) repeat(3, minmax(10rem, 1fr)) auto;
+  gap: .75rem;
+  align-items: end;
+}
+
+.pg-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.pg-filter-actions .btn {
+  min-height: 2.55rem;
+  white-space: nowrap;
+}
+
+.pg-filter-grid label,
+.pg-register-date label {
+  display: grid;
+  gap: .35rem;
+  min-width: 0;
+}
+
+.pg-filter-grid label > span,
+.pg-register-date label > span {
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.pg-filter-grid select,
+.pg-filter-grid input,
+.pg-register-date input,
+.pg-register-row__value input {
+  min-height: 2.55rem;
+  width: 100%;
+  border: 1px solid var(--c-border);
+  border-radius: .65rem;
+  background: var(--c-surface);
+  color: var(--c-text);
+  padding: .55rem .7rem;
+}
+
+.pg-balance-summary {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1.4fr) minmax(24rem, 1fr);
+  gap: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--module-financeiro) 30%, var(--c-border));
+  border-radius: .9rem;
+  background: color-mix(in srgb, var(--module-financeiro) 5%, var(--c-surface));
+}
+
+.pg-balance-summary > div { display: grid; align-content: center; gap: .2rem; }
+.pg-balance-summary > div > span { color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.pg-balance-summary > div > strong { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.pg-balance-summary > div > small { color: var(--c-muted); font-size: var(--fonte-detalhe); }
+.pg-balance-summary dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border-left: 1px solid var(--c-border); }
+.pg-balance-summary dl div { display: grid; align-content: center; gap: .3rem; padding: .6rem 1rem; }
+.pg-balance-summary dt { color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 700; }
+.pg-balance-summary dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pg-balance-summary[data-completo="false"] { border-color: color-mix(in srgb, var(--c-warning) 40%, var(--c-border)); background: color-mix(in srgb, var(--c-warning) 7%, var(--c-surface)); }
+
+.pg-main-balance { display: grid; gap: .75rem; padding: .75rem; border: 1px solid var(--c-border); border-radius: .9rem; background: var(--c-surface); }
+.pg-main-balance > .pg-balance-summary { padding: .7rem .85rem; border: 0; background: transparent; }
+.pg-main-balance__actions { display: flex; justify-content: flex-end; gap: .5rem; padding-top: .65rem; border-top: 1px solid var(--c-border); }
+.pg-main-balance__actions svg { width: 1rem; height: 1rem; }
+.pg-main-balance__details { padding-top: .25rem; }
+.pg-account-card[data-pendente="true"] { border-style: dashed; background: var(--ui-surface-soft); }
+.pg-account-card[data-pendente="true"] > p { color: var(--c-muted); font-size: var(--fonte-corpo); }
+.pg-account-card[data-pendente="true"] .pg-account-card__heading em { background: var(--ui-surface-muted); color: var(--c-muted); }
+
+.pg-balance-entry,
+.pg-current-accounts {
+  min-width: 0;
+  border: 1px solid var(--c-border);
+  border-radius: .9rem;
+  background: var(--c-surface);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.pg-balance-entry__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 1rem 1.1rem;
+  color: var(--c-text);
+  text-align: left;
+}
+
+.pg-balance-entry__toggle > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.pg-balance-entry__toggle > span:first-child > svg {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--module-financeiro);
+}
+
+.pg-balance-entry__toggle > span:first-child > span {
+  display: grid;
+  gap: .15rem;
+  min-width: 0;
+}
+
+.pg-balance-entry__toggle strong { font-size: var(--fonte-corpo); }
+.pg-balance-entry__toggle small { color: var(--c-muted); font-size: var(--fonte-detalhe); }
+
+.pg-balance-entry__action {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  color: var(--c-primary);
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pg-balance-entry__action svg { width: 1rem; height: 1rem; }
+.pg-balance-entry__content { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .2s ease; }
+.pg-balance-entry__content > div { min-height: 0; overflow: clip; }
+.pg-balance-entry[data-expanded="true"] .pg-balance-entry__content { grid-template-rows: 1fr; }
+.pg-balance-entry[data-expanded="true"] .pg-balance-entry__toggle { border-bottom: 1px solid var(--c-border); }
+.pg-balance-entry__content form { padding: 0 1.1rem 1rem; }
+.pg-balance-entry__content .app-empty-card { margin: 1rem; }
+
+.pg-balance-entry__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: .85rem;
+  border-top: 1px solid var(--c-border);
+}
+
+.pg-balance-entry__footer > span { color: var(--c-muted); font-size: var(--fonte-detalhe); }
+
+.pg-current-accounts { padding: 1rem; }
+.pg-current-accounts > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .85rem; }
+.pg-current-accounts > header > div { display: grid; gap: .15rem; }
+.pg-current-accounts > header strong { font-size: var(--fonte-corpo); }
+.pg-current-accounts > header span { color: var(--c-muted); font-size: var(--fonte-detalhe); }
+
+.pg-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: .8rem; }
+.pg-account-card { display: grid; gap: 1rem; min-width: 0; padding: 1rem; border: 1px solid var(--c-border); border-radius: .8rem; background: var(--c-surface); }
+.pg-account-card__heading { display: grid; grid-template-columns: auto 1fr auto; gap: .65rem; align-items: center; min-width: 0; }
+.pg-account-card__heading > svg { width: 1.2rem; height: 1.2rem; color: var(--module-financeiro); }
+.pg-account-card__heading > div { display: grid; min-width: 0; }
+.pg-account-card__heading strong, .pg-account-card__heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-account-card__heading span { color: var(--c-muted); font-size: var(--fonte-detalhe); }
+.pg-account-card__heading em { padding: .18rem .42rem; border-radius: 999px; background: color-mix(in srgb, var(--c-success) 12%, var(--c-surface)); color: var(--c-success); font-size: var(--fonte-detalhe); font-style: normal; font-weight: 800; text-transform: uppercase; }
+.pg-account-card > p { margin: 0; font-size: var(--fonte-bloco); font-weight: 800; font-variant-numeric: tabular-nums; }
+.pg-account-card footer { display: grid; gap: .2rem; padding-top: .7rem; border-top: 1px solid var(--c-border); color: var(--c-muted); font-size: var(--fonte-detalhe); }
+
+.pg-history-scroll { max-width: 100%; overflow: auto; }
+.pg-history-table { width: 100%; min-width: 58rem; border-collapse: collapse; font-size: var(--fonte-detalhe); }
+.pg-history-table th { padding: .55rem .65rem; border-bottom: 1px solid var(--c-border); color: var(--c-muted); font-size: var(--fonte-detalhe); letter-spacing: .035em; text-align: left; text-transform: uppercase; }
+.pg-history-table td { padding: .6rem .65rem; border-bottom: 1px solid var(--c-border); vertical-align: top; }
+.pg-history-table tbody tr:last-child td { border-bottom: 0; }
+.pg-history-table td:nth-child(4), .pg-history-table td:nth-child(5) { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pg-history-table td:first-child, .pg-history-table td:nth-child(6) { white-space: nowrap; }
+.pg-history-table [data-action] { display: inline-flex; padding: .16rem .4rem; border-radius: 999px; background: var(--c-surface-soft, #f8fafc); color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 800; text-transform: uppercase; }
+.pg-history-table [data-action="CORRIGIDO"] { background: color-mix(in srgb, var(--c-warning) 13%, var(--c-surface)); color: var(--c-warning); }
+
+.pg-empty-balance { display: grid; justify-items: start; gap: .55rem; padding: 2rem; border: 1px dashed var(--c-border); border-radius: .8rem; color: var(--c-muted); }
+.pg-empty-balance svg { width: 1.4rem; height: 1.4rem; color: var(--c-warning); }
+
+.pg-register-form { display: grid; gap: 1rem; }
+.pg-register-date { display: flex; align-items: end; gap: 1rem; }
+.pg-register-date label { width: 13rem; }
+.pg-register-date p { margin: 0 0 .65rem; color: var(--c-muted); font-size: var(--fonte-detalhe); }
+.pg-register-date p[data-alert="true"] { color: var(--c-warning); font-weight: 700; }
+.pg-register-list { display: grid; }
+.pg-register-row { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(12rem, 15rem) 7rem; gap: 1rem; align-items: center; padding: .75rem 0; border-bottom: 1px solid var(--c-border); }
+.pg-register-row:last-child { border-bottom: 0; }
+.pg-register-row__identity { display: flex; align-items: center; gap: .65rem; min-width: 0; }
+.pg-register-row__identity > svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; color: var(--module-financeiro); }
+.pg-register-row__identity > span { display: grid; min-width: 0; }
+.pg-register-row__identity strong, .pg-register-row__identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-register-row__identity small { color: var(--c-muted); }
+.pg-register-row__value { display: grid; gap: .3rem; }
+.pg-register-row__value > span { color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 700; }
+.pg-register-row__value input { text-align: right; font-weight: 750; font-variant-numeric: tabular-nums; }
+.pg-register-row__status { display: inline-flex; align-items: center; justify-content: flex-end; gap: .3rem; color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 700; }
+.pg-register-row__status svg { color: var(--c-success); }
+.pg-register-actions { display: flex; justify-content: flex-end; gap: .55rem; padding-bottom: 1rem; }
+
+@media (max-width: 1050px) {
+  .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-filter-grid .btn { justify-self: start; }
+  .pg-filter-actions { grid-column: 1 / -1; }
+  .pg-balance-summary { grid-template-columns: 1fr; }
+  .pg-balance-summary dl { border-left: 0; border-top: 1px solid var(--c-border); }
+  .pg-main-balance__actions { flex-wrap: wrap; justify-content: flex-start; }
+}
+
+@media (max-width: 700px) {
+  .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: 1fr; }
+  .pg-filter-grid { grid-template-columns: 1fr; }
+  .pg-filter-grid .btn { width: 100%; }
+  .pg-filter-actions { display: grid; grid-template-columns: 1fr; }
+  .pg-register-date { align-items: stretch; flex-direction: column; }
+  .pg-register-date label { width: 100%; }
+  .pg-balance-summary { grid-template-columns: 1fr; min-width: 0; }
+  .pg-balance-summary dl { grid-template-columns: 1fr; }
+  .pg-balance-summary dl div { border-bottom: 1px solid var(--c-border); }
+  .pg-main-balance__actions .btn { width: 100%; justify-content: center; }
+  .pg-balance-entry__toggle { align-items: flex-start; }
+  .pg-balance-entry__action { gap: 0; }
+  .pg-balance-entry__action > span { display: none; }
+  .pg-balance-entry__action svg { width: 1.15rem; height: 1.15rem; }
+  .pg-balance-entry__footer, .pg-current-accounts > header { align-items: stretch; flex-direction: column; }
+  .pg-balance-entry__footer .btn, .pg-current-accounts > header .btn { width: 100%; justify-content: center; }
+  .pg-account-grid { grid-template-columns: 1fr; }
+  .pg-register-row { grid-template-columns: 1fr; gap: .55rem; }
+  .pg-register-row__status { justify-content: flex-start; }
+  .pg-register-actions { display: grid; grid-template-columns: 1fr; }
+}
+
+/* ===================================================================
+   REFORMA DO PAINEL (29/09/2026): consolidado com hierarquia, card de
+   obra do painel, ordem dos cards, olho e modo TV.
+   =================================================================== */
+
+/* ---- Consolidado do período: 1 número principal + 4 de apoio ------ */
+.pg-consolidado {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) minmax(0, 3fr);
+  gap: var(--esp-4);
+  align-items: stretch;
+}
+
+.pg-consolidado__principal,
+.pg-consolidado__item {
+  display: grid;
+  align-content: start;
+  gap: var(--esp-1);
+  min-width: 0;
+}
+
+.pg-consolidado__principal {
+  align-content: center;
+  padding: var(--esp-3) var(--esp-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-2);
+  background: var(--ui-surface-soft, var(--c-surface));
+}
+
+.pg-consolidado__principal > span,
+.pg-consolidado__item > span {
+  width: fit-content;
+  color: var(--texto-apoio-aa, var(--c-muted));
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.pg-consolidado__principal > strong {
+  color: var(--c-text);
+  font-size: var(--fonte-destaque);
+  font-weight: 800;
+  line-height: var(--lh-destaque);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pg-consolidado__secundarios {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--esp-4);
+  align-content: center;
+  padding: var(--esp-3) 0;
+}
+
+.pg-consolidado__item > strong {
+  color: var(--c-text);
+  font-size: var(--fonte-bloco);
+  font-weight: 800;
+  line-height: var(--lh-titulo);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pg-painel [data-tom="positivo"] > strong,
+.pg-painel [data-tom="recebido"] > strong { color: var(--c-success); }
+.pg-painel [data-tom="negativo"] > strong,
+.pg-painel [data-tom="executado"] > strong { color: var(--c-danger); }
+.pg-painel [data-tom="pendente"] > strong { color: var(--c-warning); }
+.pg-painel [data-tom="vendido"] > strong,
+.pg-painel [data-tom="info"] > strong { color: var(--c-primary); }
+
+/* ---- Grade de cards com ordem -------------------------------------- */
+.pg-grade-cards { display: grid; gap: var(--esp-3); min-width: 0; }
+.pg-grade-cards__topo,
+.pg-current-accounts__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-2) var(--esp-3);
+}
+.pg-current-accounts__acoes { justify-content: flex-end; }
+.pg-grade-cards__topo > strong { color: var(--c-text); font-size: var(--fonte-corpo); }
+
+.pg-obra-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 25rem), 1fr));
+  gap: var(--esp-4);
+}
+
+/* Ordem: mesmos controles do "Ordenar por" do Custos e Recebíveis. O CR
+   dentro do painel não está sob `.cr-page` (onde moram os estilos da ordem
+   dele), então as regras valem para os dois nomes. */
+.pg-ordem,
+.pg-cr .cr-ordem-obras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--esp-2);
+  min-width: 0;
+}
+
+.pg-ordem__campo,
+.pg-cr .cr-ordem-obras__campo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-2);
+  min-width: 0;
+  margin: 0;
+  color: var(--texto-apoio-aa, var(--c-muted));
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pg-ordem__campo select,
+.pg-cr .cr-ordem-obras__campo select {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: var(--esp-1) var(--esp-2);
+  border: 1px solid var(--ui-border-strong, var(--c-border));
+  border-radius: var(--raio-1);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+}
+
+.pg-ordem__campo select:focus-visible,
+.pg-cr .cr-ordem-obras__campo select:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.pg-ordem__dica,
+.pg-cr .cr-ordem-obras__dica {
+  margin: 0;
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.pg-ordem-item,
+.pg-cr .cr-ordem-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pg-ordem-item > article,
+.pg-cr .cr-ordem-item > .cr-period-card { flex: 1; }
+.pg-ordem-item[draggable="true"],
+.pg-cr .cr-ordem-item[draggable="true"] { cursor: grab; }
+.pg-ordem-item[draggable="true"] button,
+.pg-cr .cr-ordem-item[draggable="true"] button { cursor: pointer; }
+.pg-ordem-item[data-arrastando="true"],
+.pg-cr .cr-ordem-item[data-arrastando="true"] { opacity: .45; cursor: grabbing; }
+
+.pg-ordem-item[data-alvo]::after,
+.pg-cr .cr-ordem-item[data-alvo]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--esp-1);
+  border-radius: var(--esp-1);
+  background: var(--c-primary);
+  pointer-events: none;
+}
+.pg-ordem-item[data-alvo="antes"]::after,
+.pg-cr .cr-ordem-item[data-alvo="antes"]::after { left: calc(var(--esp-2) * -1); }
+.pg-ordem-item[data-alvo="depois"]::after,
+.pg-cr .cr-ordem-item[data-alvo="depois"]::after { right: calc(var(--esp-2) * -1); }
+
+.pg-ordem-item__barra,
+.pg-cr .cr-ordem-item__barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-2);
+  padding: 0 0 var(--esp-1);
+}
+
+.pg-ordem-item__alca,
+.pg-cr .cr-ordem-item__alca {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-1);
+  min-height: 1.75rem;
+  padding: 0 var(--esp-2);
+  border: 1px dashed var(--ui-border-strong, var(--c-border));
+  border-radius: var(--raio-1);
+  background: var(--c-surface);
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  cursor: grab;
+}
+
+.pg-ordem-item__acoes,
+.pg-cr .cr-ordem-item__acoes { display: inline-flex; gap: var(--esp-1); }
+
+.pg-ordem-item__botao,
+.pg-cr .cr-ordem-item__botao {
+  display: inline-grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--c-border);
+  border-radius: var(--raio-1);
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+
+.pg-ordem-item__alca svg,
+.pg-ordem-item__botao svg,
+.pg-cr .cr-ordem-item__alca svg,
+.pg-cr .cr-ordem-item__botao svg { width: 1em; height: 1em; pointer-events: none; }
+
+.pg-ordem-item__botao:disabled,
+.pg-cr .cr-ordem-item__botao:disabled { opacity: .4; cursor: not-allowed; }
+
+.pg-ordem-item__alca:hover,
+.pg-ordem-item__botao:not(:disabled):hover,
+.pg-cr .cr-ordem-item__alca:hover,
+.pg-cr .cr-ordem-item__botao:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--c-primary) 45%, var(--c-border));
+  color: var(--c-primary);
+}
+
+.pg-ordem-item__alca:focus-visible,
+.pg-ordem-item__botao:focus-visible,
+.pg-cr .cr-ordem-item__alca:focus-visible,
+.pg-cr .cr-ordem-item__botao:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+/* ---- Card de obra do painel (mesma estrutura pública/privada) -------- */
+.pg-obra-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  /* visible: as dicas (tooltip) dos rótulos passam da borda do card. */
+  overflow: visible;
+  border: 1px solid var(--ui-border-strong, var(--c-border));
+  border-radius: var(--raio-3);
+  background: var(--ui-surface, var(--c-surface));
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.pg-obra-card__cabecalho {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  padding: var(--esp-3) var(--esp-4);
+  border-bottom: 1px solid var(--ui-border, var(--c-border));
+}
+
+.pg-obra-card__identidade { display: grid; gap: var(--esp-1); min-width: 0; }
+.pg-obra-card__identidade > span { color: var(--c-muted); font-size: var(--fonte-detalhe); }
+.pg-obra-card__identidade > h3 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  line-height: var(--lh-corpo);
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pg-obra-card__classificacao {
+  display: grid;
+  justify-items: end;
+  gap: var(--esp-1);
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pg-obra-card__destaque {
+  display: grid;
+  gap: var(--esp-1);
+  padding: var(--esp-3) var(--esp-4) 0;
+}
+
+.pg-obra-card__destaque > span,
+.pg-obra-metrica__rotulo {
+  width: fit-content;
+  color: var(--texto-apoio-aa, var(--c-muted));
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.pg-obra-card__destaque > strong {
+  color: var(--c-text);
+  font-size: var(--fonte-bloco);
+  font-weight: 800;
+  line-height: var(--lh-titulo);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pg-obra-card__linha {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--esp-3) var(--esp-4);
+  padding: var(--esp-3) var(--esp-4);
+}
+
+.pg-obra-card__linha + .pg-obra-card__linha { padding-top: 0; }
+
+.pg-obra-metrica { display: grid; align-content: start; gap: var(--esp-1); min-width: 0; }
+.pg-obra-metrica__valor {
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  line-height: var(--lh-corpo);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pg-obra-metrica[data-tom="positivo"] > .pg-obra-metrica__valor,
+.pg-obra-metrica[data-tom="recebido"] > .pg-obra-metrica__valor { color: var(--c-success); }
+.pg-obra-metrica[data-tom="negativo"] > .pg-obra-metrica__valor,
+.pg-obra-metrica[data-tom="executado"] > .pg-obra-metrica__valor { color: var(--c-danger); }
+.pg-obra-metrica[data-tom="pendente"] > .pg-obra-metrica__valor { color: var(--c-warning); }
+.pg-obra-metrica[data-tom="vendido"] > .pg-obra-metrica__valor { color: var(--c-primary); }
+/* Alerta "VGV não calculado": ícone no rótulo, texto inteiro no tooltip. */
+.pg-obra-metrica__alerta {
+  width: 1em;
+  height: 1em;
+  margin-left: var(--esp-1);
+  color: var(--c-warning);
+  vertical-align: -0.125em;
+}
+
+.pg-obra-card__rodape {
+  display: grid;
+  gap: var(--esp-3);
+  margin-top: auto;
+  padding: var(--esp-3) var(--esp-4) var(--esp-4);
+  border-top: 1px solid var(--ui-border, var(--c-border));
+}
+
+.pg-obra-progresso { display: grid; gap: var(--esp-2); }
+.pg-obra-progresso__legenda {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  color: var(--c-text);
+  font-size: var(--fonte-detalhe);
+  font-variant-numeric: tabular-nums;
+}
+.pg-obra-progresso__trilha {
+  height: var(--esp-1);
+  overflow: clip;
+  border-radius: var(--raio-3);
+  background: var(--ui-border, var(--c-border));
+}
+/* Cor da barra = semântica do indicador (não a posição dela no card):
+   recebido é progresso bom; executado sobre orçamento é normal até 90%,
+   atenção de 90% a 100% e ruim acima de 100%. Sem base/oculto: vazia. */
+.pg-obra-progresso__trilha > span { display: block; height: 100%; border-radius: inherit; background: var(--c-primary); }
+.pg-obra-progresso[data-estado="bom"] .pg-obra-progresso__trilha > span { background: var(--c-success); }
+.pg-obra-progresso[data-estado="atencao"] .pg-obra-progresso__trilha > span { background: var(--c-warning); }
+.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__trilha > span { background: var(--c-danger); }
+.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__pct { color: var(--c-danger); font-weight: 700; }
+.pg-obra-progresso__pct { white-space: nowrap; }
+
+/* ---- Olho: aviso no "Informar saldos" e modal do PIN ----------------- */
+.pg-balance-entry[data-indisponivel="true"] .pg-balance-entry__toggle { cursor: default; }
+.pg-balance-entry__aviso {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-2);
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+.pg-balance-entry__aviso svg { width: 1rem; height: 1rem; }
+
+/* Campos de 4 dígitos (modal e configuração): largura de 4 dígitos, não
+   a linha inteira. */
+.app-confirmacao.pg-pin .app-confirmacao-campo input {
+  justify-self: start;
+  width: 9rem;
+  max-width: 100%;
+  letter-spacing: .6em;
+  text-align: center;
+  font-size: var(--fonte-bloco);
+  font-variant-numeric: tabular-nums;
+}
+input.input.pg-pin-campo {
+  width: 9rem;
+  max-width: 100%;
+  letter-spacing: .4em;
+  font-variant-numeric: tabular-nums;
+}
+.app-confirmacao .pg-pin__erro { margin: 0; color: var(--c-danger); font-size: var(--fonte-corpo); font-weight: 700; }
+
+/* Botão do olho: estado fechado fica marcado, para não parecer esquecido. */
+.pg-painel[data-valores-ocultos="true"] .pg-botao-olho {
+  border-color: color-mix(in srgb, var(--c-warning) 45%, var(--c-border));
+  color: var(--c-warning);
+}
+
+@media (max-width: 1050px) {
+  .pg-consolidado { grid-template-columns: 1fr; }
+  .pg-consolidado__secundarios { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
+}
+
+@media (max-width: 700px) {
+  .pg-obra-card__linha { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-grade-cards__topo, .pg-current-accounts__acoes { justify-content: flex-start; }
+  .pg-balance-entry[data-indisponivel="true"] .pg-balance-entry__toggle { flex-direction: column; align-items: flex-start; }
+}
+
+/* ===================================================================
+   MODO TV (29/09/2026) — leitura a 3–4 m (TV 1920×1080 a ~3 m).
+
+   A escala continua sendo a de CINCO DEGRAUS (R30): dentro de
+   `.pg-modo-tv` os degraus são REDEFINIDOS para valores de TV, e cada
+   elemento continua escrevendo `var(--fonte-*)`. Assim tudo o que o painel
+   (e o Custos e Recebíveis dentro dele) já escreve em token cresce junto,
+   e só os números sobem de degrau:
+     D1 detalhe  12 → 20  (apoio/rótulos)
+     D2 corpo    14 → 22  (texto, botões, nomes)
+     D3 bloco    18 → 28  (títulos de bloco, contagens)
+     D4 página   22 → 40  (números secundários)
+     D5 destaque 30 → 72  (números principais)
+   A faixa do cabeçalho (título e botões) fica na escala normal.
+   Desligado, nada disto se aplica: a tela é a de sempre.
+   =================================================================== */
+.pg-modo-tv {
+  --fonte-detalhe: 1.25rem;
+  --fonte-corpo: 1.375rem;
+  --fonte-bloco: 1.75rem;
+  --fonte-pagina: 2.5rem;
+  --fonte-destaque: 4.5rem;
+}
+
+/* Cabeçalho da página e botões: degrau INTERMEDIÁRIO — crescem com o
+   Modo TV, mas menos que os números (pedido do proprietário). */
+.pg-modo-tv .app-page-header {
+  --fonte-detalhe: 1rem;
+  --fonte-corpo: 1.125rem;
+  --fonte-bloco: 1.375rem;
+  --fonte-pagina: 1.75rem;
+  --fonte-destaque: 2.25rem;
+}
+.pg-modo-tv .btn { --fonte-corpo: 1.125rem; }
+
+.pg-modo-tv .pg-tabs button svg,
+.pg-modo-tv .pg-main-balance__actions svg { width: 1em; height: 1em; }
+
+/* Saldo do topo */
+.pg-modo-tv .pg-balance-summary { grid-template-columns: minmax(0, 1fr) auto; }
+.pg-modo-tv .pg-balance-summary dd { font-size: var(--fonte-bloco); }
+.pg-modo-tv .pg-balance-summary dt,
+.pg-modo-tv .pg-balance-summary dd { white-space: nowrap; }
+@media (min-width: 701px) {
+  .pg-modo-tv .pg-balance-summary dl { grid-template-columns: repeat(3, auto); }
+}
+
+/* Consolidado: principal no D5 em linha própria, apoio no D4 em 2×2
+   abaixo — número de 72px não cabe numa coluna ao lado sem quebrar. */
+.pg-modo-tv .pg-consolidado { grid-template-columns: minmax(0, 1fr); }
+.pg-modo-tv .pg-consolidado__secundarios { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
+.pg-modo-tv .pg-consolidado__item > strong { font-size: var(--fonte-pagina); }
+
+/* Cards de obra: um por linha, as MESMAS regiões do modo normal, uma
+   abaixo da outra (cabeçalho, número principal, duas linhas de métricas,
+   rodapé com as duas barras lado a lado). O número principal tem a largura
+   inteira do card: nunca quebra. */
+.pg-modo-tv .pg-obra-grid { grid-template-columns: minmax(0, 1fr); }
+.pg-modo-tv .pg-obra-card__destaque { padding: var(--esp-4) var(--esp-6) 0; }
+.pg-modo-tv .pg-obra-card__linha { padding: var(--esp-4) var(--esp-6); gap: var(--esp-4) var(--esp-6); }
+.pg-modo-tv .pg-obra-card__linha + .pg-obra-card__linha { padding-top: 0; }
+.pg-modo-tv .pg-obra-card__rodape { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--esp-6); padding: var(--esp-4) var(--esp-6); }
+.pg-modo-tv .pg-obra-card__destaque > strong { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); }
+.pg-modo-tv .pg-obra-metrica__valor { font-size: var(--fonte-pagina); line-height: var(--lh-destaque); }
+.pg-modo-tv .pg-obra-card__identidade > h3 { font-size: var(--fonte-bloco); }
+.pg-modo-tv .pg-obra-progresso__trilha { height: var(--esp-2); }
+
+/* Cards de conta: dois por linha, saldo no D5 */
+.pg-modo-tv .pg-account-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--esp-4); }
+.pg-modo-tv .pg-account-card > p { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); }
+.pg-modo-tv .pg-account-card[data-pendente="true"] > p { font-size: var(--fonte-pagina); }
+.pg-modo-tv .pg-account-card__heading > svg { width: 1.6rem; height: 1.6rem; }
+
+/* Custos e Recebíveis dentro do painel (não está sob .cr-page, então o
+   cr-admin.css não vale aqui). Números: principal (carteira e Desvio do
+   card de mês) no D5; demais valores no D4; rótulos no D1 da TV.
+   Valor monetário NUNCA quebra linha (revisão 29/09: "R$ 33.333,2 / 4" e o
+   "-" sozinho acima do número eram lidos errado de longe); as grades têm
+   coluna mínima maior para o número caber. */
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-valor--principal { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metric dd.cr-valor,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metric dd,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-metric > strong,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-trend-row > strong.cr-valor,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-macro-ops-row .cr-valor { font-size: var(--fonte-pagina); line-height: var(--lh-destaque); }
+/* Carteira: 8 números em 4 colunas — D4, não D5 (72px não cabe em 1/4 da tela). */
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-metric > strong.cr-valor.cr-valor--principal { font-size: var(--fonte-pagina); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-metric > span,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-metric > small,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metric dt,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__lead > span,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__lead small,
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-status-pill { font-size: var(--fonte-detalhe); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__header h3 { font-size: var(--fonte-bloco); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-valor {
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-ledger { grid-template-columns: minmax(0, 1fr); }
+/* Cards por obra na TV: UM por linha e métricas numa grade FIXA de 3
+   colunas — pública (6 métricas) e privada (5) ficam com as mesmas
+   colunas e as mesmas linhas, sem o desalinhamento de dois cards de
+   alturas diferentes lado a lado. */
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: minmax(0, 1fr); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-dashboard-trends { grid-template-columns: minmax(0, 1fr); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-trend-row { grid-template-columns: auto minmax(0, 1fr); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-trend-row > strong { grid-column: 1 / -1; text-align: left; }
+
+/* Marcador do olho fechado no CR (a regra do módulo mora no cr-admin.css,
+   que o painel não importa): sem número, o marcador não quebra no meio. */
+.pg-cr .cr-valor[data-oculto="true"],
+.pg-cr .cr-valor--principal[data-oculto="true"] {
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+.pg-modo-tv .pg-cr .cr-valor[data-oculto="true"] { white-space: nowrap; }
+
+@media (max-width: 1050px) {
+  .pg-modo-tv .pg-obra-card__linha { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-modo-tv .pg-consolidado,
+  .pg-modo-tv .pg-balance-summary,
+  .pg-modo-tv .pg-account-grid,
+  .pg-modo-tv .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: minmax(0, 1fr); }
+  .pg-modo-tv .pg-obra-card__rodape { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Ajustes finais: nome da conta no degrau de corpo; ações do cabeçalho de
+   "Saldo atual por conta" em linha (o `header > div` é grade). */
+.pg-account-card__heading strong { font-size: var(--fonte-corpo); }
+.pg-current-accounts > header > .pg-current-accounts__acoes { display: flex; }
+.pg-current-accounts > header .pg-ordem span { font-size: var(--fonte-detalhe); }
+
+/* ===================================================================
+   REVISÃO DO PAINEL (29/09/2026) — achados do revisor
+   =================================================================== */
+
+/* Olho fechado: o marcador tem a cor do texto (nenhum tom semântico) e o
+   mesmo espaçamento do marcador do CR; o tamanho é o do valor que ele
+   substitui (herda o degrau do lugar). */
+.pg-painel[data-valores-ocultos="true"] :is(
+  .pg-obra-card__destaque > strong,
+  .pg-obra-metrica__valor,
+  .pg-consolidado__principal > strong,
+  .pg-consolidado__item > strong,
+  .pg-balance-summary > div > strong,
+  .pg-account-card > p
+) {
+  color: var(--c-text);
+  letter-spacing: .08em;
+}
+
+/* Registro de saldos: o form ocupa a largura da página, alinhado com os
+   blocos de cima (a regra do sistema limita todo form a 940px e centraliza;
+   aqui o form é uma lista de contas, não um campo de digitação solto). */
+.solicitacoes-page:not(.solicitacao-nova-page) form.pg-register-form {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+}
+
+/* Aviso de olho fechado no registro: uma linha, cor de alerta legível. */
+.pg-aviso-olho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--esp-1) var(--esp-3);
+  margin: 0;
+  padding: var(--esp-2) var(--esp-3);
+  border: 1px solid color-mix(in srgb, var(--sem-warning) 35%, var(--ui-border));
+  border-radius: var(--raio-2);
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+}
+.pg-aviso-olho svg { flex: 0 0 auto; width: 1rem; height: 1rem; }
+.pg-aviso-olho a { color: inherit; font-weight: 800; text-decoration: underline; }
+
+/* Carteira consolidada (CR dentro do painel): o Desvio — o mesmo número
+   principal do card de mês — vira a linha de destaque do grupo Custos; as
+   demais métricas fluem em linhas que se completam (flex com crescimento),
+   então não sobram células cinzas vazias em nenhuma largura. */
+.pg-cr .cr-ops-metrics { display: flex; flex-wrap: wrap; }
+.pg-cr .cr-ops-metric { flex: 1 1 9rem; }
+.pg-cr .cr-ops-metric[data-metric="resultado"] { order: -1; flex-basis: 100%; }
+.pg-cr .cr-ops-metric[data-metric="resultado"] > strong {
+  font-size: var(--fonte-destaque);
+  line-height: var(--lh-destaque);
+  white-space: nowrap;
+}
+.pg-modo-tv .pg-cr .cr-ops-metric { flex-basis: 22rem; }
+.pg-modo-tv .pg-cr .cr-ops-metric[data-metric="resultado"] { flex-basis: 100%; }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-metric[data-metric="resultado"] > strong.cr-valor.cr-valor--principal {
+  font-size: var(--fonte-destaque);
+}
+
+/* Evolução de custos/recebíveis: a competência ("set de 26") não quebra. */
+.pg-cr .cr-trend-row { grid-template-columns: max-content minmax(0, 1fr) auto; }
+.pg-cr .cr-trend-row > span { white-space: nowrap; text-transform: none; }
+
+/* Filtros do CR no painel: o período ganha largura para o mês e o ano não
+   serem cortados (só onde o módulo usa as 5 colunas). */
+@media (min-width: 1181px) {
+  .pg-cr .cr-context-bar--executive.cr-context-bar--with-actions {
+    grid-template-columns:
+      minmax(12rem, 1.1fr)
+      minmax(9rem, .6fr)
+      minmax(20rem, 1.1fr)
+      minmax(10rem, .7fr)
+      auto;
+  }
+}
+
+/* Modo TV — filtros: menos colunas (a barra quebra em mais linhas) e os
+   controles no degrau de corpo, para nenhum texto ficar cortado. */
+.pg-modo-tv .pg-filter-grid :is(input, select),
+.pg-modo-tv .pg-cr .cr-field :is(input, select) {
+  min-height: 2.5em;
+  font-size: var(--fonte-corpo);
+}
+@media (min-width: 761px) {
+  .pg-modo-tv .pg-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-modo-tv .pg-filter-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .pg-modo-tv .pg-cr .cr-context-bar--executive,
+  .pg-modo-tv .pg-cr .cr-context-bar--executive.cr-context-bar--with-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pg-modo-tv .pg-cr .cr-context-actions { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+@media (max-width: 700px) {
+  .pg-modo-tv .pg-obra-card__linha { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ===================================================================
+   MODO TV — PRIMEIRA TELA (29/09/2026, prova em 1920×1080)
+   =================================================================== */
+
+/* CR dentro do painel: a barra de filtros rola junto com a página (no
+   módulo ela continua presa, `position: sticky`). Com e sem Modo TV. */
+.pg-cr .cr-context-bar { position: static; }
+
+/* Filtros recolhidos na TV: faixa de uma linha com o resumo aplicado. */
+.pg-filtros-recolhiveis { display: grid; gap: var(--esp-3); min-width: 0; }
+.pg-filtros-faixa {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-3);
+  min-width: 0;
+  padding: var(--esp-2) var(--esp-3);
+  border: 1px solid var(--ui-border, var(--c-border));
+  border-radius: var(--raio-2);
+  background: var(--ui-surface, var(--c-surface));
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+}
+.pg-filtros-faixa > svg { flex: 0 0 auto; width: 1.25em; height: 1.25em; }
+.pg-filtros-faixa__resumo { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-filtros-faixa .btn { flex: 0 0 auto; white-space: nowrap; }
+.pg-filtros-faixa .btn svg { width: 1em; height: 1em; }
+
+/* Saldo do topo na TV: menos altura. As ações vão para a direita, em
+   coluna, em vez de ocuparem uma linha própria; o número segue no D5. */
+.pg-modo-tv .pg-main-balance { gap: var(--esp-2); padding: var(--esp-2) var(--esp-3); }
+.pg-modo-tv .pg-main-balance > .pg-balance-summary { padding: var(--esp-1) var(--esp-2); }
+.pg-modo-tv .pg-balance-summary > div { gap: 0; }
+.pg-modo-tv .pg-balance-summary dl div { padding: var(--esp-1) var(--esp-4); }
+.pg-modo-tv .pg-main-balance__actions { padding-top: var(--esp-2); }
+@media (min-width: 1500px) {
+  .pg-modo-tv .pg-main-balance { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .pg-modo-tv .pg-main-balance__actions { flex-direction: column; align-items: stretch; padding: 0 0 0 var(--esp-3); border-top: 0; border-left: 1px solid var(--c-border); }
+  .pg-modo-tv .pg-main-balance__details { grid-column: 1 / -1; }
+  /* Consolidado: os 4 números de apoio numa linha só (cabem a partir de
+     1500px com o degrau D4), o que traz os cards para a primeira tela. */
+  .pg-modo-tv .pg-consolidado__secundarios { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pg-modo-tv .pg-consolidado__principal { padding: var(--esp-2) var(--esp-4); }
+}
+
+@media (max-width: 1050px) {
+  .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: minmax(0, 1fr); }
+  .pg-filtros-faixa { flex-wrap: wrap; }
+}
+
+/* Aba Custos e Recebíveis do painel: fica fora de `.cr-page`, então recebe
+   aqui os mesmos tokens de cor do módulo (sem eles o Desvio perde a cor do
+   sinal no card). Só cores; largura e grade continuam as do painel. */
+.pg-cr {
+  --cr-accent: var(--accent-blue, #315ce8);
+  --cr-success: var(--accent-green, #07845a);
+  --cr-warning: #b76b09;
+  --cr-danger: var(--accent-red, #d92d20);
+  --cr-primary: var(--cr-accent);
+  --cr-surface: var(--ui-surface);
+  --cr-border: var(--ui-border);
+  --cr-border-strong: color-mix(in srgb, var(--ui-border) 72%, var(--c-text));
+  --cr-text: var(--c-text);
+  --cr-ink: var(--c-text);
+  --cr-muted: var(--c-muted);
+}
+
+/* Dicas do card de obra: largura do texto (não a do rótulo, que é estreito),
+   sem herdar a caixa alta do rótulo; ancoradas no início do rótulo e, na
+   terceira coluna, no fim — para não sair pela borda da tela. */
+.pg-obra-card .tooltip-content {
+  left: 0;
+  transform: none;
+  width: max-content;
+  max-width: min(260px, 80vw);
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+}
+.pg-obra-card__linha > .pg-obra-metrica:nth-child(3) .tooltip-content {
+  left: auto;
+  right: 0;
+}
+
+/* Telas estreitas: a grade de métricas muda de colunas, então a dica se
+   ancora na linha do card (largura toda da linha), não no rótulo. */
+@media (max-width: 640px) {
+  .pg-obra-card .tooltip-wrap { position: static; }
+  .pg-obra-card__linha,
+  .pg-obra-card__destaque,
+  .pg-obra-progresso { position: relative; }
+  .pg-obra-card .tooltip-content,
+  .pg-obra-card__linha > .pg-obra-metrica:nth-child(3) .tooltip-content {
+    left: var(--esp-3);
+    right: var(--esp-3);
+    width: auto;
+    max-width: none;
+  }
+}

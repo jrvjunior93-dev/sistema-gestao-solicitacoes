@@ -1,6 +1,13 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import OverlayModal from '../components/ui/OverlayModal';
+import {
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao
+} from '../components/padrao';
 import { useAuth } from '../contexts/AuthContext';
 import { useUiVisibility } from '../hooks/useUiVisibility';
 import {
@@ -12,6 +19,7 @@ import {
 } from '../services/financeiro';
 import { getMinhasObras } from '../services/obras';
 import { canViewFinanceiroRelatorio, hasPermissao } from '../utils/acessoProduto';
+import DateInputBR from '../components/DateInputBR';
 
 const FinanceiroExecutivoGrupo = lazy(() => import('./FinanceiroExecutivoGrupo'));
 const FinanceiroFluxoConsolidado = lazy(() => import('./FinanceiroFluxoConsolidado'));
@@ -23,6 +31,7 @@ const FinanceiroRelatorioAnalitico = lazy(() => import('./FinanceiroRelatorioAna
 const FinanceiroObras = lazy(() => import('./FinanceiroObras'));
 const FinanceiroResultadoObras = lazy(() => import('./FinanceiroResultadoObras'));
 const FinanceiroResultadoCentrosCusto = lazy(() => import('./FinanceiroResultadoCentrosCusto'));
+const FinanceiroDistribuicaoCentrosCusto = lazy(() => import('./FinanceiroDistribuicaoCentrosCusto'));
 
 const DEFAULT_FILTERS = {
   periodo: '30_DIAS',
@@ -37,6 +46,7 @@ const EMPTY_RELATORIO = {
     descricao: '',
     data_inicial: '',
     data_final: '',
+    data_limite_realizado: '',
     agrupamento: 'DIA',
     obra_id: null
   },
@@ -44,6 +54,12 @@ const EMPTY_RELATORIO = {
     entradas_previstas: 0,
     saidas_previstas: 0,
     saldo_previsto: 0,
+    entradas_previstas_ate_data: 0,
+    saidas_previstas_ate_data: 0,
+    saldo_previsto_ate_data: 0,
+    entradas_previstas_futuras: 0,
+    saidas_previstas_futuras: 0,
+    saldo_projecao_restante: 0,
     entradas_realizadas: 0,
     saidas_realizadas: 0,
     juros_realizados: 0,
@@ -57,23 +73,15 @@ const EMPTY_RELATORIO = {
   serie: []
 };
 
-const DETALHAMENTO_COLUMNS = [
-  { key: 'periodo', width: 150, minWidth: 120 },
-  { key: 'entradas_previstas', width: 170, minWidth: 140 },
-  { key: 'saidas_previstas', width: 160, minWidth: 140 },
-  { key: 'saldo_previsto', width: 150, minWidth: 130 },
-  { key: 'acumulado_previsto', width: 175, minWidth: 145 },
-  { key: 'entradas_realizadas', width: 175, minWidth: 145 },
-  { key: 'saidas_realizadas', width: 165, minWidth: 140 },
-  { key: 'saldo_realizado', width: 155, minWidth: 130 },
-  { key: 'acumulado_realizado', width: 180, minWidth: 145 }
-];
-
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
     style: 'currency',
     currency: 'BRL'
   });
+}
+
+function formatCurrencyOrDash(value, available = true) {
+  return available && value != null ? formatCurrency(value) : '—';
 }
 
 function formatCompactCurrency(value) {
@@ -104,11 +112,58 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
+function vinculoAnalitico(item) {
+  if (item.tipo_conciliacao === 'TRANSFERENCIA') return `Transferencia #${item.transferencia_financeira_id}`;
+  if (item.tipo_conciliacao === 'FATURA_CARTAO') return `Fatura #${item.fatura_cartao_id}`;
+  if (item.tipo_conciliacao === 'TARIFA') return `Tarifa · mov. #${item.movimento_financeiro_id}`;
+  if (item.tipo_conciliacao === 'RENDIMENTO') return `Rendimento da conta · mov. #${item.movimento_financeiro_id}`;
+  if (item.tipo_conciliacao === 'ESTORNO_TARIFA') return `Estorno de tarifa - mov. #${item.movimento_financeiro_id}`;
+  if (item.tipo_conciliacao === 'ESTORNO_BANCARIO') return `Estorno bancario - mov. #${item.movimento_financeiro_id}`;
+  if (item.tipo_conciliacao === 'CREDITO_ROTATIVO') {
+    return `${item.natureza === 'SAIDA' ? 'Amortizacao' : 'Liberacao'} · mov. #${item.movimento_financeiro_id}`;
+  }
+  return item.titulo_codigo || (item.movimento_financeiro_id ? `Mov. #${item.movimento_financeiro_id}` : '-');
+}
+
+function descricaoAnalitico(item) {
+  if (item.tipo_conciliacao === 'TRANSFERENCIA') {
+    return `${item.conta_origem || 'Origem'} → ${item.conta_destino || 'Destino'}${item.transferencia_descricao ? ` · ${item.transferencia_descricao}` : ''}`;
+  }
+  return item.descricao_banco || item.categoria || item.observacoes || '-';
+}
+
+function observacaoSintetico(item, type) {
+  if (type === 'conciliacao') {
+    return `${item.conciliados || 0} conciliado(s), ${item.pendentes || 0} pendente(s)`;
+  }
+  return Number(item.permutas || 0) > 0 ? `${formatCurrency(item.permutas)} em permutas` : '-';
+}
+
+/*
+  R25 — o tom do dinheiro vem de token semântico. As classes cruas
+  (emerald/rose/slate com degrau) não têm par no tema escuro e não passam
+  pelo piso de contraste do ThemeContext (R24): `text-slate-500` é
+  #64748b, 4,34:1, abaixo do mínimo AA de 4,5:1.
+
+  Escritas por extenso porque o Tailwind varre LITERAIS — classe montada
+  por template nunca chega ao CSS.
+*/
 function getCurrencyTone(value) {
   const numeric = Number(value || 0);
-  if (numeric > 0) return 'text-emerald-700';
-  if (numeric < 0) return 'text-rose-700';
-  return 'text-slate-700';
+  if (numeric > 0) return 'text-[var(--sem-success)]';
+  if (numeric < 0) return 'text-[var(--sem-danger)]';
+  return 'text-[var(--c-text)]';
+}
+
+/*
+  Tom do SALDO, que é outra pergunta: aqui zero conta como positivo
+  (>= 0), exatamente como a tela fazia antes. Manter as duas funções
+  separadas em vez de reaproveitar a de cima é de propósito — trocar
+  `>= 0` por `> 0` mudaria a cor de um saldo zerado sem ninguém pedir, e
+  cor em tela de dinheiro é leitura, não enfeite.
+*/
+function getSaldoTone(value) {
+  return Number(value || 0) >= 0 ? 'text-[var(--sem-success)]' : 'text-[var(--sem-danger)]';
 }
 
 function normalizeRelatorio(data) {
@@ -122,6 +177,7 @@ function normalizeRelatorio(data) {
       descricao: data.filtro?.descricao || '',
       data_inicial: data.filtro?.data_inicial || '',
       data_final: data.filtro?.data_final || '',
+      data_limite_realizado: data.filtro?.data_limite_realizado || '',
       agrupamento: data.filtro?.agrupamento || 'DIA',
       obra_id: data.filtro?.obra_id ?? null
     },
@@ -129,6 +185,12 @@ function normalizeRelatorio(data) {
       entradas_previstas: Number(data.resumo?.entradas_previstas || 0),
       saidas_previstas: Number(data.resumo?.saidas_previstas || 0),
       saldo_previsto: Number(data.resumo?.saldo_previsto || 0),
+      entradas_previstas_ate_data: Number(data.resumo?.entradas_previstas_ate_data || 0),
+      saidas_previstas_ate_data: Number(data.resumo?.saidas_previstas_ate_data || 0),
+      saldo_previsto_ate_data: Number(data.resumo?.saldo_previsto_ate_data || 0),
+      entradas_previstas_futuras: Number(data.resumo?.entradas_previstas_futuras || 0),
+      saidas_previstas_futuras: Number(data.resumo?.saidas_previstas_futuras || 0),
+      saldo_projecao_restante: Number(data.resumo?.saldo_projecao_restante || 0),
       entradas_realizadas: Number(data.resumo?.entradas_realizadas || 0),
       saidas_realizadas: Number(data.resumo?.saidas_realizadas || 0),
       juros_realizados: Number(data.resumo?.juros_realizados || 0),
@@ -145,37 +207,50 @@ function normalizeRelatorio(data) {
           label: item.label || '',
           entradas_previstas: Number(item.entradas_previstas || 0),
           saidas_previstas: Number(item.saidas_previstas || 0),
+          entradas_previstas_acumuladas: Number(item.entradas_previstas_acumuladas || 0),
+          saidas_previstas_acumuladas: Number(item.saidas_previstas_acumuladas || 0),
           saldo_previsto: Number(item.saldo_previsto || 0),
           saldo_previsto_acumulado: Number(item.saldo_previsto_acumulado || 0),
-          entradas_realizadas: Number(item.entradas_realizadas || 0),
-          saidas_realizadas: Number(item.saidas_realizadas || 0),
-          juros_realizados: Number(item.juros_realizados || 0),
-          multa_realizada: Number(item.multa_realizada || 0),
-          desconto_realizado: Number(item.desconto_realizado || 0),
-          saldo_realizado: Number(item.saldo_realizado || 0),
-          saldo_realizado_acumulado: Number(item.saldo_realizado_acumulado || 0)
+          entradas_previstas_comparaveis: Number(item.entradas_previstas_comparaveis || 0),
+          saidas_previstas_comparaveis: Number(item.saidas_previstas_comparaveis || 0),
+          saldo_previsto_comparavel: item.saldo_previsto_comparavel == null
+            ? null
+            : Number(item.saldo_previsto_comparavel),
+          saldo_previsto_comparavel_acumulado: item.saldo_previsto_comparavel_acumulado == null
+            ? null
+            : Number(item.saldo_previsto_comparavel_acumulado),
+          realizado_disponivel: Boolean(item.realizado_disponivel),
+          entradas_realizadas: item.entradas_realizadas == null ? null : Number(item.entradas_realizadas),
+          saidas_realizadas: item.saidas_realizadas == null ? null : Number(item.saidas_realizadas),
+          entradas_realizadas_acumuladas: item.entradas_realizadas_acumuladas == null
+            ? null
+            : Number(item.entradas_realizadas_acumuladas),
+          saidas_realizadas_acumuladas: item.saidas_realizadas_acumuladas == null
+            ? null
+            : Number(item.saidas_realizadas_acumuladas),
+          juros_realizados: item.juros_realizados == null ? null : Number(item.juros_realizados),
+          multa_realizada: item.multa_realizada == null ? null : Number(item.multa_realizada),
+          desconto_realizado: item.desconto_realizado == null ? null : Number(item.desconto_realizado),
+          saldo_realizado: item.saldo_realizado == null ? null : Number(item.saldo_realizado),
+          saldo_realizado_acumulado: item.saldo_realizado_acumulado == null
+            ? null
+            : Number(item.saldo_realizado_acumulado)
         }))
       : []
   };
 }
 
-function RelatorioMetric({ label, value, detail, positive = null }) {
-  const color =
-    positive == null
-      ? 'var(--c-text)'
-      : positive
-        ? '#15803d'
-        : '#b91c1c';
+/*
+  O ladrilho é o `StatTile` do sistema — o mesmo da FinanceiroTitulos e da
+  FinanceiroObras. O cartão local trazia o hexadecimal do valor (R25) e um
+  quarto dialeto de "cartão de número" que a StatGrid existe para unificar.
 
-  return (
-    <div className="app-summary-card">
-      <span className="app-summary-label">{label}</span>
-      <strong className="app-summary-value" style={{ color }}>
-        {value}
-      </strong>
-      {detail ? <span className="app-summary-subvalue">{detail}</span> : null}
-    </div>
-  );
+  `positive == null` continua significando NEUTRO: KPI que não pertence a
+  série nenhuma (contagem, saldo derivado) fica na cor de texto (R8).
+*/
+function RelatorioMetric({ label, value, detail, positive = null }) {
+  const tom = positive == null ? undefined : (positive ? 'success' : 'danger');
+  return <StatTile label={label} valor={value} sub={detail} tom={tom} />;
 }
 
 function buildLinePath(points) {
@@ -188,7 +263,11 @@ function buildLinePath(points) {
     .join(' ');
 }
 
-function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
+function isChartValue(value) {
+  return value !== null && value !== undefined && Number.isFinite(Number(value));
+}
+
+function buildComparativoGeometry(serie, primaryKey, secondaryKey) {
   if (!serie.length) {
     return null;
   }
@@ -198,11 +277,10 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
   const padding = { top: 16, right: 20, bottom: 36, left: 20 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const values = serie.flatMap((item) => [
-    Number(item[previstoKey] || 0),
-    Number(item[realizadoKey] || 0),
-    0
-  ]);
+  const values = serie.flatMap((item) => [item[primaryKey], item[secondaryKey]])
+    .filter(isChartValue)
+    .map(Number);
+  values.push(0);
 
   let min = Math.min(...values);
   let max = Math.max(...values);
@@ -214,23 +292,24 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
   }
 
   const getX = (index) => padding.left + (plotWidth * index) / Math.max(serie.length - 1, 1);
-  const getY = (value) => padding.top + ((max - Number(value || 0)) / Math.max(max - min, 1)) * plotHeight;
+  const getY = (value) => padding.top + ((max - Number(value)) / Math.max(max - min, 1)) * plotHeight;
+  const buildPoints = (key) => serie.reduce((points, item, index) => {
+    if (!isChartValue(item[key])) {
+      return points;
+    }
 
-  const previstoPoints = serie.map((item, index) => ({
-    x: getX(index),
-    y: getY(item[previstoKey]),
-    raw: Number(item[previstoKey] || 0),
-    label: item.label,
-    referencia: item.referencia
-  }));
+    points.push({
+      x: getX(index),
+      y: getY(item[key]),
+      raw: Number(item[key]),
+      label: item.label,
+      referencia: item.referencia
+    });
+    return points;
+  }, []);
 
-  const realizadoPoints = serie.map((item, index) => ({
-    x: getX(index),
-    y: getY(item[realizadoKey]),
-    raw: Number(item[realizadoKey] || 0),
-    label: item.label,
-    referencia: item.referencia
-  }));
+  const primaryPoints = buildPoints(primaryKey);
+  const secondaryPoints = buildPoints(secondaryKey);
 
   const gridValues = Array.from({ length: 5 }, (_, index) => max - ((max - min) / 4) * index);
   const labelStep = Math.max(1, Math.ceil(serie.length / 7));
@@ -246,10 +325,10 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
     width,
     height,
     padding,
-    previstoPoints,
-    realizadoPoints,
-    previstoPath: buildLinePath(previstoPoints),
-    realizadoPath: buildLinePath(realizadoPoints),
+    primaryPoints,
+    secondaryPoints,
+    primaryPath: buildLinePath(primaryPoints),
+    secondaryPath: buildLinePath(secondaryPoints),
     gridValues,
     footerLabels,
     max,
@@ -257,48 +336,120 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
   };
 }
 
-function FluxoComparativoCard({ serie }) {
+function getLastChartValue(serie, key) {
+  for (let index = serie.length - 1; index >= 0; index -= 1) {
+    if (isChartValue(serie[index]?.[key])) {
+      return Number(serie[index][key]);
+    }
+  }
+  return 0;
+}
+
+function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
+  const [view, setView] = useState('COMPARATIVO');
   const [mode, setMode] = useState('ACUMULADO');
 
-  const modeConfig =
-    mode === 'SALDO'
-      ? {
-          title: 'Fluxo previsto x realizado',
-          subtitle: 'Comparacao do saldo de cada periodo entre o que foi projetado e o que de fato aconteceu.',
-          previstoKey: 'saldo_previsto',
-          realizadoKey: 'saldo_realizado'
-        }
-      : {
-          title: 'Fluxo previsto x realizado',
-          subtitle: 'Comparacao acumulada do caixa projetado contra o caixa efetivamente baixado no periodo.',
-          previstoKey: 'saldo_previsto_acumulado',
-          realizadoKey: 'saldo_realizado_acumulado'
-        };
-
-  const geometry = buildComparativoGeometry(serie, modeConfig.previstoKey, modeConfig.realizadoKey);
-  const fechamentoPrevisto = Number(serie[serie.length - 1]?.[modeConfig.previstoKey] || 0);
-  const fechamentoRealizado = Number(serie[serie.length - 1]?.[modeConfig.realizadoKey] || 0);
-  const diferenca = fechamentoRealizado - fechamentoPrevisto;
+  const configs = {
+    COMPARATIVO: {
+      title: 'Previsto x realizado',
+      subtitle: 'Compara o planejamento e as baixas somente até a mesma data de corte.',
+      primaryLabel: 'Previsto até a data',
+      secondaryLabel: 'Realizado',
+      primaryKey: mode === 'ACUMULADO'
+        ? 'saldo_previsto_comparavel_acumulado'
+        : 'saldo_previsto_comparavel',
+      secondaryKey: mode === 'ACUMULADO' ? 'saldo_realizado_acumulado' : 'saldo_realizado',
+      resultLabel: 'Variação',
+      difference: (primary, secondary) => secondary - primary
+    },
+    PREVISTO: {
+      title: 'Projeção de caixa',
+      subtitle: 'Entradas e saídas planejadas, incluindo os próximos dias do período selecionado.',
+      primaryLabel: 'Entradas previstas',
+      secondaryLabel: 'Saídas previstas',
+      primaryKey: mode === 'ACUMULADO' ? 'entradas_previstas_acumuladas' : 'entradas_previstas',
+      secondaryKey: mode === 'ACUMULADO' ? 'saidas_previstas_acumuladas' : 'saidas_previstas',
+      resultLabel: 'Saldo projetado',
+      difference: (primary, secondary) => primary - secondary
+    },
+    REALIZADO: {
+      title: 'Fluxo realizado',
+      subtitle: 'Entradas e saídas efetivamente baixadas; datas futuras não são tratadas como realizadas.',
+      primaryLabel: 'Entradas realizadas',
+      secondaryLabel: 'Saídas realizadas',
+      primaryKey: mode === 'ACUMULADO' ? 'entradas_realizadas_acumuladas' : 'entradas_realizadas',
+      secondaryKey: mode === 'ACUMULADO' ? 'saidas_realizadas_acumuladas' : 'saidas_realizadas',
+      resultLabel: 'Saldo realizado',
+      difference: (primary, secondary) => primary - secondary
+    }
+  };
+  const modeConfig = configs[view];
+  const geometry = buildComparativoGeometry(serie, modeConfig.primaryKey, modeConfig.secondaryKey);
+  const fechamentoPrimary = getLastChartValue(serie, modeConfig.primaryKey);
+  const fechamentoSecondary = getLastChartValue(serie, modeConfig.secondaryKey);
+  const diferenca = modeConfig.difference(fechamentoPrimary, fechamentoSecondary);
+  const chartValues = serie.flatMap((item) => [item[modeConfig.primaryKey], item[modeConfig.secondaryKey]])
+    .filter(isChartValue)
+    .map(Number);
   const pico = serie.reduce(
-    (acc, item) => Math.max(acc, Number(item[modeConfig.previstoKey] || 0), Number(item[modeConfig.realizadoKey] || 0)),
-    Number.NEGATIVE_INFINITY
+    (acc, item) => Math.max(
+      acc,
+      isChartValue(item[modeConfig.primaryKey]) ? Number(item[modeConfig.primaryKey]) : acc,
+      isChartValue(item[modeConfig.secondaryKey]) ? Number(item[modeConfig.secondaryKey]) : acc
+    ),
+    chartValues.length ? Number.NEGATIVE_INFINITY : 0
   );
   const piso = serie.reduce(
-    (acc, item) => Math.min(acc, Number(item[modeConfig.previstoKey] || 0), Number(item[modeConfig.realizadoKey] || 0)),
-    Number.POSITIVE_INFINITY
+    (acc, item) => Math.min(
+      acc,
+      isChartValue(item[modeConfig.primaryKey]) ? Number(item[modeConfig.primaryKey]) : acc,
+      isChartValue(item[modeConfig.secondaryKey]) ? Number(item[modeConfig.secondaryKey]) : acc
+    ),
+    chartValues.length ? Number.POSITIVE_INFINITY : 0
   );
+  let cutoffIndex = -1;
+  serie.forEach((item, index) => {
+    if (item.realizado_disponivel) cutoffIndex = index;
+  });
+  const cutoffX = geometry && cutoffIndex >= 0 && cutoffIndex < serie.length - 1
+    ? geometry.padding.left
+      + ((geometry.width - geometry.padding.left - geometry.padding.right) * cutoffIndex)
+        / Math.max(serie.length - 1, 1)
+    : null;
 
   return (
-    <section className="finance-chart-card finance-chart-card--comparison">
+    <section
+      className={`finance-chart-card finance-chart-card--comparison ${view === 'COMPARATIVO' ? '' : 'finance-chart-card--cash-direction'}`}
+    >
       <div className="finance-chart-card__backdrop" />
 
       <div className="finance-chart-card__head">
         <div>
           <h2 className="finance-chart-card__title">{modeConfig.title}</h2>
-          <p className="finance-chart-card__subtitle">{modeConfig.subtitle}</p>
+          <p className="finance-chart-card__subtitle">
+            {modeConfig.subtitle}
+            {periodoLabel ? ` Período filtrado: ${periodoLabel}.` : ''}
+          </p>
         </div>
 
         <div className="finance-chart-card__controls">
+          <div className="finance-chart-toggle-group" aria-label="Visão do fluxo de caixa">
+            {[
+              ['COMPARATIVO', 'Comparativo'],
+              ['PREVISTO', 'Previsto'],
+              ['REALIZADO', 'Realizado']
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`finance-chart-toggle ${view === value ? 'finance-chart-toggle--active' : ''}`}
+                onClick={() => setView(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="finance-chart-toggle-group">
             <button
               type="button"
@@ -312,38 +463,38 @@ function FluxoComparativoCard({ serie }) {
               className={`finance-chart-toggle ${mode === 'SALDO' ? 'finance-chart-toggle--active' : ''}`}
               onClick={() => setMode('SALDO')}
             >
-              Saldo do periodo
+              Movimento do período
             </button>
           </div>
 
           <div className="finance-chart-legend">
             <span className="finance-chart-legend-item">
-              <span className="finance-chart-legend-dot finance-chart-legend-dot--previsto" />
-              Previsto
+              <span className="finance-chart-legend-dot finance-chart-legend-dot--primary" />
+              {modeConfig.primaryLabel}
             </span>
             <span className="finance-chart-legend-item">
-              <span className="finance-chart-legend-dot finance-chart-legend-dot--realizado" />
-              Realizado
+              <span className="finance-chart-legend-dot finance-chart-legend-dot--secondary" />
+              {modeConfig.secondaryLabel}
             </span>
           </div>
         </div>
       </div>
 
       {!serie.length ? (
-        <div className="finance-chart-empty">Nenhum movimento encontrado no periodo selecionado.</div>
+        <div className="finance-chart-empty">Nenhum movimento encontrado no período selecionado.</div>
       ) : (
         <>
           <div className="finance-chart-stats">
             <div className="finance-chart-stat">
-              <span>Previsto</span>
-              <strong>{formatCompactCurrency(fechamentoPrevisto)}</strong>
+              <span>{modeConfig.primaryLabel}</span>
+              <strong>{formatCompactCurrency(fechamentoPrimary)}</strong>
             </div>
             <div className="finance-chart-stat">
-              <span>Realizado</span>
-              <strong>{formatCompactCurrency(fechamentoRealizado)}</strong>
+              <span>{modeConfig.secondaryLabel}</span>
+              <strong>{formatCompactCurrency(fechamentoSecondary)}</strong>
             </div>
             <div className="finance-chart-stat">
-              <span>Variacao</span>
+              <span>{modeConfig.resultLabel}</span>
               <strong>{formatCompactCurrency(diferenca)}</strong>
             </div>
             <div className="finance-chart-stat">
@@ -361,7 +512,7 @@ function FluxoComparativoCard({ serie }) {
               viewBox={`0 0 ${geometry.width} ${geometry.height}`}
               className="finance-chart-svg"
               role="img"
-              aria-label={`${modeConfig.title} em formato de grafico`}
+              aria-label={`${modeConfig.title} em formato de gráfico`}
             >
               <defs>
                 <filter id="finance-chart-previsto-glow" x="-30%" y="-30%" width="160%" height="160%">
@@ -398,46 +549,67 @@ function FluxoComparativoCard({ serie }) {
                 );
               })}
 
+              {cutoffX != null ? (
+                <g>
+                  <line
+                    x1={cutoffX}
+                    y1={geometry.padding.top}
+                    x2={cutoffX}
+                    y2={geometry.height - geometry.padding.bottom}
+                    className="finance-chart-cutoff"
+                  />
+                  <text
+                    x={Math.min(cutoffX + 6, geometry.width - 112)}
+                    y={geometry.padding.top + 10}
+                    className="finance-chart-cutoff-label"
+                  >
+                    {`Até ${formatDate(dataLimiteRealizado)}`}
+                  </text>
+                </g>
+              ) : null}
+
               <path
-                d={geometry.previstoPath}
+                d={geometry.primaryPath}
                 fill="none"
-                stroke="var(--finance-chart-previsto)"
+                stroke="var(--finance-chart-primary)"
                 strokeWidth="3.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 filter="url(#finance-chart-previsto-glow)"
               />
               <path
-                d={geometry.realizadoPath}
+                d={geometry.secondaryPath}
                 fill="none"
-                stroke="var(--finance-chart-realizado)"
+                stroke="var(--finance-chart-secondary)"
                 strokeWidth="3.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 filter="url(#finance-chart-realizado-glow)"
               />
 
-              {geometry.previstoPoints.map((point, index) => (
-                <g key={`pair-${point.referencia}-${index}`}>
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
-                    r="4.2"
-                    fill="var(--finance-chart-previsto)"
-                    className="finance-chart-point"
-                  >
-                    <title>{`${point.label} - Previsto ${formatCurrency(point.raw)}`}</title>
-                  </circle>
-                  <circle
-                    cx={geometry.realizadoPoints[index].x}
-                    cy={geometry.realizadoPoints[index].y}
-                    r="4.2"
-                    fill="var(--finance-chart-realizado)"
-                    className="finance-chart-point finance-chart-point--secondary"
-                  >
-                    <title>{`${point.label} - Realizado ${formatCurrency(geometry.realizadoPoints[index].raw)}`}</title>
-                  </circle>
-                </g>
+              {geometry.primaryPoints.map((point, index) => (
+                <circle
+                  key={`primary-${point.referencia}-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r="4.2"
+                  fill="var(--finance-chart-primary)"
+                  className="finance-chart-point"
+                >
+                  <title>{`${point.label} - ${modeConfig.primaryLabel} ${formatCurrency(point.raw)}`}</title>
+                </circle>
+              ))}
+              {geometry.secondaryPoints.map((point, index) => (
+                <circle
+                  key={`secondary-${point.referencia}-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r="4.2"
+                  fill="var(--finance-chart-secondary)"
+                  className="finance-chart-point finance-chart-point--secondary"
+                >
+                  <title>{`${point.label} - ${modeConfig.secondaryLabel} ${formatCurrency(point.raw)}`}</title>
+                </circle>
               ))}
             </svg>
           </div>
@@ -518,6 +690,8 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
   const saldoProjetadoPositivo = relatorio.resumo.saldo_previsto >= 0;
   const saldoRealizadoPositivo = relatorio.resumo.saldo_realizado >= 0;
   const variacaoPositiva = relatorio.resumo.variacao_realizado_vs_previsto >= 0;
+  const projecaoRestantePositiva = relatorio.resumo.saldo_projecao_restante >= 0;
+  const dataLimiteLabel = formatDate(relatorio.filtro.data_limite_realizado);
 
   function handlePeriodoChange(periodo) {
     setFilters((current) => ({
@@ -540,47 +714,55 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
     setAppliedFilters(DEFAULT_FILTERS);
   }
 
-  return (
-    <div className="page solicitacoes-page">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">Fluxo de caixa</h1>
-            <p className="page-subtitle">
-              Fluxo de caixa previsto e realizado com filtro por periodo e obra.
-            </p>
-          </div>
-        </div>
-      </div>
+  /*
+    ESTE CONTEÚDO NUNCA É UMA PÁGINA — ele sempre renderiza DENTRO do hub
+    (no painel lateral ou no modo tela inteira), e os dois já desenham a
+    faixa fixa com o título do relatório escolhido.
 
+    Até aqui ele trazia a sua própria `div.page` com um segundo
+    `.app-page-header` dentro: duas faixas fixas grudando na mesma rolagem
+    e o nome do relatório escrito duas vezes na mesma tela (R16 — uma
+    responsabilidade, um dono; B3 — cada informação aparece uma vez).
+    Agora são só blocos.
+  */
+  return (
+    <div className="app-pagina">
       <form className="card sol-surface-card" onSubmit={aplicarFiltros}>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="app-filter-field min-w-[150px]">
+          <label className="app-filter-field min-w-40">
             <span className="app-filter-label">Período</span>
             <select className="input w-full input-sm" value={filters.periodo}
               onChange={(e) => handlePeriodoChange(e.target.value)}>
               <option value="HOJE">Hoje</option>
-              <option value="7_DIAS">Próximos 7 dias</option>
-              <option value="30_DIAS">Próximos 30 dias</option>
-              <option value="90_DIAS">Próximos 90 dias</option>
+              <optgroup label="Histórico">
+                <option value="ULTIMOS_7_DIAS">Últimos 7 dias</option>
+                <option value="ULTIMOS_30_DIAS">Últimos 30 dias</option>
+                <option value="ULTIMOS_90_DIAS">Últimos 90 dias</option>
+                <option value="MES_ANTERIOR">Mês anterior</option>
+              </optgroup>
+              <optgroup label="Projeção">
+                <option value="7_DIAS">Próximos 7 dias</option>
+                <option value="30_DIAS">Próximos 30 dias</option>
+                <option value="90_DIAS">Próximos 90 dias</option>
+                <option value="PROXIMO_MES">Próximo mês</option>
+              </optgroup>
               <option value="MES_ATUAL">Mês atual</option>
-              <option value="PROXIMO_MES">Próximo mês</option>
               <option value="PERSONALIZADO">Personalizado</option>
             </select>
           </label>
-          <label className="app-filter-field min-w-[130px]">
+          <label className="app-filter-field min-w-32">
             <span className="app-filter-label">Data inicial</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_inicial}
+            <DateInputBR className="input w-full input-sm" value={filters.data_inicial}
               disabled={filters.periodo !== 'PERSONALIZADO'}
               onChange={(e) => setFilters((c) => ({ ...c, data_inicial: e.target.value }))} />
           </label>
-          <label className="app-filter-field min-w-[130px]">
+          <label className="app-filter-field min-w-32">
             <span className="app-filter-label">Data final</span>
-            <input className="input w-full input-sm" type="date" value={filters.data_final}
+            <DateInputBR className="input w-full input-sm" value={filters.data_final}
               disabled={filters.periodo !== 'PERSONALIZADO'}
               onChange={(e) => setFilters((c) => ({ ...c, data_final: e.target.value }))} />
           </label>
-          <label className="app-filter-field flex-1 min-w-[160px]">
+          <label className="app-filter-field flex-1 min-w-40">
             <span className="app-filter-label">Obra</span>
             <select className="input w-full input-sm" value={filters.obra_id}
               onChange={(e) => setFilters((c) => ({ ...c, obra_id: e.target.value }))}
@@ -589,12 +771,39 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
               {obras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
             </select>
           </label>
-          <div className="flex items-center gap-2 shrink-0">
+          {/*
+            X3 — `shrink-0` aqui era o transbordo do mobile (04/09).
+
+            Medido no preview: numa janela de 390px este contêiner ia a
+            745px e arrastava o botão primário até 775px, recortado por
+            `overflow-x: clip` — sumia sem deixar rolagem. A cadeia de
+            ancestrais que o check passou a reportar apontou ELE, não o
+            botão: o botão era a vítima, com `width` herdada de um pai que
+            se recusava a encolher.
+
+            `shrink-0` num contêiner que carrega uma FRASE é contradição:
+            ele diz "nunca me encolha" abrigando texto que quebraria sem
+            perda nenhuma. Sai o `shrink-0`, entra `flex-wrap` — em tela
+            estreita o aviso passa para a linha de baixo e os botões
+            continuam alcançáveis.
+          */}
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             {metaPeriodo && (
-              <span className="text-[11px] text-[var(--c-muted)] hidden md:block">
+              <span className="hidden text-xs text-[var(--c-muted)] md:block">
                 {metaPeriodo}{relatorio.filtro?.agrupamento ? ` · por ${relatorio.filtro.agrupamento === 'MES' ? 'mês' : 'dia'}` : ''}
               </span>
             )}
+            {/*
+              R23 — CONSULTA CARA, DECLARADA: quatro dimensões combináveis
+              (período, data inicial, data final e obra) sobre a agregação
+              de títulos e movimentos do período. A marca é RASCUNHO até
+              este clique, e o botão diz o que faz ("Atualizar relatório",
+              não "Aplicar filtros"). O aviso fica junto do botão, por
+              extenso — na `descricao` do PageHeader ele truncaria (R5/C2).
+            */}
+            <span className="text-sm text-[var(--c-muted)]">
+              Os filtros só valem depois de &quot;Atualizar relatório&quot; — até o clique, a marca é rascunho.
+            </span>
             <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>Limpar</button>
             <button type="submit" className="btn btn-primary btn-sm">Atualizar relatório</button>
           </div>
@@ -608,21 +817,21 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
       ) : null}
 
       {isVisible('financeiro.fluxo_caixa.metricas') ? (
-      <div className="app-summary-grid">
+      <StatGrid colunas={4}>
         <RelatorioMetric
           label="Entradas previstas"
           value={formatCurrency(relatorio.resumo.entradas_previstas)}
-          detail={`${relatorio.resumo.titulos_previstos} titulo(s) no periodo`}
+          detail={`${relatorio.resumo.titulos_previstos} título(s) planejado(s) no período`}
         />
         <RelatorioMetric
-          label="Saidas previstas"
+          label="Saídas previstas"
           value={formatCurrency(relatorio.resumo.saidas_previstas)}
-          detail="Baseado no saldo atual dos titulos"
+          detail="Histórico planejado e saldo futuro dos títulos"
         />
         <RelatorioMetric
           label="Saldo projetado"
           value={formatCurrency(relatorio.resumo.saldo_previsto)}
-          detail="Receber menos pagar"
+          detail="Entradas previstas menos saídas previstas"
           positive={saldoProjetadoPositivo}
         />
         <RelatorioMetric
@@ -637,7 +846,7 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
           detail="Recebimentos baixados"
         />
         <RelatorioMetric
-          label="Saidas realizadas"
+          label="Saídas realizadas"
           value={formatCurrency(relatorio.resumo.saidas_realizadas)}
           detail="Pagamentos baixados"
         />
@@ -657,86 +866,102 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
           detail="Descontos aplicados nas baixas"
         />
         <RelatorioMetric
-          label="Variacao"
+          label="Variação até a data"
           value={formatCurrency(relatorio.resumo.variacao_realizado_vs_previsto)}
-          detail="Delta entre saldos liquidos"
+          detail={`Realizado menos previsto até ${dataLimiteLabel}`}
           positive={variacaoPositiva}
         />
         <RelatorioMetric
-          label="Movimentos ativos"
-          value={String(relatorio.resumo.movimentos_realizados)}
-          detail={`${relatorio.serie.length} ponto(s) na visualizacao`}
+          label="Projeção restante"
+          value={formatCurrency(relatorio.resumo.saldo_projecao_restante)}
+          detail={`Saldo previsto após ${dataLimiteLabel}`}
+          positive={projecaoRestantePositiva}
         />
-      </div>
+      </StatGrid>
       ) : null}
 
       {loading ? (
         <div className="app-empty-card">
-          Carregando relatorio de fluxo de caixa...
+          Carregando relatório de fluxo de caixa...
         </div>
       ) : (
         <>
           {isVisible('financeiro.fluxo_caixa.grafico') ? (
-            <FluxoComparativoCard serie={relatorio.serie} />
+            <FluxoComparativoCard
+              serie={relatorio.serie}
+              dataLimiteRealizado={relatorio.filtro.data_limite_realizado}
+              periodoLabel={metaPeriodo}
+            />
           ) : null}
 
           {isVisible('financeiro.fluxo_caixa.detalhamento') ? (
           <section className="card sol-surface-card app-table-shell">
             <div className="border-b border-[var(--c-border)] px-4 py-3">
-              <h2 className="text-lg font-semibold text-[var(--c-text)]">Detalhamento por periodo</h2>
+              <h2 className="text-lg font-semibold text-[var(--c-text)]">Detalhamento por período</h2>
               <p className="text-sm text-[var(--c-muted)]">
-                Serie consolidada para acompanhar entradas, saidas e saldo acumulado.
+                Previsto usa o vencimento dos títulos; realizado usa exclusivamente a data das baixas.
               </p>
             </div>
 
-            <div className="table-wrapper">
-              <ResizableTable
-                columns={DETALHAMENTO_COLUMNS}
-                storageKey="fluxy.financeiro.relatorios.detalhamento.columnWidths"
-                className="table"
-              >
-                <thead>
-                  <tr>
-                    <ResizableTh columnKey="periodo">Periodo</ResizableTh>
-                    <ResizableTh columnKey="entradas_previstas" className="text-right">Entradas previstas</ResizableTh>
-                    <ResizableTh columnKey="saidas_previstas" className="text-right">Saidas previstas</ResizableTh>
-                    <ResizableTh columnKey="saldo_previsto" className="text-right">Saldo previsto</ResizableTh>
-                    <ResizableTh columnKey="acumulado_previsto" className="text-right">Acumulado previsto</ResizableTh>
-                    <ResizableTh columnKey="entradas_realizadas" className="text-right">Entradas realizadas</ResizableTh>
-                    <ResizableTh columnKey="saidas_realizadas" className="text-right">Saidas realizadas</ResizableTh>
-                    <ResizableTh columnKey="saldo_realizado" className="text-right">Saldo realizado</ResizableTh>
-                    <ResizableTh columnKey="acumulado_realizado" className="text-right">Acumulado realizado</ResizableTh>
-                  </tr>
-                </thead>
-                <tbody>
-                  {relatorio.serie.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="text-center text-[var(--c-muted)]">
-                        Nenhum dado encontrado para o periodo selecionado.
-                      </td>
-                    </tr>
-                  ) : (
-                    relatorio.serie.map((item) => (
-                      <tr key={item.referencia}>
-                        <td className="font-medium text-[var(--c-text)]">{item.label}</td>
-                        <td className="text-right text-[var(--c-text)]">{formatCurrency(item.entradas_previstas)}</td>
-                        <td className="text-right text-[var(--c-text)]">{formatCurrency(item.saidas_previstas)}</td>
-                        <td className="text-right font-medium" style={{ color: item.saldo_previsto >= 0 ? '#15803d' : '#b91c1c' }}>
-                          {formatCurrency(item.saldo_previsto)}
-                        </td>
-                        <td className="text-right text-[var(--c-text)]">{formatCurrency(item.saldo_previsto_acumulado)}</td>
-                        <td className="text-right text-[var(--c-text)]">{formatCurrency(item.entradas_realizadas)}</td>
-                        <td className="text-right text-[var(--c-text)]">{formatCurrency(item.saidas_realizadas)}</td>
-                        <td className="text-right font-medium" style={{ color: item.saldo_realizado >= 0 ? '#15803d' : '#b91c1c' }}>
-                          {formatCurrency(item.saldo_realizado)}
-                        </td>
-                        <td className="text-right text-[var(--c-text)]">{formatCurrency(item.saldo_realizado_acumulado)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </ResizableTable>
-            </div>
+            <TabelaPadrao
+              colunas={[
+                { id: 'periodo', titulo: 'Período', tipo: 'data', noCard: 'titulo', render: (item) => item.label },
+                { id: 'entradas_previstas', titulo: 'Entradas previstas', tipo: 'valor', render: (item) => formatCurrency(item.entradas_previstas) },
+                { id: 'saidas_previstas', titulo: 'Saídas previstas', tipo: 'valor', render: (item) => formatCurrency(item.saidas_previstas) },
+                {
+                  id: 'saldo_previsto',
+                  titulo: 'Saldo previsto',
+                  tipo: 'valor',
+                  render: (item) => (
+                    <span className={`font-medium ${getSaldoTone(item.saldo_previsto)}`}>
+                      {formatCurrency(item.saldo_previsto)}
+                    </span>
+                  )
+                },
+                { id: 'acumulado_previsto', titulo: 'Acumulado previsto', tipo: 'valor', render: (item) => formatCurrency(item.saldo_previsto_acumulado) },
+                {
+                  id: 'entradas_realizadas',
+                  titulo: 'Entradas realizadas',
+                  tipo: 'valor',
+                  render: (item) => formatCurrencyOrDash(item.entradas_realizadas, item.realizado_disponivel)
+                },
+                {
+                  id: 'saidas_realizadas',
+                  titulo: 'Saídas realizadas',
+                  tipo: 'valor',
+                  render: (item) => formatCurrencyOrDash(item.saidas_realizadas, item.realizado_disponivel)
+                },
+                {
+                  id: 'saldo_realizado',
+                  titulo: 'Saldo realizado',
+                  tipo: 'valor',
+                  render: (item) => (
+                    item.realizado_disponivel ? (
+                      <span className={`font-medium ${getSaldoTone(item.saldo_realizado)}`}>
+                        {formatCurrency(item.saldo_realizado)}
+                      </span>
+                    ) : '—'
+                  )
+                },
+                {
+                  id: 'acumulado_realizado',
+                  titulo: 'Acumulado realizado',
+                  tipo: 'valor',
+                  render: (item) => formatCurrencyOrDash(
+                    item.saldo_realizado_acumulado,
+                    item.realizado_disponivel
+                  )
+                }
+              ]}
+              itens={relatorio.serie}
+              getId={(item) => item.referencia}
+              storageKey="tabela:financeiro-relatorios:detalhamento-periodo"
+              rotuloRolagem="Detalhamento por periodo"
+              vazio="Nenhum dado encontrado para o período selecionado."
+              // R17: linha e periodo x totais da serie — nao existe registro
+              // nomeado nesta tabela, so a competencia temporal.
+              semIdentidade
+            />
           </section>
           ) : null}
         </>
@@ -776,15 +1001,15 @@ function ContaReportFilters({ filters, setFilters, contas, loading, onSubmit, ty
     <form className="card sol-surface-card p-4 financeiro-conta-report-filters" onSubmit={onSubmit}>
       <div className="financeiro-conta-report-filter-grid">
         <label className="field">
-          <span>Periodo</span>
+          <span>Período</span>
           <select
             value={filters.periodo}
             onChange={(event) => setFilters((current) => ({ ...current, periodo: event.target.value }))}
           >
-            <option value="MES_ATUAL">Mes atual</option>
+            <option value="MES_ATUAL">Mês atual</option>
             <option value="HOJE">Hoje</option>
-            <option value="30_DIAS">Proximos 30 dias</option>
-            <option value="90_DIAS">Proximos 90 dias</option>
+            <option value="30_DIAS">Próximos 30 dias</option>
+            <option value="90_DIAS">Próximos 90 dias</option>
             <option value="PERSONALIZADO">Personalizado</option>
           </select>
         </label>
@@ -801,26 +1026,27 @@ function ContaReportFilters({ filters, setFilters, contas, loading, onSubmit, ty
               </select>
             </label>
             <label className="field">
-              <span>Tipo de vinculo</span>
+              <span>Tipo de vínculo</span>
               <select value={filters.tipo_conciliacao} onChange={(event) => setFilters((current) => ({ ...current, tipo_conciliacao: event.target.value }))}>
                 <option value="TODOS">Todos os tipos</option>
-                <option value="TRANSFERENCIA">Transferencias</option>
-                <option value="TITULO">Titulos</option>
-                <option value="FATURA_CARTAO">Faturas de cartao</option>
-                <option value="TARIFA">Tarifas bancarias</option>
+                <option value="TRANSFERENCIA">Transferências</option>
+                <option value="TITULO">Títulos</option>
+                <option value="FATURA_CARTAO">Faturas de cartão</option>
+                <option value="TARIFA">Tarifas bancárias</option>
+                <option value="RENDIMENTO">Rendimentos da conta</option>
                 <option value="ESTORNO_TARIFA">Estornos de tarifa</option>
-                <option value="ESTORNO_BANCARIO">Estornos bancarios</option>
-                <option value="CREDITO_ROTATIVO">Credito rotativo</option>
+                <option value="ESTORNO_BANCARIO">Estornos bancários</option>
+                <option value="CREDITO_ROTATIVO">Crédito rotativo</option>
                 <option value="MOVIMENTO">Outros movimentos</option>
-                <option value="SEM_VINCULO">Sem vinculo</option>
+                <option value="SEM_VINCULO">Sem vínculo</option>
               </select>
             </label>
             <label className="field">
               <span>Natureza</span>
               <select value={filters.natureza} onChange={(event) => setFilters((current) => ({ ...current, natureza: event.target.value }))}>
-                <option value="TODAS">Entradas e saidas</option>
+                <option value="TODAS">Entradas e saídas</option>
                 <option value="ENTRADA">Entradas</option>
-                <option value="SAIDA">Saidas</option>
+                <option value="SAIDA">Saídas</option>
               </select>
             </label>
             <label className="field md:col-span-2">
@@ -828,7 +1054,7 @@ function ContaReportFilters({ filters, setFilters, contas, loading, onSubmit, ty
               <input
                 type="search"
                 value={filters.busca}
-                placeholder="Descricao, documento ou identificador OFX"
+                placeholder="Descrição, documento ou identificador OFX"
                 onChange={(event) => setFilters((current) => ({ ...current, busca: event.target.value }))}
               />
             </label>
@@ -836,8 +1062,7 @@ function ContaReportFilters({ filters, setFilters, contas, loading, onSubmit, ty
         ) : null}
         <label className="field">
           <span>Data inicial</span>
-          <input
-            type="date"
+          <DateInputBR
             value={filters.data_inicial}
             disabled={filters.periodo !== 'PERSONALIZADO'}
             onChange={(event) => setFilters((current) => ({ ...current, data_inicial: event.target.value }))}
@@ -845,15 +1070,14 @@ function ContaReportFilters({ filters, setFilters, contas, loading, onSubmit, ty
         </label>
         <label className="field">
           <span>Data final</span>
-          <input
-            type="date"
+          <DateInputBR
             value={filters.data_final}
             disabled={filters.periodo !== 'PERSONALIZADO'}
             onChange={(event) => setFilters((current) => ({ ...current, data_final: event.target.value }))}
           />
         </label>
         <label className="field">
-          <span>Conta bancaria</span>
+          <span>Conta bancária</span>
           <select
             value={filters.conta_bancaria_id}
             onChange={(event) => setFilters((current) => ({ ...current, conta_bancaria_id: event.target.value }))}
@@ -868,6 +1092,16 @@ function ContaReportFilters({ filters, setFilters, contas, loading, onSubmit, ty
         </label>
       </div>
       <div className="financeiro-conta-report-actions">
+        {/*
+          R23 — CONSULTA CARA, DECLARADA. A conciliação combina OITO
+          dimensões (período, data inicial, data final, conta, status,
+          tipo de vínculo, natureza e busca no extrato) sobre o extrato
+          inteiro do período. As marcas são RASCUNHO até este clique, e o
+          botão diz o que faz ("Gerar relatorio", não "Aplicar filtros").
+        */}
+        <span className="text-sm text-[var(--c-muted)]">
+          Os filtros só valem depois de &quot;Gerar relatorio&quot; — até o clique, a marca é rascunho.
+        </span>
         <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Gerando...' : 'Gerar relatorio'}
         </button>
@@ -931,13 +1165,26 @@ function ContaReportShell({ title, subtitle, type }) {
     setAppliedFilters(filters);
   }
 
+  /*
+    R26 — o movimento a estornar é FIXADO numa const antes de qualquer
+    `await`, e é essa referência que vai na chamada. O modal do sistema
+    não bloqueia a tela como o `confirm`/`prompt` do navegador bloqueava:
+    com a caixa aberta dá para clicar noutra linha do analítico, e sem
+    fixar a tela perguntaria sobre um vínculo e estornaria outro — a
+    classe CONSENTIMENTO da DoD, que não deixa rastro de erro no log.
+
+    O texto que a pessoa LÊ no modal descreve `estornoModal.item`, o
+    MESMO objeto que vira `alvo` aqui: os dois lados são o mesmo registro,
+    no mesmo momento, com o mesmo critério.
+  */
   async function handleEstornarConciliacao(event) {
     event.preventDefault();
+    const alvo = estornoModal.item;
     const motivo = String(estornoModal.motivo || '').trim();
-    if (!estornoModal.item?.id || !motivo || estornoModal.processing) return;
+    if (!alvo?.id || !motivo || estornoModal.processing) return;
     try {
       setEstornoModal((current) => ({ ...current, processing: true, error: '' }));
-      await estornarConciliacaoBancaria(estornoModal.item.id, { motivo });
+      await estornarConciliacaoBancaria(alvo.id, { motivo });
       setEstornoModal({ open: false, item: null, motivo: '', processing: false, error: '' });
       const data = await getRelatorioConciliacaoContas(buildContaReportParams(appliedFilters, type));
       setRelatorio(data);
@@ -953,8 +1200,8 @@ function ContaReportShell({ title, subtitle, type }) {
   return (
     <div className="financeiro-conta-report-shell space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
-        <p className="text-sm text-slate-500">{subtitle}</p>
+        <h2 className="text-lg font-semibold text-[var(--c-text)]">{title}</h2>
+        <p className="text-sm text-[var(--c-muted)]">{subtitle}</p>
       </div>
 
       <ContaReportFilters
@@ -966,11 +1213,11 @@ function ContaReportShell({ title, subtitle, type }) {
         type={type}
       />
 
-      {error ? <div className="alert alert-danger">{error}</div> : null}
+      {error ? <div className="app-alert app-alert--error">{error}</div> : null}
 
       {relatorio ? (
         <>
-          <div className="app-summary-grid app-summary-grid--compact financeiro-report-summary-grid">
+          <StatGrid colunas={4} className="financeiro-report-summary-grid">
             <RelatorioMetric label="Contas" value={resumo.contas || 0} />
             <RelatorioMetric label="Movimentos" value={resumo.movimentos || 0} />
             {type === 'conciliacao' ? (
@@ -978,222 +1225,219 @@ function ContaReportShell({ title, subtitle, type }) {
                 <RelatorioMetric label="Conciliados" value={resumo.conciliados || 0} positive />
                 <RelatorioMetric label="Pendentes" value={resumo.pendentes || 0} positive={Number(resumo.pendentes || 0) === 0} />
                 <RelatorioMetric label="Ignorados/removidos" value={`${resumo.ignorados || 0}/${resumo.removidos || 0}`} />
-                <RelatorioMetric label="Transferencias" value={resumo.transferencias || 0} />
+                <RelatorioMetric label="Transferências" value={resumo.transferencias || 0} />
               </>
             ) : (
               <>
                 <RelatorioMetric label="Entradas" value={formatCurrency(resumo.entradas)} positive />
-                <RelatorioMetric label="Saidas" value={formatCurrency(resumo.saidas)} positive={false} />
-                <RelatorioMetric label="Saldo liquido" value={formatCurrency(resumo.saldo_liquido)} positive={Number(resumo.saldo_liquido || 0) >= 0} />
+                <RelatorioMetric label="Saídas" value={formatCurrency(resumo.saidas)} positive={false} />
+                <RelatorioMetric label="Saldo líquido" value={formatCurrency(resumo.saldo_liquido)} positive={Number(resumo.saldo_liquido || 0) >= 0} />
                 <RelatorioMetric label="Permutas" value={formatCurrency(resumo.permutas)} detail="Separadas do caixa bancario" />
               </>
             )}
-          </div>
+          </StatGrid>
 
           <section className="card sol-surface-card p-4 financeiro-report-card">
             <div className="mb-3">
-              <h3 className="text-base font-semibold text-slate-950">Sintetico por conta</h3>
-              <p className="text-xs text-slate-500">{relatorio.filtro?.descricao || 'Periodo selecionado'}</p>
+              <h3 className="text-lg font-semibold text-[var(--c-text)]">Sintético por conta</h3>
+              <p className="text-xs text-[var(--c-muted)]">{relatorio.filtro?.descricao || 'Periodo selecionado'}</p>
             </div>
-            <div className="table-responsive">
-              <ResizableTable
-                storageKey={`financeiro-relatorio-${type}-sintetico`}
-                columns={[
-                  { key: 'conta', width: 320, minWidth: 220 },
-                  { key: 'movimentos', width: 120, minWidth: 100 },
-                  { key: 'entradas', width: 150, minWidth: 120 },
-                  { key: 'saidas', width: 150, minWidth: 120 },
-                  { key: 'saldo', width: 150, minWidth: 120 },
-                  { key: 'status', width: 220, minWidth: 160 }
-                ]}
-                className="table financeiro-report-table"
-              >
-                <thead>
-                  <tr>
-                    <ResizableTh columnKey="conta">Conta</ResizableTh>
-                    <ResizableTh columnKey="movimentos" className="text-right">Movimentos</ResizableTh>
-                    <ResizableTh columnKey="entradas" className="text-right">{type === 'conciliacao' ? 'Conciliados' : 'Entradas'}</ResizableTh>
-                    <ResizableTh columnKey="saidas" className="text-right">{type === 'conciliacao' ? 'Pendentes' : 'Saidas'}</ResizableTh>
-                    <ResizableTh columnKey="saldo" className="text-right">{type === 'conciliacao' ? 'Ignor./remov.' : 'Saldo'}</ResizableTh>
-                    <ResizableTh columnKey="status">Observacao</ResizableTh>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sintetico.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center text-slate-500">Nenhum registro encontrado.</td>
-                    </tr>
-                  ) : (
-                    sintetico.map((item) => (
-                      <tr key={item.conta_bancaria_id || item.conta}>
-                        <td className="font-medium text-slate-950">{item.conta}</td>
-                        <td className="text-right">{item.movimentos}</td>
-                        <td className="text-right">{type === 'conciliacao' ? item.conciliados : formatCurrency(item.entradas)}</td>
-                        <td className="text-right">{type === 'conciliacao' ? item.pendentes : formatCurrency(item.saidas)}</td>
-                        <td className="text-right">
-                          {type === 'conciliacao'
-                            ? `${item.ignorados || 0}/${item.removidos || 0}`
-                            : formatCurrency(item.saldo_liquido)}
-                        </td>
-                        <td className="text-slate-500">
-                          {type === 'conciliacao'
-                            ? `${item.conciliados || 0} conciliado(s), ${item.pendentes || 0} pendente(s)`
-                            : Number(item.permutas || 0) > 0
-                              ? `${formatCurrency(item.permutas)} em permutas`
-                              : '-'}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </ResizableTable>
-            </div>
+            <TabelaPadrao
+              colunas={[
+                {
+                  id: 'conta',
+                  titulo: 'Conta',
+                  // R17: a conta bancaria NOMEIA a linha do sintetico.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => item.conta
+                },
+                { id: 'movimentos', titulo: 'Movimentos', tipo: 'numero', render: (item) => item.movimentos },
+                {
+                  id: 'entradas',
+                  titulo: type === 'conciliacao' ? 'Conciliados' : 'Entradas',
+                  tipo: 'valor',
+                  render: (item) => (type === 'conciliacao' ? item.conciliados : formatCurrency(item.entradas))
+                },
+                {
+                  id: 'saidas',
+                  titulo: type === 'conciliacao' ? 'Pendentes' : 'Saidas',
+                  tipo: 'valor',
+                  render: (item) => (type === 'conciliacao' ? item.pendentes : formatCurrency(item.saidas))
+                },
+                {
+                  id: 'saldo',
+                  titulo: type === 'conciliacao' ? 'Ignor./remov.' : 'Saldo',
+                  tipo: 'valor',
+                  render: (item) => (type === 'conciliacao'
+                    ? `${item.ignorados || 0}/${item.removidos || 0}`
+                    : formatCurrency(item.saldo_liquido))
+                },
+                {
+                  id: 'status',
+                  titulo: 'Observação',
+                  tipo: 'texto',
+                  render: (item) => <span className="text-[var(--c-muted)]">{observacaoSintetico(item, type)}</span>
+                }
+              ]}
+              itens={sintetico}
+              getId={(item) => item.conta_bancaria_id || item.conta}
+              storageKey={`tabela:financeiro-relatorios:${type}-sintetico`}
+              rotuloRolagem="Sintetico por conta"
+              vazio="Nenhum registro encontrado."
+            />
           </section>
 
           <section className="card sol-surface-card p-4 financeiro-report-card">
-            <h3 className="mb-3 text-base font-semibold text-slate-950">Analitico</h3>
-            <div className="table-responsive">
-              <ResizableTable
-                storageKey={`financeiro-relatorio-${type}-analitico`}
-                columns={[
-                  { key: 'data', width: 120, minWidth: 105 },
-                  { key: 'conta', width: 240, minWidth: 170 },
-                  { key: 'status', width: 130, minWidth: 110 },
-                  ...(type === 'conciliacao' ? [{ key: 'natureza', width: 120, minWidth: 105 }] : []),
-                  { key: 'titulo', width: 150, minWidth: 120 },
-                  { key: 'parceiro', width: 200, minWidth: 150 },
-                  { key: 'obra', width: 170, minWidth: 130 },
-                  { key: 'documento', width: 190, minWidth: 145 },
-                  { key: 'valor', width: 140, minWidth: 120 },
-                  ...(type === 'movimentacao' ? [{ key: 'saldo', width: 140, minWidth: 120 }] : []),
-                  { key: 'descricao', width: 280, minWidth: 210 },
-                  ...(type === 'conciliacao' && canEstornarConciliacao ? [{ key: 'acoes', width: 130, minWidth: 120 }] : [])
-                ]}
-                className="table financeiro-report-table"
-              >
-                <thead>
-                  <tr>
-                    <ResizableTh columnKey="data">Data</ResizableTh>
-                    <ResizableTh columnKey="conta">Conta</ResizableTh>
-                    <ResizableTh columnKey="status">{type === 'conciliacao' ? 'Status' : 'Classe'}</ResizableTh>
-                    {type === 'conciliacao' ? <ResizableTh columnKey="natureza">Natureza</ResizableTh> : null}
-                    <ResizableTh columnKey="titulo">{type === 'conciliacao' ? 'Vinculo' : 'Titulo'}</ResizableTh>
-                    <ResizableTh columnKey="parceiro">Cliente/Fornecedor</ResizableTh>
-                    <ResizableTh columnKey="obra">Obra</ResizableTh>
-                    <ResizableTh columnKey="documento">Documento</ResizableTh>
-                    <ResizableTh columnKey="valor" className="text-right">
-                      {type === 'movimentacao' ? 'Movimento' : 'Valor'}
-                    </ResizableTh>
-                    {type === 'movimentacao' ? (
-                      <ResizableTh columnKey="saldo" className="text-right">Saldo</ResizableTh>
-                    ) : null}
-                    <ResizableTh columnKey="descricao">Descricao</ResizableTh>
-                    {type === 'conciliacao' && canEstornarConciliacao ? <ResizableTh columnKey="acoes">Acoes</ResizableTh> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {analitico.length === 0 ? (
-                    <tr>
-                      <td colSpan={10 + (type === 'conciliacao' && canEstornarConciliacao ? 1 : 0)} className="text-center text-slate-500">Nenhum registro encontrado.</td>
-                    </tr>
-                  ) : (
-                    analitico.map((item) => {
-                      const valorMovimento = type === 'movimentacao'
-                        ? Number(item.valor_movimento ?? item.valor_quitacao ?? item.valor)
-                        : Number(item.valor_quitacao ?? item.valor);
-                      return (
-                        <tr key={item.id}>
-                          <td>{formatDate(item.data_movimento)}</td>
-                          <td>{item.conta}</td>
-                          <td>
-                            <span className="badge badge-soft">{type === 'conciliacao' ? item.status : item.classe}</span>
-                          </td>
-                          {type === 'conciliacao' ? (
-                            <td>
-                              <span className={`badge ${item.natureza === 'SAIDA' ? 'badge-danger' : 'badge-success'}`}>
-                                {item.natureza === 'SAIDA' ? 'Saída' : 'Entrada'}
-                              </span>
-                            </td>
-                          ) : null}
-                          <td>
-                            {item.tipo_conciliacao === 'TRANSFERENCIA'
-                              ? `Transferencia #${item.transferencia_financeira_id}`
-                              : item.tipo_conciliacao === 'FATURA_CARTAO'
-                                ? `Fatura #${item.fatura_cartao_id}`
-                                : item.tipo_conciliacao === 'TARIFA'
-                                  ? `Tarifa · mov. #${item.movimento_financeiro_id}`
-                                  : item.tipo_conciliacao === 'ESTORNO_TARIFA'
-                                    ? `Estorno de tarifa - mov. #${item.movimento_financeiro_id}`
-                                  : item.tipo_conciliacao === 'ESTORNO_BANCARIO'
-                                    ? `Estorno bancario - mov. #${item.movimento_financeiro_id}`
-                                  : item.tipo_conciliacao === 'CREDITO_ROTATIVO'
-                                    ? `${item.natureza === 'SAIDA' ? 'Amortizacao' : 'Liberacao'} · mov. #${item.movimento_financeiro_id}`
-                                  : item.titulo_codigo || (item.movimento_financeiro_id ? `Mov. #${item.movimento_financeiro_id}` : '-')}
-                          </td>
-                          <td>{item.parceiro || '-'}</td>
-                          <td>{item.obra || '-'}</td>
-                          <td>{item.documento || item.ofx_uid || '-'}</td>
-                          <td className={`text-right font-semibold ${getCurrencyTone(valorMovimento)}`}>
-                            {formatCurrency(valorMovimento)}
-                          </td>
-                          {type === 'movimentacao' ? (
-                            <td className={`text-right font-semibold ${getCurrencyTone(item.saldo_movimento)}`}>
-                              {formatCurrency(item.saldo_movimento)}
-                            </td>
-                          ) : null}
-                          <td>
-                            {item.tipo_conciliacao === 'TRANSFERENCIA'
-                              ? `${item.conta_origem || 'Origem'} → ${item.conta_destino || 'Destino'}${item.transferencia_descricao ? ` · ${item.transferencia_descricao}` : ''}`
-                              : item.descricao_banco || item.categoria || item.observacoes || '-'}
-                          </td>
-                          {type === 'conciliacao' && canEstornarConciliacao ? (
-                            <td>
-                              {item.status === 'CONCILIADO'
-                                && item.tipo_conciliacao !== 'ESTORNO_BANCARIO'
-                                && (item.tipo_conciliacao !== 'TRANSFERENCIA' || item.transferencia_status === 'ATIVA') ? (
-                                <button type="button" className="btn btn-outline btn-sm text-rose-600" onClick={() => setEstornoModal({ open: true, item, motivo: '', processing: false, error: '' })}>
-                                  Estornar
-                                </button>
-                              ) : '-'}
-                            </td>
-                          ) : null}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </ResizableTable>
-            </div>
+            <h3 className="mb-3 text-lg font-semibold text-[var(--c-text)]">Analítico</h3>
+            <TabelaPadrao
+              colunas={[
+                { id: 'data', titulo: 'Data', tipo: 'data', render: (item) => formatDate(item.data_movimento) },
+                { id: 'conta', titulo: 'Conta', tipo: 'texto', render: (item) => item.conta },
+                {
+                  id: 'status',
+                  titulo: type === 'conciliacao' ? 'Status' : 'Classe',
+                  tipo: 'status',
+                  render: (item) => <span className="fx-badge">{type === 'conciliacao' ? item.status : item.classe}</span>
+                },
+                ...(type === 'conciliacao' ? [{
+                  id: 'natureza',
+                  titulo: 'Natureza',
+                  tipo: 'badge',
+                  render: (item) => (
+                    <span className={`badge ${item.natureza === 'SAIDA' ? 'badge-danger' : 'badge-success'}`}>
+                      {item.natureza === 'SAIDA' ? 'Saída' : 'Entrada'}
+                    </span>
+                  )
+                }] : []),
+                {
+                  id: 'titulo',
+                  titulo: type === 'conciliacao' ? 'Vinculo' : 'Titulo',
+                  tipo: 'texto',
+                  render: (item) => vinculoAnalitico(item)
+                },
+                {
+                  id: 'parceiro',
+                  titulo: 'Cliente/Fornecedor',
+                  // R17: o cliente/fornecedor NOMEIA a linha do analitico.
+                  tipo: 'identidade',
+                  noCard: 'titulo',
+                  render: (item) => item.parceiro || '-'
+                },
+                { id: 'obra', titulo: 'Obra', tipo: 'texto', render: (item) => item.obra || '-' },
+                { id: 'documento', titulo: 'Documento', tipo: 'codigo', render: (item) => item.documento || item.ofx_uid || '-' },
+                {
+                  id: 'valor',
+                  titulo: type === 'movimentacao' ? 'Movimento' : 'Valor',
+                  tipo: 'valor',
+                  render: (item) => {
+                    const valorMovimento = type === 'movimentacao'
+                      ? Number(item.valor_movimento ?? item.valor_quitacao ?? item.valor)
+                      : Number(item.valor_quitacao ?? item.valor);
+                    return <span className={`font-semibold ${getCurrencyTone(valorMovimento)}`}>{formatCurrency(valorMovimento)}</span>;
+                  }
+                },
+                ...(type === 'movimentacao' ? [{
+                  id: 'saldo',
+                  titulo: 'Saldo',
+                  tipo: 'valor',
+                  render: (item) => <span className={`font-semibold ${getCurrencyTone(item.saldo_movimento)}`}>{formatCurrency(item.saldo_movimento)}</span>
+                }] : []),
+                { id: 'descricao', titulo: 'Descrição', tipo: 'texto', render: (item) => descricaoAnalitico(item) }
+              ]}
+              itens={analitico}
+              storageKey={`tabela:financeiro-relatorios:${type}-analitico`}
+              rotuloRolagem="Analitico do relatorio"
+              vazio="Nenhum registro encontrado."
+              acoesLinha={type === 'conciliacao' && canEstornarConciliacao
+                ? (item) => (item.status === 'CONCILIADO'
+                  && item.tipo_conciliacao !== 'ESTORNO_BANCARIO'
+                  && (item.tipo_conciliacao !== 'TRANSFERENCIA' || item.transferencia_status === 'ATIVA') ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm btn-perigo-suave"
+                      onClick={() => setEstornoModal({ open: true, item, motivo: '', processing: false, error: '' })}
+                    >
+                      Estornar
+                    </button>
+                  ) : '-')
+                : undefined}
+            />
           </section>
         </>
       ) : null}
 
+      {/*
+        R27 — casca do sistema. O painel antigo era um overlay à mão, com
+        fundo em paleta crua e sem rolagem própria: numa janela baixa o
+        rodapé saía do painel e o botão "Confirmar estorno" ficava
+        inalcançável, com o modal parecendo funcional. Agora o cabeçalho e
+        o rodapé são marcados com `data-modal` e o corpo rola sozinho.
+      */}
       {estornoModal.open ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-6">
-          <form className="w-full max-w-xl rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5 shadow-2xl" onSubmit={handleEstornarConciliacao}>
-            <h3 className="text-lg font-semibold text-[var(--c-text)]">Estornar conciliacao bancaria</h3>
+        <OverlayModal
+          rotulo="Estornar conciliação bancária"
+          largura="var(--modal-max-w-md, 640px)"
+          onFechar={estornoModal.processing
+            ? undefined
+            : () => setEstornoModal({ open: false, item: null, motivo: '', processing: false, error: '' })}
+        >
+          {/*
+            Cabeçalho, corpo e rodapé são filhos DIRETOS do OverlayModal —
+            é neles que o componente procura o `data-modal`. Envolver os
+            três num `<form>` faria o formulário inteiro virar corpo
+            rolante e o rodapé deixaria de ficar fixo. O botão de submeter
+            mora no rodapé e alcança o formulário pelo atributo `form`,
+            que é exatamente para isto.
+          */}
+          <div data-modal="cabecalho" className="border-b border-[var(--c-border)] p-4">
+            <h3 className="text-lg font-semibold text-[var(--c-text)]">Estornar conciliação bancária</h3>
             <p className="mt-1 text-sm text-[var(--c-muted)]">
               {estornoModal.item?.tipo_conciliacao === 'TRANSFERENCIA'
-                ? 'A transferencia sera cancelada e os lancamentos OFX vinculados voltarao para pendente.'
-                : estornoModal.item?.tipo_conciliacao === 'TARIFA'
-                  ? 'A tarifa criada pela conciliacao sera estornada e o lancamento OFX voltara para pendente.'
-                  : estornoModal.item?.tipo_conciliacao === 'ESTORNO_TARIFA'
-                    ? 'O credito de estorno sera desfeito e o lancamento OFX voltara para pendente. A tarifa original permanecera ativa.'
-                  : estornoModal.item?.tipo_conciliacao === 'CREDITO_ROTATIVO'
-                    ? 'O movimento de credito rotativo sera estornado e o lancamento OFX voltara para pendente.'
+                  ? 'A transferencia sera cancelada e os lancamentos OFX vinculados voltarao para pendente.'
+                  : estornoModal.item?.tipo_conciliacao === 'TARIFA'
+                    ? 'A tarifa criada pela conciliacao sera estornada e o lancamento OFX voltara para pendente.'
+                    : estornoModal.item?.tipo_conciliacao === 'RENDIMENTO'
+                      ? 'O rendimento criado pela conciliacao sera estornado e o lancamento OFX voltara para pendente.'
+                    : estornoModal.item?.tipo_conciliacao === 'ESTORNO_TARIFA'
+                      ? 'O credito de estorno sera desfeito e o lancamento OFX voltara para pendente. A tarifa original permanecera ativa.'
+                    : estornoModal.item?.tipo_conciliacao === 'CREDITO_ROTATIVO'
+                      ? 'O movimento de credito rotativo sera estornado e o lancamento OFX voltara para pendente.'
                   : 'O vinculo sera desfeito sem apagar o registro financeiro original, e o lancamento OFX voltara para pendente.'}
             </p>
-            <label className="mt-4 block text-sm">
-              <span className="mb-1 block font-medium">Motivo do estorno *</span>
-              <textarea className="input min-h-24 w-full resize-y" maxLength={255} value={estornoModal.motivo} onChange={(event) => setEstornoModal((current) => ({ ...current, motivo: event.target.value, error: '' }))} />
-            </label>
-            {estornoModal.error ? <div className="mt-3 alert alert-danger">{estornoModal.error}</div> : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="btn btn-outline" disabled={estornoModal.processing} onClick={() => setEstornoModal({ open: false, item: null, motivo: '', processing: false, error: '' })}>Cancelar</button>
-              <button type="submit" className="btn btn-danger" disabled={estornoModal.processing || !String(estornoModal.motivo || '').trim()}>{estornoModal.processing ? 'Estornando...' : 'Confirmar estorno'}</button>
-            </div>
+          </div>
+
+          <form id={`form-estorno-${type}`} className="space-y-3 p-4" onSubmit={handleEstornarConciliacao}>
+              {/* Consentimento: o vinculo descrito aqui e o MESMO que
+                  `handleEstornarConciliacao` envia (o `alvo`, fixado antes
+                  do await). */}
+              <div className="rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3 text-sm">
+                <strong className="block text-[var(--c-text)]">{vinculoAnalitico(estornoModal.item || {})}</strong>
+                <span className="text-[var(--c-muted)]">
+                  {formatDate(estornoModal.item?.data_movimento)} · {estornoModal.item?.conta || 'Conta nao identificada'}
+                </span>
+              </div>
+              <p className="text-sm text-[var(--c-muted)]">
+                O estorno fica registrado na auditoria e não pode ser desfeito por esta tela.
+              </p>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Motivo do estorno *</span>
+                <textarea
+                  className="input w-full resize-y"
+                  rows={3}
+                  maxLength={255}
+                  value={estornoModal.motivo}
+                  onChange={(event) => setEstornoModal((current) => ({ ...current, motivo: event.target.value, error: '' }))}
+                />
+              </label>
+            {estornoModal.error ? <div className="app-alert app-alert--error">{estornoModal.error}</div> : null}
           </form>
-        </div>
+
+          <div data-modal="rodape" className="flex justify-end gap-2 border-t border-[var(--c-border)] p-4">
+            <button type="button" className="btn btn-outline" disabled={estornoModal.processing} onClick={() => setEstornoModal({ open: false, item: null, motivo: '', processing: false, error: '' })}>Cancelar</button>
+            <button type="submit" form={`form-estorno-${type}`} className="btn btn-outline btn-perigo-suave" disabled={estornoModal.processing || !String(estornoModal.motivo || '').trim()}>{estornoModal.processing ? 'Estornando...' : 'Confirmar estorno'}</button>
+          </div>
+        </OverlayModal>
       ) : null}
     </div>
   );
@@ -1203,7 +1447,7 @@ function MovimentacaoContasRelatorioConteudo() {
   return (
     <ContaReportShell
       type="movimentacao"
-      title="Movimentacao de contas"
+      title="Movimentação de contas"
       subtitle="Relatorio sintetico e analitico das movimentacoes por conta bancaria, separando permutas do caixa."
     />
   );
@@ -1213,7 +1457,7 @@ function ConciliacaoContasRelatorioConteudo() {
   return (
     <ContaReportShell
       type="conciliacao"
-      title="Conciliacao bancaria"
+      title="Conciliação bancária"
       subtitle="Relatorio sintetico e analitico dos movimentos importados, conciliados, pendentes, ignorados e removidos."
     />
   );
@@ -1351,25 +1595,46 @@ const REPORT_CATALOG = [
     permissionKey: 'financeiro.relatorios.centros_custo',
     visibilityKey: 'relatorios.financeiro.centros_custo',
     component: FinanceiroResultadoCentrosCusto
+  },
+  {
+    id: 'centros-custo-distribuicao',
+    title: 'Distribuição dos Centros de Custo',
+    group: 'Obras',
+    description: 'Visão gerencial dos gastos dos centros nas obras, sem apropriação real.',
+    route: '/financeiro/relatorios/centros-custo/distribuicao-obras',
+    permissionKey: 'financeiro.relatorios.centros_custo',
+    visibilityKey: 'relatorios.financeiro.centros_custo',
+    component: FinanceiroDistribuicaoCentrosCusto
   }
 ];
 
+/*
+  R25 — o cartão da lista lateral trocou a paleta crua (blue/slate com
+  degrau) por tokens. O estado ATIVO deixou de depender só de fundo
+  colorido: ganhou `aria-current`, que é o que um leitor de tela usa, e a
+  borda de destaque vem do token primário.
+
+  R10 — o rótulo do grupo estava em 10px, abaixo do piso de 12px da
+  escala; foi para `text-xs` (12). Vale a decisão D4: leitura vence
+  densidade.
+*/
 function ReportListItem({ report, active, onClick }) {
   return (
     <button
       type="button"
+      aria-current={active ? 'true' : undefined}
       className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
         active
-          ? 'border-blue-300 bg-blue-50 shadow-sm'
-          : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'
+          ? 'border-[var(--c-primary)] bg-[var(--sem-info-bg)] shadow-sm'
+          : 'border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-primary)] hover:bg-[var(--ui-surface-soft)]'
       }`}
       onClick={onClick}
     >
-      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+      <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[var(--c-muted)]">
         {report.group}
       </span>
-      <span className="block text-sm font-semibold text-slate-950">{report.title}</span>
-      <span className="mt-1 block text-xs leading-relaxed text-slate-500">{report.description}</span>
+      <span className="block text-sm font-semibold text-[var(--c-text)]">{report.title}</span>
+      <span className="mt-1 block text-xs leading-relaxed text-[var(--c-muted)]">{report.description}</span>
     </button>
   );
 }
@@ -1419,12 +1684,16 @@ export default function FinanceiroRelatorios() {
 
   if (!selectedReport) {
     return (
-      <div className="page solicitacoes-page financeiro-relatorios-page">
+      <Pagina className="financeiro-relatorios-page">
+        <PageHeader
+          titulo="Relatórios Financeiros"
+          descricao="Nenhum relatório liberado para o seu acesso."
+        />
         <div className="empty-state">
-          <strong>Nenhum relatorio financeiro liberado.</strong>
-          <span>Solicite ao administrador a permissao granular para acessar relatorios financeiros.</span>
+          <strong>Nenhum relatório financeiro liberado.</strong>
+          <span>Solicite ao administrador a permissão granular para acessar relatórios financeiros.</span>
         </div>
-      </div>
+      </Pagina>
     );
   }
 
@@ -1436,73 +1705,84 @@ export default function FinanceiroRelatorios() {
 
   if (isFullScreenMode && selectedReport.embedded) {
     return (
-      <div className="page solicitacoes-page financeiro-relatorios-page financeiro-relatorios-page--full">
-        <div className="app-page-header">
-          <div className="app-page-header-row">
-            <div>
-              <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
-                {selectedReport.group}
-              </span>
-              <h1 className="text-xl font-semibold md:text-2xl">{selectedReport.title}</h1>
-              <p className="page-subtitle">{selectedReport.description}</p>
-            </div>
-            <div className="app-page-actions">
-              <Link to="/financeiro/relatorios" className="btn btn-outline">
-                Voltar para relatorios
-              </Link>
-            </div>
-          </div>
-        </div>
+      <Pagina className="financeiro-relatorios-page financeiro-relatorios-page--full">
+        {/*
+          O grupo do relatório vira a CONTAGEM da faixa (renderiza em
+          <strong>, na linha de apoio) em vez de um texto solto de 11px
+          por cima do canvas — R5/B5 e R10 no mesmo movimento.
+        */}
+        {/*
+          SEM seta de voltar aqui, e a decisão é do trinco de navegação,
+          não minha: `scripts/trinco-navegacao.json` congela quantos
+          destinos cada arquivo escreve à mão, e o número só DESCE — o
+          `to:` desta seta fazia esta tela subir de 3 para 4 e reprovava o
+          `test:responsive`. A saída da tela inteira é o menu lateral e o
+          voltar do navegador; se o cliente quiser a seta, o caminho certo
+          é o destino entrar no `navigationConfig`, não mais um literal
+          aqui. Está anotado como decisão pendente no relatório da leva.
+        */}
+        <PageHeader
+          titulo={selectedReport.title}
+          contagem={selectedReport.group}
+          descricao={selectedReport.description}
+        />
 
         <div className="financeiro-relatorios-content">
-          <Suspense fallback={<div className="app-empty-card">Carregando relatorio...</div>}>
-            <SelectedReportComponent isVisible={isVisible} />
+          <Suspense fallback={<div className="app-empty-card">Carregando relatório...</div>}>
+            <SelectedReportComponent isVisible={isVisible} embutido />
           </Suspense>
         </div>
-      </div>
+      </Pagina>
     );
   }
 
   return (
-    <div className="page solicitacoes-page financeiro-relatorios-page">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
-              Financeiro
-            </span>
-            <h1 className="text-xl font-semibold md:text-2xl">Relatorios Financeiros</h1>
-            <p className="page-subtitle">
-              Escolha um relatorio na coluna lateral e trabalhe no painel principal sem perder contexto.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/financeiro/contas-a-receber" className="btn btn-outline">
-              Contas a Receber
-            </Link>
-            <Link to="/financeiro/contas-a-pagar" className="btn btn-outline">
-              Contas a Pagar
-            </Link>
-            <Link to="/financeiro/cadastros" className="btn btn-outline">
-              Cadastros
-            </Link>
-          </div>
-        </div>
-      </div>
+    <Pagina className="financeiro-relatorios-page">
+      {/*
+        NAVEGAÇÃO SAIU DA FAIXA (decisão do cliente, 04/09) — e com ela
+        acaba um conflito entre duas regras nossas.
+
+        A faixa trazia três atalhos — Contas a Receber, Contas a Pagar e
+        Cadastros — como ações secundárias. A D3 os pôs ali por eliminação:
+        a R11 proíbe navegação dentro do menu "⋯", então sobrou a barra de
+        ações. Só que a C6 proíbe exatamente isso: navegação vestida de
+        ação. As duas regras se empurravam porque a premissa das duas
+        estava errada.
+
+        A resolução: os dois lugares — o menu "⋯" e a barra de ações — são
+        para ações SOBRE ESTA TELA. Caminho para outra tela não pertence a
+        nenhum dos dois. Ele mora no hub do módulo, no breadcrumb e no
+        Ctrl+K, que existem para isso.
+
+        Conferido antes de remover: os três destinos estão no hub do
+        Financeiro (`fin-receber`, `fin-pagar`, `fin-cadastros` no
+        navigationConfig), então nada ficou inalcançável — e os dois
+        primeiros ganham de brinde a URL nova com o recorte declarado
+        (D2), em vez dos endereços antigos que só sobrevivem por
+        redirecionamento.
+      */}
+      <PageHeader
+        titulo="Relatórios Financeiros"
+        contagem={`${availableReports.length} relatório(s) liberado(s)`}
+        descricao="Escolha um relatório na coluna lateral e trabalhe no painel principal sem perder contexto."
+      />
 
       <div className="financeiro-relatorios-layout grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="card sol-surface-card financeiro-relatorios-sidebar h-fit xl:sticky xl:top-4">
           <div className="border-b border-[var(--c-border)] px-4 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-slate-950">Relatorios</h2>
-                <p className="text-xs text-slate-500">{availableReports.length} disponivel(is)</p>
-              </div>
-            </div>
+            <h2 className="text-lg font-semibold text-[var(--c-text)]">Relatórios</h2>
+            {/*
+              R16/F1 — UMA busca por contexto, ocupando a largura da faixa
+              do bloco (.app-busca: cresce entre 220 e 480px). A contagem
+              de disponíveis saiu daqui: ela já vive na faixa fixa do topo,
+              e repetir a mesma informação em dois lugares é B3.
+              R23 não se aplica: busca textual nunca tem botão.
+            */}
             <input
               type="search"
-              className="input mt-3 w-full input-sm"
-              placeholder="Buscar relatorio..."
+              className="input app-busca mt-3 w-full input-sm"
+              aria-label="Buscar relatório"
+              placeholder="Buscar relatório..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -1519,31 +1799,39 @@ export default function FinanceiroRelatorios() {
                 />
               ))
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
-                Nenhum relatorio encontrado para essa busca.
+              <div className="rounded-2xl border border-dashed border-[var(--c-border)] px-4 py-6 text-sm text-[var(--c-muted)]">
+                Nenhum relatório encontrado para essa busca.
               </div>
             )}
           </div>
         </aside>
 
         <section className="financeiro-relatorios-content min-w-0">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3 shadow-sm">
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              <span className="block text-xs font-bold uppercase tracking-wide text-[var(--c-muted)]">
                 {selectedReport.group}
               </span>
-              <h2 className="text-lg font-semibold text-slate-950">{selectedReport.title}</h2>
+              <h2 className="text-lg font-semibold text-[var(--c-text)]">{selectedReport.title}</h2>
             </div>
             <Link to={getReportFullScreenRoute(selectedReport)} className="btn btn-outline btn-sm">
               Abrir tela inteira
             </Link>
           </div>
 
-          <Suspense fallback={<div className="app-empty-card">Carregando relatorio...</div>}>
-            <SelectedReportComponent isVisible={isVisible} />
+          {/*
+            `embutido` — este painel JÁ tem o cabeçalho do relatório logo
+            acima, e a página já tem a sua faixa fixa. Sem esta chave, a
+            tela filha (DRE, Financeiro de Obras…) desenhava a terceira: um
+            segundo `.app-page-header` grudando na mesma rolagem e o mesmo
+            título escrito duas vezes (R16/B3). Quem não conhece a prop
+            simplesmente a ignora — nenhum contrato muda (R21).
+          */}
+          <Suspense fallback={<div className="app-empty-card">Carregando relatório...</div>}>
+            <SelectedReportComponent isVisible={isVisible} embutido />
           </Suspense>
         </section>
       </div>
-    </div>
+    </Pagina>
   );
 }

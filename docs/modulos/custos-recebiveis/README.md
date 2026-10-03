@@ -45,7 +45,8 @@ implementados no codigo:
 - alertas D-7, D-3, D-1 e vencido calculados pelo horario do servidor;
 - reabertura da competencia vencida ou finalizada e bypass temporario de usuario
   implementados como mecanismos distintos;
-- bypass limitado a 30 dias, sem autoconcessao, sem ocultar ou cumprir a obrigacao;
+- bypass (liberacao temporaria) limitado a 48 horas desde 29/09/2026, sem
+  autoconcessao, sem ocultar ou cumprir a obrigacao;
 - guard frontend e backend com kill-switch `CR_GUARD_MODE`, entregue em `observe`;
 - pagina frontend responsiva em `/custos-recebiveis`, com navegacao operacional por
   `Visao geral`, `Planejamento mensal` e `Obrigacoes e prazos`; comparativo e custo
@@ -294,7 +295,7 @@ As mutacoes usam transacao, bloqueio pessimista quando aplicavel e gravam
 - Repetir a finalizacao retorna o estado existente e nao cria auditoria ou registro
   adicional.
 - Uma competencia `FINALIZADA` rejeita alteracao de custos e recebiveis.
-- Reabertura exige motivo, decisao por permissao separada e `expira_em` futuro.
+- Reabertura exige motivo e decisao por permissao separada; a reabertura aprovada vale 24 horas e depois o mes fecha de novo (planejamento e medicao aprovada).
 - Ao aprovar, a competencia passa a `REABERTA`; qualquer usuario autorizado da obra
   pode editar durante a janela.
 - Expirada a janela, novas mutacoes sao rejeitadas mesmo que o estado continue
@@ -544,6 +545,191 @@ O frontend possui as abas `Configuracoes` e `Auditoria`, exibidas somente pelas
 permissoes `custos_recebiveis.configuracoes.gerenciar` e
 `custos_recebiveis.auditoria.visualizar`.
 
+## Reforma 2026-09 - prazos e tela do engenheiro (Fase 1)
+
+Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
+`docs/handoffs/2026-09-29-custos-recebiveis-reforma.md`):
+
+- Janela de planejamento da competencia M: dia 25 do mes anterior (00:00) ate o
+  dia 5 de M (23:59:59), horario de Brasilia, sem antecipar por fim de semana ou
+  feriado.
+- Medicao aprovada (somente obra publica): 40 dias contados do dia 1o da
+  competencia (marco -> ate 10/04 23:59:59).
+- Os dois prazos sao o padrao; a configuracao por obra entra na Fase 2.
+- Calculo em `services/prazoService.js` (Brasilia = UTC-3 fixo, sem depender do
+  fuso do servidor). `GET /obras` devolve `prazos` por obra:
+  `planejamento` (`ABERTO`, `VENCIDO`, `AGUARDANDO_JANELA`, `SEM_ESTRUTURA`),
+  `medicao` (`ABERTO`, `VENCIDO`, `EM_DIA`; `null` em obra privada) e `travada`
+  (sempre `false` ate a Fase 3).
+- "Novo mes" libera as competencias atrasadas ainda sem registro e a competencia
+  cuja janela ja abriu (`competencias_permitidas`); `POST /competencias` recusa
+  as demais com `CR_COMPETENCIA_FORA_JANELA`.
+- `GET /obras/:obraId/competencias` devolve `planejamento_editavel` por mes: so
+  e verdadeiro com planejamento aberto (ou reaberto com reabertura vigente) e
+  nao finalizado.
+- Planejamento atrasado e registrado sem reabertura (decisao de 29/09): mes nao
+  finalizado continua editavel depois do prazo; finalizado nunca e editavel;
+  reabertura so para mes finalizado ou reaberto com janela expirada.
+
+## Reforma 2026-09 - Fase 2: prazos por obra, medicao aprovada e dilatacao
+
+- Migration `202609290001_custos_recebiveis_prazos_dilatacao.js` (tabelas novas,
+  `cr_competencias` nao muda): `cr_prazos_obra`, `cr_dilatacoes`,
+  `cr_medicao_sem_registro`. O backend nao sobe com migration pendente
+  (`assertMigrationsUpToDate`): rodar a migration no deploy do backend-dev.
+- Prazos por obra: `GET /prazos` e `PUT /obras/:obraId/prazos` (Configuracoes;
+  `{ padrao: true }` volta ao padrao). Limites: dias 1 a 28; medicao 1 a 120.
+- Obrigacoes passam a usar a janela da obra; nova obrigacao `MEDICAO_CONSOLIDADA`
+  (medicao aprovada, obra publica, permissao `medicao.consolidar`), cumprida com
+  medicao registrada ou "sem medicao".
+- Medicao aprovada: registro atrasado aceito; alterar depois do prazo (com
+  dilatacao) exige reabertura (`CR_MEDICAO_ENCERRADA`). "Sem medicao neste mes"
+  com justificativa (`sem_medicao: true`). Medicao so de itens da planilha (linha
+  antiga ligada a custo so se ja gravada). Aprovado anterior somado pelo codigo
+  do item, atravessando versoes da planilha.
+- Dilatacao: `POST /obras/:obraId/competencias/:competencia/dilatacoes`
+  (`medicao.consolidar`; 2 a 5 dias; somente depois do vencimento; um pendente
+  por mes), `POST /dilatacoes/:id/decidir` (`reabertura.aprovar`),
+  `GET /dilatacoes`. Prazo novo = data da aprovacao + dias, ate 23:59 de
+  Brasilia (nunca menor que o prazo vigente); enquanto o pedido aguarda, a obra
+  segue travada.
+- Custo realizado do Comparativo: a consulta sincroniza as baixas do mes (mes
+  existente e iniciado; no maximo a cada 5 minutos por obra/mes).
+
+## Reforma 2026-09 - Fase 3: bloqueio por obra
+
+- Substitui o guard global. Decisao do proprietario (29/09): a OBRA atrasada
+  nao recebe solicitacao NOVA, de nenhum usuario (SUPERADMIN inclusive).
+  Solicitacoes ja abertas, titulos, pagamentos, baixas e compras em andamento
+  seguem normais para todos.
+- Trava com planejamento vencido e nao entregue, ou medicao aprovada vencida
+  (prazo com dilatacao) sem registro nem "sem medicao", em obra com
+  RESPONSAVEL/SUBSTITUTO vigente que tenha permissao para regularizar.
+  Dilatacao aguardando decisao nao destrava. Mes reaberto para correcao nao
+  trava.
+- Rotas de abertura barradas (403 `OBRA_TRAVADA_SOLICITACAO_NOVA`):
+  `POST /solicitacoes`, `/compras/solicitacoes`, `/compras/solicitacoes-diretas`,
+  `/compras/cotacoes/avulsa`, `/contratos/fluxo-novo` (a "Nova solicitacao" abre
+  contrato por ela), `/rh/solicitacoes` e `/rh/transferencias` (sem diferenca de
+  caixa no caminho, como o Express). Obra lida de `obra_id`, `dados.obra_id`,
+  `obra_origem_id`/`obra_destino_id`, `distribuicao_centro_custo.itens` e do
+  colaborador (RH). Distribuicao "todas as obras" e custo do centro de custo e
+  nao trava. Revisto em 29/09 pelo proprietario: jornada (`/rh/jornada`,
+  `/rh/jornada/individual`, e a importacao, checada no controller), tickets
+  de RH (`/rh/tickets`, obra dos colaboradores, checada no controller por ser
+  multipart) e aditivo de contrato (`/contratos/:id/aditivos` e
+  `/contratos/fluxo-novo/:id/aditivos`, obra do contrato) tambem sao barrados
+  — a trava serve para pressionar a regularizacao. Em `observe`, a abertura que seria barrada
+  vai para o log (`observe: abertura seria barrada`).
+- `GET /obras/minhas?modo=CRIACAO` mantem a obra e acrescenta
+  `bloqueio_solicitacao_nova.motivo`; Nova Solicitacao e Nova Solicitacao de
+  Compra mostram o motivo no campo da obra e nao enviam.
+- Dentro de `/custos-recebiveis`, o engenheiro responsavel pela obra travada so
+  acessa o que regulariza (403 `OBRA_TRAVADA_CUSTOS_RECEBIVEIS` em comparativo,
+  realizados, auditoria, estrutura e exportacoes).
+- Excecao unica: liberacao temporaria do administrador, ate 48 horas, que
+  libera a obra para todos (liberacao antiga com prazo maior vale ate
+  concedido_em + 48h tambem na listagem e na concessao). Responsavel com
+  usuario desativado nao conta para travar.
+- Sessao (`/auth/me`) leva `custos_recebiveis_pendencia.obras_travadas` (obras
+  em que o usuario e responsavel); faixa fixa no topo com "Regularizar". O
+  redirecionamento global deixou de existir (`bloqueado` e sempre `false`).
+- `CR_GUARD_MODE=observe` (padrao) so avisa ("seria travada");
+  `enforce` bloqueia. Cache de 30s (por usuario e por obra), limpo a cada
+  gravacao do modulo.
+- Reabertura aprovada vale 24 horas; depois o mes fecha sozinho (primeira
+  consulta apos o vencimento).
+
+## Reforma 2026-09 - Fase 4: consultas do administrador
+
+Consultas gerais para a tela do administrador abrir Importacoes, Auditoria,
+Configuracoes, Obrigacoes e a fila de decisoes sem escolher obra antes. Todas
+sao `GET`, somente leitura, recortadas pelo escopo de obras do usuario
+(`resolverEscopoObras`, o mesmo das rotas por obra). `obra_id` fora do escopo
+responde 403 `CR_OBRA_FORA_ESCOPO`; `obra_id`, `situacao`, data ou periodo
+invalidos respondem 400 com mensagem legivel. Paginacao onde indicado:
+`limit` padrao 50, maximo 200 (acima disso vale 200; invalido vale 50),
+`offset` padrao 0; a resposta ecoa `limit` e `offset`. Datas em ISO 8601.
+Servicos: `services/filaDecisoesService.js` e `services/consultaAdminService.js`.
+As rotas por obra (`/obras/:obraId/auditoria`, `/obras/:obraId/plano`,
+`/obras/:obraId/responsaveis`) e `/obrigacoes/minhas` nao mudaram.
+
+| Rota | Permissao | Resposta |
+| --- | --- | --- |
+| `GET /custos-recebiveis/decisoes/pendentes?obra_id=&limit=&offset=` | `REOPEN_APPROVE` | `{ items: [{ tipo: 'REABERTURA'\|'DILATACAO', id, obra: {id,codigo,nome}, competencia, motivo, dias, prazo_vigente, solicitado_por: {id,nome}, solicitado_em }], total }` |
+| `GET /custos-recebiveis/reaberturas?situacao=&obra_id=&limit=&offset=` | `REOPEN_APPROVE` ou `OBRIGACOES_VIEW` | `{ items: [{ id, obra, competencia, motivo, situacao, solicitado_por, solicitado_em, decidido_por\|null, decidido_em\|null, justificativa\|null, expira_em\|null }], total }` |
+| `GET /custos-recebiveis/auditoria?obra_id=&acao=&de=&ate=&limit=&offset=` | `AUDITORIA_VIEW` | `{ items: [{ id, criado_em, obra\|null, competencia\|null, acao, descricao, usuario: {id,nome}\|null }], total, acoes }` |
+| `GET /custos-recebiveis/planos` | `ESTRUTURA_VIEW` | `{ items: [{ obra: {id,codigo,nome,classificacao}, vigente: {id,versao,publicado_em,total_itens}\|null, rascunhos: [{id,versao,criado_em}], total_versoes, ultima_importacao_em\|null }] }` |
+| `GET /custos-recebiveis/responsaveis` | `CONFIG_MANAGE` | `{ items: [{ obra: {id,codigo,nome}, responsaveis: [{ id, usuario: {id,nome}, papel, vigencia_inicio, vigencia_fim, ativo }] }] }` |
+| `GET /custos-recebiveis/obrigacoes?situacao=&obra_id=&limit=&offset=` | `OBRIGACOES_VIEW` | `{ items: [{ id, tipo, obra, competencia, usuario: {id,nome}, prazo_em, cumprida_em\|null, situacao }], total }` |
+
+- Fila de decisoes: reaberturas e dilatacoes com situacao `SOLICITADA` (o
+  model de reabertura nao tem `PENDENTE`), do pedido mais antigo para o mais
+  novo (`solicitado_em` ASC; empate por tipo e id). `dias` e `prazo_vigente`
+  so na dilatacao (senao `null`); `prazo_vigente` e o prazo efetivo atual da
+  medicao aprovada daquele mes (com dilatacao ja aprovada). Sem a tabela
+  `cr_dilatacoes` (migration 202609290001 pendente) a fila traz so as
+  reaberturas, sem 500.
+- Reaberturas: mais recente primeiro (`createdAt` DESC, id DESC);
+  `situacao` em `SOLICITADA`, `APROVADA` ou `NEGADA`. `decidido_por`/
+  `decidido_em` vem de `aprovado_por`/`aprovado_em` (preenchidos tambem na
+  negacao). `justificativa` vem do campo `observacao` do evento de auditoria
+  da decisao (a tabela nao tem coluna propria).
+- Decisao de reabertura: continua em `POST /reaberturas/:reaberturaId/aprovar`
+  (`REOPEN_APPROVE`), que ja aprova e nega. Body
+  `{ decisao: 'APROVADA'|'NEGADA', observacao?: string }`; `justificativa`
+  e aceito como sinonimo de `observacao`. Aprovada vale 24 horas e leva mes
+  `FINALIZADA` a `REABERTA`; transacional, auditada
+  (`CR_REABERTURA_APROVADA`/`CR_REABERTURA_NEGADA`) e idempotente: pedido ja
+  decidido devolve `{ idempotente: true, reabertura }` sem gravar. Nao foi
+  criada rota `/decidir` para reabertura.
+- Auditoria: mais recente primeiro (`criado_em` DESC, id DESC). `acao` filtra
+  o evento exato; `de`/`ate` em AAAA-MM-DD, dias de Brasilia, `ate`
+  inclusivo. `acoes` e a lista distinta de eventos do escopo (sem os demais
+  filtros). Eventos sem obra so aparecem para quem tem escopo total.
+- Planos e responsaveis: uma linha por obra ativa (`tipo_centro_custo`
+  `OBRA`) do escopo, por nome, inclusive sem plano ou sem responsavel.
+  `vigente` e a versao `PUBLICADA`; `total_versoes` conta todas as versoes.
+- Obrigacoes: lista geral de `cr_obrigacoes_usuario` por `prazo_em` DESC, id
+  DESC. `situacao` segue a tela de obrigacoes: `CUMPRIDA` depois do prazo
+  vira `CUMPRIDA_COM_ATRASO`; `PENDENTE` com prazo ja passado vira `VENCIDA`
+  (a situacao gravada so e recalculada quando o responsavel consulta). Filtro
+  aceita `PENDENTE`, `VENCIDA`, `CUMPRIDA`, `CUMPRIDA_COM_ATRASO`;
+  `DISPENSADA` so aparece sem filtro. A lista reflete o que ja foi gravado
+  pelas consultas dos responsaveis.
+- Bloqueio por obra (Fase 3): em `CR_GUARD_MODE=enforce`, a auditoria e os
+  planos gerais tiram do resultado a obra travada do proprio usuario e o
+  filtro direto por ela responde 403 `OBRA_TRAVADA_CUSTOS_RECEBIVEIS`, como as
+  rotas por obra.
+- Teste: `tests/validarFase4Admin.js`.
+
+## Reforma 2026-09 - Fase 5: planilhas e saldo provavel
+
+- Modelo de custo planejado: livre para editar (linhas 2 em diante nas 4
+  colunas; inserir/excluir linhas permitido); so o cabecalho fica protegido.
+- Modelos de medicao prevista e aprovada: so `quantidade` editavel; a protecao
+  permite selecionar, formatar, arrastar/colar, autofiltro e ordenar; validacao
+  de dados do Excel (0 ate o saldo disponivel da linha) em modo aviso.
+- Importacao aceita formula e usa o valor calculado (inclusive formula
+  compartilhada de arrasto); formula sem valor calculado ->
+  `CR_PLANILHA_FORMULA_SEM_RESULTADO` ("abra e salve no Excel/LibreOffice");
+  formula com erro -> `CR_PLANILHA_FORMULA_ERRO`. O teto vale sobre o valor
+  resultante. Colunas lidas pelo nome do cabecalho; `versao_modelo` 3.
+- Saldo provavel (regra aprovada em 29/09, "A + B"): cada item da medicao
+  prevista traz `quantidade_aprovada_anterior`, `quantidade_prevista_pendente`
+  (previsto de meses anteriores sem medicao aprovada nem "sem medicao"),
+  `competencias_pendentes`, `saldo_disponivel` (teto que bloqueia) e
+  `saldo_provavel`. Acima do provavel so avisa (`avisos` na resposta do
+  salvar); acima do disponivel continua bloqueado. O modelo de medicao
+  prevista ganha `previsto_aguardando_aprovacao` e `saldo_provavel`.
+- Registrar a medicao aprovada do mes M devolve `ajuste_previsao` quando a
+  previsao de M+1 passou do saldo; o detalhe de M+1 traz
+  `ajuste_previsao_pendente`. `POST /obras/:obraId/competencias/:competencia/
+  previsao/ajustar-saldo` (`medicao.consolidar` ou
+  `planejamento.preencher_recebiveis`; `Idempotency-Key`) reduz os itens ao
+  saldo, mesmo com o mes finalizado, sem aumentar nada; auditoria
+  `CR_PREVISAO_AJUSTADA_SALDO`.
+
 ## Regras de evolucao
 
 - Cada fase funcional deve ser entregue e aceita separadamente.
@@ -566,6 +752,8 @@ npm.cmd run test:custos-recebiveis-fase2
 npm.cmd run test:custos-recebiveis-fase3
 npm.cmd run test:custos-recebiveis-fase4
 npm.cmd run test:custos-recebiveis-prontidao
+npm.cmd run test:custos-recebiveis-prazos
+npm.cmd run test:custos-recebiveis-bloqueio
 npm.cmd run test:docs
 npm.cmd run test:compra-cotacao-envio
 npm.cmd run test:compra-remanejamento

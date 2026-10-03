@@ -15,11 +15,24 @@ const {
   resolverObraIdPorReabertura
 } = require('../services/planejamentoService');
 const { resolverObraIdPorRealizado } = require('../services/realizadoService');
+const { resolverObraIdPorDilatacao } = require('../services/prazoGestaoService');
+const { invalidarObrasTravadas } = require('../services/bloqueioObraService');
 const {
   resolverObraIdPorResponsabilidade
 } = require('../services/governancaService');
 
 const router = express.Router();
+
+// Toda gravacao bem-sucedida do modulo pode travar ou destravar obras
+// (finalizar, medicao, dilatacao, reabertura, prazos, responsaveis, bypass).
+router.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.on('finish', () => {
+      if (res.statusCode < 400) invalidarObrasTravadas();
+    });
+  }
+  next();
+});
 
 const planningSpreadsheetPermission = Object.freeze({
   custos: CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_COSTS,
@@ -111,6 +124,16 @@ router.post(
   requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE),
   requireCustosRecebiveisObraScope(),
   CustosRecebiveisController.consolidarMedicao
+);
+
+router.post(
+  '/obras/:obraId/competencias/:competencia/previsao/ajustar-saldo',
+  requireAnyCustosRecebiveisPermission([
+    CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_RECEIVABLES
+  ]),
+  requireCustosRecebiveisObraScope(),
+  CustosRecebiveisController.ajustarPrevisaoAoSaldo
 );
 
 router.get(
@@ -285,6 +308,86 @@ router.get(
   '/exportacoes/:tipo',
   requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.REPORT_EXPORT),
   CustosRecebiveisController.exportacao
+);
+
+// Prazos por obra (reforma de 29/09/2026, Fase 2).
+router.get(
+  '/prazos',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.CONFIG_MANAGE),
+  CustosRecebiveisController.prazosObras
+);
+
+router.put(
+  '/obras/:obraId/prazos',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.CONFIG_MANAGE),
+  requireCustosRecebiveisObraScope(),
+  CustosRecebiveisController.salvarPrazosObra
+);
+
+// Dilatacao do prazo da medicao aprovada: engenheiro pede, administrador decide.
+router.get(
+  '/dilatacoes',
+  requireAnyCustosRecebiveisPermission([
+    CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_VIEW
+  ]),
+  CustosRecebiveisController.dilatacoes
+);
+
+router.post(
+  '/obras/:obraId/competencias/:competencia/dilatacoes',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE),
+  requireCustosRecebiveisObraScope(),
+  CustosRecebiveisController.solicitarDilatacao
+);
+
+router.post(
+  '/dilatacoes/:dilatacaoId/decidir',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE),
+  requireCustosRecebiveisObraScope(async (req) => resolverObraIdPorDilatacao(req.params.dilatacaoId)),
+  CustosRecebiveisController.decidirDilatacao
+);
+
+// Consultas gerais do administrador sem escolher obra (reforma 2026-09,
+// Fase 4). Somente leitura; o recorte por obra vem do escopo do usuario
+// (resolverEscopoObras) e obra_id fora dele responde 403.
+router.get(
+  '/decisoes/pendentes',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE),
+  CustosRecebiveisController.decisoesPendentes
+);
+
+router.get(
+  '/reaberturas',
+  requireAnyCustosRecebiveisPermission([
+    CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.OBRIGACOES_VIEW
+  ]),
+  CustosRecebiveisController.reaberturas
+);
+
+router.get(
+  '/auditoria',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.AUDITORIA_VIEW),
+  CustosRecebiveisController.auditoriaGeral
+);
+
+router.get(
+  '/planos',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_VIEW),
+  CustosRecebiveisController.planosGeral
+);
+
+router.get(
+  '/responsaveis',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.CONFIG_MANAGE),
+  CustosRecebiveisController.responsaveisGeral
+);
+
+router.get(
+  '/obrigacoes',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.OBRIGACOES_VIEW),
+  CustosRecebiveisController.obrigacoesGeral
 );
 
 module.exports = router;

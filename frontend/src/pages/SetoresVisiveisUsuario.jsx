@@ -5,6 +5,7 @@ import {
   getSetoresVisiveisPorUsuario,
   salvarSetoresVisiveisPorUsuario
 } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, BlocoConteudo, CampoForm, Avisos, useAvisos } from '../components/padrao';
 
 export default function SetoresVisiveisUsuario() {
   const [setores, setSetores] = useState([]);
@@ -12,6 +13,8 @@ export default function SetoresVisiveisUsuario() {
   const [regras, setRegras] = useState({});
   const [usuarioSelecionado, setUsuarioSelecionado] = useState('');
   const [salvando, setSalvando] = useState(false);
+  // R3/R19: aviso do sistema no lugar da caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function load() {
@@ -101,73 +104,83 @@ export default function SetoresVisiveisUsuario() {
     try {
       setSalvando(true);
       await salvarSetoresVisiveisPorUsuario({ regras });
-      alert('Configuracao salva com sucesso');
+      avisar.sucesso('Configuração salva com sucesso');
     } catch (error) {
       console.error(error);
-      alert('Erro ao salvar configuracao');
+      avisar.erro('Erro ao salvar configuração');
     } finally {
       setSalvando(false);
     }
   }
 
+  const totalMarcados = usuarioSelecionado
+    ? setoresOrdenados.filter(setor => setorEstaSelecionado(setor)).length
+    : 0;
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Setores visiveis por usuario</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--c-muted)' }}>
-          Defina setores adicionais que cada usuario pode visualizar na lista e no detalhe. As acoes continuam obedecendo as permissoes e regras atuais do setor responsavel.
-        </p>
-      </div>
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Setores visíveis por usuário"
+        contagem={usuarioSelecionado
+          ? `${totalMarcados} de ${setoresOrdenados.length} selecionados`
+          : null}
+        descricao="Defina setores adicionais que cada usuário pode visualizar na lista e no detalhe. As ações continuam obedecendo as permissões e regras atuais do setor responsável."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar',
+          onClick: salvar,
+          desabilitada: salvando
+        }}
+      />
 
-      <div className="card space-y-4">
-        <label className="grid gap-1 text-sm md:max-w-md">
-          Usuario
-          <select
-            className="input"
-            value={usuarioSelecionado}
-            onChange={e => setUsuarioSelecionado(e.target.value)}
-          >
-            <option value="">Selecione</option>
-            {usuariosOrdenados.map(usuario => (
-              <option key={usuario.id} value={String(usuario.id)}>
-                {usuario.nome} ({String(usuario?.setor?.nome || '-').toUpperCase()})
-              </option>
-            ))}
-          </select>
-        </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-        {usuarioSelecionado && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {setoresOrdenados.map(setor => {
-              const codigo = String(setor.codigo || '').toUpperCase();
-              const marcado = setorEstaSelecionado(setor);
-              return (
-                <label key={setor.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={marcado}
-                    onChange={() => alternarSetor(setor)}
-                  />
-                  <span>
-                    {setor.nome} ({codigo})
-                  </span>
-                </label>
-              );
-            })}
+      <BlocoConteudo
+        titulo="Setores visíveis"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        <div className="space-y-4">
+          <div className="md:max-w-md">
+            <CampoForm label="Usuário">
+              <select
+                className="input w-full"
+                value={usuarioSelecionado}
+                onChange={e => setUsuarioSelecionado(e.target.value)}
+              >
+                <option value="">Selecione</option>
+                {usuariosOrdenados.map(usuario => (
+                  <option key={usuario.id} value={String(usuario.id)}>
+                    {usuario.nome} ({String(usuario?.setor?.nome || '-').toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            </CampoForm>
           </div>
-        )}
 
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={salvar}
-            disabled={salvando}
-          >
-            {salvando ? 'Salvando...' : 'Salvar'}
-          </button>
+          {usuarioSelecionado && (
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {setoresOrdenados.map(setor => {
+                const codigo = String(setor.codigo || '').toUpperCase();
+                const marcado = setorEstaSelecionado(setor);
+                return (
+                  <label key={setor.id} className="flex items-center gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      onChange={() => alternarSetor(setor)}
+                    />
+                    <span>
+                      {setor.nome} ({codigo})
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </div>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

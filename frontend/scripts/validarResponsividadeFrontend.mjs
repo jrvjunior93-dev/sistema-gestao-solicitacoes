@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { validarLayout } from './validarLayout.mjs';
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const srcRoot = path.join(frontendRoot, 'src');
@@ -68,11 +69,17 @@ if (responsiveImportPosition < 0 || responsiveImportPosition < indexImportPositi
   fail('responsive-system.css precisa ser carregado depois dos estilos historicos.');
 }
 
-if (!layout.includes("matchMedia('(max-width: 1023px)')")) {
-  fail('o shell precisa tratar smartphone e tablet como viewport compacto.');
+// A reforma removeu a sidebar: o shell agora é o topo (fx-topbar) da
+// fonte única, responsivo por CSS nos tokens. As garantias equivalentes:
+// o Layout renderiza o topo novo, e os tokens tratam tablet e smartphone
+// como viewport compacto.
+const designTokensCss = read('src/styles/design-tokens.css');
+if (!layout.includes('fx-topbar')) {
+  fail('o shell precisa renderizar o topo da navegacao (fx-topbar).');
 }
-if (!layout.includes('fixed lg:sticky') || !layout.includes('lg:hidden')) {
-  fail('o menu lateral precisa usar drawer ate o breakpoint desktop.');
+if (!designTokensCss.includes('@media (max-width: 1023px)')
+  || !designTokensCss.includes('@media (max-width: 767px)')) {
+  fail('o shell precisa tratar smartphone e tablet como viewport compacto.');
 }
 if (/\.layout-shell\.fluxy-app-shell\s*>\s*\*\s*\{[^}]*position\s*:\s*relative/s.test(indexCss)) {
   fail('a regra generica do shell voltou a sobrescrever o posicionamento do drawer.');
@@ -106,6 +113,74 @@ if (modaisCompraNoPortal < 4) {
   fail('os quatro overlays criticos da gestao de cotacao precisam usar ModalPortal.');
 }
 
+// Comentário que ENGOLE regras (acidente do merge de 02/09): um `/*` de
+// cabeçalho de seção sem o `*/` fica aberto e comenta centenas de regras até
+// o próximo `*/` — CSS válido, então build, minificação e navegador aceitam
+// em silêncio. Detector: regra abrindo em COLUNA 0 dentro de um comentário
+// (prosa que cita uma regra como exemplo é sempre indentada, e não dispara).
+const cssFiles = listFiles(srcRoot, ['.css']);
+for (const cssFile of cssFiles) {
+  const css = fs.readFileSync(cssFile, 'utf8');
+  for (const match of css.matchAll(/\/\*([\s\S]*?)\*\//g)) {
+    const linhaRegra = match[1].split('\n')
+      .find((line) => /^[.#:@[a-zA-Z-][^{}]*\{\s*$/.test(line));
+    if (linhaRegra) {
+      const linha = css.slice(0, match.index).split('\n').length;
+      fail(`comentario iniciado em ${path.relative(frontendRoot, cssFile)}:${linha} `
+        + `engole regras de CSS (ex.: "${linhaRegra.trim()}"). `
+        + 'Provavelmente falta a linha "============================ */" de fechamento do cabecalho.');
+    }
+  }
+}
+
+// Fonte × bundle: toda classe definida nos .css do fonte precisa existir no
+// CSS de produção. Se o dist tiver menos que o fonte, algo foi engolido no
+// caminho (comentário aberto, minificação, purge…) — seja qual for o motivo.
+const distAssets = path.join(frontendRoot, 'dist', 'assets');
+let classesFonte = 0;
+let bundleConferido = false;
+if (fs.existsSync(distAssets)) {
+  const distCss = fs.readdirSync(distAssets)
+    .filter((name) => name.endsWith('.css'))
+    .map((name) => fs.readFileSync(path.join(distAssets, name), 'utf8'))
+    .join('\n');
+  if (distCss) {
+    bundleConferido = true;
+    for (const cssFile of cssFiles) {
+      const semComentarios = fs.readFileSync(cssFile, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      const nomes = new Set(
+        [...semComentarios.matchAll(/\.([A-Za-z0-9_-]{3,})[\s,{:.[>~+]/g)].map((m) => m[1])
+      );
+      classesFonte += nomes.size;
+      const ausentes = [...nomes].filter((nome) => !distCss.includes(nome));
+      if (ausentes.length > 0) {
+        fail(`${ausentes.length} classe(s) de ${path.relative(frontendRoot, cssFile)} `
+          + `sumiram do CSS de producao (dist/assets): ${ausentes.slice(0, 10).join(', ')}`
+          + `${ausentes.length > 10 ? '…' : ''}. Algo engoliu regras entre o fonte e o bundle — `
+          + 'rode "npm run build" limpo e procure o trecho dessas classes no fonte.');
+      }
+    }
+  }
+}
+
+// R13 — o cabeçalho da tela é FAIXA FIXA: gruda abaixo da topbar na rolagem
+// (compacta, nunca some). A garantia estática é o sticky no CSS padrão; a
+// medição real (posição após rolar) é da auditoria runtime das capturas.
+const componentesPadraoCss = read('src/styles/componentes-padrao.css');
+if (!/\.layout-main \.app-page-header \{[^}]*position:\s*sticky/s.test(componentesPadraoCss)
+  || !/--pos-cabecalho-fixo/.test(componentesPadraoCss)) {
+  fail('o cabeçalho da tela precisa ser fixo na rolagem (.app-page-header sticky com --pos-cabecalho-fixo) — R13.');
+}
+
+// Regras mecânicas de layout (docs/REGRAS-LAYOUT.md) sobre as telas do
+// manifesto — reprovam a tela reformada que sair do padrão.
+const regrasLayout = validarLayout();
+regrasLayout.avisos.forEach((aviso) => console.warn('[layout] AVISO', aviso));
+if (regrasLayout.falhas.length > 0) {
+  regrasLayout.falhas.forEach((f) => console.error('[layout] FALHA', f));
+  fail(`${regrasLayout.falhas.length} violação(ões) das regras mecânicas de layout — veja docs/REGRAS-LAYOUT.md.`);
+}
+
 const sourceFiles = listFiles(srcRoot, ['.jsx', '.js']);
 const routeFiles = sourceFiles.filter((filePath) => {
   const content = fs.readFileSync(filePath, 'utf8');
@@ -123,6 +198,10 @@ console.log(JSON.stringify({
   arquivos_com_tabela: routeFiles.length,
   arquivos_com_wrapper_nomeado: namedScrollFiles.length,
   modais_criticos_com_portal: modaisCompraNoPortal,
+  css_sem_comentario_engolindo_regras: cssFiles.length,
+  classes_fonte_conferidas_no_bundle: bundleConferido
+    ? classesFonte
+    : 'nao conferido — dist ausente, rode npm run build antes',
   protecao_global_de_overlays: true,
   garantia_para_tabelas_historicas: responsiveCss.includes(':has(> table:not(.solicitacoes-table--mobile))'),
   breakpoints: ['smartphone <= 767px', 'tablet <= 1023px', 'desktop >= 1024px']

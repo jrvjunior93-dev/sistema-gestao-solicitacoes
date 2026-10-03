@@ -1,9 +1,9 @@
+import DateInputBR from '../../../components/DateInputBR';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineCheckCircle,
   HiOutlineChevronLeft,
   HiOutlineChevronRight,
-  HiOutlineClipboardDocumentCheck,
   HiOutlineArrowDownTray,
   HiOutlineArrowUpTray,
   HiOutlineExclamationTriangle,
@@ -12,10 +12,13 @@ import {
   HiOutlinePlus,
   HiOutlineTrash
 } from 'react-icons/hi2';
+import { CelulaDupla, TabelaPadrao, useConfirmacao } from '../../../components/padrao';
 import CrPlanningImportModal from './CrPlanningImportModal';
 import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
+import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
 import {
   consolidarMedicaoCompetencia,
+  registrarSemMedicaoCompetencia,
   baixarModeloPlanilhaPlanejamento,
   decidirReaberturaCompetencia,
   finalizarPlanejamentoCompetencia,
@@ -34,6 +37,12 @@ import {
   removePlanningDraft,
   writePlanningDraft
 } from '../utils/planningDraftStorage';
+import { monthLabel, monthShort, monthSlash } from '../utils/prazos';
+import {
+  ajustarPrevisaoAoSaldo,
+  mensagemErroPlanilha,
+  novaChaveIdempotencia
+} from '../services/custosRecebiveisPrevisao';
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -56,6 +65,76 @@ function asNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const quantityFormat = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
+
+function formatQuantity(value, unit = '') {
+  const text = quantityFormat.format(asNumber(value));
+  return unit ? `${text} ${unit}` : text;
+}
+
+function pickBalanceField(row, key) {
+  if (row?.[key] !== undefined && row?.[key] !== null) return row[key];
+  const nested = row?.item?.[key];
+  return nested === undefined ? null : nested;
+}
+
+/*
+  Saldo da medição prevista (Fase 5, regra "A + B" de 29/09). O servidor manda
+  por item: saldo disponível (teto que bloqueia), previsto aguardando aprovação
+  (meses anteriores ainda sem medição aprovada) e saldo provável (disponível -
+  pendente, só aviso). Servidor sem esses campos: cai no cálculo anterior
+  (orçado - já aprovado) e nada de aviso.
+*/
+// Linha de apoio da quantidade orçada na medição prevista: valor unitário e
+// total planejado (antes eram duas colunas próprias).
+function budgetDetail(row) {
+  const unit = row.unidade || 'un';
+  return `${currency.format(row.custo_unitario || 0)}/${unit} · ${currency.format(row.valor_base || 0)}`;
+}
+
+function forecastBalance(row) {
+  const approvedBefore = asNumber(pickBalanceField(row, 'quantidade_aprovada_anterior'));
+  const rawAvailable = pickBalanceField(row, 'saldo_disponivel');
+  const budget = row?.quantidade_base ?? row?.item?.quantidade_orcada;
+  const available = rawAvailable != null
+    ? asNumber(rawAvailable)
+    : Math.max(0, asNumber(budget) - approvedBefore);
+  const pending = asNumber(pickBalanceField(row, 'quantidade_prevista_pendente'));
+  const months = pickBalanceField(row, 'competencias_pendentes');
+  const pendingMonths = Array.isArray(months) ? months.filter(Boolean) : [];
+  const rawProbable = pickBalanceField(row, 'saldo_provavel');
+  const hasProbable = rawProbable != null;
+  const probable = hasProbable ? asNumber(rawProbable) : Math.max(0, available - pending);
+  const quantity = asNumber(row?.quantidade_prevista);
+  const aboveProbable = hasProbable
+    && pending > 0
+    && quantity > probable + 0.0001
+    && quantity <= available + 0.0001;
+  return { approvedBefore, available, pending, pendingMonths, probable, hasProbable, quantity, aboveProbable };
+}
+
+function pendingMonthsText(balance) {
+  const labels = balance.pendingMonths.map(monthLabel);
+  if (!labels.length) return 'o mês anterior';
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
+}
+
+function aboveProbableText(balance, unit) {
+  const plural = balance.pendingMonths.length > 1;
+  return `${pendingMonthsText(balance)} ainda não ${plural ? 'foram aprovados' : 'foi aprovado'}; `
+    + `você previu ${formatQuantity(balance.pending, unit)} lá. `
+    + `Saldo provável: ${formatQuantity(balance.probable, unit)}.`;
+}
+
+function sumSaved(list, field) {
+  return (Array.isArray(list) ? list : []).reduce((sum, item) => {
+    const value = item?.[field];
+    if (value !== undefined && value !== null && value !== '') return sum + asNumber(value);
+    return sum + (asNumber(item?.quantidade) * asNumber(item?.custo_unitario));
+  }, 0);
+}
+
 function newLocalKey(prefix = 'cr-subitem') {
   return globalThis.crypto?.randomUUID?.()
     || `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -70,12 +149,6 @@ function planningRowKey(value = {}) {
 
 function draftSignature(value) {
   return JSON.stringify(value ?? null);
-}
-
-function localExpiryDefault() {
-  const date = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000));
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - (offset * 60 * 1000)).toISOString().slice(0, 16);
 }
 
 function usePlanItemSearch(obraId, competencia, macroCode, query) {
@@ -132,15 +205,131 @@ function privateReceiptStatusLabel(status) {
   return labels[normalized] || normalized.replaceAll('_', ' ') || 'Não informado';
 }
 
+/*
+  Faixa "a previsão do mês seguinte passou do saldo" (Fase 5, parte B).
+  Aparece logo depois de registrar a medição aprovada do mês M (resposta traz
+  `ajuste_previsao`) e no mês M+1 enquanto houver excesso
+  (`ajuste_previsao_pendente`). O ajuste só REDUZ a quantidade prevista ao
+  saldo disponível. Quem não pode ajustar vê a faixa sem o botão.
+  Exportada para o detalhe do mês reutilizar a mesma faixa.
+*/
+export function CrAjustePrevisaoFaixa({ obraId, ajuste, canAdjust = false, onAdjusted, onDismiss = null }) {
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const busyRef = useRef(false);
+  const itens = Array.isArray(ajuste?.itens) ? ajuste.itens : [];
+  if (!ajuste?.competencia || !itens.length) return null;
+  const mes = monthLabel(ajuste.competencia);
+
+  async function ajustar() {
+    if (busyRef.current) return;
+    const obraAlvo = obraId;
+    const competenciaAlvo = ajuste.competencia;
+    const ids = itens.map((item) => Number(item.plano_item_id)).filter(Boolean);
+    const mesAlvo = mes;
+    const { ok } = await confirmar({
+      titulo: `Ajustar previsão de ${mesAlvo} ao saldo`,
+      mensagem: `A quantidade prevista de ${ids.length} item(ns) de ${mesAlvo} será reduzida ao saldo disponível. As demais linhas não mudam.`,
+      rotuloConfirmar: 'Ajustar ao saldo'
+    });
+    if (!ok || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError('');
+    // Uma chave por tentativa: o servidor devolve o mesmo resultado se o
+    // mesmo pedido chegar duas vezes.
+    const idempotencyKey = novaChaveIdempotencia();
+    try {
+      const result = await ajustarPrevisaoAoSaldo(obraAlvo, competenciaAlvo, ids, idempotencyKey);
+      await onAdjusted?.(result, competenciaAlvo, ids.length);
+    } catch (requestError) {
+      setError(requestError.message || 'Não foi possível ajustar a previsão ao saldo.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="cr-ajuste-previsao" aria-label={`Previsão de ${mes} acima do saldo`}>
+      <header className="cr-ajuste-previsao__header">
+        <HiOutlineExclamationTriangle className="h-5 w-5" aria-hidden="true" />
+        <strong>A previsão de {mes} passou do saldo em {itens.length} item(ns)</strong>
+        {canAdjust ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={ajustar}
+          >
+            {busy ? 'Ajustando...' : `Ajustar previsão de ${mes} ao saldo`}
+          </button>
+        ) : null}
+        {onDismiss ? (
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={busy}
+            onClick={onDismiss}
+          >
+            Fechar
+          </button>
+        ) : null}
+      </header>
+      {error ? <div className="cr-feedback" data-tone="error">{error}</div> : null}
+      <TabelaPadrao
+        colunasConfiguraveis={false}
+        colunas={[
+          {
+            id: 'item',
+            titulo: 'Item',
+            tipo: 'identidade',
+            noCard: 'titulo',
+            render: (item) => <CelulaDupla principal={item.descricao || item.codigo} sub={item.codigo} />
+          },
+          { id: 'unidade', titulo: 'Unid.', tipo: 'codigo', render: (item) => item.unidade || 'un' },
+          {
+            id: 'quantidade_prevista',
+            titulo: 'Previsto',
+            tipo: 'numero',
+            render: (item) => formatQuantity(item.quantidade_prevista)
+          },
+          {
+            id: 'saldo_disponivel',
+            titulo: 'Saldo disponível',
+            tipo: 'numero',
+            render: (item) => formatQuantity(item.saldo_disponivel)
+          },
+          {
+            id: 'quantidade_sugerida',
+            titulo: 'Após ajuste',
+            tipo: 'numero',
+            render: (item) => <strong>{formatQuantity(item.quantidade_sugerida ?? item.saldo_disponivel)}</strong>
+          }
+        ]}
+        itens={itens}
+        getId={(item) => String(item.plano_item_id)}
+        storageKey="tabela:cr-planejamento:ajuste-previsao"
+        rotuloRolagem={`Itens da previsão de ${mes} acima do saldo`}
+        vazio="Nenhum item acima do saldo."
+      />
+      {elementoConfirmacao}
+    </section>
+  );
+}
+
 export default function CrPlanejamentoView({
   obra,
   userId,
   competencia,
   permissions,
   viewMode = 'planning',
-  onChanged
+  onChanged,
+  onCompleted = null
 }) {
   const [data, setData] = useState(null);
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [step, setStep] = useState(1);
   const [costs, setCosts] = useState([]);
   const [receipts, setReceipts] = useState([]);
@@ -150,8 +339,19 @@ export default function CrPlanejamentoView({
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [reopenReason, setReopenReason] = useState('');
-  const [decisionExpiry, setDecisionExpiry] = useState(localExpiryDefault);
   const [measurementPickerMacro, setMeasurementPickerMacro] = useState('');
+  /*
+    SÓ O ESC (06/09, decisão do cliente — D5).
+
+    Esta lista é de resultado EM FLUXO: não cobre nada, empurra o
+    formulário para baixo. Por isso ela NÃO recebe o fechamento por clique
+    fora que as 35 camadas do sistema receberam. Medido o preço de
+    converter por inteiro: clicar em outro campo do MESMO formulário
+    passaria a sumir com a lista, no meio do preenchimento.
+
+    Palavras do cliente: "o Esc dá saída sem esse risco".
+  */
+  useFecharAoSair(null, Boolean(measurementPickerMacro), () => setMeasurementPickerMacro(''), { apenasEsc: true });
   const [measurementSearch, setMeasurementSearch] = useState('');
   const [approvedPickerMacro, setApprovedPickerMacro] = useState('');
   const [approvedSearch, setApprovedSearch] = useState('');
@@ -162,6 +362,12 @@ export default function CrPlanejamentoView({
   const [sheetPreview, setSheetPreview] = useState(null);
   const [sheetLoading, setSheetLoading] = useState('');
   const [costErrors, setCostErrors] = useState([]);
+  const [forecastNotices, setForecastNotices] = useState([]);
+  const [adjustmentAfterRegister, setAdjustmentAfterRegister] = useState(null);
+  // Mensagem da medição aprovada recém-registrada que ainda espera a decisão
+  // sobre a faixa "ajustar previsão ao saldo" antes de voltar aos meses.
+  const [completeAfterAdjustment, setCompleteAfterAdjustment] = useState('');
+  const [savedTotals, setSavedTotals] = useState(null);
   const sheetFileRef = useRef(null);
   const sheetTypeRef = useRef('');
   const draftReadyRef = useRef(false);
@@ -210,6 +416,10 @@ export default function CrPlanejamentoView({
         })
       };
       setData(response);
+      setSavedTotals({
+        costs: sumSaved(serverCosts, 'valor_previsto'),
+        receipts: sumSaved(serverReceipts, 'valor_previsto')
+      });
       setCosts(Array.isArray(costsDraft?.items) ? costsDraft.items : serverCosts);
       setReceipts(Array.isArray(receiptsDraft?.items) ? receiptsDraft.items : serverReceipts);
       if (response.obra?.classificacao === 'PUBLICA') {
@@ -252,6 +462,9 @@ export default function CrPlanejamentoView({
     setDraftNotice('');
     setHasLocalDraft(false);
     setCostErrors([]);
+    setForecastNotices([]);
+    setAdjustmentAfterRegister(null);
+    setCompleteAfterAdjustment('');
     load();
   }, [load, viewMode]);
 
@@ -298,6 +511,34 @@ export default function CrPlanejamentoView({
     () => Math.max(0, totalReceipts - totalApproved),
     [totalApproved, totalReceipts]
   );
+  const costsDirty = draftSignature(costs) !== serverBaselineRef.current.costs;
+  const receiptsDirty = isPublic && draftSignature(receipts) !== serverBaselineRef.current.receipts;
+  const reviewStep = !approvedOnly && ((isPublic && step === 3) || (!isPublic && step === 2));
+  // Título do editor: a etapa em curso (29/09, pedido do proprietário).
+  let editorStageTitle = 'Custos previstos';
+  if (approvedOnly) editorStageTitle = 'Medição aprovada';
+  else if (step === 2) editorStageTitle = isPublic ? 'Medição prevista' : 'Recebíveis previstos';
+  else if (step === 3) editorStageTitle = 'Revisão e envio';
+
+  // Revisão e envio mostra o que está GRAVADO: ao entrar na etapa relê os
+  // totais do servidor (sem mexer no que está em edição na tela).
+  useEffect(() => {
+    if (!reviewStep || !obra?.id || !competencia) return undefined;
+    let active = true;
+    obterPlanejamentoCompetencia(obra.id, competencia)
+      .then((response) => {
+        if (!active) return;
+        setSavedTotals({
+          costs: sumSaved(response.custos, 'valor_previsto'),
+          receipts: sumSaved(response.recebiveis, 'valor_previsto')
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [competencia, obra?.id, reviewStep]);
+
   const refreshDraftPresence = useCallback(() => {
     setHasLocalDraft(hasPlanningDraft(allDraftKeys));
   }, [allDraftKeys]);
@@ -445,7 +686,18 @@ export default function CrPlanejamentoView({
   }, [competencia, data, draftKeys.measurement, isPublic, measurementJustification, measurements, obra?.id, permissions.measurement, refreshDraftPresence, step, userId]);
 
   async function discardLocalDraft() {
-    if (!window.confirm('Descartar as alterações não salvas desta obra e competência?')) return;
+    // O texto diz o ESCOPO e diz que não volta atrás. Regra do cliente
+    // (03/09): confirmação de ação destrutiva declara a irreversibilidade,
+    // porque "descartar" sozinho deixa a pessoa supor que dá para recuperar.
+    // Aqui são as três seções — custos, medição prevista e medição aprovada —
+    // desta obra e competência, e nenhuma outra.
+    const { ok } = await confirmar({
+      titulo: 'Descartar rascunho',
+      mensagem: 'Descartar as alterações não salvas de custos, medição prevista e medição aprovada desta obra e competência? Esta ação não pode ser desfeita.',
+      rotuloConfirmar: 'Descartar',
+      destrutiva: true
+    });
+    if (!ok) return;
     draftReadyRef.current = false;
     allDraftKeys.forEach(removePlanningDraft);
     setHasLocalDraft(false);
@@ -468,11 +720,8 @@ export default function CrPlanejamentoView({
       if (itemIndex !== index) return item;
       const next = { ...item, [field]: value };
       if (isPublic && field === 'quantidade_prevista') {
-        const previousQuantity = asNumber(item.item?.quantidade_aprovada_anterior);
-        const availableQuantity = Math.max(
-          0,
-          asNumber(item.quantidade_base) - previousQuantity
-        );
+        // Teto duro = saldo disponível; o saldo provável só avisa.
+        const availableQuantity = forecastBalance(item).available;
         next.quantidade_prevista = Math.min(
           availableQuantity,
           Math.max(0, asNumber(value))
@@ -540,15 +789,15 @@ export default function CrPlanejamentoView({
     setApprovedSearch('');
   }
 
-  function addCost(macro) {
+  function addCost() {
     setCosts((current) => [...current, {
       id: null,
       chave_local: newLocalKey(),
       plano_item_id: null,
-      etapa_macro_codigo: macro.codigo,
+      etapa_macro_codigo: null,
       descricao: '',
       unidade: '',
-      ordem: current.filter((item) => item.etapa_macro_codigo === macro.codigo).length + 1,
+      ordem: current.length + 1,
       item: null,
       quantidade: '',
       custo_unitario: '',
@@ -617,7 +866,7 @@ export default function CrPlanejamentoView({
       setSheetType(importType);
       setSheetPreview(response);
     } catch (requestError) {
-      setError(requestError.message || 'Não foi possível validar a planilha.');
+      setError(mensagemErroPlanilha(requestError));
       setSheetPreview(null);
     } finally {
       setSheetLoading('');
@@ -637,109 +886,144 @@ export default function CrPlanejamentoView({
       [previousField]: Math.max(
         0,
         asNumber(row.quantidade_orcada) - asNumber(row.saldo_disponivel)
-      )
+      ),
+      ...(row.saldo_disponivel != null ? { saldo_disponivel: asNumber(row.saldo_disponivel) } : {}),
+      ...(row.saldo_provavel != null ? {
+        saldo_provavel: asNumber(row.saldo_provavel),
+        quantidade_prevista_pendente: asNumber(row.quantidade_prevista_pendente),
+        competencias_pendentes: Array.isArray(row.competencias_pendentes) ? row.competencias_pendentes : []
+      } : {})
     };
   }
 
-  function applyPlanningImport(type, items) {
-    const importRows = Array.isArray(items) ? items : [];
-    if (type === 'custos') {
-      setCosts((current) => {
-        const next = [...current];
-        importRows.forEach((row) => {
-          const macroCode = String(row.etapa_macro_codigo || '').trim();
-          const identity = `${macroCode}|${String(row.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(row.unidade || '').trim().toLocaleLowerCase('pt-BR')}`;
-          const index = next.findIndex((item) => (
-            `${item.etapa_macro_codigo}|${String(item.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(item.unidade || '').trim().toLocaleLowerCase('pt-BR')}` === identity
-          ));
-          const imported = {
-            ...(index >= 0 ? next[index] : {}),
-            id: index >= 0 ? next[index].id : null,
-            chave_local: index >= 0 ? next[index].chave_local : newLocalKey('cr-import-cost'),
-            plano_item_id: null,
-            etapa_macro_codigo: macroCode,
-            descricao: row.descricao,
-            unidade: row.unidade,
-            ordem: index >= 0
-              ? next[index].ordem
-              : next.filter((item) => item.etapa_macro_codigo === macroCode).length + 1,
-            item: null,
-            quantidade: asNumber(row.quantidade),
-            custo_unitario: asNumber(row.valor_unitario),
-            valor_previsto: asNumber(row.valor_total),
-            parceiro_id: null
-          };
-          if (index >= 0) next[index] = imported;
-          else next.push(imported);
-        });
-        return next;
-      });
-      setStep(1);
-    } else if (type === 'medicao-prevista') {
-      setReceipts((current) => {
-        const next = [...current];
-        importRows.forEach((row) => {
-          const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
-          const imported = {
-            previsao_custo_id: null,
-            plano_item_id: item.id,
-            etapa_macro_codigo: item.etapa_macro_codigo,
-            descricao: item.descricao,
-            unidade: item.unidade,
-            quantidade_base: item.quantidade_orcada,
-            custo_unitario: item.custo_unitario_orcado,
-            valor_base: item.valor_orcado,
-            item,
-            quantidade_prevista: asNumber(row.quantidade),
-            valor_previsto: asNumber(row.valor_total),
-            data_prevista: ''
-          };
-          const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
-          if (index >= 0) next[index] = { ...next[index], ...imported };
-          else next.push(imported);
-        });
-        return next;
-      });
-      setStep(2);
-    } else if (type === 'medicao-aprovada') {
-      setMeasurements((current) => {
-        const next = [...current];
-        importRows.forEach((row) => {
-          const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
-          const imported = {
-            previsao_custo_id: null,
-            plano_item_id: item.id,
-            etapa_macro_codigo: item.etapa_macro_codigo,
-            descricao: item.descricao,
-            unidade: item.unidade,
-            quantidade_base: item.quantidade_orcada,
-            custo_unitario: item.custo_unitario_orcado,
-            valor_base: item.valor_orcado,
-            item,
-            quantidade_medida: asNumber(row.quantidade),
-            valor_medido: asNumber(row.valor_total),
-            valor_glosa: 0,
-            justificativa_glosa: '',
-            data_medicao: '',
-            numero_medicao: ''
-          };
-          const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
-          if (index >= 0) next[index] = { ...next[index], ...imported };
-          else next.push(imported);
-        });
-        return next;
-      });
-    }
-    setSheetPreview(null);
-    setFeedback(`${importRows.length} item(ns) aplicados ao rascunho. Revise e salve para gravar.`);
+  function mergeImportedCosts(current, importRows) {
+    const next = [...current];
+    importRows.forEach((row) => {
+      const identity = `${String(row.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(row.unidade || '').trim().toLocaleLowerCase('pt-BR')}`;
+      const index = next.findIndex((item) => (
+        `${String(item.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(item.unidade || '').trim().toLocaleLowerCase('pt-BR')}` === identity
+      ));
+      const imported = {
+        ...(index >= 0 ? next[index] : {}),
+        id: index >= 0 ? next[index].id : null,
+        chave_local: index >= 0 ? next[index].chave_local : newLocalKey('cr-import-cost'),
+        plano_item_id: null,
+        etapa_macro_codigo: null,
+        descricao: row.descricao,
+        unidade: row.unidade,
+        ordem: index >= 0
+          ? next[index].ordem
+          : next.length + 1,
+        item: null,
+        quantidade: asNumber(row.quantidade),
+        custo_unitario: asNumber(row.valor_unitario),
+        valor_previsto: asNumber(row.valor_total),
+        parceiro_id: null
+      };
+      if (index >= 0) next[index] = imported;
+      else next.push(imported);
+    });
+    return next;
   }
 
-  function renderPlanningSheetActions(type, allowed = true) {
+  function mergeImportedForecast(current, importRows) {
+    const next = [...current];
+    importRows.forEach((row) => {
+      const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
+      const imported = {
+        previsao_custo_id: null,
+        plano_item_id: item.id,
+        etapa_macro_codigo: item.etapa_macro_codigo,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        quantidade_base: item.quantidade_orcada,
+        custo_unitario: item.custo_unitario_orcado,
+        valor_base: item.valor_orcado,
+        item,
+        quantidade_prevista: asNumber(row.quantidade),
+        valor_previsto: asNumber(row.valor_total),
+        data_prevista: ''
+      };
+      const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
+      if (index >= 0) next[index] = { ...next[index], ...imported };
+      else next.push(imported);
+    });
+    return next;
+  }
+
+  function mergeImportedApproved(current, importRows) {
+    const next = [...current];
+    importRows.forEach((row) => {
+      const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
+      const imported = {
+        previsao_custo_id: null,
+        plano_item_id: item.id,
+        etapa_macro_codigo: item.etapa_macro_codigo,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        quantidade_base: item.quantidade_orcada,
+        custo_unitario: item.custo_unitario_orcado,
+        valor_base: item.valor_orcado,
+        item,
+        quantidade_medida: asNumber(row.quantidade),
+        valor_medido: asNumber(row.valor_total),
+        valor_glosa: 0,
+        justificativa_glosa: '',
+        data_medicao: '',
+        numero_medicao: ''
+      };
+      const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
+      if (index >= 0) next[index] = { ...next[index], ...imported };
+      else next.push(imported);
+    });
+    return next;
+  }
+
+  /*
+    Importação confirmada = aplica E grava num passo só (Fase 6). A
+    confirmação de que vai gravar acontece no próprio modal. Se a gravação
+    falhar, os itens ficam aplicados na tela (rascunho) com o erro visível.
+    Medição aprovada com diferença sem justificativa não registra sozinha:
+    aplica e pede a justificativa.
+  */
+  async function importAndSave(type, items) {
+    if (saving) return;
+    const importRows = Array.isArray(items) ? items : [];
+    const count = importRows.length;
+    setSheetPreview(null);
+    if (type === 'custos') {
+      const next = mergeImportedCosts(costs, importRows);
+      setCosts(next);
+      setStep(1);
+      await saveCosts({ rows: next, successMessage: `${count} item(ns) importados e custos salvos.` });
+    } else if (type === 'medicao-prevista') {
+      const next = mergeImportedForecast(receipts, importRows);
+      setReceipts(next);
+      setStep(2);
+      await saveReceipts({ rows: next, successMessage: `${count} item(ns) importados e medição prevista salva.` });
+    } else if (type === 'medicao-aprovada') {
+      const next = mergeImportedApproved(measurements, importRows);
+      setMeasurements(next);
+      const approvedTotal = next.reduce((sum, item) => sum + asNumber(item.valor_medido), 0);
+      const needsJustification = approvedTotal < totalReceipts
+        && measurementJustification.trim().length < 5;
+      if (needsJustification || data?.medicao_aprovada_estado?.editavel === false) {
+        setFeedback(needsJustification
+          ? `${count} item(ns) aplicados. Informe a justificativa da diferença e registre a medição aprovada.`
+          : `${count} item(ns) aplicados.`);
+        return;
+      }
+      await saveMeasurement({ rows: next, successMessage: `${count} item(ns) importados e medição aprovada registrada.` });
+    }
+  }
+
+  function renderPlanningSheetActions(type, allowed = true, extraAction = null) {
     if (!allowed) return null;
     const downloading = sheetLoading === `download:${type}`;
     const uploading = sheetLoading === `upload:${type}`;
     return (
       <div className="cr-planning-sheet-actions">
+        {extraAction}
         <button
           type="button"
           className="btn btn-outline"
@@ -762,10 +1046,6 @@ export default function CrPlanejamentoView({
     );
   }
 
-  function costsForMacro(macroCode) {
-    return costs.filter((item) => item.etapa_macro_codigo === macroCode);
-  }
-
   function receiptsForMacro(macroCode) {
     return receipts.filter((item) => item.etapa_macro_codigo === macroCode);
   }
@@ -774,127 +1054,47 @@ export default function CrPlanejamentoView({
     return measurements.filter((item) => item.etapa_macro_codigo === macroCode);
   }
 
-  function renderCostMacro(macro, macroIndex) {
-    const rows = costsForMacro(macro.codigo);
-    const total = rows.reduce((sum, item) => sum + asNumber(item.valor_previsto), 0);
-    return (
-      <article key={macro.codigo} className="cr-macro-planning-block">
-        <header className="cr-macro-planning-heading">
-          <div>
-            <b>{macroIndex + 1}</b>
-            <div>
-              <strong>{macro.codigo} · {macro.descricao}</strong>
-              <span>Orçado na macro: {currency.format(macro.valor_orcado || 0)}</span>
-            </div>
-          </div>
-          {!readonly && permissions.costs ? (
-            <button type="button" className="btn btn-outline" onClick={() => addCost(macro)}>
-              <HiOutlinePlus className="h-4 w-4" />
-              Adicionar subitem
-            </button>
-          ) : null}
-        </header>
-        <div className="cr-table-shell cr-planning-table cr-macro-subitems-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Descrição do serviço</th>
-                <th>Unidade</th>
-                <th>Quantidade</th>
-                <th>Valor unitário</th>
-                <th>Valor total</th>
-                <th aria-label="Ações" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item) => {
-                const index = costs.findIndex((row) => planningRowKey(row) === planningRowKey(item));
-                const rowError = costErrors.find((entry) => entry.index === index);
-                return (
-                  <tr key={planningRowKey(item)} data-invalid={rowError ? 'true' : undefined}>
-                    <td>
-                      <input
-                        value={item.descricao || ''}
-                        placeholder="Descreva o serviço planejado"
-                        maxLength="500"
-                        disabled={readonly || !permissions.costs}
-                        onChange={(event) => updateCost(index, 'descricao', event.target.value)}
-                      />
-                      {rowError ? <small>{rowError.messages.join(' · ')}</small> : null}
-                    </td>
-                    <td>
-                      <input
-                        value={item.unidade || ''}
-                        placeholder="un, m², mês..."
-                        maxLength="30"
-                        disabled={readonly || !permissions.costs}
-                        onChange={(event) => updateCost(index, 'unidade', event.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.0001"
-                        value={item.quantidade}
-                        disabled={readonly || !permissions.costs}
-                        onChange={(event) => updateCost(index, 'quantidade', event.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.0001"
-                        value={item.custo_unitario}
-                        disabled={readonly || !permissions.costs}
-                        onChange={(event) => updateCost(index, 'custo_unitario', event.target.value)}
-                      />
-                    </td>
-                    <td><strong>{currency.format(item.valor_previsto || 0)}</strong></td>
-                    <td>
-                      {!readonly && permissions.costs ? (
-                        <button
-                          type="button"
-                          className="cr-icon-action"
-                          onClick={() => removeCost(planningRowKey(item))}
-                          aria-label={`Remover ${item.descricao || 'subitem'}`}
-                        >
-                          <HiOutlineTrash className="h-4 w-4" />
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-              {!rows.length ? (
-                <tr><td colSpan="6" className="cr-table-empty">Nenhum subitem planejado nesta etapa.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-        <footer className="cr-macro-total">
-          <span>Total da etapa</span>
-          <strong>{currency.format(total)}</strong>
-        </footer>
-      </article>
-    );
+  /* AGRUPAMENTO MACRO → SUBITENS (capacidade `agruparPor` da TabelaPadrao).
+     Antes cada etapa macro era uma tabela propria dentro de um <article>; agora
+     é UMA tabela por bloco, com a etapa virando linha de grupo. A etapa SEM
+     nenhum subitem precisa continuar aparecendo — é no cabecalho dela que mora
+     o "Adicionar subitem" —, entao entra na lista com uma linha-marcador. */
+  function linhasPorMacro(porMacro) {
+    return (data?.macros || []).flatMap((macro) => {
+      const linhas = porMacro(macro.codigo);
+      return linhas.length ? linhas : [{ __vazio: true, etapa_macro_codigo: macro.codigo }];
+    });
   }
 
-  function renderForecastMeasurementMacro(macro, macroIndex) {
-    const rows = receiptsForMacro(macro.codigo);
+  function idDaLinha(item) {
+    return item.__vazio ? `vazio:${item.etapa_macro_codigo}` : planningRowKey(item);
+  }
+
+  function chaveDoMacro(item) {
+    return item.etapa_macro_codigo || 'SEM_MACRO';
+  }
+
+  function macroDoGrupo(codigo) {
+    const lista = data?.macros || [];
+    const indice = lista.findIndex((item) => item.codigo === codigo);
+    return { macro: lista[indice] || { codigo }, indice };
+  }
+
+  function renderForecastMacroHeading(codigo, itensDoGrupo) {
+    const { macro, indice } = macroDoGrupo(codigo);
+    const rows = itensDoGrupo.filter((item) => !item.__vazio);
+    const total = rows.reduce((sum, item) => sum + asNumber(item.valor_previsto), 0);
     const selectedIds = new Set(receipts.map((item) => Number(item.plano_item_id)).filter(Boolean));
     const available = forecastSearch.items.filter((item) => !selectedIds.has(Number(item.id)));
-    const total = rows.reduce((sum, item) => sum + asNumber(item.valor_previsto), 0);
     const pickerOpen = measurementPickerMacro === macro.codigo;
     return (
-      <article key={macro.codigo} className="cr-macro-planning-block">
-        <header className="cr-macro-planning-heading">
+      <div className="cr-macro-planning-group">
+        <div className="cr-macro-planning-heading">
           <div>
-            <b>{macroIndex + 1}</b>
+            <b>{indice + 1}</b>
             <div>
               <strong>{macro.codigo} · {macro.descricao}</strong>
-              <span>{rows.length} subitem(ns) na medição prevista</span>
+              <span>{rows.length} subitem(ns) · {currency.format(total)}</span>
             </div>
           </div>
           {!readonly && permissions.receipts ? (
@@ -911,10 +1111,9 @@ export default function CrPlanejamentoView({
               Adicionar subitem
             </button>
           ) : null}
-        </header>
+        </div>
         {pickerOpen ? (
           <div className="cr-macro-subitem-picker">
-            <strong>Selecione um subitem da planilha nesta etapa</strong>
             <label className="cr-macro-picker-search">
               <HiOutlineMagnifyingGlass className="h-4 w-4" />
               <input
@@ -958,94 +1157,25 @@ export default function CrPlanejamentoView({
             </div>
           </div>
         ) : null}
-        <div className="cr-table-shell cr-planning-table cr-forecast-measurement-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Serviço</th>
-                <th>Unid.</th>
-                <th>Qtd. orçada</th>
-                <th>Valor unitário</th>
-                <th>Total planejado</th>
-                <th>Qtd. já medida</th>
-                <th>Qtd. medida</th>
-                <th>Nesta medição</th>
-                <th>Saldo a medir</th>
-                <th aria-label="Ações" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item) => {
-                const index = receipts.findIndex((row) => planningRowKey(row) === planningRowKey(item));
-                const previousQuantity = asNumber(item.item?.quantidade_aprovada_anterior);
-                const remainingQuantity = Math.max(
-                  0,
-                  asNumber(item.quantidade_base) - previousQuantity - asNumber(item.quantidade_prevista)
-                );
-                return (
-                  <tr key={planningRowKey(item)}>
-                    <td><strong>{item.descricao}</strong></td>
-                    <td>{item.unidade || 'un'}</td>
-                    <td>{item.quantidade_base}</td>
-                    <td>{currency.format(item.custo_unitario || 0)}</td>
-                    <td>{currency.format(item.valor_base || 0)}</td>
-                    <td>{previousQuantity}</td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        max={Math.max(0, asNumber(item.quantidade_base) - previousQuantity)}
-                        step="0.0001"
-                        value={item.quantidade_prevista}
-                        disabled={readonly || !permissions.receipts}
-                        onChange={(event) => updateReceipt(index, 'quantidade_prevista', event.target.value)}
-                      />
-                    </td>
-                    <td><strong>{currency.format(item.valor_previsto || 0)}</strong></td>
-                    <td>{remainingQuantity} {item.unidade || 'un'}</td>
-                    <td>
-                      {!readonly && permissions.receipts ? (
-                        <button
-                          type="button"
-                          className="cr-icon-action"
-                          onClick={() => removeReceipt(planningRowKey(item))}
-                          aria-label={`Remover ${item.descricao}`}
-                        >
-                          <HiOutlineTrash className="h-4 w-4" />
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-              {!rows.length ? (
-                <tr><td colSpan="10" className="cr-table-empty">Adicione os subitens que terão medição prevista.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-        <footer className="cr-macro-total">
-          <span>Total previsto da etapa</span>
-          <strong>{currency.format(total)}</strong>
-        </footer>
-      </article>
+      </div>
     );
   }
 
-  function renderApprovedMeasurementMacro(macro, macroIndex) {
-    const rows = measurementsForMacro(macro.codigo);
+  function renderApprovedMacroHeading(codigo, itensDoGrupo) {
+    const { macro, indice } = macroDoGrupo(codigo);
+    const rows = itensDoGrupo.filter((item) => !item.__vazio);
+    const total = rows.reduce((sum, item) => sum + asNumber(item.valor_medido), 0);
     const selectedIds = new Set(measurements.map((item) => Number(item.plano_item_id)).filter(Boolean));
     const available = approvedItemSearch.items.filter((item) => !selectedIds.has(Number(item.id)));
-    const total = rows.reduce((sum, item) => sum + asNumber(item.valor_medido), 0);
     const pickerOpen = approvedPickerMacro === macro.codigo;
     return (
-      <article key={macro.codigo} className="cr-macro-planning-block">
-        <header className="cr-macro-planning-heading">
+      <div className="cr-macro-planning-group">
+        <div className="cr-macro-planning-heading">
           <div>
-            <b>{macroIndex + 1}</b>
+            <b>{indice + 1}</b>
             <div>
               <strong>{macro.codigo} · {macro.descricao}</strong>
-              <span>{rows.length} subitem(ns) na medição aprovada</span>
+              <span>{rows.length} subitem(ns) · {currency.format(total)}</span>
             </div>
           </div>
           {permissions.measurement ? (
@@ -1062,10 +1192,9 @@ export default function CrPlanejamentoView({
               Adicionar subitem
             </button>
           ) : null}
-        </header>
+        </div>
         {pickerOpen ? (
           <div className="cr-macro-subitem-picker">
-            <strong>Selecione um subitem aprovado nesta etapa</strong>
             <label className="cr-macro-picker-search">
               <HiOutlineMagnifyingGlass className="h-4 w-4" />
               <input
@@ -1109,86 +1238,7 @@ export default function CrPlanejamentoView({
             </div>
           </div>
         ) : null}
-        <div className="cr-table-shell cr-planning-table cr-forecast-measurement-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Serviço aprovado</th>
-                <th>Unid.</th>
-                <th>Qtd. orçada</th>
-                <th>Qtd. já aprovada</th>
-                <th>Qtd. aprovada</th>
-                <th>Valor unitário</th>
-                <th>Valor aprovado</th>
-                <th>Data / boletim</th>
-                <th aria-label="Ações" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item) => {
-                const index = measurements.findIndex(
-                  (row) => planningRowKey(row) === planningRowKey(item)
-                );
-                const previousQuantity = asNumber(item.item?.quantidade_aprovada_anterior);
-                return (
-                  <tr key={planningRowKey(item)}>
-                    <td><strong>{item.item?.codigo} · {item.descricao || item.item?.descricao}</strong></td>
-                    <td>{item.unidade || item.item?.unidade || 'un'}</td>
-                    <td>{item.quantidade_base}</td>
-                    <td>{previousQuantity}</td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        max={Math.max(0, asNumber(item.quantidade_base) - previousQuantity)}
-                        step="0.0001"
-                        value={item.quantidade_medida}
-                        disabled={!permissions.measurement}
-                        onChange={(event) => updateMeasurement(index, 'quantidade_medida', event.target.value)}
-                      />
-                    </td>
-                    <td>{currency.format(item.custo_unitario || 0)}</td>
-                    <td><strong>{currency.format(item.valor_medido || 0)}</strong></td>
-                    <td>
-                      <input
-                        type="date"
-                        value={item.data_medicao || ''}
-                        disabled={!permissions.measurement}
-                        onChange={(event) => updateMeasurement(index, 'data_medicao', event.target.value)}
-                      />
-                      <input
-                        value={item.numero_medicao || ''}
-                        placeholder="Boletim"
-                        disabled={!permissions.measurement}
-                        onChange={(event) => updateMeasurement(index, 'numero_medicao', event.target.value)}
-                      />
-                    </td>
-                    <td>
-                      {permissions.measurement ? (
-                        <button
-                          type="button"
-                          className="cr-icon-action"
-                          onClick={() => removeMeasurement(planningRowKey(item))}
-                          aria-label={`Remover ${item.descricao || item.item?.descricao}`}
-                        >
-                          <HiOutlineTrash className="h-4 w-4" />
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-              {!rows.length ? (
-                <tr><td colSpan="9" className="cr-table-empty">Adicione os subitens efetivamente aprovados pelo órgão.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-        <footer className="cr-macro-total">
-          <span>Total aprovado da etapa</span>
-          <strong>{currency.format(total)}</strong>
-        </footer>
-      </article>
+      </div>
     );
   }
 
@@ -1206,7 +1256,7 @@ export default function CrPlanejamentoView({
       setFeedback(successMessage);
       await load();
       onChanged?.();
-      return result;
+      return { result };
     } catch (requestError) {
       setError(requestError.message || 'Não foi possível concluir a operação.');
       return null;
@@ -1215,30 +1265,58 @@ export default function CrPlanejamentoView({
     }
   }
 
-  async function saveReceipts() {
-    if (!isPublic) return;
-    const rows = receipts.map((item) => ({
+  async function saveReceipts({ rows: sourceRows = receipts, successMessage = 'Medição prevista salva.' } = {}) {
+    if (!isPublic || saving) return false;
+    const payload = sourceRows.map((item) => ({
       previsao_custo_id: item.previsao_custo_id || null,
       plano_item_id: item.plano_item_id,
       quantidade_prevista: asNumber(item.quantidade_prevista),
       data_prevista: item.data_prevista || null
     }));
-    await runMutation(
+    const obraAlvo = obra;
+    const competenciaAlvo = competencia;
+    // Acima do saldo provável (mas dentro do disponível) não bloqueia: pede
+    // confirmação listando os itens.
+    const warned = sourceRows
+      .map((item) => ({ item, balance: forecastBalance(item) }))
+      .filter(({ balance }) => balance.aboveProbable);
+    if (warned.length) {
+      const { ok } = await confirmar({
+        titulo: 'Previsão acima do saldo provável',
+        mensagem: (
+          <>
+            A previsão de {payload.length} item(ns) será salva; {warned.length} passam do saldo provável:
+            {warned.map(({ item, balance }) => (
+              <span key={planningRowKey(item)} className="cr-confirm-line">
+                {item.item?.codigo ? `${item.item.codigo} · ` : ''}{item.descricao}: {formatQuantity(balance.quantity, item.unidade || 'un')} previsto, saldo provável {formatQuantity(balance.probable, item.unidade || 'un')} ({pendingMonthsText(balance)} aguardando aprovação)
+              </span>
+            ))}
+          </>
+        ),
+        rotuloConfirmar: 'Salvar mesmo assim'
+      });
+      if (!ok) return false;
+    }
+    const outcome = await runMutation(
       'receipts',
-      () => salvarRecebiveisCompetencia(obra.id, competencia, rows),
-      'Medição prevista salva.',
+      () => salvarRecebiveisCompetencia(obraAlvo.id, competenciaAlvo, payload),
+      successMessage,
       'receipts'
     );
+    if (!outcome) return false;
+    setForecastNotices(Array.isArray(outcome.result?.avisos) ? outcome.result.avisos : []);
+    return true;
   }
 
-  async function saveCosts() {
+  async function saveCosts({ rows: sourceRows = costs, successMessage = 'Custos planejados salvos.' } = {}) {
+    if (saving) return false;
     const isEmpty = (item) => (
       !String(item.descricao || '').trim()
       && !String(item.unidade || '').trim()
       && String(item.quantidade ?? '').trim() === ''
       && String(item.custo_unitario ?? '').trim() === ''
     );
-    const rows = costs.filter((item) => !isEmpty(item));
+    const rows = sourceRows.filter((item) => !isEmpty(item));
     const validationErrors = rows.flatMap((item, index) => {
       const messages = [];
       if (String(item.descricao || '').trim().length < 2) messages.push('informe a descrição');
@@ -1247,15 +1325,15 @@ export default function CrPlanejamentoView({
       if (String(item.custo_unitario ?? '').trim() === '' || asNumber(item.custo_unitario) < 0) {
         messages.push('informe um valor unitário válido');
       }
-      return messages.length ? [{ index: costs.indexOf(item), label: index + 1, messages }] : [];
+      return messages.length ? [{ index: sourceRows.indexOf(item), label: index + 1, messages }] : [];
     });
     setCostErrors(validationErrors);
     if (validationErrors.length) {
       setError(`Revise ${validationErrors.length} subitem(ns) destacado(s) antes de salvar.`);
-      return;
+      return false;
     }
-    if (rows.length !== costs.length) setCosts(rows);
-    await runMutation(
+    if (rows.length !== sourceRows.length) setCosts(rows);
+    const outcome = await runMutation(
       'costs',
       () => salvarCustosCompetencia(
         obra.id,
@@ -1273,18 +1351,23 @@ export default function CrPlanejamentoView({
           parceiro_id: item.parceiro_id || null
         }))
       ),
-      'Custos planejados salvos.',
+      successMessage,
       'costs'
     );
+    return Boolean(outcome);
   }
 
-  async function saveMeasurement() {
-    await runMutation(
+  async function saveMeasurement({
+    rows: sourceRows = measurements,
+    successMessage = 'Medição aprovada registrada.',
+    completeOnSuccess = false
+  } = {}) {
+    const outcome = await runMutation(
       'measurement',
       () => consolidarMedicaoCompetencia(
         obra.id,
         competencia,
-        measurements.map((item) => ({
+        sourceRows.map((item) => ({
           previsao_custo_id: item.previsao_custo_id || null,
           plano_item_id: item.plano_item_id,
           quantidade_medida: asNumber(item.quantidade_medida),
@@ -1295,31 +1378,132 @@ export default function CrPlanejamentoView({
         })),
         measurementJustification
       ),
-      'Medição aprovada registrada.',
+      successMessage,
       'measurement'
     );
+    if (!outcome) return false;
+    // Parte B (29/09): a previsão do mês seguinte pode ter passado do saldo
+    // depois desta aprovação; a faixa de ajuste aparece aqui mesmo.
+    const ajuste = outcome.result?.ajuste_previsao || null;
+    setAdjustmentAfterRegister(ajuste);
+    // Registrado pelo botão (29/09): volta aos meses da obra. Com a faixa de
+    // ajuste ao saldo a decisão é do usuário; a volta espera ajustar/fechar.
+    if (completeOnSuccess && onCompleted) {
+      const pendingAdjustment = Boolean(ajuste?.competencia)
+        && Array.isArray(ajuste?.itens) && ajuste.itens.length > 0;
+      if (pendingAdjustment) setCompleteAfterAdjustment(successMessage);
+      else onCompleted(successMessage);
+    }
+    return true;
+  }
+
+  // Mês em que o fiscal não mediu nada (29/09): registra com justificativa e
+  // cumpre a obrigação da medição aprovada.
+  async function registerNoMeasurement() {
+    const obraAlvo = obra;
+    const competenciaAlvo = competencia;
+    const { ok, texto } = await confirmar({
+      titulo: 'Sem medição aprovada neste mês',
+      mensagem: 'Registre por que o fiscal não aprovou medição neste mês. Itens já lançados na medição aprovada serão removidos.',
+      rotuloConfirmar: 'Registrar sem medição',
+      campo: { rotulo: 'Justificativa (mínimo de 10 caracteres)', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
+    const justificativa = String(texto || '').trim();
+    if (justificativa.length < 10) {
+      setError('Informe uma justificativa com pelo menos 10 caracteres para registrar o mês sem medição.');
+      return;
+    }
+    const noMeasurementMessage = 'Mês registrado sem medição aprovada.';
+    const outcome = await runMutation(
+      'measurement',
+      () => registrarSemMedicaoCompetencia(obraAlvo.id, competenciaAlvo, justificativa),
+      noMeasurementMessage,
+      'measurement'
+    );
+    if (outcome) onCompleted?.(noMeasurementMessage);
   }
 
   async function finish() {
-    if (!window.confirm(
-      'Finalizar congela os valores da competência. Depois disso, qualquer ajuste exigirá reabertura aprovada. Continuar?'
-    )) return;
+    if (saving) return;
+    // Finalizar vale para o que está gravado; alteração só na tela não entra.
+    const savedCosts = savedTotals ? savedTotals.costs : totalCosts;
+    const savedReceipts = savedTotals ? savedTotals.receipts : totalReceipts;
+    const unsaved = costsDirty || receiptsDirty;
+    const { ok } = await confirmar({
+      titulo: 'Finalizar competência',
+      mensagem: 'Finalizar congela os valores gravados da competência. Depois disso, qualquer ajuste exigirá reabertura aprovada.'
+        + (unsaved ? ' Há alterações não salvas nesta tela: elas não entram na finalização.' : ''),
+      rotuloConfirmar: 'Finalizar'
+    });
+    if (!ok) return;
     const justifications = {};
-    if (totalCosts === 0) {
-      const value = window.prompt('Justifique a finalização sem custos planejados:');
-      if (!value) return;
-      justifications.justificativa_sem_custos = value;
+    if (savedCosts === 0) {
+      const { ok: confirmed, texto } = await confirmar({
+        titulo: 'Finalizar sem custos planejados',
+        rotuloConfirmar: 'Continuar',
+        campo: { rotulo: 'Justificativa da finalização sem custos planejados', obrigatorio: true, multilinha: true }
+      });
+      if (!confirmed || !String(texto || '').trim()) return;
+      justifications.justificativa_sem_custos = String(texto).trim();
     }
-    if (totalReceipts === 0) {
-      const value = window.prompt('Justifique a finalização sem recebíveis previstos:');
-      if (!value) return;
-      justifications.justificativa_sem_receitas = value;
+    if (savedReceipts === 0) {
+      const { ok: confirmed, texto } = await confirmar({
+        titulo: 'Finalizar sem recebíveis previstos',
+        rotuloConfirmar: 'Continuar',
+        campo: { rotulo: 'Justificativa da finalização sem recebíveis previstos', obrigatorio: true, multilinha: true }
+      });
+      if (!confirmed || !String(texto || '').trim()) return;
+      justifications.justificativa_sem_receitas = String(texto).trim();
     }
-    await runMutation(
+    const finishMessage = 'Competência finalizada e protegida contra alterações.';
+    const outcome = await runMutation(
       'finish',
       () => finalizarPlanejamentoCompetencia(obra.id, competencia, justifications),
-      'Competência finalizada e protegida contra alterações.'
+      finishMessage
     );
+    if (outcome) onCompleted?.(finishMessage);
+  }
+
+  // "Salvar e continuar" (Fase 6): um clique grava a etapa e, se deu certo,
+  // avança. Sem alteração pendente só avança.
+  const canSaveStep = !approvedOnly && !readonly && (
+    (step === 1 && permissions.costs)
+    || (step === 2 && isPublic && permissions.receipts)
+  );
+
+  async function saveAndContinue() {
+    if (saving) return;
+    const target = Math.min(steps.length, step + 1);
+    let ok = true;
+    if (step === 1 && costsDirty) ok = await saveCosts();
+    else if (step === 2 && receiptsDirty) ok = await saveReceipts();
+    if (ok) setStep(target);
+  }
+
+  async function handleAdjusted(result, competenciaAjustada, requested) {
+    const count = Array.isArray(result?.ajustados) ? result.ajustados.length : requested;
+    const ignored = Array.isArray(result?.ignorados) ? result.ignorados.length : 0;
+    setAdjustmentAfterRegister(null);
+    setError('');
+    if (competenciaAjustada === competencia) await load();
+    const adjustedMessage = `Previsão de ${monthLabel(competenciaAjustada)} ajustada ao saldo em ${count} item(ns).`
+      + (ignored ? ` ${ignored} item(ns) já estavam dentro do saldo.` : '');
+    setFeedback(adjustedMessage);
+    onChanged?.();
+    if (completeAfterAdjustment && onCompleted) {
+      const registeredMessage = completeAfterAdjustment;
+      setCompleteAfterAdjustment('');
+      onCompleted(`${registeredMessage} ${adjustedMessage}`);
+    }
+  }
+
+  // Fechar a faixa depois de registrar a medição aprovada: sem ajuste, volta.
+  function dismissAdjustmentAndReturn() {
+    const registeredMessage = completeAfterAdjustment;
+    setAdjustmentAfterRegister(null);
+    setCompleteAfterAdjustment('');
+    onCompleted?.(registeredMessage);
   }
 
   async function requestReopening() {
@@ -1338,15 +1522,39 @@ export default function CrPlanejamentoView({
   async function decideReopening(reopeningId, decision) {
     await runMutation(
       `decision-${reopeningId}`,
-      () => decidirReaberturaCompetencia(reopeningId, {
-        decisao: decision,
-        expira_em: decision === 'APROVADA'
-          ? new Date(decisionExpiry).toISOString()
-          : null
-      }),
+      // A reabertura aprovada vale 24 horas (regra do servidor, 29/09).
+      () => decidirReaberturaCompetencia(reopeningId, { decisao: decision }),
       decision === 'APROVADA'
-        ? 'Reabertura aprovada com prazo temporário.'
+        ? 'Reabertura aprovada por 24 horas.'
         : 'Solicitação de reabertura negada.'
+    );
+  }
+
+  // Totais GRAVADOS (relidos ao entrar na etapa). Alteração só na tela
+  // aparece como aviso, porque não entra na finalização.
+  function renderSavedSummary(receiptsLabel) {
+    const savedCosts = savedTotals ? savedTotals.costs : 0;
+    const savedReceipts = savedTotals ? savedTotals.receipts : 0;
+    const pending = [
+      costsDirty ? 'Custos planejados' : null,
+      receiptsDirty ? 'Medição prevista' : null
+    ].filter(Boolean);
+    return (
+      <>
+        {pending.length ? (
+          <div className="cr-feedback" data-tone="warning" role="status">
+            Alterações não salvas em {pending.join(' e ')}. Os totais abaixo são os gravados.
+          </div>
+        ) : null}
+        <div className="cr-review-summary">
+          <div><span>Custos planejados</span><strong>{currency.format(savedCosts)}</strong></div>
+          <div><span>{receiptsLabel}</span><strong>{currency.format(savedReceipts)}</strong></div>
+          <div data-tone={savedReceipts - savedCosts >= 0 ? 'positive' : 'negative'}>
+            <span>Margem prevista</span>
+            <strong>{currency.format(savedReceipts - savedCosts)}</strong>
+          </div>
+        </div>
+      </>
     );
   }
 
@@ -1357,8 +1565,8 @@ export default function CrPlanejamentoView({
           <div className="cr-panel-actions cr-closure-actions">
             <span>
               {isPublic
-                ? 'Finalize depois de salvar custos e medição prevista. A aprovação pode ser registrada quando o órgão responder.'
-                : 'Ao finalizar, os recebíveis exibidos são sincronizados automaticamente com as fontes oficiais.'}
+                ? 'Ao finalizar, os valores gravados ficam protegidos; alterações exigem reabertura aprovada. A medição aprovada continua disponível para registro.'
+                : 'Ao finalizar, os recebíveis são sincronizados com as fontes oficiais e os valores ficam protegidos.'}
             </span>
             <button
               type="button"
@@ -1398,19 +1606,11 @@ export default function CrPlanejamentoView({
             <div className="cr-block-heading">
               <div>
                 <h3>Histórico de reaberturas</h3>
-                <p>Decisão e prazo ficam vinculados à competência, com auditoria.</p>
               </div>
             </div>
             {permissions.reopenApprove
               && data.reaberturas.some((item) => item.situacao === 'SOLICITADA') ? (
-                <label className="cr-field cr-expiry-field">
-                  <span>Janela de edição até</span>
-                  <input
-                    type="datetime-local"
-                    value={decisionExpiry}
-                    onChange={(event) => setDecisionExpiry(event.target.value)}
-                  />
-                </label>
+                <small className="cr-warning-text">Aprovada, a reabertura vale por 24 horas.</small>
               ) : null}
             {data.reaberturas.map((item) => (
               <article key={item.id} className="cr-reopening-row">
@@ -1451,7 +1651,6 @@ export default function CrPlanejamentoView({
     return (
       <section className="cr-section cr-empty-state cr-empty-state--large">
         <strong>Selecione uma obra</strong>
-        <span>Escolha a obra no contexto para abrir o planejamento mensal.</span>
       </section>
     );
   }
@@ -1478,13 +1677,15 @@ export default function CrPlanejamentoView({
         hidden
         onChange={handlePlanningFile}
       />
-      <header className="cr-workspace-heading">
-        <div>
-          <span>Competência {competencia}</span>
-          <h2>{approvedOnly ? 'Medição aprovada' : 'Planejamento'} · {obra.codigo || obra.id} · {obra.nome}</h2>
-          <p>
-            Plano micro v{data?.plano?.versao} · {isPublic ? 'Obra pública com medição' : 'Obra privada com recebíveis contratuais'}
-          </p>
+      <header className="cr-workspace-heading cr-editor-heading">
+        <div className="cr-editor-heading__title">
+          {/* O que está sendo feito e o mês vêm primeiro e grandes; a obra
+              logo abaixo; planilha e situação ficam como apoio. */}
+          <h2>{editorStageTitle} — {monthSlash(competencia)}</h2>
+          <p className="cr-editor-heading__obra">{obra.codigo || obra.id} · {obra.nome}</p>
+          {data?.plano?.versao ? (
+            <span className="cr-editor-heading__meta">Planilha v{data.plano.versao}</span>
+          ) : null}
         </div>
         <div className="cr-planning-status-stack">
           <span className="cr-status-pill" data-status={data?.competencia?.estado}>
@@ -1520,6 +1721,14 @@ export default function CrPlanejamentoView({
       {error ? <div className="cr-feedback" data-tone="error">{error}</div> : null}
       {feedback ? <div className="cr-feedback" data-tone="success">{feedback}</div> : null}
 
+      <CrAjustePrevisaoFaixa
+        obraId={obra.id}
+        ajuste={adjustmentAfterRegister || data?.ajuste_previsao_pendente || null}
+        canAdjust={Boolean(permissions.measurement || permissions.receipts)}
+        onAdjusted={handleAdjusted}
+        onDismiss={completeAfterAdjustment && adjustmentAfterRegister ? dismissAdjustmentAndReturn : null}
+      />
+
       {!approvedOnly ? <nav className="cr-stepper" aria-label="Etapas do planejamento">
         {steps.map((item) => (
           <button
@@ -1539,28 +1748,205 @@ export default function CrPlanejamentoView({
           <div className="cr-block-heading">
             <div>
               <h3>Medição prevista no período</h3>
-              <p>
-                Pesquise os subitens da planilha dentro de cada etapa macro. As informações orçamentárias são carregadas automaticamente; informe somente a quantidade prevista para medição.
-              </p>
             </div>
             {renderPlanningSheetActions('medicao-prevista', permissions.receipts)}
           </div>
-          <div className="cr-macro-planning-list">
-            {(data?.macros || []).map(renderForecastMeasurementMacro)}
-            {!data?.macros?.length ? (
-              <div className="cr-empty-state">Nenhuma etapa macro disponível no plano publicado.</div>
-            ) : null}
+          {receipts.some((item) => forecastBalance(item).aboveProbable) ? (
+            <div className="cr-feedback cr-forecast-notices" data-tone="warning" role="status">
+              <strong>Acima do saldo provável (não bloqueia)</strong>
+              {receipts.filter((item) => forecastBalance(item).aboveProbable).map((item) => (
+                <span key={planningRowKey(item)}>
+                  {item.item?.codigo ? `${item.item.codigo} · ` : ''}{item.descricao}: {aboveProbableText(forecastBalance(item), item.unidade || 'un')}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {/* Fase 5 (revisão): larguras enxutas e título em até duas linhas
+              (.cr-forecast-grid) para a grade caber em 1440 px sem cortar
+              título; valor unitário e total planejado seguem na célula da
+              quantidade orçada. */}
+          <div className="cr-forecast-grid">
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'servico',
+                titulo: 'Serviço',
+                // R17: o SERVIÇO da planilha é o que nomeia o subitem medido.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => (item.__vazio
+                  ? 'Nenhum subitem nesta etapa.'
+                  : <strong>{item.descricao}</strong>)
+              },
+              {
+                id: 'unidade',
+                largura: 70, minWidth: 70,
+                titulo: 'Unid.',
+                tipo: 'codigo',
+                render: (item) => (item.__vazio ? null : (item.unidade || 'un'))
+              },
+              {
+                id: 'saldo_disponivel',
+                largura: 110, minWidth: 110,
+                titulo: 'Saldo disponível',
+                tipo: 'numero',
+                render: (item) => (item.__vazio ? null : formatQuantity(forecastBalance(item).available))
+              },
+              {
+                id: 'previsto_pendente',
+                largura: 120, minWidth: 120,
+                // O mês aguardando aprovação vai na linha de baixo da célula.
+                titulo: 'Aguardando aprovação',
+                tipo: 'texto',
+                render: (item) => {
+                  if (item.__vazio) return null;
+                  const balance = forecastBalance(item);
+                  if (!balance.pending) return '—';
+                  return (
+                    <CelulaDupla
+                      principal={formatQuantity(balance.pending, item.unidade || 'un')}
+                      sub={balance.pendingMonths.map(monthShort).join(', ')}
+                    />
+                  );
+                }
+              },
+              {
+                id: 'saldo_provavel',
+                largura: 110, minWidth: 110,
+                titulo: 'Saldo provável',
+                tipo: 'numero',
+                render: (item) => {
+                  if (item.__vazio) return null;
+                  const balance = forecastBalance(item);
+                  return balance.hasProbable || balance.pending ? formatQuantity(balance.probable) : '—';
+                }
+              },
+              {
+                id: 'quantidade_prevista',
+                largura: 130, minWidth: 130,
+                sempreVisivel: true,
+                titulo: 'Qtd. prevista',
+                tipo: 'numero',
+                // Edição inline: o controle mora no render da coluna. Acima do
+                // saldo provável (dentro do disponível) a célula fica em aviso.
+                render: (item) => {
+                  if (item.__vazio) return null;
+                  const balance = forecastBalance(item);
+                  const unit = item.unidade || 'un';
+                  const input = (
+                    <input
+                      type="number"
+                      min="0"
+                      max={balance.available}
+                      step="0.0001"
+                      aria-label={`Quantidade prevista de ${item.descricao || 'subitem'}`}
+                      aria-invalid={balance.aboveProbable || undefined}
+                      value={item.quantidade_prevista}
+                      disabled={readonly || !permissions.receipts}
+                      onChange={(event) => updateReceipt(
+                        receipts.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                        'quantidade_prevista',
+                        event.target.value
+                      )}
+                    />
+                  );
+                  if (!balance.aboveProbable) return input;
+                  return (
+                    <span className="tooltip-wrap cr-forecast-qty" data-tone="warning">
+                      {input}
+                      <HiOutlineExclamationTriangle className="h-4 w-4" aria-hidden="true" />
+                      <span className="tooltip-content" role="tooltip">{aboveProbableText(balance, unit)}</span>
+                    </span>
+                  );
+                }
+              },
+              {
+                id: 'valor_previsto',
+                largura: 130, minWidth: 130,
+                titulo: 'Nesta medição',
+                tipo: 'valor',
+                render: (item) => (item.__vazio ? null : <strong>{currency.format(item.valor_previsto || 0)}</strong>)
+              },
+              {
+                id: 'saldo',
+                largura: 110, minWidth: 110,
+                titulo: 'Saldo a medir',
+                tipo: 'numero',
+                render: (item) => {
+                  if (item.__vazio) return null;
+                  const balance = forecastBalance(item);
+                  return formatQuantity(Math.max(0, balance.available - balance.quantity), item.unidade || 'un');
+                }
+              },
+              {
+                id: 'quantidade_base',
+                largura: 130, minWidth: 130,
+                titulo: 'Qtd. orçada',
+                tipo: 'numero',
+                // Valor unitário e total planejado na linha de baixo (antes
+                // eram duas colunas que empurravam a grade para fora de 1440).
+                render: (item) => (item.__vazio ? null : (
+                  <CelulaDupla
+                    principal={item.quantidade_base}
+                    sub={budgetDetail(item)}
+                  />
+                ))
+              },
+              {
+                id: 'quantidade_anterior',
+                largura: 110, minWidth: 110,
+                titulo: 'Qtd. já aprovada',
+                tipo: 'numero',
+                render: (item) => (item.__vazio ? null : formatQuantity(forecastBalance(item).approvedBefore))
+              }
+            ]}
+            itens={linhasPorMacro(receiptsForMacro)}
+            getId={idDaLinha}
+            agruparPor={{ chave: chaveDoMacro, titulo: renderForecastMacroHeading }}
+            storageKey="tabela:cr-planejamento:medicao-prevista"
+            urgencia={(item) => (!item.__vazio && forecastBalance(item).aboveProbable ? 'warning' : null)}
+            rotuloRolagem="Medição prevista por etapa macro"
+            vazio="Nenhuma etapa macro disponível no plano publicado."
+            acoesLinha={(item) => (
+              !item.__vazio && !readonly && permissions.receipts ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => removeReceipt(planningRowKey(item))}
+                  aria-label={`Remover ${item.descricao}`}
+                >
+                  <HiOutlineTrash className="h-4 w-4" />
+                </button>
+              ) : null
+            )}
+            larguraAcoes={120}
+          />
           </div>
+          {forecastNotices.length ? (
+            <div className="cr-feedback cr-forecast-notices" data-tone="warning" role="status">
+              <strong>Salvo acima do saldo provável em {forecastNotices.length} item(ns)</strong>
+              {forecastNotices.map((aviso) => (
+                <span key={`${aviso.plano_item_id}-${aviso.codigo}`}>
+                  {aviso.saldo_provavel != null
+                    ? `${aviso.codigo}: ${formatQuantity(aviso.quantidade)} previsto, saldo provável ${formatQuantity(aviso.saldo_provavel)}`
+                      + (Array.isArray(aviso.competencias_pendentes) && aviso.competencias_pendentes.length
+                        ? ` (${aviso.competencias_pendentes.map(monthShort).join(', ')} aguardando medição aprovada)`
+                        : '')
+                    : aviso.mensagem}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="cr-panel-actions">
             <strong>Total da medição prevista: {currency.format(totalReceipts)}</strong>
             {permissions.receipts ? (
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-outline"
                 disabled={readonly || Boolean(saving)}
-                onClick={saveReceipts}
+                onClick={() => saveReceipts()}
               >
-                {saving === 'receipts' ? 'Salvando...' : 'Salvar medição prevista'}
+                {saving === 'receipts' ? 'Salvando...' : 'Salvar'}
               </button>
             ) : null}
           </div>
@@ -1572,114 +1958,129 @@ export default function CrPlanejamentoView({
           <div className="cr-block-heading">
             <div>
               <h3>{isPublic ? 'Medição prevista no período' : 'Recebíveis cadastrados para o período'}</h3>
-              <p>
-                {isPublic
-                  ? 'A quantidade prevista usa o custo unitário congelado no plano publicado.'
-                  : 'Consulta automática de parcelas e títulos a receber. O acompanhamento de vencimento e cobrança permanece no Financeiro.'}
-              </p>
             </div>
           </div>
-          <div className="cr-table-shell cr-planning-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>{isPublic ? 'Item micro' : 'Origem contratual'}</th>
-                  {isPublic ? (
-                    <>
-                      <th>Qtd. orçada</th>
-                      <th>Já medida</th>
-                      <th>Nesta medição</th>
-                      <th>Valor previsto</th>
-                      <th>Saldo após medição</th>
-                      <th aria-label="Ações" />
-                    </>
-                  ) : (
-                    <>
-                      <th>Documento</th>
-                      <th>Status financeiro</th>
-                      <th>Vencimento</th>
-                      <th>Valor</th>
-                    </>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {receipts.map((item, index) => (
-                  <tr key={item.key || item.plano_item_id}>
-                    <td>
-                      <strong>
-                        {isPublic
-                          ? `${item.item.codigo} · ${item.item.descricao}`
-                          : item.descricao}
-                      </strong>
-                      <span>
-                        {isPublic
-                          ? `${item.item.unidade || 'un'} · ${item.item.etapa_macro_codigo || 'Sem macro'}`
-                          : `${item.origem_exibicao === 'TITULO' ? 'Título a receber' : 'Parcela contratual'} · contrato ${item.contrato.numero}`}
-                      </span>
-                    </td>
-                    {isPublic ? (
-                      <>
-                        <td>{item.item.quantidade_orcada} {item.item.unidade || 'un'}</td>
-                        <td>{item.item.quantidade_aprovada_anterior || 0}</td>
-                        <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.0001"
-                          value={item.quantidade_prevista}
-                          disabled={readonly || !permissions.receipts}
-                          onChange={(event) => updateReceipt(index, 'quantidade_prevista', event.target.value)}
-                        />
-                        </td>
-                        <td>{currency.format(item.valor_previsto || 0)}</td>
-                        <td>
-                          {Math.max(
-                            0,
-                            asNumber(item.item.quantidade_orcada)
-                              - asNumber(item.item.quantidade_aprovada_anterior)
-                              - asNumber(item.quantidade_prevista)
-                          )} {item.item.unidade || 'un'}
-                        </td>
-                        <td>
-                          {!readonly && permissions.receipts ? (
-                            <button
-                              type="button"
-                              className="cr-icon-action"
-                              onClick={() => removeReceipt(item.plano_item_id)}
-                              aria-label={`Remover ${item.item.descricao}`}
-                            >
-                              <HiOutlineTrash className="h-4 w-4" />
-                            </button>
-                          ) : null}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td>{item.documento || 'Parcela contratual'}</td>
-                        <td>
-                          <span className="cr-status-pill" data-status={item.status_financeiro}>
-                            {privateReceiptStatusLabel(item.status_financeiro)}
-                          </span>
-                        </td>
-                        <td>{item.data_prevista}</td>
-                        <td>{currency.format(item.valor_previsto || 0)}</td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-                {!receipts.length ? (
-                  <tr>
-                    <td colSpan={isPublic ? 7 : 5} className="cr-table-empty">
-                      {isPublic
-                        ? 'Pesquise e adicione somente os serviços executados nesta medição.'
-                        : 'Nenhuma parcela ou título a receber encontrado para a competência.'}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'origem',
+                titulo: isPublic ? 'Item micro' : 'Origem contratual',
+                // R17: a origem (item micro ou documento contratual) nomeia o recebível.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={isPublic ? `${item.item.codigo} · ${item.item.descricao}` : item.descricao}
+                    sub={isPublic
+                      ? `${item.item.unidade || 'un'} · ${item.item.etapa_macro_codigo || 'Sem macro'}`
+                      : `${item.origem_exibicao === 'TITULO' ? 'Título a receber' : 'Parcela contratual'} · contrato ${item.contrato.numero}`}
+                  />
+                )
+              },
+              ...(isPublic ? [
+                {
+                  id: 'quantidade_orcada',
+                  titulo: 'Qtd. orçada',
+                  tipo: 'numero',
+                  render: (item) => `${item.item.quantidade_orcada} ${item.item.unidade || 'un'}`
+                },
+                {
+                  id: 'quantidade_anterior',
+                  titulo: 'Já medida',
+                  tipo: 'numero',
+                  render: (item) => item.item.quantidade_aprovada_anterior || 0
+                },
+                {
+                  id: 'quantidade_prevista',
+                  sempreVisivel: true,
+                  titulo: 'Nesta medição',
+                  tipo: 'numero',
+                  // Edição inline: o controle mora no render da coluna.
+                  render: (item) => (
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      aria-label={`Quantidade prevista de ${item.item.descricao}`}
+                      value={item.quantidade_prevista}
+                      disabled={readonly || !permissions.receipts}
+                      onChange={(event) => updateReceipt(
+                        receipts.findIndex((row) => (row.key || row.plano_item_id) === (item.key || item.plano_item_id)),
+                        'quantidade_prevista',
+                        event.target.value
+                      )}
+                    />
+                  )
+                },
+                {
+                  id: 'valor_previsto',
+                  titulo: 'Valor previsto',
+                  tipo: 'valor',
+                  render: (item) => currency.format(item.valor_previsto || 0)
+                },
+                {
+                  id: 'saldo',
+                  titulo: 'Saldo após medição',
+                  tipo: 'numero',
+                  render: (item) => `${Math.max(
+                    0,
+                    asNumber(item.item.quantidade_orcada)
+                      - asNumber(item.item.quantidade_aprovada_anterior)
+                      - asNumber(item.quantidade_prevista)
+                  )} ${item.item.unidade || 'un'}`
+                }
+              ] : [
+                {
+                  id: 'documento',
+                  titulo: 'Documento',
+                  tipo: 'codigo',
+                  render: (item) => item.documento || 'Parcela contratual'
+                },
+                {
+                  id: 'status_financeiro',
+                  titulo: 'Status financeiro',
+                  tipo: 'status',
+                  render: (item) => (
+                    <span className="cr-status-pill" data-status={item.status_financeiro}>
+                      {privateReceiptStatusLabel(item.status_financeiro)}
+                    </span>
+                  )
+                },
+                {
+                  id: 'data_prevista',
+                  titulo: 'Vencimento',
+                  tipo: 'data',
+                  render: (item) => item.data_prevista
+                },
+                {
+                  id: 'valor',
+                  titulo: 'Valor',
+                  tipo: 'valor',
+                  render: (item) => currency.format(item.valor_previsto || 0)
+                }
+              ])
+            ]}
+            itens={receipts}
+            getId={(item) => item.key || item.plano_item_id}
+            storageKey={isPublic ? 'tabela:cr-planejamento:recebiveis-publico' : 'tabela:cr-planejamento:recebiveis-privado'}
+            rotuloRolagem={isPublic ? 'Medição prevista no período' : 'Recebíveis cadastrados para o período'}
+            vazio={isPublic
+              ? 'Pesquise e adicione somente os serviços executados nesta medição.'
+              : 'Nenhuma parcela ou título a receber encontrado para a competência.'}
+            {...(isPublic && !readonly && permissions.receipts ? {
+              acoesLinha: (item) => (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => removeReceipt(item.plano_item_id)}
+                  aria-label={`Remover ${item.item.descricao}`}
+                >
+                  <HiOutlineTrash className="h-4 w-4" />
+                </button>
+              ),
+              larguraAcoes: 120
+            } : null)}
+          />
           <div className="cr-panel-actions">
             <strong>{isPublic ? 'Total previsto' : 'Total cadastrado'}: {currency.format(totalReceipts)}</strong>
             {isPublic && permissions.receipts ? (
@@ -1687,7 +2088,7 @@ export default function CrPlanejamentoView({
                 type="button"
                 className="btn btn-primary"
                 disabled={readonly || Boolean(saving)}
-                onClick={saveReceipts}
+                onClick={() => saveReceipts()}
               >
                 {saving === 'receipts' ? 'Salvando...' : 'Salvar medição prevista'}
               </button>
@@ -1701,14 +2102,7 @@ export default function CrPlanejamentoView({
           </div>
           {!isPublic ? (
             <div className="cr-private-closeout">
-              <div className="cr-review-summary">
-                <div><span>Custos planejados</span><strong>{currency.format(totalCosts)}</strong></div>
-                <div><span>Recebíveis do período</span><strong>{currency.format(totalReceipts)}</strong></div>
-                <div data-tone={totalReceipts - totalCosts >= 0 ? 'positive' : 'negative'}>
-                  <span>Margem prevista</span>
-                  <strong>{currency.format(totalReceipts - totalCosts)}</strong>
-                </div>
-              </div>
+              {renderSavedSummary('Recebíveis do período')}
               {renderClosureControls()}
             </div>
           ) : null}
@@ -1720,21 +2114,129 @@ export default function CrPlanejamentoView({
           <div className="cr-block-heading">
             <div>
               <h3>Medição aprovada pelo órgão</h3>
-              <p>
-                Pesquise na planilha os itens efetivamente aprovados. Eles podem ser diferentes
-                da previsão; a diferença total será tratada como glosa e exigirá justificativa.
-              </p>
+              <p>A diferença para a medição prevista é glosa e exige justificativa.</p>
             </div>
             {renderPlanningSheetActions('medicao-aprovada', permissions.measurement)}
           </div>
           {permissions.measurementView ? (
             <>
-              <div className="cr-macro-planning-list">
-                {(data?.macros || []).map(renderApprovedMeasurementMacro)}
-                {!data?.macros?.length ? (
-                  <div className="cr-empty-state">Nenhuma etapa macro disponível no plano publicado.</div>
-                ) : null}
-              </div>
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'servico_aprovado',
+                    titulo: 'Serviço aprovado',
+                    // R17: o SERVIÇO aprovado é o que nomeia a linha da medição.
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (item) => (item.__vazio
+                      ? 'Nenhum subitem nesta etapa.'
+                      : <strong>{item.item?.codigo} · {item.descricao || item.item?.descricao}</strong>)
+                  },
+                  {
+                    id: 'unidade',
+                    titulo: 'Unid.',
+                    tipo: 'codigo',
+                    render: (item) => (item.__vazio ? null : (item.unidade || item.item?.unidade || 'un'))
+                  },
+                  {
+                    id: 'quantidade_base',
+                    titulo: 'Qtd. orçada',
+                    tipo: 'numero',
+                    render: (item) => (item.__vazio ? null : item.quantidade_base)
+                  },
+                  {
+                    id: 'quantidade_anterior',
+                    titulo: 'Qtd. já aprovada',
+                    tipo: 'numero',
+                    render: (item) => (item.__vazio ? null : asNumber(item.item?.quantidade_aprovada_anterior))
+                  },
+                  {
+                    id: 'quantidade_medida',
+                    sempreVisivel: true,
+                    titulo: 'Qtd. aprovada',
+                    tipo: 'numero',
+                    // Edição inline: o controle mora no render da coluna.
+                    render: (item) => (item.__vazio ? null : (
+                      <input
+                        type="number"
+                        min="0"
+                        max={Math.max(0, asNumber(item.quantidade_base) - asNumber(item.item?.quantidade_aprovada_anterior))}
+                        step="0.0001"
+                        aria-label={`Quantidade aprovada de ${item.descricao || item.item?.descricao || 'subitem'}`}
+                        value={item.quantidade_medida}
+                        disabled={!permissions.measurement}
+                        onChange={(event) => updateMeasurement(
+                          measurements.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                          'quantidade_medida',
+                          event.target.value
+                        )}
+                      />
+                    ))
+                  },
+                  {
+                    id: 'custo_unitario',
+                    titulo: 'Valor unitário',
+                    tipo: 'valor',
+                    render: (item) => (item.__vazio ? null : currency.format(item.custo_unitario || 0))
+                  },
+                  {
+                    id: 'valor_medido',
+                    titulo: 'Valor aprovado',
+                    tipo: 'valor',
+                    render: (item) => (item.__vazio ? null : <strong>{currency.format(item.valor_medido || 0)}</strong>)
+                  },
+                  {
+                    id: 'boletim',
+                    sempreVisivel: true,
+                    titulo: 'Data / boletim',
+                    tipo: 'texto',
+                    render: (item) => (item.__vazio ? null : (
+                      <>
+                        <DateInputBR
+                          aria-label="Data da medição"
+                          value={item.data_medicao || ''}
+                          disabled={!permissions.measurement}
+                          onChange={(event) => updateMeasurement(
+                            measurements.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                            'data_medicao',
+                            event.target.value
+                          )}
+                        />
+                        <input
+                          value={item.numero_medicao || ''}
+                          placeholder="Boletim"
+                          aria-label="Número do boletim"
+                          disabled={!permissions.measurement}
+                          onChange={(event) => updateMeasurement(
+                            measurements.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                            'numero_medicao',
+                            event.target.value
+                          )}
+                        />
+                      </>
+                    ))
+                  }
+                ]}
+                itens={linhasPorMacro(measurementsForMacro)}
+                getId={idDaLinha}
+                agruparPor={{ chave: chaveDoMacro, titulo: renderApprovedMacroHeading }}
+                storageKey="tabela:cr-planejamento:medicao-aprovada"
+                rotuloRolagem="Medição aprovada por etapa macro"
+                vazio="Nenhuma etapa macro disponível no plano publicado."
+                acoesLinha={(item) => (
+                  !item.__vazio && permissions.measurement ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => removeMeasurement(planningRowKey(item))}
+                      aria-label={`Remover ${item.descricao || item.item?.descricao}`}
+                    >
+                      <HiOutlineTrash className="h-4 w-4" />
+                    </button>
+                  ) : null
+                )}
+                larguraAcoes={120}
+              />
               {totalApproved < totalReceipts ? (
                 <label className="cr-field cr-measurement-justification">
                   <span>Justificativa da diferença entre previsto e aprovado</span>
@@ -1747,23 +2249,47 @@ export default function CrPlanejamentoView({
                   />
                 </label>
               ) : null}
+              {data?.medicao_aprovada_estado?.sem_medicao ? (
+                <div className="cr-feedback" data-tone="warning">
+                  Mês registrado sem medição aprovada: {data.medicao_aprovada_estado.sem_medicao.justificativa}
+                </div>
+              ) : null}
+              {data?.medicao_aprovada_estado && !data.medicao_aprovada_estado.editavel ? (
+                <div className="cr-feedback" data-tone="warning">
+                  O prazo da medição aprovada deste mês terminou. Para alterar, solicite reabertura.
+                </div>
+              ) : null}
               <div className="cr-panel-actions">
                 <span>
                   Aprovado: {currency.format(totalApproved)} · Glosa: {currency.format(totalGlosa)}
                 </span>
                 {permissions.measurement ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={
-                      !measurements.length
-                      || Boolean(saving)
-                      || (totalApproved < totalReceipts && measurementJustification.trim().length < 5)
-                    }
-                    onClick={saveMeasurement}
-                  >
-                    {saving === 'measurement' ? 'Registrando...' : 'Registrar medição aprovada'}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={
+                        Boolean(saving)
+                        || data?.medicao_aprovada_estado?.editavel === false
+                      }
+                      onClick={registerNoMeasurement}
+                    >
+                      Sem medição neste mês
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={
+                        !measurements.length
+                        || Boolean(saving)
+                        || data?.medicao_aprovada_estado?.editavel === false
+                        || (totalApproved < totalReceipts && measurementJustification.trim().length < 5)
+                      }
+                      onClick={() => saveMeasurement({ completeOnSuccess: true })}
+                    >
+                      {saving === 'measurement' ? 'Registrando...' : 'Registrar medição aprovada'}
+                    </button>
+                  </>
                 ) : null}
               </div>
             </>
@@ -1779,34 +2305,145 @@ export default function CrPlanejamentoView({
         <div className="cr-planning-panel cr-macro-planning-panel">
           <div className="cr-block-heading">
             <div>
-              <h3>Custos planejados por etapa macro</h3>
-              <p>
-                Cadastre livremente os serviços previstos para o mês. Cada subitem permanece vinculado à etapa macro para comparação, auditoria e medição.
-              </p>
+              <h3>Custos planejados no mês</h3>
             </div>
-            {renderPlanningSheetActions('custos', permissions.costs)}
+            {renderPlanningSheetActions(
+              'custos',
+              permissions.costs,
+              !readonly && permissions.costs ? (
+                <button type="button" className="btn btn-outline" onClick={addCost}>
+                  <HiOutlinePlus className="h-4 w-4" />
+                  Adicionar linha
+                </button>
+              ) : null,
+            )}
           </div>
-          <div className="cr-planning-total-banner">
-            <span>Custo planejado no mês</span>
-            <strong>{currency.format(totalCosts)}</strong>
-            <small>Quantidade × valor unitário compõe o total operacional.</small>
-          </div>
-          <div className="cr-macro-planning-list">
-            {(data?.macros || []).map(renderCostMacro)}
-            {!data?.macros?.length ? (
-              <div className="cr-empty-state">Nenhuma etapa macro disponível no plano publicado.</div>
-            ) : null}
-          </div>
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'descricao',
+                titulo: 'Descrição do serviço',
+                // R17: o SERVIÇO é o que nomeia o subitem planejado.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                // Edição inline: o controle mora no render da coluna.
+                render: (item) => {
+                  const index = costs.findIndex((row) => planningRowKey(row) === planningRowKey(item));
+                  const rowError = costErrors.find((entry) => entry.index === index);
+                  return (
+                    <>
+                      <input
+                        value={item.descricao || ''}
+                        placeholder="Descreva o serviço planejado"
+                        maxLength="500"
+                        aria-label="Descrição do serviço"
+                        disabled={readonly || !permissions.costs}
+                        onChange={(event) => updateCost(index, 'descricao', event.target.value)}
+                      />
+                      {rowError ? <small>{rowError.messages.join(' · ')}</small> : null}
+                    </>
+                  );
+                }
+              },
+              {
+                id: 'unidade',
+                titulo: 'Unidade',
+                tipo: 'codigo',
+                render: (item) => (
+                  <input
+                    value={item.unidade || ''}
+                    placeholder="un, m², mês..."
+                    maxLength="30"
+                    aria-label="Unidade"
+                    disabled={readonly || !permissions.costs}
+                    onChange={(event) => updateCost(
+                      costs.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                      'unidade',
+                      event.target.value
+                    )}
+                  />
+                )
+              },
+              {
+                id: 'quantidade',
+                titulo: 'Quantidade',
+                tipo: 'numero',
+                render: (item) => (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    aria-label="Quantidade"
+                    value={item.quantidade}
+                    disabled={readonly || !permissions.costs}
+                    onChange={(event) => updateCost(
+                      costs.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                      'quantidade',
+                      event.target.value
+                    )}
+                  />
+                )
+              },
+              {
+                id: 'custo_unitario',
+                titulo: 'Valor unitário',
+                tipo: 'valor',
+                render: (item) => (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    aria-label="Valor unitário"
+                    value={item.custo_unitario}
+                    disabled={readonly || !permissions.costs}
+                    onChange={(event) => updateCost(
+                      costs.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                      'custo_unitario',
+                      event.target.value
+                    )}
+                  />
+                )
+              },
+              {
+                id: 'valor_previsto',
+                titulo: 'Valor total',
+                tipo: 'valor',
+                render: (item) => <strong>{currency.format(item.valor_previsto || 0)}</strong>
+              }
+            ]}
+            itens={costs}
+            getId={idDaLinha}
+            storageKey="tabela:cr-planejamento:custos"
+            rotuloRolagem="Custos planejados no mês"
+            vazio="Nenhum custo planejado informado. Use Adicionar linha ou importe a planilha modelo."
+            urgencia={(item) => {
+              const index = costs.findIndex((row) => planningRowKey(row) === planningRowKey(item));
+              return costErrors.some((entry) => entry.index === index) ? 'danger' : null;
+            }}
+            acoesLinha={(item) => (
+              !readonly && permissions.costs ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => removeCost(planningRowKey(item))}
+                  aria-label={`Remover ${item.descricao || 'subitem'}`}
+                >
+                  <HiOutlineTrash className="h-4 w-4" />
+                </button>
+              ) : null
+            )}
+            larguraAcoes={120}
+          />
           <div className="cr-panel-actions">
             <strong>Total planejado: {currency.format(totalCosts)}</strong>
             {permissions.costs ? (
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-outline"
                 disabled={readonly || Boolean(saving)}
-                onClick={saveCosts}
+                onClick={() => saveCosts()}
               >
-                {saving === 'costs' ? 'Salvando...' : 'Salvar custos planejados'}
+                {saving === 'costs' ? 'Salvando...' : 'Salvar'}
               </button>
             ) : null}
           </div>
@@ -1815,23 +2452,7 @@ export default function CrPlanejamentoView({
 
       {!approvedOnly && step === 3 && isPublic ? (
         <div className="cr-review-layout">
-          <div className="cr-review-summary">
-            <div><span>Custos planejados</span><strong>{currency.format(totalCosts)}</strong></div>
-            <div><span>Medição prevista</span><strong>{currency.format(totalReceipts)}</strong></div>
-            <div data-tone={totalReceipts - totalCosts >= 0 ? 'positive' : 'negative'}>
-              <span>Margem prevista</span>
-              <strong>{currency.format(totalReceipts - totalCosts)}</strong>
-            </div>
-          </div>
-          <div className="cr-review-checklist">
-            <HiOutlineClipboardDocumentCheck className="h-6 w-6" />
-            <div>
-              <strong>Revisão operacional</strong>
-              <span>
-                Ao finalizar, os valores do mês ficam protegidos. Alterações posteriores exigem reabertura aprovada.
-              </span>
-            </div>
-          </div>
+          {renderSavedSummary('Medição prevista')}
           {renderClosureControls()}
         </div>
       ) : null}
@@ -1847,15 +2468,28 @@ export default function CrPlanejamentoView({
           Anterior
         </button>
         <span>Etapa {step} de {steps.length}</span>
-        <button
-          type="button"
-          className="btn btn-outline"
-          disabled={step === steps.length}
-          onClick={() => setStep((current) => Math.min(steps.length, current + 1))}
-        >
-          Próxima
-          <HiOutlineChevronRight className="h-4 w-4" />
-        </button>
+        {step < steps.length ? (
+          canSaveStep ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={Boolean(saving)}
+              onClick={saveAndContinue}
+            >
+              {saving === 'costs' || saving === 'receipts' ? 'Salvando...' : 'Salvar e continuar'}
+              <HiOutlineChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setStep((current) => Math.min(steps.length, current + 1))}
+            >
+              Próxima
+              <HiOutlineChevronRight className="h-4 w-4" />
+            </button>
+          )
+        ) : <span aria-hidden="true" />}
       </footer> : null}
       {sheetPreview ? (
         <CrPlanningImportModal
@@ -1864,9 +2498,10 @@ export default function CrPlanejamentoView({
           tipo={sheetType}
           preview={sheetPreview}
           onClose={() => setSheetPreview(null)}
-          onConfirm={applyPlanningImport}
+          onConfirm={importAndSave}
         />
       ) : null}
+      {elementoConfirmacao}
     </section>
   );
 }

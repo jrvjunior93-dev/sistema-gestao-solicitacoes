@@ -61,6 +61,19 @@ function validateDateRules() {
     }),
     ['CUSTO_PREVISTO']
   );
+  assert.deepStrictEqual(
+    obligationTypesForWork('PUBLICA', {
+      moduleAccess: true,
+      costs: true,
+      receivables: true,
+      measurement: true
+    }),
+    ['CUSTO_PREVISTO', 'RECEITA_PREVISTA', 'MEDICAO_CONSOLIDADA']
+  );
+  assert.deepStrictEqual(
+    obligationTypesForWork('PRIVADA', { moduleAccess: true, measurement: true }),
+    []
+  );
 }
 
 function guardOverrides({
@@ -103,6 +116,7 @@ function guardOverrides({
       findOrCreate: async ({ where }) => [{ id: where.competencia === '2026-07' ? 21 : 22 }]
     },
     CrReabertura: { findAll: async () => [] },
+    carregarContextoPrazos: async () => new Map(),
     CrGuardBypass: {
       findAll: async () => (bypass ? [{
         id: 31,
@@ -136,14 +150,15 @@ async function validateGuardModesAndBypass() {
   assert.strictEqual(observed.pendencia_detectada, true);
   assert.strictEqual(observed.bloqueado, false);
   assert.strictEqual(observed.competencia, '2026-07');
-  assert.strictEqual(observed.quantidade_vencidas, 2);
+  // Janela 25 -> 5 (29/09): em 10/08 julho e agosto ja venceram (2 tipos cada).
+  assert.strictEqual(observed.quantidade_vencidas, 4);
 
   const privateWork = await calcularEstadoGuardUsuario(
     user,
     { mode: 'observe', moduleEnabled: true, persistir: false, now: new Date('2026-08-10T12:00:00') },
     guardOverrides({ classificacao: 'PRIVADA' })
   );
-  assert.strictEqual(privateWork.quantidade_vencidas, 1);
+  assert.strictEqual(privateWork.quantidade_vencidas, 2);
 
   const publicWithoutReceivablesPermission = await calcularEstadoGuardUsuario(
     user,
@@ -156,7 +171,33 @@ async function validateGuardModesAndBypass() {
       ]
     })
   );
-  assert.strictEqual(publicWithoutReceivablesPermission.quantidade_vencidas, 1);
+  assert.strictEqual(publicWithoutReceivablesPermission.quantidade_vencidas, 2);
+
+  // Medicao aprovada: julho vence em 10/08 23:59 e ainda esta no prazo.
+  const withMeasurement = await calcularEstadoGuardUsuario(
+    user,
+    { mode: 'observe', moduleEnabled: true, persistir: false, now: new Date('2026-08-10T12:00:00') },
+    guardOverrides({
+      permissions: [
+        'custos_recebiveis.modulo.acessar',
+        'custos_recebiveis.planejamento.preencher_custos',
+        'custos_recebiveis.medicao.consolidar'
+      ]
+    })
+  );
+  assert.strictEqual(withMeasurement.quantidade_vencidas, 2);
+  const lateMeasurement = await calcularEstadoGuardUsuario(
+    user,
+    { mode: 'observe', moduleEnabled: true, persistir: false, now: new Date('2026-08-12T12:00:00') },
+    guardOverrides({
+      permissions: [
+        'custos_recebiveis.modulo.acessar',
+        'custos_recebiveis.medicao.consolidar'
+      ]
+    })
+  );
+  // Ate a Fase 3 o guard nao conta a medicao aprovada vencida (so avisa).
+  assert.strictEqual(lateMeasurement.quantidade_vencidas, 0);
 
   const enforced = await calcularEstadoGuardUsuario(
     user,
@@ -238,9 +279,15 @@ function validateContracts() {
   assert(routes.includes('OBLIGATION_BYPASS'));
   assert(auth.includes('custos_recebiveis_pendencia'));
   assert(globalRoutes.includes('requireCustosRecebiveisCompletion'));
-  assert(middleware.includes("'MONTHLY_REQUIREMENT_PENDING'"));
+  // Fase 3 da reforma (29/09): obra travada nao recebe solicitacao nova.
+  assert(middleware.includes("'OBRA_TRAVADA_CUSTOS_RECEBIVEIS'"));
+  assert(middleware.includes("'OBRA_TRAVADA_SOLICITACAO_NOVA'"));
+  assert(middleware.includes('obrasDaAbertura(req)'));
   assert(middleware.includes("guardMode() === 'observe'"));
-  assert(planning.includes("'CR_COMPETENCIA_VENCIDA'"));
+  // Decisao de 29/09: planejamento atrasado e registrado sem reabertura; so
+  // mes finalizado (ou com reabertura expirada) exige reabertura.
+  assert(planning.includes('function podeEditarPlanejamento'));
+  assert(!planning.includes("'CR_COMPETENCIA_VENCIDA'"));
   assert(privateRoute.includes('crPending?.bloqueado'));
   assert(constants.includes("id: 'obrigacoes'"));
   assert(page.includes('<CrObrigacoesView'));

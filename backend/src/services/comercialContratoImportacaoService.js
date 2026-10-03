@@ -155,7 +155,7 @@ function dateOnly(date) {
   return `${year}-${month}-${day}`;
 }
 
-function parseDate(value, label, { required = false } = {}) {
+function parseDate(value, label, { required = false, min = null, max = null } = {}) {
   if (value === '' || value == null) {
     if (required) throw createHttpError(400, `${label} e obrigatoria.`);
     return null;
@@ -181,7 +181,26 @@ function parseDate(value, label, { required = false } = {}) {
   if (!date || Number.isNaN(date.getTime())) throw createHttpError(400, `${label} invalida. Use AAAA-MM-DD.`);
   const formatted = dateOnly(date);
   if (expected && formatted !== expected) throw createHttpError(400, `${label} invalida.`);
+  if (min && formatted < min) throw createHttpError(400, `${label} nao pode ser anterior a ${min}.`);
+  if (max && formatted > max) throw createHttpError(400, `${label} nao pode ser posterior a ${max}.`);
   return formatted;
+}
+
+function getHojeSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((item) => [item.type, item.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getFormaRecebimentoImportacao(periodicidade) {
+  return String(periodicidade || '').trim().toUpperCase() === 'PERMUTA'
+    ? 'PERMUTA'
+    : 'MIGRACAO_SIENGE';
 }
 
 function normalizePayloadForStorage(payload = {}) {
@@ -787,7 +806,10 @@ async function validateSheets(sheets, refs) {
           principalRecebido = roundCurrency(principalRecebido + principal);
           normalizedReceipts.push({
             rowNumber: receiptRow.rowNumber, receiptKey,
-            data: parseDate(receiptRow.payload.data_recebimento, 'Data do recebimento', { required: true }),
+            data: parseDate(receiptRow.payload.data_recebimento, 'Data do recebimento', {
+              required: true,
+              max: getHojeSaoPaulo()
+            }),
             principal, juros, multa, desconto,
             observacoes: normalizeText(receiptRow.payload.observacoes, 4000)
           });
@@ -1063,7 +1085,8 @@ async function confirmarImportacao(req, importacaoId, { idempotencyKey, aceitarA
             const movimento = await MovimentoFinanceiro.create({
               titulo_financeiro_id: titulo.id, categoria_financeira_id: contractData.categoria.id,
               conta_bancaria_id: null, empresa_id: contractData.empreendimento.obra.empresaGrupo.id,
-              conciliacao_bancaria_id: null, forma_recebimento: 'MIGRACAO_SIENGE',
+              conciliacao_bancaria_id: null,
+              forma_recebimento: getFormaRecebimentoImportacao(parcela.periodicidade),
               tipo_movimento: 'BAIXA', status: 'ATIVO',
               valor: receipt.principal, juros: receipt.juros, multa: receipt.multa, desconto: receipt.desconto,
               valor_quitacao: roundCurrency(receipt.principal + receipt.juros + receipt.multa - receipt.desconto),
@@ -1120,6 +1143,7 @@ module.exports = {
   criarPreviewImportacao,
   gerarModeloImportacao,
   carregarImportacao,
+  getFormaRecebimentoImportacao,
   mapParcelaTipo,
   normalizePayloadForStorage,
   parseDate,

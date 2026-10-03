@@ -9,6 +9,7 @@ let redisUnavailableLogged = false;
 function buildRedisRequiredError(message = 'Redis e obrigatorio para o rate limit neste ambiente.') {
   const error = new Error(message);
   error.code = 'RATE_LIMIT_REDIS_REQUIRED';
+  error.statusCode = 503;
   return error;
 }
 
@@ -68,7 +69,7 @@ async function incrementWithRedis(key, windowMs) {
     await client.pExpire(namespacedKey, windowMs);
   }
 
-  const ttlMs = await client.pTtl(namespacedKey);
+  const ttlMs = await client.pTTL(namespacedKey);
   return {
     count,
     expiresAt: Date.now() + Math.max(0, Number(ttlMs || 0))
@@ -115,6 +116,7 @@ async function ensureRateLimitStoreReady() {
 }
 
 module.exports = {
+  getRedisClient,
   incrementRateLimitHit,
   ensureRateLimitStoreReady
 };

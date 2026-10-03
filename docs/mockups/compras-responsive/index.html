@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Fluxy — Mockup responsivo de Compras</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="prototype-banner" role="note">
+      <strong>Mockup navegável</strong>
+      <span>Dados fictícios · nenhuma operação altera o sistema</span>
+      <button class="prototype-banner__close" type="button" data-action="dismiss-banner" aria-label="Fechar aviso">×</button>
+    </div>
+
+    <div class="app-shell" id="appShell">
+      <aside class="sidebar" id="sidebar" aria-label="Navegação do módulo de Compras">
+        <div class="sidebar__brand">
+          <img src="../../../frontend/src/assets/fluxy_mark_cropped.png" alt="" />
+          <div class="sidebar__brand-copy">
+            <strong>FLUXY</strong>
+            <span>Operações de Compras</span>
+          </div>
+          <button class="icon-button sidebar__close" type="button" data-action="close-sidebar" aria-label="Fechar menu">×</button>
+        </div>
+
+        <div class="sidebar__workspace">
+          <span>AMBIENTE DE DEMONSTRAÇÃO</span>
+          <strong>Construções JR</strong>
+        </div>
+
+        <nav class="sidebar__nav" id="sideNav"></nav>
+
+        <div class="sidebar__footer">
+          <div class="user-chip">
+            <span class="user-chip__avatar">JR</span>
+            <span class="user-chip__copy">
+              <strong>José Ricardo</strong>
+              <small>Gestor de Compras</small>
+            </span>
+          </div>
+          <button class="sidebar__collapse" type="button" data-action="toggle-sidebar">
+            <span aria-hidden="true">⇤</span>
+            <span class="sidebar__collapse-label">Recolher menu</span>
+          </button>
+        </div>
+      </aside>
+
+      <button class="sidebar-backdrop" type="button" data-action="close-sidebar" aria-label="Fechar menu"></button>
+
+      <main class="main-shell">
+        <header class="topbar">
+          <div class="topbar__leading">
+            <button class="icon-button topbar__menu" type="button" data-action="open-sidebar" aria-label="Abrir menu">☰</button>
+            <div class="topbar__context">
+              <span id="topbarEyebrow">COMPRAS</span>
+              <strong id="topbarTitle">Solicitações de Compra</strong>
+            </div>
+          </div>
+          <div class="topbar__tools">
+            <button class="topbar__search" type="button" data-action="focus-search">
+              <span aria-hidden="true">⌕</span>
+              <span>Buscar no módulo</span>
+              <kbd>Ctrl K</kbd>
+            </button>
+            <button class="icon-button" type="button" data-action="toggle-density" title="Alternar densidade" aria-label="Alternar densidade">≡</button>
+            <button class="icon-button" type="button" data-action="toggle-theme" title="Alternar tema" aria-label="Alternar tema">◐</button>
+            <button class="icon-button notification-button" type="button" data-action="notify" title="Notificações" aria-label="Notificações">♢<span>3</span></button>
+          </div>
+        </header>
+
+        <section class="page-host" id="pageHost" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <div class="dialog-backdrop" id="dialogBackdrop" hidden>
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <header class="dialog__header">
+          <div>
+            <span class="eyebrow" id="dialogEyebrow">COMPRAS</span>
+            <h2 id="dialogTitle">Detalhes</h2>
+          </div>
+          <button class="icon-button" type="button" data-action="close-dialog" aria-label="Fechar">×</button>
+        </header>
+        <div class="dialog__body" id="dialogBody"></div>
+        <footer class="dialog__footer" id="dialogFooter"></footer>
+      </section>
+    </div>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

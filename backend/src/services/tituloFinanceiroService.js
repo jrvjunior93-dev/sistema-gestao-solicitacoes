@@ -6,6 +6,8 @@ const {
   ChequeTerceiroMovimento,
   ConciliacaoBancaria,
   ContaBancaria,
+  Contrato,
+  ContratoCredor,
   EmpresaGrupo,
   Apropriacao,
   sequelize,
@@ -21,11 +23,14 @@ const {
   PaymentBatchItem,
   PaymentBeneficiary,
   PaymentIntent,
+  PagamentoManualFilaItem,
+  PedidoCompraTitulo,
   PedidoCompraFrete,
   SecurityEventLog,
   Solicitacao,
   SolicitacaoCompra,
   SolicitacaoCompraAlocacao,
+  SolicitacaoRecargaCartao,
   TipoSolicitacao,
   TituloFinanceiroImposto,
   TituloFinanceiroRateio,
@@ -34,6 +39,7 @@ const {
 } = require('../models');
 const {
   canAccessFinanceiro,
+  canViewSolicitacaoFinanceiro,
   canDeleteTitulosFinanceiros,
   getFinanceiroObraScopeIds
 } = require('./authorizationService');
@@ -50,6 +56,8 @@ const {
 } = require('./tituloIntercompanyCartaoHelper');
 const { sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./solicitacaoFinanceiroStatusService');
 const { reabrirConciliacoesPorMovimentos } = require('./conciliacaoEstornoService');
+const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
+const { resolveTituloStatusFilters } = require('../utils/tituloFinanceiroStatusFilter');
 const {
   sincronizarContratoComercialPorTituloEditado,
   sincronizarContratoComercialPorTituloFinanceiro
@@ -319,7 +327,13 @@ async function normalizarRateiosTitulo(req, payload = {}, defaultObra, defaultAp
       ? (valorBase > 0 ? roundCurrency((valorRateio / valorBase) * 100) : 0)
       : roundCurrency(percentualInformado);
 
-    if (!Number.isFinite(valorRateio) || valorRateio <= 0 || !Number.isFinite(percentual) || percentual <= 0) {
+    // No rateio por VALOR o proprio valor (>= 1 centavo) e a garantia; o percentual aqui e
+    // so informativo e, arredondado a 2 casas, zera para fracoes minimas — exigir > 0
+    // prendia contrato valido em AGUARDANDO_APROVACAO para sempre (auditoria v4).
+    const percentualInvalido = tipoRateio === 'VALOR'
+      ? (!Number.isFinite(percentual) || percentual < 0)
+      : (!Number.isFinite(percentual) || percentual <= 0);
+    if (!Number.isFinite(valorRateio) || valorRateio <= 0 || percentualInvalido) {
       throw createHttpError(400, `Informe percentual ou valor valido para o rateio ${index + 1}.`);
     }
 
@@ -723,8 +737,9 @@ async function registrarChequeTerceiroRecebido({
     parceiro_entregou_id: titulo.parceiro_id || null,
     empresa_id: titulo.empresa_id || movimento.empresa_id || null,
     obra_origem_id: titulo.obra_id || null,
-    origem_tipo: 'RECEBIMENTO_TITULO',
-    cliente_nome: getTituloParceiroNome(titulo),
+    origem_tipo: payload.cheque_origem_tipo || 'RECEBIMENTO_TITULO',
+    motivo_origem: payload.cheque_motivo_origem || null,
+    cliente_nome: payload.cliente_nome || getTituloParceiroNome(titulo),
     titular_nome: titularNome,
     titular_documento: chequePayload.titular_documento || getTituloParceiroDocumento(titulo),
     banco: chequePayload.banco,
@@ -957,19 +972,8 @@ function sugestaoTipoTitulo(solicitacao) {
 function descricaoPadraoTitulo(solicitacao) {
   const codigo = String(solicitacao?.codigo || '').trim();
   const tipoNome = String(solicitacao?.tipo?.nome || '').trim();
-  const descricao = String(solicitacao?.descricao || '').trim();
   const partes = [codigo, tipoNome].filter(Boolean);
-  const prefixo = partes.join(' - ');
-
-  if (!prefixo && !descricao) {
-    return 'Titulo financeiro gerado por solicitacao';
-  }
-
-  if (!descricao) {
-    return prefixo;
-  }
-
-  return `${prefixo}: ${descricao}`.slice(0, 255);
+  return partes.join(' - ') || 'Titulo financeiro gerado por solicitacao';
 }
 
 function descricaoPadraoTituloManual(tipo) {
@@ -1038,6 +1042,11 @@ function buildTituloInclude({ includeMovimentos = false } = {}) {
       model: Parceiro,
       as: 'parceiro',
       attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email']
+    },
+    {
+      model: Parceiro,
+      as: 'favorecidoPagamento',
+      attributes: ['id', 'nome', 'cpf_cnpj']
     },
     {
       model: Solicitacao,
@@ -1122,6 +1131,24 @@ function buildTituloInclude({ includeMovimentos = false } = {}) {
         'external_title_id',
         'updatedAt'
       ]
+    },
+    {
+      model: PagamentoManualFilaItem,
+      as: 'filaPagamentosManuais',
+      where: { status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } },
+      required: false,
+      separate: true,
+      attributes: [
+        'id',
+        'status',
+        'valor_previsto',
+        'valor_informado',
+        'data_baixa',
+        'motivo',
+        'selecionado_em',
+        'processado_em'
+      ],
+      order: [['createdAt', 'DESC']]
     }
   ];
 
@@ -1201,6 +1228,37 @@ function buildTituloInclude({ includeMovimentos = false } = {}) {
   return include;
 }
 
+async function obterSolicitacoesContratuaisPorParceiros(parceiroIds = []) {
+  const ids = Array.from(new Set(
+    parceiroIds.map((id) => Number(id)).filter(Boolean)
+  ));
+  if (ids.length === 0) return [];
+
+  const vinculos = await ContratoCredor.findAll({
+    where: {
+      parceiro_id: { [Op.in]: ids },
+      ativo: true
+    },
+    attributes: ['id'],
+    include: [{
+      model: Contrato,
+      as: 'contrato',
+      required: true,
+      attributes: ['solicitacao_id'],
+      where: {
+        fluxo_novo: true,
+        solicitacao_id: { [Op.ne]: null }
+      }
+    }]
+  });
+
+  return Array.from(new Set(
+    vinculos
+      .map((vinculo) => Number(vinculo.contrato?.solicitacao_id))
+      .filter(Boolean)
+  ));
+}
+
 async function carregarSolicitacaoFinanceira(req, solicitacaoId) {
   const solicitacao = await Solicitacao.findByPk(solicitacaoId, {
     include: [
@@ -1213,6 +1271,16 @@ async function carregarSolicitacaoFinanceira(req, solicitacaoId) {
         model: Parceiro,
         as: 'parceiro',
         attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'ativo']
+      },
+      {
+        model: Parceiro,
+        as: 'favorecido',
+        attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'ativo']
+      },
+      {
+        model: FormaPagamentoFinanceira,
+        as: 'formaPagamento',
+        attributes: ['id', 'nome', 'codigo', 'tipo']
       },
       {
         model: TipoSolicitacao,
@@ -1282,8 +1350,20 @@ function validarCategoriaDreTitulo(categoria, payload = {}) {
   }
 }
 
-async function validarFormaPagamentoFinanceira(formaPagamentoId, payload = {}) {
+function categoriaClassificadaParaDre(categoria) {
+  return Boolean(categoria && categoria.considera_dre !== false && String(categoria.dre_grupo || '').trim());
+}
+
+async function validarFormaPagamentoFinanceira(
+  formaPagamentoId,
+  payload = {},
+  { dispensarCartaoInstrucional = false, permitirPendente = false } = {}
+) {
   if (!formaPagamentoId) {
+    // Titulos automaticos de contrato nascem como PREVISAO. A forma real pertence a medicao e
+    // sera gravada antes de o titulo passar a ABERTO; nenhum titulo manual ou ja aberto recebe
+    // esta dispensa.
+    if (permitirPendente) return null;
     throw createHttpError(
       400,
       'Forma de pagamento e obrigatoria para todos os titulos financeiros. Informe a forma correta antes de salvar.'
@@ -1300,7 +1380,11 @@ async function validarFormaPagamentoFinanceira(formaPagamentoId, payload = {}) {
     throw createHttpError(400, 'A forma de pagamento selecionada nao permite parcelamento.');
   }
 
-  if (forma.exige_cartao && !payload.cartao_id) {
+  // No fluxo novo de CONTRATO, "Cartao" e a instrucao combinada com o fornecedor — os dados
+  // para pagamento ficam no historico da solicitacao. Nao representa uma baixa ja realizada em
+  // um cartao corporativo cadastrado. A dispensa so pode vir pela opcao interna do servico;
+  // payload HTTP nao consegue liga-la e os demais titulos continuam exigindo `cartao_id`.
+  if (forma.exige_cartao && !payload.cartao_id && !dispensarCartaoInstrucional) {
     throw createHttpError(400, 'Informe o cartao utilizado nesta forma de pagamento.');
   }
 
@@ -1496,7 +1580,7 @@ async function marcarSolicitacaoComTituloCadastrado({ solicitacao, usuarioId, se
   );
 }
 
-async function validarObraTitulo(req, obraId) {
+async function validarObraTitulo(req, obraId, { pularEscopoObra = false } = {}) {
   const obra = await Obra.findByPk(obraId, {
     attributes: ['id', 'nome', 'codigo', 'tipo_centro_custo', 'empresa_grupo_id']
   });
@@ -1504,6 +1588,11 @@ async function validarObraTitulo(req, obraId) {
   if (!obra) {
     throw createHttpError(400, 'Obra invalida.');
   }
+
+  // Aprovacao de contrato (D36): a permissao estrita basta — o aprovador e um papel
+  // central e nao precisa de vinculo em usuarios_obras com a obra do contrato. Sem isto,
+  // aprovar exigia vinculo e rejeitar nao, e 10/14 ADMIN nao aprovariam nada.
+  if (pularEscopoObra) return obra;
 
   await assertObraScope(
     req,
@@ -1563,20 +1652,20 @@ async function validarEmpresaGrupo(empresaId) {
 }
 
 async function validarEmpresaBaixa({ empresaId, conta }) {
-  const empresa = await validarEmpresaGrupo(empresaId);
-  if (!empresa) {
-    throw createHttpError(400, 'Empresa pagadora e obrigatoria para registrar a baixa.');
-  }
-
-  const empresaBaixaId = Number(empresa.id);
   if (conta && !conta.empresa_id) {
     throw createHttpError(400, 'A conta bancaria selecionada nao possui empresa vinculada.');
   }
 
-  if (conta?.empresa_id && Number(conta.empresa_id) !== empresaBaixaId) {
-    throw createHttpError(400, 'A empresa pagadora deve ser a mesma vinculada a conta bancaria selecionada.');
+  // A conta bancaria e a fonte de verdade da empresa que movimenta o caixa.
+  // `empresaId` permanece como fallback apenas para formas sem conta (permuta,
+  // bens e outros) e para compatibilidade com clientes anteriores.
+  const empresaResolvidaId = conta?.empresa_id || empresaId;
+  const empresa = await validarEmpresaGrupo(empresaResolvidaId);
+  if (!empresa) {
+    throw createHttpError(400, 'Nao foi possivel identificar a empresa da baixa pela conta bancaria selecionada.');
   }
 
+  const empresaBaixaId = Number(empresa.id);
   return empresaBaixaId;
 }
 
@@ -1634,6 +1723,29 @@ function resolverCompetenciaTitulo(payload = {}) {
   }
 
   return competenciaData;
+}
+
+function resolverCompetenciaCriacaoTitulo() {
+  // A competencia de novos titulos acompanha o dia em que o registro e criado.
+  // Nao usa vencimento, emissao ou um valor enviado pela interface.
+  return getHoje();
+}
+
+function resolverCompetenciaCriacaoSolicitacao(solicitacao) {
+  const criadaEm = solicitacao?.createdAt;
+  const instante = criadaEm instanceof Date ? criadaEm : new Date(criadaEm);
+  if (!criadaEm || Number.isNaN(instante.getTime())) {
+    throw createHttpError(409, 'A data de criacao da solicitacao nao esta disponivel para definir a competencia DRE.');
+  }
+
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(instante);
+  const valores = Object.fromEntries(partes.map(({ type, value }) => [type, value]));
+  return `${valores.year}-${valores.month}-${valores.day}`;
 }
 
 async function validarIntercompanyTitulo(payload = {}) {
@@ -1849,30 +1961,30 @@ async function validarIntercompanyBaixa({ payload = {}, titulo = {}, empresaBaix
   };
 }
 
-async function carregarTituloPorId(req, tituloId, { includeMovimentos = false } = {}) {
+async function carregarTituloPorId(req, tituloId, { includeMovimentos = false, transaction } = {}) {
   await assertFinanceAccess(req);
 
   const titulo = await TituloFinanceiro.findByPk(tituloId, {
-    include: buildTituloInclude({ includeMovimentos })
+    include: buildTituloInclude({ includeMovimentos }), transaction,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
   });
 
   if (!titulo) {
     throw createHttpError(404, 'Titulo financeiro nao encontrado');
   }
 
-  await assertObraScope(
-    req,
-    titulo.obra_id,
-    'TITULO_FINANCEIRO',
-    titulo.id,
-    'Usuario tentou acessar titulo financeiro fora do seu escopo de obra'
-  );
+  if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
+  else await assertObraScope(req, titulo.obra_id, 'TITULO_FINANCEIRO', titulo.id,
+    'Usuario tentou acessar titulo financeiro fora do seu escopo de obra');
 
   return titulo;
 }
 
-async function carregarTituloParaBaixaComLock(req, tituloId, transaction) {
-  await assertFinanceAccess(req);
+async function carregarTituloParaBaixaComLock(req, tituloId, transaction, options = {}) {
+  const acessoInternoAutorizado = options.autorizadoInternamente === true;
+  if (!options.autorizadoPorFilaPagamento && !acessoInternoAutorizado) {
+    await assertFinanceAccess(req);
+  }
 
   const titulo = await TituloFinanceiro.findByPk(tituloId, {
     transaction,
@@ -1882,19 +1994,24 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction) {
   if (!titulo) {
     throw createHttpError(404, 'Titulo financeiro nao encontrado');
   }
+  assertTituloDisponivelParaBaixa(titulo);
 
-  await assertObraScope(
-    req,
-    titulo.obra_id,
-    'TITULO_FINANCEIRO',
-    titulo.id,
-    'Usuario tentou acessar titulo financeiro fora do seu escopo de obra'
-  );
+  if (!options.autorizadoPorFilaPagamento && !acessoInternoAutorizado) {
+    if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
+    else await assertObraScope(
+      req,
+      titulo.obra_id,
+      'TITULO_FINANCEIRO',
+      titulo.id,
+      'Usuario tentou acessar titulo financeiro fora do seu escopo de obra'
+    );
+  }
 
   return titulo;
 }
 
 function assertTituloEditavel(titulo) {
+  if (titulo.renegociacao_id || titulo.renegociado_por_id) throw createHttpError(409, 'Título vinculado a uma negociação. Consulte o acordo de origem.');
   const status = String(titulo?.status || '').trim().toUpperCase();
   const valorBaixado = Number(titulo?.valor_baixado || 0);
   const movimentosAtivos = Array.isArray(titulo?.movimentos)
@@ -1921,9 +2038,13 @@ function assertTituloEditavel(titulo) {
 }
 
 async function atualizarTitulo(req, tituloId, payload = {}) {
+  return sequelize.transaction(transaction => atualizarTituloEmTransacao(req, tituloId, payload, transaction));
+}
+
+async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
   await assertFinanceAccess(req);
 
-  const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: true });
+  const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: true, transaction });
   assertTituloEditavel(titulo);
 
   const tipo = normalizarTipoTitulo(payload.tipo || titulo.tipo);
@@ -2035,17 +2156,17 @@ async function atualizarTitulo(req, tituloId, payload = {}) {
     observacoes: payload.observacoes || null,
     ...buildCobrancaFields(payload, tipo),
     atualizado_por: req.user?.id || null
-  });
+  }, { transaction });
 
   if (atualizarRateios) {
     await TituloFinanceiroRateio.destroy({
-      where: { titulo_financeiro_id: titulo.id }
+      where: { titulo_financeiro_id: titulo.id }, transaction
     });
   }
 
   if (atualizarImpostos) {
     await TituloFinanceiroImposto.destroy({
-      where: { titulo_financeiro_id: titulo.id }
+      where: { titulo_financeiro_id: titulo.id }, transaction
     });
   }
 
@@ -2057,14 +2178,14 @@ async function atualizarTitulo(req, tituloId, payload = {}) {
       valorBase: valorOriginal,
       valorParcela: valorOriginal,
       valorRateioParcela: valorLiquidoTitulo,
-      usuarioId: req.user?.id || null
+      usuarioId: req.user?.id || null, transaction
     });
   }
 
   await sincronizarContratoComercialPorTituloEditado({
     tituloId: titulo.id,
     dataVencimento: titulo.data_vencimento,
-    usuarioId: req.user?.id || null
+    usuarioId: req.user?.id || null, transaction
   });
 
   await registrarEventoSeguranca({
@@ -2098,7 +2219,7 @@ async function atualizarTitulo(req, tituloId, payload = {}) {
     }
   });
 
-  return carregarTituloPorId(req, titulo.id, { includeMovimentos: true });
+  return carregarTituloPorId(req, titulo.id, { includeMovimentos: true, transaction });
 }
 
 async function listarTitulos(req, filters = {}) {
@@ -2151,7 +2272,26 @@ async function listarTitulos(req, filters = {}) {
     where.tipo = filters.tipo;
   }
   if (filters.status) {
-    where.status = filters.status;
+    const statusFilters = resolveTituloStatusFilters(filters.status);
+    const statusClauses = statusFilters.map((statusFilter) => {
+      const statusCondition = statusFilter.statuses.length === 1
+        ? statusFilter.statuses[0]
+        : { [Op.in]: statusFilter.statuses };
+      if (!statusFilter.vencido) return { status: statusCondition };
+      return {
+        [Op.and]: [
+          { status: statusCondition },
+          { data_vencimento: { [Op.lt]: getHoje() } },
+          { valor_saldo: { [Op.gt]: 0 } }
+        ]
+      };
+    });
+    if (statusClauses.length > 0) {
+      where[Op.and] = [
+        ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+        statusClauses.length === 1 ? statusClauses[0] : { [Op.or]: statusClauses }
+      ];
+    }
   }
   if (filters.codigo) {
     where[Op.and] = [
@@ -2169,7 +2309,26 @@ async function listarTitulos(req, filters = {}) {
     where.descricao = { [Op.like]: `%${filters.descricao}%` };
   }
   if (filters.parceiro_id) {
-    where.parceiro_id = Number(filters.parceiro_id);
+    const parceiroId = Number(filters.parceiro_id);
+    const solicitacoesContratuais = await obterSolicitacoesContratuaisPorParceiros([parceiroId]);
+
+    // A previsao nasce vinculada ao contratado, mas a aprovacao da medicao troca corretamente o
+    // credor financeiro pelo favorecido que efetivamente recebera. O filtro por credor deve manter
+    // a trilha completa do contrato sem desfazer essa troca: encontra o titulo tanto pelo recebedor
+    // atual quanto pelo vinculo contratual de origem. `origem_titulo` impede trazer outro titulo
+    // eventual que por acaso esteja na mesma solicitacao.
+    where[Op.and] = [
+      ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+      {
+        [Op.or]: [
+          { parceiro_id: parceiroId },
+          ...(solicitacoesContratuais.length > 0 ? [{
+            origem_titulo: 'CONTRATO',
+            solicitacao_id: { [Op.in]: solicitacoesContratuais }
+          }] : [])
+        ]
+      }
+    ];
   }
   if (filters.categoria_financeira_id) {
     where.categoria_financeira_id = Number(filters.categoria_financeira_id);
@@ -2213,6 +2372,20 @@ async function listarTitulos(req, filters = {}) {
   }
   if (filters.q) {
     const term = String(filters.q).trim();
+    const parceirosContratuais = term
+      ? await Parceiro.findAll({
+        where: {
+          [Op.or]: [
+            { nome: { [Op.like]: `%${term}%` } },
+            { cpf_cnpj: { [Op.like]: `%${term}%` } }
+          ]
+        },
+        attributes: ['id']
+      })
+      : [];
+    const solicitacoesContratuais = await obterSolicitacoesContratuaisPorParceiros(
+      parceirosContratuais.map((parceiro) => parceiro.id)
+    );
     where[Op.or] = [
       ...buildTituloCodigoSearchConditions(term),
       { descricao: { [Op.like]: `%${term}%` } },
@@ -2221,17 +2394,49 @@ async function listarTitulos(req, filters = {}) {
       { '$parceiro.cpf_cnpj$': { [Op.like]: `%${term}%` } },
       { '$obra.nome$': { [Op.like]: `%${term}%` } },
       { '$obra.codigo$': { [Op.like]: `%${term}%` } },
-      { '$solicitacao.codigo$': { [Op.like]: `%${term}%` } }
+      { '$solicitacao.codigo$': { [Op.like]: `%${term}%` } },
+      ...(solicitacoesContratuais.length > 0 ? [{
+        origem_titulo: 'CONTRATO',
+        solicitacao_id: { [Op.in]: solicitacoesContratuais }
+      }] : [])
     ];
   }
 
+  const whereNegociacao = require('./tituloRenegociacaoLeitura').whereRateado(where);
+  if (obrasPermitidas !== null) {
+    const idsEscopo = obrasPermitidas.map(Number).filter(Number.isSafeInteger);
+    whereNegociacao[Op.and] = [...(whereNegociacao[Op.and] || []), sequelize.literal(
+      `NOT EXISTS (SELECT 1 FROM titulo_renegociacao_alocacoes esc WHERE esc.titulo_destino_id = TituloFinanceiro.id AND esc.obra_id NOT IN (${idsEscopo.join(',') || '0'}))`
+    )];
+  }
+  const colunasOrdenaveis = {
+    titulo: 'codigo',
+    status: 'status',
+    status_interno_pagar: 'status_interno_pagar',
+    tipo: 'tipo',
+    documento: 'numero_documento',
+    parceiro: sequelize.col('parceiro.nome'),
+    obra: sequelize.col('obra.nome'),
+    categoria: sequelize.col('categoriaFinanceira.nome'),
+    forma_pagamento: sequelize.col('formaPagamento.nome'),
+    origem: sequelize.literal("CASE WHEN TituloFinanceiro.solicitacao_id IS NOT NULL THEN 'Solicitacao' WHEN TituloFinanceiro.forma_cobranca IS NOT NULL THEN 'Comercial' ELSE 'Manual' END"),
+    emissao: 'data_emissao',
+    vencimento: 'data_vencimento',
+    valor_total: 'valor_original',
+    saldo: 'valor_saldo'
+  };
+  const colunaOrdenacao = String(filters.ordenar_por || '').trim().toLowerCase();
+  const direcaoOrdenacao = String(filters.direcao || '').trim().toUpperCase();
+  if (colunaOrdenacao && (!Object.hasOwn(colunasOrdenaveis, colunaOrdenacao) || !['ASC', 'DESC'].includes(direcaoOrdenacao))) {
+    throw createHttpError(400, 'Ordenacao de titulos invalida.');
+  }
+  const order = colunaOrdenacao
+    ? [[colunasOrdenaveis[colunaOrdenacao], direcaoOrdenacao], ['id', 'DESC']]
+    : [['data_vencimento', 'ASC'], ['createdAt', 'DESC'], ['id', 'DESC']];
   const queryOptions = {
-    where,
+    where: whereNegociacao,
     include: buildTituloInclude(),
-    order: [
-      ['data_vencimento', 'ASC'],
-      ['createdAt', 'DESC']
-    ],
+    order,
     distinct: true,
     subQuery: false
   };
@@ -2345,7 +2550,7 @@ async function listarBaixasRealizadas(req, filters = {}) {
     ];
   }
 
-  return MovimentoFinanceiro.findAll({
+  return require('./tituloRenegociacaoLeitura').buscarMovimentos({
     where: movimentoWhere,
     include: [
       {
@@ -2397,24 +2602,84 @@ async function listarBaixasRealizadas(req, filters = {}) {
 }
 
 async function listarTitulosPorSolicitacao(req, solicitacaoId) {
-  await assertFinanceAccess(req);
+  const acessoFinanceiroCompleto = await canAccessFinanceiro(req.user);
+  if (!acessoFinanceiroCompleto && !(await canViewSolicitacaoFinanceiro(req.user))) {
+    await registrarEventoSeguranca({
+      req,
+      usuarioId: req.user?.id || null,
+      tipoEvento: 'AUTHZ_DENIED',
+      recursoTipo: 'SOLICITACAO_FINANCEIRO',
+      recursoId: String(solicitacaoId),
+      status: 'DENIED',
+      descricao: 'Usuario sem permissao para visualizar a aba financeira da solicitacao'
+    });
+    throw createHttpError(403, 'Acesso negado para a aba financeira da solicitacao');
+  }
+
   const solicitacao = await carregarSolicitacaoFinanceira(req, solicitacaoId);
 
-  return TituloFinanceiro.findAll({
+  const consulta = {
     where: {
       solicitacao_id: solicitacao.id
     },
-    include: buildTituloInclude(),
     order: [
       ['data_vencimento', 'ASC'],
       ['createdAt', 'DESC']
     ]
+  };
+
+  if (acessoFinanceiroCompleto) {
+    consulta.include = buildTituloInclude();
+  } else {
+    // Leitura operacional da Obra: somente o resumo exibido dentro da solicitacao. Dados de banco,
+    // documentos, impostos, rateios, integracoes e beneficiarios permanecem restritos ao modulo.
+    consulta.attributes = [
+      'id',
+      'solicitacao_id',
+      'tipo',
+      'status',
+      'descricao',
+      'valor_original',
+      'valor_baixado',
+      'valor_saldo',
+      'data_vencimento'
+    ];
+    consulta.include = [{
+      model: Parceiro,
+      as: 'parceiro',
+      attributes: ['id', 'nome']
+    }];
+  }
+
+  consulta.include.push({
+    model: require('../models').PagamentoManualFilaItem,
+    as: 'filaPagamentosManuais',
+    attributes: ['id', 'status', 'comprovante_nome', 'comprovante_hash', 'selecionado_em', 'processado_em'],
+    include: [{
+      model: require('../models').PagamentoManualFilaComprovante,
+      as: 'comprovantes',
+      attributes: ['id', 'nome', 'hash', 'banco', 'tipo', 'vinculado_em'],
+      separate: true,
+      order: [['id', 'ASC']]
+    }],
+    separate: true,
+    order: [['id', 'DESC']]
   });
+
+  return require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
 }
 
 async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   await assertFinanceAccess(req);
   const solicitacao = await carregarSolicitacaoFinanceira(req, solicitacaoId);
+  const competenciaSolicitacao = resolverCompetenciaCriacaoSolicitacao(solicitacao);
+  const recargaAutomatica = await SolicitacaoRecargaCartao.findOne({
+    where: { solicitacao_id: solicitacao.id },
+    attributes: ['id', 'titulo_financeiro_id']
+  });
+  if (recargaAutomatica) {
+    throw createHttpError(409, 'A Recarga de Cartao ja possui titulo automatico e nao aceita outro lancamento manual.');
+  }
 
   const tipo = normalizarTipoTitulo(payload.tipo || sugestaoTipoTitulo(solicitacao));
   if (!['PAGAR', 'RECEBER'].includes(tipo)) {
@@ -2438,7 +2703,9 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     validarEmpresaGrupo(empresaTituloId),
     validarCategoriaFinanceira(payload.categoria_financeira_id, tipo)
   ]);
-  validarCategoriaDreTitulo(categoriaPadrao, payload);
+  validarCategoriaDreTitulo(categoriaPadrao, {
+    considera_dre: payload.considera_dre !== false && categoriaClassificadaParaDre(categoriaPadrao)
+  });
   const intercompanyFieldsPadrao = await validarIntercompanyTitulo(payload);
 
   const pagamentosPayload = Array.isArray(payload.pagamentos) && payload.pagamentos.length > 0
@@ -2453,11 +2720,38 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     }
     const parceiroPagamento = await validarParceiro(parceiroIdPagamento);
     validarCompatibilidadeParceiroTitulo(parceiroPagamento, tipo);
+    const favorecidoPagamentoId = Number(
+      pagamentoPayload.favorecido_pagamento_id || solicitacao.favorecido_id || 0
+    );
+    const favorecidoPagamento = favorecidoPagamentoId > 0
+      ? await Parceiro.findOne({ where: { id: favorecidoPagamentoId, ativo: true }, attributes: ['id', 'nome', 'cpf_cnpj'] })
+      : null;
+    if (favorecidoPagamentoId > 0 && !favorecidoPagamento) {
+      throw createHttpError(400, `Favorecido invalido para o titulo ${pagamentoIndex + 1}.`);
+    }
+    const beneficiaryId = Number(pagamentoPayload.payment_beneficiary_id || 0);
+    let paymentBeneficiary = null;
+    if (beneficiaryId > 0) {
+      paymentBeneficiary = await PaymentBeneficiary.findOne({
+        where: {
+          id: beneficiaryId,
+          parceiro_id: parceiroIdPagamento,
+          ativo: true
+        }
+      });
+      if (!paymentBeneficiary) {
+        throw createHttpError(400, `Favorecido PIX invalido para o titulo ${pagamentoIndex + 1}.`);
+      }
+    }
     const categoriaPagamento = pagamentoPayload.categoria_financeira_id
       ? await validarCategoriaFinanceira(pagamentoPayload.categoria_financeira_id, tipo)
       : categoriaPadrao;
-    validarCategoriaDreTitulo(categoriaPagamento, payload);
-    const formaPagamento = await validarFormaPagamentoFinanceira(pagamentoPayload.forma_pagamento_id, pagamentoPayload);
+    const consideraDrePagamento = payload.considera_dre !== false && categoriaClassificadaParaDre(categoriaPagamento);
+    validarCategoriaDreTitulo(categoriaPagamento, { considera_dre: consideraDrePagamento });
+    const formaPagamento = await validarFormaPagamentoFinanceira(
+      pagamentoPayload.forma_pagamento_id || solicitacao.forma_pagamento_id,
+      pagamentoPayload
+    );
     const intercompanyFields = await resolverIntercompanyPagamento({
       formaPagamento,
       pagamentoPayload,
@@ -2495,7 +2789,10 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
 
     pagamentos.push({
       parceiro: parceiroPagamento,
+      favorecidoPagamento,
+      paymentBeneficiary,
       categoria: categoriaPagamento,
+      consideraDre: consideraDrePagamento,
       formaPagamento,
       intercompanyFields,
       payload: pagamentoPayload,
@@ -2529,7 +2826,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   const titulosCriados = [];
   const baixasCartaoNoAto = [];
   try {
-    for (const [pagamentoIndex, pagamento] of pagamentos.entries()) {
+    for (const pagamento of pagamentos) {
       for (let index = 0; index < pagamento.quantidadeParcelas; index += 1) {
         const numeroParcela = index + 1;
         const valorParcela = pagamento.valoresParcelas[index];
@@ -2542,10 +2839,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           index
         });
         const totalParcelasDoGrupo = pagamento.quantidadeParcelas;
-        const prefixoForma = pagamentos.length > 1 ? `Forma ${pagamentoIndex + 1} - ` : '';
-        const descricaoParcela = totalParcelasDoGrupo > 1
-          ? `${prefixoForma}${descricaoBase}`.slice(0, 205) + ` - Parcela ${numeroParcela}/${totalParcelasDoGrupo}`
-          : `${prefixoForma}${descricaoBase}`.slice(0, 255);
+        const descricaoParcela = descricaoBase.slice(0, 255);
         const valoresParcela = calcularValoresParcelaComImpostos(impostosResumo, valorParcela, valorOriginal);
         const chequeFields = buildChequeFields(pagamento.formaPagamento, parcelaPayload, index);
         const cobrancaPayload = {
@@ -2563,6 +2857,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           empresa_id: empresaTituloId,
           ...pagamento.intercompanyFields,
           parceiro_id: pagamento.parceiro.id,
+          favorecido_pagamento_id: pagamento.favorecidoPagamento?.id || null,
+          payment_beneficiary_id: pagamento.paymentBeneficiary?.id || null,
           categoria_financeira_id: pagamento.categoria?.id || categoriaPadrao?.id || null,
           forma_pagamento_id: pagamento.formaPagamento?.id || null,
           cartao_id: pagamento.payload.cartao_id || null,
@@ -2570,8 +2866,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           numero_parcela: totalParcelasDoGrupo > 1 ? numeroParcela : null,
           total_parcelas: totalParcelasDoGrupo > 1 ? totalParcelasDoGrupo : null,
           data_compra: pagamento.dataCompra,
-          competencia_data: resolverCompetenciaTitulo(payload),
-          considera_dre: payload.considera_dre !== false,
+          competencia_data: competenciaSolicitacao,
+          considera_dre: pagamento.consideraDre,
           origem_titulo: 'SOLICITACAO',
           tipo,
           status: statusTitulo,
@@ -2588,7 +2884,11 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           data_emissao: payload.data_emissao || getHoje(),
           data_vencimento: vencimentoParcela,
           data_quitacao: null,
-          observacoes: parcelaPayload.observacoes || pagamento.payload.observacoes || payload.observacoes || null,
+          observacoes: parcelaPayload.observacoes
+            || pagamento.payload.observacoes
+            || payload.observacoes
+            || solicitacao.dados_pagamento
+            || null,
           ...buildCobrancaFields(cobrancaPayload, tipo),
           criado_por: req.user?.id || null,
           atualizado_por: req.user?.id || null
@@ -2674,6 +2974,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
         pagamentos: pagamentos.map((pagamento) => ({
           valor: pagamento.totalPagamento,
           parceiro_id: pagamento.parceiro.id,
+          payment_beneficiary_id: pagamento.paymentBeneficiary?.id || null,
           quantidade_parcelas: pagamento.quantidadeParcelas,
           grupo_parcelamento_id: pagamento.grupoParcelamentoId,
           forma_pagamento_id: pagamento.formaPagamento?.id || null,
@@ -2718,15 +3019,30 @@ async function criarTituloManual(req, payload = {}, options = {}) {
     transaction: externalTransaction = null,
     origemTitulo = 'MANUAL',
     registrarSeguranca = true,
-    retornarTitulosCriados = false
+    retornarTitulosCriados = false,
+    // Uso interno (aprovacao de contrato): o chamador ja impos permissao ESTRITA propria,
+    // mais forte que o acesso ao modulo financeiro. Sem isto, ADMIN/USUARIO com a permissao
+    // de aprovar eram barrados aqui — regressao apontada em auditoria.
+    pularAcessoFinanceiro = false,
+    // Uso interno dos titulos automaticos de contrato/aditivo. A forma "Cartao" descreve como o
+    // fornecedor recebera; nao significa que um cartao financeiro do cadastro ja foi utilizado.
+    dispensarCartaoInstrucional = false,
+    // Uso interno do cronograma automatico de contratos. O titulo ainda e PREVISAO e recebe a
+    // forma efetiva somente na aprovacao da medicao.
+    permitirFormaPagamentoPendente = false
   } = options;
-  await assertFinanceAccess(req);
+  if (!pularAcessoFinanceiro) await assertFinanceAccess(req);
 
   const tipo = normalizarTipoTitulo(payload.tipo || 'PAGAR');
   if (!['PAGAR', 'RECEBER'].includes(tipo)) {
     throw createHttpError(400, 'Tipo de titulo invalido.');
   }
   const statusTitulo = normalizarStatusTituloInicial(payload.status);
+  const permitirFormaPagamentoPendenteNaPrevisao = Boolean(
+    permitirFormaPagamentoPendente
+    && statusTitulo === 'PREVISAO'
+    && ['CONTRATO', 'PEDIDO_COMPRA'].includes(origemTitulo)
+  );
 
   const obraId = Number(payload.obra_id);
   if (!Number.isInteger(obraId) || obraId <= 0) {
@@ -2749,7 +3065,7 @@ async function criarTituloManual(req, payload = {}, options = {}) {
   }
 
   const [obra, parceiro, categoriaPadrao] = await Promise.all([
-    validarObraTitulo(req, obraId),
+    validarObraTitulo(req, obraId, { pularEscopoObra: pularAcessoFinanceiro }),
     validarParceiro(parceiroId),
     validarCategoriaFinanceira(payload.categoria_financeira_id, tipo)
   ]);
@@ -2778,11 +3094,29 @@ async function criarTituloManual(req, payload = {}, options = {}) {
       ? parceiro
       : await validarParceiro(parceiroPagamentoId);
     validarCompatibilidadeParceiroTitulo(parceiroPagamento, tipo);
+    const favorecidoPagamentoId = Number(pagamentoPayload.favorecido_pagamento_id || 0);
+    const favorecidoPagamento = favorecidoPagamentoId > 0
+      ? await Parceiro.findOne({
+          where: { id: favorecidoPagamentoId, ativo: true },
+          attributes: ['id', 'nome', 'cpf_cnpj'],
+          transaction: externalTransaction || undefined
+        })
+      : null;
+    if (favorecidoPagamentoId > 0 && !favorecidoPagamento) {
+      throw createHttpError(400, `Favorecido invalido no pagamento ${pagamentoIndex + 1}.`);
+    }
     const categoriaPagamento = pagamentoPayload.categoria_financeira_id
       ? await validarCategoriaFinanceira(pagamentoPayload.categoria_financeira_id, tipo)
       : categoriaPadrao;
     validarCategoriaDreTitulo(categoriaPagamento, payload);
-    const formaPagamento = await validarFormaPagamentoFinanceira(pagamentoPayload.forma_pagamento_id, pagamentoPayload);
+    const formaPagamento = await validarFormaPagamentoFinanceira(
+      pagamentoPayload.forma_pagamento_id,
+      pagamentoPayload,
+      {
+        dispensarCartaoInstrucional,
+        permitirPendente: permitirFormaPagamentoPendenteNaPrevisao
+      }
+    );
     const intercompanyFields = await resolverIntercompanyPagamento({
       formaPagamento,
       pagamentoPayload,
@@ -2820,6 +3154,7 @@ async function criarTituloManual(req, payload = {}, options = {}) {
 
     pagamentos.push({
       parceiro: parceiroPagamento,
+      favorecidoPagamento,
       categoria: categoriaPagamento,
       formaPagamento,
       intercompanyFields,
@@ -2876,12 +3211,21 @@ async function criarTituloManual(req, payload = {}, options = {}) {
         };
 
         const titulo = await TituloFinanceiro.create({
-          solicitacao_id: null,
+          // ERA FIXO EM `null` — e por isso o titulo do CONTRATO nascia sem a solicitacao dele (24/08).
+          //
+          // `criarTituloManual` e o caminho de "titulo lancado a mao", e o nome explica o `null`
+          // original: nao havia quem chamasse com uma solicitacao. A aprovacao do contrato passou a
+          // chamar (PI-16), e o campo continuava sendo descartado em silencio — quem passasse
+          // `solicitacao_id` no payload nao recebia erro nenhum, so um titulo sem vinculo.
+          //
+          // Quem nao informa continua gravando `null`, exatamente como antes.
+          solicitacao_id: Number(payload.solicitacao_id) || null,
           obra_id: obra.id,
           apropriacao_id: apropriacao?.id || null,
           empresa_id: empresaTituloId,
           ...pagamento.intercompanyFields,
           parceiro_id: pagamento.parceiro.id,
+          favorecido_pagamento_id: pagamento.favorecidoPagamento?.id || null,
           categoria_financeira_id: pagamento.categoria?.id || categoriaPadrao?.id || null,
           forma_pagamento_id: pagamento.formaPagamento?.id || null,
           cartao_id: pagamento.payload.cartao_id || null,
@@ -2889,7 +3233,7 @@ async function criarTituloManual(req, payload = {}, options = {}) {
           numero_parcela: pagamento.quantidadeParcelas > 1 ? numeroParcela : null,
           total_parcelas: pagamento.quantidadeParcelas > 1 ? pagamento.quantidadeParcelas : null,
           data_compra: pagamento.dataCompra,
-          competencia_data: resolverCompetenciaTitulo(payload),
+          competencia_data: resolverCompetenciaCriacaoTitulo(),
           considera_dre: payload.considera_dre !== false,
           origem_titulo: origemTitulo,
           tipo,
@@ -3200,7 +3544,7 @@ async function criarTituloManualComBaixaAtomica(req, payload = {}, { transaction
       valor_baixado: 0,
       data_emissao: payload.data_emissao || getHoje(),
       data_compra: payload.data_compra || payload.data_movimento || null,
-      competencia_data: resolverCompetenciaTitulo(payload),
+      competencia_data: resolverCompetenciaCriacaoTitulo(),
       considera_dre: payload.considera_dre !== false,
       data_vencimento: dataVencimento,
       data_quitacao: null,
@@ -3215,10 +3559,12 @@ async function criarTituloManualComBaixaAtomica(req, payload = {}, { transaction
       valorOriginal: Number(titulo.valor_original || 0),
       valorBaixado: novoValorBaixado
     });
+    const chequeTerceiroSemMovimentoBancario = isChequeFormaRecebimento(formaRecebimento)
+      && (tipo === 'RECEBER' || payload.usar_cheque_terceiro === true);
 
     const movimento = await MovimentoFinanceiro.create({
       titulo_financeiro_id: titulo.id,
-      conta_bancaria_id: conta.id,
+      conta_bancaria_id: chequeTerceiroSemMovimentoBancario ? null : conta.id,
       empresa_id: empresaBaixaId,
       ...movimentoIntercompanyFields,
       caixa_sessao_id: caixaSessao?.id || null,
@@ -3401,14 +3747,29 @@ async function sincronizarRealizacaoCompraPorTitulo({
         realizado_em: null
       };
 
+  const vinculosPedido = await PedidoCompraTitulo.findAll({
+    where: { titulo_financeiro_id: titulo.id },
+    attributes: ['pedido_compra_id'],
+    transaction,
+    raw: true
+  });
+  const pedidoIds = [...new Set(vinculosPedido.map((item) => Number(item.pedido_compra_id)).filter(Boolean))];
+
   await SolicitacaoCompraAlocacao.update(update, {
     where: {
       solicitacao_compra_id: solicitacaoCompra.id,
-      status: 'ATIVA'
+      status: 'ATIVA',
+      ...(pedidoIds.length ? { pedido_compra_id: { [Op.in]: pedidoIds } } : {})
     },
     transaction
   });
+
+  if (pedidoIds.length) {
+    const { sincronizarStatusFinanceiroPedidos } = require('./pedidoCompraFinanceiroService');
+    await sincronizarStatusFinanceiroPedidos(pedidoIds, transaction);
+  }
 }
+
 
 async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
   const valorBaixa = roundCurrency(payload.valor);
@@ -3436,7 +3797,10 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
   const ownTransaction = !options.transaction;
   const transaction = options.transaction || await sequelize.transaction();
   try {
-    const titulo = await carregarTituloParaBaixaComLock(req, tituloId, transaction);
+    const titulo = await carregarTituloParaBaixaComLock(req, tituloId, transaction, {
+      autorizadoPorFilaPagamento: options.autorizadoPorFilaPagamento === true,
+      autorizadoInternamente: options.autorizadoInternamente === true
+    });
     const statusAtual = String(titulo.status || '').trim().toUpperCase();
 
     if (!['ABERTO', 'PARCIAL'].includes(statusAtual)) {
@@ -3444,8 +3808,22 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     }
 
     const saldoAtual = roundCurrency(titulo.valor_saldo);
-    if (valorBaixa > saldoAtual) {
-      throw createHttpError(400, 'Valor da baixa nao pode ser maior que o saldo do titulo.');
+    // A fila manual pode liberar pontualmente um valor divergente depois de uma
+    // segunda pessoa autorizar a baixa com justificativa. Fora desse fluxo, a
+    // protecao original continua valendo integralmente.
+    if (valorBaixa > saldoAtual && options.autorizarValorAcimaSaldo !== true) {
+      // A trava de pagar mais que o saldo cai SO para parcela de contrato do fluxo novo (item 33,
+      // 23/08): la o excedente e descontado da ultima parcela. Para todo o resto do Financeiro ela
+      // continua exatamente como estava — e quem decide isso e a propria regra do contrato.
+      const { liberarBaixaAcimaDoSaldo } = require('./medicaoContratoService');
+      const liberado = await liberarBaixaAcimaDoSaldo(
+        titulo.id,
+        roundCurrency(valorBaixa - saldoAtual),
+        transaction
+      );
+      if (!liberado) {
+        throw createHttpError(400, 'Valor da baixa nao pode ser maior que o saldo do titulo.');
+      }
     }
 
     const empresaTituloId = await resolverEmpresaTituloParaBaixa(titulo);
@@ -3472,6 +3850,9 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     });
     const contaMovimento = cartaoBaixa.conta || conta;
     const formaMovimento = cartaoBaixa.formaRecebimento;
+    const chequeTerceiroSemMovimentoBancario = isChequeFormaRecebimento(formaMovimento)
+      && (getTituloTipo(titulo) === 'RECEBER' || payload.usar_cheque_terceiro === true);
+    const contaEfetivaMovimento = chequeTerceiroSemMovimentoBancario ? null : contaMovimento;
 
     if (formaMovimento === 'DINHEIRO') {
       if (!contaMovimento) {
@@ -3485,15 +3866,15 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       }
     }
 
-    const caixaSessao = contaMovimento
-      ? await obterSessaoAbertaParaConta(contaMovimento, payload.data_movimento, {
+    const caixaSessao = contaEfetivaMovimento
+      ? await obterSessaoAbertaParaConta(contaEfetivaMovimento, payload.data_movimento, {
         transaction,
         exigir: formaMovimento === 'DINHEIRO'
       })
       : null;
     const movimento = await MovimentoFinanceiro.create({
       titulo_financeiro_id: titulo.id,
-      conta_bancaria_id: contaMovimento?.id || null,
+      conta_bancaria_id: contaEfetivaMovimento?.id || null,
       baixa_grupo_id: payload.baixa_grupo_id || null,
       baixa_componente_id: payload.baixa_componente_id || null,
       fatura_cartao_id: cartaoBaixa.fatura?.id || null,
@@ -3615,7 +3996,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       descricao: 'Baixa financeira registrada no titulo',
         metadata: {
           movimento_id: movimento.id,
-          conta_bancaria_id: contaMovimento?.id || null,
+          conta_bancaria_id: contaEfetivaMovimento?.id || null,
           cartao_id: cartaoBaixa.cartao?.id || null,
           fatura_cartao_id: cartaoBaixa.fatura?.id || null,
           empresa_baixa_id: empresaBaixaId,
@@ -3948,7 +4329,10 @@ async function baixarTitulosParceladosEmMassa(req, payload = {}) {
       const caixaSessao = await obterSessaoAbertaParaConta(conta, parcela.data_movimento, { transaction });
       const movimentoParcela = await MovimentoFinanceiro.create({
         titulo_financeiro_id: tituloParcela.id,
-        conta_bancaria_id: conta.id,
+        conta_bancaria_id: formaRecebimento === 'CHEQUE'
+          && (tipoTitulo === 'RECEBER' || parcela.usar_cheque_terceiro === true)
+          ? null
+          : conta.id,
         cartao_id: cartao?.id || null,
         empresa_id: empresaBaixaId,
         caixa_sessao_id: caixaSessao?.id || null,
@@ -4188,7 +4572,7 @@ async function baixarTituloPorConciliacoes(req, tituloId, payload = {}) {
   };
 }
 
-async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {}) {
+async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {}, internalOptions = {}) {
   const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: false });
   const movimento = await MovimentoFinanceiro.findOne({
     where: {
@@ -4282,24 +4666,36 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {})
         lock: transaction.LOCK.UPDATE
       });
       if (chequeRecebido) {
-        if (String(chequeRecebido.status).toUpperCase() !== 'EM_CARTEIRA') {
+        const statusChequeRecebido = String(chequeRecebido.status).toUpperCase();
+        const statusPermitidos = Array.isArray(internalOptions.chequeRecebidoStatusPermitidos)
+          ? internalOptions.chequeRecebidoStatusPermitidos.map((status) => String(status).toUpperCase())
+          : ['EM_CARTEIRA'];
+        if (!statusPermitidos.includes(statusChequeRecebido)) {
           throw createHttpError(409, 'O cheque recebido ja possui movimentacao posterior. Reverta primeiro a utilizacao ou o deposito.');
         }
+        const statusDestinoCheque = String(internalOptions.chequeRecebidoStatusDestino || 'CANCELADO').toUpperCase();
         await chequeRecebido.update({
-          status: 'CANCELADO',
+          status: statusDestinoCheque,
+          data_devolucao: statusDestinoCheque === 'DEVOLVIDO'
+            ? (internalOptions.dataDevolucao || new Date().toISOString().slice(0, 10))
+            : chequeRecebido.data_devolucao,
           atualizado_por: req.user?.id || null
         }, { transaction });
         await ChequeTerceiroMovimento.create({
           cheque_terceiro_id: chequeRecebido.id,
-          tipo_evento: 'ESTORNO_ENTRADA',
-          status_anterior: 'EM_CARTEIRA',
-          status_novo: 'CANCELADO',
+          tipo_evento: statusDestinoCheque === 'DEVOLVIDO' ? 'DEVOLUCAO_COM_ESTORNO' : 'ESTORNO_ENTRADA',
+          status_anterior: statusChequeRecebido,
+          status_novo: statusDestinoCheque,
           empresa_origem_id: chequeRecebido.empresa_id || null,
           titulo_financeiro_id: titulo.id,
           movimento_financeiro_id: movimento.id,
           valor: roundCurrency(movimento.valor),
-          data_evento: new Date().toISOString().slice(0, 10),
-          observacoes: payload.observacoes || 'Entrada cancelada pelo estorno da baixa de recebimento.',
+          data_evento: statusDestinoCheque === 'DEVOLVIDO'
+            ? (internalOptions.dataDevolucao || new Date().toISOString().slice(0, 10))
+            : new Date().toISOString().slice(0, 10),
+          observacoes: payload.observacoes || (statusDestinoCheque === 'DEVOLVIDO'
+            ? 'Cheque devolvido e baixa do recebimento estornada.'
+            : 'Entrada cancelada pelo estorno da baixa de recebimento.'),
           criado_por: req.user?.id || null
         }, { transaction });
       }
@@ -4766,6 +5162,12 @@ async function excluirTitulosEmMassa(req, payload = {}) {
     }
   );
 
+  // Titulo de contrato do fluxo novo: o valor volta como saldo para a parcela final e o
+  // comprometimento e desfeito (PI-6). Silencioso para titulo que nao e de contrato.
+  // require aqui dentro para nao criar ciclo entre os dois servicos.
+  const { devolverSaldoDeTitulosExcluidos } = require('./medicaoContratoService');
+  await devolverSaldoDeTitulosExcluidos(idsUnicos, { usuarioId: req.user?.id || null, motivo });
+
   await registrarEventoSeguranca({
     req,
     usuarioId: req.user?.id || null,
@@ -4829,6 +5231,7 @@ async function listarChequesTerceirosDisponiveis(req, filters = {}) {
 }
 
 module.exports = {
+  resolverCompetenciaCriacaoSolicitacao,
   atualizarCobrancaTitulo,
   atualizarTitulo,
   baixarTitulo,

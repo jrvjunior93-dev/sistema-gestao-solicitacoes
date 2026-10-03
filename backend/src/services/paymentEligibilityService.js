@@ -8,6 +8,7 @@ const {
   TituloFinanceiro
 } = require('../models');
 const { canPreparePagamentos } = require('./authorizationService');
+const { assertTituloDisponivelParaBaixa, tituloEstaBloqueado } = require('./tituloBloqueioRetornoObraService');
 
 const ACTIVE_INTENT_STATUSES = [
   'RASCUNHO',
@@ -113,6 +114,7 @@ async function validateNoActiveIntent(tituloId, { transaction = null } = {}) {
 
 async function validateTituloEligibleForPayment(titulo, { beneficiary = null, transaction = null } = {}) {
   if (!titulo) throw createHttpError(404, 'Titulo financeiro nao encontrado.');
+  assertTituloDisponivelParaBaixa(titulo);
   if (String(titulo.tipo || '').toUpperCase() !== 'PAGAR') {
     throw createHttpError(400, 'Apenas titulos a pagar podem entrar em lote.');
   }
@@ -140,5 +142,6 @@ module.exports = {
   validateNoActiveIntent,
   validatePaymentAccount,
   validateTituloEligibleForPayment,
-  validateUserCanPrepareBatch
+  validateUserCanPrepareBatch,
+  tituloEstaBloqueado
 };

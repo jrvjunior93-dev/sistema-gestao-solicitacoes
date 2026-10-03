@@ -13,36 +13,38 @@ Este documento consolida as regras da V1 que devem continuar existindo na V2 do 
 
 Toda solicitacao deve ter:
 
-- obra vinculada;
-- area responsavel final;
+- obra ou centro de custo vinculado;
+- area responsavel inicial definida pelo backend;
 - tipo de solicitacao;
 - valor e vencimento quando aplicavel;
 - parceiro/credor quando a solicitacao precisar gerar titulo financeiro.
 
 Quando os modulos `CONTRATOS` ou `OBRAS` estiverem desabilitados, os campos dependentes desses modulos ficam ocultos e deixam de ser obrigatorios.
 
-## Area responsavel final
+## Destino inicial
 
-A area responsavel selecionada na tela `Nova Solicitacao` representa o setor de destino final da solicitacao.
+A tela `Nova Solicitacao` nao oferece escolha de area responsavel. Toda solicitacao aberta por essa entrada nasce em `GEO`, com status `PENDENTE`. O backend resolve o setor pela capacidade `eh_setor_geo`; valores de `area_responsavel` enviados pelo navegador sao ignorados.
 
-Essa area continua sendo usada para:
+Depois da criacao, `area_responsavel` continua sendo usada para:
 
-- filtrar os tipos de solicitacao disponiveis;
-- definir a regra operacional do setor destino;
-- receber a solicitacao imediatamente depois da criacao.
+- controlar fila, permissao de interacao, retorno e movimentacao;
+- aplicar regras operacionais e modo de recebimento do setor atual;
+- registrar historico e destinatarios de notificacao.
 
-## Tipo de solicitacao por setor
+## Tipo de solicitacao por Obra/Centro de Custo
 
-O tipo de solicitacao deve continuar sendo definido por setor.
+O catalogo exibido depende primeiro do cadastro selecionado:
 
-Regra:
+- registros classificados como `OBRA` compartilham os tipos marcados como disponiveis para todas as Obras;
+- registros classificados como `CENTRO_CUSTO` usam somente vinculos administrativos explicitos;
+- Centro de Custo sem vinculo nao herda todos os tipos e nao pode abrir solicitacao;
+- subtipo ativo herda o mesmo escopo do tipo macro;
+- ao mudar Obra/Centro de Custo, a tela recarrega o catalogo e limpa tipo/subtipo incompatível;
+- o backend repete a validacao para impedir criacao por payload manual.
 
-- o usuario seleciona a area responsavel final;
-- o sistema lista apenas os tipos permitidos para aquela area;
-- se a area mudar, o tipo deve ser revalidado;
-- o backend valida a combinacao antes de criar a solicitacao.
+`Tipos por Setor (Recebimento)` permanece existente, mas sua responsabilidade e posterior a criacao: define quais tipos o setor recebe e se a notificacao inicial vai primeiro ao administrador ou a todos. Essa configuracao nao define mais o catalogo da Nova Solicitacao.
 
-Essa regra recupera o comportamento da V1, onde cada setor tinha seus proprios tipos de solicitacao.
+Tipos macro sao cadastrados globalmente. A configuracao `Tipos por Obra/Centro de Custo` define a disponibilidade de abertura.
 
 ## Encaminhamento direto e legado de diretoria
 
@@ -51,9 +53,9 @@ O fluxo vigente para novos registros nao possui aprovacao intermediaria por dire
 Fluxo oficial:
 
 1. Usuario cria a solicitacao.
-2. Usuario seleciona a area responsavel.
-3. O backend valida area, tipo, obra e permissao.
-4. A solicitacao nasce diretamente na area selecionada.
+2. Usuario seleciona a Obra/Centro de Custo e um tipo permitido naquele catalogo.
+3. O backend valida tipo, Obra/Centro de Custo e permissao.
+4. A solicitacao nasce em `GEO / PENDENTE`.
 5. `fluxo_aprovacao_diretoria` e gravado como `false`, e `diretoria_fluxo_codigo` e `setor_destino_pos_aprovacao` ficam nulos.
 
 Os campos, regras de leitura e o endpoint de aprovacao por diretoria permanecem apenas para processar solicitacoes antigas que ja estejam formalmente marcadas com `fluxo_aprovacao_diretoria = true`. Compatibilidade de legado nao autoriza o frontend ou outro modulo a criar novos registros nesse fluxo.
@@ -173,10 +175,12 @@ As seguintes telas/configuracoes fazem parte da operacao atual ou da compatibili
 Antes de subir em producao:
 
 - aplicar migrations em copia/staging do banco de producao;
-- revisar tipos de solicitacao por setor;
+- revisar o catalogo comum de Obras;
+- configurar explicitamente os tipos de cada Centro de Custo;
+- revisar tipos por setor apenas quanto ao recebimento e notificacoes;
 - revisar usuarios com multiplos setores;
 - revisar usuarios com envio livre entre setores;
-- testar criacao de solicitacao diretamente na area selecionada;
+- testar criacao em `GEO / PENDENTE` e rejeicao de tipo fora do catalogo;
 - testar leitura e conclusao segura de registros antigos ainda marcados com fluxo de diretoria;
 - testar automacao por status;
 - testar pagamentos parciais;

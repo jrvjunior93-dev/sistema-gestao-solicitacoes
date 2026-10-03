@@ -51,12 +51,13 @@ function obterRateiosCarregados(item, options = {}) {
 function construirResumoApropriacoes(item, options = {}) {
   const rateios = obterRateiosCarregados(item, options);
   const linhas = rateios.map((rateio) => {
-    const codigo =
-      rateio.apropriacao?.codigo ||
+    const nome =
       rateio.apropriacao?.descricao ||
+      rateio.apropriacao?.nome ||
+      rateio.apropriacao?.codigo ||
       (rateio.apropriacao_id ? `Apropriacao ${rateio.apropriacao_id}` : 'Apropriacao');
 
-    return `${codigo}: ${formatarQuantidade(rateio.quantidade_apropriada)}`;
+    return `${nome}: ${formatarQuantidade(rateio.quantidade_apropriada)}`;
   });
 
   return {

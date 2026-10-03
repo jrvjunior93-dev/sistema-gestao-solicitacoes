@@ -1,0 +1,13 @@
+{
+  "name": "Fluxy - Autorizações",
+  "short_name": "Fluxy",
+  "description": "Autorizações seguras de pagamentos do Fluxy.",
+  "start_url": "/financeiro/autorizacoes-pagamento",
+  "display": "standalone",
+  "background_color": "#eef4fb",
+  "theme_color": "#16325a",
+  "icons": [
+    { "src": "/fluxy-favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/fluxy-pwa-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -528,7 +528,8 @@ async function run() {
       'Nova solicitacao geral nasce no setor escolhido com status PENDENTE.',
       'Nova solicitacao nao ativa fluxo de aprovacao previa pela diretoria.',
       'Tipo COMPRA_DIRETA redireciona para /solicitacoes-compra-direta/nova.',
-      'Em OBRA, status MERCADORIA_ENTREGUE envia automaticamente para o setor financeiro.',
+      'Em OBRA, status MERCADORIA_ENTREGUE nao movimenta a solicitacao por regra fixa; qualquer envio depende de AUTOMACAO_STATUS_SETOR.',
+      'Status PENDENTE DE AJUSTE sempre devolve a solicitacao ao setor do usuario que a criou, antes de qualquer AUTOMACAO_STATUS_SETOR.',
       'Solicitacao devolvida para ajuste retorna ao setor anterior quando OBRA altera de PENDENTE_DE_AJUSTE/AGUARDANDO_AJUSTE para ATENDIDO.',
       'Outras mudancas automaticas de setor seguem AUTOMACAO_STATUS_SETOR.'
     ],

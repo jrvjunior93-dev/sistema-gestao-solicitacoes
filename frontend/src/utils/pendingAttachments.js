@@ -1,4 +1,36 @@
 export const UPLOAD_MAX_FILE_SIZE_MB_PADRAO = 50;
+export const UPLOAD_DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.rar';
+
+const EXTENSOES_DOCUMENTO_PERMITIDAS = new Set(UPLOAD_DOCUMENT_ACCEPT.split(','));
+const MIMES_DOCUMENTO_PERMITIDOS = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+  'application/csv',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'image/png',
+  'image/jpeg',
+  'application/vnd.rar',
+  'application/x-rar-compressed'
+]);
+
+export function arquivoDocumentoPermitido(file) {
+  const nome = String(file?.name || '').trim().toLowerCase();
+  const indiceExtensao = nome.lastIndexOf('.');
+  const extensao = indiceExtensao >= 0 ? nome.slice(indiceExtensao) : '';
+  const mime = String(file?.type || '').trim().toLowerCase();
+  const mimePermitido = !mime || mime === 'application/octet-stream' || MIMES_DOCUMENTO_PERMITIDOS.has(mime);
+  return EXTENSOES_DOCUMENTO_PERMITIDAS.has(extensao) && mimePermitido;
+}
+
+export function montarMensagemTiposArquivoNaoPermitidos(files = []) {
+  const nomes = Array.from(files || []).map((file) => file?.name).filter(Boolean).join(', ');
+  return `Tipo de arquivo não permitido${nomes ? `: ${nomes}` : ''}. Use PDF, Word, Excel, CSV, PowerPoint, imagem ou RAR.`;
+}
 
 function gerarIdArquivo(file) {
   const nome = String(file?.name || 'arquivo').replace(/\s+/g, '-').toLowerCase();

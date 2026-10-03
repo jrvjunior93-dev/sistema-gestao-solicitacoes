@@ -5,6 +5,7 @@ import {
   getTiposSolicitacaoPorSetor,
   salvarTiposSolicitacaoPorSetor
 } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, BlocoConteudo, CampoForm, Avisos, useAvisos } from '../components/padrao';
 
 const MODOS = [
   { value: 'ADMIN_PRIMEIRO', label: 'Admin primeiro' },
@@ -24,6 +25,8 @@ export default function TiposSolicitacaoPorSetor() {
   const [setorSelecionado, setSetorSelecionado] = useState('');
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  // R3/R19: aviso do sistema no lugar da caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     carregar();
@@ -48,7 +51,7 @@ export default function TiposSolicitacaoPorSetor() {
       }
     } catch (error) {
       console.error(error);
-      alert('Erro ao carregar configurações de tipos por setor.');
+      avisar.erro('Erro ao carregar configurações de tipos por setor.');
     } finally {
       setLoading(false);
     }
@@ -114,95 +117,114 @@ export default function TiposSolicitacaoPorSetor() {
     try {
       setSalvando(true);
       await salvarTiposSolicitacaoPorSetor({ regras });
-      alert('Configuração salva.');
+      avisar.sucesso('Configuração salva.');
     } catch (error) {
       console.error(error);
-      alert('Erro ao salvar configuração.');
+      avisar.erro('Erro ao salvar configuração.');
     } finally {
       setSalvando(false);
     }
   }
 
-  if (loading) return <p>Carregando configurações...</p>;
+  if (loading) {
+    return (
+      <Pagina>
+        <p className="text-sm" style={{ color: 'var(--c-muted)' }}>Carregando configurações...</p>
+      </Pagina>
+    );
+  }
 
   const tiposSelecionados = new Set((regraAtual.tipos || []).map(Number));
 
   return (
-    <div className="page solicitacoes-page">
-      <h1 className="page-title">Tipos de Solicitação por Setor</h1>
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Tipos de Solicitação por Setor"
+        contagem={`${tiposSelecionados.size} de ${tipos.length}`}
+        descricao="Defina quais tipos ficam habilitados para cada setor e como cada tipo é recebido."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar configuração',
+          onClick: salvar,
+          desabilitada: salvando
+        }}
+      />
 
-      <div className="card space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-          <label className="grid gap-1 text-sm">
-            Setor
-            <select
-              className="input"
-              value={setorSelecionado}
-              onChange={e => setSetorSelecionado(e.target.value)}
-            >
-              {setores.map(setor => {
-                const key = normalizarSetorKey(setor);
-                return (
-                  <option key={setor.id} value={key}>
-                    {setor.nome || setor.codigo || key}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-          <div className="text-sm md:col-span-2" style={{ color: 'var(--c-muted)' }}>
-            Se nenhum tipo for marcado para o setor, o sistema mantém o comportamento atual (todos os tipos disponíveis).
+      <BlocoConteudo
+        titulo="Tipos habilitados"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
+            <CampoForm label="Setor">
+              <select
+                className="input w-full"
+                value={setorSelecionado}
+                onChange={e => setSetorSelecionado(e.target.value)}
+              >
+                {setores.map(setor => {
+                  const key = normalizarSetorKey(setor);
+                  return (
+                    <option key={setor.id} value={key}>
+                      {setor.nome || setor.codigo || key}
+                    </option>
+                  );
+                })}
+              </select>
+            </CampoForm>
+
+            <p className="app-note md:col-span-2">
+              Se nenhum tipo for marcado para o setor, o sistema mantém o comportamento atual (todos os tipos disponíveis).
+            </p>
+          </div>
+
+          <div className="divide-y divide-[var(--c-border)] rounded-xl border border-[var(--c-border)]">
+            {tipos.map(tipo => {
+              const selecionado = tiposSelecionados.has(Number(tipo.id));
+              return (
+                <div key={tipo.id} className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:gap-4">
+                  <label className="flex items-center gap-2 app-painel-lateral">
+                    <input
+                      type="checkbox"
+                      checked={selecionado}
+                      onChange={() => toggleTipo(tipo.id)}
+                    />
+                    <span>{tipo.nome}</span>
+                  </label>
+
+                  <div className="md:flex-1">
+                    {selecionado ? (
+                      <div className="md:max-w-sm">
+                        <CampoForm label="Recebimento deste tipo">
+                          <select
+                            className="input w-full"
+                            value={regraAtual.modos?.[String(tipo.id)] || 'TODOS_VISIVEIS'}
+                            onChange={e => alterarModoTipo(tipo.id, e.target.value)}
+                          >
+                            {MODOS.map(modo => (
+                              <option key={modo.value} value={modo.value}>
+                                {modo.label}
+                              </option>
+                            ))}
+                          </select>
+                        </CampoForm>
+                      </div>
+                    ) : (
+                      <span className="text-sm" style={{ color: 'var(--c-muted)' }}>
+                        Tipo não habilitado para este setor
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-
-        <div className="border rounded-lg divide-y">
-          {tipos.map(tipo => {
-            const selecionado = tiposSelecionados.has(Number(tipo.id));
-            return (
-              <div key={tipo.id} className="p-3 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-                <label className="flex items-center gap-2 md:min-w-[320px]">
-                  <input
-                    type="checkbox"
-                    checked={selecionado}
-                    onChange={() => toggleTipo(tipo.id)}
-                  />
-                  <span>{tipo.nome}</span>
-                </label>
-
-                <div className="md:flex-1">
-                  {selecionado ? (
-                    <label className="grid gap-1 text-sm md:max-w-sm">
-                      Recebimento deste tipo
-                      <select
-                        className="input"
-                        value={regraAtual.modos?.[String(tipo.id)] || 'TODOS_VISIVEIS'}
-                        onChange={e => alterarModoTipo(tipo.id, e.target.value)}
-                      >
-                        {MODOS.map(modo => (
-                          <option key={modo.value} value={modo.value}>
-                            {modo.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : (
-                    <span className="text-sm" style={{ color: 'var(--c-muted)' }}>
-                      Tipo não habilitado para este setor
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex justify-end">
-          <button className="btn btn-primary" type="button" onClick={salvar} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar configuração'}
-          </button>
-        </div>
-      </div>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

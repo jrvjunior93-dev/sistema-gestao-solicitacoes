@@ -1,6 +1,23 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineEye } from 'react-icons/hi2';
+import {
+  Avisos,
+  BarraFiltros,
+  BlocoConteudo,
+  CampoForm,
+  CelulaDupla,
+  FormSecao,
+  PageHeader,
+  Pagina,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  alternarValorFiltro,
+  useAvisos,
+  useConfirmacao,
+  useFiltrosVisiveis
+} from '../components/padrao';
+import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { getObras } from '../services/obras';
 import {
@@ -11,12 +28,70 @@ import {
   getRhImportacoes
 } from '../services/rhDp';
 import { canExecuteRhDpImportacoes } from '../utils/acessoProduto';
+import { downloadRhImportTemplate } from '../utils/rhImportacaoPlanilha';
 
 const TIPOS_IMPORTACAO = [
   { value: 'JORNADA', label: 'Jornada' },
-  { value: 'EVENTO_VARIAVEL', label: 'Evento variavel' },
+  { value: 'EVENTO_VARIAVEL', label: 'Evento variável' },
   { value: 'DESCONTO', label: 'Desconto' }
 ];
+
+const VINCULOS = [
+  { value: 'CLT', label: 'CLT' },
+  { value: 'NAO_CLT', label: 'Não CLT' }
+];
+
+// Só estes três valem como FILTRO: o validador do serviço
+// (backend/src/validators/rhValidators.js, RH_STATUS_IMPORTACAO) recusa
+// qualquer outro na consulta. O catálogo de EXIBIÇÃO é outro (abaixo) e é
+// maior — a base tem lotes SUBSTITUIDA gravados pelo formulário de jornada.
+const STATUS_LOTE = [
+  { value: 'PREVIEW', label: 'Preview' },
+  { value: 'CONFIRMADA', label: 'Confirmada' },
+  { value: 'CANCELADA', label: 'Cancelada' }
+];
+
+/*
+  Status é ETIQUETA (StatusBadge/`fx-badge`), não texto solto na célula.
+
+  Por que isto é conserto e não enfeite: a célula de `tipo: 'status'` não
+  ganha `white-space: nowrap` de ninguém — `.resizable-table td` traz
+  `overflow: hidden; text-overflow: ellipsis` SEM `nowrap`, então texto puro
+  que não cabe QUEBRA NO MEIO DA PALAVRA ("CONFIRM/ADA", "SUBSTITU/IDA",
+  medido nas capturas de 1920 e 1366). Quebra não aumenta `scrollWidth`, e
+  por isso o T6 do harness — que compara `scrollWidth` com `clientWidth` —
+  passava com o defeito na tela. A pílula resolve na raiz: `fx-badge` tem
+  `white-space: nowrap` + `overflow: clip` próprios (design-tokens.css) e o
+  texto dela é de 12px, mais estreito que os 14px da célula.
+
+  O rótulo humano ("Confirmada" no lugar de CONFIRMADA) é o mesmo critério
+  já aplicado ao tipo por `rotuloTipo`: quem lê a tela vê o rótulo do
+  catálogo. De quebra, caixa mista é mais estreita que caixa alta e a
+  pílula inteira passa a caber nos 132px que o componente reserva para a
+  coluna de status.
+
+  `tom` só onde a classificação automática de `familiaSemanticaDoStatus`
+  erraria: "Válida" não casa com nenhum padrão de sucesso e "Substituída"
+  não casa com nenhum padrão de arquivamento.
+*/
+const STATUS_LOTE_EXIBICAO = {
+  PREVIEW: { rotulo: 'Preview' },
+  CONFIRMADA: { rotulo: 'Confirmada' },
+  CANCELADA: { rotulo: 'Cancelada' },
+  SUBSTITUIDA: { rotulo: 'Substituída', tom: 'neutral' }
+};
+
+const STATUS_LINHA_EXIBICAO = {
+  VALIDA: { rotulo: 'Válida', tom: 'success' },
+  ERRO: { rotulo: 'Erro' },
+  CONFIRMADA: { rotulo: 'Confirmada' }
+};
+
+function EtiquetaStatus({ valor, catalogo }) {
+  if (!valor) return '-';
+  const item = catalogo[String(valor).toUpperCase()];
+  return <StatusBadge status={item?.rotulo || valor} kind={item?.tom} />;
+}
 
 const IMPORTACAO_PAYLOAD_COLUMNS = {
   JORNADA: [
@@ -26,24 +101,61 @@ const IMPORTACAO_PAYLOAD_COLUMNS = {
     { key: 'adicionais', label: 'Adicionais' },
     { key: 'descontos_informados', label: 'Descontos' },
     { key: 'valor_informado', label: 'Valor informado' },
-    { key: 'observacoes', label: 'Observacoes' }
+    { key: 'observacoes', label: 'Observações' }
   ],
   EVENTO_VARIAVEL: [
-    { key: 'codigo_evento', label: 'Codigo' },
-    { key: 'descricao_evento', label: 'Descricao' },
+    { key: 'codigo_evento', label: 'Código' },
+    { key: 'descricao_evento', label: 'Descrição' },
     { key: 'natureza', label: 'Natureza' },
     { key: 'valor', label: 'Valor' },
-    { key: 'referencia', label: 'Referencia' },
-    { key: 'observacoes', label: 'Observacoes' }
+    { key: 'referencia', label: 'Referência' },
+    { key: 'observacoes', label: 'Observações' }
   ],
   DESCONTO: [
-    { key: 'codigo_evento', label: 'Codigo' },
-    { key: 'descricao_evento', label: 'Descricao' },
+    { key: 'codigo_evento', label: 'Código' },
+    { key: 'descricao_evento', label: 'Descrição' },
     { key: 'valor', label: 'Valor' },
-    { key: 'referencia', label: 'Referencia' },
-    { key: 'observacoes', label: 'Observacoes' }
+    { key: 'referencia', label: 'Referência' },
+    { key: 'observacoes', label: 'Observações' }
   ]
 };
+
+// R17 — as colunas do PREVIEW mudam com o tipo do arquivo importado
+// (jornada, evento variavel, desconto). O papel de cada uma é derivado do
+// nome do campo, aqui no ponto de uso, para que nenhuma coluna gerada chegue
+// à tabela sem `tipo` (a medida e o alinhamento saem dele).
+const REGRAS_TIPO_PAYLOAD = [
+  [/(observ|descricao|referencia)/i, 'texto'],
+  [/natureza/i, 'badge'],
+  [/^codigo/i, 'codigo'],
+  [/(valor|adicionais|descontos)/i, 'valor'],
+  [/(dias|faltas|horas|quantidade)/i, 'numero']
+];
+
+function tipoDaColunaPayload(chave) {
+  const regra = REGRAS_TIPO_PAYLOAD.find(([padrao]) => padrao.test(chave));
+  return regra ? regra[1] : 'texto';
+}
+
+// O tipo chega do serviço em caixa alta (EVENTO_VARIAVEL); quem lê a tela
+// vê o rótulo do catálogo — mesmo texto da lista de escolha e do modelo.
+function rotuloTipo(tipo) {
+  const item = TIPOS_IMPORTACAO.find((opcao) => opcao.value === tipo);
+  return item ? item.label : (tipo || '-');
+}
+
+function rotuloObra(obra) {
+  if (!obra) return null;
+  return obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome;
+}
+
+// O serviço de importações recebe UM valor por recorte
+// (`tipo`, `obra_id`, `status`…). Por isso cada dimensão da BarraFiltros
+// declara `unico: true`: marcar outro valor SUBSTITUI o anterior. Sem isso
+// duas marcas viravam etiqueta na tela e filtro nenhum no servidor.
+function valorUnico(conjunto) {
+  return conjunto && conjunto.size === 1 ? conjunto.values().next().value : undefined;
+}
 
 function formatDateTime(value) {
   if (!value) return '-';
@@ -95,47 +207,31 @@ function getLinhaColaboradorNome(linha) {
   );
 }
 
-function buildTemplateRows(tipo) {
-  if (tipo === 'JORNADA') {
-    return [
-      ['Matricula', 'CPF', 'Dias_Trabalhados', 'Faltas', 'Horas_Extras', 'Adicionais', 'Descontos_Informados', 'Valor_Informado', 'Observacoes'],
-      ['MAT-001', '12345678909', '22', '0', '8', '250,00', '0,00', '', 'Competencia regular']
-    ];
-  }
+/*
+  QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
+  único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
+  TabelaPadrao.
 
-  if (tipo === 'EVENTO_VARIAVEL') {
-    return [
-      ['Matricula', 'CPF', 'Codigo_Evento', 'Descricao_Evento', 'Natureza', 'Valor', 'Referencia', 'Observacoes'],
-      ['MAT-001', '12345678909', 'HE50', 'Hora extra 50%', 'CREDITO', '480,00', 'Abril/2026', 'Lote complementar']
-    ];
-  }
-
-  return [
-    ['Matricula', 'CPF', 'Codigo_Evento', 'Descricao_Evento', 'Valor', 'Referencia', 'Observacoes'],
-    ['MAT-001', '12345678909', 'DESC-ADIANT', 'Desconto de adiantamento', '300,00', 'Abril/2026', 'Importado pela contabilidade']
-  ];
-}
-
-function downloadTemplate(tipo) {
-  const rows = buildTemplateRows(tipo);
-  const csv = rows
-    .map((cols) => cols.map((item) => `"${String(item).replace(/"/g, '""')}"`).join(';'))
-    .join('\r\n');
-
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `modelo-rh-importacao-${tipo.toLowerCase()}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
-}
+  NENHUM `padrao: false`: todos os filtros continuam VISÍVEIS na primeira
+  abertura. Só três telas têm conjunto inicial reduzido, e é o que o
+  cliente aprovou nelas — aqui o seletor apenas passa a EXISTIR, para quem
+  quiser mexer. Esconder por padrão mudaria o que a pessoa vê sem ela ter
+  pedido.
+*/
+const FILTROS_DA_TELA = [
+  { id: 'competencia', rotulo: 'Competência' },
+  { id: 'tipo', rotulo: 'Tipo' },
+  { id: 'empresa_grupo_id', rotulo: 'Empresa do grupo' },
+  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'tipo_vinculo', rotulo: 'Vínculo' },
+  { id: 'status', rotulo: 'Status' }
+];
 
 export default function RhDpImportacoes() {
   const { user } = useAuth();
   const podeEditar = canExecuteRhDpImportacoes(user);
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [carregandoBase, setCarregandoBase] = useState(false);
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [gerandoPreview, setGerandoPreview] = useState(false);
@@ -144,25 +240,117 @@ export default function RhDpImportacoes() {
   const [obras, setObras] = useState([]);
   const [importacoes, setImportacoes] = useState([]);
   const [detalhe, setDetalhe] = useState(null);
+  // A ação primária do cabeçalho abre o seletor de arquivo; o input fica no
+  // bloco do lote (é dele que os campos do envio saem).
+  const inputArquivoRef = useRef(null);
+
+  // Colunas do preview vindas do arquivo: id/titulo do catalogo, papel
+  // derivado do nome do campo (ver REGRAS_TIPO_PAYLOAD).
+  const colunasPayload = useMemo(
+    () => (IMPORTACAO_PAYLOAD_COLUMNS[detalhe?.tipo] || []).map((column) => ({
+      id: column.key,
+      titulo: column.label,
+      tipo: tipoDaColunaPayload(column.key),
+      render: (linha) => formatPayloadValue(linha.payload_json?.[column.key])
+    })),
+    [detalhe]
+  );
   const [filtros, setFiltros] = useState({
-    tipo: '',
     competencia: '',
-    empresa_grupo_id: '',
-    obra_id: '',
-    tipo_vinculo: '',
-    status: ''
+    tipo: new Set(),
+    empresa_grupo_id: new Set(),
+    obra_id: new Set(),
+    tipo_vinculo: new Set(),
+    status: new Set()
+  });
+  /*
+    N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
+    ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
+    vez de apagar, porque o recorte foi o usuário que montou.
+  */
+  const filtrosPreenchidos = useMemo(
+    () => FILTROS_DA_TELA.filter((filtro) => {
+      const valor = filtros[filtro.id];
+      return valor instanceof Set ? valor.size > 0 : String(valor ?? '').trim() !== '';
+    }).map((filtro) => filtro.id),
+    [filtros]
+  );
+  /*
+    A escolha mora na MESMA chave de lista que esta tela já usa na
+    TabelaPadrao: é a mesma lista respondendo a duas perguntas (quais
+    colunas, quais filtros), e o `PreferenciasContext` separa as duas pelo
+    TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
+    então não há chave antiga de onde migrar.
+  */
+  const visibilidadeFiltros = useFiltrosVisiveis('tabela:rh-dp-importacoes:lotes', FILTROS_DA_TELA, {
+    preenchidos: filtrosPreenchidos,
+    /*
+      Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
+      continuasse recortando a lista seria critério invisível — a pessoa lê a
+      contagem e conclui que é o conjunto inteiro.
+    */
+    aoEsconder: (id) => {
+      setFiltros((atual) => ({ ...atual, [id]: atual[id] instanceof Set ? new Set() : '' }));
+    }
   });
   const [form, setForm] = useState({
     tipo: 'JORNADA',
     competencia: '',
+    empresa_grupo_id: '',
     obra_id: '',
     tipo_vinculo: '',
     observacoes: ''
   });
 
+  // R12/R16: os seis selects do cartão de filtros viram uma faixa só.
+  // Competência é contínua e mora em `campos`; tipo, empresa, obra, vínculo
+  // e status são enumeráveis e vão em `filtros`, com marcação e etiqueta.
+  const dimensoesFiltro = useMemo(() => ([
+    {
+      id: 'tipo',
+      rotulo: 'Tipo',
+      unico: true,
+      opcoes: TIPOS_IMPORTACAO.map((item) => ({ valor: item.value, rotulo: item.label }))
+    },
+    {
+      id: 'empresa_grupo_id',
+      rotulo: 'Empresa do grupo',
+      unico: true,
+      opcoes: empresas.map((item) => ({ valor: String(item.id), rotulo: item.nome }))
+    },
+    {
+      id: 'obra_id',
+      rotulo: 'Obra',
+      unico: true,
+      opcoes: obras.map((item) => ({ valor: String(item.id), rotulo: rotuloObra(item) }))
+    },
+    {
+      id: 'tipo_vinculo',
+      rotulo: 'Vínculo',
+      unico: true,
+      opcoes: VINCULOS.map((item) => ({ valor: item.value, rotulo: item.label }))
+    },
+    {
+      id: 'status',
+      rotulo: 'Status',
+      unico: true,
+      opcoes: STATUS_LOTE.map((item) => ({ valor: item.value, rotulo: item.label }))
+    }
+  ]), [empresas, obras]);
+
   useEffect(() => {
     carregarBase();
   }, []);
+
+  // Filtro marcado aplica na hora (padrão Solicitações, R12); a competência
+  // digitada espera 350ms para não martelar a API a cada tecla. É o mesmo
+  // recarregar que o botão "Aplicar filtros" fazia.
+  useEffect(() => {
+    const atraso = setTimeout(() => {
+      carregarImportacoes(filtros);
+    }, 350);
+    return () => clearTimeout(atraso);
+  }, [filtros]);
 
   async function carregarBase() {
     try {
@@ -174,28 +362,30 @@ export default function RhDpImportacoes() {
 
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
       setObras(Array.isArray(listaObras) ? listaObras : []);
-      await carregarImportacoes();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar base de importacoes RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar base de importações RH/DP');
     } finally {
       setCarregandoBase(false);
     }
   }
 
-  async function carregarImportacoes() {
+  async function carregarImportacoes(filtrosAtuais = filtros) {
     try {
       setCarregandoLista(true);
       const data = await getRhImportacoes({
-        tipo: filtros.tipo || undefined,
-        competencia: filtros.competencia || undefined,
-        empresa_grupo_id: filtros.empresa_grupo_id || undefined,
-        obra_id: filtros.obra_id || undefined,
-        tipo_vinculo: filtros.tipo_vinculo || undefined,
-        status: filtros.status || undefined
+        tipo: valorUnico(filtrosAtuais.tipo),
+        competencia: filtrosAtuais.competencia || undefined,
+        empresa_grupo_id: valorUnico(filtrosAtuais.empresa_grupo_id),
+        obra_id: valorUnico(filtrosAtuais.obra_id),
+        tipo_vinculo: valorUnico(filtrosAtuais.tipo_vinculo),
+        status: valorUnico(filtrosAtuais.status)
       });
 
       setImportacoes(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao filtrar importações RH/DP');
     } finally {
       setCarregandoLista(false);
     }
@@ -207,16 +397,7 @@ export default function RhDpImportacoes() {
       setDetalhe(data);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar detalhe da importacao RH/DP');
-    }
-  }
-
-  async function aplicarFiltros() {
-    try {
-      await carregarImportacoes();
-    } catch (error) {
-      console.error(error);
-      alert(error?.message || 'Erro ao filtrar importacoes RH/DP');
+      avisar.erro(error?.message || 'Erro ao carregar detalhe da importação RH/DP');
     }
   }
 
@@ -226,7 +407,7 @@ export default function RhDpImportacoes() {
 
     if (!file) return;
     if (!form.competencia || !form.tipo || !form.obra_id) {
-      alert('Preencha tipo, competencia e obra antes de subir a planilha.');
+      avisar.alerta('Preencha tipo, competência e obra antes de subir a planilha.');
       return;
     }
 
@@ -236,6 +417,7 @@ export default function RhDpImportacoes() {
         tipo: form.tipo,
         competencia: form.competencia,
         obra_id: form.obra_id,
+        empresa_grupo_id: form.empresa_grupo_id || undefined,
         tipo_vinculo: form.tipo_vinculo || undefined,
         observacoes: form.observacoes || undefined,
         file
@@ -245,7 +427,7 @@ export default function RhDpImportacoes() {
       setDetalhe(data);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao gerar preview da importacao RH/DP');
+      avisar.erro(error?.message || 'Erro ao gerar preview da importação RH/DP');
     } finally {
       setGerandoPreview(false);
     }
@@ -256,333 +438,365 @@ export default function RhDpImportacoes() {
       return;
     }
 
-    if (!window.confirm('Confirmar esta importacao e congelar as linhas validas para os proximos blocos do RH/DP?')) {
-      return;
-    }
+    // A confirmação congela as linhas válidas e fecha o lote — não há como
+    // reabrir por esta tela. Ela NÃO apaga nem substitui dado já gravado
+    // (o serviço só marca as linhas como CONFIRMADA), então não é
+    // destrutiva: o rótulo diz o que acontece e o peso do botão é o normal.
+    const totalValidas = Number(detalhe.total_validas || 0);
+    const totalErros = Number(detalhe.total_erros || 0);
+    const { ok } = await confirmar({
+      titulo: 'Confirmar importação',
+      mensagem: `Confirmar a importação #${detalhe.id} (${rotuloTipo(detalhe.tipo)}) da competência ${detalhe.competencia}? As ${totalValidas} linha(s) válidas ficam congeladas para os próximos blocos do RH/DP${totalErros ? ` e as ${totalErros} linha(s) com erro ficam de fora` : ''}. O lote não pode ser reaberto por esta tela.`,
+      rotuloConfirmar: 'Confirmar importação'
+    });
+    if (!ok) return;
 
     try {
       setConfirmando(true);
       const atualizado = await confirmarRhImportacao(detalhe.id);
       setDetalhe(atualizado);
       await carregarImportacoes();
+      avisar.sucesso(`Importação #${detalhe.id} confirmada.`);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao confirmar importacao RH/DP');
+      avisar.erro(error?.message || 'Erro ao confirmar importação RH/DP');
     } finally {
       setConfirmando(false);
     }
   }
 
   return (
-    <div className="page solicitacoes-page rhdp-page space-y-6">
-      <div className="app-page-header">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="text-xl font-semibold md:text-2xl">RH/DP - Importacoes</h1>
-            <p className="page-subtitle">
-              Upload de jornadas, eventos variaveis e descontos com preview persistido, validacao por linha e confirmacao explicita.
-            </p>
-          </div>
-          <div className="app-page-actions">
-            <Link to="/rh-dp" className="btn btn-outline">
-              Voltar ao RH/DP
-            </Link>
-            <Link to="/rh-dp/colaboradores" className="btn btn-outline">
-              Colaboradores
-            </Link>
-          </div>
-        </div>
-      </div>
+    <Pagina className="rhdp-page">
+      {/* D6/D7: sem prefixo "RH/DP" no título e sem os links cruzados de
+          navegação — o breadcrumb e o menu já situam o módulo (R11). Os três
+          modelos de planilha são AÇÃO (baixar arquivo), não navegação. Eles
+          ficavam no "⋯", que saiu do sistema (07/09): são botões visíveis,
+          quatro na faixa, medidos em uma linha a 1920 e a 1366. */}
+      <PageHeader
+        titulo="Importações"
+        contagem={`${importacoes.length} lote(s)`}
+        descricao="Upload de jornadas, eventos variáveis e descontos com preview persistido, validação por linha e confirmação explícita."
+        acaoPrincipal={podeEditar ? {
+          rotulo: gerandoPreview ? 'Gerando preview...' : 'Selecionar planilha',
+          onClick: () => inputArquivoRef.current?.click(),
+          desabilitada: gerandoPreview
+        } : undefined}
+        secundarias={TIPOS_IMPORTACAO.map((item) => ({
+          rotulo: `Modelo ${item.label}`,
+          title: `Baixar o modelo CSV de ${item.label.toLowerCase()}`,
+          onClick: () => downloadRhImportTemplate(item.value)
+        }))}
+      />
 
-      <div className="sol-surface-card rounded-xl p-4 space-y-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <select
-            className="form-control"
-            value={form.tipo}
-            onChange={(e) => setForm((prev) => ({ ...prev, tipo: e.target.value }))}
-            disabled={!podeEditar}
-          >
-            {TIPOS_IMPORTACAO.map((item) => (
-              <option key={item.value} value={item.value}>{item.label}</option>
-            ))}
-          </select>
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {/* Formulário de AÇÃO (descreve o lote que está sendo enviado), não
+          filtro: continua na tela, agora com rótulo por campo e medidas da
+          escala. */}
+      <BlocoConteudo
+        titulo="Dados do lote"
+        descricao="Valem para a próxima planilha selecionada: tipo, competência e obra são obrigatórios."
+        variante="secundario"
+      >
+        <FormSecao colunas={3}>
+          <CampoForm label="Tipo" obrigatorio>
+            <select
+              className="input w-full"
+              value={form.tipo}
+              onChange={(e) => setForm((prev) => ({ ...prev, tipo: e.target.value }))}
+              disabled={!podeEditar}
+            >
+              {TIPOS_IMPORTACAO.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+          </CampoForm>
+          <CampoForm label="Competência" obrigatorio>
+            <input
+              type="month"
+              className="input w-full"
+              value={form.competencia}
+              onChange={(e) => setForm((prev) => ({ ...prev, competencia: e.target.value }))}
+              disabled={!podeEditar}
+            />
+          </CampoForm>
+          <CampoForm label="Obra" obrigatorio>
+            <select
+              className="input w-full"
+              value={form.obra_id}
+              onChange={(e) => setForm((prev) => ({ ...prev, obra_id: e.target.value }))}
+              disabled={!podeEditar}
+              required
+            >
+              <option value="">Selecione a obra</option>
+              {obras.map((item) => (
+                <option key={item.id} value={item.id}>{rotuloObra(item)}</option>
+              ))}
+            </select>
+          </CampoForm>
+          {/*
+            Decisão do cliente (02/09): o filtro "Empresa do grupo" do
+            histórico era NATIMORTO — a tela nunca mandava `empresa_grupo_id`
+            ao criar o lote, então todo lote nascia com o campo nulo e o
+            filtro só podia devolver lista vazia. O backend aceita e persiste
+            o campo (validateRhImportacaoCreateBody + rhImportacaoService);
+            faltava a tela oferecê-lo. Opcional, como no backend.
+          */}
+          <CampoForm label="Empresa do grupo">
+            <select
+              className="input w-full"
+              value={form.empresa_grupo_id}
+              onChange={(e) => setForm((prev) => ({ ...prev, empresa_grupo_id: e.target.value }))}
+              disabled={!podeEditar}
+            >
+              <option value="">Não informar</option>
+              {empresas.map((item) => (
+                <option key={item.id} value={item.id}>{item.nome}</option>
+              ))}
+            </select>
+          </CampoForm>
+          <CampoForm label="Vínculo">
+            <select
+              className="input w-full"
+              value={form.tipo_vinculo}
+              onChange={(e) => setForm((prev) => ({ ...prev, tipo_vinculo: e.target.value }))}
+              disabled={!podeEditar}
+            >
+              <option value="">Todos os vínculos</option>
+              {VINCULOS.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+          </CampoForm>
+          <CampoForm label="Observações do lote" tipo="observacao">
+            <textarea
+              className="input w-full"
+              rows={3}
+              placeholder="Observações do lote"
+              value={form.observacoes}
+              onChange={(e) => setForm((prev) => ({ ...prev, observacoes: e.target.value }))}
+              disabled={!podeEditar}
+            />
+          </CampoForm>
+        </FormSecao>
+
+        {podeEditar && (
           <input
-            type="month"
-            className="form-control"
-            value={form.competencia}
-            onChange={(e) => setForm((prev) => ({ ...prev, competencia: e.target.value }))}
-            disabled={!podeEditar}
+            ref={inputArquivoRef}
+            type="file"
+            accept=".csv,.xls,.xlsx"
+            className="hidden"
+            onChange={onSelecionarArquivo}
+            disabled={gerandoPreview}
           />
-          <select
-            className="form-control"
-            value={form.obra_id}
-            onChange={(e) => setForm((prev) => ({ ...prev, obra_id: e.target.value }))}
-            disabled={!podeEditar}
-            required
-          >
-            <option value="">Selecione a obra obrigatoria</option>
-            {obras.map((item) => (
-              <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}</option>
-            ))}
-          </select>
-          <select
-            className="form-control"
-            value={form.tipo_vinculo}
-            onChange={(e) => setForm((prev) => ({ ...prev, tipo_vinculo: e.target.value }))}
-            disabled={!podeEditar}
-          >
-            <option value="">Todos os vinculos</option>
-            <option value="CLT">CLT</option>
-            <option value="NAO_CLT">Nao CLT</option>
-          </select>
-          <textarea
-            className="form-control min-h-[84px]"
-            placeholder="Observacoes do lote"
-            value={form.observacoes}
-            onChange={(e) => setForm((prev) => ({ ...prev, observacoes: e.target.value }))}
-            disabled={!podeEditar}
+        )}
+      </BlocoConteudo>
+
+      {/*
+        A proporção das duas colunas segue O CONTEÚDO, não um número fixo:
+        sem lote escolhido o painel da direita carrega UMA frase e quem
+        precisa de largura é a tabela de lotes; com lote escolhido o preview
+        vira o bloco principal (resumo + tabela por linha) e a divisão fica
+        equilibrada. Quem lê essa diferença é o CSS da classe (o piso da
+        coluna da lista é o que a tabela pede) — a tela não escreve medida.
+      */}
+      <div className={`rhdp-importacoes-workspace${detalhe ? ' rhdp-importacoes-workspace--com-preview' : ''}`}>
+        <BlocoConteudo titulo="Lotes enviados">
+          <BarraFiltros
+            campos={[{
+              id: 'competencia',
+              rotulo: 'Competência',
+              tipo: 'month',
+              valor: filtros.competencia,
+              aoMudar: (valor) => setFiltros((atuais) => ({ ...atuais, competencia: valor }))
+            }].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
+            filtros={dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+            ativos={{
+              tipo: filtros.tipo,
+              empresa_grupo_id: filtros.empresa_grupo_id,
+              obra_id: filtros.obra_id,
+              tipo_vinculo: filtros.tipo_vinculo,
+              status: filtros.status
+            }}
+            aoAlternar={(dimensao, valor, opcoes) => setFiltros(
+              (atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes)
+            )}
+            aoLimpar={() => setFiltros({
+              competencia: '',
+              tipo: new Set(),
+              empresa_grupo_id: new Set(),
+              obra_id: new Set(),
+              tipo_vinculo: new Set(),
+              status: new Set()
+            })}
+            visibilidade={visibilidadeFiltros}
           />
-        </div>
 
-        <div className="app-page-actions">
-          {TIPOS_IMPORTACAO.map((item) => (
-            <button key={item.value} type="button" className="btn btn-outline" onClick={() => downloadTemplate(item.value)}>
-              Modelo {item.label}
-            </button>
-          ))}
-          {podeEditar && (
-            <label className={`btn btn-primary cursor-pointer ${gerandoPreview ? 'opacity-60 pointer-events-none' : ''}`}>
-              {gerandoPreview ? 'Gerando preview...' : 'Selecionar planilha'}
-              <input
-                type="file"
-                accept=".csv,.xls,.xlsx"
-                className="hidden"
-                onChange={onSelecionarArquivo}
-                disabled={gerandoPreview}
-              />
-            </label>
-          )}
-        </div>
-      </div>
-
-      <div className="sol-surface-card solicitacoes-toolbar app-toolbar-card rounded-xl p-3 md:p-4 space-y-3">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <select
-            className="form-control"
-            value={filtros.tipo}
-            onChange={(e) => setFiltros((prev) => ({ ...prev, tipo: e.target.value }))}
-          >
-            <option value="">Todos os tipos</option>
-            {TIPOS_IMPORTACAO.map((item) => (
-              <option key={item.value} value={item.value}>{item.label}</option>
-            ))}
-          </select>
-          <input
-            type="month"
-            className="form-control"
-            value={filtros.competencia}
-            onChange={(e) => setFiltros((prev) => ({ ...prev, competencia: e.target.value }))}
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'lote',
+                titulo: 'Lote',
+                // R17: o lote é nomeado pelo arquivo enviado (o numero sozinho
+                // nao diz a quem procura o envio que deu errado).
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={`#${item.id} · ${rotuloTipo(item.tipo)}`}
+                    sub={item.nome_arquivo || '-'}
+                  />
+                )
+              },
+              {
+                id: 'competencia',
+                titulo: 'Competência',
+                tipo: 'codigo',
+                ordenavel: true,
+                valorOrdenacao: (item) => String(item.competencia || ''),
+                render: (item) => item.competencia
+              },
+              {
+                id: 'obra',
+                titulo: 'Obra',
+                tipo: 'texto',
+                render: (item) => rotuloObra(item.obra) || '-'
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (item) => (
+                  <EtiquetaStatus valor={item.status} catalogo={STATUS_LOTE_EXIBICAO} />
+                )
+              },
+              {
+                id: 'resultado',
+                titulo: 'Resultado',
+                tipo: 'texto',
+                render: (item) => `${item.total_validas || 0} válida(s) · ${item.total_erros || 0} erro(s)`
+              }
+            ]}
+            itens={importacoes}
+            storageKey="tabela:rh-dp-importacoes:lotes"
+            rotuloRolagem="Lotes de importação RH/DP"
+            carregando={carregandoBase || carregandoLista}
+            vazio="Nenhuma importação RH/DP localizada"
+            linhaSelecionada={(item) => Number(detalhe?.id) === Number(item.id)}
+            urgencia={(item) => (Number(item.total_erros || 0) > 0 ? 'danger' : null)}
+            acoesLinha={(item) => (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => selecionarImportacao(item.id)}
+                title="Ver preview"
+                aria-label={`Ver preview da importação ${item.id}`}
+              >
+                <HiOutlineEye aria-hidden="true" />
+              </button>
+            )}
+            larguraAcoes={120}
           />
-          <select
-            className="form-control"
-            value={filtros.empresa_grupo_id}
-            onChange={(e) => setFiltros((prev) => ({ ...prev, empresa_grupo_id: e.target.value }))}
-          >
-            <option value="">Todas as empresas</option>
-            {empresas.map((item) => (
-              <option key={item.id} value={item.id}>{item.nome}</option>
-            ))}
-          </select>
-          <select
-            className="form-control"
-            value={filtros.obra_id}
-            onChange={(e) => setFiltros((prev) => ({ ...prev, obra_id: e.target.value }))}
-          >
-            <option value="">Todas as obras</option>
-            {obras.map((item) => (
-              <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}</option>
-            ))}
-          </select>
-          <select
-            className="form-control"
-            value={filtros.tipo_vinculo}
-            onChange={(e) => setFiltros((prev) => ({ ...prev, tipo_vinculo: e.target.value }))}
-          >
-            <option value="">Todos os vinculos</option>
-            <option value="CLT">CLT</option>
-            <option value="NAO_CLT">Nao CLT</option>
-          </select>
-          <select
-            className="form-control"
-            value={filtros.status}
-            onChange={(e) => setFiltros((prev) => ({ ...prev, status: e.target.value }))}
-          >
-            <option value="">Todos os status</option>
-            <option value="PREVIEW">Preview</option>
-            <option value="CONFIRMADA">Confirmada</option>
-            <option value="CANCELADA">Cancelada</option>
-          </select>
-        </div>
+        </BlocoConteudo>
 
-        <div className="app-page-actions">
-          <button type="button" className="btn btn-outline" onClick={aplicarFiltros} disabled={carregandoLista}>
-            Aplicar filtros
-          </button>
-        </div>
-      </div>
-
-      <div className="rhdp-importacoes-workspace">
-        <div className="card sol-surface-card app-table-shell rhdp-importacoes-list-card">
-          <div className="app-dense-table-wrapper rhdp-importacoes-lotes-wrapper">
-            <table className="app-dense-data-table rhdp-importacoes-lotes-table">
-              <thead>
-                <tr>
-                  <th>Lote</th>
-                  <th>Competencia</th>
-                  <th>Obra</th>
-                  <th>Status</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {importacoes.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <div className="font-semibold text-slate-900">#{item.id}</div>
-                      <div className="text-xs uppercase tracking-wide text-slate-500">{item.tipo}</div>
-                      <div className="rhdp-importacoes-lote-file" title={item.nome_arquivo || ''}>
-                        {item.nome_arquivo || '-'}
-                      </div>
-                    </td>
-                    <td>{item.competencia}</td>
-                    <td>{item.obra?.codigo ? `${item.obra.codigo} - ${item.obra.nome}` : item.obra?.nome || '-'}</td>
-                    <td>
-                      <div className="font-semibold text-slate-900">{item.status}</div>
-                      <div className="text-xs text-slate-500">
-                        {item.total_validas || 0} valida(s) · {item.total_erros || 0} erro(s)
-                      </div>
-                    </td>
-                    <td className="text-right">
-                      <button
-                        type="button"
-                        className="app-dense-icon-action"
-                        onClick={() => selecionarImportacao(item.id)}
-                        title="Ver preview"
-                        aria-label={`Ver preview da importacao ${item.id}`}
-                      >
-                        <HiOutlineEye aria-hidden="true" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {!importacoes.length && (
-                  <tr>
-                    <td colSpan="5" align="center">
-                      {carregandoBase || carregandoLista ? 'Carregando...' : 'Nenhuma importacao RH/DP localizada'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="sol-surface-card rounded-xl p-4 space-y-4 rhdp-importacoes-detail-card">
-          {!detalhe ? (
-            <div className="text-sm text-slate-500">
-              Selecione uma importacao para ver o preview persistido, os erros de linha e a confirmacao.
-            </div>
-          ) : (
+        {/* O preview validado por linha é o bloco principal da tela. */}
+        <BlocoConteudo
+          titulo={detalhe
+            ? `Importação #${detalhe.id} · ${rotuloTipo(detalhe.tipo)}`
+            : 'Preview da importação'}
+          descricao={detalhe
+            ? `Competência ${detalhe.competencia} · ${rotuloObra(detalhe.obra) || 'obra não informada'} · ${detalhe.status}`
+            : 'Selecione uma importação para ver o preview persistido, os erros de linha e a confirmação.'}
+          variante="primario"
+          cor="var(--c-primary)"
+          acoes={detalhe ? (
             <>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">
-                    Importacao #{detalhe.id} - {detalhe.tipo}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Competencia {detalhe.competencia} · {detalhe.obra?.codigo ? `${detalhe.obra.codigo} - ${detalhe.obra.nome}` : detalhe.obra?.nome || 'obra nao informada'} · {detalhe.status}
-                  </p>
-                </div>
-                <div className="app-page-actions">
-                  <button type="button" className="btn btn-outline" onClick={() => setDetalhe(null)}>
-                    Voltar para lista
-                  </button>
-                  {podeEditar && detalhe.status === 'PREVIEW' && (
-                    <button type="button" className="btn btn-primary" onClick={confirmarImportacao} disabled={confirmando}>
-                      {confirmando ? 'Confirmando...' : 'Confirmar importacao'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="rhdp-importacao-summary-grid">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Linhas</div>
-                  <div className="mt-1 text-2xl font-semibold text-slate-900">{detalhe.total_linhas || 0}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Validas</div>
-                  <div className="mt-1 text-2xl font-semibold text-slate-900">{detalhe.total_validas || 0}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Erros</div>
-                  <div className="mt-1 text-2xl font-semibold text-slate-900">{detalhe.total_erros || 0}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Criado em</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">{formatDateTime(detalhe.createdAt)}</div>
-                </div>
-              </div>
-
-              {detalhe.observacoes && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  {detalhe.observacoes}
-                </div>
+              <button type="button" className="btn btn-outline" onClick={() => setDetalhe(null)}>
+                Voltar para lista
+              </button>
+              {podeEditar && detalhe.status === 'PREVIEW' && (
+                <button type="button" className="btn btn-primary" onClick={confirmarImportacao} disabled={confirmando}>
+                  {confirmando ? 'Confirmando...' : 'Confirmar importação'}
+                </button>
               )}
-
-              <div className="app-dense-table-wrapper max-h-[520px]">
-                <table className="app-dense-data-table rhdp-importacao-preview-table">
-                  <thead>
-                    <tr>
-                      <th>Linha</th>
-                      <th>Codigo/matricula</th>
-                      <th>Colaborador</th>
-                      <th>Status</th>
-                      {(IMPORTACAO_PAYLOAD_COLUMNS[detalhe.tipo] || []).map((column) => (
-                        <th key={column.key}>{column.label}</th>
-                      ))}
-                      <th>Erro</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(detalhe.linhas || []).map((linha) => (
-                      <tr key={linha.id}>
-                        <td>{linha.numero_linha}</td>
-                        <td>{getLinhaColaboradorCodigo(linha)}</td>
-                        <td className="font-semibold text-slate-900">{getLinhaColaboradorNome(linha)}</td>
-                        <td>{linha.status}</td>
-                        {(IMPORTACAO_PAYLOAD_COLUMNS[detalhe.tipo] || []).map((column) => (
-                          <td key={column.key} className="text-sm text-slate-700">
-                            {formatPayloadValue(linha.payload_json?.[column.key])}
-                          </td>
-                        ))}
-                        <td className="text-sm text-rose-700">
-                          {linha.erro_mensagem ? `Linha ${linha.numero_linha}: ${linha.erro_mensagem}` : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                    {!detalhe.linhas?.length && (
-                      <tr>
-                        <td colSpan={5 + (IMPORTACAO_PAYLOAD_COLUMNS[detalhe.tipo] || []).length} align="center">Sem linhas registradas</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
             </>
-          )}
-        </div>
+          ) : null}
+        >
+          {detalhe ? (
+            <>
+              <StatGrid colunas={4}>
+                <StatTile label="Linhas" valor={detalhe.total_linhas || 0} />
+                <StatTile label="Válidas" valor={detalhe.total_validas || 0} />
+                <StatTile
+                  label="Erros"
+                  valor={detalhe.total_erros || 0}
+                  tom={Number(detalhe.total_erros || 0) > 0 ? 'danger' : undefined}
+                />
+                <StatTile label="Criado em" valor={formatDateTime(detalhe.createdAt)} />
+                {detalhe.observacoes ? (
+                  <StatTile label="Observações do lote" valor={detalhe.observacoes} full />
+                ) : null}
+              </StatGrid>
+
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'numero_linha',
+                    titulo: 'Linha',
+                    tipo: 'codigo',
+                    render: (linha) => linha.numero_linha
+                  },
+                  {
+                    id: 'codigo_ref',
+                    titulo: 'Código/matrícula',
+                    tipo: 'codigo',
+                    render: (linha) => getLinhaColaboradorCodigo(linha)
+                  },
+                  {
+                    id: 'colaborador',
+                    titulo: 'Colaborador',
+                    // R17: a linha do preview é de um COLABORADOR nomeado.
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (linha) => getLinhaColaboradorNome(linha)
+                  },
+                  {
+                    id: 'status',
+                    titulo: 'Status',
+                    tipo: 'status',
+                    render: (linha) => (
+                      <EtiquetaStatus valor={linha.status} catalogo={STATUS_LINHA_EXIBICAO} />
+                    )
+                  },
+                  // Colunas VINDAS DO ARQUIVO importado: o papel de cada uma é
+                  // derivado aqui, no ponto de uso, para que nenhuma coluna
+                  // chegue à tabela sem `tipo`.
+                  ...colunasPayload,
+                  {
+                    id: 'erro',
+                    titulo: 'Erro',
+                    tipo: 'texto',
+                    render: (linha) => (linha.erro_mensagem
+                      ? (
+                        <span style={{ color: 'var(--sem-danger)' }}>
+                          {`Linha ${linha.numero_linha}: ${linha.erro_mensagem}`}
+                        </span>
+                      )
+                      : '-')
+                  }
+                ]}
+                itens={detalhe.linhas || []}
+                storageKey="tabela:rh-dp-importacoes:preview"
+                rotuloRolagem="Linhas do preview da importação"
+                vazio="Sem linhas registradas"
+                urgencia={(linha) => (linha.erro_mensagem ? 'danger' : null)}
+              />
+            </>
+          ) : null}
+        </BlocoConteudo>
       </div>
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

@@ -1,17 +1,30 @@
 const { Op } = require('sequelize');
-const { TipoSolicitacao, TipoSubContrato, Solicitacao, Contrato } = require('../models');
+const { TipoSolicitacao, TipoSubContrato, TipoSubContratoTipoSolicitacao, Solicitacao, Contrato } = require('../models');
 const {
   enrichTipoSolicitacao,
   normalizeTipoSolicitacaoCodigo,
   serializeTipoSolicitacaoBehavior
 } = require('../services/tipoSolicitacaoBehaviorService');
+const {
+  garantirTipoCadastroObra,
+  garantirTiposAutomaticosCentroCusto
+} = require('../services/tipoSolicitacaoDisponibilidadeService');
 
 module.exports = {
   async index(req, res) {
-    const tipos = await TipoSolicitacao.findAll({
-      order: [['nome', 'ASC']]
-    });
-    return res.json(tipos.map(enrichTipoSolicitacao));
+    try {
+      await Promise.all([
+        garantirTiposAutomaticosCentroCusto(),
+        garantirTipoCadastroObra()
+      ]);
+      const tipos = await TipoSolicitacao.findAll({
+        order: [['nome', 'ASC']]
+      });
+      return res.json(tipos.map(enrichTipoSolicitacao));
+    } catch (error) {
+      console.error('Erro ao listar tipos:', error);
+      return res.status(500).json({ error: 'Erro ao listar tipos de solicitacao' });
+    }
   },
 
   async create(req, res) {
@@ -38,6 +51,7 @@ module.exports = {
     const tipo = await TipoSolicitacao.create({
       nome,
       codigo_interno: codigoInterno || null,
+      disponivel_para_obras: req.body?.disponivel_para_obras !== false,
       comportamento: serializeTipoSolicitacaoBehavior(req.body?.comportamento || null)
     });
     return res.status(201).json(enrichTipoSolicitacao(tipo));
@@ -75,6 +89,9 @@ module.exports = {
       await tipo.update({
         nome,
         codigo_interno: codigoInterno || null,
+        disponivel_para_obras: req.body?.disponivel_para_obras !== undefined
+          ? req.body.disponivel_para_obras === true
+          : tipo.disponivel_para_obras,
         comportamento: req.body?.comportamento !== undefined
           ? serializeTipoSolicitacaoBehavior(req.body?.comportamento)
           : tipo.comportamento
@@ -126,7 +143,7 @@ module.exports = {
       }
 
       const [totalSubtipos, totalSolicitacoes, totalContratos] = await Promise.all([
-        TipoSubContrato.count({ where: { tipo_macro_id: id } }),
+        TipoSubContratoTipoSolicitacao.count({ where: { tipo_solicitacao_id: id } }),
         Solicitacao.count({ where: { tipo_solicitacao_id: id } }),
         Contrato.count({ where: { tipo_macro_id: id } })
       ]);

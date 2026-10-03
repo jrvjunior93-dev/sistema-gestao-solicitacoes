@@ -1,0 +1,9 @@
+{
+  "regra": "R35",
+  "criado_em": "2026-09-06",
+  "porque": "Passivo herdado de <input type=\"date\"> congelado na data em que a R35 nasceu. MEDIDO no Chromium: a ordem dos campos do campo nativo sai do idioma da INTERFACE do navegador, nao do lang=\"pt-BR\" da pagina nem do Accept-Language - contexto pt-BR deu Month/Day/Year e so LANG=pt_BR.UTF-8 deu Dia/Mes/Ano. Ou seja: a MESMA tela mostra mm/dd/yyyy para um usuario e dd/mm/aaaa para outro, e a pagina nao tem como decidir. Numa construtora brasileira isso e diferenca de vencimento, nao de gosto. O substituto ja existia: components/DateInputBR.jsx (texto com mascara DD/MM/AAAA, valor externo em ISO). Este numero so pode diminuir.",
+  "total_em": 9,
+  "arquivos": {
+    "src/pages/RhDpPessoal.jsx": 9
+  }
+}

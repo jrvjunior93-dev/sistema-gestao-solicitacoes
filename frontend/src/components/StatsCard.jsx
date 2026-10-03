@@ -60,7 +60,7 @@ export default function StatsCard({
 
       <div>
         <p
-          className="text-2xl font-bold leading-none"
+          className="text-3xl font-bold leading-none"
           style={{ color: 'var(--c-text)' }}
         >
           {value ?? '—'}

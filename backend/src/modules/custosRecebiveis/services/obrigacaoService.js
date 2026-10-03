@@ -13,14 +13,23 @@ const {
 const {
   resolveExplicitCustosRecebiveisPermissions
 } = require('../policies/permissionPolicy');
+const {
+  carregarContextoPrazos,
+  competenciaNoInstante,
+  janelaPlanejamento,
+  prazoMedicaoEfetivo
+} = require('./prazoService');
 
 const VALID_COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 const OBRIGACAO_TYPES = Object.freeze({
   CUSTO_PREVISTO: 'CUSTO_PREVISTO',
-  MEDICAO_APRESENTADA: 'RECEITA_PREVISTA'
+  MEDICAO_APRESENTADA: 'RECEITA_PREVISTA',
+  MEDICAO_APROVADA: 'MEDICAO_CONSOLIDADA'
 });
 const ACTIVE_OBLIGATION_STATES = Object.freeze(['PENDENTE', 'VENCIDA']);
-const MAX_BYPASS_DAYS = 30;
+// Liberacao temporaria do bloqueio: no maximo 48 horas (decisao de 29/09).
+const MAX_BYPASS_HOURS = 48;
+const MAX_BYPASS_DAYS = MAX_BYPASS_HOURS / 24;
 
 function dependencies(overrides = {}) {
   return {
@@ -34,6 +43,7 @@ function dependencies(overrides = {}) {
     CrReabertura: db.CrReabertura,
     CrGuardBypass: db.CrGuardBypass,
     CrAuditoria: db.CrAuditoria,
+    carregarContextoPrazos,
     isModuleEnabled,
     isSuperadmin,
     resolveExplicitPermissions: resolveExplicitCustosRecebiveisPermissions,
@@ -67,8 +77,10 @@ function normalizeCompetencia(value) {
   return normalized;
 }
 
+// Mes corrente em Brasilia (mesma regua de prazoService), e nao no fuso do
+// servidor: na EC2 em UTC a virada vinha 3 horas antes.
 function competenciaAtual(now = new Date()) {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return competenciaNoInstante(now);
 }
 
 function addMonth(competencia, amount = 1) {
@@ -145,8 +157,17 @@ function serializeObligation(value, context = {}) {
     cumprida_em: item.cumprida_em || null,
     alerta: alertLevel(deadline, context.now),
     reabertura_ativa: Boolean(context.reaberturaAtiva),
-    exige_reabertura: item.situacao === 'VENCIDA' && !context.reaberturaAtiva
+    // Planejamento atrasado e registrado sem reabertura (decisao de 29/09).
+    exige_reabertura: false
   };
+}
+
+// Teto de 48h tambem na leitura: liberacao antiga gravada com prazo maior
+// vale ate concedido_em + 48h (mesma regra do bloqueio por obra).
+function expiracaoEfetivaBypass(item) {
+  const expira = new Date(item.expira_em).getTime();
+  const limite = item.concedido_em ? new Date(item.concedido_em).getTime() + (MAX_BYPASS_HOURS * 3600000) : Infinity;
+  return new Date(Math.min(expira, limite));
 }
 
 function serializeBypass(value, context = {}) {
@@ -172,10 +193,10 @@ function serializeBypass(value, context = {}) {
       nome: item.concedidoPor.nome
     } : null,
     concedido_em: item.concedido_em,
-    expira_em: item.expira_em,
+    expira_em: item.expira_em ? expiracaoEfetivaBypass(item) : item.expira_em,
     revogado_por: item.revogado_por ? Number(item.revogado_por) : null,
     revogado_em: item.revogado_em || null,
-    ativo: !item.revogado_em && new Date(item.expira_em) > new Date(context.now || Date.now()),
+    ativo: !item.revogado_em && Boolean(item.expira_em) && expiracaoEfetivaBypass(item) > new Date(context.now || Date.now()),
     recorrente: Boolean(context.recorrente)
   };
 }
@@ -185,7 +206,8 @@ async function resolveObligationCapabilities(user, deps) {
     return {
       moduleAccess: true,
       costs: true,
-      receivables: true
+      receivables: true,
+      measurement: true
     };
   }
   const permissions = new Set(
@@ -195,7 +217,8 @@ async function resolveObligationCapabilities(user, deps) {
   return {
     moduleAccess: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.MODULE_ACCESS),
     costs: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_COSTS),
-    receivables: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_RECEIVABLES)
+    receivables: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_RECEIVABLES),
+    measurement: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE)
   };
 }
 
@@ -208,6 +231,12 @@ function obligationTypesForWork(classificationValue, capabilities) {
     && capabilities.receivables
   ) {
     types.push(OBRIGACAO_TYPES.MEDICAO_APRESENTADA);
+  }
+  if (
+    String(classificationValue || '').trim().toUpperCase() === 'PUBLICA'
+    && capabilities.measurement
+  ) {
+    types.push(OBRIGACAO_TYPES.MEDICAO_APROVADA);
   }
   return types;
 }
@@ -278,12 +307,15 @@ async function findExpectedObligations(user, deps, options = {}) {
     });
   }
   const earliest = starts.sort()[0] || current;
+  // Planejamento do mes seguinte ja e cobrado quando a janela dele abre (dia
+  // 25, no padrao): a busca vai ate o mes seguinte.
   const competencies = await deps.CrCompetencia.findAll({
     where: {
       obra_id: { [Op.in]: obraIds },
-      competencia: { [Op.between]: [earliest, current] }
+      competencia: { [Op.between]: [earliest, addMonth(current)] }
     }
   });
+  const prazosContext = await deps.carregarContextoPrazos(obraIds);
   const competencyByKey = new Map(competencies.map((record) => {
     const item = plain(record);
     return [`${Number(item.obra_id)}:${item.competencia}`, item];
@@ -312,28 +344,54 @@ async function findExpectedObligations(user, deps, options = {}) {
     const start = VALID_COMPETENCIA.test(String(responsible.competencia_inicial || ''))
       ? responsible.competencia_inicial
       : (firstCompetencyByObra.get(obraId) || current);
-    for (const competencia of listCompetencias(start, current)) {
+    const prazoObra = prazosContext.get(obraId) || {};
+    const medicaoByCompetencia = new Map(
+      (prazoObra.competencias || []).map((item) => [item.competencia, item])
+    );
+    const obraRef = {
+      id: obraId,
+      codigo: responsible.obra?.codigo || null,
+      nome: responsible.obra?.nome || `Obra ${obraId}`,
+      classificacao: responsible.obra?.classificacao || null
+    };
+    const planningTarget = janelaPlanejamento(addMonth(current), prazoObra.config).abre_em <= now
+      ? addMonth(current)
+      : current;
+    for (const competencia of listCompetencias(start, planningTarget)) {
       const competency = competencyByKey.get(`${obraId}:${competencia}`) || null;
-      const complete = competency?.estado === 'FINALIZADA';
-      const deadline = prazoCompetencia(competencia);
-      const state = complete ? 'CUMPRIDA' : (deadline <= now ? 'VENCIDA' : 'PENDENTE');
-      for (const type of obligationTypes) {
+      const base = {
+        user_id: Number(user.id),
+        obra_id: obraId,
+        obra: obraRef,
+        competencia,
+        competencia_id: competency?.id ? Number(competency.id) : null,
+        reabertura_ativa: Boolean(competency?.id && reopeningByCompetency.has(Number(competency.id)))
+      };
+      // Planejamento (custos + medicao prevista): janela da obra, cumprido
+      // ao finalizar. Mes reaberto para correcao continua cumprido (29/09).
+      const complete = ['FINALIZADA', 'REABERTA'].includes(competency?.estado);
+      const planningDeadline = janelaPlanejamento(competencia, prazoObra.config).fecha_em;
+      const planningState = complete ? 'CUMPRIDA' : (planningDeadline <= now ? 'VENCIDA' : 'PENDENTE');
+      for (const type of obligationTypes.filter((item) => item !== OBRIGACAO_TYPES.MEDICAO_APROVADA)) {
         result.push({
-          user_id: Number(user.id),
-          obra_id: obraId,
-          obra: {
-            id: obraId,
-            codigo: responsible.obra?.codigo || null,
-            nome: responsible.obra?.nome || `Obra ${obraId}`,
-            classificacao: responsible.obra?.classificacao || null
-          },
-          competencia,
+          ...base,
           tipo: type,
-          prazo_em: deadline,
-          situacao: state,
-          cumprida_em: complete ? (competency.finalizado_em || competency.updatedAt || now) : null,
-          competencia_id: competency?.id ? Number(competency.id) : null,
-          reabertura_ativa: Boolean(competency?.id && reopeningByCompetency.has(Number(competency.id)))
+          prazo_em: planningDeadline,
+          situacao: planningState,
+          cumprida_em: complete ? (competency.finalizado_em || competency.updatedAt || now) : null
+        });
+      }
+      // Medicao aprovada: so para meses ja iniciados; prazo com dilatacao.
+      if (obligationTypes.includes(OBRIGACAO_TYPES.MEDICAO_APROVADA) && competencia <= current) {
+        const medicao = medicaoByCompetencia.get(competencia) || null;
+        const registered = Boolean(medicao?.tem_medicao_aprovada);
+        const measurementDeadline = prazoMedicaoEfetivo(competencia, prazoObra.config, medicao?.dilatacao_prazo);
+        result.push({
+          ...base,
+          tipo: OBRIGACAO_TYPES.MEDICAO_APROVADA,
+          prazo_em: measurementDeadline,
+          situacao: registered ? 'CUMPRIDA' : (measurementDeadline <= now ? 'VENCIDA' : 'PENDENTE'),
+          cumprida_em: registered ? (medicao.medicao_registrada_em || now) : null
         });
       }
     }
@@ -347,7 +405,10 @@ async function persistObligations(expected, deps) {
     const competencyByKey = new Map();
     for (const item of expected) {
       const competencyKey = `${item.obra_id}:${item.competencia}`;
-      if (!item.competencia_id && !competencyByKey.has(competencyKey)) {
+      // Obrigacao do mes seguinte (janela ja aberta) nao cria a competencia:
+      // o mes nasce pelo "Novo mes", com o snapshot do plano.
+      if (!item.competencia_id && !competencyByKey.has(competencyKey)
+        && item.competencia <= competenciaAtual(deps.now())) {
         const [record] = await deps.CrCompetencia.findOrCreate({
           where: { obra_id: item.obra_id, competencia: item.competencia },
           defaults: { estado: 'ABERTA' },
@@ -377,7 +438,10 @@ async function persistObligations(expected, deps) {
       if (!created) {
         const current = plain(existing);
         const changed = String(current.situacao) !== String(values.situacao)
-          || new Date(current.prazo_em).getTime() !== new Date(values.prazo_em).getTime()
+          // DATETIME do banco nao guarda milissegundos (prazo termina em
+          // 23:59:59.999): comparar em segundos evita regravar a cada leitura.
+          || Math.floor(new Date(current.prazo_em).getTime() / 1000)
+            !== Math.floor(new Date(values.prazo_em).getTime() / 1000)
           || String(current.cumprida_em || '') !== String(values.cumprida_em || '');
         if (changed) await existing.update(values, { transaction });
       }
@@ -427,8 +491,13 @@ async function calcularEstadoGuardUsuario(user, options = {}, overrides = {}) {
   const now = options.now || deps.now();
   const expected = await findExpectedObligations(user, deps, { now });
   if (options.persistir) await persistObligations(expected, deps);
+  // Resumo de obrigacoes (painel e sessao). O BLOQUEIO por obra e decidido em
+  // bloqueioObraService (planejamento e medicao); aqui `bloqueado` e so o
+  // indicador legado e a medicao fica fora da contagem.
   const overdue = expected.filter((item) => (
-    item.situacao === 'VENCIDA' && !item.reabertura_ativa
+    item.situacao === 'VENCIDA'
+    && !item.reabertura_ativa
+    && item.tipo !== OBRIGACAO_TYPES.MEDICAO_APROVADA
   ));
   const bypasses = overdue.length ? await findActiveBypasses(user.id, deps, now) : [];
   const uncovered = overdue.filter((item) => (
@@ -593,12 +662,12 @@ async function concederBypass(user, payload = {}, idempotencyKey = null, overrid
   }
   const expiresAt = new Date(payload.expira_em);
   const now = deps.now();
-  const maxExpiration = new Date(now.getTime() + (MAX_BYPASS_DAYS * 86400000));
+  const maxExpiration = new Date(now.getTime() + (MAX_BYPASS_HOURS * 3600000));
   if (!payload.expira_em || Number.isNaN(expiresAt.getTime()) || expiresAt <= now || expiresAt > maxExpiration) {
     throw createBusinessError(
       422,
       'CR_BYPASS_EXPIRATION_INVALID',
-      `A expiracao deve ser futura e limitada a ${MAX_BYPASS_DAYS} dias.`
+      `A expiracao deve ser futura e limitada a ${MAX_BYPASS_HOURS} horas.`
     );
   }
   const scope = await deps.resolverEscopoObras(user);
@@ -624,7 +693,9 @@ async function concederBypass(user, payload = {}, idempotencyKey = null, overrid
         throw createBusinessError(422, 'CR_BYPASS_RESPONSIBILITY_REQUIRED', 'O usuario nao possui responsabilidade ativa nessa obra.');
       }
     }
-    const existing = await deps.CrGuardBypass.findOne({
+    // So conta como "ja existe" a liberacao que ainda vale dentro do teto de
+    // 48h; uma antiga de 30 dias nao impede conceder uma nova.
+    const candidatas = await deps.CrGuardBypass.findAll({
       where: {
         user_id: targetUserId,
         obra_id: obraId,
@@ -634,6 +705,7 @@ async function concederBypass(user, payload = {}, idempotencyKey = null, overrid
       transaction,
       lock: transaction.LOCK.UPDATE
     });
+    const existing = (candidatas || []).find((item) => expiracaoEfetivaBypass(plain(item)) > now) || null;
     if (existing) {
       return { idempotente: true, bypass: serializeBypass(existing, { now }) };
     }
@@ -709,6 +781,7 @@ async function revogarBypass(user, bypassIdValue, idempotencyKey = null, overrid
 module.exports = {
   ACTIVE_OBLIGATION_STATES,
   MAX_BYPASS_DAYS,
+  MAX_BYPASS_HOURS,
   OBRIGACAO_TYPES,
   addMonth,
   alertLevel,

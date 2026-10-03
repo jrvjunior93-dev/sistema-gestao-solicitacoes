@@ -1,158 +1,260 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  BarraFiltros,
+  Avisos,
+  useAvisos
+} from '../../../components/padrao';
 import { obterDashboardGerencialCrm } from '../../../services/crm';
 
-function KpiCard({ label, value, helper, tone = 'default' }) {
-  const toneClass = {
-    default: 'text-main',
-    success: 'text-emerald-600',
-    danger: 'text-red-500',
-    info: 'text-blue-600',
-    warning: 'text-amber-500'
-  }[tone] || 'text-main';
+const DIAS_PADRAO = 30;
 
+const OPCOES_PERIODO = [7, 15, 30, 60, 90].map((valor) => ({
+  valor: String(valor),
+  rotulo: `Ultimos ${valor} dias`
+}));
+
+function texto(valor) {
+  return valor === null || valor === undefined ? '—' : String(valor);
+}
+
+/*
+  R17 — os dois ranqueamentos têm papéis de coluna DIFERENTES e por isso são
+  dois componentes, não um com o tipo calculado: a coluna que nomeia uma
+  PESSOA é `identidade` (exibida em maiúsculas); a que nomeia uma CHAVE de
+  agrupamento (origem, canal, status, gatilho) é `texto`, e a tabela declara
+  `semIdentidade` — a ausência de identidade precisa ser declarada, nunca
+  silenciosa.
+*/
+function RankingPorChave({ titulo, descricao, rotuloChave, rows, storageKey }) {
   return (
-    <div className="card sol-surface-card p-5">
-      <p className="text-xs text-muted">{label}</p>
-      <p className={`mt-1 text-3xl font-bold ${toneClass}`}>{value}</p>
-      {helper && <p className="mt-1 text-xs text-muted">{helper}</p>}
-    </div>
+    <BlocoConteudo titulo={titulo} descricao={descricao}>
+      <TabelaPadrao
+        colunas={[
+          {
+            id: 'chave',
+            titulo: rotuloChave,
+            tipo: 'texto',
+            noCard: 'titulo',
+            render: (item) => item.chave || item.usuario?.nome || '—'
+          },
+          {
+            id: 'total',
+            titulo: 'Total',
+            tipo: 'numero',
+            render: (item) => item.total
+          }
+        ]}
+        itens={rows || []}
+        semIdentidade
+        getId={(item) => item.chave || item.usuario?.id || item.usuario?.nome}
+        vazio="Nenhum dado disponível neste recorte."
+        storageKey={storageKey}
+        rotuloRolagem={titulo}
+      />
+    </BlocoConteudo>
   );
 }
 
-function RankingList({ title, subtitle, rows }) {
+function RankingPorResponsavel({ titulo, descricao, rows, storageKey }) {
   return (
-    <div className="card sol-surface-card p-5">
-      <div className="mb-3">
-        <h2 className="text-base font-semibold text-main">{title}</h2>
-        {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
-      </div>
-      {rows?.length ? (
-        <div className="space-y-2">
-          {rows.map((item, index) => (
-            <div key={`${title}-${item.chave || item.usuario?.id || index}`} className="flex items-center justify-between gap-3 rounded-xl border border-base bg-elevated/30 px-3 py-2">
-              <span className="min-w-0 truncate text-sm text-main">{item.usuario?.nome || item.chave || '-'}</span>
-              <span className="text-sm font-semibold text-main">{item.total}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-muted">Nenhum dado disponivel neste recorte.</p>
-      )}
-    </div>
+    // B2 — UM primário por tela: a carteira por responsável é o recorte que
+    // gera ação (redistribuir, cobrar, reequilibrar), e por isso carrega a
+    // barra de cor. Os demais ranqueamentos são leitura e ficam neutros.
+    <BlocoConteudo titulo={titulo} descricao={descricao} variante="primario" cor="var(--c-primary)">
+      <TabelaPadrao
+        colunas={[
+          {
+            id: 'responsavel',
+            titulo: 'Responsável',
+            tipo: 'identidade',
+            noCard: 'titulo',
+            render: (item) => item.usuario?.nome || item.chave || '—'
+          },
+          {
+            id: 'total',
+            titulo: 'Total',
+            tipo: 'numero',
+            render: (item) => item.total
+          }
+        ]}
+        itens={rows || []}
+        getId={(item) => item.usuario?.id || item.usuario?.nome || item.chave}
+        vazio="Nenhum dado disponível neste recorte."
+        storageKey={storageKey}
+        rotuloRolagem={titulo}
+      />
+    </BlocoConteudo>
   );
 }
 
 export default function CrmDashboardGerencial() {
-  const [dias, setDias] = useState(30);
+  const [dias, setDias] = useState(DIAS_PADRAO);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // R3/R19: o <div> vermelho montado à mão (paleta crua red-200/red-50/
+  // red-700, sem par no tema escuro) virou a faixa de aviso do sistema.
+  const { avisos, avisar, fechar } = useAvisos();
 
   function load(currentDias = dias) {
     setLoading(true);
-    setError('');
     obterDashboardGerencialCrm({ dias: currentDias })
       .then(setData)
-      .catch((err) => setError(err.message || 'Erro ao carregar dashboard gerencial'))
+      .catch((err) => avisar.erro(err?.message || 'Erro ao carregar dashboard gerencial'))
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(dias); }, [dias]);
+  useEffect(() => { load(dias); }, [dias]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const kpis = data?.kpis;
+
+  /*
+    C2 × B3 (critério de 05/09): "Leads ativos" é o TOTAL da tela e passa a
+    viver na faixa fixa, que acompanha a pessoa na rolagem. Os ladrilhos
+    ficam com os RECORTES do período — entradas, convertidos, perdidos,
+    conversas e automações. O cartão que repetia o total não tinha recorte
+    próprio para mostrar; o número não sumiu, mudou de lugar e de papel.
+  */
   const cards = useMemo(() => {
-    if (!data?.kpis) return [];
+    if (!kpis) return [];
     return [
-      { label: 'Leads ativos', value: data.kpis.leadsAtivos, helper: 'Base comercial atual', tone: 'default' },
-      { label: `Entradas (${dias} dias)`, value: data.kpis.leadsPeriodo, helper: 'Capacidade de aquisicao', tone: 'info' },
-      { label: 'Convertidos no periodo', value: data.kpis.convertidosPeriodo, helper: `${data.kpis.taxaConversaoPeriodo}% de conversao`, tone: 'success' },
-      { label: 'Perdidos no periodo', value: data.kpis.perdidosPeriodo, helper: 'Monitorar qualidade do funil', tone: 'danger' },
-      { label: 'Conversas abertas', value: data.kpis.conversasAbertas, helper: `${data.kpis.mensagensNaoLidas} mensagem(ns) nao lida(s)`, tone: 'warning' },
-      { label: 'Automacoes ativas', value: data.kpis.automacoesAtivas, helper: `${data.kpis.tarefasVencidas} tarefa(s) vencida(s)`, tone: 'default' }
+      { label: `Entradas (${dias} dias)`, valor: texto(kpis.leadsPeriodo), sub: 'Capacidade de aquisição', tom: 'info' },
+      { label: 'Convertidos no período', valor: texto(kpis.convertidosPeriodo), sub: `${texto(kpis.taxaConversaoPeriodo)}% de conversao`, tom: 'success' },
+      { label: 'Perdidos no período', valor: texto(kpis.perdidosPeriodo), sub: 'Monitorar qualidade do funil', tom: 'danger' },
+      { label: 'Conversas abertas', valor: texto(kpis.conversasAbertas), sub: `${texto(kpis.mensagensNaoLidas)} mensagem(ns) nao lida(s)`, tom: 'warning' },
+      { label: 'Automações ativas', valor: texto(kpis.automacoesAtivas), sub: `${texto(kpis.tarefasVencidas)} tarefa(s) vencida(s)` }
     ];
-  }, [data, dias]);
+  }, [kpis, dias]);
+
+  /*
+    R12/R23 — o recorte era um <select> de escolha única: o estado do filtro
+    só aparecia abrindo a lista. Agora é marcação com etiqueta removível,
+    `unico` porque o serviço aceita UMA janela (`dias=30`) — com marcação
+    múltipla a tela mostraria duas etiquetas e mandaria uma janela só.
+    Aplica AO MARCAR (o efeito acima reconsulta); remover a etiqueta volta
+    ao padrão de 30 dias, para a etiqueta nunca mentir sobre o que filtra.
+  */
+  function aplicarPeriodo(valor) {
+    const proximo = Number(valor);
+    setDias((atual) => (atual === proximo ? DIAS_PADRAO : proximo));
+  }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Dashboard Gerencial CRM</h1>
-            <p className="page-subtitle">Leitura executiva de origem, conversao, atendimento e disciplina comercial.</p>
-          </div>
-          <div className="flex gap-2">
-            <Link to="/crm/dashboard" className="btn btn-secondary text-sm">Operacional</Link>
-            <Link to="/crm/dashboard-sla" className="btn btn-secondary text-sm">SLA</Link>
-            <Link to="/crm/dashboard-distribuicao" className="btn btn-secondary text-sm">Distribuicao</Link>
-            <Link to="/crm/inbox" className="btn btn-secondary text-sm">Inbox</Link>
-          </div>
-        </div>
-      </div>
+    <Pagina>
+      {/* R11/C6: os quatro botões de NAVEGAÇÃO (Operacional, SLA,
+          Distribuicao, Inbox) saem da barra de ações — menu e Ctrl+K
+          resolvem. Fica a única ação que age sobre ESTA tela. */}
+      <PageHeader
+        titulo="Dashboard Gerencial CRM"
+        contagem={kpis ? `${texto(kpis.leadsAtivos)} lead(s) ativo(s)` : null}
+        descricao="Leitura executiva de origem, conversão, atendimento e disciplina comercial."
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar',
+          onClick: () => load(dias),
+          desabilitada: loading
+        }}
+      />
 
-      {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <div className="card sol-surface-card mt-4 p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-main">Recorte gerencial</h2>
-            <p className="text-xs text-muted">Mantenha a comparacao por janelas curtas e medias para leitura de tendencia.</p>
-          </div>
-          <div className="flex gap-2">
-            <select className="input max-w-[220px]" value={dias} onChange={(e) => setDias(Number(e.target.value))}>
-              <option value={7}>Ultimos 7 dias</option>
-              <option value={15}>Ultimos 15 dias</option>
-              <option value={30}>Ultimos 30 dias</option>
-              <option value={60}>Ultimos 60 dias</option>
-              <option value={90}>Ultimos 90 dias</option>
-            </select>
-            <button type="button" className="btn btn-secondary text-sm" onClick={() => load(dias)}>Atualizar</button>
-          </div>
-        </div>
-      </div>
+      <BlocoConteudo
+        titulo="Recorte gerencial"
+        descricao="Mantenha a comparação por janelas curtas e médias para leitura de tendência."
+      >
+        <BarraFiltros
+          filtros={[{
+            id: 'dias',
+            rotulo: 'Período',
+            unico: true,
+            // O relatorio SEMPRE tem um periodo: nao ha "sem recorte" para
+            // onde voltar. A etiqueta e o estado atual, nao um filtro que se
+            // tira — por isso ela nasce sem o "x" (ver BarraFiltros).
+            obrigatorio: true,
+            opcoes: OPCOES_PERIODO
+          }]}
+          ativos={{ dias: new Set([String(dias)]) }}
+          aoAlternar={(_dimensao, valor) => aplicarPeriodo(valor)}
+        />
+      </BlocoConteudo>
 
       {loading ? (
-        <div className="mt-4 rounded-2xl border border-base bg-card p-10 text-center text-sm text-muted">Carregando dashboard gerencial...</div>
+        <BlocoConteudo>Carregando dashboard gerencial...</BlocoConteudo>
       ) : !data ? null : (
         <>
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {cards.map((card) => <KpiCard key={card.label} {...card} />)}
-          </div>
+          {/* M2/R10 + R25: `text-3xl` com emerald/red/blue/amber crus deu
+              lugar ao ladrilho padrão — escala e tom semântico por token. */}
+          <StatGrid colunas={3}>
+            {cards.map((card) => (
+              <StatTile
+                key={card.label}
+                label={card.label}
+                valor={card.valor}
+                sub={card.sub}
+                tom={card.tom}
+              />
+            ))}
+          </StatGrid>
 
-          <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <RankingList
-              title="Origens de leads"
-              subtitle="Entradas captadas no recorte atual."
-              rows={data.leadsPorOrigem}
-            />
-            <RankingList
-              title="Carteira por responsavel"
-              subtitle="Top usuarios com backlog ativo."
+          {/*
+            BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+            em que ligar isto é SEGURO: estes 5 blocos são leituras
+            independentes — sem ordem obrigatória entre si, sem botão de gravar
+            dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+            sendo o do código; a preferência guarda só o DESVIO. No celular o
+            modo não existe (arrastar é HTML5 nativo e não responde a toque).
+          */}
+          <BlocosPersonalizaveis
+            chave="blocos:crm-dashboard-gerencial"
+            larguraPadrao="total"
+            dentroDeGrade
+          >
+            <RankingPorResponsavel data-bloco-id="carteira-por-responsavel" data-bloco-rotulo="Carteira por responsavel"
+              titulo="Carteira por responsável"
+              descricao="Top usuários com backlog ativo."
               rows={data.leadsPorResponsavel}
+              storageKey="tabela:crm-dashboard-gerencial:responsaveis"
             />
-          </div>
 
-          <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <RankingList
-              title="Conversas por canal"
-              subtitle="Distribuicao da operacao de atendimento."
+            <RankingPorChave data-bloco-id="origens-de-leads" data-bloco-rotulo="Origens de leads"
+              titulo="Origens de leads"
+              descricao="Entradas captadas no recorte atual."
+              rotuloChave="Origem"
+              rows={data.leadsPorOrigem}
+              storageKey="tabela:crm-dashboard-gerencial:origens"
+            />
+
+            <RankingPorChave data-bloco-id="conversas-por-canal" data-bloco-rotulo="Conversas por canal"
+              titulo="Conversas por canal"
+              descricao="Distribuição da operação de atendimento."
+              rotuloChave="Canal"
               rows={data.conversasPorCanal}
+              storageKey="tabela:crm-dashboard-gerencial:conversas-canal"
             />
-            <RankingList
-              title="Conversas por status"
-              subtitle="Acompanhamento de backlog e resolucao."
-              rows={data.conversasPorStatus}
-            />
-          </div>
 
-          <div className="mt-4">
-            <RankingList
-              title="Automacoes por gatilho"
-              subtitle="Base cadastral configurada para a proxima etapa de execucao automatica."
-              rows={data.automacoesPorGatilho}
+            <RankingPorChave data-bloco-id="conversas-por-status" data-bloco-rotulo="Conversas por status"
+              titulo="Conversas por status"
+              descricao="Acompanhamento de backlog e resolucao."
+              rotuloChave="Status"
+              rows={data.conversasPorStatus}
+              storageKey="tabela:crm-dashboard-gerencial:conversas-status"
             />
-          </div>
+
+            <RankingPorChave data-bloco-id="automacoes-por-gatilho" data-bloco-rotulo="Automacoes por gatilho"
+              titulo="Automações por gatilho"
+              descricao="Base cadastral configurada para a próxima etapa de execução automática."
+              rotuloChave="Gatilho"
+              rows={data.automacoesPorGatilho}
+              storageKey="tabela:crm-dashboard-gerencial:automacoes-gatilho"
+            />
+          </BlocosPersonalizaveis>
         </>
       )}
-    </div>
+    </Pagina>
   );
 }

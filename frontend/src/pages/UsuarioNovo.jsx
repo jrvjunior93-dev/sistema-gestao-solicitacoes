@@ -1,10 +1,20 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_URL, authHeaders } from '../services/api';
 import { getUsuario, criarUsuario, atualizarUsuario } from '../services/usuarios';
 import { useAuth } from '../contexts/AuthContext';
 import { isBusinessAdmin, isSuperadmin } from '../utils/acessoProduto';
 import { useSafeNavigateBack } from '../utils/navigation';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  FormSecao,
+  CampoForm,
+  Avisos,
+  useAvisos,
+  useConfirmacao
+} from '../components/padrao';
 
 export default function UsuarioNovo() {
   const { user } = useAuth();
@@ -25,6 +35,8 @@ export default function UsuarioNovo() {
   const [listaSetores, setListaSetores] = useState([]);
   const [listaObras, setListaObras] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const isSuperadminLogado = isSuperadmin(user);
   const isBusinessAdminLogado = isBusinessAdmin(user);
   const perfilNormalizado = String(perfil || '').toUpperCase();
@@ -60,7 +72,7 @@ export default function UsuarioNovo() {
       }
     } catch (error) {
       console.error(error);
-      alert('Erro ao carregar dados do usuario');
+      avisar.erro('Erro ao carregar dados do usuário');
     } finally {
       setLoading(false);
     }
@@ -97,7 +109,7 @@ export default function UsuarioNovo() {
     }
 
     if (!editando && !enviarConvite && !senha.trim()) {
-      alert('Informe uma senha inicial forte ou mantenha o envio de link por e-mail habilitado.');
+      avisar.alerta('Informe uma senha inicial forte ou mantenha o envio de link por e-mail habilitado.');
       return;
     }
 
@@ -107,207 +119,230 @@ export default function UsuarioNovo() {
         : await criarUsuario(payload);
 
       if (!editando && resultado?.convite_erro) {
-        alert(`Usuario criado, mas o link de definicao de senha nao foi enviado: ${resultado.convite_erro}`);
+        // A faixa de avisos morreria com a tela: logo abaixo saímos para
+        // /usuarios e o usuário nunca leria que o link não foi enviado. O
+        // A caixa do navegador daqui segurava a navegação até ser
+        // dispensada — a confirmação do sistema faz o mesmo, e sair é o
+        // único caminho (os dois botões seguem para a listagem).
+        await confirmar({
+          titulo: 'Usuário criado, link não enviado',
+          mensagem: `Usuario criado, mas o link de definicao de senha nao foi enviado: ${resultado.convite_erro}`,
+          rotuloConfirmar: 'Entendi',
+          rotuloCancelar: 'Fechar'
+        });
       }
       navigate('/usuarios');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao salvar usuario');
+      avisar.erro(error?.message || 'Erro ao salvar usuario');
     }
   }
 
   if (loading) {
-    return <p>Carregando usuario...</p>;
+    return (
+      <Pagina>
+        <div className="app-empty-card">Carregando usuário...</div>
+      </Pagina>
+    );
   }
 
   return (
-    <div className="page solicitacoes-page max-w-3xl mx-auto">
-      <h1 className="page-title">
-        {editando ? 'Editar Usuario' : 'Novo Usuario'}
-      </h1>
+    <Pagina>
+      {/* C3: tela de REGISTRO (formulário de um usuário) leva a seta de
+          voltar à esquerda — affordance primária de retorno à listagem. */}
+      <PageHeader
+        titulo={editando ? 'Editar usuario' : 'Novo usuario'}
+        descricao="Dados de acesso, perfil, permissões e obras vinculadas."
+        voltar={{ to: '/usuarios', title: 'Voltar para usuários' }}
+      />
 
-      <form
-        onSubmit={salvar}
-        className="card space-y-4"
-      >
-        <div className="grid md:grid-cols-2 gap-4">
-          <label className="grid gap-1 text-sm">
-            Nome
-            <input
-              className="input"
-              placeholder="Nome"
-              value={nome}
-              onChange={e => setNome(e.target.value)}
-              required
-            />
-          </label>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-          <label className="grid gap-1 text-sm">
-            Email
-            <input
-              className="input"
-              placeholder="Email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-            />
-          </label>
+      <form onSubmit={salvar} className="space-y-3">
+        {/* B3: o apoio da TELA mora na faixa; repetir aqui seria a mesma
+            informação duas vezes. */}
+        <BlocoConteudo
+          variante="primario"
+          cor="var(--sem-info)"
+        >
+          <div className="space-y-4">
+            <FormSecao legenda="Identificação e acesso" colunas={2}>
+              <CampoForm label="Nome" obrigatorio>
+                <input
+                  className="input w-full"
+                  value={nome}
+                  onChange={e => setNome(e.target.value)}
+                  required
+                />
+              </CampoForm>
 
-          <label className="grid gap-1 text-sm">
-            Senha
-            <input
-              type="password"
-              className="input"
-              placeholder={
-                editando
-                  ? 'Deixe em branco para manter a senha'
-                  : enviarConvite
-                    ? 'Opcional; usuario recebera link seguro'
-                    : 'Senha inicial forte'
-              }
-              value={senha}
-              onChange={e => setSenha(e.target.value)}
-              required={!editando && !enviarConvite}
-            />
-          </label>
+              <CampoForm label="Email" obrigatorio>
+                <input
+                  className="input w-full"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                />
+              </CampoForm>
 
-          <label className="grid gap-1 text-sm">
-            Perfil
-            <select
-              className="input"
-              value={perfil}
-              onChange={e => setPerfil(e.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              {isBusinessAdminLogado && <option value="ADMINISTRADOR">ADMINISTRADOR</option>}
-              <option value="ADMIN">ADMIN</option>
-              <option value="ESTAGIARIO">ESTAGIARIO</option>
-              {isSuperadminLogado && <option value="SUPERADMIN">SUPERADMIN</option>}
-              <option value="USUARIO">USUARIO</option>
-            </select>
-          </label>
+              <CampoForm
+                label="Senha"
+                obrigatorio={!editando && !enviarConvite}
+                hint={
+                  editando
+                    ? 'Deixe em branco para manter a senha atual.'
+                    : enviarConvite
+                      ? 'Opcional: o usuario recebera um link seguro para definir a propria senha.'
+                      : 'Informe uma senha inicial forte.'
+                }
+              >
+                <input
+                  type="password"
+                  className="input w-full"
+                  value={senha}
+                  onChange={e => setSenha(e.target.value)}
+                  required={!editando && !enviarConvite}
+                />
+              </CampoForm>
 
-          <label className="grid gap-1 text-sm">
-            Setor
-            <select
-              className="input"
-              value={setorId}
-              onChange={e => setSetorId(e.target.value)}
-            >
-              <option value="">Selecione</option>
-              {listaSetores.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+              <CampoForm label="Perfil" obrigatorio>
+                <select
+                  className="input w-full"
+                  value={perfil}
+                  onChange={e => setPerfil(e.target.value)}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  {isBusinessAdminLogado && <option value="ADMINISTRADOR">ADMINISTRADOR</option>}
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="ESTAGIARIO">ESTAGIARIO</option>
+                  {isSuperadminLogado && <option value="SUPERADMIN">SUPERADMIN</option>}
+                  <option value="USUARIO">USUARIO</option>
+                </select>
+              </CampoForm>
 
-        {!editando && (
-          <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <label className="flex items-start gap-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={enviarConvite}
-                onChange={e => setEnviarConvite(e.target.checked)}
-              />
-              <span className="grid gap-1">
-                <span className="font-medium">Enviar link para definir senha por e-mail</span>
-                <span className="text-[var(--c-muted)]">
-                  O usuario recebe um link seguro para criar a propria senha. Se desmarcar, informe uma senha inicial forte.
-                </span>
-              </span>
-            </label>
-          </div>
-        )}
+              <CampoForm label="Setor">
+                <select
+                  className="input w-full"
+                  value={setorId}
+                  onChange={e => setSetorId(e.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  {listaSetores.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+              </CampoForm>
+            </FormSecao>
 
-        {isBusinessAdminLogado && (
-          <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-            <label className="flex items-start gap-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={permissaoCompraTravada ? true : podeCriarSolicitacaoCompra}
-                onChange={e => setPodeCriarSolicitacaoCompra(e.target.checked)}
-                disabled={permissaoCompraTravada}
-              />
-              <span className="grid gap-1">
-                <span className="font-medium">Permitir acesso a Nova Solicitação de Compra</span>
-                <span className="text-[var(--c-muted)]">
-                  {permissaoCompraTravada
-                    ? 'Perfis ADMIN, ADMINISTRADOR e SUPERADMIN ja possuem esse acesso automaticamente.'
-                    : 'Define se este usuário pode acessar e utilizar a tela de Nova Solicitação de Compra.'}
-                </span>
-              </span>
-            </label>
-          </div>
-        )}
-
-        <div>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="font-medium">Obras vinculadas</p>
-            <span className="text-sm text-[var(--c-muted)]">
-              {obras.length} selecionada(s)
-            </span>
-          </div>
-
-          <div className="max-h-72 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
-            {listaObras.length === 0 ? (
-              <div className="px-4 py-4 text-sm text-[var(--c-muted)]">
-                Nenhuma obra disponivel para vinculo.
-              </div>
-            ) : (
-              listaObras.map((obra) => {
-                const checked = obras.includes(obra.id);
-
-                return (
-                  <label
-                    key={obra.id}
-                    className={`flex cursor-pointer items-start gap-3 border-b border-[var(--c-border)] px-4 py-3 last:border-b-0 ${
-                      checked ? 'bg-blue-50/70' : ''
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={checked}
-                      onChange={() => toggleObra(obra.id)}
-                    />
-                    <span className="grid gap-1">
-                      <span className="font-medium">
-                        {obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome}
-                      </span>
-                      <span className="text-xs text-[var(--c-muted)]">
-                        ID {obra.id}
-                      </span>
+            {!editando && (
+              <BlocoConteudo
+                titulo="Convite por e-mail"
+                variante="secundario"
+                recolhivel
+                recolhidoPadrao={!enviarConvite}
+                key="convite-novo"
+              >
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={enviarConvite}
+                    onChange={e => setEnviarConvite(e.target.checked)}
+                  />
+                  <span className="grid gap-1">
+                    <span className="font-medium">Enviar link para definir senha por e-mail</span>
+                    <span className="app-note">
+                      O usuário recebe um link seguro para criar a própria senha. Se desmarcar, informe uma senha inicial forte.
                     </span>
-                  </label>
-                );
-              })
+                  </span>
+                </label>
+              </BlocoConteudo>
             )}
+
+            {isBusinessAdminLogado && (
+              <BlocoConteudo
+                titulo="Permissão de solicitação de compra"
+                variante="secundario"
+                recolhivel
+                recolhidoPadrao={!(permissaoCompraTravada || podeCriarSolicitacaoCompra)}
+                key={`compra-${id || 'novo'}`}
+              >
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={permissaoCompraTravada ? true : podeCriarSolicitacaoCompra}
+                    onChange={e => setPodeCriarSolicitacaoCompra(e.target.checked)}
+                    disabled={permissaoCompraTravada}
+                  />
+                  <span className="grid gap-1">
+                    <span className="font-medium">Permitir acesso a Nova Solicitação de Compra</span>
+                    <span className="app-note">
+                      {permissaoCompraTravada
+                        ? 'Perfis ADMIN, ADMINISTRADOR e SUPERADMIN ja possuem esse acesso automaticamente.'
+                        : 'Define se este usuário pode acessar e utilizar a tela de Nova Solicitação de Compra.'}
+                    </span>
+                  </span>
+                </label>
+              </BlocoConteudo>
+            )}
+
+            <BlocoConteudo
+              titulo={`Obras vinculadas (${obras.length} selecionada(s))`}
+              variante="secundario"
+            >
+              <div className="max-h-72 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
+                {listaObras.length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-[var(--c-muted)]">
+                    Nenhuma obra disponível para vínculo.
+                  </div>
+                ) : (
+                  listaObras.map((obra) => {
+                    const checked = obras.includes(obra.id);
+
+                    return (
+                      <label
+                        key={obra.id}
+                        title={`ID ${obra.id}`}
+                        className={`flex cursor-pointer items-center gap-3 border-b border-[var(--c-border)] px-4 py-3 text-sm last:border-b-0 ${
+                          checked ? 'bg-[var(--sem-info-bg)]' : ''
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleObra(obra.id)}
+                        />
+                        <span className="font-medium">
+                          {obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome}
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </BlocoConteudo>
+
+            <div className="app-actionbar">
+              <button type="submit" className="btn btn-primary">
+                Salvar
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => navigateBack('/usuarios')}
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-4">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigateBack('/usuarios')}
-          >
-            Cancelar
-          </button>
-
-          <button
-            className="btn-primary"
-            type="submit"
-          >
-            Salvar
-          </button>
-        </div>
+        </BlocoConteudo>
       </form>
-    </div>
+
+      {elementoConfirmacao}
+    </Pagina>
   );
 }

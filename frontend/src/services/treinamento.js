@@ -1,17 +1,10 @@
 import { API_URL, authHeaders } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
+/* A escolha da mensagem é do `erroDeResposta` — ver a nota lá. */
 async function parseJson(response, fallbackMessage) {
   const text = await response.text();
-  if (!response.ok) {
-    if (!text) throw new Error(fallbackMessage);
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || fallbackMessage);
-    } catch (error) {
-      if (error instanceof SyntaxError) throw new Error(text || fallbackMessage);
-      throw error;
-    }
-  }
+  if (!response.ok) throw new Error(mensagemDeErro(text, fallbackMessage, response.status));
   return text ? JSON.parse(text) : null;
 }
 

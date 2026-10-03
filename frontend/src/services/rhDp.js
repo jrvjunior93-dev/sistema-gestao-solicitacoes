@@ -1,21 +1,14 @@
 import { API_URL, authHeaders } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
+/* A escolha da mensagem é do `erroDeResposta` — uma regra, um arquivo.
+   Aqui ficava a mesma dança de try/JSON.parse/SyntaxError repetida em 30
+   serviços, e o `text ||` do final era o que despejava HTML de servidor na
+   tela (achado A2). */
 async function parseJson(response, fallbackMessage) {
   const text = await response.text();
   if (!response.ok) {
-    if (!text) {
-      throw new Error(fallbackMessage);
-    }
-
-    try {
-      const parsed = JSON.parse(text);
-      throw new Error(parsed?.error || fallbackMessage);
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(text || fallbackMessage);
-      }
-      throw error;
-    }
+    throw new Error(mensagemDeErro(text, fallbackMessage, response.status));
   }
 
   return text ? JSON.parse(text) : null;
@@ -25,6 +18,30 @@ function buildQuery(params = {}) {
   return new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
   ).toString();
+}
+
+export async function rhTransferencias(path = '', { method = 'GET', data, params } = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/transferencias${path}${query ? `?${query}` : ''}`, {
+    method, headers: authHeaders({ 'Content-Type': 'application/json' }),
+    ...(data ? { body: JSON.stringify(data) } : {})
+  });
+  return parseJson(response, 'Erro ao consultar transferências entre obras');
+}
+
+export async function comentarRhSolicitacao(id, texto) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/comentar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ texto })
+  });
+  return parseJson(response, 'Erro ao comentar na solicitação');
+}
+
+export async function solicitarRetornoRhSolicitacao(id, motivo) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/solicitar-retorno`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo })
+  });
+  return parseJson(response, 'Erro ao solicitar retorno da solicitação');
 }
 
 export async function getRhEmpresasGrupo(params = {}) {
@@ -136,6 +153,25 @@ export async function getRhDocumentoLink(id) {
   return data?.url;
 }
 
+export async function getRhDossieColaborador(colaboradorId) {
+  const response = await fetch(`${API_URL}/rh/colaboradores/${colaboradorId}/dossie`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao carregar o dossie do colaborador');
+}
+
+export async function getRhDossieArquivoLink(colaboradorId, item) {
+  const params = new URLSearchParams();
+  if (item.fila_id && !item.legado) params.set('fila_id', item.fila_id);
+  const query = params.toString();
+  const response = await fetch(
+    `${API_URL}/rh/colaboradores/${colaboradorId}/dossie/${item.origem}/${item.arquivo_id}/link${query ? `?${query}` : ''}`,
+    { headers: authHeaders() }
+  );
+  const data = await parseJson(response, 'Erro ao gerar link do arquivo do dossie');
+  return data?.url;
+}
+
 function appendOptionalFormField(formData, key, value) {
   if (value === undefined || value === null || value === '') {
     return;
@@ -239,6 +275,13 @@ export async function getRhApuracoes(params = {}) {
   return parseJson(response, 'Erro ao buscar apuracoes RH/DP');
 }
 
+export async function getRhCategoriasFinanceiras() {
+  const response = await fetch(`${API_URL}/rh/apuracoes/categorias-financeiras`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao buscar categorias financeiras da apuracao RH/DP');
+}
+
 export async function getRhApuracao(id) {
   const response = await fetch(`${API_URL}/rh/apuracoes/${id}`, {
     headers: authHeaders()
@@ -253,6 +296,23 @@ export async function gerarRhApuracao(data) {
     body: JSON.stringify(data)
   });
   return parseJson(response, 'Erro ao gerar apuracao RH/DP');
+}
+
+export async function getRhJornadasMultiobra(competencia) {
+  const query = buildQuery({ competencia });
+  const response = await fetch(`${API_URL}/rh/apuracoes/multiobra?${query}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao buscar jornadas multiobra do RH/DP');
+}
+
+export async function consolidarRhJornadasMultiobra(data) {
+  const response = await fetch(`${API_URL}/rh/apuracoes/multiobra/consolidar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao consolidar jornadas multiobra');
 }
 
 export async function atualizarRhApuracaoItem(apuracaoId, itemId, data) {
@@ -288,6 +348,16 @@ export async function getRhFechamento(id) {
   return parseJson(response, 'Erro ao buscar detalhe do fechamento RH/DP');
 }
 
+export async function getRhFechamentoComprovanteLink(fechamentoId, filaId, comprovanteId = null) {
+  const sufixo = comprovanteId ? `/${comprovanteId}` : '';
+  const response = await fetch(
+    `${API_URL}/rh/fechamentos/${fechamentoId}/comprovantes/${filaId}${sufixo}`,
+    { headers: authHeaders() }
+  );
+  const data = await parseJson(response, 'Erro ao gerar link do comprovante de pagamento');
+  return data?.url;
+}
+
 export async function fecharRhApuracao(apuracaoId, data) {
   const response = await fetch(`${API_URL}/rh/apuracoes/${apuracaoId}/fechar`, {
     method: 'POST',
@@ -304,4 +374,341 @@ export async function reabrirRhFechamento(fechamentoId, data) {
     body: JSON.stringify(data)
   });
   return parseJson(response, 'Erro ao reabrir fechamento RH/DP');
+}
+
+// --- Pedido de pessoal: a Obra pede, o DP decide (Fase 6 do modulo DP, 26/08) ---
+
+export async function listarRhSolicitacoes(params = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/solicitacoes${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao listar solicitacoes de pessoal');
+}
+
+export async function getRhSolicitacao(id) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao buscar a solicitacao de pessoal');
+}
+
+export async function getJornadaEnviadaRh(id) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/jornada`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar a jornada enviada');
+}
+
+export async function conferirDocumentacaoRhSolicitacao(id) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/conferencia`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao conferir a documentacao da solicitacao');
+}
+
+export async function abrirRhSolicitacao(data) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao abrir a solicitacao de pessoal');
+}
+
+export async function aprovarRhSolicitacao(id) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/aprovar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' })
+  });
+  return parseJson(response, 'Erro ao aprovar a solicitacao de pessoal');
+}
+
+export async function rejeitarRhSolicitacao(id, motivo) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/rejeitar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo })
+  });
+  return parseJson(response, 'Erro ao devolver a solicitacao de pessoal');
+}
+
+export async function reenviarRhSolicitacao(id, data) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/reenviar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data || {})
+  });
+  return parseJson(response, 'Erro ao reenviar a solicitacao de pessoal');
+}
+
+export async function cancelarRhSolicitacao(id, motivo) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/cancelar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo })
+  });
+  return parseJson(response, 'Erro ao cancelar a solicitacao de pessoal');
+}
+
+/**
+ * Anexa um documento a solicitacao.
+ *
+ * Com arquivo, vai como `multipart/form-data` — e o `Content-Type` NAO e definido a mao: o
+ * navegador precisa gerar o boundary sozinho, e passar o cabecalho quebra o upload de um jeito
+ * dificil de diagnosticar (o servidor recebe um corpo que nao consegue separar).
+ */
+export async function anexarNaRhSolicitacao(id, data, arquivo = null) {
+  if (arquivo) {
+    const form = new FormData();
+    form.append('file', arquivo);
+    Object.entries(data || {}).forEach(([chave, valor]) => {
+      if (valor !== undefined && valor !== null && valor !== '') form.append(chave, valor);
+    });
+
+    const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/anexos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form
+    });
+    return parseJson(response, 'Erro ao anexar documento na solicitacao');
+  }
+
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/anexos`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao anexar documento na solicitacao');
+}
+
+export async function listarAnexosRhSolicitacao(id) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/anexos`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao listar os anexos da solicitacao');
+}
+
+export async function getRhSolicitacaoAnexoLink(solicitacaoId, anexoId) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${solicitacaoId}/anexos/${anexoId}/link`, {
+    headers: authHeaders()
+  });
+  const data = await parseJson(response, 'Erro ao gerar link do anexo da solicitacao');
+  return data?.url;
+}
+
+/** O DP atesta que o documento e valido — ou recusa dizendo por que. */
+export async function validarAnexoRhSolicitacao(solicitacaoId, anexoId, decisao) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${solicitacaoId}/anexos/${anexoId}/validar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(decisao)
+  });
+  return parseJson(response, 'Erro ao registrar a conferencia do documento');
+}
+
+export async function colaboradoresParaJornadaRh(params = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/jornada/colaboradores${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao montar a lista de jornada');
+}
+
+export async function colaboradoresParaJornadaGerencialRh(params = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/jornada/gerencial/colaboradores${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao montar a lista gerencial de jornada');
+}
+
+export async function registrarJornadaGerencialRh(data) {
+  const response = await fetch(`${API_URL}/rh/jornada/gerencial`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao registrar a jornada gerencial');
+}
+
+export async function registrarJornadaRh(data) {
+  const response = await fetch(`${API_URL}/rh/jornada`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao registrar a jornada');
+}
+
+export async function baixarModeloJornadaRh(params = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/jornada/modelo${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(mensagemDeErro(text, 'Erro ao baixar o modelo da jornada', response.status));
+  }
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'modelo-jornada.xlsx';
+  return { blob: await response.blob(), filename };
+}
+
+export async function importarJornadaPlanilhaRh({ dados, planilha, fichas = [] }) {
+  const formData = new FormData();
+  Object.entries(dados || {}).forEach(([chave, valor]) => appendOptionalFormField(formData, chave, valor));
+  formData.append('planilha', planilha);
+  fichas.forEach((arquivo) => formData.append('fichas', arquivo));
+
+  const response = await fetch(`${API_URL}/rh/jornada/importar`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData
+  });
+  return parseJson(response, 'Erro ao importar a jornada');
+}
+
+export async function solicitarEdicaoJornadaRh(data) {
+  const response = await fetch(`${API_URL}/rh/jornada/edicoes/solicitar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao solicitar a edicao da jornada');
+}
+
+export async function decidirEdicaoJornadaRh(id, data) {
+  const response = await fetch(`${API_URL}/rh/jornada/edicoes/${id}/decidir`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao decidir a edicao da jornada');
+}
+
+export async function getEdicoesJornadaPendentesRh() {
+  const response = await fetch(`${API_URL}/rh/jornada/edicoes/pendentes`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao listar as edicoes de jornada pendentes');
+}
+
+export async function registrarPagamentoIndividualRh(data) {
+  const response = await fetch(`${API_URL}/rh/jornada/individual`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao registrar o pagamento individual');
+}
+
+export async function eventosRecorrentesDoColaborador(colaboradorId, competencia) {
+  const query = buildQuery({ competencia });
+  const response = await fetch(`${API_URL}/rh/colaboradores/${colaboradorId}/eventos-recorrentes${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao listar eventos recorrentes');
+}
+
+export async function listarEventosRecorrentesRh(filters = {}) {
+  const query = buildQuery(filters);
+  const response = await fetch(`${API_URL}/rh/eventos-recorrentes${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao listar a gestao de eventos recorrentes');
+}
+
+export async function atualizarEventoRecorrenteRh(id, data) {
+  const response = await fetch(`${API_URL}/rh/eventos-recorrentes/${id}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao atualizar o evento recorrente');
+}
+
+export async function desativarEventoRecorrenteRh(id, motivo) {
+  const response = await fetch(`${API_URL}/rh/eventos-recorrentes/${id}/desativar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo })
+  });
+  return parseJson(response, 'Erro ao desativar o evento recorrente');
+}
+
+export async function historicoVinculoDoColaborador(id) {
+  const response = await fetch(`${API_URL}/rh/colaboradores/${id}/historico-vinculo`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao listar o historico de lotacao');
+}
+
+export async function historicoSalarioDoColaborador(id) {
+  const response = await fetch(`${API_URL}/rh/colaboradores/${id}/historico-salario`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao listar o historico de salario');
+}
+
+export async function getRhTicketStatus(competencia, colaboradorIds = []) {
+  const query = buildQuery({ competencia, colaborador_ids: colaboradorIds.join(',') });
+  const response = await fetch(`${API_URL}/rh/tickets/status?${query}`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar os tickets dos colaboradores');
+}
+
+export async function gerarLoteRhTicket({ competencia, parceiro_id, categoria_financeira_id, data_vencimento, colaborador_ids, boleto, idempotency_key }) {
+  const formData = new FormData();
+  formData.append('competencia', competencia);
+  formData.append('parceiro_id', parceiro_id);
+  formData.append('categoria_financeira_id', categoria_financeira_id);
+  formData.append('data_vencimento', data_vencimento);
+  formData.append('colaborador_ids', JSON.stringify(colaborador_ids));
+  formData.append('idempotency_key', idempotency_key);
+  formData.append('boleto', boleto);
+  const response = await fetch(`${API_URL}/rh/tickets`, { method: 'POST', headers: authHeaders(), body: formData });
+  return parseJson(response, 'Erro ao gerar o lote de ticket');
+}
+
+
+export async function getRhDocumentoTiposParaAnexo() {
+  const response = await fetch(`${API_URL}/rh/documentos/tipos`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao listar tipos de documento');
+}
+
+/** O catalogo de cargos do DP (Fase 7). Usado na alteracao de cargo e na admissao. */
+export async function getRhCargos() {
+  const res = await fetch(`${API_URL}/rh/cargos`, { headers: authHeaders() });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || 'Erro ao carregar os cargos');
+  return json;
+}
+
+/** Ferias vencidas e pendencias do colaborador — o alerta que a demissao mostra. */
+export async function getRhApontamentos(colaboradorId) {
+  const res = await fetch(`${API_URL}/rh/colaboradores/${colaboradorId}/apontamentos`, {
+    headers: authHeaders()
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || 'Erro ao carregar os apontamentos');
+  return json;
+}
+
+/**
+ * O checklist de um TIPO de pedido, antes de o pedido existir.
+ *
+ * Rota separada da conferencia de propósito: o modal precisa mostrar a lista no instante em que o
+ * usuario escolhe o subtipo, e nesse momento ainda nao ha pedido para consultar.
+ */
+export async function getRhChecklistDoTipo(tipo, subtipo = null) {
+  const params = new URLSearchParams({ tipo });
+  if (subtipo) params.set('subtipo', subtipo);
+  const res = await fetch(`${API_URL}/rh/solicitacoes/checklist?${params}`, { headers: authHeaders() });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || 'Erro ao carregar o checklist do tipo');
+  return json;
+}
+
+/**
+ * RASCUNHO -> ABERTA. E aqui que o Departamento Pessoal passa a enxergar o pedido.
+ *
+ * O 409 desta rota traz a LISTA dos documentos obrigatorios que faltam — a mensagem do servidor e
+ * mais util que qualquer texto generico da tela, entao ela sobe como esta.
+ */
+export async function enviarRhSolicitacao(id) {
+  const res = await fetch(`${API_URL}/rh/solicitacoes/${id}/enviar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' })
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || 'Erro ao enviar a solicitacao');
+  return json;
 }

@@ -2,14 +2,14 @@
 
 ## Escopo
 
-O planejamento mensal usa a estrutura macro da versão publicada do orçamento da obra somente como referência de agrupamento. A tela não replica toda a planilha micro no preenchimento da competência.
+O planejamento mensal separa os custos gerais previstos das medições vinculadas ao orçamento da obra. A estrutura macro continua sendo referência somente para Medição Prevista e Medição Aprovada.
 
 ## Custos planejados
 
-- Cada etapa macro possui seus próprios subitens mensais.
-- O usuário inclui os subitens livremente e informa descrição do serviço, unidade, quantidade e valor unitário.
+- O usuário adiciona linhas gerais, sem escolher item ou etapa macro.
+- Em cada linha informa descrição do serviço, unidade, quantidade e valor unitário.
 - O valor planejado do subitem é `quantidade × valor unitário`.
-- Novos subitens são acrescentados abaixo dos existentes na mesma etapa.
+- Novas linhas são acrescentadas abaixo das existentes na competência.
 - O subitem pertence à competência e não altera a planilha orçamentária publicada nem o cadastro de apropriações.
 - Subitens livres de custo mensal e itens de medição são registros independentes. Vínculos legados ainda existentes com um subitem mensal continuam protegidos pela transação relacional.
 
@@ -40,16 +40,16 @@ Obras privadas mantêm o fluxo de custos planejados seguido da leitura automáti
 
 ## Modelos e importação por etapa
 
-As etapas Custos Planejados, Medição Prevista e Medição Aprovada possuem ações próprias para baixar modelo e importar planilha. O arquivo sempre é gerado para a obra, competência e versão do plano em contexto.
+As etapas Custos Planejados, Medição Prevista e Medição Aprovada possuem ações próprias para baixar modelo e importar planilha.
 
-- O modelo de Custos Planejados preserva o cadastro livre. Código e descrição da etapa macro ficam protegidos; descrição do serviço, unidade, valor unitário e quantidade ficam liberados para preenchimento.
+- O modelo de Custos Planejados é universal e pode ser reutilizado em qualquer obra e competência. Possui somente descrição do serviço, unidade, quantidade e valor unitário.
 - Os modelos de Medição Prevista e Medição Aprovada trazem todos os itens analíticos do plano, com macro, código, descrição, unidade, quantidade orçada, valor unitário e saldo disponível protegidos. Somente a coluna `quantidade` é editável.
 - Linhas vazias ou com quantidade igual a zero não entram na prévia.
 - O backend rejeita fórmulas, arquivo diferente de `.xlsx`, aba ou cabeçalho alterado, item fora do snapshot da competência, duplicidade e quantidade acima do saldo disponível.
-- Metadados ocultos e protegidos vinculam o modelo à obra, competência, etapa, ID e versão do plano; arquivo de outro contexto é rejeitado.
+- No modelo universal de custos, os metadados identificam o tipo e a versão do modelo, sem vinculá-lo a uma obra. Nos modelos de medição, os metadados continuam vinculando obra, competência, etapa, ID e versão do plano.
 - O saldo da Medição Prevista considera o acumulado previsto em competências anteriores. O saldo da Medição Aprovada considera o acumulado aprovado em competências anteriores.
-- Custos livres não possuem saldo analítico próprio; a validação exige etapa macro válida, descrição, unidade, valor unitário e quantidade positiva.
-- A prévia permite excluir linhas, alterar quantidade e adicionar um item. Em custos, adiciona-se um serviço livre dentro de uma macro; nas medições, adiciona-se um item do plano.
+- Custos livres não possuem saldo analítico próprio; a validação exige descrição, unidade, valor unitário válido e quantidade positiva.
+- A prévia permite excluir linhas, alterar valores e adicionar um item. Em custos, adiciona-se uma linha livre; nas medições, adiciona-se um item do plano.
 - Qualquer edição torna a prévia pendente. O usuário precisa executar `Validar novamente`; `Confirmar importação` permanece bloqueado enquanto houver erro ou alteração não revalidada.
 - Confirmar a importação aplica os itens ao rascunho da etapa, sem ignorar itens já digitados que não estavam no arquivo. O salvamento definitivo continua no botão da etapa para preservar justificativas, glosa, auditoria, transação e demais regras existentes.
 

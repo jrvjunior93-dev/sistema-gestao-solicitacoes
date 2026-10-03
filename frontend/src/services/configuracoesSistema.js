@@ -1,15 +1,16 @@
 import { API_URL, authHeaders } from './api';
+import { mensagemDeErro } from './erroDeResposta';
 
 const COMPRAS_COTACOES_PERMISSOES_DETALHADAS = [
-  { key: 'compras.cotacoes.visualizar', label: 'Visualizar cotacoes', descricao: 'Ver cotacoes e comparativo de fornecedores.' },
-  { key: 'compras.cotacoes.gerenciar', label: 'Gerenciar cotacoes', descricao: 'Criar, editar e operar cotacoes sem encerrar ou reabrir.' },
-  { key: 'compras.cotacoes.editar_respostas', label: 'Editar respostas', descricao: 'Preencher, ajustar e salvar respostas de cotacao.' },
-  { key: 'compras.cotacoes.salvar_rascunho', label: 'Salvar rascunho', descricao: 'Salvar respostas parciais sem encerrar cotacao.' },
-  { key: 'compras.cotacoes.cancelar', label: 'Cancelar cotacao', descricao: 'Cancelar uma cotacao aberta, com ou sem respostas, mantendo a auditoria.' },
-  { key: 'compras.cotacoes.fechar_parcial', label: 'Fechar parcialmente', descricao: 'Gerar pedidos dos itens selecionados e manter o saldo da cotacao aberto.' },
-  { key: 'compras.cotacoes.encerrar', label: 'Encerrar cotacao', descricao: 'Gerar os pedidos finais e encerrar definitivamente a cotacao.' },
-  { key: 'compras.cotacoes.encerrar_sem_pedido', label: 'Encerrar sem pedido', descricao: 'Encerrar definitivamente a cotacao descartando o saldo restante sem gerar novos pedidos.' },
-  { key: 'compras.cotacoes.reabrir', label: 'Reabrir cotacao', descricao: 'Reabrir cotacao respondida para novo envio com justificativa.' }
+  { key: 'compras.cotacoes.visualizar', label: 'Visualizar cotações', descricao: 'Ver cotações e comparativo de fornecedores.' },
+  { key: 'compras.cotacoes.gerenciar', label: 'Gerenciar cotações', descricao: 'Criar, editar e operar cotações sem encerrar ou reabrir.' },
+  { key: 'compras.cotacoes.editar_respostas', label: 'Editar respostas', descricao: 'Preencher, ajustar e salvar respostas de cotação.' },
+  { key: 'compras.cotacoes.salvar_rascunho', label: 'Salvar rascunho', descricao: 'Salvar respostas parciais sem encerrar cotação.' },
+  { key: 'compras.cotacoes.cancelar', label: 'Cancelar cotação', descricao: 'Cancelar uma cotação aberta, com ou sem respostas, mantendo a auditoria.' },
+  { key: 'compras.cotacoes.fechar_parcial', label: 'Fechar parcialmente', descricao: 'Gerar pedidos dos itens selecionados e manter o saldo da cotação aberto.' },
+  { key: 'compras.cotacoes.encerrar', label: 'Encerrar cotação', descricao: 'Gerar os pedidos finais e encerrar definitivamente a cotação.' },
+  { key: 'compras.cotacoes.encerrar_sem_pedido', label: 'Encerrar sem pedido', descricao: 'Encerrar definitivamente a cotação descartando o saldo restante sem gerar novos pedidos.' },
+  { key: 'compras.cotacoes.reabrir', label: 'Reabrir cotação', descricao: 'Reabrir cotação respondida para novo envio com justificativa.' }
 ];
 
 function normalizarRegistryPermissoesAreas(registry) {
@@ -94,7 +95,7 @@ export async function salvarTimeoutInatividade(data) {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao salvar timeout de inatividade');
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar timeout de inatividade', res.status));
   }
   return res.json();
 }
@@ -106,7 +107,7 @@ export async function enviarHeartbeatSessao() {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao enviar heartbeat da sessao');
+    throw new Error(mensagemDeErro(txt, 'Erro ao enviar heartbeat da sessao', res.status));
   }
   return res.json();
 }
@@ -192,6 +193,26 @@ export async function getTiposSolicitacaoPorSetor() {
   });
   if (!res.ok) throw new Error('Erro ao buscar configuracao de tipos por setor');
   return res.json();
+}
+
+export async function getTiposSolicitacaoPorDestino() {
+  const res = await fetch(`${API_URL}/configuracoes/tipos-solicitacao-por-destino`, {
+    headers: authHeaders()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || 'Erro ao carregar tipos por Obra/Centro de Custo');
+  return data;
+}
+
+export async function salvarTiposSolicitacaoPorDestino(payload) {
+  const res = await fetch(`${API_URL}/configuracoes/tipos-solicitacao-por-destino`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || 'Erro ao salvar tipos por Obra/Centro de Custo');
+  return data;
 }
 
 export async function salvarTiposSolicitacaoPorSetor(data) {
@@ -300,6 +321,27 @@ export async function salvarAutomacaoStatusSetor(data) {
   return res.json();
 }
 
+export async function getAprovacaoSolicitacaoPorTipo() {
+  const res = await fetch(`${API_URL}/configuracoes/aprovacao-solicitacao-por-tipo`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao buscar o fluxo de aprovacao por tipo');
+  return res.json();
+}
+
+export async function salvarAprovacaoSolicitacaoPorTipo(data) {
+  const res = await fetch(`${API_URL}/configuracoes/aprovacao-solicitacao-por-tipo`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || 'Erro ao salvar o fluxo de aprovacao por tipo');
+  }
+  return res.json();
+}
+
 export const getTiposCompartilhadosEntreSetores = getTiposCompartilhadosSetor;
 export const salvarTiposCompartilhadosEntreSetores = salvarTiposCompartilhadosSetor;
 
@@ -372,6 +414,31 @@ export async function salvarUsuariosAcessoFinanceiro(data) {
     body: JSON.stringify(data)
   });
   if (!res.ok) throw new Error('Erro ao salvar configuracao de acesso ao financeiro');
+  return res.json();
+}
+
+export async function getControleDiarioContasConfig() {
+  const res = await fetch(`${API_URL}/configuracoes/controle-diario-contas`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || 'Erro ao buscar configuracao do controle diario de contas');
+  }
+  return res.json();
+}
+
+export async function salvarControleDiarioContasConfig(data) {
+  const res = await fetch(`${API_URL}/configuracoes/controle-diario-contas`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || 'Erro ao salvar configuracao do controle diario de contas');
+  }
   return res.json();
 }
 
@@ -478,7 +545,7 @@ export async function salvarStatusPedidosCompra(data) {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao salvar configuracao de status dos pedidos');
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar configuracao de status dos pedidos', res.status));
   }
   return res.json();
 }
@@ -489,7 +556,7 @@ export async function getComercialCategoriasContrato() {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao buscar categorias comerciais do contrato');
+    throw new Error(mensagemDeErro(txt, 'Erro ao buscar categorias comerciais do contrato', res.status));
   }
   return res.json();
 }
@@ -502,7 +569,7 @@ export async function salvarComercialCategoriasContrato(data) {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao salvar categorias comerciais do contrato');
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar categorias comerciais do contrato', res.status));
   }
   return res.json();
 }
@@ -513,7 +580,7 @@ export async function getProvisionamentoFluxoConfig() {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao buscar configuracao do fluxo de provisionamento');
+    throw new Error(mensagemDeErro(txt, 'Erro ao buscar configuracao do fluxo de provisionamento', res.status));
   }
   return res.json();
 }
@@ -537,7 +604,7 @@ export async function getNotificacoesSistema() {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao buscar configuracao de notificacoes do sistema');
+    throw new Error(mensagemDeErro(txt, 'Erro ao buscar configuracao de notificacoes do sistema', res.status));
   }
   return res.json();
 }
@@ -561,7 +628,7 @@ export async function getModulosSistema() {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao buscar configuracao de modulos');
+    throw new Error(mensagemDeErro(txt, 'Erro ao buscar configuracao de modulos', res.status));
   }
   return res.json();
 }
@@ -574,7 +641,83 @@ export async function salvarModulosSistema(data) {
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(txt || 'Erro ao salvar configuracao de modulos');
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar configuracao de modulos', res.status));
+  }
+  return res.json();
+}
+
+export async function getObraTipoApropriacao() {
+  const res = await fetch(`${API_URL}/configuracoes/obra-tipo-apropriacao`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao buscar apropriacoes padrao por obra');
+  return res.json();
+}
+
+export async function getApropriacoesDaObra(obraId, busca = '') {
+  const query = busca ? `?busca=${encodeURIComponent(busca)}` : '';
+  const res = await fetch(
+    `${API_URL}/configuracoes/obra-tipo-apropriacao/obras/${obraId}/apropriacoes${query}`,
+    { headers: authHeaders() }
+  );
+  if (!res.ok) throw new Error('Erro ao buscar apropriacoes da obra');
+  return res.json();
+}
+
+export async function salvarObraTipoApropriacao(data) {
+  const res = await fetch(`${API_URL}/configuracoes/obra-tipo-apropriacao`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar apropriacao padrao', res.status));
+  }
+  return res.json();
+}
+
+export async function getContratoObraCategorias() {
+  const res = await fetch(`${API_URL}/configuracoes/contrato-obra-categorias`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao buscar categorias do contrato de obra');
+  return res.json();
+}
+
+export async function salvarContratoObraCategorias(categoriaIds) {
+  const res = await fetch(`${API_URL}/configuracoes/contrato-obra-categorias`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ categoria_ids: categoriaIds })
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar categorias do contrato de obra', res.status));
+  }
+  return res.json();
+}
+
+export async function getCategoriasTitulosPedidosCompra() {
+  const res = await fetch(`${API_URL}/configuracoes/categorias-titulos-pedidos-compra`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(mensagemDeErro(txt, 'Erro ao buscar categorias dos títulos de pedidos', res.status));
+  }
+  return res.json();
+}
+
+export async function salvarCategoriasTitulosPedidosCompra(data) {
+  const res = await fetch(`${API_URL}/configuracoes/categorias-titulos-pedidos-compra`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar categorias dos títulos de pedidos', res.status));
   }
   return res.json();
 }

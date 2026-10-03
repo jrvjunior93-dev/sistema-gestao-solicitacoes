@@ -22,6 +22,15 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false
     },
+    tipo_titulo: {
+      type: DataTypes.STRING(30),
+      allowNull: false,
+      defaultValue: 'INTEGRAL'
+    },
+    evento_recorrente_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     valor_gerado: {
       type: DataTypes.DECIMAL(14, 2),
       allowNull: false,

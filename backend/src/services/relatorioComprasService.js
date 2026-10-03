@@ -1224,7 +1224,17 @@ async function relatorioPrecosInsumosFornecedores({ obraId, dataInicio, dataFim,
       {
         model: SolicitacaoCompraItemManual,
         as: 'itemManual',
-        attributes: ['id', 'nome_manual']
+        attributes: ['id', 'nome_manual', 'insumo_catalogado_id'],
+        include: [
+          {
+            model: Insumo,
+            as: 'insumoCatalogado',
+            attributes: ['id', 'nome', 'codigo', 'categoria_id'],
+            include: [
+              { model: Categoria, as: 'categoria', attributes: ['id', 'nome'] }
+            ]
+          }
+        ]
       }
     ],
     order: [[{ model: PedidoCompra, as: 'pedido' }, 'createdAt', 'DESC'], ['id', 'DESC']]
@@ -1239,7 +1249,7 @@ async function relatorioPrecosInsumosFornecedores({ obraId, dataInicio, dataFim,
     const plain = item.toJSON ? item.toJSON() : item;
     const pedido = plain.pedido || {};
     const fornecedor = pedido.fornecedor || null;
-    const insumo = plain.itemCadastrado?.insumo || null;
+    const insumo = plain.itemCadastrado?.insumo || plain.itemManual?.insumoCatalogado || null;
     const categoria = insumo?.categoria || null;
     const descricao = insumo?.nome || plain.itemManual?.nome_manual || plain.descricao || 'Item sem descricao';
     const unidade = plain.unidade || null;
@@ -1656,7 +1666,17 @@ async function relatorioCategoriasInsumosCompras({ obraId, dataInicio, dataFim, 
       {
         model: SolicitacaoCompraItemManual,
         as: 'itemManual',
-        attributes: ['id', 'nome_manual']
+        attributes: ['id', 'nome_manual', 'insumo_catalogado_id'],
+        include: [
+          {
+            model: Insumo,
+            as: 'insumoCatalogado',
+            attributes: ['id', 'nome', 'codigo', 'categoria_id'],
+            include: [
+              { model: Categoria, as: 'categoria', attributes: ['id', 'nome'] }
+            ]
+          }
+        ]
       }
     ],
     order: [['createdAt', 'DESC'], ['id', 'DESC']]
@@ -1670,7 +1690,7 @@ async function relatorioCategoriasInsumosCompras({ obraId, dataInicio, dataFim, 
   itens.forEach((item) => {
     const plain = item.toJSON ? item.toJSON() : item;
     const pedido = plain.pedido || {};
-    const insumo = plain.itemCadastrado?.insumo || null;
+    const insumo = plain.itemCadastrado?.insumo || plain.itemManual?.insumoCatalogado || null;
     const categoria = insumo?.categoria || null;
     const categoriaKey = categoria?.id ? String(categoria.id) : 'SEM_CATEGORIA';
     const descricao = insumo?.nome || plain.itemManual?.nome_manual || plain.descricao || 'Item sem descricao';

@@ -4,7 +4,7 @@ const {
   normalizePermission,
   normalizeRhDpPermissionList
 } = require('../constants/rhDpPermissions');
-const { normalizeModuloPermissaoList } = require('../constants/moduloPermissoes');
+const { ALL_PERMISSION_KEYS, normalizeModuloPermissaoList } = require('../constants/moduloPermissoes');
 
 const CHAVE_SETORES_ACESSO_TODAS_OBRAS = 'SETORES_ACESSO_TODAS_OBRAS';
 const CHAVE_SETORES_CRIACAO_TODAS_OBRAS = 'SETORES_CRIACAO_TODAS_OBRAS';
@@ -29,53 +29,13 @@ const FINANCEIRO_RELATORIOS_PERMISSION_KEYS = [
   'financeiro.relatorios.centros_custo'
 ];
 
-const FINANCEIRO_PERMISSION_KEYS = [
-  'financeiro.titulos.visualizar',
-  'financeiro.titulos.criar',
-  'financeiro.titulos.importar',
-  'financeiro.titulos.exportar',
-  'financeiro.titulos.importar_codigos',
-  'financeiro.titulos.baixar',
-  'financeiro.titulos.excluir',
-  'financeiro.titulos.estornar',
-  'financeiro.titulos.pagamentos_bancarios.visualizar',
-  'financeiro.titulos.movimentos.visualizar',
-  'financeiro.titulos.auditoria.visualizar',
-  'financeiro.comprovantes.excluir',
-  ...FINANCEIRO_RELATORIOS_PERMISSION_KEYS,
-  'financeiro.conciliacao.visualizar',
-  'financeiro.conciliacao.importar',
-  'financeiro.conciliacao.conciliar',
-  'financeiro.conciliacao.estornar',
-  'financeiro.bancos.visualizar',
-  'financeiro.bancos.auditar',
-  'financeiro.bancos.conciliar',
-  'financeiro.bancos.remessas',
-  'financeiro.bancos.retornos',
-  'financeiro.bancos.configurar',
-  'financeiro.cadastros.visualizar',
-  'financeiro.cadastros.gerenciar',
-  'financeiro.pagamentos.visualizar',
-  'financeiro.pagamentos.preparar',
-  'financeiro.pagamentos.aprovar',
-  'financeiro.pagamentos.rejeitar',
-  'financeiro.pagamentos.enviar_banco',
-  'financeiro.pagamentos.sincronizar_banco',
-  'financeiro.pagamentos.cancelar',
-  'financeiro.pagamentos.reprocessar',
-  'financeiro.pagamentos.confirmar_baixa',
-  'financeiro.pagamentos.auditar',
-  'financeiro.pagamentos.configurar',
-  'financeiro.favorecidos.visualizar',
-  'financeiro.favorecidos.gerenciar',
-  'financeiro.favorecidos.auditar',
-  'financeiro.dda.visualizar',
-  'financeiro.dda.sincronizar',
-  'financeiro.dda.vincular',
-  'financeiro.dda.ignorar',
-  'financeiro.dda.auditar',
-  'financeiro.dda.configurar'
-];
+// Fonte unica: qualquer permissao granular cadastrada sob `financeiro.*`
+// habilita a entrada no modulo. As rotas continuam exigindo a chave exata
+// de cada operacao. Assim uma nova permissao nao fica funcional no frontend
+// e bloqueada no backend por esquecimento nesta lista.
+const FINANCEIRO_PERMISSION_KEYS = Object.freeze(
+  [...ALL_PERMISSION_KEYS].filter((key) => key.startsWith('financeiro.'))
+);
 
 const FINANCEIRO_PAGAMENTOS_PERMISSION_KEYS = [
   'financeiro.pagamentos.visualizar',
@@ -89,6 +49,15 @@ const FINANCEIRO_PAGAMENTOS_PERMISSION_KEYS = [
   'financeiro.pagamentos.confirmar_baixa',
   'financeiro.pagamentos.auditar',
   'financeiro.pagamentos.configurar'
+];
+
+const FINANCEIRO_FILA_PAGAMENTOS_PERMISSION_KEYS = [
+  'financeiro.fila_pagamentos.visualizar',
+  'financeiro.fila_pagamentos.preparar',
+  'financeiro.fila_pagamentos.importar_comprovantes',
+  'financeiro.fila_pagamentos.baixar',
+  'financeiro.fila_pagamentos.reportar',
+  'financeiro.fila_pagamentos.resolver'
 ];
 
 const FINANCEIRO_FAVORECIDOS_PERMISSION_KEYS = [
@@ -151,6 +120,7 @@ const COMPRAS_SOLICITACOES_VIEW_KEYS = [
   'compras.solicitacoes.gerar_pedidos',
   'compras.solicitacoes.editar_itens',
   'compras.solicitacoes.editar_quantidade',
+  'compras.solicitacoes.editar_apropriacoes_itens',
   'compras.delegacao.visualizar',
   'compras.delegacao.gerenciar',
   'compras.delegacao.alterar_responsavel',
@@ -182,7 +152,8 @@ const SOLICITACOES_APROPRIACOES_EDIT_KEYS = [
 ];
 
 const COMPRAS_SOLICITACOES_EDIT_APROPRIACOES_KEYS = [
-  'compras.solicitacoes.editar_apropriacoes_itens'
+  'compras.solicitacoes.editar_apropriacoes_itens',
+  ...COMPRAS_SOLICITACOES_EDIT_ITEMS_KEYS
 ];
 
 const COMPRAS_COMPRA_DIRETA_EDIT_APROPRIACOES_KEYS = [
@@ -210,6 +181,11 @@ const COMPRAS_PEDIDOS_VIEW_KEYS = [
   'compras.pedidos.registrar_frete',
   'compras.pedidos.cancelar_frete',
   'compras.pedidos.auditoria',
+  'compras.pedidos.financeiro.visualizar',
+  'compras.pedidos.financeiro.anexar_documentos',
+  'compras.pedidos.financeiro.gerar_previsao',
+  'compras.pedidos.financeiro.liberar_pagamento',
+  'compras.pedidos.financeiro.aprovar_reabertura',
   'compras.relatorios.visualizar',
   'compras.relatorios.pedidos'
 ];
@@ -257,6 +233,23 @@ const COMPRAS_PEDIDOS_CANCELAR_FRETE_KEYS = [
 const COMPRAS_PEDIDOS_AUDIT_KEYS = [
   'compras.pedidos.auditoria'
 ];
+
+const COMPRAS_PEDIDOS_ANEXAR_ESPELHO_KEYS = [
+  'compras.pedidos.anexar_espelho'
+];
+
+const COMPRAS_PEDIDOS_FINANCEIRO_VIEW_KEYS = [
+  'compras.pedidos.financeiro.visualizar',
+  'compras.pedidos.financeiro.anexar_documentos',
+  'compras.pedidos.financeiro.gerar_previsao',
+  'compras.pedidos.financeiro.liberar_pagamento',
+  'compras.pedidos.financeiro.aprovar_reabertura'
+];
+
+const COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO_KEYS = ['compras.pedidos.financeiro.anexar_documentos'];
+const COMPRAS_PEDIDOS_FINANCEIRO_PREVISAO_KEYS = ['compras.pedidos.financeiro.gerar_previsao'];
+const COMPRAS_PEDIDOS_FINANCEIRO_LIBERAR_KEYS = ['compras.pedidos.financeiro.liberar_pagamento'];
+const COMPRAS_PEDIDOS_FINANCEIRO_REABERTURA_KEYS = ['compras.pedidos.financeiro.aprovar_reabertura'];
 
 const COMPRAS_COTACOES_VIEW_KEYS = [
   'compras.cotacoes.visualizar',
@@ -330,6 +323,10 @@ const COMPRAS_FORNECEDORES_VIEW_KEYS = [
 
 const COMPRAS_FORNECEDORES_MANAGE_KEYS = [
   'compras.fornecedores.gerenciar'
+];
+
+const COMPRAS_INSUMOS_CATALOGAR_MANUAIS_KEYS = [
+  'compras.insumos.catalogar_itens_manuais'
 ];
 
 const COMPRAS_RELATORIOS_VIEW_KEYS = [
@@ -420,6 +417,7 @@ const COMPRAS_PERMISSION_KEYS = [
   ...COMPRAS_DELEGACAO_MANAGE_KEYS,
   ...COMPRAS_FORNECEDORES_VIEW_KEYS,
   ...COMPRAS_FORNECEDORES_MANAGE_KEYS,
+  ...COMPRAS_INSUMOS_CATALOGAR_MANUAIS_KEYS,
   ...COMPRAS_RELATORIOS_VIEW_KEYS,
   ...COMPRAS_CONFIGURACOES_MANAGE_KEYS
 ];
@@ -613,11 +611,13 @@ const RH_DP_AREA_PERMISSION_KEYS = [
   'rh_dp.colaboradores.editar',
   'rh_dp.documentos.visualizar',
   'rh_dp.documentos.gerenciar',
+  'rh_dp.eventos_recorrentes.visualizar',
   'rh_dp.importacoes.executar',
   'rh_dp.apuracao.visualizar',
   'rh_dp.apuracao.editar',
   'rh_dp.fechamento.executar',
   'rh_dp.fechamento.reabrir',
+  'rh_dp.ticket.gerar',
   'rh_dp.obrigacoes.visualizar',
   'rh_dp.relatorios.visualizar'
 ];
@@ -694,6 +694,42 @@ const TREINAMENTO_MANAGE_KEYS = [
 
 const TREINAMENTO_PUBLISH_KEYS = [
   'treinamento.conteudos.publicar'
+];
+
+const OBRAS_CADASTRO_VIEW_KEYS = [
+  'obras.cadastro.visualizar',
+  'obras.cadastro.gerenciar'
+];
+
+const OBRAS_CADASTRO_MANAGE_KEYS = [
+  'obras.cadastro.gerenciar'
+];
+
+const OBRAS_GESTAO_VIEW_KEYS = [
+  'obras.gestao.visualizar',
+  'obras.gestao.apropriacoes'
+];
+
+const OBRAS_GESTAO_APROPRIACOES_KEYS = [
+  'obras.gestao.apropriacoes'
+];
+
+const BIBLIOTECA_VIEW_KEYS = [
+  'biblioteca.geral.visualizar',
+  'biblioteca.geral.gerenciar'
+];
+
+const BIBLIOTECA_MANAGE_KEYS = [
+  'biblioteca.geral.gerenciar'
+];
+
+const COMUNICACAO_VIEW_KEYS = [
+  'comunicacao.geral.visualizar',
+  'comunicacao.geral.enviar'
+];
+
+const COMUNICACAO_SEND_KEYS = [
+  'comunicacao.geral.enviar'
 ];
 
 const SST_DASHBOARD_KEYS = [
@@ -926,7 +962,9 @@ function normalizePermissoesAreasPadroes(input) {
       const perfil = normalizeToken(perfilKey);
       if (!perfil) return perfilAcc;
       const normalized = normalizeModuloPermissaoList(permissions);
-      if (normalized.length) perfilAcc[perfil] = normalized;
+      // A lista vazia e um estado configurado valido: significa negar todas as
+      // permissoes granulares para este setor/perfil. Nao a descarte.
+      perfilAcc[perfil] = normalized;
       return perfilAcc;
     }, {});
 
@@ -942,7 +980,10 @@ function normalizePermissoesAreasUsuarios(input) {
     const id = Number(userId);
     if (!Number.isInteger(id) || id <= 0) return acc;
     const normalized = normalizeModuloPermissaoList(permissions);
-    if (normalized.length) acc[id] = normalized;
+    // Preserva a diferenca entre "usuario nao configurado" e "usuario
+    // configurado sem permissoes". O primeiro mantem a compatibilidade legada;
+    // o segundo deve permanecer sem acesso granular.
+    acc[id] = normalized;
     return acc;
   }, {});
 }
@@ -1014,43 +1055,121 @@ async function resolveSetorPermissionKeys(user) {
   return Array.from(keys);
 }
 
-async function getPermissoesPadraoSetorPerfil(user, config) {
+async function resolvePermissoesPadraoSetorPerfil(user, config) {
   const padroes = config?.padroes_setor_perfil || {};
   const perfil = normalizeToken(user?.perfil);
-  if (!perfil) return [];
+  if (!perfil) return { configured: false, permissions: [] };
 
   const setorKeys = await resolveSetorPermissionKeys(user);
   const lista = [];
+  let configured = false;
 
   setorKeys.forEach((key) => {
     const perfis = padroes[String(key)] || padroes[normalizeToken(key)];
-    if (perfis?.[perfil]) {
+    if (perfis && Object.prototype.hasOwnProperty.call(perfis, perfil)) {
+      configured = true;
       lista.push(...perfis[perfil]);
     }
   });
 
   if (await userHasSetorCapability(user, 'eh_setor_obra')) {
+    configured = true;
     lista.push(PERMISSAO_SOLICITACOES_MINHAS);
   }
 
-  return normalizeModuloPermissaoList(lista);
+  return {
+    configured,
+    permissions: normalizeModuloPermissaoList(lista)
+  };
+}
+
+async function getAreaPermissionStateForUser(user) {
+  if (!user?.id) {
+    return { bypass: false, configured: false, permissions: [] };
+  }
+
+  const sessionPermissions = normalizeModuloPermissaoList(user.areas_permissoes);
+  const config = await getPermissoesAreasConfig();
+  const permissionMap = config.usuarios || {};
+  const blockMap = config.usuarios_bloqueios || {};
+  const userId = Number(user.id);
+  const padraoState = await resolvePermissoesPadraoSetorPerfil(user, config);
+  const hasDirectConfiguration = Object.prototype.hasOwnProperty.call(permissionMap, userId);
+  const hasSessionConfiguration = user?.areas_permissoes_configuradas === true;
+  const hasLegacySessionPermissions = sessionPermissions.length > 0;
+  const bloqueios = new Set(normalizeModuloPermissaoList(blockMap[userId] || []));
+
+  return {
+    bypass: isBusinessAdmin(user),
+    configured: !isBusinessAdmin(user) && (
+      hasDirectConfiguration ||
+      padraoState.configured ||
+      hasSessionConfiguration ||
+      hasLegacySessionPermissions
+    ),
+    permissions: normalizeModuloPermissaoList([
+      ...padraoState.permissions,
+      ...sessionPermissions,
+      ...(permissionMap[userId] || [])
+    ]).filter((permission) => !bloqueios.has(permission))
+  };
+}
+
+/**
+ * Monta a lista de permissoes efetivamente concedidas ao usuario, SEM atalho por perfil.
+ *
+ * Extraida de `getAreasPermissoesForUser` para poder ser usada pela verificacao estrita.
+ * Aquela funcao devolve lista vazia para BusinessAdmin (o front le isso como acesso total);
+ * quem precisa saber o que foi de fato concedido — e nao o que o perfil libera — usa esta.
+ */
+async function montarPermissoesConcedidas(user) {
+  const state = await getAreaPermissionStateForUser(user);
+  return state.permissions;
 }
 
 async function getAreasPermissoesForUser(user) {
   if (!user?.id) return [];
   // BusinessAdmin: sem restrições, retorna array vazio (frontend interpreta como acesso total)
   if (isBusinessAdmin(user)) return [];
-  const sessionPermissions = normalizeModuloPermissaoList(user.areas_permissoes);
-  const config = await getPermissoesAreasConfig();
-  const permissionMap = config.usuarios || {};
-  const blockMap = config.usuarios_bloqueios || {};
-  const padroes = await getPermissoesPadraoSetorPerfil(user, config);
-  const bloqueios = new Set(normalizeModuloPermissaoList(blockMap[Number(user.id)] || []));
-  return normalizeModuloPermissaoList([
-    ...padroes,
-    ...sessionPermissions,
-    ...(permissionMap[Number(user.id)] || [])
-  ]).filter((permission) => !bloqueios.has(permission));
+  const state = await getAreaPermissionStateForUser(user);
+  return state.permissions;
+}
+
+/**
+ * Verificacao estrita de permissao para perfis comuns e ADMINISTRADOR.
+ * SUPERADMIN e a excecao global e nao depende de marcacao granular.
+ */
+async function userHasStrictAreaPermission(user, permissionKeys = []) {
+  if (!user?.id) return false;
+  if (isSuperadmin(user)) return true;
+
+  const esperadas = (Array.isArray(permissionKeys) ? permissionKeys : [])
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  if (esperadas.length === 0) return false;
+
+  // Usa a montagem crua para que ADMINISTRADOR e os demais perfis precisem da
+  // concessao nominal quando a regra de negocio exigir permissao estrita.
+  const concedidas = new Set(await montarPermissoesConcedidas(user));
+
+  return esperadas.every((chave) => concedidas.has(chave));
+}
+
+/**
+ * Permissao nominal para perfis comuns. SUPERADMIN preserva o bypass global de
+ * configuracao e operacao; requisitos de identidade do dominio (por exemplo,
+ * autorizador ativo e passkey) continuam sendo validados pelo servico chamador.
+ */
+async function userHasNominalAreaPermission(user, permissionKeys = []) {
+  if (!user?.id) return false;
+  if (isSuperadmin(user)) return true;
+  const esperadas = (Array.isArray(permissionKeys) ? permissionKeys : [])
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (esperadas.length === 0) return false;
+  const concedidas = new Set(await montarPermissoesConcedidas(user));
+  return esperadas.every((chave) => concedidas.has(chave));
 }
 
 async function userHasAreaPermission(user, permissionKeys = []) {
@@ -1066,18 +1185,18 @@ async function userHasAreaPermission(user, permissionKeys = []) {
     return false;
   }
 
-  const permissions = await getAreasPermissoesForUser(user);
-  if (!Array.isArray(permissions) || permissions.length === 0) {
+  const state = await getAreaPermissionStateForUser(user);
+  if (!state.configured) {
     return true;
   }
 
-  return permissions.some((permission) => expected.has(String(permission || '').trim().toLowerCase()));
+  return state.permissions.some((permission) => expected.has(String(permission || '').trim().toLowerCase()));
 }
 
 async function userHasConfiguredAreaPermissions(user) {
   if (isBusinessAdmin(user)) return false;
-  const permissions = await getAreasPermissoesForUser(user);
-  return Array.isArray(permissions) && permissions.length > 0;
+  const state = await getAreaPermissionStateForUser(user);
+  return state.configured;
 }
 
 async function userHasAreaPermissionWhenConfigured(user, permissionKeys = []) {
@@ -1349,6 +1468,11 @@ async function canAccessFinanceiroRelatorio(user, permissionKeys = []) {
 }
 
 async function canViewSolicitacaoFinanceiro(user) {
+  // A Obra acompanha somente as solicitacoes dentro do proprio escopo. A autorizacao do endpoint
+  // ainda cruza a obra da solicitacao com `usuario_obras`; isto libera a ABA, nao o modulo
+  // Financeiro nem suas operacoes.
+  if (await userHasSetorCapability(user, 'eh_setor_obra')) return true;
+
   if (await canAccessFinanceiro(user)) return true;
 
   if (await userHasConfiguredAreaPermissions(user)) {
@@ -1430,6 +1554,54 @@ async function canAccessPagamentos(user) {
   }
 
   return (await userHasFinanceiroSector(user)) || userHasPaymentApprovalDirectorate(user);
+}
+
+async function canAccessFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, FINANCEIRO_FILA_PAGAMENTOS_PERMISSION_KEYS);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canPrepareFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.preparar']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canImportarComprovantesFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.importar_comprovantes']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canBaixarFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.baixar']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canReportarFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.reportar']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canResolverFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.resolver']);
+  }
+  return userHasFinanceiroSector(user);
 }
 
 async function canPreparePagamentos(user) {
@@ -1811,6 +1983,46 @@ async function canViewComprasPedidos(user) {
   return canAccessCompras(user);
 }
 
+async function canViewPedidoCompraFinanceiro(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_VIEW_KEYS);
+  }
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+async function canAnexarDocumentoPedidoCompraFinanceiro(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO_KEYS);
+  }
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+async function canGerarPrevisaoPedidoCompraFinanceiro(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_PREVISAO_KEYS);
+  }
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+async function canLiberarPedidoCompraFinanceiro(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_LIBERAR_KEYS);
+  }
+  return userHasSetorCapability(user, 'eh_setor_geo');
+}
+
+async function canAprovarReaberturaPedidoCompraFinanceiro(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_REABERTURA_KEYS);
+  }
+  return userHasSetorCapability(user, 'eh_setor_geo');
+}
+
 async function canManageComprasPedidos(user) {
   if (isBusinessAdmin(user)) {
     return true;
@@ -1818,6 +2030,18 @@ async function canManageComprasPedidos(user) {
 
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, COMPRAS_PEDIDOS_MANAGE_KEYS);
+  }
+
+  return userHasSetorCapability(user, 'eh_setor_compras');
+}
+
+async function canAnexarEspelhoComprasPedidos(user) {
+  if (isBusinessAdmin(user)) {
+    return true;
+  }
+
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMPRAS_PEDIDOS_ANEXAR_ESPELHO_KEYS);
   }
 
   return userHasSetorCapability(user, 'eh_setor_compras');
@@ -1991,6 +2215,19 @@ async function canManageComprasConfiguracoes(user) {
     return userHasAreaPermission(user, COMPRAS_CONFIGURACOES_MANAGE_KEYS);
   }
 
+  return false;
+}
+
+async function canCatalogarItensManuaisCompras(user) {
+  if (isBusinessAdmin(user)) {
+    return true;
+  }
+
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMPRAS_INSUMOS_CATALOGAR_MANUAIS_KEYS);
+  }
+
+  // Acao que altera o cadastro mestre: sem permissao granular configurada, permanece fechada.
   return false;
 }
 
@@ -2177,6 +2414,10 @@ async function canAccessRhDp(user) {
     return true;
   }
 
+  if (await isRhDpUsuarioObra(user)) {
+    return true;
+  }
+
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, RH_DP_AREA_PERMISSION_KEYS);
   }
@@ -2192,9 +2433,25 @@ async function canAccessRhDp(user) {
     'rh_dp_apuracao_edit',
     'rh_dp_fechamento_execute',
     'rh_dp_fechamento_reopen',
+    'rh_dp_ticket_generate',
     'rh_dp_obrigacoes_view',
     'rh_dp.relatorios.visualizar'
   ]);
+}
+
+async function canViewRhDpEventosRecorrentes(user) {
+  if (!(await canAccessRhDp(user))) return false;
+  return userHasAreaPermissionWhenConfigured(user, ['rh_dp.eventos_recorrentes.visualizar']);
+}
+
+async function isRhDpUsuarioObra(user) {
+  if (isBusinessAdmin(user)) return false;
+  return userHasSetorCapability(user, 'eh_setor_obra');
+}
+
+async function getRhDpObraScopeIds(user) {
+  if (!(await isRhDpUsuarioObra(user))) return null;
+  return getUserObraIds(user);
 }
 
 async function canAccessProvisoes(user) {
@@ -2553,6 +2810,71 @@ async function canViewFiscalLogs(user) {
   return false;
 }
 
+async function canViewCadastroObras(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, OBRAS_CADASTRO_VIEW_KEYS);
+  }
+  return false;
+}
+
+async function canManageCadastroObras(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await canManageConfiguracoesArea(user, 'cadastros')) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, OBRAS_CADASTRO_MANAGE_KEYS);
+  }
+  return false;
+}
+
+async function canViewGestaoObras(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, OBRAS_GESTAO_VIEW_KEYS);
+  }
+  return canViewCadastroObras(user);
+}
+
+async function canManageGestaoObrasApropriacoes(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, OBRAS_GESTAO_APROPRIACOES_KEYS);
+  }
+  return false;
+}
+
+async function canViewBiblioteca(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, BIBLIOTECA_VIEW_KEYS);
+  }
+  return true;
+}
+
+async function canManageBiblioteca(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, BIBLIOTECA_MANAGE_KEYS);
+  }
+  return false;
+}
+
+async function canViewComunicacao(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMUNICACAO_VIEW_KEYS);
+  }
+  return true;
+}
+
+async function canSendComunicacao(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMUNICACAO_SEND_KEYS);
+  }
+  return true;
+}
+
 async function canAccessTreinamento(user) {
   if (isBusinessAdmin(user)) {
     return true;
@@ -2688,6 +3010,7 @@ async function canManageSstArea(user, area) {
 }
 
 async function canViewRhDpDashboard(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, ['rh_dp.dashboard.visualizar', 'rh_dp.relatorios.visualizar'], ['rh_dp_dashboard_view']);
 }
 
@@ -2696,10 +3019,13 @@ async function canManageRhDpEmpresas(user) {
     return true;
   }
 
+  if (await isRhDpUsuarioObra(user)) return false;
+
   return userHasAreaPermissionWhenConfigured(user, ['rh_dp.empresas.gerenciar']);
 }
 
 async function canViewRhDpColaboradores(user) {
+  if (await isRhDpUsuarioObra(user)) return true;
   return userHasAreaOrRhDpLegacyPermission(user, [
     'rh_dp.colaboradores.visualizar',
     'rh_dp.colaboradores.editar'
@@ -2707,10 +3033,12 @@ async function canViewRhDpColaboradores(user) {
 }
 
 async function canManageRhDpColaboradores(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, ['rh_dp.colaboradores.editar'], ['rh_dp_colaboradores_edit']);
 }
 
 async function canViewRhDpDocumentos(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, [
     'rh_dp.documentos.visualizar',
     'rh_dp.documentos.gerenciar'
@@ -2718,10 +3046,12 @@ async function canViewRhDpDocumentos(user) {
 }
 
 async function canManageRhDpDocumentos(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, ['rh_dp.documentos.gerenciar'], ['rh_dp_documentos_manage']);
 }
 
 async function canExecuteRhDpImportacoes(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, ['rh_dp.importacoes.executar'], ['rh_dp_importacoes_execute']);
 }
 
@@ -2738,6 +3068,7 @@ async function canEditRhDpApuracao(user) {
 }
 
 async function canViewRhDpObrigacoes(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, [
     'rh_dp.obrigacoes.visualizar',
     'rh_dp.fechamento.executar',
@@ -2746,10 +3077,12 @@ async function canViewRhDpObrigacoes(user) {
 }
 
 async function canExecuteRhDpFechamento(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, ['rh_dp.fechamento.executar'], ['rh_dp_fechamento_execute']);
 }
 
 async function canReopenRhDpFechamento(user) {
+  if (await isRhDpUsuarioObra(user)) return false;
   return userHasAreaOrRhDpLegacyPermission(user, ['rh_dp.fechamento.reabrir'], ['rh_dp_fechamento_reopen']);
 }
 
@@ -3025,10 +3358,12 @@ module.exports = {
   canAccessConfiguracoes,
   canCancelPrioridadeDiretoriaLote,
   canAccessPagamentos,
+  canAccessFilaPagamentos,
   canApprovePagamentos,
   canAuditPaymentBeneficiaries,
   canConfigurePagamentos,
   canConfirmarBaixaPagamento,
+  canBaixarFilaPagamentos,
   canCreatePrioridadeDiretoriaLote,
   canDeleteComprovante,
   canDeletePrioridadeDiretoriaLote,
@@ -3053,9 +3388,13 @@ module.exports = {
   canManageComercialEmpreendimentos,
   canAlterarQuantidadeSolicitacaoCompra,
   canAlterarStatusComprasPedidos,
+  canAnexarDocumentoPedidoCompraFinanceiro,
+  canAnexarEspelhoComprasPedidos,
   canCancelarComprasPedidos,
   canCancelarFreteComprasPedidos,
+  canCatalogarItensManuaisCompras,
   canEditarItensComprasPedidos,
+  canGerarPrevisaoPedidoCompraFinanceiro,
   canEditarItensSolicitacaoCompra,
   canEncerrarComprasCotacoes,
   canEncerrarSemPedidoComprasCotacoes,
@@ -3064,13 +3403,18 @@ module.exports = {
   canManageComprasCotacoes,
   canManageComprasFornecedores,
   canManageComprasPedidos,
+  canLiberarPedidoCompraFinanceiro,
   canOperateComprasCotacoes,
   canReabrirComprasCotacoes,
   canCancelarComprasCotacoes,
   canReabrirComprasPedidos,
+  canAprovarReaberturaPedidoCompraFinanceiro,
   canRegistrarFreteComprasPedidos,
   canRemanejarComprasPedidos,
   canManageConfiguracoesArea,
+  canManageCadastroObras,
+  canManageGestaoObrasApropriacoes,
+  canManageBiblioteca,
   canManageCrmAutomacoes,
   canManageCrmConfiguracoes,
   canManageFiscalConfig,
@@ -3086,6 +3430,10 @@ module.exports = {
   canRunFiscalSync,
   canUploadFiscalDocuments,
   canPreparePagamentos,
+  canPrepareFilaPagamentos,
+  canImportarComprovantesFilaPagamentos,
+  canReportarFilaPagamentos,
+  canResolverFilaPagamentos,
   canManageIntegracaoSiengeConfig,
   canManageProvisoesCategorias,
   canManageProvisoesStatus,
@@ -3126,6 +3474,7 @@ module.exports = {
   canManageComprasDelegacao,
   canViewComprasFornecedores,
   canViewComprasPedidos,
+  canViewPedidoCompraFinanceiro,
   canViewComprasRelatorios,
   canViewCrmAtendimento,
   canViewCrmAutomacoes,
@@ -3139,6 +3488,7 @@ module.exports = {
   canViewRhDpColaboradores,
   canViewRhDpDashboard,
   canViewRhDpDocumentos,
+  canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   canViewSystemAudit,
   canViewOperationalAudit,
@@ -3148,7 +3498,14 @@ module.exports = {
   canViewSystemGovernance,
   canViewSystemProductEvolution,
   canViewSystemTechMonitor,
+  canViewCadastroObras,
+  canViewGestaoObras,
+  canViewBiblioteca,
+  canViewComunicacao,
+  canSendComunicacao,
   getRhDpCapabilitiesForUser,
+  getRhDpObraScopeIds,
+  isRhDpUsuarioObra,
   isAdministrador,
   isBusinessAdmin,
   canManageUsers,
@@ -3160,6 +3517,7 @@ module.exports = {
   hasAnyProfile,
   hasAnyScopeToken,
   hasObraAccess,
+  getAreaPermissionStateForUser,
   getAreasPermissoesForUser,
   getPermissoesAreasConfig,
   getPermissoesAreasUsuarios,
@@ -3171,6 +3529,9 @@ module.exports = {
   isSuperadmin,
   normalizeToken,
   userHasAreaPermission,
+  userHasAreaPermissionWhenConfigured,
+  userHasStrictAreaPermission,
+  userHasNominalAreaPermission,
   userHasFinanceiroAccessConfig,
   userHasAllObrasAccess,
   userCanCreateInAllObras,

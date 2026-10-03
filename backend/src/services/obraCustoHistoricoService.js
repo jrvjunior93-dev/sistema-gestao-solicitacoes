@@ -509,9 +509,9 @@ function sanitizeLinhaConfirmacao(linha = {}) {
 async function confirmarImportacaoCustosHistoricos(req, payload = {}) {
   let dados = payload;
   if (req.file) {
-    // O arquivo compacto substitui milhares de objetos JSON. A previa e
-    // recalculada para garantir que o conteudo aprovado ainda corresponde
-    // ao arquivo e aos cadastros no momento da confirmacao.
+    // O arquivo XLSX compacto substitui milhares de objetos JSON. Recalcular
+    // a previa no servidor garante que so as linhas efetivamente aprovadas
+    // sejam gravadas, mesmo se cadastros ou duplicidades mudaram nesse meio-tempo.
     const previaAtual = await previewImportacaoCustosHistoricos(req, payload);
     if (!payload.arquivo_hash || !payload.preview_digest
       || payload.arquivo_hash !== previaAtual.arquivo_hash

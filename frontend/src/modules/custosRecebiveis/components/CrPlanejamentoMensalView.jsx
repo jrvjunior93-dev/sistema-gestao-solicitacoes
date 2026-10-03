@@ -2,25 +2,34 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   HiOutlineArrowLeft,
   HiOutlineCalendarDays,
+  HiOutlineCheckCircle,
   HiOutlineExclamationTriangle,
   HiOutlinePlus
 } from 'react-icons/hi2';
+import { avisoMedicao, avisoPlanejamento, monthCompact, monthLabel } from '../utils/prazos';
 import {
   criarCompetenciaObra,
-  listarCompetenciasObra
+  listarCompetenciasObra,
+  solicitarDilatacao
 } from '../services/custosRecebiveis';
+import CrDilatacaoRequestModal from './CrDilatacaoRequestModal';
 import CrMonthlySummaryCard from './CrMonthlySummaryCard';
 import CrMonthlyDetailView from './CrMonthlyDetailView';
 import CrPlanejamentoView from './CrPlanejamentoView';
+import CrReopeningRequestModal from './CrReopeningRequestModal';
 
-function monthLabel(value) {
-  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return value || '-';
-  const [year, month] = value.split('-').map(Number);
-  return new Intl.DateTimeFormat('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC'
-  }).format(new Date(Date.UTC(year, month - 1, 1)));
+// Por que o lápis está apagado. Espelha `planejamento_editavel` do servidor
+// (mesmo critério de assertEditable): mês não finalizado é editável mesmo
+// atrasado; finalizado ou com reabertura expirada exige reabertura.
+function editBlockReason(item) {
+  const editable = typeof item.planejamento_editavel === 'boolean'
+    ? item.planejamento_editavel
+    : item.estado !== 'FINALIZADA'
+      && (item.estado !== 'REABERTA' || item.reabertura_situacao === 'APROVADA');
+  if (editable) return '';
+  if (item.reabertura_situacao === 'SOLICITADA') return 'reabertura aguardando decisão do administrador';
+  if (item.estado === 'REABERTA') return 'reabertura expirada; solicite nova reabertura';
+  return 'planejamento finalizado; solicite reabertura';
 }
 
 export default function CrPlanejamentoMensalView({
@@ -29,22 +38,26 @@ export default function CrPlanejamentoMensalView({
   initialCompetencia,
   autoOpen = false,
   detailMode = null,
-  obligations = [],
-  obligationsServerTime = null,
   permissions,
+  prazos = null,
   onChanged,
+  onRequestReopen,
+  onBackToWorks = null,
   onNavigateDetail
 }) {
   const [data, setData] = useState(null);
   const [selectedCompetencia, setSelectedCompetencia] = useState(
     (autoOpen || detailMode) ? initialCompetencia : null
   );
-  const [newMonthOpen, setNewMonthOpen] = useState(false);
-  const [newMonth, setNewMonth] = useState('');
   const [detailArea, setDetailArea] = useState('planning');
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [reopeningTarget, setReopeningTarget] = useState(null);
+  const [dilatacaoTarget, setDilatacaoTarget] = useState(null);
+  // Mensagem de sucesso trazida do editor quando a etapa foi concluída
+  // (medição aprovada, sem medição, finalizar) e a tela voltou aos meses.
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     if (!obra?.id) {
@@ -56,11 +69,6 @@ export default function CrPlanejamentoMensalView({
       setError('');
       const response = await listarCompetenciasObra(obra.id);
       setData(response);
-      setNewMonth((current) => (
-        response.competencias_permitidas?.includes(current)
-          ? current
-          : response.competencias_permitidas?.[0] || ''
-      ));
     } catch (requestError) {
       setData(null);
       setError(requestError.message || 'Erro ao carregar competências.');
@@ -72,7 +80,6 @@ export default function CrPlanejamentoMensalView({
   useEffect(() => {
     setSelectedCompetencia((autoOpen || detailMode) ? initialCompetencia : null);
     setDetailArea(detailMode || 'planning');
-    setNewMonthOpen(false);
     load();
   }, [autoOpen, detailMode, initialCompetencia, load]);
 
@@ -84,29 +91,34 @@ export default function CrPlanejamentoMensalView({
     .filter((item) => !existingMonths.has(item));
   const canCreate = permissions.costs || permissions.receipts;
   const isPublic = obra?.classificacao === 'PUBLICA';
-  const activeObligation = useMemo(() => (
-    (Array.isArray(obligations) ? obligations : [])
-      .filter((item) => (
-        Number(item.obra_id) === Number(obra?.id)
-        && item.situacao !== 'CUMPRIDA'
-      ))
-      .sort((left, right) => String(left.competencia).localeCompare(String(right.competencia)))[0]
-      || null
-  ), [obligations, obra?.id]);
-
-  const deadlineState = useMemo(() => {
-    if (!activeObligation?.prazo_em) return null;
-    const deadline = new Date(activeObligation.prazo_em);
-    const serverNow = obligationsServerTime ? new Date(obligationsServerTime) : new Date();
-    const days = Math.max(0, Math.ceil((deadline.getTime() - serverNow.getTime()) / 86400000));
-    return {
-      days,
-      deadline,
-      overdue: activeObligation.situacao === 'VENCIDA' || deadline <= serverNow
-    };
-  }, [activeObligation, obligationsServerTime]);
+  const nextNewMonth = availableNewMonths[0] || '';
+  // Obra travada (Fase 3): só o que regulariza fica disponível — planejamento,
+  // medição aprovada e dilatação. Detalhes e reabertura esperam a liberação.
+  const obraTravada = Boolean(prazos?.travada);
+  const travadaReason = 'obra travada; regularize o planejamento ou a medição primeiro';
+  const planningNotice = avisoPlanejamento(prazos);
+  const measurementNotice = avisoMedicao(prazos);
+  const pendingPlanning = ['ABERTO', 'VENCIDO'].includes(prazos?.planejamento?.situacao)
+    ? prazos.planejamento.competencia
+    : null;
+  const pendingMeasurement = ['ABERTO', 'VENCIDO'].includes(prazos?.medicao?.situacao)
+    && existingMonths.has(prazos.medicao.competencia)
+    ? prazos.medicao.competencia
+    : null;
+  const showRegisterPlanning = Boolean(pendingPlanning) && canCreate && (
+    existingMonths.has(pendingPlanning) || availableNewMonths.includes(pendingPlanning)
+  );
+  // Um primário só na tela: com planejamento pendente e urgente (obra travada
+  // ou prazo vencido) o destaque é "Registrar planejamento"; senão, "Novo mês".
+  const registerPlanningPrimary = showRegisterPlanning
+    && (obraTravada || prazos?.planejamento?.situacao === 'VENCIDO');
+  // Dilatação: medição do mês ainda não registrada (em prazo ou vencida).
+  const measurementDue = ['ABERTO', 'VENCIDO'].includes(prazos?.medicao?.situacao)
+    ? prazos.medicao
+    : null;
 
   function openDetail(competenciaValue, area) {
+    setNotice('');
     setSelectedCompetencia(competenciaValue);
     setDetailArea(area);
     onNavigateDetail?.(competenciaValue, area);
@@ -119,13 +131,19 @@ export default function CrPlanejamentoMensalView({
     void load();
   }
 
-  async function createMonth() {
-    if (!newMonth || creating) return;
+  // Etapa concluída no editor: mesmo caminho da seta "Meses da obra", com a
+  // mensagem de sucesso visível na lista de meses.
+  function completeDetail(message) {
+    closeDetail();
+    setNotice(message || '');
+  }
+
+  async function createMonth(target = nextNewMonth) {
+    if (!target || creating) return;
     try {
       setCreating(true);
       setError('');
-      const result = await criarCompetenciaObra(obra.id, newMonth);
-      setNewMonthOpen(false);
+      const result = await criarCompetenciaObra(obra.id, target);
       openDetail(result.competencia.competencia, 'planning');
       await load();
       onChanged?.();
@@ -139,9 +157,8 @@ export default function CrPlanejamentoMensalView({
   if (!obra?.id) {
     return (
       <section className="cr-section cr-empty-state cr-empty-state--large">
-        <HiOutlineCalendarDays className="h-7 w-7" />
+        <HiOutlineCalendarDays className="h-6 w-6" />
         <strong>Selecione uma obra</strong>
-        <span>Escolha a obra no contexto para consultar o planejamento mensal.</span>
       </section>
     );
   }
@@ -183,6 +200,7 @@ export default function CrPlanejamentoMensalView({
           competencia={selectedCompetencia}
           permissions={permissions}
           viewMode={detailArea}
+          onCompleted={completeDetail}
           onChanged={async () => {
             await load();
             onChanged?.();
@@ -192,95 +210,116 @@ export default function CrPlanejamentoMensalView({
     );
   }
 
+  function registerPendingPlanning() {
+    if (!pendingPlanning) return;
+    if (existingMonths.has(pendingPlanning)) {
+      openDetail(pendingPlanning, 'planning');
+    } else if (availableNewMonths.includes(pendingPlanning)) {
+      void createMonth(pendingPlanning);
+    }
+  }
+
   return (
     <section className="cr-workspace cr-months-workspace">
-      {activeObligation && deadlineState ? (
-        <div className="cr-planning-deadline" data-overdue={deadlineState.overdue || undefined}>
-          <HiOutlineCalendarDays className="h-5 w-5" />
-          <div>
-            <strong>
-              {deadlineState.overdue
-                ? `O planejamento de ${monthLabel(activeObligation.competencia)} está vencido.`
-                : `Registre a previsão de custos e medição de ${monthLabel(activeObligation.competencia)}.`}
-            </strong>
-            <span>
-              {deadlineState.overdue
-                ? (activeObligation.exige_reabertura
-                  ? 'Solicite a reabertura para concluir o preenchimento.'
-                  : 'A competência está liberada temporariamente para regularização.')
-                : `Restam ${deadlineState.days} dia(s). Prazo até ${deadlineState.deadline.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => openDetail(activeObligation.competencia, 'planning')}
-          >
-            {deadlineState.overdue ? 'Regularizar agora' : 'Registrar agora'}
-          </button>
-        </div>
-      ) : null}
       <header className="cr-workspace-heading">
-        <div>
-          <span>{obra.codigo || obra.id} · {isPublic ? 'Obra pública' : 'Obra privada'}</span>
-          <h2>Planejamento mensal · {obra.nome}</h2>
-          <p>
-            {isPublic
-              ? 'Planeje custos e medição. A aprovação, os realizados e o comparativo ficam no detalhe de cada mês.'
-              : 'Custos planejados, recebíveis financeiros do período e valores realizados.'}
-          </p>
+        <div className="cr-workspace-heading__title">
+          {onBackToWorks ? (
+            <button
+              type="button"
+              className="app-voltar cr-icon-button"
+              onClick={onBackToWorks}
+              aria-label="Voltar para Minhas obras"
+              title="Voltar para Minhas obras"
+            >
+              <HiOutlineArrowLeft aria-hidden="true" />
+            </button>
+          ) : null}
+          <div>
+            <span>{obra.codigo || obra.id} · {isPublic ? 'Obra pública' : 'Obra privada'}</span>
+            <h2>{obra.nome}</h2>
+          </div>
         </div>
-        {canCreate ? (
+        {canCreate && nextNewMonth ? (
           <button
             type="button"
-            className="btn btn-primary"
-            disabled={!availableNewMonths.length}
-            onClick={() => {
-              setNewMonth(availableNewMonths[0] || '');
-              setNewMonthOpen(true);
-            }}
+            className={registerPlanningPrimary ? 'btn btn-outline' : 'btn btn-primary'}
+            disabled={creating}
+            onClick={() => createMonth()}
           >
             <HiOutlinePlus className="h-4 w-4" />
-            Novo mês
+            {creating ? 'Criando...' : `Novo mês · ${monthLabel(nextNewMonth)}`}
           </button>
         ) : null}
       </header>
+
+      {planningNotice || measurementNotice ? (
+        <div className="cr-deadline-strip">
+          {[planningNotice, measurementNotice].filter(Boolean).map((aviso) => (
+            <span key={aviso.rotulo} className="cr-obra-card__aviso" data-tone={aviso.tone}>
+              <small>{aviso.rotulo}</small>
+              <span>{aviso.texto}</span>
+            </span>
+          ))}
+          <div className="cr-deadline-strip__actions">
+            {showRegisterPlanning ? (
+              <button
+                type="button"
+                className={registerPlanningPrimary ? 'btn btn-primary' : 'btn btn-outline'}
+                disabled={creating}
+                onClick={registerPendingPlanning}
+                aria-label={`Registrar planejamento de ${monthLabel(pendingPlanning)}`}
+              >
+                <span className="cr-deadline-btn__text">
+                  <span>Registrar planejamento</span>
+                  <small>{monthCompact(pendingPlanning)}</small>
+                </span>
+              </button>
+            ) : null}
+            {pendingMeasurement && isPublic && permissions.measurement ? (
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => openDetail(pendingMeasurement, 'approved')}
+                aria-label={`Registrar medição aprovada de ${monthLabel(pendingMeasurement)}`}
+              >
+                <span className="cr-deadline-btn__text">
+                  <span>Registrar medição aprovada</span>
+                  <small>{monthCompact(pendingMeasurement)}</small>
+                </span>
+              </button>
+            ) : null}
+            {measurementDue?.situacao === 'VENCIDO' && isPublic && permissions.measurement ? (
+              measurementDue.dilatacao_pendente ? (
+                <span className="cr-deadline-strip__status">Dilatação aguardando decisão</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setDilatacaoTarget({ obra, competencia: measurementDue.competencia })}
+                  aria-label={`Solicitar dilatação de ${monthLabel(measurementDue.competencia)}`}
+                >
+                  <span className="cr-deadline-btn__text">
+                    <span>Solicitar dilatação</span>
+                    <small>{monthCompact(measurementDue.competencia)}</small>
+                  </span>
+                </button>
+              )
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="cr-feedback cr-month-notice" data-tone="success" role="status">
+          <HiOutlineCheckCircle className="h-5 w-5" aria-hidden="true" />
+          {notice}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="cr-feedback" data-tone="error">
           <HiOutlineExclamationTriangle className="h-5 w-5" />
           {error}
-        </div>
-      ) : null}
-
-      {newMonthOpen ? (
-        <div className="cr-new-month-bar">
-          <label className="cr-field">
-            <span>Competência</span>
-            <select value={newMonth} onChange={(event) => setNewMonth(event.target.value)}>
-              {availableNewMonths.map((item) => (
-                <option key={item} value={item}>{monthLabel(item)}</option>
-              ))}
-            </select>
-          </label>
-          <div>
-            <button
-              type="button"
-              className="btn btn-outline"
-              disabled={creating}
-              onClick={() => setNewMonthOpen(false)}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!newMonth || creating}
-              onClick={createMonth}
-            >
-              {creating ? 'Criando...' : 'Abrir competência'}
-            </button>
-          </div>
         </div>
       ) : null}
 
@@ -290,13 +329,8 @@ export default function CrPlanejamentoMensalView({
 
       {!loading && data && !data.items?.length ? (
         <div className="cr-empty-state cr-empty-state--large">
-          <HiOutlineCalendarDays className="h-7 w-7" />
-          <strong>Nenhuma competência iniciada</strong>
-          <span>
-            {isPublic
-              ? 'Use Novo mês para registrar custos planejados e a medição prevista.'
-              : 'Use Novo mês para registrar custos e consultar os recebíveis do período.'}
-          </span>
+          <HiOutlineCalendarDays className="h-6 w-6" />
+          <strong>Nenhum mês registrado</strong>
         </div>
       ) : null}
 
@@ -306,9 +340,8 @@ export default function CrPlanejamentoMensalView({
             <CrMonthlySummaryCard
               key={item.id}
               title={monthLabel(item.competencia)}
-              eyebrow="Competência"
               classification={obra.classificacao}
-              status={item.estado}
+              status={item.vencida ? 'VENCIDA' : item.estado}
               custoPlanejado={item.total_custo_previsto}
               custoRealizado={item.custo_realizado}
               recebivelPrevisto={item.medicao_apresentada ?? item.total_receita_prevista}
@@ -316,22 +349,58 @@ export default function CrPlanejamentoMensalView({
                 ? item.medicao_aprovada
                 : item.total_receita_prevista}
               receitaRecebida={item.receita_recebida}
-              medicaoAprovadaInformada={!isPublic || item.medicao_aprovada != null}
+              medicaoAprovadaInformada={!isPublic || item.medicao_aprovada != null || Boolean(item.sem_medicao)}
+              semMedicao={Boolean(item.sem_medicao)}
               glosa={item.glosa}
               actionLabel="Ver detalhes"
+              onEditPlanning={() => openDetail(item.competencia, 'planning')}
+              editDisabledReason={(permissions.costs || permissions.receipts)
+                ? editBlockReason(item)
+                : 'sem permissão para editar'}
               onOpen={() => {
                 openDetail(item.competencia, 'details');
               }}
-              onOpenApproved={isPublic && permissions.measurementView ? () => {
-                openDetail(item.competencia, 'approved');
-              } : null}
+              onOpenApproved={() => openDetail(item.competencia, 'approved')}
+              approvedDisabledReason={!isPublic
+                ? 'obra privada não tem medição aprovada'
+                : (!permissions.measurementView ? 'sem permissão para medição' : '')}
               approvedActionLabel={!permissions.measurement
-                ? 'Ver aprovação'
-                : (item.medicao_aprovada != null ? 'Revisar aprovação' : 'Registrar aprovação')}
+                ? 'Ver medição efetivamente paga'
+                : (item.medicao_aprovada != null || item.sem_medicao
+                  ? 'Revisar medição efetivamente paga'
+                  : 'Registrar medição efetivamente paga')}
+              onRequestReopening={() => setReopeningTarget({ obra, competencia: item.competencia })}
+              openDisabledReason={obraTravada ? travadaReason : ''}
+              reopeningDisabled={obraTravada || !permissions.reopenRequest || !item.reabertura_permitida}
+              reopeningStatus={item.reabertura_situacao}
+              reopeningActionLabel={obraTravada
+                ? travadaReason
+                : !permissions.reopenRequest
+                ? 'sem permissão para solicitar'
+                : item.reabertura_situacao === 'SOLICITADA'
+                  ? 'aguardando decisão do administrador'
+                  : (item.reabertura_situacao === 'APROVADA'
+                    ? 'mês já reaberto para edição'
+                    : 'disponível para mês finalizado')}
             />
           ))}
         </div>
       ) : null}
+
+      <CrDilatacaoRequestModal
+        target={dilatacaoTarget}
+        onClose={() => setDilatacaoTarget(null)}
+        onSubmit={async (obraId, competenciaValue, dias, motivo) => {
+          await solicitarDilatacao(obraId, competenciaValue, dias, motivo);
+          await onChanged?.();
+        }}
+      />
+
+      <CrReopeningRequestModal
+        target={reopeningTarget}
+        onClose={() => setReopeningTarget(null)}
+        onSubmit={onRequestReopen}
+      />
     </section>
   );
 }

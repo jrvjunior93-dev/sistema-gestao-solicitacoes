@@ -1,4 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  Avisos,
+  useAvisos
+} from '../components/padrao';
 import { TEMA_PADRAO, useTheme } from '../contexts/ThemeContext';
 import { getSetores } from '../services/setores';
 import { getStatusSetor } from '../services/statusSetor';
@@ -155,7 +162,21 @@ function setByPath(obj, path, value) {
   return output;
 }
 
-function corValida(value, fallback = '#ffffff') {
+/*
+  R25 — o que é DADO e o que é ESTILO nesta tela (04/09).
+
+  Esta tela EDITA as cores do sistema: o hexadecimal que aparece no campo,
+  no seletor `<input type="color">` e no quadrado de amostra é o VALOR do
+  registro, não a cor da tela. Esse continua sendo hexadecimal, porque é
+  isso que o usuário está editando.
+
+  O que saiu foram os hexadecimais que a TELA escrevia por conta própria
+  como valor padrão (`'#ffffff'`, `'#9ca3af'`). Valor padrão de cor também
+  é dado — e o dono do dado é o `TEMA_PADRAO`, a mesma fonte que o resto do
+  sistema usa. Escrever o número aqui criava uma segunda fonte de verdade
+  que ninguém atualizaria junto.
+*/
+function corValida(value, fallback = TEMA_PADRAO.palette.surface) {
   const normalized = String(value || '').trim();
   return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
 }
@@ -209,47 +230,78 @@ function ColorField({ label, path, value, fallback, onChange }) {
   return (
     <label className="block rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-3 text-sm">
       <span className="block min-w-0">
-        <span className="block text-sm font-semibold leading-5 text-[var(--c-text)]">{label}</span>
+        <span className="block text-sm font-semibold text-[var(--c-text)]">{label}</span>
         {path && (
-          <span className="mt-0.5 block break-all font-mono text-[10px] leading-4 text-[var(--c-muted)]">
+          <span className="mt-1 block break-all font-mono text-xs text-[var(--c-muted)]">
             {path}
           </span>
         )}
       </span>
       <span className="mt-3 flex items-center gap-3">
         <span
-          className="h-9 w-9 shrink-0 rounded-lg border border-[var(--c-border)] shadow-sm"
+          className="h-8 w-8 shrink-0 rounded-lg border border-[var(--c-border)] shadow-sm"
           style={{ background: safeValue }}
           aria-hidden="true"
         />
         <input
-          className="min-w-0 flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1.5 text-xs font-mono text-[var(--c-text)]"
+          className="min-w-0 flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-2 text-xs font-mono text-[var(--c-text)]"
           value={String(value || '')}
           onChange={(event) => onChange(event.target.value)}
           maxLength={7}
           aria-label={fieldLabel}
           title={fieldLabel}
         />
-        <input
-          type="color"
-          value={safeValue}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-[var(--c-border)] bg-transparent p-1"
-          aria-label={`Selecionar cor de ${fieldLabel}`}
-          title={`Selecionar cor de ${fieldLabel}`}
-        />
+        {/*
+          X3 (medido no preview, 390px): o seletor de cor ia até 435px numa
+          janela de 390 e o transbordo era RECORTADO por `overflow-x: clip` —
+          o campo sumia SEM deixar rolagem, e ninguém chegava nele.
+
+          A causa NÃO é a grade da seção (em 390px ela já é de uma coluna só,
+          e nenhum ancestral estourava — por isso o harness não nomeou
+          ancestral nenhum na cadeia). A causa é de ESPECIFICIDADE: o
+          `index.css` declara
+
+            .layout-shell input:where(:not([type="checkbox"])…) { width: 100% }
+
+          com especificidade (0,1,1), que VENCE o `.w-12` do Tailwind (0,1,0)
+          — as utilitárias entram no topo do arquivo, em `@tailwind
+          utilities`, e tudo que vem depois com peso igual ou maior ganha.
+          Com `width: 100%` o campo passava a valer a linha inteira e, como
+          ele tinha `shrink-0`, não podia encolher: os 48px do seletor eram
+          empurrados para fora do bloco.
+
+          A prova de que é isto: as telas irmãs que usam o MESMO `w-12 h-8`
+          (`ConfiguracoesStatusPedidoCompra`, `ConfiguracoesContratoAlertasEFormas`)
+          passam no X3 — o seletor delas não tem `shrink-0` e encolhe.
+
+          Conserto sem medida à mão (R10) e sem `overflow-x: auto`: a medida
+          sai do input e vai para um invólucro `w-12` — degrau da escala, e
+          `span` não é alcançado pela regra do sistema. O `width: 100%`
+          herdado passa a resolver DENTRO dele: 48px, e não a linha inteira.
+          A linha volta a caber (32 + 12 + campo + 12 + 48) e o campo de
+          texto, com `flex-1 min-w-0`, absorve a sobra.
+        */}
+        <span className="block w-12 shrink-0">
+          <input
+            type="color"
+            value={safeValue}
+            onChange={(event) => onChange(event.target.value)}
+            className="h-8 w-full cursor-pointer rounded-lg border border-[var(--c-border)] bg-transparent p-1"
+            aria-label={`Selecionar cor de ${fieldLabel}`}
+            title={`Selecionar cor de ${fieldLabel}`}
+          />
+        </span>
       </span>
     </label>
   );
 }
 
+// B5/R10: cada seção é um BlocoConteudo — o título de bloco (18px) e o
+// texto de apoio vêm do componente, e não de um h2 com medida escrita à mão
+// (era `text-base`, 16px, fora da escala).
 function ColorSection({ title, description, fields, draft, onChange, columns = 'lg:grid-cols-2' }) {
   return (
-    <section className="card space-y-4">
-      <div>
-        <h2 className="text-base font-semibold text-[var(--c-text)]">{title}</h2>
-        {description && <p className="mt-1 text-sm text-[var(--c-muted)]">{description}</p>}
-      </div>
+    <BlocoConteudo titulo={title} descricao={description}>
       <div className={`grid gap-3 md:grid-cols-2 ${columns}`}>
         {fields.map(([path, label]) => (
           <ColorField
@@ -257,12 +309,14 @@ function ColorSection({ title, description, fields, draft, onChange, columns = '
             label={label}
             path={path}
             value={getByPath(draft, path)}
-            fallback={getByPath(TEMA_PADRAO, path) || '#ffffff'}
+            // Sem valor no tema padrão, o piso é o do `corValida` — nenhum
+            // hexadecimal escrito na tela.
+            fallback={getByPath(TEMA_PADRAO, path)}
             onChange={(value) => onChange(path, value)}
           />
         ))}
       </div>
-    </section>
+    </BlocoConteudo>
   );
 }
 
@@ -273,6 +327,8 @@ export default function CoresSistema() {
   const [setorSelecionado, setSetorSelecionado] = useState('');
   const [statusSetor, setStatusSetor] = useState([]);
   const [salvando, setSalvando] = useState(false);
+  // R3/R19: as duas chamadas de alert() desta tela viram faixa do sistema.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     carregarSetores();
@@ -359,43 +415,74 @@ export default function CoresSistema() {
     try {
       setSalvando(true);
       await atualizarTema(draft);
-      alert('Cores atualizadas.');
+      avisar.sucesso('Cores atualizadas.');
     } catch (error) {
       console.error(error);
-      alert('Erro ao salvar cores.');
+      avisar.erro(error?.message || 'Erro ao salvar cores.');
     } finally {
       setSalvando(false);
     }
   }
 
-  if (!draft) return <p>Carregando cores...</p>;
+  // C5/B3: UMA ação de salvar, no cabeçalho. Havia dois botões
+  // `btn btn-primary` idênticos ("Salvar cores") na mesma tela — um no topo
+  // e outro no fim da página. O do fim existia porque a página é longa; com
+  // a faixa fixa (R13) o botão do cabeçalho acompanha a rolagem e continua
+  // a um clique de distância, então o segundo virou duplicata.
+  const acoesDoCabecalho = {
+    acaoPrincipal: {
+      rotulo: salvando ? 'Salvando...' : 'Salvar cores',
+      onClick: salvar,
+      desabilitada: salvando
+    },
+    secundarias: [{
+      rotulo: 'Restaurar padrão',
+      onClick: () => setDraft(clone(TEMA_PADRAO))
+    }]
+  };
+
+  // B5: o carregamento acontece DENTRO da estrutura padrão — antes a tela
+  // devolvia `<p>Carregando cores...</p>` cru, sem página, sem cabeçalho e
+  // sem superfície.
+  if (!draft) {
+    return (
+      <Pagina className="max-w-7xl">
+        <PageHeader
+          titulo="Cores do Sistema"
+          descricao="Configure a identidade visual usada por botoes, cards, status, textos, números e acentos dos módulos."
+        />
+        <BlocoConteudo titulo="Carregando cores">
+          <p className="app-note">Buscando o tema atual do sistema...</p>
+        </BlocoConteudo>
+      </Pagina>
+    );
+  }
 
   return (
-    <div className="page solicitacoes-page max-w-7xl">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">Cores do Sistema</h1>
-          <p className="page-subtitle">
-            Configure a identidade visual usada por botoes, cards, status, textos, numeros e acentos dos modulos.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" className="btn btn-outline" onClick={() => setDraft(clone(TEMA_PADRAO))}>
-            Restaurar padrao
-          </button>
-          <button type="button" onClick={salvar} disabled={salvando} className="btn btn-primary">
-            {salvando ? 'Salvando...' : 'Salvar cores'}
-          </button>
-        </div>
-      </div>
+    <Pagina className="max-w-7xl">
+      {/* C1/C2/R5/R13: título, apoio e ações na faixa fixa do topo — o
+          cabeçalho montado à mão (h1 + p.page-subtitle + dois botões soltos)
+          não grudava na rolagem nem tinha superfície própria. */}
+      <PageHeader
+        titulo="Cores do Sistema"
+        descricao="Configure a identidade visual usada por botoes, cards, status, textos, números e acentos dos módulos."
+        {...acoesDoCabecalho}
+      />
 
-      <section className="card space-y-4" style={montarPreviewVars(draft)}>
-        <div>
-          <h2 className="text-base font-semibold text-[var(--c-text)]">Previa operacional</h2>
-          <p className="mt-1 text-sm text-[var(--c-muted)]">
-            Use esta area para validar contraste antes de salvar.
-          </p>
-        </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {/* B2: este é o bloco principal — é ele que responde a pergunta da
+          tela ("como fica o sistema com estas cores?"). O `style` carrega as
+          variáveis do rascunho, então a prévia mostra o valor em edição. */}
+      <BlocoConteudo
+        titulo="Prévia operacional"
+        descricao="Use esta área para validar contraste antes de salvar."
+        variante="primario"
+        // A barra de cor vai DENTRO do mesmo `style`: o BlocoConteudo monta
+        // `--bloco-cor` a partir da prop `cor` e depois espalha `...props`,
+        // então um `style` próprio substituiria o dele e a barra sumiria.
+        style={{ ...montarPreviewVars(draft), '--bloco-cor': 'var(--c-primary)' }}
+      >
         <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4">
             <div className="flex flex-wrap gap-2">
@@ -403,23 +490,23 @@ export default function CoresSistema() {
               <button type="button" className="btn btn-secondary">Secundario</button>
               <button type="button" className="btn btn-outline">Contornado</button>
               <button type="button" className="btn btn-success">Sucesso</button>
-              <button type="button" className="btn btn-danger">Critico</button>
+              <button type="button" className="btn btn-danger">Crítico</button>
             </div>
             <div className="app-summary-grid app-summary-grid--compact mt-4">
               <div className="app-summary-card">
                 <div className="app-summary-label">Saldo</div>
                 <div className="app-summary-value">R$ 128.450,00</div>
-                <div className="app-summary-subvalue">Numero padrao</div>
+                <div className="app-summary-subvalue">Número padrão</div>
               </div>
               <div className="app-summary-card">
                 <div className="app-summary-label">Executado</div>
                 <div className="app-summary-value" style={{ color: draft.numbers?.positive }}>82%</div>
-                <div className="app-summary-subvalue">Numero positivo</div>
+                <div className="app-summary-subvalue">Número positivo</div>
               </div>
               <div className="app-summary-card">
                 <div className="app-summary-label">Risco</div>
                 <div className="app-summary-value" style={{ color: draft.numbers?.negative }}>12</div>
-                <div className="app-summary-subvalue">Numero critico</div>
+                <div className="app-summary-subvalue">Número crítico</div>
               </div>
             </div>
           </div>
@@ -432,24 +519,21 @@ export default function CoresSistema() {
             <span className="badge-status badge-status--intercompany"><span className="badge-status__dot" />Entre Empresas</span>
           </div>
         </div>
-      </section>
+      </BlocoConteudo>
 
       <ColorSection title="Paleta geral" description="Base visual usada em telas, fundos, bordas e estados principais." fields={PALETA_GERAL} draft={draft} onChange={atualizarCampo} />
       <ColorSection title="Botoes" description="Controla botoes principais, secundarios, contornados, discretos e estados operacionais." fields={BOTOES} draft={draft} onChange={atualizarCampo} />
       <ColorSection title="Cards e indicadores" description="Define superficies, cards de dashboards e cards de numeros dos relatorios." fields={CARDS} draft={draft} onChange={atualizarCampo} />
       <ColorSection title="Textos" description="Ajusta titulos, texto comum, links e textos auxiliares." fields={TEXTOS} draft={draft} onChange={atualizarCampo} />
-      <ColorSection title="Numeros e metricas" description="Cores usadas em valores, percentuais, KPIs e indicadores financeiros." fields={NUMEROS} draft={draft} onChange={atualizarCampo} />
-      <ColorSection title="Acentos por modulo" description="Cores institucionais para distinguir modulos sem alterar regras de negocio." fields={MODULOS} draft={draft} onChange={atualizarCampo} />
+      <ColorSection title="Números e métricas" description="Cores usadas em valores, percentuais, KPIs e indicadores financeiros." fields={NUMEROS} draft={draft} onChange={atualizarCampo} />
+      <ColorSection title="Acentos por módulo" description="Cores institucionais para distinguir modulos sem alterar regras de negocio." fields={MODULOS} draft={draft} onChange={atualizarCampo} />
       <ColorSection title="Badges e status visuais" description="Cores dos marcadores usados em financeiro, DRE, pagamentos, auditoria e demais listas." fields={STATUS_BADGES} draft={draft} onChange={atualizarCampo} columns="lg:grid-cols-3" />
-      <ColorSection title="Acoes de solicitacoes" description="Mantem compatibilidade com as cores especificas dos botoes de acao das solicitacoes." fields={ACOES_SOLICITACOES} draft={draft} onChange={atualizarCampo} />
+      <ColorSection title="Ações de solicitações" description="Mantem compatibilidade com as cores especificas dos botoes de acao das solicitacoes." fields={ACOES_SOLICITACOES} draft={draft} onChange={atualizarCampo} />
 
-      <section className="card space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--c-text)]">Status geral das solicitacoes</h2>
-          <p className="mt-1 text-sm text-[var(--c-muted)]">
-            Cores usadas quando um status nao possui configuracao especifica por setor.
-          </p>
-        </div>
+      <BlocoConteudo
+        titulo="Status geral das solicitações"
+        descricao="Cores usadas quando um status não possui configuração especifica por setor."
+      >
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {STATUS_PADRAO.map(status => (
             <ColorField
@@ -457,20 +541,21 @@ export default function CoresSistema() {
               label={status}
               path={`status.global.${status}`}
               value={draft.status?.global?.[status]}
-              fallback={TEMA_PADRAO.status.global[status] || '#9ca3af'}
+              // Status sem cor no tema padrão cai no tom neutro do próprio
+              // tema padrão (era o hexadecimal '#9ca3af' escrito na tela).
+              fallback={TEMA_PADRAO.status.global[status] || TEMA_PADRAO.palette.muted}
               onChange={(value) => atualizarCorStatusGlobal(status, value)}
             />
           ))}
         </div>
-      </section>
+      </BlocoConteudo>
 
-      <section className="card space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--c-text)]">Status por setor</h2>
-          <p className="mt-1 text-sm text-[var(--c-muted)]">
-            Ajuste fino para status especificos de cada area operacional.
-          </p>
-        </div>
+      <BlocoConteudo
+        titulo="Status por setor"
+        descricao="Ajuste fino para status específicos de cada área operacional."
+      >
+        {/* R12: seletor de CONTEXTO (de qual setor são os status editados
+            abaixo), não filtro de lista — continua sendo select. */}
         <label className="block max-w-md text-sm font-medium text-[var(--c-text)]">
           Setor
           <select
@@ -500,18 +585,14 @@ export default function CoresSistema() {
                 draft.status?.setores?.[String(setorSelecionado || '').toUpperCase()]?.[status] ||
                 draft.status?.global?.[status]
               }
-              fallback={draft.status?.global?.[status] || '#9ca3af'}
+              // Mesmo critério do status geral: o piso neutro vem do tema
+              // padrão, não de um hexadecimal escrito aqui.
+              fallback={draft.status?.global?.[status] || TEMA_PADRAO.palette.muted}
               onChange={(value) => atualizarCorStatusSetor(status, value)}
             />
           ))}
         </div>
-      </section>
-
-      <div className="flex justify-end">
-        <button type="button" onClick={salvar} disabled={salvando} className="btn btn-primary">
-          {salvando ? 'Salvando...' : 'Salvar cores'}
-        </button>
-      </div>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

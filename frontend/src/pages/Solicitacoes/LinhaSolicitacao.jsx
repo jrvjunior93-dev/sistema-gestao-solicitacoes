@@ -1,7 +1,9 @@
-import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import AtencaoPendente from './AtencaoPendente';
 import StatusBadge from '../../components/StatusBadge';
-import { useTheme } from '../../contexts/ThemeContext';
+import MenuMais from '../../components/padrao/MenuMais';
+import { CelulaDupla } from '../../components/padrao/TabelaPadrao';
 import { isGeoSetor, solicitacaoEstaNoSetorDoUsuario, userHasSetorCapability } from '../../utils/setor';
 import ModalAtribuirResponsavel from './ModalAtribuirResponsavel';
 import ModalEnviarSetor from './ModalEnviarSetor';
@@ -13,9 +15,28 @@ import {
   updateDataVencimentoSolicitacao,
   updateValorSolicitacao
 } from '../../services/solicitacoes';
-import { useAuth } from '../../contexts/AuthContext';
 import { parseDateSmart } from '../../utils/dateLocal';
 import { corrigirTextoCorrompido } from '../../utils/texto';
+import { hasAnyExplicitPermissao } from '../../utils/acessoProduto';
+import DateInputBR from '../../components/DateInputBR';
+
+/**
+ * A LINHA DA TABELA DE SOLICITAÇÕES — agora declarada como COLUNAS.
+ *
+ * Antes este arquivo desenhava um `<tr>` com quatorze `<td>` condicionais e,
+ * dentro deles, a variação para o celular (`viewportMode === 'mobile'`
+ * trocando classes e ordem). Eram dois desenhos para o mesmo dado, e o do
+ * celular só existia porque a `<table>` crua não sabia virar cartão.
+ *
+ * Com a `TabelaPadrao` a tela declara UMA lista de colunas com `render`, e no
+ * celular as MESMAS colunas viram cartões — sem segundo markup, sem segunda
+ * regra de qual coluna aparece em qual largura. É o que `construirColunas`
+ * devolve aqui.
+ *
+ * O que sobrou de componente nesta casa são as CÉLULAS QUE TÊM ESTADO
+ * PRÓPRIO (edição de valor e de data) e a de ações — cada uma dona do seu
+ * pedaço, montada pelo `render` da sua coluna.
+ */
 
 function normalizarTextoSolicitacaoCompra(valor) {
   return String(valor || '')
@@ -25,7 +46,7 @@ function normalizarTextoSolicitacaoCompra(valor) {
     .toUpperCase();
 }
 
-function isSolicitacaoCompraNormal(solicitacao) {
+export function isSolicitacaoCompraNormal(solicitacao) {
   const texto = [
     solicitacao?.tipo_solicitacao?.nome,
     solicitacao?.tipo_solicitacao?.codigo,
@@ -42,578 +63,388 @@ function isSolicitacaoCompraNormal(solicitacao) {
   return normalizado.includes('SOLICITACAO DE COMPRA') || normalizado.includes('COMPRA DIRETA');
 }
 
-export default function LinhaSolicitacao({
-  solicitacao,
-  onAtualizar,
-  setoresMap,
-  permissaoUsuario,
-  mostrarRefContrato = false,
-  visibleColumns = null,
-  mostrarArquivadas = false,
-  selecaoHabilitada = false,
-  selecionada = false,
-  onToggleSelecionada,
-  viewportMode = 'desktop'
-}) {
-
-  const [modalAtribuir, setModalAtribuir] = useState(false);
-  const [modalEnviar, setModalEnviar] = useState(false);
-  const limitarTexto = (valor, limite = 15) => {
-    const texto = String(valor || '');
-    if (!texto) return '';
-    return texto.length > limite ? `${texto.slice(0, limite)}...` : texto;
-  };
-  const visibleSet = Array.isArray(visibleColumns) && visibleColumns.length > 0
-    ? new Set(visibleColumns)
-    : null;
-  const mostrarColuna = (id) => !visibleSet || visibleSet.has(id);
-  const isMobileCard = viewportMode === 'mobile';
-  const tdBase = (label, extraClass = '') => ({
-    'data-label': label,
-    className: `${extraClass}`.trim()
+function formatarMoedaLinha(valor) {
+  const numero = Number(valor);
+  if (!Number.isFinite(numero)) return '-';
+  return numero.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
   });
-  const { user } = useAuth();
-  const { tema } = useTheme();
-  const isSetorObra = userHasSetorCapability(user, 'eh_setor_obra');
-  const setorTokens = [
-    String(user?.setor?.nome || '').toUpperCase(),
-    String(user?.setor?.codigo || '').toUpperCase(),
-    String(user?.area || '').toUpperCase()
-  ];
-  const isAdminGEO =
-    String(user?.perfil || '').toUpperCase().startsWith('ADMIN') &&
-    setorTokens.some(isGeoSetor);
-  const isSuperadmin = String(user?.perfil || '').toUpperCase() === 'SUPERADMIN';
-  const permissoesArea = Array.isArray(user?.areas_permissoes)
-    ? user.areas_permissoes.map(item => String(item || '').trim().toLowerCase())
-    : [];
-  const podeEditarValor =
-    isAdminGEO ||
-    isSuperadmin ||
-    permissoesArea.includes('solicitacoes.acoes.alterar_valor');
-  const podeEditarDataVencimento =
-    isAdminGEO ||
-    isSuperadmin ||
-    permissoesArea.includes('solicitacoes.acoes.alterar_data_vencimento');
-  const setorSolicitacao = setoresMap?.[solicitacao.area_responsavel] || null;
-  const setorNomeSolicitacao =
-    (setorSolicitacao?.nome || setorSolicitacao || solicitacao.area_responsavel || '');
-  const isSetorObraSolicitacao =
-    Boolean(setorSolicitacao?.eh_setor_obra) ||
-    String(setorNomeSolicitacao).trim().toUpperCase() === 'OBRA';
-  const exigePrazoCompraDelegacao = isSolicitacaoCompraNormal(solicitacao);
-  const isFinanceiro = userHasSetorCapability(user, 'eh_setor_financeiro');
-  const isUsuario = user?.perfil === 'USUARIO';
-  const podeAssumir =
-    !isSetorObra &&
-    (isSuperadmin || solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user)) &&
-    String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase() === 'TODOS_VISIVEIS' &&
-    (isUsuario
-      ? (!!permissaoUsuario?.usuario_pode_assumir || isFinanceiro)
-      : true);
-  const podeAtribuir =
-    !isSetorObra &&
-    String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase() === 'TODOS_VISIVEIS' &&
-    (isUsuario
-      ? (!!permissaoUsuario?.usuario_pode_atribuir || isFinanceiro)
-      : true);
-  const podeEnviar =
-    !isSetorObra &&
-    (isSuperadmin || solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user));
+}
 
-  const navigate = useNavigate();
-  const dataCriacaoRaw =
+function limitarTexto(valor, limite = 15) {
+  const texto = String(valor || '');
+  if (!texto) return '';
+  return texto.length > limite ? `${texto.slice(0, limite)}...` : texto;
+}
+
+function dataCriacaoDe(solicitacao) {
+  const bruta =
     solicitacao.createdAt ||
     solicitacao.data_criacao ||
     solicitacao.created_at ||
     null;
-  const dataCriacao = dataCriacaoRaw ? new Date(dataCriacaoRaw) : null;
-  const dataCriacaoValida = dataCriacao && !Number.isNaN(dataCriacao.getTime());
-  const dataCriacaoLabel = dataCriacaoValida
-    ? dataCriacao.toLocaleDateString('pt-BR')
-    : '-';
-  const dataCriacaoTitle = dataCriacaoValida
-    ? dataCriacao.toLocaleString('pt-BR')
-    : '';
-  const dataVencimentoRaw = solicitacao.data_vencimento || null;
-  const dataVencimento = dataVencimentoRaw ? parseDateSmart(dataVencimentoRaw) : null;
-  const dataVencimentoValida = dataVencimento && !Number.isNaN(dataVencimento.getTime());
-  const dataVencimentoLabel = dataVencimentoValida
-    ? dataVencimento.toLocaleDateString('pt-BR')
-    : '-';
-  const dataVencimentoTitle = dataVencimentoValida
-    ? dataVencimento.toLocaleString('pt-BR')
-    : '';
+  const data = bruta ? new Date(bruta) : null;
+  return data && !Number.isNaN(data.getTime()) ? data : null;
+}
 
-  const [editandoValor, setEditandoValor] = useState(false);
+function dataVencimentoDe(solicitacao) {
+  const bruta = solicitacao.data_vencimento || null;
+  const data = bruta ? parseDateSmart(bruta) : null;
+  return data && !Number.isNaN(data.getTime()) ? data : null;
+}
+
+/* Os dois números que a coluna de valor mostra: o principal (saldo, ou o
+   total quando a solicitação está paga) e o total, quando diferem. */
+export function valoresDaSolicitacao(solicitacao) {
+  const valorTotal = Number(solicitacao.valor_total ?? solicitacao.valor);
+  const valorPago = Number(solicitacao.valor_pago_acumulado || 0);
+  const statusGlobal = String(solicitacao.status_global || '').trim().toUpperCase();
+  const saldoRestante = Number.isFinite(valorTotal)
+    ? Math.max(valorTotal - (Number.isFinite(valorPago) ? valorPago : 0), 0)
+    : null;
+  const principal = statusGlobal === 'PAGA'
+    ? valorTotal
+    : Number(solicitacao.valor_exibicao ?? solicitacao.saldo_pagamento ?? saldoRestante ?? solicitacao.valor);
+  const mostrarTotal =
+    statusGlobal !== 'PAGA' &&
+    Number.isFinite(valorTotal) &&
+    Number.isFinite(principal) &&
+    Math.abs(valorTotal - principal) > 0.009;
+  return { valorTotal, principal, mostrarTotal };
+}
+
+/* ===================== CÉLULA DE VALOR (com edição) ===================== */
+
+function CelulaValor({ solicitacao, podeEditar, onAtualizar, avisar }) {
+  const [editando, setEditando] = useState(false);
   const [valorEditado, setValorEditado] = useState(
     solicitacao.valor !== null && solicitacao.valor !== undefined
       ? String(solicitacao.valor)
       : ''
   );
-  const [editandoDataVencimento, setEditandoDataVencimento] = useState(false);
-  const [dataVencimentoEditada, setDataVencimentoEditada] = useState(solicitacao.data_vencimento || '');
-  const valorTotalSolicitacao = Number(solicitacao.valor_total ?? solicitacao.valor);
-  const valorPagoAcumulado = Number(solicitacao.valor_pago_acumulado || 0);
-  const statusGlobalNormalizado = String(solicitacao.status_global || '').trim().toUpperCase();
-  const saldoRestanteCalculado = Number.isFinite(valorTotalSolicitacao)
-    ? Math.max(valorTotalSolicitacao - (Number.isFinite(valorPagoAcumulado) ? valorPagoAcumulado : 0), 0)
-    : null;
-  const valorPrincipal = statusGlobalNormalizado === 'PAGA'
-    ? valorTotalSolicitacao
-    : Number(solicitacao.valor_exibicao ?? solicitacao.saldo_pagamento ?? saldoRestanteCalculado ?? solicitacao.valor);
-  const mostrarValorTotalSecundario =
-    statusGlobalNormalizado !== 'PAGA' &&
-    Number.isFinite(valorTotalSolicitacao) &&
-    Number.isFinite(valorPrincipal) &&
-    Math.abs(valorTotalSolicitacao - valorPrincipal) > 0.009;
-  const formatarMoedaLinha = (valor) => {
-    const numero = Number(valor);
-    if (!Number.isFinite(numero)) return '-';
-    return numero.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    });
-  };
+  const { valorTotal, principal, mostrarTotal } = valoresDaSolicitacao(solicitacao);
 
   useEffect(() => {
-    if (!editandoValor) {
+    if (!editando) {
       setValorEditado(
         solicitacao.valor !== null && solicitacao.valor !== undefined
           ? String(solicitacao.valor)
           : ''
       );
     }
-  }, [solicitacao.valor, editandoValor]);
-
-  useEffect(() => {
-    if (!editandoDataVencimento) {
-      setDataVencimentoEditada(solicitacao.data_vencimento || '');
-    }
-  }, [solicitacao.data_vencimento, editandoDataVencimento]);
-
-  async function notificarAtualizacao(payload) {
-    if (typeof onAtualizar === 'function') {
-      await onAtualizar(payload);
-    }
-  }
+  }, [solicitacao.valor, editando]);
 
   async function salvarValor() {
+    // R26 — o alvo é fixado ANTES de qualquer `await`: a lista pode ser
+    // recarregada por baixo enquanto a gravação está em voo.
+    const alvo = solicitacao;
     try {
       const valorNumero = valorEditado === '' ? null : Number(valorEditado);
       if (valorEditado !== '' && Number.isNaN(valorNumero)) {
-        alert('Valor invalido');
+        avisar.erro('Valor inválido');
         return;
       }
-      await updateValorSolicitacao(solicitacao.id, valorNumero);
-      setEditandoValor(false);
-      await notificarAtualizacao({ type: 'refresh_item', id: solicitacao.id });
+      await updateValorSolicitacao(alvo.id, valorNumero);
+      setEditando(false);
+      await onAtualizar?.({ type: 'refresh_item', id: alvo.id });
+      avisar.sucesso(`Valor de ${alvo.codigo || alvo.id} atualizado.`);
     } catch (err) {
       console.error(err);
-      alert('Erro ao atualizar valor');
+      avisar.erro('Erro ao atualizar valor');
     }
   }
 
-  async function salvarDataVencimento() {
-    try {
-      await updateDataVencimentoSolicitacao(solicitacao.id, dataVencimentoEditada || null);
-      setEditandoDataVencimento(false);
-      await notificarAtualizacao({ type: 'refresh_item', id: solicitacao.id });
-    } catch (err) {
-      console.error(err);
-      alert(err?.message || 'Erro ao atualizar data de vencimento');
-    }
-  }
-
-  async function excluirSolicitacao() {
-    if (!confirm('Excluir esta solicitacao? Esta acao nao pode ser desfeita.')) return;
-    try {
-      await deleteSolicitacao(solicitacao.id);
-      await notificarAtualizacao({ type: 'remove_item', id: solicitacao.id });
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao excluir solicitacao');
-    }
-  }
-
-  async function arquivarItem() {
-    if (!confirm('Arquivar esta solicitação somente para sua visualização?')) return;
-    try {
-      await arquivarSolicitacao(solicitacao.id);
-      await notificarAtualizacao({ type: 'remove_item', id: solicitacao.id });
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao arquivar solicitação');
-    }
-  }
-
-  async function desarquivarItem() {
-    try {
-      await desarquivarSolicitacao(solicitacao.id);
-      await notificarAtualizacao({ type: 'remove_item', id: solicitacao.id });
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao desarquivar solicitação');
-    }
-  }
-
-  const acaoCores = tema?.actions || {};
-  const podeSelecionarLinha = selecaoHabilitada && typeof onToggleSelecionada === 'function';
-
-  function clicarEmElementoInterativo(target) {
-    if (!(target instanceof Element)) return false;
-    return !!target.closest('button, a, input, select, textarea, label, [role=\"button\"], [data-no-row-select=\"true\"]');
-  }
-
-  function alternarSelecaoLinha() {
-    if (!podeSelecionarLinha) return;
-    onToggleSelecionada(solicitacao.id);
+  if (editando) {
+    return (
+      <div className="flex flex-col gap-1">
+        <input
+          type="number"
+          step="0.01"
+          className="input input-moeda"
+          value={valorEditado}
+          onChange={(e) => setValorEditado(e.target.value)}
+          aria-label={`Valor de ${solicitacao.codigo || solicitacao.id}`}
+        />
+        <div className="app-actionbar">
+          <button type="button" className="btn btn-primary" onClick={salvarValor}>Salvar</button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => {
+              setValorEditado(
+                solicitacao.valor !== null && solicitacao.valor !== undefined
+                  ? String(solicitacao.valor)
+                  : ''
+              );
+              setEditando(false);
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
+    <div className="flex flex-col gap-1">
+      <CelulaDupla
+        principal={formatarMoedaLinha(principal)}
+        sub={mostrarTotal ? `Total: ${formatarMoedaLinha(valorTotal)}` : null}
+        title={Number.isFinite(valorTotal) ? `Total: ${formatarMoedaLinha(valorTotal)}` : undefined}
+      />
+      {podeEditar && (
+        <button type="button" className="btn btn-outline" onClick={() => setEditando(true)}>
+          Editar
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ================ CÉLULA DE DATA RESPOSTA/PAGAMENTO ==================== */
+
+function CelulaVencimento({ solicitacao, podeEditar, onAtualizar, avisar }) {
+  const [editando, setEditando] = useState(false);
+  const dataVencimentoSolicitacao = solicitacao.data_vencimento_solicitacao || solicitacao.data_vencimento || '';
+  const vencimentoDaMedicao = solicitacao.data_vencimento_origem === 'MEDICAO';
+  const [dataEditada, setDataEditada] = useState(dataVencimentoSolicitacao);
+  const data = dataVencimentoDe(solicitacao);
+
+  useEffect(() => {
+    if (!editando) setDataEditada(dataVencimentoSolicitacao);
+  }, [dataVencimentoSolicitacao, editando]);
+
+  async function salvarData() {
+    const alvo = solicitacao;                     // R26: alvo fixado antes do await
+    try {
+      await updateDataVencimentoSolicitacao(alvo.id, dataEditada || null);
+      setEditando(false);
+      await onAtualizar?.({ type: 'refresh_item', id: alvo.id });
+      avisar.sucesso(`Data de ${alvo.codigo || alvo.id} atualizada.`);
+    } catch (err) {
+      console.error(err);
+      avisar.erro(err?.message || 'Erro ao atualizar data de vencimento');
+    }
+  }
+
+  if (editando) {
+    return (
+      <div className="flex flex-col gap-1">
+        <DateInputBR
+          className="input"
+          value={dataEditada || ''}
+          onChange={(e) => setDataEditada(e.target.value)}
+          aria-label={`Data resposta/pagamento de ${solicitacao.codigo || solicitacao.id}`}
+        />
+        <div className="app-actionbar">
+          <button type="button" className="btn btn-primary" onClick={salvarData}>Salvar</button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => {
+              setDataEditada(dataVencimentoSolicitacao);
+              setEditando(false);
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span title={data ? data.toLocaleString('pt-BR') : ''}>
+        {data ? data.toLocaleDateString('pt-BR') : '-'}
+      </span>
+      {vencimentoDaMedicao ? (
+        <span className="text-xs text-[var(--c-muted)]" title="Vencimento mais próximo entre as medições pendentes">
+          Medição
+        </span>
+      ) : null}
+      {podeEditar && !vencimentoDaMedicao && (
+        <button type="button" className="btn btn-outline" onClick={() => setEditando(true)}>
+          Editar
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ============================ AÇÕES DA LINHA =========================== */
+
+function AcoesSolicitacao({
+  solicitacao,
+  permissoes,
+  setoresMap,
+  mostrarArquivadas,
+  onAtualizar,
+  avisar,
+  confirmar
+}) {
+  const navigate = useNavigate();
+  const [modalAtribuir, setModalAtribuir] = useState(false);
+  const [modalEnviar, setModalEnviar] = useState(false);
+
+  const setorSolicitacao = setoresMap?.[solicitacao.area_responsavel] || null;
+  const setorNome = setorSolicitacao?.nome || setorSolicitacao || solicitacao.area_responsavel || '';
+  const isSetorObraSolicitacao =
+    Boolean(setorSolicitacao?.eh_setor_obra) ||
+    String(setorNome).trim().toUpperCase() === 'OBRA';
+
+  const {
+    user,
+    isSetorObra,
+    isSuperadmin,
+    isAdminGEO,
+    isUsuario,
+    isFinanceiro,
+    permissaoUsuario
+  } = permissoes;
+
+  const modoRecebimento = String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase();
+  const podeAssumir =
+    !isSetorObra &&
+    (isSuperadmin || solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user)) &&
+    modoRecebimento === 'TODOS_VISIVEIS' &&
+    (isUsuario ? (!!permissaoUsuario?.usuario_pode_assumir || isFinanceiro) : true);
+  const podeAtribuir =
+    !isSetorObra &&
+    modoRecebimento === 'TODOS_VISIVEIS' &&
+    (isUsuario ? (!!permissaoUsuario?.usuario_pode_atribuir || isFinanceiro) : true);
+  const podeEnviar =
+    !isSetorObra &&
+    (isSuperadmin || solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user));
+
+  async function assumir() {
+    const alvo = solicitacao;                     // R26
+    try {
+      const res = await fetch(`${API_URL}/solicitacoes/${alvo.id}/assumir`, {
+        method: 'POST',
+        headers: authHeaders()
+      });
+
+      if (!res.ok) {
+        let mensagem = 'Erro ao assumir solicitação';
+        try {
+          const data = await res.json();
+          mensagem = data?.error || mensagem;
+        } catch (_) {}
+        avisar.erro(mensagem);
+        return;
+      }
+
+      avisar.sucesso('Solicitação assumida com sucesso.');
+      await onAtualizar?.({ type: 'refresh_item', id: alvo.id });
+    } catch (err) {
+      console.error(err);
+      avisar.erro('Erro ao assumir solicitação');
+    }
+  }
+
+  async function excluir() {
+    /*
+      R21 + R26: o retorno se DESESTRUTURA (`{ ok }` — o objeto inteiro é
+      sempre verdadeiro), e o alvo é fixado numa `const` ANTES do `await`.
+      O modal do sistema não congela a tela: sem a `const`, a pessoa lê o
+      código de uma solicitação e o sistema apaga outra.
+    */
+    const alvo = solicitacao;
+    const { ok } = await confirmar({
+      titulo: 'Excluir solicitação',
+      mensagem: `Excluir a solicitação ${alvo.codigo || alvo.id}? Esta ação não pode ser desfeita.`,
+      rotuloConfirmar: 'Excluir',
+      destrutiva: true
+    });
+    if (!ok) return;
+
+    try {
+      await deleteSolicitacao(alvo.id);
+      avisar.sucesso(`Solicitação ${alvo.codigo || alvo.id} excluída.`);
+      await onAtualizar?.({ type: 'remove_item', id: alvo.id });
+    } catch (err) {
+      console.error(err);
+      avisar.erro('Erro ao excluir solicitação');
+    }
+  }
+
+  async function arquivar() {
+    const alvo = solicitacao;                     // R26
+    const { ok } = await confirmar({
+      titulo: 'Arquivar solicitação',
+      mensagem: `Arquivar ${alvo.codigo || alvo.id} somente para a sua visualização?`,
+      rotuloConfirmar: 'Arquivar'
+    });
+    if (!ok) return;
+
+    try {
+      await arquivarSolicitacao(alvo.id);
+      avisar.sucesso(`Solicitação ${alvo.codigo || alvo.id} arquivada.`);
+      await onAtualizar?.({ type: 'remove_item', id: alvo.id });
+    } catch (err) {
+      console.error(err);
+      avisar.erro('Erro ao arquivar solicitação');
+    }
+  }
+
+  async function desarquivar() {
+    const alvo = solicitacao;                     // R26
+    try {
+      await desarquivarSolicitacao(alvo.id);
+      avisar.sucesso(`Solicitação ${alvo.codigo || alvo.id} desarquivada.`);
+      await onAtualizar?.({ type: 'remove_item', id: alvo.id });
+    } catch (err) {
+      console.error(err);
+      avisar.erro('Erro ao desarquivar solicitação');
+    }
+  }
+
+  /*
+    R11 — o "⋯" só recebe AÇÃO SOBRE ESTA TELA, nunca navegação. Excluir,
+    arquivar e desarquivar são as raras; as do dia a dia ficam visíveis.
+  */
+  const itensMais = [
+    !mostrarArquivadas
+      ? { rotulo: 'Arquivar', onClick: arquivar, title: 'Arquivar somente para a sua visualização' }
+      : { rotulo: 'Desarquivar', onClick: desarquivar },
+    ...((isSuperadmin || isAdminGEO)
+      ? [{ rotulo: 'Excluir', onClick: excluir, perigosa: true }]
+      : [])
+  ];
+
+  return (
     <>
-      <tr
-        className={`solicitacao-row border-b border-gray-200 dark:border-slate-700 odd:bg-white even:bg-gray-50/50 dark:odd:bg-slate-900 dark:even:bg-slate-800/90 hover:bg-blue-50/40 dark:hover:bg-slate-700 ${podeSelecionarLinha ? 'cursor-pointer' : ''}`}
-        onClick={(event) => {
-          if (!podeSelecionarLinha) return;
-          if (clicarEmElementoInterativo(event.target)) return;
-          alternarSelecaoLinha();
+      <button
+        type="button"
+        className="btn btn-outline"
+        onClick={() => {
+          void onAtualizar?.({ type: 'mark_attention_read_local', id: solicitacao.id });
+          navigate(`/solicitacoes/${solicitacao.id}`);
         }}
       >
+        Ver
+      </button>
 
-        {selecaoHabilitada && (
-          <td className="p-2 whitespace-nowrap" data-label="Selecionar">
-            <input
-              type="checkbox"
-              checked={!!selecionada}
-              onChange={alternarSelecaoLinha}
-              aria-label={`Selecionar ${solicitacao.codigo || solicitacao.id}`}
-            />
-          </td>
-        )}
+      {podeAssumir && (
+        <button type="button" className="btn btn-outline" onClick={assumir}>Assumir</button>
+      )}
 
-        {mostrarColuna('data') && (
-          <td
-            {...tdBase('Data', 'p-2 whitespace-nowrap')}
-            title={dataCriacaoTitle}
-          >
-            {dataCriacaoLabel}
-          </td>
-        )}
+      {podeAtribuir && (
+        <button type="button" className="btn btn-outline" onClick={() => setModalAtribuir(true)}>
+          Atribuir
+        </button>
+      )}
 
-        {mostrarColuna('codigo') && (
-          <td
-            {...tdBase('Código', `p-2 font-medium whitespace-nowrap truncate ${isMobileCard ? 'text-sm font-semibold' : ''}`)}
-            title={solicitacao.codigo || ''}
-          >
-            {solicitacao.codigo}
-          </td>
-        )}
+      {podeEnviar && (
+        <button type="button" className="btn btn-outline" onClick={() => setModalEnviar(true)}>
+          Enviar
+        </button>
+      )}
 
-        {mostrarColuna('numero_sienge') && (
-          <td
-            {...tdBase('Nº pedido', 'p-2 whitespace-nowrap truncate')}
-            title={solicitacao.numero_sienge || solicitacao.numero_pedido || ''}
-          >
-            {limitarTexto(solicitacao.numero_sienge || solicitacao.numero_pedido, 15) || '-'}
-          </td>
-        )}
-
-        {mostrarColuna('obra') && (
-          <td
-            {...tdBase('Obra', 'p-2 whitespace-nowrap truncate')}
-            title={solicitacao.obra?.nome || ''}
-          >
-            {limitarTexto(solicitacao.obra?.nome, 15) || '-'}
-          </td>
-        )}
-
-        {mostrarColuna('contrato') && (
-          <td
-            {...tdBase('Contrato', 'p-2 whitespace-nowrap truncate')}
-            title={solicitacao.contrato?.codigo || solicitacao.codigo_contrato || ''}
-          >
-            {limitarTexto(solicitacao.contrato?.codigo || solicitacao.codigo_contrato, 15) || '-'}
-          </td>
-        )}
-
-        {mostrarRefContrato && mostrarColuna('ref_contrato') && (
-          (() => {
-            const refContrato = solicitacao.contrato?.ref_contrato || '';
-            const refContratoCurta =
-              refContrato.length > 30 ? `${refContrato.slice(0, 30)}...` : refContrato;
-
-            return (
-              <td
-                {...tdBase('Ref. do Contrato', 'p-2 whitespace-nowrap truncate')}
-                title={refContrato}
-              >
-                {refContratoCurta || '-'}
-              </td>
-            );
-          })()
-        )}
-
-        {mostrarColuna('descricao') && (() => {
-          const descricao = corrigirTextoCorrompido(solicitacao.descricao || '');
-          const descricaoCurta =
-            descricao.length > 15 ? `${descricao.slice(0, 15)}...` : descricao;
-          return (
-            <td
-              {...tdBase('Descrição', 'p-2 whitespace-nowrap truncate')}
-              title={descricao}
-            >
-              {descricaoCurta}
-            </td>
-          );
-        })()}
-
-        {mostrarColuna('tipo') && (
-          <td
-            {...tdBase('Tipo de Solicitação', 'p-2 whitespace-nowrap truncate')}
-            title={solicitacao.tipo?.nome || solicitacao.tipoMacroSolicitacao?.nome || ''}
-          >
-            {solicitacao.tipo?.nome || solicitacao.tipoMacroSolicitacao?.nome || '-'}
-          </td>
-        )}
-
-        {mostrarColuna('valor') && (
-        <td
-          {...tdBase('Valor', 'p-2 overflow-hidden')}
-          title={Number.isFinite(valorTotalSolicitacao) ? formatarMoedaLinha(valorTotalSolicitacao) : ''}
-        >
-          {editandoValor ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.01"
-                className="w-24 rounded px-2 py-1 text-right bg-[var(--c-surface)] text-[var(--c-text)] border border-[var(--c-border)] focus:outline-none focus:ring-2 focus:ring-blue-500/35"
-                value={valorEditado}
-                onChange={e => setValorEditado(e.target.value)}
-              />
-              <button
-                className="text-xs text-blue-700 hover:underline"
-                onClick={salvarValor}
-              >
-                Salvar
-              </button>
-              <button
-                className="text-xs text-gray-500 hover:underline"
-                onClick={() => {
-                  setValorEditado(
-                    solicitacao.valor !== null && solicitacao.valor !== undefined
-                      ? String(solicitacao.valor)
-                      : ''
-                  );
-                  setEditandoValor(false);
-                }}
-              >
-                Cancelar
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-start gap-1 min-w-0 w-full">
-              <span
-                className="block w-full min-w-0 truncate font-semibold"
-                title={formatarMoedaLinha(valorPrincipal)}
-              >
-                {formatarMoedaLinha(valorPrincipal)}
-              </span>
-              {mostrarValorTotalSecundario && (
-                <span
-                  className="block w-full min-w-0 truncate text-[11px] leading-none text-[var(--c-muted)]"
-                  title={`Total: ${formatarMoedaLinha(valorTotalSolicitacao)}`}
-                >
-                  Total: {formatarMoedaLinha(valorTotalSolicitacao)}
-                </span>
-              )}
-              {podeEditarValor && (
-                <button
-                  className="text-[11px] leading-none text-blue-600 hover:underline shrink-0"
-                  onClick={() => setEditandoValor(true)}
-                >
-                  Editar
-                </button>
-              )}
-            </div>
-          )}
-        </td>
-        )}
-
-        {mostrarColuna('setor') && (
-          <td
-            {...tdBase('Setor', 'p-2 whitespace-nowrap truncate')}
-            title={setorNomeSolicitacao || ''}
-          >
-            {setorNomeSolicitacao}
-          </td>
-        )}
-
-        {mostrarColuna('responsavel') && (
-          <td
-            {...tdBase('Responsável', 'p-2 whitespace-nowrap truncate')}
-            title={solicitacao.responsavel || ''}
-          >
-            {solicitacao.responsavel || '-'}
-          </td>
-        )}
-
-        {mostrarColuna('status') && (
-          <td
-            {...tdBase('Status', 'p-2 whitespace-nowrap')}
-            title={solicitacao.status_global || ''}
-          >
-            <StatusBadge
-              status={solicitacao.status_global}
-              setor={solicitacao.setor_status_atual || solicitacao.area_responsavel}
-            />
-          </td>
-        )}
-
-        {mostrarColuna('vencimento') && (
-          <td
-            {...tdBase('Vencimento', 'p-2 whitespace-nowrap')}
-            title={dataVencimentoTitle}
-          >
-            {editandoDataVencimento ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  className="w-36 rounded px-2 py-1 bg-[var(--c-surface)] text-[var(--c-text)] border border-[var(--c-border)] focus:outline-none focus:ring-2 focus:ring-blue-500/35"
-                  value={dataVencimentoEditada || ''}
-                  onChange={e => setDataVencimentoEditada(e.target.value)}
-                />
-                <button
-                  className="text-xs text-blue-700 hover:underline"
-                  onClick={salvarDataVencimento}
-                >
-                  Salvar
-                </button>
-                <button
-                  className="text-xs text-gray-500 hover:underline"
-                  onClick={() => {
-                    setDataVencimentoEditada(solicitacao.data_vencimento || '');
-                    setEditandoDataVencimento(false);
-                  }}
-                >
-                  Cancelar
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-start gap-1">
-                <span>{dataVencimentoLabel}</span>
-                {podeEditarDataVencimento && (
-                  <button
-                    className="text-[11px] leading-none text-blue-600 hover:underline"
-                    onClick={() => setEditandoDataVencimento(true)}
-                  >
-                    Editar
-                  </button>
-                )}
-              </div>
-            )}
-          </td>
-        )}
-
-        {mostrarColuna('acoes') && (
-        <td {...tdBase('Ações', 'p-2 whitespace-nowrap')}>
-          <div className={`solicitacao-acoes ${isMobileCard ? 'flex-wrap' : 'flex-nowrap'}`}>
-
-            <button
-              className="acao-link"
-              style={{ color: acaoCores.ver || '#2563eb' }}
-            onClick={() =>
-              navigate(`/solicitacoes/${solicitacao.id}`)
-            }
-          >
-            Ver
-          </button>
-          {podeAssumir && (
-            <button
-              className="acao-link"
-              style={{ color: acaoCores.assumir || '#1d4ed8' }}
-              onClick={async () => {
-                const res = await fetch(
-                  `${API_URL}/solicitacoes/${solicitacao.id}/assumir`,
-                  {
-                    method: 'POST',
-                    headers: authHeaders()
-                  }
-                );
-
-                if (!res.ok) {
-                  let mensagem = 'Erro ao assumir solicitação';
-                  try {
-                    const data = await res.json();
-                    mensagem = data?.error || mensagem;
-                  } catch (_) {}
-                  alert(mensagem);
-                  return;
-                }
-
-                alert('Solicitação assumida com sucesso.');
-                await notificarAtualizacao({ type: 'refresh_item', id: solicitacao.id });
-              }}
-            >
-              Assumir
-            </button>
-          )}
-
-          {podeAtribuir && (
-            <button
-              className="acao-link"
-              style={{ color: acaoCores.atribuir || '#3b82f6' }}
-              onClick={() => setModalAtribuir(true)}
-            >
-              Atribuir
-            </button>
-          )}
-
-          {podeEnviar && (
-            <button
-              className="acao-link"
-              style={{ color: acaoCores.enviar || '#0ea5e9' }}
-              onClick={() => setModalEnviar(true)}
-            >
-              Enviar
-            </button>
-          )}
-
-          {(isSuperadmin || isAdminGEO) && (
-            <button
-              className="acao-link"
-              style={{ color: '#1e40af' }}
-              onClick={excluirSolicitacao}
-            >
-              Excluir
-            </button>
-          )}
-
-          {!mostrarArquivadas ? (
-            <button
-              className="acao-link"
-              style={{ color: acaoCores.ocultar || '#64748b' }}
-              onClick={arquivarItem}
-            >
-              Arquivar
-            </button>
-          ) : (
-            <button
-              className="acao-link"
-              style={{ color: acaoCores.ocultar || '#64748b' }}
-              onClick={desarquivarItem}
-            >
-              Desarquivar
-            </button>
-          )}
-
-          </div>
-        </td>
-        )}
-
-      </tr>
-
-      {/* ================= MODAIS ================= */}
+      <MenuMais itens={itensMais} />
 
       {modalAtribuir && (
         <ModalAtribuirResponsavel
@@ -621,10 +452,10 @@ export default function LinhaSolicitacao({
           obraId={solicitacao.obra_id}
           isSetorObraSolicitacao={isSetorObraSolicitacao}
           isUsuarioSetorObra={isSetorObra}
-          exigirPrazoCompra={exigePrazoCompraDelegacao}
+          exigirPrazoCompra={isSolicitacaoCompraNormal(solicitacao)}
           onClose={() => setModalAtribuir(false)}
           onSucesso={() => {
-            void notificarAtualizacao({ type: 'refresh_item', id: solicitacao.id });
+            void onAtualizar?.({ type: 'refresh_item', id: solicitacao.id });
           }}
         />
       )}
@@ -634,11 +465,235 @@ export default function LinhaSolicitacao({
           solicitacaoId={solicitacao.id}
           onClose={() => setModalEnviar(false)}
           onSucesso={() => {
-            void notificarAtualizacao({ type: 'refresh_item', id: solicitacao.id });
+            void onAtualizar?.({ type: 'refresh_item', id: solicitacao.id });
           }}
         />
       )}
-
     </>
   );
 }
+
+/* ====================== AS COLUNAS DA TABELA =========================== */
+
+/**
+ * Monta as permissões que TODA linha usa, uma vez, a partir do usuário —
+ * antes cada `<tr>` recalculava as mesmas dez condições.
+ */
+export function permissoesDeLinha(user, permissaoUsuario) {
+  const perfil = String(user?.perfil || '').toUpperCase();
+  const setorTokens = [
+    String(user?.setor?.nome || '').toUpperCase(),
+    String(user?.setor?.codigo || '').toUpperCase(),
+    String(user?.area || '').toUpperCase()
+  ];
+  const isAdminGEO = perfil.startsWith('ADMIN') && setorTokens.some(isGeoSetor);
+  const isSuperadmin = perfil === 'SUPERADMIN';
+
+  return {
+    user,
+    permissaoUsuario,
+    isSetorObra: userHasSetorCapability(user, 'eh_setor_obra'),
+    isFinanceiro: userHasSetorCapability(user, 'eh_setor_financeiro'),
+    isUsuario: user?.perfil === 'USUARIO',
+    isAdminGEO,
+    isSuperadmin,
+    podeEditarValor:
+      isAdminGEO || isSuperadmin || hasAnyExplicitPermissao(user, ['solicitacoes.acoes.alterar_valor']),
+    podeEditarDataVencimento:
+      isAdminGEO || isSuperadmin || hasAnyExplicitPermissao(user, ['solicitacoes.acoes.alterar_data_vencimento'])
+  };
+}
+
+/**
+ * As colunas da lista de solicitações. Cada uma declara o seu `tipo` (R10/
+ * R17): a MEDIDA e o ALINHAMENTO são decisão da `TabelaPadrao`, a tela só
+ * diz o que a coluna é.
+ */
+export function construirColunas({
+  permissoes,
+  setoresMap,
+  mostrarRefContrato = false,
+  mostrarContrato = false,
+  mostrarArquivadas = false,
+  onAtualizar,
+  avisar,
+  confirmar
+}) {
+  return [
+    {
+      id: 'data',
+      titulo: 'Data',
+      tipo: 'data',
+      ordenavel: true,
+      valorOrdenacao: (item) => dataCriacaoDe(item)?.getTime() ?? null,
+      render: (item) => {
+        const data = dataCriacaoDe(item);
+        return (
+          <span title={data ? data.toLocaleString('pt-BR') : ''}>
+            {data ? data.toLocaleDateString('pt-BR') : '-'}
+          </span>
+        );
+      }
+    },
+    {
+      // R17: a coluna de IDENTIDADE da lista. Código de solicitação é o que
+      // a pessoa lê para saber de qual registro está falando.
+      id: 'codigo',
+      titulo: 'Código',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => (
+        <span className="sol-codigo-retorno">
+          <span>{item.codigo || `#${item.id}`}</span>
+          {item.retorno_solicitado_pendente && (
+            <span
+              className="sol-retorno-pendente"
+              title={item.pedido_retorno_pendente?.motivo || 'Esta solicitação precisa de atenção do setor atual.'}
+            >
+              Retorno solicitado
+            </span>
+          )}
+          <AtencaoPendente atencao={item.atencao_pendente} />
+          {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
+            Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
+          </span>}
+        </span>
+      )
+    },
+    {
+      id: 'numero_sienge',
+      titulo: 'Nº pedido',
+      tipo: 'codigo',
+      render: (item) => (
+        <span title={item.numero_sienge || item.numero_pedido || ''}>
+          {limitarTexto(item.numero_sienge || item.numero_pedido, 15) || '-'}
+        </span>
+      )
+    },
+    {
+      id: 'obra',
+      titulo: 'Obra',
+      tipo: 'texto',
+      render: (item) => (
+        <span title={item.obra?.nome || ''}>{limitarTexto(item.obra?.nome, 15) || '-'}</span>
+      )
+    },
+    ...(mostrarContrato ? [{
+      id: 'contrato',
+      titulo: 'Contrato',
+      tipo: 'codigo',
+      render: (item) => (
+        <span title={item.contrato?.codigo || item.codigo_contrato || ''}>
+          {limitarTexto(item.contrato?.codigo || item.codigo_contrato, 15) || '-'}
+        </span>
+      )
+    }] : []),
+    ...(mostrarRefContrato && mostrarContrato ? [{
+      id: 'ref_contrato',
+      titulo: 'Ref. do Contrato',
+      tipo: 'texto',
+      render: (item) => {
+        const ref = item.contrato?.ref_contrato || '';
+        return <span title={ref}>{limitarTexto(ref, 30) || '-'}</span>;
+      }
+    }] : []),
+    {
+      id: 'descricao',
+      titulo: 'Descrição',
+      tipo: 'texto',
+      render: (item) => {
+        const descricao = corrigirTextoCorrompido(item.descricao || '');
+        return <span title={descricao}>{limitarTexto(descricao, 15) || '-'}</span>;
+      }
+    },
+    {
+      id: 'tipo',
+      titulo: 'Tipo de Solicitação',
+      tipo: 'texto',
+      render: (item) => {
+        const nome = item.tipo?.nome || item.tipoMacroSolicitacao?.nome || '-';
+        return <span title={nome}>{nome}</span>;
+      }
+    },
+    {
+      id: 'valor',
+      titulo: 'Valor',
+      tipo: 'valor',
+      ordenavel: true,
+      valorOrdenacao: (item) => {
+        const n = Number(item?.valor_exibicao ?? item?.saldo_pagamento ?? item?.valor);
+        return Number.isNaN(n) ? null : n;
+      },
+      render: (item) => (
+        <CelulaValor
+          solicitacao={item}
+          podeEditar={permissoes.podeEditarValor}
+          onAtualizar={onAtualizar}
+          avisar={avisar}
+        />
+      )
+    },
+    {
+      id: 'setor',
+      titulo: 'Setor',
+      tipo: 'texto',
+      render: (item) => {
+        const setor = setoresMap?.[item.area_responsavel] || null;
+        const nome = setor?.nome || setor || item.area_responsavel || '';
+        return <span title={nome}>{nome || '-'}</span>;
+      }
+    },
+    {
+      id: 'responsavel',
+      titulo: 'Responsável',
+      tipo: 'texto',
+      render: (item) => <span title={item.responsavel || ''}>{item.responsavel || '-'}</span>
+    },
+    {
+      id: 'status',
+      titulo: 'Status',
+      tipo: 'status',
+      render: (item) => (
+        <StatusBadge
+          status={item.status_global}
+          setor={item.setor_status_atual || item.area_responsavel}
+        />
+      )
+    },
+    {
+      id: 'vencimento',
+      titulo: 'Data Resposta/Pagamento',
+      tipo: 'data',
+      ordenavel: true,
+      valorOrdenacao: (item) => dataVencimentoDe(item)?.getTime() ?? null,
+      render: (item) => (
+        <CelulaVencimento
+          solicitacao={item}
+          podeEditar={permissoes.podeEditarDataVencimento}
+          onAtualizar={onAtualizar}
+          avisar={avisar}
+        />
+      )
+    }
+  ];
+}
+
+/**
+ * As ações da linha, para a prop `acoesLinha` da `TabelaPadrao` — visíveis,
+ * numa linha só, com as raras no menu "⋯".
+ */
+export function acoesDaLinha(opcoes) {
+  return (item) => (
+    <AcoesSolicitacao
+      solicitacao={item}
+      permissoes={opcoes.permissoes}
+      setoresMap={opcoes.setoresMap}
+      mostrarArquivadas={opcoes.mostrarArquivadas}
+      onAtualizar={opcoes.onAtualizar}
+      avisar={opcoes.avisar}
+      confirmar={opcoes.confirmar}
+    />
+  );
+}
+
+export default construirColunas;

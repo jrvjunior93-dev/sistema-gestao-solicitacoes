@@ -32,6 +32,36 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: null
     },
+    fase_obra: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+      defaultValue: null
+    },
+    valor_obra: {
+      type: DataTypes.DECIMAL(14, 2),
+      allowNull: true,
+      defaultValue: null
+    },
+    responsavel_tecnico_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null
+    },
+    responsavel_tecnico: {
+      type: DataTypes.STRING(160),
+      allowNull: true,
+      defaultValue: null
+    },
+    documentacao_pendente: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+    solicitacao_cadastro_origem_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null
+    },
     vgv: {
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true,
@@ -44,6 +74,11 @@ module.exports = (sequelize, DataTypes) => {
     },
     margem_custo_esperada: {
       type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      defaultValue: null
+    },
+    nivel_apropriacao_formulario: {
+      type: DataTypes.STRING(20),
       allowNull: true,
       defaultValue: null
     },

@@ -48,6 +48,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(14, 3),
         allowNull: true
       },
+      escopo_disponibilidade: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: 'ACUMULADA'
+      },
       ipi_valor: {
         type: DataTypes.DECIMAL(14, 2),
         allowNull: false,

@@ -8,8 +8,16 @@ export default function PendingAttachmentsList({
   onRemove,
   className = '',
   itemClassName = '',
-  removeButtonClassName = 'text-blue-600 font-semibold px-2'
+  removeButtonClassName = 'text-[var(--c-primary)] font-semibold px-2'
 }) {
+  /*
+    R25 — o padrão desta prop era `text-blue-600`: paleta crua morando no
+    PADRÃO de um componente compartilhado, fora de qualquer tela do manifesto.
+    O check de cor lê os arquivos das telas; uma tela que só usa o padrão
+    herdava a dívida sem nenhuma linha de paleta crua no próprio arquivo, e
+    o check passava. Por isso a correção é aqui, no padrão, e não em cada
+    chamada: o azul não acompanhava o tema escuro.
+  */
   if (!Array.isArray(items) || items.length === 0) {
     return null;
   }

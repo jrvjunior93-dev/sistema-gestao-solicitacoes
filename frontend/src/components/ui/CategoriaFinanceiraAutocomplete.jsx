@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { categoriaFinanceiraMatchesAutocomplete } from '../../utils/categoriaFinanceira';
 
 function getCategoriaResumo(categoria) {
@@ -22,6 +23,7 @@ export default function CategoriaFinanceiraAutocomplete({
   const inputId = useId();
   const listboxId = `${inputId}-listbox`;
   const optionRefs = useRef([]);
+  const campoRef = useRef(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -60,10 +62,33 @@ export default function CategoriaFinanceiraAutocomplete({
     setOpen(false);
   }
 
+  /*
+    FECHAR AQUI NAO E SO FECHAR — E POR ISSO QUE O HOOK RECEBE `restaurarSelecao` (05/09).
+
+    Quem fecha a lista tambem devolve ao input o nome da categoria que esta
+    de fato selecionada. Sem isso, o texto meio digitado ("mate...") ficaria
+    no campo enquanto o valor guardado e outro: a tela mostraria uma coisa e
+    enviaria outra. Era o que o `onBlur` fazia (`setTimeout(restaurarSelecao,
+    120)`), e e o que continua sendo feito — a diferenca e o GATILHO.
+
+    Saiu o fechamento por perda de foco, com o atraso de 120ms que so existia
+    para o clique na opcao ganhar a corrida. Entrou o `useFecharAoSair`:
+    `mousedown`/`touchstart` fora e `Escape` no documento inteiro (antes o Esc
+    so respondia com o foco dentro do input).
+
+    POR QUE A SELECAO SOBREVIVE: o ref cobre o `div` que embrulha o input E a
+    lista, entao clicar numa opcao e clique DENTRO e o hook nao chama
+    `restaurarSelecao` — que, disparado no meio da escolha, reporia o nome
+    ANTIGO por cima do novo. Somada a isso, a opcao ja escolhe no proprio
+    `onMouseDown` com `preventDefault()`, que roda antes do listener do
+    documento e mantem o foco no input.
+  */
   function restaurarSelecao() {
     setQuery(selectedOption?.nome || '');
     setOpen(false);
   }
+
+  useFecharAoSair(campoRef, open && !disabled, restaurarSelecao);
 
   function handleKeyDown(event) {
     if (event.key === 'ArrowDown') {
@@ -96,7 +121,7 @@ export default function CategoriaFinanceiraAutocomplete({
       <label htmlFor={inputId} className="mb-1 block text-[var(--c-muted)]">
         {label}
       </label>
-      <div className="relative">
+      <div ref={campoRef} className="relative">
         <input
           id={inputId}
           className="input w-full"
@@ -120,7 +145,6 @@ export default function CategoriaFinanceiraAutocomplete({
             event.target.select();
             setOpen(true);
           }}
-          onBlur={() => window.setTimeout(restaurarSelecao, 120)}
           onKeyDown={handleKeyDown}
         />
 
@@ -128,7 +152,7 @@ export default function CategoriaFinanceiraAutocomplete({
           <div
             id={listboxId}
             role="listbox"
-            className="absolute left-0 right-0 top-[calc(100%+6px)] z-[80] max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
+            className="absolute left-0 right-0 top-[calc(100%+6px)] z-dropdown max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
           >
             {filteredOptions.length ? filteredOptions.map((categoria, index) => (
               <button

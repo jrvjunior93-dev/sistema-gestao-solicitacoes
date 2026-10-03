@@ -151,6 +151,14 @@ function aplicarDistribuicoesNoBucket({ distribuicoes, bucketMap, campo, obraId 
     });
 }
 
+function valorTituloNaObra(titulo, valor, obraId) {
+  return roundCurrency(
+    distribuirPorApropriacao({ valor, titulo })
+      .filter((item) => !item.obra_id || Number(item.obra_id) === Number(obraId))
+      .reduce((total, item) => total + asNumber(item.valor), 0)
+  );
+}
+
 function resumirApropriacoesDistribuidas(distribuicoes = []) {
   if (distribuicoes.length === 1) {
     return {
@@ -498,7 +506,12 @@ async function carregarDadosObra(obraId) {
       order: [['createdAt', 'DESC']]
     }),
     TituloFinanceiro.findAll({
-      where: { obra_id: obraId },
+      where: {
+        [Op.or]: [
+          { obra_id: obraId },
+          { '$rateios.obra_id$': obraId }
+        ]
+      },
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] },
         {
@@ -710,7 +723,10 @@ async function listarObrasGestao() {
 
   const titulos = await TituloFinanceiro.findAll({
     where: {
-      obra_id: { [Op.in]: obras.map((obra) => obra.id) },
+      [Op.or]: [
+        { obra_id: { [Op.in]: obras.map((obra) => obra.id) } },
+        { '$rateios.obra_id$': { [Op.in]: obras.map((obra) => obra.id) } }
+      ],
       tipo: { [Op.in]: [TIPO_TITULO_PAGAR, TIPO_TITULO_RECEBER] },
       status: { [Op.notIn]: STATUS_TITULOS_EXCLUIDOS_RESULTADO }
     },
@@ -721,6 +737,12 @@ async function listarObrasGestao() {
         required: false,
         where: { status: STATUS_MOVIMENTO_ATIVO },
         attributes: ['id', 'status', 'valor', 'valor_quitacao']
+      },
+      {
+        model: TituloFinanceiroRateio,
+        as: 'rateios',
+        required: false,
+        attributes: ['id', 'obra_id', 'apropriacao_id', 'tipo_rateio', 'percentual', 'valor_rateio']
       }
     ]
   });
@@ -743,11 +765,14 @@ async function listarObrasGestao() {
 
   const titulosByObra = new Map();
   titulos.forEach((item) => {
-    const obraId = Number(item.obra_id);
-    if (!titulosByObra.has(obraId)) {
-      titulosByObra.set(obraId, []);
-    }
-    titulosByObra.get(obraId).push(item);
+    const obraIdsTitulo = new Set([
+      Number(item.obra_id),
+      ...(item.rateios || []).map((rateio) => Number(rateio.obra_id))
+    ].filter(Boolean));
+    obraIdsTitulo.forEach((obraId) => {
+      if (!titulosByObra.has(obraId)) titulosByObra.set(obraId, []);
+      titulosByObra.get(obraId).push(item);
+    });
   });
 
   const custosHistoricosPagarByObra = new Map();
@@ -767,11 +792,17 @@ async function listarObrasGestao() {
     const titulosReceberObra = titulosObra.filter((titulo) => String(titulo.tipo || '').toUpperCase() === TIPO_TITULO_RECEBER);
     const orcado = somarOrcamentoAnalitico(apropriacoesObra);
     const executado = roundCurrency(
-      titulosPagarObra.reduce((total, titulo) => total + sumMovimentosAtivos(titulo), 0)
+      titulosPagarObra.reduce(
+        (total, titulo) => total + valorTituloNaObra(titulo, sumMovimentosAtivos(titulo), obra.id),
+        0
+      )
       + asNumber(custosHistoricosPagarByObra.get(Number(obra.id)))
     );
     const recebido = roundCurrency(
-      titulosReceberObra.reduce((total, titulo) => total + asNumber(titulo.valor_baixado), 0)
+      titulosReceberObra.reduce(
+        (total, titulo) => total + valorTituloNaObra(titulo, asNumber(titulo.valor_baixado), obra.id),
+        0
+      )
       + asNumber(custosHistoricosReceberByObra.get(Number(obra.id)))
     );
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
@@ -784,7 +815,10 @@ async function listarObrasGestao() {
     const faltaReceber = roundCurrency(
       valorReferenciaResultado > 0
         ? valorReferenciaResultado - recebido
-        : titulosReceberObra.reduce((total, titulo) => total + asNumber(titulo.valor_saldo), 0)
+        : titulosReceberObra.reduce(
+          (total, titulo) => total + valorTituloNaObra(titulo, asNumber(titulo.valor_saldo), obra.id),
+          0
+        )
     );
     const lucroPrejuizo = roundCurrency(recebido - executado);
 

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getSetores } from '../services/setores';
 import { getAreasObra, salvarAreasObra } from '../services/configuracoesSistema';
+import { Pagina, PageHeader, BlocoConteudo, Avisos, useAvisos } from '../components/padrao';
 
 export default function AreasObra() {
   const [setores, setSetores] = useState([]);
   const [selecionadas, setSelecionadas] = useState(new Set());
   const [salvando, setSalvando] = useState(false);
+  // R3/R19: aviso do sistema no lugar da caixa do navegador.
+  const { avisos, avisar, fechar } = useAvisos();
 
   useEffect(() => {
     async function load() {
@@ -27,6 +30,10 @@ export default function AreasObra() {
       return nomeA.localeCompare(nomeB);
     });
   }, [setores]);
+
+  const totalMarcadas = useMemo(() => (
+    setoresOrdenados.filter(s => selecionadas.has(String(s.codigo || '').toUpperCase())).length
+  ), [setoresOrdenados, selecionadas]);
 
   function alternar(codigo) {
     const key = String(codigo || '').toUpperCase();
@@ -53,41 +60,53 @@ export default function AreasObra() {
     try {
       setSalvando(true);
       await salvarAreasObra({ areas: Array.from(selecionadas) });
-      alert('Configuracao salva com sucesso');
+      avisar.sucesso('Configuração salva com sucesso');
     } catch (error) {
       console.error(error);
-      alert('Erro ao salvar configuracao');
+      avisar.erro('Erro ao salvar configuração');
     } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <div className="page solicitacoes-page">
-      <div>
-        <h1 className="page-title">Areas visiveis para OBRA</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--c-muted)' }}>
-          Marque quais areas os usuarios do setor OBRA podem selecionar
-          na tela de Nova Solicitacao.
-        </p>
-      </div>
+    <Pagina>
+      {/* C2: apoio na faixa (decisão 02/09) — contagem + descrição em uma
+          linha no próprio PageHeader. */}
+      <PageHeader
+        titulo="Áreas visíveis para OBRA"
+        contagem={`${totalMarcadas} de ${setoresOrdenados.length} selecionadas`}
+        descricao="Marque quais áreas os usuários do setor OBRA podem selecionar na tela de Nova Solicitação."
+        acaoPrincipal={{
+          rotulo: salvando ? 'Salvando...' : 'Salvar',
+          onClick: salvar,
+          desabilitada: salvando
+        }}
+      />
 
-      <div className="card space-y-4">
-        <div className="flex gap-2 flex-wrap">
-          <button type="button" className="btn btn-outline" onClick={selecionarTodas}>
-            Selecionar todas
-          </button>
-          <button type="button" className="btn btn-outline" onClick={limparSelecao}>
-            Limpar selecao
-          </button>
-        </div>
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <BlocoConteudo
+        titulo="Áreas selecionaveis"
+        variante="primario"
+        cor="var(--c-primary)"
+        acoes={(
+          <>
+            <button type="button" className="btn btn-outline btn-sm" onClick={selecionarTodas}>
+              Selecionar todas
+            </button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={limparSelecao}>
+              Limpar seleção
+            </button>
+          </>
+        )}
+      >
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {setoresOrdenados.map(setor => {
             const codigo = String(setor.codigo || '').toUpperCase();
             const marcado = selecionadas.has(codigo);
             return (
-              <label key={setor.id} className="flex items-center gap-2 text-sm">
+              <label key={setor.id} className="flex items-center gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm">
                 <input
                   type="checkbox"
                   checked={marcado}
@@ -100,18 +119,7 @@ export default function AreasObra() {
             );
           })}
         </div>
-
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={salvar}
-            disabled={salvando}
-          >
-            {salvando ? 'Salvando...' : 'Salvar'}
-          </button>
-        </div>
-      </div>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

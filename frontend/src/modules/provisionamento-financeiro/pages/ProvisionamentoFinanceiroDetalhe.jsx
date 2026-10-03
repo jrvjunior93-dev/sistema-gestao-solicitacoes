@@ -1,5 +1,20 @@
+import DateInputBR from '../../../components/DateInputBR';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import {
+  Avisos,
+  BlocoConteudo,
+  CamposComVazios,
+  CampoForm,
+  FormSecao,
+  Pagina,
+  PageHeader,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  useAvisos
+} from '../../../components/padrao';
+import StatusBadge from '../../../components/StatusBadge';
 import {
   adicionarComentarioProvisaoFinanceira,
   atualizarProvisaoFinanceira,
@@ -15,34 +30,78 @@ import {
   normalizarEntradaMoeda
 } from '../utils/moeda';
 
-function formatarData(valor) {
-  if (!valor) return '-';
+/*
+  ATENÇÃO — FORMATADOR DE CAMPO DE DETALHE (B4/CamposComVazios).
+
+  Estes formatadores devolvem `null` quando não há dado, NUNCA '-' nem '—'.
+  O `CamposComVazios` conta como VAZIO aquilo que não tem valor; um
+  formatador que devolve traço entrega uma string preenchida, o campo passa
+  a contar como cheio e o alternador "Ver todos os campos (N vazios)"
+  reporta um número menor do que a realidade. O traço quem desenha é o
+  componente.
+
+  Fora do grid de campos (tabela de anexos, histórico) o traço continua
+  legítimo — lá ele é só exibição, não entra em contagem nenhuma.
+*/
+function formatarDataOuNulo(valor) {
+  if (!valor) return null;
   const match = String(valor).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (match) return `${match[3]}/${match[2]}/${match[1]}`;
   const data = new Date(valor);
-  if (Number.isNaN(data.getTime())) return '-';
+  if (Number.isNaN(data.getTime())) return null;
   return data.toLocaleString('pt-BR');
 }
 
-function formatarPrioridade(valor) {
-  const normalized = String(valor || '').toLowerCase();
-  const labels = {
-    baixa: 'Baixa',
-    media: 'Media',
-    alta: 'Alta',
-    critica: 'Critica'
-  };
-  return labels[normalized] || '-';
+/** Exibição fora do grid de campos (tabela/lista): traço é aceitável. */
+function formatarData(valor) {
+  return formatarDataOuNulo(valor) || '-';
 }
 
-function formatarObra(obra) {
-  if (!obra) return '-';
+const PRIORIDADES = {
+  baixa: 'Baixa',
+  media: 'Media',
+  alta: 'Alta',
+  critica: 'Critica'
+};
+
+function formatarPrioridadeOuNulo(valor) {
+  return PRIORIDADES[String(valor || '').toLowerCase()] || null;
+}
+
+const STATUS = {
+  previsto: 'Previsto',
+  em_analise: 'Em analise',
+  aprovado: 'Aprovado',
+  cancelado: 'Cancelado',
+  realizado: 'Realizado'
+};
+
+function formatarStatus(valor) {
+  return STATUS[String(valor || '').toLowerCase()] || '-';
+}
+
+/*
+  A família semântica do status do provisionamento. Cancelado é NEUTRO
+  (não é erro: é uma decisão registrada) e realizado é SUCESSO — a
+  classificação automática do StatusBadge jogaria "previsto" e "em analise"
+  em famílias diferentes das que este módulo entende.
+*/
+function familiaStatus(valor) {
+  const normalizado = String(valor || '').toLowerCase();
+  if (normalizado === 'realizado' || normalizado === 'aprovado') return 'success';
+  if (normalizado === 'cancelado') return 'neutral';
+  if (normalizado === 'em_analise') return 'info';
+  return 'warning';
+}
+
+function formatarObraOuNulo(obra) {
+  if (!obra) return null;
   return `${obra.codigo ? `${obra.codigo} - ` : ''}${obra.nome}`;
 }
 
 export default function ProvisionamentoFinanceiroDetalhe() {
   const { id } = useParams();
-  const navigate = useNavigate();
+  const { avisos, avisar, fechar } = useAvisos();
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [provisao, setProvisao] = useState(null);
@@ -78,7 +137,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
       setValorPrevistoTexto(inicializarEntradaMoeda(provisaoData?.valor_previsto).textoFormatado);
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao carregar detalhe da provisao.');
+      avisar.erro(error?.message || 'Erro ao carregar detalhe da provisao.');
     } finally {
       setLoading(false);
     }
@@ -86,6 +145,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
 
   useEffect(() => {
     carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const podeEditar = useMemo(() => {
@@ -107,7 +167,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
     if (!form || saving) return;
 
     if (!form.item_macro.trim() || !form.data_prevista_desembolso || !form.descricao.trim() || !form.valor_previsto) {
-      alert('Preencha item macro, data prevista, descricao e valor previsto.');
+      avisar.erro('Preencha item macro, data prevista, descrição e valor previsto.');
       return;
     }
 
@@ -122,10 +182,11 @@ export default function ProvisionamentoFinanceiroDetalhe() {
         prioridade: form.prioridade
       });
       setEditando(false);
+      avisar.sucesso('Alterações da provisão salvas.');
       await carregar();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao salvar alteracoes.');
+      avisar.erro(error?.message || 'Erro ao salvar alteracoes.');
     } finally {
       setSaving(false);
     }
@@ -135,7 +196,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
     event.preventDefault();
     if (comentando) return;
     if (!comentario.trim()) {
-      alert('Informe um comentario.');
+      avisar.erro('Informe um comentário.');
       return;
     }
 
@@ -143,10 +204,11 @@ export default function ProvisionamentoFinanceiroDetalhe() {
       setComentando(true);
       await adicionarComentarioProvisaoFinanceira(id, { comentario });
       setComentario('');
+      avisar.sucesso('Comentário registrado.');
       await carregar();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao registrar comentario.');
+      avisar.erro(error?.message || 'Erro ao registrar comentario.');
     } finally {
       setComentando(false);
     }
@@ -155,13 +217,18 @@ export default function ProvisionamentoFinanceiroDetalhe() {
   async function enviarAnexos(files) {
     if (!files?.length || uploading) return;
 
+    // A quantidade é fixada ANTES do await: a mensagem de sucesso tem de
+    // citar o que FOI enviado, não o que o input contém depois.
+    const quantidade = files.length;
+
     try {
       setUploading(true);
       await uploadAnexosProvisaoFinanceira(id, files);
+      avisar.sucesso(`${quantidade} anexo(s) enviado(s).`);
       await carregar();
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao enviar anexos.');
+      avisar.erro(error?.message || 'Erro ao enviar anexos.');
     } finally {
       setUploading(false);
     }
@@ -171,176 +238,301 @@ export default function ProvisionamentoFinanceiroDetalhe() {
     try {
       const data = await obterLinkAnexoProvisaoFinanceira(anexo?.id);
       if (!data?.url) {
-        alert('Arquivo indisponivel.');
+        avisar.erro(`Arquivo indisponivel: ${anexo?.nome_original || 'anexo'}.`);
         return;
       }
       window.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error(error);
-      alert(error?.message || 'Erro ao abrir anexo.');
+      avisar.erro(error?.message || 'Erro ao abrir anexo.');
     }
   }
 
   if (loading || !provisao || !form) {
-    return <div className="page"><p>Carregando provisao...</p></div>;
+    return (
+      <Pagina>
+        <PageHeader titulo="Provisão" voltar={{ to: '/provisoes-financeiras' }} />
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <BlocoConteudo>Carregando provisão...</BlocoConteudo>
+      </Pagina>
+    );
   }
 
-  return (
-    <div className="page space-y-6">
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">{provisao.codigo}</h1>
-          <p className="page-subtitle">Detalhe completo da provisao com anexos, comentarios e trilha historica.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn btn-outline" onClick={() => navigate('/provisoes-financeiras')}>
-            Voltar
-          </button>
-          {podeEditar && (
-            <button type="button" className="btn btn-primary" onClick={() => setEditando((valor) => !valor)}>
-              {editando ? 'Fechar edicao' : 'Editar registro'}
-            </button>
-          )}
-        </div>
-      </div>
+  const anexos = Array.isArray(provisao.anexos) ? provisao.anexos : [];
+  const historicos = Array.isArray(provisao.historicos) ? provisao.historicos : [];
 
-      <div className="card mx-auto w-full max-w-5xl">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm">
-          <Info label="Codigo" value={provisao.codigo} />
-          <Info label="Obra" value={formatarObra(provisao.obra)} />
-          <Info label="Item macro" value={provisao.categoriaMacro?.nome || '-'} />
-          <Info label="Data prevista" value={formatarData(provisao.data_prevista_desembolso)} />
-          <Info label="Valor previsto" value={formatarMoedaBRL(provisao.valor_previsto)} />
-          <Info label="Credor" value={provisao.fornecedor_texto || '-'} />
-          <Info label="Prioridade" value={formatarPrioridade(provisao.prioridade)} />
-          <Info label="Criado por" value={provisao.usuarioCriacao?.nome || '-'} />
-          <Info label="Atualizado por" value={provisao.usuarioAtualizacao?.nome || '-'} />
-        </div>
-        <div className="mt-4 grid gap-2 text-sm">
-          <span className="font-medium">Descricao</span>
-          <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3 whitespace-pre-wrap">{provisao.descricao || '-'}</div>
-        </div>
-      </div>
+  return (
+    <Pagina>
+      {/*
+        C3/R11 — a seta de voltar à esquerda do cabeçalho é a affordance
+        primária de retorno em tela de DETALHE e FICA SEMPRE. O botão
+        "Voltar" solto da barra de ações virou esta seta (é a mesma
+        navegação, no lugar que a regra define).
+
+        C4/R13 — o cabeçalho de tela de REGISTRO exibe a IDENTIFICAÇÃO com
+        destaque: o código é o título, e a obra + data prevista são o apoio.
+        Número sem nome é defeito.
+      */}
+      <PageHeader
+        titulo={provisao.codigo}
+        voltar={{ to: '/provisoes-financeiras', title: 'Voltar para provisionamentos' }}
+        contagem={formatarObraOuNulo(provisao.obra) || undefined}
+        descricao={`${formatarStatus(provisao.status)} · desembolso previsto para ${formatarData(provisao.data_prevista_desembolso)}`}
+        acaoPrincipal={podeEditar
+          ? {
+            rotulo: editando ? 'Fechar edicao' : 'Editar registro',
+            onClick: () => setEditando((valor) => !valor)
+          }
+          : undefined}
+      />
+
+      <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {/*
+        MÓDULO DE DINHEIRO: o valor previsto é a resposta da tela e sobe para
+        o ladrilho, com o status ao lado (é ele que decide se a provisão
+        ainda pode ser editada). O `.app-stat-valor` já é tabular.
+      */}
+      <StatGrid colunas={3}>
+        <StatTile
+          label="Valor previsto"
+          valor={formatarMoedaBRL(provisao.valor_previsto)}
+          sub={`Desembolso em ${formatarData(provisao.data_prevista_desembolso)}`}
+        />
+        <StatTile
+          label="Status"
+          valor={<StatusBadge status={formatarStatus(provisao.status)} kind={familiaStatus(provisao.status)} />}
+          sub={podeEditar ? 'Registro aberto para edicao' : 'Registro fechado para edicao'}
+        />
+        <StatTile
+          label="Prioridade"
+          valor={formatarPrioridadeOuNulo(provisao.prioridade)}
+          vazio={!formatarPrioridadeOuNulo(provisao.prioridade)}
+          sub="Definida no cadastro da provisão"
+        />
+      </StatGrid>
+
+      <BlocoConteudo
+        titulo="Dados da provisão"
+        variante="primario"
+        cor="var(--c-primary)"
+      >
+        {/*
+          B4/CamposComVazios — a contagem de vazios sai da PRÓPRIA lista de
+          campos. Por isso todo formatador acima devolve `null` no vazio:
+          '-' ou '—' seria uma string preenchida, e o alternador contaria
+          menos vazios do que existem.
+
+          B3: código, valor, status, prioridade, obra e data prevista já
+          aparecem na faixa e nos ladrilhos com papel de DECISÃO; aqui não
+          se repetem. O que fica é o que só este bloco responde.
+        */}
+        <CamposComVazios
+          colunas={4}
+          campos={[
+            { label: 'Item macro', valor: provisao.categoriaMacro?.nome || null, span: 2 },
+            { label: 'Credor', valor: provisao.fornecedor_texto || null, span: 2 },
+            { label: 'Criado por', valor: provisao.usuarioCriacao?.nome || null, span: 2 },
+            { label: 'Atualizado por', valor: provisao.usuarioAtualizacao?.nome || null, span: 2 },
+            {
+              label: 'Descrição',
+              valor: provisao.descricao || null,
+              span: 4
+            }
+          ]}
+        />
+      </BlocoConteudo>
 
       {editando && podeEditar && (
-        <form className="card mx-auto w-full max-w-5xl space-y-4" onSubmit={salvarEdicao}>
-          <div className="card-header">
-            <h2 className="font-semibold">Editar provisao</h2>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <label className="grid gap-1 text-sm md:col-span-2 xl:col-span-2">
-              Item macro
-              <input
-                type="text"
-                className="input"
-                list="provisao-item-macro-opcoes-edicao"
-                value={form.item_macro}
-                onChange={(event) => setForm((atual) => ({ ...atual, item_macro: event.target.value }))}
-              />
-              <datalist id="provisao-item-macro-opcoes-edicao">
-                {categorias.map((categoria) => (
-                  <option key={categoria.id} value={categoria.nome} />
-                ))}
-              </datalist>
-            </label>
-            <label className="grid gap-1 text-sm xl:col-span-2">
-              Data prevista
-              <input type="date" className="input" value={form.data_prevista_desembolso} onChange={(event) => setForm((atual) => ({ ...atual, data_prevista_desembolso: event.target.value }))} />
-            </label>
-            <label className="grid gap-1 text-sm xl:col-span-2">
-              Valor previsto
-              <input
-                type="text"
-                inputMode="numeric"
-                className="input"
-                value={valorPrevistoTexto}
-                onChange={(event) => atualizarValorPrevisto(event.target.value)}
-                placeholder={formatarMoedaBRL(0)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm xl:col-span-2">
-              Prioridade
-              <select className="input" value={form.prioridade} onChange={(event) => setForm((atual) => ({ ...atual, prioridade: event.target.value }))}>
-                <option value="">Nao definida</option>
-                <option value="baixa">Baixa</option>
-                <option value="media">Media</option>
-                <option value="alta">Alta</option>
-                <option value="critica">Critica</option>
-              </select>
-            </label>
-            <label className="grid gap-1 text-sm md:col-span-2 xl:col-span-4">
-              Credor
-              <input className="input" value={form.fornecedor_texto} onChange={(event) => setForm((atual) => ({ ...atual, fornecedor_texto: event.target.value }))} />
-            </label>
-            <label className="grid gap-1 text-sm xl:col-span-6">
-              Descricao
-              <textarea className="input min-h-[110px]" value={form.descricao} onChange={(event) => setForm((atual) => ({ ...atual, descricao: event.target.value }))} />
-            </label>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" className="btn btn-outline" onClick={() => setEditando(false)}>Cancelar</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar alteracoes'}</button>
-          </div>
-        </form>
-      )}
+        /*
+          R9 — o formulário de edição é INLINE, num painel ACIMA do apoio
+          (padrão de tela mista): a pessoa está no registro para mexer nele,
+          e o modal a obrigaria a abrir e fechar para ver o que edita.
+        */
+        <BlocoConteudo titulo="Editar provisão">
+          <form className="space-y-4" onSubmit={salvarEdicao}>
+            <FormSecao legenda="Compromisso" colunas={2}>
+              <CampoForm label="Item macro" obrigatorio>
+                <input
+                  type="text"
+                  className="input w-full"
+                  list="provisao-item-macro-opcoes-edicao"
+                  value={form.item_macro}
+                  onChange={(event) => setForm((atual) => ({ ...atual, item_macro: event.target.value }))}
+                />
+                <datalist id="provisao-item-macro-opcoes-edicao">
+                  {categorias.map((categoria) => (
+                    <option key={categoria.id} value={categoria.nome} />
+                  ))}
+                </datalist>
+              </CampoForm>
 
-      <div className="mx-auto grid w-full max-w-5xl gap-6 xl:grid-cols-2">
-        <div className="card space-y-4">
-          <div className="card-header">
-            <h2 className="font-semibold">Comentarios</h2>
-          </div>
-          <form className="grid gap-3" onSubmit={enviarComentario}>
-            <textarea className="input min-h-[110px]" value={comentario} onChange={(event) => setComentario(event.target.value)} placeholder="Registrar observacao complementar" />
-            <div className="flex justify-end">
-              <button type="submit" className="btn btn-primary" disabled={comentando || !podeEditar}>{comentando ? 'Salvando...' : 'Adicionar comentario'}</button>
+              <CampoForm label="Data prevista" obrigatorio>
+                <DateInputBR
+                  className="input w-full"
+                  value={form.data_prevista_desembolso}
+                  onChange={(event) => setForm((atual) => ({ ...atual, data_prevista_desembolso: event.target.value }))}
+                />
+              </CampoForm>
+
+              {/* R6 — dinheiro no pior caso: `.input-moeda` (mín 180px,
+                  R$ 9.999.999.999,99, à direita, tabular-nums). */}
+              <CampoForm label="Valor previsto" obrigatorio>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="input input-moeda w-full"
+                  value={valorPrevistoTexto}
+                  onChange={(event) => atualizarValorPrevisto(event.target.value)}
+                  placeholder={formatarMoedaBRL(0)}
+                />
+              </CampoForm>
+
+              <CampoForm label="Prioridade">
+                <select
+                  className="input w-full"
+                  value={form.prioridade}
+                  onChange={(event) => setForm((atual) => ({ ...atual, prioridade: event.target.value }))}
+                >
+                  <option value="">Não definida</option>
+                  <option value="baixa">Baixa</option>
+                  <option value="media">Media</option>
+                  <option value="alta">Alta</option>
+                  <option value="critica">Critica</option>
+                </select>
+              </CampoForm>
+
+              <CampoForm label="Credor" span={2}>
+                <input
+                  className="input w-full"
+                  value={form.fornecedor_texto}
+                  onChange={(event) => setForm((atual) => ({ ...atual, fornecedor_texto: event.target.value }))}
+                />
+              </CampoForm>
+
+              <CampoForm label="Descrição" obrigatorio tipo="texto-longo" span={2}>
+                {/* R10: altura do textarea vem da folha do sistema, não do
+                    `min-h-[110px]` que estava aqui. */}
+                <textarea
+                  className="input w-full"
+                  value={form.descricao}
+                  onChange={(event) => setForm((atual) => ({ ...atual, descricao: event.target.value }))}
+                />
+              </CampoForm>
+            </FormSecao>
+
+            <div className="app-actionbar">
+              <button type="button" className="btn btn-outline" onClick={() => setEditando(false)}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar alteracoes'}
+              </button>
             </div>
           </form>
-        </div>
+        </BlocoConteudo>
+      )}
 
-        <div className="card space-y-4">
-          <div className="card-header flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold">Anexos</h2>
-            {podeEditar && (
-              <label className={`btn btn-outline cursor-pointer ${uploading ? 'pointer-events-none opacity-60' : ''}`}>
-                <input
-                  type="file"
-                  className="hidden"
-                  multiple
-                  onChange={(event) => {
-                    void enviarAnexos(Array.from(event.target.files || []));
-                    event.target.value = '';
-                  }}
-                />
-                {uploading ? 'Enviando...' : 'Adicionar anexos'}
-              </label>
-            )}
+      <BlocoConteudo
+        titulo="Comentários"
+        variante="secundario"
+        descricao="Observação complementar fica registrada no histórico da provisão."
+      >
+        <form className="space-y-4" onSubmit={enviarComentario}>
+          <FormSecao colunas={2}>
+            <CampoForm label="Novo comentário" tipo="texto-longo" span={2}>
+              <textarea
+                className="input w-full"
+                value={comentario}
+                onChange={(event) => setComentario(event.target.value)}
+                placeholder="Registrar observação complementar"
+              />
+            </CampoForm>
+          </FormSecao>
+          <div className="app-actionbar">
+            <button type="submit" className="btn btn-primary" disabled={comentando || !podeEditar}>
+              {comentando ? 'Salvando...' : 'Adicionar comentario'}
+            </button>
           </div>
-          {Array.isArray(provisao.anexos) && provisao.anexos.length > 0 ? (
-            <div className="grid gap-2">
-              {provisao.anexos.map((anexo) => (
-                <div key={anexo.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] px-3 py-3 text-sm">
-                  <div>
-                    <div className="font-medium">{anexo.nome_original}</div>
-                    <div className="text-[var(--c-muted)]">{anexo.uploadUser?.nome || '-'} · {formatarData(anexo.createdAt)}</div>
-                  </div>
-                  <button type="button" className="btn btn-outline" onClick={() => abrirAnexo(anexo)}>Abrir</button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-[var(--c-muted)]">Nenhum anexo registrado.</div>
-          )}
-        </div>
-      </div>
+        </form>
+      </BlocoConteudo>
 
-      <div className="card mx-auto w-full max-w-5xl space-y-4">
-        <div className="card-header">
-          <h2 className="font-semibold">Historico</h2>
-        </div>
-        {Array.isArray(provisao.historicos) && provisao.historicos.length > 0 ? (
-          <div className="space-y-3">
-            {provisao.historicos.map((historico) => (
-              <div key={historico.id} className="rounded-lg border border-[var(--c-border)] px-4 py-3 text-sm">
+      <BlocoConteudo
+        titulo="Anexos"
+        variante="secundario"
+        contagem={`${anexos.length} anexo(s)`}
+        acoes={podeEditar ? (
+          <label className={`btn btn-outline btn-sm${uploading ? ' pointer-events-none opacity-60' : ''}`}>
+            <input
+              type="file"
+              className="hidden"
+              multiple
+              onChange={(event) => {
+                void enviarAnexos(Array.from(event.target.files || []));
+                event.target.value = '';
+              }}
+            />
+            {uploading ? 'Enviando...' : 'Adicionar anexos'}
+          </label>
+        ) : null}
+      >
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'arquivo',
+              titulo: 'Arquivo',
+              // R17: tabela de ARQUIVOS — o nome preserva caixa e extensão,
+              // então não vira `identidade` (que exibe em maiúsculas). A
+              // ausência de identidade é DECLARADA no `semIdentidade` abaixo.
+              tipo: 'texto',
+              noCard: 'titulo',
+              render: (anexo) => (
+                <span title={anexo.nome_original || undefined}>{anexo.nome_original || '-'}</span>
+              )
+            },
+            {
+              id: 'enviado_por',
+              titulo: 'Enviado por',
+              tipo: 'texto',
+              render: (anexo) => anexo.uploadUser?.nome || '-'
+            },
+            {
+              id: 'enviado_em',
+              titulo: 'Enviado em',
+              tipo: 'data',
+              render: (anexo) => formatarData(anexo.createdAt)
+            }
+          ]}
+          itens={anexos}
+          getId={(anexo) => anexo.id}
+          semIdentidade
+          storageKey="tabela:provisionamento-detalhe:anexos"
+          rotuloRolagem="Anexos da provisao"
+          vazio="Nenhum anexo registrado."
+          larguraAcoes={110}
+          /* A1: a ação da linha é um <button> focável. */
+          acoesLinha={(anexo) => (
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirAnexo(anexo)}>
+              Abrir
+            </button>
+          )}
+        />
+      </BlocoConteudo>
+
+      {/*
+        Histórico é registro: nasce RECOLHIDO (regra 1 de organização — dado
+        que gera ação primeiro, histórico por último), mas o título fica à
+        vista para que se saiba que existe.
+      */}
+      <BlocoConteudo
+        titulo="Histórico"
+        variante="secundario"
+        contagem={`${historicos.length} evento(s)`}
+        recolhivel
+        recolhidoPadrao={historicos.length === 0}
+      >
+        {historicos.length > 0 ? (
+          <div className="grid gap-3">
+            {historicos.map((historico) => (
+              <article key={historico.id} className="rounded-lg border border-[var(--c-border)] px-4 py-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <strong>{historico.acao}</strong>
                   <span className="text-[var(--c-muted)]">{formatarData(historico.createdAt)}</span>
@@ -348,22 +540,13 @@ export default function ProvisionamentoFinanceiroDetalhe() {
                 {historico.descricao && <div className="mt-2">{historico.descricao}</div>}
                 {historico.comentario && <div className="mt-2 whitespace-pre-wrap">{historico.comentario}</div>}
                 <div className="mt-2 text-[var(--c-muted)]">{historico.usuario?.nome || 'Sistema'}</div>
-              </div>
+              </article>
             ))}
           </div>
         ) : (
-          <div className="text-sm text-[var(--c-muted)]">Nenhum historico registrado.</div>
+          <p className="text-sm text-[var(--c-muted)]">Nenhum histórico registrado.</p>
         )}
-      </div>
-    </div>
-  );
-}
-
-function Info({ label, value }) {
-  return (
-    <div className="grid gap-1">
-      <span className="text-xs uppercase tracking-wide text-[var(--c-muted)]">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
+      </BlocoConteudo>
+    </Pagina>
   );
 }

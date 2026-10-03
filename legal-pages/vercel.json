@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "has": [{ "type": "host", "value": "privacidade.jrfluxy.com.br" }],
+      "source": "/",
+      "destination": "/privacidade/index.html"
+    },
+    {
+      "has": [{ "type": "host", "value": "termos.jrfluxy.com.br" }],
+      "source": "/",
+      "destination": "/termos/index.html"
+    },
+    {
+      "has": [{ "type": "host", "value": "exclusao-dados.jrfluxy.com.br" }],
+      "source": "/",
+      "destination": "/exclusao-dados/index.html"
+    },
+    {
+      "has": [{ "type": "host", "value": "exclusaodados.jrfluxy.com.br" }],
+      "source": "/",
+      "destination": "/exclusao-dados/index.html"
+    }
+  ]
+}

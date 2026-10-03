@@ -3,29 +3,41 @@
 @tailwind utilities;
 
 :root {
-  --c-bg: #f5f7fa;
+  --c-bg: #eef2f7;
   --c-surface: #ffffff;
   --c-border: #e4e9f0;
   --c-text: #0f1c2e;
-  --c-muted: #64748b;
+  /* 4.62:1 sobre o canvas #eef2f7 (o antigo #64748b dava 4.23 — reprovava AA
+     em texto pequeno; achado do impeccable, 02/09). */
+  --c-muted: #5f6e83;
   --c-primary: #3b5bdb;
   --c-primary-600: #2f4ac0;
   --c-secondary: #7c3aed;
-  --c-warning: #d97706;
-  --c-danger: #e03131;
-  --c-success: #0ca678;
+  --c-warning: #9a5b06;
+  --c-danger: #b32020;
+  --c-success: #116149;
   --app-heading-color: #0f1c2e;
   --app-body-color: #0f1c2e;
-  --app-muted-color: #64748b;
-  --app-subtle-color: #94a3b8;
+  /* Igual a --c-muted (02/09). Eram DOIS tokens para o mesmo papel com
+     valores diferentes: #64748b (slate-500 do Tailwind) dava 4,51:1 sobre
+     --ui-surface-2 — passava por 0,01 e reprovava assim que a superfície
+     mudava um fio (o harness mediu 4,4996 num bloco secundário). Um dono
+     por responsabilidade (R16): o texto secundário do sistema é --c-muted,
+     que dá 4,92:1 e tem folga. No tema escuro os dois já eram idênticos. */
+  --app-muted-color: #5f6e83;
+  /* 02/09: era #74808f, que dá 3,81:1 sobre --ui-surface-2 — REPROVA o AA
+     (mínimo 4,5) e é usado em TEXTO (.la-fim, rodapés de lista). Agora
+     4,63:1 com folga. O terceiro tom de texto continua existindo — é mais
+     claro que --c-muted, só que dentro do mínimo legível. */
+  --app-subtle-color: #667283;
   --app-link-color: #2563eb;
   --app-inverse-color: #ffffff;
   --app-number-color: #0f1c2e;
-  --app-number-positive: #0ca678;
-  --app-number-negative: #e03131;
-  --app-number-warning: #d97706;
+  --app-number-positive: #116149;
+  --app-number-negative: #b32020;
+  --app-number-warning: #9a5b06;
   --app-number-info: #3b5bdb;
-  --app-number-muted: #64748b;
+  --app-number-muted: #56637a;  /* AA na superficie mais escura em uso (03/09) */
   --btn-primary-bg: #3b5bdb;
   --btn-primary-hover: #2f4ac0;
   --btn-primary-text: #ffffff;
@@ -40,31 +52,32 @@
   --btn-ghost-text: #64748b;
   --btn-ghost-hover-bg: #eef2f7;
   --btn-ghost-hover-text: #0f1c2e;
-  --btn-success-bg: #0ca678;
+  --btn-success-bg: #116149;
   --btn-success-text: #ffffff;
-  --btn-danger-bg: #e03131;
+  --btn-danger-bg: #b32020;
   --btn-danger-text: #ffffff;
-  --btn-warning-bg: #d97706;
+  --btn-warning-bg: #9a5b06;
   --btn-warning-text: #ffffff;
   --card-bg: #ffffff;
   --card-soft-bg: #eef2f7;
   --card-border: #e4e9f0;
   --card-text: #0f1c2e;
-  --card-muted: #64748b;
+  --card-muted: #56637a;  /* AA na superficie mais escura em uso (03/09) */
   --app-summary-bg: #ffffff;
   --app-summary-border: #d8e2f1;
-  --app-summary-label: #64748b;
+  --app-summary-label: #56637a;  /* AA na superficie mais escura em uso (03/09) */
   --app-summary-value: #0f1c2e;
   --app-summary-subvalue: #64748b;
-  --module-solicitacoes: #3b5bdb;
-  --module-compras: #7c3aed;
-  --module-financeiro: #2454ff;
-  --module-rhdp: #2563eb;
-  --module-sst: #0f766e;
-  --module-fiscal: #0f766e;
-  --module-comercial: #7c3aed;
-  --module-contratos: #cc7600;
-  --module-crm: #0ca678;
+  --module-solicitacoes: #3a5f9e;
+  --module-compras: #8a5a12;
+  --module-financeiro: #146152;
+  --module-custos-recebiveis: #2f6b57;
+  --module-rhdp: #4d6b33;
+  --module-sst: #1f5170;
+  --module-fiscal: #3f6a5a;
+  --module-comercial: #6b4f8f;
+  --module-contratos: #7a5a2e;
+  --module-crm: #5b4a91;
   /* Accent financeiro (usado em ObraGestao, DRE, etc.) */
   --accent-blue: #2454ff;
   --accent-green: #08a56e;
@@ -78,15 +91,73 @@
   --input-bg-soft: #f8fafc;
   --input-border: #e4e9f0;
   --input-text: #0f1c2e;
-  --input-placeholder: #94a3b8;
+  --input-placeholder: #74808f;
   --input-bg-disabled: #f1f5f9;
   --input-text-disabled: #94a3b8;
-  /* Z-index scale */
-  --z-dropdown: 25;
-  --z-sticky: 20;
-  --z-sidebar: 30;
-  --z-modal: 100;
-  --z-toast: 120;
+  /* =====================================================================
+     ESCALA DE CAMADAS — o único lugar onde camada se decide (06/09).
+
+     O cliente viu botão e bloco passando POR CIMA da barra do topo ao
+     rolar. A escala já existia, mas a barra fixa valia 20 — e as classes
+     `z-*` do Tailwind vão de `z-0` a `z-50` por padrão. Havia 11 usos de
+     `z-50` em conteúdo comum: conteúdo em 50 sobre barra em 20 é
+     literalmente a captura que ele mandou.
+
+     Trocar número por token não bastava. Uma barra em 20 SEMPRE poderá ser
+     vencida por um `z-50` que alguém escreva amanhã. Por isso a escala
+     inteira subiu ACIMA da faixa que o Tailwind ocupa: nada que o Tailwind
+     saiba desenhar sozinho alcança a barra do topo.
+
+     A escala tem dois andares, e a diferença entre eles é o que importa:
+
+       LOCAL  — ordena o que está DENTRO de um bloco (enfeite, célula
+                presa, alça de coluna). Fica de propósito abaixo de 50:
+                conteúdo não disputa com a barra, passa por baixo dela.
+       GLOBAL — ordena o que flutua SOBRE a página (barra, menu, painel,
+                modal, aviso). Começa em 180, fora do alcance do Tailwind.
+
+     Subir a escala e converter os números crus foi UMA mudança só, nunca
+     duas etapas: com a escala nova e um número cru sobrando, o que hoje
+     aparece sumiria atrás da barra.
+
+     E o que esta escala NÃO resolve sozinha: `z-index` só compara dentro
+     do mesmo CONTEXTO DE EMPILHAMENTO. Ancestral com `transform`,
+     `filter`, `opacity < 1`, `will-change` ou `contain` abre contexto
+     novo, e ali o filho com valor maior não vence a barra de fora —
+     nesses casos a saída é o portal (`--z-dropdown-portal`), não um
+     número maior.
+     ===================================================================== */
+  /* --- LOCAL: dentro de um bloco. Nunca disputa com a barra fixa. --- */
+  --z-atras: -1;                /* enfeite ATRÁS do próprio conteúdo */
+  --z-base: 0;                  /* fundo do shell, véu decorativo */
+  --z-conteudo: 1;              /* conteúdo sobre o enfeite */
+  --z-conteudo-acima: 2;        /* segundo degrau local */
+  --z-conteudo-topo: 3;         /* terceiro degrau local */
+  --z-celula-fixa: 5;           /* célula presa (sticky) da tabela */
+  --z-celula-fixa-cabecalho: 6; /* cabeçalho da coluna presa, sobre a célula */
+  --z-alca: 8;                  /* alça de redimensionar coluna */
+  --z-presa-no-bloco: 10;       /* faixa presa DENTRO de um bloco que rola */
+  --z-flutuante-local: 12;      /* botão preso à borda de um bloco */
+  /* --- GLOBAL: acima da faixa do Tailwind (z-0…z-50). --- */
+  --z-faixa-presa: 180;         /* cabeçalho fixo e faixa presa da página */
+  --z-faixa-presa-acima: 190;   /* segunda faixa presa, sobre a primeira */
+  --z-sticky: 200;              /* barra do topo e cabeçalho fixo */
+  --z-dropdown: 210;            /* menu/painel ancorado, ainda no fluxo */
+  --z-veu: 290;                 /* véu que escurece a página sob um painel */
+  --z-sidebar: 300;             /* barra lateral */
+  --z-painel: 310;              /* painel ancorado numa barra (notificações) */
+  /*
+    Menu suspenso que sai por PORTAL (05/09): ele vive no `body`, fora de
+    qualquer contexto de empilhamento da tela, e precisa ficar acima da
+    barra lateral e abaixo do modal — um menu não pode cobrir uma caixa de
+    confirmação. Existia como `var(--z-dropdown-portal, 90)` em dois
+    lugares, com o 90 escrito na mão nos dois: token só existe de verdade
+    quando é declarado.
+  */
+  --z-dropdown-portal: 900;
+  --z-modal: 1000;
+  --z-modal-acima: 1100;        /* modal sobre modal, e menu aberto DENTRO de modal */
+  --z-toast: 1200;
   /* Modal tokens */
   --modal-overlay: rgba(15, 23, 42, 0.48);
   --modal-bg: #ffffff;
@@ -97,37 +168,38 @@
   --modal-max-w-md: 640px;
   --modal-max-w-lg: 860px;
   --modal-max-w-xl: 1120px;
+  --modal-max-w-2xl: 90rem;
   /* Status badge tokens */
-  --status-pending-bg: #fff7ed;
-  --status-pending-text: #92400e;
-  --status-pending-border: #fed7aa;
-  --status-approved-bg: #ecfdf5;
-  --status-approved-text: #065f46;
-  --status-approved-border: #a7f3d0;
-  --status-rejected-bg: #fef2f2;
-  --status-rejected-text: #991b1b;
-  --status-rejected-border: #fecaca;
-  --status-paid-bg: #eff6ff;
-  --status-paid-text: #1e40af;
-  --status-paid-border: #bfdbfe;
-  --status-overdue-bg: #fff1f2;
-  --status-overdue-text: #9f1239;
-  --status-overdue-border: #fecdd3;
-  --status-analysis-bg: #f5f3ff;
-  --status-analysis-text: #5b21b6;
-  --status-analysis-border: #ddd6fe;
-  --status-archived-bg: #f8fafc;
-  --status-archived-text: #475569;
-  --status-archived-border: #cbd5e1;
-  --status-intercompany-bg: #ecfeff;
-  --status-intercompany-text: #155e75;
-  --status-intercompany-border: #a5f3fc;
-  --status-dre-yes-bg: #f0fdf4;
-  --status-dre-yes-text: #14532d;
-  --status-dre-yes-border: #bbf7d0;
-  --status-dre-no-bg: #fafafa;
-  --status-dre-no-text: #525252;
-  --status-dre-no-border: #e5e5e5;
+  --status-pending-bg: #f7f2eb;
+  --status-pending-text: #9a5b06;
+  --status-pending-border: #e6d6c1;
+  --status-approved-bg: #ecf2f0;
+  --status-approved-text: #116149;
+  --status-approved-border: #c4d8d2;
+  --status-rejected-bg: #fdeceb;
+  --status-rejected-text: #b32020;
+  --status-rejected-border: #f3c9c7;
+  --status-paid-bg: #edf0f5;
+  --status-paid-text: #22447f;
+  --status-paid-border: #c8d0df;
+  --status-overdue-bg: #fdeceb;
+  --status-overdue-text: #b32020;
+  --status-overdue-border: #f3c9c7;
+  --status-analysis-bg: #edf0f5;
+  --status-analysis-text: #22447f;
+  --status-analysis-border: #c8d0df;
+  --status-archived-bg: #f2f3f4;
+  --status-archived-text: #5b6472;
+  --status-archived-border: #d6d8dc;
+  --status-intercompany-bg: #edf0f5;
+  --status-intercompany-text: #22447f;
+  --status-intercompany-border: #c8d0df;
+  --status-dre-yes-bg: #ecf2f0;
+  --status-dre-yes-text: #116149;
+  --status-dre-yes-border: #c4d8d2;
+  --status-dre-no-bg: #f2f3f4;
+  --status-dre-no-text: #5b6472;
+  --status-dre-no-border: #d6d8dc;
   /* Nav (light) */
   --nav-bg: #ffffff;
   --nav-border: #eaeff6;
@@ -143,14 +215,17 @@
   --tone-ink: #0f1c2e;
   --tone-indigo: #3b5bdb;
   --tone-mint: #0c8ee0;
-  --tone-amber: #f59e0b;
-  --tone-rose: #e03131;
+  --tone-amber: #9a5b06;
+  --tone-rose: #b32020;
   --tone-sand: #eef2f7;
   --tone-glass: rgba(255, 255, 255, 0.97);
   /* Unified UI layers */
-  --ui-canvas: #f5f7fa;
+  --ui-canvas: #eef2f7; /* levemente distinto dos cards brancos */
   --ui-surface: #ffffff;
   --ui-surface-soft: #eef2f7;
+  /* Branco rebaixado: bloco secundário recua sozinho sem se fundir ao canvas
+     (surface-soft É o canvas — não serve para destacar um card sobre ele). */
+  --ui-surface-2: #f7f9fc;
   --ui-border: #e4e9f0;
   --ui-border-strong: #c8d4e8;
   --ui-shadow-sm: 0 1px 4px rgba(15, 30, 60, 0.07), 0 1px 2px rgba(15, 30, 60, 0.04);
@@ -160,7 +235,7 @@
   --premium-panel-bg: #ffffff;
   --premium-panel-border: #e4e9f0;
   --premium-panel-shadow: 0 1px 4px rgba(15, 30, 60, 0.07), 0 1px 2px rgba(15, 30, 60, 0.04);
-  --premium-panel-muted: #64748b;
+  --premium-panel-muted: #56637a;  /* AA na superficie mais escura em uso (03/09) */
   --premium-panel-grid: transparent;
   --premium-glass-bg: #ffffff;
   --premium-glass-border: #e4e9f0;
@@ -184,19 +259,22 @@
   --c-primary: #748ffc;
   --c-primary-600: #5c7cfa;
   --c-secondary: #a78bfa;
-  --c-warning: #fbbf24;
-  --c-danger: #ff6b6b;
-  --c-success: #38d9a9;
+  --c-warning: #bd945d;
+  --c-danger: #ce6e6e;
+  --c-success: #649889;
   --app-heading-color: #e8edf8;
   --app-body-color: #e8edf8;
   --app-muted-color: #94a8cc;
-  --app-subtle-color: #5a7098;
+  /* 02/09: era #5a7098, que no escuro dava 3,02:1 sobre --ui-surface-2 —
+     pior que o claro, e ninguém tinha medido o tema escuro até aqui.
+     Agora 5,12:1. */
+  --app-subtle-color: #8397be;
   --app-link-color: #92aafc;
   --app-inverse-color: #0d1524;
   --app-number-color: #e8edf8;
-  --app-number-positive: #38d9a9;
-  --app-number-negative: #ff6b6b;
-  --app-number-warning: #fbbf24;
+  --app-number-positive: #649889;
+  --app-number-negative: #ce6e6e;
+  --app-number-warning: #bd945d;
   --app-number-info: #748ffc;
   --app-number-muted: #94a8cc;
   --btn-primary-bg: #748ffc;
@@ -213,11 +291,11 @@
   --btn-ghost-text: #94a8cc;
   --btn-ghost-hover-bg: #1a2a44;
   --btn-ghost-hover-text: #e8edf8;
-  --btn-success-bg: #38d9a9;
+  --btn-success-bg: #649889;
   --btn-success-text: #08111f;
-  --btn-danger-bg: #ff6b6b;
+  --btn-danger-bg: #ce6e6e;
   --btn-danger-text: #08111f;
-  --btn-warning-bg: #fbbf24;
+  --btn-warning-bg: #bd945d;
   --btn-warning-text: #08111f;
   --card-bg: #152136;
   --card-soft-bg: #1a2a44;
@@ -252,36 +330,36 @@
   --modal-border: #243352;
   --modal-shadow: 0 24px 64px rgba(0, 0, 0, 0.52), 0 8px 20px rgba(0, 0, 0, 0.36);
   /* Status badge tokens (dark) */
-  --status-pending-bg: rgba(251, 191, 36, 0.12);
-  --status-pending-text: #fbbf24;
-  --status-pending-border: rgba(251, 191, 36, 0.22);
-  --status-approved-bg: rgba(56, 217, 169, 0.1);
-  --status-approved-text: #38d9a9;
-  --status-approved-border: rgba(56, 217, 169, 0.2);
-  --status-rejected-bg: rgba(255, 107, 107, 0.1);
-  --status-rejected-text: #ff6b6b;
-  --status-rejected-border: rgba(255, 107, 107, 0.2);
-  --status-paid-bg: rgba(116, 143, 252, 0.1);
-  --status-paid-text: #748ffc;
-  --status-paid-border: rgba(116, 143, 252, 0.2);
-  --status-overdue-bg: rgba(255, 107, 107, 0.12);
-  --status-overdue-text: #fca5a5;
-  --status-overdue-border: rgba(255, 107, 107, 0.24);
-  --status-analysis-bg: rgba(167, 139, 250, 0.1);
-  --status-analysis-text: #a78bfa;
-  --status-analysis-border: rgba(167, 139, 250, 0.2);
-  --status-archived-bg: rgba(148, 168, 204, 0.08);
-  --status-archived-text: #94a8cc;
-  --status-archived-border: rgba(148, 168, 204, 0.16);
-  --status-intercompany-bg: rgba(34, 211, 238, 0.1);
-  --status-intercompany-text: #22d3ee;
-  --status-intercompany-border: rgba(34, 211, 238, 0.2);
-  --status-dre-yes-bg: rgba(56, 217, 169, 0.1);
-  --status-dre-yes-text: #38d9a9;
-  --status-dre-yes-border: rgba(56, 217, 169, 0.18);
-  --status-dre-no-bg: rgba(148, 168, 204, 0.06);
-  --status-dre-no-text: #94a8cc;
-  --status-dre-no-border: rgba(148, 168, 204, 0.12);
+  --status-pending-bg: #292a2f;
+  --status-pending-text: #bd945d;
+  --status-pending-border: #483724;
+  --status-approved-bg: #142b39;
+  --status-approved-text: #649889;
+  --status-approved-border: #13393d;
+  --status-rejected-bg: #2d2133;
+  --status-rejected-text: #ce6e6e;
+  --status-rejected-border: #51212e;
+  --status-paid-bg: #172641;
+  --status-paid-text: #788db1;
+  --status-paid-border: #1a2e52;
+  --status-overdue-bg: #2d2133;
+  --status-overdue-text: #ce6e6e;
+  --status-overdue-border: #51212e;
+  --status-analysis-bg: #172641;
+  --status-analysis-text: #788db1;
+  --status-analysis-border: #1a2e52;
+  --status-archived-bg: #202b3f;
+  --status-archived-text: #949aa3;
+  --status-archived-border: #303a4d;
+  --status-intercompany-bg: #172641;
+  --status-intercompany-text: #788db1;
+  --status-intercompany-border: #1a2e52;
+  --status-dre-yes-bg: #142b39;
+  --status-dre-yes-text: #649889;
+  --status-dre-yes-border: #13393d;
+  --status-dre-no-bg: #202b3f;
+  --status-dre-no-text: #949aa3;
+  --status-dre-no-border: #303a4d;
   /* Nav (dark) */
   --nav-bg: #101d34;
   --nav-border: #1e2e4a;
@@ -296,6 +374,7 @@
   --ui-canvas: #0d1524;
   --ui-surface: #152136;
   --ui-surface-soft: #1a2a44;
+  --ui-surface-2: #182642;
   --ui-border: #243352;
   --ui-border-strong: #2e4068;
   --ui-shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.22);
@@ -401,7 +480,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Títulos de página — clamp para fluir em mobile */
 .page-title {
-  font-size: clamp(1.25rem, 3vw, 1.5rem);
+  font-size: var(--fonte-pagina);
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.01em;
@@ -410,14 +489,14 @@ h1, h2, h3, h4, h5, h6 {
 
 .page-subtitle {
   color: var(--app-muted-color, var(--premium-panel-muted));
-  font-size: clamp(0.8rem, 2vw, 0.9rem);
+  font-size: var(--fonte-corpo);
   margin-top: 0.15rem;
 }
 
 /* Tipografia de tabelas legível em mobile */
 .table th,
 .table td {
-  font-size: clamp(0.78rem, 1.8vw, 0.875rem);
+  font-size: var(--fonte-corpo);
 }
 
 /* Scroll horizontal em tabelas — não quebra layout mobile */
@@ -464,7 +543,7 @@ h1, h2, h3, h4, h5, h6 {
   top: 0;
   right: -6px;
   bottom: 0;
-  z-index: 8;
+  z-index: var(--z-alca);
   width: 14px;
   cursor: col-resize;
   touch-action: none;
@@ -579,7 +658,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--ui-surface);
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
   color: var(--c-text);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
 }
 
 .input:focus,
@@ -592,7 +671,7 @@ h1, h2, h3, h4, h5, h6 {
 .input-sm {
   padding: 6px 10px;
   min-height: 32px;
-  font-size: 0.8125rem;
+  font-size: var(--fonte-corpo);
   border-radius: 8px;
 }
 
@@ -632,7 +711,7 @@ textarea {
   min-height: 40px;
   border-radius: 10px;
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: var(--fonte-corpo);
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, opacity 0.15s ease;
   border: 1px solid transparent;
   cursor: pointer;
@@ -712,14 +791,14 @@ textarea {
 .btn-sm {
   padding: 0.3rem 0.65rem;
   min-height: 32px;
-  font-size: 0.8125rem;
+  font-size: var(--fonte-corpo);
   border-radius: 6px;
 }
 
 .btn-lg {
   padding: 0.7rem 1.4rem;
   min-height: 48px;
-  font-size: 0.9375rem;
+  font-size: var(--fonte-corpo);
 }
 
 /* Modulo Fiscal: controles mais densos e com hierarquia operacional propria */
@@ -729,7 +808,7 @@ textarea {
   min-height: 36px;
   border-radius: 8px;
   padding: 0.46rem 0.9rem;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   letter-spacing: 0;
   box-shadow: none;
@@ -765,21 +844,30 @@ textarea {
   transform: translateY(-1px);
 }
 
+/*
+  M1 (05/09): estas duas regras encolhiam o botao do SISTEMA abaixo do minimo
+  de clique — 30px e 24px, contra os 32px de `--alvo-clique`. E a mesma familia
+  do CSS de Compras que sobrescrevia `.app-table-shell`: folha de modulo
+  desfazendo, por especificidade, uma garantia do sistema de design.
+
+  O token respeita o toque sozinho (44px em `pointer: coarse`); numero fixo
+  aqui nao respeitava.
+*/
 .fiscal-page .btn-sm {
-  min-height: 30px;
+  min-height: var(--alvo-clique);
   border-radius: 6px;
   padding: 0.25rem 0.58rem;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .fiscal-page .fiscal-documents-actions .btn-sm {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
+  min-height: var(--alvo-clique);
   border-radius: 5px;
   padding: 0.16rem 0.42rem;
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.1;
   white-space: nowrap;
 }
@@ -865,7 +953,7 @@ textarea {
   [class*="bg-yellow-50"],
   [class*="bg-orange-50"]
 ) {
-  background: color-mix(in srgb, #f59e0b 18%, var(--fiscal-surface)) !important;
+  background: color-mix(in srgb, var(--sem-warning) 18%, var(--fiscal-surface)) !important;
   color: #fef3c7 !important;
 }
 
@@ -874,7 +962,7 @@ textarea {
   [class*="bg-red-50"],
   [class*="bg-pink-50"]
 ) {
-  background: color-mix(in srgb, #ef4444 18%, var(--fiscal-surface)) !important;
+  background: color-mix(in srgb, var(--sem-danger) 18%, var(--fiscal-surface)) !important;
   color: #fee2e2 !important;
 }
 
@@ -961,7 +1049,7 @@ textarea {
   [class*="bg-yellow-50"],
   [class*="bg-orange-50"]
 ) {
-  background: color-mix(in srgb, #f59e0b 18%, var(--rhdp-surface)) !important;
+  background: color-mix(in srgb, var(--sem-warning) 18%, var(--rhdp-surface)) !important;
   color: #fef3c7 !important;
 }
 
@@ -970,7 +1058,7 @@ textarea {
   [class*="bg-red-50"],
   [class*="bg-pink-50"]
 ) {
-  background: color-mix(in srgb, #ef4444 18%, var(--rhdp-surface)) !important;
+  background: color-mix(in srgb, var(--sem-danger) 18%, var(--rhdp-surface)) !important;
   color: #fee2e2 !important;
 }
 
@@ -1064,7 +1152,7 @@ textarea {
   [class*="bg-yellow-50"],
   [class*="bg-orange-50"]
 ) {
-  background: color-mix(in srgb, #f59e0b 18%, var(--sst-surface)) !important;
+  background: color-mix(in srgb, var(--sem-warning) 18%, var(--sst-surface)) !important;
   color: #fef3c7 !important;
 }
 
@@ -1073,7 +1161,7 @@ textarea {
   [class*="bg-red-50"],
   [class*="bg-pink-50"]
 ) {
-  background: color-mix(in srgb, #ef4444 18%, var(--sst-surface)) !important;
+  background: color-mix(in srgb, var(--sem-danger) 18%, var(--sst-surface)) !important;
   color: #fee2e2 !important;
 }
 
@@ -1124,7 +1212,7 @@ textarea {
 .table th {
   text-align: left;
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--c-muted);
@@ -1138,7 +1226,7 @@ textarea {
   border-bottom: 1px solid var(--ui-border);
   color: var(--c-text);
   background: transparent;
-  font-size: 0.875rem;
+  font-size: var(--fonte-corpo);
 }
 
 /* Alias — mantido por compatibilidade com páginas legadas */
@@ -1197,7 +1285,7 @@ a:hover {
 
 .brand-title {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--c-text);
@@ -1205,7 +1293,7 @@ a:hover {
 
 .brand-subtitle {
   margin: 0;
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1216,12 +1304,12 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   color: var(--nav-text);
 }
 
 .user-role {
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   color: var(--nav-muted);
   letter-spacing: 0.05em;
 }
@@ -1248,7 +1336,7 @@ a:hover {
 .nav-group-title {
   margin: 0;
   padding: 0;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1343,7 +1431,7 @@ a:hover {
   border-radius: 10px;
   color: var(--nav-text);
   font-weight: 500;
-  font-size: 0.855rem;
+  font-size: var(--fonte-corpo);
   transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 
@@ -1369,7 +1457,7 @@ a:hover {
   min-height: 34px;
   padding-left: 0.6rem;
   font-weight: 400;
-  font-size: 0.8375rem;
+  font-size: var(--fonte-corpo);
   color: var(--nav-muted);
 }
 
@@ -1421,7 +1509,7 @@ a:hover {
   background: var(--ui-surface);
   color: var(--c-muted);
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: var(--fonte-corpo);
   min-height: 38px;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -1430,6 +1518,168 @@ a:hover {
   background: var(--ui-surface-soft);
   color: var(--c-text);
   border-color: var(--ui-border-strong);
+}
+
+/* Troca de usuário para QA: o backend decide se o recurso existe. Estas
+   classes só cuidam do encaixe compacto na topbar e nunca habilitam o fluxo. */
+.dev-user-switcher {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dev-user-switcher-trigger.is-active {
+  color: var(--c-warning-strong, #92400e);
+  border-color: var(--c-warning, #f59e0b);
+  background: var(--c-warning-soft, #fffbeb);
+}
+
+.dev-user-switcher-label {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-user-switcher-menu {
+  position: absolute;
+  z-index: var(--z-dropdown-portal);
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 6rem));
+  display: flex;
+  flex-direction: column;
+  overflow: clip;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--ui-surface);
+  box-shadow: var(--shadow-lg, 0 18px 45px rgba(15, 23, 42, 0.18));
+  color: var(--c-text);
+}
+
+.dev-user-switcher-head,
+.dev-user-switcher-actions {
+  padding: 0.8rem;
+}
+
+.dev-user-switcher-head {
+  display: grid;
+  gap: 0.2rem;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.dev-user-switcher-head span,
+.dev-user-switcher-list small,
+.dev-user-switcher-empty,
+.dev-user-config-email {
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.dev-user-switcher-list {
+  overflow-y: auto;
+  padding: 0.35rem;
+}
+
+.dev-user-switcher-list > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  border: 0;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.dev-user-switcher-list > button:hover:not(:disabled) {
+  background: var(--ui-surface-soft);
+}
+
+.dev-user-switcher-list > button.is-current {
+  background: var(--nav-active-bg, var(--ui-surface-soft));
+}
+
+.dev-user-switcher-list > button > span {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.dev-user-switcher-list strong,
+.dev-user-switcher-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-user-switcher-actions {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--ui-border);
+}
+
+.dev-user-switcher-error,
+.dev-user-switcher-empty {
+  margin: 0.45rem 0.65rem;
+}
+
+.dev-user-switcher-error {
+  color: var(--c-danger, #b91c1c);
+  font-size: var(--fonte-detalhe);
+}
+
+.dev-user-config-search {
+  width: min(100%, 38rem);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--ui-surface);
+  color: var(--c-muted);
+}
+
+.dev-user-config-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0 !important;
+  padding-inline: 0 !important;
+  box-shadow: none !important;
+}
+
+.dev-user-config-page .col-checkbox {
+  width: 4.5rem;
+  text-align: center;
+}
+
+.dev-user-config-page tbody tr.is-selected {
+  background: var(--nav-active-bg, var(--ui-surface-soft));
+}
+
+.dev-user-config-email {
+  display: block;
+  margin-top: 0.15rem;
+}
+
+@media (max-width: 1024px) {
+  .dev-user-switcher-label {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .dev-user-switcher-menu {
+    position: fixed;
+    top: var(--topbar-height, 4.5rem);
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+  }
 }
 
 .chevron-btn {
@@ -1463,7 +1713,7 @@ a:hover {
   align-items: center;
   justify-content: center;
   box-shadow: var(--ui-shadow-sm);
-  z-index: 12;
+  z-index: var(--z-flutuante-local);
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
@@ -1522,7 +1772,7 @@ a:hover {
 .topbar-shell {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: var(--z-sticky);
   background: var(--ui-surface);
   border-bottom: 1px solid var(--ui-border);
   backdrop-filter: blur(8px);
@@ -1591,121 +1841,6 @@ a:hover {
   }
 }
 
-/* ============================
-   Configuracoes
-============================ */
-.config-page-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.config-page-title {
-  margin: 0;
-  font-size: clamp(1.25rem, 3vw, 1.5rem);
-  font-weight: 700;
-  line-height: 1.3;
-  color: var(--sol-text-strong, var(--c-text));
-}
-
-.config-page-subtitle {
-  margin: 0;
-  font-size: clamp(0.8rem, 2vw, 0.9rem);
-  color: var(--sol-text-soft, var(--c-muted));
-}
-
-.config-section {
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  padding: 1rem;
-  box-shadow: var(--ui-shadow-sm);
-}
-
-.dark .config-section {
-  background: var(--ui-surface);
-  border-color: var(--ui-border);
-}
-
-.config-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-  margin-bottom: 0.9rem;
-}
-
-.config-section-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--sol-text-strong, var(--c-text));
-}
-
-.config-section-count {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  border-radius: 999px;
-  border: 1px solid var(--ui-border);
-  background: var(--ui-surface-soft);
-  padding: 0.15rem 0.55rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--c-muted);
-  white-space: nowrap;
-}
-
-.config-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 0.75rem;
-}
-
-.config-item {
-  display: block;
-  min-height: 90px;
-  border-radius: 8px;
-  border: 1px solid var(--ui-border);
-  background: var(--ui-surface);
-  padding: 0.85rem 0.9rem;
-  text-decoration: none;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.dark .config-item {
-  background: var(--ui-surface);
-  border-color: var(--ui-border);
-}
-
-.config-item:hover {
-  border-color: var(--c-primary);
-  background: var(--ui-surface-soft);
-  box-shadow: var(--ui-shadow-md);
-}
-
-.config-item:active {
-  transform: translateY(1px);
-}
-
-.config-item-title {
-  margin: 0;
-  font-size: 0.98rem;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.config-item-description {
-  margin: 0.35rem 0 0;
-  font-size: 0.84rem;
-  line-height: 1.35;
-  color: var(--premium-panel-muted);
-}
-
-.config-item-disabled {
-  opacity: 0.62;
-  pointer-events: none;
-}
 
 .login-screen {
   background: var(--ui-canvas);
@@ -1722,7 +1857,7 @@ a:hover {
 .login-bg-overlay {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: var(--z-conteudo);
   background:
     radial-gradient(circle at 50% 100%, rgba(20, 50, 130, 0.18), transparent 48%),
     linear-gradient(180deg, rgba(4, 10, 28, 0.08) 0%, rgba(5, 12, 34, 0.45) 100%);
@@ -1730,7 +1865,7 @@ a:hover {
 
 .login-content-wrap {
   position: relative;
-  z-index: 2;
+  z-index: var(--z-conteudo-acima);
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -1782,7 +1917,7 @@ a:hover {
 
 .login-csc-name {
   color: #0c2748;
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   text-align: center;
   line-height: 1.3;
@@ -1818,7 +1953,7 @@ a:hover {
 
 .login-fluxy-name {
   color: #0b2448;
-  font-size: 1.9rem;
+  font-size: var(--fonte-destaque);
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.05em;
@@ -1835,7 +1970,7 @@ a:hover {
 .login-heading {
   margin: 0 0 1.5rem;
   color: #07203e;
-  font-size: 1.4rem;
+  font-size: var(--fonte-pagina);
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1;
@@ -1861,7 +1996,7 @@ a:hover {
 
 .login-label {
   color: #0c3068;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -1876,7 +2011,7 @@ a:hover {
   border-color: rgba(59, 91, 219, 0.28) !important;
   box-shadow: inset 0 1px 2px rgba(0, 18, 55, 0.04) !important;
   color: #0a1e42 !important;
-  font-size: 0.94rem !important;
+  font-size: var(--fonte-corpo) !important;
   transition: border-color 0.18s, box-shadow 0.18s, background 0.18s !important;
 }
 
@@ -1939,7 +2074,7 @@ a:hover {
   padding: 0;
   cursor: pointer;
   color: #1e52b8;
-  font-size: 0.79rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 500;
   line-height: 1.4;
   transition: color 0.15s;
@@ -2009,7 +2144,7 @@ a:hover {
 .login-btn {
   min-height: 50px;
   border-radius: 12px;
-  font-size: 0.88rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -2023,19 +2158,7 @@ a:hover {
 }
 
 @media (max-width: 767px) {
-  .config-section {
-    padding: 0.85rem;
-  }
 
-  .config-section-head {
-    align-items: flex-start;
-    flex-direction: column;
-    margin-bottom: 0.75rem;
-  }
-
-  .config-item {
-    min-height: 88px;
-  }
 
   .login-content-wrap {
     align-items: center;
@@ -2067,22 +2190,31 @@ a:hover {
     height: 32px;
   }
 
-  .login-fluxy-name {
-    font-size: 1.65rem;
-  }
 
   .login-heading {
-    font-size: 1.25rem;
+    font-size: var(--fonte-bloco);
     margin-bottom: 1.25rem;
   }
 
+  /*
+    R30 (05/09) — AS SOBRESCRITAS DE TAMANHO DESTA FAIXA SAIRAM.
+
+    O Login tinha o mesmo texto declarado em ate TRES larguras, com valores
+    diferentes em cada uma (`.login-fluxy-name` a 1,9rem / 1,65rem / 2,2rem /
+    2,45rem; `.login-heading` a 1,4rem / 1,25rem / 1,85-2,3rem / 1,8rem) —
+    sozinho ele respondia por uma parte grande dos 92 tamanhos distintos.
+
+    O que ficou: a marca no D5 (30px, identidade do Login, excecao que o
+    cliente manteve), o titulo da tela no D4 (22px) e os campos/botoes no D2
+    (14px). O piso de 12px passou a valer AQUI TAMBEM, por decisao expressa
+    do cliente em 05/09 — eram 6 violacoes, todas corrigidas.
+  */
   .login-label {
-    font-size: 0.72rem;
+    font-size: var(--fonte-detalhe);
   }
 
   .login-input {
     min-height: 50px !important;
-    font-size: 0.93rem !important;
   }
 
   .login-password-toggle {
@@ -2102,7 +2234,7 @@ a:hover {
 .solicitacoes-table-shell {
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip; /* R18: clip, não hidden — hidden cria scrollport e mata o sticky da faixa fixa e da coluna fixa desta tabela */
 }
 
 .solicitacoes-table-scroll {
@@ -2115,9 +2247,26 @@ a:hover {
 }
 
 .solicitacoes-page {
-  --sol-font-base: 13px;
-  --sol-font-small: 12px;
-  --sol-font-header: 11px;
+  /*
+    R30 (05/09) — ESCALA CLANDESTINA APOSENTADA.
+
+    Aqui moravam `--sol-font-base: 13px`, `--sol-font-small: 12px` e
+    `--sol-font-header: 11px`, com um segundo jogo (12/11/10px) num
+    `@media (max-width: 1023px)`. Era uma SEGUNDA escala tipografica, privada
+    do modulo de Solicitacoes, competindo com a de `styles/escala.css` — e
+    nenhum dos seis valores era um degrau. O cabecalho de 11px (10px em
+    notebook) que a medicao de 05/09 apontou saia daqui.
+
+    Escala paralela nao aparece como violacao: quem lia o CSS via
+    `font-size: var(--sol-font-header)` e concluia que a tela usava token.
+    Usava — token de outra escala. Por isso as duas foram apagadas em vez de
+    corrigidas: enquanto a variavel existir, alguem a usa de novo.
+
+    As oito declaracoes que dependiam delas passaram aos degraus do sistema:
+    filtro/toolbar/botao/input no D2 (14px), rotulo no D1 (12px), e a tabela
+    compacta — cabecalho E celula — no D1 (12px), pela excecao de tabela
+    densa que o cliente declarou em 05/09.
+  */
   --sol-surface: var(--ui-surface);
   --sol-surface-muted: var(--ui-surface-soft);
   --sol-surface-strong: var(--ui-surface-soft);
@@ -2143,12 +2292,12 @@ a:hover {
 
 .sol-surface-card {
   background: var(--sol-surface);
-  border: 1px solid var(--sol-border-color);
+  border: 1px solid var(--ui-border);
   box-shadow: var(--sol-shadow);
 }
 
 .solicitacoes-page .solicitacoes-filtros {
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-corpo);
 }
 
 .solicitacoes-page .solicitacoes-toolbar,
@@ -2174,14 +2323,14 @@ a:hover {
 
 .sol-filtros-title {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
 }
 
 .sol-filtros-subtitle {
   margin: 0.15rem 0 0;
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
@@ -2203,7 +2352,7 @@ a:hover {
   min-height: 24px;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   color: var(--c-primary);
   background: color-mix(in srgb, var(--c-primary) 10%, transparent);
@@ -2216,17 +2365,17 @@ a:hover {
   min-height: 28px;
   padding: 0.2rem 0.65rem;
   border-radius: 999px;
-  border: 1px solid var(--sol-border-color);
-  background: color-mix(in srgb, var(--sol-surface-muted) 88%, var(--sol-surface));
+  border: 1px solid var(--ui-border);
+  background: color-mix(in srgb, var(--ui-surface-soft) 88%, var(--sol-surface));
 }
 
 .sol-filtros-soma-label {
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
 .sol-filtros-soma-value {
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-text);
 }
 
@@ -2237,7 +2386,7 @@ a:hover {
 }
 
 .sol-filter-field {
-  border: 1px solid var(--sol-border-color);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   background: var(--sol-surface);
   padding: 0.65rem 0.7rem 0.7rem;
@@ -2284,13 +2433,13 @@ a:hover {
 .quick-person-footer p {
   margin: 0;
   max-width: 48rem;
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   color: var(--c-muted);
 }
 
 .quick-person-kicker {
   margin: 0 0 0.2rem;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2299,7 +2448,7 @@ a:hover {
 
 .quick-person-title {
   margin: 0;
-  font-size: clamp(1.2rem, 1.08rem + 0.4vw, 1.5rem);
+  font-size: var(--fonte-bloco);
   font-weight: 700;
   color: var(--c-text);
 }
@@ -2321,14 +2470,14 @@ a:hover {
 
 .quick-person-section-head h3 {
   margin: 0;
-  font-size: 0.96rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
 }
 
 .quick-person-section-head p {
   margin: 0.25rem 0 0;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.35;
   color: var(--c-muted);
 }
@@ -2377,13 +2526,13 @@ a:hover {
 }
 
 .quick-person-check strong {
-  font-size: 0.86rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
 }
 
 .quick-person-check small {
   margin-top: 0.12rem;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
@@ -2442,7 +2591,7 @@ a:hover {
 .sol-filter-label {
   display: block;
   margin-bottom: 0.35rem;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   color: var(--c-muted);
 }
@@ -2458,7 +2607,7 @@ a:hover {
   border: 0;
   background: transparent;
   color: var(--c-primary);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   line-height: 1;
   padding: 0.1rem 0.2rem;
@@ -2495,7 +2644,7 @@ a:hover {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 25;
+  z-index: var(--z-dropdown);
   border: 1px solid var(--ui-border);
   border-radius: 8px;
   background: var(--ui-surface);
@@ -2506,7 +2655,7 @@ a:hover {
 .sol-filter-multi-popover--portal {
   position: fixed;
   right: auto;
-  z-index: 1000;
+  z-index: var(--z-modal-acima);
   max-height: min(72vh, 430px);
   overflow: hidden;
 }
@@ -2518,7 +2667,7 @@ a:hover {
   gap: 0.6rem;
   padding-bottom: 0.45rem;
   margin-bottom: 0.45rem;
-  border-bottom: 1px solid var(--sol-border-color);
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .sol-filter-multi-list {
@@ -2549,13 +2698,13 @@ a:hover {
 }
 
 .sol-filter-multi-item span {
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   color: var(--c-text);
 }
 
 .sol-filter-multi-empty {
   margin: 0.25rem 0;
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
@@ -2565,7 +2714,7 @@ a:hover {
   gap: 0.5rem;
   margin-top: 0.9rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--sol-border-color);
+  border-top: 1px solid var(--ui-border);
 }
 
 .sol-floating-panel {
@@ -2605,12 +2754,12 @@ a:hover {
 }
 
 .sol-floating-panel-title {
-  font-size: 0.88rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
 }
 
 .sol-floating-panel-caption {
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2622,7 +2771,7 @@ a:hover {
   background: transparent;
   padding: 0;
   color: var(--c-primary);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   cursor: pointer;
 }
@@ -2671,7 +2820,7 @@ a:hover {
 }
 
 .sol-floating-panel-option span {
-  font-size: 0.83rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.35;
 }
 
@@ -2710,7 +2859,7 @@ a:hover {
 .solicitacoes-page .solicitacoes-filtros select {
   min-height: 40px;
   padding: 8px 10px;
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-corpo);
   border: 1px solid var(--sol-border-color);
   background: var(--sol-surface);
 }
@@ -2723,17 +2872,17 @@ a:hover {
 }
 
 .solicitacoes-page .solicitacoes-filtros label {
-  font-size: var(--sol-font-small);
+  font-size: var(--fonte-detalhe);
 }
 
 .solicitacoes-page .solicitacoes-toolbar {
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-corpo);
   backdrop-filter: blur(4px);
 }
 
 .solicitacoes-page .solicitacoes-toolbar .btn {
   min-height: 40px;
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-corpo);
   font-weight: 600;
 }
 
@@ -2810,11 +2959,11 @@ a:hover {
 }
 
 .solicitacoes-page .solicitacoes-table-compact .solicitacoes-table {
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-detalhe);
 }
 
 .solicitacoes-page .solicitacoes-table-compact .solicitacoes-table thead th {
-  font-size: var(--sol-font-header) !important;
+  font-size: var(--fonte-detalhe) !important;
   letter-spacing: 0.03em;
   padding-top: 10px !important;
   padding-bottom: 10px !important;
@@ -2824,7 +2973,7 @@ a:hover {
 }
 
 .solicitacoes-page .solicitacoes-table-compact .solicitacoes-table tbody td {
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-detalhe);
   line-height: 1.25rem;
   padding-top: 8px !important;
   padding-bottom: 8px !important;
@@ -2852,7 +3001,7 @@ a:hover {
 }
 
 .solicitacao-acoes .acao-link {
-  font-size: 12px;
+  font-size: var(--fonte-detalhe);
   font-weight: 500;
   line-height: 1;
   text-decoration: none;
@@ -2965,18 +3114,18 @@ a:hover {
 }
 
 .solicitacoes-page:not(.solicitacao-nova-page) form :is(label, .sol-filter-field, .app-filter-field) {
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.3;
 }
 
 .solicitacoes-page:not(.solicitacao-nova-page) form :is(.sol-filter-label, .app-filter-label) {
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .solicitacoes-page:not(.solicitacao-nova-page) form :is(.input, .form-control, select, textarea) {
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.35;
 }
 
@@ -2987,13 +3136,13 @@ a:hover {
 .solicitacoes-page:not(.solicitacao-nova-page) form .btn {
   min-height: 38px;
   padding: 0.42rem 0.9rem;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
 }
 
 .solicitacoes-page:not(.solicitacao-nova-page) form .btn.btn-sm {
   min-height: 34px;
   padding: 0.28rem 0.7rem;
-  font-size: 0.77rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .solicitacoes-page:not(.solicitacao-nova-page) form :is(.app-page-actions, .sol-filtros-actions) {
@@ -3001,8 +3150,9 @@ a:hover {
 }
 
 .solicitacao-nova-page {
+  --nova-solicitacao-largura-maxima: 1120px;
   gap: 1.2rem;
-  max-width: 1120px;
+  max-width: var(--nova-solicitacao-largura-maxima);
 }
 
 .solicitacao-nova-page .page-title,
@@ -3013,13 +3163,13 @@ a:hover {
 
 .solicitacao-nova-page .page-title {
   margin-bottom: -0.25rem;
-  font-size: clamp(1.55rem, 3vw, 1.8rem);
+  font-size: var(--fonte-pagina);
   letter-spacing: -0.02em;
 }
 
 .solicitacao-nova-page .page-subtitle {
   max-width: 48rem;
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.5;
   color: color-mix(in srgb, var(--premium-panel-muted) 88%, var(--c-text));
   text-align: center;
@@ -3038,7 +3188,7 @@ a:hover {
 
 .solicitacao-nova-page .nova-solicitacao-form label {
   gap: 0.35rem;
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   color: var(--c-text);
   line-height: 1.3;
@@ -3059,7 +3209,7 @@ a:hover {
 .solicitacao-nova-page .nova-solicitacao-form .input,
 .solicitacao-nova-page .nova-solicitacao-form select,
 .solicitacao-nova-page .nova-solicitacao-form textarea {
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.35;
 }
 
@@ -3089,18 +3239,33 @@ a:hover {
 .solicitacao-nova-page .nova-solicitacao-inline-actions .btn {
   min-height: 32px;
   padding: 0.28rem 0.7rem;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
+}
+
+.solicitacao-nova-page .nova-solicitacao-inline-actions .nova-solicitacao-credor-action {
+  width: 2.15rem;
+  min-width: 2.15rem;
+  padding: 0;
+}
+
+.solicitacao-nova-page .nova-solicitacao-credor-row {
+  flex-wrap: nowrap;
+}
+
+.solicitacao-nova-page .nova-solicitacao-credor-row .input {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .solicitacao-nova-page .nova-solicitacao-selection-card {
   border-radius: 12px;
   padding: 0.55rem 0.65rem;
-  font-size: 0.8125rem;
+  font-size: var(--fonte-corpo);
 }
 
 .solicitacao-nova-page .nova-solicitacao-results-list {
-  border-color: var(--sol-border-color);
-  background: color-mix(in srgb, var(--sol-surface-muted) 70%, transparent);
+  border-color: var(--ui-border);
+  background: color-mix(in srgb, var(--ui-surface-soft) 70%, transparent);
   border-radius: 12px;
   padding: 0.3rem;
 }
@@ -3126,9 +3291,9 @@ a:hover {
 }
 
 .solicitacao-nova-page .nova-solicitacao-obra-results {
-  z-index: 30;
-  border-color: color-mix(in srgb, var(--c-primary) 18%, var(--sol-border-color));
-  background: color-mix(in srgb, #ffffff 90%, var(--sol-surface-muted));
+  z-index: var(--z-dropdown);
+  border-color: color-mix(in srgb, var(--c-primary) 18%, var(--ui-border));
+  background: color-mix(in srgb, #ffffff 90%, var(--ui-surface-soft));
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
 }
 
@@ -3156,7 +3321,7 @@ a:hover {
 }
 
 .solicitacao-nova-page .nova-solicitacao-obra-result:hover {
-  border-color: color-mix(in srgb, var(--c-primary) 22%, var(--sol-border-color));
+  border-color: color-mix(in srgb, var(--c-primary) 22%, var(--ui-border));
   background: color-mix(in srgb, var(--c-primary) 5%, #ffffff);
   transform: translateY(-1px);
 }
@@ -3181,7 +3346,7 @@ a:hover {
   border-radius: 999px;
   background: color-mix(in srgb, var(--c-primary) 10%, #ffffff);
   color: color-mix(in srgb, var(--c-primary) 72%, #102544);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -3234,7 +3399,7 @@ a:hover {
 .solicitacao-nova-page .nova-solicitacao-file-item {
   border-radius: 10px;
   padding: 0.4rem 0.55rem;
-  font-size: 0.8125rem;
+  font-size: var(--fonte-corpo);
 }
 
 .solicitacao-nova-page .nova-solicitacao-footer {
@@ -3247,7 +3412,7 @@ a:hover {
   gap: 0.7rem;
   margin-top: 0.35rem;
   padding-top: 0.9rem;
-  border-top: 1px solid color-mix(in srgb, var(--sol-border-color) 82%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border) 82%, transparent);
 }
 
 .solicitacao-nova-page .nova-solicitacao-anexos {
@@ -3323,7 +3488,7 @@ a:hover {
 }
 
 .layout-shell .solicitacoes-massa-acao--perigo {
-  color: #dc2626;
+  color: var(--sem-danger);
 }
 
 .dark .layout-shell .solicitacoes-massa-acao--perigo {
@@ -3365,7 +3530,7 @@ a:hover {
   top: 8px;
   right: -4px;
   bottom: 8px;
-  z-index: 30;
+  z-index: var(--z-alca);
   width: 9px;
   cursor: col-resize;
   touch-action: none;
@@ -3410,11 +3575,10 @@ a:hover {
     padding-inline: 8px;
   }
 
-  .solicitacoes-page {
-    --sol-font-base: 12px;
-    --sol-font-small: 11px;
-    --sol-font-header: 10px;
-  }
+  /* R30 (05/09): o segundo jogo da escala clandestina (12/11/10px) saiu
+     junto com o primeiro. O que ele fazia era baixar a tabela de
+     Solicitacoes ABAIXO do piso em notebook — 10px no cabecalho. O respiro
+     lateral acima (8px) ja e o que segura a densidade aqui. */
 
 }
 
@@ -3488,7 +3652,7 @@ a:hover {
 
   .solicitacoes-table--mobile tr > td::before {
     content: attr(data-label);
-    font-size: 11px;
+    font-size: var(--fonte-detalhe);
     line-height: 1.2;
     font-weight: 700;
     text-transform: uppercase;
@@ -3551,7 +3715,7 @@ a:hover {
   border: 1px solid var(--c-border);
   background: var(--c-surface);
   color: var(--c-text);
-  font-size: 0.88rem;
+  font-size: var(--fonte-corpo);
   font-weight: 600;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
 }
@@ -3578,7 +3742,7 @@ a:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
@@ -3593,7 +3757,7 @@ a:hover {
 }
 
 .sol-detail-updated-at {
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
@@ -3623,7 +3787,7 @@ a:hover {
   min-height: 28px;
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   color: var(--c-primary);
   background: color-mix(in srgb, var(--c-primary) 14%, transparent);
@@ -3632,14 +3796,23 @@ a:hover {
 
 .sol-detail-type {
   margin: 0.5rem 0 0;
-  font-size: 1.16rem;
+  font-size: var(--fonte-bloco);
   line-height: 1.3;
+  color: var(--c-text);
+}
+
+.sol-detail-title-text {
+  margin: 0.3rem 0 0;
+  max-width: 72ch;
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  line-height: 1.4;
   color: var(--c-text);
 }
 
 .sol-detail-description {
   margin: 0.45rem 0 0;
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.45;
   color: var(--c-muted);
   max-width: 72ch;
@@ -3651,6 +3824,34 @@ a:hover {
   justify-content: flex-end;
   gap: 0.55rem;
   flex-wrap: wrap;
+}
+
+.sol-detail-header-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+
+.sol-detail-header-date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.sol-detail-header-date-label {
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+}
+
+.sol-detail-header-date-value {
+  margin-top: 0.16rem;
+  font-size: var(--fonte-corpo);
+  color: var(--c-text);
 }
 
 .sol-detail-action-btn {
@@ -3677,9 +3878,13 @@ a:hover {
   background: color-mix(in srgb, var(--c-surface) 86%, transparent);
 }
 
+.sol-detail-stat--full {
+  grid-column: 1 / -1;
+}
+
 .sol-detail-stat-label {
   display: block;
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3689,10 +3894,28 @@ a:hover {
 
 .sol-detail-stat-value {
   margin: 0;
-  font-size: 0.91rem;
+  font-size: var(--fonte-corpo);
   font-weight: 600;
   color: var(--c-text);
   word-break: break-word;
+}
+
+/* Alterna a exibicao dos campos vazios do bloco superior do detalhe. */
+.sol-detail-toggle-campos {
+  margin-top: 0.55rem;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  color: var(--c-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sol-detail-toggle-campos:hover {
+  color: var(--c-primary-strong, var(--c-primary));
 }
 
 .sol-detail-contract-editor {
@@ -3705,7 +3928,7 @@ a:hover {
 
 .sol-detail-contract-editor-title {
   margin: 0 0 0.55rem;
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
 }
@@ -3720,7 +3943,7 @@ a:hover {
 
 .sol-detail-card-title {
   margin: 0 0 0.8rem;
-  font-size: 1.02rem;
+  font-size: var(--fonte-bloco);
   font-weight: 700;
   color: var(--c-text);
 }
@@ -3747,7 +3970,7 @@ a:hover {
 .sol-detail-timeline-meta {
   display: inline-block;
   margin-top: 0.2rem;
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
@@ -3775,6 +3998,15 @@ a:hover {
   .sol-detail-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .sol-detail-header-side {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .sol-detail-header-date {
+    align-items: flex-start;
   }
 
   .sol-detail-stats-grid,
@@ -3817,12 +4049,12 @@ a:hover {
 
 .dashboard-hero-card > * {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-conteudo);
 }
 
 .dashboard-hero-kicker,
 .dashboard-metric-label {
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -3831,7 +4063,7 @@ a:hover {
 
 .dashboard-hero-title {
   margin-top: 0.45rem;
-  font-size: clamp(1.8rem, 1.38rem + 1.35vw, 2.65rem);
+  font-size: var(--fonte-pagina);
   line-height: 1.05;
   font-weight: 800;
   letter-spacing: -0.035em;
@@ -3841,7 +4073,7 @@ a:hover {
 .dashboard-hero-copy {
   margin-top: 0.85rem;
   max-width: 42rem;
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.65;
   color: var(--c-muted);
 }
@@ -3855,7 +4087,7 @@ a:hover {
   background: var(--premium-outline-bg);
   padding: 0.45rem 0.8rem;
   color: var(--premium-outline-text);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
 }
 
@@ -3909,13 +4141,13 @@ a:hover {
 .dashboard-metric-value,
 .dashboard-metric-detail {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-conteudo);
 }
 
 .dashboard-metric-value {
   display: block;
   margin-top: 0.75rem;
-  font-size: clamp(1.45rem, 1.22rem + 0.7vw, 2rem);
+  font-size: var(--fonte-destaque);
   line-height: 1.08;
   font-weight: 800;
   letter-spacing: -0.035em;
@@ -3924,7 +4156,7 @@ a:hover {
 
 .dashboard-metric-detail {
   margin-top: 0.55rem;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.45;
   color: var(--c-muted);
 }
@@ -3938,11 +4170,11 @@ a:hover {
 }
 
 .dashboard-metric-card--amber {
-  --dashboard-accent: #d97706;
+  --dashboard-accent: var(--sem-warning);
 }
 
 .dashboard-metric-card--red {
-  --dashboard-accent: #dc2626;
+  --dashboard-accent: var(--sem-danger);
 }
 
 .dashboard-metric-card--slate {
@@ -3965,7 +4197,7 @@ a:hover {
 }
 
 .dashboard-section-title {
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
   font-weight: 800;
   color: var(--c-text);
 }
@@ -3993,12 +4225,12 @@ a:hover {
 
 .dashboard-decision-card--red,
 .dashboard-list-row--red {
-  --dashboard-accent: #dc2626;
+  --dashboard-accent: var(--sem-danger);
 }
 
 .dashboard-decision-card--amber,
 .dashboard-list-row--amber {
-  --dashboard-accent: #d97706;
+  --dashboard-accent: var(--sem-warning);
 }
 
 .dashboard-decision-card--blue,
@@ -4017,7 +4249,7 @@ a:hover {
   align-items: center;
   border-radius: 999px;
   padding: 0.18rem 0.5rem;
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -4026,7 +4258,7 @@ a:hover {
 .dashboard-list-amount {
   flex-shrink: 0;
   text-align: right;
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
   color: var(--dashboard-accent, var(--c-text));
 }
@@ -4081,12 +4313,40 @@ a:hover {
   }
 }
 
+/*
+  O TETO DA PAGINA DE DIGITACAO DE COMPRAS VOLTA A VALER (05/09).
+
+  Estas declaracoes existiam e NAO PEGAVAM: `.compras-responsive-scope .page`
+  e `.compras-responsive-scope .page-compra-nova` (compras-responsive.css)
+  impunham 94rem = 1504px com a MESMA especificidade (0,2,0) e ganhavam por
+  ordem de importacao — aquela folha entra depois desta no main.jsx. Ou seja:
+  o teto que valia nas 31 rotas do modulo era o generico, e o escrito por
+  contexto estava morto. As duas coisas foram consertadas juntas (a nota
+  esta la); aqui fica o que TEM contexto.
+
+  Por que estas paginas tem teto e as outras nao: sao as duas de DIGITACAO
+  do modulo. O criterio e o da R10 — vence a leitura, nao a densidade: campo
+  de texto com 1300px+ de largura e desconfortavel de ler e de preencher. As
+  paginas de LEITURA do modulo (listagens, detalhes, relatorios) nao tem
+  teto, porque ali largura e informacao.
+
+  Os numeros ficam em token para nao virar valor solto no meio da folha e
+  para que a escada (normal / janela larga / gestao de cotacao) se leia junta.
+*/
+:root {
+  /* Digitacao de compras: escada por largura de janela. */
+  --pagina-compra-digitacao-max: 1380px;
+  --pagina-compra-digitacao-max-ampla: 1480px;   /* a partir de 1536px de janela */
+  /* Gestao de cotacao compara fornecedores lado a lado: precisa de mais. */
+  --pagina-cotacao-gestao-max: 1640px;
+}
+
 .page.page-compra-nova {
-  max-width: 1380px;
+  max-width: var(--pagina-compra-digitacao-max);
 }
 
 .page.page-compra-nova.cotacao-gestao-page {
-  max-width: min(1640px, calc(100vw - 2rem));
+  max-width: min(var(--pagina-cotacao-gestao-max), calc(100vw - 2rem));
 }
 
 .cotacao-scroll-region {
@@ -4133,7 +4393,7 @@ a:hover {
   border: 1px solid var(--status-pending-border);
   background: var(--status-pending-bg);
   color: var(--status-pending-text);
-  font-size: 0.83rem;
+  font-size: var(--fonte-corpo);
   font-weight: 500;
 }
 
@@ -4158,7 +4418,7 @@ a:hover {
 
 .cotacao-publica-summary-value {
   margin-top: 0.12rem;
-  font-size: 0.95rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
   line-height: 1.28;
@@ -4175,13 +4435,13 @@ a:hover {
 
 .cotacao-publica-summary-hint {
   margin: 0.3rem 0 0;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
   line-height: 1.25;
 }
 
 .cotacao-publica-table-shell {
-  overflow: hidden;
+  overflow: clip; /* R18: clip, não hidden — hidden cria scrollport e mata o sticky da faixa fixa e da coluna fixa desta tabela */
 }
 
 .cotacao-publica-table {
@@ -4203,14 +4463,14 @@ a:hover {
   display: inline-flex;
   align-items: center;
   min-height: 32px;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
 }
 
 .cotacao-publica-cell-description strong {
   display: block;
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.3;
   color: var(--c-text);
   word-break: break-word;
@@ -4220,7 +4480,7 @@ a:hover {
   display: inline-flex;
   align-items: center;
   min-height: 32px;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   color: var(--c-muted);
 }
 
@@ -4236,13 +4496,13 @@ a:hover {
   min-height: 36px !important;
   padding-top: 0.34rem !important;
   padding-bottom: 0.34rem !important;
-  font-size: 0.82rem !important;
+  font-size: var(--fonte-corpo) !important;
 }
 
 .cotacao-publica-table-textarea {
   min-height: 58px !important;
   resize: vertical;
-  font-size: 0.82rem !important;
+  font-size: var(--fonte-corpo) !important;
   line-height: 1.35;
 }
 
@@ -4258,7 +4518,7 @@ a:hover {
   border: 1px solid var(--ui-border-strong);
   background: var(--ui-surface-soft);
   color: var(--c-text);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -4302,7 +4562,7 @@ a:hover {
   }
 
   .cotacao-publica-summary-value {
-    font-size: 0.93rem;
+    font-size: var(--fonte-corpo);
   }
 
   .cotacao-publica-summary-grid {
@@ -4357,8 +4617,9 @@ a:hover {
 }
 
 @media (min-width: 1536px) {
+  /* Degrau largo da escada de digitacao — ver o bloco de tokens acima. */
   .page.page-compra-nova {
-    max-width: 1480px;
+    max-width: var(--pagina-compra-digitacao-max-ampla);
   }
 
   .compra-nova-layout {
@@ -4448,7 +4709,7 @@ a:hover {
 .dash-kpi-foot,
 .dash-panel > * {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-conteudo);
 }
 
 .dash-kpi-head {
@@ -4460,7 +4721,7 @@ a:hover {
 
 .dash-kpi-title {
   margin-bottom: 0.35rem;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -4468,8 +4729,8 @@ a:hover {
 }
 
 .dash-kpi-value {
-  font-size: clamp(1.3rem, 1.05rem + 0.75vw, 1.8rem);
-  line-height: 1.1;
+  font-size: var(--fonte-destaque);
+  line-height: var(--lh-destaque);
   font-weight: 800;
   color: var(--c-text);
 }
@@ -4491,7 +4752,7 @@ a:hover {
   margin-top: 0.95rem;
   padding-top: 0.8rem;
   border-top: 1px solid color-mix(in srgb, var(--premium-glass-border) 78%, transparent);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.45;
   color: color-mix(in srgb, var(--premium-panel-muted) 88%, var(--c-text));
 }
@@ -4510,14 +4771,14 @@ a:hover {
 
 .dash-panel-head h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
   font-weight: 800;
   color: var(--c-text);
 }
 
 .dash-panel-head p {
   margin: 0.2rem 0 0;
-  font-size: 0.88rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.45;
   color: var(--premium-panel-muted);
 }
@@ -4528,7 +4789,7 @@ a:hover {
   border: 1px dashed color-mix(in srgb, var(--premium-panel-border) 88%, transparent);
   background: color-mix(in srgb, var(--premium-glass-bg) 90%, transparent);
   color: var(--premium-panel-muted);
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
 }
 
 .dash-bar-list {
@@ -4549,21 +4810,21 @@ a:hover {
 }
 
 .dash-bar-top strong {
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
   color: var(--c-text);
   white-space: nowrap;
 }
 
 .dash-bar-label {
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
 }
 
 .dash-bar-meta {
   margin-top: 0.12rem;
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   color: var(--premium-panel-muted);
 }
 
@@ -4612,13 +4873,13 @@ a:hover {
 }
 
 .dash-alert-title {
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
   color: var(--c-text);
 }
 
 .dash-alert-meta {
-  font-size: 0.83rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.45;
   color: var(--premium-panel-muted);
 }
@@ -4684,7 +4945,7 @@ a:hover {
   padding: 0.5rem 0.9rem;
   border-radius: 9999px;
   font-weight: 700;
-  font-size: 1.3rem;
+  font-size: var(--fonte-bloco);
   letter-spacing: -0.01em;
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
 }
@@ -4697,7 +4958,7 @@ a:hover {
   border-radius: 999px;
   background: #eef4ff;
   color: #1d3f6e;
-  font-size: 0.85rem;
+  font-size: var(--fonte-corpo);
   border: 1px solid #d2def0;
 }
 
@@ -4753,14 +5014,14 @@ a:hover {
 }
 
 .value-block strong {
-  font-size: 1.05rem;
+  font-size: var(--fonte-bloco);
 }
 
 .pill {
   padding: 0.25rem 0.6rem;
   border-radius: 999px;
   font-weight: 600;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   background: #edf4ff;
   color: #1a3d69;
 }
@@ -4886,7 +5147,20 @@ table th {
 :root {
   --ui-control-height: 40px;
   --ui-control-radius: 10px;
-  --ui-control-font: 0.84rem;
+  /*
+    R30 (05/09) — SEGUNDA ESCALA CLANDESTINA APOSENTADA.
+
+    `--ui-control-font: 0.84rem` (13,44px) governava o texto de TODO controle
+    do sistema: `.input`, `.form-control`, campo de arquivo e `.btn`. Um valor
+    so, fora dos degraus, aplicado nos tres controles mais repetidos da
+    interface — sozinho ele explicava boa parte da dispersao do "texto de
+    botao", que a medicao de 05/09 achou com 19 valores diferentes.
+
+    Os tres passaram para o D2 (`--fonte-corpo`, 14px), que e o degrau que a
+    R30 da a "corpo, celula, texto de botao, campo de formulario, item de
+    menu". As outras medidas do controle (altura, raio, respiro) continuam
+    aqui: o que saiu foi so a tipografia, que nao pertencia a este bloco.
+  */
   --ui-control-padding-y: 0.4rem;
   --ui-control-padding-x: 0.65rem;
 }
@@ -4896,7 +5170,7 @@ table th {
   min-height: var(--ui-control-height) !important;
   padding: var(--ui-control-padding-y) var(--ui-control-padding-x) !important;
   border-radius: var(--ui-control-radius) !important;
-  font-size: var(--ui-control-font);
+  font-size: var(--fonte-corpo);
   line-height: 1.25rem;
 }
 
@@ -4905,7 +5179,24 @@ textarea.form-control {
   min-height: 96px;
 }
 
-input[type="file"] {
+/*
+  `:not(.sr-only)` — sem ele, TODO campo de arquivo escondido para leitor de
+  tela aparecia na tela (04/09, medido no preview).
+
+  Este bloco pinta o campo de arquivo com caixa tracejada, ícone de clipe e
+  largura 100%. Ele é `input[type="file"]`, especificidade (0,1,1); a
+  `.sr-only` é (0,1,0) e PERDE — mesmo declarada depois. Resultado: um
+  `<input type="file" class="sr-only">` renderizava com 390px numa janela de
+  390px, transbordando a página em vez de ficar invisível.
+
+  O padrão `sr-only` existe justamente para o campo de arquivo: some da
+  tela, continua alcançável por teclado e por leitor de tela, e o rótulo
+  visível é um `<label>` estilizado. Quatro campos no sistema usam esse
+  padrão; os quatro estavam visíveis.
+
+  (`class="hidden"` escapava por acaso: este bloco não mexe em `display`.)
+*/
+input[type="file"]:not(.sr-only) {
   max-width: 100%;
   width: 100%;
   min-height: var(--ui-control-height);
@@ -4918,13 +5209,13 @@ input[type="file"] {
   background-position: 9px center;
   background-size: 15px 15px;
   color: var(--c-text);
-  font-size: var(--ui-control-font);
+  font-size: var(--fonte-corpo);
   cursor: pointer;
   transition: border-color 0.16s ease, background-color 0.16s ease;
 }
 
-input[type="file"]::file-selector-button,
-input[type="file"]::-webkit-file-upload-button {
+input[type="file"]:not(.sr-only)::file-selector-button,
+input[type="file"]:not(.sr-only)::-webkit-file-upload-button {
   width: 0;
   min-width: 0;
   padding: 0;
@@ -4955,7 +5246,7 @@ input[type="file"]:disabled {
   min-height: var(--ui-control-height);
   padding: var(--ui-control-padding-y) calc(var(--ui-control-padding-x) + 0.1rem);
   border-radius: var(--ui-control-radius);
-  font-size: var(--ui-control-font);
+  font-size: var(--fonte-corpo);
   font-weight: 600;
   border: 1px solid transparent;
 }
@@ -5028,25 +5319,90 @@ input[type="file"]:disabled {
 }
 
 .app-note {
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
   line-height: 1.45;
 }
 
 .app-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
   border-radius: 12px;
   padding: 0.8rem 0.95rem;
-  border: 1px solid #f4d48a;
-  background: #fff7df;
-  color: #9a6700;
-  font-size: 0.84rem;
+  border: 1px solid var(--sem-warning-border);
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
+  font-size: var(--fonte-corpo);
   font-weight: 500;
 }
 
+/* Ícone junto da cor (cor sozinha não comunica para daltônicos):
+   triângulo de alerta desenhado via mask, herdando currentColor. */
+.app-alert::before {
+  content: '';
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.05rem;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.8' stroke='black'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.8' stroke='black'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 .app-alert--error {
-  border-color: #fecaca;
-  background: #fff1f2;
-  color: #be123c;
+  border-color: var(--sem-danger-border);
+  background: var(--sem-danger-bg);
+  color: var(--sem-danger);
+}
+
+/*
+  A CONFIRMACAO ESTAVA PINTADA DE ALERTA (06/09).
+
+  `.app-alert--success` era usada em 3 pontos e NAO EXISTIA. O base
+  `.app-alert` e ambar e desenha TRIANGULO DE ATENCAO no `::before`; so
+  `--error` e `--warning` sobrescreviam. Resultado medido: "Cartao
+  cadastrado." saia com a cor E o icone de AVISO.
+
+  Elemento presente, texto certo, SIGNIFICADO TROCADO — a classe de defeito
+  que este projeto chama de SIGNIFICADO, e que nenhum check de forma pega.
+
+  O comentario de 04/09 em `CartoesRecarga.jsx:110` ja tinha diagnosticado
+  isto por extenso. Nao faltou descobrir: faltou declarar a variante.
+
+  Troca a cor E O ICONE. So a cor deixaria um triangulo de atencao verde,
+  que continua dizendo "cuidado" para quem le a forma antes da cor — e e
+  assim que a maioria le.
+*/
+.app-alert--success {
+  border-color: var(--sem-success-border);
+  background: var(--sem-success-bg);
+  color: var(--sem-success);
+}
+
+.app-alert--success::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.8' stroke='black'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.8' stroke='black'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/*
+  `--warning` era classe FANTASMA e funcionava por acidente (05/09).
+
+  Cinco pontos escrevem `app-alert app-alert--warning`, entre eles telas ja
+  reformadas e aprovadas — e o modificador nunca existiu no CSS. Nao quebrava
+  nada porque a BASE ja e ambar: a intencao acertava por coincidencia de o
+  padrao ser o mesmo tom.
+
+  Isso e fragil de um jeito especifico: no dia em que a base virar neutra ou
+  informativa — que e o arranjo mais provavel, ja que ela e a alerta generica
+  —, cinco avisos de atencao passam a nao parecer avisos de atencao, sem que
+  nada acuse. Declarar o modificador prende a intencao no CSS em vez de
+  deixa-la na sorte, e tira mais um fantasma da conta.
+*/
+.app-alert--warning {
+  border-color: var(--sem-warning-border);
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
 }
 
 .app-toolbar-card {
@@ -5061,12 +5417,14 @@ input[type="file"]:disabled {
 
 .app-summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* R6 (REGRAS-LAYOUT): caixa de valor dimensionada pelo pior caso — 210px
+     comporta R$ 9.999.999.999,99 no corpo atual sem vazar. */
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 0.75rem;
 }
 
 .app-summary-card {
-  border: 1px solid var(--app-summary-border, var(--sol-border-color));
+  border: 1px solid var(--app-summary-border, var(--ui-border));
   border-radius: 12px;
   background: var(--app-summary-bg, var(--premium-glass-bg));
   padding: 0.75rem 0.8rem;
@@ -5089,12 +5447,14 @@ input[type="file"]:disabled {
 
 .app-summary-grid--compact .app-summary-value {
   margin-top: 0.22rem;
-  font-size: 0.94rem;
+  font-size: var(--fonte-corpo);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .app-summary-grid--compact .app-summary-subvalue {
   margin-top: 0.08rem;
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
 }
 
 :root:not(.dark) .app-summary-card {
@@ -5109,7 +5469,15 @@ input[type="file"]:disabled {
 
 .financeiro-relatorios-page {
   max-width: 100%;
-  overflow-x: hidden;
+  /*
+    R18 — `clip`, nunca `hidden`. Medido no preview em 04/09: com
+    `overflow-x: hidden` aqui, a faixa fixa desta tela SOBREPUNHA a topbar
+    em 492px e sumia na rolagem (C1/X2). O motivo é que `overflow-x:
+    hidden` faz o `overflow-y` computar `auto` — o elemento vira
+    scrollport e o `position: sticky` de dentro passa a se ancorar NELE,
+    não na janela. `clip` recorta sem criar scrollport.
+  */
+  overflow-x: clip;
 }
 
 .financeiro-relatorios-layout,
@@ -5120,7 +5488,9 @@ input[type="file"]:disabled {
 }
 
 .financeiro-relatorios-content {
-  overflow: hidden;
+  /* R18: mesmo motivo — este bloco é ancestral da tabela do relatório
+     embutido, e `hidden` aqui sequestrava a rolagem dela. */
+  overflow: clip;
 }
 
 .financeiro-relatorios-page--full .financeiro-relatorios-content {
@@ -5131,7 +5501,7 @@ input[type="file"]:disabled {
   width: 100% !important;
   max-width: 100% !important;
   margin-inline: 0 !important;
-  overflow: hidden;
+  overflow: clip; /* R18 */
 }
 
 .financeiro-conta-report-filter-grid {
@@ -5180,7 +5550,7 @@ input[type="file"]:disabled {
   padding: 0.62rem 0.75rem;
   border-bottom: 1px solid var(--ui-border);
   background: transparent;
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   vertical-align: middle;
 }
 
@@ -5243,7 +5613,7 @@ input[type="file"]:disabled {
 }
 
 .app-summary-label {
-  font-size: 0.71rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -5252,7 +5622,7 @@ input[type="file"]:disabled {
 
 .app-summary-value {
   margin-top: 0.35rem;
-  font-size: 1.1rem;
+  font-size: var(--fonte-bloco);
   font-weight: 700;
   color: var(--app-summary-value, var(--app-number-color, var(--c-text)));
   line-height: 1.2;
@@ -5260,7 +5630,7 @@ input[type="file"]:disabled {
 
 .app-summary-subvalue {
   margin-top: 0.18rem;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   color: var(--app-summary-subvalue, var(--c-muted));
 }
 
@@ -5276,7 +5646,7 @@ input[type="file"]:disabled {
 }
 
 .app-filter-field {
-  border: 1px solid var(--sol-border-color);
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
   background: var(--premium-glass-bg);
   padding: 0.65rem 0.7rem 0.7rem;
@@ -5293,7 +5663,7 @@ input[type="file"]:disabled {
 }
 
 .app-filter-label {
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   color: var(--c-muted);
 }
@@ -5301,7 +5671,9 @@ input[type="file"]:disabled {
 .app-table-shell {
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  /* R18 (defesa): clip recorta igual a hidden e NÃO cria scrollport —
+     assim nenhum sticky futuro dentro do shell é sequestrado. */
+  overflow: clip;
 }
 
 .app-table-shell .table-wrapper {
@@ -5311,25 +5683,25 @@ input[type="file"]:disabled {
 
 .app-table-shell .table {
   width: 100%;
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-corpo);
 }
 
 .app-table-shell .table thead th {
-  font-size: var(--sol-font-header);
+  font-size: var(--fonte-detalhe);
   letter-spacing: 0.03em;
   padding-top: 10px;
   padding-bottom: 10px;
   background: color-mix(in srgb, var(--premium-glass-bg) 90%, transparent);
   color: color-mix(in srgb, var(--c-text) 78%, #334155);
-  border-bottom: 1px solid var(--sol-border-color);
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .app-table-shell .table tbody td {
-  font-size: var(--sol-font-base);
+  font-size: var(--fonte-corpo);
   line-height: 1.25rem;
   padding-top: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--sol-border-color);
+  border-bottom: 1px solid var(--ui-border);
   color: #102544;
 }
 
@@ -5351,7 +5723,7 @@ input[type="file"]:disabled {
 }
 
 .app-list-card {
-  border: 1px solid var(--sol-border-color);
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
   background: var(--premium-glass-bg);
   padding: 0.9rem 1rem;
@@ -5359,7 +5731,7 @@ input[type="file"]:disabled {
 }
 
 .app-empty-card {
-  border: 1px solid var(--sol-border-color);
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
   background: var(--premium-panel-bg);
   padding: 2rem 1rem;
@@ -5372,7 +5744,7 @@ input[type="file"]:disabled {
   align-items: center;
   border-radius: 999px;
   padding: 0.24rem 0.58rem;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -5429,11 +5801,36 @@ input[type="file"]:disabled {
   justify-content: center;
   min-height: 34px;
   padding: 0.34rem 0.82rem;
+  /*
+    A ABA NÃO ENCOLHE ABAIXO DO PRÓPRIO RÓTULO (06/09).
+
+    Suspeita do revisor separado em `financeiro-pagamentos` a 390: "quatro
+    abas espremidas, rótulos quebrando em duas linhas". Medida, com o CSS
+    real, ela se confirmou e o número é claro:
+
+      @390  as quatro abas ficam com 86px CADA — inclusive "Lotes", de
+            cinco letras — e todas com 42px de altura, porque cada rótulo
+            quebra em duas linhas dentro da pílula
+      @1366 as mesmas abas medem 124 / 59 / 121 / 128px, uma linha cada
+
+    A causa é a base do flex: o grupo já quebra em linhas
+    (`flex-wrap: wrap`), mas os itens encolhiam abaixo do conteúdo e
+    dividiam a largura em quatro partes iguais — então em vez de UMA aba
+    passar para a linha de baixo, TODAS as quatro apertaram.
+
+    `flex: 0 0 auto` + `nowrap` diz o contrário: a aba tem a largura do
+    rótulo e quem cede é a LINHA. Medido depois: 124 / 59 / 121 / 128px
+    também em 390, em duas linhas, rótulo inteiro em cada uma. A 1366 nada
+    muda. É a mesma regra da coluna de status e da faixa de visões nesta
+    leva — o texto não encolhe para caber; a caixa é que quebra.
+  */
+  flex: 0 0 auto;
+  white-space: nowrap;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--premium-outline-text);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.02em;
   cursor: pointer;
@@ -5456,7 +5853,7 @@ input[type="file"]:disabled {
 }
 
 .finance-category-section {
-  border: 1px solid var(--sol-border-color);
+  border: 1px solid var(--ui-border);
   border-radius: 14px;
   background: var(--premium-glass-bg);
   padding: 0.85rem;
@@ -5474,14 +5871,14 @@ input[type="file"]:disabled {
 
 .finance-category-section-title {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
 }
 
 .finance-category-section-subtitle {
   margin: 0.18rem 0 0;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
   line-height: 1.45;
 }
@@ -5491,7 +5888,7 @@ input[type="file"]:disabled {
   align-items: center;
   border-radius: 999px;
   padding: 0.2rem 0.5rem;
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -5557,7 +5954,7 @@ input[type="file"]:disabled {
   align-items: center;
   gap: 0.65rem;
   color: var(--c-muted);
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
 }
 
 .finance-category-modal-table {
@@ -5568,7 +5965,7 @@ input[type="file"]:disabled {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  border: 1px solid var(--sol-border-color);
+  border: 1px solid var(--ui-border);
   border-radius: 14px;
 }
 
@@ -5578,9 +5975,9 @@ input[type="file"]:disabled {
   align-items: center;
   gap: 0.75rem;
   padding: 0.78rem 0.95rem;
-  border-top: 1px solid var(--sol-border-color);
+  border-top: 1px solid var(--ui-border);
   background: color-mix(in srgb, var(--premium-glass-bg) 92%, transparent);
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
 }
 
 .finance-category-modal-row:first-child {
@@ -5590,10 +5987,10 @@ input[type="file"]:disabled {
 .finance-category-modal-row--head {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--z-conteudo);
   background: color-mix(in srgb, var(--c-bg) 72%, var(--premium-glass-bg));
   color: var(--c-muted);
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -5609,7 +6006,7 @@ input[type="file"]:disabled {
   display: block;
   margin-top: 0.18rem;
   color: var(--c-muted);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.35;
 }
 
@@ -5635,14 +6032,14 @@ input[type="file"]:disabled {
 .finance-cadastros-card > h2,
 .finance-cadastros-card > div:first-child h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
   line-height: 1.25;
 }
 
 .finance-cadastros-card > p,
 .finance-cadastros-card > div:first-child p {
   margin-top: 0.22rem;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.45;
 }
 
@@ -5653,7 +6050,7 @@ input[type="file"]:disabled {
 
 .finance-cadastros-card .btn:not(.btn-icon) {
   padding-inline: 0.85rem;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
 }
 
 .finance-cadastros-card .app-list-card {
@@ -5668,7 +6065,7 @@ input[type="file"]:disabled {
 .finance-cadastros-card .input {
   min-height: 36px;
   border-radius: 11px;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
 }
 
 .finance-cadastros-card textarea.input {
@@ -5686,7 +6083,7 @@ input[type="file"]:disabled {
 }
 
 .finance-cadastros-card :is(.sol-filter-label, .app-filter-label) {
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .finance-cadastros-card--contas-lista,
@@ -5723,6 +6120,10 @@ input[type="file"]:disabled {
 .finance-chart-card {
   --finance-chart-previsto: #356dff;
   --finance-chart-realizado: #0fbf8f;
+  --finance-chart-entrada: #11845f;
+  --finance-chart-saida: #c23636;
+  --finance-chart-primary: var(--finance-chart-previsto);
+  --finance-chart-secondary: var(--finance-chart-realizado);
   --finance-chart-border: #c8d8ee;
   --finance-chart-bg:
     radial-gradient(circle at top left, rgba(89, 164, 255, 0.18), transparent 36%),
@@ -5766,6 +6167,8 @@ input[type="file"]:disabled {
 .dark .finance-chart-card {
   --finance-chart-previsto: #73f7ff;
   --finance-chart-realizado: #d6ff8e;
+  --finance-chart-entrada: #50d8a8;
+  --finance-chart-saida: #ff7b86;
   --finance-chart-border: #203a63;
   --finance-chart-bg:
     radial-gradient(circle at top left, rgba(111, 225, 255, 0.18), transparent 36%),
@@ -5798,6 +6201,11 @@ input[type="file"]:disabled {
   --finance-chart-empty-text: rgba(226, 239, 255, 0.78);
 }
 
+.finance-chart-card--cash-direction {
+  --finance-chart-primary: var(--finance-chart-entrada);
+  --finance-chart-secondary: var(--finance-chart-saida);
+}
+
 .finance-chart-card__backdrop {
   position: absolute;
   inset: 0;
@@ -5815,7 +6223,7 @@ input[type="file"]:disabled {
 .finance-chart-axis,
 .finance-chart-empty {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-conteudo);
 }
 
 .finance-chart-card__head {
@@ -5830,7 +6238,7 @@ input[type="file"]:disabled {
 .finance-chart-card__title {
   margin: 0;
   color: var(--finance-chart-title);
-  font-size: 0.88rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -5838,7 +6246,7 @@ input[type="file"]:disabled {
 .finance-chart-card__subtitle {
   margin: 0.15rem 0 0;
   color: var(--finance-chart-subtitle);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.4;
 }
 
@@ -5861,13 +6269,16 @@ input[type="file"]:disabled {
 }
 
 .finance-chart-toggle {
-  min-height: 26px;
-  padding: 0.2rem 0.65rem;
+  /* M1/R2 — alvo de clique tem piso: 32px no desktop. Estes botões vinham
+     com 26px e o preview mediu 93×26px. Alternador de gráfico é controle
+     de uso corriqueiro; miniaturizá-lo não economiza espaço que importe. */
+  min-height: var(--alvo-clique, 32px);
+  padding: 0.3rem 0.7rem;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--finance-chart-chip-text);
-  font-size: 0.65rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -5896,7 +6307,7 @@ input[type="file"]:disabled {
   align-items: center;
   gap: 0.38rem;
   color: var(--finance-chart-subtitle);
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -5909,13 +6320,13 @@ input[type="file"]:disabled {
   box-shadow: 0 0 10px currentColor;
 }
 
-.finance-chart-legend-dot--previsto {
-  color: var(--finance-chart-previsto);
+.finance-chart-legend-dot--primary {
+  color: var(--finance-chart-primary);
   background: currentColor;
 }
 
-.finance-chart-legend-dot--realizado {
-  color: var(--finance-chart-realizado);
+.finance-chart-legend-dot--secondary {
+  color: var(--finance-chart-secondary);
   background: currentColor;
 }
 
@@ -5937,7 +6348,7 @@ input[type="file"]:disabled {
 .finance-chart-stat span {
   display: block;
   color: var(--finance-chart-stat-label);
-  font-size: 0.62rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -5947,7 +6358,7 @@ input[type="file"]:disabled {
   display: block;
   margin-top: 0.18rem;
   color: var(--finance-chart-stat-value);
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -5976,12 +6387,27 @@ input[type="file"]:disabled {
   stroke-dasharray: 6 6;
 }
 
+.finance-chart-cutoff {
+  stroke: var(--finance-chart-axis);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 5;
+  opacity: 0.72;
+}
+
+.finance-chart-cutoff-label {
+  fill: var(--finance-chart-axis);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .finance-chart-point {
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--finance-chart-previsto) 72%, transparent));
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--finance-chart-primary) 72%, transparent));
 }
 
 .finance-chart-point--secondary {
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--finance-chart-realizado) 62%, transparent));
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--finance-chart-secondary) 62%, transparent));
 }
 
 .finance-chart-axis {
@@ -5991,7 +6417,7 @@ input[type="file"]:disabled {
   gap: 0.2rem 0.6rem;
   margin-top: 0.4rem;
   color: var(--finance-chart-axis);
-  font-size: 0.62rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -6004,7 +6430,7 @@ input[type="file"]:disabled {
   padding: 2.8rem 1rem;
   text-align: center;
   color: var(--finance-chart-empty-text);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
 }
 
 @media (max-width: 767px) {
@@ -6100,7 +6526,7 @@ input[type="file"]:disabled {
 
 .login-content-wrap {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-conteudo);
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -6131,7 +6557,7 @@ input[type="file"]:disabled {
 .login-reference-form {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: var(--z-conteudo-acima);
 }
 
 .login-reference-alert {
@@ -6139,7 +6565,7 @@ input[type="file"]:disabled {
   left: 27.35%;
   top: 32.2%;
   width: 44.15%;
-  z-index: 3;
+  z-index: var(--z-conteudo-topo);
 }
 
 .login-reference-field {
@@ -6192,7 +6618,7 @@ input[type="file"]:disabled {
   border: 0;
   background: transparent;
   color: #2a3450;
-  font-size: clamp(0.94rem, 1.2vw, 1.02rem);
+  font-size: var(--fonte-corpo);
   line-height: 1.2;
   outline: none;
   padding: 0;
@@ -6252,7 +6678,7 @@ input[type="file"]:disabled {
   border: 0;
   background: transparent;
   color: #1c51bb;
-  font-size: clamp(0.8rem, 1.1vw, 0.96rem);
+  font-size: var(--fonte-corpo);
   font-weight: 500;
   line-height: 1;
   padding: 0;
@@ -6312,13 +6738,13 @@ input[type="file"]:disabled {
 
 .login-reference-submit-label {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-conteudo);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   color: #ffffff;
-  font-size: clamp(1.05rem, 1.72vw, 1.38rem);
+  font-size: var(--fonte-bloco);
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -6338,7 +6764,7 @@ input[type="file"]:disabled {
 .login-mfa-layer {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: var(--z-conteudo-acima);
   width: 100%;
   height: 100%;
   display: flex;
@@ -6373,7 +6799,7 @@ input[type="file"]:disabled {
   border-radius: 999px;
   background: rgba(21, 69, 158, 0.08);
   color: #1b4e9c;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -6382,7 +6808,7 @@ input[type="file"]:disabled {
 .login-mfa-title {
   margin: 0.9rem 0 0;
   color: #0b2144;
-  font-size: clamp(1.6rem, 2.4vw, 2rem);
+  font-size: var(--fonte-pagina);
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.03em;
@@ -6391,7 +6817,7 @@ input[type="file"]:disabled {
 .login-mfa-subtitle {
   margin: 0.65rem 0 0;
   color: #5f6f8d;
-  font-size: 0.96rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.55;
 }
 
@@ -6402,7 +6828,7 @@ input[type="file"]:disabled {
 
 .login-mfa-label {
   color: #213655;
-  font-size: 0.9rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
 }
 
@@ -6412,7 +6838,7 @@ input[type="file"]:disabled {
   border-color: rgba(170, 190, 219, 0.66) !important;
   background: #fdfefe !important;
   color: #1d2f4b !important;
-  font-size: 1rem !important;
+  font-size: var(--fonte-corpo) !important;
 }
 
 .login-mfa-actions {
@@ -6479,9 +6905,6 @@ input[type="file"]:disabled {
     top: 55.35%;
   }
 
-  .login-reference-input {
-    font-size: clamp(0.68rem, 1.7vw, 0.82rem);
-  }
 
   .login-reference-field-icon svg {
     width: 1rem;
@@ -6497,7 +6920,6 @@ input[type="file"]:disabled {
   .login-reference-forgot {
     right: 23.95%;
     top: 64%;
-    font-size: clamp(0.62rem, 1.5vw, 0.78rem);
   }
 
   .login-reference-submit {
@@ -6508,9 +6930,6 @@ input[type="file"]:disabled {
     border-radius: 0.7rem;
   }
 
-  .login-reference-submit-label {
-    font-size: clamp(0.82rem, 2.1vw, 1rem);
-  }
 
   .login-mfa-layer {
     padding: 0.75rem;
@@ -6522,13 +6941,7 @@ input[type="file"]:disabled {
     border-radius: 1.2rem;
   }
 
-  .login-mfa-title {
-    font-size: 1.38rem;
-  }
 
-  .login-mfa-subtitle {
-    font-size: 0.88rem;
-  }
 
 .login-mfa-submit,
 .login-mfa-secondary {
@@ -6551,7 +6964,7 @@ input[type="file"]:disabled {
 .login-bg-overlay {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: var(--z-conteudo);
   background:
     radial-gradient(circle at 50% 16%, rgba(116, 176, 255, 0.09), transparent 28%),
     radial-gradient(circle at 50% 102%, rgba(109, 173, 255, 0.28), transparent 38%),
@@ -6560,7 +6973,7 @@ input[type="file"]:disabled {
 
 .login-content-wrap {
   position: relative;
-  z-index: 2;
+  z-index: var(--z-conteudo-acima);
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
@@ -6609,8 +7022,8 @@ input[type="file"]:disabled {
   margin: 0 auto;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: stretch;
-  gap: clamp(0.8rem, 2.2vw, 1.2rem);
-  padding: 1rem 1.4rem;
+  gap: clamp(0.9rem, 2.4vw, 1.3rem);
+  padding: 0.9rem 1.3rem;
   background: linear-gradient(135deg, rgba(242, 248, 255, 0.9) 0%, rgba(235, 244, 255, 0.82) 100%);
   border: 1px solid rgba(190, 214, 242, 0.6);
   border-radius: 20px;
@@ -6625,21 +7038,21 @@ input[type="file"]:disabled {
   align-items: center;
   justify-content: center;
   justify-self: stretch;
-  min-height: 104px;
+  min-height: 92px;
 }
 
 .login-csc-lockup {
-  width: min(100%, 196px);
-  min-height: 104px;
+  width: min(100%, 176px);
+  min-height: 92px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .login-csc-logo {
-  width: min(100%, 196px);
-  max-width: 196px;
-  max-height: 100px;
+  width: min(100%, 176px);
+  max-width: 176px;
+  max-height: 86px;
   height: auto;
   object-fit: contain;
   object-position: center;
@@ -6668,21 +7081,21 @@ input[type="file"]:disabled {
   align-items: center;
   justify-content: center;
   justify-self: stretch;
-  min-height: 98px;
+  min-height: 92px;
 }
 
 .login-fluxy-lockup {
-  width: min(100%, 186px);
-  min-height: 98px;
+  width: min(100%, 176px);
+  min-height: 92px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.78rem;
+  gap: 0.62rem;
 }
 
 .login-fluxy-logo-wrap {
-  width: 40px;
-  height: 46px;
+  width: 34px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6690,20 +7103,19 @@ input[type="file"]:disabled {
 }
 
 .login-fluxy-icon {
-  width: 40px;
-  height: 46px;
+  width: 34px;
+  height: 40px;
   object-fit: contain;
   object-position: center;
   transform: none;
   flex-shrink: 0;
-  filter: drop-shadow(0 6px 12px rgba(15, 50, 130, 0.08));
 }
 
 .login-fluxy-name {
   color: #102a52;
-  font-size: 2.9rem;
+  font-size: var(--fonte-destaque);
   font-weight: 800;
-  line-height: 0.96;
+  line-height: 1;
   letter-spacing: -0.05em;
 }
 
@@ -6729,7 +7141,7 @@ input[type="file"]:disabled {
   border-radius: 999px;
   background: rgba(30, 88, 180, 0.1);
   color: #1d4faa;
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -6744,7 +7156,7 @@ input[type="file"]:disabled {
 .login-heading {
   margin: 0.95rem 0 0;
   color: #0c2548;
-  font-size: clamp(1.85rem, 3vw, 2.3rem);
+  font-size: var(--fonte-pagina);
   font-weight: 800;
   letter-spacing: -0.045em;
   line-height: 1.02;
@@ -6754,7 +7166,7 @@ input[type="file"]:disabled {
   margin: 0.8rem 0 0;
   max-width: 32rem;
   color: #566b88;
-  font-size: 0.98rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.65;
 }
 
@@ -6782,10 +7194,16 @@ input[type="file"]:disabled {
   flex-shrink: 0;
 }
 
-.login-card .alert-icon svg,
-.login-card .alert-close svg {
+.login-card .alert-icon svg {
   width: 100%;
   height: 100%;
+}
+
+/* O ícone do "x" tem tamanho próprio: quem cresceu foi o alvo de clique
+   (M1), não o desenho. */
+.login-card .alert-close svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .login-card .alert-content {
@@ -6794,7 +7212,7 @@ input[type="file"]:disabled {
 
 .login-card .alert-title {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
   line-height: 1.35;
 }
@@ -6802,7 +7220,7 @@ input[type="file"]:disabled {
 .login-card .alert-message {
   margin: 0;
   color: #17365f;
-  font-size: 0.94rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.5;
 }
 
@@ -6810,8 +7228,8 @@ input[type="file"]:disabled {
   appearance: none;
   border: 0;
   background: transparent;
-  width: 1.55rem;
-  height: 1.55rem;
+  min-width: var(--alvo-clique);
+  min-height: var(--alvo-clique);
   padding: 0;
   border-radius: 999px;
   color: currentColor;
@@ -6862,7 +7280,7 @@ input[type="file"]:disabled {
 
 .login-label {
   color: #28486f;
-  font-size: 0.73rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -6876,7 +7294,7 @@ input[type="file"]:disabled {
   border-color: rgba(183, 208, 235, 0.78) !important;
   box-shadow: inset 0 1px 2px rgba(0, 18, 55, 0.04), 0 8px 18px rgba(17, 42, 86, 0.04) !important;
   color: #0f2547 !important;
-  font-size: 0.97rem !important;
+  font-size: var(--fonte-corpo) !important;
   transition: border-color 0.18s, box-shadow 0.18s, background 0.18s !important;
 }
 
@@ -6956,7 +7374,7 @@ input[type="file"]:disabled {
   align-items: center;
   gap: 0.55rem;
   color: #506685;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.5;
 }
 
@@ -6975,7 +7393,7 @@ input[type="file"]:disabled {
   padding: 0;
   cursor: pointer;
   color: #1e56b7;
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   font-weight: 600;
   line-height: 1.4;
   transition: color 0.15s;
@@ -7067,7 +7485,7 @@ input[type="file"]:disabled {
 .login-btn {
   min-height: 56px;
   border-radius: 16px;
-  font-size: 1rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: none;
@@ -7149,17 +7567,10 @@ input[type="file"]:disabled {
     height: 42px;
   }
 
-  .login-fluxy-name {
-    font-size: 2.45rem;
-  }
 
-  .login-heading {
-    font-size: 1.8rem;
-  }
 
   .login-input {
     min-height: 52px !important;
-    font-size: 0.95rem !important;
   }
 
   .login-card .alert {
@@ -7168,7 +7579,6 @@ input[type="file"]:disabled {
   }
 
   .login-copy {
-    font-size: 0.94rem;
     line-height: 1.58;
   }
 
@@ -7198,13 +7608,12 @@ body {
 }
 
 .layout-shell.fluxy-app-shell {
-  --shell-page-bg:
-    radial-gradient(circle at top right, rgba(67, 148, 255, 0.18), transparent 28%),
-    radial-gradient(circle at 10% 20%, rgba(42, 103, 255, 0.12), transparent 30%),
-    linear-gradient(180deg, #eef4fb 0%, #e6edf8 100%);
-  --shell-panel: rgba(255, 255, 255, 0.82);
-  --shell-panel-strong: rgba(255, 255, 255, 0.94);
-  --shell-panel-soft: rgba(245, 249, 255, 0.76);
+  /* Fundo PLANO: os holofotes radiais decorativos variavam o fundo sob o
+     texto e derrubavam o contraste (achado do impeccable, 02/09). */
+  --shell-page-bg: linear-gradient(180deg, #eef4fb 0%, #e6edf8 100%);
+  --shell-panel: rgba(255, 255, 255, 0.92);
+  --shell-panel-strong: rgba(255, 255, 255, 0.97);
+  --shell-panel-soft: rgba(245, 249, 255, 0.9);
   --shell-border: rgba(148, 163, 184, 0.22);
   --shell-border-strong: rgba(59, 130, 246, 0.18);
   --shell-shadow: 0 26px 60px rgba(15, 23, 42, 0.08);
@@ -7220,13 +7629,10 @@ body {
 }
 
 .dark .layout-shell.fluxy-app-shell {
-  --shell-page-bg:
-    radial-gradient(circle at top right, rgba(29, 78, 216, 0.18), transparent 28%),
-    radial-gradient(circle at 14% 18%, rgba(14, 165, 233, 0.14), transparent 24%),
-    linear-gradient(180deg, #07111f 0%, #0a1528 44%, #0d1626 100%);
-  --shell-panel: rgba(8, 15, 29, 0.82);
-  --shell-panel-strong: rgba(10, 17, 33, 0.94);
-  --shell-panel-soft: rgba(15, 24, 43, 0.78);
+  --shell-page-bg: linear-gradient(180deg, #07111f 0%, #0a1528 44%, #0d1626 100%);
+  --shell-panel: rgba(8, 15, 29, 0.92);
+  --shell-panel-strong: rgba(10, 17, 33, 0.97);
+  --shell-panel-soft: rgba(15, 24, 43, 0.9);
   --shell-border: rgba(148, 163, 184, 0.16);
   --shell-border-strong: rgba(59, 130, 246, 0.24);
   --shell-shadow: 0 32px 70px rgba(1, 4, 12, 0.55);
@@ -7238,14 +7644,14 @@ body {
   --shell-accent: #38bdf8;
 }
 
+/* Sem véus decorativos sobre o conteúdo: fundo plano garante o contraste
+   medido dos textos (achado do impeccable, 02/09). */
 .layout-shell-backdrop {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 0;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 30%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 42%);
+  z-index: var(--z-base);
+  background: none;
 }
 
 .layout-shell.fluxy-app-shell > .layout-main {
@@ -7315,7 +7721,7 @@ body {
 
 .brand-wordmark {
   margin: 0;
-  font-size: 1.12rem;
+  font-size: var(--fonte-bloco);
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -7377,7 +7783,7 @@ body {
   background: linear-gradient(135deg, #74b4ff 0%, #2463eb 100%);
   color: #ffffff;
   font-weight: 800;
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
   flex-shrink: 0;
   box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28);
 }
@@ -7392,7 +7798,7 @@ body {
 .sidebar-profile-name {
   margin: 0;
   color: #17325c;
-  font-size: 0.93rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -7407,7 +7813,7 @@ body {
 .sidebar-profile-email {
   margin: 0.18rem 0 0;
   color: #6b7fa0;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
@@ -7425,7 +7831,7 @@ body {
   align-self: flex-start;
   padding: 0.15rem 0.52rem;
   border-radius: 999px;
-  font-size: 0.6rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -7516,7 +7922,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -7542,7 +7948,7 @@ body {
   padding: 0 0.38rem;
   background: linear-gradient(135deg, #2563eb, #38bdf8);
   color: #fff;
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   line-height: 1;
 }
@@ -7604,7 +8010,7 @@ body {
 .nav-btn-sub {
   min-height: 2.65rem;
   padding-left: 1rem;
-  font-size: 0.94rem;
+  font-size: var(--fonte-corpo);
 }
 
 .nav-btn-sub::before {
@@ -7653,7 +8059,7 @@ body {
   padding: 0.8rem 0.85rem;
   background: rgba(148, 163, 184, 0.08);
   color: var(--shell-muted);
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.5;
 }
 
@@ -7718,19 +8124,15 @@ body {
   padding: 1.15rem 1rem 2rem;
 }
 
-/* Topbar já exibe o título da seção — oculta h1 duplicado no conteúdo das páginas */
-.layout-main h1.page-title,
-.layout-main h1.config-page-title,
-.layout-main .app-page-header h1,
-.layout-main h1[class~="font-semibold"],
-.layout-main h1[class~="uppercase"] {
-  display: none;
-}
+/* REVERTIDO (02/09): a regra que ocultava h1 "duplicado" escondia também o
+   NOME do registro (obra, título…) — a informação principal da tela. O
+   cabeçalho agora é uma faixa fixa que EXIBE título/identificação (R13);
+   o seletor h1[class~=...] era amplo demais e virou defeito. */
 
 .topbar-shell {
   position: sticky;
   top: 1rem;
-  z-index: 20;
+  z-index: var(--z-sticky);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -7807,7 +8209,7 @@ body {
 }
 
 .topbar-support-btn:hover {
-  color: #d97706 !important;
+  color: var(--sem-warning) !important;
   border-color: rgba(217, 119, 6, 0.28) !important;
   background: rgba(217, 119, 6, 0.07) !important;
 }
@@ -7817,7 +8219,7 @@ body {
 }
 
 .topbar-chat-btn:hover {
-  color: #0ca678 !important;
+  color: var(--sem-success) !important;
   border-color: rgba(12, 166, 120, 0.28) !important;
   background: rgba(12, 166, 120, 0.07) !important;
 }
@@ -7838,9 +8240,9 @@ body {
   justify-content: center;
   padding: 0 0.32rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, #ef4444, #f97316);
+  background: var(--sem-danger);
   color: #fff;
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   box-shadow: 0 10px 20px rgba(239, 68, 68, 0.24);
 }
@@ -7855,7 +8257,7 @@ body {
   gap: 0.35rem;
   margin: 0 0 0.35rem;
   color: var(--shell-muted);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -7871,7 +8273,7 @@ body {
 .topbar-title {
   margin: 0;
   color: var(--shell-text);
-  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  font-size: var(--fonte-pagina);
   font-weight: 800;
   letter-spacing: -0.03em;
 }
@@ -7879,7 +8281,7 @@ body {
 .topbar-subtitle {
   margin: 0.2rem 0 0;
   color: var(--shell-muted);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
 }
 
 .topbar-status-chip {
@@ -7890,7 +8292,7 @@ body {
   border-radius: 999px;
   background: rgba(14, 165, 233, 0.12);
   color: var(--shell-accent);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
 }
 
@@ -7911,7 +8313,7 @@ body {
   border: 0;
   background: transparent;
   color: var(--shell-text);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   outline: none;
 }
 
@@ -7928,7 +8330,7 @@ body {
   border: 1px solid var(--shell-border);
   background: rgba(255, 255, 255, 0.08);
   color: var(--shell-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
 }
 
@@ -7943,7 +8345,7 @@ body {
   border: 0;
   padding: 0;
   background: rgba(2, 8, 23, 0.32);
-  z-index: 79;
+  z-index: var(--z-veu);
 }
 
 .notification-panel {
@@ -7959,7 +8361,7 @@ body {
   box-shadow: var(--shell-shadow-strong);
   backdrop-filter: blur(18px);
   overflow: hidden;
-  z-index: 80;
+  z-index: var(--z-painel);
   box-sizing: border-box;
 }
 
@@ -7975,7 +8377,7 @@ body {
 .notification-panel-kicker {
   margin: 0;
   color: var(--shell-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -7984,14 +8386,14 @@ body {
 .notification-panel-title {
   margin: 0.25rem 0 0;
   color: var(--shell-text);
-  font-size: 1.08rem;
+  font-size: var(--fonte-bloco);
   font-weight: 800;
 }
 
 .notification-panel-subtitle {
   margin: 0.35rem 0 0;
   color: var(--shell-muted);
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.5;
 }
 
@@ -8037,8 +8439,8 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 0.95rem;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--shell-primary);
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
 }
 
 .notification-empty-title {
@@ -8050,7 +8452,7 @@ body {
 .notification-empty-copy {
   margin: 0.28rem 0 0;
   color: var(--shell-muted);
-  font-size: 0.85rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.55;
 }
 
@@ -8096,14 +8498,14 @@ body {
 .notification-item-message {
   margin: 0;
   color: var(--shell-text);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.55;
 }
 
 .notification-item-date {
   margin: 0.35rem 0 0;
   color: var(--shell-muted);
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .notification-item.is-read {
@@ -8114,32 +8516,26 @@ body {
   display: grid;
   gap: 1.2rem;
 }
-
-.page-title,
-.config-page-title {
+.page-title {
   margin: 0;
   color: var(--app-heading-color, var(--shell-text));
-  font-size: clamp(1.7rem, 2.5vw, 2.35rem);
+  font-size: var(--fonte-pagina);
   font-weight: 800;
   letter-spacing: -0.04em;
 }
-
-.page-subtitle,
-.config-page-subtitle {
+.page-subtitle {
   margin: 0.45rem 0 0;
   max-width: 68ch;
   color: var(--app-muted-color, var(--shell-muted));
-  font-size: 0.96rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.7;
 }
-
 .layout-shell .card,
 .layout-shell .sol-surface-card,
 .layout-shell .app-toolbar-card,
 .layout-shell .app-table-shell,
 .layout-shell .dashboard-hero-card,
 .layout-shell .dashboard-section-card,
-.layout-shell .config-section,
 .layout-shell .config-summary-card {
   border: 1px solid var(--shell-border);
   border-radius: 1.7rem;
@@ -8161,9 +8557,7 @@ body {
 .layout-shell .app-page-header {
   padding: 0.1rem 0.15rem;
 }
-
-.layout-shell .app-page-header-row,
-.config-page-header-row {
+.layout-shell .app-page-header-row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -8222,7 +8616,7 @@ body {
   border-radius: 1rem;
   border: 1px solid transparent;
   padding: 0 1rem;
-  font-size: 0.92rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   letter-spacing: 0.01em;
   transition: transform 0.18s ease, box-shadow 0.22s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
@@ -8277,21 +8671,21 @@ body {
 
 .layout-shell .btn-danger {
   border-color: rgba(239, 68, 68, 0.2);
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  background: var(--sem-danger-bg);
+  color: var(--sem-danger);
 }
 
 .layout-shell .btn-success {
   border-color: rgba(16, 185, 129, 0.18);
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
+  background: var(--sem-success-bg);
+  color: var(--sem-success);
 }
 
 .layout-shell .btn-sm {
   min-height: 2.35rem;
   padding: 0 0.85rem;
   border-radius: 0.85rem;
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
 }
 
 .layout-shell .btn-lg {
@@ -8305,6 +8699,12 @@ body {
   padding: 0;
 }
 
+.layout-shell .favorecido-cadastro-action {
+  width: 2.35rem;
+  min-width: 2.35rem;
+  padding: 0;
+}
+
 .layout-shell .input-field {
   display: grid;
   gap: 0.48rem;
@@ -8312,46 +8712,44 @@ body {
 
 .layout-shell .input-label {
   color: var(--shell-text);
-  font-size: 0.85rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
 }
 
 .layout-shell .input-message {
   color: var(--shell-muted);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .layout-shell .input-message-error {
-  color: #dc2626;
+  color: var(--sem-danger);
 }
 
+/* Campos de texto do sistema — UMA camada: fundo sólido dos tokens,
+   borda fina, raio único e foco por borda discreta (sem glow forte).
+   O :where() zera a especificidade dos :not(...): componentes com
+   campos compostos (ex.: a busca da lista) conseguem sobrepor esta
+   regra sem guerra de seletores. */
 .layout-shell .input,
-.layout-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+.layout-shell input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])),
 .layout-shell select,
 .layout-shell textarea,
 .layout-shell .form-control {
   width: 100%;
   min-height: 3rem;
-  border-radius: 1rem;
-  border: 1px solid var(--shell-border);
-  background: rgba(255, 255, 255, 0.65);
-  color: var(--shell-text);
-  padding: 0.82rem 0.95rem;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-}
-
-.dark .layout-shell .input,
-.dark .layout-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
-.dark .layout-shell select,
-.dark .layout-shell textarea,
-.dark .layout-shell .form-control {
-  background: rgba(15, 23, 42, 0.55);
+  border-radius: 10px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text, var(--shell-text));
+  padding: 0.7rem 0.85rem;
+  box-shadow: none;
+  transition: border-color 0.18s ease, background 0.18s ease;
 }
 
 .layout-shell .input::placeholder,
 .layout-shell input::placeholder,
 .layout-shell textarea::placeholder {
-  color: color-mix(in srgb, var(--shell-muted) 84%, transparent);
+  color: var(--app-muted-color, var(--shell-muted));
 }
 
 .layout-shell textarea,
@@ -8361,22 +8759,13 @@ body {
 }
 
 .layout-shell .input:focus,
-.layout-shell input:focus,
+.layout-shell input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])):focus,
 .layout-shell select:focus,
 .layout-shell textarea:focus,
 .layout-shell .form-control:focus {
   outline: none;
-  border-color: rgba(37, 99, 235, 0.38);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.dark .layout-shell .input:focus,
-.dark .layout-shell input:focus,
-.dark .layout-shell select:focus,
-.dark .layout-shell textarea:focus,
-.dark .layout-shell .form-control:focus {
-  background: rgba(15, 23, 42, 0.74);
+  border-color: var(--c-primary);
+  box-shadow: none;
 }
 
 .layout-shell .input-error {
@@ -8402,7 +8791,7 @@ body {
 .layout-shell .table thead th {
   padding: 0 1rem 0.35rem;
   color: var(--shell-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -8720,7 +9109,7 @@ body {
   display: block;
   margin-bottom: 0.25rem;
   color: var(--shell-muted);
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -8730,7 +9119,7 @@ body {
   display: block;
   min-width: 0;
   color: var(--shell-text);
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   font-weight: 750;
 }
 
@@ -8738,7 +9127,7 @@ body {
   display: block;
   margin-top: 0.15rem;
   color: var(--shell-muted);
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .layout-shell .compra-detalhe-link-button {
@@ -8808,7 +9197,7 @@ body {
   overflow: hidden;
   color: var(--shell-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -8844,7 +9233,7 @@ body {
   min-height: 1.9rem;
   border-radius: 999px;
   padding: 0 0.75rem;
-  font-size: 0.76rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
 }
 
@@ -8868,23 +9257,23 @@ body {
 }
 
 .layout-shell .badge-info {
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--shell-primary);
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
 }
 
 .layout-shell .badge-success {
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
+  background: var(--sem-success-bg);
+  color: var(--sem-success);
 }
 
 .layout-shell .badge-warning {
-  background: rgba(245, 158, 11, 0.14);
-  color: #d97706;
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
 }
 
 .layout-shell .badge-danger {
-  background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
+  background: var(--sem-danger-bg);
+  color: var(--sem-danger);
 }
 
 .layout-shell .badge-dot {
@@ -8914,13 +9303,13 @@ body {
 
 .layout-shell .alert-title {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
 }
 
 .layout-shell .alert-message {
   margin: 0.16rem 0 0;
-  font-size: 0.86rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.6;
 }
 
@@ -8930,23 +9319,23 @@ body {
 }
 
 .layout-shell .alert-info {
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
 }
 
 .layout-shell .alert-success {
-  background: rgba(16, 185, 129, 0.1);
-  color: #059669;
+  background: var(--sem-success-bg);
+  color: var(--sem-success);
 }
 
 .layout-shell .alert-warning {
-  background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
 }
 
 .layout-shell .alert-error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  background: var(--sem-danger-bg);
+  color: var(--sem-danger);
 }
 
 .layout-shell .empty-state {
@@ -8964,8 +9353,8 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 1.1rem;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--shell-primary);
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
 }
 
 .layout-shell .empty-state-copy {
@@ -8977,7 +9366,7 @@ body {
 .layout-shell .empty-state-title {
   margin: 0;
   color: var(--shell-text);
-  font-size: 0.96rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
 }
 
@@ -9029,7 +9418,7 @@ body {
 
 .spinner-label {
   color: var(--shell-muted);
-  font-size: 0.86rem;
+  font-size: var(--fonte-corpo);
   font-weight: 600;
 }
 
@@ -9062,9 +9451,9 @@ body {
   min-height: 1.9rem;
   padding: 0 0.75rem;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--shell-primary);
-  font-size: 0.74rem;
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
 }
 
@@ -9135,23 +9524,23 @@ body {
 }
 
 .dashboard-insight-icon--green {
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
+  background: var(--sem-success-bg);
+  color: var(--sem-success);
 }
 
 .dashboard-insight-icon--amber {
-  background: rgba(245, 158, 11, 0.14);
-  color: #d97706;
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
 }
 
 .dashboard-insight-icon--red {
-  background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
+  background: var(--sem-danger-bg);
+  color: var(--sem-danger);
 }
 
 .dashboard-insight-icon--blue {
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--shell-primary);
+  background: var(--sem-info-bg);
+  color: var(--sem-info);
 }
 
 .dashboard-insight-title {
@@ -9163,11 +9552,9 @@ body {
 .dashboard-insight-copy {
   margin: 0.28rem 0 0;
   color: var(--shell-muted);
-  font-size: 0.86rem;
+  font-size: var(--fonte-corpo);
   line-height: 1.65;
 }
-
-.config-page-header,
 .config-summary-card {
   border-radius: 1.7rem;
 }
@@ -9182,7 +9569,7 @@ body {
 .config-summary-kicker {
   margin: 0;
   color: var(--shell-muted);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -9191,7 +9578,7 @@ body {
 .config-summary-title {
   margin: 0.4rem 0 0;
   color: var(--shell-text);
-  font-size: 1.35rem;
+  font-size: var(--fonte-bloco);
   font-weight: 800;
   letter-spacing: -0.03em;
 }
@@ -9203,81 +9590,6 @@ body {
   line-height: 1.7;
 }
 
-.config-section {
-  padding: 1.3rem !important;
-}
-
-.config-section-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.9rem;
-  margin-bottom: 1.1rem;
-}
-
-.config-section-title {
-  margin: 0;
-  color: var(--shell-text);
-  font-size: 1.02rem;
-  font-weight: 800;
-}
-
-.config-section-count {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2rem;
-  padding: 0 0.85rem;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--shell-primary);
-  font-size: 0.76rem;
-  font-weight: 800;
-}
-
-.config-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.config-item {
-  display: grid;
-  gap: 0.55rem;
-  min-height: 10.5rem;
-  border: 1px solid var(--shell-border);
-  border-radius: 1.35rem;
-  background: rgba(148, 163, 184, 0.08);
-  padding: 1.1rem;
-  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
-}
-
-.config-item:hover,
-.config-item:focus-visible {
-  transform: translateY(-2px);
-  border-color: var(--shell-border-strong);
-  background: rgba(37, 99, 235, 0.08);
-  box-shadow: var(--shell-shadow);
-  outline: none;
-}
-
-.config-item-title {
-  margin: 0;
-  color: var(--shell-text);
-  font-size: 0.97rem;
-  font-weight: 800;
-}
-
-.config-item-description {
-  margin: 0;
-  color: var(--shell-muted);
-  font-size: 0.88rem;
-  line-height: 1.65;
-}
-
-.config-item-disabled {
-  opacity: 0.62;
-}
 
 .layout-shell .max-w-4xl,
 .layout-shell .max-w-3xl {
@@ -9575,13 +9887,32 @@ body {
   min-width: 76rem;
 }
 
+/*
+  R30 / DECISAO 2 DO CLIENTE (05/09) — ESPACO LATERAL PRIMEIRO, TAMANHO DEPOIS.
+
+  O cabecalho desta tabela vivia entre 9,92px e 10,88px. O piso de 12px nao
+  se negocia, entao ele SUBIU — e subir o cabecalho alarga a coluna, porque
+  e o `th` (com `white-space: nowrap`) que decide a largura minima. Medido em
+  05/09: subir tudo sem mexer em mais nada alargaria a coluna em 12% a 21% e
+  criaria rolagem horizontal em tela de 1366px, que e a tela de trabalho de
+  Compras, Contratos, RH/DP e Custos e Recebiveis.
+
+  A ordem que o cliente decidiu: **reduzir o espaco lateral ANTES de mexer no
+  tamanho**. O respiro lateral cai de 0,65rem (10,4px) para 0,45rem (7,2px)
+  por lado — 6,4px devolvidos por coluna, ~64px numa tabela de 10 colunas —,
+  e a CELULA fica no D1 (12px) em vez do D2 (14px), como excecao declarada
+  para tabela densa. O cabecalho vai para 12px de qualquer forma.
+
+  O que NAO foi feito, de proposito: encolher a fonte de volta. Entre "cabe
+  mais" e "le-se melhor" vence a leitura (criterio de 02/09).
+*/
 .layout-shell .compras-data-table th {
   position: relative;
-  padding: 0.55rem 0.65rem;
+  padding: 0.55rem 0.45rem;
   border-bottom: 1px solid var(--shell-border, var(--ui-border));
   background: color-mix(in srgb, var(--shell-panel-strong, #fff) 88%, var(--shell-primary, #2563eb) 12%);
   color: var(--shell-muted, var(--c-muted));
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.08em;
   line-height: 1rem;
@@ -9607,7 +9938,7 @@ body {
   top: 0.24rem;
   right: -0.38rem;
   bottom: 0.24rem;
-  z-index: 10;
+  z-index: var(--z-alca);
   width: 0.9rem;
   cursor: col-resize;
   border-radius: 999px;
@@ -9641,10 +9972,10 @@ body {
 }
 
 .layout-shell .compras-data-table td {
-  padding: 0.52rem 0.65rem;
+  padding: 0.52rem 0.45rem;
   border-bottom: 1px solid var(--shell-border, var(--ui-border));
   color: var(--shell-text, var(--c-text));
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.15rem;
   vertical-align: middle;
   background: transparent;
@@ -9656,14 +9987,14 @@ body {
 .layout-shell .compras-data-table-solicitacoes td:last-child {
   position: sticky;
   right: 0;
-  z-index: 2;
+  z-index: var(--z-celula-fixa);
   overflow: visible;
   background: color-mix(in srgb, var(--shell-panel, #fff) 96%, var(--shell-primary, #2563eb) 4%);
   box-shadow: -10px 0 18px -18px rgba(15, 23, 42, 0.55);
 }
 
 .layout-shell .compras-data-table-solicitacoes th:last-child {
-  z-index: 4;
+  z-index: var(--z-celula-fixa-cabecalho);
   background: color-mix(in srgb, var(--shell-panel-strong, #fff) 88%, var(--shell-primary, #2563eb) 12%);
 }
 
@@ -9682,7 +10013,7 @@ body {
 .layout-shell .compras-data-table .app-status-pill {
   min-height: 1.45rem;
   padding: 0 0.48rem;
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   white-space: nowrap;
 }
 
@@ -9782,12 +10113,10 @@ body {
 
   .layout-shell .compras-data-table th {
     padding: 0.5rem 0.55rem;
-    font-size: 0.64rem;
   }
 
   .layout-shell .compras-data-table td {
     padding: 0.48rem 0.55rem;
-    font-size: 0.76rem;
   }
 
   .layout-shell .compras-icon-action {
@@ -9931,13 +10260,13 @@ body {
   flex-direction: column;
   gap: 0.35rem;
   color: var(--shell-muted, var(--c-muted));
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
 }
 
 .layout-shell .rhdp-apuracao-field small {
   color: var(--shell-muted, var(--c-muted));
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 500;
   line-height: 1.25;
 }
@@ -9966,7 +10295,7 @@ body {
 
 .layout-shell .rhdp-autocomplete-list {
   position: absolute;
-  z-index: 30;
+  z-index: var(--z-dropdown);
   top: calc(100% + 0.35rem);
   right: 0;
   left: 0;
@@ -9998,12 +10327,12 @@ body {
 }
 
 .layout-shell .rhdp-autocomplete-option strong {
-  font-size: 0.85rem;
+  font-size: var(--fonte-corpo);
 }
 
 .layout-shell .rhdp-autocomplete-option span {
   color: var(--shell-muted, var(--c-muted));
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .layout-shell .rhdp-apuracao-page .app-page-actions {
@@ -10079,7 +10408,7 @@ body {
 }
 
 .layout-shell .rhdp-apuracao-items-table th {
-  font-size: 0.62rem;
+  font-size: var(--fonte-detalhe);
   letter-spacing: 0.04em;
   line-height: 0.95rem;
   white-space: normal;
@@ -10095,7 +10424,7 @@ body {
   width: 100%;
   min-height: 2.35rem;
   padding: 0.5rem 0.65rem;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .layout-shell .rhdp-apuracao-items-table th,
@@ -10119,11 +10448,11 @@ body {
 }
 
 .layout-shell .app-dense-data-table th {
-  padding: 0.55rem 0.65rem;
+  padding: 0.55rem 0.45rem;
   border-bottom: 1px solid var(--shell-border, var(--ui-border));
   background: color-mix(in srgb, var(--shell-panel-strong, #fff) 88%, var(--shell-primary, #2563eb) 12%);
   color: var(--shell-muted, var(--c-muted));
-  font-size: 0.68rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 800;
   letter-spacing: 0.08em;
   line-height: 1rem;
@@ -10135,7 +10464,7 @@ body {
 .layout-shell .rh-colaboradores-table thead th {
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: var(--z-celula-fixa);
 }
 
 @media (max-width: 1024px) {
@@ -10208,10 +10537,10 @@ body {
 }
 
 .layout-shell .app-dense-data-table td {
-  padding: 0.52rem 0.65rem;
+  padding: 0.52rem 0.45rem;
   border-bottom: 1px solid var(--shell-border, var(--ui-border));
   color: var(--shell-text, var(--c-text));
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.15rem;
   vertical-align: middle;
   background: transparent;
@@ -10233,7 +10562,11 @@ body {
 
 .layout-shell .rhdp-page {
   max-width: 100%;
-  overflow-x: hidden;
+  /* CLIP, não hidden: hidden cria um contexto de rolagem e o cabeçalho
+     fixo (R13) passa a grudar NELE em vez de grudar na janela — a faixa
+     sumia na rolagem (defeito pego pelo harness em 02/09). Mesmo motivo
+     do overflow-x-clip do layout-shell. */
+  overflow-x: clip;
 }
 
 .layout-shell .rhdp-importacoes-workspace {
@@ -10267,7 +10600,7 @@ body {
 .layout-shell .rhdp-importacoes-lotes-table th,
 .layout-shell .rhdp-importacoes-lotes-table td {
   padding: 0.48rem 0.55rem;
-  font-size: 0.74rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .layout-shell .rhdp-importacoes-lotes-table th:nth-child(1),
@@ -10300,7 +10633,7 @@ body {
   max-width: 100%;
   overflow: hidden;
   color: var(--shell-muted, var(--c-muted));
-  font-size: 0.7rem;
+  font-size: var(--fonte-detalhe);
   line-height: 0.95rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -10318,7 +10651,7 @@ body {
 }
 
 .layout-shell .rhdp-importacao-summary-grid > div > div:last-child {
-  font-size: 1.25rem;
+  font-size: var(--fonte-bloco);
   line-height: 1.6rem;
 }
 
@@ -10340,10 +10673,42 @@ body {
   white-space: normal;
 }
 
+/*
+  DUAS COLUNAS: a proporção sai do CONTEÚDO, não de um palpite.
+
+  O defeito que isto corrige (medido nas capturas de 02/09, 1920 e 1366):
+  a divisão era 0,78fr para a lista e 1,22fr para o preview — ~700px contra
+  ~1150px em 1920. Só que a tabela de lotes tem SEIS colunas com largura de
+  papel dada pelo componente (identidade 160 de piso + código 130 + texto
+  180 + status 132 + texto 180 + ações 120 = 902px). Em 700px de cartão ela
+  não cabia: a coluna "Resultado" ficava cortada pela metade na borda do
+  cartão e o cabeçalho "COMPETÊNCIA" truncava. Do outro lado, o painel de
+  preview SEM lote escolhido tem uma frase dentro e ficava com 1150px.
+
+  Por isso o piso de 63rem na coluna da lista: 902px de tabela + o respiro
+  do cartão (2 × 16px do `.app-bloco`) + o do contêiner da tabela
+  (2 × 16px do `.app-table-shell`) + a calha de rolagem reservada
+  (`scrollbar-gutter: stable`, ~15px) = ~981px, com uma folga de degrau.
+  Abaixo disso a tabela volta a rolar dentro do cartão; acima, a sobra vai
+  para a coluna de conteúdo (T4).
+
+  As duas frações dizem o resto: enquanto o preview é só a frase de convite,
+  a lista vale o dobro dele; assim que um lote é escolhido (a tela põe o
+  modificador), o preview vira o bloco principal e a divisão se equilibra —
+  sem nunca comer o piso da lista.
+
+  O ponto de virada continua em 1536px porque abaixo dele os dois pisos
+  (63rem + 20rem + o vão) não caberiam lado a lado: empilhado, a tabela usa
+  a largura inteira da página, que é o melhor arranjo em 1366.
+*/
 @media (min-width: 1536px) {
   .layout-shell .rhdp-importacoes-workspace {
-    grid-template-columns: minmax(31rem, 0.78fr) minmax(0, 1.22fr);
+    grid-template-columns: minmax(63rem, 2fr) minmax(20rem, 1fr);
     align-items: start;
+  }
+
+  .layout-shell .rhdp-importacoes-workspace--com-preview {
+    grid-template-columns: minmax(63rem, 1fr) minmax(20rem, 1fr);
   }
 }
 
@@ -10362,7 +10727,7 @@ body {
 .layout-shell .app-dense-data-table .badge {
   min-height: 1.45rem;
   padding: 0 0.5rem;
-  font-size: 0.66rem;
+  font-size: var(--fonte-detalhe);
   white-space: nowrap;
 }
 
@@ -10430,8 +10795,8 @@ body {
 }
 
 .layout-shell .contratos-data-table th {
-  padding: 0.65rem 0.75rem;
-  font-size: 0.67rem;
+  padding: 0.65rem 0.5rem;
+  font-size: var(--fonte-detalhe);
   letter-spacing: 0.06em;
   line-height: 1.25;
   white-space: normal;
@@ -10473,7 +10838,7 @@ body {
 
 .layout-shell .contratos-sort-indicator {
   flex: 0 0 auto;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1;
   opacity: 0.7;
 }
@@ -10490,8 +10855,8 @@ body {
 }
 
 .layout-shell .contratos-data-table td {
-  padding: 0.78rem 0.75rem;
-  font-size: 0.8rem;
+  padding: 0.78rem 0.5rem;
+  font-size: var(--fonte-detalhe);
   line-height: 1.35;
   vertical-align: top;
   border-bottom: 1px solid color-mix(in srgb, var(--shell-border, var(--ui-border)) 72%, transparent);
@@ -10562,7 +10927,7 @@ body {
   min-width: 0;
   height: 2.25rem;
   padding: 0.45rem 0.6rem;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 .layout-shell .contratos-table-number {
@@ -10613,7 +10978,7 @@ body {
 }
 
 .layout-shell .contratos-icon-action--danger {
-  color: #b91c1c;
+  color: var(--sem-danger);
 }
 
 .layout-shell .contratos-icon-action--muted {
@@ -10626,13 +10991,13 @@ body {
 }
 
 .layout-shell .contratos-icon-action--success:hover:not(:disabled) {
-  border-color: color-mix(in srgb, #059669 46%, var(--shell-border, #cbd5e1));
-  background: color-mix(in srgb, #059669 12%, var(--shell-panel, #fff));
+  border-color: color-mix(in srgb, var(--sem-success) 46%, var(--shell-border, #cbd5e1));
+  background: color-mix(in srgb, var(--sem-success) 12%, var(--shell-panel, #fff));
 }
 
 .layout-shell .contratos-icon-action--danger:hover:not(:disabled) {
-  border-color: color-mix(in srgb, #dc2626 46%, var(--shell-border, #cbd5e1));
-  background: color-mix(in srgb, #dc2626 10%, var(--shell-panel, #fff));
+  border-color: color-mix(in srgb, var(--sem-danger) 46%, var(--shell-border, #cbd5e1));
+  background: color-mix(in srgb, var(--sem-danger) 10%, var(--shell-panel, #fff));
 }
 
 .dark .layout-shell .contratos-table-wrapper {
@@ -10668,7 +11033,7 @@ body {
 .layout-shell .contratos-selection-toolbar__title {
   flex: 0 0 auto;
   padding: 0 0.45rem;
-  font-size: 0.82rem;
+  font-size: var(--fonte-corpo);
   font-weight: 800;
   color: var(--shell-text, var(--c-text));
 }
@@ -10833,7 +11198,25 @@ body {
   width: 100%;
   max-width: min(100%, 88rem);
   min-width: 0;
-  overflow-x: hidden;
+  /*
+    R18 — `clip`, nunca `hidden`. SEGUNDA CAUSA NA MESMA DIV (05/09).
+
+    Esta tela reprovou nas mesmas três células (R18, C1 e X2) em duas
+    rodadas seguidas. Na primeira a causa era `container-type: inline-size`
+    no `compras-responsive.css`; consertei aquilo e a tela voltou a
+    reprovar exatamente igual, agora por esta linha. Duas declarações de
+    arquivos diferentes matando o mesmo `sticky` no MESMO elemento — achar
+    uma e parar de procurar foi o meu erro.
+
+    O mecanismo é o de sempre: `overflow-x: hidden` faz o `overflow-y`
+    computar `auto`, a página vira scrollport e a faixa fixa (R13) gruda
+    NELA em vez de na janela — sumia na rolagem e sobrepunha a topbar em
+    493px. `clip` recorta igual, sem criar scrollport: o que esta regra
+    existe para fazer (não deixar filtro, card e tabela empurrarem a página
+    para fora) continua valendo. Mesmo caso já registrado em
+    `.financeiro-relatorios-page`, medido em 04/09 com 492px.
+  */
+  overflow-x: clip;
 }
 
 .layout-shell .compras-cotacoes-page > *,
@@ -10855,7 +11238,11 @@ body {
 }
 
 .layout-shell .compras-cotacoes-page .compras-table-card {
-  overflow: hidden;
+  /* Mesma troca, aqui de forma preventiva: hoje esta tabela não declara
+     coluna fixa, então não há `sticky` para matar e o R18 não tem alvo.
+     No dia em que ela ganhar uma, `hidden` reprovaria pelo mesmo mecanismo
+     de cima. Trocar agora sai de graça e recorta igual. */
+  overflow: clip;
 }
 
 .layout-shell .compras-cotacoes-page .compras-table-wrapper {
@@ -11114,10 +11501,11 @@ body {
   border: 1px solid transparent;
   border-radius: 12px;
   padding: 0.375rem 0.875rem;
-  font-size: 11px;
+  /* Piso de leitura da escala: nada de conteúdo abaixo de 12px (R10). */
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   color: var(--c-muted);
   background: transparent;
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
@@ -11143,8 +11531,10 @@ body {
   inset: 0;
   z-index: var(--z-modal);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 1rem;
   background: var(--modal-overlay);
   backdrop-filter: blur(4px);
@@ -11163,8 +11553,8 @@ body {
   inset: 0;
   z-index: var(--z-modal);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   overflow: auto;
   padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
   background: var(--modal-overlay);
@@ -11196,6 +11586,10 @@ body {
    shell, inclusive quando ainda nao recebeu role="dialog". */
 .layout-main :where(.modal-overlay, .fixed.inset-0) {
   z-index: var(--z-modal) !important;
+  align-items: safe center;
+  justify-content: safe center;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-dialog {
@@ -11203,8 +11597,8 @@ body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: 100%;
-  max-width: var(--modal-max-w-md);
-  max-height: min(90vh, 860px);
+  max-width: min(var(--modal-max-w-md), calc(100vw - 2rem));
+  max-height: min(calc(100dvh - 2rem), 860px);
   background: var(--modal-bg);
   border: 1px solid var(--modal-border);
   border-radius: var(--modal-radius);
@@ -11230,7 +11624,7 @@ body {
 
 .modal-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fonte-bloco);
   font-weight: 700;
   color: var(--c-text);
   line-height: 1.3;
@@ -11238,7 +11632,7 @@ body {
 
 .modal-subtitle {
   margin: 0.15rem 0 0;
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
 }
 
@@ -11263,7 +11657,9 @@ body {
 }
 
 .modal-body {
-  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
   padding: 1.25rem;
   background: var(--modal-bg);
   overscroll-behavior: contain;
@@ -11290,7 +11686,7 @@ body {
 
 /* Operacoes financeiras extensas: baixa em massa e multiplas fontes. */
 .finance-operation-modal-overlay {
-  z-index: 130;
+  z-index: var(--z-modal-acima);
 }
 
 .modal-dialog.finance-operation-modal {
@@ -11354,7 +11750,7 @@ body {
   border: 1px solid;
   border-radius: 0.75rem;
   padding: 0.75rem;
-  font-size: 0.875rem;
+  font-size: var(--fonte-corpo);
 }
 
 .finance-operation-notice--warning {
@@ -11408,15 +11804,16 @@ body {
 @media (max-width: 639px) {
   .modal-overlay,
   .app-modal-overlay {
-    align-items: flex-end;
-    padding: 0;
+    align-items: safe center;
+    justify-content: safe center;
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
   }
 
   .modal-dialog,
   .app-modal-surface {
-    max-width: 100%;
-    max-height: calc(100dvh - env(safe-area-inset-top));
-    border-radius: var(--modal-radius) var(--modal-radius) 0 0;
+    max-width: calc(100vw - max(1.5rem, env(safe-area-inset-left) + env(safe-area-inset-right)));
+    max-height: calc(100dvh - max(1.5rem, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    border-radius: var(--modal-radius);
   }
 
   .modal-dialog.finance-operation-modal,
@@ -11460,7 +11857,7 @@ body {
   padding: 0.18rem 0.6rem;
   border-radius: 999px;
   border: 1px solid;
-  font-size: 0.72rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -11540,7 +11937,7 @@ body {
 .badge-status--md {
   min-height: 26px;
   padding: 0.25rem 0.75rem;
-  font-size: 0.78rem;
+  font-size: var(--fonte-detalhe);
 }
 
 /* ============================
@@ -11626,14 +12023,14 @@ body {
 
 .empty-state__title {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--fonte-corpo);
   font-weight: 700;
   color: var(--c-text);
 }
 
 .empty-state__description {
   margin: 0;
-  font-size: 0.84rem;
+  font-size: var(--fonte-corpo);
   color: var(--c-muted);
   max-width: 36ch;
   line-height: 1.5;
@@ -11683,7 +12080,7 @@ body {
 }
 
 .form-label {
-  font-size: 0.8rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 600;
   color: var(--c-text);
   line-height: 1.3;
@@ -11696,14 +12093,14 @@ body {
 }
 
 .form-hint {
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-muted);
   line-height: 1.4;
   margin-top: 0.2rem;
 }
 
 .form-error {
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   color: var(--c-danger);
   font-weight: 600;
   line-height: 1.3;
@@ -11740,7 +12137,7 @@ body {
   border-radius: 8px;
   background: var(--c-text);
   color: var(--c-bg);
-  font-size: 0.75rem;
+  font-size: var(--fonte-detalhe);
   font-weight: 500;
   line-height: 1.35;
   pointer-events: none;
@@ -11752,4 +12149,1115 @@ body {
 .tooltip-wrap:hover .tooltip-content,
 .tooltip-wrap:focus-within .tooltip-content {
   opacity: 1;
+}
+
+/* ============================================================================
+   RH/DP • Pessoal — a tela consolidada (Fase 6 do modulo DP, 26/08)
+   ---------------------------------------------------------------------------
+   O cliente pediu que quem tem solicitacao em aberto "seja posicionado primeiro
+   na lista e ganhe destaque visual e de status". A ordenacao vem do backend; o
+   destaque e daqui.
+
+   A barra lateral colorida foi escolhida em vez de fundo forte de propósito: a
+   linha continua legivel na leitura normal, e o olho ainda encontra as
+   pendentes de longe. Fundo forte em varias linhas transforma a tabela em
+   semaforo e o destaque deixa de destacar.
+   ========================================================================== */
+
+.rh-pessoal-linha--pendente > td:first-child {
+  box-shadow: inset 3px 0 0 0 #2B5CE6;
+}
+
+.rh-pessoal-linha--pendente {
+  background: rgba(43, 92, 230, 0.05);
+}
+
+.dark .rh-pessoal-linha--pendente {
+  background: rgba(123, 160, 245, 0.08);
+}
+
+.dark .rh-pessoal-linha--pendente > td:first-child {
+  box-shadow: inset 3px 0 0 0 #7BA0F5;
+}
+
+/* --- avisos visuais no topo: o que exige acao, contado por tipo --- */
+.rh-pessoal-alertas {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.rh-pessoal-alerta {
+  border: 1px solid var(--border-color, #DDE1E8);
+  border-left: 3px solid #2B5CE6;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--surface-color, #fff);
+}
+
+.dark .rh-pessoal-alerta {
+  border-color: #2A303A;
+  border-left-color: #7BA0F5;
+  background: #161A21;
+}
+
+.rh-pessoal-alerta-numero {
+  font-size: var(--fonte-destaque);
+  font-weight: 700;
+  line-height: var(--lh-destaque);
+  font-variant-numeric: tabular-nums;
+}
+
+.rh-pessoal-alerta-texto {
+  font-size: var(--fonte-corpo);
+  opacity: 0.75;
+}
+
+/* --- chips de tipo de solicitacao --- */
+.rh-chip {
+  display: inline-block;
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: rgba(120, 130, 148, 0.14);
+  margin-right: 4px;
+}
+
+/* Azul = decisao do DP. Roxo = decisao da DIRETORIA. A cor diz de quem e a vez,
+   e nao so o que e o pedido — que e a duvida real de quem olha a lista. */
+.rh-chip--pedido { background: rgba(43, 92, 230, 0.14); color: #12306E; }
+.rh-chip--evento { background: rgba(21, 128, 61, 0.14); color: #0B4522; }
+.rh-chip--diretoria { background: rgba(107, 47, 191, 0.14); color: #3D1A70; }
+.rh-chip--saindo { background: rgba(180, 83, 9, 0.16); color: #7A3908; }
+
+.dark .rh-chip--pedido { color: #A9C4FF; }
+.dark .rh-chip--evento { color: #8FD9AC; }
+.dark .rh-chip--diretoria { color: #C8AEF2; }
+.dark .rh-chip--saindo { color: #E9A153; }
+
+/* --- lista de solicitacoes do colaborador --- */
+.rh-pessoal-pedidos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rh-pessoal-pedido {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--border-color, #DDE1E8);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.dark .rh-pessoal-pedido { border-color: #2A303A; }
+
+.rh-pessoal-devolucao {
+  color: #B91C1C;
+  margin-top: 2px;
+}
+
+.dark .rh-pessoal-devolucao { color: #EE7B7B; }
+
+/* --- abas de Pessoal: solicitacoes primeiro, colaboradores depois (26/08) --- */
+.rh-pessoal-abas {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color, #DDE1E8);
+}
+
+.dark .rh-pessoal-abas { border-bottom-color: #2A303A; }
+
+.rh-pessoal-aba {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.rh-pessoal-aba:hover { opacity: 0.9; }
+
+.rh-pessoal-aba--ativa {
+  opacity: 1;
+  border-bottom-color: #2B5CE6;
+}
+
+.dark .rh-pessoal-aba--ativa { border-bottom-color: #7BA0F5; }
+
+/* O contador vive no rotulo da aba: e onde o olho ja vai antes de decidir onde clicar. */
+.rh-pessoal-aba-contador {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #2B5CE6;
+  color: #fff;
+  font-size: var(--fonte-detalhe);
+  font-variant-numeric: tabular-nums;
+}
+
+.dark .rh-pessoal-aba-contador { background: #7BA0F5; color: #0E1116; }
+
+/* As segundas reguas organizam operacoes da mesma area sem competir com as
+   abas principais de Pessoal. Mantem densidade de sistema e rolagem mobile. */
+.rh-transferencias-subabas,
+.rh-jornada-subabas {
+  margin-top: -2px;
+  background: color-mix(in srgb, var(--card-bg, #fff) 72%, transparent);
+}
+
+.rh-transferencias-subabas .rh-pessoal-aba,
+.rh-jornada-subabas .rh-pessoal-aba {
+  padding: 8px 12px;
+  font-size: var(--fonte-pequena);
+}
+
+/* --- conferencia de documentos na solicitacao --- */
+.rh-pessoal-conferencia {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fonte-corpo);
+  border: 1px solid var(--border-color, #DDE1E8);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.dark .rh-pessoal-conferencia { border-color: #2A303A; }
+
+/* Cores diferentes porque as duas pendencias exigem acoes diferentes: o que aguarda conferencia
+   depende do DP; o que nunca chegou depende da obra. */
+.rh-pessoal-conferencia--aguarda { color: #B45309; }
+.rh-pessoal-conferencia--falta { color: #B91C1C; }
+
+.dark .rh-pessoal-conferencia--aguarda { color: #E9A153; }
+.dark .rh-pessoal-conferencia--falta { color: #EE7B7B; }
+
+.rh-chip--aberta { background: rgba(180, 83, 9, 0.16); color: #7A3908; }
+.rh-chip--devolvida { background: rgba(185, 28, 28, 0.14); color: #7F1D1D; }
+
+.dark .rh-chip--aberta { color: #E9A153; }
+.dark .rh-chip--devolvida { color: #EE7B7B; }
+
+.rh-pessoal-historico {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--fonte-corpo);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rh-pessoal-historico li {
+  padding-left: 12px;
+  border-left: 2px solid var(--border-color, #DDE1E8);
+}
+
+.dark .rh-pessoal-historico li { border-left-color: #2A303A; }
+
+.rh-pessoal-historico-meta {
+  color: var(--app-muted-color, #64748b);
+  font-size: var(--fonte-legenda);
+  margin-bottom: 2px;
+}
+
+/* Resumo operacional do pedido de pessoal: dados densos e escaneaveis, sem transformar cada
+   campo em um card. A justificativa ocupa a linha toda porque e o unico conteudo livre/longo. */
+.rh-solicitacao-resumo {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border-color, #DDE1E8);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rh-solicitacao-resumo > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 11px;
+  border-right: 1px solid var(--border-color, #DDE1E8);
+  border-bottom: 1px solid var(--border-color, #DDE1E8);
+}
+
+.rh-solicitacao-resumo > div:nth-child(3n) { border-right: 0; }
+.rh-solicitacao-resumo > div > span {
+  color: var(--app-muted-color, #64748b);
+  font-size: var(--fonte-legenda);
+}
+.rh-solicitacao-resumo > div > strong { overflow-wrap: anywhere; }
+.rh-solicitacao-resumo .rh-solicitacao-resumo--largo {
+  grid-column: 1 / -1;
+  border-right: 0;
+}
+
+.dark .rh-solicitacao-resumo,
+.dark .rh-solicitacao-resumo > div { border-color: #2A303A; }
+
+@media (max-width: 720px) {
+  .rh-solicitacao-resumo { grid-template-columns: 1fr; }
+  .rh-solicitacao-resumo > div,
+  .rh-solicitacao-resumo > div:nth-child(3n) { border-right: 0; }
+}
+
+/* Envio de documento na solicitacao: tipo, arquivo e o botao, na mesma linha em tela larga. */
+.rh-pessoal-envio {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(200px, 1fr) minmax(200px, 1fr) auto;
+  align-items: center;
+  border: 1px dashed var(--border-color, #C3C9D4);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.dark .rh-pessoal-envio { border-color: #3A424F; }
+
+@media (max-width: 720px) {
+  .rh-pessoal-envio { grid-template-columns: 1fr; }
+}
+
+/* Jornada: campos numericos estreitos para caber o mes inteiro na tela sem rolagem lateral. */
+.rh-jornada-numero {
+  max-width: 110px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dias + faltas passando do mes: erro na linha, e nao so na mensagem no rodape. Quem digita precisa
+   ver ONDE errou, nao so QUE errou. */
+.rh-jornada-linha--erro > td:first-child {
+  box-shadow: inset 3px 0 0 0 #B91C1C;
+}
+
+.rh-jornada-linha--erro { background: rgba(185, 28, 28, 0.06); }
+
+.dark .rh-jornada-linha--erro { background: rgba(238, 123, 123, 0.09); }
+.dark .rh-jornada-linha--erro > td:first-child { box-shadow: inset 3px 0 0 0 #EE7B7B; }
+
+/* ============================================================================
+   Responsividade das tabelas do modulo DP (26/08)
+   ---------------------------------------------------------------------------
+   O defeito que isto corrige: os botoes da coluna de acoes quebravam UM
+   CARACTERE POR LINHA ("A c o m p a n h a r"), porque a celula ficava estreita
+   e nada impedia a palavra de quebrar. Largura de coluna sozinha nao resolve —
+   em tela estreita a celula encolhe de novo.
+
+   A regra e: o botao NUNCA quebra por dentro; quem quebra e a lista de botoes,
+   passando para a linha de baixo. E a tabela rola na horizontal quando nem isso
+   basta, em vez de espremer.
+   ========================================================================== */
+
+.rh-pessoal-table .app-page-actions,
+.rh-pessoal-page .app-dense-data-table .app-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.rh-pessoal-page .app-dense-data-table .btn,
+.rh-pessoal-page .rh-pessoal-pedido .btn {
+  white-space: nowrap;
+  word-break: keep-all;
+  flex: 0 0 auto;
+}
+
+/* Botao pequeno dentro de tabela: menos respiro lateral para caber mais por linha. */
+.rh-pessoal-page .app-dense-data-table .btn-sm {
+  padding: 4px 9px;
+  font-size: var(--fonte-corpo);
+}
+
+.rh-pessoal-page .rh-chip,
+.rh-pessoal-page .app-dense-data-table td {
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+/* A tabela rola dentro do proprio quadro — a PAGINA nunca rola de lado. */
+.rh-pessoal-page .app-dense-table-wrapper,
+.rhdp-page .app-dense-table-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Em tela estreita os filtros viram uma coluna so, em vez de espremer lado a lado. */
+@media (max-width: 900px) {
+  .rh-pessoal-page .rh-colaboradores-filter-grid,
+  .rhdp-page .rh-colaboradores-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rh-pessoal-abas {
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+/* Jornada: os campos numericos nao encolhem abaixo do legivel. */
+.rhdp-page .rh-jornada-numero {
+  min-width: 78px;
+}
+
+/* ============================================================================
+   Botao dentro de TABELA nao estica em tela estreita (26/08)
+   ---------------------------------------------------------------------------
+   Existe uma regra global em `@media (max-width: 767px)` que faz
+   `.app-page-actions .btn { flex: 1 1 auto }`. Ela e correta para os botoes do
+   TOPO da pagina — em celular, um botao largo e mais facil de acertar com o
+   dedo.
+
+   Dentro de uma tabela ela erra: a celula de acoes tem cinco botoes, e cada um
+   passa a ocupar a largura inteira da coluna, um embaixo do outro. A linha fica
+   com 200px de altura e a tabela vira uma escada.
+
+   Aqui o botao volta a ter a largura do texto. A tabela ja rola na horizontal
+   dentro do proprio quadro, entao nao ha o que espremer.
+
+   Vale para o modulo DP inteiro (`.rhdp-page`), nao so para uma tela: as tres
+   tabelas tem coluna de acoes.
+   ========================================================================== */
+
+@media (max-width: 767px) {
+  .rhdp-page table .app-page-actions {
+    width: auto;
+  }
+
+  .rhdp-page table .app-page-actions .btn,
+  .rhdp-page table .app-page-actions label.btn {
+    flex: 0 0 auto;
+    width: auto;
+  }
+}
+
+/* ============================================================================
+   Acoes em icone na tabela do modulo DP (26/08)
+   ---------------------------------------------------------------------------
+   Cinco botoes escritos por linha ocupavam 400px de coluna e ainda quebravam em
+   duas fileiras. A tabela virava uma escada, e o nome do colaborador — que e o
+   que se procura — competia com os botoes.
+
+   Alvo de toque de 34px: abaixo disso o dedo erra no celular, e o ganho de
+   espaco nao compensa o clique errado numa acao como "Demitir".
+   ========================================================================== */
+
+.rh-acoes-icones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.rh-acao-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-color, #DDE1E8);
+  border-radius: 8px;
+  background: var(--surface-color, #fff);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+
+.rh-acao-icone svg {
+  width: 18px;
+  height: 18px;
+}
+
+.rh-acao-icone:hover {
+  border-color: #2B5CE6;
+  color: #2B5CE6;
+  background: rgba(43, 92, 230, 0.07);
+}
+
+/* Foco visivel: a acao e so um icone, entao quem navega por teclado precisa ver onde esta. */
+.rh-acao-icone:focus-visible {
+  outline: 2px solid #2B5CE6;
+  outline-offset: 2px;
+}
+
+.dark .rh-acao-icone {
+  border-color: #2A303A;
+  background: #161A21;
+}
+
+.dark .rh-acao-icone:hover {
+  border-color: #7BA0F5;
+  color: #7BA0F5;
+  background: rgba(123, 160, 245, 0.12);
+}
+
+.dark .rh-acao-icone:focus-visible { outline-color: #7BA0F5; }
+
+/* Conteudo dentro do modal: respiro e rolagem propria quando o formulario e longo. */
+.rh-modal-conteudo {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: min(86dvh, 860px);
+}
+
+/* Regra global de botao impoe `min-height: 42px`, e em CSS o `min-height` VENCE o `max-height` —
+   nao adianta limitar por cima. Aqui o `min-height` e sobrescrito com especificidade maior, para o
+   icone ficar quadrado (34x34) em vez de 34x42. */
+.rhdp-page .rh-acoes-icones .rh-acao-icone,
+.rh-pessoal-page .rh-acoes-icones .rh-acao-icone {
+  min-height: 34px;
+  height: 34px;
+  max-height: 34px;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Troca de obra na linha: origem, seta, destino. O destino em destaque porque e o que muda. */
+.rh-troca-obra {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--fonte-corpo);
+}
+
+.rh-troca-obra-origem { opacity: 0.7; }
+.rh-troca-obra-seta { opacity: 0.5; }
+.rh-troca-obra-destino { font-weight: 600; }
+
+/* Linha de quem ainda nao comecou nesta obra: visivel, mas claramente fora do mes. */
+.rh-jornada-linha--futura { opacity: 0.62; }
+.rh-jornada-linha--futura > td:first-child { box-shadow: inset 3px 0 0 0 #B45309; }
+.rh-jornada-futura-nota { color: #B45309; }
+
+.dark .rh-jornada-linha--futura > td:first-child { box-shadow: inset 3px 0 0 0 #E9A153; }
+.dark .rh-jornada-futura-nota { color: #E9A153; }
+
+/* ============================================================================
+   Largura das telas do modulo DP (26/08)
+   ---------------------------------------------------------------------------
+   `.page` tem `max-width: 1100px`, medida boa para tela de LEITURA — o texto
+   nao fica largo demais para o olho acompanhar.
+
+   Mas Pessoal e Jornada sao GRADES DE DADOS. A jornada tem nove colunas
+   (colaborador, vinculo, salario, dias, faltas, horas extras, acrescimos,
+   descontos, observacao) e soma cerca de 1260px. Em 1100 ela nasce apertada:
+   o card fica menor que o de filtros logo acima e a tabela rola de lado desde
+   o primeiro acesso, mesmo numa tela larga.
+
+   1480px cabe a jornada inteira sem rolagem num monitor comum, e continua
+   longe de "texto atravessando a tela" — porque aqui nao ha texto corrido.
+
+   `width: 100%` no form e no card: na Jornada a tabela vive dentro de um
+   `<form>`, e sem isso ele se ajusta ao conteudo em vez de ocupar a linha,
+   deixando o card visivelmente mais estreito que o de filtros.
+   ========================================================================== */
+
+.rhdp-page {
+  max-width: 1480px;
+}
+
+/**
+ * DESCENDENTE, e nao filho direto (`>`).
+ *
+ * A primeira versao usava `.rhdp-page > form`. Funcionava na Jornada como PAGINA, onde o form e
+ * filho direto — e parava de funcionar quando a Jornada virou ABA, porque ali ela e envolvida por
+ * um `div` da pagina anfitria e o form desce um nivel.
+ *
+ * O sintoma: o card da tabela ficava mais estreito E recuado em relacao ao card de filtros logo
+ * acima, porque o form se ajustava ao conteudo em vez de ocupar a linha.
+ */
+.rhdp-page form,
+.rhdp-page .app-table-shell {
+  width: 100%;
+  min-width: 0;
+}
+
+/* A tabela continua rolando DENTRO do quadro quando a tela for menor que ela.
+   A pagina nunca rola de lado. */
+.rhdp-page .app-dense-table-wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* ============================================================================
+   Form que ENVOLVE TABELA ocupa a linha inteira (26/08)
+   ---------------------------------------------------------------------------
+   Existe uma regra do sistema:
+
+     .solicitacoes-page:not(.solicitacao-nova-page) form {
+       width: min(100%, var(--app-form-shell-max-width));
+       margin-inline: auto;
+     }
+
+   Ela esta CERTA para formulario de digitacao — campo de texto com 1300px de
+   largura e desconfortavel de ler e de preencher. Por isso nao a derrubo para
+   todo form.
+
+   Mas o form da Jornada envolve uma TABELA de nove colunas. Ali a largura de
+   leitura vira prejuizo: o card fica mais estreito e recuado em relacao ao de
+   filtros logo acima, e a tabela rola de lado antes do necessario.
+
+   `rh-form-com-tabela` marca essa excecao explicitamente. A especificidade
+   precisa empatar com a regra do sistema (`:not()` conta como classe), e o
+   `margin-inline` precisa ser desfeito — sem ele o form fica centralizado
+   mesmo com largura total.
+   ========================================================================== */
+
+/*
+ * `form.rh-form-com-tabela`, com o ELEMENTO junto da classe.
+ *
+ * A regra do sistema e `.solicitacoes-page:not(.solicitacao-nova-page) form` — duas classes e um
+ * elemento, especificidade (0,2,1). `.solicitacoes-page .rh-form-com-tabela` da (0,2,0) e PERDE,
+ * mesmo vindo depois no arquivo. Escrever `form.` na frente empata em (0,2,1), e a ordem decide a
+ * favor desta, que vem por ultimo.
+ */
+.solicitacoes-page form.rh-form-com-tabela,
+.rhdp-page form.rh-form-com-tabela {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+}
+
+/*
+ * O ALERTA DE APONTAMENTOS DA DEMISSAO (Fase 11).
+ *
+ * Cor de AVISO, e nao de erro. Ferias vencidas nao impedem demitir — mudam a rescisao, e quem
+ * decide isso e o DP. Pintar de vermelho faria parecer que o sistema recusou, e a pessoa procuraria
+ * o que "consertar" antes de seguir.
+ *
+ * Tokens dos dois temas: o bloco vive dentro de um modal, que herda o fundo do tema do visitante.
+ */
+.rh-alerta-apontamentos {
+  border: 1px solid var(--app-number-warning, #d97706);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  background: color-mix(in srgb, var(--app-number-warning, #d97706) 10%, transparent);
+  color: var(--app-body-color, inherit);
+  font-size: var(--fonte-corpo);
+}
+
+.rh-alerta-apontamentos ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+
+.rh-alerta-apontamentos li + li {
+  margin-top: 0.2rem;
+}
+
+/*
+ * ANEXOS DENTRO DO MODAL (27/08).
+ *
+ * Cada linha e "tipo + arquivo + remover". Em tela estreita as tres viram uma coluna: o seletor de
+ * tipo e o campo de arquivo lado a lado em 375px deixariam os dois ilegiveis, e o nome do arquivo
+ * escolhido — que e o que confirma que a pessoa pegou o certo — some primeiro.
+ */
+.rh-anexos-do-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border: 1px dashed var(--c-border, #d8e2f1);
+  border-radius: 10px;
+}
+
+.rh-anexos-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.rh-anexo-linha {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.5fr) auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+/* `minmax(0, ...)` acima e o que impede o nome longo de arquivo de esticar a grade e empurrar o
+   botao Remover para fora do modal. */
+
+@media (max-width: 767px) {
+  .rh-anexo-linha {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * O chip do RASCUNHO — neutro de proposito.
+ *
+ * Rascunho nao e alerta nem sucesso: e trabalho que ainda nao saiu da mesa de quem abriu. Pintar de
+ * cor de aviso o colocaria no mesmo peso visual de "aguardando decisao", que e onde a bola esta com
+ * outra pessoa.
+ */
+.rh-chip--rascunho {
+  background: color-mix(in srgb, var(--app-muted-color, #64748b) 14%, transparent);
+  color: var(--app-muted-color, #64748b);
+  border: 1px dashed color-mix(in srgb, var(--app-muted-color, #64748b) 45%, transparent);
+}
+
+/* =====================================================================
+   DETALHE DA SOLICITAÇÃO — layout configurável em blocos
+   ===================================================================== */
+/* Duas colunas com ordem sequencial (desce a 1ª, continua na 2ª);
+   cada bloco inteiro numa coluna só. No mobile vira coluna única
+   dentro das abas. */
+.sol-detail-blocos {
+  column-gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .sol-detail-blocos {
+    columns: 2;
+  }
+}
+
+.sol-detail-bloco {
+  break-inside: avoid;
+  margin-bottom: 1.5rem;
+  display: flow-root;
+}
+
+.sol-detail-blocos--mobile {
+  columns: 1;
+}
+
+.sol-detail-blocos-toolbar,
+.app-blocos-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sol-detail-personalizando,
+.app-blocos-ligado {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+
+.sol-detail-bloco-toolbar,
+.app-blocos-barra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  margin-bottom: 6px;
+  border: 1px dashed var(--c-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--c-surface) 92%, transparent);
+  cursor: grab;
+}
+
+.sol-detail-bloco-arrastar,
+.app-blocos-arrastar {
+  font-size: var(--fonte-detalhe);
+  letter-spacing: -2px;
+  color: var(--c-muted);
+}
+
+.sol-detail-bloco-nome,
+.app-blocos-nome {
+  flex: 1;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-muted);
+}
+
+.sol-detail-bloco-recolhido,
+.app-blocos-recolhido {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px dashed var(--c-border);
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  color: var(--c-muted);
+  cursor: pointer;
+}
+
+.sol-detail-bloco-recolhido:hover,
+.app-blocos-recolhido:hover {
+  color: var(--c-primary);
+  border-color: var(--c-primary);
+}
+
+/* Menu "⋯" das ações secundárias do cabeçalho */
+.sol-detail-mais-wrap {
+  position: relative;
+}
+
+.sol-detail-mais-btn {
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+
+.sol-detail-mais-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  min-width: 210px;
+  padding: 6px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+}
+
+.sol-detail-mais-menu button {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  text-align: left;
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  color: var(--c-text);
+  cursor: pointer;
+}
+
+.sol-detail-mais-menu button:hover {
+  background: color-mix(in srgb, var(--c-primary) 8%, transparent);
+}
+
+/* Abas do detalhe no mobile + ação principal fixa */
+.sol-detail-acao-fixa {
+  position: sticky;
+  top: calc(58px + var(--safe-area-top, 0px));
+  z-index: var(--z-faixa-presa-acima);
+  padding: 8px 0;
+  background: var(--c-bg);
+}
+
+.sol-detail-abas {
+  position: sticky;
+  top: calc(112px + var(--safe-area-top, 0px));
+  z-index: var(--z-faixa-presa);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+.sol-detail-aba {
+  flex: 1;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  color: var(--c-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sol-detail-aba.ativa {
+  background: color-mix(in srgb, var(--c-primary) 12%, transparent);
+  color: var(--c-primary);
+}
+
+/* =====================================================================
+   DETALHE — "Detalhes informados" (pares lidos da descrição) e
+   personalização ampliada (largura, remover, adicionar bloco)
+   ===================================================================== */
+/* Discreto de propósito: são leituras do texto livre da descrição, não
+   campos do sistema — não devem parecer campo estruturado. */
+.sol-detail-informados {
+  margin-top: 0.9rem;
+  padding: 0.65rem 0.85rem;
+  border-left: 3px solid var(--c-border);
+  background: color-mix(in srgb, var(--c-surface) 55%, transparent);
+  border-radius: 0 10px 10px 0;
+}
+
+.sol-detail-informados-titulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0.4rem;
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+}
+
+.sol-detail-informados-titulo > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.sol-detail-informados-nota {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-style: italic;
+}
+
+.sol-detail-informados-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.4rem;
+  margin: 0;
+}
+
+.sol-detail-informados-par {
+  display: flex;
+  gap: 6px;
+  font-size: var(--fonte-corpo);
+}
+
+.sol-detail-informados-par dt {
+  color: var(--c-muted);
+  font-weight: 600;
+}
+
+.sol-detail-informados-par dt::after {
+  content: ':';
+}
+
+.sol-detail-informados-par dd {
+  margin: 0;
+  color: var(--c-text);
+}
+
+/* Personalização ampliada */
+.sol-detail-arranjo {
+  display: flex;
+  flex-direction: column;
+}
+
+.sol-detail-segmento-total .sol-detail-bloco {
+  width: 100%;
+}
+
+.sol-detail-bloco-largura select,
+.app-blocos-largura select,
+.sol-detail-historico-ordem select {
+  border: 1px solid var(--c-border);
+  border-radius: 7px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  padding: 2px 6px;
+}
+
+.sol-detail-historico-ordem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+
+.sol-detail-bloco-remover,
+.app-blocos-remover {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--c-muted);
+  cursor: pointer;
+}
+
+.sol-detail-bloco-remover:hover,
+.app-blocos-remover:hover {
+  color: var(--sem-danger);
+}
+
+.sol-detail-adicionar-wrap,
+.app-blocos-adicionar {
+  position: relative;
+}
+
+.sol-detail-adicionar-pop,
+.app-blocos-adicionar-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-dropdown);
+  min-width: 230px;
+  padding: 6px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+}
+
+.sol-detail-adicionar-pop button,
+.app-blocos-adicionar-pop button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  text-align: left;
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  color: var(--c-text);
+  cursor: pointer;
+}
+
+.sol-detail-adicionar-pop button:hover,
+.app-blocos-adicionar-pop button:hover {
+  background: color-mix(in srgb, var(--c-primary) 8%, transparent);
+}
+
+/* =====================================================================
+   BLOCOS PERSONALIZÁVEIS — O PREFIXO NEUTRO (05/09)
+   ---------------------------------------------------------------------
+   O mecanismo saiu de duas telas e virou `components/padrao/
+   BlocosPersonalizaveis.jsx`. As regras de desenho dele já existiam
+   acima, escritas com o prefixo `sol-detail-*`, e a Home as usava assim
+   mesmo — uma tela vestindo o CSS da outra. Em vez de duplicar as
+   declarações, os seletores neutros entraram AO LADO dos antigos, na
+   mesma regra: um desenho só, dois nomes, e o `sol-detail-*` continua
+   valendo para o que ainda é do detalhe (a barra de ordem do histórico,
+   por exemplo).
+
+   O que precisa nascer aqui é só a GRADE, porque as duas telas a
+   escreviam de formas diferentes: o detalhe com `columns: 2` (fluxo
+   sequencial, cada bloco inteiro numa coluna) e a Home com `grid` de
+   duas colunas. A grade neutra é a da Home — bloco de relatório tem
+   altura própria e alinhar o topo é o que deixa a leitura em pares —, e
+   o detalhe segue com a dele passando `classes` ao componente.
+   ===================================================================== */
+.app-blocos-arranjo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-4);
+  /* Item de grade da `.app-pagina` — sem `min-width: 0` o mínimo dele é o
+     mínimo do CONTEÚDO, e o invólucro deixa de segurar o que está dentro.
+     `.app-blocos-item` já tomava esta medida; os dois invólucros de fora
+     ficaram sem ela, e é por eles que a tabela larga empurrava o bloco para
+     fora da janela (medido em 06/09: 1981px numa viewport de 1920 durante o
+     arrasto de coluna). Mesma medida, mesmo motivo — R16. */
+  min-width: 0;
+}
+
+.app-blocos-segmento-total {
+  min-width: 0;
+}
+
+.app-blocos-entrada {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.app-blocos-colunas {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--esp-4);
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .app-blocos-colunas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.app-blocos-item {
+  min-width: 0;
+}
+
+/* Botão de texto da barra por bloco ("Recolher"/"Mostrar"): o mesmo
+   desenho do `la-link` do ListaAvancada, escrito aqui porque aquela
+   folha só é carregada nas telas que usam a lista avançada — e este
+   componente vale para as 40 telas de relatório. */
+.app-blocos-acao {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  color: var(--c-primary);
+  cursor: pointer;
+}
+
+.app-blocos-acao:hover {
+  text-decoration: underline;
+}
+
+/* Blocos que já moram numa grade escrita pela tela: os invólucros do
+   componente somem do layout e a grade de fora continua posicionando. */
+.app-blocos-transparente {
+  display: contents;
+}
+
+.app-blocos-total > .app-blocos-item,
+.app-blocos-faixa-grade {
+  grid-column: 1 / -1;
+}
+
+/* Catálogo agrupado do "Adicionar bloco" (o da Home tem 17 blocos em cinco
+   grupos): o painel ganha teto de altura e rolagem própria, e cada grupo
+   se anuncia. Mesmas regras que viviam com o prefixo `hub-*` — o desenho
+   é do componente, não da tela. */
+.app-blocos-adicionar-pop {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.app-blocos-adicionar-grupo {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-blocos-adicionar-grupo + .app-blocos-adicionar-grupo {
+  margin-top: var(--esp-2);
+  border-top: 1px solid var(--ui-border);
+  padding-top: var(--esp-2);
+}
+
+.app-blocos-adicionar-grupo-titulo {
+  padding: var(--esp-1) var(--esp-3) 0;
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-muted);
 }

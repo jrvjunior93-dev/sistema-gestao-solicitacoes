@@ -1,38 +1,106 @@
 const assert = require('node:assert/strict');
-const { Obra, TituloFinanceiro, ObraCustoHistorico } = require('../src/models');
+const { Obra, TituloFinanceiro, TituloFinanceiroRateio, ObraCustoHistorico, ContratoComercial } = require('../src/models');
 const controller = require('../src/controllers/ResultadoObrasController');
+const { gerarResultadoObras } = require('../src/services/resultadoObrasService');
+const { Op } = require('sequelize');
 
-const originals = [Obra.findAll, TituloFinanceiro.findAll, ObraCustoHistorico.findAll];
+const original = {
+  obras: Obra.findAll,
+  titulos: TituloFinanceiro.findAll,
+  rateios: TituloFinanceiroRateio.findAll,
+  historicos: ObraCustoHistorico.findAll,
+  contratos: ContratoComercial.findAll
+};
 
-async function verificar() {
-  Obra.findAll = async () => [{ id: 1, nome: 'Obra teste', classificacao: 'PRIVADA', vgv: 500 }];
-  TituloFinanceiro.findAll = async () => [
+async function main() {
+  Obra.findAll = async () => [
+    { id: 1, codigo: '1', nome: 'Obra A', classificacao: 'PRIVADA', vgv: 500 },
+    { id: 2, codigo: '2', nome: 'Obra B', classificacao: 'PUBLICA', planilha_geral: 300 }
+  ];
+  ContratoComercial.findAll = async () => [];
+  TituloFinanceiro.findAll = async (options) => {
+    if (!options.group) return []; // Nenhuma parcela de negociação nesta fixture de legado.
+    assert.equal(options.where.renegociacao_id, null, 'Agregado direto não pode duplicar parcelas rateadas');
+    return [
     { obra_id: 1, tipo: 'PAGAR', total_valor_original: '100.00', total_valor_baixado: '60.00', total_valor_saldo: '40.00', quantidade: '1' },
     { obra_id: 1, tipo: 'RECEBER', total_valor_original: '200.00', total_valor_baixado: '100.00', total_valor_saldo: '100.00', quantidade: '1' }
-  ];
-  ObraCustoHistorico.findAll = async (options) => {
-    assert.equal(options.where.ativo, true);
-    assert.deepEqual(options.group, ['obra_id', 'tipo']);
-    return [
-      { obra_id: 1, tipo: 'PAGAR', valor_total: '30.00', quantidade: '2' },
-      { obra_id: 1, tipo: 'RECEBER', valor_total: '20.00', quantidade: '1' }
     ];
   };
-  let result;
-  await controller.index({}, {
-    json(value) { result = value; },
-    status(code) { throw new Error(`Erro HTTP ${code}`); }
-  });
-  assert.equal(result.length, 1);
-  assert.deepEqual(result[0].pagar, { total: 130, executado: 90, saldo: 40, quantidade: 3, historico: { valor: 30, quantidade: 2 } });
-  assert.deepEqual(result[0].receber, { total: 220, recebido: 120, saldo: 100, quantidade: 2, historico: { valor: 20, quantidade: 1 } });
-  assert.equal(result[0].lucro_prejuizo, 30);
-  console.log('Historico importado no realizado do Resultado de Obras, sem alterar saldo aberto.');
+  TituloFinanceiroRateio.findAll = async () => [{
+    obra_id: 2,
+    valor_rateio: '50.00',
+    tituloFinanceiro: { tipo: 'PAGAR', valor_original: '100.00', valor_baixado: '50.00' }
+  }];
+  ObraCustoHistorico.findAll = async (options) => {
+    assert.equal(options.where.ativo, true, 'Historico inativo nao pode entrar no resultado');
+    return [
+      { obra_id: 1, tipo: 'PAGAR', valor: '15.00' },
+      { obra_id: 1, tipo: 'PAGAR', valor: '15.00' },
+      { obra_id: 1, tipo: 'RECEBER', valor: '20.00' },
+      { obra_id: 2, tipo: 'PAGAR', valor: '10.00' }
+    ];
+  };
+
+  let resultado;
+  const res = {
+    json(payload) { resultado = payload; return this; },
+    status(code) { throw new Error(`Status inesperado: ${code}`); }
+  };
+  await controller.index({}, res);
+  assert.equal(resultado.length, 2);
+  assert.deepEqual(
+    [resultado[0].pagar.total, resultado[0].pagar.executado, resultado[0].pagar.saldo, resultado[0].pagar.quantidade],
+    [130, 90, 40, 3]
+  );
+  assert.deepEqual(resultado[0].pagar.historico, { valor: 30, quantidade: 2 });
+  assert.deepEqual(
+    [resultado[0].receber.total, resultado[0].receber.recebido, resultado[0].receber.saldo, resultado[0].lucro_prejuizo],
+    [220, 120, 100, 30]
+  );
+  assert.deepEqual(resultado[0].receber.historico, { valor: 20, quantidade: 1 });
+  assert.deepEqual(
+    [resultado[1].pagar.total, resultado[1].pagar.executado, resultado[1].pagar.saldo, resultado[1].pagar.historico.valor],
+    [60, 35, 25, 10]
+  );
+  assert.equal(resultado[1].receber.recebido, 0);
+
+  const flagAnterior = process.env.RH_JORNADA_40_60_ETAPAS;
+  process.env.RH_JORNADA_40_60_ETAPAS = 'ON';
+  try {
+    TituloFinanceiro.findAll = async (options) => {
+      if (options.group) {
+        assert.ok(options.where[Op.or], 'titulos RH com rateio saem do agregado direto');
+      }
+      return [];
+    };
+    TituloFinanceiroRateio.findAll = async (options) => {
+      assert.ok(options.include[0].where[Op.or], 'rateios RH entram pelo centro de custo');
+      return [
+        { obra_id: 1, valor_rateio: '1500.00', tituloFinanceiro: {
+          tipo: 'PAGAR', valor_original: '3000.00', valor_baixado: '3000.00'
+        } },
+        { obra_id: 2, valor_rateio: '1500.00', tituloFinanceiro: {
+          tipo: 'PAGAR', valor_original: '3000.00', valor_baixado: '3000.00'
+        } }
+      ];
+    };
+    ObraCustoHistorico.findAll = async () => [];
+    const porObra = await gerarResultadoObras();
+    assert.deepEqual(porObra.map((obra) => obra.pagar.executado), [1500, 1500]);
+  } finally {
+    if (flagAnterior === undefined) delete process.env.RH_JORNADA_40_60_ETAPAS;
+    else process.env.RH_JORNADA_40_60_ETAPAS = flagAnterior;
+  }
+  console.log('Resultado de Obras: historico importado computado no realizado sem gerar baixas nem saldos pendentes.');
 }
 
-verificar().catch((error) => {
+main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 }).finally(() => {
-  [Obra.findAll, TituloFinanceiro.findAll, ObraCustoHistorico.findAll] = originals;
+  Obra.findAll = original.obras;
+  TituloFinanceiro.findAll = original.titulos;
+  TituloFinanceiroRateio.findAll = original.rateios;
+  ObraCustoHistorico.findAll = original.historicos;
+  ContratoComercial.findAll = original.contratos;
 });

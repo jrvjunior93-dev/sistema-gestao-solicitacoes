@@ -1,0 +1,51 @@
+/*
+  C1 — A FAIXA COMPACTA GANHAVA UMA SEGUNDA LINHA SÓ PELA CONTA DO FLEXBOX
+  (05/09), em três relatórios de Compras: Categorias e Insumos, Compras
+  Diretas e Evolução Mensal.
+
+  NÃO é a mesma causa do `custos-recebiveis.css` (apoio virando `children`
+  do `PageHeader` e sendo desenhado como segunda linha da faixa, que é
+  `flex-direction: column`). Aqui o `PageHeader` não recebe `children`
+  nenhum — a faixa tem só título, apoio e ações, como em toda tela deste
+  padrão. A causa é outra, e está na conta que o FLEXBOX faz para decidir
+  se quebra linha, não no que é desenhado.
+
+  `.app-page-header-row` tem `flex-wrap: wrap` (componentes-padrao.css). Ao
+  decidir se um item cabe na linha, o navegador usa o tamanho HIPOTÉTICO de
+  cada item — e o do bloco título+apoio (`div:first-of-type`) é a largura
+  INTEIRA do texto do apoio, porque `.app-page-lead` é `white-space: nowrap`
+  (para poder truncar com reticências). Essa conta acontece ANTES do
+  encolhimento: mesmo um apoio que vai truncar na tela pede, na hora de
+  decidir a quebra, o espaço do texto INTEIRO.
+
+  Nestas três telas o apoio (contagem + descrição, R23) passa de ~180
+  caracteres — mais longo que nas demais telas de relatório de Compras,
+  cujo apoio cabe na conta e nunca aciona o problema. Quando o hipotético
+  do bloco título+apoio mais os botões (Limpar + Atualizar relatório)
+  excede a largura da faixa — aqui limitada a 94rem por
+  `.compras-responsive-scope .page` —, a barra de ações inteira é empurrada
+  para uma SEGUNDA LINHA: 94px de faixa compacta para uma única linha de
+  conteúdo (limite da C1: 72px).
+
+  O conserto tem duas partes, comprovadas com o preview real (Playwright)
+  antes de aplicar:
+
+  1. `flex-basis: 0` no bloco título+apoio: seu tamanho HIPOTÉTICO na conta
+     de quebra da FAIXA passa a ser zero — quem decide o espaço real
+     continua sendo o encolhimento normal, e o apoio já trunca com
+     reticências (nada muda na tela).
+  2. Só o passo 1 empurra o encolhimento para dentro do título: como o
+     apoio e o título disputam espaço PROPORCIONALMENTE ao tamanho
+     hipotético de cada um, e o do apoio é enorme (texto inteiro), o
+     título é quem levava o corte — e por não ter `nowrap`, ele QUEBRAVA
+     em duas linhas em vez de truncar. `flex-shrink: 0` no título resolve:
+     ele mantém a largura de uma linha só, e todo o ajuste sobra para o
+     apoio, que já sabe truncar com reticências e tooltip.
+*/
+.apoio-linha-unica .app-page-header-row > div:first-of-type {
+  flex-basis: 0;
+}
+
+.apoio-linha-unica .app-page-header-row > div:first-of-type > h1 {
+  flex-shrink: 0;
+}

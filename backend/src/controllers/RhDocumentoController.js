@@ -7,6 +7,10 @@ const {
   obterLinkDocumentoRh,
   substituirDocumentoRh
 } = require('../services/rhService');
+const {
+  listarDossieColaboradorRh,
+  obterLinkArquivoDossieRh
+} = require('../services/rhDossieService');
 const { responderErroController } = require('../utils/controllerError');
 
 module.exports = {
@@ -27,6 +31,31 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao listar documentos RH/DP');
+    }
+  },
+
+  async dossie(req, res) {
+    try {
+      const data = await listarDossieColaboradorRh(req.params.colaboradorId);
+      return res.json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao carregar o dossie do colaborador');
+    }
+  },
+
+  async obterLinkDossie(req, res) {
+    try {
+      const data = await obterLinkArquivoDossieRh(
+        req.params.colaboradorId,
+        String(req.params.origem || '').toUpperCase(),
+        req.params.arquivoId,
+        req.query?.fila_id || null
+      );
+      return res.json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao gerar link do arquivo do dossie');
     }
   },
 

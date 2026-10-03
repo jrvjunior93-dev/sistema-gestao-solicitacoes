@@ -1,136 +1,36 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Suspense, useContext, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import AppRouteFallback from '../components/AppRouteFallback';
 import NotificacoesBell from '../components/NotificacoesBell';
-import fluxyMark from '../assets/fluxy_mark_cropped.png';
 import { getResumoConversas } from '../services/conversasInternas';
 import { getInstalacaoPublica } from '../services/instalacao';
 import { getSuporteWhatsapp } from '../services/configuracoesSistema';
 import {
-  HiOutlineSquares2X2,
-  HiOutlinePlusCircle,
-  HiOutlineClipboardDocumentList,
-  HiOutlineChatBubbleLeftRight,
-  HiOutlineCloudArrowUp,
-  HiOutlineReceiptRefund,
-  HiOutlineUsers,
-  HiOutlineRectangleGroup,
-  HiOutlineUserCircle,
-  HiOutlineWallet,
-  HiOutlineBuildingOffice2,
-  HiOutlineAdjustmentsHorizontal,
-  HiOutlineCog6Tooth,
-  HiOutlineBanknotes,
-  HiOutlineFolderOpen,
-  HiOutlineArrowRightOnRectangle,
-  HiOutlineBars3,
+  HiOutlineHome,
+  HiOutlineMagnifyingGlass,
   HiOutlineMoon,
   HiOutlineSun,
-  HiOutlineChevronDown,
   HiOutlineChevronRight,
-  HiOutlineChevronLeft,
-  HiOutlineArchiveBox,
-  HiOutlineDocumentText,
-  HiOutlineExclamationTriangle,
-  HiOutlineShieldCheck,
-  HiOutlineClipboardDocumentCheck,
-  HiOutlineInboxStack,
-  HiOutlinePaperAirplane,
-  HiOutlineSparkles,
-  HiOutlineKey,
-  HiOutlineCreditCard,
+  HiOutlineArrowRightOnRectangle,
   HiOutlineLifebuoy,
-  HiOutlineChatBubbleOvalLeft,
-  HiOutlineBell,
-  HiOutlineAcademicCap
+  HiOutlineChatBubbleOvalLeft
 } from 'react-icons/hi2';
-import {
-  canAccessBiblioteca,
-  canAccessBoletos,
-  canAccessComercial,
-  canAccessCadastroObras,
-  canAccessComunicacao,
-  canAccessConfiguracoes,
-  canAccessCompras,
-  canAccessDashboard,
-  canAccessContratos,
-  canAccessFinanceiro,
-  canAccessFinanceiroDda,
-  canAccessBancosEnterprise,
-  canAccessFiscal,
-  canAccessPagamentos,
-  canAccessProvisoes,
-  canAccessPrioridadesDiretoria,
-  canAccessRhDp,
-  canAccessRhDpDashboard,
-  canAccessRhDpEmpresas,
-  canAccessSst,
-  canAccessTreinamento,
-  canCreateProvisionamentos,
-  canExecuteRhDpImportacoes,
-  canManageProvisionamentoCategorias,
-  canManageSstArea,
-  canViewProvisionamentos,
-  canViewProvisionamentosDashboard,
-  canViewFinanceiroRelatorios,
-  hasPermissao,
-  canViewRhDpApuracao,
-  canViewRhDpColaboradores,
-  canViewRhDpDocumentos,
-  canViewRhDpObrigacoes,
-  canViewSolicitacoesRelatorios,
-  canViewSstArea,
-  canViewSstDashboard,
-  canAccessCrm,
-  canCreateCrmLeads,
-  canManageFiscalConfig,
-  canManageUsers,
-  canViewCrmAtendimento,
-  canViewCrmAutomacoes,
-  canViewCrmConfiguracoes,
-  canViewCrmDashboard,
-  canViewCrmLeads,
-  canViewFiscalDocuments,
-  canViewFiscalLogs,
-  canViewSystemGovernance,
-  canViewOperationalAudit,
-  canCreateCompraSolicitacao,
-  canManageComprasConfiguracoes,
-  canManageComprasCotacoes,
-  canManageConfiguracoesArea,
-  canViewCompraSolicitacoes,
-  canViewComprasCotacoes,
-  canViewComprasDelegacao,
-  canViewComprasFornecedores,
-  canViewComprasPedidos,
-  canViewComprasRelatorios,
-  canViewComercialContratos,
-  canViewComercialEmpreendimentos,
-  hasEnabledModule,
-  isBusinessAdmin,
-  isSuperadmin
-} from '../utils/acessoProduto';
-import {
-  SST_NAV,
-  SST_SIMPLIFIED_MODE
-} from '../modules/sst/constants/sstResources';
-import { canAccessCustosRecebiveis } from '../modules/custosRecebiveis/utils/access';
+import { canAccessComunicacao, isSuperadmin } from '../utils/acessoProduto';
+import { findActiveNode, getVisibleModule, resolveLabel } from '../navigation/navigationConfig';
+import CommandPalette from '../navigation/CommandPalette';
+import WorkspaceTabs from '../navigation/WorkspaceTabs';
+import useWorkspaceTabs, { routeFromInternalAnchor } from '../navigation/useWorkspaceTabs';
+import { AtalhosProvider } from '../navigation/AtalhosContext';
+import AtalhosTopbar from '../navigation/AtalhosTopbar';
 import { isNativeApp, registerNativeBackButtonHandler } from '../mobile/runtime';
 import { getFallbackRoute, hasSafeBrowserHistory } from '../utils/navigation';
+import { nomeProprio } from '../utils/texto';
 import OperationalAuditTracker from '../modules/governanca/components/OperationalAuditTracker';
-
-const SST_SIMPLIFIED_ICONS = {
-  pgr: HiOutlineExclamationTriangle,
-  pcmso: HiOutlineClipboardDocumentCheck,
-  aso: HiOutlineClipboardDocumentCheck,
-  exames: HiOutlineDocumentText,
-  epi: HiOutlineShieldCheck,
-  treinamentos: HiOutlineUsers,
-  documentos: HiOutlineFolderOpen,
-  ltcat: HiOutlineBuildingOffice2,
-  avaliacoes_quantitativas: HiOutlineAdjustmentsHorizontal
-};
+import DevUserSwitcher from '../components/DevUserSwitcher';
+import CrObrasTravadasAviso from '../modules/custosRecebiveis/components/CrObrasTravadasAviso';
+import cscLogo from '../assets/CSC_logo_lockup_cropped.png';
+import fluxyMark from '../assets/fluxy_mark_cropped.png';
 
 const COMPRAS_RESPONSIVE_ROUTES = [
   '/solicitacoes-compra',
@@ -138,7 +38,6 @@ const COMPRAS_RESPONSIVE_ROUTES = [
   '/pedidos-compra',
   '/compras/delegacao',
   '/compras/relatorios',
-  '/relatorios/administrativos',
   '/gestao-apropriacoes',
   '/gestao-insumos',
   '/gestao-unidades',
@@ -155,19 +54,70 @@ function isComprasResponsiveRoute(pathname = '') {
   ));
 }
 
+// Breadcrumb clicável: Início › Módulo › Tela. Lê a mesma fonte única
+// de navegação dos hubs e permite voltar a qualquer nível em um clique.
+/*
+  `busca` chega por PROP, não pelo `location` global.
+
+  Ao ligar o breadcrumb à query (destino com `?tipo=`, D2) a primeira
+  versão escreveu `location.search` aqui dentro — e `location` NÃO existe
+  neste escopo: é outro componente que chama `useLocation()`. A expressão
+  cairia no `window.location` do navegador e funcionaria POR ACIDENTE,
+  fora do ciclo de renderização do router: nenhuma re-renderização ao
+  mudar de rota, e nada em teste ou fixture, onde esse global não reflete
+  a rota do router.
+*/
+function Breadcrumb({ user, pathname, busca = '', classe = '' }) {
+  const hubMatch = pathname.match(/^\/hub\/([^/]+)/);
+  const hubModule = hubMatch ? getVisibleModule(user, hubMatch[1]) : null;
+  const active = !hubMatch && pathname !== '/' ? findActiveNode(user, pathname, busca) : null;
+
+  return (
+    <nav className={`fx-breadcrumb${classe ? ` ${classe}` : ''}`} aria-label="Trilha de navegação">
+      {pathname === '/' ? (
+        <span className="fx-breadcrumb-current" aria-current="page">Início</span>
+      ) : (
+        <Link to="/">Início</Link>
+      )}
+
+      {hubModule && (
+        <>
+          <HiOutlineChevronRight size={13} className="fx-breadcrumb-sep" aria-hidden="true" />
+          <span className="fx-breadcrumb-current" aria-current="page">
+            {resolveLabel(hubModule, user)}
+          </span>
+        </>
+      )}
+
+      {active && (
+        <>
+          <HiOutlineChevronRight size={13} className="fx-breadcrumb-sep" aria-hidden="true" />
+          {active.module.children.length > 1 ? (
+            <Link to={`/hub/${active.module.id}`}>{resolveLabel(active.module, user)}</Link>
+          ) : (
+            <span className="fx-breadcrumb-current">{resolveLabel(active.module, user)}</span>
+          )}
+          {resolveLabel(active.item, user) !== resolveLabel(active.module, user) && (
+            <>
+              <HiOutlineChevronRight size={13} className="fx-breadcrumb-sep" aria-hidden="true" />
+              <span className="fx-breadcrumb-current" aria-current="page">
+                {resolveLabel(active.item, user)}
+              </span>
+            </>
+          )}
+        </>
+      )}
+    </nav>
+  );
+}
+
 export default function Layout() {
   const { user, logout } = useContext(AuthContext);
   const location = useLocation();
   const navigate = useNavigate();
-  const [menuAberto, setMenuAberto] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [openGroupId, setOpenGroupId] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-  const [isCompactViewport, setIsCompactViewport] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false
-  );
-  const [inboxNovasCount, setInboxNovasCount] = useState(0);
-  const [saidaNovasCount, setSaidaNovasCount] = useState(0);
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [buscaModo, setBuscaModo] = useState('navigate');
   const [comunicacaoNovasCount, setComunicacaoNovasCount] = useState(0);
   const [instalacao, setInstalacao] = useState({
     product_name: 'Fluxy',
@@ -176,10 +126,18 @@ export default function Layout() {
   });
   const [suporteWhatsappUrl, setSuporteWhatsappUrl] = useState(null);
   const nativeApp = isNativeApp();
+  const superadmin = isSuperadmin(user);
+  const podeVerComunicacao = canAccessComunicacao(user);
   const comprasResponsiveRoute = isComprasResponsiveRoute(location.pathname);
   const custosRecebiveisResponsiveRoute = location.pathname.startsWith('/custos-recebiveis');
-
-  const sidebarWidth = isCompactViewport ? 304 : (collapsed ? 86 : 286);
+  const {
+    tabs: workspaceTabs,
+    activeId: activeWorkspaceTabId,
+    canOpen: canOpenWorkspaceTab,
+    activateTab: activateWorkspaceTab,
+    openTab: openWorkspaceTab,
+    closeTab: closeWorkspaceTab
+  } = useWorkspaceTabs(user);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -190,53 +148,23 @@ export default function Layout() {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [location.pathname]);
 
+  // Atalho global Ctrl+K / Cmd+K para a busca de telas.
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const media = window.matchMedia('(max-width: 1023px)');
-    const listener = (event) => setIsCompactViewport(event.matches);
-    setIsCompactViewport(media.matches);
-
-    if (media.addEventListener) {
-      media.addEventListener('change', listener);
-      return () => media.removeEventListener('change', listener);
-    }
-
-    media.addListener(listener);
-    return () => media.removeListener(listener);
+    const onKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'k') {
+        event.preventDefault();
+        setBuscaModo('navigate');
+        setBuscaAberta((atual) => !atual);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   useEffect(() => {
-    if (!isCompactViewport) {
-      document.body.style.overflow = '';
-      return undefined;
-    }
-
-    document.body.style.overflow = menuAberto ? 'hidden' : '';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [menuAberto, isCompactViewport]);
-
-  useEffect(() => {
-    if (isCompactViewport) setMenuAberto(false);
-  }, [location.pathname, isCompactViewport]);
-
-  useEffect(() => {
-    if (!menuAberto) return undefined;
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setMenuAberto(false);
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [menuAberto]);
-
-  useEffect(() => {
     return registerNativeBackButtonHandler({
-      canCloseMenu: () => menuAberto,
-      onCloseMenu: () => setMenuAberto(false),
+      canCloseMenu: () => buscaAberta,
+      onCloseMenu: () => setBuscaAberta(false),
       canNavigateBack: () => location.pathname !== '/',
       onNavigateBack: () => {
         if (hasSafeBrowserHistory()) {
@@ -246,13 +174,11 @@ export default function Layout() {
         navigate(getFallbackRoute(location.pathname), { replace: true });
       }
     });
-  }, [location.pathname, menuAberto, navigate]);
+  }, [location.pathname, buscaAberta, navigate]);
 
   useEffect(() => {
     const userId = Number(user?.id);
-    if (!Number.isInteger(userId) || userId <= 0) {
-      setInboxNovasCount(0);
-      setSaidaNovasCount(0);
+    if (!Number.isInteger(userId) || userId <= 0 || !podeVerComunicacao) {
       setComunicacaoNovasCount(0);
       return undefined;
     }
@@ -266,10 +192,7 @@ export default function Layout() {
       try {
         const resumo = await getResumoConversas();
         if (!ativo) return;
-        const naoLidas = Number(resumo?.nao_lidas || 0);
-        setComunicacaoNovasCount(naoLidas);
-        setInboxNovasCount(naoLidas);
-        setSaidaNovasCount(0);
+        setComunicacaoNovasCount(Number(resumo?.nao_lidas || 0));
       } catch {
         // nao bloqueia a navegacao
       }
@@ -282,7 +205,7 @@ export default function Layout() {
       ativo = false;
       clearInterval(interval);
     };
-  }, [user?.id]);
+  }, [user?.id, podeVerComunicacao]);
 
   useEffect(() => {
     let ativo = true;
@@ -290,10 +213,7 @@ export default function Layout() {
     getInstalacaoPublica()
       .then((data) => {
         if (!ativo || !data) return;
-        setInstalacao((current) => ({
-          ...current,
-          ...data
-        }));
+        setInstalacao((current) => ({ ...current, ...data }));
       })
       .catch(() => {});
 
@@ -319,687 +239,149 @@ export default function Layout() {
     };
   }, []);
 
-  const perfilUpper = String(user?.perfil || '').toUpperCase();
-  const superadmin = isSuperadmin(user);
-  const businessAdmin = isBusinessAdmin(user);
-  const gestaoUsuarios = canManageUsers(user);
-  const moduloBibliotecaHabilitado = hasEnabledModule(user, 'BIBLIOTECA_MODELOS');
-  const moduloCotacoesHabilitado = hasEnabledModule(user, 'COTACOES');
-  const crmAccess = canAccessCrm(user);
-  const crmDashboardAccess = canViewCrmDashboard(user);
-  const crmLeadsAccess = canViewCrmLeads(user);
-  const crmLeadsCreateAccess = canCreateCrmLeads(user);
-  const crmAtendimentoAccess = canViewCrmAtendimento(user);
-  const crmAutomacoesAccess = canViewCrmAutomacoes(user);
-  const crmConfiguracoesAccess = canViewCrmConfiguracoes(user);
-  const comprasAccess = canAccessCompras(user);
-  const comprasSolicitacoesAccess = canViewCompraSolicitacoes(user);
-  const comprasSolicitacoesCreateAccess = canCreateCompraSolicitacao(user);
-  const comprasPedidosAccess = canViewComprasPedidos(user);
-  const comprasDelegacaoAccess = canViewComprasDelegacao(user);
-  const comprasCotacoesAccess = canViewComprasCotacoes(user);
-  const comprasCotacoesManageAccess = canManageComprasCotacoes(user);
-  const comprasFornecedoresAccess = canViewComprasFornecedores(user);
-  const comprasRelatoriosAccess = canViewComprasRelatorios(user);
-  const comprasConfiguracoesAccess = canManageComprasConfiguracoes(user);
-  const configuracoesAccess = canAccessConfiguracoes(user);
-  const configuracoesGeralAccess = canManageConfiguracoesArea(user, 'geral');
-  const configuracoesCadastrosAccess = canManageConfiguracoesArea(user, 'cadastros');
-  const configuracoesStatusVinculosAccess = canManageConfiguracoesArea(user, 'status_vinculos');
-  const configuracoesAparenciaAccess = canManageConfiguracoesArea(user, 'aparencia');
-  const configuracoesModulosAccess = canManageConfiguracoesArea(user, 'modulos');
-  const prioridadesDiretoriaAccess = canAccessPrioridadesDiretoria(user);
-  const solicitacoesRelatoriosAccess = canViewSolicitacoesRelatorios(user);
-  const financeiroAccess = canAccessFinanceiro(user);
-  const financeiroDdaAccess = canAccessFinanceiroDda(user);
-  const financeiroRelatoriosAccess = canViewFinanceiroRelatorios(user);
-  const bancosEnterpriseAccess = canAccessBancosEnterprise(user);
-  const fiscalAccess = canAccessFiscal(user);
-  const fiscalConfigAccess = canManageFiscalConfig(user);
-  const fiscalDocumentsAccess = canViewFiscalDocuments(user);
-  const fiscalLogsAccess = canViewFiscalLogs(user);
-  const pagamentosAccess = canAccessPagamentos(user);
-  const boletosAccess = canAccessBoletos(user);
-  const financeiroModuleEnabled = hasEnabledModule(user, 'FINANCEIRO');
-  const custosRecebiveisAccess = canAccessCustosRecebiveis(user);
-  const comercialAccess = canAccessComercial(user);
-  const comercialEmpreendimentosAccess = canViewComercialEmpreendimentos(user);
-  const comercialContratosAccess = canViewComercialContratos(user);
-  const provisoesAccess = canAccessProvisoes(user);
-  const provisoesDashboardAccess = canViewProvisionamentosDashboard(user);
-  const provisoesListaAccess = canViewProvisionamentos(user);
-  const provisoesCreateAccess = canCreateProvisionamentos(user);
-  const provisoesCategoriasAccess = canManageProvisionamentoCategorias(user);
-  const rhDpAccess = canAccessRhDp(user);
-  const rhDpDashboardAccess = canAccessRhDpDashboard(user);
-  const rhDpEmpresasAccess = canAccessRhDpEmpresas(user);
-  const rhDpColaboradoresAccess = canViewRhDpColaboradores(user);
-  const rhDpDocumentosAccess = canViewRhDpDocumentos(user);
-  const rhDpImportacoesAccess = canExecuteRhDpImportacoes(user);
-  const rhDpApuracaoAccess = canViewRhDpApuracao(user);
-  const rhDpObrigacoesAccess = canViewRhDpObrigacoes(user) && financeiroModuleEnabled;
-  const sstAccess = canAccessSst(user);
-  const sstDashboardAccess = canViewSstDashboard(user);
-  const governancaSistemaAccess = canViewSystemGovernance(user);
-  const auditoriaOperacionalAccess = canViewOperationalAudit(user);
-  const obrasAccess = canAccessCadastroObras(user);
-  const contratosAccess = canAccessContratos(user);
-  const bibliotecaAccess = canAccessBiblioteca(user);
-  const treinamentoAccess = canAccessTreinamento(user);
-  const comunicacaoAccess = canAccessComunicacao(user);
   const brandLabel = instalacao.product_name || 'Fluxy';
-  const brandInitial = String(brandLabel || 'F').trim().charAt(0).toUpperCase() || 'F';
-  const menuGroups = useMemo(() => {
-    const groups = [];
-    const item = (to, label, icon) => ({ to, label, icon });
-    const groupIcons = {
-      Painel: HiOutlineSquares2X2,
-      Solicitações: HiOutlineClipboardDocumentList,
-      Comunicação: HiOutlineChatBubbleLeftRight,
-      Compras: HiOutlineWallet,
-      Financeiro: HiOutlineWallet,
-      'Custos e Recebíveis': HiOutlineBanknotes,
-      Fiscal: HiOutlineDocumentText,
-      CRM: HiOutlineUsers,
-      Comercial: HiOutlineBuildingOffice2,
-      Provisionamento: HiOutlineBanknotes,
-      'RH/DP': HiOutlineUsers,
-      SST: HiOutlineShieldCheck,
-      Integrações: HiOutlineAdjustmentsHorizontal,
-      Relatórios: HiOutlineDocumentText,
-      Cadastros: HiOutlineRectangleGroup,
-      Contratos: HiOutlineBanknotes,
-      'Administração': HiOutlineShieldCheck,
-      Configurações: HiOutlineCog6Tooth,
-      Biblioteca: HiOutlineFolderOpen,
-      Treinamento: HiOutlineAcademicCap,
-      Cotações: HiOutlineInboxStack,
-      Conta: HiOutlineUserCircle
-    };
-
-    const addGroup = (label, entries) => {
-      const items = entries.filter(Boolean);
-      if (items.length) {
-        groups.push({ label, icon: groupIcons[label] || HiOutlineFolderOpen, items });
-      }
-    };
-
-    const perfil = String(user?.perfil || '').toUpperCase();
-    const canSeeDashboard = canAccessDashboard(user);
-    const solicitacoesLabel =
-      perfil === 'USUARIO'
-        ? 'Minhas Solicitações'
-        : ['SETOR', 'FINANCEIRO'].includes(perfil)
-          ? 'Solicitações do Setor'
-          : 'Solicitações';
-
-    if (canSeeDashboard) {
-      addGroup('Painel', [
-        item('/', 'Dashboard', HiOutlineSquares2X2)
-      ]);
+  const toggleTheme = () => setTheme((current) => (current === 'light' ? 'dark' : 'light'));
+  const fecharBusca = useCallback(() => setBuscaAberta(false), []);
+  const abrirBuscaAtual = useCallback(() => {
+    setBuscaModo('navigate');
+    setBuscaAberta(true);
+  }, []);
+  const abrirBuscaNovaAba = useCallback(() => {
+    if (!canOpenWorkspaceTab) return;
+    setBuscaModo('new-tab');
+    setBuscaAberta(true);
+  }, [canOpenWorkspaceTab]);
+  const navegarDaBusca = useCallback((link, { title = '' } = {}) => {
+    if (buscaModo === 'new-tab') {
+      openWorkspaceTab(link, title);
+      return;
     }
+    navigate(link);
+  }, [buscaModo, navigate, openWorkspaceTab]);
 
-    addGroup('Solicitações', [
-      item('/solicitacoes', solicitacoesLabel, HiOutlineDocumentText),
-      solicitacoesRelatoriosAccess ? item('/solicitacoes/relatorios', 'Relatórios', HiOutlineDocumentText) : null,
-      item('/solicitacoes-arquivadas', 'Arquivadas', HiOutlineArchiveBox),
-      prioridadesDiretoriaAccess ? item('/prioridades-diretoria', 'Prioridades Diretoria', HiOutlineBanknotes) : null,
-      perfil !== 'SETOR' && perfil !== 'FINANCEIRO'
-        ? item('/nova-solicitacao', 'Nova Solicitacao', HiOutlinePlusCircle)
-        : null
-    ]);
+  // Ctrl/Cmd+clique, clique do meio e links internos com target="_blank"
+  // abrem uma aba do Fluxy. Downloads e destinos externos preservam o
+  // comportamento nativo do navegador.
+  const abrirLinkEmAbaInterna = useCallback((event) => {
+    if (event.defaultPrevented || event.shiftKey || event.altKey) return;
 
-    if (comunicacaoAccess) {
-      addGroup('Comunicação', [
-        item('/comunicacao-interna', 'Comunicação Interna', HiOutlineChatBubbleLeftRight)
-      ]);
-    }
+    const anchor = event.target?.closest?.('a[href]');
+    if (!anchor) return;
 
-    if (bibliotecaAccess) {
-      addGroup('Biblioteca', [
-        item('/arquivos-modelos', 'Arquivos Modelos', HiOutlineFolderOpen)
-      ]);
-    }
+    const cliqueModificado = event.ctrlKey || event.metaKey;
+    const cliqueDoMeio = event.type === 'auxclick' && event.button === 1;
+    const novaAbaDeclarada = anchor.getAttribute('target') === '_blank';
+    if (!cliqueModificado && !cliqueDoMeio && !novaAbaDeclarada) return;
 
-    if (treinamentoAccess) {
-      addGroup('Treinamento', [
-        item('/treinamento', 'Central de Treinamento', HiOutlineAcademicCap)
-      ]);
-    }
+    const route = routeFromInternalAnchor(anchor);
+    if (!route) return;
 
-    if (comprasAccess) {
-      addGroup('Compras', [
-        comprasSolicitacoesAccess ? item('/solicitacoes-compra', 'Solicitações de Compra', HiOutlineClipboardDocumentList) : null,
-        comprasSolicitacoesCreateAccess ? item('/solicitacoes-compra/nova', 'Nova Solicitacao de Compra', HiOutlinePlusCircle) : null,
-        comprasPedidosAccess ? item('/pedidos-compra', 'Pedidos de Compra', HiOutlineDocumentText) : null,
-        comprasDelegacaoAccess ? item('/compras/delegacao', 'Delegacao de Compras', HiOutlineUsers) : null,
-        comprasRelatoriosAccess ? item('/compras/relatorios', 'Relatórios de Compras', HiOutlineDocumentText) : null,
-        moduloCotacoesHabilitado && comprasCotacoesAccess ? item('/cotacoes', 'Cotações', HiOutlineInboxStack) : null,
-        moduloCotacoesHabilitado && comprasFornecedoresAccess ? item('/gestao-fornecedores', 'Fornecedores', HiOutlineUsers) : null,
-        moduloCotacoesHabilitado && comprasConfiguracoesAccess ? item('/configuracoes-cotacao', 'Config. Cotações', HiOutlineAdjustmentsHorizontal) : null,
-        comprasConfiguracoesAccess ? item('/gestao-insumos', 'Gestão de Insumos', HiOutlineRectangleGroup) : null,
-        comprasConfiguracoesAccess ? item('/gestao-unidades', 'Gestão de Unidades', HiOutlineBuildingOffice2) : null,
-        comprasConfiguracoesAccess ? item('/gestao-categorias', 'Gestão de Categorias', HiOutlineFolderOpen) : null
-      ]);
-    }
+    const title = anchor.dataset.workspaceTitle || anchor.textContent || '';
+    if (!openWorkspaceTab(route, title)) return;
 
-    if (financeiroAccess || financeiroDdaAccess || financeiroRelatoriosAccess || bancosEnterpriseAccess || pagamentosAccess || boletosAccess) {
-      addGroup('Financeiro', [
-        financeiroAccess ? item('/financeiro/contas-a-receber', 'Contas a Receber', HiOutlineWallet) : null,
-        financeiroAccess ? item('/financeiro/contas-a-pagar', 'Contas a Pagar', HiOutlineWallet) : null,
-        financeiroAccess && hasPermissao(user, 'financeiro.cheques.visualizar')
-          ? item('/financeiro/cheques-terceiros', 'Cheques de Terceiros', HiOutlineCreditCard)
-          : null,
-        financeiroAccess && hasPermissao(user, 'financeiro.baixas_compostas.visualizar')
-          ? item('/financeiro/baixas-compostas', 'Baixas com Multiplas Fontes', HiOutlineReceiptRefund)
-          : null,
-        bancosEnterpriseAccess ? item('/financeiro/bancos', 'Bancos Enterprise', HiOutlineBanknotes) : null,
-        financeiroAccess ? item('/financeiro/financiamentos-bancarios', 'Financiamentos Bancarios', HiOutlineBanknotes) : null,
-        pagamentosAccess ? item('/financeiro/pagamentos', 'Pagamentos em Massa', HiOutlinePaperAirplane) : null,
-        financeiroDdaAccess ? item('/financeiro/dda', 'DDA Bancario', HiOutlineClipboardDocumentCheck) : null,
-        boletosAccess ? item('/financeiro/boletos', 'Boletos', HiOutlineDocumentText) : null,
-        financeiroAccess ? item('/financeiro/faturas-cartao', 'Faturas de Cartao', HiOutlineCreditCard) : null,
-        financeiroRelatoriosAccess ? item('/financeiro/relatorios', 'Relatórios Financeiros', HiOutlineDocumentText) : null,
-        financeiroAccess ? item('/financeiro/baixas', 'Baixas Realizadas', HiOutlineBanknotes) : null,
-        financeiroAccess ? item('/financeiro/conciliacao', 'Conciliacao OFX', HiOutlineBanknotes) : null,
-        financeiroAccess ? item('/financeiro/caixas', 'Caixas e Contas', HiOutlineBanknotes) : null,
-        financeiroAccess ? item('/financeiro/cadastros', 'Cadastros Financeiros', HiOutlineRectangleGroup) : null,
-        financeiroAccess ? item('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp) : null,
-        financeiroAccess ? item('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund) : null
-      ]);
-    }
+    event.preventDefault();
+    event.stopPropagation();
+  }, [openWorkspaceTab]);
 
-    if (custosRecebiveisAccess) {
-      addGroup('Custos e Recebíveis', [
-        item('/custos-recebiveis', 'Custos e Recebíveis', HiOutlineBanknotes)
-      ]);
-    }
-
-    if (fiscalAccess) {
-      addGroup('Fiscal', [
-        item('/fiscal', 'Painel Fiscal', HiOutlineSquares2X2),
-        item('/fiscal/relatorios', 'Relatórios Fiscais', HiOutlineDocumentText),
-        fiscalConfigAccess ? item('/fiscal/empresas', 'Empresas Fiscais', HiOutlineBuildingOffice2) : null,
-        fiscalConfigAccess ? item('/fiscal/empresas#certificados', 'Certificados', HiOutlineKey) : null,
-        fiscalConfigAccess ? item('/fiscal/diagnostico', 'Diagnostico', HiOutlineAdjustmentsHorizontal) : null,
-        fiscalDocumentsAccess ? item('/fiscal/documentos', 'Documentos Fiscais', HiOutlineDocumentText) : null,
-        fiscalDocumentsAccess ? item('/fiscal/divergencias', 'Divergencias', HiOutlineExclamationTriangle) : null,
-        fiscalDocumentsAccess ? item('/fiscal/exportacao-contabil', 'Exportacao Contabil', HiOutlineFolderOpen) : null,
-        fiscalLogsAccess ? item('/fiscal/logs', 'Logs de Sincronizacao', HiOutlineClipboardDocumentList) : null
-      ]);
-    }
-
-    if (crmAccess) {
-      addGroup('CRM', [
-        crmDashboardAccess ? item('/crm/dashboard', 'Dashboard', HiOutlineSquares2X2) : null,
-        crmDashboardAccess ? item('/crm/relatorios', 'Relatórios CRM', HiOutlineDocumentText) : null,
-        crmAtendimentoAccess ? item('/crm/inbox', 'Inbox', HiOutlineChatBubbleLeftRight) : null,
-        crmLeadsAccess ? item('/crm/leads', 'Leads', HiOutlineUsers) : null,
-        crmLeadsAccess ? item('/crm/carteira', 'Minha Carteira', HiOutlineUsers) : null,
-        crmLeadsCreateAccess ? item('/crm/leads/novo', 'Novo Lead', HiOutlinePlusCircle) : null,
-        crmLeadsAccess ? item('/crm/kanban', 'Kanban', HiOutlineSquares2X2) : null,
-        crmLeadsAccess ? item('/crm/tarefas', 'Tarefas', HiOutlineClipboardDocumentList) : null,
-        crmAutomacoesAccess ? item('/crm/automacoes', 'Automacoes', HiOutlineAdjustmentsHorizontal) : null,
-        crmConfiguracoesAccess ? item('/crm/admin/canais', 'Canais', HiOutlineCog6Tooth) : null,
-        crmConfiguracoesAccess ? item('/crm/admin/numeros', 'Números', HiOutlinePaperAirplane) : null,
-        crmConfiguracoesAccess ? item('/crm/admin/integracoes', 'Integrações', HiOutlineAdjustmentsHorizontal) : null
-      ]);
-    }
-
-    if (comercialAccess) {
-      addGroup('Comercial', [
-        item('/comercial/relatorios', 'Relatórios Comerciais', HiOutlineDocumentText),
-        comercialEmpreendimentosAccess ? item('/comercial/empreendimentos', 'Empreendimentos', HiOutlineBuildingOffice2) : null,
-        comercialEmpreendimentosAccess ? item('/comercial/unidades', 'Unidades', HiOutlineRectangleGroup) : null,
-        comercialEmpreendimentosAccess ? item('/comercial/mapa-unidades', 'Mapa de Unidades', HiOutlineSquares2X2) : null,
-        comercialEmpreendimentosAccess ? item('/comercial/tabelas-preco', 'Tabelas de Preco', HiOutlineDocumentText) : null,
-        comercialContratosAccess ? item('/comercial/contratos', 'Contratos de Venda', HiOutlineBanknotes) : null,
-        comercialContratosAccess ? item('/comercial/modelos-contrato', 'Modelos de Contrato', HiOutlineFolderOpen) : null
-      ]);
-    }
-
-    if (provisoesAccess) {
-      addGroup('Provisionamento', [
-        provisoesDashboardAccess ? item('/provisoes-financeiras/dashboard', 'Dashboard de Previsao', HiOutlineSquares2X2) : null,
-        provisoesDashboardAccess ? item('/provisoes-financeiras/relatorios', 'Relatórios', HiOutlineDocumentText) : null,
-        provisoesListaAccess ? item('/provisoes-financeiras', 'Provisionamentos', HiOutlineBanknotes) : null,
-        provisoesCreateAccess ? item('/provisoes-financeiras/nova', 'Nova Provisao', HiOutlinePlusCircle) : null,
-        provisoesCategoriasAccess ? item('/provisoes-financeiras/categorias', 'Categorias Macro', HiOutlineFolderOpen) : null
-      ]);
-    }
-
-    if (rhDpAccess) {
-      addGroup('RH/DP', [
-        rhDpDashboardAccess ? item('/rh-dp', 'Visao do Modulo', HiOutlineUsers) : null,
-        rhDpDashboardAccess ? item('/rh-dp/relatorios', 'Relatórios', HiOutlineDocumentText) : null,
-        rhDpColaboradoresAccess ? item('/rh-dp/colaboradores', 'Colaboradores', HiOutlineUsers) : null,
-        rhDpDocumentosAccess ? item('/rh-dp/documentos', 'Documentos', HiOutlineFolderOpen) : null,
-        rhDpImportacoesAccess ? item('/rh-dp/importacoes', 'Importacoes', HiOutlineCloudArrowUp) : null,
-        rhDpApuracaoAccess ? item('/rh-dp/apuracao', 'Apuracao', HiOutlineDocumentText) : null,
-        rhDpObrigacoesAccess ? item('/rh-dp/fechamentos', 'Fechamentos', HiOutlineBanknotes) : null
-      ]);
-    }
-
-    if (sstAccess && SST_SIMPLIFIED_MODE) {
-      addGroup('SST', SST_NAV.map(([resource, label]) => (
-        canViewSstArea(user, resource)
-          ? item(
-            `/sst/${resource}`,
-            label,
-            SST_SIMPLIFIED_ICONS[resource] || HiOutlineShieldCheck
-          )
-          : null
-      )));
-    } else if (sstAccess) {
-      addGroup('SST', [
-        sstDashboardAccess ? item('/sst', 'Dashboard SST', HiOutlineShieldCheck) : null,
-        sstDashboardAccess ? item('/sst/relatorios/centro-operacional', 'Centro Operacional SST', HiOutlineSquares2X2) : null,
-        sstDashboardAccess ? item('/sst/relatorios/executivo', 'Executivo SST', HiOutlineSparkles) : null,
-        sstDashboardAccess ? item('/sst/relatorios/heatmap', 'Heatmap SST', HiOutlineSquares2X2) : null,
-        sstDashboardAccess ? item('/sst/observabilidade', 'Observabilidade SST', HiOutlineClipboardDocumentList) : null,
-        sstDashboardAccess ? item('/sst/producao', 'Produção SST', HiOutlineAdjustmentsHorizontal) : null,
-        sstDashboardAccess ? item('/sst/observabilidade-avancada', 'SST Enterprise', HiOutlineAdjustmentsHorizontal) : null,
-        sstDashboardAccess ? item('/sst/timeline', 'Timeline SST', HiOutlineClipboardDocumentList) : null,
-        sstDashboardAccess ? item('/sst/relatorios', 'Relatórios SST', HiOutlineDocumentText) : null,
-        canViewSstArea(user, 'riscos') ? item('/sst/riscos', 'Riscos', HiOutlineExclamationTriangle) : null,
-        canViewSstArea(user, 'riscos') ? item('/sst/ambientes', 'Ambientes', HiOutlineBuildingOffice2) : null,
-        canViewSstArea(user, 'riscos') ? item('/sst/exposicoes', 'Exposicoes', HiOutlineAdjustmentsHorizontal) : null,
-        canViewSstArea(user, 'aso') ? item('/sst/aso', 'ASO', HiOutlineClipboardDocumentCheck) : null,
-        canViewSstArea(user, 'exames') ? item('/sst/exames', 'Exames', HiOutlineDocumentText) : null,
-        canViewSstArea(user, 'epi') ? item('/sst/epi', 'EPI', HiOutlineShieldCheck) : null,
-        canViewSstArea(user, 'treinamentos') ? item('/sst/treinamentos', 'Treinamentos', HiOutlineUsers) : null,
-        canViewSstArea(user, 'acidentes') ? item('/sst/acidentes', 'Acidentes', HiOutlineExclamationTriangle) : null,
-        canViewSstArea(user, 'documentos') ? item('/sst/documentos', 'Documentos', HiOutlineFolderOpen) : null,
-        canViewSstArea(user, 'esocial') ? item('/sst/esocial', 'eSocial', HiOutlineAdjustmentsHorizontal) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/eventos', 'Eventos', HiOutlineClipboardDocumentList) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/pendencias', 'Pendencias SST', HiOutlineInboxStack) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/bloqueios', 'Bloqueios SST', HiOutlineKey) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/notificacoes', 'Notificacoes SST', HiOutlineChatBubbleOvalLeft) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/scores', 'Scores SST', HiOutlineRectangleGroup) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/recomendacoes', 'Recomendacoes SST', HiOutlineSparkles) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/telemetria', 'Telemetria SST', HiOutlineAdjustmentsHorizontal) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/alertas_operacionais', 'Alertas SST', HiOutlineExclamationTriangle) : null,
-        canViewSstArea(user, 'analytics') ? item('/sst/workflow_execucoes', 'Execucoes Workflow', HiOutlineClipboardDocumentList) : null,
-        canManageSstArea(user, 'configuracoes') ? item('/sst/politicas_bloqueio', 'Politicas de bloqueio', HiOutlineCog6Tooth) : null,
-        canManageSstArea(user, 'configuracoes') ? item('/sst/workflows', 'Workflows SST', HiOutlineAdjustmentsHorizontal) : null,
-        canManageSstArea(user, 'configuracoes') ? item('/sst/workflow_acoes', 'Acoes Workflow', HiOutlineAdjustmentsHorizontal) : null,
-        canManageSstArea(user, 'configuracoes') ? item('/sst/rollout_planos', 'Rollout SST', HiOutlineAdjustmentsHorizontal) : null,
-        canManageSstArea(user, 'configuracoes') ? item('/sst/hardening_policies', 'Hardening SST', HiOutlineCog6Tooth) : null,
-        canManageSstArea(user, 'configuracoes') ? item('/sst/criticidades', 'Criticidades SST', HiOutlineAdjustmentsHorizontal) : null,
-        canManageSstArea(user, 'configuracoes') ? item('/sst/configuracoes', 'Configurações', HiOutlineCog6Tooth) : null
-      ]);
-    }
-
-    if (gestaoUsuarios || businessAdmin || configuracoesCadastrosAccess) {
-      addGroup('Cadastros', [
-        gestaoUsuarios ? item('/usuarios', 'Usuários', HiOutlineUsers) : null,
-        (superadmin || configuracoesCadastrosAccess) ? item('/empresas-grupo', 'Empresas do Grupo', HiOutlineBuildingOffice2) : null,
-        (businessAdmin || configuracoesCadastrosAccess) && obrasAccess ? item('/obras', 'Obras', HiOutlineBuildingOffice2) : null,
-        businessAdmin && obrasAccess ? item('/gestao-apropriacoes', 'Gestão de Apropriações', HiOutlineAdjustmentsHorizontal) : null,
-        (businessAdmin || configuracoesCadastrosAccess) ? item('/setores', 'Setores', HiOutlineAdjustmentsHorizontal) : null,
-        (businessAdmin || configuracoesCadastrosAccess) ? item('/tipos-solicitacao', 'Tipos de Solicitacao', HiOutlineClipboardDocumentList) : null,
-        (businessAdmin || configuracoesCadastrosAccess) ? item('/parceiros', 'Cadastro de Pessoas', HiOutlineUsers) : null,
-        (businessAdmin || configuracoesCadastrosAccess) ? item('/parceiros-categorias', 'Categorias de Parceiro', HiOutlineArchiveBox) : null
-      ]);
-    }
-
-    if (contratosAccess) {
-      addGroup('Contratos', [
-        item('/contratos/relatorios', 'Relatórios', HiOutlineDocumentText),
-        item('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes)
-      ]);
-    }
-
-    if (governancaSistemaAccess || auditoriaOperacionalAccess) {
-      addGroup('Administração', [
-        governancaSistemaAccess ? item('/governanca', 'Governança do Sistema', HiOutlineShieldCheck) : null,
-        auditoriaOperacionalAccess ? item('/governanca/auditoria-operacional', 'Auditoria Operacional', HiOutlineClipboardDocumentList) : null
-      ]);
-    }
-
-    if (configuracoesAccess) {
-      addGroup('Configurações', [
-        item('/configuracoes', 'Configurações', HiOutlineCog6Tooth),
-        configuracoesStatusVinculosAccess ? item('/usuarios-acesso-prioridade-diretoria', 'Acesso Prioridades', HiOutlineUsers) : null,
-        configuracoesStatusVinculosAccess ? item('/usuarios-envio-qualquer-setor', 'Envio Livre por Usuario', HiOutlineUsers) : null,
-        configuracoesStatusVinculosAccess ? item('/tipos-compartilhados-setor', 'Tipos Compartilhados', HiOutlineClipboardDocumentList) : null,
-        configuracoesStatusVinculosAccess ? item('/automacao-status-setor', 'Automacao por Status', HiOutlinePaperAirplane) : null,
-        moduloCotacoesHabilitado && comprasConfiguracoesAccess ? item('/configuracoes-cotacao', 'Config. Cotações', HiOutlineAdjustmentsHorizontal) : null,
-        comprasConfiguracoesAccess ? item('/configuracoes-status-pedidos-compra', 'Status dos Pedidos', HiOutlineClipboardDocumentList) : null,
-        configuracoesGeralAccess && comercialAccess ? item('/configuracoes-comercial-categorias', 'Categorias Comerciais', HiOutlineArchiveBox) : null,
-        configuracoesModulosAccess ? item('/configuracoes-modulos', 'Modulos e Planos', HiOutlineCog6Tooth) : null,
-        configuracoesAparenciaAccess ? item('/configuracoes-notificacoes-sistema', 'Notificacoes Sistema', HiOutlineBell) : null,
-        superadmin && moduloBibliotecaHabilitado ? item('/arquivos-modelos-config', 'Arquivos Modelos', HiOutlineFolderOpen) : null
-      ]);
-    }
-
-    addGroup('Conta', [
-      item('/perfil', 'Meu Perfil', HiOutlineUserCircle)
-    ]);
-
-    return groups;
-  }, [
-    user?.perfil,
-    businessAdmin,
-    bibliotecaAccess,
-    comercialAccess,
-    comercialContratosAccess,
-    comercialEmpreendimentosAccess,
-    comunicacaoAccess,
-    comprasAccess,
-    comprasConfiguracoesAccess,
-    configuracoesAccess,
-    configuracoesAparenciaAccess,
-    configuracoesCadastrosAccess,
-    configuracoesGeralAccess,
-    configuracoesModulosAccess,
-    configuracoesStatusVinculosAccess,
-    comprasCotacoesAccess,
-    comprasCotacoesManageAccess,
-    comprasDelegacaoAccess,
-    comprasFornecedoresAccess,
-    comprasPedidosAccess,
-    comprasRelatoriosAccess,
-    comprasSolicitacoesAccess,
-    comprasSolicitacoesCreateAccess,
-    contratosAccess,
-    custosRecebiveisAccess,
-    crmAccess,
-    crmAtendimentoAccess,
-    crmAutomacoesAccess,
-    crmConfiguracoesAccess,
-    crmDashboardAccess,
-    crmLeadsAccess,
-    crmLeadsCreateAccess,
-    financeiroAccess,
-    financeiroDdaAccess,
-    fiscalAccess,
-    fiscalConfigAccess,
-    fiscalDocumentsAccess,
-    fiscalLogsAccess,
-    pagamentosAccess,
-    boletosAccess,
-    financeiroModuleEnabled,
-    gestaoUsuarios,
-    governancaSistemaAccess,
-    auditoriaOperacionalAccess,
-    moduloBibliotecaHabilitado,
-    moduloCotacoesHabilitado,
-    obrasAccess,
-    prioridadesDiretoriaAccess,
-    solicitacoesRelatoriosAccess,
-    provisoesAccess,
-    provisoesCategoriasAccess,
-    provisoesCreateAccess,
-    provisoesDashboardAccess,
-    provisoesListaAccess,
-    rhDpApuracaoAccess,
-    rhDpAccess,
-    rhDpColaboradoresAccess,
-    rhDpDashboardAccess,
-    rhDpDocumentosAccess,
-    rhDpEmpresasAccess,
-    rhDpImportacoesAccess,
-    rhDpObrigacoesAccess,
-    sstAccess,
-    sstDashboardAccess,
-    superadmin,
-    treinamentoAccess
-  ]);
-
-  const flatMenuItems = useMemo(
-    () => menuGroups.flatMap((group) => group.items.map((item) => ({ ...item, groupLabel: group.label }))),
-    [menuGroups]
-  );
-
-  const activeMatch = useMemo(() => findActiveMenuMatch(menuGroups, location.pathname), [menuGroups, location.pathname]);
-  const activeGroupLabel = activeMatch?.group?.label || null;
-  const activeItem = activeMatch?.item || null;
-  const currentSectionLabel = activeItem?.label || activeGroupLabel || 'Workspace';
-  const pageDescription = activeGroupLabel
-    ? `${activeGroupLabel} · ${user?.nome || 'Operacao'}`
-    : `${brandLabel} · ${perfilUpper || 'USUARIO'}`;
+  const perfilUpper = String(user?.perfil || '').toUpperCase();
+  const tituloDocumento = useMemo(() => {
+    const ativo = findActiveNode(user, location.pathname, location.search);
+    return ativo ? `${resolveLabel(ativo.item, user)} · ${brandLabel}` : brandLabel;
+  }, [user, location.pathname, brandLabel]);
 
   useEffect(() => {
-    setOpenGroupId(activeGroupLabel);
-  }, [activeGroupLabel]);
-
-  const notificationCount = inboxNovasCount + saidaNovasCount;
-
-  const toggleTheme = () => setTheme((current) => (current === 'light' ? 'dark' : 'light'));
-  const closeMobileSidebar = () => {
-    if (isCompactViewport) setMenuAberto(false);
-  };
-
-  const handleSelect = (groupLabel) => {
-    if (groupLabel) setOpenGroupId(groupLabel);
-    closeMobileSidebar();
-  };
-
-  const toggleGroup = (label) => {
-    setOpenGroupId((current) => (current === label ? null : label));
-  };
+    if (typeof document !== 'undefined') {
+      document.title = tituloDocumento;
+    }
+  }, [tituloDocumento]);
 
   return (
+    <AtalhosProvider>
     <div className={theme === 'dark' ? 'dark' : ''}>
-      <div className={`layout-shell fluxy-app-shell flex min-h-screen overflow-x-hidden ${nativeApp ? 'layout-shell-native' : ''} ${custosRecebiveisResponsiveRoute ? 'custos-recebiveis-layout-scope' : ''}`}>
+      {/* overflow-x-CLIP, não hidden: hidden acopla overflow-y:auto e o shell
+          vira um scrollport que nunca rola — a topbar e o cabeçalho fixo
+          (R13) "grudavam" nele em vez de grudar na janela (defeito 02/09). */}
+      <div
+        className={`layout-shell fluxy-app-shell flex min-h-screen overflow-x-clip ${nativeApp ? 'layout-shell-native' : ''} ${custosRecebiveisResponsiveRoute ? 'custos-recebiveis-layout-scope' : ''}`}
+        onClickCapture={abrirLinkEmAbaInterna}
+        onAuxClickCapture={abrirLinkEmAbaInterna}
+      >
         <OperationalAuditTracker />
         <div className="layout-shell-backdrop" aria-hidden="true" />
 
-        <aside
-          id="app-sidebar"
-          className={`sidebar ${collapsed ? 'collapsed' : ''} fixed lg:sticky top-0 left-0 h-full z-40 transform transition-all duration-300 ${
-            menuAberto ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-          }`}
-          style={{ width: `${sidebarWidth}px` }}
-          role="navigation"
-          aria-label="Menu lateral"
-        >
-          <div className="sidebar-inner">
-            <div className={`brand ${collapsed ? 'brand-collapsed' : ''}`}>
-              <div className="brand-mark">
-                <div className="brand-logo-tile" aria-hidden="true">
-                  <img
-                    src={fluxyMark}
-                    alt=""
-                    className="brand-logo-icon"
-                  />
-                </div>
-              </div>
-
-              {!collapsed && (
-                <div className="brand-copy">
-                  <p className="brand-wordmark">Fluxy</p>
-                </div>
-              )}
-
-              <button
-                onClick={() => setMenuAberto(false)}
-                className="chevron-btn lg:hidden"
-                aria-label="Fechar menu"
-                type="button"
-              >
-                <HiOutlineChevronLeft size={18} />
-              </button>
-            </div>
-
-            {!collapsed && (
-              <section className="sidebar-profile-card" aria-label="Resumo da conta">
-                <div className="sidebar-profile-avatar">
-                  {String(user?.nome || brandInitial).trim().charAt(0).toUpperCase() || 'U'}
-                </div>
-                <div className="sidebar-profile-copy min-w-0">
-                  <p className="sidebar-profile-name">{user?.nome || 'Usuário'}</p>
-                  <p className="sidebar-profile-email">
-                    {user?.email || user?.setor?.nome || user?.area || ''}
-                  </p>
-                  {perfilUpper && (
-                    <span className="sidebar-profile-badge">{perfilUpper}</span>
-                  )}
-                </div>
-              </section>
-            )}
-
-            <nav className="sidebar-nav">
-              {collapsed ? (
-                <ul className="nav-list nav-list-collapsed">
-                  {flatMenuItems.map((item) => (
-                    <MenuItem
-                      key={item.to}
-                      to={item.to}
-                      label={item.label}
-                      icon={item.icon}
-                      active={isPathActive(location.pathname, item.to)}
-                      onSelect={() => handleSelect(item.groupLabel)}
-                      collapsed
-                      groupLabel={item.groupLabel}
-                      inboxNovasCount={item.to === '/comunicacao-interna' ? comunicacaoNovasCount : 0}
-                      saidaNovasCount={0}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <ul className="nav-list nav-list-grouped">
-                  {menuGroups.map((group) => {
-                    const isOpen = openGroupId === group.label;
-                    const isGroupActive = group.items.some((item) => isPathActive(location.pathname, item.to));
-                    const groupId = `submenu-${String(group.label).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-                    const GroupIcon = group.icon;
-                    const unreadCount = group.label === 'Comunicação' ? notificationCount : 0;
-
-                    return (
-                      <li key={group.label} className={`nav-group ${isGroupActive ? 'active' : ''}`}>
-                        <button
-                          type="button"
-                          className={`nav-group-toggle ${isOpen ? 'open' : ''} ${isGroupActive ? 'current' : ''}`}
-                          onClick={() => toggleGroup(group.label)}
-                          aria-expanded={isOpen}
-                          aria-controls={groupId}
-                        >
-                          <span className="nav-group-heading">
-                            {GroupIcon && <GroupIcon className="nav-group-icon" />}
-                            <span className="nav-group-title">{group.label}</span>
-                            {unreadCount > 0 && (
-                              <span className="nav-count-badge">
-                                {unreadCount > 99 ? '99+' : unreadCount}
-                              </span>
-                            )}
-                          </span>
-                          {isOpen ? (
-                            <HiOutlineChevronDown className="nav-group-chevron" />
-                          ) : (
-                            <HiOutlineChevronRight className="nav-group-chevron" />
-                          )}
-                        </button>
-
-                        <div
-                          id={groupId}
-                          className={`nav-sublist-wrap ${isOpen ? 'open' : ''}`}
-                        >
-                          <ul className="nav-sublist">
-                            {group.items.map((item) => (
-                              <MenuItem
-                                key={item.to}
-                                to={item.to}
-                                label={item.label}
-                                icon={item.icon}
-                                active={isPathActive(location.pathname, item.to)}
-                                onSelect={() => handleSelect(group.label)}
-                                collapsed={false}
-                                subItem
-                                groupLabel={group.label}
-                                inboxNovasCount={item.to === '/comunicacao-interna' ? comunicacaoNovasCount : 0}
-                                saidaNovasCount={0}
-                              />
-                            ))}
-                          </ul>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </nav>
-
-            <div className="sidebar-footer">
-              {!collapsed && (
-                <div className="sidebar-footer-note">
-                  <HiOutlineSparkles className="sidebar-footer-note-icon" />
-                  <span>Fluxo visual renovado, mantendo regras e endpoints atuais.</span>
-                </div>
-              )}
-
-              <button
-                onClick={logout}
-                className="nav-btn nav-btn-logout"
-                type="button"
-              >
-                <HiOutlineArrowRightOnRectangle className="nav-icon" />
-                {!collapsed && 'Sair'}
-              </button>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setCollapsed((current) => !current)}
-            className="sidebar-toggle-rail hidden lg:inline-flex"
-            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
-            aria-expanded={!collapsed}
-            type="button"
-          >
-            <HiOutlineChevronLeft
-              className={`sidebar-toggle-icon ${collapsed ? 'is-collapsed' : ''}`}
-            />
-          </button>
-        </aside>
-
-        {menuAberto && (
-          <button
-            type="button"
-            className="sidebar-overlay fixed inset-0 lg:hidden z-30"
-            onClick={() => setMenuAberto(false)}
-            aria-label="Fechar menu lateral"
-          />
-        )}
-
         <main className={`layout-main flex-1 min-w-0 transition-colors duration-200 ${nativeApp ? 'layout-main-native' : ''}`}>
           <div className={`layout-content-shell ${comprasResponsiveRoute ? 'compras-responsive-scope' : ''}`}>
-            <header className={`topbar-shell ${nativeApp ? 'topbar-shell-native' : ''}`}>
-              <div className="topbar-leading">
+            <header className={`fx-topbar ${nativeApp ? 'topbar-shell-native' : ''}`}>
+              <div className="fx-topbar-nav">
+                {/* Marca no canto superior esquerdo — âncora visual do
+                    sistema. Discreta, sem sombras (D9); clique = Início.
+                    No mobile fica só o símbolo do Fluxy. */}
+                <Link to="/" className="fx-brand" aria-label="CSC · Fluxy — ir para o início">
+                  <img src={cscLogo} alt="CSC" width={53} height={26} className="fx-brand-csc" />
+                  <img src={fluxyMark} alt="" aria-hidden="true" width={22} height={22} className="fx-brand-fluxy" />
+                  <span className="fx-brand-nome">Fluxy</span>
+                </Link>
+                <span className="fx-brand-divisor" aria-hidden="true" />
+
+                <Link to="/" className="fx-home-btn" aria-label="Ir para o início">
+                  <HiOutlineHome size={17} aria-hidden="true" />
+                  <span className="hidden sm:inline">Início</span>
+                </Link>
+
                 <button
-                  onClick={() => setMenuAberto(true)}
-                  className="topbar-menu-button lg:hidden"
-                  aria-label="Abrir menu"
-                  aria-controls="app-sidebar"
-                  aria-expanded={menuAberto}
                   type="button"
+                  className="fx-search-btn"
+                  onClick={abrirBuscaAtual}
+                  aria-label="Buscar tela (Ctrl+K)"
+                  aria-haspopup="dialog"
                 >
-                  <HiOutlineBars3 size={20} />
+                  <HiOutlineMagnifyingGlass size={16} aria-hidden="true" />
+                  <span className="hidden md:inline">Buscar</span>
+                  <kbd className="fx-search-kbd hidden md:inline">Ctrl K</kbd>
                 </button>
 
-                <div className="topbar-context">
-                  <p className="topbar-breadcrumb">
-                    <span>{activeGroupLabel || brandLabel}</span>
-                    {activeItem && activeItem.label !== activeGroupLabel ? (
-                      <>
-                        <HiOutlineChevronRight size={14} />
-                        <span>{activeItem.label}</span>
-                      </>
-                    ) : null}
-                  </p>
-                  <div className="topbar-title-row">
-                    <div>
-                      <h1 className="topbar-title">{currentSectionLabel}</h1>
-                      <p className="topbar-subtitle">{pageDescription}</p>
-                    </div>
-                    <span className="topbar-status-chip">
-                      {theme === 'dark' ? 'Modo escuro' : 'Modo claro'}
-                    </span>
-                  </div>
-                </div>
+                <Breadcrumb
+                  user={user}
+                  pathname={location.pathname}
+                  busca={location.search}
+                  classe="fx-breadcrumb--dentro"
+                />
+
+                {/* Estrela de fixar a tela atual + fileira de atalhos
+                    (ícones na cor do módulo, excedente no painel »). */}
+                <AtalhosTopbar />
               </div>
 
-              <div className="topbar-tray">
+              {/*
+                A MESMA TRILHA, NA FILEIRA DE BAIXO — e só uma das duas
+                existe de cada vez (`display: none` na outra, por largura;
+                o que está oculto não entra na árvore de acessibilidade).
+
+                POR QUE DUAS E NÃO UMA QUE SE MOVE: elas moram em CAIXAS
+                DIFERENTES. Abaixo de 1024px a trilha precisa da fileira
+                inteira, e a única caixa que sabe abrir fileira nova é a
+                própria barra (`.fx-topbar`, `flex-wrap: wrap`) — não a
+                navegação, que é uma fileira só. CSS não muda um nó de
+                caixa; ou ele nasce nas duas, ou a navegação passaria a
+                quebrar por dentro, e isso apaga a mordida da prova da
+                barra (medido: com `flex-wrap` na navegação, a folha de
+                antes de 06/09 deixa de reprovar em 3 das 4 larguras).
+
+                A ORDEM DO DOM É A ORDEM DA TELA nas duas larguras — nada
+                de `order`, que inverteria o foco do teclado em relação ao
+                que se vê. Aqui a trilha fica entre a navegação e a
+                bandeja, que é onde ela é desenhada.
+              */}
+              <Breadcrumb
+                user={user}
+                pathname={location.pathname}
+                busca={location.search}
+                classe="fx-breadcrumb--fileira"
+              />
+
+              <div className="fx-topbar-tray">
+                <DevUserSwitcher />
+
                 <button
                   onClick={toggleTheme}
                   className="theme-toggle"
@@ -1007,15 +389,9 @@ export default function Layout() {
                   aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
                 >
                   {theme === 'dark' ? (
-                    <>
-                      <HiOutlineSun size={18} />
-                      <span className="hidden sm:inline">Claro</span>
-                    </>
+                    <HiOutlineSun size={18} aria-hidden="true" />
                   ) : (
-                    <>
-                      <HiOutlineMoon size={18} />
-                      <span className="hidden sm:inline">Escuro</span>
-                    </>
+                    <HiOutlineMoon size={18} aria-hidden="true" />
                   )}
                 </button>
 
@@ -1032,101 +408,94 @@ export default function Layout() {
                     }
                   }}
                 >
-                  <HiOutlineLifebuoy size={18} />
-                  <span className="hidden sm:inline">Suporte</span>
+                  <HiOutlineLifebuoy size={18} aria-hidden="true" />
                 </button>
 
-                <Link
+                {podeVerComunicacao && <Link
                   to="/comunicacao-interna"
                   className="theme-toggle topbar-chat-btn"
                   aria-label="Chat interno"
                   title="Chat interno"
                   style={{ position: 'relative' }}
                 >
-                  <HiOutlineChatBubbleOvalLeft size={18} />
-                  <span className="hidden sm:inline">Chat</span>
+                  <HiOutlineChatBubbleOvalLeft size={18} aria-hidden="true" />
                   {comunicacaoNovasCount > 0 && (
                     <span className="notification-trigger-badge">
                       {comunicacaoNovasCount > 99 ? '99+' : comunicacaoNovasCount}
                     </span>
                   )}
-                </Link>
+                </Link>}
 
                 <NotificacoesBell />
+
+                <Link
+                  to="/perfil"
+                  className="theme-toggle"
+                  aria-label={`Meu perfil — ${nomeProprio(user?.nome) || 'usuário'} (${perfilUpper || 'USUARIO'})`}
+                  title={`${nomeProprio(user?.nome) || 'Usuário'} · ${perfilUpper || 'USUARIO'}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 22,
+                      height: 22,
+                      borderRadius: 999,
+                      background: 'var(--ui-surface-soft)',
+                      // R30 (05/09): era 11px — abaixo do piso de 12. O círculo
+                      // tem 22px e a letra é uma só, então o degrau de apoio cabe
+                      // sem apertar. Escapou da varredura de CSS porque está
+                      // escrito no JSX; o check foi estendido para alcançar isto.
+                      fontSize: 'var(--fonte-detalhe)',
+                      fontWeight: 700
+                    }}
+                  >
+                    {String(user?.nome || 'U').trim().charAt(0).toUpperCase()}
+                  </span>
+                  <span className="hidden lg:inline">{nomeProprio(String(user?.nome || '').split(' ')[0])}</span>
+                </Link>
+
+                <button
+                  onClick={logout}
+                  className="theme-toggle"
+                  type="button"
+                  aria-label="Sair do sistema"
+                  title="Sair"
+                >
+                  <HiOutlineArrowRightOnRectangle size={18} aria-hidden="true" />
+                  <span className="hidden lg:inline">Sair</span>
+                </button>
               </div>
+
+              <WorkspaceTabs
+                tabs={workspaceTabs}
+                activeId={activeWorkspaceTabId}
+                canOpen={canOpenWorkspaceTab}
+                onActivate={activateWorkspaceTab}
+                onClose={closeWorkspaceTab}
+                onNewTab={abrirBuscaNovaAba}
+              />
             </header>
+
+            {/* Custos e Recebíveis: obra travada por atraso (29/09/2026). */}
+            <CrObrasTravadasAviso />
 
             <Suspense fallback={<AppRouteFallback />}>
               <Outlet />
             </Suspense>
           </div>
         </main>
+
+        <CommandPalette
+          open={buscaAberta}
+          onClose={fecharBusca}
+          mode={buscaModo}
+          onNavigate={navegarDaBusca}
+        />
       </div>
     </div>
-  );
-}
-
-function findActiveMenuMatch(menuGroups, pathname) {
-  let bestMatch = null;
-
-  for (const group of menuGroups) {
-    for (const item of group.items) {
-      if (!isPathActive(pathname, item.to)) continue;
-      if (!bestMatch || item.to.length > bestMatch.item.to.length) {
-        bestMatch = { group, item };
-      }
-    }
-  }
-
-  return bestMatch;
-}
-
-function isPathActive(currentPath, targetPath) {
-  return currentPath === targetPath || currentPath.startsWith(`${targetPath}/`);
-}
-
-function MenuItem({
-  to,
-  label,
-  icon: Icon,
-  active,
-  onSelect,
-  collapsed,
-  subItem = false,
-  groupLabel,
-  inboxNovasCount = 0,
-  saidaNovasCount = 0
-}) {
-  const mostrarBadgeInbox = to === '/comunicacao-interna' || to === '/conversas/entrada';
-  const mostrarBadgeSaida = to === '/conversas/saida';
-  const inboxCount = Number(inboxNovasCount || 0);
-  const saidaCount = Number(saidaNovasCount || 0);
-
-  return (
-    <li>
-      <Link
-        to={to}
-        onClick={onSelect}
-        className={`nav-btn ${subItem ? 'nav-btn-sub' : ''} ${active ? 'active' : ''}`}
-        title={collapsed ? `${groupLabel} · ${label}` : label}
-        aria-label={label}
-        aria-current={active ? 'page' : undefined}
-      >
-        {Icon && <Icon className="nav-icon" />}
-        {!collapsed && <span className="nav-btn-label">{label}</span>}
-
-        {!collapsed && mostrarBadgeInbox && inboxCount > 0 && (
-          <span className="nav-count-badge nav-count-badge-inline">
-            {inboxCount > 99 ? '99+' : inboxCount}
-          </span>
-        )}
-
-        {!collapsed && mostrarBadgeSaida && saidaCount > 0 && (
-          <span className="nav-count-badge nav-count-badge-inline">
-            {saidaCount > 99 ? '99+' : saidaCount}
-          </span>
-        )}
-      </Link>
-    </li>
+    </AtalhosProvider>
   );
 }

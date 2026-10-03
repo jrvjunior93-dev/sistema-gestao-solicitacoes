@@ -81,6 +81,24 @@ export function isComprasSetor(valor) {
   return normalizarSetorToken(valor) === 'COMPRAS';
 }
 
+const SETORES_DP = new Set(['DP', 'DEPARTAMENTO_PESSOAL']);
+
+export function isDpSetor(valor) {
+  if (typeof valor === 'object' && valor !== null) {
+    return [valor.codigo, valor.nome].some((item) => SETORES_DP.has(normalizarSetorToken(item)));
+  }
+  return SETORES_DP.has(normalizarSetorToken(valor));
+}
+
+export function userBelongsToDpSetor(user) {
+  const setoresDoUsuario = [
+    user?.setor,
+    ...(Array.isArray(user?.setores) ? user.setores : [])
+  ].filter(Boolean);
+
+  return setoresDoUsuario.some(isDpSetor) || isDpSetor(user?.area);
+}
+
 export function obterTokensSetorUsuario(user) {
   const tokens = new Set([
     String(user?.setor?.codigo || '').toUpperCase(),

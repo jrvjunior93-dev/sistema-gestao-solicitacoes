@@ -6,6 +6,7 @@ import {
   HiOutlineDocumentArrowUp,
   HiOutlineExclamationTriangle
 } from 'react-icons/hi2';
+import { TabelaPadrao, CelulaDupla } from '../../../components/padrao';
 import CrStatusPill from './CrStatusPill';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
@@ -61,7 +62,8 @@ export default function CrPlanoWorkspace({
   onSelectPlan,
   onOpenImport,
   onDownloadModel,
-  onPublish
+  onPublish,
+  onClose = null
 }) {
   const [justification, setJustification] = useState('');
   const plan = data?.plano_atual || null;
@@ -97,12 +99,8 @@ export default function CrPlanoWorkspace({
     <section className="cr-workspace">
       <div className="cr-workspace-heading">
         <div>
-          <span>Workspace da obra</span>
+          <span>Planilha da obra</span>
           <h2>{obra.codigo || `OBRA ${obra.id}`} · {obra.nome}</h2>
-          <p>
-            O orçamento macro abaixo é somente leitura. As versões micro são independentes e
-            gravadas exclusivamente nas tabelas do módulo.
-          </p>
         </div>
         <div className="cr-workspace-actions">
           {canImport ? (
@@ -117,20 +115,18 @@ export default function CrPlanoWorkspace({
               </button>
             </>
           ) : null}
+          {onClose ? (
+            <button type="button" className="btn btn-outline" onClick={onClose}>
+              Fechar
+            </button>
+          ) : null}
         </div>
-      </div>
-
-      <div className="cr-subtabs" role="tablist" aria-label="Workspace da obra">
-        <button type="button" className="is-active" role="tab" aria-selected="true">
-          Estrutura micro
-        </button>
       </div>
 
       {!plan ? (
         <div className="cr-empty-state cr-empty-state--large">
           <HiOutlineDocumentArrowUp className="h-7 w-7" />
           <strong>Esta obra ainda não possui estrutura micro</strong>
-          <span>Baixe o modelo, preencha a planilha e valide o arquivo antes da primeira importação.</span>
           {canImport ? (
             <button type="button" className="btn btn-primary" onClick={onOpenImport}>
               Iniciar importação
@@ -236,81 +232,76 @@ export default function CrPlanoWorkspace({
               <div className="cr-block-heading">
                 <div>
                   <h3>Estrutura micro da versão v{plan.versao}</h3>
-                  <p>Quantidade, custo unitário e vínculo macro recalculados pelo backend.</p>
                 </div>
               </div>
-              <div className="cr-table-shell cr-desktop-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Código / descrição</th>
-                      <th>Unidade</th>
-                      <th className="text-right">Quantidade</th>
-                      <th className="text-right">Custo unitário</th>
-                      <th className="text-right">Total</th>
-                      <th>Etapa macro</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(plan.itens || []).map((item) => {
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'item',
+                    titulo: 'Código / descrição',
+                    // R17: o item de custo NOMEIA a linha da estrutura micro.
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (item) => (
+                      // Recuo da hierarquia preservado da tabela anterior:
+                      // o nível do item é a única pista de pai/filho.
+                      <div style={{ paddingLeft: `${getItemDepth(item, itemById) * 18}px` }}>
+                        <CelulaDupla principal={item.codigo} sub={item.descricao} />
+                      </div>
+                    )
+                  },
+                  {
+                    id: 'unidade',
+                    titulo: 'Unidade',
+                    tipo: 'texto',
+                    render: (item) => item.unidade || '-'
+                  },
+                  {
+                    id: 'quantidade',
+                    titulo: 'Quantidade',
+                    tipo: 'numero',
+                    render: (item) => (item.somadora ? '-' : item.quantidade.toLocaleString('pt-BR'))
+                  },
+                  {
+                    id: 'custo_unitario',
+                    titulo: 'Custo unitário',
+                    tipo: 'valor',
+                    render: (item) => (item.somadora ? '-' : formatCurrency(item.custo_unitario))
+                  },
+                  {
+                    id: 'valor_total',
+                    titulo: 'Total',
+                    tipo: 'valor',
+                    render: (item) => (
+                      <strong>{item.somadora ? '-' : formatCurrency(item.valor_total)}</strong>
+                    )
+                  },
+                  {
+                    id: 'macro',
+                    titulo: 'Etapa macro',
+                    tipo: 'texto',
+                    render: (item) => {
                       const macro = item.vinculos_macro?.[0]?.apropriacao;
-                      const depth = getItemDepth(item, itemById);
-                      return (
-                        <tr key={item.id} data-sum={item.somadora ? 'true' : undefined}>
-                          <td style={{ paddingLeft: `${16 + depth * 18}px` }}>
-                            <strong>{item.codigo}</strong>
-                            <span>{item.descricao}</span>
-                          </td>
-                          <td>{item.unidade || '-'}</td>
-                          <td className="text-right">{item.somadora ? '-' : item.quantidade.toLocaleString('pt-BR')}</td>
-                          <td className="text-right">{item.somadora ? '-' : formatCurrency(item.custo_unitario)}</td>
-                          <td className="text-right"><strong>{item.somadora ? '-' : formatCurrency(item.valor_total)}</strong></td>
-                          <td>
-                            {macro ? (
-                              <>
-                                <strong>{macro.codigo}</strong>
-                                <span>{macro.descricao || '-'}</span>
-                              </>
-                            ) : (
-                              <span className="cr-link-missing">Sem vínculo</span>
-                            )}
-                          </td>
-                        </tr>
+                      return macro ? (
+                        <CelulaDupla principal={macro.codigo} sub={macro.descricao || '-'} />
+                      ) : (
+                        <span className="cr-link-missing">Sem vínculo</span>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="cr-mobile-list">
-                {(plan.itens || []).map((item) => {
-                  const macro = item.vinculos_macro?.[0]?.apropriacao;
-                  return (
-                    <article className="cr-mobile-record" key={item.id}>
-                      <div>
-                        <span className="text-xs font-semibold uppercase text-[var(--c-muted)]">{item.codigo}</span>
-                        <h4 className="mt-1 text-sm font-bold text-[var(--c-text)]">{item.descricao}</h4>
-                      </div>
-                      <dl className="cr-mobile-record-grid">
-                        <div><dt>Unidade</dt><dd>{item.unidade || '-'}</dd></div>
-                        <div><dt>Quantidade</dt><dd>{item.somadora ? '-' : item.quantidade.toLocaleString('pt-BR')}</dd></div>
-                        <div><dt>Custo unitário</dt><dd>{item.somadora ? '-' : formatCurrency(item.custo_unitario)}</dd></div>
-                        <div><dt>Total</dt><dd>{item.somadora ? '-' : formatCurrency(item.valor_total)}</dd></div>
-                      </dl>
-                      <div className="cr-mobile-macro">
-                        <span>Etapa macro</span>
-                        <strong>{macro ? `${macro.codigo} · ${macro.descricao || ''}` : 'Sem vínculo'}</strong>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+                    }
+                  }
+                ]}
+                itens={plan.itens || []}
+                getId={(item) => item.id}
+                storageKey="tabela:custos-recebiveis-workspace:estrutura-micro"
+                rotuloRolagem="Estrutura micro da versão"
+                vazio="Nenhum item na versão."
+              />
             </div>
 
             <aside className="cr-macro-reference">
               <div className="cr-block-heading">
                 <div>
                   <h3>Referência macro</h3>
-                  <p>Leitura direta de Obras. Nenhuma edição é feita aqui.</p>
                 </div>
               </div>
               <div className="cr-macro-list">

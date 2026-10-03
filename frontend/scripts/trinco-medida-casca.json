@@ -1,0 +1,16 @@
+{
+  "regra": "MEDIDA A MAO NA CASCA E NOS COMPONENTES COMPARTILHADOS",
+  "criado_em": "2026-09-05",
+  "porque": "O manifesto tem 205 TELAS e zero arquivos de src/layout ou src/components. A casca que envolve TODA tela e os componentes que aparecem em todas elas nunca foram conferidos — e foi por ai que passou um fontSize: 11 no circulo do usuario, abaixo do piso de 12px, sobrevivendo a limpeza que zerou 213 violacoes no CSS. Boa parte do que resta e GEOMETRIA legitima (o desenho do skyline, o diametro de um circulo), nao medida de layout. Por isso o passivo entra congelado e SO DESCE, em vez de reprovar em massa uma coisa que em maioria esta certa.",
+  "nomes": {
+    "src/components/CityBackground.jsx": 9,
+    "src/components/contratos/BlocoContratoFluxoNovo.jsx": 9,
+    "src/components/contratos/BlocoMedicaoContrato.jsx": 3,
+    "src/components/contratos/ModalAditivoContrato.jsx": 5,
+    "src/components/lista-avancada/ListaAvancada.jsx": 2,
+    "src/components/padrao/TabelaPadrao.jsx": 2,
+    "src/components/solicitacoes/FiltrosTopo.jsx": 2,
+    "src/components/ui/OverlayModal.jsx": 1,
+    "src/layout/Layout.jsx": 2
+  }
+}

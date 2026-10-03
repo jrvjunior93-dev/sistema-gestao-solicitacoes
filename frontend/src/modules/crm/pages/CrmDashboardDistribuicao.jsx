@@ -1,6 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Pagina,
+  PageHeader,
+  BlocoConteudo,
+  BlocosPersonalizaveis,
+  StatGrid,
+  StatTile,
+  TabelaPadrao,
+  CelulaDupla,
+  BarraFiltros,
+  Avisos,
+  useAvisos
+} from '../../../components/padrao';
 import { obterDashboardDistribuicaoCrm } from '../../../services/crm';
+
+const PADRAO = { dias: 30, no_activity_hours: 24 };
+
+function texto(valor) {
+  return valor === null || valor === undefined ? '—' : String(valor);
+}
 
 function fmtDate(value) {
   if (!value) return '-';
@@ -12,323 +31,386 @@ function fmtDay(value) {
   return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-function MetricCard({ label, value, helper, tone = 'default' }) {
-  const toneClass = {
-    default: 'text-main',
-    warning: 'text-amber-500',
-    danger: 'text-red-500',
-    success: 'text-emerald-600',
-    info: 'text-blue-600'
-  }[tone] || 'text-main';
+/*
+  R25 — a barra era pintada com paleta crua (`bg-blue-600`, `bg-amber-500`,
+  `bg-red-500`, `bg-emerald-600`): sem par no tema escuro e fora do piso de
+  contraste do ThemeContext. A cor passa a vir de TOKEN, no mesmo idioma já
+  aprovado na FinanceiroDre (trilha em superfície do sistema, preenchimento
+  com `var(--...)` no style).
 
+  R10: a proporção é percentual (não é medida da escala); a altura vem do
+  degrau `h-2` (8px).
+
+  NOTA DE COR (relatório): os quatro tons da versão anterior existiam para
+  distinguir PAINÉIS, não séries comparadas na mesma leitura. O sistema tem
+  token para papel semântico (--sem-*) e para o traço primário, e não tem
+  uma PALETA DE SÉRIES categórica. Em vez de inventar cor, as barras de
+  volume usam o traço primário e a única distinção que é semântica de
+  verdade — carteira sem atividade — usa --sem-warning.
+*/
+function BarraProporcao({ valor, max, cor = 'var(--c-primary)' }) {
+  const largura = max > 0 ? Math.min(100, Math.round((Number(valor || 0) / max) * 100)) : 0;
   return (
-    <div className="card sol-surface-card p-5">
-      <p className="text-xs text-muted">{label}</p>
-      <p className={`mt-1 text-3xl font-bold ${toneClass}`}>{value}</p>
-      {helper && <p className="mt-1 text-xs text-muted">{helper}</p>}
+    <div className="h-2 w-full rounded-full bg-[var(--ui-surface-soft)]">
+      <div className="h-2 rounded-full" style={{ width: `${largura}%`, background: cor }} />
     </div>
   );
 }
 
-function ProgressBar({ value, max, tone = 'blue' }) {
-  const width = max > 0 ? Math.min(100, Math.round((Number(value || 0) / max) * 100)) : 0;
-  const colorClass = {
-    blue: 'bg-blue-600',
-    amber: 'bg-amber-500',
-    red: 'bg-red-500',
-    emerald: 'bg-emerald-600'
-  }[tone] || 'bg-blue-600';
-
-  return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-elevated">
-      <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${width}%` }} />
-    </div>
-  );
-}
-
-function EmptyState({ children }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-base p-8 text-center text-sm text-muted">
-      {children}
-    </div>
-  );
-}
-
-function ResponsaveisTable({ rows }) {
-  const maxCarteira = Math.max(...(rows || []).map((row) => Number(row.totalCarteira || 0)), 0);
-
-  return (
-    <section className="card sol-surface-card p-5">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-main">Carteira por responsavel</h2>
-        <p className="text-xs text-muted">Base para identificar sobrecarga, carteira parada e desequilibrio operacional.</p>
-      </div>
-
-      {!rows?.length ? (
-        <EmptyState>Nenhum responsavel com carteira ativa no periodo.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="app-table w-full">
-            <thead>
-              <tr>
-                <th className="app-th">Responsavel</th>
-                <th className="app-th">Carteira</th>
-                <th className="app-th">Novos periodo</th>
-                <th className="app-th">Sem atividade</th>
-                <th className="app-th">Convertidos</th>
-                <th className="app-th">Taxa periodo</th>
-                <th className="app-th">Pressao</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.usuario?.id || row.usuario?.nome} className="app-tr">
-                  <td className="app-td">
-                    <p className="font-medium text-main">{row.usuario?.nome || '-'}</p>
-                    <p className="text-xs text-muted">{row.usuario?.perfil || '-'}</p>
-                  </td>
-                  <td className="app-td min-w-[170px]">
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-main">{row.totalCarteira}</span>
-                        <span className="text-xs text-muted">ativos</span>
-                      </div>
-                      <ProgressBar value={row.totalCarteira} max={maxCarteira} />
-                    </div>
-                  </td>
-                  <td className="app-td">{row.novosPeriodo}</td>
-                  <td className="app-td">
-                    <span className={row.semAtividade > 0 ? 'font-semibold text-amber-600' : ''}>{row.semAtividade}</span>
-                  </td>
-                  <td className="app-td">{row.convertidosPeriodo}</td>
-                  <td className="app-td">{row.taxaConversaoPeriodo}%</td>
-                  <td className="app-td font-semibold text-main">{row.pressaoCarteira}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function RedistribuicoesRecentes({ rows }) {
-  return (
-    <section className="card sol-surface-card p-5">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-main">Redistribuicoes recentes</h2>
-        <p className="text-xs text-muted">Historico auditado das movimentacoes de responsavel.</p>
-      </div>
-
-      {!rows?.length ? (
-        <EmptyState>Nenhuma redistribuicao registrada no periodo.</EmptyState>
-      ) : (
-        <div className="space-y-3">
-          {rows.map((row) => (
-            <div key={row.id} className="rounded-2xl border border-base bg-elevated/30 p-4">
-              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                <div>
-                  {row.lead?.id ? (
-                    <Link to={`/crm/leads/${row.lead.id}`} className="font-semibold text-indigo-600 hover:underline">
-                      {row.lead.nome || `Lead #${row.lead.id}`}
-                    </Link>
-                  ) : (
-                    <p className="font-semibold text-main">Lead removido ou indisponivel</p>
-                  )}
-                  <p className="text-xs text-muted">
-                    {row.oldAssignedUserName || 'Sem responsavel'} {'->'} {row.newAssignedUserName || 'Novo responsavel nao informado'}
-                  </p>
-                </div>
-                <div className="text-left md:text-right">
-                  <p className="text-xs text-muted">{fmtDate(row.createdAt)}</p>
-                  <p className="text-xs text-muted">por {row.usuario?.nome || 'sistema'}</p>
-                </div>
-              </div>
-              {row.motivo && (
-                <p className="mt-3 rounded-xl border border-base bg-card px-3 py-2 text-xs text-sub">{row.motivo}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ChartPanel({ title, subtitle, rows, labelKey = 'dia' }) {
+function BlocoVolume({ titulo, descricao, rows, labelKey }) {
   const max = Math.max(...(rows || []).map((row) => Number(row.total || 0)), 0);
 
   return (
-    <section className="card sol-surface-card p-5">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-main">{title}</h2>
-        {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
-      </div>
+    <BlocoConteudo titulo={titulo} descricao={descricao}>
       {!rows?.length ? (
-        <EmptyState>Sem dados para o recorte atual.</EmptyState>
+        <p className="text-sm text-muted">Sem dados para o recorte atual.</p>
       ) : (
         <div className="space-y-3">
           {rows.map((row) => (
-            <div key={`${title}-${row[labelKey] || row.usuario?.id || row.usuario?.nome}`} className="space-y-1">
+            <div key={`${titulo}-${row[labelKey] || row.usuario?.id || row.usuario?.nome}`} className="space-y-1">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-main">
                   {labelKey === 'dia' ? fmtDay(row.dia) : row.usuario?.nome || '-'}
                 </span>
                 <span className="font-semibold text-main">{row.total}</span>
               </div>
-              <ProgressBar value={row.total} max={max} tone={labelKey === 'dia' ? 'blue' : 'amber'} />
+              <BarraProporcao valor={row.total} max={max} />
             </div>
           ))}
         </div>
       )}
-    </section>
+    </BlocoConteudo>
   );
 }
 
 export default function CrmDashboardDistribuicao() {
-  const [filters, setFilters] = useState({ dias: 30, no_activity_hours: 24 });
+  const [filters, setFilters] = useState(PADRAO);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // R3/R19: o <div> vermelho à mão (paleta crua red-200/red-50/red-700) deu
+  // lugar à faixa de aviso do sistema.
+  const { avisos, avisar, fechar } = useAvisos();
 
   function load(currentFilters = filters) {
     setLoading(true);
-    setError('');
     obterDashboardDistribuicaoCrm(currentFilters)
       .then(setData)
-      .catch((err) => setError(err.message || 'Erro ao carregar dashboard de distribuicao'))
+      .catch((err) => avisar.erro(err?.message || 'Erro ao carregar dashboard de distribuicao'))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     load(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.dias, filters.no_activity_hours]);
 
+  const kpis = data?.kpis;
+
+  /*
+    C2 × B3 (critério de 05/09): a faixa fica com o TOTAL (leads ativos em
+    carteira) e os ladrilhos com os RECORTES. O cartão que trazia o mesmo
+    total NÃO some — ele MUDA DE CONTEÚDO e passa a mostrar o recorte que só
+    ele sabia: o percentual com responsável, que antes era o rodapé do
+    número repetido.
+  */
   const cards = useMemo(() => {
-    if (!data?.kpis) return [];
+    if (!kpis) return [];
     return [
       {
-        label: 'Leads ativos em carteira',
-        value: data.kpis.totalAtivos,
-        helper: `${data.kpis.percentualAtribuido}% com responsavel`,
-        tone: 'info'
+        label: 'Carteira com responsável',
+        valor: `${texto(kpis.percentualAtribuido)}%`,
+        sub: 'Dos leads ativos em carteira',
+        tom: 'info'
       },
       {
-        label: 'Leads sem responsavel',
-        value: data.kpis.leadsSemResponsavel,
-        helper: 'Devem ser tratados antes de campanhas em escala',
-        tone: data.kpis.leadsSemResponsavel > 0 ? 'danger' : 'success'
+        label: 'Leads sem responsável',
+        valor: texto(kpis.leadsSemResponsavel),
+        sub: 'Devem ser tratados antes de campanhas em escala',
+        tom: kpis.leadsSemResponsavel > 0 ? 'danger' : 'success'
       },
       {
         label: 'Leads sem atividade',
-        value: data.kpis.leadsSemAtividade,
-        helper: `Sem interacao acima de ${data.periodo?.noActivityHours || filters.no_activity_hours}h`,
-        tone: data.kpis.leadsSemAtividade > 0 ? 'warning' : 'success'
+        valor: texto(kpis.leadsSemAtividade),
+        sub: `Sem interacao acima de ${data?.periodo?.noActivityHours || filters.no_activity_hours}h`,
+        tom: kpis.leadsSemAtividade > 0 ? 'warning' : 'success'
       },
       {
-        label: 'Redistribuicoes no periodo',
-        value: data.kpis.redistribuicoesPeriodo,
-        helper: `${data.kpis.leadsComMaisDeUmaRedistribuicao} lead(s) redistribuido(s) mais de uma vez`,
-        tone: data.kpis.leadsComMaisDeUmaRedistribuicao > 0 ? 'warning' : 'default'
+        label: 'Redistribuicoes no período',
+        valor: texto(kpis.redistribuicoesPeriodo),
+        sub: `${texto(kpis.leadsComMaisDeUmaRedistribuicao)} lead(s) redistribuido(s) mais de uma vez`,
+        tom: kpis.leadsComMaisDeUmaRedistribuicao > 0 ? 'warning' : undefined
       },
       {
-        label: 'Responsaveis com carteira',
-        value: data.kpis.responsaveisComCarteira,
-        helper: 'Usuarios com leads ativos atribuidos',
-        tone: 'default'
+        label: 'Responsáveis com carteira',
+        valor: texto(kpis.responsaveisComCarteira),
+        sub: 'Usuários com leads ativos atribuídos'
       },
       {
         label: 'Desequilibrio de carteira',
-        value: data.kpis.desequilibrioCarteira,
-        helper: 'Diferenca entre maior e menor carteira ativa',
-        tone: data.kpis.desequilibrioCarteira > 10 ? 'warning' : 'default'
+        valor: texto(kpis.desequilibrioCarteira),
+        sub: 'Diferença entre maior e menor carteira ativa',
+        tom: kpis.desequilibrioCarteira > 10 ? 'warning' : undefined
       }
     ];
-  }, [data, filters.no_activity_hours]);
+  }, [kpis, data, filters.no_activity_hours]);
+
+  const maxCarteira = Math.max(
+    ...(data?.responsaveis || []).map((row) => Number(row.totalCarteira || 0)),
+    0
+  );
+
+  function ajustar(campo, valor, padrao) {
+    setFilters((current) => ({ ...current, [campo]: Number(valor || padrao) }));
+  }
 
   return (
-    <div className="page solicitacoes-page">
-      <div className="card sol-surface-card app-toolbar-card">
-        <div className="app-page-header-row">
-          <div>
-            <h1 className="page-title">Distribuicao CRM</h1>
-            <p className="page-subtitle">Visao de carteira, redistribuicoes e equilibrio operacional antes da criacao de pools avancados.</p>
-          </div>
-          <div className="flex gap-2">
-            <Link to="/crm/dashboard-sla" className="btn btn-secondary text-sm">SLA</Link>
-            <Link to="/crm/leads" className="btn btn-secondary text-sm">Leads</Link>
-          </div>
-        </div>
-      </div>
+    <Pagina>
+      {/* R13/C1: a faixa fixa substitui o cartão de barra de ferramentas que
+          rolava para fora. R11/C6: os botões "SLA" e "Leads" eram navegação
+          na barra de ações — menu e Ctrl+K resolvem. */}
+      <PageHeader
+        titulo="Distribuição CRM"
+        contagem={kpis ? `${texto(kpis.totalAtivos)} lead(s) ativo(s) em carteira` : null}
+        descricao="Visão de carteira, redistribuicoes e equilibrio operacional antes da criação de pools avançados."
+        acaoPrincipal={{
+          rotulo: loading ? 'Atualizando...' : 'Atualizar',
+          onClick: () => load(filters),
+          desabilitada: loading
+        }}
+      />
 
-      {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      <Avisos avisos={avisos} aoFechar={fechar} />
 
-      <div className="card sol-surface-card mt-4 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-main">Recorte de distribuicao</h2>
-            <p className="text-xs text-muted">Use este painel para entender sobrecarga e redistribuicoes antes de automatizar regras comerciais.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <label className="grid gap-1 text-sm text-main">
-              Periodo (dias)
-              <input
-                className="input"
-                type="number"
-                min="1"
-                max="365"
-                value={filters.dias}
-                onChange={(event) => setFilters((current) => ({ ...current, dias: Number(event.target.value || 30) }))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-main">
-              Sem atividade (h)
-              <input
-                className="input"
-                type="number"
-                min="1"
-                max="720"
-                value={filters.no_activity_hours}
-                onChange={(event) => setFilters((current) => ({ ...current, no_activity_hours: Number(event.target.value || 24) }))}
-              />
-            </label>
-          </div>
-        </div>
-      </div>
+      {/* R12/R16b: os dois parâmetros são recorte CONTÍNUO (dias, horas) —
+          entram como `campos` da BarraFiltros, o espaço declarado para o
+          recorte que não é enumerável, e não como grade crua de inputs. */}
+      <BlocoConteudo
+        titulo="Recorte de distribuição"
+        descricao="Use este painel para entender sobrecarga e redistribuicoes antes de automatizar regras comerciais."
+      >
+        <BarraFiltros
+          campos={[
+            {
+              id: 'dias',
+              rotulo: 'Período (dias)',
+              tipo: 'number',
+              min: 1,
+              max: 365,
+              valor: filters.dias,
+              aoMudar: (valor) => ajustar('dias', valor, PADRAO.dias)
+            },
+            {
+              id: 'no_activity_hours',
+              rotulo: 'Sem atividade (h)',
+              tipo: 'number',
+              min: 1,
+              max: 720,
+              valor: filters.no_activity_hours,
+              aoMudar: (valor) => ajustar('no_activity_hours', valor, PADRAO.no_activity_hours)
+            }
+          ]}
+        />
+      </BlocoConteudo>
 
       {loading ? (
-        <div className="mt-4 rounded-2xl border border-base bg-card p-10 text-center text-sm text-muted">Carregando distribuicao CRM...</div>
+        <BlocoConteudo>Carregando distribuição CRM...</BlocoConteudo>
       ) : !data ? null : (
         <>
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {cards.map((card) => <MetricCard key={card.label} {...card} />)}
-          </div>
+          {/* M2/R10 + R25: `text-3xl` com amber/red/emerald/blue crus deu
+              lugar ao ladrilho padrão (escala e tom por token). */}
+          <StatGrid colunas={3}>
+            {cards.map((card) => (
+              <StatTile
+                key={card.label}
+                label={card.label}
+                valor={card.valor}
+                sub={card.sub}
+                tom={card.tom}
+              />
+            ))}
+          </StatGrid>
 
-          <div className="mt-4">
-            <ResponsaveisTable rows={data.responsaveis} />
-          </div>
+          {/*
+            BLOCOS PERSONALIZÁVEIS (05/09). Tela de relatório/painel é o grupo
+            em que ligar isto é SEGURO: estes 4 blocos são leituras
+            independentes — sem ordem obrigatória entre si, sem botão de gravar
+            dentro e sem campo obrigatório que ocultar esconda. O padrão continua
+            sendo o do código; a preferência guarda só o DESVIO. No celular o
+            modo não existe (arrastar é HTML5 nativo e não responde a toque).
+          */}
+          <BlocosPersonalizaveis
+            chave="blocos:crm-dashboard-distribuicao"
+            larguraPadrao="total"
+            dentroDeGrade
+          >
+            {/* B2 — UM primário por tela: a carteira por responsável é o que
+                responde a pergunta central (quem está sobrecarregado). */}
+            <BlocoConteudo
+              titulo="Carteira por responsável"
+              descricao="Base para identificar sobrecarga, carteira parada e desequilibrio operacional."
+              variante="primario"
+              cor="var(--c-primary)"
+            >
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'responsavel',
+                    titulo: 'Responsável',
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (row) => (
+                      <CelulaDupla
+                        principal={row.usuario?.nome || '-'}
+                        sub={row.usuario?.perfil || '-'}
+                      />
+                    )
+                  },
+                  {
+                    id: 'carteira',
+                    titulo: 'Carteira',
+                    tipo: 'numero',
+                    render: (row) => (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-semibold text-main">{row.totalCarteira}</span>
+                          <span className="text-xs text-muted">ativos</span>
+                        </div>
+                        <BarraProporcao valor={row.totalCarteira} max={maxCarteira} />
+                      </div>
+                    )
+                  },
+                  {
+                    id: 'novos',
+                    titulo: 'Novos período',
+                    tipo: 'numero',
+                    render: (row) => row.novosPeriodo
+                  },
+                  {
+                    id: 'sem_atividade',
+                    titulo: 'Sem atividade',
+                    tipo: 'numero',
+                    // R25: `text-amber-600` era paleta crua; o tom é semântico
+                    // (carteira parada = alerta) e vem do token.
+                    render: (row) => (
+                      <span className={row.semAtividade > 0 ? 'font-semibold text-[var(--sem-warning)]' : undefined}>
+                        {row.semAtividade}
+                      </span>
+                    )
+                  },
+                  {
+                    id: 'convertidos',
+                    titulo: 'Convertidos',
+                    tipo: 'numero',
+                    render: (row) => row.convertidosPeriodo
+                  },
+                  {
+                    id: 'taxa',
+                    titulo: 'Taxa período',
+                    tipo: 'numero',
+                    render: (row) => `${row.taxaConversaoPeriodo}%`
+                  },
+                  {
+                    id: 'pressao',
+                    titulo: 'Pressão',
+                    tipo: 'numero',
+                    render: (row) => row.pressaoCarteira
+                  }
+                ]}
+                itens={data.responsaveis || []}
+                getId={(row) => row.usuario?.id || row.usuario?.nome}
+                vazio="Nenhum responsável com carteira ativa no período."
+                storageKey="tabela:crm-dashboard-distribuicao:responsaveis"
+                rotuloRolagem="Carteira por responsavel"
+              />
+            </BlocoConteudo>
 
-          <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <ChartPanel
-              title="Redistribuicoes por dia"
-              subtitle="Volume diario auditado no periodo selecionado."
+            <BlocoVolume data-bloco-id="redistribuicoes-por-dia" data-bloco-rotulo="Redistribuicoes por dia"
+              titulo="Redistribuicoes por dia"
+              descricao="Volume diário auditado no período selecionado."
               rows={data.redistribuicoesPorDia}
               labelKey="dia"
             />
-            <ChartPanel
-              title="Redistribuicoes por usuario"
-              subtitle="Quem executou redistribuicoes no periodo."
+
+            <BlocoVolume data-bloco-id="redistribuicoes-por-usuario" data-bloco-rotulo="Redistribuicoes por usuario"
+              titulo="Redistribuicoes por usuário"
+              descricao="Quem executou redistribuicoes no período."
               rows={data.redistribuicoesPorAtor}
               labelKey="usuario"
             />
-          </div>
 
-          <div className="mt-4">
-            <RedistribuicoesRecentes rows={data.redistribuicoesRecentes} />
-          </div>
+            {/*
+              R1/R17 — o histórico era um cartão por movimentação, com o dado
+              espalhado em <p> soltos: nada alinhava, nada era coluna e nada
+              podia ser redimensionado. Vira TabelaPadrao com os MESMOS dados
+              (lead, de → para, quem executou, quando, motivo).
+
+              Regra 1 de organização: histórico e registros ficam por último e
+              recolhidos — o bloco continua à vista pelo título, e a pessoa
+              abre quando precisa auditar.
+            */}
+            <BlocoConteudo
+              titulo="Redistribuicoes recentes"
+              descricao="Histórico auditado das movimentações de responsável."
+              recolhivel
+              chavePreferencia="bloco:crm-dashboard-distribuicao:redistribuicoes-recentes"
+              recolhidoPadrao
+            >
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'lead',
+                    titulo: 'Lead',
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (row) => (row.lead?.id ? (
+                      <Link to={`/crm/leads/${row.lead.id}`} className="text-[var(--c-primary)] hover:underline">
+                        {row.lead.nome || `Lead #${row.lead.id}`}
+                      </Link>
+                    ) : 'Lead removido ou indisponivel')
+                  },
+                  {
+                    id: 'movimentacao',
+                    titulo: 'Movimentação',
+                    tipo: 'texto',
+                    render: (row) => (
+                      <CelulaDupla
+                        principal={row.oldAssignedUserName || 'Sem responsavel'}
+                        sub={`para ${row.newAssignedUserName || 'Novo responsavel nao informado'}`}
+                      />
+                    )
+                  },
+                  {
+                    id: 'executor',
+                    titulo: 'Executado por',
+                    tipo: 'texto',
+                    render: (row) => row.usuario?.nome || 'sistema'
+                  },
+                  {
+                    id: 'motivo',
+                    titulo: 'Motivo',
+                    tipo: 'texto',
+                    // T6: texto longo trunca com o conteúdo completo no tooltip.
+                    render: (row) => (
+                      <span title={row.motivo || undefined}>{row.motivo || '-'}</span>
+                    )
+                  },
+                  {
+                    id: 'createdAt',
+                    titulo: 'Quando',
+                    tipo: 'data',
+                    render: (row) => fmtDate(row.createdAt)
+                  }
+                ]}
+                itens={data.redistribuicoesRecentes || []}
+                getId={(row) => row.id}
+                vazio="Nenhuma redistribuicao registrada no período."
+                storageKey="tabela:crm-dashboard-distribuicao:redistribuicoes"
+                rotuloRolagem="Redistribuicoes recentes"
+              />
+            </BlocoConteudo>
+          </BlocosPersonalizaveis>
         </>
       )}
-    </div>
+    </Pagina>
   );
 }

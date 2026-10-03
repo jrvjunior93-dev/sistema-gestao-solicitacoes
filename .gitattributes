@@ -5,3 +5,39 @@
 *.tsx text eol=lf
 *.css text eol=lf
 *.html text eol=lf
+
+# O snapshot de deploy contem somente runtime e documentacao segura.
+.env export-ignore
+**/.env export-ignore
+/backend/uploads export-ignore
+/backend/uploads/** export-ignore
+/frontend/dist export-ignore
+/frontend/dist/** export-ignore
+node_modules export-ignore
+node_modules/** export-ignore
+**/node_modules export-ignore
+**/node_modules/** export-ignore
+/qa export-ignore
+/qa/** export-ignore
+/e2e export-ignore
+/e2e/** export-ignore
+/.claude export-ignore
+/.claude/** export-ignore
+/.codex-private export-ignore
+/.codex-private/** export-ignore
+/.codex-previews export-ignore
+/.codex-previews/** export-ignore
+/.codex_docx_fluxos export-ignore
+/.codex_docx_fluxos/** export-ignore
+/.tmp export-ignore
+/.tmp/** export-ignore
+/outputs export-ignore
+/outputs/** export-ignore
+/.mcp.json export-ignore
+/.playwright-mcp export-ignore
+/.playwright-mcp/** export-ignore
+/Contratos export-ignore
+/Contratos/** export-ignore
+/backend/scripts/dados export-ignore
+/backend/scripts/dados/** export-ignore
+*.orig export-ignore

@@ -14,7 +14,11 @@
 | Cadastro manual | Criar cheque com empresa, numero, titular, valor, vencimento e justificativa | Cheque `EM_CARTEIRA`, codigo proprio e evento `SALDO_INICIAL` |
 | Origem sem obra | Criar sem obra e com justificativa | Cadastro aceito e auditavel |
 | Duplicidade | Repetir empresa, banco, agencia, conta, numero e valor | Operacao rejeitada sem novo registro |
-| Deposito | Depositar em conta ativa da mesma empresa | Status `DEPOSITADO` e conta registrada no historico |
+| Deposito | Depositar em conta ativa da mesma empresa | Status `DEPOSITADO`, movimento `DEPOSITO_CHEQUE_TERCEIRO` e conta registrada no historico |
+| Duplo deposito | Repetir a requisicao com a mesma chave | Mesmo movimento retornado, sem duplicidade |
+| Compensacao | Conciliar o credito do extrato com o deposito | Status `COMPENSADO` e conciliacao registrada no cheque |
+| Cheque avulso | Depositar e conciliar cheque sem titulo de origem | Compensacao aceita sem criar titulo artificial |
+| Cheque proprio pre-datado | Conciliar debito posterior ao movimento, dentro de 180 dias | Baixa associada ao extrato sem alterar o titulo |
 | Conta de outra empresa | Tentar deposito cruzado | Operacao rejeitada |
 | Transferencia | Transferir cheque em carteira para outra empresa | Custodia alterada e evento com origem/destino |
 | Estado invalido | Tentar transferir cheque depositado/utilizado | Operacao rejeitada |
@@ -53,6 +57,10 @@
 | Estorno do grupo | Estornar baixa composta com justificativa | Todos os movimentos `ESTORNADO`, saldos restaurados e cheque em carteira |
 | Duplo estorno | Repetir estorno | Operacao rejeitada sem alterar saldos |
 | Cheque com evento posterior | Tentar estornar grupo inconsistente | Operacao bloqueada para revisao manual |
+| Devolucao em carteira | Devolver cheque recebido de cliente | Titulo a receber reaberto e cheque `DEVOLVIDO` |
+| Devolucao apos uso | Devolver cheque entregue ao fornecedor | Conta a pagar reaberta; conta a receber de origem tambem reaberta quando houver |
+| Devolucao bancaria | Conciliar debito de devolucao com deposito compensado | Movimento de devolucao criado, cheque `DEVOLVIDO` e recebimento original reaberto |
+| Devolucao de cheque avulso | Conciliar devolucao de cheque sem titulo de origem | Movimento bancario criado e nenhum titulo artificial alterado |
 | Baixa simples | Baixar titulo por uma unica forma | Fluxo anterior continua funcionando |
 | Baixa em massa | Executar baixa em massa tradicional | Formas cadastradas e comportamento anterior preservados |
 | Cartao | Baixar titulo por cartao no fluxo anterior | Fatura e vinculos permanecem consistentes |
@@ -73,4 +81,3 @@ Executar no frontend:
 ```bash
 npm run build
 ```
-

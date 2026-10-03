@@ -1,0 +1,1931 @@
+/* ============================================================================
+   COMPONENTES PADRÃO (Leva 0 da reforma das telas restantes)
+   ----------------------------------------------------------------------------
+   Regras que este CSS carrega (docs/COMPONENTES-PADRAO.md):
+   - fundo da página é o canvas acinzentado; bloco principal é BRANCO com barra
+     de cor à esquerda; bloco secundário usa --ui-surface-2 e recua sozinho;
+   - um único primário sólido por bloco; secundários em contorno; destrutivo
+     em vermelho suave e APARTADO dos demais;
+   - tarja de urgência é UM utilitário (.tarja--*) — a receita que existia
+     copiada em ListaAvancada (linha e card) e no cartão da Home.
+   Só tokens (--c-*, --sem-*, --ui-*); nenhuma cor à mão.
+   Medidas SÓ da escala (styles/escala.css) — conforto de leitura governa:
+   linha de tabela com respiro, blocos que respiram, nada abaixo de 12px.
+   ========================================================================== */
+
+/* ---- REGRAS MECÂNICAS (docs/REGRAS-LAYOUT.md) — números, não adjetivos --- */
+:root {
+  --respiro-topbar: 24px;      /* R4: vão mínimo barra fixa → conteúdo */
+  --alvo-clique: 32px;         /* R2: alvo mínimo desktop */
+  --campo-moeda-min: 180px;    /* R6: cabe R$ 9.999.999.999,99 */
+  /*
+    PISO E TETO DO CAMPO DE FILTRO, POR TIPO DE DADO (05/09).
+
+    Medido no fonte: 31 telas declaram `campos` na BarraFiltros — 4 com UM
+    campo e 20 com DOIS. Sem `flex` no `.app-filtros-campo` cada campo ficava
+    na largura intrínseca do `<input>` e a sobra da faixa ficava vazia; numa
+    faixa de 1843px, dois campos de data ocupavam ~300px e deixavam ~1540px
+    de vazio à direita.
+
+    A medida vem do TIPO, como já vem na TabelaPadrao (TIPOS_COLUNA): pior
+    caso do DADO no corpo de 14px, mais a casca do input — 2×--esp-2 de
+    padding + 2×1px de borda = 18px — mais o widget nativo do tipo.
+    A estimativa de texto é a mesma da TabelaPadrao (deliberada, e errando
+    para MAIS: sobra, não corta).
+
+      data   "22/08/2026" = 8 dígitos ×8,4 + 2 barras ×4,5 ≈ 76px
+             + 18 de casca + 24 do seletor de calendário  = 118 → piso 120px
+      mês    "mm/aaaa" (pt-BR, <html lang="pt-BR">) ≈ 55px
+             + 18 + 24                                    =  97 → piso 112px
+      número o pior caso é dinheiro sem prefixo, e o piso é o da R6: o mesmo
+             --campo-moeda-min, porque "Valor mínimo/máximo" (Solicitações e
+             Fiscal) É campo de dinheiro e a auditoria runtime reprova <180px
+      texto  pior caso de texto livre da casa: 180px, o mesmo da coluna
+             `texto` da TabelaPadrao (CNPJ formatado, 18 caracteres ≈ 144px
+             + 18 de casca, cabe)
+
+    TETO — decisão registrada: R10 diz que vence a LEITURA, não a densidade.
+    Campo de data esticado a 900px não lê melhor, mente sobre o tamanho do
+    dado e afasta o seletor do dígito. Então o campo cresce até o teto do
+    tipo e o que sobrar da faixa fica vazio de propósito. O teto de texto é
+    o MESMO da `.app-busca` (R3, 480px), que é o teto de conforto que a casa
+    já declarou para campo de texto.
+  */
+  --campo-filtro-texto-min: 180px;
+  --campo-filtro-texto-max: 480px;   /* R3: o mesmo teto da .app-busca */
+  --campo-filtro-data-min: 120px;
+  --campo-filtro-data-max: 240px;
+  --campo-filtro-mes-min: 112px;
+  --campo-filtro-mes-max: 240px;
+  --campo-filtro-numero-min: var(--campo-moeda-min);   /* R6 */
+  --campo-filtro-numero-max: 280px;
+}
+
+/*
+  CABECALHO FIXO SEM REALIMENTACAO DA ROLAGEM (21/09).
+
+  O PageHeader ocupa espaco no fluxo e diminui ao entrar no estado compacto.
+  Com a ancoragem automatica do navegador ativa, essa diferenca de altura
+  altera o scrollY para manter um elemento do corpo no mesmo ponto visual.
+  Perto do limiar, a compensacao pode atravessar a banda de compactacao e
+  fazer a faixa alternar repetidamente entre os dois tamanhos — o "tremor"
+  percebido no Cadastro de Pessoas.
+
+  A pagina padrao e a fronteira correta: exclui apenas o conteudo operacional
+  desta tela da escolha de ancora, sem mudar a topbar, as abas do workspace
+  ou a rolagem de outras superficies. A faixa continua sticky e compacta;
+  apenas deixa de mover a propria posicao de rolagem quando muda de altura.
+*/
+.app-pagina {
+  overflow-anchor: none;
+}
+
+/* R2 — alvo de clique: imposto na classe; sair disso exige burlar o sistema. */
+.btn {
+  min-height: var(--alvo-clique);
+  min-width: var(--alvo-clique);
+}
+
+.btn svg {
+  min-width: 18px;
+  min-height: 18px;
+}
+
+/* M1 — o "x" do Alert é botão, e botão tem alvo de clique. Ele nascia com
+   16px porque nunca teve medida própria: encolhia até o tamanho do ícone.
+   Como o Alert é componente compartilhado, o defeito valia para toda tela em
+   que um aviso aparecesse — por isso só a matriz o pegou, e só numa célula. */
+.alert-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-width: var(--alvo-clique);
+  min-height: var(--alvo-clique);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  :root { --alvo-clique: 44px; }
+  .btn svg { min-width: 20px; min-height: 20px; }
+}
+
+/* R3 — busca/filtro de cabeçalho de bloco ocupa a faixa (220–480px). */
+.app-busca {
+  flex: 1 1 220px;
+  min-width: 220px;
+  max-width: 480px;
+}
+
+/* R6 — campo monetário dimensionado pelo pior caso. */
+.input-moeda {
+  min-width: var(--campo-moeda-min);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.valor-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Campo de moeda com prefixo "R$" sobreposto: o recuo é do componente. */
+.input-prefixo-moeda {
+  padding-left: 2.25rem;
+}
+
+/* R4 — respiro entre a barra fixa e o primeiro conteúdo. */
+/* R13 — CABEÇALHO FIXO (revisto 02/09, defeito do vão transparente):
+   a faixa gruda ENCOSTADA na topbar — top = base real da topbar (medida
+   pelo Pagina), SEM folga. Folga aqui virava um vão transparente com o
+   conteúdo da lista rolando por trás, entre as duas barras. O respiro
+   visual do estado normal (sem rolagem) pertence à MARGEM do conteúdo
+   (margin-top abaixo), nunca ao espaço entre as duas barras fixas.
+   A superfície é OPACA (--ui-surface é cor sólida) — nenhum pixel
+   transparente por onde o conteúdo passe. Ao rolar, compacta (título
+   menor, apoio na mesma linha), mas NUNCA some. */
+.layout-main .app-page-header {
+  /* Respiro do estado normal (R4: 24px topbar → conteúdo) — MARGEM do
+     conteúdo, nunca folga no `top` do sticky. */
+  margin-top: var(--respiro-topbar);
+  position: sticky;
+  top: var(--pos-cabecalho-fixo, 96px);
+  /*
+    A FAIXA PRESA PRECISA ESTAR FORA DO ALCANCE DO TAILWIND (06/09).
+
+    Era `z-index: 15`. Com a escala antiga (--z-sticky: 20) isso ja perdia
+    para qualquer `z-50` escrito a mao — e era exatamente o que o cliente
+    via na captura: bloco e botao passando POR CIMA do cabecalho fixo ao
+    rolar. Medido na prova de empilhamento: no cruzamento "faixa fixa x
+    bloco com z-index 50", quem o navegador devolvia era o BLOCO.
+
+    `--z-faixa-presa` vale 180, acima da faixa 0-50 que as classes do
+    Tailwind ocupam. Agora a faixa presa nao pode ser vencida por engano.
+  */
+  z-index: var(--z-faixa-presa);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-3);
+  box-shadow: var(--ui-shadow-sm);
+  padding: var(--esp-3) var(--esp-4);
+  transition: padding 0.15s ease;
+}
+
+.layout-main .app-page-header .page-title {
+  transition: font-size 0.15s ease;
+}
+
+/* Compacto (rolagem): UMA linha só — título e apoio lado a lado, paddings
+   mínimos. A faixa compacta não tem vazio vertical para exibir uma linha
+   de texto; as ações ficam intactas. */
+.layout-main .app-page-header--compacto {
+  padding: var(--esp-2) var(--esp-4);
+}
+
+.layout-main .app-page-header--compacto .page-title {
+  font-size: var(--fonte-corpo);
+}
+
+.layout-main .app-page-header--compacto .app-page-header-row > div:first-of-type {
+  display: flex;
+  align-items: baseline;
+  gap: var(--esp-3);
+  min-width: 0;
+}
+
+.layout-main .app-page-header--compacto .app-page-lead {
+  font-size: var(--fonte-corpo);
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+/* R5 (02/09, revisto de novo): o apoio mora na FAIXA FIXA, com escala de
+   título — não é texto miúdo nem flutua: a faixa é a superfície dele.
+   UMA linha, com reticências (o texto completo vai no title/tooltip). */
+.app-page-lead {
+  margin: var(--esp-1) 0 0;
+  font-size: var(--fonte-bloco);
+  line-height: var(--lh-titulo);
+  font-weight: 500;
+  color: var(--c-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.app-page-lead strong {
+  color: var(--c-text);
+  font-weight: 700;
+}
+
+/*
+  NO CELULAR O APOIO DA FAIXA QUEBRA — o mesmo bloco que o irmão de bloco
+  já ganhou em 06/09, pelo mesmo motivo, na mesma largura (07/09).
+
+  A regra de cima é honesta em UMA condição, escrita no `PageHeader`: "o
+  texto completo vai no tooltip". No toque não há hover e `title` não abre:
+  a metade que tornava a reticência honesta some, e fica só a metade que
+  esconde. É a MESMA frase que está no `.app-bloco-lead`, logo abaixo, e o
+  irmão foi corrigido por ela — o do cabeçalho da página não tinha sido
+  tocado, e o revisor separado voltou a apontá-lo (A9).
+
+  MEDIDO no `PageHeader` REAL, dentro do shell real, a 390px, com os
+  literais das próprias telas (`provaTextoInteiroAparece.mjs`). A caixa do
+  apoio tem 335px; o que o texto pede, e o que ficava fora:
+
+    solicitacoes                 775px  → 440px fora (57%)
+    financeiro-titulos           626px  → 291px fora (46%)
+    solicitacoes-rel-operacional 882px  → 547px fora (62%)
+    compras-rel-economia        1138px  → 774px fora (68%)
+
+  O terceiro é o que fecha o argumento do revisor: em
+  `solicitacoes-rel-operacional` a linha está SOZINHA na faixa e mesmo
+  assim cortava. Não é falta de espaço — é clamp de uma linha.
+
+  ALCANCE: 198 usos de `PageHeader` com `contagem` ou `descricao`, em 179
+  arquivos — e todos passam por aqui, porque `.app-page-lead` só nasce
+  dentro do componente (nenhum `<p className="app-page-lead">` escrito à
+  mão no sistema; conferido).
+
+  E TEM UM SEGUNDO PREÇO, o mesmo que o irmão pagou: texto que não quebra
+  tem mínimo-de-conteúdo do tamanho da FRASE INTEIRA. A `paginaCabeNoCelular`
+  já nomeia "um apoio com `white-space: nowrap`" entre os culpados de a
+  página estourar os 390px, e o `compras-relatorio-apoio.css` teve de
+  escrever `flex-basis: 0` no bloco do título só para conter esse mesmo
+  hipotético.
+
+  Acima de 768px nada muda: lá existe hover, o tooltip funciona, e a linha
+  única com reticências continua sendo o desenho.
+*/
+@media (max-width: 767px) {
+  .app-page-lead {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+/* first-of-TYPE, não first-child: com a seta de voltar (C3) o primeiro
+   filho da linha passa a ser o botão/Link — o contêiner do título segue
+   sendo o primeiro <div>. */
+.app-page-header-row > div:first-of-type {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* C3 — seta de voltar à esquerda do cabeçalho de tela de DETALHE/REGISTRO:
+   affordance primária de retorno, sempre presente nessas telas. */
+.app-page-header .app-voltar {
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+/* R5 — texto de apoio DENTRO do bloco, ancorado ao título dele (regra do
+   cliente, 02/09): contagem forte + apoio muted. Texto solto na faixa entre
+   a topbar e o primeiro bloco é reprovado pela auditoria. */
+/*
+  ALINHADO AO IRMÃO EM 05/09 — e o que faltava era JSX, não CSS.
+
+  Defeito medido: o `max-width: 78ch` daqui cortava em 607px num bloco de
+  1843px, e o texto pede 647px — quebrava por 40px e deixava 1236px de linha
+  vazios ("… e ainda sem titulo financeiro vinculado." com "vinculado."
+  sozinho embaixo). Dos 427 usos de apoio de bloco (`contagem`/`descricao` do
+  BlocoConteudo, em 144 arquivos), 57 quebravam assim em 1920px.
+
+  O irmão `.app-page-lead` (acima) resolve com UMA linha + reticências +
+  tooltip, e o tooltip é a metade que torna a truncagem honesta: o texto
+  inteiro continua alcançável. Essa metade agora EXISTE dos dois lados:
+    - `BlocoConteudo.jsx` emite `title` com contagem + descrição;
+    - os 9 `<p className="app-bloco-lead">` escritos à mão fora do componente
+      (NovaSolicitacaoCompra, RhDpJornada ×2, RhDpPessoal, SolicitacaoDetalhe
+      ×2, RecuperarSenha, DefinirSenha, RhDpPessoalSolicitacoes) foram
+      conferidos um a um.
+
+  A EXCEÇÃO É DECLARADA, não esquecida — `.app-bloco-lead--integral`.
+  Três desses textos NÃO podem truncar de jeito nenhum, porque a informação é
+  o texto inteiro e o tooltip não os cobre (as duas telas de senha ficam fora
+  do shell, em cartão estreito, e são as mais usadas no celular, onde hover
+  não existe):
+    - `DefinirSenha` — PASSWORD_HINT, a regra da senha;
+    - `RecuperarSenha` — a instrução do que fazer com o e-mail;
+    - `RhDpJornada` — o aviso de que os eventos recorrentes NÃO devem ser
+      digitados ali (instrução de três orações; truncada vira o oposto).
+  Esses usam `--integral`: quebram em linhas e mantêm a medida de leitura de
+  78ch (R10 — a medida mora na classe). Os demais truncam COM tooltip.
+*/
+.app-bloco-lead {
+  margin: var(--esp-1) 0 0;
+  font-size: var(--fonte-corpo);
+  font-weight: 500;
+  color: var(--c-muted);
+  line-height: var(--lh-corpo);
+  /* UMA linha + reticências, como o irmão. Sem `max-width` aqui: com
+     `nowrap` o teto de 78ch vira o próprio corte de 607px que causou o
+     defeito — quem manda na largura é o bloco. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* EXCEÇÃO DECLARADA (05/09) — texto que a pessoa precisa ler INTEIRO e que o
+   tooltip não alcança (telas de senha, no celular). Volta a quebrar em
+   linhas, com a medida de leitura de 78ch. */
+.app-bloco-lead--integral {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: 78ch;
+}
+
+/*
+  NO CELULAR O APOIO QUEBRA — porque ali a outra metade NÃO EXISTE (06/09).
+
+  A truncagem acima é honesta em UMA condição, escrita no próprio comentário
+  de 05/09: "o texto inteiro continua alcançável" pelo `title`. No toque não
+  há hover, e `title` não abre: a metade que tornava a reticência honesta
+  some, e sobra só a metade que esconde. A exceção `--integral` já tinha
+  reconhecido isso para três textos ("as duas telas de senha ... são as mais
+  usadas no celular, onde hover não existe"); o que faltava era aplicar o
+  mesmo raciocínio a TODOS eles, na largura em que a condição falha.
+
+  E o `nowrap` cobrava um segundo preço, este medido no X3 de 06/09: texto
+  que não quebra tem mínimo-de-conteúdo do tamanho da FRASE INTEIRA. Num
+  cartão de hub isso fixava o piso do cartão em 484px (modulo-relatorios) e
+  664px (config-hub) numa janela de 390px — o cartão estourava a página e o
+  transbordo era recortado sem rolagem. Deixar quebrar derruba o mínimo para
+  a maior PALAVRA, e as duas telas passaram a caber.
+
+  Acima de 768px nada muda: lá existe hover, o tooltip funciona e a linha
+  única continua sendo o desenho (o irmão `.app-page-lead` idem).
+*/
+@media (max-width: 767px) {
+  .app-bloco-lead {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+.app-bloco-lead strong {
+  color: var(--c-text);
+  font-weight: 700;
+}
+
+/* R8 — comparação é SEMÂNTICA, não tom sobre tom (regra do cliente, 02/09):
+   ORÇADO/PREVISTO = azul; REALIZADO/EXECUTADO/PAGO = vermelho. Vale para
+   toda comparação do sistema: barras, gráficos, KPIs, tabelas. */
+:root {
+  --comp-previsto: var(--c-primary);
+  --comp-realizado: #c2333b;
+}
+
+.dark {
+  --comp-realizado: #e05b62;
+}
+
+.serie-prevista { background: var(--comp-previsto); }
+.serie-realizada { background: var(--comp-realizado); }
+.texto-previsto { color: var(--comp-previsto); }
+.texto-realizado { color: var(--comp-realizado); }
+
+/* Faixa de filtros padrão (o padrão das Solicitações em qualquer tela):
+   busca única em cima OCUPANDO A LARGURA, linha de filtros marcáveis
+   abaixo, etiquetas removíveis dos ativos. Nada de select de filtro. */
+.app-filtros {
+  display: grid;
+  gap: var(--esp-2);
+  min-width: 0;
+  flex: 1 1 100%;
+}
+
+/* Vão entre a linha de filtros e o que vem depois (a tabela): um degrau da
+   escala, igual em toda tela — nem colado, nem espaço sobrando.
+
+   A margem NÃO se aplica quando a barra é filha direta do grid da página:
+   ali o vão já vem do `gap` do `.app-pagina`, e somar os dois dava 32px
+   (medido em 02/09, F4 do Pessoal). Dentro de um cartão, que não tem gap,
+   a margem continua sendo o que separa. */
+.app-filtros:not(:last-child) {
+  margin-block-end: var(--esp-4);
+}
+
+.app-pagina > .app-filtros:not(:last-child) {
+  margin-block-end: 0;
+}
+
+.app-filtros .app-filtros-busca {
+  max-width: none;
+  width: 100%;
+}
+
+/* Opções curtas expostas na faixa: mantém o padrão de marcação da
+   BarraFiltros, mas elimina o menu quando todas as escolhas cabem e são
+   usadas com frequência. O grupo quebra como uma unidade no desktop e
+   libera a quebra entre opções em larguras compactas. */
+.app-filtro-opcoes-inline {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  min-width: 0;
+}
+
+.app-filtro-opcoes-inline-rotulo {
+  color: var(--texto-apoio-aa);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+@media (max-width: 479px) {
+  .app-filtro-opcoes-inline {
+    flex-basis: 100%;
+  }
+}
+
+/* R16 — cada responsabilidade tem UM dono: a cápsula .la-busca é a única
+   caixa da busca. O reset do input interno era prefixado por .la-root e só
+   valia DENTRO da ListaAvancada; na BarraFiltros (fora dela) o input
+   mantinha o estilo global de campo e virava uma SEGUNDA caixa dentro da
+   cápsula — a "busca duplicada" de Empresas do Grupo (02/09). */
+.app-filtros .la-busca input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  min-height: 0;
+  padding: 0;
+  font-size: var(--fonte-corpo);
+  color: var(--input-text);
+  min-width: 0;
+}
+
+/* Painel lateral padrão (formulário/apoio ao lado da lista): a medida mora
+   aqui, não na tela. Em viewport compacto ele empilha e ocupa a largura. */
+@media (min-width: 768px) {
+  .app-painel-lateral {
+    min-width: 320px;
+  }
+}
+
+/* ---- Tarja lateral de urgência/estado (aplicável a linha, card, bloco) ---- */
+.tarja {
+  position: relative;
+}
+
+.tarja::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--tarja-cor, transparent);
+}
+
+.tarja--danger { --tarja-cor: var(--sem-danger); }
+.tarja--warning { --tarja-cor: var(--sem-warning); }
+.tarja--info { --tarja-cor: var(--sem-info); }
+.tarja--success { --tarja-cor: var(--sem-success); }
+
+/* ---- BlocoConteudo: o card padrão de conteúdo -------------------------- */
+.app-bloco {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-3);
+  box-shadow: var(--ui-shadow-sm);
+  padding: var(--esp-4);
+  min-width: 0;
+}
+
+/* Principal: barra de cor à esquerda (semântica ou do módulo). Um por tela. */
+.app-bloco--primario {
+  border-left: 4px solid var(--bloco-cor, var(--c-primary));
+  padding-left: calc(var(--esp-4) - 3px);
+}
+
+/* Secundário: branco rebaixado, sem sombra — recua sem pedir licença. */
+.app-bloco--secundario {
+  background: var(--ui-surface-2);
+  box-shadow: none;
+}
+
+/* No detalhe da solicitação, o espaço livre do card também abre/recolhe.
+   Controles internos preservam seus cursores e suas próprias ações. */
+.app-bloco--alternar-ao-clicar {
+  cursor: pointer;
+}
+
+.app-bloco--alternar-ao-clicar :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"]) {
+  cursor: revert;
+}
+
+.app-bloco--alternar-ao-clicar :is(a, button, label, summary, [role="button"], [role="link"]) {
+  cursor: pointer;
+}
+
+/*
+  O BLOCO É DONO DA PRÓPRIA SUPERFÍCIE (06/09, M3) — e não era.
+
+  MEDIDO no preview publicado, em `financeiro-endividamento`,
+  `financeiro-executivo-grupo`, `financeiro-fluxo-consolidado` e
+  `financeiro-intercompany`: o `p.app-bloco-lead` reprovava AA com 4,45:1.
+  A conta não fechava com nenhum token do sistema — `--c-muted` (#5f6e83)
+  sobre `--ui-surface-2` (#f7f9fc) dá 4,92:1, com folga. O 4,45 vinha de
+  outro lugar: o fundo que a medição encontrava era o do `body`
+  (rgb(232,238,248)), porque o bloco NÃO TINHA FUNDO NENHUM.
+
+  Quem tirou: `index.css` tem, desde a casca antiga,
+
+      .layout-shell .card, … , .layout-shell .app-table-shell, … {
+        background: linear-gradient(180deg,
+          var(--shell-panel-strong) 0%, var(--shell-panel) 100%);
+      }
+
+  com `--shell-panel: rgba(255,255,255,0.92)`. Os blocos de relatório
+  carregam `app-table-shell` junto de `app-bloco--secundario`; a regra da
+  casca tem DUAS classes (0,2,0) contra UMA da nossa (0,1,0), vence por
+  especificidade, e o atalho `background` zera o `background-color` — o
+  bloco vira vidro translúcido e o texto passa a repousar no que estiver
+  atrás dele, que ninguém declarou.
+
+  São dois estragos, não um. O visível: o "branco rebaixado" que faz o bloco
+  secundário RECUAR deixa de existir — o bloco fica quase branco sobre a
+  página. O invisível: o par texto/fundo deixa de ser um par declarado; hoje
+  a composição salva por acaso (~5,1:1 sobre a página clara), e bastaria a
+  página escurecer para o texto ficar ilegível de verdade. Contraste que
+  depende do que está por baixo não é contraste garantido.
+
+  A correção é de POSSE (R16), não de cor: quem responde pela superfície do
+  bloco é o bloco. Só o fundo volta para cá — borda, raio e sombra da casca
+  continuam onde estão, porque não é isso que o M3 mede e trocá-las mexeria
+  no desenho de dezenas de telas sem medida que peça.
+*/
+.layout-shell .app-bloco {
+  background: var(--ui-surface);
+}
+
+.layout-shell .app-bloco--secundario {
+  background: var(--ui-surface-2);
+}
+
+/* =====================================================================
+   A FAIXA DO CABEÇALHO — o vazio ao lado do título é dos controles do
+   bloco (06/09, regra do cliente)
+   ---------------------------------------------------------------------
+   MEDIDO em 06/09: das 655 montagens de `BlocoConteudo`, 494 têm título e
+   NENHUMA ação declarada. A `.app-bloco-acoes` continua sendo desenhada,
+   mede 0px de conteúdo, e o `space-between` acima entrega o lado direito
+   inteiro ao vazio — enquanto 193 dessas montagens desenham os próprios
+   controles EMPILHADOS logo abaixo, no corpo. Duas linhas para o que cabe
+   em uma.
+
+   `.app-bloco-cabecalho` é a faixa: identidade (título + apoio) de um
+   lado, controles do outro. Ela só existe quando há título, e o slot dos
+   controles some sozinho quando ninguém o preenche — sem isso, os 494
+   blocos ganhariam um item flex vazio e um `gap` a mais no cabeçalho.
+
+   ONDE A REGRA PARA está no fim deste bloco (`flex-wrap` e o @media de
+   768px): sem espaço, o arranjo volta a empilhar em vez de espremer.
+   ===================================================================== */
+.app-bloco-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  /* Se os controles não couberem ao lado do título, eles DESCEM inteiros:
+     melhor empilhar que espremer (e nada some para caber). */
+  flex-wrap: wrap;
+}
+
+/* A coluna de quem o bloco é. `flex: 1 1 auto` + `min-width: 0` mantêm o
+   cabeçalho de quem NÃO tem controles idêntico ao de antes: a identidade
+   ocupa a faixa inteira e o `space-between` do `.app-bloco-head` segue
+   levando as ações para a borda direita. */
+.app-bloco-identidade {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* O que a regra criou: os controles do bloco na MESMA faixa do título,
+   encostados na direita — a mesma borda que as ações já usam. */
+.app-bloco-controles {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Slot vazio não é item: sem isto, os 494 cabeçalhos sem controle
+   ganhariam um `gap` de sobra à direita do título. */
+.app-bloco-controles:empty {
+  display: none;
+}
+
+/* Com `controles`, as ações do bloco saem de dentro do `.app-bloco-head` e
+   vão para o FIM da faixa, depois deles. Aqui elas não crescem: quem ocupa
+   o vazio são os controles. */
+.app-bloco-acoes--fim {
+  flex: 0 1 auto;
+}
+
+/* ONDE A REGRA PARA. Abaixo de 768px não existe vazio nenhum ao lado do
+   título: a faixa devolve a linha inteira aos controles, alinhados à
+   esquerda como todo o resto da tela estreita. Empilhar aqui é o certo —
+   é espremer que seria o defeito. */
+@media (max-width: 767px) {
+  .app-bloco-controles {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .app-bloco-acoes--fim {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+}
+
+.app-bloco-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-2);
+  flex-wrap: wrap;
+}
+
+/* 05/09 — cabeçalho de bloco que agrupa título + apoio num <div> (os modais
+   escritos à mão): esse <div> é item flex e, com o apoio agora em UMA linha,
+   sem `min-width: 0` o texto vira largura mínima e empurra as ações para a
+   linha de baixo (a faixa tem flex-wrap). Mesma medida que o irmão já toma em
+   `.app-page-header-row > div:first-of-type`. */
+.app-bloco-head > div {
+  min-width: 0;
+}
+
+/* Título de bloco no degrau 18px: a hierarquia da página é visível de longe
+   (página 22 > bloco 18 > corpo 14 > detalhe 12 — nada de tudo-quase-igual). */
+.app-bloco-titulo {
+  margin: 0;
+  font-size: var(--fonte-bloco);
+  line-height: var(--lh-titulo);
+  font-weight: 700;
+  color: var(--c-text);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-2);
+}
+
+.app-bloco-acoes {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  /* R3: a área de ações cresce para a busca ocupar a faixa (220–480px). */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-bloco-corpo {
+  margin-top: var(--esp-3);
+  min-width: 0;
+}
+
+.app-bloco--sem-titulo .app-bloco-corpo {
+  margin-top: 0;
+}
+
+/* Recolhível: o cabeçalho inteiro é o alvo do clique, com affordance mínima. */
+.app-bloco-recolher {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  /* R2: o cabeçalho inteiro é alvo de clique — mesma altura mínima do .btn. */
+  min-height: var(--alvo-clique);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.app-bloco-recolher-seta {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: var(--c-muted);
+  transition: transform 0.15s ease;
+}
+
+.app-bloco--recolhido .app-bloco-recolher-seta {
+  transform: rotate(-90deg);
+}
+
+/* ---- StatGrid / StatTile: o ladrilho de dado único --------------------- */
+.app-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--stat-colunas, 4), minmax(0, 1fr));
+  gap: var(--esp-3);
+}
+
+.app-stat {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-2);
+  background: var(--ui-surface-2);
+  padding: var(--esp-3);
+  min-width: 0;
+}
+
+.app-stat--full { grid-column: 1 / -1; }
+
+/* Rótulo no piso da escala (12px) — abaixo disso é apertar os olhos.
+   M3: sobre o fundo rebaixado (--ui-surface-2) o --c-muted ficava a
+   4,50:1 cravado (reprovado); o token abaixo garante AA nos dois temas. */
+:root { --texto-apoio-aa: #475569; }
+.dark { --texto-apoio-aa: #a9b6cc; }
+
+.app-stat-label {
+  display: block;
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--texto-apoio-aa);
+}
+
+.app-stat-valor {
+  display: block;
+  margin-top: var(--esp-1);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  font-weight: 600;
+  color: var(--c-text);
+  /* `break-word` e não `anywhere` (06/09): `anywhere` quebra em qualquer
+     letra ANTES de tentar as oportunidades de quebra que existem, e foi ele
+     que partiu "qa.visual@fluxy.local" em "…loc" / "al" no `perfil` a 390.
+     Os pontos de quebra do token agora vêm do `StatTile`, em `<wbr>`, nos
+     separadores onde a leitura sobrevive; `break-word` continua sendo a
+     rede para o token que não tem separador nenhum — quebrado feio ainda é
+     melhor que recortado. */
+  overflow-wrap: break-word;
+}
+
+.app-stat-sub {
+  display: block;
+  margin-top: var(--esp-1);
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  color: var(--c-muted);
+}
+
+.app-stat--danger .app-stat-valor { color: var(--sem-danger); }
+.app-stat--warning .app-stat-valor { color: var(--sem-warning); }
+.app-stat--success .app-stat-valor { color: var(--sem-success); }
+/* --info faltava: o ladrilho aceitava tom="info" e renderizava neutro,
+   engolindo a distincao em silencio. O token ja existia. */
+.app-stat--info .app-stat-valor { color: var(--sem-info); }
+
+/* Ícone do ladrilho: decorativo, alinhado ao rótulo, nunca maior que ele. */
+.app-stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-2);
+}
+
+.app-stat-icone {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.app-stat-icone svg {
+  width: 16px;
+  height: 16px;
+}
+
+.app-stat--vazio .app-stat-valor {
+  color: var(--c-muted);
+  font-weight: 500;
+}
+
+/* Alternador "Ver todos os campos (N vazios)" — mesmo desenho do detalhe.
+   R2/M1: é um botão — alvo mínimo de clique vale para ele também. */
+.app-campos-toggle {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-top: var(--esp-2);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  color: var(--c-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--alvo-clique);
+}
+
+/* ---- Menu "⋯" (ações raras/avançadas) ---------------------------------- */
+.app-mais-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.app-mais-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  min-width: 220px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-2);
+  box-shadow: var(--ui-shadow-lg);
+  padding: var(--esp-1);
+  display: flex;
+  flex-direction: column;
+}
+
+.app-mais-item {
+  appearance: none;
+  border: 0;
+  background: none;
+  border-radius: var(--raio-1);
+  padding: var(--esp-2) var(--esp-3);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  font-weight: 500;
+  color: var(--c-text);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+}
+
+.app-mais-item:hover { background: var(--ui-surface-soft); }
+
+.app-mais-item:disabled {
+  color: var(--c-muted);
+  cursor: not-allowed;
+}
+
+/* Destrutivo apartado: separador antes, cor de perigo. */
+.app-mais-item--perigosa {
+  color: var(--sem-danger);
+  border-top: 1px solid var(--ui-border);
+  border-radius: 0 0 var(--raio-1) var(--raio-1);
+  margin-top: var(--esp-1);
+  padding-top: var(--esp-2);
+}
+
+.app-mais-item--perigosa:hover { background: var(--sem-danger-bg); }
+
+/* ---- Barra de ações: destrutivo sempre apartado ------------------------ */
+.app-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--esp-2);
+}
+
+.app-actionbar-apartada {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--esp-2);
+}
+
+/* Vermelho suave para destrutivos visíveis (não o btn-danger cheio). */
+.btn-perigo-suave {
+  border-color: var(--sem-danger-border);
+  color: var(--sem-danger);
+  background: var(--sem-danger-bg);
+}
+
+.btn-perigo-suave:hover {
+  border-color: var(--sem-danger);
+  background: var(--sem-danger-bg);
+}
+
+/* ---- Célula composta: dois dados relacionados numa coluna só ----------- */
+.app-celula-dupla {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-celula-dupla-principal {
+  font-weight: 600;
+  color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-celula-dupla-sub {
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  color: var(--c-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+  NO CARTÃO, O NOME QUEBRA — NÃO É TRUNCADO NEM RECORTADO (05/09).
+
+  Achado pela X3 na matriz do CRM: um link de lead media 497px numa viewport
+  de 390px e SUMIA, sem reticências e sem rolagem. O motivo é que `nowrap` +
+  `text-overflow` só produzem reticências quando a caixa tem largura definida.
+  Na tabela ela tem — a coluna. No modo CARTÃO, não: a caixa cresce com o
+  conteúdo, nada estoura em relação a ela, a reticência nunca aparece, e quem
+  recorta é o cartão lá em cima, em silêncio.
+
+  Em cartão sobra espaço vertical e falta horizontal, então a resposta certa
+  é quebrar. `anywhere` porque o pior caso aqui é código e e-mail, que não
+  têm ponto de quebra natural.
+*/
+@media (max-width: 767px) {
+  .app-celula-dupla-principal,
+  .app-celula-dupla-sub {
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ---- TabelaPadrao ------------------------------------------------------ */
+/* Linha com respiro (decisão do cliente, 02/09): corpo 14px, altura de linha
+   1.5 e vão vertical de um degrau — o sistema é usado o dia inteiro; entre
+   caber mais linhas e ler melhor, vence a leitura. */
+/* NUNCA esticar a tabela para 100%: o ResizableTable fixa a largura na SOMA
+   das colunas, e é isso que faz o arrasto agir SÓ na coluna arrastada
+   (Excel). Um width:100% aqui redistribui a sobra por todas as colunas e
+   quebra o redimensionamento (defeito de 02/09, corrigido). O card inteiro
+   é ocupado porque a TabelaPadrao entrega a sobra à coluna flex na medição. */
+
+/* Ações da linha ficam numa linha só — a coluna é dimensionada para elas
+   (larguraAcoes); empilhar botões é o que deixava a linha altíssima. */
+.app-tabela td .app-actionbar {
+  flex-wrap: nowrap;
+}
+
+.app-tabela td .app-actionbar .btn {
+  white-space: nowrap;
+}
+
+.app-tabela .resizable-table td {
+  padding: var(--esp-3);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  vertical-align: middle;
+}
+
+/*
+  T6 — CÉLULA NÃO QUEBRA PALAVRA AO MEIO (03/09).
+
+  `responsive-system.css` aplica `overflow-wrap: anywhere` a TODO td e th
+  dentro de `.layout-main`. Numa página de texto isso é bom: evita que uma
+  URL enorme estoure a largura. Numa tabela é destrutivo — "ADMINISTRATIVO"
+  numa coluna de 120px virava "ADMINISTRA" + "TIVO", que são duas outras
+  palavras. Medido no preview em cinco telas.
+
+  A T6 da DoD é explícita: reticências no meio de palavra sem tooltip é
+  FALHOU; truncar com `title` completo é aceitável para texto. Então a
+  célula volta a `normal` — quebra ENTRE palavras, nunca DENTRO — e quem
+  não couber é cortado com o texto inteiro no `title` que a TabelaPadrao
+  põe em cada td.
+
+  Escopado em `.app-tabela`: fora da tabela padrão a regra geral continua
+  valendo, que é onde ela faz sentido.
+*/
+.app-tabela .resizable-table td,
+.app-tabela .resizable-table th {
+  overflow-wrap: normal;
+}
+
+/*
+  Célula de TOKEN ÚNICO (sem nenhum espaço no texto): código, matrícula,
+  chave. A classe é posta pela TabelaPadrao, que é quem enxerga o conteúdo.
+  Token se lê inteiro ou não se lê — então trunca com reticências e o valor
+  completo vai para o `title`, em vez de quebrar no hífen e virar dois
+  tokens. Ver o comentário longo na TabelaPadrao.
+*/
+.app-tabela .resizable-table td.app-celula-token {
+  white-space: nowrap;
+}
+
+.app-tabela .resizable-table th {
+  font-size: var(--fonte-detalhe);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  /* R14: o alinhamento do título é o MESMO do conteúdo — vem do wrapper. */
+  text-align: inherit;
+}
+
+/* R14/R15 — CABEÇALHO DE COLUNA: ordenar × alinhar (desenho de 02/09).
+   O CLIQUE NO TÍTULO ORDENA (coluna com `ordenavel`); o menu de alinhamento
+   vira um ÍCONE PRÓPRIO ancorado à direita, revelado no hover/foco.
+   Por que ancorado e não lado a lado: numa coluna de status (96px, ~72px
+   úteis) o título com indicador de ordem já ocupa ~54px e o alvo mínimo do
+   ícone é 32px (R2) — não cabem em linha. Ancorado sobre a borda direita,
+   com fundo próprio, o título trunca atrás dele; é o arranjo do Excel e do
+   Planilhas. */
+.app-th-alinhavel {
+  display: block;
+  position: relative;
+  min-width: 0;
+  /* espaço para o ícone de alinhamento não cobrir o título em repouso */
+  padding-right: var(--esp-4);
+}
+
+/*
+  T8 — TÍTULO ORDENÁVEL E TÍTULO ESTÁTICO NA MESMA LINHA DE BASE (05/09).
+
+  A coluna ordenável desenha o título num `<button>` e a estática num
+  `<span>`, os dois com esta classe e com `min-height: var(--alvo-clique)`
+  (o alvo mínimo de clique da ordenação, R2). Com `display: block`, o
+  navegador CENTRALIZA o conteúdo do botão dentro da altura mínima — é
+  comportamento próprio do `<button>` — e encosta o do `<span>` no topo.
+  Duas caixas de linha diferentes: 7px de desvio medidos aqui, 9,5px no
+  componente real, na mesma fileira de títulos.
+
+  O conserto é a ALTURA DA LINHA: com `line-height: var(--alvo-clique)`, a
+  caixa de linha de cada título já nasce com a altura do alvo mínimo, e o
+  texto se assenta no meio dela — igual no botão e no span, porque agora
+  quem manda é a linha, não a tag.
+
+  DUAS TENTATIVAS ANTES DESTA, as duas medidas e as duas descartadas — e
+  nenhuma delas eu teria descartado por intuição:
+
+  1. `flex` + `align-items: center` zerava a linha de base E QUEBRAVA o
+     `text-align` herdado: o texto vira item de flex e para de obedecer ao
+     alinhamento. A coluna alinhada à direita ficou 217px fora do lugar.
+     Era a que eu escolheria por hábito, e teria desalinhado toda coluna
+     monetária do sistema.
+  2. `grid` + `align-content: center` preservava o alinhamento e zerava a
+     diferença entre botão e span — mas EMPILHAVA o ícone de ordenação
+     ABAIXO do título, porque num contêiner de grid o texto e o `<svg>`
+     viram itens separados. Eu cheguei a aplicar essa, e o defeito só
+     apareceu quando a prova de comportamento mediu o componente REAL:
+     7px de desvio de novo, agora por um terceiro caminho.
+
+  A medição final, com o ícone de ordenação presente e nos dois
+  alinhamentos: desvio 0,0px, texto alinhado à direita encostado na borda,
+  e o ícone AO LADO do título — os três ao mesmo tempo, que é o que
+  nenhuma das outras duas entregava.
+*/
+.app-th-botao {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  display: block;
+  width: 100%;
+  min-height: var(--alvo-clique);
+  line-height: var(--alvo-clique);
+  text-align: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Coluna sem ordenação: o título é TEXTO — nada de cursor ou realce que
+   prometa uma ação que não existe (R15 ao contrário: sinal sem capacidade
+   também é defeito). */
+.app-th-botao--estatico {
+  cursor: default;
+}
+
+.app-th-botao--ordenavel {
+  cursor: pointer;
+}
+
+.app-th-botao--ordenavel:hover {
+  color: var(--c-text);
+}
+
+/* Indicador de ordem: as duas setas em repouso (mostra que a coluna
+   ordena), a seta ativa cheia e a outra apagada quando há ordenação. */
+.app-th-ordem {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-left: var(--esp-1);
+  width: 10px;
+  height: 14px;
+  color: var(--c-muted);
+  opacity: 0.45;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.resizable-th:hover .app-th-ordem {
+  opacity: 0.8;
+}
+
+.app-th-ordem--ativa {
+  opacity: 1;
+  color: var(--c-primary);
+}
+
+/* R15 — o menu de alinhamento tem affordance VISÍVEL: ícone próprio,
+   revelado no hover/foco do cabeçalho e sempre visível com o menu aberto.
+   Fica à esquerda da alça de redimensionamento (que ocupa a borda). */
+.app-th-alinhar {
+  appearance: none;
+  border: 0;
+  background: var(--ui-surface);
+  border-radius: var(--raio-1);
+  padding: 0;
+  position: absolute;
+  top: 50%;
+  right: -2px;
+  transform: translateY(-50%);
+  width: var(--alvo-clique);
+  height: var(--alvo-clique);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: var(--z-conteudo-acima);
+}
+
+.resizable-th:hover .app-th-alinhar,
+.app-th-alinhar:focus-visible,
+.app-th-alinhavel--aberto .app-th-alinhar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-th-alinhar:hover {
+  color: var(--c-text);
+}
+
+.app-th-affordance {
+  width: 14px;
+  height: 14px;
+}
+
+/*
+  O MENU DE ALINHAMENTO VIVE NO `body` (05/09).
+
+  Ele era `position: absolute` dentro do `th`, e o `th` tem `overflow:
+  hidden` para dar reticências ao título — então o menu, que começa ABAIXO
+  da caixa do `th`, era recortado inteiro. Anunciado e invisível.
+
+  Agora sai por portal e se posiciona por coordenada medida do botão, então
+  precisa ser `fixed` (a coordenada é de viewport) e ficar acima do
+  conteúdo. Nenhum ancestral do `body` recorta.
+*/
+.app-th-menu {
+  position: fixed;
+  /*
+    `right: auto` — e a ausência dele foi um defeito MEU no conserto do
+    portal (05/09). O `.app-mais-menu` que esta classe estende traz
+    `right: 0`; com o portal fixando `left` inline, os dois lados ficavam
+    presos e a caixa esticava até a borda direita da janela: 1403px de menu
+    para quatro opções. A versão anterior tinha `right: auto` e eu o perdi
+    ao trocar `absolute` por `fixed`. Achado pela prova de comportamento do
+    T2, que mede o menu de verdade.
+  */
+  right: auto;
+  min-width: 140px;
+  text-transform: none;
+  letter-spacing: normal;
+  z-index: var(--z-dropdown-portal, 90);
+}
+
+/* M3 — cabeçalho de tabela legada (.table, ex.: pivô de apropriação) em
+   tela reformada: o tom --shell-muted ficava abaixo de AA (4.23:1 medido
+   pelo harness). Cor de texto plena + piso de 12px da escala. */
+.app-pagina .table thead th {
+  color: var(--c-text);
+  font-size: var(--fonte-detalhe);
+}
+
+/* O rótulo do th não pode cortar o menu de alinhamento (overflow do label). */
+.app-tabela .resizable-th-label {
+  overflow: visible;
+}
+
+/* Colunas de dinheiro/número alinham à direita com dígito tabular. */
+.app-tabela td.celula-valor {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Coluna de IDENTIFICAÇÃO (nome, razão social, obra, empresa, parceiro):
+   exibição SEMPRE em maiúsculas, independente de como foi digitado — só
+   exibição, o dado gravado não muda (regra do cliente, 02/09). */
+.app-tabela td.celula-identidade,
+.app-tabela-card .celula-identidade {
+  text-transform: uppercase;
+}
+
+/* A sublinha da célula (e-mail, código, cidade) é dado secundário — não é
+   a identificação: fica como foi gravada. */
+.app-tabela td.celula-identidade .app-celula-dupla-sub,
+.app-tabela-card .celula-identidade .app-celula-dupla-sub {
+  text-transform: none;
+}
+
+.app-tabela-linha { cursor: default; }
+.app-tabela-linha--clicavel { cursor: pointer; }
+.app-tabela-linha--clicavel:hover td { background: var(--ui-surface-soft); }
+
+/* Tarja de urgência na linha: primeira célula carrega a barra. */
+.app-tabela-linha--danger td:first-child,
+.app-tabela-linha--warning td:first-child {
+  position: relative;
+}
+
+.app-tabela-linha--danger td:first-child::before,
+.app-tabela-linha--warning td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+  border-radius: 999px;
+}
+
+.app-tabela-linha--danger td:first-child::before { background: var(--sem-danger); }
+.app-tabela-linha--warning td:first-child::before { background: var(--sem-warning); }
+
+/* Cards do mobile: mesmo dado, outra forma — nunca dois markups na tela. */
+.app-tabela-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-3);
+}
+
+.app-tabela-card {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-2);
+  padding: var(--esp-3) var(--esp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-2);
+}
+
+.app-tabela-card.tarja--danger,
+.app-tabela-card.tarja--warning {
+  padding-left: calc(var(--esp-4) + 4px);
+}
+
+.app-tabela-card-par {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--esp-2);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  min-width: 0;
+}
+
+.app-tabela-card-par dt {
+  color: var(--c-muted);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.app-tabela-card-par dd {
+  margin: 0;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-tabela-card-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  margin-top: var(--esp-1);
+}
+
+/* ---- Formulário: grid disciplinado sobre .form-* já existentes --------- */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--form-colunas, 2), minmax(0, 1fr));
+  gap: var(--esp-3) var(--esp-4);
+}
+
+.form-grid--3 { --form-colunas: 3; }
+.form-grid--4 { --form-colunas: 4; }
+
+.form-campo--span2 { grid-column: span 2; }
+.form-campo--linha { grid-column: 1 / -1; }
+
+fieldset.form-section {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.form-section-legenda {
+  padding: 0;
+  margin-bottom: var(--esp-1);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+}
+
+/*
+  FORMULÁRIO DENTRO DE BLOCO: a largura é do BLOCO, não da casca de página.
+
+  O sistema tem uma regra antiga para a tela que É um formulário:
+
+    .solicitacoes-page:not(.solicitacao-nova-page) form {
+      width: min(100%, var(--app-form-shell-max-width));   [940px]
+      margin-inline: auto;
+    }
+
+  Ela está certa para a página de digitação — campo de texto com 1300px é
+  desconfortável de ler. Mas ela pega QUALQUER `form` descendente da página,
+  inclusive o que mora dentro de um `BlocoConteudo`. Ali o resultado é uma
+  grade quebrada: medido no preview de 1920px (02/09), o corpo do bloco tem
+  1806px, o form fica com 940px CENTRADOS e começa em x=450 — um vão vazio de
+  450px embaixo do título do bloco, que é alinhado à esquerda, e o formulário
+  sem chegar à borda direita. Dentro de um bloco quem já limita a medida é o
+  próprio bloco; o form não pode ter uma segunda casca por cima.
+
+  Especificidade (0,3,1) para vencer a regra do sistema (0,2,1) por peso, e
+  não por ordem de importação.
+
+  ------------------------------------------------------------------------
+  O ESCAPE DEIXA DE EXIGIR A FormSecao (05/09).
+
+  A versão de 02/09 fechou a regra em `:has(> .form-section)` — "regra da
+  FormSecao" — e com isso consertou só metade. Medido no fonte hoje: 124
+  `<form>` no frontend, 66 dentro de um `BlocoConteudo`; desses, 46 abrem com
+  FormSecao e escapavam, e 20 abrem com `div` comum e CONTINUAVAM capados em
+  940px, em 15 telas. É o mesmo defeito, e a única diferença é qual tag o
+  formulário usa por dentro — o que não muda nada para quem olha a tela.
+  Medido na consulta de títulos: o form começa em x=490 com 940px dentro de
+  um bloco de 1843px — 903px não usados, 451px de recuo de cada lado.
+
+  A regra passa a ser a que já estava escrita na primeira linha desta nota:
+  DENTRO DE UM BLOCO, QUEM LIMITA A MEDIDA É O BLOCO.
+
+  O RISCO, avaliado antes de largar (o teto existe por conforto de leitura,
+  não por capricho): o que segura o campo depois que o form solta é a GRADE
+  DE COLUNAS. Conferi os 20 formulários que a mudança liberta, um a um:
+    - 16 declaram grade de colunas (`form-grid`, `grid-cols-2`, `grid-cols-12`
+      com spans de 2 a 6) — num bloco de 1806px, um span de 2 em 12 dá ~290px;
+    -  3 não têm grade, mas prendem o campo em `max-w-*` (`max-w-md` = 448px);
+    -  1 (UploadComprovantes) não tem nem grade nem `max-w`, e o único campo
+      dele é `type="file"` dentro de um botão — não há texto para esticar.
+  Nenhum campo de texto fica sem segurador, então a regra não precisa ser
+  apertada. Se algum dia entrar um form de bloco com campo de texto solto em
+  coluna única, o conserto é dar grade a ELE — não devolver o teto a todos.
+
+  A especificidade (0,3,1) fica, agora pelo `.solicitacoes-page` da frente:
+  é a mesma classe da regra do sistema, e explicita que o escape vale
+  DENTRO da página que carrega o teto.
+*/
+.solicitacoes-page .app-bloco .app-bloco-corpo form {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+}
+
+/* ---- Responsivo -------------------------------------------------------- */
+@media (max-width: 1023px) {
+  .app-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form-grid,
+  .form-grid--3,
+  .form-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .app-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form-grid,
+  .form-grid--3,
+  .form-grid--4 { grid-template-columns: minmax(0, 1fr); }
+  .form-campo--span2 { grid-column: auto; }
+  .app-actionbar-apartada { margin-left: 0; }
+}
+
+
+/* ============================================================
+   CAPACIDADES DA LEVA DO COMPONENTE (02/09) — seleção em lote,
+   linha expansível/agrupadora, coluna fixa e painel de colunas.
+   ============================================================ */
+
+/* Coluna de marcação e de expansão: estreitas, centradas, sem alça. */
+.app-tabela th.celula-selecao,
+.app-tabela td.celula-selecao,
+.app-tabela th.celula-expandir,
+.app-tabela td.celula-expandir {
+  text-align: center;
+  padding-left: var(--esp-2);
+  padding-right: var(--esp-2);
+}
+
+.app-tabela td.celula-selecao input,
+.app-tabela th.celula-selecao input {
+  /* R2: alvo de toque do checkbox (o input em si é menor que o alvo). */
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.app-tabela-expandir {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  min-width: var(--alvo-clique);
+  min-height: var(--alvo-clique);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-muted);
+  cursor: pointer;
+}
+
+.app-tabela-expandir:hover { color: var(--c-text); }
+
+.app-tabela-expandir-seta {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+
+.app-tabela-expandir-seta--aberta { transform: rotate(90deg); }
+
+/* Linha de detalhe: superfície rebaixada, ocupando a largura da tabela. */
+.app-tabela .app-tabela-detalhe > td {
+  background: var(--ui-surface-2);
+  padding: var(--esp-3) var(--esp-4);
+  border-top: 0;
+}
+
+/* Linha de grupo: cabeçalho de bloco dentro do corpo da tabela. */
+.app-tabela .app-tabela-grupo > td {
+  background: var(--ui-surface-2);
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--c-text);
+  padding: var(--esp-2) var(--esp-4);
+}
+
+/* COLUNA FIXA: gruda à esquerda na rolagem horizontal. Precisa de fundo
+   OPACO (senão o conteúdo rola por baixo) e de uma borda que marque o
+   limite do que está preso — em tabela larga é o que diz de qual linha se
+   está lendo o número. */
+.app-tabela th.celula-fixa,
+.app-tabela td.celula-fixa {
+  position: sticky;
+  left: 0;
+  /* Empilhamento LOCAL, de proposito abaixo de 50: celula presa disputa
+     com a linha ao lado, nunca com a barra do topo. */
+  z-index: var(--z-celula-fixa);
+  background: var(--ui-surface);
+  box-shadow: 1px 0 0 var(--ui-border);
+}
+
+.app-tabela thead th.celula-fixa { z-index: var(--z-celula-fixa-cabecalho); }
+
+.app-tabela .app-tabela-linha:hover td.celula-fixa {
+  background: var(--ui-surface-2);
+}
+
+/* Barra acima da tabela: painel de colunas e ações da tabela inteira. */
+.app-tabela-barra {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  margin-bottom: var(--esp-3);
+}
+
+.app-colunas-wrap { position: relative; }
+
+/*
+  O PAINEL DE COLUNAS É `fixed` E POSICIONADO POR MEDIDA (05/09).
+
+  Ele era `position: absolute` (herdado do `.app-mais-menu`) e ficava preso
+  ao contêiner. Dentro de MODAL — 9 tabelas medidas em 05/09 — o corpo do
+  modal rola com `overflow-y: auto` e tem teto de altura; um painel de
+  320px aberto perto do rodapé era recortado pela caixa do modal. Com
+  `fixed`, o bloco continente é a janela e nenhum ancestral com `overflow`
+  recorta.
+
+  `right: auto` PRECISA estar aqui: o `.app-mais-menu` que esta classe
+  estende traz `right: 0`, e com o `left` vindo inline os dois lados
+  ficariam presos — a caixa esticaria até a borda direita da janela. É
+  literalmente o defeito que o `.app-th-menu` já pagou em 05/09.
+
+  FORA DE MODAL ELE SAI POR PORTAL desde 06/09, e o z-index do portal vem
+  INLINE (`--z-dropdown-portal`), não daqui: `fixed` só tem a janela por
+  bloco continente enquanto nenhum ancestral for bloco continente, e o
+  `.app-table-shell` é um (o `backdrop-filter` de `index.css`). Sendo bloco
+  continente, o `overflow: auto hidden` dele recorta o painel que vira para
+  cima — medido em três telas do preview, 13px de 320 sobrando. DENTRO de
+  modal ele continua no lugar: lá o `--z-dropdown-portal` (900) perderia
+  para o `--z-modal` (1000). Ver a nota longa em `TabelaPadrao.jsx`.
+*/
+.app-colunas-menu {
+  position: fixed;
+  right: auto;
+  min-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--esp-2);
+  gap: var(--esp-1);
+}
+
+.app-colunas-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-2);
+  padding: var(--esp-1) var(--esp-2);
+  border-radius: var(--raio-1);
+}
+
+.app-colunas-item:hover { background: var(--ui-surface-2); }
+
+.app-colunas-rotulo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-2);
+  font-size: var(--fonte-corpo);
+  min-height: var(--alvo-clique);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.app-colunas-rotulo span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-colunas-rotulo input:disabled { cursor: not-allowed; }
+
+.app-colunas-mover {
+  display: inline-flex;
+  gap: var(--esp-1);
+  flex-shrink: 0;
+}
+
+/*
+  ALÇA DE ARRASTO (05/09) — o sinal da R15 para a capacidade de reordenar
+  arrastando, e também o gatilho dela: o `draggable` só liga enquanto o
+  ponteiro está NESTA alça, para que o checkbox e os botões ↑/↓ do mesmo
+  item continuem clicáveis. `user-select: none` impede que o arrasto vire
+  seleção de texto.
+*/
+.app-colunas-arrastar {
+  flex-shrink: 0;
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  line-height: 1;
+  letter-spacing: -0.1em;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-colunas-arrastar:active { cursor: grabbing; }
+
+.app-colunas-item--arrastando { opacity: 0.45; }
+
+/* Linha de inserção no alvo: diz ONDE a coluna vai cair, e não só que o
+   item está sob o ponteiro. */
+.app-colunas-item--alvo {
+  background: var(--ui-surface-2);
+  box-shadow: inset 0 2px 0 0 var(--c-primary);
+}
+
+/* Mobile: marcação e detalhe dentro do card, com as mesmas colunas. */
+.app-tabela-card-selecao {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-2);
+  min-height: var(--alvo-clique);
+  font-size: var(--fonte-detalhe);
+  color: var(--c-muted);
+  cursor: pointer;
+}
+
+.app-tabela-card-detalhe {
+  margin-top: var(--esp-2);
+  padding-top: var(--esp-2);
+  border-top: 1px solid var(--ui-border);
+}
+
+/* Linha selecionada: realce próprio (a tarja lateral é de URGÊNCIA, não de
+   seleção — usar `urgencia` para isso diria a coisa errada). */
+.app-tabela .app-tabela-linha--selecionada > td,
+.app-tabela .app-tabela-linha--selecionada > td.celula-fixa {
+  background: color-mix(in srgb, var(--c-primary) 8%, var(--ui-surface));
+}
+
+/* Linha clicável recebe foco de teclado: quem não usa mouse precisa
+   chegar na ação (R2 vale para a linha inteira também). */
+.app-tabela .app-tabela-linha--clicavel:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: -2px;
+}
+
+/* Ênfase de linha declarada pela tela (`classeLinha`) — subtotal e total de
+   demonstrativo, por exemplo. Não usa aria-selected: linha de subtotal não
+   está "selecionada", e dizer isso ao leitor de tela seria mentira. */
+.app-tabela .app-tabela-linha--subtotal > td {
+  background: var(--ui-surface-2);
+  font-weight: 600;
+}
+
+.app-tabela .app-tabela-linha--total > td {
+  background: var(--ui-surface-2);
+  font-weight: 700;
+  border-top: 2px solid var(--ui-border);
+}
+
+/* ============================================================
+   AVISO E CONFIRMAÇÃO DO SISTEMA (R3 da DoD, 02/09)
+   Substituem `window.alert()` e `window.confirm()`. Medidas só nos
+   degraus da escala (R10); cor só por token (M1).
+   ============================================================ */
+
+/* Resultado da última ação: pop-up compacto, acima de modais, sem bloquear cliques. */
+.app-avisos {
+  position: fixed;
+  top: max(env(safe-area-inset-top, 0px), 12px);
+  right: max(env(safe-area-inset-right, 0px), 12px);
+  z-index: 12000;
+  width: min(420px, calc(100vw - 24px));
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-2);
+}
+
+.app-avisos > * { pointer-events: auto; box-shadow: var(--sombra-card, 0 8px 24px rgba(15, 23, 42, .18)); }
+
+/* Avisos sao renderizados em document.body (portal), fora de .layout-shell.
+   Portanto precisam carregar a propria superficie e tipografia: sem isso o
+   fundo fica transparente e os controles do cabecalho aparecem atraves deles. */
+.app-avisos .alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--esp-2);
+  padding: var(--esp-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-2);
+  background: var(--ui-surface);
+}
+
+.app-avisos .alert-icon { flex-shrink: 0; }
+.app-avisos .alert-content { flex: 1; min-width: 0; }
+.app-avisos .alert-title { margin: 0; font-weight: 700; }
+.app-avisos .alert-message { margin: var(--esp-1) 0 0; overflow-wrap: anywhere; }
+.app-avisos .alert-close { color: currentColor; }
+
+.app-avisos .alert-info { background: var(--sem-info-bg); border-color: var(--sem-info-border); color: var(--sem-info); }
+.app-avisos .alert-success { background: var(--sem-success-bg); border-color: var(--sem-success-border); color: var(--sem-success); }
+.app-avisos .alert-warning { background: var(--sem-warning-bg); border-color: var(--sem-warning-border); color: var(--sem-warning); }
+.app-avisos .alert-error { background: var(--sem-danger-bg); border-color: var(--sem-danger-border); color: var(--sem-danger); }
+
+
+.app-confirmacao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-3);
+  padding: var(--esp-6);
+}
+
+.app-confirmacao-titulo {
+  font-size: var(--fonte-bloco);
+  font-weight: 600;
+  line-height: var(--lh-titulo);
+  color: var(--c-text);
+}
+
+.app-confirmacao-texto {
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  color: var(--c-muted);
+}
+
+/* Confirmar à direita, na posição em que o sistema inteiro põe a ação
+   primária; cancelar à esquerda. Alvo mínimo de 32px vem do .btn. */
+.app-confirmacao-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--esp-2);
+  margin-block-start: var(--esp-2);
+}
+
+/* Campos de recorte contínuo da BarraFiltros (R16b, 02/09): competência e
+   período não têm lista de opções, então não cabem na marcação. Ficam na
+   MESMA faixa, antes da linha de filtros — o recorte inteiro fica em um
+   lugar só (R16). */
+.app-filtros .app-filtros-campos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-3);
+  align-items: end;
+}
+
+/*
+  OS CAMPOS DIVIDEM A FAIXA (05/09) — ver os tokens --campo-filtro-* no topo.
+
+  O campo não tinha `flex`, então não crescia: ficava na largura intrínseca do
+  `<input>` e a sobra da faixa ficava vazia. Alcance medido no fonte: 31 telas
+  declaram `campos`, e 24 delas declaram UM ou DOIS — as que mais deixavam
+  faixa vazia à direita.
+
+  O `flex-basis` é o piso do tipo, então todos partem do pior caso do próprio
+  dado e crescem juntos até o teto do tipo. O tipo chega por `data-tipo`, que
+  a BarraFiltros emite a partir do `campo.tipo` que a tela JÁ declarava e o
+  CSS ignorava (a tela não escreve medida — R10/R1: declara o que o campo É).
+*/
+.app-filtros .app-filtros-campo {
+  display: grid;
+  gap: var(--esp-1);
+  --campo-filtro-min: var(--campo-filtro-texto-min);
+  --campo-filtro-max: var(--campo-filtro-texto-max);
+  flex: 1 1 var(--campo-filtro-min);
+  min-width: var(--campo-filtro-min);
+  max-width: var(--campo-filtro-max);
+}
+
+.app-filtros .app-filtros-campo[data-tipo="date"] {
+  --campo-filtro-min: var(--campo-filtro-data-min);
+  --campo-filtro-max: var(--campo-filtro-data-max);
+}
+
+.app-filtros .app-filtros-campo[data-tipo="month"] {
+  --campo-filtro-min: var(--campo-filtro-mes-min);
+  --campo-filtro-max: var(--campo-filtro-mes-max);
+}
+
+.app-filtros .app-filtros-campo[data-tipo="number"] {
+  --campo-filtro-min: var(--campo-filtro-numero-min);
+  --campo-filtro-max: var(--campo-filtro-numero-max);
+}
+
+.app-filtros .app-filtros-campo[data-tipo="select"] {
+  --campo-filtro-min: var(--campo-filtro-texto-min);
+  --campo-filtro-max: var(--campo-filtro-texto-max);
+}
+
+.app-filtros .app-filtros-campo-rotulo {
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  color: var(--c-muted);
+}
+
+/* Mesma altura e tratamento dos demais controles da faixa — alvo de clique
+   nunca abaixo de 32px (M-alvo). */
+/* O `<label>` passou a crescer (acima); sem largura própria o `<input>` ficava
+   parado na largura intrínseca dentro de um rótulo largo — o vazio só mudava
+   de lugar. `min-width: 0` porque input tem largura intrínseca de `size` e
+   ela impediria o campo de encolher até o piso do tipo em faixa estreita. */
+.app-filtros .app-filtros-campo input,
+.app-filtros .app-filtros-campo select {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding-inline: var(--esp-2);
+  font-size: var(--fonte-corpo);
+  color: var(--c-text);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-1);
+}
+
+.app-filtros .app-filtros-campo input:focus-visible,
+.app-filtros .app-filtros-campo select:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+/* Rodapé de lista paginada (R16b, 02/09). Um dono só: antes cada tela
+   reinventava com app-page-actions e cor fixa. */
+/*
+  RODAPÉ DE CONTAGEM DA TABELA — "N de M" (05/09).
+
+  Mesma escala e mesma cor do texto da paginação, porque é a mesma classe de
+  informação: onde a pessoa está dentro do conjunto. Alinhado à direita, sob
+  a borda da tabela, e sem borda própria — é rodapé, não é bloco.
+*/
+/* Rodapé: contagem à esquerda, alternador de modo à direita. */
+.app-tabela-rodape-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  flex-wrap: wrap;
+  margin-top: var(--esp-2);
+}
+
+/* O alternador rolagem ⇄ lista inteira. O botão já é `btn btn-outline
+   btn-sm`; esta classe existe para o rótulo de estado não quebrar em duas
+   linhas quando o rodapé aperta — e para o verificador ter onde mirar.
+   Classe usada e não declarada é fantasma: parece intenção e não é. */
+.app-tabela-modo {
+  white-space: nowrap;
+}
+
+/* Sentinela da rolagem infinita: não ocupa espaço, só serve de alvo para o
+   observador de interseção. */
+.app-tabela-sentinela {
+  display: block;
+  height: 1px;
+}
+
+.app-tabela-rodape {
+  margin: 0;
+  text-align: left;
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  color: var(--c-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--esp-3);
+  flex-wrap: wrap;
+}
+
+.app-paginacao .app-paginacao-posicao {
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  color: var(--c-muted);
+}
+
+/* Campo de texto da confirmação (R16b, 02/09) — a justificativa que antes
+   saía em window.prompt. Fica DENTRO do mesmo passo: confirmar e justificar
+   é um gesto só. */
+.app-confirmacao .app-confirmacao-campo {
+  display: grid;
+  gap: var(--esp-1);
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  color: var(--c-muted);
+}
+
+.app-confirmacao .app-confirmacao-campo :is(input, textarea) {
+  min-height: 32px;
+  padding: var(--esp-2);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  color: var(--c-text);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-1);
+}
+
+.app-confirmacao .app-confirmacao-campo textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.app-confirmacao .app-confirmacao-campo :is(input, textarea):focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}

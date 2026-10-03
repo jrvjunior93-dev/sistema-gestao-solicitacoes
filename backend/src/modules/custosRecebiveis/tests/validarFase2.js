@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -47,13 +48,18 @@ function validateCompetenciaBoundaries() {
     nextMonth: '2027-01-01'
   });
   assert.throws(() => normalizeCompetencia('08/2026'), /Competencia invalida/);
+  // A lista de liberadas vem de prazoService (ver validarPrazos.js).
   assert.deepStrictEqual(
-    assertCompetenciaNovoMes('2026-08', new Date('2026-07-15T12:00:00-03:00')),
+    assertCompetenciaNovoMes('2026-08', ['2026-07', '2026-08']),
     ['2026-07', '2026-08']
   );
   assert.throws(
-    () => assertCompetenciaNovoMes('2026-09', new Date('2026-07-15T12:00:00-03:00')),
+    () => assertCompetenciaNovoMes('2026-09', ['2026-07', '2026-08']),
     /Novo mes permite somente/
+  );
+  assert.throws(
+    () => assertCompetenciaNovoMes('2026-09', []),
+    /Nenhuma competencia liberada/
   );
   assert.deepStrictEqual(
     dashboardCompetencias('2026-02'),
@@ -206,13 +212,19 @@ function validateBackendContracts() {
   assert(spreadsheetService.includes("worksheet.protect('FluxyPlanejamento'"));
   assert(spreadsheetService.includes("workbook.addWorksheet('_METADADOS')"));
   assert(spreadsheetService.includes("metadata.state = 'veryHidden'"));
-  assert(spreadsheetService.includes('Formulas nao sao permitidas'));
+  assert(spreadsheetService.includes("['escopo', 'UNIVERSAL']"));
+  assert(spreadsheetService.includes("'modelo-custos-planejados-geral.xlsx'"));
+  assert(spreadsheetService.includes("COST_HEADERS = Object.freeze(['descricao_servico', 'unidade', 'quantidade', 'valor_unitario'])"));
+  // Fase 5 (29/09): formula passa a ser aceita (vale o resultado calculado);
+  // sem resultado calculado, erro legivel pedindo para salvar no Excel.
+  assert(!spreadsheetService.includes('Formulas nao sao permitidas'));
+  assert(spreadsheetService.includes('CR_PLANILHA_FORMULA_SEM_RESULTADO'));
   assert(spreadsheetService.includes('saldo_disponivel'));
-  assert(spreadsheetService.includes("header: 'quantidade_ja_medida'"));
+  assert(spreadsheetService.includes("'quantidade_ja_medida'"));
   assert(spreadsheetService.includes('quantidade_ja_medida: item.quantidade_anterior'));
   assert(spreadsheetService.includes('legacyMeasurementModel'));
   assert(spreadsheetService.includes('quantity === 0'));
-  assert(spreadsheetService.includes('previousRows = await db.CrMedicaoConsolidada.findAll'));
+  assert(spreadsheetService.includes('previousRows = await m.CrMedicaoConsolidada.findAll'));
 }
 
 function validateFrontendContracts() {
@@ -249,7 +261,17 @@ function validateFrontendContracts() {
   assert(page.includes('<CrExecutiveFilters'));
   assert(page.includes('<CrPlanejamentoMensalView'));
   assert(page.includes('<CrComparativoView'));
-  assert(page.includes("activeTab === 'planejamento' && selectedObra"));
+  assert(page.includes("activeTab !== 'obras'"));
+  // Reforma 29/09: todo engenheiro entra pelos cards de obra (nome, codigo,
+  // situacao e os dois avisos de prazo) e chega aos meses clicando no card.
+  assert(page.includes('cardMode={obraExperience}'));
+  assert(page.includes("tab.id !== 'planejamento'"));
+  assert(page.includes('onRequestReopen={handleRequestReopening}'));
+  assert(page.includes('prazos={selectedObra?.prazos || null}'));
+  assert(worksView.includes('function ObraCard'));
+  assert(worksView.includes('avisoPlanejamento(obra.prazos)'));
+  assert(worksView.includes('avisoMedicao(obra.prazos)'));
+  assert(worksView.includes('<BarraFiltros'));
   assert(planning.includes('PUBLIC_STEPS'));
   assert(planning.includes('PRIVATE_STEPS'));
   assert(planning.includes("label: 'Custos planejados'"));
@@ -260,13 +282,19 @@ function validateFrontendContracts() {
   assert(planning.includes('Etapa {step} de {steps.length}'));
   assert(planning.includes('Fonte automática: contratos e títulos do Financeiro'));
   assert(!planning.includes('checked={Boolean(item.confirmado)}'));
-  assert(planning.includes('Custos planejados por etapa macro'));
-  assert(planning.includes('Adicionar subitem'));
+  assert(planning.includes('Custos planejados no mês'));
+  assert(planning.includes('Adicionar linha'));
+  // Fase 6 (29/09): o paragrafo que explicava o obvio saiu da tela.
+  assert(!planning.includes('Não é necessário escolher item ou etapa macro'));
   assert(planning.includes('previsao_custo_id'));
   assert(planning.includes('Qtd. orçada'));
   assert(planning.includes('Math.min('));
   assert(planning.includes('item.item?.quantidade_aprovada_anterior'));
-  assert(planning.includes('Qtd. medida'));
+  // Fase 5 (29/09): a coluna da medicao prevista chama-se "Qtd. prevista" e a
+  // grade mostra o saldo provavel.
+  assert(planning.includes('Qtd. prevista'));
+  assert(planning.includes('saldo_provavel'));
+  assert(planning.includes('Salvar e continuar'));
   assert(planning.includes('Pesquisar subitem desta etapa'));
   assert(planning.includes('usePlanItemSearch'));
   assert(planning.includes('etapaMacroCodigo: macroCode'));
@@ -286,14 +314,20 @@ function validateFrontendContracts() {
   assert(monthlyPlanning.includes("obra?.classificacao === 'PUBLICA'"));
   assert(monthlyPlanning.includes('<CrMonthlySummaryCard'));
   assert(monthlyPlanning.includes('<CrMonthlyDetailView'));
-  assert(monthlyPlanning.includes('cr-planning-deadline'));
+  assert(monthlyPlanning.includes('cr-deadline-strip'));
+  assert(monthlyPlanning.includes('editBlockReason(item)'));
   assert(monthlySummary.includes('Custo planejado'));
   assert(monthlySummary.includes('Recebível previsto'));
-  assert(monthlySummary.includes('Desvio de custo'));
+  // Regra de 29/09: o numero principal e o Desvio = recebivel previsto −
+  // custo planejado (ou realizado, quando passa do planejado), pela regra
+  // unica de utils/resultadoMes.js, com a conta usada logo abaixo.
+  assert(monthlySummary.includes('<span>Desvio</span>'));
+  assert(monthlySummary.includes('calcularResultadoMes'));
+  assert(monthlySummary.includes('resultado.formula'));
   assert(monthlySummary.includes('Saldo a receber'));
-  assert(monthlySummary.includes('className="cr-icon-button"'));
-  assert(monthlySummary.includes('aria-label={`${approvedLabel} de ${title}`}'));
-  assert(monthlyDetail.includes('aria-label="Editar planejamento"'));
+  assert(monthlySummary.includes('<CrIconAction'));
+  assert(monthlySummary.includes('disabled={Boolean(editDisabledReason)}'));
+  assert(monthlyDetail.includes('label="Editar planejamento"'));
   assert(monthlyDetail.includes('aria-label="Voltar aos meses"'));
   assert(dashboard.includes('Pontos de atenção'));
   assert(dashboard.includes('Evolução de custos'));
@@ -311,17 +345,24 @@ function validateFrontendContracts() {
   assert(dashboard.includes('Custos por macro'));
   assert(dashboard.includes("item.nome || 'Macro sem descrição'"));
   assert(!dashboard.includes('Status das etapas'));
-  assert(executiveFilters.includes('Todas as obras do seu escopo'));
+  assert(executiveFilters.includes("import ObraAutocomplete"));
+  assert(executiveFilters.includes("listarCustosRecebiveisObras"));
+  assert(executiveFilters.includes("compacto: 1"));
+  assert(executiveFilters.includes("onSearch={setObraSearch}"));
+  assert(executiveFilters.includes("operational ? 'Obra' : 'Filtros'"));
   assert(executiveFilters.includes('Marcar seis meses'));
   assert(executiveFilters.includes('type="checkbox"'));
   assert(executiveFilters.includes('value="PUBLICA"'));
   assert(executiveFilters.includes('value="PRIVADA"'));
   assert(executiveFilters.includes('cr-operational-period'));
-  assert(executiveFilters.includes('Todas as minhas obras'));
-  assert(worksView.includes('obra.contrato'));
-  assert(worksView.includes('obra.valor_orcado'));
-  assert(worksView.includes('obra.responsavel'));
-  assert(worksView.includes('Abrir planejamento'));
+  assert(executiveFilters.includes('Pesquisar nas minhas obras'));
+  // Fase 4 (29/09): a tabela de obras da tela orfa (?aba=obras) foi removida
+  // por decisao do proprietario; CrObrasView ficou so com os cards.
+  assert(!worksView.includes('obra.valor_orcado'));
+  // O card de obra nao mostra numeros de competencia (decisao de 29/09).
+  assert(!worksView.includes('resumo_competencia'));
+  assert(!worksView.includes('Custo planejado'));
+  assert(!worksView.includes('Saldo a receber'));
   assert(!worksView.includes('<th>Contrato</th>'));
   assert(!worksView.includes('<dt>Contrato</dt>'));
   assert(!worksView.includes('Remover'));
@@ -332,10 +373,11 @@ function validateFrontendContracts() {
   assert(page.includes('canOpenPlanning={canOpenPlanning}'));
   assert(page.includes('onOpenArea={handleOpenDashboardArea}'));
   assert(comparison.includes('COMPARATIVO_ESTADO_LABELS'));
-  assert(planning.includes("renderPlanningSheetActions('custos'"));
+  assert(planning.includes("'custos',\n              permissions.costs"));
   assert(planning.includes("renderPlanningSheetActions('medicao-prevista'"));
   assert(planning.includes("renderPlanningSheetActions('medicao-aprovada'"));
   assert(planningImport.includes('Confirmar importação'));
+  assert(planningImport.includes('Importar e salvar'));
   assert(planningImport.includes('onConfirm(tipo, result.itens)'));
   assert(monthlyPlanning.includes("openDetail(selectedCompetencia, 'approved')"));
   assert(!monthlyPlanning.includes('<CrRealizadoView'));
@@ -343,8 +385,9 @@ function validateFrontendContracts() {
   assert(monthlyPlanning.includes("realized: 'realized'"));
   assert(monthlyPlanning.includes("comparison: 'comparison'"));
   assert(comparison.includes('Comparativo operacional por item'));
-  assert(comparison.includes('<th>Medição prevista</th>'));
-  assert(comparison.includes('<th>Medição aprovada</th>'));
+  // Tabela migrou para TabelaPadrao: colunas declaradas por `titulo`.
+  assert(comparison.includes("titulo: 'Medição prevista'"));
+  assert(comparison.includes("titulo: 'Medição aprovada'"));
   assert(comparison.includes('data?.linhas_medicao || []'));
   assert(planningImport.includes('Validar novamente'));
 }
@@ -383,17 +426,21 @@ function validatePlanningSpreadsheetPreview() {
 
   const freeCosts = validarLinhasPlanejamento({
     ...baseContext,
-    type: PLANNING_SHEET_TYPES.CUSTOS
+    type: PLANNING_SHEET_TYPES.CUSTOS,
+    plan: null,
+    macros: [],
+    items: []
   }, [{
-    etapa_macro_codigo: '00.001',
-    etapa_macro_descricao: 'Texto adulterado',
     descricao_servico: 'Equipe de campo',
     unidade: 'mes',
     valor_unitario: 2500,
     quantidade: 2
   }]);
   assert.strictEqual(freeCosts.resumo.valido, true);
-  assert.strictEqual(freeCosts.itens[0].etapa_macro_descricao, 'Administracao');
+  assert.strictEqual(freeCosts.itens[0].etapa_macro_codigo, null);
+  assert.strictEqual(freeCosts.itens[0].etapa_macro_descricao, null);
+  assert.deepStrictEqual(freeCosts.catalogo, []);
+  assert.strictEqual(freeCosts.plano, null);
   assert.strictEqual(freeCosts.resumo.valor_total, 5000);
 }
 
@@ -604,17 +651,19 @@ async function validateFinalizationIdempotency() {
 
 async function validateFinalizedCompetencyIsImmutable() {
   let replacedRows = 0;
+  // Competencia futura: com um mes ja vencido o erro seria de prazo, nao de
+  // imutabilidade, e o teste passaria a depender da data em que roda.
   const finalized = {
     id: 41,
     obra_id: 7,
-    competencia: '2026-08',
+    competencia: '2999-08',
     estado: 'FINALIZADA'
   };
   await assert.rejects(
     () => salvarCustos(
       { id: 1 },
       7,
-      '2026-08',
+      '2999-08',
       { itens: [] },
       {
         sequelize: transactionHarness(),
@@ -719,7 +768,6 @@ async function validateMonthlyMacroSubitemsAndForecastMeasurement() {
     {
       itens: [{
         chave_local: 'local-subitem-1',
-        etapa_macro_codigo: '01',
         descricao: 'Mobilização da equipe',
         unidade: 'mês',
         ordem: 1,
@@ -749,38 +797,59 @@ async function validateMonthlyMacroSubitemsAndForecastMeasurement() {
   );
   assert.strictEqual(costResult.total, 300);
   assert.strictEqual(savedCosts[0].plano_item_id, null);
-  assert.strictEqual(savedCosts[0].etapa_macro_codigo, '01');
+  assert.strictEqual(savedCosts[0].etapa_macro_codigo, null);
   assert.strictEqual(savedCosts[0].descricao, 'Mobilização da equipe');
 
+  // 5a (29/09): medicao prevista so de itens da planilha contratual.
+  const receiptOverrides = (existingReceipts = []) => ({
+    ...baseOverrides,
+    CrPrevisaoCusto: { findAll: async () => savedCosts },
+    CrMedicaoConsolidada: { findAll: async () => [] },
+    CrPrevisaoReceita: {
+      findAll: async ({ where } = {}) => (where?.previsao_custo_id ? existingReceipts : []),
+      destroy: async () => { savedReceipts = []; },
+      bulkCreate: async (rows) => {
+        savedReceipts = rows;
+        return rows;
+      }
+    }
+  });
+  await assert.rejects(
+    () => salvarRecebiveis(
+      { id: 1 },
+      7,
+      '2099-08',
+      { itens: [{ previsao_custo_id: 501, quantidade_prevista: 1.5 }] },
+      receiptOverrides()
+    ),
+    (error) => error.code === 'CR_RECEBIVEL_ITEM_INVALIDO'
+  );
+  // Linha antiga ligada ao custo, ja gravada no mes, continua aceita.
+  const legacyResult = await salvarRecebiveis(
+    { id: 1 },
+    7,
+    '2099-08',
+    { itens: [{ previsao_custo_id: 501, quantidade_prevista: 1.5 }] },
+    receiptOverrides([{ previsao_custo_id: 501 }])
+  );
+  assert.strictEqual(legacyResult.total, 225);
+  assert.strictEqual(savedReceipts[0].previsao_custo_id, 501);
   const receiptResult = await salvarRecebiveis(
     { id: 1 },
     7,
     '2099-08',
-    {
-      itens: [{ previsao_custo_id: 501, quantidade_prevista: 1.5 }]
-    },
-    {
-      ...baseOverrides,
-      CrPrevisaoCusto: { findAll: async () => savedCosts },
-      CrPrevisaoReceita: {
-        findAll: async () => [],
-        destroy: async () => { savedReceipts = []; },
-        bulkCreate: async (rows) => {
-          savedReceipts = rows;
-          return rows;
-        }
-      }
-    }
+    { itens: [{ plano_item_id: 101, quantidade_prevista: 4 }] },
+    receiptOverrides()
   );
-  assert.strictEqual(receiptResult.total, 225);
-  assert.strictEqual(savedReceipts[0].previsao_custo_id, 501);
-  assert.strictEqual(savedReceipts[0].plano_item_id, null);
-  assert.strictEqual(savedReceipts[0].valor_previsto, 225);
+  assert.strictEqual(receiptResult.total, 400);
+  assert.strictEqual(savedReceipts[0].plano_item_id, 101);
+  assert.strictEqual(savedReceipts[0].previsao_custo_id, null);
 }
 
 async function validateApprovedMeasurementAndGlosa() {
   let createdMeasurement = null;
   let auditPayload = null;
+  let semRegistro = null;
   const competencia = {
     id: 41,
     obra_id: 7,
@@ -833,12 +902,16 @@ async function validateApprovedMeasurementAndGlosa() {
     CrPrevisaoCusto: { findAll: async () => [] },
     CrMedicaoConsolidada: {
       findAll: async () => [],
+      count: async () => 0,
       destroy: async () => 0,
       bulkCreate: async (rows) => {
         [createdMeasurement] = rows;
         return rows;
       }
     },
+    CrMedicaoSemRegistro: { destroy: async () => 0, create: async (row) => { semRegistro = row; } },
+    carregarContextoPrazos: async () => new Map(),
+    CrReabertura: { findOne: async () => null },
     CrAuditoria: {
       findOne: async () => null,
       create: async (payload) => {
@@ -904,6 +977,89 @@ async function validateApprovedMeasurementAndGlosa() {
   assert.strictEqual(independentResult.valor_total, 50);
   assert.strictEqual(createdMeasurement.plano_item_id, 10);
   assert.strictEqual(createdMeasurement.valor_medido, 50);
+
+  // Trava (29/09): ja registrada e prazo (10/09) vencido -> so com reabertura.
+  await assert.rejects(
+    () => consolidarMedicao(
+      { id: 1 },
+      7,
+      '2026-08',
+      { idempotency_key: 'medicao-4', itens: [{ plano_item_id: 9, quantidade_medida: 1 }] },
+      {
+        ...overrides,
+        carregarContextoPrazos: async () => new Map([[7, {
+          competencias: [{ competencia: '2026-08', tem_medicao_aprovada: true }]
+        }]])
+      }
+    ),
+    (error) => error?.code === 'CR_MEDICAO_ENCERRADA'
+  );
+  // Reabertura vigente (mesmo sem o mes estar REABERTA) libera a correcao.
+  const reopened = await consolidarMedicao(
+    { id: 1 },
+    7,
+    '2026-08',
+    {
+      idempotency_key: 'medicao-4b',
+      justificativa_glosa_geral: 'Glosa registrada pelo orgao.',
+      itens: [{ plano_item_id: 9, quantidade_medida: 1 }]
+    },
+    {
+      ...overrides,
+      CrReabertura: { findOne: async () => ({ id: 3 }) },
+      carregarContextoPrazos: async () => new Map([[7, {
+        competencias: [{ competencia: '2026-08', tem_medicao_aprovada: true }]
+      }]])
+    }
+  );
+  assert.strictEqual(reopened.valor_total, 10);
+
+  // Sem medicao aprovada: exige justificativa e nao aceita itens.
+  await assert.rejects(
+    () => consolidarMedicao({ id: 1 }, 7, '2026-08', {
+      idempotency_key: 'medicao-5', sem_medicao: true, justificativa_sem_medicao: 'curta', itens: []
+    }, overrides),
+    (error) => error?.code === 'CR_SEM_MEDICAO_JUSTIFICATIVA'
+  );
+  const semMedicao = await consolidarMedicao({ id: 1 }, 7, '2026-08', {
+    idempotency_key: 'medicao-6',
+    sem_medicao: true,
+    justificativa_sem_medicao: 'Fiscal nao realizou a medicao neste mes.',
+    itens: []
+  }, overrides);
+  assert.strictEqual(semMedicao.sem_medicao, true);
+  assert.strictEqual(semMedicao.quantidade_itens, 0);
+  assert.strictEqual(semRegistro.justificativa, 'Fiscal nao realizou a medicao neste mes.');
+  assert.strictEqual(auditPayload.sem_medicao, true);
+
+  // 5b: aprovado anterior somado pelo CODIGO (item 5 da versao antiga = 01.01).
+  const byCodeOverrides = {
+    ...overrides,
+    CrCompetencia: { findOne: async () => competencia, findAll: async () => [{ id: 30 }] },
+    CrMedicaoConsolidada: {
+      ...overrides.CrMedicaoConsolidada,
+      findAll: async ({ where }) => (where?.plano_item_id ? [{ plano_item_id: 5, quantidade_medida: 15 }] : [])
+    },
+    CrPlanoItem: {
+      findAll: async ({ where }) => (Array.isArray(where?.id?.[Op.in])
+        ? [{ id: 5, codigo: '01.01' }]
+        : overrides.CrPlanoItem.findAll())
+    }
+  };
+  await assert.rejects(
+    () => consolidarMedicao({ id: 1 }, 7, '2026-08', {
+      idempotency_key: 'medicao-7',
+      justificativa_glosa_geral: 'Glosa registrada pelo orgao.',
+      itens: [{ plano_item_id: 9, quantidade_medida: 6 }]
+    }, byCodeOverrides),
+    (error) => error?.code === 'CR_MEDICAO_SUPERA_ORCAMENTO'
+  );
+  const withinBalance = await consolidarMedicao({ id: 1 }, 7, '2026-08', {
+    idempotency_key: 'medicao-8',
+    justificativa_glosa_geral: 'Glosa registrada pelo orgao.',
+    itens: [{ plano_item_id: 9, quantidade_medida: 5 }]
+  }, byCodeOverrides);
+  assert.strictEqual(withinBalance.valor_total, 50);
 }
 
 async function run() {
