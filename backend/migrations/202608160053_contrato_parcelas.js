@@ -1,6 +1,6 @@
 'use strict';
 
-const { tableExists } = require('../src/database/schemaUtils');
+const { indexExists, tableExists } = require('../src/database/schemaUtils');
 
 /**
  * Parcelas de contrato do fluxo novo.
@@ -15,9 +15,7 @@ const { tableExists } = require('../src/database/schemaUtils');
  */
 module.exports = {
   async up({ DataTypes, queryInterface, sequelize }) {
-    if (await tableExists(sequelize, 'contrato_parcelas')) return;
-
-    await queryInterface.createTable('contrato_parcelas', {
+    const columns = {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true, allowNull: false },
       contrato_id: {
         type: DataTypes.INTEGER,
@@ -54,21 +52,23 @@ module.exports = {
       atualizado_por: { type: DataTypes.INTEGER, allowNull: true },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
       updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
-    });
+    };
+    if (!(await tableExists(sequelize, 'contrato_parcelas'))) {
+      await queryInterface.createTable('contrato_parcelas', columns);
+    }
 
-    await Promise.all([
-      // Um numero de parcela por contrato: impede duplicar a parcela 2 do mesmo contrato.
-      queryInterface.addIndex('contrato_parcelas', ['contrato_id', 'numero'], {
-        name: 'contrato_parcelas_numero_unico',
-        unique: true
-      }),
-      queryInterface.addIndex('contrato_parcelas', ['contrato_id', 'status'], {
-        name: 'contrato_parcelas_contrato_status'
-      }),
-      queryInterface.addIndex('contrato_parcelas', ['titulo_financeiro_id'], {
-        name: 'contrato_parcelas_titulo'
-      })
-    ]);
+    // DDL no MySQL confirma cada indice separadamente. Se uma tentativa anterior
+    // parou depois da tabela ou de um indice, completar apenas o que falta.
+    const indices = [
+      { columns: ['contrato_id', 'numero'], name: 'contrato_parcelas_numero_unico', unique: true },
+      { columns: ['contrato_id', 'status'], name: 'contrato_parcelas_contrato_status' },
+      { columns: ['titulo_financeiro_id'], name: 'contrato_parcelas_titulo' }
+    ];
+    for (const { columns, ...options } of indices) {
+      if (!(await indexExists(sequelize, 'contrato_parcelas', options.name))) {
+        await queryInterface.addIndex('contrato_parcelas', columns, options);
+      }
+    }
   },
 
   async down() {

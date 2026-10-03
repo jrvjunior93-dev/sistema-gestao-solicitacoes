@@ -30,12 +30,10 @@ module.exports = {
 
     // Bancos legados podem ter IDs INT assinados ou UNSIGNED. No MySQL, a
     // coluna da FK precisa repetir exatamente o tipo da chave referenciada.
-    const [tituloIdType, contaIdType, movimentoIdType, userIdType] = await Promise.all([
-      referenceIdType(sequelize, 'titulos_financeiros'),
-      referenceIdType(sequelize, 'contas_bancarias'),
-      referenceIdType(sequelize, 'movimentos_financeiros'),
-      referenceIdType(sequelize, 'users')
-    ]);
+    const tituloIdType = await referenceIdType(sequelize, 'titulos_financeiros');
+    const contaIdType = await referenceIdType(sequelize, 'contas_bancarias');
+    const movimentoIdType = await referenceIdType(sequelize, 'movimentos_financeiros');
+    const userIdType = await referenceIdType(sequelize, 'users');
 
     await sequelize.query(`
       CREATE TABLE pagamentos_manuais_fila (

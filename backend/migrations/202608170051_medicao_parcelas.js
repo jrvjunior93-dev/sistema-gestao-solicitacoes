@@ -1,6 +1,6 @@
 'use strict';
 
-const { tableExists } = require('../src/database/schemaUtils');
+const { indexExists, tableExists } = require('../src/database/schemaUtils');
 
 /**
  * Vinculo entre a solicitacao de MEDICAO e as parcelas de contrato que ela consumiu (MD-6).
@@ -15,9 +15,7 @@ const { tableExists } = require('../src/database/schemaUtils');
  */
 module.exports = {
   async up({ DataTypes, queryInterface, sequelize }) {
-    if (await tableExists(sequelize, 'medicao_parcelas')) return;
-
-    await queryInterface.createTable('medicao_parcelas', {
+    const columns = {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true, allowNull: false },
 
       solicitacao_id: {
@@ -47,18 +45,21 @@ module.exports = {
       criado_por: { type: DataTypes.INTEGER, allowNull: true },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
       updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
-    });
+    };
+    if (!(await tableExists(sequelize, 'medicao_parcelas'))) {
+      await queryInterface.createTable('medicao_parcelas', columns);
+    }
 
-    await Promise.all([
-      // Uma parcela entra uma unica vez na mesma medicao.
-      queryInterface.addIndex('medicao_parcelas', ['solicitacao_id', 'contrato_parcela_id'], {
-        name: 'medicao_parcelas_unico',
-        unique: true
-      }),
-      queryInterface.addIndex('medicao_parcelas', ['contrato_parcela_id'], {
-        name: 'medicao_parcelas_parcela'
-      })
-    ]);
+    // Executar sequencialmente e completar indices ausentes em retomadas.
+    const indices = [
+      { columns: ['solicitacao_id', 'contrato_parcela_id'], name: 'medicao_parcelas_unico', unique: true },
+      { columns: ['contrato_parcela_id'], name: 'medicao_parcelas_parcela' }
+    ];
+    for (const { columns, ...options } of indices) {
+      if (!(await indexExists(sequelize, 'medicao_parcelas', options.name))) {
+        await queryInterface.addIndex('medicao_parcelas', columns, options);
+      }
+    }
   },
 
   async down() {

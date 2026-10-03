@@ -36,15 +36,19 @@ async function main() {
   }
 
   const before = await getMigrationState();
-  const firstApplied = [
+  const knownApplied = [
     '202608160050_obra_tipo_apropriacao_padrao.js',
-    '202608160051_contrato_fluxo_novo.js'
+    '202608160051_contrato_fluxo_novo.js',
+    '202608160052_contratos_codigo_obra_unico.js'
   ];
   const originalSnapshot = before.executed.size === 170 && before.pending.length === 85;
   const partialSnapshot = before.executed.size === 172 && before.pending.length === 83 &&
-    firstApplied.every((name) => before.executed.has(name)) &&
+    knownApplied.slice(0, 2).every((name) => before.executed.has(name)) &&
     before.pending[0] === '202608160052_contratos_codigo_obra_unico.js';
-  if (!before.tableExists || (!originalSnapshot && !partialSnapshot)) {
+  const indexInterruptedSnapshot = before.executed.size === 173 && before.pending.length === 82 &&
+    knownApplied.every((name) => before.executed.has(name)) &&
+    before.pending[0] === '202608160053_contrato_parcelas.js';
+  if (!before.tableExists || (!originalSnapshot && !partialSnapshot && !indexInterruptedSnapshot)) {
     throw new Error(
       `Ensaio recusado: estado de migrations inesperado (${before.executed.size} aplicadas, ` +
       `${before.pending.length} pendentes). Esperado snapshot original ou parada conhecida apos as duas primeiras.`

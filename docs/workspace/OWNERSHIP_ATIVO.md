@@ -6,6 +6,7 @@ Sessao `/root` reserva temporariamente `backend/src/config/env.js`,
 `backend/src/database/index.js`, `backend/src/services/{comercialService,chequeTerceiroService,paymentBaixaService,tituloFinanceiroService}.js`,
 `backend/scripts/ensaiarMigrationsRestauracao.js`,
 `backend/scripts/ensaiarCorrecaoCodigosContratos.js`, `backend/.env.example`,
+`backend/migrations/{202608160053_contrato_parcelas,202608170051_medicao_parcelas,202609100051_fila_pagamentos_manuais}.js`,
 `frontend/src/pages/{ComercialContratos,FinanceiroObras}.jsx`,
 `frontend/src/components/ui/ApropriacaoAutocomplete.jsx`,
 `docs/handoffs/2026-10-03-promocao-main.md` e este registro.
