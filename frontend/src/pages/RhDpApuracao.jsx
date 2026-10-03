@@ -28,7 +28,6 @@ import {
   gerarRhApuracao,
   getRhApuracao,
   getRhApuracoes,
-  getRhCategoriasFinanceiras,
   getRhEmpresasGrupo,
   getRhJornadasMultiobra,
   reabrirRhFechamento,
@@ -155,6 +154,10 @@ function filtrosVazios() {
 
 function getPixOptions(item) {
   const pagamento = item?.colaborador?.pagamento || {};
+  const indicadoNaJornada = item?.detalhes_json?.pagamento;
+  if (indicadoNaJornada?.alterado_na_jornada) {
+    return [{ key: 'jornada', label: 'Indicado na jornada', value: indicadoNaJornada.chave_pix_titulo }];
+  }
   return [
     { key: 'principal', label: 'Principal', value: pagamento.chave_pix },
     { key: 'secundaria', label: 'Fixa 2', value: pagamento.chave_pix_secundaria },
@@ -182,30 +185,6 @@ function toEditState(item) {
     status: item?.status || 'PENDENTE',
     chave_pix_titulo: item?.detalhes_json?.pagamento?.chave_pix_titulo || getDefaultPixValue(item)
   };
-}
-
-function buildFechamentoAjustes(itens = [], etapaPagamento = null) {
-  if (etapaPagamento) return {};
-  return Object.fromEntries(
-    itens
-      .filter((item) => item?.colaborador?.forma_calculo_gerencial !== 'DIARIA'
-        && item?.colaborador?.pagamento_automatico_40_60)
-      .map((item) => {
-        const colaborador = item.colaborador || {};
-        const salarioBruto = String(colaborador.tipo_vinculo || '').toUpperCase() === 'CLT'
-          ? Number(colaborador.salario_base || colaborador.valor_contratual || item.valor_base_calculo || 0)
-          : Number(colaborador.valor_contratual || colaborador.salario_base || item.valor_base_calculo || 0);
-        const liquido = Number(item.valor_liquido || 0);
-        const baseProporcionalObra = Number(item.detalhes_json?.resumo?.valor_proporcional || salarioBruto);
-        const valor40 = Math.min(Number((baseProporcionalObra * 0.4).toFixed(2)), liquido);
-        return [item.id, {
-          valor_40: valor40.toFixed(2),
-          valor_60: Math.max(0, Number((liquido - valor40).toFixed(2))).toFixed(2),
-          observacao: '',
-          alterado: false
-        }];
-      })
-  );
 }
 
 /**
@@ -249,13 +228,11 @@ export default function RhDpApuracao() {
   const financeiroHabilitado = hasEnabledModule(user, 'FINANCEIRO');
   const [empresas, setEmpresas] = useState([]);
   const [obras, setObras] = useState([]);
-  const [categoriasFinanceiras, setCategoriasFinanceiras] = useState([]);
   const [apuracoes, setApuracoes] = useState([]);
   const [detalhe, setDetalhe] = useState(null);
   const [edicoes, setEdicoes] = useState({});
   const [carregandoBase, setCarregandoBase] = useState(false);
   const [carregandoLista, setCarregandoLista] = useState(false);
-  const [carregandoCategorias, setCarregandoCategorias] = useState(false);
   const [gerando, setGerando] = useState(false);
   const [multiobra, setMultiobra] = useState({ resumo: {}, colaboradores: [] });
   const [carregandoMultiobra, setCarregandoMultiobra] = useState(false);
@@ -308,11 +285,8 @@ export default function RhDpApuracao() {
   }));
   const [fechamentoForm, setFechamentoForm] = useState({
     data_fechamento: new Date().toISOString().slice(0, 10),
-    data_vencimento_40: '',
-    data_vencimento_60: '',
-    categoria_financeira_id: '',
-    observacoes: '',
-    ajustes_titulos: {}
+    data_vencimento: '',
+    observacoes: ''
   });
 
   useEffect(() => {
@@ -342,21 +316,13 @@ export default function RhDpApuracao() {
     setEdicoes(next);
     setFechamentoForm({
       data_fechamento: new Date().toISOString().slice(0, 10),
-      data_vencimento_40: anticipateWeekend(getCompetenciaDay(detalhe?.competencia, 15)),
-      data_vencimento_60: anticipateWeekend(getLastDayOfCompetencia(detalhe?.competencia)),
-      categoria_financeira_id: '',
-      observacoes: '',
-      ajustes_titulos: buildFechamentoAjustes(detalhe?.itens || [], detalhe?.etapa_pagamento)
+      data_vencimento: anticipateWeekend(detalhe?.etapa_pagamento === 'ADIANTAMENTO_40'
+        ? getCompetenciaDay(detalhe?.competencia, 15)
+        : getLastDayOfCompetencia(detalhe?.competencia)),
+      observacoes: ''
     });
   }, [detalhe]);
 
-  useEffect(() => {
-    if (!financeiroHabilitado || !podeFechar) {
-      setCategoriasFinanceiras([]);
-      return;
-    }
-    carregarCategoriasFinanceiras();
-  }, [financeiroHabilitado, podeFechar]);
 
   async function carregarBase() {
     try {
@@ -373,23 +339,6 @@ export default function RhDpApuracao() {
       avisar.erro(error?.message || 'Erro ao carregar base da apuração RH/DP');
     } finally {
       setCarregandoBase(false);
-    }
-  }
-
-  async function carregarCategoriasFinanceiras() {
-    try {
-      setCarregandoCategorias(true);
-      const data = await getRhCategoriasFinanceiras();
-      setCategoriasFinanceiras(Array.isArray(data) ? data.filter((item) => {
-        const tipo = String(item?.tipo || '').trim().toUpperCase();
-        const hasDreGroup = String(item?.dre_grupo || '').trim();
-        return (!tipo || tipo === 'PAGAR' || tipo === 'AMBOS') && item?.considera_dre !== false && hasDreGroup;
-      }) : []);
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao carregar categorias financeiras');
-    } finally {
-      setCarregandoCategorias(false);
     }
   }
 
@@ -578,19 +527,7 @@ export default function RhDpApuracao() {
       setFechando(true);
       const data = await fecharRhApuracao(detalhe.id, {
         data_fechamento: fechamentoForm.data_fechamento || undefined,
-        data_vencimento_40: fechamentoForm.data_vencimento_40 || undefined,
-        data_vencimento_60: fechamentoForm.data_vencimento_60 || undefined,
-        ajustes_titulos: Object.entries(fechamentoForm.ajustes_titulos || {})
-          .filter(([, ajuste]) => ajuste.alterado)
-          .map(([itemId, ajuste]) => ({
-            apuracao_evento_id: Number(itemId),
-            valor_40: Number(ajuste.valor_40 || 0),
-            valor_60: Number(ajuste.valor_60 || 0),
-            observacao: ajuste.observacao || undefined
-          })),
-        categoria_financeira_id: fechamentoForm.categoria_financeira_id
-          ? Number(fechamentoForm.categoria_financeira_id)
-          : undefined,
+        data_vencimento: fechamentoForm.data_vencimento || undefined,
         observacoes: fechamentoForm.observacoes || undefined
       });
       await carregarApuracoes();
@@ -1099,10 +1036,7 @@ export default function RhDpApuracao() {
               descricao="O fechamento gera títulos PAGAR no financeiro central e vincula cada item da apuração ao respectivo título. A categoria financeira deve estar marcada para DRE e com grupo DRE classificado."
             >
               <form className="space-y-4" onSubmit={onFecharApuracao}>
-                {/* Quatro células: as duas datas, a categoria em `span={2}` e a
-                    observação na linha. Fecha sem buraco e sem esticar um
-                    campo de data por metade do bloco. */}
-                <FormSecao legenda="Dados do lote" colunas={4}>
+                <FormSecao legenda="Dados do lote" colunas={3}>
                   <CampoForm label="Data de fechamento">
                     <DateInputBR
                       className="input w-full"
@@ -1112,45 +1046,20 @@ export default function RhDpApuracao() {
                     />
                   </CampoForm>
 
-                  <CampoForm label="Vencimento do adiantamento (40%)">
+                  <CampoForm label="Vencimento dos títulos" obrigatorio>
                     <DateInputBR
                       className="input w-full"
-                      value={fechamentoForm.data_vencimento_40}
-                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento_40: event.target.value }))}
+                      value={fechamentoForm.data_vencimento}
+                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento: event.target.value }))}
                       disabled={fechando}
-                    />
-                  </CampoForm>
-
-                  <CampoForm label="Vencimento do saldo (60%) e diárias">
-                    <DateInputBR
-                      className="input w-full"
-                      value={fechamentoForm.data_vencimento_60}
-                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento_60: event.target.value }))}
-                      disabled={fechando}
-                    />
-                  </CampoForm>
-
-                  <CampoForm
-                    label="Categoria financeira"
-                    obrigatorio
-                    hint={!carregandoCategorias && !categoriasFinanceiras.length
-                      ? 'Cadastre uma categoria PAGAR/AMBOS marcada para DRE e com grupo DRE antes de fechar.'
-                      : undefined}
-                  >
-                    <select
-                      className="input w-full"
-                      value={fechamentoForm.categoria_financeira_id}
-                      onChange={(event) => setFechamentoForm((current) => ({ ...current, categoria_financeira_id: event.target.value }))}
-                      disabled={fechando || carregandoCategorias}
                       required
-                    >
-                      <option value="">Selecione a categoria da folha</option>
-                      {categoriasFinanceiras.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.nome}{item.dre_grupo ? ` - ${item.dre_grupo}` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    />
+                  </CampoForm>
+
+                  <CampoForm label="Categoria financeira">
+                    <div className="input flex items-center bg-slate-50 text-slate-700" aria-label="Categoria financeira automática">
+                      2.01.02.01 - Salários e Ordenados
+                    </div>
                   </CampoForm>
 
                   <CampoForm label="Observações do fechamento" tipo="observacao">
@@ -1235,37 +1144,7 @@ export default function RhDpApuracao() {
                   const automatico = item.colaborador?.forma_calculo_gerencial !== 'DIARIA'
                     && item.colaborador?.pagamento_automatico_40_60;
                   if (!automatico) return 'Título único';
-                  const ajuste = fechamentoForm.ajustes_titulos?.[item.id];
-                  if (!ajuste) return '40% / 60%';
-                  const atualizar = (campo, valor) => setFechamentoForm((current) => ({
-                    ...current,
-                    ajustes_titulos: {
-                      ...current.ajustes_titulos,
-                      [item.id]: { ...current.ajustes_titulos[item.id], [campo]: valor, alterado: true }
-                    }
-                  }));
-                  const habilitado = detalhe.status === 'CONFERIDA' && !detalhe.fechamentoRh && podeFechar;
-                  return (
-                    <div className="space-y-1 min-w-[210px]">
-                      <div className="grid grid-cols-2 gap-1">
-                        <label className="app-note">
-                          40%
-                          <input className="input mt-1" type="number" min="0" step="0.01"
-                            value={ajuste.valor_40} disabled={!habilitado}
-                            onChange={(event) => atualizar('valor_40', event.target.value)} />
-                        </label>
-                        <label className="app-note">
-                          Saldo
-                          <input className="input mt-1" type="number" min="0" step="0.01"
-                            value={ajuste.valor_60} disabled={!habilitado}
-                            onChange={(event) => atualizar('valor_60', event.target.value)} />
-                        </label>
-                      </div>
-                      <input className="input" placeholder="Observação se alterar os valores"
-                        value={ajuste.observacao} disabled={!habilitado}
-                        onChange={(event) => atualizar('observacao', event.target.value)} />
-                    </div>
-                  );
+                  return 'Jornada antiga: refaça os envios em etapas antes de fechar';
                 }
               },
               {
@@ -1327,7 +1206,9 @@ export default function RhDpApuracao() {
                         )}
                       </select>
                       <span className="app-note mt-1 block">
-                        {pixOptions.length ? 'PIX principal usado por padrão.' : (contaLabel || 'Pagamento não configurado.')}
+                        {item.detalhes_json?.pagamento?.alterado_na_jornada
+                          ? `Troca na jornada · beneficiário: ${item.detalhes_json.pagamento.favorecido_nome} · CPF: ${item.detalhes_json.pagamento.favorecido_cpf}. Confira antes de fechar.`
+                          : (pixOptions.length ? 'PIX principal usado por padrão.' : (contaLabel || 'Pagamento não configurado.'))}
                       </span>
                     </>
                   );

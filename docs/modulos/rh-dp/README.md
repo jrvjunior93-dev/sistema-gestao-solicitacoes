@@ -1,5 +1,9 @@
 # Modulo RH/DP
 
+Para o percurso completo das sete abas da tela Pessoal, suas permissões,
+situações, cálculos e integração financeira, consulte o
+[Guia operacional de Pessoal](GUIA_OPERACIONAL_PESSOAL.md).
+
 ## Papel
 
 RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, competencias, importacoes, apuracoes e fechamentos. Financeiro continua dono das obrigacoes monetarias e SST continua dono dos registros de saude e seguranca.
@@ -56,8 +60,11 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 - `RH_JORNADA_40_60_ETAPAS=ON` no backend e `VITE_RH_JORNADA_40_60_ETAPAS=ON` no build do frontend habilitam o fluxo. Nao ativar sem a migration `202610020002_rh_jornada_etapas_pagamento.js` e homologacao financeira em dev;
 - mensalista com parcelamento automatico envia uma jornada de `ADIANTAMENTO_40` e outra de `SALDO_60` na competencia. O primeiro fechamento gera apenas 40% da base mensal; a segunda apuracao calcula a base mensal uma vez, agrega ajustes das duas jornadas e recorrencias uma vez, desconta os 40% ja fechados e gera apenas o saldo;
-- o mesmo dia nao pode integrar as etapas de 40% e 60%. A interface inicia com 1 a 15 e 16 ao fim do mes, mas permite ajustar os periodos; corrigir envio ja existente continua exigindo autorizacao do DP;
-- cada envio de `DIARIA` e independente, com importacao, apuracao e numero de titulo proprios. A soma dos dias enviados pela obra nao pode ultrapassar os dias de vinculo na competencia;
+- o mesmo dia nao pode integrar as etapas de 40% e 60%. O periodo de cada etapa e derivado da competencia no backend, sem ajuste manual na tela; corrigir envio existente exige retorno autorizado pelo DP;
+- cada envio de `DIARIA` e independente, com datas trabalhadas selecionadas por colaborador, importacao, apuracao e numero de titulo proprios. Nenhum dia pode ser reutilizado, e a soma nao pode ultrapassar os dias de vinculo transcorridos ate hoje;
+- a planilha modelo reflete os campos editaveis da tela e ja traz a chave PIX cadastrada. Mudanca de chave requer nome e CPF valido do beneficiario, fica auditavel na apuracao e nao altera o cadastro do colaborador;
+- enquanto houver retorno de jornada pendente ou autorizado, a apuracao nao pode ser gerada, conferida ou fechada. Fechamento ja concluido exige estorno antes de autorizar correcao, e apuracao conferida volta a rascunho com registro de auditoria;
+- cada apuracao fecha com um vencimento unico e a categoria ativa `2.01.02.01 - Salarios e Ordenados`;
 - a forma de calculo e o valor da diaria passam a ter vigencia datada. Mudanca durante um periodo exige jornadas separadas antes e depois da data efetiva; envios anteriores preservam o regime registrado na linha;
 - na mudanca de mensalista para diarista no meio da competencia, o mensal vale ate a vespera da data efetiva, com divisor fixo de 30 dias (limitado a 30 dias). A partir da data efetiva, cada envio de diaria e independente. A apuracao calcula o proporcional mensal devido, subtrai os pagamentos mensais ja fechados e mostra o saldo ou credito a compensar com diarias da competencia. Um credito restante ao fim do mes nao migra automaticamente: o DP deve fazer acerto manual documentado. Por seguranca, fechamento financeiro com acerto misto ou credito fica bloqueado ate a apropriacao contabil por obra e fora de obra estar implementada e homologada; nao gera titulo incorreto nem negativo;
 - a obra informa dias e ajustes somente do seu periodo. Para mensalista multiobra, o DP consolida por etapa; no fechamento dos 60%, os rateios de custo dos dois titulos sao reconciliados pelos dias das duas etapas. A baixa e o valor dos 40% nao mudam. O rateio anterior e registrado no fechamento e restaurado se os 60% forem reabertos;

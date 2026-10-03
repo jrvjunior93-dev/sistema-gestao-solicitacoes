@@ -24,34 +24,24 @@ const itemMensal = {
   detalhes_json: { resumo: { valor_proporcional: 3000 } }
 };
 
-const parcelas = __test.buildParcelasColaborador(itemMensal, apuracao, {});
-assert.deepStrictEqual(parcelas.map((item) => item.valor), [1200, 1500]);
-assert.strictEqual(parcelas[0].dataVencimento, '2026-08-14');
-assert.strictEqual(parcelas[1].dataVencimento, '2026-08-31');
-
-const ajustadas = __test.buildParcelasColaborador(itemMensal, apuracao, {}, {
-  valor_40: 1100,
-  valor_60: 1600,
-  observacao: 'Ajuste acordado para a competencia'
-});
-assert.deepStrictEqual(ajustadas.map((item) => item.valor), [1100, 1600]);
-
 assert.throws(
-  () => __test.buildParcelasColaborador(itemMensal, apuracao, {}, {
-    valor_40: 1000,
-    valor_60: 1600,
-    observacao: 'Total incorreto'
-  }),
-  /deve totalizar o liquido/
+  () => __test.buildParcelasColaborador(itemMensal, apuracao, {}),
+  /apuracoes separadas por etapa/
 );
-assert.throws(
-  () => __test.buildParcelasColaborador(itemMensal, apuracao, {}, {
-    valor_40: 1100,
-    valor_60: 1600,
-    observacao: ''
-  }),
-  /Informe a observacao/
+const parcela40 = __test.buildParcelasColaborador(
+  { ...itemMensal, valor_liquido: 1200 },
+  { ...apuracao, etapa_pagamento: 'ADIANTAMENTO_40' },
+  { data_vencimento: '2026-08-14' }
 );
+const parcela60 = __test.buildParcelasColaborador(
+  { ...itemMensal, valor_liquido: 1500 },
+  { ...apuracao, etapa_pagamento: 'SALDO_60' },
+  { data_vencimento: '2026-08-31' }
+);
+assert.deepStrictEqual(parcela40.map((item) => [item.tipoTitulo, item.valor, item.dataVencimento]),
+  [['ADIANTAMENTO_40', 1200, '2026-08-14']]);
+assert.deepStrictEqual(parcela60.map((item) => [item.tipoTitulo, item.valor, item.dataVencimento]),
+  [['SALDO_60', 1500, '2026-08-31']]);
 
 const diaria = __test.buildParcelasColaborador({
   colaborador: {
@@ -73,10 +63,10 @@ const itemMensalComDecimoPrimeiraQuinzena = {
     jornada: { decimo_terceiro: 3000 }
   }
 };
-assert.deepStrictEqual(
-  __test.buildParcelasColaborador(itemMensalComDecimoPrimeiraQuinzena, apuracao, {}).map((item) => item.valor),
-  [4200, 1500],
-  'o 13o deve entrar inteiro no titulo da quinzena do aniversario'
+assert.throws(
+  () => __test.buildParcelasColaborador(itemMensalComDecimoPrimeiraQuinzena, apuracao, {}),
+  /apuracoes separadas por etapa/,
+  'o modelo legado nao deve gerar dois titulos no mesmo fechamento'
 );
 
 function agrupadoParaCalculo({ colaborador, jornada }) {

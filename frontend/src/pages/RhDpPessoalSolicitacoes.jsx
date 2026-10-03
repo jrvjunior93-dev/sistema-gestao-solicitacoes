@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Avisos,
   BarraFiltros,
@@ -20,6 +21,7 @@ import {
   listarRhSolicitacoes,
   getRhSolicitacao,
   comentarRhSolicitacao,
+  solicitarRetornoRhSolicitacao,
   reenviarRhSolicitacao,
   rejeitarRhSolicitacao,
   validarAnexoRhSolicitacao,
@@ -172,6 +174,7 @@ function dadosOperacionais(solicitacao) {
 }
 
 export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
+  const { user } = useAuth();
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [parametros, setParametros] = useSearchParams();
@@ -184,7 +187,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
     suspensa. Ambos com `unico`, porque `listarRhSolicitacoes` recebe UM valor por recorte: com
     marcacao multipla, marcar dois mandaria `undefined` e a lista nao estreitaria.
   */
-  const [ativos, setAtivos] = useState(() => ({ situacao: new Set(['ABERTA']), tipo: new Set() }));
+  const [ativos, setAtivos] = useState(() => ({ situacao: new Set(), tipo: new Set() }));
   const filtroSituacao = useMemo(() => primeiroValor(ativos.situacao), [ativos]);
   const filtroTipo = useMemo(() => primeiroValor(ativos.tipo), [ativos]);
 
@@ -242,9 +245,10 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
   }, [filtroSituacao, filtroTipo, normalizarLeiturasLocais]);
 
   useEffect(() => {
-    if (filtroSituacao !== 'ABERTA' || filtroTipo) return;
-    aoContarAbertas?.(solicitacoes.length);
-    aoContarNaoLidas?.(solicitacoes.filter((solicitacao) => solicitacao.nao_lida).length);
+    if (filtroTipo || (filtroSituacao && filtroSituacao !== 'ABERTA')) return;
+    const abertas = solicitacoes.filter((solicitacao) => solicitacao.situacao === 'ABERTA');
+    aoContarAbertas?.(abertas.length);
+    aoContarNaoLidas?.(abertas.filter((solicitacao) => solicitacao.nao_lida).length);
   }, [solicitacoes, filtroSituacao, filtroTipo, aoContarAbertas, aoContarNaoLidas]);
 
   const contagem = useMemo(() => {
@@ -456,6 +460,23 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
       avisar.sucesso(`Solicitacao #${solicitacao.id} enviada. O Departamento Pessoal ja pode decidir.`);
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel enviar a solicitacao.');
+    }
+  }
+
+  async function solicitarRetorno(solicitacao) {
+    const { ok, texto } = await confirmar({
+      titulo: 'Solicitar retorno ao DP',
+      mensagem: 'O pedido continua aberto até o DP analisar e devolver para correção. Descreva o que precisa mudar.',
+      rotuloConfirmar: 'Enviar pedido de retorno',
+      campo: { rotulo: 'Motivo', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
+    try {
+      await solicitarRetornoRhSolicitacao(solicitacao.id, texto.trim());
+      await carregar();
+      avisar.sucesso('Pedido de retorno registrado para análise do DP.');
+    } catch (error) {
+      avisar.erro(error.message || 'Não foi possível solicitar o retorno.');
     }
   }
 
@@ -720,6 +741,12 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
                   Reenviar
                 </button>
               ) : null}
+              {podeAbrir && (Number(s.criada_por) === Number(user?.id) || user?.perfil === 'SUPERADMIN')
+                && s.situacao === 'ABERTA' && s.tipo !== 'JORNADA' ? (
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => solicitarRetorno(s)}>
+                  Solicitar retorno
+                </button>
+              ) : null}
               {podeAbrir && s.tipo !== 'JORNADA' && ['RASCUNHO', 'ABERTA'].includes(s.situacao) ? (
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => decidir(s, 'cancelar')}>
                   Cancelar
@@ -911,7 +938,13 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
             e.preventDefault();
             if (travaComentario.current || !comentario.trim()) return;
             travaComentario.current = true; setComentando(true);
-            try { await comentarRhSolicitacao(aberta.id, comentario); await abrirDetalhe(aberta); await carregar(); }
+            try {
+              await comentarRhSolicitacao(aberta.id, comentario);
+              setComentario('');
+              await abrirDetalhe(aberta);
+              await carregar();
+              avisar.sucesso('Comentário registrado.');
+            }
             catch (erro) { avisar.erro(erro.message); }
             finally { travaComentario.current = false; setComentando(false); }
           }}>

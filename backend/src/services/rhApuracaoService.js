@@ -19,6 +19,7 @@ const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
+const { exigirJornadasSemRetornoPendente } = require('./rhJornadaFormularioService');
 
 const APURACAO_ITEM_INCLUDE = [
   {
@@ -391,6 +392,14 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
     }
 
     if (linha.importacao?.tipo === 'JORNADA') {
+      const pagamentoTitulo = linha.payload_json?.pagamento_titulo || null;
+      if (pagamentoTitulo) {
+        const anterior = itemAtual.jornada.pagamento_titulo;
+        if (anterior && JSON.stringify(anterior) !== JSON.stringify(pagamentoTitulo)) {
+          throw new ValidationError(`Jornadas de ${itemAtual.colaborador.nome} indicam favorecidos PIX diferentes na mesma apuracao. Solicite a correcao antes de apurar.`, 409);
+        }
+        itemAtual.jornada.pagamento_titulo = pagamentoTitulo;
+      }
       itemAtual.jornada.multiobra = itemAtual.jornada.multiobra
         || Boolean(linha.payload_json?.mais_de_uma_obra);
       itemAtual.jornada.dias_trabalhados += Number(linha.payload_json?.dias_trabalhados || 0);
@@ -741,6 +750,12 @@ function calcularItemApuracao(agrupado, diasBase) {
         servicos_executados: jornada.servicos_executados || [],
         valor_informado: formatCurrencyValue(valorInformado)
       },
+      pagamento: jornada.pagamento_titulo ? {
+        chave_pix_titulo: jornada.pagamento_titulo.chave_pix || null,
+        favorecido_nome: jornada.pagamento_titulo.favorecido_nome || null,
+        favorecido_cpf: jornada.pagamento_titulo.favorecido_cpf || null,
+        alterado_na_jornada: Boolean(jornada.pagamento_titulo.alterado_na_jornada)
+      } : undefined,
       creditos_evento: formatCurrencyValue(creditos),
       debitos_evento: formatCurrencyValue(debitos),
       eventos: agrupado.eventos || []
@@ -1054,6 +1069,9 @@ async function gerarApuracaoRecorteRh(data, user, transaction) {
   await ensureObraExists(data.obra_id, transaction);
 
   const agrupados = await buildAgrupamentoImportacoes(data, transaction);
+  await exigirJornadasSemRetornoPendente(
+    agrupados.flatMap((item) => Array.from(item.importacao_ids || [])), transaction
+  );
   if (!agrupados.length) {
     if (data.ignorar_sem_colaboradores) return null;
     throw new ValidationError(
@@ -1506,6 +1524,10 @@ function somarCampo(itens, campo) {
 
 function combinarItensMultiobra(partes, colaborador) {
   const itens = partes.map((parte) => parte.item);
+  const pagamentos = [...new Set(itens.map((item) => JSON.stringify(item.detalhes_json?.pagamento || null)))];
+  if (pagamentos.length > 1) {
+    throw new ValidationError(`As obras de ${colaborador.nome} indicaram favorecidos PIX diferentes. Corrija as jornadas antes da consolidacao.`, 409);
+  }
   const primeiro = itens[0];
   const importacaoIds = [...new Set(itens.flatMap((item) => item.detalhes_json?.importacao_ids || []))]
     .map(Number)
@@ -1675,6 +1697,10 @@ async function gerarApuracaoMultiobraRh(data, user) {
       }, transaction, { incluirConsolidados: true });
       const agrupado = agrupados.find((item) => Number(item.colaborador?.id) === colaboradorId);
       if (!agrupado) throw new ValidationError(`Nao foi possivel montar a jornada de ${obra.nome}.`, 409);
+      // A consolidacao multiobra precisa respeitar a mesma trava do recorte isolado.
+      // Caso contrario, uma jornada devolvida poderia entrar em uma nova apuracao.
+      // eslint-disable-next-line no-await-in-loop
+      await exigirJornadasSemRetornoPendente(Array.from(agrupado.importacao_ids || []), transaction);
       partes.push({ obra, item: calcularItemApuracao(agrupado, diasBase) });
     }
 
@@ -1853,6 +1879,10 @@ async function atualizarItemApuracaoRh(apuracaoId, itemId, data, user) {
       : {};
 
     if (data.chave_pix_titulo !== undefined) {
+      if (detalhesJson.pagamento?.alterado_na_jornada
+        && String(data.chave_pix_titulo || '').trim() !== String(detalhesJson.pagamento.chave_pix_titulo || '').trim()) {
+        throw new ValidationError('A chave PIX indicada na jornada exige correcao da propria jornada antes de ser alterada na apuracao.', 409);
+      }
       detalhesJson.pagamento = {
         ...(detalhesJson.pagamento || {}),
         chave_pix_titulo: data.chave_pix_titulo || null
@@ -1956,9 +1986,12 @@ async function conferirApuracaoRh(id, user) {
 
     const itens = await RhApuracaoEvento.findAll({
       where: { apuracao_id: apuracao.id },
-      attributes: ['id', 'status'],
+      attributes: ['id', 'status', 'detalhes_json'],
       transaction
     });
+    await exigirJornadasSemRetornoPendente(
+      itens.flatMap((item) => item.detalhes_json?.importacao_ids || []), transaction, true
+    );
 
     if (!itens.length) {
       throw new ValidationError('Nao existem itens para conferir nesta apuracao.');

@@ -14,6 +14,8 @@ import NavCard from './NavCard';
 import SeusAtalhos from './SeusAtalhos';
 import { vencimentoHumano } from '../utils/formatarTexto';
 import { nomeProprio } from '../utils/texto';
+import { userHasSetorCapability } from '../utils/setor';
+import { isBusinessAdmin } from '../utils/acessoProduto';
 import {
   HiOutlineExclamationTriangle,
   HiOutlineClock,
@@ -94,7 +96,12 @@ export default function HomeHub() {
     botaoAdicionarModuloRef, menuAdicionarModuloRef, adicionarModuloAberto
   );
 
-  const modules = useMemo(() => getVisibleModules(user), [user]);
+  const modules = useMemo(() => {
+    const permitidos = getVisibleModules(user);
+    return userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)
+      ? permitidos.filter((modulo) => modulo.id !== 'compras')
+      : permitidos;
+  }, [user]);
   const catalogoPermitido = useMemo(() => blocosPermitidos(user), [user]);
   const idsPermitidos = useMemo(
     () => new Set(catalogoPermitido.map((bloco) => bloco.id)),

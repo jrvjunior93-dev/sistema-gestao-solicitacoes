@@ -760,47 +760,14 @@ function validateRhFecharApuracaoBody(body = {}) {
     [
       'data_fechamento',
       'data_vencimento',
-      'data_vencimento_40',
-      'data_vencimento_60',
-      'ajustes_titulos',
-      'categoria_financeira_id',
       'observacoes'
     ],
     'Fechamento RH/DP'
   );
 
-  const ajustesTitulos = body.ajustes_titulos === undefined
-    ? undefined
-    : (() => {
-        if (!Array.isArray(body.ajustes_titulos) || body.ajustes_titulos.length > 500) {
-          throw new ValidationError('Ajustes dos titulos invalidos.');
-        }
-        const ids = new Set();
-        return body.ajustes_titulos.map((item, index) => {
-          ensureAllowedKeys(
-            item || {},
-            ['apuracao_evento_id', 'valor_40', 'valor_60', 'observacao'],
-            `Ajuste do titulo ${index + 1}`
-          );
-          const id = parseInteger(item?.apuracao_evento_id, 'Item da apuracao', { required: true });
-          if (ids.has(id)) throw new ValidationError(`O item #${id} foi informado mais de uma vez nos ajustes.`);
-          ids.add(id);
-          return {
-            apuracao_evento_id: id,
-            valor_40: parseDecimal(item?.valor_40, 'Valor de 40%', { required: true, min: 0 }),
-            valor_60: parseDecimal(item?.valor_60, 'Valor de 60%', { required: true, min: 0 }),
-            observacao: parseOptionalText(item?.observacao, 'Observacao do ajuste', 1000)
-          };
-        });
-      })();
-
   return {
     data_fechamento: parseDateOnly(body.data_fechamento, 'Data de fechamento'),
     data_vencimento: parseDateOnly(body.data_vencimento, 'Data de vencimento'),
-    data_vencimento_40: parseDateOnly(body.data_vencimento_40, 'Vencimento de 40%'),
-    data_vencimento_60: parseDateOnly(body.data_vencimento_60, 'Vencimento de 60%'),
-    ajustes_titulos: ajustesTitulos,
-    categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira'),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000)
   };
 }

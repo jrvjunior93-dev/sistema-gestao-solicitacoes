@@ -1687,18 +1687,21 @@ fieldset.form-section {
    degraus da escala (R10); cor só por token (M1).
    ============================================================ */
 
-/* A pilha de avisos fica no fluxo, logo abaixo da faixa fixa — não
-   flutua sobre o conteúdo: aviso que tapa a tabela esconde justamente o
-   dado que a pessoa precisa conferir para entender o aviso. */
+/* Resultado da última ação: pop-up compacto, acima de modais, sem bloquear cliques. */
 .app-avisos {
+  position: fixed;
+  top: max(env(safe-area-inset-top, 0px), 12px);
+  right: max(env(safe-area-inset-right, 0px), 12px);
+  z-index: 12000;
+  width: min(420px, calc(100vw - 24px));
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: var(--esp-2);
 }
 
-.app-avisos:not(:last-child) {
-  margin-block-end: var(--esp-4);
-}
+.app-avisos > * { pointer-events: auto; box-shadow: var(--sombra-card, 0 8px 24px rgba(15, 23, 42, .18)); }
+
 
 .app-confirmacao {
   display: flex;

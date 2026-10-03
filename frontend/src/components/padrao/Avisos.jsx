@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Alert from '../ui/Alert';
+import { createPortal } from 'react-dom';
 
 /**
  * AVISO DO SISTEMA (item **R3** da DoD, 02/09) — substitui a caixa
@@ -129,7 +130,7 @@ export function useAvisos() {
 
 export default function Avisos({ avisos = [], aoFechar }) {
   if (!avisos.length) return null;
-  return (
+  return createPortal((
     <div className="app-avisos" role="status" aria-live="polite">
       {avisos.map((aviso) => (
         <Alert
@@ -141,5 +142,5 @@ export default function Avisos({ avisos = [], aoFechar }) {
         />
       ))}
     </div>
-  );
+  ), document.body);
 }

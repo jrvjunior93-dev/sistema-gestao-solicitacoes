@@ -143,6 +143,13 @@ function linhaVazia(colaborador) {
     totalObrasPeriodo: Number(colaborador.total_obras_periodo || 1),
     aprovacao_distribuicao: ja.aprovacao_distribuicao || null,
     diasVinculados: Number(colaborador.dias_vinculados ?? 0),
+    diasDiariaElegiveis: colaborador.dias_diaria_elegiveis || [],
+    diasDiariaJaInformados: colaborador.dias_diaria_ja_informados || [],
+    diasSelecionados: edicao?.status === 'AUTORIZADA' ? (ja.dias_trabalhados_datas || []) : [],
+    chavePixCadastrada: colaborador.pix_titulo?.chave_pix || '',
+    chave_pix_titulo: ja.pagamento_titulo?.chave_pix ?? colaborador.pix_titulo?.chave_pix ?? '',
+    favorecido_pix_nome: ja.pagamento_titulo?.favorecido_nome || '',
+    favorecido_pix_cpf: ja.pagamento_titulo?.favorecido_cpf || '',
     jaInformado: Boolean(colaborador.jornada_informada),
     jornadaLinhaId: colaborador.jornada_linha_id || null,
     edicaoId: edicao?.id || null,
@@ -186,7 +193,6 @@ function linhaVazia(colaborador) {
 */
 const FILTROS_DA_TELA = [
   { id: 'competencia', rotulo: 'Competência' },
-  { id: 'diasBase', rotulo: 'Dias base do período' },
   { id: 'empresa', rotulo: 'Empresa do grupo' }
 ];
 
@@ -228,31 +234,19 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     Quem tranca isso agora e `scripts/provas/ordemDeDeclaracao.mjs`.
   */
   const [competencia, setCompetencia] = useState(COMPETENCIA_ATUAL);
-  const [diasBase, setDiasBase] = useState(ETAPAS_HABILITADAS ? 15 : DIAS_BASE_PADRAO);
-  const [periodicidade, setPeriodicidade] = useState(ETAPAS_HABILITADAS ? 'QUINZENAL' : 'MENSAL');
   const [etapaPagamento, setEtapaPagamento] = useState(ETAPAS_HABILITADAS ? 'ADIANTAMENTO_40' : '');
-  const [periodoInicio, setPeriodoInicio] = useState(
-    () => (ETAPAS_HABILITADAS
-      ? periodoPadraoEtapa(COMPETENCIA_ATUAL, 'ADIANTAMENTO_40')
-      : periodoPadrao(COMPETENCIA_ATUAL, 'MENSAL')).inicio
-  );
-  const [periodoFim, setPeriodoFim] = useState(
-    () => (ETAPAS_HABILITADAS
-      ? periodoPadraoEtapa(COMPETENCIA_ATUAL, 'ADIANTAMENTO_40')
-      : periodoPadrao(COMPETENCIA_ATUAL, 'MENSAL')).fim
-  );
+  const periodo = ETAPAS_HABILITADAS
+    ? periodoPadraoEtapa(competencia, etapaPagamento)
+    : { periodicidade: 'MENSAL', ...periodoPadrao(competencia, 'MENSAL') };
+  const { periodicidade, inicio: periodoInicio, fim: periodoFim } = periodo;
+  const diasBase = ETAPAS_HABILITADAS ? diasInclusivos(periodoInicio, periodoFim) : DIAS_BASE_PADRAO;
 
   const filtrosPreenchidos = useMemo(
     () => FILTROS_DA_TELA.filter((filtro) => {
-      /* Competência e dias base NASCEM com o valor que o sistema propõe
-         (mês corrente, 30 dias). O padrão não conta como preenchido: se
-         contasse, ele revelaria de volta, a cada abertura, exatamente o
-         campo que a pessoa tirou da faixa. */
       if (filtro.id === 'competencia') return String(competencia ?? '') !== COMPETENCIA_ATUAL;
-      if (filtro.id === 'diasBase') return String(diasBase ?? '') !== String(DIAS_BASE_PADRAO);
       return (ativos[filtro.id]?.size || 0) > 0;
     }).map((filtro) => filtro.id),
-    [competencia, diasBase, ativos]
+    [competencia, ativos]
   );
   /*
     A escolha mora na MESMA chave de lista que esta tela já usa na
@@ -269,16 +263,13 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       contagem e conclui que é o conjunto inteiro.
     */
     aoEsconder: (id) => {
-      /* Competência e dias base voltam ao PADRÃO, não a vazio: a lista é
-         montada a partir dos dois, e um campo escondido em branco deixaria
-         a tela sem conseguir montar nada. Vazio aqui é o valor do sistema. */
       if (id === 'competencia') { setCompetencia(COMPETENCIA_ATUAL); return; }
-      if (id === 'diasBase') { setDiasBase(DIAS_BASE_PADRAO); return; }
       setAtivos((atuais) => ({ ...atuais, [id]: new Set() }));
     }
   });
 
   const [linhas, setLinhas] = useState([]);
+  const [diaristaEmSelecao, setDiaristaEmSelecao] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [processandoEdicao, setProcessandoEdicao] = useState(null);
@@ -319,27 +310,13 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   function mudarCompetencia(valor) {
     setJornadaEnviada(null);
     setCompetencia(valor);
-    const proximo = ETAPAS_HABILITADAS
-      ? periodoPadraoEtapa(valor, etapaPagamento)
-      : periodoPadrao(valor, periodicidade);
-    if (ETAPAS_HABILITADAS) setPeriodicidade(proximo.periodicidade);
-    setPeriodoInicio(proximo.inicio);
-    setPeriodoFim(proximo.fim);
-    setDiasBase(proximo.diasBase);
-    setLinhas([]);
-  }
-
-  function mudarPeriodicidade(valor) {
-    setJornadaEnviada(null);
-    setPeriodicidade(valor);
-    const proximo = periodoPadrao(competencia, valor);
-    setPeriodoInicio(proximo.inicio);
-    setPeriodoFim(proximo.fim);
-    setDiasBase(proximo.diasBase);
     setLinhas([]);
   }
 
   function podeEditarLinha(linha) {
+    if (etapaPagamento === 'DIARIA' && linha.jaInformado) {
+      return linha.edicaoStatus === 'AUTORIZADA';
+    }
     return !linha.regimeEmTransicao
       && (!linha.jaInformado || podeDecidirEdicao || linha.edicaoStatus === 'AUTORIZADA');
   }
@@ -429,24 +406,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   }, [avisar, usuarioOperacionalDaObra]);
 
   const carregar = useCallback(async () => {
-    if (!obra || !competencia || !periodoInicio || !periodoFim) {
-      avisar.erro('Escolha a obra, a competência e o período da jornada.');
-      return;
-    }
-    const limites = limitesDaCompetencia(competencia);
-    const quantidadeDias = diasInclusivos(periodoInicio, periodoFim);
-    if (periodoInicio < limites.inicio || periodoFim > limites.fim || periodoFim < periodoInicio) {
-      avisar.erro('O período precisa estar dentro da competência selecionada.');
-      return;
-    }
-    if ((periodicidade === 'SEMANAL' && quantidadeDias > 7)
-        || (periodicidade === 'QUINZENAL' && quantidadeDias > 16)) {
-      avisar.erro(`O período ${periodicidade === 'SEMANAL' ? 'semanal' : 'quinzenal'} informado é maior que o permitido.`);
-      return;
-    }
-    if (periodicidade === 'MENSAL'
-        && (periodoInicio !== limites.inicio || periodoFim !== limites.fim)) {
-      avisar.erro('A jornada mensal deve abranger a competência inteira.');
+    if (!obra || !competencia || (ETAPAS_HABILITADAS && !etapaPagamento)) {
+      avisar.erro('Escolha a obra, a competência e o tipo de pagamento.');
       return;
     }
     setCarregando(true);
@@ -455,10 +416,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       const lista = await colaboradoresParaJornadaRh({
         obra_id: obra,
         competencia,
-        etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined,
-        periodicidade,
-        periodo_inicio: periodoInicio,
-        periodo_fim: periodoFim
+        etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined
       });
       const elegiveis = (Array.isArray(lista) ? lista : []).filter((colaborador) => {
         if (!ETAPAS_HABILITADAS) return true;
@@ -476,11 +434,11 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         // A resposta "nenhum colaborador" e tecnicamente certa e pratica errada: quem acabou de
         // lotar alguem nesta obra conclui que a lotacao nao funcionou.
         avisar.alerta(
-          'Ninguem trabalhou nesta obra neste período, mas '
+          'Ninguem trabalhou nesta obra nesta competência, mas '
           + `${futuros.length} colaborador(es) comecam depois — eles aparecem abaixo, sem campos.`
         );
       } else if (!comecaram.length) {
-        avisar.alerta('Nenhum colaborador esteve nesta obra neste período.');
+        avisar.alerta('Nenhum colaborador esteve nesta obra nesta competência.');
       }
     } catch (error) {
       avisar.erro(error.message || 'Não foi possível montar a lista.');
@@ -488,17 +446,32 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     } finally {
       setCarregando(false);
     }
-  }, [obra, competencia, etapaPagamento, periodicidade, periodoInicio, periodoFim, avisar, limpar]);
+  }, [obra, competencia, etapaPagamento, avisar, limpar]);
 
   function alterar(indice, campo, valor) {
     setLinhas((atuais) => atuais.map((linha, i) => {
       if (i !== indice) return linha;
+      if (campo === 'chave_pix_titulo' && valor !== linha.chave_pix_titulo) {
+        return { ...linha, chave_pix_titulo: valor, favorecido_pix_nome: '', favorecido_pix_cpf: '' };
+      }
       return { ...linha, [campo]: valor };
+    }));
+  }
+
+  function alternarDiaDiaria(colaboradorId, dia) {
+    setLinhas((atuais) => atuais.map((linha) => {
+      if (linha.colaborador_id !== colaboradorId) return linha;
+      const selecionados = new Set(linha.diasSelecionados);
+      if (selecionados.has(dia)) selecionados.delete(dia);
+      else selecionados.add(dia);
+      const diasSelecionados = Array.from(selecionados).sort();
+      return { ...linha, diasSelecionados, dias_trabalhados: String(diasSelecionados.length) };
     }));
   }
 
   /** Preenche o período de uma vez — o caso comum é quase todo mundo ter trabalhado todos os dias. */
   function preencherMesCheio() {
+    if (etapaPagamento === 'DIARIA') return;
     setLinhas((atuais) => atuais.map((linha) => (
       linha.aindaNaoComecou || !podeEditarLinha(linha) ? linha : {
       ...linha,
@@ -516,6 +489,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     () => linhas.map((linha, indice) => ({ ...linha, __indice: indice })),
     [linhas]
   );
+  const diaristaSelecionado = linhasTabela.find((linha) => linha.colaborador_id === diaristaEmSelecao);
 
   const jaInformados = useMemo(() => linhas.filter((l) => l.jaInformado).length, [linhas]);
 
@@ -523,8 +497,9 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     const dias = Number(linha.dias_trabalhados || 0);
     const faltas = Number(linha.faltas || 0);
     const limite = Math.min(Number(diasBase), linha.diasVinculados);
-    return dias > limite || faltas > limite;
-  }), [linhas, diasBase]);
+    return dias > limite || faltas > limite
+      || (etapaPagamento === 'DIARIA' && linha.diasSelecionados.length !== dias);
+  }), [linhas, diasBase, etapaPagamento]);
 
   const dimensoesFiltro = useMemo(() => {
     const dimensoes = [];
@@ -687,6 +662,16 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       avisar.erro(`Informe o serviço executado e o valor da empreitada de ${empreitadaIncompleta.nome}.`);
       return;
     }
+    const pixIncompleto = preenchidas.find((linha) => (
+      linha.chave_pix_titulo !== linha.chavePixCadastrada
+      && (!String(linha.chave_pix_titulo || '').trim()
+        || !String(linha.favorecido_pix_nome || '').trim()
+        || String(linha.favorecido_pix_cpf || '').replace(/\D/g, '').length !== 11)
+    ));
+    if (pixIncompleto) {
+      avisar.erro(`Informe chave, nome e CPF do beneficiário PIX de ${pixIncompleto.nome}.`);
+      return;
+    }
 
     const substituicoes = preenchidas.filter((linha) => linha.jaInformado);
     if (substituicoes.length) {
@@ -706,15 +691,14 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       const payload = {
         competencia,
         etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined,
-        periodicidade,
-        periodo_inicio: periodoInicio,
-        periodo_fim: periodoFim,
         obra_id: Number(obra),
         empresa_grupo_id: empresa ? Number(empresa) : undefined,
-        dias_base: Number(diasBase),
         linhas: preenchidas.map((l) => ({
           colaborador_id: l.colaborador_id,
           dias_trabalhados: Number(l.dias_trabalhados || 0),
+          ...(etapaPagamento === 'DIARIA' ? { dias_trabalhados_datas: l.diasSelecionados } : {}),
+          ...(etapaPagamento === 'DIARIA' && l.edicaoStatus === 'AUTORIZADA'
+            ? { substituir_importacao_linha_id: l.jornadaLinhaId } : {}),
           finais_semana_feriados: 0,
           faltas: Number(l.faltas || 0),
           adicionais: parseCurrencyInput(l.adicionais),
@@ -725,7 +709,10 @@ export default function RhDpJornada({ onAbrirApuracao }) {
           valor_empreitada: l.regime_pagamento === 'EMPREITADA'
             ? parseCurrencyInput(l.valor_empreitada)
             : 0,
-          observacoes: l.observacoes || undefined
+          observacoes: l.observacoes || undefined,
+          chave_pix_titulo: l.chave_pix_titulo || undefined,
+          favorecido_pix_nome: l.favorecido_pix_nome || undefined,
+          favorecido_pix_cpf: l.favorecido_pix_cpf || undefined
         }))
       };
       if (ETAPAS_HABILITADAS) {
@@ -748,7 +735,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
        */
       await carregar();
       avisar.sucesso(
-        `Jornada de ${preenchidas.length} colaborador(es) registrada para o período. `
+        `Jornada de ${preenchidas.length} colaborador(es) registrada para a competência. `
         + 'O Departamento Pessoal pode gerar a apuração desta competência.'
       );
     } catch (error) {
@@ -790,12 +777,9 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   function dadosDoPeriodo() {
     return {
       competencia,
-      periodicidade,
-      periodo_inicio: periodoInicio,
-      periodo_fim: periodoFim,
+      etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined,
       obra_id: Number(obra),
-      empresa_grupo_id: empresa ? Number(empresa) : undefined,
-      dias_base: Number(diasBase)
+      empresa_grupo_id: empresa ? Number(empresa) : undefined
     };
   }
 
@@ -845,12 +829,25 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     setImportandoPlanilha(true);
     limpar();
     try {
+      const assinatura = JSON.stringify({
+        competencia, obra, etapaPagamento,
+        nome: planilhaImportacao.name,
+        tamanho: planilhaImportacao.size,
+        modificadoEm: planilhaImportacao.lastModified
+      });
+      if (ETAPAS_HABILITADAS && idempotencyKeyRef.current?.assinatura !== assinatura) {
+        idempotencyKeyRef.current = { assinatura, chave: crypto.randomUUID() };
+      }
       const resultado = await importarJornadaPlanilhaRh({
-        dados: dadosDoPeriodo(),
+        dados: {
+          ...dadosDoPeriodo(),
+          idempotency_key: ETAPAS_HABILITADAS ? idempotencyKeyRef.current?.chave : undefined
+        },
         planilha: planilhaImportacao,
         fichas: fichasImportacao
       });
       setJornadaEnviada(resultado?.solicitacao || null);
+      idempotencyKeyRef.current = null;
       setModalImportacaoAberto(false);
       setPlanilhaImportacao(null);
       setFichasImportacao([]);
@@ -1061,6 +1058,19 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       {linha.payload_json?.valor_empreitada ? <div>Empreitada: {formatarMoeda(linha.payload_json.valor_empreitada)}</div> : null}
                       {linha.payload_json?.observacoes ? <div>{linha.payload_json.observacoes}</div> : null}
                     </div>
+                  ) },
+                  { id: 'retorno', titulo: 'Retorno', tipo: 'acao', render: (linha) => (
+                    linha.status !== 'CONFIRMADA' || !podeEnviar || podeDecidirEdicao ? '—' : (
+                      <button type="button" className="btn btn-outline btn-sm"
+                        disabled={Boolean(processandoEdicao)}
+                        onClick={() => solicitarLiberacaoEdicao({
+                          colaborador_id: Number(linha.colaborador_id),
+                          jornadaLinhaId: Number(linha.id),
+                          nome: linha.nome_ref || `Colaborador #${linha.colaborador_id}`
+                        })}>
+                        {processandoEdicao === Number(linha.colaborador_id) ? 'Solicitando...' : 'Solicitar retorno'}
+                      </button>
+                    )
                   ) }
                 ]}
                 itens={jornadaEmAnalise.importacao?.linhas || []}
@@ -1225,11 +1235,6 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                 setEtapaPagamento(valor);
                 setJornadaEnviada(null);
                 setLinhas([]);
-                const proximo = periodoPadraoEtapa(competencia, valor);
-                setPeriodicidade(proximo.periodicidade);
-                setPeriodoInicio(proximo.inicio);
-                setPeriodoFim(proximo.fim);
-                setDiasBase(proximo.diasBase);
               },
               opcoes: ETAPAS_PAGAMENTO,
               required: true
@@ -1241,44 +1246,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
               valor: competencia,
               aoMudar: mudarCompetencia
             },
-            {
-              id: 'periodicidade',
-              rotulo: 'Periodicidade *',
-              tipo: 'select',
-              valor: periodicidade,
-              aoMudar: mudarPeriodicidade,
-              opcoes: PERIODICIDADES,
-              required: true
-            },
-            {
-              id: 'periodoInicio',
-              rotulo: 'Início do período *',
-              tipo: 'date',
-              valor: periodoInicio,
-              aoMudar: (valor) => { setJornadaEnviada(null); setPeriodoInicio(valor); setLinhas([]); },
-              min: limitesDaCompetencia(competencia).inicio,
-              max: limitesDaCompetencia(competencia).fim
-            },
-            {
-              id: 'periodoFim',
-              rotulo: 'Fim do período *',
-              tipo: 'date',
-              valor: periodoFim,
-              aoMudar: (valor) => { setJornadaEnviada(null); setPeriodoFim(valor); setLinhas([]); },
-              min: periodoInicio || limitesDaCompetencia(competencia).inicio,
-              max: limitesDaCompetencia(competencia).fim
-            },
-            {
-              id: 'diasBase',
-              rotulo: 'Dias base do período',
-              tipo: 'number',
-              valor: diasBase,
-              aoMudar: (valor) => { setJornadaEnviada(null); setDiasBase(valor); },
-              min: 1,
-              max: 31
-            }
           ].filter((campo) => (
-            ['obra', 'etapaPagamento', 'periodicidade', 'periodoInicio', 'periodoFim'].includes(campo.id)
+            ['obra', 'etapaPagamento'].includes(campo.id)
             || visibilidadeFiltros.ehVisivel(campo.id)
           ))}
           filtros={dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
@@ -1299,7 +1268,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
             <button type="button" className="btn btn-outline" onClick={carregar} disabled={carregando}>
               {carregando ? 'Carregando...' : 'Montar lista'}
             </button>
-            {linhas.length ? (
+            {linhas.length && etapaPagamento !== 'DIARIA' ? (
               <button type="button" className="btn btn-outline" onClick={preencherMesCheio}>
                 Preencher período
               </button>
@@ -1377,7 +1346,6 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   render: (linha) => empresas.find((item) => Number(item.id) === Number(linha.empresa_grupo_id))?.nome || '—'
                 },
                 { id: 'cargo', titulo: 'Cargo', tipo: 'texto', render: (linha) => linha.cargo || '—' },
-                { id: 'limiteVinculo', titulo: 'Dias na obra', tipo: 'numero', render: linha => linha.diasVinculados },
                 {
                   id: 'multiplas_obras',
                   titulo: 'Mais de uma obra',
@@ -1409,17 +1377,29 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   tipo: 'numero',
                   // Edicao inline: o controle mora no render da coluna.
                   render: (linha) => (linha.aindaNaoComecou ? <span className="opacity-50">—</span> : (
-                    <input
-                      className="form-control rh-jornada-numero"
-                      type="number"
-                      min="0"
-                      max={Math.min(Number(diasBase), linha.diasVinculados)}
-                      title={`Limite: ${linha.diasVinculados} dia(s) de vínculo no período`}
-                      aria-label={`Dias trabalhados de ${linha.nome}`}
-                      value={linha.dias_trabalhados}
-                      disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', e.target.value)}
-                    />
+                    etapaPagamento === 'DIARIA' ? (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm whitespace-nowrap"
+                        disabled={!podeEditarLinha(linha) || !linha.diasDiariaElegiveis.length}
+                        onClick={() => setDiaristaEmSelecao(linha.colaborador_id)}
+                        aria-label={`Selecionar dias trabalhados de ${linha.nome}`}
+                      >
+                        {linha.diasSelecionados.length ? `${linha.diasSelecionados.length} dia(s)` : 'Selecionar dias'}
+                      </button>
+                    ) : (
+                      <input
+                        className="form-control rh-jornada-numero"
+                        type="number"
+                        min="0"
+                        max={Math.min(Number(diasBase), linha.diasVinculados)}
+                        title={`Limite: ${linha.diasVinculados} dia(s) de vínculo no período`}
+                        aria-label={`Dias trabalhados de ${linha.nome}`}
+                        value={linha.dias_trabalhados}
+                        disabled={!podeEditarLinha(linha)}
+                        onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', e.target.value)}
+                      />
+                    )
                   ))
                 },
                 {
@@ -1541,8 +1521,43 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   ))
                 },
                 {
+                  id: 'chave_pix_titulo',
+                  titulo: 'Chave PIX do título',
+                  tipo: 'texto',
+                  render: (linha) => linha.aindaNaoComecou ? '—' : (
+                    <input className="form-control min-w-48" value={linha.chave_pix_titulo}
+                      disabled={!podeEditarLinha(linha)}
+                      aria-label={`Chave PIX do título de ${linha.nome}`}
+                      onChange={(event) => alterar(linha.__indice, 'chave_pix_titulo', event.target.value)} />
+                  )
+                },
+                {
+                  id: 'favorecido_pix_nome',
+                  titulo: 'Beneficiário PIX',
+                  tipo: 'texto',
+                  render: (linha) => linha.aindaNaoComecou ? '—' : (
+                    <input className="form-control min-w-44" value={linha.favorecido_pix_nome}
+                      disabled={!podeEditarLinha(linha) || linha.chave_pix_titulo === linha.chavePixCadastrada}
+                      placeholder={linha.chave_pix_titulo === linha.chavePixCadastrada ? 'Cadastro do colaborador' : 'Obrigatório para troca'}
+                      aria-label={`Beneficiário PIX de ${linha.nome}`}
+                      onChange={(event) => alterar(linha.__indice, 'favorecido_pix_nome', event.target.value)} />
+                  )
+                },
+                {
+                  id: 'favorecido_pix_cpf',
+                  titulo: 'CPF beneficiário PIX',
+                  tipo: 'texto',
+                  render: (linha) => linha.aindaNaoComecou ? '—' : (
+                    <input className="form-control min-w-40" value={linha.favorecido_pix_cpf}
+                      disabled={!podeEditarLinha(linha) || linha.chave_pix_titulo === linha.chavePixCadastrada}
+                      placeholder={linha.chave_pix_titulo === linha.chavePixCadastrada ? 'Cadastro do colaborador' : 'Obrigatório para troca'}
+                      aria-label={`CPF do beneficiário PIX de ${linha.nome}`}
+                      onChange={(event) => alterar(linha.__indice, 'favorecido_pix_cpf', event.target.value)} />
+                  )
+                },
+                {
                   id: 'acaoEdicao',
-                  titulo: 'Edição',
+                  titulo: 'Retorno para correção',
                   tipo: 'acao',
                   render: (linha) => {
                     if (!linha.jaInformado || linha.aindaNaoComecou) return '—';
@@ -1578,7 +1593,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                         disabled={processando}
                         onClick={() => solicitarLiberacaoEdicao(linha)}
                       >
-                        {linha.edicaoStatus === 'NEGADA' ? 'Solicitar novamente' : 'Solicitar edição'}
+                        {linha.edicaoStatus === 'NEGADA' ? 'Solicitar retorno novamente' : 'Solicitar retorno'}
                       </button>
                     );
                   }
@@ -1641,6 +1656,48 @@ export default function RhDpJornada({ onAbrirApuracao }) {
           </div>
         </form>
       ) : null}
+
+      <OverlayModal
+        aberto={Boolean(diaristaSelecionado)}
+        largura="560px"
+        rotulo="Dias trabalhados do diarista"
+        onFechar={() => setDiaristaEmSelecao(null)}
+      >
+        {diaristaSelecionado ? (
+          <div className="p-4 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">{diaristaSelecionado.nome}</h2>
+                <p className="app-bloco-lead">Selecione os dias efetivamente trabalhados em {competencia}. Dias já enviados ou fora do vínculo não podem ser marcados.</p>
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setDiaristaEmSelecao(null)}>Concluir</button>
+            </div>
+            <div className="grid grid-cols-7 gap-2" role="group" aria-label="Dias trabalhados na competência">
+              {Array.from({ length: Number(limitesDaCompetencia(competencia).fim.slice(-2)) }, (_, indice) => {
+                const dia = `${competencia}-${String(indice + 1).padStart(2, '0')}`;
+                const elegivel = diaristaSelecionado.diasDiariaElegiveis.includes(dia);
+                const jaEnviado = diaristaSelecionado.diasDiariaJaInformados.includes(dia);
+                const marcado = diaristaSelecionado.diasSelecionados.includes(dia);
+                return (
+                  <button
+                    key={dia}
+                    type="button"
+                    className={`btn btn-sm ${marcado ? 'btn-primary' : 'btn-outline'}`}
+                    disabled={!elegivel || jaEnviado}
+                    aria-pressed={marcado}
+                    aria-label={`Dia ${indice + 1}${jaEnviado ? ', já enviado' : !elegivel ? ', fora do vínculo ou regime' : ''}`}
+                    title={jaEnviado ? 'Já enviado em outra jornada' : !elegivel ? 'Fora do vínculo ou regime de diária' : dia}
+                    onClick={() => alternarDiaDiaria(diaristaSelecionado.colaborador_id, dia)}
+                  >
+                    {indice + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="app-bloco-lead">{diaristaSelecionado.diasSelecionados.length} dia(s) selecionado(s) para este envio.</p>
+          </div>
+        ) : null}
+      </OverlayModal>
 
       <OverlayModal
         aberto={modalImportacaoAberto}

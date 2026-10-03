@@ -292,6 +292,46 @@ module.exports = {
     } catch (error) { return responderErroController(res, error, 'Erro ao comentar na solicitacao'); }
   },
 
+  async solicitarRetorno(req, res) {
+    try {
+      const pedido = await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      if (!isSuperadmin(req.user) && Number(pedido.criada_por) !== Number(req.user.id)) {
+        throw new ValidationError('Somente quem abriu a solicitacao pode pedir seu retorno.', 403);
+      }
+      const motivo = String(req.body?.motivo || '').trim();
+      if (motivo.length < 5 || motivo.length > 2000) {
+        throw new ValidationError('Informe o motivo do retorno com 5 a 2000 caracteres.');
+      }
+      const { RhSolicitacaoHistorico, sequelize } = require('../models');
+      const evento = await sequelize.transaction(async (transaction) => {
+        const solicitacao = await RhSolicitacao.findByPk(req.params.id, {
+          transaction, lock: transaction.LOCK.UPDATE
+        });
+        if (!solicitacao || solicitacao.situacao !== 'ABERTA' || solicitacao.tipo === 'JORNADA') {
+          throw new ValidationError('Somente solicitacoes de pessoal abertas podem ter retorno solicitado aqui.', 409);
+        }
+        const existente = await RhSolicitacaoHistorico.findOne({
+          where: { solicitacao_id: solicitacao.id },
+          order: [['id', 'DESC']], transaction
+        });
+        if (existente?.acao === 'RETORNO_SOLICITADO'
+          && String(existente.descricao || '') === motivo) return existente;
+        return RhSolicitacaoHistorico.create({
+          solicitacao_id: solicitacao.id,
+          usuario_id: req.user.id,
+          setor: codigoDoSetor(req.user),
+          acao: 'RETORNO_SOLICITADO',
+          descricao: motivo,
+          situacao_anterior: 'ABERTA',
+          situacao_nova: 'ABERTA'
+        }, { transaction });
+      });
+      return res.status(201).json({ id: evento.id });
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao solicitar retorno da solicitacao');
+    }
+  },
+
   async rejeitar(req, res) {
     try {
       await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);

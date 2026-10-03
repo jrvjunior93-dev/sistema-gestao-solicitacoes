@@ -10,6 +10,8 @@ const {
   RhFechamento,
   RhJornadaEdicao,
   RhColaborador,
+  RhColaboradorPagamento,
+  RhColaboradorCalculoHistorico,
   RhColaboradorVinculo,
   RhSolicitacao,
   RhSolicitacaoHistorico,
@@ -19,9 +21,10 @@ const {
 const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
 const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
-const { diasVinculados } = require('./rhPessoalDomain');
+const { diasVinculados, hojeLocal } = require('./rhPessoalDomain');
 const { setorParaHistorico } = require('../utils/codigoDoSetor');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
+const { isValidCpf, onlyDigits } = require('../utils/cpfCnpj');
 
 /**
  * JORNADA PELO FORMULARIO, sem planilha (Fase 4 do modulo DP, 26/08).
@@ -60,6 +63,33 @@ function numeroNaoNegativo(valor, campo, colaboradorId) {
     throw new ValidationError(`${campo} do colaborador #${colaboradorId} e invalido: "${valor}".`);
   }
   return numero;
+}
+
+function pagamentoDoTituloDaJornada(linha, pagamentoCadastrado, colaboradorNome) {
+  const chaveCadastrada = [
+    pagamentoCadastrado?.chave_pix,
+    pagamentoCadastrado?.chave_pix_secundaria,
+    pagamentoCadastrado?.chave_pix_variavel
+  ].map((valor) => String(valor || '').trim()).find(Boolean) || '';
+  const chaveIndicada = String(linha.chave_pix_titulo ?? chaveCadastrada).trim();
+  const alterado = chaveIndicada !== chaveCadastrada;
+  const nome = String(linha.favorecido_pix_nome || '').trim();
+  const cpf = onlyDigits(linha.favorecido_pix_cpf || '');
+  if (chaveIndicada.length > 120) {
+    throw new ValidationError(`${colaboradorNome}: a chave PIX excede o limite permitido.`);
+  }
+  if (alterado && (!chaveIndicada || !nome || !isValidCpf(cpf))) {
+    throw new ValidationError(`${colaboradorNome}: ao alterar a chave PIX, informe chave, nome e CPF valido do novo beneficiario.`);
+  }
+  if (nome.length > 180) {
+    throw new ValidationError(`${colaboradorNome}: o nome do beneficiario PIX excede o limite permitido.`);
+  }
+  return {
+    chave_pix: chaveIndicada || null,
+    favorecido_nome: alterado ? nome : null,
+    favorecido_cpf: alterado ? cpf : null,
+    alterado_na_jornada: alterado
+  };
 }
 
 /** DATEONLY do Sequelize pode vir como string ou Date; a tela precisa sempre de `AAAA-MM-DD`. */
@@ -102,13 +132,26 @@ function periodoDaImportacao(importacao) {
   };
 }
 
-function normalizarPeriodo(dados, competencia) {
+function normalizarPeriodo(dados, competencia, etapaPagamento = null) {
+  const limites = limitesDaCompetencia(competencia);
+  if (etapaPagamento) {
+    const esperado = etapaPagamento === 'ADIANTAMENTO_40'
+      ? { periodicidade: 'QUINZENAL', inicio: limites.inicio, fim: `${competencia}-15` }
+      : etapaPagamento === 'SALDO_60'
+        ? { periodicidade: 'QUINZENAL', inicio: `${competencia}-16`, fim: limites.fim }
+        : { periodicidade: 'MENSAL', ...limites };
+    if ((dados.periodicidade && dados.periodicidade !== esperado.periodicidade)
+      || (dados.periodo_inicio && paraDataIso(dados.periodo_inicio) !== esperado.inicio)
+      || (dados.periodo_fim && paraDataIso(dados.periodo_fim) !== esperado.fim)) {
+      throw new ValidationError('A etapa e a competencia determinam o periodo da jornada; nao informe outro periodo.');
+    }
+    return { ...esperado, dias: diasInclusivos(esperado.inicio, esperado.fim) };
+  }
   const periodicidade = String(dados.periodicidade || 'MENSAL').trim().toUpperCase();
   if (!PERIODICIDADES.has(periodicidade)) {
     throw new ValidationError('Informe a periodicidade: semanal, quinzenal ou mensal.');
   }
 
-  const limites = limitesDaCompetencia(competencia);
   const inicio = paraDataIso(dados.periodo_inicio) || (periodicidade === 'MENSAL' ? limites.inicio : null);
   const fim = paraDataIso(dados.periodo_fim) || (periodicidade === 'MENSAL' ? limites.fim : null);
   if (!dataIsoValida(inicio) || !dataIsoValida(fim) || fim < inicio) {
@@ -138,6 +181,68 @@ function periodosSobrepostos(a, b) {
 
 function mesmoPeriodo(a, b) {
   return a.inicio === b.inicio && a.fim === b.fim;
+}
+
+function datasNoPeriodo(periodo) {
+  const datas = [];
+  const atual = new Date(`${periodo.inicio}T00:00:00.000Z`);
+  while (atual.toISOString().slice(0, 10) <= periodo.fim) {
+    datas.push(atual.toISOString().slice(0, 10));
+    atual.setUTCDate(atual.getUTCDate() + 1);
+  }
+  return datas;
+}
+
+function diasDiariaElegiveis(colaborador, vinculos, historicos, periodo, dataLimite = hojeLocal()) {
+  return datasNoPeriodo(periodo).filter((dia) => {
+    if (dia > dataLimite) return false;
+    const vinculado = vinculos.some((vinculo) => Number(vinculo.colaborador_id) === Number(colaborador.id)
+      && String(vinculo.vigencia_inicio).slice(0, 10) <= dia
+      && (!vinculo.vigencia_fim || String(vinculo.vigencia_fim).slice(0, 10) >= dia));
+    if (!vinculado) return false;
+    const historico = historicos.find((item) => Number(item.colaborador_id) === Number(colaborador.id)
+      && String(item.vigencia_inicio).slice(0, 10) <= dia
+      && (!item.vigencia_fim || String(item.vigencia_fim).slice(0, 10) >= dia));
+    if (historico) return historico.forma_calculo === 'DIARIA';
+    return !historicos.some((item) => Number(item.colaborador_id) === Number(colaborador.id))
+      && rhCalculoHistoricoService.resumo(colaborador).forma_calculo === 'DIARIA';
+  });
+}
+
+function validarDiasDiaria(dias, elegiveis, jaInformados, nome, competencia) {
+  if (!Array.isArray(dias) || dias.length === 0 || dias.length > 31
+    || dias.some((dia) => !dataIsoValida(dia) || !dia.startsWith(`${competencia}-`))
+    || new Set(dias).size !== dias.length) {
+    throw new ValidationError(`${nome}: selecione os dias efetivamente trabalhados nesta competencia.`);
+  }
+  const permitidos = new Set(elegiveis);
+  const usados = new Set(jaInformados);
+  if (dias.some((dia) => !permitidos.has(dia))) {
+    throw new ValidationError(`${nome}: um dos dias nao pertence ao vinculo desta obra ou ao regime de diaria.`, 409);
+  }
+  if (dias.some((dia) => usados.has(dia))) {
+    throw new ValidationError(`${nome}: um dos dias selecionados ja foi enviado em outra jornada.`, 409);
+  }
+  return [...dias].sort();
+}
+
+async function historicosDeCalculo(ids, transaction = undefined) {
+  if (!ids.length) return [];
+  return RhColaboradorCalculoHistorico.findAll({
+    where: { colaborador_id: { [Op.in]: ids } },
+    transaction
+  });
+}
+
+async function linhasDiariasDaCompetencia(ids, competencia, transaction = undefined) {
+  if (!ids.length) return [];
+  return RhImportacaoLinha.findAll({
+    where: { colaborador_id: { [Op.in]: ids }, status: 'CONFIRMADA' },
+    include: [{ association: 'importacao', required: true, where: {
+      competencia, tipo: 'JORNADA', status: 'CONFIRMADA', etapa_pagamento: 'DIARIA'
+    } }],
+    transaction
+  });
 }
 
 async function linhasConfirmadasDaCompetencia(obraId, competencia, transaction = undefined) {
@@ -176,11 +281,11 @@ async function registrarJornada(dados = {}, contexto = {}) {
     const obraId = Number(dados.obra_id);
     if (!obraId) throw new ValidationError('Informe a obra da jornada.');
 
-    const periodo = normalizarPeriodo(dados, competencia);
     const etapaPagamento = String(dados.etapa_pagamento || '').trim().toUpperCase() || null;
     if (etapaPagamento && (!etapasHabilitadas() || !ETAPAS_PAGAMENTO.has(etapaPagamento))) {
       throw new ValidationError('A etapa de pagamento da jornada nao esta habilitada ou e invalida.', 409);
     }
+    const periodo = normalizarPeriodo(dados, competencia, etapaPagamento);
     const idempotencyKey = etapaPagamento ? String(dados.idempotency_key || '').trim() : '';
     if (etapaPagamento && !/^[A-Za-z0-9-]{16,80}$/.test(idempotencyKey)) {
       throw new ValidationError('Identificador de envio da jornada invalido. Atualize a tela e tente novamente.');
@@ -234,7 +339,7 @@ async function registrarJornada(dados = {}, contexto = {}) {
       ? String(dados.origem).toUpperCase()
       : 'FORMULARIO';
 
-    const diasBase = Number(dados.dias_base || 30);
+    const diasBase = etapaPagamento ? periodo.dias : Number(dados.dias_base || 30);
     if (!Number.isFinite(diasBase) || diasBase <= 0 || diasBase > 31) {
       throw new ValidationError('A base de dias deve estar entre 1 e 31.');
     }
@@ -258,11 +363,15 @@ async function registrarJornada(dados = {}, contexto = {}) {
       lock: transaction.LOCK.UPDATE
     });
     const porId = new Map(colaboradores.map((c) => [Number(c.id), c]));
+    const pagamentos = await RhColaboradorPagamento.findAll({
+      where: { colaborador_id: Array.from(vistos) }, transaction
+    });
+    const pagamentoPorId = new Map(pagamentos.map((item) => [Number(item.colaborador_id), item]));
     const regimePorId = new Map();
 
     for (const id of vistos) {
       if (!porId.has(id)) throw new ValidationError(`Colaborador #${id} nao encontrado.`, 404);
-      if (etapaPagamento) {
+      if (etapaPagamento && etapaPagamento !== 'DIARIA') {
         // eslint-disable-next-line no-await-in-loop
         const regime = await rhCalculoHistoricoService.regimeNoPeriodo(
           porId.get(id), periodo.inicio, periodo.fim, transaction
@@ -308,6 +417,10 @@ async function registrarJornada(dados = {}, contexto = {}) {
       periodo.fim,
       transaction
     );
+    const historicos = etapaPagamento === 'DIARIA'
+      ? await historicosDeCalculo(Array.from(vistos), transaction) : [];
+    const diariasExistentes = etapaPagamento === 'DIARIA'
+      ? await linhasDiariasDaCompetencia(Array.from(vistos), competencia, transaction) : [];
     const estiveramNaObra = new Set(vinculosDaObra.map((v) => Number(v.colaborador_id)));
 
     for (const id of vistos) {
@@ -418,7 +531,25 @@ async function registrarJornada(dados = {}, contexto = {}) {
       }
       // Cada envio de diaria e um pagamento proprio; o limite de dias acumulados e verificado
       // abaixo. O mesmo periodo pode ser usado, sem substituir a linha anterior.
-      if (etapaPagamento === 'DIARIA') continue;
+      if (etapaPagamento === 'DIARIA') {
+        const linhaAnteriorId = Number(linha.substituir_importacao_linha_id || 0);
+        if (!linhaAnteriorId) continue;
+        const anterior = await RhImportacaoLinha.findOne({
+          where: { id: linhaAnteriorId, colaborador_id: colaboradorId, status: 'CONFIRMADA' },
+          include: [{ association: 'importacao', required: true, where: {
+            obra_id: obraId, competencia, tipo: 'JORNADA', status: 'CONFIRMADA', etapa_pagamento: 'DIARIA'
+          } }], transaction, lock: transaction.LOCK.UPDATE
+        });
+        if (!anterior) throw new ValidationError('A diaria indicada para correcao nao esta ativa nesta obra.', 409);
+        const autorizacao = await RhJornadaEdicao.findOne({
+          where: { importacao_linha_id: anterior.id, status: 'AUTORIZADA' },
+          order: [['id', 'DESC']], transaction, lock: transaction.LOCK.UPDATE
+        });
+        if (!autorizacao) throw new ValidationError('O DP precisa autorizar o retorno desta diaria antes da correcao.', 409);
+        linhasSubstituidas.push(anterior.id);
+        autorizacoesUsadas.push(autorizacao.id);
+        continue;
+      }
       if (!sobrepostas.length) continue;
 
       const periodoDiferente = sobrepostas.find(
@@ -500,18 +631,40 @@ async function registrarJornada(dados = {}, contexto = {}) {
       const colaboradorId = Number(linha.colaborador_id);
 
       const colaborador = porId.get(colaboradorId);
+      const diariasAConsiderar = diariasExistentes.filter((existente) =>
+        !linhasSubstituidas.includes(Number(existente.id)));
       const obrasDistribuicao = Array.from(obrasPorColaborador.get(colaboradorId) || []).sort((a, b) => a - b);
       // A distribuicao nao depende mais de uma marcacao manual da obra. O historico de lotacao e
       // a fonte confiavel: se o colaborador esteve vinculado a duas ou mais obras no periodo, cada
       // obra informa somente a sua parte e o DP consolida as jornadas depois.
-      const marcouMultiplasObras = obrasDistribuicao.length > 1;
+      const marcouMultiplasObras = etapaPagamento !== 'DIARIA' && obrasDistribuicao.length > 1;
       const aprovacaoDistribuicao = marcouMultiplasObras
         ? (!Array.isArray(contexto.obraIds)
           || obrasDistribuicao.every((id) => contexto.obraIds.includes(id))
           ? 'AUTOMATICA_MESMO_RESPONSAVEL'
           : 'AGUARDANDO_RESPONSAVEIS')
         : 'NAO_APLICAVEL';
-      const regimeVigente = regimePorId.get(colaboradorId) || rhCalculoHistoricoService.resumo(colaborador);
+      const diasSelecionados = etapaPagamento === 'DIARIA'
+        ? validarDiasDiaria(
+          linha.dias_trabalhados_datas,
+          diasDiariaElegiveis(colaborador, vinculosDaObra, historicos, periodo),
+          diariasAConsiderar
+            .filter((anterior) => Number(anterior.colaborador_id) === colaboradorId)
+            .flatMap((anterior) => anterior.payload_json?.dias_trabalhados_datas || []),
+          colaborador.nome,
+          competencia
+        ) : [];
+      if (etapaPagamento === 'DIARIA' && diariasAConsiderar.some((anterior) =>
+        Number(anterior.colaborador_id) === colaboradorId
+        && !Array.isArray(anterior.payload_json?.dias_trabalhados_datas))) {
+        throw new ValidationError(`${colaborador.nome}: ha diaria antiga sem datas; o DP deve conciliar esse historico antes de novo envio.`, 409);
+      }
+      const regimeVigente = regimePorId.get(colaboradorId)
+        || (etapaPagamento === 'DIARIA'
+          ? await rhCalculoHistoricoService.regimeNoPeriodo(
+            colaborador, diasSelecionados[0], diasSelecionados[diasSelecionados.length - 1], transaction
+          )
+          : rhCalculoHistoricoService.resumo(colaborador));
       const formaCalculo = String(regimeVigente.forma_calculo || 'MENSAL').toUpperCase();
       const regimePagamento = String(linha.regime_pagamento || 'NORMAL').trim().toUpperCase();
       if (!['NORMAL', 'EMPREITADA'].includes(regimePagamento)) {
@@ -519,8 +672,15 @@ async function registrarJornada(dados = {}, contexto = {}) {
       }
       const finaisSemanaFeriados = 0;
       const faltas = numeroNaoNegativo(linha.faltas, 'Faltas', colaboradorId);
-      const limiteVinculo = diasVinculados(vinculosDaObra, colaborador, periodo);
-      const dias = numeroNaoNegativo(linha.dias_trabalhados, 'Dias trabalhados', colaboradorId);
+      const periodoDecorrido = { ...periodo, fim: [periodo.fim, hojeLocal()].sort()[0] };
+      const limiteVinculo = diasVinculados(vinculosDaObra, colaborador, periodoDecorrido);
+      const dias = etapaPagamento === 'DIARIA'
+        ? diasSelecionados.length
+        : numeroNaoNegativo(linha.dias_trabalhados, 'Dias trabalhados', colaboradorId);
+      if (etapaPagamento === 'DIARIA' && linha.dias_trabalhados !== undefined
+        && Number(linha.dias_trabalhados) !== dias) {
+        throw new ValidationError(`${colaborador.nome}: a quantidade de diarias deve corresponder aos dias selecionados.`);
+      }
       if (dias > limiteVinculo) {
         throw new ValidationError(`${colaborador.nome}: dias trabalhados nao podem ultrapassar ${limiteVinculo} dia(s) de vinculo nesta obra no periodo.`);
       }
@@ -534,14 +694,17 @@ async function registrarJornada(dados = {}, contexto = {}) {
         );
       }
       if (etapaPagamento === 'DIARIA') {
-        const anteriores = existentes.filter((existente) => (
+        const anteriores = diariasAConsiderar.filter((existente) => (
           Number(existente.colaborador_id) === colaboradorId
-          && existente.importacao.etapa_pagamento === 'DIARIA'
+          && Number(existente.importacao?.obra_id) === obraId
         ));
         const totalDias = anteriores.reduce((total, anterior) => (
           total + Number(anterior.payload_json?.dias_trabalhados || 0)
         ), dias);
-        if (totalDias > diasVinculados(vinculosDaObra, colaborador, limitesDaCompetencia(competencia))) {
+        if (totalDias > diasVinculados(vinculosDaObra, colaborador, {
+          ...limitesDaCompetencia(competencia),
+          fim: [periodo.fim, hojeLocal()].sort()[0]
+        })) {
           throw new ValidationError(`${colaborador.nome}: a soma das diarias enviadas ultrapassa os dias de vinculo nesta obra.`, 409);
         }
       }
@@ -553,6 +716,9 @@ async function registrarJornada(dados = {}, contexto = {}) {
       }
       const valorEmpreitada = numeroNaoNegativo(linha.valor_empreitada, 'Valor da empreitada', colaboradorId);
       const servicoExecutado = String(linha.servico_executado || '').trim();
+      const pagamentoTitulo = pagamentoDoTituloDaJornada(
+        linha, pagamentoPorId.get(colaboradorId), colaborador.nome
+      );
       if (regimePagamento === 'EMPREITADA' && (!servicoExecutado || valorEmpreitada <= 0)) {
         throw new ValidationError(`${colaborador.nome}: informe o servico executado e o valor da empreitada.`);
       }
@@ -574,6 +740,7 @@ async function registrarJornada(dados = {}, contexto = {}) {
             obras_distribuicao_ids: marcouMultiplasObras ? obrasDistribuicao : [obraId],
             aprovacao_distribuicao: aprovacaoDistribuicao,
             dias_trabalhados: dias,
+            ...(etapaPagamento === 'DIARIA' ? { dias_trabalhados_datas: diasSelecionados } : {}),
             dias_corridos: limiteVinculo,
             finais_semana_feriados: finaisSemanaFeriados,
             faltas,
@@ -610,6 +777,7 @@ async function registrarJornada(dados = {}, contexto = {}) {
             pagamento_automatico_40_60: Boolean(regimeVigente.pagamento_automatico_40_60),
             salario_base: Number(colaborador.salario_base || 0),
             valor_contratual: Number(colaborador.valor_contratual || 0),
+            pagamento_titulo: pagamentoTitulo,
             observacoes: observacoes || null
           }
         },
@@ -703,6 +871,11 @@ async function registrarPagamentoIndividual(dados = {}, contexto = {}) {
       linhas: [{
         colaborador_id: dados.colaborador_id,
         dias_trabalhados: dados.dias_trabalhados,
+        dias_trabalhados_datas: dados.dias_trabalhados_datas,
+        substituir_importacao_linha_id: dados.substituir_importacao_linha_id,
+        chave_pix_titulo: dados.chave_pix_titulo,
+        favorecido_pix_nome: dados.favorecido_pix_nome,
+        favorecido_pix_cpf: dados.favorecido_pix_cpf,
         faltas: dados.faltas,
         finais_semana_feriados: dados.finais_semana_feriados,
         adicional_noturno: dados.adicional_noturno,
@@ -730,17 +903,21 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     throw new ValidationError(`A competencia deve estar no formato AAAA-MM (recebi "${competencia}").`);
   }
 
-  const periodo = normalizarPeriodo(filtros, competencia);
   const etapaPagamento = String(filtros.etapa_pagamento || '').trim().toUpperCase() || null;
   if (etapaPagamento && (!etapasHabilitadas() || !ETAPAS_PAGAMENTO.has(etapaPagamento))) {
     throw new ValidationError('A etapa de pagamento da jornada nao esta habilitada ou e invalida.', 409);
   }
+  const periodo = normalizarPeriodo(filtros, competencia, etapaPagamento);
 
   const vinculos = await rhVinculoObraService.colaboradoresDaObraEm(obraId, periodo.inicio, periodo.fim);
 
   const colaboradoresDoPeriodo = [...new Set(
     vinculos.map((vinculo) => Number(vinculo.colaborador_id)).filter(Boolean)
   )];
+  const pagamentosDoPeriodo = colaboradoresDoPeriodo.length
+    ? await RhColaboradorPagamento.findAll({ where: { colaborador_id: { [Op.in]: colaboradoresDoPeriodo } } })
+    : [];
+  const pagamentoPorId = new Map(pagamentosDoPeriodo.map((item) => [Number(item.colaborador_id), item]));
   const todosVinculosDoPeriodo = colaboradoresDoPeriodo.length
     ? await RhColaboradorVinculo.findAll({
         where: {
@@ -786,6 +963,30 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
   });
 
   const confirmadas = await linhasConfirmadasDaCompetencia(obraId, competencia);
+  const historicos = etapaPagamento === 'DIARIA'
+    ? await historicosDeCalculo(colaboradoresDoPeriodo) : [];
+  const diariasAnteriores = etapaPagamento === 'DIARIA'
+    ? await linhasDiariasDaCompetencia(colaboradoresDoPeriodo, competencia) : [];
+  const edicoesDiaria = diariasAnteriores.length ? await RhJornadaEdicao.findAll({
+    where: {
+      importacao_linha_id: { [Op.in]: diariasAnteriores.map((linha) => linha.id) },
+      status: { [Op.in]: ['PENDENTE', 'AUTORIZADA'] }
+    }, order: [['id', 'DESC']]
+  }) : [];
+  const edicaoDiariaPorColaborador = new Map();
+  edicoesDiaria.forEach((edicao) => {
+    const linha = diariasAnteriores.find((item) => Number(item.id) === Number(edicao.importacao_linha_id));
+    if (linha && Number(linha.importacao?.obra_id) === Number(obraId)
+      && !edicaoDiariaPorColaborador.has(Number(linha.colaborador_id))) {
+      edicaoDiariaPorColaborador.set(Number(linha.colaborador_id), { linha, edicao });
+    }
+  });
+  const diasJaInformadosPorId = new Map();
+  diariasAnteriores.forEach((linha) => {
+    const id = Number(linha.colaborador_id);
+    if (!diasJaInformadosPorId.has(id)) diasJaInformadosPorId.set(id, new Set());
+    (linha.payload_json?.dias_trabalhados_datas || []).forEach((dia) => diasJaInformadosPorId.get(id).add(dia));
+  });
   const jaInformado = confirmadas.filter((linha) => (
     mesmoPeriodo(periodo, periodoDaImportacao(linha.importacao))
     && (!etapaPagamento || linha.importacao.etapa_pagamento === etapaPagamento)
@@ -812,7 +1013,7 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
   const regimesPorId = new Map();
   for (const vinculo of vinculos) {
     if (!vinculo.colaborador || regimesPorId.has(Number(vinculo.colaborador_id))) continue;
-    if (!etapaPagamento) continue;
+    if (!etapaPagamento || etapaPagamento === 'DIARIA') continue;
     try {
       // eslint-disable-next-line no-await-in-loop
       const regime = await rhCalculoHistoricoService.regimeNoPeriodo(
@@ -824,7 +1025,17 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     }
   }
 
-  const linhaDe = (vinculo, extras = {}) => ({
+  const linhaDe = (vinculo, extras = {}) => {
+    const diariaParaRetorno = etapaPagamento === 'DIARIA'
+      ? edicaoDiariaPorColaborador.get(Number(vinculo.colaborador_id)) : null;
+    const diasElegiveis = etapaPagamento === 'DIARIA'
+      ? diasDiariaElegiveis(vinculo.colaborador, vinculos, historicos, periodo) : [];
+    const primeiroDia = diasElegiveis[0];
+    const historicoDiaria = primeiroDia && historicos.find((item) =>
+      Number(item.colaborador_id) === Number(vinculo.colaborador_id)
+      && String(item.vigencia_inicio).slice(0, 10) <= primeiroDia
+      && (!item.vigencia_fim || String(item.vigencia_fim).slice(0, 10) >= primeiroDia));
+    return ({
     colaborador_id: Number(vinculo.colaborador_id),
     nome: vinculo.colaborador.nome,
     matricula: vinculo.colaborador.matricula,
@@ -834,19 +1045,41 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     cargo: vinculo.colaborador.cargo,
     tipo_vinculo: vinculo.colaborador.tipo_vinculo,
     salario_base: vinculo.colaborador.salario_base,
-    forma_calculo_gerencial: regimesPorId.get(Number(vinculo.colaborador_id))?.forma_calculo
+    forma_calculo_gerencial: etapaPagamento === 'DIARIA' && diasElegiveis.length
+      ? 'DIARIA'
+      : regimesPorId.get(Number(vinculo.colaborador_id))?.forma_calculo
       || vinculo.colaborador.forma_calculo_gerencial || 'MENSAL',
-    valor_diaria: regimesPorId.get(Number(vinculo.colaborador_id))?.valor_diaria
+    valor_diaria: historicoDiaria?.valor_diaria
+      ?? regimesPorId.get(Number(vinculo.colaborador_id))?.valor_diaria
       ?? vinculo.colaborador.valor_diaria,
+    pix_titulo: {
+      chave_pix: [
+        pagamentoPorId.get(Number(vinculo.colaborador_id))?.chave_pix,
+        pagamentoPorId.get(Number(vinculo.colaborador_id))?.chave_pix_secundaria,
+        pagamentoPorId.get(Number(vinculo.colaborador_id))?.chave_pix_variavel
+      ].map((valor) => String(valor || '').trim()).find(Boolean) || '',
+      favorecido_nome: pagamentoPorId.get(Number(vinculo.colaborador_id))?.favorecido_nome || vinculo.colaborador.nome,
+      favorecido_cpf: pagamentoPorId.get(Number(vinculo.colaborador_id))?.favorecido_documento || vinculo.colaborador.cpf
+    },
     pagamento_automatico_40_60: regimesPorId.get(Number(vinculo.colaborador_id))?.pagamento_automatico_40_60
       ?? Boolean(vinculo.colaborador.pagamento_automatico_40_60),
     regime_em_transicao: Boolean(regimesPorId.get(Number(vinculo.colaborador_id))?.em_transicao),
     regime_erro: regimesPorId.get(Number(vinculo.colaborador_id))?.erro || null,
-    jornada_informada: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.payload_json || null,
-    jornada_linha_id: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.id || null,
-    edicao_jornada: porColaborador.get(Number(vinculo.colaborador_id))?.edicao || null,
+    dias_diaria_elegiveis: diasElegiveis,
+    dias_diaria_ja_informados: etapaPagamento === 'DIARIA'
+      ? Array.from(diasJaInformadosPorId.get(Number(vinculo.colaborador_id)) || [])
+          .filter((dia) => diariaParaRetorno?.edicao.status !== 'AUTORIZADA'
+            || !(diariaParaRetorno.linha.payload_json?.dias_trabalhados_datas || []).includes(dia)) : [],
+    jornada_informada: diariaParaRetorno?.linha.payload_json
+      || porColaborador.get(Number(vinculo.colaborador_id))?.linha?.payload_json || null,
+    jornada_linha_id: diariaParaRetorno?.linha.id
+      || porColaborador.get(Number(vinculo.colaborador_id))?.linha?.id || null,
+    edicao_jornada: diariaParaRetorno?.edicao
+      || porColaborador.get(Number(vinculo.colaborador_id))?.edicao || null,
     periodo_jornada: periodo,
-    dias_vinculados: diasVinculados(vinculos, vinculo.colaborador, periodo),
+    dias_vinculados: diasVinculados(vinculos, vinculo.colaborador, {
+      ...periodo, fim: [periodo.fim, hojeLocal()].sort()[0]
+    }),
     obras_vinculadas_periodo: Array.from(
       obrasPorColaborador.get(Number(vinculo.colaborador_id))?.values() || []
     ),
@@ -855,7 +1088,8 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     ainda_nao_comecou: false,
     comeca_em: null,
     ...extras
-  });
+    });
+  };
 
   const linhasUnicas = new Map();
   for (const linha of [
@@ -934,6 +1168,43 @@ async function decidirEdicaoJornada(id, decisao = {}, contexto = {}) {
     }
 
     const aprovar = Boolean(decisao.aprovar);
+    if (aprovar) {
+      const linhaOriginal = await RhImportacaoLinha.findByPk(solicitacao.importacao_linha_id, {
+        attributes: ['id', 'importacao_id', 'colaborador_id'], transaction
+      });
+      const eventos = await RhApuracaoEvento.findAll({
+        where: { colaborador_id: solicitacao.colaborador_id },
+        include: [{ model: RhApuracao, as: 'apuracao', required: true,
+          where: { competencia: solicitacao.competencia },
+          include: [{ model: RhFechamento, as: 'fechamentoRh', required: false,
+            where: { status: 'FECHADO' } }] }], transaction
+      });
+      const afetadas = [...new Map(eventos.filter((evento) =>
+        (evento.detalhes_json?.importacao_ids || []).map(Number).includes(Number(linhaOriginal?.importacao_id)))
+        .map((evento) => [Number(evento.apuracao_id), evento.apuracao])).values()];
+      if (afetadas.some((apuracao) => apuracao.fechamentoRh || apuracao.status === 'FECHADA')) {
+        throw new ValidationError('Esta jornada ja gerou titulo. Estorne o fechamento e as baixas financeiras antes de autorizar o retorno.', 409);
+      }
+      for (const apuracao of afetadas.filter((item) => item.status === 'CONFERIDA')) {
+        // eslint-disable-next-line no-await-in-loop
+        await RhApuracaoEvento.update({ status: 'PENDENTE' }, {
+          where: { apuracao_id: apuracao.id }, transaction
+        });
+        // eslint-disable-next-line no-await-in-loop
+        await apuracao.update({
+          status: 'RASCUNHO',
+          observacoes: [apuracao.observacoes,
+            `[${new Date().toISOString()}] Reaberta pelo DP para retorno da jornada #${solicitacao.importacao_linha_id}; usuario #${contexto.usuarioId}.`]
+            .filter(Boolean).join('\n'),
+          resumo_json: {
+            ...(apuracao.resumo_json || {}),
+            itens_conferidos: 0,
+            itens_pendentes: Number(apuracao.total_colaboradores || 0)
+          },
+          atualizado_por: contexto.usuarioId || null
+        }, { transaction });
+      }
+    }
     await solicitacao.update({
       status: aprovar ? 'AUTORIZADA' : 'NEGADA',
       motivo_decisao: String(decisao.motivo || '').trim() || null,
@@ -956,6 +1227,32 @@ async function listarEdicoesJornadaPendentes() {
   });
 }
 
+async function exigirJornadasSemRetornoPendente(importacaoIds, transaction, validarFontes = false) {
+  const ids = [...new Set((importacaoIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) return;
+  const linhas = await RhImportacaoLinha.findAll({
+    where: { importacao_id: { [Op.in]: ids }, ...(validarFontes ? {} : { status: 'CONFIRMADA' }) },
+    attributes: ['id', 'status'], transaction
+  });
+  if (!linhas.length) return;
+  if (validarFontes && linhas.some((linha) => linha.status === 'SUBSTITUIDA')) {
+    throw new ValidationError('A jornada da apuracao foi corrigida. Regenere a apuracao antes de conferir ou gerar titulos.', 409);
+  }
+  const retorno = await RhJornadaEdicao.findOne({
+    where: {
+      importacao_linha_id: { [Op.in]: linhas.map((linha) => linha.id) },
+      status: { [Op.in]: ['PENDENTE', 'AUTORIZADA'] }
+    },
+    attributes: ['id', 'competencia'], transaction
+  });
+  if (retorno) {
+    throw new ValidationError(
+      `A jornada possui retorno para correcao #${retorno.id} pendente ou autorizado. `
+      + 'Aguarde a decisao ou o novo envio antes de apurar, conferir ou gerar titulos.', 409
+    );
+  }
+}
+
 module.exports = {
   ORIGENS,
   competenciaValida,
@@ -966,5 +1263,10 @@ module.exports = {
   colaboradoresParaJornada,
   solicitarEdicaoJornada,
   decidirEdicaoJornada,
-  listarEdicoesJornadaPendentes
+  listarEdicoesJornadaPendentes,
+  exigirJornadasSemRetornoPendente
 };
+
+if (process.env.NODE_ENV === 'test') {
+  module.exports.__test = { datasNoPeriodo, diasDiariaElegiveis, validarDiasDiaria, pagamentoDoTituloDaJornada };
+}

@@ -2046,6 +2046,7 @@ router.post('/rh/solicitacoes/:id/rejeitar', allowRhDpSolicitacaoDecidir, critic
 router.post('/rh/solicitacoes/:id/reenviar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.reenviar);
 router.post('/rh/solicitacoes/:id/cancelar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.cancelar);
 router.post('/rh/solicitacoes/:id/comentar', allowRhDpSolicitacaoVer, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.comentar);
+router.post('/rh/solicitacoes/:id/solicitar-retorno', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.solicitarRetorno);
 // --- Fases 9 a 11 do DP (27/08). O checklist do TIPO vem antes do `:id` de proposito: sem barra
 // numerica, `/rh/solicitacoes/checklist` seria capturado por `/rh/solicitacoes/:id` se viesse depois.
 router.post('/rh/solicitacoes/:id/enviar', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.enviar);

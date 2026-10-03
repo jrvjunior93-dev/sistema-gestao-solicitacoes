@@ -36,6 +36,14 @@ export async function comentarRhSolicitacao(id, texto) {
   return parseJson(response, 'Erro ao comentar na solicitação');
 }
 
+export async function solicitarRetornoRhSolicitacao(id, motivo) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/solicitar-retorno`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo })
+  });
+  return parseJson(response, 'Erro ao solicitar retorno da solicitação');
+}
+
 export async function getRhEmpresasGrupo(params = {}) {
   const query = buildQuery(params);
   const url = query ? `${API_URL}/rh/empresas-grupo?${query}` : `${API_URL}/rh/empresas-grupo`;

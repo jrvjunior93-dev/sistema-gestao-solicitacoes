@@ -206,6 +206,7 @@ function getPixKeyOptions(pagamento = {}) {
 
 function resolvePixKeyForItem(item, pagamento = {}) {
   const selected = String(item?.detalhes_json?.pagamento?.chave_pix_titulo || '').trim();
+  if (item?.detalhes_json?.pagamento?.alterado_na_jornada) return selected;
   const options = getPixKeyOptions(pagamento);
   if (selected && options.includes(selected)) {
     return selected;
@@ -213,15 +214,18 @@ function resolvePixKeyForItem(item, pagamento = {}) {
   return options[0] || '';
 }
 
-async function ensureCategoriaFinanceiraPagar(categoriaFinanceiraId, transaction) {
-  if (!categoriaFinanceiraId) {
-    throw new ValidationError('Categoria financeira e obrigatoria para gerar titulos de fechamento RH/DP.');
+async function ensureCategoriaFinanceiraPagar(transaction) {
+  const categorias = await CategoriaFinanceira.findAll({
+    where: { nome: { [Op.like]: '2.01.02.01 - %' }, ativo: true },
+    transaction
+  });
+  if (categorias.length !== 1) {
+    throw new ValidationError(
+      'Cadastre uma unica categoria financeira ativa 2.01.02.01 - Salarios e Ordenados antes de fechar a apuracao.',
+      409
+    );
   }
-
-  const categoria = await CategoriaFinanceira.findByPk(categoriaFinanceiraId, { transaction });
-  if (!categoria || categoria.ativo === false) {
-    throw new ValidationError('Categoria financeira invalida para o fechamento RH/DP.');
-  }
+  const [categoria] = categorias;
 
   const tipo = String(categoria.tipo || '').trim().toUpperCase();
   if (tipo && tipo !== 'AMBOS' && tipo !== 'PAGAR') {
@@ -339,10 +343,15 @@ function validarItemElegivelParaFechamento(item, apuracao) {
   }
 
   const pagamento = colaborador.pagamento || {};
-  const favorecidoNome = String(pagamento.favorecido_nome || colaborador.nome || '').trim();
-  const favorecidoDocumento = normalizeDigits(pagamento.favorecido_documento || colaborador.cpf);
+  const alteradoNaJornada = Boolean(item.detalhes_json?.pagamento?.alterado_na_jornada);
+  const favorecidoNome = String(alteradoNaJornada
+    ? item.detalhes_json.pagamento.favorecido_nome
+    : pagamento.favorecido_nome || colaborador.nome || '').trim();
+  const favorecidoDocumento = normalizeDigits(alteradoNaJornada
+    ? item.detalhes_json.pagamento.favorecido_cpf
+    : pagamento.favorecido_documento || colaborador.cpf);
   const chavePix = resolvePixKeyForItem(item, pagamento);
-  const possuiConta = Boolean(
+  const possuiConta = !alteradoNaJornada && Boolean(
     String(pagamento.banco || '').trim() &&
     String(pagamento.agencia || '').trim() &&
     String(pagamento.conta || '').trim()
@@ -382,10 +391,10 @@ function validarItemElegivelParaFechamento(item, apuracao) {
     favorecidoNome,
     favorecidoDocumento,
     chavePix,
-    banco: pagamento.banco || null,
-    agencia: pagamento.agencia || null,
-    conta: pagamento.conta || null,
-    tipoConta: pagamento.tipo_conta || null,
+    banco: alteradoNaJornada ? null : pagamento.banco || null,
+    agencia: alteradoNaJornada ? null : pagamento.agencia || null,
+    conta: alteradoNaJornada ? null : pagamento.conta || null,
+    tipoConta: alteradoNaJornada ? null : pagamento.tipo_conta || null,
     obraId,
     empresaId,
     email: pagamento.email || colaborador.email || null,
@@ -817,7 +826,7 @@ async function criarTituloRhRateado(payload, {
   return titulo;
 }
 
-function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
+function buildParcelasColaborador(item, apuracao, data = {}) {
   const colaborador = item.colaborador || {};
   const valorLiquido = roundCurrency(item.valor_liquido);
   const formaCalculo = String(item.detalhes_json?.forma_calculo_gerencial
@@ -825,14 +834,15 @@ function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
   const automatico4060 = formaCalculo === 'MENSAL'
     && Boolean(item.detalhes_json?.pagamento_automatico_40_60
       ?? colaborador.pagamento_automatico_40_60);
-  const vencimentoIntegral = data.data_vencimento || anticipateWeekend(getLastDayOfCompetencia(apuracao.competencia));
+  const vencimentoUnico = data.data_vencimento || anticipateWeekend(
+    apuracao.etapa_pagamento === 'ADIANTAMENTO_40'
+      ? getCompetenciaDate(apuracao.competencia, 15)
+      : getLastDayOfCompetencia(apuracao.competencia)
+  );
 
   if (['ADIANTAMENTO_40', 'SALDO_60'].includes(apuracao.etapa_pagamento)) {
     if (!automatico4060) {
       throw new ValidationError(`O colaborador ${colaborador.nome} nao tinha parcelamento 40%/60% no periodo desta jornada.`, 409);
-    }
-    if (ajuste) {
-      throw new ValidationError('Ajustes do parcelamento em etapas devem ser feitos na jornada de 60%, antes do fechamento.');
     }
     if (valorLiquido <= 0) {
       throw new ValidationError(`O valor da etapa de ${colaborador.nome} precisa ser positivo.`, 409);
@@ -841,21 +851,16 @@ function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
     return [{
       tipoTitulo: adiantamento ? 'ADIANTAMENTO_40' : 'SALDO_60',
       valor: valorLiquido,
-      dataVencimento: adiantamento
-        ? (data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)))
-        : (data.data_vencimento_60 || vencimentoIntegral),
+      dataVencimento: vencimentoUnico,
       numeroSufixo: adiantamento ? '40' : '60'
     }];
   }
 
   if (!automatico4060) {
-    if (ajuste) {
-      throw new ValidationError(`O colaborador ${colaborador.nome} nao utiliza a distribuicao automatica 40%/60%.`);
-    }
     return [{
       tipoTitulo: formaCalculo === 'DIARIA' ? 'DIARIAS' : 'INTEGRAL',
       valor: valorLiquido,
-      dataVencimento: vencimentoIntegral,
+      dataVencimento: vencimentoUnico,
       numeroSufixo: formaCalculo === 'DIARIA'
         ? (apuracao.etapa_pagamento === 'DIARIA' && apuracao.importacao_id
           ? `DIARIA-${apuracao.importacao_id}` : 'DIARIA')
@@ -863,69 +868,10 @@ function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
     }];
   }
 
-  const salarioBruto = roundCurrency(
-    String(colaborador.tipo_vinculo || '').toUpperCase() === 'CLT'
-      ? colaborador.salario_base || colaborador.valor_contratual || item.valor_base_calculo
-      : colaborador.valor_contratual || colaborador.salario_base || item.valor_base_calculo
+  throw new ValidationError(
+    `O pagamento 40%/60% de ${colaborador.nome} exige jornadas e apuracoes separadas por etapa.`,
+    409
   );
-  const baseProporcionalObra = roundCurrency(
-    item.detalhes_json?.resumo?.valor_proporcional || salarioBruto
-  );
-  const decimoTerceiro = roundCurrency(item.detalhes_json?.jornada?.decimo_terceiro || 0);
-  const diaNascimento = Number(String(colaborador.data_nascimento || '').slice(8, 10));
-  const decimoNoAdiantamento = decimoTerceiro > 0 && diaNascimento >= 1 && diaNascimento <= 15;
-  const valorLiquidoSemDecimo = roundCurrency(Math.max(0, valorLiquido - decimoTerceiro));
-  const valor40Calculado = roundCurrency(baseProporcionalObra * 0.4);
-  let valor40 = Math.min(valor40Calculado, valorLiquidoSemDecimo);
-  let valor60 = roundCurrency(valorLiquidoSemDecimo - valor40);
-  if (decimoNoAdiantamento) valor40 = roundCurrency(valor40 + decimoTerceiro);
-  else valor60 = roundCurrency(valor60 + decimoTerceiro);
-
-  if (ajuste) {
-    const valor40Informado = roundCurrency(ajuste.valor_40);
-    const valor60Informado = roundCurrency(ajuste.valor_60);
-    if (Math.abs(roundCurrency(valor40Informado + valor60Informado) - valorLiquido) > 0.01) {
-      throw new ValidationError(
-        `A distribuicao 40%/60% de ${colaborador.nome} deve totalizar o liquido de ${valorLiquido.toFixed(2)}.`
-      );
-    }
-    const alterouCalculo = Math.abs(valor40Informado - valor40) > 0.01 || Math.abs(valor60Informado - valor60) > 0.01;
-    if (alterouCalculo && !String(ajuste.observacao || '').trim()) {
-      throw new ValidationError(`Informe a observacao para alterar a distribuicao 40%/60% de ${colaborador.nome}.`);
-    }
-    valor40 = valor40Informado;
-    valor60 = valor60Informado;
-  }
-  const parcelas = [];
-
-  if (valor40 > 0) {
-    parcelas.push({
-      tipoTitulo: 'ADIANTAMENTO_40',
-      valor: valor40,
-      dataVencimento: data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)),
-      numeroSufixo: '40',
-      observacaoAdicional: [
-        `Salario bruto: ${salarioBruto.toFixed(2)} | Base da obra: ${baseProporcionalObra.toFixed(2)} | Percentual calculado: 40%`,
-        decimoNoAdiantamento ? `13o salario: ${decimoTerceiro.toFixed(2)}` : null,
-        ajuste?.observacao ? `Ajuste informado: ${ajuste.observacao}` : null
-      ].filter(Boolean).join(' | ')
-    });
-  }
-  if (valor60 > 0) {
-    parcelas.push({
-      tipoTitulo: 'SALDO_60',
-      valor: valor60,
-      dataVencimento: data.data_vencimento_60 || vencimentoIntegral,
-      numeroSufixo: '60',
-      observacaoAdicional: [
-        `Base salarial bruta: ${salarioBruto.toFixed(2)} | Saldo liquido apos eventos e pensao`,
-        !decimoNoAdiantamento && decimoTerceiro > 0 ? `13o salario: ${decimoTerceiro.toFixed(2)}` : null,
-        ajuste?.observacao ? `Ajuste informado: ${ajuste.observacao}` : null
-      ].filter(Boolean).join(' | ')
-    });
-  }
-
-  return parcelas;
 }
 
 function getPensoesDoItem(item) {
@@ -1237,10 +1183,17 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
     if (!itens.length) {
       throw new ValidationError('A apuracao RH/DP nao possui itens para fechar.');
     }
+    await require('./rhJornadaFormularioService').exigirJornadasSemRetornoPendente(
+      itens.flatMap((item) => item.detalhes_json?.importacao_ids || []), transaction, true
+    );
 
-    const categoria = await ensureCategoriaFinanceiraPagar(data.categoria_financeira_id, transaction);
+    const categoria = await ensureCategoriaFinanceiraPagar(transaction);
     const dataFechamento = data.data_fechamento || getToday();
-    const dataVencimento = data.data_vencimento_60 || data.data_vencimento || anticipateWeekend(getLastDayOfCompetencia(apuracao.competencia));
+    const dataVencimento = data.data_vencimento || anticipateWeekend(
+      apuracao.etapa_pagamento === 'ADIANTAMENTO_40'
+        ? getCompetenciaDate(apuracao.competencia, 15)
+        : getLastDayOfCompetencia(apuracao.competencia)
+    );
     const fechamento = await RhFechamento.create(
       {
         apuracao_id: apuracao.id,
@@ -1260,9 +1213,6 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
     let totalTitulos = 0;
     let totalValor = 0;
     const reclassificacoesRateio = [];
-    const ajustesTitulos = new Map(
-      (data.ajustes_titulos || []).map((ajuste) => [Number(ajuste.apuracao_evento_id), ajuste])
-    );
 
     for (const item of itens) {
       // Serializa fechamentos simultaneos do mesmo colaborador em obras diferentes. Assim ambos
@@ -1351,8 +1301,7 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
       const parcelasColaborador = buildParcelasColaborador(
         itemParaTitulos,
         apuracao,
-        data,
-        ajustesTitulos.get(Number(item.id)) || null
+        data
       );
       for (const parcela of parcelasColaborador) {
         // eslint-disable-next-line no-await-in-loop
@@ -1502,8 +1451,6 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
           total_valor: roundCurrency(totalValor),
           categoria_financeira_id: categoria?.id || null,
           data_vencimento: dataVencimento,
-          data_vencimento_40: data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)),
-          data_vencimento_60: dataVencimento,
           reclassificacoes_rateio: reclassificacoesRateio
         },
         atualizado_por: user?.id || null
@@ -1823,6 +1770,7 @@ if (process.env.NODE_ENV === 'test') {
   module.exports.__test = {
     anticipateWeekend,
     buildParcelasColaborador,
+    ensureCategoriaFinanceiraPagar,
     diasPorObraDoItem,
     getCompetenciaDate,
     getLastDayOfCompetencia,

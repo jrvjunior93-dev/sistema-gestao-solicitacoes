@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+## Ownership ativo - guia operacional RH/DP Pessoal - 02/10/2026
+
+Sessao `/root` reserva temporariamente apenas `docs/modulos/rh-dp/GUIA_OPERACIONAL_PESSOAL.md`,
+`docs/modulos/rh-dp/README.md`, o handoff documental desta tarefa e este registro
+para documentar as regras atuais da tela Pessoal. Trabalho somente de leitura do
+codigo e escrita em documentacao; sem banco, migration, deploy, commit ou push.
+
+Ownership liberado após concluir a documentação e a validação local. Sem reserva
+ativa de arquivos por esta sessão.
+
 ## Ownership ativo - jornadas RH/DP em duas etapas - 02/10/2026
 
 Sessao `codex-rhdp-jornadas-40-60-2026-10-02` reserva temporariamente os
@@ -1094,3 +1104,19 @@ conversao de campos monetarios no envio da jornada, mantendo o backend
 estrito e as regras de autorizacao de edicao. Sem banco, EC2 ou deploy.
 
 Ownership liberado apos validacao local e publicacao na `refactor/frontend`.
+## Ownership ativo - simplificacao RH/DP jornada e fechamento - 03/10/2026
+
+Sessao `/root` no worktree isolado `backend-dependency-security`: reserva temporaria
+de `frontend/src/pages/RhDpJornada.jsx`, `frontend/src/pages/RhDpApuracao.jsx`,
+`backend/src/services/rhJornadaFormularioService.js`,
+`backend/src/services/rhFechamentoService.js`, testes RH/DP, guia RH/DP e handoff
+desta tarefa. Objetivo: competencia como referencia da jornada, categoria fixa de
+salarios e um vencimento por apuracao. Sem banco, EC2, migration, deploy, commit ou push.
+Escopo ampliado pelo pedido de 03/10: `rhJornadaPlanilhaService.js`, `rhApuracaoService.js`,
+`RhDpPessoalSolicitacoes.jsx`, `HomeHub.jsx`, `Avisos.jsx`, estilos correspondentes e
+fluxo de retorno RH/DP. Permanecem excluidos banco/EC2/deploy/commit/push.
+Incluidos tambem `backend/src/controllers/RhSolicitacaoController.js`, `backend/src/routes.js`,
+`backend/src/validators/rhValidators.js`, `frontend/src/services/rhDp.js` e os tres scripts
+de validacao RH/DP associados ao fluxo, categoria e planilha.
+Ownership desta sessao liberado com o commit solicitado em 03/10/2026, apos
+validacao local. Homologacao integrada em banco dev e deploy continuam pendentes.

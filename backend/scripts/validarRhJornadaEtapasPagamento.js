@@ -4,7 +4,7 @@ process.env.NODE_ENV = 'test';
 
 const assert = require('assert');
 const {
-  RhApuracaoEvento, RhApuracaoEventoItem, RhColaboradorCalculoHistorico,
+  CategoriaFinanceira, RhApuracaoEvento, RhApuracaoEventoItem, RhColaboradorCalculoHistorico,
   RhFechamento, TituloFinanceiroRateio
 } = require('../src/models');
 const apuracaoService = require('../src/services/rhApuracaoService');
@@ -33,6 +33,22 @@ function calcular({ dias = 15, adicionais = 0, descontos = 0 } = {}) {
 }
 
 async function validar() {
+  const categoriasFindAll = CategoriaFinanceira.findAll;
+  const categoriaSalarios = {
+    id: 17, nome: '2.01.02.01 - Salários e Ordenados', tipo: 'PAGAR',
+    ativo: true, considera_dre: true, dre_grupo: 'Custos com pessoal'
+  };
+  try {
+    CategoriaFinanceira.findAll = async ({ where }) => {
+      assert.strictEqual(where.nome[require('sequelize').Op.like], '2.01.02.01 - %');
+      return [categoriaSalarios];
+    };
+    assert.strictEqual(await fechamentoTest.ensureCategoriaFinanceiraPagar(), categoriaSalarios);
+    CategoriaFinanceira.findAll = async () => [];
+    await assert.rejects(fechamentoTest.ensureCategoriaFinanceiraPagar(), /categoria financeira ativa/);
+  } finally {
+    CategoriaFinanceira.findAll = categoriasFindAll;
+  }
   const historicoFindAllBanco = RhColaboradorCalculoHistorico.findAll;
   RhColaboradorCalculoHistorico.findAll = async () => [];
   assert.strictEqual(calculoHistoricoService.proporcionalMensalAteMudanca(3000, 19), 1900);
