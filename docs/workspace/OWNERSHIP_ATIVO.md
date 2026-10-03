@@ -19,6 +19,9 @@ codigos duplicados inativos em producao, a mesma sessao reserva tambem
 na branch isolada, com destino, conta, TLS, registros e transacao fixados; sua
 execucao na producao permanece condicionada ao backup fresco e a conferencia
 imediata dos dados. Nenhuma migration ou deploy e autorizada por esta reserva.
+Reservado tambem `backend/scripts/validarLeituraMainAntigaNoSchemaMigrado.js`
+para validar, somente na copia migrada do RDS staging, consultas dos modelos
+da main original; sem servidor, migration ou escrita em dados.
 
 ## Ownership temporario - documentacao e preparacao da promocao - 03/10/2026
 
