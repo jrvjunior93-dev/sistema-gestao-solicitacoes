@@ -20,6 +20,7 @@
 ## Riscos / gates restantes
 
 - 85 migrations ainda pendentes em producao. **Nao executar em producao** antes de ensaio no schema isolado e verificacao da compatibilidade com a main antiga.
+- Ensaio na copia do RDS staging confirmou identidade/TLS e parou na terceira migration, `202608160052_contratos_codigo_obra_unico.js`. As duas primeiras ficaram registradas somente em `fluxy_restore_20261003` (agora 83 pendentes). A auditoria somente leitura identificou cinco contratos com codigo `CT/ADM001-33` na obra 23: IDs 715 a 719. O ID 719 tem duas solicitacoes e uma apropriacao; 715 a 718 tem zero solicitacoes e uma apropriacao cada. Nenhum registro foi alterado ou removido. Nao repetir o script enquanto o bloqueio e o estado parcial nao forem tratados.
 - O rollback do codigo nao reverte schema nem dados: para a proxima semana, usar codigo antigo apenas se compatibilidade com schema novo for demonstrada. Snapshot antigo nao pode substituir o banco vivo sem perda de dados novos.
 - Guardar novo backup e snapshot imediatamente antes da execucao em producao; validar tambem rollback da Vercel e plano de monitoramento.
 - Nao tocar nas alteracoes locais preexistentes no checkout main da EC2 (`backend/package-lock.json` e tres arquivos de auditoria).
