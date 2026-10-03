@@ -19,6 +19,7 @@ const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
+const { baseMensalProporcional } = require('./rhPagamentoGerencial');
 const { exigirJornadasSemRetornoPendente } = require('./rhJornadaFormularioService');
 
 const APURACAO_ITEM_INCLUDE = [
@@ -306,10 +307,9 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
   }
 
   /*
-   * O mensalista recebe o salario integral quando trabalhou em uma unica obra, mesmo que haja
-   * faltas informadas. Quando passou por mais de uma obra, entretanto, cada recorte precisa levar
-   * somente sua participacao para que o titulo unico seja rateado sem duplicar o salario. A base
-   * desse rateio e a proporcao dos dias efetivamente informados entre as obras da competencia.
+   * No legado, cada recorte multiobra leva apenas a sua participacao salarial.
+   * Na v2, o salario mensal e unico por etapa, mesmo que duas obras informem dias;
+   * a consolidacao remove a base duplicada e o titulo rateia pelos dias.
    */
   const colaboradorIds = [...new Set(linhas.map((linha) => Number(linha.colaborador_id)).filter(Boolean))];
   const jornadasDaCompetencia = colaboradorIds.length
@@ -362,6 +362,7 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
         importacao_ids: new Set(),
         observacoes: new Set(),
         jornada: {
+          modo_gerencial_v2: false,
           multiobra: false,
           dias_trabalhados: 0,
           faltas: 0,
@@ -392,6 +393,8 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
     }
 
     if (linha.importacao?.tipo === 'JORNADA') {
+      itemAtual.jornada.modo_gerencial_v2 = itemAtual.jornada.modo_gerencial_v2
+        || Boolean(linha.payload_json?.modo_gerencial_v2);
       const pagamentoTitulo = linha.payload_json?.pagamento_titulo || null;
       if (pagamentoTitulo) {
         const anterior = itemAtual.jornada.pagamento_titulo;
@@ -485,7 +488,13 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
       obrasPorColaborador.get(colaboradorId).add(Number(vinculo.obra_id));
     });
     obrasPorColaborador.forEach((obras, colaboradorId) => {
-      if (obras.size > 1) idsMultiobraPorVinculo.add(colaboradorId);
+      const item = agrupados.get(colaboradorId);
+      const obrasEnviadasNaEtapa = distribuicaoMensal.get(colaboradorId)?.obras?.size || 0;
+      if (item?.jornada?.modo_gerencial_v2 && data.etapa_pagamento) {
+        if (obrasEnviadasNaEtapa > 1) idsMultiobraPorVinculo.add(colaboradorId);
+      } else if (obras.size > 1) {
+        idsMultiobraPorVinculo.add(colaboradorId);
+      }
     });
   }
   // Colaboradores multiobra pertencem ao fluxo de consolidacao do DP. A geracao comum nao pode
@@ -494,7 +503,8 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
   const resultado = incluirConsolidados || data.etapa_pagamento === 'DIARIA'
     ? resultadoCompleto
     : resultadoCompleto.filter((item) => (
-        !item.jornada?.multiobra
+        (!item.jornada?.multiobra || (item.jornada?.modo_gerencial_v2
+          && (distribuicaoMensal.get(Number(item.colaborador?.id))?.obras?.size || 0) <= 1))
         && !idsMultiobraPorVinculo.has(Number(item.colaborador?.id))
       ));
   if (incluirConsolidados || data.etapa_pagamento === 'DIARIA' || !resultado.length) return resultado;
@@ -608,9 +618,12 @@ function calcularItemApuracao(agrupado, diasBase) {
   const colaborador = agrupado.colaborador;
   const tipoVinculo = String(colaborador?.tipo_vinculo || '').trim().toUpperCase();
   const formaCalculo = String(colaborador?.forma_calculo_gerencial || 'MENSAL').trim().toUpperCase();
+  const gerencialV2 = Boolean(agrupado.jornada?.modo_gerencial_v2);
   const valorBaseCalculo =
     formaCalculo === 'DIARIA'
       ? Number(colaborador?.valor_diaria || 0)
+      : gerencialV2
+      ? Number(colaborador?.salario_base || colaborador?.valor_contratual || 0)
       : tipoVinculo === 'CLT'
       ? Number(colaborador?.salario_base || 0)
       : Number(colaborador?.valor_contratual || colaborador?.salario_base || 0);
@@ -669,7 +682,7 @@ function calcularItemApuracao(agrupado, diasBase) {
     regraAplicada = tipoVinculo === 'CLT' ? 'CLT_SIMPLIFICADA' : 'MENSAL_SIMPLIFICADA';
     const totalDiasCompetencia = Number(jornada.total_dias_competencia || 0);
     const totalObrasCompetencia = Number(jornada.total_obras_competencia || 0);
-    const salarioProporcional = totalObrasCompetencia > 1 && totalDiasCompetencia > 0
+    const salarioProporcional = !gerencialV2 && totalObrasCompetencia > 1 && totalDiasCompetencia > 0
       ? valorBaseCalculo * (diasTrabalhados / totalDiasCompetencia)
       : valorBaseCalculo;
     const valorHora = calculateValorHoraReferencia(valorBaseCalculo);
@@ -733,6 +746,7 @@ function calcularItemApuracao(agrupado, diasBase) {
       importacao_ids: Array.from(agrupado.importacao_ids || []).sort((a, b) => a - b),
       tipo_vinculo: tipoVinculo,
       forma_calculo_gerencial: formaCalculo,
+      modo_gerencial_v2: gerencialV2,
       salario_contratual_bruto: formatCurrencyValue(colaborador?.salario_base || 0),
       pagamento_automatico_40_60: Boolean(colaborador?.pagamento_automatico_40_60),
       dias_base: Number(diasBase || 0),
@@ -876,8 +890,28 @@ async function solicitacaoJornadaTotalmenteProcessada(solicitacao, competencia, 
   });
 }
 
+function diasProporcionaisComAdiantamentos(item, obraId, adiantamentos) {
+  const atuais = new Map();
+  const distribuicao = item.detalhes_json?.distribuicao_obras;
+  if (Array.isArray(distribuicao) && distribuicao.length) {
+    distribuicao.forEach((parte) => atuais.set(Number(parte.obra_id), Number(parte.dias_trabalhados || 0)));
+  } else if (Number(obraId) > 0) {
+    atuais.set(Number(obraId), Number(item.dias_trabalhados || 0));
+  }
+  for (const anterior of adiantamentos) {
+    const obrasAnteriores = anterior.detalhes_json?.distribuicao_obras;
+    const partes = Array.isArray(obrasAnteriores) && obrasAnteriores.length
+      ? obrasAnteriores.map((parte) => [Number(parte.obra_id), Number(parte.dias_trabalhados || 0)])
+      : [[Number(anterior.apuracao?.obra_id), Number(anterior.dias_trabalhados || 0)]];
+    partes.forEach(([id, dias]) => {
+      if (id > 0 && !atuais.has(id)) atuais.set(id, dias);
+    });
+  }
+  return [...atuais.values()].reduce((total, dias) => total + dias, 0);
+}
+
 async function ajustarItemParaEtapa(item, data, transaction) {
-  const conversao = ['ADIANTAMENTO_40', 'SALDO_60'].includes(data.etapa_pagamento)
+  const conversao = ['ADIANTAMENTO_40', 'SALDO_60', 'PROPORCIONAL'].includes(data.etapa_pagamento)
     ? await rhCalculoHistoricoService.conversaoMensalParaDiariaNaCompetencia(
         item.colaborador_id, data.competencia, transaction
       )
@@ -888,7 +922,41 @@ async function ajustarItemParaEtapa(item, data, transaction) {
         Number(item.valor_base_calculo || 0), conversao.dias_mensais
       )
     : baseMensal;
-  if (data.etapa_pagamento === 'ADIANTAMENTO_40') {
+  if (data.etapa_pagamento === 'PROPORCIONAL') {
+    if (!item.detalhes_json?.modo_gerencial_v2) {
+      throw new ValidationError('A etapa proporcional exige uma jornada gerencial.', 409);
+    }
+    const salarioReferencia = Number(item.valor_base_calculo || 0);
+    const adiantamentos = await RhApuracaoEvento.findAll({
+      where: { colaborador_id: item.colaborador_id },
+      include: [{ model: RhApuracao, as: 'apuracao', required: true, where: {
+        competencia: data.competencia, etapa_pagamento: 'ADIANTAMENTO_40'
+      }, include: [{ model: RhFechamento, as: 'fechamentoRh', required: false,
+        where: { status: 'FECHADO' } }] }], transaction
+    });
+    if (adiantamentos.some((anterior) => !anterior.apuracao.fechamentoRh)) {
+      throw new ValidationError('Feche ou reabra a apuracao dos 40% antes do acerto proporcional.', 409);
+    }
+    const dias = diasProporcionaisComAdiantamentos(item, data.obra_id, adiantamentos);
+    const mensalProporcional = baseMensalProporcional(salarioReferencia, dias, data.competencia);
+    const pago = formatCurrencyValue(adiantamentos.reduce(
+      (total, anterior) => total + Number(anterior.valor_liquido || 0), 0
+    ));
+    const diferencaBase = formatCurrencyValue(mensalProporcional - baseMensal);
+    const liquidoCalculado = formatCurrencyValue(Number(item.valor_liquido || 0) + diferencaBase - pago);
+    // Ainda nao limitar a zero: eventos recorrentes sao aplicados depois.
+    // Primeiro se compensam todos os creditos/debitos da competencia; so o
+    // saldo final negativo se transforma em credito pendente para o DP.
+    item.valor_bruto = formatCurrencyValue(Number(item.valor_bruto || 0) + diferencaBase - pago);
+    item.valor_liquido = liquidoCalculado;
+    item.detalhes_json.resumo = {
+      ...item.detalhes_json.resumo,
+      etapa_pagamento: 'PROPORCIONAL', divisor_gerencial: 30,
+      dias_reconhecidos: dias, mensal_proporcional: mensalProporcional,
+      adiantamento_anterior: pago,
+      credito_para_acerto_dp: 0
+    };
+  } else if (data.etapa_pagamento === 'ADIANTAMENTO_40') {
     const adiantamento = formatCurrencyValue(Math.min(baseMensal * 0.4, baseMensalDevida));
     const creditoPendente = formatCurrencyValue(Number(item.valor_bruto || 0) - baseMensal);
     const debitoPendente = formatCurrencyValue(item.valor_descontos);
@@ -978,7 +1046,7 @@ async function aplicarAcertoConversaoNaApuracao(apuracao, transaction) {
       where: { colaborador_id: item.colaborador_id },
       include: [{ model: RhApuracao, as: 'apuracao', required: true, where: {
         competencia: apuracao.competencia,
-        etapa_pagamento: { [Op.in]: ['ADIANTAMENTO_40', 'SALDO_60', 'DIARIA'] },
+        etapa_pagamento: { [Op.in]: ['ADIANTAMENTO_40', 'SALDO_60', 'PROPORCIONAL', 'DIARIA'] },
         id: { [Op.ne]: apuracao.id }
       }, include: [{ model: RhFechamento, as: 'fechamentoRh', required: false,
         where: { status: 'FECHADO' } }] }],
@@ -1006,7 +1074,8 @@ async function aplicarAcertoConversaoNaApuracao(apuracao, transaction) {
     const mensalPago = formatCurrencyValue(mensais.reduce((total, anterior) => (
       total + Number(anterior.valor_liquido || 0)
     ), 0));
-    const jaHouveSaldo = mensais.some((anterior) => anterior.apuracao.etapa_pagamento === 'SALDO_60');
+    const jaHouveSaldo = mensais.some((anterior) =>
+      ['SALDO_60', 'PROPORCIONAL'].includes(anterior.apuracao.etapa_pagamento));
     // O evento de 40% conserva a base salarial historica mesmo que o cadastro atual ja esteja
     // em regime de diaria. Sem ele, usa-se o salario contratual ainda registrado no colaborador.
     const mensalReferencia = mensais.find((anterior) => Number(anterior.valor_base_calculo) > 0);
@@ -1058,6 +1127,38 @@ async function aplicarAcertoConversaoNaApuracao(apuracao, transaction) {
           Math.max(0, creditoAnterior - Math.min(0, acerto.ajuste_mensal)))),
       valor_liquido: acerto.valor_a_pagar,
       detalhes_json: { ...item.detalhes_json, resumo }
+    }, { transaction });
+  }
+}
+
+async function guardarCreditoProporcionalParaDp(apuracao, transaction) {
+  if (apuracao.etapa_pagamento !== 'PROPORCIONAL') return;
+  const negativos = await RhApuracaoEvento.findAll({
+    where: { apuracao_id: apuracao.id, valor_liquido: { [Op.lt]: 0 } }, transaction
+  });
+  for (const negativo of negativos) {
+    const credito = formatCurrencyValue(-Number(negativo.valor_liquido || 0));
+    const saldoAntesDoAcerto = {
+      bruto: Number(negativo.valor_bruto || 0),
+      descontos: Number(negativo.valor_descontos || 0),
+      creditos_recorrentes: Number(negativo.ajuste_credito_manual || 0),
+      debitos_recorrentes: Number(negativo.ajuste_debito_manual || 0),
+      liquido: Number(negativo.valor_liquido || 0)
+    };
+    // eslint-disable-next-line no-await-in-loop
+    await negativo.update({
+      valor_bruto: 0,
+      valor_descontos: 0,
+      ajuste_credito_manual: 0,
+      ajuste_debito_manual: 0,
+      valor_liquido: 0,
+      detalhes_json: { ...negativo.detalhes_json, resumo: {
+        ...negativo.detalhes_json?.resumo,
+        proporcional_saldo_antes_acerto_dp: saldoAntesDoAcerto,
+        credito_para_acerto_dp: formatCurrencyValue(
+          Number(negativo.detalhes_json?.resumo?.credito_para_acerto_dp || 0) + credito
+        )
+      } }
     }, { transaction });
   }
 }
@@ -1155,6 +1256,7 @@ async function gerarApuracaoRecorteRh(data, user, transaction) {
     await aplicarRecorrentesNaApuracao(apuracao, transaction);
   }
   await aplicarAcertoConversaoNaApuracao(apuracao, transaction);
+  await guardarCreditoProporcionalParaDp(apuracao, transaction);
   if (data.etapa_pagamento === 'SALDO_60') {
     const saldoNegativo = await RhApuracaoEvento.findOne({
       where: { apuracao_id: apuracao.id, valor_liquido: { [Op.lt]: 0 } }, transaction
@@ -1365,8 +1467,8 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined, e
     jornadaPorColaboradorObra.get(chave).push(linha);
   });
 
-  // A transferencia entre as duas quinzenas nao torna cada quinzena multiobra. Somente as
-  // obras cujo vinculo cruza o periodo efetivamente enviado nesta etapa sao obrigatorias.
+  // O legado usa os vinculos que cruzam o periodo da etapa. A v2 usa apenas
+  // as obras que enviaram a etapa, pois 40% e 60% podem vir de obras distintas.
   const periodosPorColaborador = new Map();
   if (etapaPagamento) {
     linhas.forEach((linha) => {
@@ -1385,8 +1487,12 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined, e
     ? gruposCandidatos.map((grupo) => {
         const colaboradorId = Number(grupo.colaborador.id);
         const periodoEtapa = periodosPorColaborador.get(colaboradorId);
+        const jornadaGerencial = linhas.some((linha) => Number(linha.colaborador_id) === colaboradorId
+          && Boolean(linha.payload_json?.modo_gerencial_v2));
         const obrasDaEtapa = new Map(Array.from(grupo.obras.entries()).filter(([obraId]) => (
-          periodoEtapa && vinculos.some((vinculo) => (
+          jornadaGerencial
+            ? jornadaPorColaboradorObra.has(`${colaboradorId}:${obraId}`)
+            : periodoEtapa && vinculos.some((vinculo) => (
             Number(vinculo.colaborador_id) === colaboradorId
             && Number(vinculo.obra_id) === Number(obraId)
             && String(vinculo.vigencia_inicio).slice(0, 10) <= periodoEtapa.fim
@@ -1500,7 +1606,7 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined, e
 async function listarJornadasMultiobraRh(filters = {}) {
   const competencia = String(filters.competencia || '').trim();
   const etapas = String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON'
-    ? [null, 'ADIANTAMENTO_40', 'SALDO_60']
+    ? [null, 'ADIANTAMENTO_40', 'SALDO_60', 'PROPORCIONAL']
     : [null];
   const grupos = await Promise.all(etapas.map((etapa) => carregarJornadasMultiobra(competencia, undefined, etapa)));
   const colaboradores = grupos.flat().filter((grupo) => (
@@ -1538,6 +1644,15 @@ function combinarItensMultiobra(partes, colaborador) {
     (total, item) => total + Number(item.detalhes_json?.resumo?.valor_proporcional || 0),
     0
   ));
+  const mensalGerencial = Boolean(primeiro.detalhes_json?.modo_gerencial_v2)
+    && primeiro.detalhes_json?.forma_calculo_gerencial === 'MENSAL';
+  // Cada obra informa apenas os seus dias e ajustes. O salario mensal pertence
+  // ao colaborador uma unica vez; na consolidacao nao pode ser multiplicado
+  // pela quantidade de obras que enviaram a mesma etapa.
+  const baseDuplicada = mensalGerencial
+    ? formatCurrencyValue(Number(primeiro.valor_base_calculo || 0) * (itens.length - 1)) : 0;
+  const brutoConsolidado = formatCurrencyValue(Number(somarCampo(itens, 'valor_bruto')) - baseDuplicada);
+  const liquidoConsolidado = formatCurrencyValue(Number(somarCampo(itens, 'valor_liquido')) - baseDuplicada);
 
   return {
     colaborador_id: Number(colaborador.id),
@@ -1547,7 +1662,7 @@ function combinarItensMultiobra(partes, colaborador) {
     dias_trabalhados: somarCampo(itens, 'dias_trabalhados'),
     faltas: somarCampo(itens, 'faltas'),
     horas_extras: 0,
-    valor_bruto: somarCampo(itens, 'valor_bruto'),
+    valor_bruto: brutoConsolidado,
     valor_descontos: somarCampo(itens, 'valor_descontos'),
     ajuste_credito_manual: 0,
     ajuste_debito_manual: 0,
@@ -1555,7 +1670,7 @@ function combinarItensMultiobra(partes, colaborador) {
     adicional_insalubridade: somarCampo(itens, 'adicional_insalubridade'),
     adicional_periculosidade: somarCampo(itens, 'adicional_periculosidade'),
     bonificacoes: somarCampo(itens, 'bonificacoes'),
-    valor_liquido: somarCampo(itens, 'valor_liquido'),
+    valor_liquido: liquidoConsolidado,
     observacoes: observacoes.join(' | ') || null,
     detalhes_json: {
       ...primeiro.detalhes_json,
@@ -1563,7 +1678,7 @@ function combinarItensMultiobra(partes, colaborador) {
       importacao_ids: importacaoIds,
       resumo: {
         ...(primeiro.detalhes_json?.resumo || {}),
-        valor_proporcional: valorProporcional,
+        valor_proporcional: mensalGerencial ? formatCurrencyValue(primeiro.valor_base_calculo) : valorProporcional,
         rateio_multiobra: true,
         total_dias_competencia: somarCampo(itens, 'dias_trabalhados'),
         total_obras_competencia: partes.length
@@ -1746,6 +1861,7 @@ async function gerarApuracaoMultiobraRh(data, user) {
     }, { transaction });
     if (etapaPagamento !== 'ADIANTAMENTO_40') await aplicarRecorrentesNaApuracao(apuracao, transaction);
     await aplicarAcertoConversaoNaApuracao(apuracao, transaction);
+    await guardarCreditoProporcionalParaDp(apuracao, transaction);
     if (etapaPagamento === 'SALDO_60') {
       const saldoNegativo = await RhApuracaoEvento.findOne({
         where: { apuracao_id: apuracao.id, valor_liquido: { [Op.lt]: 0 } }, transaction
@@ -2030,7 +2146,9 @@ module.exports = {
     aplicarAcertoConversaoNaApuracao,
     calcularAcertoConversao,
     aplicarRecorrentesNaApuracao,
+    guardarCreditoProporcionalParaDp,
     ajustarItemParaEtapa,
+    diasProporcionaisComAdiantamentos,
     combinarItensMultiobra,
     filtrosRecortesImportacoesConfirmadas,
     whereApuracaoRecorte

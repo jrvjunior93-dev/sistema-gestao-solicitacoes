@@ -304,6 +304,7 @@ function invalidarObrasTravadas(userId = null) {
 const ROTA_ADITIVO = /^\/contratos\/(?:fluxo-novo\/)?(\d+)\/aditivos\/?$/i;
 const ROTAS_SOLICITACAO_NOVA = [
   /^\/rh\/jornada\/?$/i,
+  /^\/rh\/jornada\/gerencial\/?$/i,
   /^\/rh\/jornada\/individual\/?$/i,
   ROTA_ADITIVO,
   /^\/solicitacoes\/?$/i,

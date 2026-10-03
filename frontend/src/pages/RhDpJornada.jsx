@@ -30,6 +30,7 @@ import {
 import { hasAnyExplicitPermissao, isBusinessAdmin } from '../utils/acessoProduto';
 import { userHasSetorCapability } from '../utils/setor';
 import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
+import RhDpJornadaGerencial from './RhDpJornadaGerencial';
 
 /**
  * JORNADA PELO FORMULARIO (Fase 4 do modulo DP, 26/08).
@@ -46,7 +47,9 @@ import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from
  * 30. O aviso disso esta na tela, e nao so no servico — quem preenche precisa saber antes.
  */
 
-const COMPETENCIA_ATUAL = new Date().toISOString().slice(0, 7);
+const COMPETENCIA_ATUAL = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo'
+}).format(new Date()).slice(0, 7);
 /* O 30 estava só no `useState`; virou nome para o painel de filtros poder
    distinguir "a pessoa escolheu 30" de "o sistema propôs 30" — sem isso o
    campo contaria como preenchido sempre e nunca sairia da faixa. */
@@ -58,6 +61,8 @@ const PERIODICIDADES = [
   { valor: 'MENSAL', rotulo: 'Mensal' }
 ];
 const ETAPAS_HABILITADAS = String(import.meta.env.VITE_RH_JORNADA_40_60_ETAPAS || '').toUpperCase() === 'ON';
+const GERENCIAL_V2_HABILITADO = ETAPAS_HABILITADAS
+  && String(import.meta.env.VITE_RH_JORNADA_GERENCIAL_V2 || 'OFF').toUpperCase() === 'ON';
 const ETAPAS_PAGAMENTO = [
   { valor: 'ADIANTAMENTO_40', rotulo: 'Mensalista · 40%' },
   { valor: 'SALDO_60', rotulo: 'Mensalista · saldo 60%' },
@@ -106,6 +111,13 @@ function diasInclusivos(inicio, fim) {
   const ate = new Date(`${fim}T00:00:00`);
   if (Number.isNaN(de.getTime()) || Number.isNaN(ate.getTime())) return 0;
   return Math.floor((ate.getTime() - de.getTime()) / 86400000) + 1;
+}
+
+function limitarDiasDigitados(valor, limite) {
+  if (valor === '') return '';
+  const dias = Number(valor);
+  if (!Number.isFinite(dias)) return '';
+  return String(Math.max(0, Math.min(Math.trunc(dias), Math.max(0, limite))));
 }
 
 function formatarData(valor) {
@@ -272,6 +284,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   const [diaristaEmSelecao, setDiaristaEmSelecao] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [modoLegado, setModoLegado] = useState(false);
   const [processandoEdicao, setProcessandoEdicao] = useState(null);
   const [edicoesPendentes, setEdicoesPendentes] = useState([]);
   const [jornadasEnviadas, setJornadasEnviadas] = useState([]);
@@ -1086,10 +1099,20 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     );
   }
 
+  if (GERENCIAL_V2_HABILITADO && !modoLegado) {
+    return <RhDpJornadaGerencial abasJornada={abasJornada} podeEnviar={podeEnviar}
+      onAbrirLegado={() => setModoLegado(true)} />;
+  }
+
   return (
     <div className="app-pagina">
       <Avisos avisos={avisos} aoFechar={fechar} />
       {abasJornada}
+      {GERENCIAL_V2_HABILITADO ? <div className="app-actionbar">
+        <button type="button" className="btn btn-outline btn-sm" onClick={() => setModoLegado(false)}>
+          Voltar ao envio gerencial
+        </button>
+      </div> : null}
 
       {podeDecidirEdicao && edicoesPendentes.length ? (
         <BlocoConteudo
@@ -1275,6 +1298,12 @@ export default function RhDpJornada({ onAbrirApuracao }) {
             ) : null}
           </div>
 
+          <p className="app-bloco-lead app-bloco-lead--integral">
+            Nesta competência, os dias são limitados ao vínculo na obra e à data de hoje.
+            Em competência anterior, são limitados aos dias do mês e à etapa selecionada.
+            O valor líquido é calculado e conferido pelo DP na apuração.
+          </p>
+
           {/* Estava solto no rodape da tela como `page-subtitle`, que o
               validador reprova (R5). E informacao util e continua visivel,
               agora ancorada ao bloco a que pertence e com token de cor. */}
@@ -1392,12 +1421,15 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                         className="form-control rh-jornada-numero"
                         type="number"
                         min="0"
+                        step="1"
                         max={Math.min(Number(diasBase), linha.diasVinculados)}
-                        title={`Limite: ${linha.diasVinculados} dia(s) de vínculo no período`}
-                        aria-label={`Dias trabalhados de ${linha.nome}`}
+                        title={`Máximo: ${Math.min(Number(diasBase), linha.diasVinculados)} dia(s) nesta etapa e nesta obra`}
+                        aria-label={`Dias trabalhados de ${linha.nome}; máximo ${Math.min(Number(diasBase), linha.diasVinculados)}`}
                         value={linha.dias_trabalhados}
                         disabled={!podeEditarLinha(linha)}
-                        onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', e.target.value)}
+                        onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', limitarDiasDigitados(
+                          e.target.value, Math.min(Number(diasBase), linha.diasVinculados)
+                        ))}
                       />
                     )
                   ))
@@ -1411,11 +1443,14 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       className="form-control rh-jornada-numero"
                       type="number"
                       min="0"
+                      step="1"
                       max={Math.min(Number(diasBase), linha.diasVinculados)}
-                      aria-label={`Faltas de ${linha.nome}`}
+                      aria-label={`Faltas de ${linha.nome}; máximo ${Math.min(Number(diasBase), linha.diasVinculados)}`}
                       value={linha.faltas}
                       disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'faltas', e.target.value)}
+                      onChange={(e) => alterar(linha.__indice, 'faltas', limitarDiasDigitados(
+                        e.target.value, Math.min(Number(diasBase), linha.diasVinculados)
+                      ))}
                     />
                   ))
                 },

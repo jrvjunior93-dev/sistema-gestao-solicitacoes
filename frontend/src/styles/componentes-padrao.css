@@ -1702,6 +1702,30 @@ fieldset.form-section {
 
 .app-avisos > * { pointer-events: auto; box-shadow: var(--sombra-card, 0 8px 24px rgba(15, 23, 42, .18)); }
 
+/* Avisos sao renderizados em document.body (portal), fora de .layout-shell.
+   Portanto precisam carregar a propria superficie e tipografia: sem isso o
+   fundo fica transparente e os controles do cabecalho aparecem atraves deles. */
+.app-avisos .alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--esp-2);
+  padding: var(--esp-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--raio-2);
+  background: var(--ui-surface);
+}
+
+.app-avisos .alert-icon { flex-shrink: 0; }
+.app-avisos .alert-content { flex: 1; min-width: 0; }
+.app-avisos .alert-title { margin: 0; font-weight: 700; }
+.app-avisos .alert-message { margin: var(--esp-1) 0 0; overflow-wrap: anywhere; }
+.app-avisos .alert-close { color: currentColor; }
+
+.app-avisos .alert-info { background: var(--sem-info-bg); border-color: var(--sem-info-border); color: var(--sem-info); }
+.app-avisos .alert-success { background: var(--sem-success-bg); border-color: var(--sem-success-border); color: var(--sem-success); }
+.app-avisos .alert-warning { background: var(--sem-warning-bg); border-color: var(--sem-warning-border); color: var(--sem-warning); }
+.app-avisos .alert-error { background: var(--sem-danger-bg); border-color: var(--sem-danger-border); color: var(--sem-danger); }
+
 
 .app-confirmacao {
   display: flex;

@@ -2063,8 +2063,10 @@ router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacao
 router.get('/rh/jornada/modelo', allowRhDpSolicitacaoVer, RhJornadaController.modelo);
 router.post('/rh/jornada/importar', allowRhDpSolicitacaoAbrir, uploadRateLimit, criticalRateLimit, uploadComprovantes.fields([{ name: 'planilha', maxCount: 1 }, { name: 'fichas', maxCount: 20 }]), RhJornadaController.importar);
 router.get('/rh/jornada/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetencia);
+router.get('/rh/jornada/gerencial/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetenciaGerencial);
 router.get('/rh/jornada/edicoes/pendentes', allowRhDpSolicitacaoDecidir, RhJornadaController.listarEdicoesPendentes);
 router.post('/rh/jornada', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.registrar);
+router.post('/rh/jornada/gerencial', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.registrarGerencial);
 router.post('/rh/jornada/individual', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.pagamentoIndividual);
 router.post('/rh/jornada/edicoes/solicitar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.solicitarEdicao);
 router.post('/rh/jornada/edicoes/:id/decidir', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de edicao da jornada') }), RhJornadaController.decidirEdicao);

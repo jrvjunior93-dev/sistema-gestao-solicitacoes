@@ -577,6 +577,7 @@ export default function RhDpFechamentos({ comoAba = false }) {
                     render: (item) => ({
                       ADIANTAMENTO_40: '40% dia 15',
                       SALDO_60: '60% fim do mes',
+                      PROPORCIONAL: 'Proporcional',
                       PENSAO_ALIMENTICIA: 'Pensao',
                       DIARIAS: 'Diarias',
                       INTEGRAL: 'Integral'

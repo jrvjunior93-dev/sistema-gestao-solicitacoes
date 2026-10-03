@@ -1,5 +1,6 @@
 const {
   registrarJornada,
+  registrarJornadaGerencial,
   registrarPagamentoIndividual,
   colaboradoresParaJornada,
   solicitarEdicaoJornada,
@@ -17,7 +18,8 @@ const { historicoDoColaborador: historicoDeVinculo } = require('../services/rhVi
 const { historicoDoColaborador: historicoDeSalario } = require('../services/rhSalarioService');
 const { responderErroController } = require('../utils/controllerError');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
-const { RhColaborador } = require('../models');
+const { RhColaborador, RhImportacaoLinha } = require('../models');
+const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
 const { getRhDpObraScopeIds, userHasAreaPermission } = require('../services/authorizationService');
 const { gerarModeloJornada, importarJornadaPlanilha } = require('../services/rhJornadaPlanilhaService');
@@ -128,6 +130,62 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao registrar a jornada');
+    }
+  },
+
+  async colaboradoresDaCompetenciaGerencial(req, res) {
+    try {
+      await exigirObraNoEscopoDoUsuario(req, req.query.obra_id);
+      const obraId = Number(req.query.obra_id);
+      const competencia = String(req.query.competencia || '');
+      const [mensais, diarias] = await Promise.all([
+        colaboradoresParaJornada(obraId, competencia, { modo_gerencial_v2: true, etapa_pagamento: 'PROPORCIONAL' }),
+        colaboradoresParaJornada(obraId, competencia, { modo_gerencial_v2: true, etapa_pagamento: 'DIARIA' })
+      ]);
+      const enviadas = await RhImportacaoLinha.findAll({
+        where: { status: 'CONFIRMADA', colaborador_id: {
+          [Op.in]: mensais.map((item) => Number(item.colaborador_id)).filter(Boolean)
+        } },
+        attributes: ['colaborador_id'],
+        include: [{ association: 'importacao', required: true,
+          attributes: ['etapa_pagamento', 'obra_id'], where: {
+            competencia, tipo: 'JORNADA', status: 'CONFIRMADA'
+          } }]
+      });
+      const etapasPorId = new Map();
+      enviadas.forEach((linha) => {
+        const id = Number(linha.colaborador_id);
+        if (!etapasPorId.has(id)) etapasPorId.set(id, { obra: new Set(), competencia: new Set() });
+        const etapa = linha.importacao?.etapa_pagamento;
+        if (etapa) {
+          etapasPorId.get(id).competencia.add(etapa);
+          if (Number(linha.importacao?.obra_id) === obraId) etapasPorId.get(id).obra.add(etapa);
+        }
+      });
+      const diariaPorId = new Map(diarias.map((item) => [Number(item.colaborador_id), item]));
+      return res.json(mensais.map((item) => ({ ...item,
+        etapas_enviadas: [...(etapasPorId.get(Number(item.colaborador_id))?.obra || [])],
+        etapas_enviadas_competencia: [...(etapasPorId.get(Number(item.colaborador_id))?.competencia || [])],
+        dias_diaria_elegiveis: diariaPorId.get(Number(item.colaborador_id))?.dias_diaria_elegiveis || [],
+        dias_diaria_ja_informados: diariaPorId.get(Number(item.colaborador_id))?.dias_diaria_ja_informados || []
+      })));
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao montar a lista gerencial da jornada');
+    }
+  },
+
+  async registrarGerencial(req, res) {
+    try {
+      await exigirObraNoEscopoDoUsuario(req, req.body?.obra_id);
+      const contexto = contextoDe(req);
+      contexto.obraIds = await getRhDpObraScopeIds(req.user);
+      contexto.podeDecidir = await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.decidir']);
+      const dados = await registrarJornadaGerencial(req.body || {}, contexto);
+      return res.status(201).json(dados);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao registrar a jornada gerencial');
     }
   },
 

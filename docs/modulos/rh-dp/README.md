@@ -58,6 +58,19 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 ## Jornadas em etapas (implementacao em homologacao; desligada por padrao)
 
+O redesenho gerencial v2 esta documentado em
+`docs/handoffs/2026-10-03-rhdp-jornada-gerencial-v2.md`. Ele fica atras de
+`RH_JORNADA_GERENCIAL_V2=ON` e `VITE_RH_JORNADA_GERENCIAL_V2=ON`, alem das
+duas flags de etapas abaixo. O envio passa a escolher 40%, 60%, proporcional
+ou diaria por colaborador, dentro da competencia. No proporcional, a base usa
+divisor gerencial 30 e teto no salario mensal, reconhecendo mes integral quando
+todos os dias do calendario foram informados. Nao ativar sem homologacao
+integrada de apuracao, rateio, retorno e fechamento financeiro.
+Na v2 mensal, a obra informa quantidades de dias por etapa (ou o total da
+competencia/obra no proporcional), limitadas aos dias transcorridos e ao
+vinculo. Datas individuais sao exigidas apenas para diarias; assim a protecao
+contra dia repetido entre 40% e 60% e por soma de quantidades, nao por data.
+
 - `RH_JORNADA_40_60_ETAPAS=ON` no backend e `VITE_RH_JORNADA_40_60_ETAPAS=ON` no build do frontend habilitam o fluxo. Nao ativar sem a migration `202610020002_rh_jornada_etapas_pagamento.js` e homologacao financeira em dev;
 - mensalista com parcelamento automatico envia uma jornada de `ADIANTAMENTO_40` e outra de `SALDO_60` na competencia. O primeiro fechamento gera apenas 40% da base mensal; a segunda apuracao calcula a base mensal uma vez, agrega ajustes das duas jornadas e recorrencias uma vez, desconta os 40% ja fechados e gera apenas o saldo;
 - o mesmo dia nao pode integrar as etapas de 40% e 60%. O periodo de cada etapa e derivado da competencia no backend, sem ajuste manual na tela; corrigir envio existente exige retorno autorizado pelo DP;

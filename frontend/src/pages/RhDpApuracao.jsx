@@ -741,7 +741,8 @@ export default function RhDpApuracao() {
                 tipo: 'texto',
                 render: (item) => item.etapa_pagamento === 'ADIANTAMENTO_40'
                   ? '40%'
-                  : item.etapa_pagamento === 'SALDO_60' ? '60%' : 'Legado'
+                  : item.etapa_pagamento === 'SALDO_60' ? '60%'
+                    : item.etapa_pagamento === 'PROPORCIONAL' ? 'Proporcional' : 'Legado'
               },
               {
                 id: 'empresa',
@@ -871,6 +872,7 @@ export default function RhDpApuracao() {
                 ? '40%'
                 : item.etapa_pagamento === 'SALDO_60'
                   ? '60%'
+                  : item.etapa_pagamento === 'PROPORCIONAL' ? 'Proporcional'
                   : item.etapa_pagamento === 'DIARIA' ? `Diária #${item.importacao_id}` : 'Legado'
             },
             {
@@ -949,7 +951,7 @@ export default function RhDpApuracao() {
 
       {detalhe ? (
         <BlocoConteudo
-          titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'consolidada multiobra'}${detalhe.etapa_pagamento ? ` · ${detalhe.etapa_pagamento === 'ADIANTAMENTO_40' ? '40%' : detalhe.etapa_pagamento === 'SALDO_60' ? '60%' : 'Diária'}` : ''}`}
+          titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'consolidada multiobra'}${detalhe.etapa_pagamento ? ` · ${detalhe.etapa_pagamento === 'ADIANTAMENTO_40' ? '40%' : detalhe.etapa_pagamento === 'SALDO_60' ? '60%' : detalhe.etapa_pagamento === 'PROPORCIONAL' ? 'Proporcional' : 'Diária'}` : ''}`}
           contagem={`${detalhe.total_colaboradores || 0} colaborador(es)`}
           descricao={`Recorte: empresa do cadastro do colaborador | ${detalhe.tipo_vinculo || 'todos os vinculos'} | base ${detalhe.dias_base || 30} dias | criada em ${formatDateTime(detalhe.createdAt)} por ${detalhe.criadoPor?.nome || 'sistema'}`}
           acoes={(
@@ -1130,6 +1132,15 @@ export default function RhDpApuracao() {
                 render: (item) => {
                   if (detalhe.etapa_pagamento === 'ADIANTAMENTO_40') return 'Somente 40%';
                   if (detalhe.etapa_pagamento === 'SALDO_60') return 'Somente saldo 60%';
+                  if (detalhe.etapa_pagamento === 'PROPORCIONAL') {
+                    const resumo = item.detalhes_json?.resumo || {};
+                    return <div className="space-y-1">
+                      <div>Proporcional · {resumo.dias_reconhecidos ?? item.dias_trabalhados} dias / divisor 30</div>
+                      <div className="app-note">Base {formatCurrency(resumo.mensal_proporcional)} · 40% já pago {formatCurrency(resumo.adiantamento_anterior)}</div>
+                      {Number(resumo.credito_para_acerto_dp || 0) > 0
+                        ? <div className="app-note">Crédito para acerto pelo DP: {formatCurrency(resumo.credito_para_acerto_dp)}</div> : null}
+                    </div>;
+                  }
                   if (detalhe.etapa_pagamento === 'DIARIA') {
                     const acerto = item.detalhes_json?.resumo?.acerto_conversao;
                     if (!acerto) return 'Diária deste envio';

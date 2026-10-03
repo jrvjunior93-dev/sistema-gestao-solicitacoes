@@ -1120,3 +1120,24 @@ Incluidos tambem `backend/src/controllers/RhSolicitacaoController.js`, `backend/
 de validacao RH/DP associados ao fluxo, categoria e planilha.
 Ownership desta sessao liberado com o commit solicitado em 03/10/2026, apos
 validacao local. Homologacao integrada em banco dev e deploy continuam pendentes.
+
+## Ownership ativo - aviso e limite de dias RH/DP - 03/10/2026
+
+Sessao `/root` no worktree isolado `backend-dependency-security`: reserva temporaria
+de `frontend/src/styles/componentes-padrao.css`, `frontend/src/pages/RhDpJornada.jsx`,
+`docs/handoffs/2026-10-03-rhdp-aviso-limite-dias.md`, testes relacionados e este
+registro. Corrigir a aparencia do aviso em portal e
+explicitar o limite de dias da jornada sem alterar apuracao financeira. Sem banco,
+EC2, migration, deploy, commit ou push nesta etapa.
+
+## Ownership ativo - jornada gerencial v2 - 03/10/2026
+
+Sessao `/root` no worktree isolado `backend-dependency-security`. Escopo previsto:
+`backend/src/services/rhJornadaFormularioService.js`, `rhApuracaoService.js`,
+`rhFechamentoService.js`, `rhCalculoHistoricoService.js`, controller/rotas/validadores RH,
+`frontend/src/pages/RhDpJornada.jsx`, `RhDpApuracao.jsx`, servico RH do frontend,
+estilos RH, testes e documentacao RH/DP. Implementacao gerencial solicitada pelo
+usuario com flag propria OFF por padrao, preservando alteracoes locais anteriores.
+Sem banco remoto, EC2, migration aplicada, deploy, commit ou push nesta etapa.
+Commit/push deste pacote solicitados em 03/10/2026; ownership liberado após
+o envio. A homologação integrada e a ativação das flags permanecem separadas.

@@ -360,7 +360,10 @@ function validarItemElegivelParaFechamento(item, apuracao) {
     ? item.detalhes_json.distribuicao_obras
         .map((parte) => ({
           obraId: Number(parte.obra_id),
-          peso: Number(parte.valor_liquido || parte.valor_bruto || parte.dias_trabalhados || 0)
+          peso: item.detalhes_json?.modo_gerencial_v2
+            && item.detalhes_json?.forma_calculo_gerencial === 'MENSAL'
+            ? Number(parte.dias_trabalhados || 0)
+            : Number(parte.valor_liquido || parte.valor_bruto || parte.dias_trabalhados || 0)
         }))
         .filter((parte) => Number.isInteger(parte.obraId) && parte.obraId > 0)
     : [];
@@ -711,6 +714,15 @@ function juntarDiasPorObra(...conjuntos) {
   return partes.sort((a, b) => a.obraId - b.obraId);
 }
 
+function juntarDiasProporcionaisPorObra(adiantamento, proporcional) {
+  const porObra = new Map();
+  adiantamento.forEach(({ obraId, peso }) => porObra.set(Number(obraId), Number(peso || 0)));
+  proporcional.forEach(({ obraId, peso }) => porObra.set(
+    Number(obraId), Math.max(porObra.get(Number(obraId)) || 0, Number(peso || 0))
+  ));
+  return juntarDiasPorObra([...porObra].map(([obraId, peso]) => ({ obraId, peso })));
+}
+
 async function reclassificarRateiosTitulo(titulo, partes, auditoria, usuarioId, transaction) {
   const existentes = await TituloFinanceiroRateio.findAll({
     where: { titulo_financeiro_id: titulo.id }, transaction, lock: transaction.LOCK.UPDATE
@@ -779,11 +791,12 @@ async function reconciliarRateioMensal(item, apuracao, tituloSaldo, usuarioId, t
       })
     : null;
   if (!tituloAdiantamento) throw new ValidationError('O titulo dos 40% nao foi encontrado para reconciliar o rateio.', 409);
-  const pesos = juntarDiasPorObra(
-    diasPorObraDoItem(adiantamento, adiantamento.apuracao),
-    diasPorObraDoItem(item, apuracao)
-  );
-  const auditoria = `Rateio RH/DP ${apuracao.competencia}, 40%/60%, colaborador #${item.colaborador_id}, `
+  const dias40 = diasPorObraDoItem(adiantamento, adiantamento.apuracao);
+  const diasFinais = diasPorObraDoItem(item, apuracao);
+  const pesos = apuracao.etapa_pagamento === 'PROPORCIONAL'
+    ? juntarDiasProporcionaisPorObra(dias40, diasFinais)
+    : juntarDiasPorObra(dias40, diasFinais);
+  const auditoria = `Rateio RH/DP ${apuracao.competencia}, 40%/${apuracao.etapa_pagamento}, colaborador #${item.colaborador_id}, `
     + `apuracao #${apuracao.id}, em ${new Date().toISOString()}, usuario #${usuarioId || 'sistema'}`;
   const antigo40 = await reclassificarRateiosTitulo(
     tituloAdiantamento,
@@ -834,25 +847,27 @@ function buildParcelasColaborador(item, apuracao, data = {}) {
   const automatico4060 = formaCalculo === 'MENSAL'
     && Boolean(item.detalhes_json?.pagamento_automatico_40_60
       ?? colaborador.pagamento_automatico_40_60);
+  const gerencialV2 = Boolean(item.detalhes_json?.modo_gerencial_v2);
   const vencimentoUnico = data.data_vencimento || anticipateWeekend(
     apuracao.etapa_pagamento === 'ADIANTAMENTO_40'
       ? getCompetenciaDate(apuracao.competencia, 15)
       : getLastDayOfCompetencia(apuracao.competencia)
   );
 
-  if (['ADIANTAMENTO_40', 'SALDO_60'].includes(apuracao.etapa_pagamento)) {
-    if (!automatico4060) {
+  if (['ADIANTAMENTO_40', 'SALDO_60', 'PROPORCIONAL'].includes(apuracao.etapa_pagamento)) {
+    if (!automatico4060 && !gerencialV2) {
       throw new ValidationError(`O colaborador ${colaborador.nome} nao tinha parcelamento 40%/60% no periodo desta jornada.`, 409);
     }
     if (valorLiquido <= 0) {
-      throw new ValidationError(`O valor da etapa de ${colaborador.nome} precisa ser positivo.`, 409);
+      throw new ValidationError(`Nao ha valor positivo para gerar titulo de ${colaborador.nome}. Confira o acerto no DP.`, 409);
     }
     const adiantamento = apuracao.etapa_pagamento === 'ADIANTAMENTO_40';
+    const proporcional = apuracao.etapa_pagamento === 'PROPORCIONAL';
     return [{
-      tipoTitulo: adiantamento ? 'ADIANTAMENTO_40' : 'SALDO_60',
+      tipoTitulo: adiantamento ? 'ADIANTAMENTO_40' : proporcional ? 'PROPORCIONAL' : 'SALDO_60',
       valor: valorLiquido,
       dataVencimento: vencimentoUnico,
-      numeroSufixo: adiantamento ? '40' : '60'
+      numeroSufixo: adiantamento ? '40' : proporcional ? 'PROP' : '60'
     }];
   }
 
@@ -1330,7 +1345,9 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
           usuarioId: user?.id || null,
           transaction
         });
-        if (apuracao.etapa_pagamento === 'SALDO_60' && parcela.tipoTitulo === 'SALDO_60') {
+        if ((apuracao.etapa_pagamento === 'SALDO_60' && parcela.tipoTitulo === 'SALDO_60')
+          || (apuracao.etapa_pagamento === 'PROPORCIONAL' && parcela.tipoTitulo === 'PROPORCIONAL'
+            && Number(item.detalhes_json?.resumo?.adiantamento_anterior || 0) > 0)) {
           // O pagamento de 40% ja pode ter sido baixado. Reclassificamos somente os
           // rateios de custo das duas parcelas pela distribuicao real de dias do mes.
           // eslint-disable-next-line no-await-in-loop
@@ -1531,7 +1548,8 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
         const saldoFechado = await RhApuracaoEvento.findOne({
           where: { colaborador_id: itemAdiantamento.colaborador_id },
           include: [{ model: RhApuracao, as: 'apuracao', required: true,
-            where: { competencia: fechamento.apuracao.competencia, etapa_pagamento: 'SALDO_60' },
+            where: { competencia: fechamento.apuracao.competencia,
+              etapa_pagamento: { [Op.in]: ['SALDO_60', 'PROPORCIONAL'] } },
             include: [{ model: RhFechamento, as: 'fechamentoRh', required: true,
               where: { status: 'FECHADO' } }] }],
           transaction
@@ -1541,7 +1559,7 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
         }
       }
     }
-    if (['ADIANTAMENTO_40', 'SALDO_60', 'DIARIA'].includes(fechamento.apuracao?.etapa_pagamento)) {
+    if (['ADIANTAMENTO_40', 'SALDO_60', 'PROPORCIONAL', 'DIARIA'].includes(fechamento.apuracao?.etapa_pagamento)) {
       const itensOrigem = await RhApuracaoEvento.findAll({
         where: { apuracao_id: fechamento.apuracao_id }, attributes: ['colaborador_id'], transaction
       });
@@ -1775,6 +1793,7 @@ if (process.env.NODE_ENV === 'test') {
     getCompetenciaDate,
     getLastDayOfCompetencia,
     juntarDiasPorObra,
+    juntarDiasProporcionaisPorObra,
     ratearValorEntreObras,
     reclassificarRateiosTitulo,
     roundCurrency

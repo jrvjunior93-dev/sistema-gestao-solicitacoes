@@ -176,6 +176,7 @@ async function validateRequestWorks() {
   assert.strictEqual(ehAberturaDeSolicitacao(post('/compras/cotacoes/avulsa')), true);
   // Revisto em 29/09: jornada, tickets e aditivo tambem sao barrados.
   assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/jornada')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/jornada/gerencial')), true);
   assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/jornada/individual')), true);
   assert.strictEqual(ehAberturaDeSolicitacao(post('/contratos/15/aditivos')), true);
   assert.strictEqual(ehAberturaDeSolicitacao(post('/contratos/fluxo-novo/15/aditivos')), true);

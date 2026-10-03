@@ -9,6 +9,7 @@ const {
 } = require('../src/models');
 const apuracaoService = require('../src/services/rhApuracaoService');
 const calculoHistoricoService = require('../src/services/rhCalculoHistoricoService');
+const { normalizarPeriodo, registrarJornadaGerencial } = require('../src/services/rhJornadaFormularioService');
 const { __test: fechamentoTest } = require('../src/services/rhFechamentoService');
 
 const colaborador = {
@@ -33,6 +34,48 @@ function calcular({ dias = 15, adicionais = 0, descontos = 0 } = {}) {
 }
 
 async function validar() {
+  const flagGerencialOriginal = process.env.RH_JORNADA_GERENCIAL_V2;
+  try {
+    process.env.RH_JORNADA_GERENCIAL_V2 = 'OFF';
+    await assert.rejects(registrarJornadaGerencial({}), /nao esta habilitado/);
+    process.env.RH_JORNADA_GERENCIAL_V2 = 'ON';
+    await assert.rejects(registrarJornadaGerencial({
+      idempotency_key: '1234567890abcdef',
+      linhas: [{ colaborador_id: 1, intencao_pagamento: 'PROPORCIONAL' },
+        { colaborador_id: 1, intencao_pagamento: 'DIARIA' }]
+    }), /apenas uma vez/);
+  } finally {
+    if (flagGerencialOriginal === undefined) delete process.env.RH_JORNADA_GERENCIAL_V2;
+    else process.env.RH_JORNADA_GERENCIAL_V2 = flagGerencialOriginal;
+  }
+  assert.deepStrictEqual(
+    [normalizarPeriodo({ modo_gerencial_v2: true }, '2026-10', 'ADIANTAMENTO_40').inicio,
+      normalizarPeriodo({ modo_gerencial_v2: true }, '2026-10', 'ADIANTAMENTO_40').fim],
+    ['2026-10-01', '2026-10-31']
+  );
+  assert.strictEqual(normalizarPeriodo({}, '2026-10', 'ADIANTAMENTO_40').fim, '2026-10-15');
+  const jornadaGerencial = apuracaoService.calcularItemApuracaoParaTeste({
+    colaborador,
+    jornada: { modo_gerencial_v2: true, dias_trabalhados: 15,
+      total_dias_competencia: 30, total_obras_competencia: 2 },
+    creditos: 0, debitos: 0, observacoes: new Set(),
+    importacao_ids: new Set([10]), eventos: []
+  }, 30);
+  assert.strictEqual(jornadaGerencial.valor_bruto, 3000);
+  const mensalMultiobra = apuracaoService.__test.combinarItensMultiobra([
+    { obra: { id: 10, nome: 'A' }, item: jornadaGerencial },
+    { obra: { id: 20, nome: 'B' }, item: { ...jornadaGerencial,
+      detalhes_json: { ...jornadaGerencial.detalhes_json, importacao_ids: [11] } } }
+  ], colaborador);
+  assert.strictEqual(mensalMultiobra.valor_bruto, 3000);
+  assert.strictEqual(mensalMultiobra.valor_liquido, 3000);
+  assert.strictEqual(mensalMultiobra.detalhes_json.resumo.valor_proporcional, 3000);
+  assert.strictEqual(apuracaoService.__test.diasProporcionaisComAdiantamentos({
+    dias_trabalhados: 15, detalhes_json: {}
+  }, 20, [{ dias_trabalhados: 15, apuracao: { obra_id: 10 } }]), 30);
+  assert.strictEqual(apuracaoService.__test.diasProporcionaisComAdiantamentos({
+    dias_trabalhados: 15, detalhes_json: {}
+  }, 10, [{ dias_trabalhados: 10, apuracao: { obra_id: 10 } }]), 15);
   const categoriasFindAll = CategoriaFinanceira.findAll;
   const categoriaSalarios = {
     id: 17, nome: '2.01.02.01 - Salários e Ordenados', tipo: 'PAGAR',
@@ -166,6 +209,58 @@ async function validar() {
     RhApuracaoEvento.findAll = findAllOriginal;
   }
 
+  const itemGerencial = (dias) => apuracaoService.calcularItemApuracaoParaTeste({
+    colaborador: { ...colaborador, tipo_vinculo: 'NAO_CLT',
+      valor_contratual: 0, pagamento_automatico_40_60: false },
+    jornada: { modo_gerencial_v2: true, dias_trabalhados: dias },
+    creditos: 0, debitos: 0, observacoes: new Set(),
+    importacao_ids: new Set([30]), eventos: []
+  }, 30);
+  RhApuracaoEvento.findAll = async () => [];
+  try {
+    const quarentaGerencial = await apuracaoService.__test.ajustarItemParaEtapa(
+      itemGerencial(15), { competencia: '2026-10', etapa_pagamento: 'ADIANTAMENTO_40' }
+    );
+    assert.strictEqual(Number(quarentaGerencial.valor_liquido), 1200);
+    assert.strictEqual(fechamentoTest.buildParcelasColaborador(
+      { ...quarentaGerencial, colaborador: { ...colaborador, pagamento_automatico_40_60: false } },
+      { competencia: '2026-10', etapa_pagamento: 'ADIANTAMENTO_40' }
+    )[0].numeroSufixo, '40');
+    const proporcional = await apuracaoService.__test.ajustarItemParaEtapa(
+      itemGerencial(15), { competencia: '2026-10', etapa_pagamento: 'PROPORCIONAL', obra_id: 10 }
+    );
+    assert.strictEqual(Number(proporcional.valor_liquido), 1500);
+    assert.strictEqual(proporcional.detalhes_json.resumo.divisor_gerencial, 30);
+    assert.strictEqual(fechamentoTest.buildParcelasColaborador(
+      { ...proporcional, colaborador: { ...colaborador, pagamento_automatico_40_60: false } },
+      { competencia: '2026-10', etapa_pagamento: 'PROPORCIONAL' }
+    )[0].numeroSufixo, 'PROP');
+    RhApuracaoEvento.findAll = async () => [{
+      valor_liquido: 1200, dias_trabalhados: 15, detalhes_json: { resumo: {} },
+      apuracao: { obra_id: 10, fechamentoRh: { status: 'FECHADO' } }
+    }];
+    const aposQuarenta = await apuracaoService.__test.ajustarItemParaEtapa(
+      itemGerencial(20), { competencia: '2026-10', etapa_pagamento: 'PROPORCIONAL', obra_id: 10 }
+    );
+    assert.strictEqual(Number(aposQuarenta.valor_liquido), 800);
+    RhApuracaoEvento.findAll = async () => [{
+      valor_liquido: 1200, dias_trabalhados: 15, detalhes_json: { resumo: {} },
+      apuracao: { obra_id: 10, fechamentoRh: { status: 'FECHADO' } }
+    }];
+    const proporcionalNaOutraObra = await apuracaoService.__test.ajustarItemParaEtapa(
+      itemGerencial(15), { competencia: '2026-10', etapa_pagamento: 'PROPORCIONAL', obra_id: 20 }
+    );
+    assert.strictEqual(Number(proporcionalNaOutraObra.valor_liquido), 1800);
+    assert.strictEqual(proporcionalNaOutraObra.detalhes_json.resumo.dias_reconhecidos, 30);
+    RhApuracaoEvento.findAll = async () => [];
+    const fevereiroIntegral = await apuracaoService.__test.ajustarItemParaEtapa(
+      itemGerencial(28), { competencia: '2027-02', etapa_pagamento: 'PROPORCIONAL', obra_id: 10 }
+    );
+    assert.strictEqual(Number(fevereiroIntegral.valor_liquido), 3000);
+  } finally {
+    RhApuracaoEvento.findAll = findAllOriginal;
+  }
+
   const primeiroComAjustes = await apuracaoService.__test.ajustarItemParaEtapa(
     calcular({ adicionais: 100, descontos: 50 }),
     { competencia: '2026-10', etapa_pagamento: 'ADIANTAMENTO_40' }
@@ -208,6 +303,10 @@ async function validar() {
     [{ obraId: 10, peso: 15 }],
     [{ obraId: 20, peso: 15 }]
   );
+  assert.deepStrictEqual(fechamentoTest.juntarDiasProporcionaisPorObra(
+    [{ obraId: 10, peso: 10 }],
+    [{ obraId: 10, peso: 15 }, { obraId: 20, peso: 15 }]
+  ), [{ obraId: 10, peso: 15 }, { obraId: 20, peso: 15 }]);
   assert.deepStrictEqual(fechamentoTest.ratearValorEntreObras(1200, diasDoMes), [
     { obraId: 10, valor: 600 }, { obraId: 20, valor: 600 }
   ]);
@@ -289,6 +388,28 @@ async function validar() {
     RhApuracaoEvento.findAll = findEventosOriginal;
     RhApuracaoEventoItem.findOne = findRecorrenteOriginal;
     RhFechamento.findOne = findFechamentoOriginal;
+  }
+
+  const creditoProporcional = {
+    valor_bruto: -200,
+    valor_descontos: 0,
+    valor_liquido: -200,
+    ajuste_credito_manual: 0,
+    ajuste_debito_manual: 0,
+    detalhes_json: { resumo: { mensal_proporcional: 1000, adiantamento_anterior: 1200 } },
+    async update(patch) { Object.assign(this, patch); }
+  };
+  RhApuracaoEvento.findAll = async () => [creditoProporcional];
+  try {
+    await apuracaoService.__test.guardarCreditoProporcionalParaDp({
+      id: 26, etapa_pagamento: 'PROPORCIONAL'
+    });
+    assert.strictEqual(creditoProporcional.valor_bruto, 0);
+    assert.strictEqual(creditoProporcional.valor_liquido, 0);
+    assert.strictEqual(creditoProporcional.detalhes_json.resumo.credito_para_acerto_dp, 200);
+    assert.strictEqual(creditoProporcional.detalhes_json.resumo.proporcional_saldo_antes_acerto_dp.liquido, -200);
+  } finally {
+    RhApuracaoEvento.findAll = findEventosOriginal;
   }
 
   console.log('Etapas RH/DP 40%, 60% e diarias independentes validadas sem banco.');

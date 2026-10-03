@@ -507,6 +507,23 @@ export async function colaboradoresParaJornadaRh(params = {}) {
   return parseJson(response, 'Erro ao montar a lista de jornada');
 }
 
+export async function colaboradoresParaJornadaGerencialRh(params = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/jornada/gerencial/colaboradores${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao montar a lista gerencial de jornada');
+}
+
+export async function registrarJornadaGerencialRh(data) {
+  const response = await fetch(`${API_URL}/rh/jornada/gerencial`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao registrar a jornada gerencial');
+}
+
 export async function registrarJornadaRh(data) {
   const response = await fetch(`${API_URL}/rh/jornada`, {
     method: 'POST',
