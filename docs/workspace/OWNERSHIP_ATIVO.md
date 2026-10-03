@@ -13,6 +13,13 @@ Sessao `/root` reserva temporariamente `backend/src/config/env.js`,
 Escopo: merge e testes em worktree isolado, ensaio somente no schema temporario
 `fluxy_restore_20261003` do RDS staging. Nenhum deploy ou alteracao na producao.
 
+Em 03/10, apos autorizacao explicita do proprietario para corrigir os quatro
+codigos duplicados inativos em producao, a mesma sessao reserva tambem
+`backend/scripts/corrigirCodigosContratosProducao.js`. O script e preparado
+na branch isolada, com destino, conta, TLS, registros e transacao fixados; sua
+execucao na producao permanece condicionada ao backup fresco e a conferencia
+imediata dos dados. Nenhuma migration ou deploy e autorizada por esta reserva.
+
 ## Ownership temporario - documentacao e preparacao da promocao - 03/10/2026
 
 Sessao `/root` reserva `docs/README.md`, `docs/arquitetura/infra-deploy.md`,
