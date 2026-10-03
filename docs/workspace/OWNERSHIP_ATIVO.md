@@ -22,6 +22,11 @@ imediata dos dados. Nenhuma migration ou deploy e autorizada por esta reserva.
 Reservado tambem `backend/scripts/validarLeituraMainAntigaNoSchemaMigrado.js`
 para validar, somente na copia migrada do RDS staging, consultas dos modelos
 da main original; sem servidor, migration ou escrita em dados.
+Reservado `backend/scripts/migrarSchemaProducao20261003.js` para preparar um
+runner one-shot, com origem do .env de producao apenas para conferir destino,
+conta administrativa informada no momento, TLS e estado exato 170/85. A
+execucao de migrations continua condicionada a novo backup/snapshot e a
+conferencia dos gates; esta edicao local nao executa nada na producao.
 
 ## Ownership temporario - documentacao e preparacao da promocao - 03/10/2026
 
