@@ -4,7 +4,8 @@
 
 Sessao `/root` reserva temporariamente `backend/src/config/env.js`,
 `backend/src/database/index.js`, `backend/src/services/{comercialService,chequeTerceiroService,paymentBaixaService,tituloFinanceiroService}.js`,
-`backend/scripts/ensaiarMigrationsRestauracao.js`, `backend/.env.example`,
+`backend/scripts/ensaiarMigrationsRestauracao.js`,
+`backend/scripts/ensaiarCorrecaoCodigosContratos.js`, `backend/.env.example`,
 `frontend/src/pages/{ComercialContratos,FinanceiroObras}.jsx`,
 `frontend/src/components/ui/ApropriacaoAutocomplete.jsx`,
 `docs/handoffs/2026-10-03-promocao-main.md` e este registro.

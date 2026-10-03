@@ -36,15 +36,26 @@ async function main() {
   }
 
   const before = await getMigrationState();
-  if (!before.tableExists || before.pending.length !== 85) {
-    throw new Error(`Ensaio recusado: esperado snapshot com 85 migrations pendentes; encontradas ${before.pending.length}.`);
+  const firstApplied = [
+    '202608160050_obra_tipo_apropriacao_padrao.js',
+    '202608160051_contrato_fluxo_novo.js'
+  ];
+  const originalSnapshot = before.executed.size === 170 && before.pending.length === 85;
+  const partialSnapshot = before.executed.size === 172 && before.pending.length === 83 &&
+    firstApplied.every((name) => before.executed.has(name)) &&
+    before.pending[0] === '202608160052_contratos_codigo_obra_unico.js';
+  if (!before.tableExists || (!originalSnapshot && !partialSnapshot)) {
+    throw new Error(
+      `Ensaio recusado: estado de migrations inesperado (${before.executed.size} aplicadas, ` +
+      `${before.pending.length} pendentes). Esperado snapshot original ou parada conhecida apos as duas primeiras.`
+    );
   }
 
-  console.log(`Destino isolado conferido: ${TARGET.database} no RDS staging; 85 migrations pendentes.`);
+  console.log(`Destino isolado conferido: ${TARGET.database} no RDS staging; ${before.pending.length} migrations pendentes.`);
   await runMigrations({ authorized: true });
   const after = await getMigrationState();
   if (after.pending.length) throw new Error(`${after.pending.length} migrations permanecem pendentes.`);
-  console.log('Ensaio concluido: 85 migrations aplicadas somente no schema temporario.');
+  console.log(`Ensaio concluido: ${before.pending.length} migrations aplicadas somente no schema temporario.`);
 }
 
 main()
