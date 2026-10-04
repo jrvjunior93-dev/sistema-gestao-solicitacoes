@@ -99,6 +99,57 @@ assert.deepStrictEqual(
   obterAreasConfiguracaoCamposDestino({ codigo: '111', nome: 'MARKETING', tipo_centro_custo: 'CENTRO_CUSTO' }),
   ['MARKETING']
 );
+const centroAdministrativo = {
+  codigo: '1', nome: 'ADMINISTRATIVO ESCRITORIO', tipo_centro_custo: 'CENTRO_CUSTO'
+};
+assert.deepStrictEqual(
+  obterAreasConfiguracaoCamposDestino(centroAdministrativo),
+  [],
+  'Despesa Administrativa nao deve herdar uma regra de campos do nome do Centro de Custo.'
+);
+assert.deepStrictEqual(
+  obterAreasConfiguracaoCamposDestino({
+    codigo: '42', nome: 'DIRETORIA', tipo_centro_custo: 'CENTRO_CUSTO'
+  }),
+  [],
+  'Um outro Centro de Custo vinculado ao tipo tambem usa a regra do setor de destino.'
+);
+const configAdministrativa = {
+  regras: {
+    ADMINISTRATIVO: {
+      tipos: {
+        [tipoAutomaticoId]: { campos: { forma_pagamento: { visivel: false, obrigatorio: false } } }
+      }
+    },
+    GEO: {
+      tipos: {
+        [tipoAutomaticoId]: { campos: { forma_pagamento: { visivel: true, obrigatorio: true } } },
+        [`${tipoAutomaticoId}:23`]: { campos: { forma_pagamento: { visivel: false, obrigatorio: false } } }
+      }
+    }
+  }
+};
+const areasAdministrativas = [
+  ...obterAreasConfiguracaoCamposDestino(centroAdministrativo),
+  ...obterAreasConfiguracaoCamposDestinoInicial({
+    setor: { codigo: 'GEO', nome: 'GERENCIA DE PROCESSOS' },
+    areaResponsavel: 'GEO'
+  })
+];
+assert.strictEqual(
+  resolverCamposNovaSolicitacao({}, configAdministrativa, tipoAutomaticoId, {
+    areaResponsavel: areasAdministrativas
+  }).forma_pagamento.obrigatorio,
+  true,
+  'A regra do tipo em GEO deve valer mesmo para o Centro de Custo Administrativo.'
+);
+assert.strictEqual(
+  resolverCamposNovaSolicitacao({}, configAdministrativa, tipoAutomaticoId, {
+    areaResponsavel: areasAdministrativas, tipoSubId: 23
+  }).forma_pagamento.visivel,
+  false,
+  'A regra do subtipo em GEO deve prevalecer em qualquer Centro de Custo.'
+);
 assert.deepStrictEqual(
   obterAreasConfiguracaoCamposDestinoInicial({
     setor: { codigo: 'GERENCIA_PROCESSOS', nome: 'GERENCIA DE PROCESSOS' },

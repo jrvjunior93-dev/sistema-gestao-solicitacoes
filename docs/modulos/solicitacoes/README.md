@@ -76,6 +76,12 @@ a configuracao vigente. A distribuicao gerencial por obra registra destino perce
 ou financeiro no relatorio do Centro de Custo, sem atribuir o custo real a obra. A
 opcao `TODAS` permanece como classificacao propria e nao e rateada.
 
+Para `DESPESA ADMINISTRATIVA`, as regras de `Campos da Nova Solicitacao` do setor
+inicial GEO (tipo e eventual subtipo) valem independentemente do Centro de Custo
+selecionado. O nome `ADMINISTRATIVO/ESCRITORIO` nao cria uma regra de campos
+prioritaria; esse tipo tambem pode ser vinculado explicitamente a outros Centros
+de Custo sem duplicar a configuracao do formulario.
+
 ## Encaminhamento atual, compatibilidade e automacoes
 
 Novas solicitacoes abertas pela tela entram em `GEO / PENDENTE`; o navegador nao pode substituir esse destino por payload. Os campos e endpoints de diretoria permanecem no backend somente para compatibilidade com registros antigos que ja possuam `fluxo_aprovacao_diretoria = true`; eles nao devem ser reutilizados para criar novos fluxos. Prioridades da diretoria continuam sendo um dominio operacional separado e nao alteram o setor responsavel. A configuracao `Tipos por Setor (Recebimento)` continua controlando visibilidade e modo de recebimento depois que a solicitacao chega a um setor, mas nao controla o catalogo de abertura. Automacao por status so ocorre depois de uma transicao valida e nao pode ignorar permissoes ou consistencia.
