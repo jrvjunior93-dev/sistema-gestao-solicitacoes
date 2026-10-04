@@ -1,13 +1,14 @@
 const assert = require('node:assert/strict');
 const { Op } = require('sequelize');
 const {
-  Obra, TituloFinanceiro, TituloFinanceiroRateio,
+  Obra, Apropriacao, TituloFinanceiro, TituloFinanceiroRateio,
   ObraCustoHistorico, UnidadeComercial, ContratoComercial
 } = require('../src/models');
 const controller = require('../src/controllers/ResultadoObrasController');
 
 const original = {
   obras: Obra.findAll,
+  apropriacoes: Apropriacao.findAll,
   titulos: TituloFinanceiro.findAll,
   rateios: TituloFinanceiroRateio.findAll,
   historicos: ObraCustoHistorico.findAll,
@@ -20,8 +21,18 @@ async function main() {
     { id: 1, classificacao: 'PRIVADA', vgv: null, margem_custo_esperada: 20 },
     { id: 2, classificacao: 'PRIVADA', vgv: '1000000.00' },
     { id: 3, classificacao: 'PRIVADA', vgv: '0.00' },
-    { id: 4, classificacao: 'PUBLICA', planilha_geral: '800000.00', margem_custo_esperada: 30 }
+    { id: 4, classificacao: 'PUBLICA', planilha_geral: '800000.00', margem_custo_esperada: 30 },
+    { id: 5, classificacao: 'PUBLICA', planilha_geral: null, margem_custo_esperada: 20 }
   ];
+  Apropriacao.findAll = async (options) => {
+    assert.equal(options.where.ativo, true);
+    assert.deepEqual(options.where.obra_id[Op.in], [5], 'Consultar só obras públicas sem valor cadastrado');
+    return [
+      { obra_id: 5, valor_orcado: '600000.00', somadora: true },
+      { obra_id: 5, valor_orcado: '250000.00', somadora: false },
+      { obra_id: 5, valor_orcado: '350000.00', somadora: false }
+    ];
+  };
   ContratoComercial.findAll = async () => [];
   UnidadeComercial.findAll = async (options) => {
     assert.equal(options.where.ativo, true);
@@ -59,15 +70,21 @@ async function main() {
 
   assert.equal(resultado[1].vgv_efetivo, 1000000);
   assert.equal(resultado[1].vgv_origem, 'CADASTRO');
-  assert.equal(resultado[2].vgv_efetivo, 0, 'Soma parcial nao deve virar VGV');
+  assert.equal(resultado[2].vgv_efetivo, 500000, 'Unidades conhecidas compoem VGV parcial');
   assert.equal(resultado[2].vgv_origem, 'UNIDADES_INCOMPLETAS');
   assert.equal(resultado[2].vgv_unidades_sem_valor, 1);
-  assert.equal(resultado[2].falta_receber, 80000, 'Sem VGV completo, prevalece o saldo dos titulos');
+  assert.equal(resultado[2].falta_receber, 480000);
   assert.equal(resultado[3].planilha_geral, 800000);
   assert.equal(resultado[3].orcamento, 560000);
   assert.equal(resultado[3].valor_total_resultado, 800000);
   assert.equal(resultado[3].falta_receber, 800000);
-  console.log('VGV privado: base de venda de unidades ativas, sem soma parcial nem alteracao do cadastro.');
+  assert.equal(resultado[4].planilha_geral, null, 'Fallback não grava o campo do cadastro');
+  assert.equal(resultado[4].planilha_geral_efetiva, 600000);
+  assert.equal(resultado[4].planilha_geral_origem, 'APROPRIACOES');
+  assert.equal(resultado[4].valor_total_resultado, 600000);
+  assert.equal(resultado[4].orcamento, 480000);
+  assert.equal(resultado[4].falta_receber, 600000);
+  console.log('Referencias: cadastro prioritario, apropriacoes analiticas e VGV parcial sinalizado.');
 }
 
 main().catch((error) => {
@@ -75,6 +92,7 @@ main().catch((error) => {
   process.exitCode = 1;
 }).finally(() => {
   Obra.findAll = original.obras;
+  Apropriacao.findAll = original.apropriacoes;
   TituloFinanceiro.findAll = original.titulos;
   TituloFinanceiroRateio.findAll = original.rateios;
   ObraCustoHistorico.findAll = original.historicos;

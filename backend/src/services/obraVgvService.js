@@ -57,10 +57,10 @@ async function obterVgvEfetivoPorObras(obras = []) {
 
   for (const obraId of obrasSemVgv) {
     const info = resultado.get(obraId);
+    info.valor = (centavosPorObra.get(obraId) || 0) / 100;
     if (info.unidades_sem_valor) {
       info.origem = 'UNIDADES_INCOMPLETAS';
-    } else if (info.unidades_total && centavosPorObra.get(obraId)) {
-      info.valor = centavosPorObra.get(obraId) / 100;
+    } else if (info.unidades_total && info.valor > 0) {
       info.origem = 'UNIDADES';
     }
   }

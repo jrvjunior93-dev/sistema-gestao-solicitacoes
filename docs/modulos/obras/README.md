@@ -13,7 +13,10 @@ Obras e dono do cadastro da obra, classificacao, dimensoes financeiras da obra e
 - apropriacoes usadas por outros modulos nao podem ser removidas fisicamente;
 - rateios precisam referenciar apropriacoes analiticas ativas da mesma obra;
 - em Solicitacoes/Financeiro, rateio percentual fecha 100% ou o rateio por valor fecha o total; em Compras, a soma das quantidades apropriadas fecha a quantidade do item;
-- orcamento nao pode ser calculado a partir de dados inferidos;
+- o orcamento de custo do Resultado de Obras usa a referencia efetiva e a margem cadastrada; nao inferir margem nem criar referencia fora das fontes aprovadas abaixo;
+- para obra publica, a Planilha geral cadastrada tem prioridade; quando ausente ou zero, a referencia financeira exibida e a soma de `valor_orcado` das apropriacoes analiticas ativas, sem linhas somadoras; o campo cadastral nao e preenchido automaticamente;
+- para obra privada, o VGV cadastrado tem prioridade; quando ausente ou zero, a referencia e a soma dos valores base das unidades ativas nao excluidas. Unidades sem valor nao entram na soma e o VGV e sinalizado como parcial; sem valores conhecidos, a referencia permanece zero;
+- card do cadastro, Resultado de Obras e Painel do Gestor devem consumir a mesma referencia efetiva. Volume/orcamento usam azul, executado/gasto vermelho, recebido verde, pendencias ambar e lucro/prejuizo conforme o sinal; com o olho fechado, nenhuma cor deve revelar valor;
 - custo realizado vem de movimentos financeiros ativos;
 - previsto vem de titulos em aberto ou parciais;
 - estornos financeiros devem refletir imediatamente no resultado da obra;

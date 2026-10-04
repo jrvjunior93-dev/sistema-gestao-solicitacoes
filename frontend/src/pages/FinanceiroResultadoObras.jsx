@@ -59,15 +59,10 @@ export function contextoValorTotalObras(obras = []) {
   return { rotulo: 'Volume financeiro total', apoio: undefined };
 }
 
-/* O consolidado preserva a comparação prevista x realizada do sistema. Os cartões detalhados
-   seguem a psicologia das cores financeira: débito/gasto em vermelho, crédito/recebido em verde,
-   pendências em âmbar e valores neutros (vendido) em azul, sempre usando os tokens do tema. */
+/* Volume e orçamento são referências azuis; gasto é vermelho, recebimento verde,
+   pendência âmbar e resultado acompanha o sinal, em todos os cards. */
 function Previsto({ children }) {
   return <span className="texto-previsto">{children}</span>;
-}
-
-function Realizado({ children }) {
-  return <span className="texto-realizado">{children}</span>;
 }
 
 function MetricaObra({ rotulo, valor, apoio, tom = 'neutro' }) {
@@ -100,9 +95,10 @@ export function ObraBloco({ obra }) {
   const isPrivada = classificacao === 'PRIVADA';
   const isPublica = classificacao === 'PUBLICA';
 
-  const valorReferencia = isPrivada ? (obra.vgv_efetivo ?? obra.vgv) : isPublica ? obra.planilha_geral : null;
   const orcamento = obra.orcamento; // calculado no backend: valorReferencia * (1 - margem/100)
-  const valorReferenciaResultado = Number(obra.valor_referencia_resultado ?? valorReferencia ?? 0);
+  const valorReferenciaResultado = Number(obra.valor_referencia_resultado
+    ?? (isPrivada ? (obra.vgv_efetivo ?? obra.vgv) : isPublica ? obra.planilha_geral : null)
+    ?? 0);
 
   const executado = obra.pagar.executado;
   const recebido = obra.receber.recebido;
@@ -125,18 +121,21 @@ export function ObraBloco({ obra }) {
     ? Number(obra.receber.recebido_acumulado_ate || 0)
     : Number(recebido || 0);
 
-  const margemRealizada = executadoProgresso > 0 && valorReferencia > 0
-    ? ((executadoProgresso / valorReferencia) * 100).toFixed(1)
+  const margemRealizada = executadoProgresso > 0 && valorReferenciaResultado > 0
+    ? ((executadoProgresso / valorReferenciaResultado) * 100).toFixed(1)
     : null;
 
   const baseRecebimento = baseTotalObra > 0 ? baseTotalObra : totalReceber;
   const fonteVgv = obra.vgv_origem === 'UNIDADES'
     ? `${obra.vgv_unidades_total} unidades ativas · valor base de venda`
     : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
-      ? `VGV não calculado: ${obra.vgv_unidades_sem_valor} unidade(s) sem valor base de venda`
+      ? `${valorReferenciaResultado > 0 ? 'VGV parcial' : 'VGV não calculado'}: ${obra.vgv_unidades_sem_valor} unidade(s) sem valor base de venda`
       : obra.vgv_origem === 'SEM_UNIDADES'
         ? 'Sem unidades ativas vinculadas; VGV não calculado'
         : undefined;
+  const fontePlanilha = isPublica && obra.planilha_geral_origem === 'APROPRIACOES'
+    ? 'Soma das apropriações analíticas'
+    : undefined;
 
   return (
     <article className="resultado-obra-card">
@@ -157,7 +156,7 @@ export function ObraBloco({ obra }) {
         <MetricaObra
           rotulo={isPrivada ? 'VGV' : isPublica ? 'Planilha geral' : 'Referência'}
           valor={formatCurrency(valorReferenciaResultado)}
-          apoio={fonteVgv}
+          apoio={fonteVgv || fontePlanilha}
         />
         <MetricaObra rotulo="Orçamento" valor={orcamento == null ? '—' : formatCurrency(orcamento)} />
         {isPrivada ? (
@@ -394,19 +393,21 @@ export default function FinanceiroResultadoObras() {
               tom="warning"
             />
           ) : null}
-          <StatTile label="Executado" valor={<Realizado>{formatCurrency(resumo.executado)}</Realizado>}
+          <StatTile label="Executado" valor={formatCurrency(resumo.executado)} tom="danger"
             sub={resumo.historicoPago > 0 ? `inclui ${formatCurrency(resumo.historicoPago)} do sistema anterior` : undefined} />
           <StatTile label="Total a receber" valor={<Previsto>{formatCurrency(resumo.totalReceber)}</Previsto>} />
-          <StatTile label="Recebido" valor={<Realizado>{formatCurrency(resumo.recebido)}</Realizado>}
+          <StatTile label="Recebido" valor={formatCurrency(resumo.recebido)} tom="success"
             sub={resumo.historicoRecebido > 0 ? `inclui ${formatCurrency(resumo.historicoRecebido)} do sistema anterior` : undefined} />
           <StatTile
             label="Falta receber"
             valor={formatCurrency(faltaReceberConsolidado)}
+            tom="warning"
             sub={`${rotuloValorTotal} menos recebido`}
           />
           <StatTile
             label="Lucro/Prejuízo"
             valor={formatCurrency(resumo.lucroPrejuizo)}
+            tom={resumo.lucroPrejuizo < 0 ? 'danger' : resumo.lucroPrejuizo > 0 ? 'success' : undefined}
             sub="Recebido menos executado"
           />
         </StatGrid>

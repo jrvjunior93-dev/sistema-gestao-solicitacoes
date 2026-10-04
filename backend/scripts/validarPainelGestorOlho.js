@@ -513,8 +513,16 @@ async function testarMascaramento() {
   assert.strictEqual(s.historico[0].acao, 'ATUALIZADO');
 
   // Unidade: string numerica em chave financeira, lista de valores, texto negativo.
-  const unit = mascararValores({ valor: '1.234,56', valores: [1, 2], nota: 'Saldo -R$ 1.234,56 hoje', data_pagamento: '2026-09-01' });
-  assert.deepStrictEqual(unit, { valor: null, valores: [null, null], nota: 'Saldo •••••• hoje', data_pagamento: '2026-09-01' });
+  const unit = mascararValores({
+    valor: '1.234,56', valores: [1, 2], planilha_geral_efetiva: 1234.56,
+    planilha_geral_origem: 'APROPRIACOES',
+    nota: 'Saldo -R$ 1.234,56 hoje', data_pagamento: '2026-09-01'
+  });
+  assert.deepStrictEqual(unit, {
+    valor: null, valores: [null, null], planilha_geral_efetiva: null,
+    planilha_geral_origem: 'APROPRIACOES',
+    nota: 'Saldo •••••• hoje', data_pagamento: '2026-09-01'
+  });
   console.log('  ok mascaramento das 3 respostas reais (nenhum numero financeiro, nenhum R$)');
   return { resultado, custos, saldos };
 }

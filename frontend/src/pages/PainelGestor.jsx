@@ -143,6 +143,8 @@ function useCargaAtual() {
 function SaldoExecutivoPrincipal({ snapshot, loading, onOpenBalances, oculto }) {
   const [expanded, setExpanded] = useState(false);
   const resumo = snapshot?.resumo || {};
+  const saldoNumero = Number(resumo.saldo_informado || 0);
+  const tomSaldo = oculto || loading ? 'neutro' : saldoNumero < 0 ? 'negativo' : saldoNumero > 0 ? 'positivo' : 'neutro';
   const ordem = useOrdemCards({
     storageKey: ORDEM_SALDOS.chave,
     criterios: ORDEM_SALDOS.criterios,
@@ -154,7 +156,7 @@ function SaldoExecutivoPrincipal({ snapshot, loading, onOpenBalances, oculto }) 
   });
   return (
     <section className="pg-main-balance" data-completo={resumo.completo ? 'true' : 'false'} aria-busy={loading}>
-      <div className="pg-balance-summary">
+      <div className="pg-balance-summary" data-tom={tomSaldo}>
         <div>
           <span>{resumo.completo ? 'Saldo consolidado do grupo' : 'Saldo parcial disponível'}</span>
           <strong>{loading ? 'Carregando...' : dinheiro(resumo.saldo_informado, oculto)}</strong>

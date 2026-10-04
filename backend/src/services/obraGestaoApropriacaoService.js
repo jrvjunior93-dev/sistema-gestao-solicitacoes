@@ -25,6 +25,14 @@ function somarOrcamentoAnalitico(apropriacoes = []) {
   );
 }
 
+function resolverPlanilhaGeralEfetiva(obra, apropriacoes = []) {
+  const cadastrado = asNumber(obra?.planilha_geral);
+  if (cadastrado > 0) return { valor: cadastrado, origem: 'CADASTRO' };
+
+  const valor = somarOrcamentoAnalitico(apropriacoes);
+  return { valor: valor > 0 ? valor : 0, origem: valor > 0 ? 'APROPRIACOES' : null };
+}
+
 function pesoRateio(item) {
   const valor = asNumber(item?.valor_rateio);
   if (valor > 0) return valor;
@@ -142,5 +150,6 @@ module.exports = {
   distribuirPorApropriacao,
   normalizarRateios,
   selecionarFonteApropriacao,
-  somarOrcamentoAnalitico
+  somarOrcamentoAnalitico,
+  resolverPlanilhaGeralEfetiva
 };

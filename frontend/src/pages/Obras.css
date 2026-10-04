@@ -175,9 +175,12 @@
   line-height: 1.25;
 }
 
-.obra-card-metrica--reference > strong,
-.obra-card-metrica--executed > strong {
+.obra-card-metrica--reference > strong {
   color: var(--c-primary);
+}
+
+.obra-card-metrica--executed > strong {
+  color: var(--sem-danger);
 }
 
 .obra-card-metrica--received > strong,
@@ -232,6 +235,10 @@
 
 .obra-card-progresso__barra--success {
   background: var(--sem-success);
+}
+
+.obra-card-progresso__barra--danger {
+  background: var(--sem-danger);
 }
 
 .obra-cadastro-card__modo {
