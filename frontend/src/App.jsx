@@ -370,14 +370,6 @@ function DashboardRoute() {
   return <Dashboard />;
 }
 
-function HomeEntry() {
-  const { user } = useAuth();
-  if (canAccessPainelGestor(user)) {
-    return <Navigate to="/painel-gestor" replace />;
-  }
-  return <HomeHub />;
-}
-
 function PainelGestorRoute({ children }) {
   const { user } = useAuth();
   if (!canAccessPainelGestor(user)) return <Navigate to="/" replace />;
@@ -941,7 +933,7 @@ export default function App() {
       >
         {/* Hub Principal (nível 1) e hubs de módulo (nível 2). O
             Dashboard executivo, antes na raiz, vive agora em /dashboard. */}
-        <Route index element={<HomeEntry />} />
+        <Route index element={<HomeHub />} />
         <Route path="hub/:moduleId" element={<ModuleHub />} />
         <Route path="dashboard" element={<DashboardRoute />} />
         <Route path="painel-gestor" element={<PainelGestorRoute><PainelGestor /></PainelGestorRoute>} />

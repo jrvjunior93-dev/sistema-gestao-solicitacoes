@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Ownership temporario - Home como tela inicial - 04/10/2026
+
+Sessao `/root` reserva `frontend/src/App.jsx`,
+`frontend/scripts/validarNavegacao.mjs` e
+`docs/handoffs/2026-10-04-home-tela-inicial.md` para fazer a rota `/` abrir
+o menu dos modulos, preservando o acesso protegido ao Painel do Gestor.
+Sem banco, EC2, migration ou alteracao de permissoes.
+
+Implementacao validada e ownership de edicao liberado. Build e teste de abas
+aprovados; o teste geral de navegacao continua com falha preexistente em
+`FinanceiroTitulos.jsx`, fora deste escopo. Handoff:
+`docs/handoffs/2026-10-04-home-tela-inicial.md`.
+
 ## Ownership temporario - retorno do contrato aprovado a Obra - 04/10/2026
 
 Sessao `/root` no worktree `painel-gestor-refactor`: reserva

@@ -211,6 +211,14 @@ try {
   console.log(`Rotas declaradas no App.jsx: ${rotas.length}`);
   console.log(`Destinos na fonte de navegação: ${destinos.length}`);
 
+  // A preferência "Home (padrão)" resolve para `/` no login. Essa rota
+  // precisa abrir o hub mesmo para quem também pode acessar o Painel do Gestor.
+  const appSource = readFileSync(path.join(raiz, 'src/App.jsx'), 'utf8');
+  if (!/<Route\s+index\s+element=\{<HomeHub\s*\/>\}\s*\/>/.test(appSource)) {
+    falhas += 1;
+    console.error('HOME: a rota `/` deve abrir HomeHub diretamente, sem redirecionar para o Painel do Gestor.');
+  }
+
   // 1) Nenhum link morto na fonte de navegação
   for (const destino of destinos) {
     const ok = rotas.some((rota) => rotaCasa(destino.to, rota));
