@@ -1274,3 +1274,19 @@ solicitacao retornada pela API, inclusive quando um upload posterior falhar;
 preservar alertas, idempotencia e permissoes. Sem escrita no banco ou reinicio
 de backend. Promocao de frontend para `main` apos validacao, sem sobrescrever
 commits exclusivos da producao.
+
+## Ownership ativo - boleto e rateio da nova solicitacao - 04/10/2026
+
+Sessao `/root` no worktree `painel-gestor-refactor`: reserva temporaria de
+`frontend/src/pages/NovaSolicitacao.jsx`,
+`frontend/src/pages/SolicitacaoDetalhe/index.jsx`,
+`frontend/src/components/contratos/RateioApropriacoesContrato.jsx`,
+`backend/src/controllers/SolicitacaoController.js`, testes focados destes fluxos
+`docs/modulos/solicitacoes/README.md`, handoff desta alteracao e deste registro.
+Escopo: Boleto da Despesa Eventual exige o anexo, sem exigir
+favorecido separado; rateio opcional da apropriacao entre linhas de uma obra,
+com validacao de total na API, preservando a selecao unica existente. O servico
+de custos ja consome esses rateios, sem alteracao no calculo. Sem escrita no
+banco remoto, reinicio de processos ou deploy nesta etapa.
+Ownership dos arquivos liberado apos a validacao e o commit local; a promocao
+e o ensaio integrado permanecem como etapa separada no handoff.

@@ -132,6 +132,27 @@ function validarIntegracaoFrontendBackend() {
   assert(solicitacaoController.includes('!formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
   assert(solicitacaoController.includes('Anexe ao menos um comprovante para esta forma de pagamento.'));
   assert(novaSolicitacao.includes('pagamentoViaOutraForma'));
+  assert(novaSolicitacao.includes('const boletoDespesaEventual = usaFluxoDespesaEventual && pagamentoViaBoleto'));
+  assert(novaSolicitacao.includes('Boolean(formaPagamentoSelecionada) && !boletoDespesaEventual'));
+  assert(novaSolicitacao.includes("boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null"));
+  assert(solicitacaoController.includes('const boletoDespesaEventual = usaFluxoDespesaEventual && formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
+  assert(solicitacaoController.includes('const favorecidoEhObrigatorio = !boletoDespesaEventual'));
+  assert(solicitacaoController.includes("Anexe o boleto para usar esta forma de pagamento."));
+  const camposDespesaEventual = resolverCamposNovaSolicitacao(
+    { usa_fluxo_despesa_eventual: true }, { regras: {} }, 33, { areaResponsavel: 'GEO' }
+  );
+  assert.strictEqual(camposDespesaEventual.apropriacao_principal.visivel, true);
+  assert.strictEqual(camposDespesaEventual.apropriacao_principal.obrigatorio, true);
+  assert(novaSolicitacao.includes('const permitirRateioSolicitacao = exibirCampoApropriacao'));
+  assert(novaSolicitacao.includes('Dividir entre apropriações da obra'));
+  assert(novaSolicitacao.includes('rateioSolicitacao.map((linha) => ({'));
+  assert(solicitacaoController.includes('rateioApropriacoes.length < 2'));
+  assert(solicitacaoController.includes('contrato_id: item.contrato_id || null'));
+  assert(solicitacaoController.includes('const criarSolicitacaoComRateio = async () =>'));
+  assert(solicitacaoController.includes('criar: criarSolicitacaoComRateio'));
+  assert(solicitacaoController.includes('await SolicitacaoApropriacao.bulkCreate('));
+  assert(detalhe.includes('titulo="Rateio da solicitação"'));
+  assert(detalhe.includes('item?.valor_rateio'));
   assert(novaSolicitacao.includes('name="dados_pagamento"'));
   assert(solicitacaoController.includes("Informe os dados para pagamento desta forma."));
   assert(dadosPagamentoMigration.includes("addColumn('solicitacoes', 'dados_pagamento'"));
