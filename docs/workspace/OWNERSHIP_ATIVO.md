@@ -27,6 +27,11 @@ runner one-shot, com origem do .env de producao apenas para conferir destino,
 conta administrativa informada no momento, TLS e estado exato 170/85. A
 execucao de migrations continua condicionada a novo backup/snapshot e a
 conferencia dos gates; esta edicao local nao executa nada na producao.
+Em 03/10, apos a parada no trigger da migration de renegociacao e autorizacao
+do proprietario para um parameter group exclusivo de producao sem reboot
+automatico, a reserva cobre o modo de retomada estrita em 227/28. A edicao
+local nao modifica RDS nem executa migrations; se o parametro nao aplicar
+imediatamente, o fluxo deve parar antes de qualquer reboot.
 
 ## Ownership temporario - documentacao e preparacao da promocao - 03/10/2026
 

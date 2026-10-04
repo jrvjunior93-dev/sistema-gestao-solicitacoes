@@ -15,12 +15,25 @@ const TARGET = Object.freeze({
 });
 const MAIN_ROOT = '/home/ubuntu/sistema-gestao-solicitacoes-main';
 const MAIN_SHA = '250b652032e4dc4bf85845e51d943c47ef7a8768';
+const MODES = new Set([
+  '--preflight-producao',
+  '--executar-85-migrations-producao',
+  '--preflight-retomada-28',
+  '--retomar-28-migrations-producao'
+]);
+
+function isResumeMode(mode) {
+  return mode === '--preflight-retomada-28' || mode === '--retomar-28-migrations-producao';
+}
+
+function isExecutionMode(mode) {
+  return mode === '--executar-85-migrations-producao' || mode === '--retomar-28-migrations-producao';
+}
 
 function configure() {
   const mode = process.argv[2];
-  if (process.argv.length !== 3 ||
-      !['--preflight-producao', '--executar-85-migrations-producao'].includes(mode)) {
-    throw new Error('Informe exatamente --preflight-producao ou --executar-85-migrations-producao.');
+  if (process.argv.length !== 3 || !MODES.has(mode)) {
+    throw new Error('Informe um modo de preflight ou execucao inicial/retomada explicitamente.');
   }
 
   const password = process.env.PROD_MIGRATION_ADMIN_PASSWORD;
@@ -53,7 +66,7 @@ function configure() {
   process.env.DB_PASSWORD = password;
   process.env.DB_SSL_CA_FILE = caFile;
 
-  if (mode === '--executar-85-migrations-producao') {
+  if (isExecutionMode(mode)) {
     if (process.env.ALLOW_SCHEMA_MIGRATIONS !== 'true' ||
         !process.env.PROD_MIGRATION_BACKUP_FILE ||
         !process.env.PROD_MIGRATION_SNAPSHOT_ID) {
@@ -61,6 +74,40 @@ function configure() {
     }
   }
   return mode;
+}
+
+async function assertPartialRenegotiationState(sequelize) {
+  const [[{ trust_creators: trustCreators }]] = await sequelize.query(
+    'SELECT @@GLOBAL.log_bin_trust_function_creators AS trust_creators'
+  );
+  if (Number(trustCreators) !== 1) {
+    throw new Error('RDS ainda nao permite criar os triggers; log_bin_trust_function_creators deve ser 1.');
+  }
+
+  const [tables] = await sequelize.query(`
+    SELECT TABLE_NAME AS name FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN ('titulo_renegociacoes', 'titulo_renegociacao_alocacoes')
+  `);
+  const [columns] = await sequelize.query(`
+    SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'titulos_financeiros'
+       AND COLUMN_NAME IN ('renegociacao_id', 'renegociado_por_id',
+                           'juros_renegociacao', 'multa_renegociacao')
+  `);
+  const [triggers] = await sequelize.query(`
+    SELECT TRIGGER_NAME AS name FROM information_schema.TRIGGERS
+     WHERE TRIGGER_SCHEMA = DATABASE()
+       AND TRIGGER_NAME IN ('trg_titulo_negociacao_update', 'trg_titulo_negociacao_delete')
+  `);
+  const hasExactly = (rows, names) => rows.length === names.length &&
+    names.every(name => rows.some(row => row.name === name));
+  if (!hasExactly(tables, ['titulo_renegociacoes', 'titulo_renegociacao_alocacoes']) ||
+      !hasExactly(columns, ['renegociacao_id', 'renegociado_por_id',
+                            'juros_renegociacao', 'multa_renegociacao']) ||
+      triggers.length !== 0) {
+    throw new Error('Objetos parciais da renegociacao divergiram: esperadas 2 tabelas, 4 colunas e 0 triggers.');
+  }
 }
 
 async function main() {
@@ -85,13 +132,21 @@ async function main() {
     }
 
     const before = await getMigrationState();
-    if (!before.tableExists || before.executed.size !== 170 || before.pending.length !== 85 ||
-        before.pending[0] !== '202608160050_obra_tipo_apropriacao_padrao.js' ||
-        before.pending[84] !== '202610020002_rh_jornada_etapas_pagamento.js') {
+    const resume = isResumeMode(mode);
+    const expectedExecuted = resume ? 227 : 170;
+    const expectedPending = resume ? 28 : 85;
+    const expectedFirst = resume
+      ? '202609180002_titulos_renegociacao.js'
+      : '202608160050_obra_tipo_apropriacao_padrao.js';
+    if (!before.tableExists || before.executed.size !== expectedExecuted ||
+        before.pending.length !== expectedPending || before.pending[0] !== expectedFirst ||
+        before.pending[expectedPending - 1] !== '202610020002_rh_jornada_etapas_pagamento.js') {
       throw new Error(
         `Estado de migrations divergente: ${before.executed.size} aplicadas, ${before.pending.length} pendentes.`
       );
     }
+
+    if (resume) await assertPartialRenegotiationState(sequelize);
 
     const [duplicates] = await sequelize.query(`
       SELECT obra_id, codigo, COUNT(*) AS total
@@ -103,12 +158,12 @@ async function main() {
     `);
     if (duplicates.length) throw new Error('Ainda existem codigos de contrato repetidos por obra.');
 
-    console.log(`PREFLIGHT_OK: RDS ${identity.uuid}; TLS ${ssl.Value}; 170 aplicadas, 85 pendentes; contratos sem codigos duplicados.`);
-    if (mode === '--preflight-producao') return;
+    console.log(`PREFLIGHT_OK: RDS ${identity.uuid}; TLS ${ssl.Value}; ${expectedExecuted} aplicadas, ${expectedPending} pendentes; contratos sem codigos duplicados.`);
+    if (!isExecutionMode(mode)) return;
 
     console.log(`Backup informado: ${process.env.PROD_MIGRATION_BACKUP_FILE}`);
     console.log(`Snapshot informado: ${process.env.PROD_MIGRATION_SNAPSHOT_ID}`);
-    console.log('Iniciando 85 migrations de schema; cada DDL pode ter commit proprio no MySQL.');
+    console.log(`Iniciando ${expectedPending} migrations de schema; cada DDL pode ter commit proprio no MySQL.`);
     await runMigrations({ authorized: true });
     const after = await getMigrationState();
     if (after.executed.size !== 255 || after.pending.length !== 0) {
