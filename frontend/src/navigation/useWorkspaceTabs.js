@@ -51,6 +51,7 @@ export function resolveWorkspaceTitle(user, route, preferredTitle = '') {
 
   const url = new URL(normalizeWorkspaceRoute(route) || '/', FALLBACK_ORIGIN);
   if (url.pathname === '/') return 'Início';
+  if (url.pathname === '/modulos') return 'Módulos';
 
   const active = findActiveNode(user, url.pathname, url.search);
   if (active?.item) return cleanTitle(resolveLabel(active.item, user));

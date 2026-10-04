@@ -80,6 +80,13 @@ function Breadcrumb({ user, pathname, busca = '', classe = '' }) {
         <Link to="/">Início</Link>
       )}
 
+      {pathname === '/modulos' && (
+        <>
+          <HiOutlineChevronRight size={13} className="fx-breadcrumb-sep" aria-hidden="true" />
+          <span className="fx-breadcrumb-current" aria-current="page">Módulos</span>
+        </>
+      )}
+
       {hubModule && (
         <>
           <HiOutlineChevronRight size={13} className="fx-breadcrumb-sep" aria-hidden="true" />
@@ -313,10 +320,9 @@ export default function Layout() {
           <div className={`layout-content-shell ${comprasResponsiveRoute ? 'compras-responsive-scope' : ''}`}>
             <header className={`fx-topbar ${nativeApp ? 'topbar-shell-native' : ''}`}>
               <div className="fx-topbar-nav">
-                {/* Marca no canto superior esquerdo — âncora visual do
-                    sistema. Discreta, sem sombras (D9); clique = Início.
-                    No mobile fica só o símbolo do Fluxy. */}
-                <Link to="/" className="fx-brand" aria-label="CSC · Fluxy — ir para o início">
+                {/* O logo preserva o acesso direto ao menu, inclusive quando
+                    Início aponta para a página escolhida no perfil. */}
+                <Link to="/modulos" className="fx-brand" aria-label="CSC · Fluxy — abrir menu de módulos" title="Menu de módulos">
                   <img src={cscLogo} alt="CSC" width={53} height={26} className="fx-brand-csc" />
                   <img src={fluxyMark} alt="" aria-hidden="true" width={22} height={22} className="fx-brand-fluxy" />
                   <span className="fx-brand-nome">Fluxy</span>

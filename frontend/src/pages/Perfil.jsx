@@ -116,11 +116,11 @@ export default function Perfil() {
       if (!escolhida) {
         await limparTelaInicial();
         updateUser({ tela_inicial: null });
-        avisar.sucesso('Você voltará a entrar na Home.');
+        avisar.sucesso('Início voltará a abrir o menu de módulos.');
       } else {
         const data = await definirTelaInicial(escolhida);
         updateUser({ tela_inicial: data?.tela_inicial || null });
-        avisar.sucesso(`Você passará a entrar em "${data?.tela_inicial?.label}".`);
+        avisar.sucesso(`"${data?.tela_inicial?.label}" agora é sua página de Início.`);
       }
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao salvar tela inicial');
@@ -301,13 +301,13 @@ export default function Perfil() {
 
       <BlocoConteudo
         titulo="Tela inicial"
-        descricao="Em qual tela você quer entrar ao abrir o sistema. Também da para marcar direto na tela, pela casinha ao lado da estrela de atalho. Vale em qualquer navegador e no celular."
+        descricao="Escolha a página aberta no login e pelo botão Início. Sem escolha, Início abre o menu de módulos. O logo sempre abre o menu. Vale em qualquer navegador e no celular."
       >
-        <FormSecao legenda="Onde o login entra" colunas={2}>
+        <FormSecao legenda="Página de Início" colunas={2}>
           <CampoForm
             label="Entrar em"
             span={2}
-            hint="Se voce perder o acesso a tela escolhida, o sistema volta a abrir na Home automaticamente."
+            hint="Se você perder acesso à tela escolhida, Início volta ao menu de módulos automaticamente."
           >
             {/* R12: seletor de CONTEXTO/entrada de dado (qual tela fica
                 gravada no perfil) — não é filtro de lista, então o select
@@ -318,7 +318,7 @@ export default function Perfil() {
               onChange={(e) => setTelaInicialEscolhida(e.target.value)}
               disabled={telaInicialSalvando}
             >
-              <option value="">Home (padrão)</option>
+              <option value="">Menu de módulos (padrão)</option>
               {telasPorModulo.map(([moduloLabel, telas]) => (
                 <optgroup key={moduloLabel} label={moduloLabel}>
                   {telas.map((tela) => (
