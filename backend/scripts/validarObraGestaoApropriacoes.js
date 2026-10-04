@@ -60,6 +60,29 @@ function total(distribuicoes) {
 }
 
 {
+  // Uma Despesa Eventual (ou outro tipo sem contrato) nasce com rateio na solicitacao.
+  // O titulo ainda pode guardar uma apropriacao principal, mas o custo por obra deve
+  // respeitar a divisao registrada e conservar todos os centavos.
+  const distribuicoes = distribuirPorApropriacao({
+    valor: 500,
+    titulo: { obra_id: 3, apropriacao_id: 11, rateios: [] },
+    solicitacao: {
+      obra_id: 3,
+      apropriacao_id: 11,
+      apropriacoes: [
+        { apropriacao_id: 11, percentual: 35, contrato_id: null },
+        { apropriacao_id: 12, percentual: 65, contrato_id: null }
+      ]
+    }
+  });
+  assert.deepStrictEqual(
+    distribuicoes.map((item) => [item.apropriacao_id, item.valor, item.fonte]),
+    [[11, 175, FONTE_RATEIO_SOLICITACAO], [12, 325, FONTE_RATEIO_SOLICITACAO]]
+  );
+  assert.strictEqual(total(distribuicoes), 500);
+}
+
+{
   const fonte = selecionarFonteApropriacao({
     titulo: { obra_id: 3, apropriacao_id: 7 },
     solicitacao: { obra_id: 3, apropriacao_id: 8, apropriacoes: [] }

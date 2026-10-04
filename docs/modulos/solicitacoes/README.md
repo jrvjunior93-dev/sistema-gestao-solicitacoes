@@ -27,6 +27,24 @@ Solicitacoes e o hub operacional entre usuarios, setores, obras, parceiros, cont
 - arquivamento e individual por usuario e nao altera o registro global;
 - alteracoes de status, envio e automacao geram historico.
 
+## Boleto e rateio na Nova Solicitacao
+
+- Na Despesa Eventual paga por Boleto, o credor da solicitacao e o arquivo do
+  boleto permanecem obrigatorios; o favorecido de pagamento separado nao e
+  solicitado. Outras formas de pagamento e outros tipos preservam a exigencia
+  de favorecido conforme suas regras.
+- `Apropriacao principal` em `Campos da Nova Solicitacao` controla a visibilidade
+  e a obrigatoriedade do campo na obra. A selecao unica continua sendo o padrao.
+  Ao optar por dividir, o usuario informa ao menos duas apropriacoes analiticas
+  ativas da mesma obra e percentuais que fecham 100% do valor da solicitacao.
+- O backend valida novamente obra, disponibilidade e soma, e grava a solicitacao
+  e as linhas de rateio na mesma transacao. O custo financeiro por apropriacao
+  usa esse rateio quando o titulo nao possui rateio proprio. O total do
+  Resultado de Obras nao muda: o rateio reparte o custo dentro da mesma obra.
+- Solicitacoes antigas com uma apropriacao nao sao alteradas. A edicao posterior
+  continua sujeita a permissao, historico e bloqueio apos titulo financeiro ou
+  pedido de compra.
+
 ## Fluxo independente de Cadastro de Obra
 
 O botao `Solicitar cadastro de obra` abre um formulario proprio e nao exige selecionar

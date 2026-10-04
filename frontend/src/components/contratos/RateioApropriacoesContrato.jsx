@@ -40,7 +40,9 @@ export default function RateioApropriacoesContrato({
   apropriacoes,
   valorTotal,
   onChange,
-  desabilitado = false
+  desabilitado = false,
+  rotuloValor = 'do contrato',
+  storageKey = 'tabela:contrato-rateio-apropriacoes'
 }) {
   const total = numeroDoCampo(valorTotal) || 0;
 
@@ -66,9 +68,9 @@ export default function RateioApropriacoesContrato({
     () => linhas.reduce((acc, l) => acc + (numeroDoCampo(l.percentual) || 0), 0),
     [linhas]
   );
-  // Tolerancia de 0,0001 porque digitacao decimal nao fecha exata (33,3333 x 3 = 99,9999).
-  // A conta que vale e a do backend, que divide em centavos com sobra na ultima.
-  const fechado = Math.abs(soma - 100) < 0.001;
+  // Usa a mesma tolerancia da API; a tela nao pode exibir "fechado" para um
+  // percentual que o backend recusara ao salvar.
+  const fechado = Math.abs(soma - 100) <= 0.0001;
 
   // Digitar em uma unidade reescreve a outra. Sem isso, as duas colunas discordariam na tela.
   const alterar = (indice, campo, texto) => {
@@ -135,6 +137,7 @@ export default function RateioApropriacoesContrato({
                 value={linha.apropriacao_id}
                 options={apropriacoes}
                 onChange={(id) => alterar(linhas.indexOf(linha), 'apropriacao_id', id)}
+                ariaLabel={`Apropriação ${linhas.indexOf(linha) + 1} do rateio`}
                 disabled={desabilitado}
                 inputClassName="input input-sm w-full"
                 disabledPlaceholder="Selecione a obra primeiro"
@@ -149,6 +152,7 @@ export default function RateioApropriacoesContrato({
               <input
                 className="input input-sm"
                 name={`rateio_percentual_${linhas.indexOf(linha)}`}
+                aria-label={`Percentual da apropriação ${linhas.indexOf(linha) + 1}`}
                 inputMode="decimal"
                 placeholder="0,0000"
                 value={linha.percentual ?? ''}
@@ -166,6 +170,7 @@ export default function RateioApropriacoesContrato({
               <input
                 className="input input-sm"
                 name={`rateio_valor_${linhas.indexOf(linha)}`}
+                aria-label={`Valor da apropriação ${linhas.indexOf(linha) + 1}`}
                 inputMode="numeric"
                 // Placeholder proprio: "R$ 0,00" e o do campo Valor da solicitacao, e dois
                 // campos com o mesmo placeholder viram um seletor ambiguo (foi o que quebrou
@@ -185,7 +190,7 @@ export default function RateioApropriacoesContrato({
         ]}
         itens={linhas}
         getId={(linha) => `rateio-${linhas.indexOf(linha)}`}
-        storageKey="tabela:contrato-rateio-apropriacoes"
+        storageKey={storageKey}
         rotuloRolagem="Rateio entre apropriacoes"
         vazio="Nenhuma apropriação no rateio"
         acoesLinha={(linha) => (
@@ -209,7 +214,7 @@ export default function RateioApropriacoesContrato({
         Soma: {comVirgula(soma, 4)}% de 100%
         {total > 0 && ` · ${formatarMoeda((total * soma) / 100)} de ${formatarMoeda(total)}`}
         {!fechado && ' — o rateio precisa fechar para enviar.'}
-        {!total && ' · informe o Valor do contrato para ratear em R$.'}
+        {!total && ` · informe o Valor ${rotuloValor} para ratear em R$.`}
       </p>
     </div>
   );

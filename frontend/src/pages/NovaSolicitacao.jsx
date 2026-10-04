@@ -290,6 +290,8 @@ export default function NovaSolicitacao() {
   // Rateio da apropriacao do CONTRATO (19/08): varias apropriacoes, por % ou por R$.
   // Comeca com uma linha vazia — o caso de uma apropriacao so continua sendo o normal.
   const [rateioContrato, setRateioContrato] = useState([{ apropriacao_id: '', percentual: '100', valor: '' }]);
+  const [dividirApropriacaoSolicitacao, setDividirApropriacaoSolicitacao] = useState(false);
+  const [rateioSolicitacao, setRateioSolicitacao] = useState([{ apropriacao_id: '', percentual: '100', valor: '' }]);
   const [medicaoContratoDados, setMedicaoContratoDados] = useState(null);
   const [retornoContrato, setRetornoContrato] = useState({
     aberto: false,
@@ -571,6 +573,8 @@ export default function NovaSolicitacao() {
   }, [form.tipo_solicitacao_id]);
 
   useEffect(() => {
+    setDividirApropriacaoSolicitacao(false);
+    setRateioSolicitacao([{ apropriacao_id: '', percentual: '100', valor: '' }]);
     if (!form.obra_id) {
       setContratos([]);
       setForm(prev => ({ ...prev, contrato_id: '', ref_contrato_abertura: '' }));
@@ -1150,6 +1154,7 @@ export default function NovaSolicitacao() {
   const tipoSemValor = !campoVisivel('valor');
   const exibirCamposContrato = obraSelecionadaEhObra && campoVisivel('contrato');
   const exibirCampoApropriacao = obraSelecionadaEhObra && moduloApropriacoesHabilitado && campoVisivel('apropriacao_principal');
+  const permitirRateioSolicitacao = exibirCampoApropriacao && !usaFluxoContratoNovo && !form.contrato_id;
   const camposContratoObrigatorios = campoObrigatorio('contrato');
   // O SUBTIPO SAI DO CONTRATO (item 1 do lote de 23/08). Pelo tipo CONTRATO so existe a abertura,
   // entao o subtipo nao separava nada — e o gatilho do fluxo novo sempre foi do TIPO
@@ -1201,8 +1206,8 @@ export default function NovaSolicitacao() {
   const exibirJustificativa = campoVisivel('justificativa') && !usaFluxoContratoNovo;
   const justificativaObrigatoria = exibirJustificativa && campoObrigatorio('justificativa');
   const exibirFormaPagamento = campoVisivel('forma_pagamento') && !usaFluxoContratoNovo;
-  // A forma vem primeiro. Depois de selecionada, o favorecido aparece para qualquer pagamento;
-  // PIX acrescenta a chave e Boleto acrescenta o anexo especifico.
+  // A forma vem primeiro. Boleto na Despesa Eventual usa o anexo obrigatorio
+  // sem pedir um favorecido de pagamento separado do credor da solicitacao.
   const exibirFavorecido = (campoVisivel('favorecido') || exibirFormaPagamento) && !usaFluxoContratoNovo;
   const formaPagamentoObrigatoria = exibirFormaPagamento && campoObrigatorio('forma_pagamento');
   // Em medicao o anexo e regra do fluxo, mesmo que a configuracao visual antiga tenha ocultado o
@@ -1230,9 +1235,9 @@ export default function NovaSolicitacao() {
   const anexosObrigatorios = usaRegraAnexoPorFormaPagamento
     ? exigirAnexoPagamento
     : (tipoEhDeMedicao || campoObrigatorio('anexos'));
-  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada);
-  // Se existe uma forma de pagamento escolhida, precisa existir quem recebera. A configuracao
-  // pode controlar a presenca do bloco, mas nao pode tornar anonima uma solicitacao de pagamento.
+  const boletoDespesaEventual = usaFluxoDespesaEventual && pagamentoViaBoleto;
+  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada) && !boletoDespesaEventual;
+  // Para as demais formas e tipos, o favorecido continua obrigatorio.
   const favorecidoObrigatorio = exibirFavorecidoPagamento;
 
   useEffect(() => {
@@ -1329,6 +1334,8 @@ export default function NovaSolicitacao() {
     }
     if (!exibirCampoApropriacao) {
       setForm(prev => ({ ...prev, apropriacao_id: '' }));
+      setDividirApropriacaoSolicitacao(false);
+      setRateioSolicitacao([{ apropriacao_id: '', percentual: '100', valor: '' }]);
     }
     if (!permitirVinculoCredor) {
       limparParceiroSelecionado();
@@ -1845,14 +1852,34 @@ export default function NovaSolicitacao() {
     // No fluxo novo de contrato a apropriacao virou RATEIO (19/08): quem cumpre a exigencia sao as
     // linhas do rateio, nao o campo unico — que nem e exibido nesse caminho. Validar o campo unico
     // aqui barrava o contrato mesmo com o rateio preenchido.
+    const rateioLivreAtivo = permitirRateioSolicitacao && dividirApropriacaoSolicitacao;
     const temApropriacao = usaFluxoContratoNovo
       ? rateioContrato.some((l) => l.apropriacao_id)
-      : Boolean(form.apropriacao_id);
-    if (exigeApropriacaoPrincipal && !temApropriacao) {
+      : rateioLivreAtivo
+        ? rateioSolicitacao.some((l) => l.apropriacao_id)
+        : Boolean(form.apropriacao_id);
+    if ((exigeApropriacaoPrincipal || rateioLivreAtivo) && !temApropriacao) {
       reprovarCampo('apropriacao', usaFluxoContratoNovo
         ? 'Informe ao menos uma apropriacao no rateio do contrato.'
-        : 'Selecione a apropriação principal da solicitação.');
+        : rateioLivreAtivo
+          ? 'Selecione as apropriações do rateio da solicitação.'
+          : 'Selecione a apropriação principal da solicitação.');
       return;
+    }
+    if (rateioLivreAtivo) {
+      const ids = rateioSolicitacao.map((linha) => Number(linha.apropriacao_id));
+      const percentuais = rateioSolicitacao.map((linha) => parseDecimalRateio(linha.percentual));
+      const soma = percentuais.reduce((total, percentual) => total + (percentual || 0), 0);
+      if (ids.length < 2 || ids.some((id) => !Number.isInteger(id) || id <= 0)
+        || new Set(ids).size !== ids.length || percentuais.some((percentual) => !(percentual > 0))
+        || Math.abs(soma - 100) > 0.0001) {
+        reprovarCampo('apropriacao', 'Selecione ao menos duas apropriações diferentes e feche o rateio em 100%.');
+        return;
+      }
+      if (!(Number(form.valor) > 0)) {
+        reprovarCampo('valor', 'Informe um valor maior que zero para ratear a solicitação.');
+        return;
+      }
     }
 
     if (subtipoObrigatorio && exibirCampoSubtipo && !form.tipo_sub_id) {
@@ -2399,7 +2426,11 @@ export default function NovaSolicitacao() {
         ? documentosCadastroObra.map((arquivo) => arquivo.nome).filter(Boolean)
         : undefined,
       justificativa: exibirJustificativa ? form.justificativa : null,
-      apropriacao_id: exibirCampoApropriacao ? (form.apropriacao_id || null) : null,
+      apropriacao_id: exibirCampoApropriacao
+        ? (permitirRateioSolicitacao && dividirApropriacaoSolicitacao
+          ? (rateioSolicitacao[0]?.apropriacao_id || null)
+          : (form.apropriacao_id || null))
+        : null,
       contrato_id: exibirCamposContrato ? (form.contrato_id || null) : null,
       tipo_sub_id: exibirCampoSubtipo ? (form.tipo_sub_id || null) : null,
       tipo_macro_id: form.tipo_solicitacao_id || null,
@@ -2421,14 +2452,20 @@ export default function NovaSolicitacao() {
       anexos_pendentes_nomes: tipoEhDeMedicao
         ? anexosPendentesMedicao.map((arquivo) => arquivo.nome).filter(Boolean)
         : (arquivos.length > 0 ? arquivos.map((arquivo) => arquivo.nome).filter(Boolean) : undefined),
-      apropriacoes_rateio: exibirCamposContrato
-        ? apropriacoesRateioSelecionadas.map(item => ({
+      apropriacoes_rateio: permitirRateioSolicitacao && dividirApropriacaoSolicitacao
+        ? rateioSolicitacao.map((linha) => ({
+            apropriacao_id: Number(linha.apropriacao_id),
+            percentual: parseDecimalRateio(linha.percentual),
+            valor_rateio: null
+          }))
+        : exibirCamposContrato
+          ? apropriacoesRateioSelecionadas.map(item => ({
             apropriacao_id: item.apropriacao_id,
             percentual: String(item.percentual || '').trim() || null,
             valor_rateio: String(item.valor_rateio || '').trim() || null,
             observacao: String(item.observacao || '').trim() || null
           }))
-        : [],
+          : [],
       distribuicao_centro_custo: !usaFluxoCadastroObra && !obraSelecionadaEhObra
         ? {
             criterio: distribuicaoCentroCusto.criterio,
@@ -3691,18 +3728,13 @@ export default function NovaSolicitacao() {
               )}
 
               {exibirCampoApropriacao && (
-                <CampoForm
-                  label="Apropriação da Solicitação na Obra"
-                  obrigatorio={exigeApropriacaoPrincipal}
-                  linha
-                  erro={errosCampo.apropriacao}
-                  hint={exigeApropriacaoPrincipal
-                    ? 'Campo obrigatorio conforme configuracao da nova solicitacao.'
-                    : 'Campo opcional. Use quando a solicitacao precisar nascer vinculada a uma apropriacao da obra.'}
-                >
-                  {/* No fluxo novo de contrato a apropriacao deixou de ser UMA: o cliente pediu ratear o
-                      valor do contrato entre varias, por % ou por R$ (19/08). No fluxo padrao continua
-                      sendo uma so — nada muda para as 665 solicitacoes historicas. */}
+                <div className="form-group form-campo--linha" role="group" aria-labelledby="apropriacao-solicitacao-label">
+                  <span
+                    id="apropriacao-solicitacao-label"
+                    className={`form-label${exigeApropriacaoPrincipal ? ' form-label--required' : ''}`}
+                  >Apropriação da Solicitação na Obra</span>
+                  {/* O fluxo novo de contrato ja usa rateio; os demais preservam a selecao unica
+                      como padrao e oferecem a divisao apenas quando houver obra. */}
                   {usaFluxoContratoNovo ? (
                     <RateioApropriacoesContrato
                       linhas={rateioContrato}
@@ -3712,20 +3744,65 @@ export default function NovaSolicitacao() {
                       desabilitado={!form.obra_id}
                     />
                   ) : (
-                    <ApropriacaoAutocomplete
-                      value={form.apropriacao_id}
-                      options={apropriacoes}
-                      onChange={(id) => { limparErroCampo('apropriacao'); setForm({ ...form, apropriacao_id: id }); }}
-                      disabled={!form.obra_id}
-                      required={exigeApropriacaoPrincipal}
-                      inputClassName="input input-sm w-full"
-                      disabledPlaceholder="Selecione a obra primeiro"
-                    />
+                    <div className="space-y-2">
+                      {permitirRateioSolicitacao && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={dividirApropriacaoSolicitacao}
+                            onChange={(event) => {
+                              const dividir = event.target.checked;
+                              limparErroCampo('apropriacao');
+                              if (dividir) {
+                                setRateioSolicitacao([
+                                  { apropriacao_id: form.apropriacao_id || '', percentual: '100', valor: '' },
+                                  { apropriacao_id: '', percentual: '', valor: '' }
+                                ]);
+                              } else {
+                                setForm((atual) => ({ ...atual, apropriacao_id: rateioSolicitacao[0]?.apropriacao_id || '' }));
+                              }
+                              setDividirApropriacaoSolicitacao(dividir);
+                            }}
+                          />
+                          Dividir entre apropriações da obra
+                        </label>
+                      )}
+                      {permitirRateioSolicitacao && dividirApropriacaoSolicitacao ? (
+                        <RateioApropriacoesContrato
+                          linhas={rateioSolicitacao}
+                          apropriacoes={apropriacoes}
+                          valorTotal={form.valor}
+                          onChange={(linhas) => { limparErroCampo('apropriacao'); setRateioSolicitacao(linhas); }}
+                          desabilitado={!form.obra_id}
+                          rotuloValor="da solicitação"
+                          storageKey="tabela:solicitacao-rateio-apropriacoes"
+                        />
+                      ) : (
+                        <ApropriacaoAutocomplete
+                          value={form.apropriacao_id}
+                          options={apropriacoes}
+                          onChange={(id) => { limparErroCampo('apropriacao'); setForm({ ...form, apropriacao_id: id }); }}
+                          disabled={!form.obra_id}
+                          required={exigeApropriacaoPrincipal}
+                          ariaLabel="Apropriação da Solicitação na Obra"
+                          inputClassName="input input-sm w-full"
+                          disabledPlaceholder="Selecione a obra primeiro"
+                        />
+                      )}
+                    </div>
                   )}
                   {form.obra_id && apropriacoes.length === 0 && (
                     <span className="form-hint">Nenhuma apropriação ativa encontrada para esta obra.</span>
                   )}
-                </CampoForm>
+                  {!errosCampo.apropriacao && (
+                    <span className="form-hint">
+                      {exigeApropriacaoPrincipal
+                        ? 'Campo obrigatório conforme configuração da nova solicitação.'
+                        : 'Campo opcional. Use quando a solicitação precisar nascer vinculada a uma apropriação da obra.'}
+                    </span>
+                  )}
+                  {errosCampo.apropriacao ? <span className="form-error" role="alert">{errosCampo.apropriacao}</span> : null}
+                </div>
               )}
             </FormSecao>
           </BlocoConteudo>

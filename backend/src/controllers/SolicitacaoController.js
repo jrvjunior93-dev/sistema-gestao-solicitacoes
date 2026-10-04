@@ -3384,7 +3384,7 @@ module.exports = {
         if (usaFluxoRecargaCartao) return camposFixosRecargaCartao.has(campo);
         return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
       };
-      const rateioApropriacoes = campoVisivel('contrato')
+      const rateioApropriacoes = (campoVisivel('contrato') || (registroSelecionadoEhObra && campoVisivel('apropriacao_principal')))
         ? normalizarApropriacoesRateio(apropriacoes_rateio)
         : [];
 
@@ -3739,80 +3739,100 @@ module.exports = {
       }
 
       let rateioApropriacoesDetalhado = [];
+      const contratoIdRateio = campoVisivel('contrato') ? contrato_id : null;
       if (rateioApropriacoes.length > 0) {
         if (!registroSelecionadoEhObra) {
           return res.status(400).json({
             error: 'Rateio de apropriacoes so pode ser usado em registros classificados como obra.'
           });
         }
-        if (!contrato_id) {
-          return res.status(400).json({
-            error: 'Selecione o contrato antes de vincular apropriacoes.'
-          });
+        if (!contratoIdRateio && (!campoVisivel('apropriacao_principal') || usaApropriacaoAutomaticaObra)) {
+          return res.status(400).json({ error: 'O rateio da solicitacao nao esta habilitado para este tipo.' });
+        }
+        if (!contratoIdRateio && (
+          !Array.isArray(apropriacoes_rateio) || apropriacoes_rateio.length !== rateioApropriacoes.length
+          || rateioApropriacoes.length < 2
+        )) {
+          return res.status(400).json({ error: 'Selecione ao menos duas apropriacoes diferentes para o rateio.' });
         }
 
-        const contratoSelecionado = await Contrato.findOne({
-          where: {
-            id: Number(contrato_id),
-            obra_id: Number(obra_id)
-          },
-          attributes: ['id', 'obra_id']
-        });
-        if (!contratoSelecionado) {
-          return res.status(400).json({
-            error: 'Contrato selecionado nao pertence a obra informada.'
+        if (contratoIdRateio) {
+          const contratoSelecionado = await Contrato.findOne({
+            where: {
+              id: Number(contratoIdRateio),
+              obra_id: Number(obra_id)
+            },
+            attributes: ['id', 'obra_id']
           });
-        }
+          if (!contratoSelecionado) {
+            return res.status(400).json({ error: 'Contrato selecionado nao pertence a obra informada.' });
+          }
 
-        const apropriacoesContrato = await ContratoApropriacao.findAll({
-          where: { contrato_id: Number(contrato_id) },
-          include: [
-            {
-              model: Apropriacao,
-              as: 'apropriacao',
-              attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
+          const apropriacoesContrato = await ContratoApropriacao.findAll({
+            where: { contrato_id: Number(contratoIdRateio) },
+            include: [
+              {
+                model: Apropriacao,
+                as: 'apropriacao',
+                attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
+              }
+            ]
+          });
+          const mapaContrato = new Map(
+            apropriacoesContrato
+              .filter(item => item.apropriacao)
+              .map(item => [Number(item.apropriacao_id), item])
+          );
+
+          if (mapaContrato.size === 0) {
+            return res.status(400).json({ error: 'O contrato selecionado nao possui apropriacoes estruturadas cadastradas.' });
+          }
+
+          for (const item of rateioApropriacoes) {
+            const vinculoContrato = mapaContrato.get(Number(item.apropriacao_id));
+            if (!vinculoContrato) {
+              return res.status(400).json({
+                error: 'Uma ou mais apropriacoes selecionadas nao pertencem ao contrato.'
+              });
             }
-          ]
-        });
-        const mapaContrato = new Map(
-          apropriacoesContrato
-            .filter(item => item.apropriacao)
-            .map(item => [Number(item.apropriacao_id), item])
-        );
-
-        if (mapaContrato.size === 0) {
-          return res.status(400).json({
-            error: 'O contrato selecionado nao possui apropriacoes estruturadas cadastradas.'
+            if (Number(vinculoContrato.apropriacao.obra_id) !== Number(obra_id)) {
+              return res.status(400).json({
+                error: 'Uma ou mais apropriacoes selecionadas nao pertencem a obra informada.'
+              });
+            }
+            if (vinculoContrato.apropriacao.ativo === false) {
+              return res.status(400).json({
+                error: 'Uma ou mais apropriacoes selecionadas estao inativas.'
+              });
+            }
+            if (!apropriacaoPodeReceberLancamento(vinculoContrato.apropriacao)) {
+              return res.status(400).json({
+                error: 'Uma ou mais apropriacoes selecionadas nao estao habilitadas para os formularios.'
+              });
+            }
+            rateioApropriacoesDetalhado.push({
+              ...item,
+              contrato_id: Number(contratoIdRateio),
+              apropriacao: vinculoContrato.apropriacao
+            });
+          }
+        } else {
+          const ids = rateioApropriacoes.map((item) => item.apropriacao_id);
+          const apropriacoesDaObra = await Apropriacao.findAll({
+            where: { id: { [Op.in]: ids }, obra_id: Number(obra_id) },
+            attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
           });
-        }
-
-        for (const item of rateioApropriacoes) {
-          const vinculoContrato = mapaContrato.get(Number(item.apropriacao_id));
-          if (!vinculoContrato) {
-            return res.status(400).json({
-              error: 'Uma ou mais apropriacoes selecionadas nao pertencem ao contrato.'
-            });
+          const mapaObra = new Map(apropriacoesDaObra.map((item) => [Number(item.id), item]));
+          for (const item of rateioApropriacoes) {
+            const apropriacaoDaObra = mapaObra.get(item.apropriacao_id);
+            if (!apropriacaoDaObra || apropriacaoDaObra.ativo === false || !apropriacaoPodeReceberLancamento(apropriacaoDaObra)) {
+              return res.status(400).json({ error: 'Selecione apropriacoes ativas da obra e habilitadas para os formularios.' });
+            }
+            rateioApropriacoesDetalhado.push({ ...item, contrato_id: null, apropriacao: apropriacaoDaObra });
           }
-          if (Number(vinculoContrato.apropriacao.obra_id) !== Number(obra_id)) {
-            return res.status(400).json({
-              error: 'Uma ou mais apropriacoes selecionadas nao pertencem a obra informada.'
-            });
+          if (apropriacao && !mapaObra.has(Number(apropriacao.id))) {
+            return res.status(400).json({ error: 'A apropriacao principal precisa fazer parte do rateio.' });
           }
-          if (vinculoContrato.apropriacao.ativo === false) {
-            return res.status(400).json({
-              error: 'Uma ou mais apropriacoes selecionadas estao inativas.'
-            });
-          }
-          if (!apropriacaoPodeReceberLancamento(vinculoContrato.apropriacao)) {
-            return res.status(400).json({
-              error: 'Uma ou mais apropriacoes selecionadas nao estao habilitadas para os formularios.'
-            });
-          }
-          rateioApropriacoesDetalhado.push({
-            ...item,
-            contrato_id: Number(contrato_id),
-            apropriacao: vinculoContrato.apropriacao
-          });
         }
 
         if (!apropriacao && rateioApropriacoesDetalhado.length > 0) {
@@ -3908,14 +3928,15 @@ module.exports = {
         formaPagamentoIdPersistida = formaPagamentoId;
       }
 
-      // Toda solicitacao que informa uma forma de pagamento precisa identificar quem recebera.
-      // Antes a obrigatoriedade implicita valia apenas para PIX, permitindo boleto e transferencia
-      // com `favorecido_id` nulo — o erro so aparecia quando o Financeiro tentava pagar.
-      const favorecidoEhObrigatorio = campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada);
+      // Boleto na Despesa Eventual usa o anexo obrigatorio, sem favorecido separado.
+      // Os demais pagamentos continuam exigindo favorecido, inclusive PIX e transferencia.
+      const boletoDespesaEventual = usaFluxoDespesaEventual && formaPagamentoEhBoleto(formaPagamentoSelecionada);
+      const favorecidoEhObrigatorio = !boletoDespesaEventual
+        && (campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada));
       if (favorecidoEhObrigatorio && !favorecido_id) {
         return res.status(400).json({ error: 'Selecione o favorecido do pagamento.' });
       }
-      if ((campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
+      if (!boletoDespesaEventual && (campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
         favorecido = await Parceiro.findByPk(Number(favorecido_id), {
           attributes: ['id', 'nome', 'cpf_cnpj', 'ativo']
         });
@@ -4055,6 +4076,28 @@ module.exports = {
         status_global: 'PENDENTE'
       };
 
+      const criarSolicitacaoComRateio = async () => {
+        if (rateioApropriacoesDetalhado.length === 0) {
+          return Solicitacao.create(dadosSolicitacao);
+        }
+        return sequelize.transaction(async (transaction) => {
+          const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
+          await SolicitacaoApropriacao.bulkCreate(
+            rateioApropriacoesDetalhado.map((item) => ({
+              solicitacao_id: resultado.id,
+              contrato_id: item.contrato_id || null,
+              apropriacao_id: item.apropriacao_id,
+              percentual: item.percentual,
+              quantidade: item.quantidade,
+              valor_rateio: item.valor_rateio,
+              observacao: item.observacao
+            })),
+            { transaction }
+          );
+          return resultado;
+        });
+      };
+
       const criarSolicitacaoComDistribuicao = async () => sequelize.transaction(async (transaction) => {
         const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
         await SolicitacaoCentroCustoDistribuicao.bulkCreate(
@@ -4106,11 +4149,11 @@ module.exports = {
               obraId: obra_id,
               tipoId: tipo_solicitacao_id,
               valor: valorPersistido,
-              criar: () => Solicitacao.create(dadosSolicitacao)
+              criar: criarSolicitacaoComRateio
             })
             : distribuicaoCentroCustoValidada
               ? await criarSolicitacaoComDistribuicao()
-              : { resultado: await Solicitacao.create(dadosSolicitacao), saldo: null };
+              : { resultado: await criarSolicitacaoComRateio(), saldo: null };
       const solicitacao = criacao.resultado;
 
       // Fluxos especiais possuem controle transacional proprio. Se algum deles for futuramente
@@ -4127,20 +4170,6 @@ module.exports = {
             percentual: item.percentual,
             valor_distribuido: item.valor_distribuido,
             criado_por: usuarioId
-          }))
-        );
-      }
-
-      if (rateioApropriacoesDetalhado.length > 0) {
-        await SolicitacaoApropriacao.bulkCreate(
-          rateioApropriacoesDetalhado.map(item => ({
-            solicitacao_id: solicitacao.id,
-            contrato_id: Number(contrato_id),
-            apropriacao_id: item.apropriacao_id,
-            percentual: item.percentual,
-            quantidade: item.quantidade,
-            valor_rateio: item.valor_rateio,
-            observacao: item.observacao
           }))
         );
       }
@@ -5163,6 +5192,11 @@ module.exports = {
       });
 
       const rateioApropriacoes = normalizarApropriacoesRateio(req.body?.apropriacoes_rateio || []);
+      if (!solicitacao.contrato_id && Array.isArray(req.body?.apropriacoes_rateio)
+        && req.body.apropriacoes_rateio.length !== rateioApropriacoes.length) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'Preencha apropriacoes diferentes em todas as linhas do rateio.' });
+      }
       let apropriacao = null;
       if (req.body?.apropriacao_id) {
         apropriacao = await Apropriacao.findOne({
@@ -5191,71 +5225,88 @@ module.exports = {
 
       let rateioApropriacoesDetalhado = [];
       if (rateioApropriacoes.length > 0) {
-        if (!solicitacao.contrato_id) {
-          await transaction.rollback();
-          return res.status(400).json({ error: 'A solicitacao precisa ter contrato vinculado para ratear apropriacoes do contrato.' });
-        }
+        if (solicitacao.contrato_id) {
+          const contrato = await Contrato.findOne({
+            where: {
+              id: Number(solicitacao.contrato_id),
+              obra_id: Number(solicitacao.obra_id)
+            },
+            attributes: ['id', 'obra_id'],
+            transaction
+          });
+          if (!contrato) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Contrato selecionado nao pertence a obra da solicitacao.' });
+          }
 
-        const contrato = await Contrato.findOne({
-          where: {
-            id: Number(solicitacao.contrato_id),
-            obra_id: Number(solicitacao.obra_id)
-          },
-          attributes: ['id', 'obra_id'],
-          transaction
-        });
-        if (!contrato) {
-          await transaction.rollback();
-          return res.status(400).json({ error: 'Contrato selecionado nao pertence a obra da solicitacao.' });
-        }
+          const apropriacoesContrato = await ContratoApropriacao.findAll({
+            where: { contrato_id: Number(solicitacao.contrato_id) },
+            include: [
+              {
+                model: Apropriacao,
+                as: 'apropriacao',
+                attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
+              }
+            ],
+            transaction
+          });
+          const mapaContrato = new Map(
+            apropriacoesContrato
+              .filter((item) => item.apropriacao)
+              .map((item) => [Number(item.apropriacao_id), item])
+          );
 
-        const apropriacoesContrato = await ContratoApropriacao.findAll({
-          where: { contrato_id: Number(solicitacao.contrato_id) },
-          include: [
-            {
-              model: Apropriacao,
-              as: 'apropriacao',
-              attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
+          if (mapaContrato.size === 0) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'O contrato selecionado nao possui apropriacoes estruturadas cadastradas.' });
+          }
+
+          for (const item of rateioApropriacoes) {
+            const vinculoContrato = mapaContrato.get(Number(item.apropriacao_id));
+            if (!vinculoContrato) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas nao pertencem ao contrato.' });
             }
-          ],
-          transaction
-        });
-        const mapaContrato = new Map(
-          apropriacoesContrato
-            .filter((item) => item.apropriacao)
-            .map((item) => [Number(item.apropriacao_id), item])
-        );
-
-        if (mapaContrato.size === 0) {
-          await transaction.rollback();
-          return res.status(400).json({ error: 'O contrato selecionado nao possui apropriacoes estruturadas cadastradas.' });
-        }
-
-        for (const item of rateioApropriacoes) {
-          const vinculoContrato = mapaContrato.get(Number(item.apropriacao_id));
-          if (!vinculoContrato) {
-            await transaction.rollback();
-            return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas nao pertencem ao contrato.' });
-          }
-          if (Number(vinculoContrato.apropriacao.obra_id) !== Number(solicitacao.obra_id)) {
-            await transaction.rollback();
-            return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas nao pertencem a obra da solicitacao.' });
-          }
-          if (vinculoContrato.apropriacao.ativo === false) {
-            await transaction.rollback();
-            return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas estao inativas.' });
-          }
-          if (!apropriacaoPodeReceberLancamento(vinculoContrato.apropriacao)) {
-            await transaction.rollback();
-            return res.status(400).json({
-              error: 'Uma ou mais apropriacoes selecionadas nao estao habilitadas para os formularios.'
+            if (Number(vinculoContrato.apropriacao.obra_id) !== Number(solicitacao.obra_id)) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas nao pertencem a obra da solicitacao.' });
+            }
+            if (vinculoContrato.apropriacao.ativo === false) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas estao inativas.' });
+            }
+            if (!apropriacaoPodeReceberLancamento(vinculoContrato.apropriacao)) {
+              await transaction.rollback();
+              return res.status(400).json({
+                error: 'Uma ou mais apropriacoes selecionadas nao estao habilitadas para os formularios.'
+              });
+            }
+            rateioApropriacoesDetalhado.push({
+              ...item,
+              contrato_id: Number(solicitacao.contrato_id),
+              apropriacao: vinculoContrato.apropriacao
             });
           }
-          rateioApropriacoesDetalhado.push({
-            ...item,
-            contrato_id: Number(solicitacao.contrato_id),
-            apropriacao: vinculoContrato.apropriacao
+        } else {
+          const ids = rateioApropriacoes.map((item) => item.apropriacao_id);
+          const apropriacoesDaObra = await Apropriacao.findAll({
+            where: { id: { [Op.in]: ids }, obra_id: Number(solicitacao.obra_id) },
+            attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario'],
+            transaction
           });
+          const mapaObra = new Map(apropriacoesDaObra.map((item) => [Number(item.id), item]));
+          for (const item of rateioApropriacoes) {
+            const apropriacaoDaObra = mapaObra.get(item.apropriacao_id);
+            if (!apropriacaoDaObra || apropriacaoDaObra.ativo === false || !apropriacaoPodeReceberLancamento(apropriacaoDaObra)) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Selecione apropriacoes ativas da obra e habilitadas para os formularios.' });
+            }
+            rateioApropriacoesDetalhado.push({ ...item, contrato_id: null, apropriacao: apropriacaoDaObra });
+          }
+          if (apropriacao && !mapaObra.has(Number(apropriacao.id))) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'A apropriacao principal precisa fazer parte do rateio.' });
+          }
         }
 
         if (!apropriacao && rateioApropriacoesDetalhado.length > 0) {
@@ -5311,7 +5362,7 @@ module.exports = {
         await SolicitacaoApropriacao.bulkCreate(
           rateioApropriacoesDetalhado.map(item => ({
             solicitacao_id: Number(id),
-            contrato_id: Number(solicitacao.contrato_id),
+            contrato_id: item.contrato_id || null,
             apropriacao_id: item.apropriacao_id,
             percentual: item.percentual,
             quantidade: item.quantidade,

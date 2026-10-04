@@ -210,7 +210,7 @@ function normalizarRateiosSolicitacao(solicitacao) {
     return rateios.map((item) => ({
       apropriacao_id: item?.apropriacao_id || item?.apropriacao?.id ? String(item.apropriacao_id || item.apropriacao.id) : '',
       percentual: formatarNumeroEntrada(item?.percentual),
-      valor: formatarNumeroEntrada(item?.valor)
+      valor: formatarNumeroEntrada(item?.valor_rateio)
     }));
   }
 
@@ -236,7 +236,7 @@ function montarResumoApropriacoesSolicitacao(solicitacao) {
       const apropriacao = item?.apropriacao || null;
       const nome = apropriacao?.descricao || apropriacao?.nome || apropriacao?.codigo || 'Apropriação';
       const percentual = parseNumeroLocal(item?.percentual);
-      const valor = parseNumeroLocal(item?.valor);
+      const valor = parseNumeroLocal(item?.valor_rateio);
       const criterio = percentual
         ? `${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%`
         : valor
@@ -2076,7 +2076,7 @@ export default function SolicitacaoDetalhe() {
             </FormSecao>
 
             <BlocoConteudo
-              titulo="Rateio do contrato"
+              titulo="Rateio da solicitação"
               variante="secundario"
               descricao="Use percentual ou valor em R$. Não misture os dois critérios na mesma alteração."
               acoes={(
