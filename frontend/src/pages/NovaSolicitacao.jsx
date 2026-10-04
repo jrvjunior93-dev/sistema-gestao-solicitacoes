@@ -43,6 +43,7 @@ import RateioApropriacoesContrato, { numeroDoCampo } from '../components/contrat
 import PendingAttachmentsList from '../components/attachments/PendingAttachmentsList';
 import RecargaCartaoFields from '../components/recarga-cartao/RecargaCartaoFields';
 import { hasEnabledModule } from '../utils/acessoProduto';
+import { destinoSolicitacaoContratoCriado } from '../utils/destinoSolicitacaoContrato';
 import {
   applyTipoSolicitacaoModuleAvailability,
   getTipoSolicitacaoBehavior,
@@ -2301,6 +2302,8 @@ export default function NovaSolicitacao() {
         // padrao: se o upload falhar, o usuario e avisado — nunca descartado em silencio
         // (A1 da auditoria: o arquivo sumia sem requisicao, sem registro e sem aviso).
         const idContrato = r?.contrato?.id;
+        const destinoSolicitacao = destinoSolicitacaoContratoCriado(r);
+        const abrirRegistroCriado = () => navigate(destinoSolicitacao || '/gestao-contratos', { replace: true });
 
         // A negociacao detalhada sobe ANTES dos anexos avulsos: sem ela o contrato nao pode ser
         // aprovado, entao falhar aqui e um problema maior do que falhar num anexo qualquer.
@@ -2313,7 +2316,7 @@ export default function NovaSolicitacao() {
               'Contrato criado sem a negociacao detalhada',
               `O contrato ${r?.contrato?.codigo || idContrato} foi criado, mas a negociacao detalhada NAO foi enviada (${erroNegociacao.message}). Sem ela o contrato nao pode ser aprovado: abra o contrato e envie o documento.`
             );
-            navigate('/gestao-contratos', { replace: true });
+            abrirRegistroCriado();
             return;
           }
         }
@@ -2331,7 +2334,7 @@ export default function NovaSolicitacao() {
               'Contrato criado sem a documentacao juridica completa',
               `O contrato ${r?.contrato?.codigo || idContrato} foi criado, mas a documentacao juridica nao foi enviada por completo (${erroDocumentacao.message}). O contrato permanecera bloqueado para aprovacao ate o dossie ser completado.`
             );
-            navigate('/gestao-contratos', { replace: true });
+            abrirRegistroCriado();
             return;
           }
         }
@@ -2345,18 +2348,18 @@ export default function NovaSolicitacao() {
               'Contrato criado sem os anexos',
               `O contrato ${r?.contrato?.codigo || idContrato} foi criado, mas os anexos nao foram enviados. Abra o contrato em Gestao de Contratos e envie os anexos novamente.`
             );
-            navigate('/gestao-contratos', { replace: true });
+            abrirRegistroCriado();
             return;
           }
         }
 
         await avisarAntesDeSair(
           'Contrato criado',
-          `Contrato ${r?.contrato?.codigo || ''} criado — aguardando aprovacao.`
+          destinoSolicitacao
+            ? `Contrato ${r?.contrato?.codigo || ''} criado — aguardando aprovacao.`
+            : `Contrato ${r?.contrato?.codigo || ''} criado, mas a resposta nao informou a solicitacao. Consulte o registro em Gestao de Contratos.`
         );
-        // O contrato do fluxo novo nao aparece na lista de solicitacoes: mandar para la
-        // deixava a instrucao de "abra o contrato" sem alvo (N5).
-        navigate('/gestao-contratos', { replace: true });
+        abrirRegistroCriado();
       } catch (error) {
         avisar.erro(error?.message || 'Erro ao criar contrato.');
       } finally {

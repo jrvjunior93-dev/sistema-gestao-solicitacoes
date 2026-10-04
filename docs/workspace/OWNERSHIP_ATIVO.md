@@ -1229,3 +1229,15 @@ handoff desta correcao e este registro. Escopo: manter executado/negativo em
 vermelho, recebido/positivo em verde e pendencias em ambar mesmo quando o tema
 salvo em producao atribui azul aos tokens configuraveis. Sem alteracao de tema
 global, banco, EC2 ou deploy nesta etapa.
+
+## Ownership ativo - destino apos criar solicitacao de contrato - 04/10/2026
+
+Sessao `/root` no worktree `painel-gestor-refactor`: reserva temporaria de
+`frontend/src/pages/NovaSolicitacao.jsx`,
+`frontend/src/utils/destinoSolicitacaoContrato.js`,
+`frontend/scripts/validarDestinoSolicitacaoContrato.mjs` e deste registro.
+Escopo: apos criar contrato no fluxo novo, abrir o detalhe da
+solicitacao retornada pela API, inclusive quando um upload posterior falhar;
+preservar alertas, idempotencia e permissoes. Sem escrita no banco ou reinicio
+de backend. Promocao de frontend para `main` apos validacao, sem sobrescrever
+commits exclusivos da producao.
