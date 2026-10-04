@@ -1,5 +1,6 @@
 const {
   ConfiguracaoSistema,
+  Contrato,
   EtapaSetor,
   Setor,
   TipoSolicitacao
@@ -28,6 +29,23 @@ function normalizarToken(valor) {
 function normalizarIdPositivo(valor) {
   const numero = Number(valor);
   return Number.isInteger(numero) && numero > 0 ? numero : null;
+}
+
+// A solicitacao propria do contrato novo e aprovada no card contratual, que exige
+// categoria financeira e executa a transicao/titulos na mesma operacao.
+// Nao bloquear solicitacoes legadas (medicoes/aditivos) que apenas referenciam
+// o mesmo contrato por `contrato_id`.
+async function solicitacaoSegueFluxoContratoNovo(solicitacao, options = {}) {
+  const solicitacaoId = normalizarIdPositivo(solicitacao?.id);
+  const contratoId = normalizarIdPositivo(solicitacao?.contrato_id);
+  if (!solicitacaoId || !contratoId) return false;
+
+  const contrato = await Contrato.findOne({
+    where: { id: contratoId, solicitacao_id: solicitacaoId, fluxo_novo: true },
+    attributes: ['id'],
+    transaction: options.transaction
+  });
+  return Boolean(contrato);
 }
 
 function normalizarRegrasAprovacao(raw = []) {
@@ -336,5 +354,6 @@ module.exports = {
   obterRegrasAprovacaoSolicitacaoPorTipo,
   obterRegraAprovacaoPorTipo,
   resolverContextoAprovacaoPorTipo,
+  solicitacaoSegueFluxoContratoNovo,
   tipoEhSolicitacaoCompra
 };

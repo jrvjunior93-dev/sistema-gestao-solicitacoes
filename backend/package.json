@@ -54,6 +54,8 @@
     "test:contrato-aditivo-vigencia": "node scripts/validarContratoAditivoVigencia.js",
     "test:contrato-aditivo-negociacao": "node scripts/validarContratoAditivoNegociacao.js",
     "test:contratos-operacional": "node scripts/validarGestaoContratosOperacional.js",
+    "test:contrato-aprovacao-exclusiva": "node scripts/validarAprovacaoExclusivaContrato.js",
+    "test:contrato-retorno-obra": "node scripts/validarRetornoContratoAprovadoObra.js",
     "audit:contratos-operacional": "node scripts/auditarContratosOperacionais.js",
     "test:bloqueio-retorno-obra": "node scripts/validarBloqueioRetornoObra.js",
     "comercial:multiunidade:simular-backfill": "node scripts/backfillContratosComerciaisUnidades.js",
