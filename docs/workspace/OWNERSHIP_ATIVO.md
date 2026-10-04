@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+## Ownership temporario - campos de Despesa Administrativa - 04/10/2026
+
+Sessao `/root` no worktree `painel-gestor-refactor`: reserva
+`backend/src/services/tipoSolicitacaoDisponibilidadeService.js`,
+`backend/scripts/validarTiposSolicitacaoPorDestino.js`,
+`docs/modulos/solicitacoes/README.md`, eventual handoff desta tarefa e este
+registro. Escopo: fazer as regras de campos por tipo/subtipo da Despesa
+Administrativa valerem em qualquer Centro de Custo, sem mudar vinculos,
+permissoes, dados de producao, migrations ou deploy.
+
 ## Ownership ativo - favorecido condicional ao boleto - 04/10/2026
 
 Sessao `/root` no worktree `painel-gestor-refactor`: reserva temporaria de

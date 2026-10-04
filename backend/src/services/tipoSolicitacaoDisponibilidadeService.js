@@ -38,7 +38,10 @@ const TIPOS_AUTOMATICOS_CENTRO_CUSTO = Object.freeze([
     nome: 'DESPESA ADMINISTRATIVA',
     codigosAlternativos: ['DESPESAS_ADMINISTRATIVAS', 'DESPESA_ADMINISTRATIVO'],
     nomesAlternativos: ['DESPESAS ADMINISTRATIVAS', 'DESPESA ADMINISTRATIVO'],
-    areasConfiguracaoCampos: ['ADMINISTRATIVO', 'ESCRITORIO', 'ADMINISTRATIVO/ESCRITORIO']
+    // A configuracao de campos acompanha o tipo e o subtipo no setor de destino
+    // (GEO), nao o nome do Centro de Custo. O mesmo tipo pode ser vinculado a
+    // outros centros sem receber um formulario diferente por causa do nome.
+    areasConfiguracaoCampos: []
   }
 ]);
 
