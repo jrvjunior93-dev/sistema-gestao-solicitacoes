@@ -40,7 +40,7 @@
 }
 
 .cr-ops-dashboard--gestor .cr-period-card[data-alert="true"] {
-  border-color: color-mix(in srgb, var(--c-warning) 42%, var(--ui-border-strong));
+  border-color: color-mix(in srgb, var(--sem-warning) 42%, var(--ui-border-strong));
 }
 
 .cr-ops-dashboard--gestor .cr-period-card__header {
@@ -98,15 +98,15 @@
 }
 
 .cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="positive"] dd {
-  color: var(--c-success);
+  color: var(--sem-success);
 }
 
 .cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="warning"] dd {
-  color: var(--c-warning);
+  color: var(--sem-warning);
 }
 
 .cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="negative"] dd {
-  color: var(--c-danger);
+  color: var(--sem-danger);
 }
 
 .cr-ops-dashboard--gestor .cr-period-card__footer {
@@ -180,14 +180,14 @@
 .pg-balance-summary > div { display: grid; align-content: center; gap: .2rem; }
 .pg-balance-summary > div > span { color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .pg-balance-summary > div > strong { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.pg-balance-summary[data-tom="positivo"] > div > strong { color: var(--c-success); }
-.pg-balance-summary[data-tom="negativo"] > div > strong { color: var(--c-danger); }
+.pg-balance-summary[data-tom="positivo"] > div > strong { color: var(--sem-success); }
+.pg-balance-summary[data-tom="negativo"] > div > strong { color: var(--sem-danger); }
 .pg-balance-summary > div > small { color: var(--c-muted); font-size: var(--fonte-detalhe); }
 .pg-balance-summary dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border-left: 1px solid var(--c-border); }
 .pg-balance-summary dl div { display: grid; align-content: center; gap: .3rem; padding: .6rem 1rem; }
 .pg-balance-summary dt { color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 700; }
 .pg-balance-summary dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
-.pg-balance-summary[data-completo="false"] { border-color: color-mix(in srgb, var(--c-warning) 40%, var(--c-border)); background: color-mix(in srgb, var(--c-warning) 7%, var(--c-surface)); }
+.pg-balance-summary[data-completo="false"] { border-color: color-mix(in srgb, var(--sem-warning) 40%, var(--c-border)); background: color-mix(in srgb, var(--sem-warning) 7%, var(--c-surface)); }
 
 .pg-main-balance { display: grid; gap: .75rem; padding: .75rem; border: 1px solid var(--c-border); border-radius: .9rem; background: var(--c-surface); }
 .pg-main-balance > .pg-balance-summary { padding: .7rem .85rem; border: 0; background: transparent; }
@@ -283,10 +283,10 @@
 .pg-account-card__heading > div { display: grid; min-width: 0; }
 .pg-account-card__heading strong, .pg-account-card__heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pg-account-card__heading span { color: var(--c-muted); font-size: var(--fonte-detalhe); }
-.pg-account-card__heading em { padding: .18rem .42rem; border-radius: 999px; background: color-mix(in srgb, var(--c-success) 12%, var(--c-surface)); color: var(--c-success); font-size: var(--fonte-detalhe); font-style: normal; font-weight: 800; text-transform: uppercase; }
+.pg-account-card__heading em { padding: .18rem .42rem; border-radius: 999px; background: color-mix(in srgb, var(--sem-success) 12%, var(--c-surface)); color: var(--sem-success); font-size: var(--fonte-detalhe); font-style: normal; font-weight: 800; text-transform: uppercase; }
 .pg-account-card > p { margin: 0; font-size: var(--fonte-bloco); font-weight: 800; font-variant-numeric: tabular-nums; }
-.pg-account-card[data-tom="positivo"] > p { color: var(--c-success); }
-.pg-account-card[data-tom="negativo"] > p { color: var(--c-danger); }
+.pg-account-card[data-tom="positivo"] > p { color: var(--sem-success); }
+.pg-account-card[data-tom="negativo"] > p { color: var(--sem-danger); }
 .pg-account-card footer { display: grid; gap: .2rem; padding-top: .7rem; border-top: 1px solid var(--c-border); color: var(--c-muted); font-size: var(--fonte-detalhe); }
 
 .pg-history-scroll { max-width: 100%; overflow: auto; }
@@ -297,16 +297,16 @@
 .pg-history-table td:nth-child(4), .pg-history-table td:nth-child(5) { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pg-history-table td:first-child, .pg-history-table td:nth-child(6) { white-space: nowrap; }
 .pg-history-table [data-action] { display: inline-flex; padding: .16rem .4rem; border-radius: 999px; background: var(--c-surface-soft, #f8fafc); color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 800; text-transform: uppercase; }
-.pg-history-table [data-action="CORRIGIDO"] { background: color-mix(in srgb, var(--c-warning) 13%, var(--c-surface)); color: var(--c-warning); }
+.pg-history-table [data-action="CORRIGIDO"] { background: color-mix(in srgb, var(--sem-warning) 13%, var(--c-surface)); color: var(--sem-warning); }
 
 .pg-empty-balance { display: grid; justify-items: start; gap: .55rem; padding: 2rem; border: 1px dashed var(--c-border); border-radius: .8rem; color: var(--c-muted); }
-.pg-empty-balance svg { width: 1.4rem; height: 1.4rem; color: var(--c-warning); }
+.pg-empty-balance svg { width: 1.4rem; height: 1.4rem; color: var(--sem-warning); }
 
 .pg-register-form { display: grid; gap: 1rem; }
 .pg-register-date { display: flex; align-items: end; gap: 1rem; }
 .pg-register-date label { width: 13rem; }
 .pg-register-date p { margin: 0 0 .65rem; color: var(--c-muted); font-size: var(--fonte-detalhe); }
-.pg-register-date p[data-alert="true"] { color: var(--c-warning); font-weight: 700; }
+.pg-register-date p[data-alert="true"] { color: var(--sem-warning); font-weight: 700; }
 .pg-register-list { display: grid; }
 .pg-register-row { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(12rem, 15rem) 7rem; gap: 1rem; align-items: center; padding: .75rem 0; border-bottom: 1px solid var(--c-border); }
 .pg-register-row:last-child { border-bottom: 0; }
@@ -319,7 +319,7 @@
 .pg-register-row__value > span { color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 700; }
 .pg-register-row__value input { text-align: right; font-weight: 750; font-variant-numeric: tabular-nums; }
 .pg-register-row__status { display: inline-flex; align-items: center; justify-content: flex-end; gap: .3rem; color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 700; }
-.pg-register-row__status svg { color: var(--c-success); }
+.pg-register-row__status svg { color: var(--sem-success); }
 .pg-register-actions { display: flex; justify-content: flex-end; gap: .55rem; padding-bottom: 1rem; }
 
 @media (max-width: 1050px) {
@@ -421,10 +421,10 @@
 }
 
 .pg-painel [data-tom="positivo"] > strong,
-.pg-painel [data-tom="recebido"] > strong { color: var(--c-success); }
+.pg-painel [data-tom="recebido"] > strong { color: var(--sem-success); }
 .pg-painel [data-tom="negativo"] > strong,
-.pg-painel [data-tom="executado"] > strong { color: var(--c-danger); }
-.pg-painel [data-tom="pendente"] > strong { color: var(--c-warning); }
+.pg-painel [data-tom="executado"] > strong { color: var(--sem-danger); }
+.pg-painel [data-tom="pendente"] > strong { color: var(--sem-warning); }
 .pg-painel [data-tom="vendido"] > strong,
 .pg-painel [data-tom="info"] > strong { color: var(--c-primary); }
 
@@ -690,17 +690,17 @@
   white-space: nowrap;
 }
 .pg-obra-metrica[data-tom="positivo"] > .pg-obra-metrica__valor,
-.pg-obra-metrica[data-tom="recebido"] > .pg-obra-metrica__valor { color: var(--c-success); }
+.pg-obra-metrica[data-tom="recebido"] > .pg-obra-metrica__valor { color: var(--sem-success); }
 .pg-obra-metrica[data-tom="negativo"] > .pg-obra-metrica__valor,
-.pg-obra-metrica[data-tom="executado"] > .pg-obra-metrica__valor { color: var(--c-danger); }
-.pg-obra-metrica[data-tom="pendente"] > .pg-obra-metrica__valor { color: var(--c-warning); }
+.pg-obra-metrica[data-tom="executado"] > .pg-obra-metrica__valor { color: var(--sem-danger); }
+.pg-obra-metrica[data-tom="pendente"] > .pg-obra-metrica__valor { color: var(--sem-warning); }
 .pg-obra-metrica[data-tom="vendido"] > .pg-obra-metrica__valor { color: var(--c-primary); }
 /* Alerta "VGV não calculado": ícone no rótulo, texto inteiro no tooltip. */
 .pg-obra-metrica__alerta {
   width: 1em;
   height: 1em;
   margin-left: var(--esp-1);
-  color: var(--c-warning);
+  color: var(--sem-warning);
   vertical-align: -0.125em;
 }
 
@@ -731,10 +731,10 @@
    recebido é progresso bom; executado sobre orçamento é normal até 90%,
    atenção de 90% a 100% e ruim acima de 100%. Sem base/oculto: vazia. */
 .pg-obra-progresso__trilha > span { display: block; height: 100%; border-radius: inherit; background: var(--c-primary); }
-.pg-obra-progresso[data-estado="bom"] .pg-obra-progresso__trilha > span { background: var(--c-success); }
-.pg-obra-progresso[data-estado="atencao"] .pg-obra-progresso__trilha > span { background: var(--c-warning); }
-.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__trilha > span { background: var(--c-danger); }
-.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__pct { color: var(--c-danger); font-weight: 700; }
+.pg-obra-progresso[data-estado="bom"] .pg-obra-progresso__trilha > span { background: var(--sem-success); }
+.pg-obra-progresso[data-estado="atencao"] .pg-obra-progresso__trilha > span { background: var(--sem-warning); }
+.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__trilha > span { background: var(--sem-danger); }
+.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__pct { color: var(--sem-danger); font-weight: 700; }
 .pg-obra-progresso__pct { white-space: nowrap; }
 
 /* ---- Olho: aviso no "Informar saldos" e modal do PIN ----------------- */
@@ -766,12 +766,12 @@ input.input.pg-pin-campo {
   letter-spacing: .4em;
   font-variant-numeric: tabular-nums;
 }
-.app-confirmacao .pg-pin__erro { margin: 0; color: var(--c-danger); font-size: var(--fonte-corpo); font-weight: 700; }
+.app-confirmacao .pg-pin__erro { margin: 0; color: var(--sem-danger); font-size: var(--fonte-corpo); font-weight: 700; }
 
 /* Botão do olho: estado fechado fica marcado, para não parecer esquecido. */
 .pg-painel[data-valores-ocultos="true"] .pg-botao-olho {
-  border-color: color-mix(in srgb, var(--c-warning) 45%, var(--c-border));
-  color: var(--c-warning);
+  border-color: color-mix(in srgb, var(--sem-warning) 45%, var(--c-border));
+  color: var(--sem-warning);
 }
 
 @media (max-width: 1050px) {

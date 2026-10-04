@@ -1218,3 +1218,14 @@ Escopo: fallback da planilha publica por apropriacoes analiticas, VGV privado
 parcial sinalizado e cores financeiras coerentes nos cards. Sem escrita em
 banco ou migration. Em 03/10 o proprietario autorizou commit e promocao para
 `main`; a integracao deve preservar os commits exclusivos da producao.
+
+## Ownership ativo - cores semanticas dos cards financeiros - 03/10/2026
+
+Sessao `/root` no worktree isolado `painel-gestor-refactor`: reserva temporaria de
+`frontend/src/styles/painel-gestor.css`,
+`frontend/src/pages/FinanceiroResultadoObras.css`, validacao focada de cores,
+`frontend/scripts/validarCoresCardsFinanceiros.mjs`, `frontend/package.json`,
+handoff desta correcao e este registro. Escopo: manter executado/negativo em
+vermelho, recebido/positivo em verde e pendencias em ambar mesmo quando o tema
+salvo em producao atribui azul aos tokens configuraveis. Sem alteracao de tema
+global, banco, EC2 ou deploy nesta etapa.

@@ -91,20 +91,20 @@
 }
 
 .resultado-obra-metrica--executado .resultado-obra-metrica-valor {
-  color: var(--c-danger);
+  color: var(--sem-danger);
 }
 
 .resultado-obra-metrica--recebido .resultado-obra-metrica-valor,
 .resultado-obra-metrica--positivo .resultado-obra-metrica-valor {
-  color: var(--c-success);
+  color: var(--sem-success);
 }
 
 .resultado-obra-metrica--pendente .resultado-obra-metrica-valor {
-  color: var(--c-warning);
+  color: var(--sem-warning);
 }
 
 .resultado-obra-metrica--negativo .resultado-obra-metrica-valor {
-  color: var(--c-danger);
+  color: var(--sem-danger);
 }
 
 .resultado-obra-rodape {
@@ -140,9 +140,9 @@
 }
 
 .resultado-obra-progresso-barra--executado {
-  background: var(--c-danger);
+  background: var(--sem-danger);
 }
 
 .resultado-obra-progresso-barra--recebido {
-  background: var(--c-success);
+  background: var(--sem-success);
 }
