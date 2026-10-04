@@ -3928,15 +3928,15 @@ module.exports = {
         formaPagamentoIdPersistida = formaPagamentoId;
       }
 
-      // Boleto na Despesa Eventual usa o anexo obrigatorio, sem favorecido separado.
-      // Os demais pagamentos continuam exigindo favorecido, inclusive PIX e transferencia.
-      const boletoDespesaEventual = usaFluxoDespesaEventual && formaPagamentoEhBoleto(formaPagamentoSelecionada);
-      const favorecidoEhObrigatorio = !boletoDespesaEventual
+      // Boleto usa o anexo obrigatorio, sem favorecido separado, em qualquer
+      // tipo da Nova Solicitacao. PIX e outras formas preservam a exigencia.
+      const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
+      const favorecidoEhObrigatorio = !pagamentoViaBoleto
         && (campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada));
       if (favorecidoEhObrigatorio && !favorecido_id) {
         return res.status(400).json({ error: 'Selecione o favorecido do pagamento.' });
       }
-      if (!boletoDespesaEventual && (campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
+      if (!pagamentoViaBoleto && (campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
         favorecido = await Parceiro.findByPk(Number(favorecido_id), {
           attributes: ['id', 'nome', 'cpf_cnpj', 'ativo']
         });

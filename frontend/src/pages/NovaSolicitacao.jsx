@@ -1206,8 +1206,8 @@ export default function NovaSolicitacao() {
   const exibirJustificativa = campoVisivel('justificativa') && !usaFluxoContratoNovo;
   const justificativaObrigatoria = exibirJustificativa && campoObrigatorio('justificativa');
   const exibirFormaPagamento = campoVisivel('forma_pagamento') && !usaFluxoContratoNovo;
-  // A forma vem primeiro. Boleto na Despesa Eventual usa o anexo obrigatorio
-  // sem pedir um favorecido de pagamento separado do credor da solicitacao.
+  // A forma vem primeiro. Boleto usa o anexo obrigatorio sem pedir um
+  // favorecido de pagamento separado, em qualquer tipo da Nova Solicitacao.
   const exibirFavorecido = (campoVisivel('favorecido') || exibirFormaPagamento) && !usaFluxoContratoNovo;
   const formaPagamentoObrigatoria = exibirFormaPagamento && campoObrigatorio('forma_pagamento');
   // Em medicao o anexo e regra do fluxo, mesmo que a configuracao visual antiga tenha ocultado o
@@ -1235,9 +1235,8 @@ export default function NovaSolicitacao() {
   const anexosObrigatorios = usaRegraAnexoPorFormaPagamento
     ? exigirAnexoPagamento
     : (tipoEhDeMedicao || campoObrigatorio('anexos'));
-  const boletoDespesaEventual = usaFluxoDespesaEventual && pagamentoViaBoleto;
-  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada) && !boletoDespesaEventual;
-  // Para as demais formas e tipos, o favorecido continua obrigatorio.
+  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada) && !pagamentoViaBoleto;
+  // Para PIX e as demais formas nao-Boleto, o favorecido continua obrigatorio.
   const favorecidoObrigatorio = exibirFavorecidoPagamento;
 
   useEffect(() => {

@@ -132,11 +132,13 @@ function validarIntegracaoFrontendBackend() {
   assert(solicitacaoController.includes('!formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
   assert(solicitacaoController.includes('Anexe ao menos um comprovante para esta forma de pagamento.'));
   assert(novaSolicitacao.includes('pagamentoViaOutraForma'));
-  assert(novaSolicitacao.includes('const boletoDespesaEventual = usaFluxoDespesaEventual && pagamentoViaBoleto'));
-  assert(novaSolicitacao.includes('Boolean(formaPagamentoSelecionada) && !boletoDespesaEventual'));
+  assert(novaSolicitacao.includes('Boolean(formaPagamentoSelecionada) && !pagamentoViaBoleto'));
+  assert(!novaSolicitacao.includes('boletoDespesaEventual'));
   assert(novaSolicitacao.includes("boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null"));
-  assert(solicitacaoController.includes('const boletoDespesaEventual = usaFluxoDespesaEventual && formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
-  assert(solicitacaoController.includes('const favorecidoEhObrigatorio = !boletoDespesaEventual'));
+  assert(solicitacaoController.includes('const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
+  assert(solicitacaoController.includes('const favorecidoEhObrigatorio = !pagamentoViaBoleto'));
+  assert(solicitacaoController.includes('if (!pagamentoViaBoleto && (campoVisivel('));
+  assert(!solicitacaoController.includes('boletoDespesaEventual'));
   assert(solicitacaoController.includes("Anexe o boleto para usar esta forma de pagamento."));
   const camposDespesaEventual = resolverCamposNovaSolicitacao(
     { usa_fluxo_despesa_eventual: true }, { regras: {} }, 33, { areaResponsavel: 'GEO' }
