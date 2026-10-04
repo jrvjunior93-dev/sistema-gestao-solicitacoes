@@ -1187,6 +1187,8 @@ export default function SolicitacaoDetalhe() {
   );
   const podeAprovarPorTipo = Boolean(
     solicitacao.acao_aprovar_tipo_disponivel &&
+    !solicitacao.fluxo_contrato_novo &&
+    !solicitacaoEhContrato &&
     !(solicitacao.solicitacao_compra_id && !solicitacao.compra_direta)
   );
   const podeEnviarSetor =

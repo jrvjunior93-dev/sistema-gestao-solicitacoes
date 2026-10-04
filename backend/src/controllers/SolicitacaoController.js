@@ -121,7 +121,8 @@ const {
   userHasConfiguredAreaPermissions
 } = require('../services/authorizationService');
 const {
-  resolverContextoAprovacaoPorTipo
+  resolverContextoAprovacaoPorTipo,
+  solicitacaoSegueFluxoContratoNovo
 } = require('../services/solicitacao/aprovacaoTipoConfig');
 const { registrarLogSolicitacaoCompra } = require('../services/comprasCotacao');
 const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
@@ -4598,6 +4599,9 @@ module.exports = {
         (isBusinessAdmin(req.user) || usuarioEhGeo || usuarioTemPermissaoAprovacao)
       );
 
+      const fluxoContratoNovo = await solicitacaoSegueFluxoContratoNovo(solicitacao);
+      if (fluxoContratoNovo) podeAprovarPorTipo = false;
+
       const payload = solicitacao.toJSON ? solicitacao.toJSON() : solicitacao;
       const compraVinculada = await SolicitacaoCompra.findOne({
         where: {
@@ -4677,6 +4681,7 @@ module.exports = {
         erro_configuracao: contextoAprovacaoTipo.erro || null
       };
       payload.acao_aprovar_tipo_disponivel = podeAprovarPorTipo;
+      payload.fluxo_contrato_novo = fluxoContratoNovo;
       payload.contexto_interacao = await montarContextoInteracao(
         req,
         solicitacao,
@@ -5868,6 +5873,12 @@ module.exports = {
       if (solicitacao.cancelada) {
         await transaction.rollback();
         return res.status(400).json({ error: 'Solicitacao cancelada nao pode ser aprovada.' });
+      }
+      if (await solicitacaoSegueFluxoContratoNovo(solicitacao, { transaction })) {
+        await transaction.rollback();
+        return res.status(409).json({
+          error: 'Este contrato deve ser aprovado no card do contrato, com a categoria financeira. A aprovacao generica nao executa o fluxo contratual.'
+        });
       }
       if (solicitacao.fluxo_aprovacao_diretoria && !solicitacao.aprovada_diretoria_em) {
         await transaction.rollback();

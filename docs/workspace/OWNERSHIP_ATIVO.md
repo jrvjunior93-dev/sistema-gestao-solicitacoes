@@ -1,5 +1,34 @@
 # Ownership Ativo
 
+## Ownership temporario - retorno do contrato aprovado a Obra - 04/10/2026
+
+Sessao `/root` no worktree `painel-gestor-refactor`: reserva
+`backend/src/services/contratoFluxoNovoService.js`,
+`backend/scripts/validarRetornoContratoAprovadoObra.js`,
+`backend/package.json`, handoff
+`docs/handoffs/2026-10-04-aprovacao-exclusiva-contrato.md` e este registro.
+Escopo: ao ativar contrato novo de uma obra, devolver a solicitacao a OBRA,
+independentemente do setor do criador; preservar a ida ao Juridico acima do
+limite e as outras transicoes. Sem banco, migration, deploy, commit ou push.
+
+Implementacao local concluida e validada; ownership de edicao liberado.
+Handoff: `docs/handoffs/2026-10-04-aprovacao-exclusiva-contrato.md`.
+
+## Ownership temporario - aprovacao exclusiva do contrato - 04/10/2026
+
+Sessao `/root` no worktree `painel-gestor-refactor`: reserva
+`backend/src/controllers/SolicitacaoController.js`,
+`backend/src/services/solicitacao/aprovacaoTipoConfig.js`,
+`frontend/src/pages/SolicitacaoDetalhe/index.jsx`, teste local da aprovacao,
+`backend/package.json`,
+handoff desta tarefa e este registro. Escopo: impedir aprovacao generica de
+solicitacoes vinculadas ao contrato do fluxo novo, preservando a aprovacao no
+card, o roteamento contratual e os demais tipos. Sem banco, migration, EC2,
+deploy, commit ou push nesta etapa.
+
+Implementacao local concluida e validada; ownership de edicao liberado.
+Handoff: `docs/handoffs/2026-10-04-aprovacao-exclusiva-contrato.md`.
+
 ## Ownership temporario - campos de Despesa Administrativa - 04/10/2026
 
 Sessao `/root` no worktree `painel-gestor-refactor`: reserva

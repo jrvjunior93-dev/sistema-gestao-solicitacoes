@@ -21,6 +21,7 @@ const { isValidCpfCnpj, normalizarCpfCnpj } = require('./parceiroService');
 const { validarResponsavelVinculadoObra } = require('./contratoResponsavelService');
 const { resolverDestinoInicialNovaSolicitacao } = require('./novaSolicitacaoDestinoService');
 const { assertTipoDisponivelNoDestino } = require('./tipoSolicitacaoDisponibilidadeService');
+const { isObraCentroCusto } = require('../constants/centroCusto');
 const gerarCodigoSolicitacao = require('./solicitacao/gerarCodigo');
 const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 const {
@@ -359,6 +360,7 @@ const LIMITE_APROVACAO = 50000;
  * Gerencia tem espaco no fim do nome no banco — armadilha ja registrada neste projeto.
  */
 const SETOR_JURIDICO = 'JURIDICO';
+const SETOR_OBRA = 'OBRA';
 
 const STATUS_SOLICITACAO_POR_CONTRATO = {
   [STATUS_CONTRATO.AGUARDANDO_APROVACAO]: 'PENDENTE',
@@ -475,9 +477,9 @@ async function espelharERegistrar(contrato, {
  * O SETOR DE QUEM CRIOU A SOLICITACAO (itens 24 e 30, 23/08).
  *
  * "Ao ser rejeitado precisa ser resolvida, e quem vai resolver e quem criou" — palavras do cliente.
- * Vale tambem para a aprovacao: contrato abaixo do limite nao passa pelo Juridico, entao nada nunca
- * o tirava da Gerencia de Processos, e ele ficava parado na fila de quem ja tinha feito a parte
- * dele.
+ * Na rejeicao e na etapa de assinatura, quem abriu resolve a pendencia. Para
+ * contrato ATIVO de obra, a regra posterior e voltar a OBRA mesmo que o autor
+ * pertença ao GEO.
  *
  * Devolve `null` quando nao da para descobrir — usuario apagado, `criado_por` nulo nos registros
  * antigos, setor sem codigo. Nesse caso o chamador mantem o comportamento de antes: um contrato nao
@@ -597,14 +599,22 @@ async function sincronizarSolicitacaoDoContrato(contrato, transaction, { statusS
     mudancas.prioridade_diretoria_em = new Date();
   }
 
-  // Contrato APROVADO: a solicitacao vai para o setor de quem criou.
+  // Contrato ATIVO de obra: a solicitacao volta a OBRA, independentemente do
+  // setor de quem a abriu. Usuarios vinculados a obra a encontram pelas regras
+  // de visibilidade ja existentes. Centro de custo conserva o retorno anterior.
   //
   // ITEM 24 (23/08). Antes, a condicao exigia `setor_destino_pos_aprovacao` — que so existe quando o
   // contrato passou pelo Juridico. Contrato ABAIXO do limite nao passa: o parqueamento nunca
   // acontecia, a condicao era falsa e ele ficava parado na Gerencia de Processos, que ja tinha
   // feito a parte dela. Agora a mudanca vale para os dois caminhos.
   if (contrato.status_contrato === STATUS_CONTRATO.ATIVO) {
-    const destino = setorDoAutor || solicitacao.setor_destino_pos_aprovacao;
+    const obraDoContrato = await Obra.findByPk(contrato.obra_id, {
+      attributes: ['id', 'tipo_centro_custo'],
+      transaction
+    });
+    const destino = obraDoContrato && isObraCentroCusto(obraDoContrato.tipo_centro_custo)
+      ? SETOR_OBRA
+      : (setorDoAutor || solicitacao.setor_destino_pos_aprovacao);
     if (destino) {
       mudancas.area_responsavel = destino;
       mudancas.setor_destino_pos_aprovacao = null;
@@ -1812,7 +1822,7 @@ async function aplicarAprovacaoNaTransacao({ contrato, usuario, req }, transacti
       },
       { transaction }
     );
-    // PI-16: os titulos nasceram; a solicitacao vira APROVADA e volta ao responsavel.
+    // PI-16: os titulos nasceram; a solicitacao vira APROVADA e volta a OBRA.
     await espelharERegistrar(contrato, {
       acao: 'CONTRATO_APROVADO',
       descricao: `Contrato ${contrato.codigo} aprovado: ${titulosIds.length} titulo(s) criado(s).`,
@@ -2945,5 +2955,6 @@ module.exports = {
   STATUS_PARCELA,
   STATUS_CONTRATO,
   decidirTituloNaRescisao,
+  sincronizarSolicitacaoDoContrato,
   LIMITE_APROVACAO
 };
