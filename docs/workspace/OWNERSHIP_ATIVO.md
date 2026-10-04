@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Ownership ativo - favorecido condicional ao boleto - 04/10/2026
+
+Sessao `/root` no worktree `painel-gestor-refactor`: reserva temporaria de
+`frontend/src/pages/NovaSolicitacao.jsx`,
+`backend/src/controllers/SolicitacaoController.js`,
+`backend/scripts/validarFluxosPixApropriacoesSolicitacao.js`,
+`docs/modulos/solicitacoes/README.md`, o handoff desta alteracao e este registro.
+Escopo: aplicar a dispensa do favorecido separado para Boleto nos tipos da
+Nova Solicitacao comum, preservando PIX, outras formas e o anexo obrigatorio.
+O pagamento de Medicao do fluxo novo permanece separado ate confirmacao do
+usuario. Sem escrita em banco, migration, EC2, reinicio ou deploy.
+
 ## Ownership temporario - documentacao e preparacao da promocao - 03/10/2026
 
 Sessao `/root` reserva `docs/README.md`, `docs/arquitetura/infra-deploy.md`,

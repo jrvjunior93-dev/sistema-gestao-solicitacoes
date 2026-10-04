@@ -29,10 +29,13 @@ Solicitacoes e o hub operacional entre usuarios, setores, obras, parceiros, cont
 
 ## Boleto e rateio na Nova Solicitacao
 
-- Na Despesa Eventual paga por Boleto, o credor da solicitacao e o arquivo do
-  boleto permanecem obrigatorios; o favorecido de pagamento separado nao e
-  solicitado. Outras formas de pagamento e outros tipos preservam a exigencia
-  de favorecido conforme suas regras.
+- Na Nova Solicitacao comum, Boleto dispensa o favorecido de pagamento
+  separado em todos os tipos, mesmo se o campo `Favorecido` estiver marcado
+  como obrigatorio na configuracao do tipo. O arquivo do boleto continua
+  obrigatorio; `Credor` segue a regra do tipo (e e obrigatorio em Despesa
+  Eventual). PIX e outras formas preservam a exigencia de favorecido.
+- A Medicao do fluxo novo possui instrucao de pagamento e aprovacao proprias;
+  sua regra de favorecido nao e controlada por esta excecao da Nova Solicitacao.
 - `Apropriacao principal` em `Campos da Nova Solicitacao` controla a visibilidade
   e a obrigatoriedade do campo na obra. A selecao unica continua sendo o padrao.
   Ao optar por dividir, o usuario informa ao menos duas apropriacoes analiticas
