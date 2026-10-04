@@ -8,6 +8,7 @@ import Alert from '../../components/ui/Alert';
 import Spinner from '../../components/ui/Spinner';
 import { useAuth } from '../../contexts/AuthContext';
 import { loginMfaRequest, loginRequest } from '../../services/auth';
+import { resolverRotaInicial } from '../../navigation/telaInicialRoute';
 
 function EyeIcon({ open }) {
   return open ? (
@@ -148,12 +149,9 @@ export default function Login() {
       return;
     }
 
-    // Tela inicial escolhida pelo usuário, já VALIDADA no backend contra
-    // as permissões atuais (payload traz null quando a preferência caiu
-    // — permissão perdida ou rota removida — e nesse caso a Home assume
-    // silenciosamente). Sem escolha, todo perfil cai na Home.
-    const telaInicial = String(data?.user?.tela_inicial?.to || '').trim();
-    navigate(telaInicial.startsWith('/') ? telaInicial : '/');
+    // O login e o botão Início usam a mesma preferência individual.
+    // Sem escolha ou sem acesso, o destino continua sendo o menu.
+    navigate(resolverRotaInicial(data?.user));
   }
 
   async function handleSubmit(e) {

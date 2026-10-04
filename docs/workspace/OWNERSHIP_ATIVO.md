@@ -1,5 +1,24 @@
 # Ownership Ativo
 
+## Ownership ativo - tela inicial individual - 04/10/2026
+
+Sessao `/root` no worktree `painel-gestor-refactor`: reserva temporaria de
+`frontend/src/App.jsx`, `frontend/src/pages/Login/index.jsx`,
+`frontend/src/pages/Perfil.jsx`, `frontend/src/layout/Layout.jsx`,
+`frontend/src/navigation/AtalhosTopbar.jsx`,
+`frontend/src/navigation/useWorkspaceTabs.js`,
+`frontend/src/navigation/telaInicialRoute.js`,
+`frontend/scripts/validarTelaInicial.mjs`,
+`frontend/scripts/validarNavegacao.mjs`,
+`frontend/package.json`, handoff desta tarefa e deste registro.
+Escopo: a pagina escolhida pelo usuario passa a ser o destino de Inicio,
+mantendo o menu de modulos acessivel pelo logo. Home permanece padrao
+sem preferencia; sem banco, EC2, commit, push ou deploy nesta etapa.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-10-04-inicio-preferencia-individual.md`.
+Em seguida, o proprietario autorizou commit, push e promocao para `main`;
+EC2, banco e reinicio de processos permanecem fora deste escopo.
+
 ## Ownership temporario - Home como tela inicial - 04/10/2026
 
 Sessao `/root` reserva `frontend/src/App.jsx`,

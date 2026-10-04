@@ -21,8 +21,8 @@ import { usePosicaoFlutuante } from '../hooks/usePosicaoFlutuante';
 // ---------------------------------------------------------------------
 // - Estrela: aparece em toda tela fixável (correspondência exata na
 //   fonte única). Clicou, fixou; clicou de novo, saiu.
-// - Casinha: define ESTA tela como a tela inicial do usuário (onde o
-//   login entra). Mesma lógica e mesmo lugar da estrela, mas sem
+// - Casinha: define ESTA tela como a tela inicial do usuário (login e
+//   botão Início). Mesma lógica e mesmo lugar da estrela, mas sem
 //   competir com ela: contorno cinza apagado quando inativa, casa
 //   preenchida na cor primária quando esta tela já é a inicial
 //   (a estrela ativa é âmbar). Desmarcar volta para a Home.
@@ -187,11 +187,11 @@ export default function AtalhosTopbar() {
           onClick={alternarTelaInicial}
           disabled={salvandoInicial}
           title={ehTelaInicial
-            ? 'Esta é sua tela inicial — clique para voltar à Home'
+            ? 'Esta é sua tela inicial — clique para voltar ao menu de módulos'
             : 'Definir como minha tela inicial'}
           aria-label={ehTelaInicial
-            ? `Deixar de entrar em ${resolveLabel(telaAtual, user)} ao abrir o sistema`
-            : `Entrar em ${resolveLabel(telaAtual, user)} ao abrir o sistema`}
+            ? `Deixar de usar ${resolveLabel(telaAtual, user)} como Início`
+            : `Usar ${resolveLabel(telaAtual, user)} como Início`}
           aria-pressed={ehTelaInicial}
         >
           {ehTelaInicial ? <HiHome size={16} aria-hidden="true" /> : <HiOutlineHome size={16} aria-hidden="true" />}
@@ -273,7 +273,7 @@ export default function AtalhosTopbar() {
                 })}
               </ul>
               <Link
-                to="/"
+                to="/modulos"
                 className="fx-atalhos-painel-gerenciar"
                 onClick={() => setPainelAberto(false)}
               >

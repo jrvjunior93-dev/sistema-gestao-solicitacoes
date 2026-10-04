@@ -4,6 +4,7 @@ import PrivateRoute from './components/PrivateRoute';
 import AppRouteFallback from './components/AppRouteFallback';
 import Layout from './layout/Layout';
 import { useAuth } from './contexts/AuthContext';
+import { resolverRotaInicial } from './navigation/telaInicialRoute';
 import {
   canAccessBiblioteca,
   canAccessBoletos,
@@ -81,6 +82,12 @@ import {
 import { canAccessCustosRecebiveis } from './modules/custosRecebiveis/utils/access';
 
 const HomeHub = lazy(() => import('./navigation/HomeHub'));
+
+function HomeEntry() {
+  const { user } = useAuth();
+  const destino = resolverRotaInicial(user);
+  return destino === '/' ? <HomeHub /> : <Navigate to={destino} replace />;
+}
 const ModuleHub = lazy(() => import('./navigation/ModuleHub'));
 const Login = lazy(() => import('./pages/Login'));
 const RecuperarSenha = lazy(() => import('./pages/RecuperarSenha'));
@@ -933,7 +940,8 @@ export default function App() {
       >
         {/* Hub Principal (nível 1) e hubs de módulo (nível 2). O
             Dashboard executivo, antes na raiz, vive agora em /dashboard. */}
-        <Route index element={<HomeHub />} />
+        <Route index element={<HomeEntry />} />
+        <Route path="modulos" element={<HomeHub />} />
         <Route path="hub/:moduleId" element={<ModuleHub />} />
         <Route path="dashboard" element={<DashboardRoute />} />
         <Route path="painel-gestor" element={<PainelGestorRoute><PainelGestor /></PainelGestorRoute>} />
