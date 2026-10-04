@@ -8,6 +8,7 @@
     "test:pedido-entregas": "node scripts/validarPedidoEntregaUI.mjs",
     "test:apropriacao-compra": "node scripts/validarModalApropriacaoCompra.mjs",
     "test:apropriacoes-gestao": "node scripts/validarGestaoApropriacoesSincronizacao.mjs",
+    "test:cores-cards-financeiros": "node scripts/validarCoresCardsFinanceiros.mjs",
     "dev": "vite",
     "gerar:navegacao": "node scripts/gerarCatalogoNavegacaoBackend.mjs",
     "prebuild": "npm run gerar:navegacao",
