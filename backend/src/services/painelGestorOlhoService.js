@@ -76,7 +76,8 @@ const CHAVES_NAO_FINANCEIRAS = new Set([
 /** Lista negra explicita (campos reais das 3 respostas do painel). */
 const CHAVES_FINANCEIRAS = new Set([
   // Resultado de Obras
-  'vgv', 'vgv_efetivo', 'planilha_geral', 'margem_custo_esperada', 'orcamento',
+  'vgv', 'vgv_efetivo', 'planilha_geral', 'planilha_geral_efetiva',
+  'margem_custo_esperada', 'orcamento',
   'valor_referencia_resultado', 'valor_total_resultado', 'falta_receber', 'valor_vendido',
   'falta_vender', 'lucro_prejuizo', 'total', 'executado', 'executado_acumulado_ate', 'saldo',
   'recebido', 'recebido_acumulado_ate', 'valor',

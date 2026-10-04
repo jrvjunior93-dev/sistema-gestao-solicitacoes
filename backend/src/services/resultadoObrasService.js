@@ -2,6 +2,7 @@
 
 const {
   Obra,
+  Apropriacao,
   MovimentoFinanceiro,
   TituloFinanceiro,
   TituloFinanceiroRateio,
@@ -11,6 +12,7 @@ const {
 const { Op, fn, col, literal } = require('sequelize');
 const { TIPO_CENTRO_CUSTO_OBRA } = require('../constants/centroCusto');
 const { obterVgvEfetivoPorObras } = require('./obraVgvService');
+const { resolverPlanilhaGeralEfetiva } = require('./obraGestaoApropriacaoService');
 
 function businessError(statusCode, code, message) {
   const error = new Error(message);
@@ -92,7 +94,25 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
   const obraIds = obras.map((obra) => Number(obra.id));
   if (!obraIds.length) return [];
 
-  const vgvPorObra = await obterVgvEfetivoPorObras(obras);
+  const obrasPublicasSemPlanilha = obras.filter((obra) => (
+    String(obra.classificacao || '').trim().toUpperCase() === 'PUBLICA'
+    && !(Number(obra.planilha_geral) > 0)
+  ));
+  const [vgvPorObra, apropriacoesPlanilha] = await Promise.all([
+    obterVgvEfetivoPorObras(obras),
+    obrasPublicasSemPlanilha.length
+      ? Apropriacao.findAll({
+        attributes: ['obra_id', 'valor_orcado', 'somadora'],
+        where: { obra_id: { [Op.in]: obrasPublicasSemPlanilha.map((obra) => obra.id) }, ativo: true }
+      })
+      : Promise.resolve([])
+  ]);
+  const apropriacoesPorObra = new Map();
+  apropriacoesPlanilha.forEach((apropriacao) => {
+    const obraId = Number(apropriacao.obra_id);
+    if (!apropriacoesPorObra.has(obraId)) apropriacoesPorObra.set(obraId, []);
+    apropriacoesPorObra.get(obraId).push(apropriacao);
+  });
   const [agregados, rateiosRecarga, historicos, contratosVendidos] = await Promise.all([
     TituloFinanceiro.findAll({
       attributes: [
@@ -291,10 +311,13 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     const margem = Number(obra.margem_custo_esperada || 0);
     const vgvInfo = vgvPorObra.get(Number(obra.id));
+    const planilhaInfo = classificacao === 'PUBLICA'
+      ? resolverPlanilhaGeralEfetiva(obra, apropriacoesPorObra.get(Number(obra.id)))
+      : null;
     const valorReferencia = classificacao === 'PRIVADA'
       ? Number(vgvInfo?.valor || 0)
       : classificacao === 'PUBLICA'
-        ? Number(obra.planilha_geral || 0)
+        ? planilhaInfo.valor
         : 0;
     const orcamento = valorReferencia > 0 && margem > 0
       ? valorReferencia * (1 - margem / 100)
@@ -319,6 +342,8 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
       vgv_unidades_total: vgvInfo?.unidades_total ?? 0,
       vgv_unidades_sem_valor: vgvInfo?.unidades_sem_valor ?? 0,
       planilha_geral: obra.planilha_geral != null ? Number(obra.planilha_geral) : null,
+      planilha_geral_efetiva: planilhaInfo?.valor ?? null,
+      planilha_geral_origem: planilhaInfo?.origem ?? null,
       margem_custo_esperada: obra.margem_custo_esperada != null ? Number(obra.margem_custo_esperada) : null,
       orcamento,
       valor_referencia_resultado: valorReferencia || null,

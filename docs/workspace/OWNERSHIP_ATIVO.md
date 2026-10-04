@@ -1198,3 +1198,23 @@ backup completo, banco de teste, merge ou deploy nesta etapa.
 Acrescentado `docs/seguranca/checklist-operacional.md` para corrigir a
 frequencia documental do backup de duas para uma execucao diaria, conforme
 politica aprovada pelo usuario.
+
+## Ownership ativo - referencias financeiras e cores de obras - 03/10/2026
+
+Sessao `/root` no worktree isolado `painel-gestor-refactor`, baseada em
+`origin/refactor/frontend` (`811a5cce`): reserva temporaria de
+`backend/src/services/obraGestaoApropriacaoService.js`,
+`backend/src/services/obraGestaoService.js`,
+`backend/src/services/resultadoObrasService.js`,
+`backend/src/services/obraVgvService.js`, testes focados de obras,
+`backend/src/services/painelGestorOlhoService.js`,
+`backend/scripts/validarPainelGestorOlho.js`,
+`frontend/src/pages/Obras.jsx`, `Obras.css`,
+`FinanceiroResultadoObras.jsx`, `FinanceiroResultadoObras.css`,
+`frontend/src/pages/painelGestor/CardObraPainel.jsx`,
+`ContaSaldoCard.jsx`, `frontend/src/pages/PainelGestor.jsx`,
+`frontend/src/styles/painel-gestor.css`, guia de Obras e handoff desta tarefa.
+Escopo: fallback da planilha publica por apropriacoes analiticas, VGV privado
+parcial sinalizado e cores financeiras coerentes nos cards. Sem escrita em
+banco ou migration. Em 03/10 o proprietario autorizou commit e promocao para
+`main`; a integracao deve preservar os commits exclusivos da producao.

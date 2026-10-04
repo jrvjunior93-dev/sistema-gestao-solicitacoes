@@ -33,8 +33,6 @@ import { dinheiro, dinheiroOuTraco, numero, percentual } from './valores';
 */
 
 const CLASSIFICACAO_ROTULO = { PUBLICA: 'Pública', PRIVADA: 'Privada' };
-const VGV_SEM_CALCULO = new Set(['SEM_UNIDADES', 'UNIDADES_INCOMPLETAS']);
-
 function Rotulo({ rotulo, dica, alerta }) {
   if (!dica && !alerta) return <span className="pg-obra-metrica__rotulo">{rotulo}</span>;
   const texto = alerta ? `${alerta}.${dica ? ` ${dica}` : ''}` : dica;
@@ -99,10 +97,15 @@ export default function CardObraPainel({ obra, oculto }) {
   const pagar = obra.pagar || {};
   const receber = obra.receber || {};
   // Decidido por campo NÃO financeiro: vale igual com o olho aberto e fechado.
-  const vgvSemCalculo = isPrivada && VGV_SEM_CALCULO.has(obra.vgv_origem);
-
-  const referencia = isPrivada ? (obra.vgv_efetivo ?? obra.vgv) : obra.planilha_geral;
-  const referenciaResultado = numero(obra.valor_referencia_resultado ?? referencia ?? 0);
+  const referencia = obra.valor_referencia_resultado
+    ?? (isPrivada ? (obra.vgv_efetivo ?? obra.vgv) : obra.planilha_geral);
+  const referenciaResultado = numero(referencia);
+  // A escolha do rótulo também precisa funcionar com os valores ocultos.
+  const vgvSemCalculo = isPrivada && (
+    obra.vgv_origem === 'SEM_UNIDADES'
+    || (obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
+      && numero(obra.vgv_unidades_total) <= numero(obra.vgv_unidades_sem_valor))
+  );
   const baseTotal = oculto ? 0 : valorTotalObra(obra);
   const executado = numero(pagar.executado);
   const recebido = numero(receber.recebido);
@@ -133,11 +136,14 @@ export default function CardObraPainel({ obra, oculto }) {
     : 'Saldo dos títulos a receber.';
   const alertaVgv = isPrivada
     ? (obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
-      ? `VGV não calculado: ${obra.vgv_unidades_sem_valor} unidade(s) sem valor base de venda`
+      ? `${vgvSemCalculo ? 'VGV não calculado' : 'VGV parcial'}: ${obra.vgv_unidades_sem_valor} unidade(s) sem valor base de venda`
       : obra.vgv_origem === 'SEM_UNIDADES' ? 'Sem unidades ativas vinculadas; VGV não calculado' : undefined)
     : undefined;
   const dicaVgv = isPrivada && obra.vgv_origem === 'UNIDADES'
     ? `${obra.vgv_unidades_total} unidades ativas · valor base de venda.`
+    : undefined;
+  const dicaPlanilha = !isPrivada && obra.planilha_geral_origem === 'APROPRIACOES'
+    ? 'Soma das apropriações analíticas ativas.'
     : undefined;
   const dicaOrcamento = !oculto && isPrivada && orcamento != null
     ? `Orçamento: ${formatCurrency(orcamento)}.`
@@ -186,7 +192,7 @@ export default function CardObraPainel({ obra, oculto }) {
           </>
         ) : (
           <>
-            <Metrica rotulo={nomeReferencia} valor={dinheiro(referenciaResultado, oculto)} />
+            <Metrica rotulo={nomeReferencia} valor={dinheiro(referenciaResultado, oculto)} dica={oculto ? undefined : dicaPlanilha} />
             <Metrica rotulo="Orçamento" valor={dinheiroOuTraco(orcamento, oculto)} dica="Planilha geral menos a margem esperada." />
             <Metrica
               rotulo="Custo / Planilha"

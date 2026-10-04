@@ -20,7 +20,8 @@ const {
 const {
   apropriacaoEhSomadora,
   distribuirPorApropriacao,
-  somarOrcamentoAnalitico
+  somarOrcamentoAnalitico,
+  resolverPlanilhaGeralEfetiva
 } = require('./obraGestaoApropriacaoService');
 const { obterVgvEfetivoPorObras } = require('./obraVgvService');
 
@@ -807,10 +808,13 @@ async function listarObrasGestao() {
     );
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     const vgvInfo = vgvPorObra.get(Number(obra.id));
+    const planilhaInfo = classificacao === 'PUBLICA'
+      ? resolverPlanilhaGeralEfetiva(obra, apropriacoesObra)
+      : null;
     const valorReferenciaResultado = classificacao === 'PRIVADA'
       ? asNumber(vgvInfo?.valor)
       : classificacao === 'PUBLICA'
-        ? asNumber(obra.planilha_geral)
+        ? planilhaInfo.valor
         : 0;
     const faltaReceber = roundCurrency(
       valorReferenciaResultado > 0
@@ -836,6 +840,8 @@ async function listarObrasGestao() {
       vgv_unidades_total: vgvInfo?.unidades_total ?? 0,
       vgv_unidades_sem_valor: vgvInfo?.unidades_sem_valor ?? 0,
       planilha_geral: obra.planilha_geral != null ? Number(obra.planilha_geral) : null,
+      planilha_geral_efetiva: planilhaInfo?.valor ?? null,
+      planilha_geral_origem: planilhaInfo?.origem ?? null,
       margem_custo_esperada: obra.margem_custo_esperada != null ? Number(obra.margem_custo_esperada) : null,
       resumo: {
         orcado,

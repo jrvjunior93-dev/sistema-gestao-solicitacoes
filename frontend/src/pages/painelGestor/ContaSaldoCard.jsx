@@ -19,8 +19,10 @@ export function situacaoDaConta(saldo) {
    continua visível, o valor vira "••••••". */
 export default function ContaSaldoCard({ item, oculto }) {
   const saldo = item.saldo;
+  const valor = Number(saldo?.valor || 0);
+  const tom = oculto || !saldo ? 'neutro' : valor < 0 ? 'negativo' : valor > 0 ? 'positivo' : 'neutro';
   return (
-    <article className="pg-account-card" data-pendente={saldo ? 'false' : 'true'}>
+    <article className="pg-account-card" data-pendente={saldo ? 'false' : 'true'} data-tom={tom}>
       <div className="pg-account-card__heading">
         <HiOutlineBuildingOffice2 aria-hidden="true" />
         <div><strong>{item.nome}</strong><span>{item.empresa?.nome || 'Sem empresa vinculada'}</span></div>

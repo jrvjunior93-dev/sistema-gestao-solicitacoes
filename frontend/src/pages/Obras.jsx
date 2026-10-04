@@ -217,8 +217,10 @@ function ObraCadastroCard({
   const fonteReferencia = obra.vgv_origem === 'UNIDADES'
     ? `${Number(obra.vgv_unidades_total || 0)} unidade(s) ativa(s)`
     : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
-      ? `${Number(obra.vgv_unidades_sem_valor || 0)} unidade(s) sem valor base`
-      : null;
+      ? `${valorReferencia > 0 ? 'VGV parcial' : 'VGV não calculado'} · ${Number(obra.vgv_unidades_sem_valor || 0)} unidade(s) sem valor`
+      : obraPublica && obra.planilha_geral_origem === 'APROPRIACOES'
+        ? 'Soma das apropriações analíticas'
+        : null;
 
   return (
     <article className={`obra-cadastro-card${obra.ativo ? '' : ' obra-cadastro-card--inativa'}`}>
@@ -268,7 +270,7 @@ function ObraCadastroCard({
                   label="Valor vendido"
                   value={formatCurrency(valorVendido)}
                   support={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
-                  tone="received"
+                  tone="reference"
                 />
                 <ObraMetrica
                   label="Falta vender"
@@ -293,7 +295,7 @@ function ObraCadastroCard({
 
           <div className="obra-cadastro-card__progressos">
             {orcamentoCusto != null ? (
-              <ObraProgresso label="Executado / Orçamento" value={executado} max={orcamentoCusto} />
+              <ObraProgresso label="Executado / Orçamento" value={executado} max={orcamentoCusto} tone="danger" />
             ) : null}
             {valorReferencia > 0 ? (
               <ObraProgresso label={`Recebido / ${referenciaLabel}`} value={recebido} max={valorReferencia} tone="success" />
@@ -440,6 +442,8 @@ export default function Obras() {
             vgv_unidades_sem_valor: resultadoObra?.vgv_unidades_sem_valor ?? gestaoObra?.vgv_unidades_sem_valor,
             valor_referencia_resultado: resultadoObra?.valor_referencia_resultado
               ?? gestaoObra?.resumo?.valor_referencia_resultado,
+            planilha_geral_origem: resultadoObra?.planilha_geral_origem
+              ?? gestaoObra?.planilha_geral_origem,
             orcamento: resultadoObra?.orcamento,
             valor_vendido: resultadoObra?.valor_vendido,
             falta_vender: resultadoObra?.falta_vender,

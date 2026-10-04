@@ -180,6 +180,8 @@
 .pg-balance-summary > div { display: grid; align-content: center; gap: .2rem; }
 .pg-balance-summary > div > span { color: var(--c-muted); font-size: var(--fonte-detalhe); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .pg-balance-summary > div > strong { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.pg-balance-summary[data-tom="positivo"] > div > strong { color: var(--c-success); }
+.pg-balance-summary[data-tom="negativo"] > div > strong { color: var(--c-danger); }
 .pg-balance-summary > div > small { color: var(--c-muted); font-size: var(--fonte-detalhe); }
 .pg-balance-summary dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border-left: 1px solid var(--c-border); }
 .pg-balance-summary dl div { display: grid; align-content: center; gap: .3rem; padding: .6rem 1rem; }
@@ -283,6 +285,8 @@
 .pg-account-card__heading span { color: var(--c-muted); font-size: var(--fonte-detalhe); }
 .pg-account-card__heading em { padding: .18rem .42rem; border-radius: 999px; background: color-mix(in srgb, var(--c-success) 12%, var(--c-surface)); color: var(--c-success); font-size: var(--fonte-detalhe); font-style: normal; font-weight: 800; text-transform: uppercase; }
 .pg-account-card > p { margin: 0; font-size: var(--fonte-bloco); font-weight: 800; font-variant-numeric: tabular-nums; }
+.pg-account-card[data-tom="positivo"] > p { color: var(--c-success); }
+.pg-account-card[data-tom="negativo"] > p { color: var(--c-danger); }
 .pg-account-card footer { display: grid; gap: .2rem; padding-top: .7rem; border-top: 1px solid var(--c-border); color: var(--c-muted); font-size: var(--fonte-detalhe); }
 
 .pg-history-scroll { max-width: 100%; overflow: auto; }

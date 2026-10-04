@@ -6,7 +6,8 @@ const {
   FONTE_SEM_APROPRIACAO,
   distribuirPorApropriacao,
   selecionarFonteApropriacao,
-  somarOrcamentoAnalitico
+  somarOrcamentoAnalitico,
+  resolverPlanilhaGeralEfetiva
 } = require('../src/services/obraGestaoApropriacaoService');
 
 function total(distribuicoes) {
@@ -127,6 +128,33 @@ function total(distribuicoes) {
   ]);
 
   assert.strictEqual(totalAnalitico, 27000000);
+}
+
+{
+  const linhas = [
+    { valor_orcado: '400000.10', somadora: true },
+    { valor_orcado: '150000.05', somadora: false },
+    { valor_orcado: '250000.05', somadora: 0 }
+  ];
+  assert.deepStrictEqual(
+    resolverPlanilhaGeralEfetiva({ planilha_geral: '750000.00' }, linhas),
+    { valor: 750000, origem: 'CADASTRO' },
+    'O valor cadastrado tem prioridade sobre as apropriações'
+  );
+  assert.deepStrictEqual(
+    resolverPlanilhaGeralEfetiva({ planilha_geral: null }, linhas),
+    { valor: 400000.10, origem: 'APROPRIACOES' },
+    'Linhas somadoras não podem duplicar a planilha efetiva'
+  );
+  assert.deepStrictEqual(
+    resolverPlanilhaGeralEfetiva({ planilha_geral: 0 }, linhas),
+    { valor: 400000.10, origem: 'APROPRIACOES' }
+  );
+  assert.deepStrictEqual(
+    resolverPlanilhaGeralEfetiva({ planilha_geral: null }, []),
+    { valor: 0, origem: null },
+    'Sem valor informado nem apropriações, a referência permanece ausente'
+  );
 }
 
 console.log('Validacao do rateio de apropriacoes na gestao de obras concluida com sucesso.');
