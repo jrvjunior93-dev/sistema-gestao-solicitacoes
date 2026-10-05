@@ -37,7 +37,7 @@ const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { normalizeOriginalName } = require('../utils/fileName');
 const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
 const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
-const { findSetorByCapability, resolveSetorPersistenciaValue, userHasSetorCapability } = require('../services/setorCapabilityService');
+const { findSetorByCapability, isGeoToken, resolveSetorPersistenciaValue, userHasSetorCapability } = require('../services/setorCapabilityService');
 const { normalizeTipoSolicitacaoBehavior, normalizeTipoSolicitacaoCodigo } = require('../services/tipoSolicitacaoBehaviorService');
 const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
 const {
@@ -90,9 +90,11 @@ const {
   canManageComprasDelegacao,
   canOperateComprasCotacoes,
   canViewAllComprasScope,
+  canViewCompraSolicitacoes,
   isSuperadmin,
   isBusinessAdmin
 } = require('../services/authorizationService');
+const { assertPodeInteragirSolicitacao } = require('../services/solicitacaoRetornoService');
 const { validateCompraEnviarBody } = require('../validators/operationalValidators');
 const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
 const {
@@ -2076,7 +2078,42 @@ async function anexarArquivosCabecalhoSolicitacao({ anexos = [], solicitacaoPrin
   return total;
 }
 
-async function validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction = null) {
+async function podeAcessarCompraDiretaNaFilaGeo(usuario, solicitacao, transaction = null) {
+  if (!isSolicitacaoCompraDireta(solicitacao)) return false;
+  if (!(await userHasSetorCapability(usuario, 'eh_setor_geo'))) return false;
+  if (!(await canViewCompraSolicitacoes(usuario))) return false;
+  if (!Number(solicitacao.solicitacao_principal_id)) return false;
+
+  // Releia a solicitacao principal: o setor pode ter mudado desde que a compra
+  // foi carregada. Nas escritas, mantenha o setor travado ate o fim da transacao.
+  const principal = await Solicitacao.findByPk(Number(solicitacao.solicitacao_principal_id), {
+    attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global'],
+    transaction,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
+  });
+  if (!principal) return false;
+  const setorGeo = await buscarSetorGerenciaProcessos(transaction);
+  const estaEmGeo = normalizeFluxoTokenCompra(principal.area_responsavel) === normalizeFluxoTokenCompra(setorGeo)
+    || (isGeoToken(principal.area_responsavel) && isGeoToken(setorGeo));
+  if (!estaEmGeo) return false;
+
+  try {
+    // Reutiliza visibilidade e SETOR PRINCIPAL da solicitacao; vinculo secundario
+    // com GEO ou permissao de alterar status de outro setor nao libera esta fila.
+    await assertPodeInteragirSolicitacao({ user: usuario }, principal);
+    return true;
+  } catch (error) {
+    if ([403, 404, 409].includes(error.statusCode)) return false;
+    throw error;
+  }
+}
+
+async function validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction = null, options = {}) {
+  // Excecao opt-in apenas para leitura dos itens e suas acoes granulares.
+  // Nao amplia as listas, pedidos, cotacoes, encaminhamentos ou demais acoes.
+  if (options.permitirCompraDiretaGeo && await podeAcessarCompraDiretaNaFilaGeo(usuario, solicitacao, transaction)) {
+    return true;
+  }
   if (await podeGerenciarCompraNaFilaGeo(usuario, solicitacao, transaction)) {
     return true;
   }
@@ -3293,7 +3330,7 @@ module.exports = {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
       }
 
-      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res))) {
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, null, { permitirCompraDiretaGeo: true }))) {
         return;
       }
 
@@ -3339,7 +3376,7 @@ module.exports = {
         }
       }
 
-      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res))) {
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, null, { permitirCompraDiretaGeo: true }))) {
         return;
       }
 
@@ -3539,7 +3576,7 @@ module.exports = {
         return res.status(400).json({ error: 'Solicitacao cancelada ou inativa nao permite cadastrar unidade de item.' });
       }
 
-      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction))) {
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction, { permitirCompraDiretaGeo: true }))) {
         await transaction.rollback();
         return;
       }
@@ -3665,7 +3702,7 @@ module.exports = {
         return responderCompraAguardandoLiberacao(res);
       }
 
-      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction))) {
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction, { permitirCompraDiretaGeo: true }))) {
         await transaction.rollback();
         return;
       }

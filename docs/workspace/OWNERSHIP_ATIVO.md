@@ -1453,3 +1453,21 @@ handoff desta correcao e deste registro. Escopo: impedir que configuracoes
 legadas ou permissoes apenas de acao exponham paginas sem permissao de leitura,
 alinhando menu, busca, rota e API. Preservar os ajustes locais de Contratos.
 Sem escrita em banco, deploy, commit ou push nesta etapa.
+
+## Ownership ativo - itens de Compra Direta na fila GEO - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`backend/src/controllers/SolicitacaoCompraController.js`,
+`backend/scripts/validarCompraDiretaGeoAcesso.js`,
+`frontend/src/pages/SolicitacaoDetalhe/index.jsx`,
+`frontend/src/pages/SolicitacaoDetalhe/estadoItensCompraDireta.js`,
+`frontend/scripts/validarEstadoItensCompraDireta.mjs`, handoff desta correcao
+e deste registro. Escopo: permitir leitura
+e tratamento granular de itens da Compra Direta sob responsabilidade atual de
+GEO, sem ampliar escopo de pedidos/cotacoes; distinguir falha de carregamento
+de lista vazia. Nao alterar permissoes financeiras da Liz. Sem banco remoto,
+deploy, reinicio, commit ou push nesta etapa.
+Implementacao e validacoes locais concluidas; ownership liberado. No pedido
+seguinte, o proprietario autorizou commit e push para main (worktree ja em main).
+Continuidade do deploy registrada no handoff
+`docs/handoffs/2026-10-05-compra-direta-itens-geo.md`.

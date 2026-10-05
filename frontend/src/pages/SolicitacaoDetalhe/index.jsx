@@ -14,6 +14,7 @@ import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
 import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
 import ObraCadastroModal from '../../components/obras/ObraCadastroModal';
 import CompraEtapas from './CompraEtapas';
+import { descricaoItensCompraDireta } from './estadoItensCompraDireta';
 import { getContratoParcelas } from '../../services/contratos';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import ModalAlterarStatus from './ModalAlterarStatus';
@@ -489,6 +490,7 @@ export default function SolicitacaoDetalhe() {
     }
 
     let ativo = true;
+    setCompraDiretaDetalhe(null);
     setCarregandoCompraDireta(true);
     setErroItensCompraDireta('');
     obterSolicitacaoCompraPorSolicitacao(solicitacao.id)
@@ -903,6 +905,7 @@ export default function SolicitacaoDetalhe() {
       setAcaoItemCompraDireta(podeCatalogarItensManuaisCompra ? 'CATALOGAR' : 'APROPRIAR');
       const data = await obterSolicitacaoCompraPorSolicitacao(solicitacao.id);
       setCompraDiretaDetalhe(data || null);
+      setErroItensCompraDireta('');
       if (itemAlvo?.item_tipo) {
         const item = montarItensCompraDireta(data).find((atual) =>
           atual.item_tipo === itemAlvo.item_tipo && Number(atual.id) === Number(itemAlvo.id));
@@ -954,6 +957,7 @@ export default function SolicitacaoDetalhe() {
     try {
       const data = await obterSolicitacaoCompraPorSolicitacao(solicitacao.id);
       setCompraDiretaDetalhe(data || null);
+      setErroItensCompraDireta('');
       const itemAtualizado = (data?.itensManuais || []).find(
         (item) => Number(item.id) === Number(itemCompraDiretaSelecionado?.id)
       );
@@ -1477,7 +1481,12 @@ export default function SolicitacaoDetalhe() {
       <BlocoConteudo
         titulo="Itens da compra direta"
         variante="secundario"
-        descricao={`${montarItensCompraDireta().length} item(ns) cadastrado(s) nesta compra direta.`}
+        descricao={descricaoItensCompraDireta({
+          carregando: carregandoCompraDireta,
+          erro: erroItensCompraDireta,
+          detalhe: compraDiretaDetalhe,
+          total: montarItensCompraDireta().length
+        })}
         recolhivel
         recolhidoPadrao
         alternarAoClicar
