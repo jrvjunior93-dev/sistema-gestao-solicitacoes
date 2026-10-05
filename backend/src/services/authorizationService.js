@@ -37,38 +37,10 @@ const FINANCEIRO_PERMISSION_KEYS = Object.freeze(
   [...ALL_PERMISSION_KEYS].filter((key) => key.startsWith('financeiro.'))
 );
 
-const FINANCEIRO_PAGAMENTOS_PERMISSION_KEYS = [
-  'financeiro.pagamentos.visualizar',
-  'financeiro.pagamentos.preparar',
-  'financeiro.pagamentos.aprovar',
-  'financeiro.pagamentos.rejeitar',
-  'financeiro.pagamentos.enviar_banco',
-  'financeiro.pagamentos.sincronizar_banco',
-  'financeiro.pagamentos.cancelar',
-  'financeiro.pagamentos.reprocessar',
-  'financeiro.pagamentos.confirmar_baixa',
-  'financeiro.pagamentos.auditar',
-  'financeiro.pagamentos.configurar'
-];
-
-const FINANCEIRO_FILA_PAGAMENTOS_PERMISSION_KEYS = [
-  'financeiro.fila_pagamentos.visualizar',
-  'financeiro.fila_pagamentos.preparar',
-  'financeiro.fila_pagamentos.importar_comprovantes',
-  'financeiro.fila_pagamentos.baixar',
-  'financeiro.fila_pagamentos.reportar',
-  'financeiro.fila_pagamentos.resolver'
-];
-
 const FINANCEIRO_FAVORECIDOS_PERMISSION_KEYS = [
   'financeiro.favorecidos.visualizar',
   'financeiro.favorecidos.gerenciar',
   'financeiro.favorecidos.auditar'
-];
-
-const BOLETOS_PERMISSION_KEYS = [
-  'boletos.emitir.visualizar',
-  'boletos.emitir.gerar'
 ];
 
 const SOLICITACOES_ANEXOS_DELETE_KEYS = [
@@ -76,11 +48,7 @@ const SOLICITACOES_ANEXOS_DELETE_KEYS = [
 ];
 
 const SOLICITACOES_PRIORIDADES_VIEW_KEYS = [
-  'solicitacoes.prioridades.visualizar',
-  'solicitacoes.prioridades.criar',
-  'solicitacoes.prioridades.finalizar',
-  'solicitacoes.prioridades.cancelar',
-  'solicitacoes.prioridades.excluir'
+  'solicitacoes.prioridades.visualizar'
 ];
 
 const SOLICITACOES_PRIORIDADES_CREATE_KEYS = [
@@ -1514,10 +1482,10 @@ async function canAccessBoletos(user) {
   }
 
   if (await userHasConfiguredAreaPermissions(user)) {
-    return userHasAreaPermission(user, BOLETOS_PERMISSION_KEYS);
+    return userHasAreaPermission(user, ['boletos.emitir.visualizar']);
   }
 
-  return (await canAccessFinanceiro(user)) && userHasAreaPermission(user, BOLETOS_PERMISSION_KEYS);
+  return (await canAccessFinanceiro(user)) && userHasAreaPermission(user, ['boletos.emitir.visualizar', 'boletos.emitir.gerar']);
 }
 
 async function canGenerateBoletos(user) {
@@ -1556,7 +1524,7 @@ async function userHasPaymentApprovalDirectorate(user) {
 async function canAccessPagamentos(user) {
   if (isBusinessAdmin(user)) return true;
   if (await userHasConfiguredAreaPermissions(user)) {
-    return userHasAreaPermission(user, FINANCEIRO_PAGAMENTOS_PERMISSION_KEYS);
+    return userHasAreaPermission(user, ['financeiro.pagamentos.visualizar']);
   }
 
   return (await userHasFinanceiroSector(user)) || userHasPaymentApprovalDirectorate(user);
@@ -1565,7 +1533,7 @@ async function canAccessPagamentos(user) {
 async function canAccessFilaPagamentos(user) {
   if (isBusinessAdmin(user)) return true;
   if (await userHasConfiguredAreaPermissions(user)) {
-    return userHasAreaPermission(user, FINANCEIRO_FILA_PAGAMENTOS_PERMISSION_KEYS);
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.visualizar']);
   }
   return userHasFinanceiroSector(user);
 }
@@ -2583,6 +2551,22 @@ async function canAccessContratos(user) {
   );
 }
 
+async function canViewContratos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['contratos.geral.visualizar', 'contratos.geral.editar']);
+  }
+  return canAccessContratos(user);
+}
+
+async function canViewContratosRelatorios(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['contratos.relatorios.visualizar']);
+  }
+  return canAccessContratos(user);
+}
+
 async function canAccessContratosGlobal(user) {
   if (isBusinessAdmin(user)) {
     return true;
@@ -3339,6 +3323,8 @@ module.exports = {
   canAccessBoletos,
   canAccessComercial,
   canAccessContratos,
+  canViewContratos,
+  canViewContratosRelatorios,
   canAccessContratosGlobal,
   canAccessCompras,
   canAccessCrm,

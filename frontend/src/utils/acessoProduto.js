@@ -95,16 +95,10 @@ export function canViewSolicitacoesRelatorioOperacional(user) {
 export function canAccessPrioridadesDiretoria(user) {
   if (!canAccessSolicitacoes(user)) return false;
   if (isBusinessAdmin(user)) return true;
-  if (user?.prioridade_diretoria_acesso) return true;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
-      'solicitacoes.prioridades.visualizar',
-      'solicitacoes.prioridades.criar',
-      'solicitacoes.prioridades.finalizar',
-      'solicitacoes.prioridades.cancelar',
-      'solicitacoes.prioridades.excluir'
-    ]);
+    return hasPermissao(user, 'solicitacoes.prioridades.visualizar');
   }
+  if (user?.prioridade_diretoria_acesso) return true;
 
   const tokens = [
     user?.setor?.codigo,
@@ -859,19 +853,7 @@ export function canAccessPagamentos(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
-      'financeiro.pagamentos.visualizar',
-      'financeiro.pagamentos.preparar',
-      'financeiro.pagamentos.aprovar',
-      'financeiro.pagamentos.rejeitar',
-      'financeiro.pagamentos.enviar_banco',
-      'financeiro.pagamentos.sincronizar_banco',
-      'financeiro.pagamentos.cancelar',
-      'financeiro.pagamentos.reprocessar',
-      'financeiro.pagamentos.confirmar_baixa',
-      'financeiro.pagamentos.auditar',
-      'financeiro.pagamentos.configurar'
-    ]);
+    return hasPermissao(user, 'financeiro.pagamentos.visualizar');
   }
 
   return canAccessFinanceiro(user) || userHasPaymentApprovalDirectorate(user);
@@ -888,14 +870,7 @@ export function canAccessFilaPagamentos(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
-      'financeiro.fila_pagamentos.visualizar',
-      'financeiro.fila_pagamentos.preparar',
-      'financeiro.fila_pagamentos.importar_comprovantes',
-      'financeiro.fila_pagamentos.baixar',
-      'financeiro.fila_pagamentos.reportar',
-      'financeiro.fila_pagamentos.resolver'
-    ]);
+    return hasPermissao(user, 'financeiro.fila_pagamentos.visualizar');
   }
   return userHasSetorCapability(user, 'eh_setor_financeiro') || normalizeToken(user?.perfil) === 'FINANCEIRO';
 }
@@ -910,14 +885,7 @@ export function canAccessFinanceiroDda(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
-      'financeiro.dda.visualizar',
-      'financeiro.dda.sincronizar',
-      'financeiro.dda.vincular',
-      'financeiro.dda.ignorar',
-      'financeiro.dda.auditar',
-      'financeiro.dda.configurar'
-    ]);
+    return hasPermissao(user, 'financeiro.dda.visualizar');
   }
   return canAccessFinanceiro(user);
 }
@@ -1028,10 +996,7 @@ export function canImportTitulosFinanceiros(user) {
 export function canAccessBoletos(user) {
   if (!hasEnabledModule(user, 'BOLETOS')) return false;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
-      'boletos.emitir.visualizar',
-      'boletos.emitir.gerar'
-    ]);
+    return hasPermissao(user, 'boletos.emitir.visualizar');
   }
   return canAccessFinanceiro(user) && (
     hasPermissao(user, 'boletos.emitir.visualizar') ||
@@ -1086,6 +1051,33 @@ export function canAccessContratos(user) {
     ]);
   }
   return isAdminGeo(user) || userHasSetorCapability(user, 'eh_setor_obra');
+}
+
+export function canViewContratos(user) {
+  if (!hasEnabledModule(user, 'CONTRATOS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasAnyPermissao(user, ['contratos.geral.visualizar', 'contratos.geral.editar']);
+  }
+  return canAccessContratos(user);
+}
+
+export function canCreateContratos(user) {
+  if (!hasEnabledModule(user, 'CONTRATOS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasAnyPermissao(user, ['contratos.geral.criar', 'contratos.geral.editar']);
+  }
+  return isAdminGeo(user);
+}
+
+export function canViewContratosRelatorios(user) {
+  if (!hasEnabledModule(user, 'CONTRATOS')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'contratos.relatorios.visualizar');
+  }
+  return canAccessContratos(user);
 }
 
 export function canManageContratos(user) {

@@ -28,7 +28,8 @@ const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const { env } = require('../config/env');
 const { uploadToS3 } = require('../services/s3');
 const {
-  canAccessContratos,
+  canViewContratos,
+  canViewContratosRelatorios,
   canAccessContratosGlobal,
   canCreateContratos,
   canManageContratos,
@@ -725,7 +726,7 @@ module.exports = {
     try {
       const { obra_id, ref, codigo, modo } = req.query;
       const where = { ativo: true };
-      const podeVisualizarContratos = await canAccessContratos(req.user);
+      const podeVisualizarContratos = await canViewContratos(req.user);
       const restringirPorObra = await shouldRestrictContratosToObras(req.user);
       const acessoGlobalContratos = !restringirPorObra && await canAccessContratosGlobal(req.user);
       const obrasPermitidas = isSuperadmin(req.user) ? null : await getUserObraScopeIds(req.user);
@@ -1466,7 +1467,7 @@ module.exports = {
 
   async exportarCsv(req, res) {
     try {
-      const podeVisualizarContratos = await canAccessContratos(req.user);
+      const podeVisualizarContratos = await canViewContratos(req.user);
       const restringirPorObra = await shouldRestrictContratosToObras(req.user);
       const acessoGlobalContratos = !restringirPorObra && await canAccessContratosGlobal(req.user);
       const obrasPermitidas = isSuperadmin(req.user) ? null : await getUserObraScopeIds(req.user);
@@ -1578,7 +1579,7 @@ module.exports = {
 
   async resumo(req, res) {
     try {
-      const podeVisualizarContratos = await canAccessContratos(req.user);
+      const podeVisualizarContratos = await canViewContratos(req.user);
       const restringirPorObra = await shouldRestrictContratosToObras(req.user);
       const acessoGlobalContratos = !restringirPorObra && await canAccessContratosGlobal(req.user);
       const obrasPermitidas = isSuperadmin(req.user) ? null : await getUserObraScopeIds(req.user);
@@ -1663,7 +1664,7 @@ module.exports = {
 
   async relatorioOperacional(req, res) {
     try {
-      const podeVisualizarContratos = await canAccessContratos(req.user);
+      const podeVisualizarContratos = await canViewContratosRelatorios(req.user);
       const restringirPorObra = await shouldRestrictContratosToObras(req.user);
       const acessoGlobalContratos = !restringirPorObra && await canAccessContratosGlobal(req.user);
       const obrasPermitidas = isSuperadmin(req.user) ? null : await getUserObraScopeIds(req.user);
@@ -1875,7 +1876,7 @@ module.exports = {
 
   async detalheOperacional(req, res) {
     try {
-      if (!(await canAccessContratos(req.user))) {
+      if (!(await canViewContratosRelatorios(req.user))) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
@@ -1926,7 +1927,7 @@ module.exports = {
 
   async solicitacoes(req, res) {
     try {
-      const podeVisualizarContratos = await canAccessContratos(req.user);
+      const podeVisualizarContratos = await canViewContratos(req.user);
       if (!podeVisualizarContratos) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
@@ -2477,7 +2478,7 @@ module.exports = {
 
   async listarAnexos(req, res) {
     try {
-      const podeVisualizarContratos = await canAccessContratos(req.user);
+      const podeVisualizarContratos = await canViewContratos(req.user);
       if (!podeVisualizarContratos) {
         return res.status(403).json({ error: 'Acesso negado' });
       }

@@ -1390,3 +1390,28 @@ Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
 Escopo: conferir todos os atalhos da busca universal contra permissoes de
 pagina antes de commitar, publicar a branch e integrar em `main`. Sem deploy,
 reinicio de servicos ou alteracao de banco.
+
+## Ownership ativo - rotas granulares de Contratos - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`frontend/src/utils/acessoProduto.js`, `frontend/src/navigation/navigationConfig.jsx`,
+`frontend/src/App.jsx`, `backend/src/services/authorizationService.js`,
+`backend/src/controllers/ContratoController.js`, `backend/src/controllers/BuscaController.js`,
+`frontend/src/pages/GestaoContratos.jsx`, `frontend/src/pages/ModuloRelatorios.jsx`,
+testes focados de permissoes, handoff desta correcao e deste registro.
+Escopo: separar permissao de visualizar gestao, criar e consultar relatorios
+de Contratos no menu, Ctrl+K, rotas diretas e endpoints correspondentes.
+Sem escrita em banco, deploy, commit ou push nesta etapa.
+
+No pedido seguinte, o proprietario autorizou commit, push e integracao em
+`main` das alteracoes locais de permissoes. Deploy segue separado.
+
+## Ownership ativo - acesso granular a Prioridades e paginas financeiras - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`frontend/src/utils/acessoProduto.js`, `backend/src/services/authorizationService.js`,
+`backend/src/controllers/PrioridadeDiretoriaController.js`, testes focados,
+handoff desta correcao e deste registro. Escopo: impedir que configuracoes
+legadas ou permissoes apenas de acao exponham paginas sem permissao de leitura,
+alinhando menu, busca, rota e API. Preservar os ajustes locais de Contratos.
+Sem escrita em banco, deploy, commit ou push nesta etapa.

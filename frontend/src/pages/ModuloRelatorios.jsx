@@ -4,7 +4,8 @@ import { useUiVisibility } from '../hooks/useUiVisibility';
 import { BlocoConteudo, Pagina, PageHeader } from '../components/padrao';
 import StatusBadge from '../components/StatusBadge';
 import {
-  canAccessContratos,
+  canViewContratos,
+  canViewContratosRelatorios,
   canExecuteRhDpImportacoes,
   canViewComprasCotacoes,
   canViewComprasPedidos,
@@ -29,7 +30,8 @@ const PERMISSIONS = {
   businessAdmin: isBusinessAdmin,
   comprasCotacoes: canViewComprasCotacoes,
   comprasPedidos: canViewComprasPedidos,
-  contratos: canAccessContratos,
+  contratosRelatorios: canViewContratosRelatorios,
+  contratosGestao: canViewContratos,
   comercialContratos: canViewComercialContratos,
   comercialEmpreendimentos: canViewComercialEmpreendimentos,
   crmDashboard: canViewCrmDashboard,
@@ -271,8 +273,8 @@ const HUBS = {
       {
         titulo: 'Disponíveis',
         itens: [
-          { titulo: 'Painel operacional de contratos', descricao: 'Contratos por status, empresa, obra/centro, valores, saldos e pendências cadastrais.', to: '/contratos/relatorios/operacional', status: 'Disponivel', permissao: 'contratos', componentKey: 'relatorios.contratos.operacional' },
-          { titulo: 'Gestão de contratos', descricao: 'Base operacional de contratos, anexos e vínculos.', to: '/gestao-contratos', status: 'Disponivel', permissao: 'contratos', componentKey: 'relatorios.contratos.gestao' }
+          { titulo: 'Painel operacional de contratos', descricao: 'Contratos por status, empresa, obra/centro, valores, saldos e pendências cadastrais.', to: '/contratos/relatorios/operacional', status: 'Disponivel', permissao: 'contratosRelatorios', componentKey: 'relatorios.contratos.operacional' },
+          { titulo: 'Gestão de contratos', descricao: 'Base operacional de contratos, anexos e vínculos.', to: '/gestao-contratos', status: 'Disponivel', permissao: 'contratosGestao', componentKey: 'relatorios.contratos.gestao' }
         ]
       },
       {

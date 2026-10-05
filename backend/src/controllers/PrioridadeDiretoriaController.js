@@ -26,7 +26,8 @@ const {
   canCreatePrioridadeDiretoriaLote,
   canDeletePrioridadeDiretoriaLote,
   canFinalizePrioridadeDiretoriaLote,
-  canViewPrioridadesDiretoria
+  canViewPrioridadesDiretoria,
+  userHasConfiguredAreaPermissions
 } = require('../services/authorizationService');
 const {
   MODO_ACESSO_TODOS,
@@ -238,7 +239,10 @@ async function obterPermissoesPrioridade(req) {
   const perfil = String(req.user?.perfil || '').trim().toUpperCase();
   const tokensUsuario = await obterTokensSetoresUsuario(req.user, req.user?.area ? [req.user.area] : []);
   const isSuperadmin = perfil === 'SUPERADMIN';
-  const isDirAdmin = isSuperadmin || usuarioPertenceAoSetor(tokensUsuario, DIRETORIA_ADMIN_CODIGO);
+  const permissoesGranularesConfiguradas = await userHasConfiguredAreaPermissions(req.user);
+  const isDirAdmin = isSuperadmin || (
+    !permissoesGranularesConfiguradas && usuarioPertenceAoSetor(tokensUsuario, DIRETORIA_ADMIN_CODIGO)
+  );
   const classificacoesDisponiveis = obterClassificacoesDisponiveis(configuracao);
   const classificacoesLegado = classificacoesDisponiveis.filter((classificacao) => {
     const diretoria = configuracao?.diretoriasPorClassificacao?.[classificacao];
@@ -263,13 +267,23 @@ async function obterPermissoesPrioridade(req) {
     canDeletePrioridadeDiretoriaLote(req.user)
   ]);
 
-  const classificacoesOperaveis = isSuperadmin || isDirAdmin || podeVisualizarPermissao || temEscopoConfigurado
-    ? escopoPadrao
-    : classificacoesLegado;
-  const classificacoesCriaveis = isSuperadmin || isDirAdmin || podeCriarPermissao ? escopoPadrao : [];
-  const classificacoesFinalizaveis = isSuperadmin || podeFinalizarPermissao ? escopoPadrao : classificacoesLegado;
-  const classificacoesCancelaveis = isSuperadmin || isDirAdmin || podeCancelarPermissao ? escopoPadrao : [];
-  const classificacoesExcluiveis = isSuperadmin || podeExcluirPermissao ? escopoPadrao : [];
+  const classificacoesOperaveis = permissoesGranularesConfiguradas
+    ? (podeVisualizarPermissao ? escopoPadrao : [])
+    : (isSuperadmin || isDirAdmin || podeVisualizarPermissao || temEscopoConfigurado
+      ? escopoPadrao
+      : classificacoesLegado);
+  const classificacoesCriaveis = permissoesGranularesConfiguradas
+    ? (podeVisualizarPermissao && podeCriarPermissao ? escopoPadrao : [])
+    : (isSuperadmin || isDirAdmin || podeCriarPermissao ? escopoPadrao : []);
+  const classificacoesFinalizaveis = permissoesGranularesConfiguradas
+    ? (podeVisualizarPermissao && podeFinalizarPermissao ? escopoPadrao : [])
+    : (isSuperadmin || podeFinalizarPermissao ? escopoPadrao : classificacoesLegado);
+  const classificacoesCancelaveis = permissoesGranularesConfiguradas
+    ? (podeVisualizarPermissao && podeCancelarPermissao ? escopoPadrao : [])
+    : (isSuperadmin || isDirAdmin || podeCancelarPermissao ? escopoPadrao : []);
+  const classificacoesExcluiveis = permissoesGranularesConfiguradas
+    ? (podeVisualizarPermissao && podeExcluirPermissao ? escopoPadrao : [])
+    : (isSuperadmin || podeExcluirPermissao ? escopoPadrao : []);
 
   return {
     configuracao,
@@ -281,14 +295,18 @@ async function obterPermissoesPrioridade(req) {
     classificacoesDisponiveis,
     podeSolicitarLote: classificacoesCriaveis.length > 0,
     podeVisualizarTodasClassificacoes: classificacoesDisponiveis.length === 0
-      ? (isSuperadmin || isDirAdmin || podeVisualizarPermissao || temEscopoConfigurado)
+      ? (permissoesGranularesConfiguradas
+        ? podeVisualizarPermissao
+        : (isSuperadmin || isDirAdmin || podeVisualizarPermissao || temEscopoConfigurado))
       : todasClassificacoesPermitidas(classificacoesOperaveis, classificacoesDisponiveis),
     classificacoesOperaveis,
     classificacoesCriaveis,
     classificacoesFinalizaveis,
     classificacoesCancelaveis,
     classificacoesExcluiveis,
-    podeAcessarModulo: podeVisualizarPermissao || isDirAdmin || temEscopoConfigurado || classificacoesOperaveis.length > 0
+    podeAcessarModulo: permissoesGranularesConfiguradas
+      ? podeVisualizarPermissao
+      : (podeVisualizarPermissao || isDirAdmin || temEscopoConfigurado || classificacoesOperaveis.length > 0)
   };
 }
 

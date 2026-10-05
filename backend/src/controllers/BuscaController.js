@@ -7,7 +7,7 @@
 //   - Cada grupo reusa LITERALMENTE a regra de visibilidade da tela
 //     correspondente (nenhuma regra nova nasce aqui):
 //       solicitações → montarEscopoVisibilidadeLista + regra mista
-//       contratos    → canAccessContratos + escopo de obras do index
+//       contratos    → canViewContratos + escopo de obras do index
 //       títulos      → permissao de visualizar titulos + getFinanceiroObraScopeIds
 //       obras        → permissao da tela + escopo de obras do usuário
 //       parceiros    → permissão da tela Cadastro de Pessoas
@@ -31,7 +31,7 @@ const {
 } = db;
 const { Op } = Sequelize;
 const {
-  canAccessContratos,
+  canViewContratos,
   canAccessContratosGlobal,
   shouldRestrictContratosToObras,
   canAccessFinanceiro,
@@ -224,7 +224,7 @@ async function grupoObras(req, q) {
   const podeVerDetalhe = await canViewGestaoObras(req.user);
   const podeVerSolicitacoes = await isModuleEnabled('SOLICITACOES') || isSuperadmin(req.user);
   const podeVerContratos = (await isModuleEnabled('CONTRATOS') || isSuperadmin(req.user))
-    && await canAccessContratos(req.user);
+    && await canViewContratos(req.user);
   const escopoObras = await getUserObraScopeIds(req.user);
   if (Array.isArray(escopoObras) && escopoObras.length === 0) return { itens: [], temMais: false };
 
@@ -264,7 +264,7 @@ async function grupoObras(req, q) {
 // ----- Contratos -------------------------------------------------------
 async function grupoContratos(req, q) {
   if (!(await isModuleEnabled('CONTRATOS')) && !isSuperadmin(req.user)) return null;
-  if (!(await canAccessContratos(req.user))) return null;
+  if (!(await canViewContratos(req.user))) return null;
 
   const restringirPorObra = await shouldRestrictContratosToObras(req.user);
   const acessoGlobal = !restringirPorObra && (await canAccessContratosGlobal(req.user));

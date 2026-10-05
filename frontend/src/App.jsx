@@ -15,7 +15,9 @@ import {
   canAccessDashboard,
   canAccessPainelGestor,
   canInformPainelGestorSaldos,
-  canAccessContratos,
+  canViewContratos,
+  canCreateContratos,
+  canViewContratosRelatorios,
   canAccessFinanceiro,
   canAccessFinanceiroArea,
   canAccessFinanceiroDda,
@@ -779,9 +781,9 @@ function GestaoObrasRoute({ children }) {
   return children;
 }
 
-function ContratosRoute({ children }) {
+function ContratosRoute({ children, can }) {
   const { user } = useAuth();
-  if (!canAccessContratos(user)) {
+  if (!can(user)) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -971,7 +973,7 @@ export default function App() {
         <Route path="obras/:id" element={<GestaoObrasRoute><ObraGestao /></GestaoObrasRoute>} />
         <Route path="setores" element={<ConfiguracoesAreaRoute area="cadastros"><Setores /></ConfiguracoesAreaRoute>} />
         <Route path="tipos-solicitacao" element={<ConfiguracoesAreaRoute area="cadastros"><TiposSolicitacao /></ConfiguracoesAreaRoute>} />
-        <Route path="gestao-contratos" element={<ContratosRoute><GestaoContratos /></ContratosRoute>} />
+        <Route path="gestao-contratos" element={<ContratosRoute can={canViewContratos}><GestaoContratos /></ContratosRoute>} />
         <Route path="configuracoes" element={<ConfiguracoesRoute><Configuracoes /></ConfiguracoesRoute>} />
         <Route path="configuracoes-status-internos-pagar" element={<FinanceiroRoute permissionKey="financeiro.titulos.status_interno"><ConfiguracoesStatusInternosPagar /></FinanceiroRoute>} />
         <Route path="configuracoes-usuarios-teste" element={<DevOnlySuperadminRoute><ConfiguracaoUsuariosTesteRapido /></DevOnlySuperadminRoute>} />
@@ -991,7 +993,7 @@ export default function App() {
         <Route path="areas-obra" element={<ConfiguracoesAreaRoute area="status_vinculos"><AreasObra /></ConfiguracoesAreaRoute>} />
         <Route path="obra-tipo-apropriacao" element={<ConfiguracoesAreaRoute area="status_vinculos"><ObraTipoApropriacao /></ConfiguracoesAreaRoute>} />
         <Route path="contrato-obra-categorias" element={<ConfiguracoesAreaRoute area="geral"><ContratoObraCategorias /></ConfiguracoesAreaRoute>} />
-        <Route path="contratos/novo" element={<ContratoFluxoNovo />} />
+        <Route path="contratos/novo" element={<ContratosRoute can={canCreateContratos}><ContratoFluxoNovo /></ContratosRoute>} />
         <Route path="areas-por-setor-origem" element={<ConfiguracoesAreaRoute area="status_vinculos"><AreasPorSetorOrigem /></ConfiguracoesAreaRoute>} />
         <Route path="setores-visiveis-usuario" element={<ConfiguracoesAreaRoute area="status_vinculos"><SetoresVisiveisUsuario /></ConfiguracoesAreaRoute>} />
         <Route path="comportamento-recebimento-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><ComportamentoRecebimentoSetor /></ConfiguracoesAreaRoute>} />
@@ -1184,8 +1186,8 @@ export default function App() {
         <Route path="compras/relatorios/economia-cotacoes" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioEconomiaCotacoes /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/fornecedores" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioFornecedores /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="perfil" element={<Perfil />} />
-        <Route path="contratos/relatorios" element={<ContratosRoute><ModuloRelatorios modulo="contratos" /></ContratosRoute>} />
-        <Route path="contratos/relatorios/operacional" element={<ContratosRoute><ContratosRelatorioOperacional /></ContratosRoute>} />
+        <Route path="contratos/relatorios" element={<ContratosRoute can={canViewContratosRelatorios}><ModuloRelatorios modulo="contratos" /></ContratosRoute>} />
+        <Route path="contratos/relatorios/operacional" element={<ContratosRoute can={canViewContratosRelatorios}><ContratosRelatorioOperacional /></ContratosRoute>} />
         <Route path="solicitacoes-compra" element={<ModuloComprasRoute><CompraSolicitacoesRoute><SolicitacoesCompra /></CompraSolicitacoesRoute></ModuloComprasRoute>} />
         <Route path="solicitacoes-compra/:id/cotacao" element={<ModuloComprasRoute><EnabledModuleRoute moduleKey="COTACOES"><CompraSolicitacoesManageRoute><GerenciarCotacaoSolicitacao /></CompraSolicitacoesManageRoute></EnabledModuleRoute></ModuloComprasRoute>} />
         <Route path="solicitacoes-compra/:id" element={<ModuloComprasRoute><CompraSolicitacoesRoute><SolicitacaoCompraDetalhe /></CompraSolicitacoesRoute></ModuloComprasRoute>} />

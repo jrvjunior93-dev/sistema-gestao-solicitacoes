@@ -10,7 +10,7 @@ import {
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import PendingAttachmentsList from '../components/attachments/PendingAttachmentsList';
-import { canAccessContratos, canManageContratos, hasPermissao } from '../utils/acessoProduto';
+import { canViewContratos, canCreateContratos, canManageContratos, hasPermissao } from '../utils/acessoProduto';
 import {
   UPLOAD_MAX_FILE_SIZE_MB_PADRAO,
   concatenarAnexosPendentes,
@@ -241,7 +241,8 @@ export default function GestaoContratos() {
     String(user?.area || '').toUpperCase()
   ];
   const isSetorObra = setorTokens.includes('OBRA');
-  const podeAcessar = canAccessContratos(user);
+  const podeAcessar = canViewContratos(user);
+  const podeCriarContratos = canCreateContratos(user);
   const podeGerenciarContratos = canManageContratos(user);
   const podeEncerrarContratos = hasPermissao(user, 'contratos.geral.encerrar');
   const contratoSelecionado = contratos.find(item => String(item.id) === String(contratoSelecionadoId)) || null;
@@ -741,6 +742,7 @@ export default function GestaoContratos() {
 
   async function handleCriarContrato(e) {
     e.preventDefault();
+    if (!podeCriarContratos) return;
     if (salvando) return;
 
     try {
@@ -796,6 +798,7 @@ export default function GestaoContratos() {
   }
 
   function abrirNovoContrato() {
+    if (!podeCriarContratos) return;
     setNovoContratoAberto(true);
   }
 
@@ -1541,7 +1544,7 @@ export default function GestaoContratos() {
         titulo="Gestão de Contratos"
         contagem={loading ? null : `${contratos.length} contrato(s)`}
         descricao={DESCRICAO_GESTAO}
-        acaoPrincipal={{ rotulo: 'Novo contrato', onClick: abrirNovoContrato }}
+        acaoPrincipal={podeCriarContratos ? { rotulo: 'Novo contrato', onClick: abrirNovoContrato } : undefined}
       />
 
       {!modalNoTopo && faixaAvisos}
@@ -1602,7 +1605,7 @@ export default function GestaoContratos() {
           R27 — cabecalho e rodape marcados ficam FIXOS e o miolo rola: o botao
           "Criar contrato" nao sai da vista por mais alto que o formulario
           fique (apropriacoes e credores crescem por linha). */}
-      {novoContratoAberto && (
+      {podeCriarContratos && novoContratoAberto && (
         <OverlayModal
           aberto
           rotulo="Novo contrato"

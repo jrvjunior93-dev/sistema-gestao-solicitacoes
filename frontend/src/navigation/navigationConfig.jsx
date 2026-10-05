@@ -99,6 +99,9 @@ import {
   canAccessDashboard,
   canAccessPainelGestor,
   canAccessContratos,
+  canViewContratos,
+  canCreateContratos,
+  canViewContratosRelatorios,
   canAccessFinanceiro,
   canAccessFinanceiroArea,
   canAccessFinanceiroDda,
@@ -622,12 +625,12 @@ export const NAV_MODULES = [
     icon: HiOutlineDocumentCheck,
     gate: (user) => canAccessContratos(user),
     children: [
-      { id: 'contratos-relatorios', ordem: 30, label: 'Relatórios', desc: 'Relatórios operacionais de contratos.', icon: HiOutlineChartBar, to: '/contratos/relatorios', can: SEMPRE },
-      { id: 'contratos-gestao', ordem: 10, secaoConfig: 'cadastros', ordemConfig: 80, label: 'Gestão de Contratos', desc: 'Contratos, aditivos e medições.', icon: HiOutlineDocumentCheck, to: '/gestao-contratos', can: SEMPRE },
-      { id: 'contratos-novo', fixavel: 'acao', ordem: 20, label: 'Novo Contrato', desc: 'Crie um contrato do fluxo com parcelas.', icon: HiOutlinePlusCircle, to: '/contratos/novo', can: SEMPRE }
+      { id: 'contratos-relatorios', ordem: 30, label: 'Relatórios', desc: 'Relatórios operacionais de contratos.', icon: HiOutlineChartBar, to: '/contratos/relatorios', can: (user) => canViewContratosRelatorios(user) },
+      { id: 'contratos-gestao', ordem: 10, secaoConfig: 'cadastros', ordemConfig: 80, label: 'Gestão de Contratos', desc: 'Contratos, aditivos e medições.', icon: HiOutlineDocumentCheck, to: '/gestao-contratos', can: (user) => canViewContratos(user) },
+      { id: 'contratos-novo', fixavel: 'acao', ordem: 20, label: 'Novo Contrato', desc: 'Crie um contrato do fluxo com parcelas.', icon: HiOutlinePlusCircle, to: '/contratos/novo', can: (user) => canCreateContratos(user) }
     ],
     commandItems: [
-      { id: 'contratos-relatorio-operacional', label: 'Painel Operacional de Contratos', desc: 'Relatório de contratos, valores, saldos e pendências cadastrais.', icon: HiOutlineChartBar, to: '/contratos/relatorios/operacional', can: SEMPRE }
+      { id: 'contratos-relatorio-operacional', label: 'Painel Operacional de Contratos', desc: 'Relatório de contratos, valores, saldos e pendências cadastrais.', icon: HiOutlineChartBar, to: '/contratos/relatorios/operacional', can: (user) => canViewContratosRelatorios(user) }
     ]
   },
   {
