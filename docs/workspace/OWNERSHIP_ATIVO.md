@@ -1,5 +1,11 @@
 # Ownership Ativo
 
+Ownership temporario /root em 05/10/2026 no worktree `codex/controle-diario-permissoes-financeiro`: alinhar catalogo inteiro do Ctrl+K as permissoes das paginas e corrigir Pedidos de Compra por permissao granular no menu, rota e API; corrigir escopo vazio da lista e permitir Escopo operacional de Compras sem opcao marcada. Arquivos reservados: `frontend/src/utils/acessoProduto.js`, `frontend/src/pages/PermissoesAreas.jsx`, `frontend/src/pages/PermissoesAreasPadroes.jsx`, `backend/src/services/authorizationService.js`, `backend/src/middlewares/resourceAccess.js`, `backend/src/controllers/PedidoCompraController.js`, `backend/src/controllers/BuscaController.js`, `backend/src/constants/moduloPermissoes.js`, `backend/src/generated/navegacaoFonteUnica.cjs`, testes correlatos, handoff e este registro. Preservar filtro OFX local; sem banco, EC2, commit, push ou deploy nesta etapa.
+Ownership liberado apos validacao local em 05/10/2026; alteracoes ainda sem commit, descritas em `docs/handoffs/2026-10-05-busca-permissoes-escopo-compras.md`.
+
+Ownership temporario /root em 05/10/2026 no worktree `codex/controle-diario-permissoes-financeiro`: filtro de contas no painel de Conciliacao OFX, com padrao A conferir e opcao Todas. Arquivo reservado: `frontend/src/pages/FinanceiroConciliacao.jsx`, mais este registro. Sem banco, EC2, commit, push ou deploy nesta etapa.
+Implementacao local concluida com build do frontend, teste de navegacao e `git diff --check` aprovados; ownership de edicao liberado. Alteracoes ainda nao commitadas nem publicadas.
+
 Ownership temporario /root em 04-05/10/2026 no worktree `codex/controle-diario-permissoes-financeiro`: controle diario restrito a baixa da fila e carteira de cheques, com fechamento anterior e abertura atual; segregacao das permissoes de leitura/acao da aba Financeiro em Solicitacoes e em paginas/rotas do modulo Financeiro. Arquivos reservados: `backend/src/services/caixaDiarioConfigService.js`, `backend/src/services/caixaFinanceiroService.js`, `backend/src/middlewares/controleDiarioFinanceiro.js`, `backend/src/services/authorizationService.js`, `backend/src/services/financeiroRotaPermissoesService.js`, `backend/src/routes.js`, `backend/src/constants/moduloPermissoes.js`, `backend/src/generated/navegacaoFonteUnica.cjs`, `backend/scripts/validarPermissoesFinanceiroRota.js`, `frontend/src/utils/acessoProduto.js`, `frontend/src/pages/SolicitacaoDetalhe/index.jsx`, `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`, `frontend/src/App.jsx`, `frontend/src/navigation/navigationConfig.jsx`, telas financeiras alteradas, `docs/modulos/financeiro/CAIXA_FISICO_ABERTURA_FECHAMENTO.md`, handoff correlato e este registro. Commit, push e promocao para `main` autorizados pelo usuario em 05/10/2026; sem escrita no banco de producao ou atualizacao da EC2.
 
 ## Ownership ativo - tela inicial individual - 04/10/2026
@@ -1375,3 +1381,12 @@ de custos ja consome esses rateios, sem alteracao no calculo. Sem escrita no
 banco remoto, reinicio de processos ou deploy nesta etapa.
 Ownership dos arquivos liberado apos a validacao e o commit local; a promocao
 e o ensaio integrado permanecem como etapa separada no handoff.
+
+## Ownership ativo - revisao final da busca e promocao - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`backend/src/controllers/BuscaController.js`, dos testes focados de busca,
+`docs/handoffs/2026-10-05-busca-permissoes-escopo-compras.md` e deste registro.
+Escopo: conferir todos os atalhos da busca universal contra permissoes de
+pagina antes de commitar, publicar a branch e integrar em `main`. Sem deploy,
+reinicio de servicos ou alteracao de banco.

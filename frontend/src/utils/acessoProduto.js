@@ -431,8 +431,8 @@ export function canCancelarFreteComprasPedidos(user) {
 export function canViewComprasPedidos(user) {
   if (!hasEnabledModule(user, 'COMPRAS')) return false;
   if (isBusinessAdmin(user)) return true;
-  if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
+  if (!hasConfiguredAreaPermissions(user)) return false;
+  return hasAnyPermissao(user, [
       'compras.pedidos.visualizar',
       'compras.pedidos.criar',
       'compras.pedidos.aprovar',
@@ -448,12 +448,8 @@ export function canViewComprasPedidos(user) {
       'compras.pedidos.financeiro.anexar_documentos',
       'compras.pedidos.financeiro.gerar_previsao',
       'compras.pedidos.financeiro.liberar_pagamento',
-      'compras.pedidos.financeiro.aprovar_reabertura',
-      'compras.relatorios.visualizar',
-      'compras.relatorios.pedidos'
-    ]);
-  }
-  return canAccessCompras(user);
+      'compras.pedidos.financeiro.aprovar_reabertura'
+  ]);
 }
 
 export function canViewPedidoCompraFinanceiro(user) {

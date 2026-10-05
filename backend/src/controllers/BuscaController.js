@@ -8,8 +8,8 @@
 //     correspondente (nenhuma regra nova nasce aqui):
 //       solicitações → montarEscopoVisibilidadeLista + regra mista
 //       contratos    → canAccessContratos + escopo de obras do index
-//       títulos      → canAccessFinanceiro + getFinanceiroObraScopeIds
-//       obras        → escopo de obras do usuário (getUserObraScopeIds)
+//       títulos      → permissao de visualizar titulos + getFinanceiroObraScopeIds
+//       obras        → permissao da tela + escopo de obras do usuário
 //       parceiros    → permissão da tela Cadastro de Pessoas
 //       colaboradores→ canViewRhDpColaboradores
 //       usuários     → canManageUsers
@@ -35,12 +35,16 @@ const {
   canAccessContratosGlobal,
   shouldRestrictContratosToObras,
   canAccessFinanceiro,
+  canViewCadastroObras,
   getFinanceiroObraScopeIds,
   getUserObraScopeIds,
   getRhDpObraScopeIds,
+  isRhDpUsuarioObra,
   canViewRhDpColaboradores,
   canManageUsers,
   canManageConfiguracoesArea,
+  canViewGestaoObras,
+  userHasAreaPermission,
   isBusinessAdmin,
   isSuperadmin
 } = require('../services/authorizationService');
@@ -213,9 +217,14 @@ async function coletarComRegraMista(where, contexto) {
 
 // ----- Obras -----------------------------------------------------------
 async function grupoObras(req, q) {
-  // Mesmo escopo de obras que governa contratos e financeiro: com o
-  // Ctrl+K a exposição prática é maior que a da tela — quem tem escopo
-  // global continua vendo tudo (null = sem restrição).
+  if (!(await isModuleEnabled('OBRAS')) && !isSuperadmin(req.user)) return null;
+  const podeVerLista = await canViewCadastroObras(req.user)
+    || await canManageConfiguracoesArea(req.user, 'cadastros');
+  if (!podeVerLista) return null;
+  const podeVerDetalhe = await canViewGestaoObras(req.user);
+  const podeVerSolicitacoes = await isModuleEnabled('SOLICITACOES') || isSuperadmin(req.user);
+  const podeVerContratos = (await isModuleEnabled('CONTRATOS') || isSuperadmin(req.user))
+    && await canAccessContratos(req.user);
   const escopoObras = await getUserObraScopeIds(req.user);
   if (Array.isArray(escopoObras) && escopoObras.length === 0) return { itens: [], temMais: false };
 
@@ -243,12 +252,10 @@ async function grupoObras(req, q) {
       id: o.id,
       titulo: o.nome,
       subtitulo: o.codigo ? `Obra ${o.codigo}` : 'Obra',
-      // O clique abre O REGISTRO (gestão da obra); quem não tem acesso à
-      // gestão é redirecionado pela rota para a lista, como hoje.
-      link: `/obras/${o.id}`,
+      link: podeVerDetalhe ? `/obras/${o.id}` : `/obras?q=${encodeURIComponent(o.nome)}`,
       acoes: [
-        { rotulo: 'ver solicitações', link: `/solicitacoes?obra_ids=${o.id}` },
-        { rotulo: 'ver contratos', link: `/gestao-contratos?obra_id=${o.id}` }
+        ...(podeVerSolicitacoes ? [{ rotulo: 'ver solicitações', link: `/solicitacoes?obra_ids=${o.id}` }] : []),
+        ...(podeVerContratos ? [{ rotulo: 'ver contratos', link: `/gestao-contratos?obra_id=${o.id}` }] : [])
       ]
     }))
   };
@@ -301,6 +308,7 @@ async function grupoContratos(req, q) {
 async function grupoTitulos(req, q) {
   if (!(await isModuleEnabled('FINANCEIRO')) && !isSuperadmin(req.user)) return null;
   if (!(await canAccessFinanceiro(req.user))) return null;
+  if (!(await userHasAreaPermission(req.user, ['financeiro.titulos.visualizar']))) return null;
 
   const obraIds = isSuperadmin(req.user) ? null : await getFinanceiroObraScopeIds(req.user);
   if (Array.isArray(obraIds) && obraIds.length === 0) return { itens: [], temMais: false };
@@ -351,6 +359,10 @@ async function grupoParceiros(req, q) {
   // encontra fornecedores pela busca.
   const pode = isBusinessAdmin(req.user) || (await canManageConfiguracoesArea(req.user, 'cadastros'));
   if (!pode) return null;
+  const podeVerSolicitacoes = await isModuleEnabled('SOLICITACOES') || isSuperadmin(req.user);
+  const podeVerTitulos = (await isModuleEnabled('FINANCEIRO') || isSuperadmin(req.user))
+    && await canAccessFinanceiro(req.user)
+    && await userHasAreaPermission(req.user, ['financeiro.titulos.visualizar']);
 
   const where = {
     [Op.or]: [
@@ -375,8 +387,8 @@ async function grupoParceiros(req, q) {
       subtitulo: p.cpf_cnpj || 'Parceiro',
       link: `/parceiros?q=${encodeURIComponent(p.nome)}`,
       acoes: [
-        { rotulo: 'ver solicitações', link: `/solicitacoes?q=${encodeURIComponent(p.nome)}` },
-        { rotulo: 'ver títulos', link: `/financeiro/contas-a-pagar?q=${encodeURIComponent(p.nome)}` }
+        ...(podeVerSolicitacoes ? [{ rotulo: 'ver solicitações', link: `/solicitacoes?q=${encodeURIComponent(p.nome)}` }] : []),
+        ...(podeVerTitulos ? [{ rotulo: 'ver títulos', link: `/financeiro/contas-a-pagar?q=${encodeURIComponent(p.nome)}` }] : [])
       ]
     }))
   };
@@ -384,8 +396,10 @@ async function grupoParceiros(req, q) {
 
 // ----- Colaboradores ------------------------------------------------------
 async function grupoColaboradores(req, q) {
+  if (!(await isModuleEnabled('RH_DP')) && !isSuperadmin(req.user)) return null;
   if (!(await canViewRhDpColaboradores(req.user))) return null;
 
+  const usuarioDaObra = await isRhDpUsuarioObra(req.user);
   const obraIds = await getRhDpObraScopeIds(req.user);
   if (Array.isArray(obraIds) && !obraIds.length) {
     return { temMais: false, itens: [] };
@@ -415,7 +429,7 @@ async function grupoColaboradores(req, q) {
       id: c.id,
       titulo: c.nome,
       subtitulo: c.cpf ? `Colaborador · CPF ${c.cpf}` : 'Colaborador',
-      link: Array.isArray(obraIds)
+      link: usuarioDaObra
         ? '/rh-dp/pessoal?aba=colaboradores'
         : `/rh-dp/colaboradores?q=${encodeURIComponent(c.nome)}`
     }))

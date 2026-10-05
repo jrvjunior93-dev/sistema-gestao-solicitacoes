@@ -210,6 +210,7 @@ const MODULO_PERMISSION_GROUPS = [
       {
         key: 'compras.escopo',
         label: 'Escopo operacional',
+        descricao: 'Selecione no maximo uma opcao. Sem opcao marcada, nenhum pedido de compra fica visivel, mesmo com permissao para abrir a pagina.',
         permissoes: [
           { key: 'compras.escopo.minhas_atribuidas', label: 'Ver apenas atribuidas', descricao: 'Operar somente solicitacoes, cotacoes, pedidos e delegacoes vinculados ao usuario.' },
           { key: 'compras.escopo.setor', label: 'Ver setor de compras', descricao: 'Acompanhar todos os registros operacionais do setor de compras.' },

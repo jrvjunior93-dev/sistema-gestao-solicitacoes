@@ -2,6 +2,7 @@ const { Contrato, PedidoCompra, SolicitacaoCompra } = require('../models');
 const {
   buildUserScopeTokens,
   canAccessContratosGlobal,
+  getComprasVisibilityScope,
   getUserObraScopeIds,
   isBusinessAdmin,
   userCanCreateInAllObras,
@@ -124,7 +125,7 @@ function createScopedListMiddleware({
   return async (req, res, next) => {
     const escopo = await resolverEscopoListaObras(req.user, hasLegacyGlobalAccess);
 
-    if (Array.isArray(escopo) && escopo.length > 0) {
+    if (Array.isArray(escopo)) {
       const obraId = req.query?.[queryField] ? Number(req.query[queryField]) : null;
       if (obraId && !escopo.includes(obraId)) {
         await logResourceDenied(req, resourceType, null, obraId, description);
@@ -264,13 +265,22 @@ const requireCompraAccess = createResourceAccessMiddleware({
   attachAs: 'solicitacaoCompraResource'
 });
 
-const requirePedidoCompraAccess = createResourceAccessMiddleware({
+const requirePedidoCompraObraAccess = createResourceAccessMiddleware({
   model: PedidoCompra,
   resourceType: 'PEDIDO_COMPRA',
   description: 'Usuario tentou acessar pedido de compra fora do seu escopo',
   hasLegacyGlobalAccess: hasLegacyCompraGlobalAccess,
   attachAs: 'pedidoCompraResource'
 });
+
+async function requirePedidoCompraAccess(req, res, next) {
+  if (await getComprasVisibilityScope(req.user) === 'NENHUM') {
+    await logResourceDenied(req, 'PEDIDO_COMPRA', req.params?.id, null,
+      'Usuario tentou acessar pedido sem escopo operacional de compras');
+    return res.status(403).json({ error: 'Acesso negado aos pedidos de compra' });
+  }
+  return requirePedidoCompraObraAccess(req, res, next);
+}
 
 module.exports = {
   requireCompraAccess,

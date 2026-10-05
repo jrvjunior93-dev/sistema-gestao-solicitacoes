@@ -19,7 +19,6 @@ const COMPRAS_SCOPE_KEYS = [
   'compras.escopo.setor',
   'compras.escopo.todas'
 ];
-const COMPRAS_SCOPE_DEFAULT = 'compras.escopo.minhas_atribuidas';
 const COMPRAS_SCOPE_SELECT_ALL = 'compras.escopo.setor';
 const PERFIS_BASE = ['USUARIO', 'ESTAGIARIO', 'ADMINISTRADOR', 'FINANCEIRO', 'COMPRAS', 'RH_DP', 'DIRETORIA', 'ENGENHEIRO'];
 
@@ -42,7 +41,9 @@ function getEffectiveComprasScope(permissoes = []) {
   const normalized = new Set(permissoes.map(normalizeKey));
   if (normalized.has('compras.escopo.todas')) return 'compras.escopo.todas';
   if (normalized.has('compras.escopo.setor')) return 'compras.escopo.setor';
-  return COMPRAS_SCOPE_DEFAULT;
+  return normalized.has('compras.escopo.minhas_atribuidas')
+    ? 'compras.escopo.minhas_atribuidas'
+    : null;
 }
 
 function normalizePadroes(input) {
@@ -195,8 +196,7 @@ function ModuleCard({
                     checked={areaEscopoCompras ? key === escopoComprasAtivo : permissoesAtuais.includes(key) || obrigatoria}
                     disabled={obrigatoria}
                     onChange={() => onTogglePermissao(key)}
-                    inputType={areaEscopoCompras ? 'radio' : 'checkbox'}
-                    inputName={areaEscopoCompras ? 'compras-escopo-padrao' : undefined}
+                    inputType="checkbox"
                   />
                 );
               })}
@@ -296,10 +296,9 @@ export default function PermissoesAreasPadroes() {
 
     if (isComprasScopeKey(normalized)) {
       const atual = getEffectiveComprasScope(permissoesAtuais);
-      if (atual === normalized) return;
       updatePermissoes([
         ...permissoesAtuais.filter((item) => !isComprasScopeKey(item)),
-        normalized
+        ...(atual === normalized ? [] : [normalized])
       ]);
       return;
     }

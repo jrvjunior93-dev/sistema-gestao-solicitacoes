@@ -43,6 +43,7 @@ const {
   canViewComprasDelegacao,
   canViewComprasPedidos,
   canViewPedidoCompraFinanceiro,
+  getComprasVisibilityScope,
   normalizeToken
 } = require('../services/authorizationService');
 const { renderPedidoCompraPdf } = require('../services/pedidoCompraPdf');
@@ -134,6 +135,10 @@ async function buildHistoricoPrecoScope(req) {
 }
 
 async function validarEscopoPedidoCompra(usuario, pedido, res) {
+  if (await getComprasVisibilityScope(usuario) === 'NENHUM') {
+    res.status(403).json({ error: 'Acesso negado a este pedido de compra' });
+    return false;
+  }
   if (
     await canViewPedidoCompraFinanceiro(usuario)
     || await canAccessSolicitacaoCompraByScope(usuario, pedido?.solicitacao)
@@ -220,6 +225,10 @@ module.exports = {
         return;
       }
 
+      if (await getComprasVisibilityScope(usuario) === 'NENHUM') {
+        return res.json([]);
+      }
+
       const podeVerEscopoCompleto = (
         await canViewAllComprasScope(usuario)
         || await canViewPedidoCompraFinanceiro(usuario)
@@ -248,6 +257,10 @@ module.exports = {
       const usuario = await validarAcessoPedidos(req, res, { auditoria: true });
       if (!usuario) {
         return;
+      }
+
+      if (await getComprasVisibilityScope(usuario) === 'NENHUM') {
+        return res.json([]);
       }
 
       const auditoria = await listarAuditoriaItensPedido({
@@ -299,6 +312,11 @@ module.exports = {
       if (!usuario) {
         await transaction.rollback();
         return;
+      }
+
+      if (await getComprasVisibilityScope(usuario) === 'NENHUM') {
+        await transaction.rollback();
+        return res.status(403).json({ error: 'Acesso negado aos pedidos de compra' });
       }
 
       const solicitacaoCompra = req.solicitacaoCompraResource || await SolicitacaoCompra.findByPk(req.params.id, {
@@ -474,6 +492,11 @@ module.exports = {
       if (!usuario) {
         await transaction.rollback();
         return;
+      }
+
+      if (await getComprasVisibilityScope(usuario) === 'NENHUM') {
+        await transaction.rollback();
+        return res.status(403).json({ error: 'Acesso negado aos pedidos de compra' });
       }
 
       if (!(await canAlterarStatusComprasPedidos(usuario))) {

@@ -1717,8 +1717,8 @@ export default function FinanceiroConciliacao() {
   const canEstornarTransferencia = hasPermissao(user, 'financeiro.conciliacao.estornar');
   const [contas, setContas] = useState([]);
   const [viewMode, setViewMode] = useState('CONTAS');
-  const [dashboardFilters, setDashboardFilters] = useState({ busca: '', banco: '', data_inicial: '', data_final: '' });
-  const [appliedDashboardFilters, setAppliedDashboardFilters] = useState({ busca: '', banco: '', data_inicial: '', data_final: '' });
+  const [dashboardFilters, setDashboardFilters] = useState({ busca: '', banco: '', situacao: 'CONFERIR', data_inicial: '', data_final: '' });
+  const [appliedDashboardFilters, setAppliedDashboardFilters] = useState({ busca: '', banco: '', situacao: 'CONFERIR', data_inicial: '', data_final: '' });
   const [contasResumo, setContasResumo] = useState([]);
   const [loadingContasResumo, setLoadingContasResumo] = useState(false);
   const [tarifasBancarias, setTarifasBancarias] = useState([]);
@@ -1942,7 +1942,13 @@ export default function FinanceiroConciliacao() {
   }
 
   useEffect(() => { carregarContas(); carregarTarifasBancarias(); }, []);
-  useEffect(() => { if (contas.length > 0) carregarResumoContas(); }, [contas, appliedDashboardFilters]);
+  useEffect(() => { if (contas.length > 0) carregarResumoContas(); }, [
+    contas,
+    appliedDashboardFilters.busca,
+    appliedDashboardFilters.banco,
+    appliedDashboardFilters.data_inicial,
+    appliedDashboardFilters.data_final
+  ]);
   useEffect(() => { if (viewMode === 'DETALHE') carregarConciliacoes(); }, [appliedFilters, viewMode]);
 
   const resumoFinanceiro = useMemo(() => ([
@@ -1961,14 +1967,19 @@ export default function FinanceiroConciliacao() {
     const bancos = new Set(contas.map((conta) => getContaBanco(conta)).filter(Boolean));
     return Array.from(bancos).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [contas]);
-  const resumoDashboard = useMemo(() => contasResumo.reduce((acc, item) => {
+  const contasResumoVisiveis = useMemo(() => (
+    appliedDashboardFilters.situacao === 'TODAS'
+      ? contasResumo
+      : contasResumo.filter(({ resumo, erro }) => erro || resumo.pendentes > 0)
+  ), [contasResumo, appliedDashboardFilters.situacao]);
+  const resumoDashboard = useMemo(() => contasResumoVisiveis.reduce((acc, item) => {
     acc.contas += 1;
     acc.pendentes += item.resumo.pendentes;
     acc.conciliados += item.resumo.conciliados;
     acc.ignorados += item.resumo.ignorados;
     acc.valor_absoluto_total += item.resumo.valor_absoluto_total;
     return acc;
-  }, { contas: 0, pendentes: 0, conciliados: 0, ignorados: 0, valor_absoluto_total: 0 }), [contasResumo]);
+  }, { contas: 0, pendentes: 0, conciliados: 0, ignorados: 0, valor_absoluto_total: 0 }), [contasResumoVisiveis]);
   const conciliacoesSelecionadasItens = useMemo(() => {
     const ids = new Set(conciliacoesSelecionadas.map((id) => Number(id)));
     return dados.itens.filter((item) => ids.has(Number(item.id)) && item.status === 'PENDENTE' && !item.estorno_bancario?.detectado);
@@ -2632,7 +2643,7 @@ export default function FinanceiroConciliacao() {
   }
 
   function limparFiltrosDashboard() {
-    const next = { busca: '', banco: '', data_inicial: '', data_final: '' };
+    const next = { busca: '', banco: '', situacao: 'CONFERIR', data_inicial: '', data_final: '' };
     setDashboardFilters(next);
     setAppliedDashboardFilters(next);
   }
@@ -2686,7 +2697,7 @@ export default function FinanceiroConciliacao() {
     apoia-se na leitura de 4 dimensões combinadas, e está no relatório como
     decisão a confirmar com o cliente.
   */
-  const rascunhoDashboard = ['busca', 'banco', 'data_inicial', 'data_final']
+  const rascunhoDashboard = ['busca', 'banco', 'situacao', 'data_inicial', 'data_final']
     .some((campo) => String(dashboardFilters[campo] || '') !== String(appliedDashboardFilters[campo] || ''));
   const rascunhoConferencia = ['status', 'conta_bancaria_id', 'data_inicial', 'data_final']
     .some((campo) => String(filters[campo] || '') !== String(appliedFilters[campo] || ''));
@@ -2822,7 +2833,7 @@ export default function FinanceiroConciliacao() {
       {viewMode === 'CONTAS' ? (
         <>
           <form className="card sol-surface-card" onSubmit={aplicarFiltrosDashboard}>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_0.8fr_0.8fr_auto] xl:items-end">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_0.8fr_0.8fr_auto] xl:items-end">
               <label className="app-filter-field">
                 <span className="app-filter-label">Buscar conta</span>
                 <input
@@ -2841,6 +2852,17 @@ export default function FinanceiroConciliacao() {
                 >
                   <option value="">Todos</option>
                   {bancosDashboard.map((banco) => <option key={banco} value={banco}>{banco}</option>)}
+                </select>
+              </label>
+              <label className="app-filter-field">
+                <span className="app-filter-label">Contas</span>
+                <select
+                  className="input w-full input-sm"
+                  value={dashboardFilters.situacao}
+                  onChange={(e) => setDashboardFilters((current) => ({ ...current, situacao: e.target.value }))}
+                >
+                  <option value="CONFERIR">A conferir</option>
+                  <option value="TODAS">Todas</option>
                 </select>
               </label>
               <label className="app-filter-field">
@@ -2906,11 +2928,15 @@ export default function FinanceiroConciliacao() {
 
           {loadingContas || loadingContasResumo ? (
             <div className="app-empty-card sol-surface-card">Carregando contas bancárias...</div>
-          ) : contasResumo.length === 0 ? (
-            <div className="app-empty-card sol-surface-card">Nenhuma conta encontrada com os filtros atuais.</div>
+          ) : contasResumoVisiveis.length === 0 ? (
+            <div className="app-empty-card sol-surface-card">
+              {appliedDashboardFilters.situacao === 'CONFERIR'
+                ? 'Nenhuma conta a conferir com os filtros atuais.'
+                : 'Nenhuma conta encontrada com os filtros atuais.'}
+            </div>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-              {contasResumo.map(({ conta, resumo, erro }) => {
+              {contasResumoVisiveis.map(({ conta, resumo, erro }) => {
                 const hasPending = resumo.pendentes > 0;
                 return (
                   <div key={conta.id} className="card sol-surface-card border border-[var(--c-border)] p-6">

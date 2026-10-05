@@ -185,9 +185,7 @@ const COMPRAS_PEDIDOS_VIEW_KEYS = [
   'compras.pedidos.financeiro.anexar_documentos',
   'compras.pedidos.financeiro.gerar_previsao',
   'compras.pedidos.financeiro.liberar_pagamento',
-  'compras.pedidos.financeiro.aprovar_reabertura',
-  'compras.relatorios.visualizar',
-  'compras.relatorios.pedidos'
+  'compras.pedidos.financeiro.aprovar_reabertura'
 ];
 
 const COMPRAS_PEDIDOS_MANAGE_KEYS = [
@@ -381,8 +379,7 @@ const CONFIGURACOES_VIEW_KEYS = [
 ];
 
 const COMPRAS_ESCOPO_SETOR_KEYS = [
-  'compras.escopo.setor',
-  'compras.delegacao.gerenciar'
+  'compras.escopo.setor'
 ];
 
 const COMPRAS_ESCOPO_TODAS_KEYS = [
@@ -1985,11 +1982,8 @@ async function canViewComprasPedidos(user) {
     return true;
   }
 
-  if (await userHasConfiguredAreaPermissions(user)) {
-    return userHasAreaPermission(user, COMPRAS_PEDIDOS_VIEW_KEYS);
-  }
-
-  return canAccessCompras(user);
+  if (!(await userHasConfiguredAreaPermissions(user))) return false;
+  return userHasAreaPermission(user, COMPRAS_PEDIDOS_VIEW_KEYS);
 }
 
 async function canViewPedidoCompraFinanceiro(user) {
@@ -2387,7 +2381,9 @@ async function getComprasVisibilityScope(user) {
   }
 
   if (await userHasConfiguredAreaPermissions(user)) {
-    return 'ATRIBUIDAS';
+    return (await userHasAreaPermission(user, ['compras.escopo.minhas_atribuidas']))
+      ? 'ATRIBUIDAS'
+      : 'NENHUM';
   }
 
   if (await userHasSetorCapability(user, 'eh_setor_compras')) {
