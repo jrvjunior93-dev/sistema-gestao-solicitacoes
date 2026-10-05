@@ -1406,6 +1406,19 @@ Sem escrita em banco, deploy, commit ou push nesta etapa.
 No pedido seguinte, o proprietario autorizou commit, push e integracao em
 `main` das alteracoes locais de permissoes. Deploy segue separado.
 
+## Ownership ativo - payload de Solicitacao de Compra sem frete - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`,
+`frontend/src/modules/solicitacao-compra/pages/RevisarSolicitacaoCompra.jsx`,
+`frontend/src/modules/solicitacao-compra/utils/payloadSolicitacaoCompra.js`,
+`frontend/scripts/validarPayloadSolicitacaoCompra.mjs`, handoff desta correcao
+e deste registro. Escopo: retirar campos de frete/compra direta do payload
+de solicitacao comum, inclusive em rascunhos ja salvos, preservando Compra
+Direta. Sem banco, EC2, deploy, commit ou push nesta etapa.
+No pedido seguinte, o proprietario autorizou commit, push e promocao para
+`main`. Como este worktree ja esta em `main`, nao ha merge adicional.
+
 ## Ownership ativo - acesso granular a Prioridades e paginas financeiras - 05/10/2026
 
 Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de

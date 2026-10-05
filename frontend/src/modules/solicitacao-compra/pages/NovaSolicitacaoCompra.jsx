@@ -54,6 +54,7 @@ import {
   writeComprasDraft
 } from '../utils/comprasDraftStorage';
 import { prepararItensReaproveitados } from '../utils/reaproveitamentoItensCompra';
+import { prepararPayloadSolicitacaoCompra } from '../utils/payloadSolicitacaoCompra';
 const ITEM_ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.html,.rar';
 const HEADER_ATTACHMENT_ACCEPT = '.pdf,.png,.jpg,.jpeg,.xml';
 
@@ -1802,7 +1803,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         dados_pagamento: modoCompraDireta ? detalheLegadoFavorecido.dados_pagamento || null : undefined,
         desconto_total: modoCompraDireta ? descontoCompraDireta : undefined,
         frete_tipo: modoCompraDireta ? freteTipo : undefined,
-        frete_modo: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteModo : 'GLOBAL',
+        frete_modo: modoCompraDireta ? (freteTipo !== 'SEM_FRETE' ? freteModo : 'GLOBAL') : undefined,
         frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteValorNumero : undefined,
         frete_data_vencimento: modoCompraDireta && freteTipo === 'TERCEIRO' ? freteDataVencimento : undefined,
         frete_parceiro_id: modoCompraDireta && freteTipo === 'TERCEIRO' ? Number(freteParceiroId) : undefined,
@@ -1826,7 +1827,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           valor_total: modoCompraDireta ? calcularValorTotalItem(item) : undefined,
           frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
             ? arredondarMoeda(Math.max(0, parseValorMonetario(item.frete_valor)))
-            : 0,
+            : modoCompraDireta ? 0 : undefined,
           especificacao: item.especificacao || '',
           necessario_para: item.necessario_para || necessarioPara || null,
           link_produto: item.link_produto || null,
@@ -1895,7 +1896,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           }
         : undefined;
 
-      writeComprasDraft(draftKey, { payload, resumo, contexto }, user?.id);
+      writeComprasDraft(draftKey, {
+        payload: modoCompraDireta ? payload : prepararPayloadSolicitacaoCompra(payload),
+        resumo,
+        contexto
+      }, user?.id);
       navigate(modoCompraDireta ? '/solicitacoes-compra-direta/revisar'
         : reaproveitarSolicitacaoId > 0
           ? `/solicitacoes-compra/revisar?reaproveitar_solicitacao=${reaproveitarSolicitacaoId}`

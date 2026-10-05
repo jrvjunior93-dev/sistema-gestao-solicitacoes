@@ -15,6 +15,7 @@ import {
   useAvisos
 } from '../../../components/padrao';
 import { criarPreviewCompra } from '../utils/preview';
+import { prepararPayloadSolicitacaoCompra } from '../utils/payloadSolicitacaoCompra';
 import { montarLinhasResumoApropriacao, montarTextoResumoApropriacao } from '../utils/apropriacoes';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -361,7 +362,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       setLoading(true);
       const resposta = modoCompraDireta
         ? await criarSolicitacaoCompraDireta(draft.payload)
-        : await criarSolicitacaoCompra(draft.payload);
+        : await criarSolicitacaoCompra(prepararPayloadSolicitacaoCompra(draft.payload));
       removeComprasDraft(draftKey);
       navigate(`/solicitacoes-compra/finalizada/${resposta.id}`, {
         replace: true,
