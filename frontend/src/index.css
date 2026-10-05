@@ -11581,6 +11581,26 @@ body {
 .app-modal-surface--wide { width: min(100%, var(--modal-max-w-xl)); }
 .app-modal-surface--workspace { width: min(100%, 1280px); }
 
+/* Previews de anexos/Compras vivem em portal. Em tema personalizado os tokens
+   gerais de texto/botao podem continuar escuros sobre o painel escuro. */
+.app-file-preview__title { color: var(--c-text); }
+.app-file-preview__meta { color: var(--c-muted); }
+.app-file-preview__light-surface-text { color: #334155; }
+
+:root.dark .app-file-preview .app-file-preview__title { color: #e8edf8; }
+:root.dark .app-file-preview .app-file-preview__meta { color: #b8c7e0; }
+:root.dark .app-file-preview .btn-outline {
+  color: #e8edf8;
+  background: #233653;
+  border-color: #7a8fb6;
+}
+:root.dark .app-file-preview .btn-outline:hover,
+:root.dark .app-file-preview .btn-outline:focus-visible {
+  color: #ffffff;
+  background: #304766;
+  border-color: #a2b7de;
+}
+
 /* Protecao para overlays legados enquanto cada fluxo e migrado para o portal.
    Todo overlay de tela inteira originado por uma pagina deve ficar acima do
    shell, inclusive quando ainda nao recebeu role="dialog". */

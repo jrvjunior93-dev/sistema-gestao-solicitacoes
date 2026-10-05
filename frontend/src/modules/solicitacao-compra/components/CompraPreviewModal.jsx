@@ -73,15 +73,15 @@ export default function CompraPreviewModal({ preview, onClose }) {
         aria-label={titulo}
       >
         <div
-          className="flex h-[90vh] w-full max-w-6xl flex-col overflow-clip rounded-xl shadow-2xl"
+          className="app-file-preview flex h-[90vh] w-full max-w-6xl flex-col overflow-clip rounded-xl shadow-2xl"
           style={{ background: 'var(--ui-surface)' }}
         >
           <div className="flex items-center justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
             <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold" style={{ color: 'var(--c-text)' }}>
+              <h2 className="app-file-preview__title truncate text-lg font-semibold">
                 {titulo}
               </h2>
-              <p className="truncate text-sm text-[var(--c-muted)]">
+              <p className="app-file-preview__meta truncate text-sm">
                 {preview.name || 'Arquivo anexado'}
               </p>
             </div>
@@ -125,7 +125,7 @@ export default function CompraPreviewModal({ preview, onClose }) {
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-4 rounded-lg border border-[var(--c-border)] bg-white p-6 text-center">
-                <p className="text-sm text-[var(--c-muted)]">
+                <p className="app-file-preview__light-surface-text text-sm">
                   Este tipo de arquivo não possui pre-visualização incorporada.
                 </p>
                 {preview.url && (

@@ -37,8 +37,8 @@ export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }
   function renderPreview() {
     if (!url) {
       return (
-        <div className="text-center py-12" style={{ color: 'var(--c-muted)' }}>
-          <p className="mb-2 font-semibold" style={{ color: 'var(--c-text)' }}>
+        <div className="text-center py-12 app-file-preview__meta">
+          <p className="mb-2 font-semibold app-file-preview__title">
             Pre-visualização indisponível
           </p>
           <p>{anexo.erro || 'Nao foi possivel gerar um link seguro para este arquivo.'}</p>
@@ -75,15 +75,15 @@ export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }
     <OverlayModal rotulo={anexo?.nome || 'Anexo'} onFechar={onClose}>
       <div
         data-modal="cabecalho"
-        className="flex items-center justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3"
+        className="app-file-preview flex items-center justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3"
       >
-        <h2 className="text-lg font-semibold text-[var(--c-text)]">{anexo.nome}</h2>
+        <h2 className="app-file-preview__title text-lg font-semibold">{anexo.nome}</h2>
         <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>
           Fechar
         </button>
       </div>
 
-      <div className="px-4 py-3">
+      <div className="app-file-preview px-4 py-3">
         {renderPreview()}
       </div>
 
@@ -93,7 +93,7 @@ export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }
       {url && isPdf ? (
         <div
           data-modal="rodape"
-          className="flex justify-end border-t border-[var(--c-border)] px-4 py-3"
+          className="app-file-preview flex justify-end border-t border-[var(--c-border)] px-4 py-3"
         >
           <a
             href={downloadUrl}
@@ -109,7 +109,7 @@ export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }
       {url && !isPdf && !isImage ? (
         <div
           data-modal="rodape"
-          className="flex justify-end border-t border-[var(--c-border)] px-4 py-3"
+          className="app-file-preview flex justify-end border-t border-[var(--c-border)] px-4 py-3"
         >
           <a href={downloadUrl} download className="btn btn-outline btn-sm">
             Baixar arquivo

@@ -1419,6 +1419,18 @@ Direta. Sem banco, EC2, deploy, commit ou push nesta etapa.
 No pedido seguinte, o proprietario autorizou commit, push e promocao para
 `main`. Como este worktree ja esta em `main`, nao ha merge adicional.
 
+## Ownership ativo - contraste dos previews de compras no tema escuro - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`frontend/src/pages/SolicitacaoDetalhe/PreviewAnexoModal.jsx`,
+`frontend/src/modules/solicitacao-compra/components/CompraPreviewModal.jsx`,
+`frontend/src/index.css`, teste focado de contraste, handoff desta correcao
+e deste registro. Escopo: tornar legiveis titulo e botoes dos previews de
+PDF/anexo no tema escuro, inclusive com tema personalizado, sem alterar
+acoes, permissao, upload ou navegacao. Sem deploy, commit ou push nesta etapa.
+No pedido seguinte, o proprietario autorizou commit e push para `main`.
+Worktree ja em `main`; ownership liberado apos o commit desta correcao.
+
 ## Ownership ativo - acesso granular a Prioridades e paginas financeiras - 05/10/2026
 
 Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
