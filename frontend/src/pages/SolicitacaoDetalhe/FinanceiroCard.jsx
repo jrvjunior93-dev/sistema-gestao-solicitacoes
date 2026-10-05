@@ -36,7 +36,7 @@ import {
 import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanceiraAutocomplete';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
-import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, devePrepararAutorizacaoPagamento } from '../../utils/acessoProduto';
+import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, devePrepararAutorizacaoPagamento, hasPermissao } from '../../utils/acessoProduto';
 import { listarComprovantesFila } from '../../utils/comprovantesFila';
 import { criarAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
 import {
@@ -1067,13 +1067,16 @@ export default function FinanceiroCard({
   onTituloCriado,
   onSolicitacaoAtualizada,
   podeAcessarModuloFinanceiro = false,
+  podeOperarAbaFinanceiro = false,
   podeVisualizarTitulos = false,
   somenteLeitura = false
 }) {
   const { user } = useAuth();
-  const podeExecutarAcoesFinanceiras = podeAcessarModuloFinanceiro && !somenteLeitura;
+  const podeExecutarAcoesFinanceiras = podeOperarAbaFinanceiro && !somenteLeitura;
+  const podeConsultarTitulo = podeAcessarModuloFinanceiro && hasPermissao(user, 'financeiro.titulos.visualizar');
+  const podeCriarTitulo = podeExecutarAcoesFinanceiras && hasPermissao(user, 'financeiro.titulos.criar');
   // Preparar a fila tem permissao propria e independe do setor atual da solicitacao.
-  const podeEnviarParaFila = podeVisualizarTitulos && canPrepareFilaPagamentos(user);
+  const podeEnviarParaFila = podeExecutarAcoesFinanceiras && podeVisualizarTitulos && canPrepareFilaPagamentos(user);
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeGerenciarDadosPagamento = canManagePaymentBeneficiaries(user);
   const freteTerceiroObrigatorio = exigeTitulosSeparadosCompraDireta(solicitacao);
@@ -2396,7 +2399,7 @@ export default function FinanceiroCard({
       noCard: 'titulo',
       render: (titulo) => {
         const nome = limparDescricaoTituloCompra(titulo.descricao, solicitacao) || `${titulo.tipo} #${titulo.id}`;
-        return podeExecutarAcoesFinanceiras ? (
+        return podeConsultarTitulo ? (
           // Link para o REGISTRO RELACIONADO fica no corpo, junto do dado que
           // o origina — e e ele que da o caminho por TECLADO da linha (A1).
           <Link className="font-medium" to={`/financeiro/titulos/${titulo.id}`} title={nome}>
@@ -2534,7 +2537,7 @@ export default function FinanceiroCard({
             >
               Editar credor
             </button>
-            <span title={geracaoManualDesabilitada ? motivoGeracaoManualDesabilitada : undefined}>
+            {podeCriarTitulo && <span title={geracaoManualDesabilitada ? motivoGeracaoManualDesabilitada : undefined}>
               <button
                 type="button"
                 className="btn btn-primary"
@@ -2550,7 +2553,7 @@ export default function FinanceiroCard({
               >
                 Criar Título
               </button>
-            </span>
+            </span>}
           </span>
         ) : null}
       >

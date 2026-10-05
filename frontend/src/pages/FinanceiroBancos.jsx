@@ -32,6 +32,8 @@ import {
 } from '../components/padrao';
 import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermissao } from '../utils/acessoProduto';
 
 /*
  * AS QUATRO CLASSES FANTASMA DESTA TELA (achado de 04/09, fatia 3).
@@ -153,7 +155,7 @@ const convenioInicial = {
   ativo: true
 };
 
-function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
+function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar, podeConfigurar, podePreparar }) {
   const [contas, setContas] = useState([]);
   const [convenios, setConvenios] = useState([]);
   const [remessas, setRemessas] = useState([]);
@@ -338,10 +340,10 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
             {/* D3 — as ações do bloco ficam VISÍVEIS, em três pesos: o
                 cadastro raro (R9) abre em modal pelo secundário, e o
                 primário é o que executa o pagamento. */}
-            <button type="button" className="btn btn-outline" onClick={() => { setForm(convenioInicial); setModalConvenio(true); }}>
+            {podeConfigurar && <button type="button" className="btn btn-outline" onClick={() => { setForm(convenioInicial); setModalConvenio(true); }}>
               <HiOutlinePlus aria-hidden="true" />
               Novo convênio
-            </button>
+            </button>}
             <button type="button" className="btn btn-outline" onClick={loadBase} disabled={loading}>
               <HiOutlineArrowPath aria-hidden="true" className={loading ? 'animate-spin' : ''} />
               Atualizar Caixa
@@ -355,7 +357,7 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
             R2/R7 — os dois campos da linha compartilham altura e linha de
             base pelo form-grid; nenhum deles mede a si mesmo (a grade
             `1fr 180px auto` escrita na tela saiu). */}
-        <FormSecao legenda="Gerar remessa de pagamento" colunas={2}>
+        {podePreparar && <FormSecao legenda="Gerar remessa de pagamento" colunas={2}>
           <CampoForm label="Convênio Caixa" obrigatorio>
             <select className="input" value={selectedConvenioId} onChange={(e) => setSelectedConvenioId(e.target.value)}>
               <option value="">Selecione um convênio</option>
@@ -369,12 +371,12 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
           <CampoForm label="Data de pagamento" obrigatorio>
             <DateInputBR className="input" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
           </CampoForm>
-        </FormSecao>
+        </FormSecao>}
 
         {/* C5/D3 — UM primário sólido, e ele diz o que vai acontecer. Fica
             fora do FormSecao de propósito: botão não é campo, e envolvê-lo
             num <label> faria o rótulo do campo disputar o clique com ele. */}
-        <div className="app-actionbar">
+        {podePreparar && <div className="app-actionbar">
           <button
             type="button"
             className="btn btn-primary"
@@ -384,17 +386,17 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
             <HiOutlinePaperAirplane aria-hidden="true" />
             Gerar remessa
           </button>
-        </div>
+        </div>}
 
         <TabelaPadrao
           // R16b — a marcação em lote é capacidade do componente (com
           // "todos" no cabeçalho e estado indeterminado), não uma coluna de
           // checkbox montada à mão dentro de um `tipo: 'status'`.
-          selecao={{
+          selecao={podePreparar ? {
             selecionados: selectedTitulos,
             aoAlternar: (id) => toggleTitulo(id),
             aoAlternarTodos: alternarTodosTitulos
-          }}
+          } : undefined}
           colunas={[
             { id: 'codigo', titulo: 'Título', tipo: 'codigo', render: (titulo) => titulo.codigo },
             {
@@ -450,7 +452,7 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
           R27 — corpo rolante e rodapé fixo são do OverlayModal; a tela não
           escreve `overflow-y` nenhum, e o botão de salvar fica sempre à
           vista mesmo com os quinze campos abertos. */}
-      {modalConvenio ? (
+      {podeConfigurar && modalConvenio ? (
         <OverlayModal
           rotulo="Novo convênio Caixa de pagamentos"
           largura="var(--modal-max-w-xl, 1080px)"
@@ -558,6 +560,10 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
 }
 
 export default function FinanceiroBancos() {
+  const { user } = useAuth();
+  const podeVerRemessas = hasPermissao(user, 'financeiro.bancos.remessas');
+  const podeConfigurar = hasPermissao(user, 'financeiro.bancos.configurar');
+  const podePreparar = hasPermissao(user, 'financeiro.pagamentos.preparar');
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [falhou, setFalhou] = useState(false);
@@ -682,7 +688,7 @@ export default function FinanceiroBancos() {
         )}
       </BlocoConteudo>
 
-      <CaixaPagamentosPanel avisar={avisar} limparAvisos={limparAvisos} confirmar={confirmar} />
+      {podeVerRemessas && <CaixaPagamentosPanel avisar={avisar} limparAvisos={limparAvisos} confirmar={confirmar} podeConfigurar={podeConfigurar} podePreparar={podePreparar} />}
 
       <BlocoConteudo
         titulo="Contas bancárias"

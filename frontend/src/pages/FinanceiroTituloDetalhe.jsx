@@ -357,6 +357,10 @@ export default function FinanceiroTituloDetalhe() {
   const podeVerPagamentosBancarios = hasPermissao(user, 'financeiro.titulos.pagamentos_bancarios.visualizar');
   const podeVerMovimentosFinanceiros = hasPermissao(user, 'financeiro.titulos.movimentos.visualizar');
   const podeVerAuditoriaFinanceira = hasPermissao(user, 'financeiro.titulos.auditoria.visualizar');
+  const podeBaixarTitulo = hasPermissao(user, 'financeiro.titulos.baixar');
+  const podeEditarDadosTitulo = hasPermissao(user, 'financeiro.titulos.editar');
+  const podeEditarCobranca = hasPermissao(user, 'financeiro.titulos.cobranca');
+  const podeEstornarTitulo = hasPermissao(user, 'financeiro.titulos.estornar');
 
   async function carregar() {
     try {
@@ -365,7 +369,7 @@ export default function FinanceiroTituloDetalhe() {
       const [tituloData, contasData, cartoesData, auditoriaData] = await Promise.all([
         getTituloFinanceiroById(id),
         getContasBancarias(),
-        getCartoesFinanceiros(),
+        podeBaixarTitulo ? getCartoesFinanceiros() : Promise.resolve([]),
         podeVerAuditoriaFinanceira ? getTituloFinanceiroAuditoria(id) : Promise.resolve([])
       ]);
       setTitulo(tituloData);
@@ -388,7 +392,7 @@ export default function FinanceiroTituloDetalhe() {
 
   useEffect(() => {
     carregar();
-  }, [id, podeVerAuditoriaFinanceira]);
+  }, [id, podeVerAuditoriaFinanceira, podeBaixarTitulo]);
 
   const movimentosAtivos = useMemo(() => {
     return Array.isArray(titulo?.movimentos)
@@ -716,7 +720,7 @@ export default function FinanceiroTituloDetalhe() {
           titulo={`Titulo ${titulo.codigo || `#${titulo.id}`}`}
           descricao={titulo.descricao || undefined}
           voltar={{ to: '/financeiro/titulos', title: 'Voltar para títulos' }}
-          acaoPrincipal={{
+          acaoPrincipal={podeBaixarTitulo ? {
             rotulo: 'Registrar baixa',
             desabilitada: bloqueadoPorRetornoObra
               || !['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()),
@@ -729,7 +733,7 @@ export default function FinanceiroTituloDetalhe() {
               setBaixaForm(buildBaixaForm(titulo, contasBancarias));
               setModalBaixaOpen(true);
             }
-          }}
+          } : undefined}
           /*
             "ABRIR SOLICITAÇÃO" SAIU DAQUI (decisão do cliente, 04/09).
 
@@ -746,14 +750,14 @@ export default function FinanceiroTituloDetalhe() {
             A faixa trazia a MESMA navegação em duplicata.
           */
           secundarias={[
-            podeEditarTitulo
+            podeEditarDadosTitulo && podeEditarTitulo
               ? { rotulo: 'Editar título', to: `/financeiro/titulos/${titulo.id}/editar` }
-              : {
+              : podeEditarDadosTitulo ? {
                 rotulo: 'Editar título',
                 desabilitada: true,
                 title: 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
                 onClick: () => {}
-              }
+              } : null
           ].filter(Boolean)}
         />
 
@@ -880,6 +884,7 @@ export default function FinanceiroTituloDetalhe() {
             </p>
 
             <form className="grid gap-3 md:grid-cols-4" onSubmit={handleSalvarCobranca}>
+              <fieldset disabled={!podeEditarCobranca} className="contents">
               <label className="text-sm">
                 <span className="mb-1 block text-muted">Forma de cobrança</span>
                 <select
@@ -975,6 +980,7 @@ export default function FinanceiroTituloDetalhe() {
                   {savingCobranca ? 'Salvando...' : 'Salvar dados de cobranca'}
                 </button>
               </div>
+              </fieldset>
             </form>
           </BlocoConteudo>
         )}
@@ -994,6 +1000,7 @@ export default function FinanceiroTituloDetalhe() {
             </p>
 
             <form className="grid gap-3 md:grid-cols-4" onSubmit={handleSalvarCobranca}>
+              <fieldset disabled={!podeEditarCobranca} className="contents">
               <label className="text-sm">
                 <span className="mb-1 block text-muted">Código do banco</span>
                 <input
@@ -1030,6 +1037,7 @@ export default function FinanceiroTituloDetalhe() {
                   {savingCobranca ? 'Salvando...' : 'Salvar dados do boleto'}
                 </button>
               </div>
+              </fieldset>
             </form>
           </BlocoConteudo>
         )}
@@ -1168,7 +1176,7 @@ export default function FinanceiroTituloDetalhe() {
 
                     <div className="flex flex-col items-start gap-2 md:items-end">
                       <StatusBadge status={movimento.status} />
-                      {String(movimento.status || '').toUpperCase() === 'ATIVO' && (
+                      {podeEstornarTitulo && String(movimento.status || '').toUpperCase() === 'ATIVO' && (
                         <div className="app-actionbar md:justify-end">
                           <button
                             type="button"

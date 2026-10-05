@@ -78,6 +78,7 @@ import {
   canEditarApropriacoesSolicitacao,
   canEditarItensSolicitacaoCompra,
   canViewSolicitacaoFinanceiro,
+  canOperateSolicitacaoFinanceiro,
   hasConfiguredAreaPermissions,
   hasEnabledModule,
   hasPermissao
@@ -307,6 +308,7 @@ export default function SolicitacaoDetalhe() {
   const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
   const podeAcessarModuloFinanceiro = canAccessFinanceiro(user);
   const isFinanceiro = canViewSolicitacaoFinanceiro(user);
+  const podeOperarAbaFinanceiro = canOperateSolicitacaoFinanceiro(user);
   const podeEnviarQualquerSetor = Boolean(user?.pode_enviar_qualquer_setor);
   const podeAlterarStatusQualquerSetor =
     hasConfiguredAreaPermissions(user) &&
@@ -1627,6 +1629,7 @@ export default function SolicitacaoDetalhe() {
           key={`financeiro-${id}-${statusDependenciasVersao}`}
           solicitacao={solicitacao}
           podeAcessarModuloFinanceiro={podeAcessarModuloFinanceiro}
+          podeOperarAbaFinanceiro={podeOperarAbaFinanceiro}
           podeVisualizarTitulos={isFinanceiro}
           somenteLeitura={isSetorObra}
           onSolicitacaoAtualizada={() => {

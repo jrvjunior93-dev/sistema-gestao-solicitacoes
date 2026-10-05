@@ -137,7 +137,8 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'solicitacoes.acoes.criar', label: 'Criar solicitação', descricao: 'Permite abrir novas solicitações.' },
           { key: 'solicitacoes.acoes.aprovar', label: 'Aprovar / rejeitar', descricao: 'Permite aprovar ou rejeitar solicitações pendentes.' },
-          { key: 'solicitacoes.acoes.ver_aba_financeiro', label: 'Ver aba Financeiro', descricao: 'Exibe a aba de títulos financeiros dentro de uma solicitação.' },
+          { key: 'solicitacoes.acoes.ver_aba_financeiro', label: 'Ver aba Financeiro', descricao: 'Permite apenas consultar titulos, parcelas e pagamentos da solicitacao; nao autoriza botoes de alteracao.' },
+          { key: 'solicitacoes.acoes.operar_aba_financeiro', label: 'Operar aba Financeiro', descricao: 'Permite cadastrar ou editar credor e criar titulo pelo card Financeiro, quando tambem houver acesso financeiro funcional.' },
           { key: 'solicitacoes.acoes.alterar_status_qualquer_setor', label: 'Alterar status em qualquer setor', descricao: 'Permite alterar o status de solicitações em outros setores usando os status do setor do próprio usuário.' },
           { key: 'solicitacoes.acoes.alterar_valor', label: 'Alterar valor da solicitação', descricao: 'Permite editar o valor financeiro da solicitação sem exigir perfil administrativo do GEO.' },
           { key: 'solicitacoes.acoes.alterar_data_vencimento', label: 'Alterar data de vencimento', descricao: 'Permite editar a data de vencimento da solicitação sem exigir perfil administrativo do GEO.' },
@@ -322,6 +323,9 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'financeiro.titulos.visualizar', label: 'Visualizar títulos', descricao: 'Ver lista e detalhes dos títulos a pagar e a receber.' },
           { key: 'financeiro.titulos.criar', label: 'Criar conta manual', descricao: 'Abrir novo título financeiro manualmente.' },
+          { key: 'financeiro.titulos.editar', label: 'Editar título', descricao: 'Alterar dados de um título financeiro existente.' },
+          { key: 'financeiro.titulos.cobranca', label: 'Editar cobrança', descricao: 'Alterar instruções e dados de cobrança de um título a receber.' },
+          { key: 'financeiro.titulos.status_interno', label: 'Alterar status interno', descricao: 'Classificar e administrar status internos de contas a pagar.' },
           { key: 'financeiro.titulos.renegociar', label: 'Parcelar / negociar títulos', descricao: 'Substituir saldos em aberto por novas parcelas com rastreabilidade e encargos.' },
           { key: 'financeiro.titulos.importar', label: 'Importar contas a pagar', descricao: 'Exportar o modelo, validar e confirmar títulos a pagar por planilha.' },
           { key: 'financeiro.titulos.exportar', label: 'Exportar títulos', descricao: 'Exportar em CSV os títulos listados conforme os filtros e colunas visíveis.' },
@@ -338,6 +342,9 @@ const MODULO_PERMISSION_GROUPS = [
         key: 'financeiro.comprovantes',
         label: 'Comprovantes',
         permissoes: [
+          { key: 'financeiro.comprovantes.visualizar', label: 'Visualizar comprovantes', descricao: 'Consultar comprovantes pendentes e solicitações para vínculo.' },
+          { key: 'financeiro.comprovantes.enviar', label: 'Enviar comprovantes', descricao: 'Fazer upload de comprovantes em massa.' },
+          { key: 'financeiro.comprovantes.vincular', label: 'Vincular comprovantes', descricao: 'Vincular comprovante pendente a uma solicitação.' },
           { key: 'financeiro.comprovantes.excluir', label: 'Excluir comprovantes', descricao: 'Permite excluir comprovantes pendentes ou vinculados.' }
         ]
       },
@@ -377,6 +384,7 @@ const MODULO_PERMISSION_GROUPS = [
           { key: 'financeiro.relatorios.endividamento', label: 'Endividamento', descricao: 'Acessar relatório de dívidas classificadas explicitamente.' },
           { key: 'financeiro.relatorios.analitico', label: 'Analítico financeiro', descricao: 'Acessar base analítica de títulos e movimentos financeiros.' },
           { key: 'financeiro.relatorios.financeiro_obras', label: 'Financeiro de obras', descricao: 'Acessar realizado, comprometido e a realizar por obra.' },
+          { key: 'financeiro.relatorios.importar_historico_obras', label: 'Importar histórico financeiro de obras', descricao: 'Validar e confirmar importações históricas de custos de obra.' },
           { key: 'financeiro.relatorios.movimentacao_contas', label: 'Movimentacao de contas', descricao: 'Acessar entradas, saidas e permutas por conta bancaria.' },
           { key: 'financeiro.relatorios.conciliacao_contas', label: 'Conciliacao de contas', descricao: 'Acessar relatorio de movimentos bancarios conciliados, pendentes e ignorados.' },
           { key: 'financeiro.relatorios.resultado_obras', label: 'Resultado de obras', descricao: 'Ver dashboard financeiro por obra.' },
@@ -390,7 +398,42 @@ const MODULO_PERMISSION_GROUPS = [
           { key: 'financeiro.conciliacao.visualizar', label: 'Visualizar conciliação', descricao: 'Ver movimentos e sugestões de conciliação bancária.' },
           { key: 'financeiro.conciliacao.importar', label: 'Importar arquivo OFX', descricao: 'Fazer upload de extratos bancários em formato OFX.' },
           { key: 'financeiro.conciliacao.conciliar', label: 'Conciliar lançamentos', descricao: 'Confirmar, criar título ou ignorar movimentos bancários.' },
+          { key: 'financeiro.conciliacao.atalhos_gerenciar', label: 'Gerenciar atalhos bancários', descricao: 'Configurar categorias para tarifas e rendimentos da conciliação OFX.' },
           { key: 'financeiro.conciliacao.estornar', label: 'Estornar conciliação', descricao: 'Desfazer uma conciliação incorreta e devolver o lançamento OFX para conferência manual.' }
+        ]
+      },
+      {
+        key: 'financeiro.transferencias',
+        label: 'Transferências Financeiras',
+        permissoes: [
+          { key: 'financeiro.transferencias.visualizar', label: 'Visualizar transferências', descricao: 'Consultar transferências entre contas.' },
+          { key: 'financeiro.transferencias.criar', label: 'Criar transferências', descricao: 'Registrar transferência financeira.' },
+          { key: 'financeiro.transferencias.cancelar', label: 'Cancelar transferências', descricao: 'Cancelar transferência registrada.' }
+        ]
+      },
+      {
+        key: 'financeiro.financiamentos',
+        label: 'Financiamentos Bancários',
+        permissoes: [
+          { key: 'financeiro.financiamentos.visualizar', label: 'Visualizar financiamentos', descricao: 'Consultar contratos, parcelas e auditoria.' },
+          { key: 'financeiro.financiamentos.gerenciar', label: 'Gerenciar financiamentos', descricao: 'Criar contrato e editar parcelas.' },
+          { key: 'financeiro.financiamentos.gerar_titulos', label: 'Gerar títulos de financiamento', descricao: 'Criar títulos a partir das parcelas.' }
+        ]
+      },
+      {
+        key: 'financeiro.cartoes',
+        label: 'Cartões e Faturas',
+        permissoes: [
+          { key: 'financeiro.cartoes.visualizar', label: 'Visualizar cartões e faturas', descricao: 'Consultar cartões e faturas.' },
+          { key: 'financeiro.cartoes.gerenciar', label: 'Gerenciar cartões', descricao: 'Criar e editar cartões financeiros.' },
+          { key: 'financeiro.cartoes.baixar_fatura', label: 'Baixar fatura', descricao: 'Registrar pagamento de fatura de cartão.' }
+        ]
+      },
+      {
+        key: 'financeiro.baixas',
+        label: 'Baixas Realizadas',
+        permissoes: [
+          { key: 'financeiro.baixas.visualizar', label: 'Visualizar baixas', descricao: 'Consultar histórico de baixas realizadas, sem permissão de registrar ou estornar.' }
         ]
       },
       {

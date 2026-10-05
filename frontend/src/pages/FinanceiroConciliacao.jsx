@@ -868,7 +868,7 @@ function candidatoEstornoApto(candidato) {
   return baixaDeTitulo || tarifaRegistrada || saidaPendenteSemBaixa;
 }
 
-function ItemConciliacao({ item, associacaoPreparada = null, processingId, selected = false, canEstornarTransferencia = false, onToggleSelecao, onConfirmar, onConfirmarEstorno, onIgnorar, onRemover, onAssociarManual, onPrepararSugestao, onAssociarFatura, onAssociarTransferencia, onEstornarTransferencia, onAcoesRapidas }) {
+function ItemConciliacao({ item, associacaoPreparada = null, processingId, selected = false, canConciliar = false, canEstornarTransferencia = false, onToggleSelecao, onConfirmar, onConfirmarEstorno, onIgnorar, onRemover, onAssociarManual, onPrepararSugestao, onAssociarFatura, onAssociarTransferencia, onEstornarTransferencia, onAcoesRapidas }) {
   const [expandirSugestoes, setExpandirSugestoes] = useState(false);
   const [estornoExpandido, setEstornoExpandido] = useState(false);
   const [estornoOrigemId, setEstornoOrigemId] = useState(() => {
@@ -1015,7 +1015,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
 
         {/* ── Coluna esquerda: lançamento OFX ── */}
         <div className="flex flex-col gap-1 p-2">
-          {isPendente && !alertaEstorno && (
+          {canConciliar && isPendente && !alertaEstorno && (
             <label className="mb-1 flex items-center gap-2 text-xs font-semibold text-[var(--c-muted)]">
               <input
                 type="checkbox"
@@ -1052,7 +1052,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
             </p>
           )}
           {/* ignorar */}
-          {isPendente && !alertaEstorno && (
+          {canConciliar && isPendente && !alertaEstorno && (
             /* D3/C5 + R2/M1 — "Ignorar" e "Remover do extrato" eram texto
                sublinhado de 10px: alvo de clique bem abaixo dos 32px e
                nenhum dos três pesos. Viram botões do sistema, com a
@@ -1082,7 +1082,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
 
         {/* ── Centro: botão conciliar ── */}
         <div className="flex items-center justify-center px-2">
-          {isPendente && !alertaEstorno && (
+          {canConciliar && isPendente && !alertaEstorno && (
             <button
               type="button"
               disabled={!podeConfirmar}
@@ -1121,7 +1121,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                 44px no toque e 18px no ícone), com o nome inteiro — D4:
                 entre caber mais e ler, ganha ler.
               */}
-              <div className="flex flex-wrap items-center justify-end gap-1">
+              {canConciliar && <div className="flex flex-wrap items-center justify-end gap-1">
                 <button type="button" className="btn btn-outline btn-sm" title="Ações rápidas para este lançamento"
                   onClick={() => onAcoesRapidas(item)}>
                   <PlusIcon className="h-4 w-4" />
@@ -1140,7 +1140,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                   onClick={() => onAssociarTransferencia(item)}>
                   Transferência
                 </button>
-              </div>
+              </div>}
             </div>
           )}
 
@@ -1276,13 +1276,13 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                           {formatDate(sugestao.data_movimento)} · {formatCurrency(sugestao.valor_quitacao)}
                         </p>
                       </div>
-                      <button
+                      {canConciliar && <button
                         type="button"
                         className="btn btn-outline btn-sm shrink-0 text-xs"
                         onClick={() => onPrepararSugestao(item, sugestao)}
                       >
                         Usar
-                      </button>
+                      </button>}
                     </div>
                   ))}
                 </div>
@@ -1332,11 +1332,11 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                           <ContextoObraTitulo registro={s} />
                           <p className="text-xs text-[var(--c-muted)]">{formatDate(s.data_movimento)} · {formatCurrency(s.valor_quitacao)}</p>
                         </div>
-                        <button type="button" className="btn btn-outline btn-sm text-xs shrink-0"
+                        {canConciliar && <button type="button" className="btn btn-outline btn-sm text-xs shrink-0"
                           disabled={processingId === pid}
                           onClick={() => onConfirmar(item.id, s.movimento_financeiro_id)}>
                           {processingId === pid ? '...' : 'Usar'}
-                        </button>
+                        </button>}
                       </div>
                     );
                   })}
@@ -1712,6 +1712,8 @@ function FooterPaginacao({ meta, onAlterarPagina }) {
 
 export default function FinanceiroConciliacao() {
   const { user } = useAuth();
+  const canImportarOfx = hasPermissao(user, 'financeiro.conciliacao.importar');
+  const canConciliar = hasPermissao(user, 'financeiro.conciliacao.conciliar');
   const canEstornarTransferencia = hasPermissao(user, 'financeiro.conciliacao.estornar');
   const [contas, setContas] = useState([]);
   const [viewMode, setViewMode] = useState('CONTAS');
@@ -2724,7 +2726,7 @@ export default function FinanceiroConciliacao() {
         voltar={viewMode === 'DETALHE'
           ? { onClick: () => setViewMode('CONTAS'), title: 'Voltar para o painel de contas' }
           : undefined}
-        acaoPrincipal={viewMode === 'DETALHE' ? {
+        acaoPrincipal={canConciliar && viewMode === 'DETALHE' ? {
           rotulo: bulkReconciling ? 'Conciliando...' : 'Conciliar em lote',
           onClick: handleConciliarSugeridos,
           desabilitada: bulkReconciling
@@ -2741,7 +2743,7 @@ export default function FinanceiroConciliacao() {
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       {/* Importar OFX — linha horizontal */}
-      <form className="card sol-surface-card" onSubmit={handleImportar}>
+      {canImportarOfx && <form className="card sol-surface-card" onSubmit={handleImportar}>
         <div className="flex flex-wrap items-end gap-3">
           <label className="app-filter-field flex-1">
             <span className="app-filter-label">Importar OFX <span className="font-normal text-[var(--c-muted)]">— Remessas duplicadas são bloqueadas.</span></span>
@@ -2763,7 +2765,7 @@ export default function FinanceiroConciliacao() {
         <p className="mt-2 text-xs text-[var(--c-muted)]">
           Deixe a conta em branco para o sistema identificar cada OFX pela Identificação OFX cadastrada na conta bancária. Se selecionar uma conta, todos os arquivos serão importados nela.
         </p>
-      </form>
+      </form>}
 
       {importResults.length > 0 && (
         <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4">
@@ -3044,7 +3046,7 @@ export default function FinanceiroConciliacao() {
               resumoSugestoes={resumoSugestoesPagina}
             />
 
-            {conciliacoesSelecionadasItens.length > 0 && (
+            {canConciliar && conciliacoesSelecionadasItens.length > 0 && (
               <div className="sol-surface-card card flex flex-col gap-3 border border-[var(--c-primary)] bg-[var(--sem-info-bg)] p-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[var(--c-text)]">
@@ -3073,6 +3075,7 @@ export default function FinanceiroConciliacao() {
                     item={item}
                     associacaoPreparada={associacoesPreparadas[Number(item.id)] || null}
                     processingId={processingId}
+                    canConciliar={canConciliar}
                     canEstornarTransferencia={canEstornarTransferencia}
                     selected={conciliacoesSelecionadas.includes(Number(item.id))}
                     onToggleSelecao={toggleConciliacaoSelecionada}

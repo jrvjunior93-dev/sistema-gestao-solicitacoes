@@ -44,12 +44,16 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 - para usuarios com matriz granular configurada, a permissao **Decidir divergencias** e a fonte de
   verdade da aprovacao; a lista anterior de aprovadores permanece apenas para compatibilidade com
   usuarios legados ainda sem matriz individual;
-- com a flag ativa, novas mutacoes financeiras desses usuarios ficam bloqueadas ate
-  todas as contas controladas possuirem sessao aberta na data operacional;
-- consultas, conciliacao OFX e o proprio controle diario continuam disponiveis para
-  permitir a regularizacao;
-- fechar as contas ao fim do dia volta a bloquear novas mutacoes ate a abertura do
-  proximo dia, sem impedir consulta ao sistema;
+- com a flag ativa, **somente contas ativas marcadas** com
+  `exige_abertura_fechamento` participam do bloqueio (hoje, a conta COFRE CSC
+  informada na auditoria do usuario); o tipo `CAIXA_INTERNO` sozinho nao basta;
+- a falta de fechamento de um dia anterior ou de abertura na data operacional
+  de Sao Paulo bloqueia as baixas via Fila de Pagamentos e o acesso a Carteira
+  de Cheques de Terceiros desses usuarios, com resposta HTTP 423;
+- upload de comprovantes, consultas, conciliacao OFX e o proprio controle diario
+  continuam disponiveis para permitir a regularizacao;
+- fechar a conta ao fim do dia volta a bloquear essas duas atividades ate a
+  abertura do proximo dia, sem impedir consulta ao restante do sistema;
 - o superadmin nao sofre o bloqueio automatico, mas toda alteracao da configuracao
   e registrada na auditoria.
 
@@ -74,7 +78,7 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 | Aprovar divergencia por outro usuario | Ajuste auditavel criado e sessao fechada |
 | Rejeitar divergencia | Sessao reaberta para correcao |
 | Ativar flag sem responsavel | Configuracao recusada |
-| Responsavel com contas pendentes | Mutacoes financeiras bloqueadas; consultas e conciliacao liberadas |
+| Responsavel com fechamento anterior ou abertura atual pendente | Baixa na fila e carteira de cheques bloqueadas; demais rotas liberadas |
 | Informar data retroativa | Operacao bloqueada no frontend e no backend |
 | Conciliar transferencia OFX anterior a abertura atual | Transferencia historica registrada sem alterar o saldo da sessao atual |
 | Acessar sem permissao | Rota e acoes permanecem bloqueadas |

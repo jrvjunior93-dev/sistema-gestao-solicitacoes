@@ -17,6 +17,7 @@ import {
   canInformPainelGestorSaldos,
   canAccessContratos,
   canAccessFinanceiro,
+  canAccessFinanceiroArea,
   canAccessFinanceiroDda,
   canViewFinanceiroCaixas,
   canAccessFilaPagamentos,
@@ -501,9 +502,9 @@ function ComprasCotacoesManageRoute({ children }) {
   return children;
 }
 
-function FinanceiroRoute({ children }) {
+function FinanceiroRoute({ children, permissionKey }) {
   const { user } = useAuth();
-  if (!canAccessFinanceiro(user)) {
+  if (permissionKey ? !canAccessFinanceiroArea(user, permissionKey) : !canAccessFinanceiro(user)) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -972,7 +973,7 @@ export default function App() {
         <Route path="tipos-solicitacao" element={<ConfiguracoesAreaRoute area="cadastros"><TiposSolicitacao /></ConfiguracoesAreaRoute>} />
         <Route path="gestao-contratos" element={<ContratosRoute><GestaoContratos /></ContratosRoute>} />
         <Route path="configuracoes" element={<ConfiguracoesRoute><Configuracoes /></ConfiguracoesRoute>} />
-        <Route path="configuracoes-status-internos-pagar" element={<FinanceiroRoute><ConfiguracoesStatusInternosPagar /></FinanceiroRoute>} />
+        <Route path="configuracoes-status-internos-pagar" element={<FinanceiroRoute permissionKey="financeiro.titulos.status_interno"><ConfiguracoesStatusInternosPagar /></FinanceiroRoute>} />
         <Route path="configuracoes-usuarios-teste" element={<DevOnlySuperadminRoute><ConfiguracaoUsuariosTesteRapido /></DevOnlySuperadminRoute>} />
         <Route path="configuracoes-suporte" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesSuporte /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-visibilidade-ui" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesVisibilidadeUi /></ConfiguracoesAreaRoute>} />
@@ -1112,8 +1113,8 @@ export default function App() {
         <Route path="sst/configuracoes" element={<SstConfigRoute><SstConfiguracoes /></SstConfigRoute>} />
         <Route path="sst/:resource" element={<SstRoute><SstCrudPage /></SstRoute>} />
 
-        <Route path="comprovantes/upload" element={<FinanceiroRoute><UploadComprovantes /></FinanceiroRoute>} />
-        <Route path="comprovantes/pendentes" element={<FinanceiroRoute><ComprovantesPendentes /></FinanceiroRoute>} />
+        <Route path="comprovantes/upload" element={<FinanceiroRoute permissionKey="financeiro.comprovantes.enviar"><UploadComprovantes /></FinanceiroRoute>} />
+        <Route path="comprovantes/pendentes" element={<FinanceiroRoute permissionKey="financeiro.comprovantes.visualizar"><ComprovantesPendentes /></FinanceiroRoute>} />
         {/*
           D2 (financeiro): PORTA ÚNICA COM O RECORTE NA URL.
 
@@ -1133,27 +1134,23 @@ export default function App() {
           redirecionaria de novo — a pessoa ficaria presa na tela sem
           conseguir sair pelo Voltar.
 
-          PERMISSÃO: os três endereços eram guardados pelo MESMO
-          FinanceiroRoute (canAccessFinanceiro) — nenhum recorte exigia mais
-          que o outro, então não há permissão a preservar por recorte. O
-          destino continua sob esse guarda, e é ele que barra: quem não podia
-          ver "a pagar" segue sem ver, agora barrado na porta única.
+          Os dois recortes usam a mesma permissão de leitura dos títulos.
         */}
         <Route path="financeiro/contas-a-receber" element={<Navigate to="/financeiro/titulos?tipo=receber" replace />} />
         <Route path="financeiro/contas-a-pagar" element={<Navigate to="/financeiro/titulos?tipo=pagar" replace />} />
-        <Route path="financeiro/titulos" element={<FinanceiroRoute><FinanceiroTitulos /></FinanceiroRoute>} />
+        <Route path="financeiro/titulos" element={<FinanceiroRoute permissionKey="financeiro.titulos.visualizar"><FinanceiroTitulos /></FinanceiroRoute>} />
         <Route path="financeiro/fila-pagamentos" element={<FinanceiroFilaPagamentosRoute><FinanceiroFilaPagamentos /></FinanceiroFilaPagamentosRoute>} />
         <Route path="financeiro/autorizacoes-pagamento" element={<FinanceiroAutorizacoesPagamentoRoute><FinanceiroAutorizacoesPagamento /></FinanceiroAutorizacoesPagamentoRoute>} />
-        <Route path="financeiro/titulos/novo" element={<FinanceiroRoute><FinanceiroTituloNovo /></FinanceiroRoute>} />
-        <Route path="financeiro/titulos/:id/editar" element={<FinanceiroRoute><FinanceiroTituloEditar /></FinanceiroRoute>} />
-        <Route path="financeiro/titulos/:id" element={<FinanceiroRoute><FinanceiroTituloDetalhe /></FinanceiroRoute>} />
-        <Route path="financeiro/cheques-terceiros" element={<FinanceiroRoute><FinanceiroChequesTerceiros /></FinanceiroRoute>} />
-        <Route path="financeiro/baixas-compostas" element={<FinanceiroRoute><FinanceiroBaixasCompostas /></FinanceiroRoute>} />
+        <Route path="financeiro/titulos/novo" element={<FinanceiroRoute permissionKey="financeiro.titulos.criar"><FinanceiroTituloNovo /></FinanceiroRoute>} />
+        <Route path="financeiro/titulos/:id/editar" element={<FinanceiroRoute permissionKey="financeiro.titulos.editar"><FinanceiroTituloEditar /></FinanceiroRoute>} />
+        <Route path="financeiro/titulos/:id" element={<FinanceiroRoute permissionKey="financeiro.titulos.visualizar"><FinanceiroTituloDetalhe /></FinanceiroRoute>} />
+        <Route path="financeiro/cheques-terceiros" element={<FinanceiroRoute permissionKey="financeiro.cheques.visualizar"><FinanceiroChequesTerceiros /></FinanceiroRoute>} />
+        <Route path="financeiro/baixas-compostas" element={<FinanceiroRoute permissionKey="financeiro.baixas_compostas.visualizar"><FinanceiroBaixasCompostas /></FinanceiroRoute>} />
         <Route path="financeiro/pagamentos" element={<FinanceiroPagamentosRoute><FinanceiroPagamentos /></FinanceiroPagamentosRoute>} />
         <Route path="financeiro/dda" element={<FinanceiroDdaRoute><FinanceiroDda /></FinanceiroDdaRoute>} />
         <Route path="financeiro/boletos" element={<BoletosRoute><FinanceiroBoletos /></BoletosRoute>} />
-        <Route path="financeiro/faturas-cartao" element={<FinanceiroRoute><FinanceiroFaturasCartao /></FinanceiroRoute>} />
-        <Route path="financeiro/faturas-cartao/:id" element={<FinanceiroRoute><FinanceiroFaturaCartaoDetalhe /></FinanceiroRoute>} />
+        <Route path="financeiro/faturas-cartao" element={<FinanceiroRoute permissionKey="financeiro.cartoes.visualizar"><FinanceiroFaturasCartao /></FinanceiroRoute>} />
+        <Route path="financeiro/faturas-cartao/:id" element={<FinanceiroRoute permissionKey="financeiro.cartoes.visualizar"><FinanceiroFaturaCartaoDetalhe /></FinanceiroRoute>} />
         <Route path="financeiro/relatorios" element={<FinanceiroRelatoriosRoute><FinanceiroRelatorios /></FinanceiroRelatoriosRoute>} />
         <Route path="financeiro/relatorios/grupo-consolidado" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.grupo_consolidado"><FinanceiroExecutivoGrupo /></FinanceiroRelatorioRoute>} />
         <Route path="financeiro/relatorios/fluxo-consolidado" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.fluxo_consolidado"><FinanceiroFluxoConsolidado /></FinanceiroRelatorioRoute>} />
@@ -1166,12 +1163,12 @@ export default function App() {
         <Route path="financeiro/relatorios/resultado-obras" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.resultado_obras"><FinanceiroResultadoObras /></FinanceiroRelatorioRoute>} />
         <Route path="financeiro/relatorios/centros-custo" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.centros_custo"><FinanceiroResultadoCentrosCusto /></FinanceiroRelatorioRoute>} />
         <Route path="financeiro/relatorios/centros-custo/distribuicao-obras" element={<FinanceiroRelatorioRoute permissionKey="financeiro.relatorios.centros_custo"><FinanceiroDistribuicaoCentrosCusto /></FinanceiroRelatorioRoute>} />
-        <Route path="financeiro/baixas" element={<FinanceiroRoute><FinanceiroBaixas /></FinanceiroRoute>} />
-        <Route path="financeiro/financiamentos-bancarios" element={<FinanceiroRoute><FinanceiroFinanciamentosBancarios /></FinanceiroRoute>} />
-        <Route path="financeiro/bancos" element={<FinanceiroRoute><FinanceiroBancos /></FinanceiroRoute>} />
-        <Route path="financeiro/conciliacao" element={<FinanceiroRoute><FinanceiroConciliacao /></FinanceiroRoute>} />
+        <Route path="financeiro/baixas" element={<FinanceiroRoute permissionKey="financeiro.baixas.visualizar"><FinanceiroBaixas /></FinanceiroRoute>} />
+        <Route path="financeiro/financiamentos-bancarios" element={<FinanceiroRoute permissionKey="financeiro.financiamentos.visualizar"><FinanceiroFinanciamentosBancarios /></FinanceiroRoute>} />
+        <Route path="financeiro/bancos" element={<FinanceiroRoute permissionKey="financeiro.bancos.visualizar"><FinanceiroBancos /></FinanceiroRoute>} />
+        <Route path="financeiro/conciliacao" element={<FinanceiroRoute permissionKey="financeiro.conciliacao.visualizar"><FinanceiroConciliacao /></FinanceiroRoute>} />
         <Route path="financeiro/caixas" element={<FinanceiroCaixasRoute><FinanceiroCaixas /></FinanceiroCaixasRoute>} />
-        <Route path="financeiro/cadastros" element={<FinanceiroRoute><FinanceiroCadastros /></FinanceiroRoute>} />
+        <Route path="financeiro/cadastros" element={<FinanceiroRoute permissionKey="financeiro.cadastros.visualizar"><FinanceiroCadastros /></FinanceiroRoute>} />
         <Route path="custos-recebiveis" element={<CustosRecebiveisRoute><CustosRecebiveis /></CustosRecebiveisRoute>} />
         <Route path="configuracoes-responsaveis-obras" element={<CustosRecebiveisRoute><ResponsaveisObra /></CustosRecebiveisRoute>} />
         <Route path="compras/relatorios" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ModuloRelatorios modulo="compras" /></ComprasRelatoriosRoute></ModuloComprasRoute>} />

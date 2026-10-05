@@ -1085,6 +1085,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const canDeleteTitulos = canDeleteTitulosFinanceiros(user);
+  const canCriarTitulo = hasPermissao(user, 'financeiro.titulos.criar');
+  const canEditarTitulo = hasPermissao(user, 'financeiro.titulos.editar');
+  const canBaixarTitulo = hasPermissao(user, 'financeiro.titulos.baixar');
   const canNegociar = hasPermissao(user, 'financeiro.titulos.renegociar');
   const [titulosNegociacao, setTitulosNegociacao] = useState(null);
   const canImportTitulos = canImportTitulosFinanceiros(user);
@@ -2831,11 +2834,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         titulo={pageTitle}
         contagem={contagemCabecalho}
         descricao={pageSubtitle}
-        acaoPrincipal={{
+        acaoPrincipal={canCriarTitulo ? {
           rotulo: 'Novo título',
           to: `/financeiro/titulos/novo?tipo=${fixedTipo || draftFilters.tipo || 'RECEBER'}`,
           icone: <HiOutlinePlus className="h-4 w-4" />
-        }}
+        } : undefined}
         secundarias={fixedTipo === 'PAGAR' && canImportTitulos ? [
           {
             rotulo: exportingModel ? 'Exportando...' : 'Exportar modelo',
@@ -3190,7 +3193,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             antigo não dizia.
           */
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            {canBaixarTitulo && <button
               type="button"
               className="btn btn-primary btn-sm"
               onClick={abrirModalBaixaMassa}
@@ -3199,7 +3202,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             >
               Baixar selecionados
               {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
-            </button>
+            </button>}
             {canNegociar && <button type="button" className="btn btn-outline btn-sm"
               disabled={!podeNegociarTitulos(selectedTitulos, 2) || savingBaixaMassa}
               title="Selecione de 2 a 100 títulos com saldo, do mesmo parceiro, empresa e tipo"
@@ -3228,7 +3231,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
               </button>
             ) : null}
-            <button
+            {canDeleteTitulos && <button
               type="button"
               className="btn btn-outline btn-sm btn-perigo-suave"
               onClick={excluirTitulosSelecionados}
@@ -3237,7 +3240,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             >
               Excluir selecionados
               {selectedTitulosExcluiveis.length > 0 ? ` (${selectedTitulosExcluiveis.length})` : ''}
-            </button>
+            </button>}
             {/* R11/C6: "Cadastros" e "Baixas" eram links de NAVEGAÇÃO na
                 barra de ações da lista — menu, breadcrumb e Ctrl+K já levam
                 lá. Saíram junto com os do cabeçalho. */}
@@ -3264,7 +3267,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 />
               </label>
             ) : null}
-            <button
+            {canExportTitulos && <button
               type="button"
               className="btn btn-outline btn-sm gap-2"
               onClick={abrirRelatorio}
@@ -3275,7 +3278,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             >
               <HiOutlineDocumentText className="h-4 w-4" />
               {relatorioLoading ? 'Gerando...' : 'Gerar relatorio'}
-            </button>
+            </button>}
           </div>
         )}
       >
@@ -3304,12 +3307,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 Limpar seleção
               </button>
             </div>
-          </div>
-        ) : null}
-
-        {fixedTipo === 'PAGAR' ? (
-          <div className="mb-2 flex justify-end">
-            <Link className="text-xs text-[var(--c-primary)] underline" to="/configuracoes-status-internos-pagar">Configurar status internos</Link>
           </div>
         ) : null}
 
@@ -3526,12 +3523,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             aoMudarColunas={aoMudarColunas}
             storageKey={tabelaStorageKey}
             rotuloRolagem={`Titulos ${tipoLabel}`}
-            selecao={{
+            selecao={(canBaixarTitulo || canNegociar || canPrepareFila || canCreateBaixaComposta || canDeleteTitulos) ? {
               selecionados: selectedTituloIds.map((id) => Number(id)),
               elegivel: (titulo) => fixedTipo === 'PAGAR' ? titulo.tipo === 'PAGAR' : isTituloBaixavel(titulo),
               aoAlternar: (id, titulo) => toggleTituloSelecionado(titulo, !selectedTituloSet.has(Number(id))),
               aoAlternarTodos: (marcar) => toggleTodosBaixaveis(marcar)
-            }}
+            } : undefined}
             larguraAcoes={canNegociar ? 240 : 160}
             acoesLinha={(titulo) => (
               <>
@@ -3555,7 +3552,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                     <HiOutlineExclamationTriangle className="h-4 w-4" />
                   </button>
                 ) : null}
-                {isTituloEditavel(titulo) ? (
+                {canEditarTitulo && isTituloEditavel(titulo) ? (
                   <Link
                     className="btn btn-outline btn-sm"
                     to={`/financeiro/titulos/${titulo.id}/editar`}
@@ -3563,7 +3560,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   >
                     <HiOutlinePencilSquare className="h-4 w-4" />
                   </Link>
-                ) : (
+                ) : canEditarTitulo ? (
                   <button
                     type="button"
                     className="btn btn-outline btn-sm opacity-50"
@@ -3572,7 +3569,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   >
                     <HiOutlinePencilSquare className="h-4 w-4" />
                   </button>
-                )}
+                ) : null}
               </>
             )}
           />

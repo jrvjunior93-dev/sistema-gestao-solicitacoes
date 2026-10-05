@@ -12,7 +12,7 @@ import {
 } from '../components/padrao';
 import { fileUrl } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { canDeleteComprovante } from '../utils/acessoProduto';
+import { canDeleteComprovante, hasPermissao } from '../utils/acessoProduto';
 import {
   getComprovantesPendentes,
   buscarSolicitacoesParaComprovante,
@@ -31,6 +31,7 @@ export default function ComprovantesPendentes() {
   const [vinculando, setVinculando] = useState({});
   const [preview, setPreview] = useState(null);
   const podeExcluirComprovante = canDeleteComprovante(user);
+  const podeVincularComprovante = hasPermissao(user, 'financeiro.comprovantes.vincular');
 
   /*
     R3/R19 — as OITO caixas do navegador desta tela (7 `alert` + 1
@@ -314,14 +315,14 @@ export default function ComprovantesPendentes() {
             <>
               {/* D3: os três pesos, todos visíveis — primário sólido para a
                   ação da linha e destrutiva em vermelho suave, apartada. */}
-              <button
+              {podeVincularComprovante && <button
                 type="button"
                 className="btn btn-primary btn-sm"
                 onClick={() => handleVincular(item.id)}
                 disabled={vinculando[item.id]}
               >
                 {vinculando[item.id] ? 'Vinculando...' : 'Vincular'}
-              </button>
+              </button>}
               {podeExcluirComprovante && (
                 <button
                   className="btn btn-outline btn-perigo-suave btn-sm"

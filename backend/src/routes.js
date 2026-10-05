@@ -8,6 +8,7 @@ const permit = require('./middlewares/permissions');
 const csrfProtection = require('./middlewares/csrf');
 const requireMfaCompletion = require('./middlewares/requireMfaCompletion');
 const controleDiarioFinanceiro = require('./middlewares/controleDiarioFinanceiro');
+const { resolverPermissoesRotaFinanceira } = require('./services/financeiroRotaPermissoesService');
 const requireCustosRecebiveisCompletion = require('./modules/custosRecebiveis/middlewares/requireCustosRecebiveisCompletion');
 const { auditSuccess } = require('./middlewares/audit');
 const { createRateLimit } = require('./middlewares/rateLimit');
@@ -290,6 +291,7 @@ const {
   userHasAreaPermission,
   userHasAnyRhDpCapability,
   canViewSolicitacaoFinanceiro,
+  canOperateSolicitacaoFinanceiro,
   canAccessTreinamento,
   canAccessComprovantes,
   canCancelPagamentos,
@@ -711,11 +713,13 @@ const allowGestaoUsuarios = permit({
 
 const allowFinanceiro = permit({
   resource: 'FINANCEIRO',
-  custom: async (req) => (
-    (await canAccessFinanceiro(req.user))
+  custom: async (req) => {
+    if (!(await canAccessFinanceiro(req.user))) return 'Acesso negado para o modulo financeiro';
+    const permissionKeys = resolverPermissoesRotaFinanceira(req);
+    return permissionKeys.length && (await userHasAreaPermission(req.user, permissionKeys))
       ? true
-      : 'Acesso negado para o modulo financeiro'
-  )
+      : 'Acesso negado para esta operacao financeira';
+  }
 });
 
 const allowTituloImportar = permit({
@@ -860,6 +864,15 @@ const allowSolicitacaoFinanceiro = permit({
     (await canViewSolicitacaoFinanceiro(req.user))
       ? true
       : 'Acesso negado para a aba financeira da solicitacao'
+  )
+});
+
+const allowSolicitacaoFinanceiroOperar = permit({
+  resource: 'SOLICITACAO_FINANCEIRO_OPERAR',
+  custom: async (req) => (
+    (await canOperateSolicitacaoFinanceiro(req.user))
+      ? true
+      : 'Acesso negado para operar a aba financeira da solicitacao'
   )
 });
 
@@ -1748,8 +1761,8 @@ router.patch('/solicitacoes/:id/ref-contrato', requireEnabledModule('CONTRATOS')
 router.patch('/solicitacoes/:id/valor', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoValorBody }), auditSuccess({ eventType: 'SOLICITACAO_VALOR_UPDATED', resourceType: 'SOLICITACAO', description: 'Valor da solicitacao atualizado', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarValor);
 router.patch('/solicitacoes/:id/data-vencimento', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoDataVencimentoBody }), auditSuccess({ eventType: 'SOLICITACAO_DUE_DATE_UPDATED', resourceType: 'SOLICITACAO', description: 'Data de vencimento da solicitacao atualizada', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarDataVencimento);
 router.patch('/solicitacoes/:id/apropriacoes', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoApropriacoesBody }), auditSuccess({ eventType: 'SOLICITACAO_APROPRIACOES_UPDATED', resourceType: 'SOLICITACAO', description: 'Apropriacoes da solicitacao atualizadas', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarApropriacoes);
-router.patch('/solicitacoes/:id/credor', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoCredorBody }), auditSuccess({ eventType: 'SOLICITACAO_CREDOR_UPDATED', resourceType: 'SOLICITACAO', description: 'Credor da solicitacao atualizado', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarCredor);
-router.post('/solicitacoes/:id/credor/cadastrar', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoCredorCreateBody }), auditSuccess({ eventType: 'SOLICITACAO_CREDOR_CREATED_AND_LINKED', resourceType: 'SOLICITACAO', description: 'Credor cadastrado e vinculado a solicitacao', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.cadastrarCredorFinanceiro);
+router.patch('/solicitacoes/:id/credor', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiroOperar, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoCredorBody }), auditSuccess({ eventType: 'SOLICITACAO_CREDOR_UPDATED', resourceType: 'SOLICITACAO', description: 'Credor da solicitacao atualizado', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.atualizarCredor);
+router.post('/solicitacoes/:id/credor/cadastrar', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiroOperar, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoCredorCreateBody }), auditSuccess({ eventType: 'SOLICITACAO_CREDOR_CREATED_AND_LINKED', resourceType: 'SOLICITACAO', description: 'Credor cadastrado e vinculado a solicitacao', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.cadastrarCredorFinanceiro);
 router.post('/solicitacoes/credores', auditSuccess({ eventType: 'SOLICITACAO_CREDOR_CREATED', resourceType: 'PARCEIRO', description: 'Credor criado durante abertura de solicitacao' }), ParceiroController.createCredorNovaSolicitacao);
 router.post('/solicitacoes/favorecidos', criticalRateLimit, validateRequest({ body: validateSolicitacaoFavorecidoCreateBody }), auditSuccess({ eventType: 'SOLICITACAO_FAVORECIDO_CREATED', resourceType: 'PARCEIRO', description: 'Favorecido cadastrado durante abertura de solicitacao' }), ParceiroController.createFavorecidoNovaSolicitacao);
 router.patch('/solicitacoes/arquivar-massa', validateRequest({ body: validateSolicitacaoArquivarMassaBody }), auditSuccess({ eventType: 'SOLICITACAO_ARCHIVED_BATCH', resourceType: 'SOLICITACAO', description: 'Solicitacoes arquivadas em massa', metadataResolver: (req) => ({ solicitacao_ids: req.body?.solicitacao_ids || [] }) }), SolicitacaoController.arquivarEmMassa);
@@ -1787,7 +1800,7 @@ router.post('/prioridades-diretoria/lotes/:id/finalizar', requireEnabledModule('
 router.post('/prioridades-diretoria/lotes/:id/cancelar', requireEnabledModule('SOLICITACOES'), validateRequest({ params: validateNumericIdParam('id', 'Lote de prioridade') }), PrioridadeDiretoriaController.cancelar);
 router.delete('/prioridades-diretoria/lotes/:id', requireEnabledModule('SOLICITACOES'), validateRequest({ params: validateNumericIdParam('id', 'Lote de prioridade') }), PrioridadeDiretoriaController.excluir);
 router.get('/solicitacoes/:id/titulos-financeiros', allowSolicitacaoFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), TituloFinanceiroController.listarPorSolicitacao);
-router.post('/solicitacoes/:id/gerar-conta', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateFinanceTituloCreateFromSolicitacaoBody }), TituloFinanceiroController.criarPorSolicitacao);
+router.post('/solicitacoes/:id/gerar-conta', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiroOperar, allowFinanceiroArea('FINANCEIRO_TITULO_CRIAR_SOLICITACAO', ['financeiro.titulos.criar']), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateFinanceTituloCreateFromSolicitacaoBody }), TituloFinanceiroController.criarPorSolicitacao);
 
 // -------------------------------------------------------------------
 // NOTIFICACOES
@@ -1835,10 +1848,10 @@ router.get(
 // -------------------------------------------------------------------
 // COMPROVANTES
 // -------------------------------------------------------------------
-const allowComprovantes = permit({
+const allowComprovantes = (permissionKey) => permit({
   resource: 'COMPROVANTE',
   custom: async (req) => (
-    (await canAccessComprovantes(req.user))
+    (await canAccessComprovantes(req.user)) && (await userHasAreaPermission(req.user, [permissionKey]))
       ? true
       : 'Acesso negado para comprovantes'
   )
@@ -1846,7 +1859,7 @@ const allowComprovantes = permit({
 
 router.post(
   '/comprovantes/upload-massa',
-  allowComprovantes,
+  allowComprovantes('financeiro.comprovantes.enviar'),
   uploadRateLimit,
   uploadComprovantes.array('files'),
   ComprovanteController.uploadMassa
@@ -1854,26 +1867,26 @@ router.post(
 
 router.get(
   '/comprovantes/solicitacoes',
-  allowComprovantes,
+  allowComprovantes('financeiro.comprovantes.visualizar'),
   ComprovanteController.solicitacoes
 );
 
 router.get(
   '/comprovantes/pendentes',
-  allowComprovantes,
+  allowComprovantes('financeiro.comprovantes.visualizar'),
   ComprovanteController.pendentes
 );
 
 router.post(
   '/comprovantes/:id/vincular',
-  allowComprovantes,
+  allowComprovantes('financeiro.comprovantes.vincular'),
   validateRequest({ params: validateNumericIdParam('id', 'Comprovante') }),
   ComprovanteController.vincular
 );
 
 router.delete(
   '/comprovantes/:id',
-  allowComprovantes,
+  allowComprovantes('financeiro.comprovantes.excluir'),
   validateRequest({ params: validateNumericIdParam('id', 'Comprovante') }),
   ComprovanteController.remover
 );
@@ -2244,8 +2257,8 @@ router.get('/financeiro/relatorios/financeiro-obras/pdf', allowFinanceiroRelator
 // nao ter acesso ao modulo de solicitacoes, e tomaria 403 clicando numa linha do proprio relatorio.
 router.get('/financeiro/relatorios/financeiro-obras/titulos/:id/arquivos', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), validateRequest({ params: validateNumericIdParam('id', 'Titulo') }), RelatorioFinanceiroController.arquivosDoTitulo);
 router.get('/financeiro/relatorios/financeiro-obras/importacoes-historicas', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), ObraCustoHistoricoController.importacoes);
-router.post('/financeiro/relatorios/financeiro-obras/importacoes-historicas/preview', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), uploadRateLimit, uploadComprovantes.single('file'), ObraCustoHistoricoController.preview);
-router.post('/financeiro/relatorios/financeiro-obras/importacoes-historicas/confirmar', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), criticalRateLimit, uploadComprovantes.single('file'), ObraCustoHistoricoController.confirmar);
+router.post('/financeiro/relatorios/financeiro-obras/importacoes-historicas/preview', allowFinanceiroArea('FINANCEIRO_OBRAS_IMPORTAR_HISTORICO', ['financeiro.relatorios.importar_historico_obras']), uploadRateLimit, uploadComprovantes.single('file'), ObraCustoHistoricoController.preview);
+router.post('/financeiro/relatorios/financeiro-obras/importacoes-historicas/confirmar', allowFinanceiroArea('FINANCEIRO_OBRAS_IMPORTAR_HISTORICO', ['financeiro.relatorios.importar_historico_obras']), criticalRateLimit, uploadComprovantes.single('file'), ObraCustoHistoricoController.confirmar);
 router.get('/financeiro/relatorios/dre/comparativo', allowFinanceiroRelatorio(['financeiro.relatorios.dre']), validateRequest({ query: validateFinanceDreComparativoQuery }), RelatorioFinanceiroController.dreComparativo);
 router.get('/financeiro/relatorios/dre/empresas', allowFinanceiroRelatorio(['financeiro.relatorios.dre']), validateRequest({ query: validateFinanceDreQuery }), RelatorioFinanceiroController.dreComparativoEmpresas);
 router.get('/financeiro/relatorios/dre', allowFinanceiroRelatorio(['financeiro.relatorios.dre']), validateRequest({ query: validateFinanceDreQuery }), RelatorioFinanceiroController.dre);
@@ -2341,7 +2354,7 @@ router.get('/financeiro/formas-pagamento', allowFinanceiro, FormaPagamentoFinanc
 router.post('/financeiro/formas-pagamento', allowFinanceiro, criticalRateLimit, FormaPagamentoFinanceiraController.create);
 router.patch('/financeiro/formas-pagamento/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Forma de pagamento') }), FormaPagamentoFinanceiraController.update);
 router.get('/financeiro/tarifas-bancarias-atalhos', allowFinanceiro, TarifaBancariaConfigController.index);
-router.patch('/financeiro/tarifas-bancarias-atalhos', permit(['SUPERADMIN']), criticalRateLimit, validateRequest({ body: validateFinanceTarifasBancariasConfigBody }), TarifaBancariaConfigController.update);
+router.patch('/financeiro/tarifas-bancarias-atalhos', allowFinanceiroArea('FINANCEIRO_CONCILIACAO_ATALHOS', ['financeiro.conciliacao.atalhos_gerenciar']), criticalRateLimit, validateRequest({ body: validateFinanceTarifasBancariasConfigBody }), TarifaBancariaConfigController.update);
 router.get('/financeiro/cartoes', allowFinanceiro, CartaoFinanceiroController.index);
 router.post('/financeiro/cartoes', allowFinanceiro, criticalRateLimit, CartaoFinanceiroController.create);
 router.patch('/financeiro/cartoes/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Cartao financeiro') }), CartaoFinanceiroController.update);

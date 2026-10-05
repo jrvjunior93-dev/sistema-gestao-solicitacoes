@@ -129,8 +129,12 @@ async function usuarioEstaSujeitoAoBloqueio(user) {
   return config.bloqueio_ativo && config.responsaveis_usuario_ids.includes(Number(user?.id));
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function dataOperacionalHoje(now = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(now);
+  const valor = (tipo) => partes.find((parte) => parte.type === tipo)?.value;
+  return `${valor('year')}-${valor('month')}-${valor('day')}`;
 }
 
 async function obterEstadoBloqueioDiario(user, { transaction = null } = {}) {
@@ -140,10 +144,7 @@ async function obterEstadoBloqueioDiario(user, { transaction = null } = {}) {
   const contas = await ContaBancaria.findAll({
     where: {
       ativo: { [Op.ne]: false },
-      [Op.or]: [
-        { exige_abertura_fechamento: true },
-        { tipo_operacional: 'CAIXA_INTERNO' }
-      ]
+      exige_abertura_fechamento: true
     },
     attributes: ['id'],
     transaction
@@ -151,22 +152,34 @@ async function obterEstadoBloqueioDiario(user, { transaction = null } = {}) {
   const ids = contas.map((conta) => Number(conta.id));
   if (ids.length === 0) return { bloqueado: false, total_contas: 0, contas_pendentes: 0 };
 
-  const sessoes = await CaixaFinanceiroSessao.findAll({
+  const hoje = dataOperacionalHoje();
+  const [sessoes, sessoesAnterioresPendentes] = await Promise.all([CaixaFinanceiroSessao.findAll({
     where: {
       conta_bancaria_id: { [Op.in]: ids },
       status: 'ABERTO',
-      data_abertura: today()
+      data_abertura: hoje
     },
     attributes: ['conta_bancaria_id'],
     transaction
-  });
-  const prontas = new Set(sessoes.map((sessao) => Number(sessao.conta_bancaria_id))).size;
+  }), CaixaFinanceiroSessao.findAll({
+    where: {
+      conta_bancaria_id: { [Op.in]: ids },
+      data_abertura: { [Op.lt]: hoje },
+      status: { [Op.in]: ['ABERTO', 'AGUARDANDO_APROVACAO'] }
+    },
+    attributes: ['conta_bancaria_id'],
+    transaction
+  })]);
+  const semFechamentoAnterior = new Set(sessoesAnterioresPendentes.map((sessao) => Number(sessao.conta_bancaria_id)));
+  const prontas = new Set(sessoes.map((sessao) => Number(sessao.conta_bancaria_id)));
+  const totalProntas = ids.filter((id) => prontas.has(id) && !semFechamentoAnterior.has(id)).length;
   return {
-    bloqueado: prontas < ids.length,
+    bloqueado: totalProntas < ids.length,
     total_contas: ids.length,
-    contas_prontas: prontas,
-    contas_pendentes: ids.length - prontas,
-    data_referencia: today()
+    contas_prontas: totalProntas,
+    contas_pendentes: ids.length - totalProntas,
+    contas_sem_fechamento_anterior: semFechamentoAnterior.size,
+    data_referencia: hoje
   };
 }
 
@@ -178,6 +191,7 @@ module.exports = {
   obterCaixaDiarioConfig,
   salvarCaixaDiarioConfig,
   obterEstadoBloqueioDiario,
+  dataOperacionalHoje,
   usuarioEstaSujeitoAoBloqueio,
   usuarioPodeAprovarDivergencia,
   usuarioPodeOperarCaixa

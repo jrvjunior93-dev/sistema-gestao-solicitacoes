@@ -27,6 +27,8 @@ import {
   getTarifasBancariasAtalhos
 } from '../services/financeiro';
 import { getEmpresasGrupo } from '../services/empresasGrupo';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermissao } from '../utils/acessoProduto';
 import { getCpfCnpjError, getPixDocumentError, maskCpfCnpj, onlyDigits } from '../utils/formatters';
 import { categoriaFinanceiraMatchesSearch } from '../utils/categoriaFinanceira';
 import {
@@ -358,6 +360,12 @@ function prepararTarifasBancariasParaSalvar(itens) {
 }
 
 export default function FinanceiroCadastros() {
+  const { user } = useAuth();
+  const podeGerenciarCadastros = hasPermissao(user, 'financeiro.cadastros.gerenciar');
+  const podeConfigurarContasPagadoras = hasPermissao(user, 'financeiro.pagamentos.configurar');
+  const podeGerenciarCartoes = hasPermissao(user, 'financeiro.cartoes.gerenciar');
+  const podeGerenciarFavorecidos = hasPermissao(user, 'financeiro.favorecidos.gerenciar');
+  const podeGerenciarAtalhos = hasPermissao(user, 'financeiro.conciliacao.atalhos_gerenciar');
   const [contas, setContas] = useState([]);
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
@@ -800,6 +808,7 @@ export default function FinanceiroCadastros() {
             cor="var(--sem-info)"
           >
             <form onSubmit={handleSalvarConta}>
+              <fieldset disabled={!podeGerenciarCadastros} className="contents">
               <FormSecao legenda="Identificação" colunas={2}>
                 <CampoForm label="Nome" obrigatorio linha>
                   <input
@@ -943,6 +952,7 @@ export default function FinanceiroCadastros() {
                   </button>
                 )}
               </div>
+              </fieldset>
             </form>
           </BlocoConteudo>
 
@@ -971,7 +981,7 @@ export default function FinanceiroCadastros() {
                         <span className={statusClass(conta.ativo)}>
                           {conta.ativo ? 'ATIVA' : 'INATIVA'}
                         </span>
-                        <button type="button" className="btn btn-outline" onClick={() => setContaForm(pickContaFormData(conta))}>
+                        <button type="button" className="btn btn-outline" disabled={!podeGerenciarCadastros} onClick={() => setContaForm(pickContaFormData(conta))}>
                           Editar
                         </button>
                       </div>
@@ -990,6 +1000,7 @@ export default function FinanceiroCadastros() {
             variante="secundario"
           >
             <form onSubmit={handleSalvarPaymentAccount}>
+              <fieldset disabled={!podeConfigurarContasPagadoras} className="contents">
               <FormSecao legenda="Vínculo" colunas={2}>
                 <CampoForm label="Conta bancária interna" obrigatorio linha>
                   <select
@@ -1136,6 +1147,7 @@ export default function FinanceiroCadastros() {
                   </button>
                 )}
               </div>
+              </fieldset>
             </form>
           </BlocoConteudo>
 
@@ -1166,7 +1178,7 @@ export default function FinanceiroCadastros() {
                         <span className={statusClass(account.ativo)}>
                           {account.ativo ? 'ATIVA' : 'INATIVA'}
                         </span>
-                        <button type="button" className="btn btn-outline" onClick={() => setPaymentAccountForm(pickPaymentAccountFormData(account))}>
+                        <button type="button" className="btn btn-outline" disabled={!podeConfigurarContasPagadoras} onClick={() => setPaymentAccountForm(pickPaymentAccountFormData(account))}>
                           Editar
                         </button>
                       </div>
@@ -1186,6 +1198,7 @@ export default function FinanceiroCadastros() {
               variante="secundario"
             >
               <form onSubmit={handleSalvarCategoria}>
+                <fieldset disabled={!podeGerenciarCadastros} className="contents">
                 <FormSecao legenda="Identificação" colunas={2}>
                   <CampoForm label="Nome" obrigatorio>
                     <input
@@ -1294,6 +1307,7 @@ export default function FinanceiroCadastros() {
                     </button>
                   )}
                 </div>
+                </fieldset>
               </form>
             </BlocoConteudo>
           </div>
@@ -1397,7 +1411,7 @@ export default function FinanceiroCadastros() {
                                 <span className={statusClass(categoria.ativo)}>
                                   {categoria.ativo ? 'ATIVA' : 'INATIVA'}
                                 </span>
-                                <button type="button" className="btn btn-outline" onClick={() => handleEditarCategoria(categoria)}>
+                                <button type="button" className="btn btn-outline" disabled={!podeGerenciarCadastros} onClick={() => handleEditarCategoria(categoria)}>
                                   Editar
                                 </button>
                               </div>
@@ -1420,6 +1434,7 @@ export default function FinanceiroCadastros() {
             variante="secundario"
           >
             <form onSubmit={handleSalvarFormaPagamento}>
+              <fieldset disabled={!podeGerenciarCadastros} className="contents">
               <FormSecao legenda="Identificação" colunas={2}>
                 <CampoForm label="Nome" obrigatorio>
                   <input
@@ -1497,6 +1512,7 @@ export default function FinanceiroCadastros() {
                   </button>
                 )}
               </div>
+              </fieldset>
             </form>
 
             <div className="mt-4 app-list-stack">
@@ -1515,7 +1531,7 @@ export default function FinanceiroCadastros() {
                     </div>
                     <div className="app-actionbar">
                       <span className={statusClass(forma.ativo)}>{forma.ativo ? 'ATIVA' : 'INATIVA'}</span>
-                      <button type="button" className="btn btn-outline" onClick={() => setFormaPagamentoForm(pickFormaPagamentoFormData(forma))}>
+                      <button type="button" className="btn btn-outline" disabled={!podeGerenciarCadastros} onClick={() => setFormaPagamentoForm(pickFormaPagamentoFormData(forma))}>
                         Editar
                       </button>
                     </div>
@@ -1532,11 +1548,12 @@ export default function FinanceiroCadastros() {
             variante="secundario"
             acoes={(
               <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn btn-outline" onClick={() => handleAdicionarTarifaBancaria('TARIFA')}>Adicionar tarifa</button>
-                <button type="button" className="btn btn-outline" onClick={() => handleAdicionarTarifaBancaria('RENDIMENTO')}>Adicionar rendimento</button>
+                <button type="button" className="btn btn-outline" disabled={!podeGerenciarAtalhos} onClick={() => handleAdicionarTarifaBancaria('TARIFA')}>Adicionar tarifa</button>
+                <button type="button" className="btn btn-outline" disabled={!podeGerenciarAtalhos} onClick={() => handleAdicionarTarifaBancaria('RENDIMENTO')}>Adicionar rendimento</button>
               </div>
             )}
           >
+            <fieldset disabled={!podeGerenciarAtalhos} className="contents">
             <div className="app-list-stack">
               {tarifasBancariasAtalhos.length === 0 ? (
                 <div className="app-note">Nenhum atalho de tarifa configurado.</div>
@@ -1598,7 +1615,7 @@ export default function FinanceiroCadastros() {
                       />
                       Ativo
                     </label>
-                    <button type="button" className="btn btn-outline btn-perigo-suave" onClick={() => handleRemoverTarifaBancaria(index)}>
+                    <button type="button" className="btn btn-outline btn-perigo-suave" disabled={!podeGerenciarAtalhos} onClick={() => handleRemoverTarifaBancaria(index)}>
                       Remover
                     </button>
                   </div>
@@ -1607,10 +1624,11 @@ export default function FinanceiroCadastros() {
             </div>
 
             <div className="app-actionbar">
-              <button type="button" className="btn btn-primary" disabled={savingTarifasBancarias} onClick={handleSalvarTarifasBancarias}>
+              <button type="button" className="btn btn-primary" disabled={savingTarifasBancarias || !podeGerenciarAtalhos} onClick={handleSalvarTarifasBancarias}>
                 {savingTarifasBancarias ? 'Salvando...' : 'Salvar atalhos'}
               </button>
             </div>
+            </fieldset>
           </BlocoConteudo>
 
           <BlocoConteudo
@@ -1621,6 +1639,7 @@ export default function FinanceiroCadastros() {
             variante="secundario"
           >
             <form onSubmit={handleSalvarCartao}>
+              <fieldset disabled={!podeGerenciarCartoes} className="contents">
               <FormSecao legenda="Identificação" colunas={3}>
                 <CampoForm label="Nome do cartão" obrigatorio>
                   <input
@@ -1744,6 +1763,7 @@ export default function FinanceiroCadastros() {
                   </button>
                 )}
               </div>
+              </fieldset>
             </form>
 
             <div className="mt-4 app-list-stack">
@@ -1760,7 +1780,7 @@ export default function FinanceiroCadastros() {
                     </div>
                     <div className="app-actionbar">
                       <span className={statusClass(cartao.ativo)}>{cartao.ativo ? 'ATIVO' : 'INATIVO'}</span>
-                      <button type="button" className="btn btn-outline" onClick={() => setCartaoForm(pickCartaoFormData(cartao))}>
+                      <button type="button" className="btn btn-outline" disabled={!podeGerenciarCartoes} onClick={() => setCartaoForm(pickCartaoFormData(cartao))}>
                         Editar
                       </button>
                     </div>
@@ -1800,6 +1820,7 @@ export default function FinanceiroCadastros() {
 
                 <CampoForm label="Nome favorecido" obrigatorio>
                   <input
+                    disabled={!podeGerenciarFavorecidos}
                     className="input w-full"
                     value={favorecidoForm.nome}
                     onChange={(e) => setFavorecidoForm((c) => ({ ...c, nome: e.target.value }))}
@@ -1809,6 +1830,7 @@ export default function FinanceiroCadastros() {
 
                 <CampoForm label="CPF/CNPJ" obrigatorio>
                   <input
+                    disabled={!podeGerenciarFavorecidos}
                     className="input w-full"
                     value={maskCpfCnpj(favorecidoForm.cpf_cnpj)}
                     onChange={(e) => setFavorecidoForm((c) => ({ ...c, cpf_cnpj: maskCpfCnpj(e.target.value) }))}
@@ -1820,6 +1842,7 @@ export default function FinanceiroCadastros() {
 
                 <CampoForm label="Tipo chave">
                   <select
+                    disabled={!podeGerenciarFavorecidos}
                     className="input w-full"
                     value={favorecidoForm.pix_tipo_chave}
                     onChange={(e) => setFavorecidoForm((c) => ({ ...c, pix_tipo_chave: e.target.value }))}
@@ -1834,6 +1857,7 @@ export default function FinanceiroCadastros() {
 
                 <CampoForm label="Chave PIX" obrigatorio span={2}>
                   <input
+                    disabled={!podeGerenciarFavorecidos}
                     className="input w-full"
                     value={favorecidoForm.pix_chave}
                     onChange={(e) => setFavorecidoForm((c) => ({ ...c, pix_chave: e.target.value }))}
@@ -1843,6 +1867,7 @@ export default function FinanceiroCadastros() {
 
                 <label className="form-campo--linha flex items-center gap-2 text-sm text-[var(--c-text)]">
                   <input
+                    disabled={!podeGerenciarFavorecidos}
                     type="checkbox"
                     checked={favorecidoForm.ativo}
                     onChange={(e) => setFavorecidoForm((c) => ({ ...c, ativo: e.target.checked }))}
@@ -1852,7 +1877,7 @@ export default function FinanceiroCadastros() {
               </FormSecao>
 
               <div className="app-actionbar">
-                <button type="submit" className="btn btn-primary" disabled={savingFavorecido}>
+                <button type="submit" className="btn btn-primary" disabled={savingFavorecido || !podeGerenciarFavorecidos}>
                   {savingFavorecido ? 'Salvando...' : (favorecidoForm.id ? 'Salvar favorecido' : 'Criar favorecido')}
                 </button>
                 {favorecidoForm.id && (
@@ -1883,6 +1908,7 @@ export default function FinanceiroCadastros() {
                       <button
                         type="button"
                         className="btn btn-outline"
+                        disabled={!podeGerenciarFavorecidos}
                         onClick={() => setFavorecidoForm({
                           id: favorecido.id,
                           parceiro_id: String(favorecido.parceiro_id || ''),
@@ -1986,6 +2012,7 @@ export default function FinanceiroCadastros() {
                         <button
                           type="button"
                           className="btn btn-outline btn-icon"
+                          disabled={!podeGerenciarCadastros}
                           onClick={() => handleEditarCategoria(categoria)}
                           aria-label={`Editar categoria ${categoria.nome}`}
                           title="Editar categoria"

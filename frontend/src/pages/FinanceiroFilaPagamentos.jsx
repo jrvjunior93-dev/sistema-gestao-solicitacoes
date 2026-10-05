@@ -22,7 +22,7 @@ import {
 } from '../services/financeiro';
 import {
   canBaixarFilaPagamentos,
-  canAccessFinanceiro,
+  hasPermissao,
   canImportarComprovantesFilaPagamentos,
   canReportarFilaPagamentos,
   canResolverFilaPagamentos
@@ -565,7 +565,7 @@ export default function FinanceiroFilaPagamentos() {
   const [solicitacaoArquivos, setSolicitacaoArquivos] = useState(null);
 
   const canSettle = canBaixarFilaPagamentos(user);
-  const canOpenTitle = canAccessFinanceiro(user);
+  const canOpenTitle = hasPermissao(user, 'financeiro.titulos.visualizar');
   const canReport = canReportarFilaPagamentos(user);
   const canResolve = canResolverFilaPagamentos(user);
   const canImportReceipts = canImportarComprovantesFilaPagamentos(user);

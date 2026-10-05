@@ -1,5 +1,7 @@
 # Ownership Ativo
 
+Ownership temporario /root em 04-05/10/2026 no worktree `codex/controle-diario-permissoes-financeiro`: controle diario restrito a baixa da fila e carteira de cheques, com fechamento anterior e abertura atual; segregacao das permissoes de leitura/acao da aba Financeiro em Solicitacoes e em paginas/rotas do modulo Financeiro. Arquivos reservados: `backend/src/services/caixaDiarioConfigService.js`, `backend/src/services/caixaFinanceiroService.js`, `backend/src/middlewares/controleDiarioFinanceiro.js`, `backend/src/services/authorizationService.js`, `backend/src/services/financeiroRotaPermissoesService.js`, `backend/src/routes.js`, `backend/src/constants/moduloPermissoes.js`, `backend/src/generated/navegacaoFonteUnica.cjs`, `backend/scripts/validarPermissoesFinanceiroRota.js`, `frontend/src/utils/acessoProduto.js`, `frontend/src/pages/SolicitacaoDetalhe/index.jsx`, `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`, `frontend/src/App.jsx`, `frontend/src/navigation/navigationConfig.jsx`, telas financeiras alteradas, `docs/modulos/financeiro/CAIXA_FISICO_ABERTURA_FECHAMENTO.md`, handoff correlato e este registro. Commit, push e promocao para `main` autorizados pelo usuario em 05/10/2026; sem escrita no banco de producao ou atualizacao da EC2.
+
 ## Ownership ativo - tela inicial individual - 04/10/2026
 
 Sessao `/root` no worktree `painel-gestor-refactor`: reserva temporaria de

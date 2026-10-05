@@ -1473,13 +1473,22 @@ async function canViewSolicitacaoFinanceiro(user) {
   // Financeiro nem suas operacoes.
   if (await userHasSetorCapability(user, 'eh_setor_obra')) return true;
 
-  if (await canAccessFinanceiro(user)) return true;
-
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, ['solicitacoes.acoes.ver_aba_financeiro']);
   }
 
-  return false;
+  return canAccessFinanceiro(user);
+}
+
+async function canOperateSolicitacaoFinanceiro(user) {
+  if (!(await canViewSolicitacaoFinanceiro(user))) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasSetorCapability(user, 'eh_setor_obra')) return false;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return (await userHasAreaPermission(user, ['solicitacoes.acoes.operar_aba_financeiro']))
+      && (await canAccessFinanceiro(user));
+  }
+  return canAccessFinanceiro(user);
 }
 
 async function canDeleteTitulosFinanceiros(user) {
@@ -3342,6 +3351,7 @@ module.exports = {
   canAccessFinanceiroRelatorio,
   canAccessFinanceiroRelatorios,
   canViewSolicitacaoFinanceiro,
+  canOperateSolicitacaoFinanceiro,
   canDeleteTitulosFinanceiros,
   canImportTitulosFinanceiros,
   canAccessFiscal,

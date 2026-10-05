@@ -20,7 +20,7 @@ import {
 import { getEmpreendimentosComerciais } from '../services/comercial';
 import { buscarParceiros } from '../services/parceiros';
 import { useAuth } from '../contexts/AuthContext';
-import { hasEnabledModule } from '../utils/acessoProduto';
+import { hasEnabledModule, hasPermissao } from '../utils/acessoProduto';
 import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
 import OverlayModal from '../components/ui/OverlayModal';
 import {
@@ -356,6 +356,7 @@ const FILTROS_DA_TELA = [
 
 export default function FinanceiroBoletos() {
   const { user } = useAuth();
+  const podeGerarBoletos = hasPermissao(user, 'boletos.emitir.gerar');
   const comercialHabilitado = hasEnabledModule(user, 'COMERCIAL', { allowSuperadminBypass: false });
   const [config, setConfig] = useState(null);
   const [empreendimentos, setEmpreendimentos] = useState([]);
@@ -1025,7 +1026,7 @@ export default function FinanceiroBoletos() {
                 type="button"
                 className="btn btn-primary"
                 onClick={onGerarRemessa}
-                disabled={!selecionados.length || !convenioSelecionadoId || gerandoRemessa}
+                disabled={!podeGerarBoletos || !selecionados.length || !convenioSelecionadoId || gerandoRemessa}
                 title="Gerar arquivo de remessa CNAB 240"
               >
                 {gerandoRemessa ? 'Gerando...' : `Gerar remessa (${selecionados.length})`}
@@ -1046,13 +1047,13 @@ export default function FinanceiroBoletos() {
                   type="file"
                   accept=".ret,.crt,.rem,.cnab,.txt"
                   onChange={(event) => setRetornoFile(event.target.files?.[0] || null)}
-                  disabled={!convenioSelecionadoId || importandoRetorno}
+                  disabled={!podeGerarBoletos || !convenioSelecionadoId || importandoRetorno}
                 />
                 <button
                   type="button"
                   className="input flex w-full items-center justify-between text-left"
                   onClick={() => retornoInputRef.current?.click()}
-                  disabled={!convenioSelecionadoId || importandoRetorno}
+                  disabled={!podeGerarBoletos || !convenioSelecionadoId || importandoRetorno}
                 >
                   <span className={retornoFile ? 'text-[var(--c-text)]' : 'text-[var(--c-muted)]'}>
                     {retornoFile ? retornoFile.name : 'Selecionar arquivo de retorno'}
@@ -1066,7 +1067,7 @@ export default function FinanceiroBoletos() {
                 type="button"
                 className="btn btn-outline"
                 onClick={onImportarRetorno}
-                disabled={!convenioSelecionadoId || importandoRetorno}
+                disabled={!podeGerarBoletos || !convenioSelecionadoId || importandoRetorno}
                 title="Importar arquivo de retorno CNAB 240"
               >
                 {importandoRetorno ? 'Importando...' : retornoFile ? 'Importar retorno' : 'Selecionar retorno'}
@@ -1362,12 +1363,12 @@ export default function FinanceiroBoletos() {
               cabeçalho, com o estado indeterminado, é a mesma capacidade,
               declarada uma vez só.
             */
-            selecao={{
+            selecao={podeGerarBoletos ? {
               selecionados: selecionados.map(Number),
               aoAlternar: (id) => toggleSelecionado(id, !selecionados.map(Number).includes(Number(id))),
               aoAlternarTodos: (marcar, ids) => setSelecionados(marcar ? ids.map(Number) : [])
-            }}
-            acoesTabela={(
+            } : undefined}
+            acoesTabela={podeGerarBoletos ? (
               <>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelecionados([])} disabled={!selecionados.length || gerandoMassa}>
                   Limpar seleção
@@ -1384,7 +1385,7 @@ export default function FinanceiroBoletos() {
                   {gerandoMassa ? 'Gerando boletos...' : `Gerar boletos selecionados (${titulosSelecionados.length})`}
                 </button>
               </>
-            )}
+            ) : null}
             acoesLinha={(titulo) => (
               <>
                 <button
@@ -1396,7 +1397,7 @@ export default function FinanceiroBoletos() {
                 >
                   <HiOutlineEye className="h-4 w-4" aria-hidden="true" />
                 </button>
-                <button
+                {podeGerarBoletos && <button
                   type="button"
                   className="btn btn-outline btn-sm"
                   disabled={gerandoId === titulo.id || gerandoMassa}
@@ -1404,7 +1405,7 @@ export default function FinanceiroBoletos() {
                   title="Gerar amostra para homologação"
                 >
                   Amostra
-                </button>
+                </button>}
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
@@ -1414,14 +1415,14 @@ export default function FinanceiroBoletos() {
                 >
                   {baixandoPdfId === titulo.id ? 'PDF...' : 'PDF'}
                 </button>
-                <button
+                {podeGerarBoletos && <button
                   type="button"
                   className="btn btn-primary btn-sm"
                   disabled={gerandoId === titulo.id || gerandoMassa}
                   onClick={() => onGerar(titulo)}
                 >
                   {gerandoId === titulo.id ? 'Gerando...' : (titulo.codigo_barras ? 'Regerar' : 'Gerar')}
-                </button>
+                </button>}
               </>
             )}
           />

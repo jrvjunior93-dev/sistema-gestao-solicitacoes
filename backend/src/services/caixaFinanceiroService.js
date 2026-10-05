@@ -17,6 +17,7 @@ const { uploadToS3 } = require('./s3');
 const { recordEvent } = require('../modules/governanca/services/auditoriaOperacionalService');
 const {
   obterCaixaDiarioConfig,
+  dataOperacionalHoje,
   usuarioEstaSujeitoAoBloqueio,
   usuarioPodeAprovarDivergencia,
   usuarioPodeOperarCaixa
@@ -33,7 +34,7 @@ function roundCurrency(value) {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return dataOperacionalHoje();
 }
 
 function addDays(dateString, days) {

@@ -760,6 +760,11 @@ export function canAccessFinanceiro(user) {
   );
 }
 
+/** Acesso à página/ação financeira específica, sem herdar outra área do módulo. */
+export function canAccessFinanceiroArea(user, permissionKey) {
+  return canAccessFinanceiro(user) && hasPermissao(user, permissionKey);
+}
+
 function canFinanceiroCaixa(user, permissionKey) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;
@@ -799,11 +804,21 @@ export function canViewSolicitacaoFinanceiro(user) {
   if (userHasSetorCapability(user, 'eh_setor_obra')) return true;
 
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
-  if (canAccessFinanceiro(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
     return hasPermissao(user, 'solicitacoes.acoes.ver_aba_financeiro');
   }
-  return false;
+  return canAccessFinanceiro(user);
+}
+
+export function canOperateSolicitacaoFinanceiro(user) {
+  if (!canViewSolicitacaoFinanceiro(user)) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (userHasSetorCapability(user, 'eh_setor_obra')) return false;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasPermissao(user, 'solicitacoes.acoes.operar_aba_financeiro')
+      && canAccessFinanceiro(user);
+  }
+  return canAccessFinanceiro(user);
 }
 
 export function canAccessBancosEnterprise(user) {

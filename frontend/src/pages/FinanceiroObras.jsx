@@ -14,6 +14,8 @@ import { fileUrl } from '../services/api';
 import { getEmpresasGrupo } from '../services/empresasGrupo';
 import { getMinhasObras } from '../services/obras';
 import { buscarParceiros } from '../services/parceiros';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermissao } from '../utils/acessoProduto';
 import {
   Pagina,
   PageHeader,
@@ -178,6 +180,8 @@ function tomDoValor(tone) {
   padrão que preserva o comportamento de hoje (R21).
 */
 export default function FinanceiroObras({ embutido = false }) {
+  const { user } = useAuth();
+  const podeImportarHistorico = hasPermissao(user, 'financeiro.relatorios.importar_historico_obras');
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -554,11 +558,11 @@ export default function FinanceiroObras({ embutido = false }) {
     menu "⋯".
   */
   const acoesDaTela = {
-    acaoPrincipal: {
+    acaoPrincipal: podeImportarHistorico ? {
       rotulo: 'Importar histórico',
       icone: <HiOutlineArrowUpTray aria-hidden="true" />,
       onClick: () => setImportModalOpen(true)
-    },
+    } : undefined,
     secundarias: [
       {
         rotulo: 'Baixar modelo',
@@ -605,9 +609,9 @@ export default function FinanceiroObras({ embutido = false }) {
             >
               <HiOutlineArrowDownTray aria-hidden="true" /> Exportar CSV
             </button>
-            <button type="button" className="btn btn-primary" onClick={() => setImportModalOpen(true)}>
+            {podeImportarHistorico && <button type="button" className="btn btn-primary" onClick={() => setImportModalOpen(true)}>
               <HiOutlineArrowUpTray aria-hidden="true" /> Importar historico
-            </button>
+            </button>}
           </div>
         </div>
       ) : null}
@@ -918,7 +922,7 @@ export default function FinanceiroObras({ embutido = false }) {
       {/* R27 — casca do sistema; cabecalho fixo por `data-modal`, corpo
           rolante do componente. Sem overflow-y na tela, sem overlay em
           paleta crua. */}
-      {importModalOpen ? (
+      {podeImportarHistorico && importModalOpen ? (
         <OverlayModal
           rotulo="Importar custos históricos"
           largura="var(--modal-max-w-xl, 1120px)"

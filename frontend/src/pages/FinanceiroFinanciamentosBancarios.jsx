@@ -23,6 +23,8 @@ import {
   useConfirmacao
 } from '../components/padrao';
 import { buscarParceiros } from '../services/parceiros';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermissao } from '../utils/acessoProduto';
 import {
   atualizarParcelaFinanciamentoBancario,
   criarFinanciamentoBancario,
@@ -204,6 +206,10 @@ function umValor(conjunto) {
 }
 
 export default function FinanceiroFinanciamentosBancarios() {
+  const { user } = useAuth();
+  const podeGerenciar = hasPermissao(user, 'financeiro.financiamentos.gerenciar');
+  const podeGerarTitulos = hasPermissao(user, 'financeiro.financiamentos.gerar_titulos');
+  const podeVerTitulos = hasPermissao(user, 'financeiro.titulos.visualizar');
   const [financiamentos, setFinanciamentos] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [contas, setContas] = useState([]);
@@ -458,11 +464,11 @@ export default function FinanceiroFinanciamentosBancarios() {
         titulo="Financiamentos Bancários"
         contagem={`${resumo.contratos} contrato(s)`}
         descricao="Contratos de crédito, parcelas conferidas e geração dos títulos de contas a pagar."
-        acaoPrincipal={{
+        acaoPrincipal={podeGerenciar ? {
           rotulo: 'Novo financiamento',
           onClick: () => { setForm(EMPTY_FORM); setModalCadastro(true); },
           icone: <HiOutlineDocumentPlus aria-hidden="true" />
-        }}
+        } : undefined}
         secundarias={[
           {
             rotulo: 'Atualizar',
@@ -566,7 +572,7 @@ export default function FinanceiroFinanciamentosBancarios() {
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelectedId(item.id)}>
                 Ver parcelas
               </button>
-              {!item.titulos_gerados_em ? (
+              {podeGerarTitulos && !item.titulos_gerados_em ? (
                 <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => handleGerarTitulos(item)}>
                   Gerar títulos
                 </button>
@@ -583,7 +589,7 @@ export default function FinanceiroFinanciamentosBancarios() {
         variante="primario"
         cor="var(--module-financeiro)"
         descricao="Cada parcela gera um título a pagar e segue o fluxo normal de baixa e conciliação."
-        acoes={selected && !selected.titulos_gerados_em ? (
+        acoes={podeGerarTitulos && selected && !selected.titulos_gerados_em ? (
           <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => handleGerarTitulos(selected)}>
             Gerar títulos do contrato
           </button>
@@ -605,12 +611,14 @@ export default function FinanceiroFinanciamentosBancarios() {
               id: 'titulo',
               titulo: 'Título',
               tipo: 'codigo',
-              render: (parcela) => (parcela.tituloFinanceiro ? (
+              render: (parcela) => (parcela.tituloFinanceiro && podeVerTitulos ? (
                 /* R25 — o azul do link vem do token do sistema, não de
                    `text-blue-700`, que não tem par no tema escuro. */
                 <Link to={`/financeiro/titulos/${parcela.tituloFinanceiro.id}`} className="text-[var(--c-primary)] underline">
                   {parcela.tituloFinanceiro.codigo || `#${parcela.tituloFinanceiro.id}`}
                 </Link>
+              ) : parcela.tituloFinanceiro ? (
+                <span>{parcela.tituloFinanceiro.codigo || `#${parcela.tituloFinanceiro.id}`}</span>
               ) : (
                 <span className="text-[var(--c-muted)]">Pendente</span>
               ))
@@ -621,7 +629,7 @@ export default function FinanceiroFinanciamentosBancarios() {
           storageKey="tabela:financiamentos-bancarios:parcelas"
           rotuloRolagem="Parcelas do financiamento"
           larguraAcoes={140}
-          acoesLinha={(parcela) => (
+          acoesLinha={(parcela) => podeGerenciar ? (
             <button
               type="button"
               className="btn btn-outline btn-sm"
@@ -631,7 +639,7 @@ export default function FinanceiroFinanciamentosBancarios() {
             >
               Editar
             </button>
-          )}
+          ) : null}
         />
       </BlocoConteudo>
 
@@ -639,7 +647,7 @@ export default function FinanceiroFinanciamentosBancarios() {
           R27 — o corpo rolante e o rodapé fixo são do OverlayModal: a tela
           não escreve `overflow-y` nenhum. O botão de cadastrar fica sempre
           visível, mesmo com o formulário inteiro aberto. */}
-      {modalCadastro ? (
+      {podeGerenciar && modalCadastro ? (
         <OverlayModal
           rotulo="Novo financiamento bancário"
           largura="var(--modal-max-w-xl, 1080px)"
@@ -778,7 +786,7 @@ export default function FinanceiroFinanciamentosBancarios() {
       {/* R3/R27 — a casca de modal do sistema no lugar do `fixed inset-0`
           com fundo preto escrito na tela; o corpo rolante e o rodapé fixo
           são do componente. */}
-      {editingParcela ? (
+      {podeGerenciar && editingParcela ? (
         <OverlayModal
           rotulo={`Editar parcela ${editingParcela.numero_parcela}`}
           largura="var(--modal-max-w-lg, 860px)"

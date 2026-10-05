@@ -1,6 +1,8 @@
 import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermissao } from '../utils/acessoProduto';
 import {
   baixarFaturaCartaoFinanceiro,
   getContasBancarias,
@@ -85,6 +87,8 @@ function countTitulosAbertos(fatura) {
 }
 
 export default function FinanceiroFaturaCartaoDetalhe() {
+  const { user } = useAuth();
+  const podeRegistrarBaixa = hasPermissao(user, 'financeiro.cartoes.baixar_fatura');
   const { id } = useParams();
   const [fatura, setFatura] = useState(null);
   const [contas, setContas] = useState([]);
@@ -192,7 +196,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
   }
 
   const status = String(fatura?.status || '').toUpperCase();
-  const canBaixar = Boolean(fatura) && ['ABERTA', 'FECHADA', 'PARCIAL'].includes(status) && resumo.total > 0;
+  const canBaixar = podeRegistrarBaixa && Boolean(fatura) && ['ABERTA', 'FECHADA', 'PARCIAL'].includes(status) && resumo.total > 0;
   const periodo = fatura
     ? `${cartaoLabel(fatura.cartao)} · ${formatDate(fatura.data_inicio)} a ${formatDate(fatura.data_fechamento)} · vence em ${formatDate(fatura.data_vencimento)}`
     : 'Carregando fatura…';
@@ -296,7 +300,9 @@ export default function FinanceiroFaturaCartaoDetalhe() {
           ) : (
             <BlocoConteudo titulo="Baixar fatura" variante="secundario">
               <p className="text-sm text-[var(--c-muted)]">
-                Esta fatura não possui valor aberto para pagamento ou já foi baixada.
+                {podeRegistrarBaixa
+                  ? 'Esta fatura não possui valor aberto para pagamento ou já foi baixada.'
+                  : 'Consulta disponível. A baixa da fatura exige permissão específica.'}
               </p>
             </BlocoConteudo>
           )}
