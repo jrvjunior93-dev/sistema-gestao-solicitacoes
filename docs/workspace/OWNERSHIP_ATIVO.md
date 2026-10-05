@@ -1431,6 +1431,19 @@ acoes, permissao, upload ou navegacao. Sem deploy, commit ou push nesta etapa.
 No pedido seguinte, o proprietario autorizou commit e push para `main`.
 Worktree ja em `main`; ownership liberado apos o commit desta correcao.
 
+## Ownership ativo - catalogo de campos de GEO com todos os tipos - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`frontend/src/pages/NovaSolicitacaoCamposConfig.jsx`,
+`frontend/src/utils/tiposConfiguracaoCampos.js`,
+`frontend/scripts/validarTiposConfiguracaoCampos.mjs`, handoff desta alteracao
+e deste registro. Escopo: listar todos os tipos ativos na configuracao de
+campos de GEO, inclusive os associados a outros setores; preservar filtros
+dos outros setores, disponibilidade por obra, permissoes e destino inicial.
+Sem escrita no banco, deploy, commit ou push nesta etapa.
+No pedido seguinte, o proprietario autorizou commit e push para `main`.
+Worktree ja em `main`; ownership liberado apos o commit desta alteracao.
+
 ## Ownership ativo - acesso granular a Prioridades e paginas financeiras - 05/10/2026
 
 Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
