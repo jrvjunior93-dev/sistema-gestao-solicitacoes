@@ -137,50 +137,75 @@ function dataOperacionalHoje(now = new Date()) {
   return `${valor('year')}-${valor('month')}-${valor('day')}`;
 }
 
-async function obterEstadoBloqueioDiario(user, { transaction = null } = {}) {
+function avaliarRotinaDiaria(contas, sessoes, hoje) {
+  const pendencias = [];
+  let contasFechadasHoje = 0;
+  let semFechamentoAnterior = 0;
+  for (const conta of contas) {
+    const registros = sessoes.filter((sessao) => Number(sessao.conta_bancaria_id) === Number(conta.id));
+    const anterior = registros.find((sessao) =>
+      ['ABERTO', 'AGUARDANDO_APROVACAO'].includes(sessao.status) && String(sessao.data_abertura) < hoje);
+    const futura = registros.find((sessao) =>
+      ['ABERTO', 'AGUARDANDO_APROVACAO'].includes(sessao.status) && String(sessao.data_abertura) > hoje);
+    const doDia = registros.filter((sessao) => String(sessao.data_abertura) === hoje)
+      .sort((a, b) => Number(b.id) - Number(a.id));
+    const divergencia = doDia.find((sessao) => sessao.status === 'AGUARDANDO_APROVACAO');
+    const ultima = doDia[0];
+    let motivo = null;
+    if (anterior) { motivo = 'FECHAMENTO_ANTERIOR'; semFechamentoAnterior += 1; }
+    else if (futura) motivo = 'DATA_INCONSISTENTE';
+    else if (divergencia) motivo = 'DIVERGENCIA';
+    else if (ultima?.status === 'FECHADO' && String(ultima.data_fechamento) === hoje) contasFechadasHoje += 1;
+    else if (ultima?.status !== 'ABERTO') motivo = 'ABERTURA_HOJE';
+    if (motivo) {
+      const sessao = anterior || futura || divergencia || ultima;
+      pendencias.push({
+        conta_bancaria_id: Number(conta.id), nome: conta.nome,
+        motivo, sessao_id: sessao?.id || null, data_abertura: sessao?.data_abertura || null
+      });
+    }
+  }
+  return {
+    bloqueado: pendencias.length > 0,
+    total_contas: contas.length,
+    contas_prontas: contas.length - pendencias.length,
+    contas_pendentes: pendencias.length,
+    contas_fechadas_hoje: contasFechadasHoje,
+    contas_sem_fechamento_anterior: semFechamentoAnterior,
+    data_referencia: hoje,
+    pendencias
+  };
+}
+
+async function obterEstadoBloqueioDiario(user, { transaction = null, now = new Date() } = {}) {
+  const hoje = dataOperacionalHoje(now);
   const sujeito = await usuarioEstaSujeitoAoBloqueio(user);
-  if (!sujeito) return { bloqueado: false, total_contas: 0, contas_pendentes: 0 };
+  if (!sujeito) return { ...avaliarRotinaDiaria([], [], hoje), usuario_sujeito_bloqueio: false };
 
   const contas = await ContaBancaria.findAll({
     where: {
       ativo: { [Op.ne]: false },
       exige_abertura_fechamento: true
     },
-    attributes: ['id'],
+    attributes: ['id', 'nome'],
     transaction
   });
   const ids = contas.map((conta) => Number(conta.id));
-  if (ids.length === 0) return { bloqueado: false, total_contas: 0, contas_pendentes: 0 };
+  if (ids.length === 0) return { ...avaliarRotinaDiaria([], [], hoje), usuario_sujeito_bloqueio: true };
 
-  const hoje = dataOperacionalHoje();
-  const [sessoes, sessoesAnterioresPendentes] = await Promise.all([CaixaFinanceiroSessao.findAll({
+  const sessoes = await CaixaFinanceiroSessao.findAll({
     where: {
       conta_bancaria_id: { [Op.in]: ids },
-      status: 'ABERTO',
-      data_abertura: hoje
+      [Op.or]: [
+        { data_abertura: hoje },
+        { status: { [Op.in]: ['ABERTO', 'AGUARDANDO_APROVACAO'] } }
+      ]
     },
-    attributes: ['conta_bancaria_id'],
+    attributes: ['id', 'conta_bancaria_id', 'status', 'data_abertura', 'data_fechamento'],
+    order: [['id', 'DESC']],
     transaction
-  }), CaixaFinanceiroSessao.findAll({
-    where: {
-      conta_bancaria_id: { [Op.in]: ids },
-      data_abertura: { [Op.lt]: hoje },
-      status: { [Op.in]: ['ABERTO', 'AGUARDANDO_APROVACAO'] }
-    },
-    attributes: ['conta_bancaria_id'],
-    transaction
-  })]);
-  const semFechamentoAnterior = new Set(sessoesAnterioresPendentes.map((sessao) => Number(sessao.conta_bancaria_id)));
-  const prontas = new Set(sessoes.map((sessao) => Number(sessao.conta_bancaria_id)));
-  const totalProntas = ids.filter((id) => prontas.has(id) && !semFechamentoAnterior.has(id)).length;
-  return {
-    bloqueado: totalProntas < ids.length,
-    total_contas: ids.length,
-    contas_prontas: totalProntas,
-    contas_pendentes: ids.length - totalProntas,
-    contas_sem_fechamento_anterior: semFechamentoAnterior.size,
-    data_referencia: hoje
-  };
+  });
+  return { ...avaliarRotinaDiaria(contas, sessoes, hoje), usuario_sujeito_bloqueio: true };
 }
 
 module.exports = {
@@ -191,6 +216,7 @@ module.exports = {
   obterCaixaDiarioConfig,
   salvarCaixaDiarioConfig,
   obterEstadoBloqueioDiario,
+  avaliarRotinaDiaria,
   dataOperacionalHoje,
   usuarioEstaSujeitoAoBloqueio,
   usuarioPodeAprovarDivergencia,

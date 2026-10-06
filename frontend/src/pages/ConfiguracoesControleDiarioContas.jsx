@@ -126,7 +126,7 @@ export default function ConfiguracoesControleDiarioContas() {
     <Pagina>
       <PageHeader
         titulo="Controle diario de contas e caixa"
-        descricao="Defina quem confere as contas diariamente e se a pendencia deve bloquear novas acoes financeiras desses responsaveis."
+        descricao="Defina os responsáveis pelo caixa e o bloqueio geral do sistema enquanto a rotina diária estiver pendente."
         acaoPrincipal={{
           rotulo: salvando ? 'Salvando...' : 'Salvar configuracao',
           onClick: salvar,
@@ -138,7 +138,7 @@ export default function ConfiguracoesControleDiarioContas() {
 
       <BlocoConteudo
         titulo="Regra de bloqueio"
-        descricao="A flag nasce desligada. Consultas e a tela de conciliacao permanecem acessiveis mesmo quando o bloqueio estiver ativo."
+        descricao="Desativado por padrão. Com pendência, só a regularização do caixa e os recursos necessários à sessão ficam disponíveis."
         variante="primario"
         cor="var(--module-financeiro)"
       >
@@ -151,9 +151,10 @@ export default function ConfiguracoesControleDiarioContas() {
               onChange={(event) => setConfig((atual) => ({ ...atual, bloqueio_ativo: event.target.checked }))}
             />
             <span>
-              <strong className="block text-[var(--c-text)]">Bloquear acoes financeiras enquanto houver contas pendentes</strong>
+              <strong className="block text-[var(--c-text)]">Bloquear o sistema enquanto houver rotina de caixa pendente</strong>
               <span className="mt-1 block text-sm text-[var(--c-muted)]">
                 A regra vale somente para os usuarios marcados como responsaveis. O superadmin continua com acesso administrativo.
+                {' '}Feche qualquer expediente anterior pendente e abra o caixa de hoje. Após o fechamento aprovado de hoje, o restante do sistema permanece liberado até virar o dia; a conta fechada não aceita baixas.
               </span>
             </span>
           </label>

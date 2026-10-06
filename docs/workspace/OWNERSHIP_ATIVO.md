@@ -1,5 +1,56 @@
 # Ownership Ativo
 
+## Publicacao autorizada - caixa diario e retorno de solicitacoes - 06/10/2026
+
+Proprietario autorizou commit e push das alteracoes pendentes desta conversa e
+retorno a main. Sessao `/root` reserva temporariamente a publicacao dos arquivos
+dos dois handoffs abaixo e este registro. Worktree promocao-main-20261003 ja em
+main; alteracoes de outros worktrees/checkouts nao entram nesta publicacao.
+Testes locais reexecutados antes do commit. Sem ativar configuracoes, acessar
+banco real ou atualizar EC2. Ownership de edicao encerrado; publicacao pelo
+commit que contem este registro, com resultado informado na conversa.
+
+## Ownership temporario - faixa de retorno aprovado e aprovacao generica - 06/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003` reserva
+`backend/src/services/solicitacaoRetornoService.js`,
+`backend/src/controllers/SolicitacaoRetornoController.js`,
+`frontend/src/services/solicitacoes.js`,
+`frontend/src/pages/SolicitacaoDetalhe/RetornoSolicitacaoBar.jsx`,
+`frontend/src/pages/SolicitacaoDetalhe/index.jsx`, validadores de devolucao,
+handoff desta tarefa e este registro. Manter faixa para quem pediu retorno
+aprovado ate devolver ao setor anterior; remover aprovacao generica por tipo
+somente no detalhe. Preservar permissoes, estado/status, historico, bloqueio
+financeiro do retorno e aprovacoes especificas. Sem banco real ou publicacao;
+alteracoes pendentes do controle diario sao da tarefa anterior e preservadas.
+
+Concluido localmente e ownership de edicao liberado em 06/10/2026. Validadores
+de retorno, bloqueio financeiro, contrato, PIX/apropriacoes, controle diario,
+navegacao, fixture Edge (temas/mobile), build e diff-check aprovados. Handoff:
+`docs/handoffs/2026-10-06-retorno-aprovado-faixa-e-aprovacao-tipo.md`.
+Sem commit/publicacao ou alteracao em banco real nesta tarefa.
+
+## Ownership temporario - bloqueio diario geral por usuario - 06/10/2026
+
+Sessao `/root` reserva `backend/src/services/caixaDiarioConfigService.js`,
+`backend/src/middlewares/controleDiarioFinanceiro.js`, `backend/src/routes.js`,
+`backend/src/services/financeiroCaixaSessionHelper.js`, testes correlatos,
+`frontend/src/layout/Layout.jsx`, novo gate/servico de controle diario,
+`frontend/src/services/api.js`, `frontend/src/utils/dataOperacional.js`,
+`frontend/src/pages/FinanceiroCaixas.jsx`,
+`frontend/src/pages/ConfiguracoesControleDiarioContas.jsx`, documentacao e este
+registro. Pedido: bloqueo geral somente aos responsaveis configurados quando
+flag ativa e rotina pendente; caixa anterior precisa fechar, abrir hoje;
+fechamento aprovado de hoje cumpre rotina sem bloquear demais contas.
+Preservar superadmin, MFA, logout, permissoes e acesso a regularizacao do caixa.
+Sem ativar configuracao, alterar dados reais, commit/push ou deploy.
+
+Concluido localmente e ownership liberado em 06/10/2026. Testes de caixa,
+controle geral, permissoes financeiras, gate/UI no Edge e navegacao aprovados,
+assim como build e diff-check. Handoff:
+`docs/handoffs/2026-10-06-caixa-bloqueio-geral-dia-operacional.md`.
+Permanece sem commit/publicacao/ativacao; banco real nao consultado.
+
 ## Ownership ativo - organizacao de Caixas e Contas - 06/10/2026
 
 Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de

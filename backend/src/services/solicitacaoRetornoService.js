@@ -172,7 +172,7 @@ async function buscarRetornoAprovadoDevolvivel(solicitacao, transaction = null) 
   if (metadata.retorno_aprovado !== true || !Number.isInteger(pedidoId) || pedidoId <= 0) return null;
 
   const pedido = await SolicitacaoPedidoRetorno.findByPk(pedidoId, {
-    attributes: ['id', 'solicitacao_id', 'status', 'setor_solicitante', 'setor_atual_pedido', 'decidido_por'],
+    attributes: ['id', 'solicitacao_id', 'status', 'solicitado_por', 'setor_solicitante', 'setor_atual_pedido', 'decidido_por'],
     transaction
   });
   if (!pedido || Number(pedido.solicitacao_id) !== Number(solicitacao.id)
@@ -180,6 +180,11 @@ async function buscarRetornoAprovadoDevolvivel(solicitacao, transaction = null) 
     || !setoresEquivalentes(pedido.setor_solicitante, solicitacao.area_responsavel)
     || setoresEquivalentes(pedido.setor_atual_pedido, solicitacao.area_responsavel)) return null;
   return pedido;
+}
+
+function usuarioPodeConcluirRetorno(user, pedido) {
+  return Number(pedido?.solicitado_por) === Number(user?.id)
+    || String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
 }
 
 async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
@@ -193,9 +198,17 @@ async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
   ]);
   const pedidoDoUsuario = pedidos.find((item) => Number(item.solicitado_por) === Number(req.user.id));
   const podeInteragir = Boolean(contexto.estaNoSetorUsuario);
-  const retornoDevolvivel = podeInteragir && solicitarPermitido && !pedidos.length
+  const candidatoRetorno = podeInteragir
     ? await buscarRetornoAprovadoDevolvivel(solicitacao)
     : null;
+  const retornoAprovado = candidatoRetorno && usuarioPodeConcluirRetorno(req.user, candidatoRetorno)
+    ? candidatoRetorno : null;
+  const cancelada = /CANCELAD/i.test(String(solicitacao.status_global || '')) || solicitacao.cancelada === true;
+  const podeDevolver = Boolean(retornoAprovado && solicitarPermitido && !pedidos.length && !cancelada);
+  const motivoDevolucaoIndisponivel = !retornoAprovado || podeDevolver ? null
+    : cancelada ? 'Solicitacao cancelada nao pode ser devolvida.'
+      : pedidos.length ? 'O setor atual precisa decidir os pedidos de retorno pendentes antes da devolucao.'
+        : 'Voce precisa da permissao de solicitar retorno para devolver a solicitacao.';
 
   return {
     allowed: true,
@@ -209,8 +222,15 @@ async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
       ? null
       : `A solicitacao esta no setor ${solicitacao.area_responsavel}. Comentarios nos itens continuam disponiveis; para comentar na conversa geral, anexar ou executar outras acoes, solicite o retorno ao seu setor.`,
     pedido_retorno_pendente: serializarPedido(pedidoDoUsuario),
-    devolucao_retorno: retornoDevolvivel
-      ? { pedido_id: retornoDevolvivel.id, setor_destino: retornoDevolvivel.setor_atual_pedido }
+    retorno_aprovado: retornoAprovado
+      ? {
+          pedido_id: retornoAprovado.id, solicitado_por: retornoAprovado.solicitado_por,
+          setor_destino: retornoAprovado.setor_atual_pedido, pode_devolver: podeDevolver,
+          motivo_indisponivel: motivoDevolucaoIndisponivel
+        }
+      : null,
+    devolucao_retorno: podeDevolver
+      ? { pedido_id: retornoAprovado.id, setor_destino: retornoAprovado.setor_atual_pedido }
       : null,
     pedidos_retorno_para_decisao: podeInteragir && decidirPermitido
       ? pedidos.map(serializarPedido)
@@ -518,14 +538,17 @@ async function decidirRetorno(req, pedidoId, { aprovar, motivoDecisao }) {
   return { pedido: serializarPedido(resultado.pedido), solicitacao: resultado.solicitacao };
 }
 
-async function devolverAoSetorAnterior(req, solicitacaoId) {
+async function devolverAoSetorAnterior(req, solicitacaoId, pedidoEsperadoId = null) {
+  if (pedidoEsperadoId != null && (!Number.isInteger(Number(pedidoEsperadoId)) || Number(pedidoEsperadoId) <= 0)) {
+    throw erro('Pedido de retorno invalido. Atualize a solicitacao e tente novamente.');
+  }
   if (!(await podeSolicitarRetorno(req.user))) {
     throw erro('Voce nao tem permissao para devolver a solicitacao apos o retorno.', 403);
   }
 
   const resultado = await sequelize.transaction(async (transaction) => {
     const solicitacao = await Solicitacao.findByPk(Number(solicitacaoId), {
-      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global'],
+      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada'],
       transaction,
       lock: transaction.LOCK.UPDATE
     });
@@ -534,7 +557,7 @@ async function devolverAoSetorAnterior(req, solicitacaoId) {
     const contexto = await avaliarInteracao(req, solicitacao);
     if (!contexto.allowed) throw erro(contexto.error || 'Acesso negado.', contexto.status || 403);
     if (!contexto.estaNoSetorUsuario) throw erro('Somente o setor atual pode devolver a solicitacao.', 403);
-    if (/CANCELAD/i.test(String(solicitacao.status_global || ''))) {
+    if (/CANCELAD/i.test(String(solicitacao.status_global || '')) || solicitacao.cancelada === true) {
       throw erro('Nao e possivel devolver uma solicitacao cancelada.', 409);
     }
 
@@ -550,6 +573,12 @@ async function devolverAoSetorAnterior(req, solicitacaoId) {
 
     const pedido = await buscarRetornoAprovadoDevolvivel(solicitacao, transaction);
     if (!pedido) throw erro('O retorno aprovado nao esta mais disponivel para devolucao.', 409);
+    if (pedidoEsperadoId != null && Number(pedido.id) !== Number(pedidoEsperadoId)) {
+      throw erro('O retorno aprovado mudou. Atualize a solicitacao antes de devolver.', 409);
+    }
+    if (!usuarioPodeConcluirRetorno(req.user, pedido)) {
+      throw erro('Somente quem solicitou o retorno pode devolver a solicitacao ao setor anterior.', 403);
+    }
 
     const setorOrigem = solicitacao.area_responsavel;
     const setorDestino = pedido.setor_atual_pedido;

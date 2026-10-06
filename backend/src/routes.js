@@ -645,6 +645,8 @@ router.post('/auth/mfa/enable', validateRequest({ body: validateMfaCodeBody }), 
 router.post('/auth/mfa/disable', validateRequest({ body: validateMfaCodeBody }), AuthController.mfaDisable);
 router.use(requireMfaCompletion);
 router.use(requireCustosRecebiveisCompletion);
+router.get('/auth/controle-diario-contas', controleDiarioFinanceiro.estado);
+router.use(controleDiarioFinanceiro);
 router.get('/live-updates', LiveUpdatesController.stream);
 router.get('/instalacao', permit(['SUPERADMIN']), InstalacaoController.show);
 router.patch('/instalacao', permit(['SUPERADMIN']), InstalacaoController.update);
@@ -652,7 +654,6 @@ router.get('/usuarios-lista', UsuarioController.listaPublica);
 router.use('/solicitacoes', requireEnabledModule('SOLICITACOES'));
 router.use('/compras', requireEnabledModule('COMPRAS'));
 router.use('/financeiro', requireEnabledModule('FINANCEIRO'));
-router.use('/financeiro', controleDiarioFinanceiro);
 router.use('/comprovantes', requireEnabledModule('FINANCEIRO'));
 router.use('/contratos', requireEnabledModule('CONTRATOS'));
 router.use('/comercial', requireEnabledModule('COMERCIAL'));

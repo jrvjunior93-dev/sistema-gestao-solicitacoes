@@ -41,9 +41,10 @@ import {
 } from '../components/padrao';
 import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
+import { dataOperacionalHoje } from '../utils/dataOperacional';
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return dataOperacionalHoje();
 }
 
 function addDays(dateString, days) {

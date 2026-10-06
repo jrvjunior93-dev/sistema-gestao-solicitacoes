@@ -48,15 +48,25 @@ for (const [method, route] of [
   ['POST', '/cheques-terceiros/123/depositar'],
   ['POST', '/fila-pagamentos/baixar'],
   ['POST', '/fila-pagamentos/aprovar-divergencias'],
-  ['POST', '/fila-pagamentos/42/resolver']
+  ['POST', '/fila-pagamentos/42/resolver'],
+  ['GET', '/financeiro/fila-pagamentos'],
+  ['POST', '/financeiro/fila-pagamentos/comprovantes/vincular'],
+  ['POST', '/financeiro/conciliacoes/importar-ofx'],
+  ['GET', '/financeiro/titulos'],
+  ['GET', '/solicitacoes'],
+  ['POST', '/solicitacoes'],
+  ['GET', '/pedidos-compra'],
+  ['GET', '/obras']
 ]) {
   assert.equal(operacaoSujeitaAoControle({ method, path: route }), true, `Controle diario ausente: ${method} ${route}`);
 }
 for (const [method, route] of [
-  ['GET', '/fila-pagamentos'],
-  ['POST', '/fila-pagamentos/comprovantes/vincular'],
-  ['POST', '/conciliacoes/importar-ofx'],
-  ['GET', '/titulos']
+  ['GET', '/auth/controle-diario-contas'],
+  ['GET', '/financeiro/caixas'],
+  ['GET', '/financeiro/contas-bancarias'],
+  ['POST', '/financeiro/caixas/abrir'],
+  ['POST', '/financeiro/caixas/42/fechar'],
+  ['POST', '/auth/logout']
 ]) {
   assert.equal(operacaoSujeitaAoControle({ method, path: route }), false, `Controle diario excessivo: ${method} ${route}`);
 }

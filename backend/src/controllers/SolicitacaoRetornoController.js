@@ -48,7 +48,7 @@ module.exports = {
 
   async devolver(req, res) {
     try {
-      return res.json(await devolverAoSetorAnterior(req, Number(req.params.id)));
+      return res.json(await devolverAoSetorAnterior(req, Number(req.params.id), req.body?.pedido_id));
     } catch (error) {
       return responderErro(res, error, 'Erro ao devolver a solicitacao ao setor anterior');
     }

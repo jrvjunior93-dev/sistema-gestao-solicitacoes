@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   HiOutlineArrowUturnLeft,
   HiOutlineCheckCircle,
@@ -20,8 +20,8 @@ import { Avisos, CampoForm, useAvisos, useConfirmacao } from '../../components/p
  *   1. a solicitacao esta em OUTRO setor: comentarios nos itens livres;
  *      conversa geral e demais acoes bloqueadas, com o pedido de retorno;
  *   2. ha pedidos de retorno esperando decisao NESTE setor: aprovar/rejeitar cada um.
- *   3. o retorno foi aprovado e o setor solicitante pode devolver a solicitacao
- *      diretamente ao setor que autorizou o retorno.
+ *   3. o retorno foi aprovado: a faixa persiste para quem pediu (ou SUPERADMIN),
+ *      com devolucao ao setor anterior conforme permissao e pendencias.
  *
  * O que a rodada de 05/09 mudou:
  * - **R25**: as duas faixas eram paleta crua do Tailwind (`bg-amber-50`, `text-amber-950`,
@@ -44,6 +44,8 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
   const [rejeitandoId, setRejeitandoId] = useState(null);
   const [motivoRejeicao, setMotivoRejeicao] = useState('');
   const [processando, setProcessando] = useState('');
+  const processandoRef = useRef(false);
+  const confirmandoRef = useRef(false);
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
 
@@ -54,10 +56,13 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
     : [];
   const pedidoPendente = contexto.pedido_retorno_pendente;
   const devolucao = contexto.devolucao_retorno;
-  const exibir = !contexto.pode_interagir || pedidos.length > 0 || Boolean(devolucao);
+  const retornoAprovado = contexto.retorno_aprovado || devolucao;
+  const exibir = !contexto.pode_interagir || pedidos.length > 0 || Boolean(retornoAprovado);
   if (!exibir) return null;
 
   async function atualizar(callback, chave) {
+    if (processandoRef.current) return;
+    processandoRef.current = true;
     try {
       setProcessando(chave);
       await callback();
@@ -69,6 +74,7 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
     } catch (error) {
       avisar.erro(error?.message || 'Nao foi possivel concluir a operacao.');
     } finally {
+      processandoRef.current = false;
       setProcessando('');
     }
   }
@@ -105,14 +111,20 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
   }
 
   async function devolver() {
-    if (!devolucao?.pedido_id || processando) return;
-    const { ok } = await confirmar({
-      titulo: 'Devolver solicitação ao setor anterior',
-      mensagem: `A solicitação sairá de ${contexto.setor_atual} e voltará para ${devolucao.setor_destino}, que aprovou o retorno.`,
-      rotuloConfirmar: `Devolver para ${devolucao.setor_destino}`
-    });
-    if (!ok) return;
-    return atualizar(() => devolverSolicitacaoAposRetorno(solicitacao.id), 'devolver');
+    if (!devolucao?.pedido_id || processandoRef.current || confirmandoRef.current) return;
+    const alvo = { solicitacaoId: solicitacao.id, pedidoId: devolucao.pedido_id, setorDestino: devolucao.setor_destino };
+    confirmandoRef.current = true;
+    try {
+      const { ok } = await confirmar({
+        titulo: 'Devolver solicitação ao setor anterior',
+        mensagem: `A solicitação sairá de ${contexto.setor_atual} e voltará para ${alvo.setorDestino}, que aprovou o retorno. O status e os títulos serão preservados.`,
+        rotuloConfirmar: `Devolver para ${alvo.setorDestino}`
+      });
+      if (!ok) return;
+      await atualizar(() => devolverSolicitacaoAposRetorno(alvo.solicitacaoId, alvo.pedidoId), 'devolver');
+    } finally {
+      confirmandoRef.current = false;
+    }
   }
 
   if (!contexto.pode_interagir) {
@@ -197,31 +209,33 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
     );
   }
 
-  if (devolucao && !pedidos.length) {
-    return (
-      <>
+  const faixaRetornoAprovado = retornoAprovado ? (
         <section
           className="tarja tarja--info rounded-xl border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] px-4 py-3 text-sm text-[var(--sem-info)]"
           aria-label="Devolução após retorno aprovado"
           data-testid="devolucao-retorno-aprovado"
         >
-          <Avisos avisos={avisos} aoFechar={fechar} />
+          {!pedidos.length ? <Avisos avisos={avisos} aoFechar={fechar} /> : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
               <HiOutlineArrowUturnLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <p>Retorno aprovado. Quando concluir o trabalho neste setor, devolva a solicitação para {devolucao.setor_destino}.</p>
+              <div className="min-w-0">
+                <p className="font-semibold">Retorno aprovado · solicitação no setor {contexto.setor_atual}</p>
+                <p className="mt-1">Conclua os ajustes e devolva a solicitação para {retornoAprovado.setor_destino}.</p>
+                {retornoAprovado.motivo_indisponivel ? <p className="mt-1 text-xs">{retornoAprovado.motivo_indisponivel}</p> : null}
+              </div>
             </div>
-            <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando)} onClick={devolver}>
-              {processando === 'devolver' ? 'Devolvendo...' : `Devolver para ${devolucao.setor_destino}`}
+            <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando) || !devolucao} onClick={devolver}>
+              {processando === 'devolver' ? 'Devolvendo...' : `Devolver para ${retornoAprovado.setor_destino}`}
             </button>
           </div>
         </section>
-        {elementoConfirmacao}
-      </>
-    );
-  }
+  ) : null;
 
   return (
+    <>
+    {faixaRetornoAprovado}
+    {pedidos.length > 0 ? (
     <section
       className="tarja tarja--info rounded-xl border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] px-4 py-3 text-sm text-[var(--sem-info)]"
 
@@ -305,5 +319,8 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
         })}
       </div>
     </section>
+    ) : null}
+    {elementoConfirmacao}
+    </>
   );
 }

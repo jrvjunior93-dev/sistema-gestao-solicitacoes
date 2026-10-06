@@ -48,12 +48,27 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
   `exige_abertura_fechamento` participam do bloqueio (hoje, a conta COFRE CSC
   informada na auditoria do usuario); o tipo `CAIXA_INTERNO` sozinho nao basta;
 - a falta de fechamento de um dia anterior ou de abertura na data operacional
-  de Sao Paulo bloqueia as baixas via Fila de Pagamentos e o acesso a Carteira
-  de Cheques de Terceiros desses usuarios, com resposta HTTP 423;
-- upload de comprovantes, consultas, conciliacao OFX e o proprio controle diario
-  continuam disponiveis para permitir a regularizacao;
-- fechar a conta ao fim do dia volta a bloquear essas duas atividades ate a
-  abertura do proximo dia, sem impedir consulta ao restante do sistema;
+  de Sao Paulo bloqueia **todas as demais areas e operacoes do sistema** para o
+  responsavel, inclusive consultas, busca, comprovantes e conciliacao OFX,
+  com resposta HTTP 423; o backend verifica a rotina em cada requisicao protegida;
+- permanecem disponiveis somente os endpoints de sessao/autenticacao, preferencias
+  de leitura e consultas/acoes necessarias para regularizar Caixa e Contas.
+  Os guards granulares originais continuam obrigatorios: o bloqueio nao concede
+  acesso ou permissao de abrir, fechar, movimentar, estornar ou aprovar divergencias;
+- a mensagem no topo direciona a Caixa e Contas. Sem permissao para visualizar
+  essa pagina, informa que e necessario solicitar acesso ao administrador;
+- fechar corretamente o caixa **aberto hoje** libera as demais areas ate o fim
+  do mesmo dia; a conta controlada fechada continua indisponivel para baixas e
+  movimentacoes que exigem sessao aberta, mesmo com o bloqueio geral desligado;
+- na virada do dia, e obrigatorio abrir novo caixa para cada conta marcada.
+  A interface revalida a data com o relogio do servidor, inclusive com a tela
+  aberta; tambem revalida ao voltar a janela, periodicamente e apos acoes no caixa;
+- um caixa antigo (por exemplo, aberto em 17/08/2026, se ainda existir) deve ser
+  fechado primeiro. Fechar esse caixa hoje nao substitui abrir uma sessao de hoje;
+- fechamento aguardando aprovacao de divergencia permanece pendente e bloqueado;
+  outro aprovador autorizado ou superadmin precisa decidir, sem autoaprovacao.
+  Para conta bancaria que dependa de OFX previo, a conciliacao pendente deve ser
+  tratada por operador nao bloqueado; a confirmacao do dia fica disponivel no caixa;
 - o superadmin nao sofre o bloqueio automatico, mas toda alteracao da configuracao
   e registrada na auditoria.
 
@@ -78,7 +93,11 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 | Aprovar divergencia por outro usuario | Ajuste auditavel criado e sessao fechada |
 | Rejeitar divergencia | Sessao reaberta para correcao |
 | Ativar flag sem responsavel | Configuracao recusada |
-| Responsavel com fechamento anterior ou abertura atual pendente | Baixa na fila e carteira de cheques bloqueadas; demais rotas liberadas |
+| Responsavel com fechamento anterior ou abertura atual pendente | Todas as demais rotas bloqueadas; caixa e sessao disponiveis para regularizacao |
+| Usuario nao selecionado, flag desligada ou superadmin | Sem bloqueio geral automatico |
+| Fechar hoje uma sessao aberta hoje | Demais areas liberadas no mesmo dia; baixa na conta fechada recusada |
+| Virar o dia, inclusive com navegador aberto | Bloqueio geral ate nova abertura |
+| Fechar hoje um caixa antigo | Continua bloqueado ate abrir sessao de hoje |
 | Informar data retroativa | Operacao bloqueada no frontend e no backend |
 | Conciliar transferencia OFX anterior a abertura atual | Transferencia historica registrada sem alterar o saldo da sessao atual |
 | Acessar sem permissao | Rota e acoes permanecem bloqueadas |
@@ -87,3 +106,17 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 
 Execute `node backend/scripts/validarCaixaFisico.js`. O validador confere payloads,
 contratos do servico, rotas protegidas, integracao do frontend e esta documentacao.
+Execute tambem `node backend/scripts/validarControleDiarioGeral.js` e, em
+`frontend/`, `node scripts/validarControleDiarioCaixa.mjs`. Usam fixtures sem banco
+ou dados reais para testar configuracao por usuario, HTTP 423, virada do dia,
+fechamento no mesmo dia, conta fechada e bloqueio visual.
+
+## Ativacao
+
+Em **Configuracoes > Controle diario de contas e caixa**, selecione os usuarios
+responsaveis e marque **Bloquear o sistema enquanto houver rotina de caixa pendente**.
+Salve a configuracao. A chave e `FINANCEIRO_CAIXA_DIARIO_CONFIG` no banco,
+nao uma nova variavel de ambiente. Verifique antes as permissoes granulares
+`financeiro.caixas.visualizar`, `financeiro.caixas.abrir` e `financeiro.caixas.fechar`
+dos responsaveis; outras acoes continuam dependendo de suas proprias permissoes.
+Somente contas ativas marcadas com abertura/fechamento entram no bloqueio geral.

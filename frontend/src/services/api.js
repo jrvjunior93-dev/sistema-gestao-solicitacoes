@@ -119,6 +119,18 @@ export function installFetchSecurityDefaults() {
     });
 
     rememberCsrfTokenFromResponse(response);
+    if (response.status === 423) {
+      void response.clone().json().then((payload) => {
+        if (payload.codigo === 'CONTROLE_DIARIO_CONTAS_PENDENTE') {
+          window.dispatchEvent(new CustomEvent('fluxy:controle-diario-caixa', { detail: payload }));
+        }
+      }).catch(() => {});
+    } else if (response.ok && isUnsafeMethod(method)) {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (/\/financeiro\/caixas\//.test(url)) {
+        window.dispatchEvent(new CustomEvent('fluxy:controle-diario-caixa'));
+      }
+    }
     return response;
   };
 

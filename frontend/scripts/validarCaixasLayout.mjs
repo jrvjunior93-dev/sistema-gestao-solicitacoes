@@ -34,7 +34,7 @@ createRoot(document.getElementById('root')).render(React.createElement(MemoryRou
 
 const api = `
 const query=new URLSearchParams(location.search), caso=query.get('caso')||'fechado';
-const hoje=new Date().toISOString().slice(0,10);
+const hoje=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 window.envios=[];
 const pausa=()=>new Promise(r=>setTimeout(r,80));
 const conta={id:1,nome:'COFRE CSC',tipo_operacional:caso==='banco'?'CONTA_BANCARIA':'CAIXA_INTERNO',

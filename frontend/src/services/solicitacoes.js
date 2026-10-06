@@ -222,10 +222,11 @@ export async function solicitarRetornoSolicitacao(id, motivo) {
   return res.json();
 }
 
-export async function devolverSolicitacaoAposRetorno(id) {
+export async function devolverSolicitacaoAposRetorno(id, pedidoId) {
   const res = await fetch(`${API_URL}/solicitacoes/${id}/retorno/devolver`, {
     method: 'POST',
-    headers: authHeaders()
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(pedidoId == null ? {} : { pedido_id: pedidoId })
   });
 
   if (!res.ok) {

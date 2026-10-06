@@ -1,4 +1,5 @@
 const { CaixaFinanceiroSessao, ContaBancaria } = require('../models');
+const { dataOperacionalHoje } = require('./caixaDiarioConfigService');
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -7,7 +8,7 @@ function createHttpError(statusCode, message) {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return dataOperacionalHoje();
 }
 
 function contaExigeSessao(conta) {

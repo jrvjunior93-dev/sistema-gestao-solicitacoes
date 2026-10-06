@@ -1,5 +1,11 @@
 # Caixas e Contas — acoes primeiro, consultas recolhidas
 
+Nota de continuidade: a regra de bloqueio financeiro descrita neste registro
+foi substituida, a pedido do proprietario, pelo bloqueio geral com fechamento
+de hoje liberando o restante do dia. Consulte
+`2026-10-06-caixa-bloqueio-geral-dia-operacional.md` para a implementacao posterior
+e orientacao atual de ativacao. Este handoff preserva o historico da tarefa de UI.
+
 ## Pedido e escopo
 
 Reorganizar a pagina, reunindo abertura e fechamento no mesmo bloco superior,
