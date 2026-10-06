@@ -1,5 +1,24 @@
 # Ownership Ativo
 
+## Ownership ativo - organizacao de Caixas e Contas - 06/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`frontend/src/pages/FinanceiroCaixas.jsx`, teste focado da tela e handoff desta
+alteracao, mais este registro. Escopo: abertura e fechamento no mesmo bloco
+superior; movimentos e historico abaixo, recolhidos por padrao; remover apenas
+a indicacao visual da flag de bloqueio. Preservar permissoes, endpoints,
+comprovantes e segregacao de divergencias. Sem ativar bloqueio, alterar banco,
+EC2, publicar ou interferir na correcao local pendente de cadastro de credor.
+
+Implementacao local concluida e ownership de edicao liberado em 06/10/2026.
+Build, validador de caixa fisico e fixture funcional/visual no Edge aprovados.
+Handoff: `docs/handoffs/2026-10-06-caixas-acoes-e-consultas.md`.
+Alteracoes ainda sem commit ou publicacao; bloqueio nao ativado.
+
+No pedido seguinte de 06/10/2026, proprietario autorizou commit e push do
+conjunto pendente (Caixas e Contas e PIX/endereco de credor) e retorno a main.
+Worktree ja em main; EC2, banco e ativacao de bloqueio permanecem fora do escopo.
+
 Ownership temporario /root em 05/10/2026 no worktree `codex/controle-diario-permissoes-financeiro`: alinhar catalogo inteiro do Ctrl+K as permissoes das paginas e corrigir Pedidos de Compra por permissao granular no menu, rota e API; corrigir escopo vazio da lista e permitir Escopo operacional de Compras sem opcao marcada. Arquivos reservados: `frontend/src/utils/acessoProduto.js`, `frontend/src/pages/PermissoesAreas.jsx`, `frontend/src/pages/PermissoesAreasPadroes.jsx`, `backend/src/services/authorizationService.js`, `backend/src/middlewares/resourceAccess.js`, `backend/src/controllers/PedidoCompraController.js`, `backend/src/controllers/BuscaController.js`, `backend/src/constants/moduloPermissoes.js`, `backend/src/generated/navegacaoFonteUnica.cjs`, testes correlatos, handoff e este registro. Preservar filtro OFX local; sem banco, EC2, commit, push ou deploy nesta etapa.
 Ownership liberado apos validacao local em 05/10/2026; alteracoes ainda sem commit, descritas em `docs/handoffs/2026-10-05-busca-permissoes-escopo-compras.md`.
 
@@ -1471,3 +1490,15 @@ Implementacao e validacoes locais concluidas; ownership liberado. No pedido
 seguinte, o proprietario autorizou commit e push para main (worktree ja em main).
 Continuidade do deploy registrada no handoff
 `docs/handoffs/2026-10-05-compra-direta-itens-geo.md`.
+
+## Ownership ativo - PIX e endereco do cadastro de credor - 05/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003`: reserva temporaria de
+`frontend/src/pages/NovaSolicitacao.jsx`, teste focado de cadastro de credor,
+`backend/src/controllers/ParceiroController.js`, handoff e deste registro.
+Escopo: primeira chave PIX obrigatoria, adicionais opcionais, endereco unico
+e protecao contra clique simultaneo. Preservar permissoes, dados de endereco,
+vinculo ao contrato e demais cadastros. Sem banco remoto, deploy, commit ou push.
+Implementacao e validacoes locais concluidas; ownership liberado. Alteracoes
+aguardam publicacao autorizada; continuidade em
+`docs/handoffs/2026-10-05-credor-pix-endereco.md`.

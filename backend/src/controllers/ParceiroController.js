@@ -449,6 +449,11 @@ module.exports = {
           error: `Complete o cadastro do credor antes de salvar. Pendente: ${pendencias.join(', ')}.`
         });
       }
+      // Neste cadastro rapido, somente a primeira chave e obrigatoria.
+      // Os tipos preselecionados das outras chaves nao exigem seu preenchimento.
+      if (!String(req.body?.pix_chave_fixa_1 || '').trim()) {
+        return res.status(400).json({ error: 'Informe a primeira chave PIX do credor.' });
+      }
 
       const payload = {
         ...req.body,

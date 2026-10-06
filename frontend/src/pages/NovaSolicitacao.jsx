@@ -228,6 +228,8 @@ export default function NovaSolicitacao() {
   const [parceiroBuscando, setParceiroBuscando] = useState(false);
   const [parceiroBuscaExecutada, setParceiroBuscaExecutada] = useState(false);
   const [modalParceiroAberto, setModalParceiroAberto] = useState(false);
+  const [salvandoNovoParceiro, setSalvandoNovoParceiro] = useState(false);
+  const salvandoNovoParceiroRef = useRef(false);
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   /*
@@ -820,6 +822,7 @@ export default function NovaSolicitacao() {
 
 
   async function salvarNovoParceiro() {
+    if (salvandoNovoParceiroRef.current) return;
     try {
       // O backend recusa igual (PI-20). Barrar aqui evita a viagem so para receber o 400, e a
       // mensagem lista o que falta em vez de dizer apenas "cadastro incompleto".
@@ -837,11 +840,16 @@ export default function NovaSolicitacao() {
         avisar.alerta(documentoErro);
         return;
       }
+      if (!String(novoParceiro.pix_chave_fixa_1 || '').trim()) {
+        avisar.alerta('Informe a primeira chave PIX do credor.');
+        return;
+      }
       const pixErro = [
         ['pix_chave_fixa_1_tipo', 'pix_chave_fixa_1', 'Chave PIX fixa 1'],
         ['pix_chave_fixa_2_tipo', 'pix_chave_fixa_2', 'Chave PIX fixa 2'],
         ['pix_chave_variavel_tipo', 'pix_chave_variavel', 'Chave PIX variavel']
-      ].map(([tipo, chave, label]) => getPixDocumentError(novoParceiro[chave], novoParceiro[tipo], label)).find(Boolean);
+      ].filter(([, chave]) => String(novoParceiro[chave] || '').trim())
+        .map(([tipo, chave, label]) => getPixDocumentError(novoParceiro[chave], novoParceiro[tipo], label)).find(Boolean);
       if (pixErro) {
         avisar.alerta(pixErro);
         return;
@@ -854,6 +862,8 @@ export default function NovaSolicitacao() {
         cep: onlyDigits(novoParceiro.cep)
       };
 
+      salvandoNovoParceiroRef.current = true;
+      setSalvandoNovoParceiro(true);
       const parceiro = await criarCredorNovaSolicitacao({
         ...payload,
         obra_id: form.obra_id,
@@ -867,6 +877,9 @@ export default function NovaSolicitacao() {
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao cadastrar credor');
+    } finally {
+      salvandoNovoParceiroRef.current = false;
+      setSalvandoNovoParceiro(false);
     }
   }
 
@@ -4576,7 +4589,7 @@ export default function NovaSolicitacao() {
               <CampoForm label="CEP" obrigatorio>
                 <input className="input input-sm" name="novo_credor_cep"
                   value={novoParceiro.cep}
-                  onChange={e => setNovoParceiro(prev => ({ ...prev, cep: e.target.value }))} />
+                  onChange={e => setNovoParceiro(prev => ({ ...prev, cep: maskCep(e.target.value) }))} />
               </CampoForm>
               <CampoForm label="Municipio" obrigatorio span={2}>
                 <input className="input input-sm" name="novo_credor_municipio"
@@ -4586,18 +4599,18 @@ export default function NovaSolicitacao() {
               <CampoForm label="UF" obrigatorio>
                 <input className="input input-sm" name="novo_credor_estado" maxLength={2}
                   value={novoParceiro.estado}
-                  onChange={e => setNovoParceiro(prev => ({ ...prev, estado: e.target.value }))} />
+                  onChange={e => setNovoParceiro(prev => ({ ...prev, estado: e.target.value.toUpperCase() }))} />
               </CampoForm>
             </FormSecao>
           </BlocoConteudo>
 
           <BlocoConteudo
             variante="secundario"
-            titulo="Chaves PIX opcionais"
-            descricao="Cadastre até duas chaves fixas e uma chave variável para uso financeiro."
+            titulo="Chaves PIX"
+            descricao="A primeira chave é obrigatória. A segunda chave fixa e a chave variável são opcionais."
           >
             <FormSecao colunas={2}>
-              <CampoForm label="Chave PIX fixa 1 — tipo">
+              <CampoForm label="Chave PIX fixa 1 — tipo" obrigatorio>
                 <select
                   className="input input-sm"
                   value={novoParceiro.pix_chave_fixa_1_tipo}
@@ -4608,7 +4621,7 @@ export default function NovaSolicitacao() {
                   ))}
                 </select>
               </CampoForm>
-              <CampoForm label="Chave PIX fixa 1">
+              <CampoForm label="Chave PIX fixa 1" obrigatorio>
                 <input
                   className="input input-sm"
                   value={novoParceiro.pix_chave_fixa_1}
@@ -4659,61 +4672,6 @@ export default function NovaSolicitacao() {
             </FormSecao>
           </BlocoConteudo>
 
-          {/*
-            ACHADO REGISTRADO, NADA REMOVIDO (B3 / disciplina de regras 2):
-            os seis campos abaixo gravam EXATAMENTE as mesmas chaves do
-            endereço obrigatório acima (endereco, numero, bairro, cep,
-            municipio, estado) — mesmo dado, mesmo papel, duas entradas, e com
-            tratamento DIFERENTE (aqui o CEP passa por `maskCep` e a UF é
-            forçada para maiúsculas; lá em cima, não). Remover é decisão do
-            cliente, então ficam; o defeito vai no relatório.
-          */}
-          <FormSecao legenda="Endereço (segunda entrada, já existente na tela)" colunas={2}>
-            <CampoForm label="Endereço">
-              <input
-                className="input input-sm"
-                value={novoParceiro.endereco}
-                onChange={e => setNovoParceiro(prev => ({ ...prev, endereco: e.target.value }))}
-              />
-            </CampoForm>
-            <CampoForm label="Número">
-              <input
-                className="input input-sm"
-                value={novoParceiro.numero}
-                onChange={e => setNovoParceiro(prev => ({ ...prev, numero: e.target.value }))}
-              />
-            </CampoForm>
-            <CampoForm label="Bairro">
-              <input
-                className="input input-sm"
-                value={novoParceiro.bairro}
-                onChange={e => setNovoParceiro(prev => ({ ...prev, bairro: e.target.value }))}
-              />
-            </CampoForm>
-            <CampoForm label="CEP">
-              <input
-                className="input input-sm"
-                value={novoParceiro.cep}
-                onChange={e => setNovoParceiro(prev => ({ ...prev, cep: maskCep(e.target.value) }))}
-              />
-            </CampoForm>
-            <CampoForm label="Municipio">
-              <input
-                className="input input-sm"
-                value={novoParceiro.municipio}
-                onChange={e => setNovoParceiro(prev => ({ ...prev, municipio: e.target.value }))}
-              />
-            </CampoForm>
-            <CampoForm label="Estado">
-              <input
-                className="input input-sm"
-                maxLength={2}
-                value={novoParceiro.estado}
-                onChange={e => setNovoParceiro(prev => ({ ...prev, estado: e.target.value.toUpperCase() }))}
-              />
-            </CampoForm>
-          </FormSecao>
-
           <div className="grid gap-2">
             <div className="text-sm font-medium">Categorias da pessoa</div>
             {categoriasParceiro.length === 0 ? (
@@ -4754,8 +4712,9 @@ export default function NovaSolicitacao() {
             type="button"
             className="btn btn-primary btn-sm"
             onClick={salvarNovoParceiro}
+            disabled={salvandoNovoParceiro}
           >
-            Salvar credor
+            {salvandoNovoParceiro ? 'Salvando...' : 'Salvar credor'}
           </button>
           <button
             type="button"

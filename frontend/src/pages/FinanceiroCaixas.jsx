@@ -118,6 +118,8 @@ export default function FinanceiroCaixas() {
   const [sessaoDetalhe, setSessaoDetalhe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const salvandoRef = useRef(false);
+  const [movimentoRecolhido, setMovimentoRecolhido] = useState(true);
   const [painel, setPainel] = useState(null);
   const [dataPainel, setDataPainel] = useState(today());
   const [decisaoDivergencia, setDecisaoDivergencia] = useState({ sessao: null, decisao: 'APROVAR', observacao: '' });
@@ -326,6 +328,8 @@ export default function FinanceiroCaixas() {
   }, [dataMinimaFechamento]);
 
   async function executar(acao, mensagemErro) {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
     try {
       setSaving(true);
       limparAvisos();
@@ -335,6 +339,7 @@ export default function FinanceiroCaixas() {
     } catch (err) {
       avisar.erro(err?.message || mensagemErro);
     } finally {
+      salvandoRef.current = false;
       setSaving(false);
     }
   }
@@ -472,7 +477,8 @@ export default function FinanceiroCaixas() {
   const diferencaRelevante = saldoFechamentoValido && Math.abs(diferencaFechamento) > 0.009;
 
   function prepararAjusteFechamento() {
-    if (!diferencaRelevante) return;
+    if (!diferencaRelevante || !podeMovimentar) return;
+    setMovimentoRecolhido(false);
     const natureza = diferencaFechamento > 0 ? 'ENTRADA' : 'SAIDA';
     setMovimentoForm({
       natureza,
@@ -497,18 +503,168 @@ export default function FinanceiroCaixas() {
            recorte, e a contagem passou a contar o que a tela lista. */
         contagem={`${contas.length} conta(s) operável(is)`}
         descricao={contaSelecionada
-          ? `${contaLabel(contaSelecionada)} — abertura, movimentação e conferência do dinheiro físico.`
-          : 'Escolha uma conta para abrir, movimentar e conferir o dinheiro físico.'}
+          ? `${contaLabel(contaSelecionada)} — abertura, fechamento e consulta da rotina diária.`
+          : 'Escolha uma conta para registrar e consultar a rotina diária.'}
       />
 
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       <BlocoConteudo
-        titulo="Visao consolidada do dia"
+        titulo="Abertura e fechamento"
         variante="primario"
         cor="var(--module-financeiro)"
-        descricao="Acompanhe todas as contas controladas antes de entrar no detalhe operacional."
-        acoes={(
+        descricao="Selecione a conta e registre a abertura ou a conferência de fechamento."
+        data-testid="caixa-acoes-diarias"
+      >
+        <BarraFiltros
+          filtros={[
+            {
+              id: 'empresa',
+              rotulo: 'Empresa',
+              unico: true,
+              opcoes: empresas.map((empresa) => ({ valor: String(empresa.id), rotulo: empresa.nome || empresa.razao_social }))
+            }
+          ]}
+          ativos={filtrosAtivos}
+          aoAlternar={alternarFiltro}
+          aoLimpar={() => setEmpresaFiltro('')}
+        />
+
+        <div className="mt-4 grid gap-3 md:grid-cols-12 md:items-end">
+          <label className="sol-filter-field md:col-span-8">
+            <span className="sol-filter-label">Caixa / conta com controle diário</span>
+            <select className="input w-full" value={contaSelecionadaId} onChange={(event) => setContaSelecionadaId(event.target.value)}>
+              {contasFiltradas.length === 0 ? <option value="">Nenhuma conta configurada</option> : null}
+              {contasFiltradas.map((conta) => <option key={conta.id} value={conta.id}>{contaLabel(conta)}</option>)}
+            </select>
+          </label>
+          <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] px-3 py-2 text-sm md:col-span-4">
+            {sessaoAtiva
+              ? <HiOutlineLockOpen className="h-4 w-4 shrink-0 text-[var(--sem-success)]" aria-hidden="true" />
+              : <HiOutlineLockClosed className="h-4 w-4 shrink-0 text-[var(--c-muted)]" aria-hidden="true" />}
+            <div className="min-w-0">
+              <strong className="block truncate text-[var(--c-text)]">{sessaoPendente ? 'Aguardando aprovacao' : (sessaoAberta ? 'Caixa aberto' : 'Caixa fechado')}</strong>
+              <span className="block truncate text-xs text-[var(--c-muted)]">{contaSelecionada ? empresaLabel(contaSelecionada) : 'Selecione uma conta'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <section aria-labelledby="caixa-abertura-titulo" className="min-w-0">
+            <h3 id="caixa-abertura-titulo" className="mb-3 font-semibold text-[var(--c-text)]">Abrir caixa</h3>
+            {loading ? <p className="text-sm text-[var(--c-muted)]">Carregando a conta...</p>
+              : !contaSelecionada ? <p className="text-sm text-[var(--c-muted)]">Selecione uma conta com controle diário nos Cadastros Financeiros.</p>
+              : sessaoAtiva ? <p className="text-sm text-[var(--c-muted)]">Abertura registrada em <strong>{formatDate(sessaoAtiva.data_abertura)}</strong>, com saldo de <strong>{formatCurrency(sessaoAtiva.saldo_abertura)}</strong>. {sessaoPendente ? 'Aguarde a decisão da divergência.' : 'Use o fechamento ao encerrar a rotina.'}</p>
+              : (podeAbrir || podeConfirmarConciliacao) ? <>
+                <p className="mb-3 text-sm text-[var(--c-muted)]">{caixaFisico ? 'Conte o dinheiro e confira com o fechamento anterior. Não é necessária conciliação OFX.' : 'Informe o saldo contado e confira com o fechamento anterior.'}</p>
+                <form className="grid gap-3 sm:grid-cols-2" onSubmit={podeAbrir ? handleAbrir : (event) => event.preventDefault()}>
+                    <label className="sol-filter-field"><span className="sol-filter-label">Data de abertura *</span><DateInputBR className="input w-full" value={abrirForm.data_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, data_abertura: event.target.value }))} required /></label>
+                    <label className="sol-filter-field"><span className="sol-filter-label">Saldo contado *</span><input className="input input-moeda w-full" inputMode="decimal" placeholder="Ex.: 500,00" value={abrirForm.saldo_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, saldo_abertura: normalizeCurrencyTyping(event.target.value) }))} onBlur={() => setAbrirForm((current) => ({ ...current, saldo_abertura: formatCurrencyInput(current.saldo_abertura) }))} required /></label>
+                    <label className="sol-filter-field sm:col-span-2"><span className="sol-filter-label">Observação de abertura</span><input className="input w-full" maxLength={4000} placeholder="Opcional" value={abrirForm.observacoes} onChange={(event) => setAbrirForm((current) => ({ ...current, observacoes: event.target.value }))} /></label>
+                    {/* D3: os dois pesos visíveis — "Abrir caixa" é a primária sólida,
+                        "Confirmar OFX" a secundária em contorno. */}
+                    <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">{!caixaFisico && podeConfirmarConciliacao ? <button type="button" className="btn btn-outline" onClick={handleConfirmarOfx} disabled={saving}>Confirmar OFX</button> : null}{podeAbrir ? <button type="submit" className="btn btn-primary" disabled={saving}>Abrir caixa</button> : null}</div>
+                    <div className="sm:col-span-2 border-t border-[var(--c-border)] pt-3 text-sm">
+                      <StatGrid colunas={3}>
+                        <StatTile label="Fechamento anterior" valor={formatCurrency(saldoAberturaEsperado)} />
+                        <StatTile label="Saldo contado" valor={saldoAberturaValido ? formatCurrency(saldoAberturaContado) : 'Aguardando contagem'} />
+                        <StatTile label="Diferença" valor={saldoAberturaValido ? formatCurrency(diferencaAbertura) : '-'} tom={aberturaDivergente ? 'warning' : 'default'} />
+                      </StatGrid>
+                      {aberturaDivergente ? <div className="mt-3 grid gap-3 border-t border-[var(--c-border)] pt-3 sm:grid-cols-2">
+                        <p className="sm:col-span-2 text-[var(--sem-warning)]"><strong>{diferencaAbertura > 0 ? 'Entrada' : 'Saída'} de ajuste: {formatCurrency(Math.abs(diferencaAbertura))}.</strong> O lançamento será criado junto com a abertura e ficará na auditoria.</p>
+                        <label className="sol-filter-field"><span className="sol-filter-label">Justificativa da divergência *</span><input className="input w-full" minLength={10} maxLength={1000} value={abrirForm.ajuste_descricao} onChange={(event) => setAbrirForm((current) => ({ ...current, ajuste_descricao: event.target.value }))} required /></label>
+                        {diferencaAbertura < 0 ? <label className="sol-filter-field"><span className="sol-filter-label">Comprovante da saída *</span><input ref={comprovanteAberturaRef} className="input w-full" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={(event) => setAbrirForm((current) => ({ ...current, comprovante: event.target.files?.[0] || null }))} required /></label> : null}
+                      </div> : null}
+                    </div>
+                </form>
+              </> : <p className="text-sm text-[var(--c-muted)]">Você pode consultar a conta, mas não possui permissão para abrir ou confirmar a conciliação.</p>}
+          </section>
+          <section aria-labelledby="caixa-fechamento-titulo" className="min-w-0 border-t border-[var(--c-border)] pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+            <h3 id="caixa-fechamento-titulo" className="mb-3 font-semibold text-[var(--c-text)]">Conferir e fechar caixa</h3>
+            {loading ? <p className="text-sm text-[var(--c-muted)]">Carregando a conta...</p>
+              : sessaoPendente ? <>
+                <p className="mb-3 text-sm text-[var(--sem-warning)]">Divergência aguardando aprovação. Outro aprovador precisa decidir antes de novos movimentos.</p>
+                <StatGrid colunas={2}>
+                  <StatTile label="Saldo do sistema" valor={formatCurrency(sessaoPendente.saldo_sistema)} />
+                  <StatTile label="Saldo informado" valor={formatCurrency(sessaoPendente.saldo_informado)} />
+                  <StatTile label="Diferenca" valor={formatCurrency(sessaoPendente.diferenca)} tom="warning" />
+                  <StatTile label="Solicitado por" valor={sessaoPendente.divergenciaSolicitadaPor?.nome || '-'} />
+                </StatGrid>
+                <p className="mt-3 text-sm text-[var(--c-muted)]">Justificativa: {sessaoPendente.observacoes_fechamento || '-'}</p>
+                {podeDecidirSessao(sessaoPendente) ? (
+                  <div className="mt-3 flex justify-end">
+                    <button type="button" className="btn btn-primary" onClick={() => setDecisaoDivergencia({ sessao: sessaoPendente, decisao: 'APROVAR', observacao: '' })} disabled={saving}>Decidir divergencia</button>
+                  </div>
+                ) : usuarioSolicitouDivergencia(sessaoPendente) ? (
+                  <p className="mt-3 text-sm font-medium text-[var(--sem-warning)]">
+                    Você informou esta divergência. Outro usuário com a permissão Decidir divergências precisa analisá-la.
+                  </p>
+                ) : null}
+
+              </>
+              : !sessaoAberta ? <p className="text-sm text-[var(--c-muted)]">O fechamento fica disponível após a abertura da conta.</p>
+              : podeFechar ? <>
+                <p className="mb-3 text-sm text-[var(--c-muted)]">{caixaFisico ? 'Conte o dinheiro físico e informe o saldo encontrado.' : 'Confira o saldo operacional e informe o valor apurado.'} Divergências ficam registradas com justificativa.</p>
+                <p className="mb-3 text-sm text-[var(--c-muted)]">Saldo no sistema: <strong className="text-[var(--c-text)]">{formatCurrency(saldoSistema)}</strong></p>
+                <form className="grid items-stretch gap-3 sm:grid-cols-2" onSubmit={handleFechar}>
+                    <label className="sol-filter-field h-full"><span className="sol-filter-label">Data de fechamento *</span><DateInputBR className="input mt-auto w-full" min={dataMinimaFechamento} value={fecharForm.data_fechamento} onChange={(event) => setFecharForm((current) => ({ ...current, data_fechamento: event.target.value }))} required /></label>
+                    <label className="sol-filter-field h-full"><span className="sol-filter-label">Saldo contado *</span><input className="input input-moeda mt-auto w-full" type="text" inputMode="decimal" value={fecharForm.saldo_informado} onChange={(event) => setFecharForm((current) => ({ ...current, saldo_informado: normalizeCurrencyTyping(event.target.value) }))} placeholder="R$ 0,00" required /></label>
+                    <div className="sm:col-span-2">
+                      <StatTile
+                        label="Diferença"
+                        valor={saldoFechamentoValido ? formatCurrency(diferencaFechamento) : 'Aguardando contagem'}
+                        tom={saldoFechamentoValido ? (diferencaRelevante ? 'warning' : 'success') : 'default'}
+                        full
+                      />
+                    </div>
+                    <label className="sol-filter-field h-full sm:col-span-2"><span className="sol-filter-label">Justificativa {diferencaRelevante ? '*' : ''}</span><input className="input mt-auto w-full" minLength={diferencaRelevante ? 10 : undefined} maxLength={4000} placeholder={diferencaRelevante ? 'Obrigatória para divergência' : 'Observação opcional'} value={fecharForm.observacoes} onChange={(event) => setFecharForm((current) => ({ ...current, observacoes: event.target.value }))} required={diferencaRelevante} /></label>
+                    <div className="flex items-center justify-end sm:col-span-2">
+                      <button type="submit" className="btn btn-primary" disabled={saving} title="Fechar caixa">
+                        <HiOutlineLockClosed className="h-4 w-4" aria-hidden="true" />
+                        Fechar caixa
+                      </button>
+                    </div>
+                    {diferencaRelevante ? <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--sem-warning)] bg-[var(--ui-surface-soft)] p-3 text-sm"><span>Você pode justificar e enviar a diferença para aprovação ou registrar o lançamento correspondente antes de fechar.</span>{caixaFisico && podeMovimentar ? <button type="button" className="btn btn-outline" onClick={prepararAjusteFechamento} disabled={saving}>Preparar {diferencaFechamento > 0 ? 'entrada' : 'saída'} de ajuste</button> : null}</div> : null}
+                </form>
+              </> : <p className="text-sm text-[var(--c-muted)]">Você pode consultar a sessão, mas não possui permissão para fechar esta conta.</p>}
+          </section>
+        </div>
+      </BlocoConteudo>
+
+        {sessaoAberta && caixaFisico && podeMovimentar ? (
+          <BlocoConteudo
+            titulo="Registrar entrada ou saída"
+            recolhivel
+            recolhidoPadrao
+            recolhido={movimentoRecolhido}
+            aoAlternarRecolhido={setMovimentoRecolhido}
+            descricao="Use para dinheiro físico ainda não registrado por outro fluxo financeiro."
+          >
+            <form id="caixa-movimento-form" className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-12" onSubmit={handleMovimento}>
+              {/* R12: select de FORMULÁRIO (entrada de dado do lançamento). */}
+              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Natureza *</span><select className="input mt-auto w-full" value={movimentoForm.natureza} onChange={(event) => { if (comprovanteMovimentoRef.current) comprovanteMovimentoRef.current.value = ''; setMovimentoForm((current) => ({ ...current, natureza: event.target.value, comprovante: null })); }}><option value="ENTRADA">Entrada</option><option value="SAIDA">Saída</option></select></label>
+              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Data *</span><DateInputBR className="input mt-auto w-full" value={movimentoForm.data_movimento} onChange={(event) => setMovimentoForm((current) => ({ ...current, data_movimento: event.target.value }))} required /></label>
+              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Valor *</span><input className="input input-moeda mt-auto w-full" type="text" inputMode="decimal" value={movimentoForm.valor} onChange={(event) => setMovimentoForm((current) => ({ ...current, valor: normalizeCurrencyTyping(event.target.value) }))} placeholder="R$ 0,00" required /></label>
+              <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-3"><span className="sol-filter-label">Descrição *</span><input className="input mt-auto w-full" minLength={3} maxLength={4000} placeholder="Ex.: compra emergencial de material" value={movimentoForm.descricao} onChange={(event) => setMovimentoForm((current) => ({ ...current, descricao: event.target.value }))} required /></label>
+              <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-2"><span className="sol-filter-label">Documento / referência</span><input className="input mt-auto w-full" maxLength={120} placeholder="Recibo, NF ou controle" value={movimentoForm.documento_referencia} onChange={(event) => setMovimentoForm((current) => ({ ...current, documento_referencia: event.target.value }))} /></label>
+              {movimentoForm.natureza === 'SAIDA' ? <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-3"><span className="sol-filter-label">Comprovante da saída *</span><input ref={comprovanteMovimentoRef} className="input mt-auto w-full" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={(event) => setMovimentoForm((current) => ({ ...current, comprovante: event.target.files?.[0] || null }))} required /></label> : null}
+              <div className="flex items-center justify-end sm:col-span-2 xl:col-span-1">
+                <button type="submit" className="btn btn-primary" disabled={saving} title="Registrar entrada ou saída">
+                  <HiOutlinePlus className="h-4 w-4" aria-hidden="true" />
+                  Registrar
+                </button>
+              </div>
+            </form>
+          </BlocoConteudo>
+        ) : null}
+
+      <BlocoConteudo
+        titulo="Visao consolidada do dia"
+        variante="secundario"
+        recolhivel
+        recolhidoPadrao
+        descricao="Consulte a situação diária e os saldos das contas controladas."
+        controles={(
           <label className="sol-filter-field min-w-44">
             <span className="sol-filter-label">Data operacional</span>
             <DateInputBR className="input w-full" value={dataPainel} onChange={(event) => setDataPainel(event.target.value)} />
@@ -523,15 +679,6 @@ export default function FinanceiroCaixas() {
               <StatTile label="Pendentes" valor={painel.resumo?.contas_pendentes || 0} tom={(painel.resumo?.contas_pendentes || 0) > 0 ? 'warning' : 'success'} />
               <StatTile label="Saldo consolidado" valor={formatCurrency(painel.resumo?.saldo_consolidado)} />
             </StatGrid>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <span className={painel.configuracao?.bloqueio_ativo ? 'badge badge-warning' : 'badge badge-muted'}>
-                Bloqueio {painel.configuracao?.bloqueio_ativo ? 'ativo' : 'desativado'}
-              </span>
-              {painel.configuracao?.usuario_sujeito_bloqueio ? (
-                <span className="text-[var(--c-muted)]">Seu usuario esta sujeito a esta regra.</span>
-              ) : null}
-            </div>
 
             <div className="mt-4">
               <TabelaPadrao
@@ -567,135 +714,15 @@ export default function FinanceiroCaixas() {
         ) : <p className="text-sm text-[var(--c-muted)]">Carregando a situacao das contas...</p>}
       </BlocoConteudo>
 
-      <BlocoConteudo
-        titulo="Caixa em operação"
-        variante="secundario"
-        descricao="Escolha a empresa para estreitar a lista e o caixa que será operado."
-      >
-        <BarraFiltros
-          filtros={[
-            {
-              id: 'empresa',
-              rotulo: 'Empresa',
-              unico: true,
-              opcoes: empresas.map((empresa) => ({ valor: String(empresa.id), rotulo: empresa.nome || empresa.razao_social }))
-            }
-          ]}
-          ativos={filtrosAtivos}
-          aoAlternar={alternarFiltro}
-          aoLimpar={() => setEmpresaFiltro('')}
-        />
-
-        <div className="mt-4 grid gap-3 md:grid-cols-12 md:items-end">
-          <label className="sol-filter-field md:col-span-8">
-            <span className="sol-filter-label">Caixa / conta com controle diário</span>
-            <select className="input w-full" value={contaSelecionadaId} onChange={(event) => setContaSelecionadaId(event.target.value)}>
-              {contasFiltradas.length === 0 ? <option value="">Nenhuma conta configurada</option> : null}
-              {contasFiltradas.map((conta) => <option key={conta.id} value={conta.id}>{contaLabel(conta)}</option>)}
-            </select>
-          </label>
-          <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] px-3 py-2 text-sm md:col-span-4">
-            {sessaoAtiva
-              ? <HiOutlineLockOpen className="h-4 w-4 shrink-0 text-[var(--sem-success)]" aria-hidden="true" />
-              : <HiOutlineLockClosed className="h-4 w-4 shrink-0 text-[var(--c-muted)]" aria-hidden="true" />}
-            <div className="min-w-0">
-              <strong className="block truncate text-[var(--c-text)]">{sessaoPendente ? 'Aguardando aprovacao' : (sessaoAberta ? 'Caixa aberto' : 'Caixa fechado')}</strong>
-              <span className="block truncate text-xs text-[var(--c-muted)]">{contaSelecionada ? empresaLabel(contaSelecionada) : 'Selecione uma conta'}</span>
-            </div>
-          </div>
-        </div>
-      </BlocoConteudo>
-
-      {/*
-        B2 — UM primário VISÍVEL por vez, e esta tela tem três estados
-        mutuamente exclusivos: sem caixa configurado, caixa fechado (abrir)
-        e caixa aberto (livro). Cada estado marca o SEU bloco de conteúdo
-        como primário; como as condições se excluem, nunca há dois na tela.
-        O "Movimento do caixa" e o "Registrar entrada ou saída" ficam
-        neutros: são apoio do livro, não o conteúdo.
-      */}
-      {!contaSelecionada && !loading ? (
-        <BlocoConteudo titulo="Nenhum caixa configurado" variante="primario">
-          <p className="text-sm text-[var(--c-muted)]">
-            Cadastre uma conta como <strong className="text-[var(--c-text)]">Caixa interno</strong> e habilite
-            abertura e fechamento nos Cadastros Financeiros.
-          </p>
-        </BlocoConteudo>
-      ) : null}
-
-      {contaSelecionada && !sessaoAtiva && !loading && (podeAbrir || podeConfirmarConciliacao) ? (
+      {sessaoAberta ? (
         <BlocoConteudo
-          titulo={podeAbrir ? 'Abrir caixa' : 'Confirmar conciliação anterior'}
-          variante="primario"
-          descricao={caixaFisico ? 'Conte o valor disponível e confronte com o fechamento anterior. O caixa físico não depende de conciliação OFX.' : 'Informe o saldo contado e confronte com o fechamento anterior.'}
-          acoes={<span className={statusClass('FECHADO')}>FECHADO</span>}
+          titulo="Livro do caixa"
+          variante="secundario"
+          recolhivel
+          recolhidoPadrao
+          contagem={`${movimentos.length} registro(s) · ${formatDate(sessaoAberta.data_abertura)}`}
+          descricao="Entradas, saídas e transferências da sessão."
         >
-          <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end" onSubmit={podeAbrir ? handleAbrir : (event) => event.preventDefault()}>
-            <label className="sol-filter-field xl:col-span-2"><span className="sol-filter-label">Data de abertura *</span><DateInputBR className="input w-full" value={abrirForm.data_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, data_abertura: event.target.value }))} required /></label>
-            <label className="sol-filter-field xl:col-span-2"><span className="sol-filter-label">Saldo contado *</span><input className="input input-moeda w-full" inputMode="decimal" placeholder="Ex.: 500,00" value={abrirForm.saldo_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, saldo_abertura: normalizeCurrencyTyping(event.target.value) }))} onBlur={() => setAbrirForm((current) => ({ ...current, saldo_abertura: formatCurrencyInput(current.saldo_abertura) }))} required /></label>
-            <label className="sol-filter-field sm:col-span-2 xl:col-span-6"><span className="sol-filter-label">Observação de abertura</span><input className="input w-full" maxLength={4000} placeholder="Opcional" value={abrirForm.observacoes} onChange={(event) => setAbrirForm((current) => ({ ...current, observacoes: event.target.value }))} /></label>
-            {/* D3: os dois pesos visíveis — "Abrir caixa" é a primária sólida,
-                "Confirmar OFX" a secundária em contorno. */}
-            <div className="flex flex-wrap justify-end gap-2 sm:col-span-2 xl:col-span-2">{!caixaFisico && podeConfirmarConciliacao ? <button type="button" className="btn btn-outline" onClick={handleConfirmarOfx} disabled={saving}>Confirmar OFX</button> : null}{podeAbrir ? <button type="submit" className="btn btn-primary" disabled={saving}>Abrir caixa</button> : null}</div>
-            <div className="sm:col-span-2 xl:col-span-12 rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3 text-sm">
-              <StatGrid colunas={3}>
-                <StatTile label="Fechamento anterior" valor={formatCurrency(saldoAberturaEsperado)} />
-                <StatTile label="Saldo contado" valor={saldoAberturaValido ? formatCurrency(saldoAberturaContado) : 'Aguardando contagem'} />
-                <StatTile label="Diferença" valor={saldoAberturaValido ? formatCurrency(diferencaAbertura) : '-'} tom={aberturaDivergente ? 'warning' : 'default'} />
-              </StatGrid>
-              {aberturaDivergente ? <div className="mt-3 grid gap-3 border-t border-[var(--c-border)] pt-3 sm:grid-cols-2">
-                <p className="sm:col-span-2 text-[var(--sem-warning)]"><strong>{diferencaAbertura > 0 ? 'Entrada' : 'Saída'} de ajuste: {formatCurrency(Math.abs(diferencaAbertura))}.</strong> O lançamento será criado junto com a abertura e ficará na auditoria.</p>
-                <label className="sol-filter-field"><span className="sol-filter-label">Justificativa da divergência *</span><input className="input w-full" minLength={10} maxLength={1000} value={abrirForm.ajuste_descricao} onChange={(event) => setAbrirForm((current) => ({ ...current, ajuste_descricao: event.target.value }))} required /></label>
-                {diferencaAbertura < 0 ? <label className="sol-filter-field"><span className="sol-filter-label">Comprovante da saída *</span><input ref={comprovanteAberturaRef} className="input w-full" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={(event) => setAbrirForm((current) => ({ ...current, comprovante: event.target.files?.[0] || null }))} required /></label> : null}
-              </div> : null}
-            </div>
-          </form>
-        </BlocoConteudo>
-      ) : null}
-
-      {contaSelecionada && !sessaoAtiva && !loading && !podeAbrir && !podeConfirmarConciliacao ? (
-        <BlocoConteudo titulo="Conta sem sessao aberta" variante="primario">
-          <p className="text-sm text-[var(--c-muted)]">
-            Você pode consultar o painel, mas não possui permissão para confirmar a conciliação ou abrir esta conta.
-          </p>
-        </BlocoConteudo>
-      ) : null}
-
-      {sessaoPendente && !loading ? (
-        <BlocoConteudo
-          titulo="Divergencia aguardando aprovacao"
-          variante="primario"
-          cor="var(--sem-warning)"
-          descricao="O caixa permanece congelado ate outro aprovador decidir. Quem informou a divergencia nao pode aprovar a propria solicitacao."
-          acoes={<span className={statusClass('AGUARDANDO_APROVACAO')}>AGUARDANDO APROVACAO</span>}
-        >
-          <StatGrid colunas={4}>
-            <StatTile label="Saldo do sistema" valor={formatCurrency(sessaoPendente.saldo_sistema)} />
-            <StatTile label="Saldo informado" valor={formatCurrency(sessaoPendente.saldo_informado)} />
-            <StatTile label="Diferenca" valor={formatCurrency(sessaoPendente.diferenca)} tom="warning" />
-            <StatTile label="Solicitado por" valor={sessaoPendente.divergenciaSolicitadaPor?.nome || '-'} />
-          </StatGrid>
-          <p className="mt-3 text-sm text-[var(--c-muted)]">Justificativa: {sessaoPendente.observacoes_fechamento || '-'}</p>
-          {podeDecidirSessao(sessaoPendente) ? (
-            <div className="mt-3 flex justify-end">
-              <button type="button" className="btn btn-primary" onClick={() => setDecisaoDivergencia({ sessao: sessaoPendente, decisao: 'APROVAR', observacao: '' })}>Decidir divergencia</button>
-            </div>
-          ) : usuarioSolicitouDivergencia(sessaoPendente) ? (
-            <p className="mt-3 text-sm font-medium text-[var(--sem-warning)]">
-              Você informou esta divergência. Outro usuário com a permissão Decidir divergências precisa analisá-la.
-            </p>
-          ) : null}
-        </BlocoConteudo>
-      ) : null}
-
-      {sessaoAberta ? <>
-        <BlocoConteudo
-          titulo={`Movimento do caixa · ${formatDate(sessaoAberta.data_abertura)}`}
-          descricao="Resumo financeiro da sessão aberta."
-          acoes={<span className={statusClass('ABERTO')}>ABERTO</span>}
-        >
-          {/* M2/R10: o ladrilho do sistema no lugar do `Metric` local, que
-              escrevia medida e cor na tela. */}
           <StatGrid colunas={4}>
             <StatTile label="Saldo de abertura" valor={formatCurrency(sessaoAberta.saldo_abertura)} />
             <StatTile label="Entradas" valor={formatCurrency(resumo.total_entradas)} tom="success" />
@@ -707,37 +734,7 @@ export default function FinanceiroCaixas() {
               tom={saldoSistema < 0 ? 'danger' : undefined}
             />
           </StatGrid>
-        </BlocoConteudo>
 
-        {caixaFisico && podeMovimentar ? (
-          <BlocoConteudo
-            titulo="Registrar entrada ou saída"
-            descricao="Use para dinheiro físico ainda não registrado por outro fluxo financeiro."
-          >
-            <form id="caixa-movimento-form" className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-12" onSubmit={handleMovimento}>
-              {/* R12: select de FORMULÁRIO (entrada de dado do lançamento). */}
-              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Natureza *</span><select className="input mt-auto w-full" value={movimentoForm.natureza} onChange={(event) => { if (comprovanteMovimentoRef.current) comprovanteMovimentoRef.current.value = ''; setMovimentoForm((current) => ({ ...current, natureza: event.target.value, comprovante: null })); }}><option value="ENTRADA">Entrada</option><option value="SAIDA">Saída</option></select></label>
-              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Data *</span><DateInputBR className="input mt-auto w-full" value={movimentoForm.data_movimento} onChange={(event) => setMovimentoForm((current) => ({ ...current, data_movimento: event.target.value }))} required /></label>
-              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Valor *</span><input className="input input-moeda mt-auto w-full" type="text" inputMode="decimal" value={movimentoForm.valor} onChange={(event) => setMovimentoForm((current) => ({ ...current, valor: normalizeCurrencyTyping(event.target.value) }))} placeholder="R$ 0,00" required /></label>
-              <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-3"><span className="sol-filter-label">Descrição *</span><input className="input mt-auto w-full" minLength={3} maxLength={4000} placeholder="Ex.: compra emergencial de material" value={movimentoForm.descricao} onChange={(event) => setMovimentoForm((current) => ({ ...current, descricao: event.target.value }))} required /></label>
-              <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-2"><span className="sol-filter-label">Documento / referência</span><input className="input mt-auto w-full" maxLength={120} placeholder="Recibo, NF ou controle" value={movimentoForm.documento_referencia} onChange={(event) => setMovimentoForm((current) => ({ ...current, documento_referencia: event.target.value }))} /></label>
-              {movimentoForm.natureza === 'SAIDA' ? <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-3"><span className="sol-filter-label">Comprovante da saída *</span><input ref={comprovanteMovimentoRef} className="input mt-auto w-full" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={(event) => setMovimentoForm((current) => ({ ...current, comprovante: event.target.files?.[0] || null }))} required /></label> : null}
-              <div className="flex items-center justify-end sm:col-span-2 xl:col-span-1">
-                <button type="submit" className="btn btn-primary" disabled={saving} title="Registrar entrada ou saída">
-                  <HiOutlinePlus className="h-4 w-4" aria-hidden="true" />
-                  Registrar
-                </button>
-              </div>
-            </form>
-          </BlocoConteudo>
-        ) : null}
-
-        <BlocoConteudo
-          titulo="Livro do caixa"
-          variante="primario"
-          contagem={`${movimentos.length} registro(s)`}
-          descricao="Entradas, saídas e transferências da sessão."
-        >
           <TabelaPadrao
             colunas={[
               { id: 'data', titulo: 'Data', tipo: 'data', render: (movimento) => formatDate(movimento.data) },
@@ -795,55 +792,33 @@ export default function FinanceiroCaixas() {
           />
         </BlocoConteudo>
 
-        {podeFechar ? <BlocoConteudo
-          titulo="Conferir e fechar caixa"
-          descricao={`${caixaFisico ? 'Conte o dinheiro físico e informe o saldo encontrado.' : 'Confira o saldo operacional e informe o valor apurado.'} Divergências ficam registradas com justificativa.`}
-        >
-          <form className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-12" onSubmit={handleFechar}>
-            <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Data de fechamento *</span><DateInputBR className="input mt-auto w-full" min={dataMinimaFechamento} value={fecharForm.data_fechamento} onChange={(event) => setFecharForm((current) => ({ ...current, data_fechamento: event.target.value }))} required /></label>
-            <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Saldo contado *</span><input className="input input-moeda mt-auto w-full" type="text" inputMode="decimal" value={fecharForm.saldo_informado} onChange={(event) => setFecharForm((current) => ({ ...current, saldo_informado: normalizeCurrencyTyping(event.target.value) }))} placeholder="R$ 0,00" required /></label>
-            <div className="xl:col-span-2">
-              <StatTile
-                label="Diferença"
-                valor={saldoFechamentoValido ? formatCurrency(diferencaFechamento) : 'Aguardando contagem'}
-                tom={saldoFechamentoValido ? (diferencaRelevante ? 'warning' : 'success') : 'default'}
-                full
-              />
-            </div>
-            <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-4"><span className="sol-filter-label">Justificativa {diferencaRelevante ? '*' : ''}</span><input className="input mt-auto w-full" minLength={diferencaRelevante ? 10 : undefined} maxLength={4000} placeholder={diferencaRelevante ? 'Obrigatória para divergência' : 'Observação opcional'} value={fecharForm.observacoes} onChange={(event) => setFecharForm((current) => ({ ...current, observacoes: event.target.value }))} required={diferencaRelevante} /></label>
-            <div className="flex items-center justify-end sm:col-span-2 xl:col-span-2">
-              <button type="submit" className="btn btn-primary" disabled={saving} title="Fechar caixa">
-                <HiOutlineLockClosed className="h-4 w-4" aria-hidden="true" />
-                Fechar caixa
-              </button>
-            </div>
-            {diferencaRelevante ? <div className="sm:col-span-2 xl:col-span-12 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--sem-warning)] bg-[var(--ui-surface-soft)] p-3 text-sm"><span>Você pode justificar e enviar a diferença para aprovação ou registrar o lançamento correspondente antes de fechar.</span>{caixaFisico ? <button type="button" className="btn btn-outline" onClick={prepararAjusteFechamento}>Preparar {diferencaFechamento > 0 ? 'entrada' : 'saída'} de ajuste</button> : null}</div> : null}
-          </form>
-        </BlocoConteudo> : null}
-      </> : null}
+      ) : null}
 
       {contaSelecionada ? (
         <BlocoConteudo
-          titulo="Histórico de fechamentos"
-          contagem={`${sessoesFechadas.length} fechamento(s)`}
-          descricao="Conferências anteriores da conta selecionada."
+          titulo="Histórico de aberturas e fechamentos"
+          contagem={`${sessoes.length} sessão(ões)`}
+          descricao="Aberturas, fechamentos e conferências da conta selecionada."
+          variante="secundario"
           recolhivel
+          recolhidoPadrao
         >
           <TabelaPadrao
             colunas={[
+              { id: 'status', titulo: 'Situação', tipo: 'status', render: (sessao) => <span className={statusClass(sessao.status)}>{sessao.status === 'AGUARDANDO_APROVACAO' ? 'Aguardando aprovação' : (sessao.status === 'ABERTO' ? 'Aberto' : 'Fechado')}</span> },
               { id: 'abertura', titulo: 'Abertura', tipo: 'data', render: (sessao) => formatDate(sessao.data_abertura) },
               { id: 'fechamento', titulo: 'Fechamento', tipo: 'data', render: (sessao) => formatDate(sessao.data_fechamento) },
               { id: 'saldo_inicial', titulo: 'Saldo inicial', tipo: 'valor', render: (sessao) => formatCurrency(sessao.saldo_abertura) },
               { id: 'entradas', titulo: 'Entradas', tipo: 'valor', render: (sessao) => <span className="text-[var(--sem-success)]">{formatCurrency(sessao.total_entradas)}</span> },
               { id: 'saidas', titulo: 'Saídas', tipo: 'valor', render: (sessao) => <span className="text-[var(--sem-danger)]">{formatCurrency(sessao.total_saidas)}</span> },
-              { id: 'saldo_contado', titulo: 'Saldo contado', tipo: 'valor', render: (sessao) => <span className="font-semibold">{formatCurrency(sessao.saldo_informado)}</span> },
+              { id: 'saldo_contado', titulo: 'Saldo contado', tipo: 'valor', render: (sessao) => <span className="font-semibold">{sessao.saldo_informado == null ? '-' : formatCurrency(sessao.saldo_informado)}</span> },
               {
                 id: 'diferenca',
                 titulo: 'Diferença',
                 tipo: 'valor',
                 render: (sessao) => (
                   <span className={`font-semibold ${Math.abs(Number(sessao.diferenca || 0)) > 0.009 ? 'text-[var(--sem-warning)]' : 'text-[var(--sem-success)]'}`}>
-                    {formatCurrency(sessao.diferenca)}
+                    {sessao.diferenca == null ? '-' : formatCurrency(sessao.diferenca)}
                   </span>
                 )
               },
@@ -853,13 +828,13 @@ export default function FinanceiroCaixas() {
                 // R17: o responsável NOMEIA o fechamento conferido.
                 tipo: 'identidade',
                 noCard: 'titulo',
-                render: (sessao) => sessao.fechadoPor?.nome || '-'
+                render: (sessao) => sessao.fechadoPor?.nome || sessao.abertoPor?.nome || '-'
               }
             ]}
-            itens={sessoesFechadas}
-            vazio="Nenhum fechamento registrado para esta conta."
+            itens={sessoes}
+            vazio="Nenhuma abertura ou fechamento registrado para esta conta."
             storageKey="tabela:financeiro-caixas:fechamentos"
-            rotuloRolagem="Histórico de fechamentos"
+            rotuloRolagem="Histórico de aberturas e fechamentos"
           />
         </BlocoConteudo>
       ) : null}
