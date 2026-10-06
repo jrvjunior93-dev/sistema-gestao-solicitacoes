@@ -14,6 +14,7 @@ import { hasEnabledModule } from '../../utils/acessoProduto';
 import ListaAvancada from '../../components/lista-avancada/ListaAvancada';
 import StatusBadge from '../../components/StatusBadge';
 import AtencaoPendente from './AtencaoPendente';
+import { ContadorPrazo } from '../../components/PrazosOperacionais';
 import OverlayModal from '../../components/ui/OverlayModal';
 import {
   Pagina,
@@ -1827,7 +1828,10 @@ export default function Solicitacoes({ arquivadas = false }) {
         principal: true,
         ordenavel: true,
         larguraPadrao: 130,
-        render: (item) => formatarMaiusculas(item.codigo || `#${item.id}`)
+        render: (item) => <span className="flex min-w-0 flex-col gap-1">
+          <span>{formatarMaiusculas(item.codigo || `#${item.id}`)}</span>
+          <ContadorPrazo prazo={item.prazo_operacional} />
+        </span>
       },
       {
         id: 'obra',
@@ -1943,6 +1947,7 @@ export default function Solicitacoes({ arquivadas = false }) {
             </span>
           )}
           <AtencaoPendente atencao={item.atencao_pendente} />
+          <ContadorPrazo prazo={item.prazo_operacional} />
           {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
             Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
           </span>}

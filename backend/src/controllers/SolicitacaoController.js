@@ -418,7 +418,14 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
     entregaService.pendenciasEntrega({ solicitacaoIds: idsSolicitacoes, setor })
       .then((linhas) => linhas.map((linha) => ({ ...linha, setor })))))).flat();
   const entregasPorSolicitacao = new Map();
+  const prazosService = require('../services/prazosOperacionaisService');
+  const regraPrazos = await prazosService.configuracao();
+  const obrigacoes = await prazosService.pendencias({ solicitacaoIds: idsSolicitacoes, regra: regraPrazos });
+  const agoraPrazos = new Date();
+  const itensComPrazo = new Set(obrigacoes.map((o) => Number(o.referencia_id)));
   for (const entrega of entregasPendentes) {
+    // O contador do ciclo substitui o alerta legado por data; não anunciar atraso antes do prazo/tolerância novos.
+    if (entrega.setor === 'OBRA' && itensComPrazo.has(Number(entrega.item_id))) continue;
     const id = Number(entrega.solicitacao_id);
     if (!entregasPorSolicitacao.has(id)) entregasPorSolicitacao.set(id, []);
     entregasPorSolicitacao.get(id).push(entrega);
@@ -480,6 +487,8 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
         : null;
       const atencao = atencaoPorSolicitacao.get(Number(item.id));
       const entregas = entregasPorSolicitacao.get(Number(item.id)) || [];
+      solicitacao.prazo_operacional = require('../services/prazosOperacionaisDomain').resumir(
+        obrigacoes.filter((o) => Number(o.solicitacao_id) === Number(item.id)), regraPrazos, agoraPrazos);
       solicitacao.entrega_pendente = entregas.length ? {
         quantidade: entregas.length, vencida: entregas.some((e) => Number(e.vencida) || e.setor === 'OBRA'),
         resumo: entregas.slice(0, 3).map((e) => `Pedido #${e.pedido_id}: ${e.setor === 'OBRA' ? 'Obra deve informar entrega' : e.estado === 'DIVERGENCIA' ? 'Compras deve tratar divergência' : `Compras deve reprogramar até ${e.prazo_compras}`}`).join(' · ')
@@ -3345,8 +3354,6 @@ module.exports = {
         (usaFluxoRecargaCartao && camposFixosRecargaCartao.has(campo))
         || (!usaFluxoRecargaCartao && camposNovaSolicitacao?.[campo]?.visivel !== false)
       );
-      const exibeFormaPagamentoNaNovaSolicitacao = campoVisivel('forma_pagamento')
-        && comportamentoTipo.usa_fluxo_contrato_novo !== true;
       const usaApropriacaoAutomaticaObra = comportamentoTipo.usa_apropriacao_automatica_obra === true;
       const tipoEhDeMedicao = Boolean(
         comportamentoTipo.mostrar_periodo_medicao || comportamentoTipo.exige_periodo_medicao
@@ -3379,9 +3386,14 @@ module.exports = {
         });
         ehMedicaoFluxoNovo = Boolean(contratoDaMedicao?.fluxo_novo && contratoDaMedicao?.solicitacao_id);
       }
+      const exibeFormaPagamentoNaNovaSolicitacao = campoVisivel('forma_pagamento')
+        && comportamentoTipo.usa_fluxo_contrato_novo !== true && !ehMedicaoFluxoNovo;
 
       const campoObrigatorio = (campo) => {
         if (ehMedicaoFluxoNovo && ['valor', 'descricao', 'data_vencimento'].includes(campo)) return false;
+        // O pagamento do fluxo novo e validado em medicao_pagamento pelo servico
+        // de contrato. Configuracao de campos legada nao exige um segundo pagamento.
+        if (ehMedicaoFluxoNovo && ['forma_pagamento', 'favorecido'].includes(campo)) return false;
         if (usaFluxoRecargaCartao) return camposFixosRecargaCartao.has(campo);
         return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
       };

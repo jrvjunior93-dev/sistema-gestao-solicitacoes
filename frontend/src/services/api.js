@@ -124,11 +124,17 @@ export function installFetchSecurityDefaults() {
         if (payload.codigo === 'CONTROLE_DIARIO_CONTAS_PENDENTE') {
           window.dispatchEvent(new CustomEvent('fluxy:controle-diario-caixa', { detail: payload }));
         }
+        if (payload.codigo === 'OBRA_PRAZO_OPERACIONAL_PENDENTE') {
+          window.dispatchEvent(new CustomEvent('fluxy:prazos-operacionais', { detail: payload }));
+        }
       }).catch(() => {});
     } else if (response.ok && isUnsafeMethod(method)) {
       const url = typeof input === 'string' ? input : input?.url || '';
       if (/\/financeiro\/caixas\//.test(url)) {
         window.dispatchEvent(new CustomEvent('fluxy:controle-diario-caixa'));
+      }
+      if (/\/pedidos-compra\/\d+\/(entregas|itens\/\d+\/recebimentos)|\/configuracoes\/prazos-operacionais/.test(url)) {
+        window.dispatchEvent(new CustomEvent('fluxy:prazos-operacionais'));
       }
     }
     return response;

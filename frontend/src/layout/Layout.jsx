@@ -30,6 +30,7 @@ import OperationalAuditTracker from '../modules/governanca/components/Operationa
 import DevUserSwitcher from '../components/DevUserSwitcher';
 import CrObrasTravadasAviso from '../modules/custosRecebiveis/components/CrObrasTravadasAviso';
 import ControleDiarioCaixa from '../components/ControleDiarioCaixa';
+import PrazosOperacionais from '../components/PrazosOperacionais';
 import cscLogo from '../assets/CSC_logo_lockup_cropped.png';
 import fluxyMark from '../assets/fluxy_mark_cropped.png';
 
@@ -488,10 +489,12 @@ export default function Layout() {
 
             {/* Custos e Recebíveis: obra travada por atraso (29/09/2026). */}
             <ControleDiarioCaixa>
-              <CrObrasTravadasAviso />
-              <Suspense fallback={<AppRouteFallback />}>
-                <Outlet />
-              </Suspense>
+              <PrazosOperacionais>
+                <CrObrasTravadasAviso />
+                <Suspense fallback={<AppRouteFallback />}>
+                  <Outlet />
+                </Suspense>
+              </PrazosOperacionais>
             </ControleDiarioCaixa>
           </div>
         </main>

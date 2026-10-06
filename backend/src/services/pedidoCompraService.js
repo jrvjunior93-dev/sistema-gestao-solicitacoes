@@ -1840,6 +1840,10 @@ async function gerarPedidosDosVencedores({
     throw Object.assign(new Error('As previsões devem corresponder aos fornecedores dos pedidos selecionados.'), { statusCode: 400 });
   }
   const pedidosCriados = [];
+  const prazosOperacionais = require('./prazosOperacionaisService');
+  const regraPrazosOperacionais = await prazosOperacionais.configuracao(transaction);
+  const feriadosPrazosOperacionais = regraPrazosOperacionais.ativo && regraPrazosOperacionais.calendario === 'UTEIS'
+    ? await require('./pedidoEntregaService').calendarioEntrega(transaction) : feriadosEntrega;
   for (const grupo of porFornecedor.values()) {
     if (!grupo.respostaItemIds.length) continue;
 
@@ -1881,6 +1885,11 @@ async function gerarPedidosDosVencedores({
     await require('../models').PedidoCompraEntrega.bulkCreate((pedidoAtualizado.itens || []).map((item) => ({
       pedido_compra_item_id: item.id, pedido_compra_id: pedido.id, previsao: previsaoConfirmada, estado: 'OBRA', versao: 1
     })), { transaction });
+    for (const item of pedidoAtualizado.itens || []) if (regraPrazosOperacionais.ativo) await prazosOperacionais.registrarEntrega({
+      pedido, solicitacaoId: solicitacao.solicitacao_principal_id, itemId: item.id,
+      previsao: previsaoConfirmada, versao: 1, usuarioId, feriados: feriadosPrazosOperacionais,
+      regra: regraPrazosOperacionais, transaction
+    });
     await registrarHistoricoPedidoNaSolicitacaoPrincipal({ solicitacao, pedido, usuarioId,
       acao: 'PEDIDO_PREVISAO_CONFIRMADA', descricao: `Previsão inicial de entrega do pedido #${pedido.id}: ${previsaoConfirmada}`,
       metadados: { pedido_id: pedido.id, previsao: previsaoConfirmada, ...confirmacaoEntrega,

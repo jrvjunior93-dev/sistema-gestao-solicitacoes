@@ -44,7 +44,19 @@ async function pendenciasEntrega({ obraId, solicitacaoIds, setor = 'OBRA', trans
   });
 }
 async function assertObraPodeCriarCompra(obraId, transaction) {
-  const pendencias = await pendenciasEntrega({ obraId, transaction });
+  let pendencias = await pendenciasEntrega({ obraId, transaction });
+  const prazos = require('./prazosOperacionaisService');
+  const regra = await prazos.configuracao(transaction);
+  if (regra.ativo || regra.revisao > 0) {
+    const { ObrigacaoOperacional } = require('../models');
+    const acompanhados = pendencias.length ? await ObrigacaoOperacional.findAll({
+      where: { tipo: 'ENTREGA_OBRA', referencia_id: { [Op.in]: pendencias.map((p) => p.item_id) } },
+      attributes: ['referencia_id'], raw: true, transaction
+    }) : [];
+    // Ciclos novos obedecem o prazo/tolerância da regra; legados conservam a proteção anterior.
+    const ids = new Set(acompanhados.map((p) => Number(p.referencia_id)));
+    pendencias = pendencias.filter((p) => !ids.has(Number(p.item_id)));
+  }
   if (pendencias.length) falhar(`Informe a entrega vencida do pedido #${pendencias[0].pedido_id} (${pendencias.length} item(ns) pendente(s) nesta obra) antes de criar Solicitação de Compra ou Compra Direta.`);
 }
 async function assertComprasPodeGerarPedido(transaction) {
@@ -101,6 +113,8 @@ async function operarEntrega({ pedidoId, compraId, solicitacaoId, usuarioId, pay
     const registros = await PedidoCompraItem.findAll({ where: { pedido_compra_id: pedido.id, id: { [Op.in]: ids }, removido: false }, order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE });
     if (registros.length !== ids.length) falhar('Um item não pertence ao pedido ou foi cancelado. Atualize a tela.');
     const feriados = await calendarioEntrega(transaction);
+    const prazos = require('./prazosOperacionaisService');
+    const regraPrazos = await prazos.configuracao(transaction);
     const hoje = hojeBrasil();
     const resultado = [];
     for (const item of registros) {
@@ -148,6 +162,14 @@ async function operarEntrega({ pedidoId, compraId, solicitacaoId, usuarioId, pay
           ? controle.prazo_compras : adicionarDiasUteis(hoje, 2, feriados) });
       }
       await controle.update(atualizacao, { transaction });
+      if (regraPrazos.ativo || regraPrazos.revisao > 0) {
+        if (acao === 'PREVISAO') await prazos.registrarEntrega({ pedido, solicitacaoId, itemId: item.id,
+          previsao: controle.previsao, versao: controle.versao, usuarioId, feriados, regra: regraPrazos, transaction });
+        else await prazos.encerrarItem(item.id, acao === 'CANCELAR_SALDO' ? 'CANCELADA' : 'CUMPRIDA', usuarioId, `${acao}: ${motivo}`, transaction);
+      }
+      if (acao === 'PREVISAO' && !regraPrazos.ativo && regraPrazos.revisao > 0) {
+        await prazos.encerrarItem(item.id, 'CANCELADA', usuarioId, 'Reprogramação com regra desativada.', transaction);
+      }
       const depois = situacaoEntrega(item, novoRecebido, controle.toJSON(), hoje);
       resultado.push({ item_id: item.id, entrega: depois });
       await Historico.create({ solicitacao_id: solicitacaoId, usuario_responsavel_id: usuarioId,

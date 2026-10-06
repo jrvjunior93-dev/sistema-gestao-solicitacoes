@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AtencaoPendente from './AtencaoPendente';
+import { ContadorPrazo } from '../../components/PrazosOperacionais';
 import StatusBadge from '../../components/StatusBadge';
 import MenuMais from '../../components/padrao/MenuMais';
 import { CelulaDupla } from '../../components/padrao/TabelaPadrao';
@@ -554,6 +555,7 @@ export function construirColunas({
             </span>
           )}
           <AtencaoPendente atencao={item.atencao_pendente} />
+          <ContadorPrazo prazo={item.prazo_operacional} />
           {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
             Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
           </span>}

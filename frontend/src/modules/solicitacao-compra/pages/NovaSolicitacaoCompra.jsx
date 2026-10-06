@@ -1,4 +1,5 @@
 import DateInputBR from '../../../components/DateInputBR';
+import QuantidadeInputBR from '../../../components/QuantidadeInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -1673,8 +1674,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
     for (let index = 0; index < itens.length; index += 1) {
       const item = itens[index];
-      if (!item.quantidade) {
-        reprovarItem(index, 'quantidade', `Item ${index + 1}: informe a quantidade.`);
+      if (parseQuantidade(item.quantidade) <= 0) {
+        reprovarItem(index, 'quantidade', `Item ${index + 1}: informe uma quantidade maior que zero.`);
         return;
       }
       if (!item.unidade_id && !String(item.unidade_sigla || item.unidade_sigla_manual || '').trim()) {
@@ -2771,10 +2772,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   tipo: 'numero',
                   render: (item) => (
                     <>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
+                      <QuantidadeInputBR
                         className="input"
                         aria-label="Quantidade do item"
                         value={item.quantidade}
@@ -3126,10 +3124,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     />
                   </CampoForm>
                   <CampoForm label="Quantidade apropriada">
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
+                    <QuantidadeInputBR
                       className="input"
                       aria-label={`Quantidade apropriada do rateio ${rateioIndex + 1}`}
                       value={rateio.quantidade_apropriada}

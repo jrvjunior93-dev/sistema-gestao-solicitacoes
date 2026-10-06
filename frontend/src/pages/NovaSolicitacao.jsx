@@ -1218,10 +1218,22 @@ export default function NovaSolicitacao() {
   const descricaoObrigatoria = campoObrigatorio('descricao');
   const exibirJustificativa = campoVisivel('justificativa') && !usaFluxoContratoNovo;
   const justificativaObrigatoria = exibirJustificativa && campoObrigatorio('justificativa');
-  const exibirFormaPagamento = campoVisivel('forma_pagamento') && !usaFluxoContratoNovo;
+  const contratosDisponiveis = contratosRef.length > 0 ? contratosRef : contratos;
+  const contratoSelecionado = useMemo(() => {
+    if (!form.contrato_id) return null;
+    return [...contratosDisponiveis, ...contratos, ...contratosRef]
+      .find(item => String(item.id) === String(form.contrato_id)) || null;
+  }, [form.contrato_id, contratosDisponiveis, contratos, contratosRef]);
+  // A trilha da medicao depende do contrato, nao da idade/nome do tipo.
+  const contratoSelecionadoEhFluxoNovo = Boolean(contratoSelecionado?.fluxo_novo);
+  const contratoSelecionadoMedicaoBloqueada = Boolean(
+    contratoSelecionadoEhFluxoNovo && contratoSelecionado?.disponivel_medicao === false
+  );
+  const usaMedicaoFluxoNovo = exibirCamposContrato && Boolean(form.contrato_id) && contratoSelecionadoEhFluxoNovo;
+  const exibirFormaPagamento = campoVisivel('forma_pagamento') && !usaFluxoContratoNovo && !usaMedicaoFluxoNovo;
   // A forma vem primeiro. Boleto usa o anexo obrigatorio sem pedir um
   // favorecido de pagamento separado, em qualquer tipo da Nova Solicitacao.
-  const exibirFavorecido = (campoVisivel('favorecido') || exibirFormaPagamento) && !usaFluxoContratoNovo;
+  const exibirFavorecido = (campoVisivel('favorecido') || exibirFormaPagamento) && !usaFluxoContratoNovo && !usaMedicaoFluxoNovo;
   const formaPagamentoObrigatoria = exibirFormaPagamento && campoObrigatorio('forma_pagamento');
   // Em medicao o anexo e regra do fluxo, mesmo que a configuracao visual antiga tenha ocultado o
   // campo: campo invisivel e obrigatorio seria uma tela impossivel de concluir.
@@ -2565,7 +2577,6 @@ export default function NovaSolicitacao() {
     }
   }
 
-  const contratosDisponiveis = contratosRef.length > 0 ? contratosRef : contratos;
   const contratosAutocomplete = useMemo(() => contratosDisponiveis.map((contrato) => ({
     ...contrato,
     descricao: [
@@ -2573,21 +2584,6 @@ export default function NovaSolicitacao() {
       contrato.disponivel_medicao === false ? 'retorno necessário' : ''
     ].filter(Boolean).join(' — ')
   })), [contratosDisponiveis]);
-  const contratoSelecionado = useMemo(() => {
-    if (!form.contrato_id) return null;
-    return [...contratosDisponiveis, ...contratos, ...contratosRef]
-      .find(item => String(item.id) === String(form.contrato_id)) || null;
-  }, [form.contrato_id, contratosDisponiveis, contratos, contratosRef]);
-
-  // MD-2/MD-3: a bifurcacao da medicao le o marcador do CONTRATO escolhido. Contrato sem
-  // marcador (os 335 existentes) cai na trilha antiga, que nao muda em nada.
-  const contratoSelecionadoEhFluxoNovo = Boolean(contratoSelecionado?.fluxo_novo);
-  const contratoSelecionadoMedicaoBloqueada = Boolean(
-    contratoSelecionadoEhFluxoNovo
-    && contratoSelecionado?.disponivel_medicao === false
-  );
-  const usaMedicaoFluxoNovo = exibirCamposContrato && Boolean(form.contrato_id) && contratoSelecionadoEhFluxoNovo;
-
   // MEDICAO DO FLUXO NOVO NAO TEM VALOR, TITULO NEM VENCIMENTO PROPRIOS (pedido do cliente, 20/08).
   //
   // Ela nao cria solicitacao: o backend intercepta e a transforma num evento da solicitacao unica
@@ -3146,10 +3142,13 @@ export default function NovaSolicitacao() {
             onSolicitacaoAnteriorEnviada={limparCamposNovaRecargaAposReenvio}
           />
 
-          {!tipoEhDeMedicao && (exibirCamposContrato || exibirCampoSubtipo || exibirCampoCredor
-            || exibirFormaPagamento || exibirFavorecidoPagamento) && (
-            <FormSecao legenda="Vínculo e pagamento" colunas={2}>
-              {exibirCamposContrato && (
+          {/* Medicao legada usa os campos configurados de pagamento. Contrato e credor
+              ja aparecem no bloco Contrato; o fluxo novo tem pagamento proprio. */}
+          {(!tipoEhDeMedicao || exibirFormaPagamento || exibirFavorecidoPagamento)
+            && (exibirCamposContrato || exibirCampoSubtipo || exibirCampoCredor
+              || exibirFormaPagamento || exibirFavorecidoPagamento) && (
+            <FormSecao legenda={tipoEhDeMedicao ? 'Pagamento da medição' : 'Vínculo e pagamento'} colunas={2}>
+              {!tipoEhDeMedicao && exibirCamposContrato && (
                 <CampoForm
                   label={rotuloContratoVinculado}
                   obrigatorio={camposContratoObrigatorios}
@@ -3192,7 +3191,7 @@ export default function NovaSolicitacao() {
 
               {/* Ordem pedida pelo cliente (19/08): Subtipo e Credor lado a lado; a Apropriacao
                   desce para a faixa inteira, porque agora ela rateia o contrato entre varias. */}
-              {exibirCampoSubtipo && (
+              {!tipoEhDeMedicao && exibirCampoSubtipo && (
                 <CampoForm
                   label="Subtipo"
                   obrigatorio={subtipoObrigatorio}
@@ -3215,7 +3214,7 @@ export default function NovaSolicitacao() {
                 </CampoForm>
               )}
 
-              {exibirCampoCredor && renderCampoCredor()}
+              {!tipoEhDeMedicao && exibirCampoCredor && renderCampoCredor()}
 
               {/* Padrao dos fluxos de pagamento: primeiro a forma; somente depois aparecem os dados
                   que ela realmente exige. Assim boleto nunca pede PIX e PIX nunca pede boleto. */}

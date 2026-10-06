@@ -103,6 +103,7 @@ const SolicitacaoDetalhe = lazy(() => import('./pages/SolicitacaoDetalhe'));
 const SolicitacoesArquivadas = lazy(() => import('./pages/SolicitacoesArquivadas'));
 const SolicitacoesRelatorioOperacional = lazy(() => import('./pages/SolicitacoesRelatorioOperacional'));
 const SolicitacoesSlaSetor = lazy(() => import('./pages/SolicitacoesSlaSetor'));
+const PrazosOperacionaisConfig = lazy(() => import('./pages/PrazosOperacionaisConfig'));
 const Usuarios = lazy(() => import('./pages/Usuarios'));
 const UsuarioNovo = lazy(() => import('./pages/UsuarioNovo'));
 const NovaSolicitacao = lazy(() => import('./pages/NovaSolicitacao'));
@@ -954,6 +955,7 @@ export default function App() {
         <Route path="solicitacoes/relatorios" element={<SolicitacoesRelatoriosRoute><ModuloRelatorios modulo="solicitacoes" /></SolicitacoesRelatoriosRoute>} />
         <Route path="solicitacoes/relatorios/operacional" element={<SolicitacoesRelatorioOperacionalRoute><SolicitacoesRelatorioOperacional /></SolicitacoesRelatorioOperacionalRoute>} />
         <Route path="solicitacoes-sla-setor" element={<BusinessAdminRoute><SolicitacoesSlaSetor /></BusinessAdminRoute>} />
+        <Route path="prazos-operacionais" element={<ConfiguracoesAreaRoute area="status_vinculos"><PrazosOperacionaisConfig /></ConfiguracoesAreaRoute>} />
         <Route path="solicitacoes-arquivadas" element={<SolicitacoesArquivadas />} />
         <Route path="solicitacoes/:id" element={<SolicitacaoDetalhe />} />
         <Route path="prioridades-diretoria" element={<PrioridadesDiretoriaRoute><PrioridadesDiretoria /></PrioridadesDiretoriaRoute>} />

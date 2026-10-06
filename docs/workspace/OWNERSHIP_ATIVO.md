@@ -1,5 +1,50 @@
 # Ownership Ativo
 
+## Publicacao autorizada - prazos da Obra e correcoes pendentes - 06/10/2026
+
+Proprietario autorizou commit/push das alteracoes pendentes e retorno a main.
+Sessao `/root` reserva a publicacao dos arquivos dos handoffs de prazos
+operacionais e quantidades BR/pagamento de medicao legada, mais este registro.
+Worktree `promocao-main-20261003/Fluxy` ja esta em main. Outros checkouts e
+capturas locais em outputs nao entram no commit. Validadores de prazos e
+entregas reexecutados; demais validacoes/build registrados nos handoffs.
+Sem aplicar migration, acessar banco real, reiniciar EC2 ou ativar regras.
+Ownership de edicao encerrado; resultado da publicacao informado na conversa.
+
+## Ownership encerrado - prazos operacionais da Obra - 06/10/2026
+
+Sessao `/root` no worktree `promocao-main-20261003/Fluxy`: proprietario confirmou
+estrutura extensivel e primeira regra somente para entregas. Reservados novos
+models/migration/services/controllers/middleware de obrigacoes operacionais,
+integracoes em pedidoEntregaService/pedidoCompraService, routes, lista de
+solicitacoes, configuracao/permissoes/navegacao, Layout e aviso de bloqueio,
+testes focados e handoff. Configuracao inicial desligada, sem backfill de pedidos
+antigos. Bloquear mutacoes da obra apenas para usuarios Obra vinculados, mantendo
+consulta e regularizacao; administrativo e demais obras continuam operando.
+Preservar alteracoes locais anteriores de quantidade e pagamento legado. Sem
+banco real, migration aplicada, ativacao, commit/push ou deploy nesta tarefa.
+Implementacao e validacao locais concluidas; ownership liberado. Inclui os
+scripts npm de backend/frontend, lista atual (tabela/cards) e texto do
+acompanhamento de entregas. Handoff: `docs/handoffs/2026-10-06-prazos-operacionais-obra.md`.
+Manual e casos futuros: `docs/PRAZOS_OPERACIONAIS_OBRA.md`. Publicar/aplicar a
+migration apenas apos autorizacao; configurar inicialmente em Observar.
+
+## Ownership encerrado - quantidades BR e pagamento na medicao legada - 06/10/2026
+
+Sessao `/root` no worktree promocao-main-20261003 reserva
+`frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`, novo
+input/parser de quantidade BR, `frontend/src/pages/NovaSolicitacao.jsx`, testes
+e `backend/src/controllers/SolicitacaoController.js` para manter a validacao do
+pagamento generico restrita a medicao legada (o fluxo novo valida em seu servico),
+testes focados de compras e medicao, script npm, handoff correspondente e este registro. Corrigir
+digitacao de milhares/decimais sem reinterpretar quantidades recebidas da API;
+exibir pagamento configurado na medicao legada sem duplicar o fluxo novo.
+Preservar rateios, preco, anexos, permissao, idempotencia e contrato da API.
+Sem banco real, commit/push ou deploy nesta tarefa.
+Implementacao e validacao locais concluidas. Ownership liberado. Proximo passo:
+publicar somente apos autorizacao e validar as duas telas em producao.
+Handoff: `docs/handoffs/2026-10-06-quantidades-br-pagamento-medicao-legada.md`.
+
 ## Publicacao autorizada - caixa diario e retorno de solicitacoes - 06/10/2026
 
 Proprietario autorizou commit e push das alteracoes pendentes desta conversa e

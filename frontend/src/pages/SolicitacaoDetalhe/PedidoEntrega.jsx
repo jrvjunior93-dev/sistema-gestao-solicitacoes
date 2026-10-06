@@ -72,8 +72,8 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
     {elementoConfirmacao}
     {erro && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">{erro}</p>}
     {sucesso && <p role="status" className="text-sm text-green-700">{sucesso}</p>}
-    {ativos.some((i) => i.entrega?.informar_obrigatorio) && <p className="text-sm text-red-700">
-      A Obra precisa informar estes recebimentos vencidos. Novas compras desta obra ficam bloqueadas até informar todos os itens pendentes.
+    {ativos.some((i) => i.entrega?.informar_obrigatorio) && <p className="text-sm text-[var(--sem-warning)]">
+      A previsão destes itens já passou. Informe o recebimento total, parcial ou não entrega. Consulte o prazo e os avisos na lista de solicitações.
     </p>}
     {ativos.some((i) => !i.entrega?.previsao && i.entrega?.restante > 0) && <p className="text-xs text-[var(--c-muted)]">
       Compras deve confirmar a previsão para iniciar o acompanhamento. Pedidos antigos não geram bloqueios retroativos sem essa confirmação.

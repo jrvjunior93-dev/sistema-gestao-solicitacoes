@@ -4,6 +4,18 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { chromium } from 'playwright';
+import { parseQuantidadeDigitadaBR, formatarQuantidadeCanonicaBR } from '../src/utils/quantidadeBR.js';
+import { parseQuantidade } from '../src/modules/solicitacao-compra/utils/apropriacoes.js';
+
+for (const [entrada, esperado] of [
+  ['2.000', 2000], ['20.000', 20000], ['2.000.000', 2000000],
+  ['2.000,5', 2000.5], ['2,5', 2.5], ['0,12', 0.12],
+  ['2.50', 2.5], ['2000', 2000], ['1,23', 1.23], ['0,125', null],
+  ['', null], ['abc', null], ['2,000,00', null], ['1e3', null]
+]) assert.equal(parseQuantidadeDigitadaBR(entrada), esperado, `Entrada humana: ${entrada}`);
+assert.equal(parseQuantidade('2.000'), 2, 'DECIMAL vindo da API continua canonico, sem reinterpretar milhares');
+assert.equal(formatarQuantidadeCanonicaBR('2.000'), '2');
+assert.equal(formatarQuantidadeCanonicaBR('2000.5'), '2.000,5');
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fixtureId = '\0compra-apropriacao-fixture';
@@ -46,7 +58,7 @@ const modules = {
     export function TabelaPadrao({ itens, colunas, acoesLinha }) {
       return React.createElement('section', { 'data-testid': 'itens-grade' }, itens.map((item, index) =>
         React.createElement('div', { key: index, 'data-testid': 'item-' + index },
-          colunas.filter((coluna) => ['insumo', 'unidade', 'quantidade', 'apropriacao'].includes(coluna.id))
+          colunas.filter((coluna) => ['insumo', 'unidade', 'quantidade', 'apropriacao', 'valor_unitario', 'valor_total', 'necessario_para'].includes(coluna.id))
             .map((coluna) => React.createElement('div', { key: coluna.id, 'data-coluna': coluna.id }, coluna.render(item))),
           acoesLinha?.(item)
         )
@@ -110,6 +122,8 @@ try {
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:')
+      ? route.continue() : route.abort());
     const suffix = direta ? '?direta' : '';
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture${suffix}`);
     await page.getByRole('button', { name: 'Item manual' }).click();
@@ -120,25 +134,66 @@ try {
     await row.locator('input[aria-label="Unidade do item"]').fill('sc');
     assert.equal(await row.getByText(/UN ainda não cadastrada/).count(), 0, 'Aviso interno sobre UN não deve aparecer ao usuário');
     assert.equal(await row.locator('input[aria-label="Unidade do item"]').inputValue(), 'sc', 'UN digitada deve permanecer no item');
+    const quantidade = row.getByRole('textbox', { name: 'Quantidade do item', exact: true });
+    await quantidade.fill('');
+    await quantidade.pressSequentially('2.000');
+    await quantidade.blur();
+    assert.equal(await quantidade.inputValue(), '2.000');
     await row.getByRole('button', { name: /Apropriar Cimento/ }).click();
 
     const modal = page.getByRole('dialog', { name: 'Apropriar item' });
     await modal.waitFor();
     await modal.getByRole('combobox').fill('00.001.001');
     await modal.getByRole('combobox').press('Enter');
+    const quantidadeRateio = modal.getByRole('textbox', { name: 'Quantidade apropriada do rateio 1' });
+    assert.equal(await quantidadeRateio.inputValue(), '2.000', 'Rateio recebe duas mil unidades');
+    await quantidadeRateio.fill('2.000');
     await modal.getByRole('button', { name: 'Salvar distribuição' }).click();
     await modal.waitFor({ state: 'hidden' });
-    await row.getByText(/Administração: 1/).waitFor();
+    await row.getByText(/Administração: 2\.000/).waitFor();
+
+    const obterDraft = () => page.evaluate(() => {
+      const chave = Object.keys(localStorage).find(key => key.startsWith('fluxy_compras_draft_v2:'));
+      return chave ? JSON.parse(localStorage.getItem(chave)) : null;
+    });
+    await page.waitForFunction(() => Object.keys(localStorage).some(key =>
+      key.startsWith('fluxy_compras_draft_v2:') && localStorage.getItem(key).includes('2000')));
+    const draft = await obterDraft();
+    assert.equal(Number(draft.payload.itens[0].quantidade), 2000, 'Rascunho mantem quantidade canonica');
+    assert.equal(Number(draft.payload.itens[0].apropriacoes[0].quantidade_apropriada), 2000);
 
     await row.getByRole('button', { name: /Editar apropriação Cimento/ }).click();
     await modal.getByRole('button', { name: 'Adicionar apropriação' }).click();
     await modal.getByRole('button', { name: 'Cancelar' }).click();
     await modal.waitFor({ state: 'hidden' });
-    assert.equal(await row.getByText(/Administração: 1/).count(), 1, 'Cancelar não altera o rateio salvo');
+    assert.equal(await row.getByText(/Administração: 2\.000/).count(), 1, 'Cancelar não altera o rateio salvo');
+    await quantidade.fill('2,5');
+    await quantidade.blur();
+    await row.getByText(/Administração: 2,50/).waitFor();
+    await quantidade.fill('abc');
+    assert.equal(await quantidade.evaluate(input => input.checkValidity()), false, 'Texto invalido nao pode ser enviado');
+    await quantidade.fill('2.000');
+    await quantidade.blur();
+    assert.equal(await quantidade.evaluate(input => input.checkValidity()), true);
+    if (direta) {
+      await row.locator('[data-coluna="valor_unitario"] input').fill('10.00');
+      await row.locator('[data-coluna="valor_unitario"] input').blur();
+      await row.locator('[data-coluna="valor_total"]').getByText(/20\.000,00/).waitFor();
+    } else {
+      await row.getByRole('textbox', { name: 'Data em que o item é necessário' }).fill('10/10/2026');
+      await page.getByRole('button', { name: 'Revisar solicitação' }).click();
+      await page.waitForFunction(() => Object.keys(localStorage).some(key => {
+        if (!key.startsWith('fluxy_compras_draft_v2:')) return false;
+        return JSON.parse(localStorage.getItem(key)).payload.itens[0].quantidade === 2000;
+      }));
+      const revisao = await obterDraft();
+      assert.equal(revisao.payload.itens[0].quantidade, 2000, 'Payload da revisao envia numero, nao texto localizado');
+      assert.equal(revisao.payload.itens[0].apropriacoes[0].quantidade_apropriada, 2000);
+    }
     assert.deepEqual(errors, [], `Erro de execução em ${direta ? 'Compra Direta' : 'Solicitação de Compra'}`);
     await page.close();
   }
-  console.log('OK: item manual inline e apropriação por modal nas duas modalidades; salvar e cancelar preservados.');
+  console.log('OK: quantidades BR, decimais canonicos, rateio, rascunho e total da Compra Direta; salvar e cancelar preservados.');
 } finally {
   await browser.close();
   await server.close();

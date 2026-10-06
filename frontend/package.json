@@ -6,7 +6,9 @@
   "scripts": {
     "test:cadastro-obra-formulario": "node scripts/validarAberturaCadastroObra.mjs",
     "test:pedido-entregas": "node scripts/validarPedidoEntregaUI.mjs",
+    "test:prazos-operacionais": "node scripts/validarPrazosOperacionais.mjs",
     "test:apropriacao-compra": "node scripts/validarModalApropriacaoCompra.mjs",
+    "test:pagamento-medicao-legada": "node scripts/validarPagamentoMedicaoLegada.mjs",
     "test:apropriacoes-gestao": "node scripts/validarGestaoApropriacoesSincronizacao.mjs",
     "test:cores-cards-financeiros": "node scripts/validarCoresCardsFinanceiros.mjs",
     "test:tela-inicial": "node scripts/validarTelaInicial.mjs",
