@@ -37,7 +37,28 @@ GET/HEAD ficam disponíveis; POSTs de preview/importação ainda são operaçõe
 Uma liberação temporária desta regra não remove controle de caixa, permissões ou custos/recebíveis. O usuário precisa ter consulta/vínculo para acessar a regularização. Administrativos e SUPERADMIN não são alcançados pela nova guarda.
 Outros tipos são somente candidatos desativados com estrutura genérica de persistência; gatilhos de cobrança dessas futuras regras ainda não foram implementados.
 
-## Próximo passo exato
+## Correção de compatibilidade com o runner — 06/10/2026
+
+Ao preparar os comandos da EC2, identificado que o seed da configuração era
+recusado pela política estrutural do runner. Proprietário autorizou corrigir,
+validar e publicar, sem qualquer inserção direta em produção.
+
+- Seed removido de `202610060001_prazos_operacionais.js`: somente CREATE TABLE.
+- Ausência da configuração continua retornando padrão desligado em memória.
+- `salvarConfig` passa a criar a chave exclusivamente no salvamento autorizado
+  da tela, com validação, revisão, autor e auditoria do controller existente.
+- Transação SERIALIZABLE/leitura bloqueante cobre chave ausente, sem depender
+  de índice único que ConfiguracaoSistema não garante; concorrência, deadlock
+  e timeout retornam 409 para recarregar, sem sobrescrita silenciosa.
+- Validador ampliado executa o runner real com banco/SQL simulados, incluindo
+  política do fonte/SQL, registro técnico de execução, reexecução idempotente,
+  ausência de gravação nas consultas, concorrência da primeira configuração
+  e auditoria do primeiro salvamento pelo controller. Entregas e UI revalidadas;
+  nenhuma conexão/env de produção ou migration real.
+- Runner/política não alterados. Publicação autorizada em main pelo commit
+  desta correção. Deploy, backup, migration e ativação seguem pendentes na EC2.
+
+## Próximo passo após a correção
 
 Após autorização, publicar este conjunto junto das correções anteriores pendentes. Aplicar a migration pelo runner do backend no ambiente correto, sem ativação automática. Publicar frontend e reiniciar exclusivamente o processo PM2 correspondente.
 Abrir Configurações → Status e Vínculos → Prazos operacionais, definir início/calendário/horário/duração e começar em Observar. Homologar previsão nova, contador, atraso, duas obras, dois responsáveis, regularização parcial/não entrega e nova previsão. Somente então passar a Bloquear. Não alterar dados de produção para criar retroatividade.

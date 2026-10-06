@@ -2,14 +2,17 @@
 // Testes isolados: não conecta ao banco, não carrega .env, não aplica migration.
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const { Op, QueryTypes } = require('sequelize');
+const { Op, QueryTypes, Transaction, Sequelize } = require('sequelize');
 const d = require('../src/services/prazosOperacionaisDomain');
 function carregar(arquivo, mocks) {
-  const filename = path.resolve(__dirname, arquivo), sandbox = { module: { exports: {} }, console, require(id) {
+  const filename = path.resolve(__dirname, arquivo), sandbox = { module: { exports: {} }, console,
+    __dirname: path.dirname(filename), process: mocks.__process || { env: {} }, require(id) {
     if (Object.hasOwn(mocks, id)) return mocks[id];
-    if (id === 'sequelize') return { Op, QueryTypes };
+    if (id === 'sequelize') return { Op, QueryTypes, Transaction, Sequelize };
     throw new Error(`Dependência não simulada: ${id}`);
   } };
+  sandbox.require.resolve = (id) => id;
+  sandbox.require.cache = {};
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
   return sandbox.module.exports;
 }
@@ -38,17 +41,30 @@ const linha = { ...corrido, solicitacao_id: 7, pedido_id: 8, regra_snapshot: reg
 assert.equal(d.resumir([linha], regra, corrido.limite_em).vencidas, 1, 'Limite inclusivo');
 assert.equal(d.resumir([linha], { ...regra, ativo: false }), null);
 
-let config = { ...regra, iniciar_em: d.diaBrasil(), revisao: 0 }, obrigacoes = [], liberacoes = [], sql = '', consultas = 0;
+let config = { ...regra, iniciar_em: d.diaBrasil(), revisao: 0 }, obrigacoes = [], liberacoes = [], sql = '', consultas = 0, configuracoesCriadas = 0;
 const wrap = (row) => row && ({ ...row, async update(valores) { Object.assign(row, valores); Object.assign(this, valores); return this; } });
 let fila = Promise.resolve();
 const db = {
   sequelize: {
-    transaction(fn) { const executar = async () => fn({ LOCK: { UPDATE: 'UPDATE' } }); const promessa = fila.then(executar); fila = promessa.catch(() => {}); return promessa; },
+    transaction(options, fn) {
+      if (typeof options === 'function') fn = options;
+      else assert.equal(options.isolationLevel, Transaction.ISOLATION_LEVELS.SERIALIZABLE);
+      const executar = async () => fn({ LOCK: { UPDATE: 'UPDATE' } }); const promessa = fila.then(executar); fila = promessa.catch(() => {}); return promessa;
+    },
     async query(texto, options) { sql = texto; consultas++; return obrigacoes.filter((o) => o.status === 'PENDENTE'
       && (!options.replacements.obras || options.replacements.obras.includes(o.obra_id))
       && (!options.replacements.solicitacoes || options.replacements.solicitacoes.includes(o.solicitacao_id))); }
   },
-  ConfiguracaoSistema: { async findOne() { return config && { valor: JSON.stringify(config), async update(values) { config = JSON.parse(values.valor); } }; } },
+  ConfiguracaoSistema: {
+    async findOne(options) {
+      if (options.lock) assert.equal(options.lock, 'UPDATE');
+      return config && { valor: JSON.stringify(config), async update(values) { config = JSON.parse(values.valor); } };
+    },
+    async create(values, options) {
+      assert.ok(options.transaction); assert.equal(values.chave, d.CHAVE); assert.equal(config, null);
+      configuracoesCriadas++; config = JSON.parse(values.valor);
+    }
+  },
   ObrigacaoOperacional: {
     async create(row) { assert.ok(!obrigacoes.some((o) => o.chave === row.chave)); obrigacoes.push({ id: obrigacoes.length + 1, ...row }); },
     async update(values, { where }) { obrigacoes.filter((o) => o.tipo === where.tipo && o.referencia_id === where.referencia_id && o.status === where.status).forEach((o) => Object.assign(o, values)); }
@@ -73,6 +89,41 @@ async function resposta(guard, request) {
   return { code, data, passou };
 }
 (async () => {
+  config = null;
+  assert.equal((await service.configuracao()).ativo, false, 'Ausência da chave usa padrão desligado sem persistir');
+  await service.estado({ id: 1, setor: 'OBRA' });
+  assert.equal(configuracoesCriadas, 0); assert.equal(consultas, 0);
+  await assert.rejects(() => service.salvarConfig({ ...d.PADRAO, prazo: 0 }, 2), /prazo/);
+  await assert.rejects(() => service.salvarConfig({ ...d.PADRAO, revisao: 7 }, 2), /alterada/);
+  await assert.rejects(() => service.salvarConfig({ ...d.PADRAO, revisao: undefined }, 2), /revisão/);
+  await assert.rejects(() => service.salvarConfig({ ...d.PADRAO, ativo: true, iniciar_em: '2020-01-01' }, 2), /retroativa/);
+  assert.equal(configuracoesCriadas, 0, 'Rejeições não criam configuração');
+  const primeiras = await Promise.allSettled([service.salvarConfig(d.PADRAO, 2), service.salvarConfig(d.PADRAO, 3)]);
+  assert.equal(primeiras.filter((p) => p.status === 'fulfilled').length, 1);
+  assert.equal(primeiras.find((p) => p.status === 'rejected').reason.statusCode, 409);
+  assert.equal(configuracoesCriadas, 1); assert.equal(config.revisao, 1); assert.equal(config.ativo, false);
+  assert.equal(config.alterado_por, 2, 'Autor do primeiro salvamento explícito preservado');
+  await service.salvarConfig({ ...config, prazo: 2 }, 2);
+  assert.equal(configuracoesCriadas, 1); assert.equal(config.revisao, 2, 'Próximo salvamento atualiza, sem duplicar');
+  const transacaoReal = db.sequelize.transaction;
+  for (const codigo of ['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT', 'ER_DUP_ENTRY']) {
+    db.sequelize.transaction = async () => { throw { original: { code: codigo } }; };
+    await assert.rejects(() => service.salvarConfig(config, 2), (e) => e.statusCode === 409);
+  }
+  db.sequelize.transaction = transacaoReal;
+  config = null;
+  const auditoria = [], controller = carregar('../src/controllers/PrazosOperacionaisController.js', {
+    '../services/prazosOperacionaisService': service, '../services/prazosOperacionaisDomain': d,
+    '../services/securityLogService': { registrarEventoSeguranca: async (evento) => auditoria.push(evento) }
+  });
+  let codigoHttp = 200, payloadSalvo;
+  const resConfig = { set() {}, status(c) { codigoHttp = c; return this; }, json(body) { payloadSalvo = body; } };
+  await controller.salvar({ body: { ...d.PADRAO }, user: { id: 2 } }, resConfig);
+  assert.equal(codigoHttp, 200); assert.equal(payloadSalvo.regra.revisao, 1);
+  assert.equal(auditoria.length, 1); assert.equal(auditoria[0].usuarioId, 2);
+  assert.equal(auditoria[0].tipoEvento, 'PRAZOS_OPERACIONAIS_CONFIGURADOS');
+  assert.equal(auditoria[0].metadata.anterior.ativo, false);
+  config = { ...regra, iniciar_em: d.diaBrasil(), revisao: 0 };
   const tr = { LOCK: { UPDATE: 'UPDATE' } }, base = { pedido: { id: 8, obra_id: 3 }, solicitacaoId: 7, itemId: 9,
     previsao: d.diaBrasil(), versao: 1, usuarioId: 2, transaction: tr };
   config.ativo = false;
@@ -138,12 +189,44 @@ async function resposta(guard, request) {
   await assert.rejects(() => rotas.obrasDaOperacao(req('/solicitacoes', { obra_id: -1 }), fakeModels));
   const guardFalha = middleware.criarControle({ estado: async () => { throw new Error('Banco indisponível'); } });
   assert.equal((await resposta(guardFalha, req('/solicitacoes'))).code, 503);
-  const migration = fs.readFileSync(path.resolve(__dirname, '../migrations/202610060001_prazos_operacionais.js'), 'utf8');
-  assert.ok(!migration.includes('INSERT INTO obrigacoes_operacionais '));
+  // Runner real isolado: valida o fonte e todo SQL da migration, sem .env/conexão.
+  const nomeMigration = '202610060001_prazos_operacionais.js';
+  const arquivoMigration = path.resolve(__dirname, '../migrations', nomeMigration);
+  const migrationFonte = fs.readFileSync(arquivoMigration, 'utf8'), tabelas = new Set(), executadas = [], comandos = [];
+  const migration = carregar(`../migrations/${nomeMigration}`, { '../src/database/schemaUtils': {
+    tableExists: async (_, nome) => tabelas.has(nome)
+  } });
+  const bancoRunner = {
+    escape: (value) => `'${value}'`,
+    getQueryInterface: () => ({ addColumn: async () => {}, describeTable: async () => ({}) }),
+    async query(texto) {
+      comandos.push(texto);
+      if (texto.includes('information_schema.tables')) return [[{ existe: 1 }]];
+      if (texto.includes('SELECT name FROM schema_migrations')) return [executadas.map((name) => ({ name }))];
+      if (texto.startsWith('CREATE TABLE obrigacoes_')) { tabelas.add(texto.match(/CREATE TABLE (\w+)/)[1]); return [[], {}]; }
+      if (texto.startsWith('INSERT INTO schema_migrations')) { executadas.push(nomeMigration); return [[], {}]; }
+      throw new Error(`SQL inesperado: ${texto}`);
+    }
+  };
+  const runner = carregar('../src/database/runMigrations.js', {
+    fs: { existsSync: () => true, readdirSync: () => [nomeMigration], readFileSync: fs.readFileSync },
+    path, './index': bancoRunner, '../config/env': {}, [arquivoMigration]: migration,
+    __process: { env: { ALLOW_SCHEMA_MIGRATIONS: 'true' } }
+  });
+  runner.assertMigrationSourceIsSchemaOnly(nomeMigration, migrationFonte);
+  assert.throws(() => runner.assertMigrationSourceIsSchemaOnly(nomeMigration, `${migrationFonte}\nINSERT INTO configuracoes_sistema`), /bloqueada/);
+  await runner.runMigrations({ authorized: true });
+  assert.equal(tabelas.size, 2); assert.equal(executadas.length, 1);
+  assert.equal(comandos.filter((q) => /^CREATE TABLE/.test(q)).length, 2);
+  assert.ok(!comandos.some((q) => /configuracoes_sistema/.test(q)), 'Migration não insere configuração nem dados operacionais');
+  await runner.runMigrations({ authorized: true });
+  assert.equal(executadas.length, 1, 'Runner não reaplica migration registrada');
+  await migration.up({ sequelize: bancoRunner });
+  assert.equal(comandos.filter((q) => /^CREATE TABLE/.test(q)).length, 2, 'Estrutura idempotente');
   const fonteRotas = fs.readFileSync(path.resolve(__dirname, '../src/routes.js'), 'utf8');
   for (const formulario of rotas.FORMULARIOS_OBRA) {
     const linha = fonteRotas.split('\n').find((l) => l.includes(`router.post('${formulario}'`));
     assert.ok(linha.includes("uploadComprovantes.single('file'), require('./middlewares/controlePrazosOperacionais').aposFormulario,"));
   }
-  console.log('OK: regra inicialmente off, horas/dias úteis/corridos, feriados, tolerância, snapshots, início sem retroatividade, ciclos, leituras, regularização, bloqueio por obra/setor, lotes, contexto persistido, liberação auditável idempotente/expiração e falha fechada. Sem banco externo.');
+  console.log('OK: runner real com SQL simulado somente estrutural, configuração ausente sem escrita, primeiro salvamento/revisão/conflito, regra off, horas/dias úteis/corridos, feriados, tolerância, snapshots, início sem retroatividade, ciclos, regularização, bloqueio por obra/setor, lotes, contexto persistido, liberação idempotente/expiração e falha fechada. Sem banco externo.');
 })().catch((e) => { console.error(e); process.exitCode = 1; });

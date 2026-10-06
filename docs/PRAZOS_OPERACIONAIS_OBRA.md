@@ -9,6 +9,11 @@ Configuração: **Configurações → Status e Vínculos → Prazos operacionais
 A página e a API usam a permissão de configuração de Status e Vínculos já existente.
 Liberação temporária de obra é restrita ao SUPERADMIN.
 Chave no banco: `PRAZOS_OPERACIONAIS_CONFIG`. Não há variável de ambiente nova.
+Se a chave ainda não existir, consultas usam o padrão desligado sem gravar dados.
+A primeira gravação acontece somente ao **Salvar regra** na tela autorizada,
+com validação, revisão, autor e evento de auditoria. A transação SERIALIZABLE
+e a leitura bloqueante protegem a primeira gravação concorrente; conflitos
+retornam 409 e exigem recarregar a tela. Nenhuma chave é inserida no deploy.
 
 ## Qual atividade deve ser feita
 
@@ -96,10 +101,10 @@ Essas regras não podem ser ativadas pela página nesta versão. Cada etapa exig
 ## Publicação e ativação segura
 
 1. Publicar os arquivos após autorização. Aplicar `202610060001_prazos_operacionais.js` no ambiente correto pelo runner habitual, com backup; depois reiniciar somente o backend desse ambiente e publicar o frontend.
-2. Nenhuma variável de ambiente precisa ser criada. A migration deixa a chave desligada e não cria obrigações para pedidos antigos.
+2. Nenhuma variável de ambiente persistente precisa ser criada. A migration cria somente as duas tabelas, sem seed, backfill ou alterações de dados operacionais. O runner registra apenas o controle técnico de execução em `schema_migrations`. Até salvar pela tela, o padrão desligado é somente em memória.
 3. Verificar permissões de consulta, vínculos de obra e o acesso ao acompanhamento de entregas dos usuários que serão cobrados.
 4. Configurar datas/calendário e iniciar em Observar. Testar um ciclo novo: previsão, contador, parcial/não entrega e reprogramação.
 5. Testar Bloquear: uma obra vencida, outra obra disponível, dois usuários da mesma obra, consultas, regularização, usuário administrativo e superadmin. Validar também os endpoints adicionais que foram concedidos à Obra.
 6. Ativar Bloquear só depois desses testes operacionais. Não executar backfill ou editar prazos de pedidos antigos para forçar o primeiro bloqueio sem análise separada.
 
-Testes locais: `backend: npm run test:prazos-operacionais` e `npm run test:pedido-entregas`; `frontend: npm run test:prazos-operacionais`, `npm run test:pedido-entregas`, validação de navegação e build.
+Testes locais: `backend: npm run test:prazos-operacionais` inclui execução do runner real com conexão/SQL simulados, verificação estrutural e reexecução, consultas sem persistência e primeira configuração concorrente. Também `npm run test:pedido-entregas`; `frontend: npm run test:prazos-operacionais`, `npm run test:pedido-entregas`, validação de navegação e build. Não é teste de migration em banco real.

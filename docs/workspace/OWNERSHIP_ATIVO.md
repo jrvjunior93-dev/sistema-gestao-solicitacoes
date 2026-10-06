@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Ownership encerrado - migration estrutural dos prazos - 06/10/2026
+
+Proprietario autorizou corrigir e publicar a incompatibilidade com o runner.
+Sessao `/root` reserva `backend/migrations/202610060001_prazos_operacionais.js`,
+`backend/src/services/prazosOperacionaisService.js`, validador de prazos, manual,
+handoff e este registro. Remover seed da migration; primeira gravacao somente
+pelo endpoint da tela, com validacao, revisao e controle concorrente.
+Nao enfraquecer o runner, aplicar migration, acessar banco real ou ativar regras.
+Publicacao autorizada em main; outros checkouts e outputs permanecem preservados.
+Validador com runner real/SQL simulado, primeiro salvamento/auditoria/conflito,
+entregas e UI aprovados; diff-check e sintaxe conferidos. Ownership liberado;
+publicacao pelo commit desta correcao. Migration/EC2 continuam fora da execucao local.
+
 ## Publicacao autorizada - prazos da Obra e correcoes pendentes - 06/10/2026
 
 Proprietario autorizou commit/push das alteracoes pendentes e retorno a main.

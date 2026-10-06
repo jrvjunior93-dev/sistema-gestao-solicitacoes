@@ -1,5 +1,5 @@
 'use strict';
-const { Op, QueryTypes } = require('sequelize');
+const { Op, QueryTypes, Transaction } = require('sequelize');
 const db = require('../models');
 const dominio = require('./prazosOperacionaisDomain');
 const { userHasSetorCapability } = require('./setorCapabilityService');
@@ -10,17 +10,29 @@ async function configuracao(transaction) {
 }
 async function salvarConfig(entrada, usuarioId) {
   const regra = dominio.validar(entrada);
-  return db.sequelize.transaction(async (transaction) => {
+  const revisao = Number(entrada.revisao);
+  if (!Number.isSafeInteger(revisao) || revisao < 0) {
+    throw Object.assign(new Error('Informe a revisão da configuração. Recarregue antes de salvar.'), { statusCode: 409 });
+  }
+  // ConfiguracaoSistema não garante chave única. A leitura bloqueante em
+  // SERIALIZABLE protege também a chave ausente contra duas primeiras gravações.
+  return db.sequelize.transaction({ isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE }, async (transaction) => {
     const row = await db.ConfiguracaoSistema.findOne({ where: { chave: dominio.CHAVE }, transaction, lock: transaction.LOCK.UPDATE });
-    if (!row) throw Object.assign(new Error('Aplique a migration de prazos operacionais antes de configurar.'), { statusCode: 409 });
-    const atual = JSON.parse(row.valor);
-    if (Number(entrada.revisao) !== Number(atual.revisao)) throw Object.assign(new Error('A configuração foi alterada. Recarregue antes de salvar.'), { statusCode: 409 });
+    const atual = row ? dominio.validar(JSON.parse(row.valor)) : dominio.PADRAO;
+    if (revisao !== Number(atual.revisao)) throw Object.assign(new Error('A configuração foi alterada. Recarregue antes de salvar.'), { statusCode: 409 });
     if (regra.ativo && (!atual.ativo || regra.iniciar_em !== atual.iniciar_em) && regra.iniciar_em < dominio.diaBrasil()) {
       throw Object.assign(new Error('A ativação deve começar hoje ou em uma data futura; não haverá cobrança retroativa.'), { statusCode: 400 });
     }
     const novo = { ...regra, revisao: Number(atual.revisao) + 1, alterado_por: usuarioId, alterado_em: new Date().toISOString() };
-    await row.update({ valor: JSON.stringify(novo) }, { transaction });
+    if (row) await row.update({ valor: JSON.stringify(novo) }, { transaction });
+    else await db.ConfiguracaoSistema.create({ chave: dominio.CHAVE, valor: JSON.stringify(novo) }, { transaction });
     return novo;
+  }).catch((error) => {
+    const codigo = error.original?.code || error.parent?.code || error.code;
+    if (['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT', 'ER_DUP_ENTRY'].includes(codigo)) {
+      throw Object.assign(new Error('Outra gravação está em andamento ou alterou a configuração. Recarregue antes de salvar.'), { statusCode: 409 });
+    }
+    throw error;
   });
 }
 async function encerrarItem(itemId, status, usuarioId, motivo, transaction) {

@@ -1,5 +1,4 @@
 const { tableExists } = require('../src/database/schemaUtils');
-const { CHAVE, PADRAO } = require('../src/services/prazosOperacionaisDomain');
 module.exports = {
   async up({ sequelize }) {
     if (!(await tableExists(sequelize, 'obrigacoes_operacionais'))) await sequelize.query(`CREATE TABLE obrigacoes_operacionais (
@@ -22,10 +21,8 @@ module.exports = {
       updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uq_liberacao_chave (chave), KEY idx_liberacao_obra (obra_id, setor, ate)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-    // Sem backfill: não criar obrigações para pedidos anteriores à ativação.
-    await sequelize.query(`INSERT INTO configuracoes_sistema (chave, valor, createdAt, updatedAt)
-      SELECT :chave, :valor, NOW(), NOW() WHERE NOT EXISTS (SELECT 1 FROM configuracoes_sistema WHERE chave = :chave)`,
-    { replacements: { chave: CHAVE, valor: JSON.stringify(PADRAO) } });
+    // Somente estrutura. A configuração ausente é lida como desligada;
+    // sua primeira gravação ocorre exclusivamente ao salvar pela tela.
   },
   async down() { throw new Error('Prazos operacionais preservam histórico. Rollback exige procedimento supervisionado.'); }
 };
