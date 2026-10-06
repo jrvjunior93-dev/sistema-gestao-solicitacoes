@@ -24,6 +24,8 @@ import {
 import { useAuth } from '../../../contexts/AuthContext';
 import { canManageComprasFornecedores } from '../../../utils/acessoProduto';
 import { getCpfCnpjError, maskCep, maskCpfCnpj, maskPhone, onlyDigits } from '../../../utils/formatters';
+import DadosEmpresaParceiro from '../../../components/parceiros/DadosEmpresaParceiro';
+import { getDadosEmpresaParceiroError } from '../../../utils/dadosEmpresaParceiro';
 
 const ESTADOS_BR = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
@@ -64,6 +66,10 @@ function formVazio() {
   return {
     id: null,
     nome: '',
+    nome_fantasia: '',
+    representante_nome: '',
+    representante_cpf: '',
+    representante_cargo: '',
     cnpj: '',
     email: '',
     whatsapp: '',
@@ -80,6 +86,10 @@ function formDoRegistro(fornecedor) {
   return {
     id: fornecedor.id,
     nome: fornecedor.nome || '',
+    nome_fantasia: fornecedor.parceiro?.nome_fantasia || '',
+    representante_nome: fornecedor.parceiro?.representante_nome || '',
+    representante_cpf: maskCpfCnpj(fornecedor.parceiro?.representante_cpf),
+    representante_cargo: fornecedor.parceiro?.representante_cargo || '',
     cnpj: maskCpfCnpj(fornecedor.cnpj),
     email: fornecedor.email || '',
     whatsapp: maskPhone(fornecedor.whatsapp),
@@ -194,6 +204,7 @@ export default function GestaoFornecedores() {
   // R22: hooks usados são hooks importados. A referência leva o foco ao
   // formulário inline, que fica ACIMA da lista.
   const campoNomeRef = useRef(null);
+  const salvandoRef = useRef(false);
   const primeiraBusca = useRef(true);
 
   // Declarados ANTES dos efeitos que os citam (TDZ: `const` não sobe).
@@ -266,12 +277,14 @@ export default function GestaoFornecedores() {
   }
 
   function novoFornecedor() {
+    if (salvandoRef.current) return;
     setForm(formVazio());
     setNovaCategoria('');
     focarFormulario();
   }
 
   function editarFornecedor(fornecedor) {
+    if (salvandoRef.current) return;
     setForm(formDoRegistro(fornecedor));
     setNovaCategoria('');
     focarFormulario();
@@ -305,22 +318,28 @@ export default function GestaoFornecedores() {
 
   async function handleSalvar(event) {
     event.preventDefault();
+    if (!canManage || salvandoRef.current) return;
 
     const documentoErro = getCpfCnpjError(form.cnpj, { label: 'CPF/CNPJ do fornecedor' });
     if (documentoErro) {
       avisar.alerta(documentoErro);
       return;
     }
+    const empresaErro = getDadosEmpresaParceiroError({ ...form, cpf_cnpj: form.cnpj }, { obrigatorio: !form.id });
+    if (empresaErro) {
+      avisar.alerta(empresaErro);
+      return;
+    }
 
     try {
+      salvandoRef.current = true;
       setSalvando(true);
-      // `id` é controle do formulário inline, não campo do registro: sai do
-      // corpo enviado para o serviço, que continua recebendo os mesmos
-      // campos de antes.
+      // ID controla a edicao; dados de empresa vao para o cadastro central.
       const { id, ...dados } = form;
       const payload = {
         ...dados,
         cnpj: onlyDigits(dados.cnpj),
+        representante_cpf: onlyDigits(dados.representante_cpf),
         whatsapp: onlyDigits(dados.whatsapp),
         cep: onlyDigits(dados.cep)
       };
@@ -336,6 +355,7 @@ export default function GestaoFornecedores() {
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao salvar fornecedor');
     } finally {
+      salvandoRef.current = false;
       setSalvando(false);
     }
   }
@@ -507,13 +527,13 @@ export default function GestaoFornecedores() {
         <BlocoConteudo titulo={form.id ? 'Editar fornecedor' : 'Novo fornecedor'}>
           <form className="space-y-4" onSubmit={handleSalvar}>
             <FormSecao legenda="Identificação" colunas={2}>
-              <CampoForm label="Nome" obrigatorio>
+              <CampoForm label="Nome / Razão social" obrigatorio>
                 <input
                   ref={campoNomeRef}
                   className="input w-full"
                   value={form.nome}
                   onChange={(e) => atualizarCampo('nome', e.target.value)}
-                  placeholder="Razão social ou nome fantasia"
+                  placeholder="Nome da pessoa ou razão social da empresa"
                   required
                 />
               </CampoForm>
@@ -555,6 +575,11 @@ export default function GestaoFornecedores() {
                 />
               </CampoForm>
             </FormSecao>
+
+            <DadosEmpresaParceiro
+              form={{ ...form, cpf_cnpj: form.cnpj }} onChange={atualizarCampo}
+              obrigatorio={!form.id} disabled={salvando}
+            />
 
             <FormSecao legenda="Endereço" colunas={3}>
               <CampoForm label="Cidade">

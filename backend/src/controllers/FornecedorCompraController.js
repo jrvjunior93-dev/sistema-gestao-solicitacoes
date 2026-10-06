@@ -1,5 +1,5 @@
 const { Op, col, fn, where: sequelizeWhere } = require('sequelize');
-const { FornecedorCompra } = require('../models');
+const { FornecedorCompra, Parceiro } = require('../models');
 const {
   criarOuAtualizarFornecedorCentralizado,
   criarOuAtualizarFornecedorCentralizadoEmTransacao,
@@ -9,6 +9,16 @@ const {
   canViewComprasFornecedores
 } = require('../services/authorizationService');
 const { sequelize } = require('../models');
+
+const CAMPOS_EMPRESA = ['nome_fantasia', 'representante_nome', 'representante_cpf', 'representante_cargo'];
+const incluirDadosEmpresa = () => [{
+  model: Parceiro, as: 'parceiro', required: false,
+  attributes: ['id', ...CAMPOS_EMPRESA]
+}];
+function dadosEmpresa(body = {}) {
+  return Object.fromEntries(CAMPOS_EMPRESA.filter(campo => body[campo] !== undefined)
+    .map(campo => [campo, body[campo]]));
+}
 
 async function canReadFornecedores(req) {
   return canViewComprasFornecedores(req.user);
@@ -93,6 +103,7 @@ module.exports = {
 
       let fornecedores = await FornecedorCompra.findAll({
         where,
+        include: incluirDadosEmpresa(),
         order: [['nome', 'ASC']],
         ...(!categoriaFiltro && limite ? { limit: limite } : {})
       });
@@ -122,7 +133,7 @@ module.exports = {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
-      const fornecedor = await FornecedorCompra.findByPk(req.params.id);
+      const fornecedor = await FornecedorCompra.findByPk(req.params.id, { include: incluirDadosEmpresa() });
       if (!fornecedor) {
         return res.status(404).json({ error: 'Fornecedor nao encontrado' });
       }
@@ -147,6 +158,7 @@ module.exports = {
       }
 
       const fornecedor = await criarOuAtualizarFornecedorCentralizadoEmTransacao({
+        ...dadosEmpresa(req.body),
         nome,
         cnpj,
         email,
@@ -159,6 +171,7 @@ module.exports = {
         cep
       });
 
+      await fornecedor.reload({ include: incluirDadosEmpresa() });
       return res.status(201).json(fornecedor);
     } catch (error) {
       console.error(error);
@@ -183,7 +196,9 @@ module.exports = {
         return res.status(400).json({ error: 'Informe o nome do fornecedor' });
       }
 
-      if (fornecedor.parceiro_id) {
+      const empresa = dadosEmpresa(req.body);
+      // Avulsos legados so passam a Pessoas quando o usuario informa dados de empresa.
+      if (fornecedor.parceiro_id || Object.values(empresa).some(valor => String(valor || '').trim())) {
         let fornecedorAtualizado = null;
         await sequelize.transaction(async (transaction) => {
           if (ativo !== undefined && Boolean(ativo) === false) {
@@ -193,6 +208,7 @@ module.exports = {
 
           fornecedorAtualizado = await criarOuAtualizarFornecedorCentralizado(
             {
+              ...empresa,
               nome: nome !== undefined ? nome : fornecedor.nome,
               cnpj: cnpj !== undefined ? cnpj : fornecedor.cnpj,
               email: email !== undefined ? email : fornecedor.email,
@@ -204,10 +220,11 @@ module.exports = {
               estado: estado !== undefined ? estado : fornecedor.estado,
               cep: cep !== undefined ? cep : fornecedor.cep
             },
-            { transaction }
+            { transaction, fornecedorExistente: fornecedor }
           );
         });
         if (fornecedorAtualizado) {
+          await fornecedorAtualizado.reload({ include: incluirDadosEmpresa() });
           return res.json(fornecedorAtualizado);
         }
         await fornecedor.reload();

@@ -50,6 +50,10 @@ function buildParceiroPayload(payload = {}, parceiroExistente = null) {
   if (payload.cidade !== undefined) base.municipio = sanitizeText(payload.cidade);
   if (payload.estado !== undefined) base.estado = sanitizeText(payload.estado)?.toUpperCase().slice(0, 2) || null;
   if (payload.categoria_ids !== undefined) base.categoria_ids = payload.categoria_ids;
+  for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf', 'representante_cargo']) {
+    // Chamadores antigos que nao enviam estes campos nao apagam dados de Pessoas.
+    if (payload[campo] !== undefined) base[campo] = sanitizeText(payload[campo]);
+  }
 
   if (!parceiroExistente) {
     base.cpf_cnpj = cpfCnpj;
@@ -88,7 +92,17 @@ async function sincronizarFornecedorCompraComParceiro(parceiro, payload = {}, op
     ]
   };
 
-  let fornecedor = await FornecedorCompra.findOne({ where, transaction });
+  // Nao vincular dois IDs de fornecedores ao mesmo cadastro central na edicao.
+  if (options.fornecedorExistente) {
+    const duplicado = await FornecedorCompra.findOne({
+      where: { ...where, id: { [Op.ne]: options.fornecedorExistente.id } }, transaction
+    });
+    if (duplicado) {
+      throw new Error('Este CPF/CNPJ ja pertence a outro fornecedor de Compras. Edite o cadastro existente.');
+    }
+  }
+  // Na edicao, inclusive de um avulso legado, manter o ID referenciado pelas cotacoes.
+  let fornecedor = options.fornecedorExistente || await FornecedorCompra.findOne({ where, transaction });
 
   if (fornecedor) {
     await fornecedor.update(dadosFornecedor, { transaction });
@@ -115,7 +129,9 @@ async function criarOuAtualizarFornecedorCentralizado(payload = {}, options = {}
     parceiro = await criarParceiro(data, { transaction });
   }
 
-  return sincronizarFornecedorCompraComParceiro(parceiro, payload, { transaction });
+  return sincronizarFornecedorCompraComParceiro(parceiro, payload, {
+    transaction, fornecedorExistente: options.fornecedorExistente
+  });
 }
 
 async function criarOuAtualizarFornecedorCentralizadoEmTransacao(payload = {}) {

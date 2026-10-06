@@ -27,6 +27,18 @@ Solicitacoes e o hub operacional entre usuarios, setores, obras, parceiros, cont
 - arquivamento e individual por usuario e nao altera o registro global;
 - alteracoes de status, envio e automacao geram historico.
 
+## Anexos removidos do historico
+
+Ao remover um anexo, a linha original fica preservada para auditoria, mas
+exibe `Anexo removido — arquivo indisponivel` em vez de Visualizar, Download e
+Remover. O evento de remocao permanece no historico. Remocoes anteriores sao
+reconhecidas pelos eventos existentes, sem atualizacao direta no banco.
+A confirmacao pode ser cancelada; enquanto envia, a tela impede repetir a acao.
+Falha de permissao ou de gravacao nao remove o arquivo da tela.
+
+As regras de acesso e os limites de revogacao estao em
+[Seguranca de anexos](../../seguranca/anexos.md).
+
 ## Boleto e rateio na Nova Solicitacao
 
 - Na Nova Solicitacao comum, Boleto dispensa o favorecido de pagamento

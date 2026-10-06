@@ -27,6 +27,7 @@ const { canViewArquivoModeloPage } = require('./arquivoModeloAccessService');
 const { userHasSetorCapability } = require('./setorCapabilityService');
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { podeVisualizarSolicitacaoPelaFila } = require('./solicitacaoFilaPagamentoAcessoService');
+const { arquivoHistoricoRemovido } = require('./anexoHistoricoService');
 
 async function hasLegacyContractGlobalAccess(tokens, user) {
   return (
@@ -693,38 +694,42 @@ async function findHistoricoFileResource(fileCandidates) {
   ];
 
   try {
-    const historico = await Historico.findOne({
+    const historicos = await Historico.findAll({
       where: {
         [Op.or]: fileCandidates.flatMap((candidate) =>
           metadataPathFields.map((metadataPath) =>
             sequelizeWhere(
-              fn('JSON_UNQUOTE', fn('JSON_EXTRACT', col('metadata'), metadataPath)),
+              fn('JSON_UNQUOTE', fn('JSON_EXTRACT',
+                fn('IF', fn('JSON_VALID', col('metadata')), col('metadata'), '{}'), metadataPath)),
               candidate
             )
           )
         )
       },
-      attributes: ['id', 'solicitacao_id', 'metadata'],
+      attributes: ['id', 'solicitacao_id', 'acao', 'metadata', 'createdAt'],
       order: [['id', 'DESC']]
     });
 
-    if (historico) {
-      return historico;
+    for (const historico of historicos) {
+      if (!(await arquivoHistoricoRemovido(historico))) return historico;
     }
+    return null;
   } catch {
     // Alguns ambientes antigos mantem metadata como texto simples; se o banco
     // nao aceitar JSON_EXTRACT, fazemos uma varredura limitada nos historicos recentes.
   }
 
   const historicosRecentes = await Historico.findAll({
-    attributes: ['id', 'solicitacao_id', 'metadata'],
+    attributes: ['id', 'solicitacao_id', 'acao', 'metadata', 'createdAt'],
     order: [['id', 'DESC']],
     limit: 1500
   });
 
-  return historicosRecentes.find((historico) =>
-    metadataPathMatches(historico.metadata, fileCandidates)
-  ) || null;
+  for (const historico of historicosRecentes) {
+    if (metadataPathMatches(historico.metadata, fileCandidates) &&
+        !(await arquivoHistoricoRemovido(historico))) return historico;
+  }
+  return null;
 }
 
 async function resolveRegisteredFileResource(alvo) {
@@ -797,6 +802,9 @@ async function assertRegisteredFileAccess(req, target) {
   }
 
   if (target.kind === 'HISTORICO_SOLICITACAO_ARQUIVO') {
+    if (await arquivoHistoricoRemovido(target.record)) {
+      return { allowed: false, status: 404, error: 'Arquivo removido do historico' };
+    }
     return canAccessSolicitacaoFile(req, target.record.solicitacao_id);
   }
 

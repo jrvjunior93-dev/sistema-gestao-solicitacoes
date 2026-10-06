@@ -1,5 +1,39 @@
 # Ownership Ativo
 
+## Publicacao autorizada - anexos do historico e empresa em fornecedores - 06/10/2026
+
+Usuario autorizou commit e push na refactor/frontend e promocao para main.
+Sessao `/root` reserva a publicacao dos arquivos destas duas correcoes e dos
+respectivos testes/handoffs. Incluir somente os registros proprios deste arquivo;
+preservar auditorias preexistentes e outputs fora do commit. As branches partem
+de 4be65dfe. Promover por fast-forward no checkout promocao-main-20261003/Fluxy,
+sem force-push, migration, banco real, EC2, reinicio ou deploy manual.
+
+## Ownership encerrado - dados de empresa em fornecedores de Compras - 06/10/2026
+
+Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`, branch refactor/frontend.
+Reserva GestaoFornecedores.jsx, FornecedorCompraController.js,
+comprasFornecedorService.js, testes focados e handoff desta tarefa.
+Reutilizar DadosEmpresaParceiro e salvar no cadastro central de Pessoas,
+preservando permissoes, IDs e dados legados. Sem migration, banco real,
+commit, push ou deploy. Preservar a correcao de anexos e auditorias pendentes.
+Testes backend/frontend, regressao de credores, build, QA local e diff-check
+aprovados. Continuidade em docs/handoffs/2026-10-06-fornecedores-dados-empresa.md.
+
+## Ownership encerrado - remocao de anexos do historico - 06/10/2026
+
+Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`, branch refactor/frontend.
+Reserva AnexoController.js, fileAccessService.js, novo anexoHistoricoService.js,
+app.js e novo middleware bloquearAnexoLocalRemovido.js (somente a rota /uploads),
+Timeline.jsx, novo utilitario de anexos do historico e testes focados backend/frontend,
+package.json dos dois runtimes, docs/seguranca/anexos.md, README de Solicitacoes
+e handoff desta tarefa. Preservar auditorias locais e demais registros deste arquivo.
+Autorizado corrigir exclusao logica, exibicao e novos acessos ao arquivo removido;
+sem acesso a banco/S3/EC2 real, migration, commit, push ou deploy.
+Testes focados dos dois runtimes, sintaxe, build e diff-check concluidos.
+Continuidade em docs/handoffs/2026-10-06-remocao-anexos-historico.md.
+Validacao documental mantem divergencias de metricas anteriores a esta tarefa.
+
 ## Publicacao autorizada - icones nas acoes de solicitacoes de Pessoal - 06/10/2026
 
 Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`, reserva

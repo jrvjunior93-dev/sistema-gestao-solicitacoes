@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:anexos-remocao": "node scripts/validarRemocaoAnexosHistorico.mjs",
     "test:rhdp-acoes-icones": "node scripts/validarRhPessoalAcoesIcones.mjs",
     "test:rhdp-conferencia-guiada": "node scripts/validarRhConferenciaGuiada.mjs",
     "test:cadastro-obra-formulario": "node scripts/validarAberturaCadastroObra.mjs",

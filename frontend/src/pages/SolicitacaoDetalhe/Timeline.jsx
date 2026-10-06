@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import PreviewAnexoModal from './PreviewAnexoModal';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../components/padrao';
+import { anexoHistoricoRemovido, metadataAnexoHistorico } from './anexosHistorico';
 
 /**
  * HISTORICO DA SOLICITACAO — a linha do tempo de tudo o que aconteceu.
@@ -54,6 +55,9 @@ export default function Timeline({
   aoMudarOrdem
 }) {
   const [preview, setPreview] = useState(null);
+  const [removidosLocalmente, setRemovidosLocalmente] = useState(new Set());
+  const [removendo, setRemovendo] = useState(new Set());
+  const remocoesEmCurso = useRef(new Set());
   const listaRef = useRef(null);
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -215,17 +219,20 @@ export default function Timeline({
     // remocao falam do MESMO registro, mesmo que o historico se recarregue
     // com o modal aberto (o modal do sistema nao congela a pagina).
     const alvo = historicoId;
-    // R21: DESESTRUTURADO. `confirmar()` devolve { ok, texto } e objeto e
-    // sempre truthy — ler como booleano faria "Cancelar" remover o anexo.
-    const { ok } = await confirmar({
-      titulo: 'Remover anexo',
-      mensagem: 'Remover este anexo do histórico? Esta ação não pode ser desfeita.',
-      rotuloConfirmar: 'Remover anexo',
-      destrutiva: true
-    });
-    if (!ok) return;
-
+    if (remocoesEmCurso.current.has(alvo)) return;
+    remocoesEmCurso.current.add(alvo);
     try {
+      // R21: DESESTRUTURADO. `confirmar()` devolve { ok, texto } e objeto e
+      // sempre truthy — ler como booleano faria "Cancelar" remover o anexo.
+      const { ok } = await confirmar({
+        titulo: 'Remover anexo',
+        mensagem: 'Remover este anexo do histórico? Esta ação não pode ser desfeita.',
+        rotuloConfirmar: 'Remover anexo',
+        destrutiva: true
+      });
+      if (!ok) return;
+
+      setRemovendo(ids => new Set(ids).add(alvo));
       const res = await fetch(`${API_URL}/anexos/historico/${alvo}`, {
         method: 'DELETE',
         headers: authHeaders()
@@ -236,12 +243,17 @@ export default function Timeline({
         throw new Error(data?.error || 'Erro ao remover anexo');
       }
 
+      setRemovidosLocalmente(ids => new Set(ids).add(alvo));
+      setPreview(atual => atual?.historicoId === alvo ? null : atual);
       if (typeof onAnexoRemovido === 'function') {
-        onAnexoRemovido();
+        await onAnexoRemovido();
       }
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao remover anexo');
+    } finally {
+      remocoesEmCurso.current.delete(alvo);
+      setRemovendo(ids => { const proximos = new Set(ids); proximos.delete(alvo); return proximos; });
     }
   }
 
@@ -313,12 +325,7 @@ export default function Timeline({
           em silencio — nada no console, nada no build. */}
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1" ref={listaRef}>
         {historicosVisiveis.map(h => {
-          let meta = null;
-          try {
-            meta = h.metadata ? JSON.parse(h.metadata) : null;
-          } catch {
-            meta = null;
-          }
+          const meta = metadataAnexoHistorico(h.metadata);
 
           const acaoLabel = {
             JUSTIFICATIVA_REGISTRADA: 'Justificativa registrada',
@@ -333,6 +340,7 @@ export default function Timeline({
           const responsavelNome = meta?.responsavel_nome || h.usuario?.nome || null;
           const caminhoArquivo = meta?.caminho || null;
           const podeExibirArquivo = ['ANEXO_ADICIONADO', 'COMPROVANTE_ADICIONADO'].includes(h.acao);
+          const arquivoRemovido = removidosLocalmente.has(h.id) || anexoHistoricoRemovido(h, historicos);
           const pedidoCompraId = meta?.pedido_compra_id || null;
           const pedidoCompraCodigo = meta?.pedido_compra_codigo || (pedidoCompraId ? `PC-${String(pedidoCompraId).padStart(5, '0')}` : null);
           const solicitacaoHistoricoId = h?.solicitacao_id || meta?.solicitacao_id || null;
@@ -398,13 +406,19 @@ export default function Timeline({
                 </div>
               )}
 
-              {podeExibirArquivo && meta && caminhoArquivo && (
+              {podeExibirArquivo && arquivoRemovido && (
+                <p className="text-sm" style={{ color: 'var(--c-muted)' }}>Anexo removido — arquivo indisponível.</p>
+              )}
+
+              {podeExibirArquivo && !arquivoRemovido && meta && caminhoArquivo && (
                 <div className="flex gap-3 mt-1">
                   <button
                     className="text-sm" style={{ color: 'var(--c-primary)' }}
+                    disabled={removendo.has(h.id)}
                     onClick={async () => {
                       const previewArquivo = await prepararPreviewArquivo(caminhoArquivo, h.id);
                       setPreview({
+                        historicoId: h.id,
                         nome: h.descricao,
                         caminho: caminhoArquivo,
                         ...previewArquivo
@@ -418,6 +432,7 @@ export default function Timeline({
                   <button
                     type="button"
                     className="text-sm" style={{ color: 'var(--c-primary)' }}
+                    disabled={removendo.has(h.id)}
                     onClick={async e => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -431,9 +446,11 @@ export default function Timeline({
                     <button
                       type="button"
                       className="text-sm text-[var(--c-danger)]"
+                      disabled={removendo.has(h.id)}
+                      aria-busy={removendo.has(h.id)}
                       onClick={() => removerAnexo(h.id)}
                     >
-                      Remover
+                      {removendo.has(h.id) ? 'Removendo…' : 'Remover'}
                     </button>
                   )}
                 </div>

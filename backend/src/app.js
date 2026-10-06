@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const { getRuntimeInstallationConfig } = require('./services/runtimeConfig');
 const { createComprasPerformanceMiddleware } = require('./observability/comprasPerformance');
+const bloquearAnexoLocalRemovido = require('./middlewares/bloquearAnexoLocalRemovido');
 
 const uploadMaxMb = env.uploadMaxFileSizeMb;
 const requestBodyLimit = `${Math.max(1, env.requestBodyLimitMb)}mb`;
@@ -160,6 +161,7 @@ app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 
 app.use(
   '/uploads',
+  bloquearAnexoLocalRemovido,
   express.static(path.resolve(__dirname, '..', 'uploads'), {
     setHeaders: (res, filePath) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');

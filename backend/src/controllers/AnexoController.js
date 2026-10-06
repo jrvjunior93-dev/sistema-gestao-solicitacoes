@@ -3,7 +3,8 @@ const {
   Solicitacao,
   Historico,
   User,
-  ContratoMedicao
+  ContratoMedicao,
+  sequelize
 } = require('../models');
 const { criarNotificacao } = require('../services/notificacoes');
 const { uploadToS3, getPresignedUrl } = require('../services/s3');
@@ -22,6 +23,7 @@ const { publishSolicitacaoRealtimeEvent } = require('../services/solicitacaoReal
 const { assertPodeInteragirSolicitacao } = require('../services/solicitacaoRetornoService');
 const { validarTokenUploadCriacaoSolicitacao } = require('../services/solicitacaoCriacaoUploadTokenService');
 const { userHasSetorCapability } = require('../services/setorCapabilityService');
+const { arquivoHistoricoRemovido, metadataHistorico, caminhosHistorico } = require('../services/anexoHistoricoService');
 
 function parseHistoricoMetadata(metadata) {
   if (!metadata) return {};
@@ -35,6 +37,7 @@ function parseHistoricoMetadata(metadata) {
 }
 
 async function obterCaminhoArquivoHistorico(historico) {
+  if (await arquivoHistoricoRemovido(historico)) return null;
   const metadata = parseHistoricoMetadata(historico?.metadata);
   const caminhoDireto = (
     metadata?.caminho ||
@@ -55,10 +58,11 @@ async function obterCaminhoArquivoHistorico(historico) {
   }
 
   const anexo = await Anexo.findByPk(metadata.anexo_id, {
-    attributes: ['id', 'caminho_arquivo']
+    attributes: ['id', 'solicitacao_id', 'caminho_arquivo', 'deleted_at']
   });
 
-  return anexo?.caminho_arquivo || null;
+  return anexo && !anexo.deleted_at && Number(anexo.solicitacao_id) === Number(historico.solicitacao_id)
+    ? anexo.caminho_arquivo : null;
 }
 
 async function validarAcessoSolicitacao(req, solicitacao) {
@@ -299,7 +303,7 @@ class AnexoController {
 
       if (historicoId) {
         const historico = await Historico.findByPk(historicoId, {
-          attributes: ['id', 'solicitacao_id', 'acao', 'metadata']
+          attributes: ['id', 'solicitacao_id', 'acao', 'metadata', 'createdAt']
         });
 
         if (!historico) {
@@ -401,43 +405,42 @@ class AnexoController {
         return res.status(400).json({ error: 'Somente anexos do historico podem ser removidos.' });
       }
 
-      let metadata = {};
-      try {
-        metadata = historico.metadata ? JSON.parse(historico.metadata) : {};
-      } catch {
-        metadata = {};
-      }
-
-      const anexoId = metadata?.anexo_id;
-      const caminho = metadata?.caminho;
-
-      let anexo = null;
-      if (anexoId) {
-        anexo = await Anexo.findByPk(anexoId);
-      }
-
-      if (!anexo && caminho) {
-        anexo = await Anexo.findOne({
-          where: {
-            solicitacao_id: historico.solicitacao_id,
-            caminho_arquivo: caminho
-          }
-        });
-      }
-
-      if (anexo) {
-        await anexo.update({ deleted_at: new Date() });
-      }
-
-      await Historico.create({
-        solicitacao_id: historico.solicitacao_id,
-        usuario_responsavel_id: usuario.id,
-        setor: usuario.setor_id,
-        acao: 'ANEXO_REMOVIDO',
-        descricao: anexo?.nome_original || historico.descricao || 'Anexo removido',
-        metadata: JSON.stringify({ anexo_id: anexo?.id || anexoId || null, caminho: caminho || null })
+      const resultado = await sequelize.transaction(async transaction => {
+        // Serializa cliques simultaneos e grava a exclusao e sua auditoria juntas.
+        const alvo = await Historico.findByPk(historicoId, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!alvo) throw Object.assign(new Error('Historico nao encontrado.'), { statusCode: 404 });
+        const metadata = metadataHistorico(alvo.metadata);
+        const caminho = caminhosHistorico(alvo)[0] || null;
+        if (!metadata.anexo_id && !caminho) {
+          throw Object.assign(new Error('Arquivo do historico nao encontrado.'), { statusCode: 404 });
+        }
+        let anexo = null;
+        if (metadata.anexo_id) {
+          anexo = await Anexo.findOne({ where: { id: metadata.anexo_id,
+            solicitacao_id: alvo.solicitacao_id }, transaction, lock: transaction.LOCK.UPDATE });
+        } else if (caminho) {
+          anexo = await Anexo.findOne({ where: { solicitacao_id: alvo.solicitacao_id,
+            caminho_arquivo: caminho }, transaction, lock: transaction.LOCK.UPDATE });
+        }
+        if (await arquivoHistoricoRemovido(alvo, { transaction })) return { repetida: true };
+        const removidoEm = new Date();
+        if (anexo) await anexo.update({ deleted_at: removidoEm }, { transaction });
+        await alvo.update({ metadata: JSON.stringify({ ...metadata, removido: true,
+          removido_em: removidoEm.toISOString() }) }, { transaction });
+        await Historico.create({
+          solicitacao_id: alvo.solicitacao_id,
+          medicao_id: alvo.medicao_id || null,
+          usuario_responsavel_id: usuario.id,
+          setor: usuario.setor_id,
+          acao: 'ANEXO_REMOVIDO',
+          descricao: anexo?.nome_original || alvo.descricao || 'Anexo removido',
+          metadata: JSON.stringify({ historico_id: alvo.id, anexo_id: anexo?.id || metadata.anexo_id || null,
+            caminho: caminho || null })
+        }, { transaction });
+        return { anexo_id: anexo?.id || null, caminho };
       });
 
+      if (resultado.repetida) return res.json({ ok: true, ja_removido: true });
       await publishSolicitacaoRealtimeEvent({
         action: 'ATTACHMENT_REMOVED',
         solicitacaoId: historico.solicitacao_id,
@@ -446,15 +449,15 @@ class AnexoController {
           nome: usuario?.nome || req.user?.nome || null
         },
         metadata: {
-          anexo_id: anexoId || null,
-          caminho: caminho || null
+          anexo_id: resultado.anexo_id,
+          caminho: resultado.caminho
         }
       });
 
       return res.json({ ok: true });
     } catch (error) {
       console.error('Erro remover anexo:', error);
-      return res.status(500).json({ error: 'Erro ao remover anexo.' });
+      return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Erro ao remover anexo.' });
     }
   }
 
