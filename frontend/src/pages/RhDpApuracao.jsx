@@ -1,6 +1,9 @@
 import DateInputBR from '../components/DateInputBR';
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import useConferenciaRh from '../hooks/useConferenciaRh';
+import { progressoConferencia } from '../utils/rhApuracaoConferencia';
+import '../styles/rh-apuracao-conferencia.css';
 import {
   Avisos,
   BarraFiltros,
@@ -33,10 +36,12 @@ import {
   reabrirRhFechamento,
   atualizarRhApuracaoItem
 } from '../services/rhDp';
+import { abrirConferenciaRhJornada } from '../services/rhDp';
 import {
   canEditRhDpApuracao,
   canExecuteRhDpFechamento,
   canReopenRhDpFechamento,
+  canViewRhDpObrigacoes,
   hasEnabledModule
 } from '../utils/acessoProduto';
 
@@ -218,8 +223,7 @@ const FILTROS_DA_TELA = [
 
 export default function RhDpApuracao() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [parametros] = useSearchParams();
+  const [parametros, setParametros] = useSearchParams();
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeEditar = canEditRhDpApuracao(user);
@@ -230,7 +234,17 @@ export default function RhDpApuracao() {
   const [obras, setObras] = useState([]);
   const [apuracoes, setApuracoes] = useState([]);
   const [detalhe, setDetalhe] = useState(null);
-  const [edicoes, setEdicoes] = useState({});
+  const { edicoes, estados, editar, salvar: salvarItem, temPendencias, reiniciar } = useConferenciaRh(
+    detalhe, setDetalhe, toEditState, atualizarRhApuracaoItem, avisar
+  );
+  const progresso = progressoConferencia(detalhe?.itens, edicoes, estados);
+  const [contextoJornada, setContextoJornada] = useState(null);
+  const [carregandoContexto, setCarregandoContexto] = useState(false);
+  const [erroContexto, setErroContexto] = useState('');
+  const [resultadoFechamento, setResultadoFechamento] = useState(null);
+  const workspaceRef = useRef(null);
+  const operacaoRef = useRef(false);
+  const jornadaId = parametros.get('jornada_id');
   const [carregandoBase, setCarregandoBase] = useState(false);
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [gerando, setGerando] = useState(false);
@@ -238,7 +252,6 @@ export default function RhDpApuracao() {
   const [carregandoMultiobra, setCarregandoMultiobra] = useState(false);
   const [consolidandoMultiobra, setConsolidandoMultiobra] = useState(false);
   const [colaboradorMultiobra, setColaboradorMultiobra] = useState(null);
-  const [salvandoItemId, setSalvandoItemId] = useState(null);
   const [conferindo, setConferindo] = useState(false);
   const [fechando, setFechando] = useState(false);
   // R12: os recortes enumeraveis (empresa, obra, vinculo, status) viram
@@ -294,6 +307,15 @@ export default function RhDpApuracao() {
   }, []);
 
   useEffect(() => {
+    const header = document.querySelector('.layout-main .app-page-header');
+    if (!header || !workspaceRef.current) return;
+    const medir = () => workspaceRef.current?.style.setProperty('--rh-conferencia-cabecalho', `${header.getBoundingClientRect().height}px`);
+    const observer = new ResizeObserver(medir);
+    observer.observe(header); medir();
+    return () => observer.disconnect();
+  }, [detalhe?.id]);
+
+  useEffect(() => {
     if (!form.competencia) {
       setMultiobra({ resumo: {}, colaboradores: [] });
       return;
@@ -309,11 +331,7 @@ export default function RhDpApuracao() {
   }, [filtros]);
 
   useEffect(() => {
-    const next = {};
-    (detalhe?.itens || []).forEach((item) => {
-      next[item.id] = toEditState(item);
-    });
-    setEdicoes(next);
+    setResultadoFechamento(null);
     setFechamentoForm({
       data_fechamento: new Date().toISOString().slice(0, 10),
       data_vencimento: anticipateWeekend(detalhe?.etapa_pagamento === 'ADIANTAMENTO_40'
@@ -321,7 +339,67 @@ export default function RhDpApuracao() {
         : getLastDayOfCompetencia(detalhe?.competencia)),
       observacoes: ''
     });
-  }, [detalhe]);
+    if (detalhe?.id) workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [detalhe?.id]);
+
+  useEffect(() => {
+    let atual = true;
+    if (!jornadaId) { setContextoJornada(null); setErroContexto(''); return; }
+    setCarregandoContexto(true);
+    setErroContexto('');
+    abrirConferenciaRhJornada(jornadaId).then((contexto) => {
+      if (!atual) return;
+      setContextoJornada(contexto);
+      setForm((old) => ({ ...old, competencia: contexto.recorte.competencia }));
+      setDetalhe(contexto.apuracoes[0] || null);
+    }).catch((error) => { if (atual) setErroContexto(error.message); })
+      .finally(() => { if (atual) setCarregandoContexto(false); });
+    return () => { atual = false; };
+  }, [jornadaId]);
+
+  useEffect(() => {
+    if (!parametros.get('apuracao_id') || jornadaId) return;
+    let atual = true;
+    getRhApuracao(parametros.get('apuracao_id')).then((data) => { if (atual) setDetalhe(data); })
+      .catch((error) => { if (atual) avisar.erro(error.message); });
+    return () => { atual = false; };
+  }, []);
+
+  async function prepararJornada() {
+    if (!podeEditar || operacaoRef.current || temPendencias()) return;
+    operacaoRef.current = true;
+    setGerando(true);
+    try {
+      const contexto = await abrirConferenciaRhJornada(jornadaId, true);
+      setContextoJornada(contexto);
+      setDetalhe(contexto.apuracoes[0] || null);
+      await carregarApuracoes();
+    } catch (error) { avisar.erro(error.message); }
+    finally { operacaoRef.current = false; setGerando(false); }
+  }
+
+  function sairDaConferencia() {
+    if (temPendencias() || fechando || conferindo) {
+      avisar.alerta('Salve os ajustes pendentes ou aguarde a gravacao antes de sair.'); return;
+    }
+    setDetalhe(null); setContextoJornada(null); setResultadoFechamento(null);
+    setParametros((old) => { const next = new URLSearchParams(old); next.delete('apuracao_id'); next.delete('jornada_id'); return next; });
+  }
+
+  async function recarregarConferencia() {
+    if (Object.values(estados).includes('salvando') || fechando || conferindo) return;
+    if (temPendencias()) {
+      const { ok } = await confirmar({ titulo: 'Recarregar apuração',
+        mensagem: 'Os ajustes ainda não salvos serão descartados. Recarregar os dados gravados no sistema?',
+        rotuloConfirmar: 'Recarregar', destrutiva: true });
+      if (!ok) return;
+    }
+    try {
+      const atualizado = await getRhApuracao(detalhe.id);
+      reiniciar(atualizado); setDetalhe(atualizado);
+      avisar.informacao('Apuração recarregada com os dados salvos no sistema.');
+    } catch (error) { avisar.erro(error.message); }
+  }
 
 
   async function carregarBase() {
@@ -363,8 +441,10 @@ export default function RhDpApuracao() {
   }
 
   async function consolidarMultiobra() {
-    if (!colaboradorMultiobra || colaboradorMultiobra.jornadas_pendentes || !podeEditar) return;
+    if (!colaboradorMultiobra || colaboradorMultiobra.jornadas_pendentes || !podeEditar || operacaoRef.current) return;
+    if (temPendencias()) { avisar.alerta('Salve os ajustes da apuracao antes de consolidar outra jornada.'); return; }
     try {
+      operacaoRef.current = true;
       setConsolidandoMultiobra(true);
       const apuracao = await consolidarRhJornadasMultiobra({
         competencia: form.competencia,
@@ -374,6 +454,7 @@ export default function RhDpApuracao() {
         observacoes: form.observacoes || undefined
       });
       setDetalhe(apuracao);
+      reiniciar(apuracao);
       setColaboradorMultiobra(null);
       await Promise.all([
         carregarJornadasMultiobra(form.competencia),
@@ -385,6 +466,7 @@ export default function RhDpApuracao() {
       avisar.erro(error?.message || 'Erro ao consolidar as jornadas do colaborador');
     } finally {
       setConsolidandoMultiobra(false);
+      operacaoRef.current = false;
     }
   }
 
@@ -408,9 +490,11 @@ export default function RhDpApuracao() {
   }
 
   async function abrirApuracao(id) {
+    if (temPendencias()) { avisar.alerta('Salve os ajustes pendentes antes de abrir outra apuracao.'); return; }
     try {
       const data = await getRhApuracao(id);
       setDetalhe(data);
+      setParametros((old) => { const next = new URLSearchParams(old); next.set('apuracao_id', id); return next; });
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar detalhe da apuração RH/DP');
@@ -419,7 +503,8 @@ export default function RhDpApuracao() {
 
   async function onGerarApuracao(event) {
     event.preventDefault();
-    if (!podeEditar) return;
+    if (!podeEditar || operacaoRef.current) return;
+    if (temPendencias()) { avisar.alerta('Salve os ajustes antes de preparar outra apuracao.'); return; }
 
     if (!form.competencia) {
       avisar.alerta('Informe a competência antes de gerar a apuração.');
@@ -427,6 +512,7 @@ export default function RhDpApuracao() {
     }
 
     try {
+      operacaoRef.current = true;
       setGerando(true);
       const data = await gerarRhApuracao({
         competencia: form.competencia,
@@ -438,6 +524,7 @@ export default function RhDpApuracao() {
       const apuracoesGeradas = Array.isArray(data?.apuracoes) ? data.apuracoes : [data].filter(Boolean);
       const apuracoesIgnoradas = Array.isArray(data?.ignoradas) ? data.ignoradas : [];
       setDetalhe(apuracoesGeradas[0] || null);
+      reiniciar(apuracoesGeradas[0] || null);
       await carregarApuracoes();
       if (apuracoesGeradas.length > 1) {
         avisar.informacao(`${apuracoesGeradas.length} apuracoes foram geradas, uma para cada obra confirmada na importacao.`);
@@ -457,61 +544,42 @@ export default function RhDpApuracao() {
       avisar.erro(error?.message || 'Erro ao gerar apuracao RH/DP');
     } finally {
       setGerando(false);
-    }
-  }
-
-  async function salvarItem(itemId) {
-    if (!detalhe?.id || !edicoes[itemId]) {
-      return;
-    }
-
-    try {
-      setSalvandoItemId(itemId);
-      const atualizado = await atualizarRhApuracaoItem(detalhe.id, itemId, {
-        ajuste_credito_manual: edicoes[itemId].ajuste_credito_manual || '0',
-        ajuste_debito_manual: edicoes[itemId].ajuste_debito_manual || '0',
-        observacoes: edicoes[itemId].observacoes || undefined,
-        status: edicoes[itemId].status,
-        chave_pix_titulo: edicoes[itemId].chave_pix_titulo || undefined
-      });
-      setDetalhe(atualizado);
-      await carregarApuracoes();
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao salvar ajuste do item da apuracao');
-    } finally {
-      setSalvandoItemId(null);
+      operacaoRef.current = false;
     }
   }
 
   async function marcarComoConferida() {
-    if (!detalhe?.id) return;
+    if (!detalhe?.id || !podeEditar || !progresso.pronto || temPendencias() || operacaoRef.current) return;
+    operacaoRef.current = true;
 
     const { ok } = await confirmar({
       titulo: 'Concluir conferência',
       mensagem: 'Concluir a conferência desta apuração? Todos os itens precisam estar marcados como conferidos.',
       rotuloConfirmar: 'Concluir conferência'
     });
-    if (!ok) return;
+    if (!ok) { operacaoRef.current = false; return; }
 
     try {
       setConferindo(true);
       const atualizado = await conferirRhApuracao(detalhe.id);
       setDetalhe(atualizado);
+      requestAnimationFrame(() => workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
       await carregarApuracoes();
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao concluir a conferencia da apuracao');
     } finally {
       setConferindo(false);
+      operacaoRef.current = false;
     }
   }
 
   async function onFecharApuracao(event) {
     event.preventDefault();
-    if (!detalhe?.id || !financeiroHabilitado || !podeFechar) {
+    if (!detalhe?.id || !financeiroHabilitado || !podeFechar || temPendencias() || operacaoRef.current) {
       return;
     }
+    operacaoRef.current = true;
 
     // Fechar e irreversivel pelo caminho normal (so o estorno desfaz, e so
     // enquanto nenhum titulo estiver baixado): confirmacao destrutiva.
@@ -521,7 +589,7 @@ export default function RhDpApuracao() {
       rotuloConfirmar: 'Fechar e gerar titulos',
       destrutiva: true
     });
-    if (!ok) return;
+    if (!ok) { operacaoRef.current = false; return; }
 
     try {
       setFechando(true);
@@ -530,20 +598,25 @@ export default function RhDpApuracao() {
         data_vencimento: fechamentoForm.data_vencimento || undefined,
         observacoes: fechamentoForm.observacoes || undefined
       });
+      // O sucesso financeiro fica visivel mesmo se uma consulta posterior falhar.
+      setResultadoFechamento(data);
+      setDetalhe((atual) => ({ ...atual, fechamentoRh: data }));
+      avisar.sucesso('Fechamento concluído. Confira os títulos gerados abaixo.');
       await carregarApuracoes();
-      navigate(`/rh-dp/fechamentos?fechamento_id=${data.id}`);
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao fechar a apuracao RH/DP');
     } finally {
       setFechando(false);
+      operacaoRef.current = false;
     }
   }
 
   async function reabrirFechamentoAtual() {
-    if (!detalhe?.fechamentoRh?.id || !podeReabrirFechamento) {
+    if (!detalhe?.fechamentoRh?.id || !podeReabrirFechamento || operacaoRef.current) {
       return;
     }
+    operacaoRef.current = true;
 
     // R16b: confirmar e justificar viraram UM passo — a justificativa que
     // saia em `window.prompt` e agora o campo da propria confirmacao.
@@ -555,6 +628,7 @@ export default function RhDpApuracao() {
       campo: { rotulo: 'Justificativa', obrigatorio: true, multilinha: true }
     });
     if (!ok || !texto.trim()) {
+      operacaoRef.current = false;
       return;
     }
 
@@ -565,6 +639,8 @@ export default function RhDpApuracao() {
       });
       const atualizado = await getRhApuracao(detalhe.id);
       setDetalhe(atualizado);
+      reiniciar(atualizado);
+      setResultadoFechamento(null);
       await carregarApuracoes();
       avisar.sucesso('Fechamento estornado e apuração reaberta. O financeiro foi notificado.');
     } catch (error) {
@@ -572,6 +648,7 @@ export default function RhDpApuracao() {
       avisar.erro(error?.message || 'Erro ao reabrir fechamento RH/DP');
     } finally {
       setFechando(false);
+      operacaoRef.current = false;
     }
   }
 
@@ -634,9 +711,235 @@ export default function RhDpApuracao() {
     }
   ]), [empresas, obras]);
 
+  const colunasItens = [
+              {
+                id: 'colaborador',
+                titulo: 'Colaborador',
+                // R17: o item da apuracao é de um COLABORADOR nomeado.
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={item.colaborador?.nome || '-'}
+                    sub={`${item.colaborador?.matricula || '-'} | ${item.colaborador?.cargo || '-'} | ${item.colaborador?.empresaGrupo?.nome || 'Empresa nao informada'}${item.detalhes_json?.multiobra ? ` | Rateio em ${item.detalhes_json.distribuicao_obras?.length || 0} obras` : ''}`}
+                  />
+                )
+              },
+              {
+                id: 'vinculo',
+                titulo: 'Vínculo',
+                tipo: 'badge',
+                render: (item) => item.colaborador?.tipo_vinculo || '-'
+              },
+              {
+                id: 'dias',
+                titulo: 'Dias',
+                tipo: 'numero',
+                render: (item) => formatNumber(item.dias_trabalhados)
+              },
+              {
+                id: 'calculo',
+                titulo: 'Calculo',
+                tipo: 'badge',
+                render: (item) => <details><summary>{(item.detalhes_json?.forma_calculo_gerencial
+                  || item.colaborador?.forma_calculo_gerencial) === 'DIARIA'
+                  ? `Diaria ${formatCurrency(item.detalhes_json?.resumo?.valor_diaria
+                    || item.colaborador?.valor_diaria || 0)}`
+                  : ((item.detalhes_json?.pagamento_automatico_40_60
+                    ?? item.colaborador?.pagamento_automatico_40_60) ? 'Mensal 40% / 60%' : 'Mensal')}</summary>
+                    <p className="app-note">Regra: {item.regra_aplicada || '-'} · Dias: {formatNumber(item.dias_trabalhados)} · Base: {formatCurrency(item.valor_base_calculo)} · Créditos manuais: {formatCurrency(item.ajuste_credito_manual)} · Débitos manuais: {formatCurrency(item.ajuste_debito_manual)}</p>
+                  </details>
+              },
+              {
+                id: 'parcelas_40_60',
+                sempreVisivel: true,
+                titulo: 'Distribuição dos títulos',
+                tipo: 'texto',
+                render: (item) => {
+                  if (detalhe.etapa_pagamento === 'ADIANTAMENTO_40') return 'Somente 40%';
+                  if (detalhe.etapa_pagamento === 'SALDO_60') return 'Somente saldo 60%';
+                  if (detalhe.etapa_pagamento === 'PROPORCIONAL') {
+                    const resumo = item.detalhes_json?.resumo || {};
+                    return <div className="space-y-1">
+                      <div>Proporcional · {resumo.dias_reconhecidos ?? item.dias_trabalhados} dias / divisor 30</div>
+                      <div className="app-note">Base {formatCurrency(resumo.mensal_proporcional)} · 40% já pago {formatCurrency(resumo.adiantamento_anterior)}</div>
+                      {Number(resumo.credito_para_acerto_dp || 0) > 0
+                        ? <div className="app-note">Crédito para acerto pelo DP: {formatCurrency(resumo.credito_para_acerto_dp)}</div> : null}
+                    </div>;
+                  }
+                  if (detalhe.etapa_pagamento === 'DIARIA') {
+                    const acerto = item.detalhes_json?.resumo?.acerto_conversao;
+                    if (!acerto) return 'Diária deste envio';
+                    return (
+                      <div className="space-y-1">
+                        <div>Diária + acerto mensal até {acerto.fim_mensal}</div>
+                        <div className="app-note">Mensal devido {formatCurrency(acerto.mensal_devido)} · pago {formatCurrency(acerto.mensal_pago)}</div>
+                        <div className="app-note">Ajuste neste envio {formatCurrency(acerto.ajuste_mensal)} · crédito restante {formatCurrency(acerto.credito_restante)}</div>
+                      </div>
+                    );
+                  }
+                  const automatico = item.colaborador?.forma_calculo_gerencial !== 'DIARIA'
+                    && item.colaborador?.pagamento_automatico_40_60;
+                  if (!automatico) return 'Título único';
+                  return 'Jornada antiga: refaça os envios em etapas antes de fechar';
+                }
+              },
+              {
+                id: 'bruto',
+                titulo: 'Bruto',
+                tipo: 'valor',
+                render: (item) => formatCurrency(item.valor_bruto)
+              },
+              {
+                id: 'descontos',
+                titulo: 'Descontos',
+                tipo: 'valor',
+                render: (item) => formatCurrency(item.valor_descontos)
+              },
+              {
+                id: 'liquido',
+                titulo: 'Líquido',
+                tipo: 'valor',
+                render: (item) => (
+                  <CelulaDupla
+                    principal={formatCurrency(item.valor_liquido)}
+                    sub={item.regra_aplicada || '-'}
+                  />
+                )
+              },
+              {
+                id: 'pix',
+                sempreVisivel: true,
+                titulo: 'Conta de pagamento',
+                tipo: 'texto',
+                // Edicao inline: o controle mora no render da coluna.
+                render: (item) => {
+                  const pixOptions = getPixOptions(item);
+                  const contaLabel = getContaPagamentoLabel(item);
+                  return (
+                    <>
+                      <select
+                        className="input"
+                        value={edicoes[item.id]?.chave_pix_titulo ?? getDefaultPixValue(item)}
+                        onChange={(event) => { editar(item.id, 'chave_pix_titulo', event.target.value); salvarItem(item.id); }}
+                        disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || !pixOptions.length || estados[item.id] === 'salvando'}
+                      >
+                        {!pixOptions.length ? (
+                          <option value="">Sem chave PIX</option>
+                        ) : (
+                          pixOptions.map((option) => (
+                            <option key={option.key} value={option.value}>
+                              {option.label}: {option.value}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <span className="app-note mt-1 block">
+                        {item.detalhes_json?.pagamento?.alterado_na_jornada
+                          ? `Troca na jornada · beneficiário: ${item.detalhes_json.pagamento.favorecido_nome} · CPF: ${item.detalhes_json.pagamento.favorecido_cpf}. Confira antes de fechar.`
+                          : (pixOptions.length ? 'PIX principal usado por padrão.' : (contaLabel || 'Pagamento não configurado.'))}
+                      </span>
+                    </>
+                  );
+                }
+              },
+              {
+                id: 'ajuste_credito',
+                sempreVisivel: true,
+                titulo: 'Ajuste crédito',
+                tipo: 'texto',
+                render: (item) => (
+                  <input
+                    type="text"
+                    className="input"
+                    value={edicoes[item.id]?.ajuste_credito_manual ?? ''}
+                    onChange={(event) => editar(item.id, 'ajuste_credito_manual', event.target.value)}
+                    onBlur={() => salvarItem(item.id)}
+                    aria-label={`Ajuste crédito de ${item.colaborador?.nome}`}
+                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || estados[item.id] === 'salvando'}
+                  />
+                )
+              },
+              {
+                id: 'ajuste_debito',
+                sempreVisivel: true,
+                titulo: 'Ajuste débito',
+                tipo: 'texto',
+                render: (item) => (
+                  <input
+                    type="text"
+                    className="input"
+                    value={edicoes[item.id]?.ajuste_debito_manual ?? ''}
+                    onChange={(event) => editar(item.id, 'ajuste_debito_manual', event.target.value)}
+                    onBlur={() => salvarItem(item.id)}
+                    aria-label={`Ajuste débito de ${item.colaborador?.nome}`}
+                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || estados[item.id] === 'salvando'}
+                  />
+                )
+              },
+              {
+                id: 'status',
+                sempreVisivel: true,
+                titulo: 'Conferido',
+                tipo: 'badge',
+                render: (item) => (
+                  <div className="rh-conferencia-linha-estado">
+                  <label className="rh-conferencia-check">
+                    <input type="checkbox" checked={edicoes[item.id]?.status === 'CONFERIDO'}
+                      onChange={(event) => salvarItem(item.id, event.target.checked ? 'CONFERIDO' : 'PENDENTE')}
+                      disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || ['pendente', 'salvando', 'erro'].includes(estados[item.id])}
+                      aria-label={`Conferido: ${item.colaborador?.nome}`} />
+                    Conferido
+                  </label>
+                  <span role="status" className={`app-note${estados[item.id] === 'erro' ? ' rh-conferencia-erro' : ''}`}>
+                    {estados[item.id] === 'salvando' ? 'Salvando...' : estados[item.id] === 'salvo' ? 'Salvo' : estados[item.id] === 'erro' ? 'Não salvo' : estados[item.id] === 'pendente' ? 'Ajustes não salvos' : ''}
+                  </span>
+                  {podeEditar && detalhe.status === 'RASCUNHO' && ['pendente', 'erro'].includes(estados[item.id]) ? (
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => salvarItem(item.id)}>
+                      {estados[item.id] === 'erro' ? 'Tentar novamente' : 'Salvar ajuste'}
+                    </button>
+                  ) : null}
+                  </div>
+                )
+              },
+              {
+                id: 'observacoes',
+                sempreVisivel: true,
+                titulo: 'Observações',
+                tipo: 'texto',
+                render: (item) => (
+                  <textarea
+                    className="input"
+                    rows={2}
+                    value={edicoes[item.id]?.observacoes ?? ''}
+                    onChange={(event) => editar(item.id, 'observacoes', event.target.value)}
+                    onBlur={() => salvarItem(item.id)}
+                    aria-label={`Observações de ${item.colaborador?.nome}`}
+                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || estados[item.id] === 'salvando'}
+                  />
+                )
+              }
+            ];
+
   return (
-    <div className="app-pagina">
+    <div className="app-pagina rh-conferencia">
       <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {carregandoContexto ? <p role="status">Localizando a apuração desta jornada...</p> : null}
+      {erroContexto ? <Alert type="error" message={erroContexto} /> : null}
+      {contextoJornada ? (
+        <div className="rh-conferencia-contexto">
+          <strong>Jornada #{contextoJornada.solicitacao_id} · {contextoJornada.recorte.competencia} · {contextoJornada.recorte.etapa_pagamento || 'Jornada legada'}</strong>
+          {!detalhe ? <p>Prepare a apuração para conferir. Colaboradores multiobra continuam sujeitos à consolidação abaixo.</p> : null}
+          {!contextoJornada.apuracoes.some((item) => Number(item.obra_id) === Number(contextoJornada.recorte.obra_id)) && podeEditar ? <button type="button" className="btn btn-primary btn-sm" disabled={gerando || progresso.gravacoesPendentes} onClick={prepararJornada}>{gerando ? 'Preparando...' : 'Preparar apuração desta jornada'}</button> : null}
+          {!detalhe && !podeEditar ? <p>É necessária a permissão de editar apuração para prepará-la.</p> : null}
+          {contextoJornada.apuracoes.length > 1 ? <div className="app-actionbar">Apurações deste envio:
+            {contextoJornada.apuracoes.map((item) => <button type="button" key={item.id} className="btn btn-outline btn-sm" disabled={temPendencias()} onClick={() => abrirApuracao(item.id)}>#{item.id} · {item.obra?.nome || 'Multiobra'}</button>)}
+          </div> : null}
+        </div>
+      ) : null}
+      <details className="rh-conferencia-ferramentas" open={!detalhe && !jornadaId}>
+        <summary>Preparação, consolidação multiobra e lista de apurações</summary>
 
       {/* Formulario de ACAO, nao filtro: e daqui que a pre-folha nasce. */}
       <BlocoConteudo
@@ -949,7 +1252,24 @@ export default function RhDpApuracao() {
         />
       </BlocoConteudo>
 
+      </details>
       {detalhe ? (
+        <div className="rh-conferencia-workspace" ref={workspaceRef}>
+          <div className="rh-conferencia-toolbar">
+            <div aria-live="polite">
+              <strong>{detalhe.fechamentoRh ? '3. Fechamento concluído' : detalhe.status === 'CONFERIDA' ? '2. Revisar fechamento' : '1. Conferir colaboradores'}</strong>
+              <span>{progresso.conferidos}/{progresso.total} conferidos · {progresso.pendentes} pendentes · Líquido {formatCurrency(detalhe.total_liquido)}</span>
+              {progresso.gravacoesPendentes ? <small>Há ajustes pendentes, em gravação ou com erro. O fechamento permanece bloqueado.</small> : null}
+            </div>
+            <div className="app-actionbar">
+              <button type="button" className="btn btn-outline btn-sm" onClick={sairDaConferencia} disabled={progresso.gravacoesPendentes || fechando || conferindo}>Voltar à lista</button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={recarregarConferencia} disabled={Object.values(estados).includes('salvando') || fechando || conferindo}>Recarregar</button>
+              {detalhe.status === 'RASCUNHO' && podeEditar ? <button type="button" className="btn btn-primary btn-sm" onClick={marcarComoConferida} disabled={!progresso.pronto || conferindo}>
+                {conferindo ? 'Concluindo...' : podeFechar ? 'Revisar fechamento' : 'Concluir conferência'}
+              </button> : null}
+              {detalhe.status === 'CONFERIDA' && !detalhe.fechamentoRh && podeFechar && financeiroHabilitado ? <button type="submit" form="rh-form-fechamento" className="btn btn-primary btn-sm" disabled={fechando || acertoContabilPendente(detalhe)}>{fechando ? 'Fechando...' : 'Fechar e gerar títulos'}</button> : null}
+            </div>
+          </div>
         <BlocoConteudo
           titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'consolidada multiobra'}${detalhe.etapa_pagamento ? ` · ${detalhe.etapa_pagamento === 'ADIANTAMENTO_40' ? '40%' : detalhe.etapa_pagamento === 'SALDO_60' ? '60%' : detalhe.etapa_pagamento === 'PROPORCIONAL' ? 'Proporcional' : 'Diária'}` : ''}`}
           contagem={`${detalhe.total_colaboradores || 0} colaborador(es)`}
@@ -959,9 +1279,9 @@ export default function RhDpApuracao() {
               <StatusBadge status={rotuloStatus(detalhe.status)} kind={familiaStatus(detalhe.status)} />
               {detalhe.fechamentoRh ? (
                 <>
-                  <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`} className="btn btn-outline btn-sm">
+                  {canViewRhDpObrigacoes(user) ? <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`} className="btn btn-outline btn-sm">
                     Ver fechamento
-                  </Link>
+                  </Link> : null}
                   {podeReabrirFechamento ? (
                     <button type="button" className="btn btn-outline btn-sm" onClick={reabrirFechamentoAtual} disabled={fechando}>
                       {fechando ? 'Processando...' : 'Estornar e reabrir'}
@@ -969,30 +1289,10 @@ export default function RhDpApuracao() {
                   ) : null}
                 </>
               ) : null}
-              {detalhe.status === 'RASCUNHO' && podeEditar ? (
-                <button type="button" className="btn btn-primary btn-sm" onClick={marcarComoConferida} disabled={conferindo}>
-                  {conferindo ? 'Concluindo...' : 'Marcar apuracao como conferida'}
-                </button>
-              ) : null}
             </>
           )}
         >
-          <StatGrid colunas={5}>
-            <StatTile label="Total bruto" valor={formatCurrency(detalhe.total_bruto)} />
-            <StatTile label="Total descontos" valor={formatCurrency(detalhe.total_descontos)} />
-            <StatTile label="Total líquido" valor={formatCurrency(detalhe.total_liquido)} />
-            <StatTile
-              label="Conferência"
-              valor={`${detalhe.resumo_operacional?.itens_conferidos || 0} item(ns)`}
-              sub={`${detalhe.resumo_operacional?.itens_pendentes || 0} pendente(s)`}
-              tom={detalhe.resumo_operacional?.itens_pendentes ? 'warning' : 'success'}
-            />
-            <StatTile
-              label="Base da diária"
-              valor={`${detalhe.dias_base || 30} dias`}
-              sub="Parametro usado no cálculo proporcional"
-            />
-          </StatGrid>
+          <p className="app-note">Bruto {formatCurrency(detalhe.total_bruto)} · Descontos {formatCurrency(detalhe.total_descontos)} · Base da diária {detalhe.dias_base || 30} dias. Ajustes salvam ao sair do campo; alterações exigem nova conferência da linha.</p>
 
           {acertoContabilPendente(detalhe) ? (
             <Alert
@@ -1023,13 +1323,23 @@ export default function RhDpApuracao() {
                 <>
                   Fechada em {new Date(`${detalhe.fechamentoRh.data_fechamento}T00:00:00`).toLocaleDateString('pt-BR')} com vencimento em{' '}
                   {new Date(`${detalhe.fechamentoRh.data_vencimento}T00:00:00`).toLocaleDateString('pt-BR')}.{' '}
-                  <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`}>
+                  {canViewRhDpObrigacoes(user) ? <Link to={`/rh-dp/fechamentos?fechamento_id=${detalhe.fechamentoRh.id}`}>
                     Abrir lote financeiro
-                  </Link>
+                  </Link> : null}
+                  {' '}{detalhe.fechamentoRh.total_titulos || 0} título(s) · {formatCurrency(detalhe.fechamentoRh.total_valor)}.
                 </>
               )}
             />
           ) : null}
+
+          {resultadoFechamento?.titulos?.length ? <TabelaPadrao
+            colunas={[
+              { id: 'titulo', titulo: 'Título gerado', tipo: 'identidade', render: (item) => item.tituloFinanceiro?.codigo || `#${item.titulo_financeiro_id}` },
+              { id: 'destino', titulo: 'Destino', tipo: 'texto', render: (item) => item.tipo_titulo },
+              { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => formatCurrency(item.valor_gerado) }
+            ]}
+            itens={resultadoFechamento.titulos} storageKey="tabela:rh-dp-conferencia:titulos" rotuloRolagem="Títulos gerados neste fechamento"
+          /> : null}
 
           {financeiroHabilitado && detalhe.status === 'CONFERIDA' && !detalhe.fechamentoRh && podeFechar ? (
             <BlocoConteudo
@@ -1037,7 +1347,7 @@ export default function RhDpApuracao() {
               titulo="Fechamento da competência"
               descricao="O fechamento gera títulos PAGAR no financeiro central e vincula cada item da apuração ao respectivo título. A categoria financeira deve estar marcada para DRE e com grupo DRE classificado."
             >
-              <form className="space-y-4" onSubmit={onFecharApuracao}>
+              <form id="rh-form-fechamento" className="space-y-4" onSubmit={onFecharApuracao}>
                 <FormSecao legenda="Dados do lote" colunas={3}>
                   <CampoForm label="Data de fechamento">
                     <DateInputBR
@@ -1059,7 +1369,7 @@ export default function RhDpApuracao() {
                   </CampoForm>
 
                   <CampoForm label="Categoria financeira">
-                    <div className="input flex items-center bg-slate-50 text-slate-700" aria-label="Categoria financeira automática">
+                    <div className="input flex items-center" aria-label="Categoria financeira automática">
                       2.01.02.01 - Salários e Ordenados
                     </div>
                   </CampoForm>
@@ -1075,270 +1385,27 @@ export default function RhDpApuracao() {
                   </CampoForm>
                 </FormSecao>
 
-                <div className="app-actionbar">
-                  <button type="submit" className="btn btn-primary" disabled={fechando || acertoContabilPendente(detalhe)}>
-                    {acertoContabilPendente(detalhe)
-                      ? 'Aguardando apropriacao do acerto'
-                      : fechando ? 'Fechando competencia...' : 'Fechar competencia e gerar titulos'}
-                  </button>
-                </div>
               </form>
             </BlocoConteudo>
           ) : null}
 
           <TabelaPadrao
-            colunas={[
-              {
-                id: 'colaborador',
-                titulo: 'Colaborador',
-                // R17: o item da apuracao é de um COLABORADOR nomeado.
-                tipo: 'identidade',
-                noCard: 'titulo',
-                render: (item) => (
-                  <CelulaDupla
-                    principal={item.colaborador?.nome || '-'}
-                    sub={`${item.colaborador?.matricula || '-'} | ${item.colaborador?.cargo || '-'} | ${item.colaborador?.empresaGrupo?.nome || 'Empresa nao informada'}${item.detalhes_json?.multiobra ? ` | Rateio em ${item.detalhes_json.distribuicao_obras?.length || 0} obras` : ''}`}
-                  />
-                )
-              },
-              {
-                id: 'vinculo',
-                titulo: 'Vínculo',
-                tipo: 'badge',
-                render: (item) => item.colaborador?.tipo_vinculo || '-'
-              },
-              {
-                id: 'dias',
-                titulo: 'Dias',
-                tipo: 'numero',
-                render: (item) => formatNumber(item.dias_trabalhados)
-              },
-              {
-                id: 'calculo',
-                titulo: 'Calculo',
-                tipo: 'badge',
-                render: (item) => (item.detalhes_json?.forma_calculo_gerencial
-                  || item.colaborador?.forma_calculo_gerencial) === 'DIARIA'
-                  ? `Diaria ${formatCurrency(item.detalhes_json?.resumo?.valor_diaria
-                    || item.colaborador?.valor_diaria || 0)}`
-                  : ((item.detalhes_json?.pagamento_automatico_40_60
-                    ?? item.colaborador?.pagamento_automatico_40_60) ? 'Mensal 40% / 60%' : 'Mensal')
-              },
-              {
-                id: 'parcelas_40_60',
-                sempreVisivel: true,
-                titulo: 'Distribuição dos títulos',
-                tipo: 'texto',
-                render: (item) => {
-                  if (detalhe.etapa_pagamento === 'ADIANTAMENTO_40') return 'Somente 40%';
-                  if (detalhe.etapa_pagamento === 'SALDO_60') return 'Somente saldo 60%';
-                  if (detalhe.etapa_pagamento === 'PROPORCIONAL') {
-                    const resumo = item.detalhes_json?.resumo || {};
-                    return <div className="space-y-1">
-                      <div>Proporcional · {resumo.dias_reconhecidos ?? item.dias_trabalhados} dias / divisor 30</div>
-                      <div className="app-note">Base {formatCurrency(resumo.mensal_proporcional)} · 40% já pago {formatCurrency(resumo.adiantamento_anterior)}</div>
-                      {Number(resumo.credito_para_acerto_dp || 0) > 0
-                        ? <div className="app-note">Crédito para acerto pelo DP: {formatCurrency(resumo.credito_para_acerto_dp)}</div> : null}
-                    </div>;
-                  }
-                  if (detalhe.etapa_pagamento === 'DIARIA') {
-                    const acerto = item.detalhes_json?.resumo?.acerto_conversao;
-                    if (!acerto) return 'Diária deste envio';
-                    return (
-                      <div className="space-y-1">
-                        <div>Diária + acerto mensal até {acerto.fim_mensal}</div>
-                        <div className="app-note">Mensal devido {formatCurrency(acerto.mensal_devido)} · pago {formatCurrency(acerto.mensal_pago)}</div>
-                        <div className="app-note">Ajuste neste envio {formatCurrency(acerto.ajuste_mensal)} · crédito restante {formatCurrency(acerto.credito_restante)}</div>
-                      </div>
-                    );
-                  }
-                  const automatico = item.colaborador?.forma_calculo_gerencial !== 'DIARIA'
-                    && item.colaborador?.pagamento_automatico_40_60;
-                  if (!automatico) return 'Título único';
-                  return 'Jornada antiga: refaça os envios em etapas antes de fechar';
-                }
-              },
-              {
-                id: 'bruto',
-                titulo: 'Bruto',
-                tipo: 'valor',
-                render: (item) => formatCurrency(item.valor_bruto)
-              },
-              {
-                id: 'descontos',
-                titulo: 'Descontos',
-                tipo: 'valor',
-                render: (item) => formatCurrency(item.valor_descontos)
-              },
-              {
-                id: 'liquido',
-                titulo: 'Líquido',
-                tipo: 'valor',
-                render: (item) => (
-                  <CelulaDupla
-                    principal={formatCurrency(item.valor_liquido)}
-                    sub={item.regra_aplicada || '-'}
-                  />
-                )
-              },
-              {
-                id: 'pix',
-                sempreVisivel: true,
-                titulo: 'Conta de pagamento',
-                tipo: 'texto',
-                // Edicao inline: o controle mora no render da coluna.
-                render: (item) => {
-                  const pixOptions = getPixOptions(item);
-                  const contaLabel = getContaPagamentoLabel(item);
-                  return (
-                    <>
-                      <select
-                        className="input"
-                        value={edicoes[item.id]?.chave_pix_titulo ?? getDefaultPixValue(item)}
-                        onChange={(event) =>
-                          setEdicoes((current) => ({
-                            ...current,
-                            [item.id]: {
-                              ...current[item.id],
-                              chave_pix_titulo: event.target.value
-                            }
-                          }))
-                        }
-                        disabled={!podeEditar || detalhe.status !== 'RASCUNHO' || !pixOptions.length}
-                      >
-                        {!pixOptions.length ? (
-                          <option value="">Sem chave PIX</option>
-                        ) : (
-                          pixOptions.map((option) => (
-                            <option key={option.key} value={option.value}>
-                              {option.label}: {option.value}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                      <span className="app-note mt-1 block">
-                        {item.detalhes_json?.pagamento?.alterado_na_jornada
-                          ? `Troca na jornada · beneficiário: ${item.detalhes_json.pagamento.favorecido_nome} · CPF: ${item.detalhes_json.pagamento.favorecido_cpf}. Confira antes de fechar.`
-                          : (pixOptions.length ? 'PIX principal usado por padrão.' : (contaLabel || 'Pagamento não configurado.'))}
-                      </span>
-                    </>
-                  );
-                }
-              },
-              {
-                id: 'ajuste_credito',
-                sempreVisivel: true,
-                titulo: 'Ajuste crédito',
-                tipo: 'texto',
-                render: (item) => (
-                  <input
-                    type="text"
-                    className="input"
-                    value={edicoes[item.id]?.ajuste_credito_manual ?? ''}
-                    onChange={(event) =>
-                      setEdicoes((current) => ({
-                        ...current,
-                        [item.id]: {
-                          ...current[item.id],
-                          ajuste_credito_manual: event.target.value
-                        }
-                      }))
-                    }
-                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                  />
-                )
-              },
-              {
-                id: 'ajuste_debito',
-                sempreVisivel: true,
-                titulo: 'Ajuste débito',
-                tipo: 'texto',
-                render: (item) => (
-                  <input
-                    type="text"
-                    className="input"
-                    value={edicoes[item.id]?.ajuste_debito_manual ?? ''}
-                    onChange={(event) =>
-                      setEdicoes((current) => ({
-                        ...current,
-                        [item.id]: {
-                          ...current[item.id],
-                          ajuste_debito_manual: event.target.value
-                        }
-                      }))
-                    }
-                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                  />
-                )
-              },
-              {
-                id: 'status',
-                sempreVisivel: true,
-                titulo: 'Status',
-                tipo: 'badge',
-                render: (item) => (
-                  <select
-                    className="input"
-                    value={edicoes[item.id]?.status || 'PENDENTE'}
-                    onChange={(event) =>
-                      setEdicoes((current) => ({
-                        ...current,
-                        [item.id]: {
-                          ...current[item.id],
-                          status: event.target.value
-                        }
-                      }))
-                    }
-                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                  >
-                    <option value="PENDENTE">Pendente</option>
-                    <option value="CONFERIDO">Conferido</option>
-                  </select>
-                )
-              },
-              {
-                id: 'observacoes',
-                sempreVisivel: true,
-                titulo: 'Observações',
-                tipo: 'texto',
-                render: (item) => (
-                  <textarea
-                    className="input"
-                    rows={2}
-                    value={edicoes[item.id]?.observacoes ?? ''}
-                    onChange={(event) =>
-                      setEdicoes((current) => ({
-                        ...current,
-                        [item.id]: {
-                          ...current[item.id],
-                          observacoes: event.target.value
-                        }
-                      }))
-                    }
-                    disabled={!podeEditar || detalhe.status !== 'RASCUNHO'}
-                  />
-                )
-              }
-            ]}
+            colunas={colunasItens.filter((coluna) => !['vinculo', 'dias', 'calculo', 'parcelas_40_60', 'ajuste_credito', 'ajuste_debito', 'observacoes'].includes(coluna.id))}
+            linhaExpansivel={(item) => (
+              <FormSecao legenda={'Detalhes e ajustes de ' + item.colaborador?.nome} colunas={3}>
+                {colunasItens.filter((coluna) => ['vinculo', 'dias', 'calculo', 'parcelas_40_60', 'ajuste_credito', 'ajuste_debito', 'observacoes'].includes(coluna.id)).map((coluna) => (
+                  <CampoForm key={coluna.id} label={coluna.titulo}>{coluna.render(item)}</CampoForm>
+                ))}
+              </FormSecao>
+            )}
+            rotuloDetalhe={(item) => 'Detalhes e ajustes de ' + item.colaborador?.nome}
             itens={detalhe.itens || []}
             storageKey="tabela:rh-dp-apuracao:itens"
             rotuloRolagem="Itens da apuracao"
             vazio="A apuração não possui itens."
-            acoesLinha={(item) => (
-              podeEditar && detalhe.status === 'RASCUNHO' ? (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => salvarItem(item.id)}
-                  disabled={salvandoItemId === item.id}
-                >
-                  {salvandoItemId === item.id ? 'Salvando...' : 'Salvar ajuste'}
-                </button>
-              ) : null
-            )}
-            larguraAcoes={160}
           />
         </BlocoConteudo>
+        </div>
       ) : null}
 
       <OverlayModal

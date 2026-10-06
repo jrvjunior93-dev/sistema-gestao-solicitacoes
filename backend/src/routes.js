@@ -2117,6 +2117,8 @@ router.get('/rh/apuracoes/categorias-financeiras', requireEnabledModule('FINANCE
 router.get('/rh/apuracoes/multiobra', allowRhDpApuracaoRead, validateRequest({ query: validateRhJornadasMultiobraQuery }), RhApuracaoController.jornadasMultiobra);
 router.post('/rh/apuracoes/multiobra/consolidar', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ body: validateRhApuracaoMultiobraBody }), RhApuracaoController.consolidarMultiobra);
 router.get('/rh/apuracoes', allowRhDpApuracaoRead, validateRequest({ query: validateRhApuracaoQuery }), RhApuracaoController.index);
+router.get('/rh/apuracoes/jornada/:id', allowRhDpApuracaoRead, validateRequest({ params: validateNumericIdParam('id', 'Jornada RH/DP') }), RhApuracaoController.jornada);
+router.post('/rh/apuracoes/jornada/:id', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Jornada RH/DP') }), RhApuracaoController.jornada);
 router.get('/rh/apuracoes/:id', allowRhDpApuracaoRead, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP') }), RhApuracaoController.show);
 router.post('/rh/apuracoes', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ body: validateRhApuracaoCreateBody }), RhApuracaoController.create);
 router.patch('/rh/apuracoes/:id/itens/:itemId', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ params: validateRhApuracaoItemParams, body: validateRhApuracaoItemUpdateBody }), RhApuracaoController.updateItem);

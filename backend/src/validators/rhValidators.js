@@ -715,16 +715,16 @@ function validateRhApuracaoItemParams(params = {}) {
 function validateRhApuracaoItemUpdateBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['ajuste_credito_manual', 'ajuste_debito_manual', 'observacoes', 'status', 'chave_pix_titulo'],
+    ['ajuste_credito_manual', 'ajuste_debito_manual', 'observacoes', 'status', 'chave_pix_titulo', 'revisao_conferencia'],
     'Item da apuracao RH/DP'
   );
 
   const payload = {
     ajuste_credito_manual: parseDecimal(body.ajuste_credito_manual, 'Ajuste de credito manual', { min: 0 }),
     ajuste_debito_manual: parseDecimal(body.ajuste_debito_manual, 'Ajuste de debito manual', { min: 0 }),
-    observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
+    observacoes: body.observacoes !== undefined && isBlank(body.observacoes) ? null : parseOptionalText(body.observacoes, 'Observacoes', 4000),
     status: parseEnum(body.status, 'Status do item da apuracao', RH_STATUS_APURACAO_ITEM),
-    chave_pix_titulo: parseOptionalText(body.chave_pix_titulo, 'Chave PIX do titulo', 120)
+    chave_pix_titulo: body.chave_pix_titulo !== undefined && isBlank(body.chave_pix_titulo) ? null : parseOptionalText(body.chave_pix_titulo, 'Chave PIX do titulo', 120)
   };
 
   const normalized = Object.fromEntries(
@@ -733,6 +733,13 @@ function validateRhApuracaoItemUpdateBody(body = {}) {
 
   if (!Object.keys(normalized).length) {
     throw new ValidationError('Nenhum campo valido informado para atualizar o item da apuracao.');
+  }
+
+  if (body.revisao_conferencia !== undefined) {
+    if (!/^[a-f0-9]{64}$/.test(String(body.revisao_conferencia))) {
+      throw new ValidationError('Revisao da conferencia invalida. Recarregue a apuracao.');
+    }
+    normalized.revisao_conferencia = body.revisao_conferencia;
   }
 
   return normalized;

@@ -244,6 +244,8 @@ async function ensureCategoriaFinanceiraPagar(transaction) {
 }
 
 async function carregarApuracaoParaFechamento(apuracaoId, transaction) {
+  // Mesmo mutex da edicao/conferencia: dois fechamentos nao podem criar dois lotes.
+  await RhApuracao.findByPk(apuracaoId, { transaction, lock: transaction.LOCK.UPDATE });
   const apuracao = await RhApuracao.findByPk(apuracaoId, {
     transaction,
     include: [
@@ -1486,6 +1488,11 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
   }
 
   return sequelize.transaction(async (transaction) => {
+    const referencia = await RhFechamento.findByPk(fechamentoId, {
+      attributes: ['id', 'apuracao_id'], transaction, lock: transaction.LOCK.UPDATE
+    });
+    if (!referencia) throw new ValidationError('Fechamento RH/DP nao encontrado.', 404);
+    await RhApuracao.findByPk(referencia.apuracao_id, { transaction, lock: transaction.LOCK.UPDATE });
     const fechamento = await RhFechamento.findByPk(fechamentoId, {
       transaction,
       include: [

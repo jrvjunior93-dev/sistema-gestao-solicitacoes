@@ -289,6 +289,13 @@ export async function getRhApuracao(id) {
   return parseJson(response, 'Erro ao buscar detalhe da apuracao RH/DP');
 }
 
+export async function abrirConferenciaRhJornada(id, preparar = false) {
+  const response = await fetch(`${API_URL}/rh/apuracoes/jornada/${id}`, {
+    method: preparar ? 'POST' : 'GET', headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao abrir conferencia da jornada');
+}
+
 export async function gerarRhApuracao(data) {
   const response = await fetch(`${API_URL}/rh/apuracoes`, {
     method: 'POST',

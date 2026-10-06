@@ -1,5 +1,28 @@
 # Ownership Ativo
 
+## Publicacao autorizada - conferencia e fechamento guiados do DP - 06/10/2026
+
+Proprietario autorizou commit/push das alteracoes pendentes e retorno a main.
+Sessao `/root` reserva a publicacao dos arquivos deste fluxo e deste registro
+no worktree `promocao-main-20261003/Fluxy`, ja em main. Capturas outputs/ e
+mudancas dos demais checkouts permanecem preservadas e fora do commit.
+Testes focados reexecutados; build e QA registrados no handoff. Sem banco,
+migration, deploy ou reinicio. Ownership de edicao encerrado apos a publicacao.
+
+## Ownership encerrado - conferencia e fechamento guiados do DP - 06/10/2026
+
+Sessao `/root`, worktree `promocao-main-20261003/Fluxy`, reserva as telas
+RhDpApuracao, RhDpPessoal, RhDpPessoalSolicitacoes e RhDpJornada, seus helpers,
+estilo, servico rhDp, servicos/backend/controller/rotas/validadores de apuracao
+e fechamento, testes locais e documentacao deste fluxo. Implementacao autorizada
+pelo proprietario: checkbox persistente, salvamento sem perda de rascunhos,
+entrada contextual pela jornada e revisao/fechamento na mesma tela.
+Preservar permissoes, calculos, retornos, multiobra e etapas 40/60.
+Sem banco real, migration, deploy, reinicio, commit ou push nesta tarefa.
+Implementacao e testes locais frontend/backend concluidos, build aprovado.
+Ownership liberado; alteracoes aguardam publicacao autorizada. Continuidade:
+`docs/handoffs/2026-10-06-rhdp-conferencia-fechamento-guiados.md`.
+
 ## Publicacao autorizada - campos PJ no cadastro de credor - 06/10/2026
 
 Proprietario autorizou commit/push das alteracoes pendentes e retorno a main.

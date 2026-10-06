@@ -25,7 +25,7 @@ A rota `/rh-dp/pessoal?aba=...` usa a aba **Solicitações** como padrão. Na in
 | Transferências entre obras | Disponível na tela Pessoal. A capacidade de decidir depende de ser responsável ou substituto da obra envolvida, não apenas de visualizar a aba. |
 | Eventos recorrentes | Só aparece com `rh_dp.eventos_recorrentes.visualizar`. A obra, se autorizada, consulta os eventos aprovados de seus colaboradores; editar ou desativar é ação do setor DP, com permissão de decisão. |
 | Pagamento de Mão de Obra | Disponível na tela Pessoal. Consultar jornadas usa acesso aos colaboradores; registrar/importar jornada exige permissão de abrir solicitação. |
-| Apuração | Só aparece para quem pode visualizar, editar ou executar fechamento de apuração. Editar/gerar/conferir exige capacidade de edição. |
+| Conferência e fechamento | Aba `apuracao`: só aparece para quem pode visualizar, editar ou executar fechamento de apuração. Preparar/editar/conferir exige edição; gerar títulos exige fechamento. |
 | Fechamentos | Só aparece com permissão de obrigações/fechamento **e** módulo `FINANCEIRO` habilitado. Estorno exige permissão própria de reabertura. |
 
 O perfil `SUPERADMIN` possui exceções administrativas previstas nas funções centrais de acesso. Isso não elimina as regras de integridade dos dados: status, documentos, vínculos, bloqueio por título baixado e demais validações continuam relevantes. A aprovação de alteração salarial usa permissão nominal mais restrita para perfis não superadministrativos. A autorização exata de cada usuário deve ser conferida em **Permissões de Áreas por Usuário**.
@@ -88,7 +88,7 @@ O backend valida vínculo, escopo da obra e dias até a data atual; **Dias na Ob
 
 O modelo de planilha espelha os campos editáveis da tela e inclui datas da diária, chave PIX, nome e CPF do beneficiário. A chave cadastrada é pré-preenchida. Trocar a chave requer informar nome e CPF válido do novo beneficiário; a alteração fica no pagamento daquela jornada, não muda o cadastro permanente do colaborador. O DP vê a troca na apuração e deve conferir o favorecido antes de fechar.
 
-**Jornadas enviadas** mostra competência, obra, etapa, período, colaboradores, situação e data de envio. **Abrir jornada** exibe as linhas originais em modo de leitura, inclusive versões substituídas, e permite pedir retorno de uma linha ao DP; **Ir para Apuração** é navegação separada para quem tem permissão. Anexos podem ser vinculados à jornada já existente. O envio não cria, por si só, um título financeiro.
+**Jornadas enviadas** mostra competência, obra, etapa, período, colaboradores, situação e data de envio. **Abrir jornada** exibe as linhas originais em modo de leitura, inclusive versões substituídas, e permite pedir retorno de uma linha ao DP; **Conferir jornada** abre diretamente a conferência do envio para quem tem permissão. O mesmo atalho aparece nas solicitações de jornada abertas/aprovadas da fila de Pessoal. Anexos podem ser vinculados à jornada já existente. O envio não cria, por si só, um título financeiro.
 
 ### Cálculo usado pela apuração
 
@@ -103,7 +103,17 @@ O modelo de planilha espelha os campos editáveis da tela e inclui datas da diá
 
 Na implementação em etapas, 40% e 60% não podem cobrir os mesmos dias; o saldo leva em conta o adiantamento já fechado, e as recorrências devem ocorrer uma vez na competência. Diárias são envios independentes, respeitando os dias de vínculo. Uma conversão mensalista→diarista com acerto misto pode ser calculada para conferência, mas o fechamento financeiro continua **bloqueado** enquanto a apropriação contábil por obra e eventual crédito do DP não estiver concluída e homologada.
 
-## 6. Apuração
+## 6. Conferência e fechamento
+
+A simplificação implementada em 06/10/2026 mantém a rota e as regras da apuração, com este roteiro na mesma tela:
+
+1. Na solicitação de jornada ou em **Jornadas enviadas**, clicar em **Conferir jornada**. O sistema identifica a origem confirmada e retoma a apuração correspondente, sem recalcular ajustes nem criar registros apenas pela abertura da tela. Se não existir, um usuário com edição usa **Preparar apuração desta jornada**. Jornadas substituídas, etapas desativadas ou recortes conflitantes exigem revisão pelo fluxo já existente.
+2. Conferir os valores e a conta/PIX de cada colaborador. Usar o detalhe expansível para consultar cálculos, dias, parcelas, ajustes e observações. Ajustes são salvos ao sair do campo; a troca de PIX é salva no momento da seleção. Marcar o checkbox **Conferido** salva a conferência imediatamente no servidor, mantendo-a ao sair e voltar.
+3. Aguardar o indicador **Salvo**. Se houver falha, a linha mostra **Não salvo** e **Tentar novamente**; a conferência geral fica bloqueada. Ajustar dados de uma linha exige conferi-la novamente. Alterações concorrentes são recusadas, sem sobrescrever o outro usuário; **Recarregar** pede confirmação antes de descartar ajustes locais não salvos.
+4. A faixa de progresso permanece visível durante a rolagem. Quando todas as linhas estiverem conferidas e sem gravações pendentes, usar **Revisar fechamento** e confirmar a conclusão da conferência. Quem pode editar, mas não fechar, vê **Concluir conferência** e não recebe poderes financeiros adicionais.
+5. Com permissão de fechamento e Financeiro ativo, revisar datas e observações no formulário exibido nessa mesma tela. **Fechar e gerar títulos** exige confirmação final. O resultado e os títulos gerados aparecem ali; a aba **Fechamentos** continua como histórico e consulta detalhada do lote.
+
+Preparação, filtros, lista de apurações e consolidação multiobra ficam em uma seção recolhida quando existe uma conferência aberta. Sem apuração selecionada, essas ferramentas ficam disponíveis para seleção/preparação. O fluxo guiado não substitui a consolidação multiobra nem contorna pendências de retorno, conversão de regime ou regras de geração de títulos.
 
 O DP gera a pré-folha por competência a partir de jornadas/importações **confirmadas**. Há filtros de competência, empresa, obra, vínculo e status, uma lista de apurações e detalhe por colaborador. Gerar pode criar ou atualizar rascunhos de recortes elegíveis; recortes já conferidos são preservados. Cada item traz memória de cálculo, dados de pagamento, créditos, descontos, valor bruto e líquido. A edição de item em `RASCUNHO` permite ajuste manual de crédito/débito, observação, status de conferência e chave PIX do título, sob permissão específica.
 

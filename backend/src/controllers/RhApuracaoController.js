@@ -1,4 +1,5 @@
 const {
+  contextoApuracaoJornadaRh,
   conferirApuracaoRh,
   detalharApuracaoRh,
   gerarApuracaoMultiobraRh,
@@ -11,6 +12,15 @@ const { responderErroController } = require('../utils/controllerError');
 const { CategoriaFinanceira } = require('../models');
 
 module.exports = {
+  async jornada(req, res) {
+    try {
+      return res.json(await contextoApuracaoJornadaRh(req.params.id, {
+        preparar: req.method === 'POST', user: req.user
+      }));
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao abrir conferencia da jornada');
+    }
+  },
   async categoriasFinanceiras(req, res) {
     try {
       const data = await CategoriaFinanceira.findAll({ order: [['nome', 'ASC']] });

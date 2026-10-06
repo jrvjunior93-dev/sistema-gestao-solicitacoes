@@ -437,7 +437,7 @@ export default function RhDpPessoal() {
     },
     ...(podeVerApuracao ? [{
       id: 'apuracao',
-      rotulo: 'Apuração',
+      rotulo: 'Conferência e fechamento',
       apoio: 'Pré-folha por competência a partir das obras importadas, com ajustes auditados.'
     }] : []),
     ...(podeVerFechamentos ? [{
@@ -476,6 +476,8 @@ export default function RhDpPessoal() {
       proximos.set('aba', 'apuracao');
       proximos.delete('solicitacao');
       proximos.delete('jornada_secao');
+      proximos.delete('apuracao_id');
+      if (solicitacao?.id) proximos.set('jornada_id', String(solicitacao.id));
       if (solicitacao?.dados_json?.competencia) {
         proximos.set('competencia', String(solicitacao.dados_json.competencia));
       }
@@ -1207,6 +1209,7 @@ export default function RhDpPessoal() {
           podeAprovarSalario={podeAprovarSalario}
           aoMudar={carregar}
           onAbrirListaJornadas={abrirListaDeJornadas}
+          onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined}
           aoContarAbertas={setTotalSolicitacoesAbertas}
           aoContarNaoLidas={setTotalSolicitacoesNaoLidas}
           aoMarcarVisualizada={marcarSolicitacaoVisualizada}

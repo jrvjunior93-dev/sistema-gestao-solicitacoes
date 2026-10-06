@@ -173,7 +173,7 @@ function dadosOperacionais(solicitacao) {
     .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
 }
 
-export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
+export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, onAbrirApuracao, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
   const { user } = useAuth();
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -714,6 +714,9 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
               <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionarDetalhe(s)}>
                 Abrir
               </button>
+              {s.tipo === 'JORNADA' && ['ABERTA', 'APROVADA'].includes(s.situacao) && onAbrirApuracao ? (
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => onAbrirApuracao(s)}>Conferir jornada</button>
+              ) : null}
               {podeDecidir
                   && (s.tipo !== 'EVENTO_RECORRENTE' || podeDecidirEventoRecorrente)
                   && s.situacao === 'ABERTA'
@@ -817,7 +820,10 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
                 <strong>Consultar jornada</strong>
                 <p className="app-bloco-lead">A jornada já foi registrada. Abra a lista de jornadas enviadas para acompanhar este envio.</p>
               </div>
-              <button type="button" className="btn btn-primary" onClick={onAbrirListaJornadas}>
+              {onAbrirApuracao && ['ABERTA', 'APROVADA'].includes(aberta.situacao) ? (
+                <button type="button" className="btn btn-primary" onClick={() => onAbrirApuracao(aberta)}>Conferir jornada</button>
+              ) : null}
+              <button type="button" className="btn btn-outline" onClick={onAbrirListaJornadas}>
                 Ir para Jornadas enviadas
               </button>
             </div>

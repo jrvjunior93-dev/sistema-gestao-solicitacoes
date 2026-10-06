@@ -1002,7 +1002,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                 </button>
                 {onAbrirApuracao ? (
                   <button type="button" className="btn btn-outline btn-sm" onClick={() => onAbrirApuracao(item)}>
-                    Ir para Apuração
+                    Conferir jornada
                   </button>
                 ) : null}
               </div>

@@ -21,6 +21,7 @@ const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 const { baseMensalProporcional } = require('./rhPagamentoGerencial');
 const { exigirJornadasSemRetornoPendente } = require('./rhJornadaFormularioService');
+const { revisaoItem, alteraConferencia } = require('./rhApuracaoConferenciaDomain');
 
 const APURACAO_ITEM_INCLUDE = [
   {
@@ -174,7 +175,7 @@ function enrichApuracao(apuracao) {
 
   return {
     ...plain,
-    itens: itensOrdenados,
+    itens: itensOrdenados.map((item) => ({ ...item, revisao_conferencia: revisaoItem(item) })),
     resumo_operacional: {
       itens_pendentes: itensOrdenados.filter((item) => item.status === 'PENDENTE').length,
       itens_conferidos: itensOrdenados.filter((item) => item.status === 'CONFERIDO').length
@@ -219,7 +220,7 @@ function whereApuracaoRecorte(data, status) {
 async function resolveExistingDraft(data, transaction) {
   const draft = await RhApuracao.findOne({
     where: whereApuracaoRecorte(data, 'RASCUNHO'),
-    transaction
+    transaction, lock: transaction.LOCK.UPDATE
   });
 
   const conferida = await RhApuracao.findOne({
@@ -1164,6 +1165,8 @@ async function guardarCreditoProporcionalParaDp(apuracao, transaction) {
 }
 
 async function gerarApuracaoRecorteRh(data, user, transaction) {
+  // Serializa preparacoes do mesmo recorte, inclusive a entrada pela jornada.
+  await Obra.findByPk(data.obra_id, { transaction, lock: transaction.LOCK.UPDATE });
   if (data.empresa_grupo_id) {
     await ensureEmpresaGrupoExists(data.empresa_grupo_id, transaction);
   }
@@ -1967,9 +1970,67 @@ async function gerarApuracaoRh(data, user) {
   });
 }
 
+async function contextoApuracaoJornadaRh(id, { preparar = false, user } = {}) {
+  return sequelize.transaction(async (transaction) => {
+    const solicitacao = await RhSolicitacao.findByPk(id, {
+      transaction, ...(preparar ? { lock: transaction.LOCK.UPDATE } : {})
+    });
+    if (!solicitacao || solicitacao.tipo !== 'JORNADA') {
+      throw new ValidationError('Solicitacao de jornada nao encontrada.', 404);
+    }
+    if (!['ABERTA', 'APROVADA'].includes(solicitacao.situacao)) {
+      throw new ValidationError('Esta jornada nao esta disponivel para apuracao.', 409);
+    }
+    const dados = typeof solicitacao.dados_json === 'string'
+      ? JSON.parse(solicitacao.dados_json) : solicitacao.dados_json || {};
+    if (!Number.isInteger(Number(dados.importacao_id)) || Number(dados.importacao_id) <= 0) {
+      throw new ValidationError('Esta jornada nao possui fonte de importacao. Consulte Jornadas enviadas.', 409);
+    }
+    const fonte = await RhImportacao.findByPk(dados.importacao_id, { transaction });
+    if (!fonte || fonte.status !== 'CONFIRMADA' || Number(fonte.obra_id) !== Number(solicitacao.obra_id)) {
+      throw new ValidationError('A fonte desta jornada nao esta confirmada. Consulte Jornadas enviadas.', 409);
+    }
+    const recorte = {
+      competencia: fonte.competencia, obra_id: fonte.obra_id,
+      empresa_grupo_id: fonte.empresa_grupo_id || null, tipo_vinculo: fonte.tipo_vinculo || null,
+      etapa_pagamento: fonte.etapa_pagamento || null,
+      importacao_id: fonte.etapa_pagamento === 'DIARIA' ? fonte.id : null,
+      dias_base: Number(dados.dias_base || 30)
+    };
+    const candidatas = await RhApuracao.findAll({
+      where: { competencia: recorte.competencia, etapa_pagamento: recorte.etapa_pagamento,
+        [Op.or]: [{ obra_id: fonte.obra_id }, { obra_id: null }] },
+      include: [{ model: RhApuracaoEvento, as: 'itens', separate: true }],
+      order: [['id', 'DESC']], transaction
+    });
+    const correspondentes = candidatas.filter((apuracao) => (
+      apuracao.itens?.some((item) => (item.detalhes_json?.importacao_ids || []).map(Number).includes(Number(fonte.id)))
+    ));
+    // Abrir/retomar nunca regera linhas conferidas ou ajustes existentes.
+    const apuracoes = [];
+    for (const apuracao of correspondentes) {
+      apuracoes.push(await detalharApuracaoPorPk(apuracao.id, transaction));
+    }
+    if (preparar && !apuracoes.some((apuracao) => Number(apuracao.obra_id) === Number(fonte.obra_id))) {
+      if (recorte.etapa_pagamento && String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() !== 'ON') {
+        throw new ValidationError('O fluxo de jornadas em etapas esta desabilitado.', 409);
+      }
+      // O recorte ja existente deve ser revisado, nunca substituido silenciosamente.
+      const existente = await RhApuracao.findOne({
+        where: { ...whereApuracaoRecorte(recorte, undefined), status: { [Op.in]: ['RASCUNHO', 'CONFERIDA'] } }, transaction
+      });
+      if (existente) {
+        throw new ValidationError('Ja existe apuracao neste recorte com outra versao da jornada. Revise-a pela lista antes de recalcular.', 409);
+      }
+      apuracoes.unshift(await gerarApuracaoRecorteRh(recorte, user, transaction));
+    }
+    return { solicitacao_id: Number(solicitacao.id), recorte, apuracoes };
+  });
+}
+
 async function atualizarItemApuracaoRh(apuracaoId, itemId, data, user) {
   return sequelize.transaction(async (transaction) => {
-    const apuracao = await RhApuracao.findByPk(apuracaoId, { transaction });
+    const apuracao = await RhApuracao.findByPk(apuracaoId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!apuracao) {
       throw new ValidationError('Apuracao RH/DP nao encontrada.', 404);
     }
@@ -1988,6 +2049,10 @@ async function atualizarItemApuracaoRh(apuracaoId, itemId, data, user) {
 
     if (!item) {
       throw new ValidationError('Item da apuracao RH/DP nao encontrado.', 404);
+    }
+
+    if (data.revisao_conferencia && data.revisao_conferencia !== revisaoItem(item)) {
+      throw new ValidationError('Esta linha foi alterada por outro usuario. Recarregue a apuracao e confira os dados novamente.', 409);
     }
 
     const detalhesJson = item.detalhes_json && typeof item.detalhes_json === 'object'
@@ -2081,6 +2146,8 @@ async function atualizarItemApuracaoRh(apuracaoId, itemId, data, user) {
       );
     }
 
+    // Ajustar dados nunca equivale a conferir novamente, mesmo que o cliente envie ambos.
+    if (alteraConferencia(item, data)) payload.status = 'PENDENTE';
     await item.update(payload, { transaction });
     await apuracao.update({ atualizado_por: user?.id || null }, { transaction });
     await recalcularResumoApuracao(apuracao.id, transaction);
@@ -2091,7 +2158,7 @@ async function atualizarItemApuracaoRh(apuracaoId, itemId, data, user) {
 
 async function conferirApuracaoRh(id, user) {
   return sequelize.transaction(async (transaction) => {
-    const apuracao = await RhApuracao.findByPk(id, { transaction });
+    const apuracao = await RhApuracao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!apuracao) {
       throw new ValidationError('Apuracao RH/DP nao encontrada.', 404);
     }
@@ -2132,6 +2199,7 @@ async function conferirApuracaoRh(id, user) {
 }
 
 module.exports = {
+  contextoApuracaoJornadaRh,
   // Exposto para a suite 59 poder conferir a memoria de calculo sem montar uma apuracao inteira.
   // O nome diz que e para teste justamente para ninguem passar a chamar isto em producao.
   calcularItemApuracaoParaTeste: calcularItemApuracao,

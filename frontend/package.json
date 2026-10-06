@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:rhdp-conferencia-guiada": "node scripts/validarRhConferenciaGuiada.mjs",
     "test:cadastro-obra-formulario": "node scripts/validarAberturaCadastroObra.mjs",
     "test:pedido-entregas": "node scripts/validarPedidoEntregaUI.mjs",
     "test:prazos-operacionais": "node scripts/validarPrazosOperacionais.mjs",

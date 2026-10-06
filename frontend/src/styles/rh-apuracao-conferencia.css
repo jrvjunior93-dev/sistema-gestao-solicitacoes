@@ -1,0 +1,33 @@
+.rh-conferencia-ferramentas > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-weight: 600;
+  color: var(--c-text);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+}
+.rh-conferencia-ferramentas[open] > summary { margin-bottom: 12px; }
+.rh-conferencia-ferramentas > .app-bloco { margin-bottom: 12px; }
+.rh-conferencia-contexto { padding: 12px; border: 1px solid var(--ui-border); background: var(--ui-surface); border-radius: 8px; }
+.rh-conferencia-contexto p { margin: 8px 0; }
+.rh-conferencia-workspace { min-width: 0; scroll-margin-top: 180px; }
+.rh-conferencia-toolbar {
+  position: sticky;
+  top: calc(var(--pos-cabecalho-fixo, 96px) + var(--rh-conferencia-cabecalho, 56px) + 8px);
+  z-index: 60;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 8px 16px; padding: 10px 12px; margin-bottom: 12px;
+  background: var(--ui-surface); color: var(--c-text); border: 1px solid var(--ui-border); border-radius: 8px;
+}
+.rh-conferencia-toolbar > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.rh-conferencia-toolbar span, .rh-conferencia-toolbar small { font-size: var(--fonte-detalhe); }
+.rh-conferencia-toolbar .app-actionbar { margin: 0; }
+.rh-conferencia-check { display: flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap; }
+.rh-conferencia-check input { width: 16px; height: 16px; accent-color: var(--c-primary); }
+.rh-conferencia-linha-estado { display: flex; flex-direction: column; gap: var(--esp-1); align-items: flex-start; }
+.rh-conferencia-erro { color: var(--sem-danger); }
+@media (max-width: 640px) {
+  .rh-conferencia-toolbar .app-actionbar { width: 100%; flex-wrap: wrap; }
+  .rh-conferencia-workspace { scroll-margin-top: 240px; }
+}
