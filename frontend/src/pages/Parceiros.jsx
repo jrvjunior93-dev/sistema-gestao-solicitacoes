@@ -22,6 +22,8 @@ import {
 } from '../components/padrao';
 import StatusBadge from '../components/StatusBadge';
 import DateInputBR from '../components/DateInputBR';
+import DadosEmpresaParceiro from '../components/parceiros/DadosEmpresaParceiro';
+import { getDadosEmpresaParceiroError } from '../utils/dadosEmpresaParceiro';
 
 const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
 const PAGE_SIZE_OPTIONS = ['25', '50', '100', '200', 'all'];
@@ -31,6 +33,10 @@ function defaultParceiroForm() {
     id: null,
     cpf_cnpj: '',
     nome: '',
+    nome_fantasia: '',
+    representante_nome: '',
+    representante_cpf: '',
+    representante_cargo: '',
     telefone: '',
     email: '',
     rg: '',
@@ -79,6 +85,10 @@ function pickParceiroFormData(parceiro = {}) {
     id: parceiro.id || null,
     cpf_cnpj: maskCpfCnpj(parceiro.cpf_cnpj),
     nome: parceiro.nome || '',
+    nome_fantasia: parceiro.nome_fantasia || '',
+    representante_nome: parceiro.representante_nome || '',
+    representante_cpf: maskCpfCnpj(parceiro.representante_cpf),
+    representante_cargo: parceiro.representante_cargo || '',
     telefone: maskPhone(parceiro.telefone),
     email: parceiro.email || '',
     rg: parceiro.rg || '',
@@ -240,8 +250,14 @@ export default function Parceiros() {
 
   async function handleSalvar(event) {
     event.preventDefault();
+    if (saving) return;
     if (!isValidCpfCnpj(parceiroForm.cpf_cnpj)) {
       setError('Informe um CPF/CNPJ valido.');
+      return;
+    }
+    const empresaErro = getDadosEmpresaParceiroError(parceiroForm, { obrigatorio: !parceiroForm.id });
+    if (empresaErro) {
+      setError(empresaErro);
       return;
     }
     const pixErro = [
@@ -260,6 +276,7 @@ export default function Parceiros() {
       const payload = {
         ...parceiroForm,
         cpf_cnpj: normalizeDocumento(parceiroForm.cpf_cnpj),
+        representante_cpf: onlyDigits(parceiroForm.representante_cpf),
         telefone: onlyDigits(parceiroForm.telefone),
         cep: onlyDigits(parceiroForm.cep)
       };
@@ -546,6 +563,13 @@ export default function Parceiros() {
                   <input className="input w-full" value={parceiroForm.email} onChange={atualizarCampo('email')} />
                 </CampoForm>
               </FormSecao>
+
+              <DadosEmpresaParceiro
+                form={parceiroForm}
+                onChange={(campo, valor) => setParceiroForm(current => ({ ...current, [campo]: valor }))}
+                obrigatorio={!parceiroForm.id}
+                disabled={saving}
+              />
 
               <FormSecao legenda="Uso da pessoa no sistema" colunas={2}>
                 <div className="form-campo--linha">

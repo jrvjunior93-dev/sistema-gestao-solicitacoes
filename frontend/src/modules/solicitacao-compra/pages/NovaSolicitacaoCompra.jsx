@@ -33,6 +33,8 @@ import {
 import OverlayModal from '../../../components/ui/OverlayModal';
 import ApropriacaoAutocomplete from '../../../components/ui/ApropriacaoAutocomplete';
 import ParceiroBuscaRemota from '../../../components/solicitacoes/ParceiroBuscaRemota';
+import DadosEmpresaParceiro from '../../../components/parceiros/DadosEmpresaParceiro';
+import { getDadosEmpresaParceiroError } from '../../../utils/dadosEmpresaParceiro';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
 import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatters';
@@ -152,6 +154,10 @@ function criarNovoCredorPadrao() {
   return {
     cpf_cnpj: '',
     nome: '',
+    nome_fantasia: '',
+    representante_nome: '',
+    representante_cpf: '',
+    representante_cargo: '',
     telefone: '',
     email: ''
   };
@@ -1141,6 +1147,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   async function cadastrarCredorCompraDireta() {
+    if (salvandoCredor) return;
     if (!novoCredor.nome.trim()) {
       reprovarCampo('credor_nome', 'Informe o nome do credor.');
       return;
@@ -1154,11 +1161,18 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
+    const empresaErro = getDadosEmpresaParceiroError(novoCredor, { obrigatorio: false });
+    if (empresaErro) {
+      avisar.erro(empresaErro);
+      return;
+    }
+
     setSalvandoCredor(true);
     try {
       const parceiro = await criarCredorCompraDireta({
         ...novoCredor,
         cpf_cnpj: onlyDigits(novoCredor.cpf_cnpj),
+        representante_cpf: onlyDigits(novoCredor.representante_cpf),
         telefone: novoCredor.telefone.replace(/\D/g, '')
       });
       selecionarCredorCompraDireta(parceiro);
@@ -3065,6 +3079,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               />
             </CampoForm>
           </FormSecao>
+          <DadosEmpresaParceiro
+            form={novoCredor}
+            onChange={(campo, valor) => setNovoCredor(atual => ({ ...atual, [campo]: valor }))}
+            obrigatorio={false}
+            disabled={salvandoCredor}
+          />
         </div>
 
         <div data-modal="rodape" className="app-actionbar p-4">

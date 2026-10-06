@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { getCpfCnpjError, getPixDocumentError, onlyDigits } from '../src/utils/formatters.js';
+import { getDadosEmpresaParceiroError } from '../src/utils/dadosEmpresaParceiro.js';
 
 const pagina = readFileSync(new URL('../src/pages/NovaSolicitacao.jsx', import.meta.url), 'utf8');
 const padrao = pagina.slice(pagina.indexOf('function criarNovoParceiroPadrao()'), pagina.indexOf('function criarChaveIdempotenciaSolicitacao()'));
@@ -20,7 +21,7 @@ function formulario(dados = {}, { falhar = false, aguardar = false, avulso = fal
   const avisos = [], payloads = [], selecoes = [], busy = [], modalAberto = [];
   let liberar;
   const contexto = {
-    novoParceiro: { ...base, ...dados }, getCpfCnpjError, getPixDocumentError, onlyDigits,
+    novoParceiro: { ...base, ...dados }, getCpfCnpjError, getPixDocumentError, onlyDigits, getDadosEmpresaParceiroError,
     normalizarDocumento: onlyDigits, salvandoNovoParceiroRef: { current: false },
     setSalvandoNovoParceiro: valor => busy.push(valor),
     avisar: { alerta: valor => avisos.push(valor), erro: valor => avisos.push(valor) },
@@ -50,6 +51,25 @@ assert.equal(umaChave.payloads[0].cep, '29000000');
 assert.equal(umaChave.payloads[0].contrato_id, '4');
 assert.equal(umaChave.selecoes.length, 1);
 assert.deepEqual(umaChave.modalAberto, [false]);
+
+const empresa = { cpf_cnpj: '04.252.011/0001-10', nome: 'Empresa de teste',
+  nome_fantasia: 'Fantasia de teste', representante_nome: 'Representante de teste',
+  representante_cpf: '529.982.247-25', representante_cargo: 'Socio' };
+for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf']) {
+  const incompleto = formulario({ ...empresa, [campo]: ' ' });
+  await incompleto.executar();
+  assert.equal(incompleto.payloads.length, 0, `PJ deve exigir ${campo} antes do envio.`);
+  assert.equal(incompleto.avisos.length, 1);
+}
+const representanteInvalido = formulario({ ...empresa, representante_cpf: '00000000000' });
+await representanteInvalido.executar();
+assert.match(representanteInvalido.avisos[0], /CPF do representante legal invalido/);
+assert.equal(representanteInvalido.payloads.length, 0);
+const pj = formulario(empresa);
+await pj.executar();
+assert.deepEqual(pj.avisos, []);
+assert.equal(pj.payloads[0].nome_fantasia, empresa.nome_fantasia);
+assert.equal(pj.payloads[0].representante_cpf, '52998224725');
 
 for (const tipo of ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA']) {
   const teste = formulario({ pix_chave_fixa_2_tipo: tipo, pix_chave_variavel_tipo: tipo,
@@ -129,7 +149,7 @@ async function testarApi(dados = {}, habilitado = true) {
     resolverCamposNovaSolicitacao: () => ({ cadastro_credor: { visivel: habilitado } }),
     obterOpcoesNovaSolicitacao: () => ({}), pendenciasDoCadastroCredor: cadastro.pendenciasDoCadastro,
     criarParceiro: async payload => {
-      const normalizado = servicoParceiro.normalizarPayloadTeste(payload);
+      const normalizado = servicoParceiro.normalizarPayloadTeste(payload, { exigirCadastroCompleto: true });
       criados.push(normalizado); return { id: 123, ...normalizado };
     }, responderErroController: (res, error) => res.status(400).json({ error: error.message })
   });
@@ -147,6 +167,15 @@ assert.equal(apiSemPix.criados.length, 0);
 assert.match(apiSemPix.res.body.error, /primeira chave PIX/);
 assert.equal((await testarApi({}, false)).res.codigo, 403);
 assert.equal((await testarApi({ endereco: '' })).res.codigo, 400);
+const apiEmpresa = await testarApi(empresa);
+assert.equal(apiEmpresa.res.codigo, 201);
+assert.equal(apiEmpresa.criados[0].nome_fantasia, empresa.nome_fantasia);
+assert.equal(apiEmpresa.criados[0].representante_cpf, '52998224725');
+for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf']) {
+  const rejeitado = await testarApi({ ...empresa, [campo]: '' });
+  assert.equal(rejeitado.res.codigo, 400);
+  assert.equal(rejeitado.criados.length, 0);
+}
 console.log('Cadastro de credor: primeira PIX obrigatoria, adicionais opcionais, endereco unico, bloqueio de clique, permissoes e API validados. Sem banco ou servicos externos.');
 
 if (process.argv.includes('--ui')) {
@@ -160,8 +189,14 @@ if (process.argv.includes('--ui')) {
 import OverlayModal from '/src/components/ui/OverlayModal.jsx';
 import BlocoConteudo from '/src/components/padrao/BlocoConteudo.jsx';
 import {CampoForm,FormSecao} from '/src/components/padrao/FormSecao.jsx';
+import DadosEmpresaParceiro from '/src/components/parceiros/DadosEmpresaParceiro.jsx';
+import {getDadosEmpresaParceiroError} from '/src/utils/dadosEmpresaParceiro.js';
 import {getCpfCnpjError,getPixDocumentError,onlyDigits,maskCpfCnpj,maskPhone,maskCep} from '/src/utils/formatters.js';
 import '/src/index.css';
+import '/src/styles/design-tokens.css';
+import '/src/styles/escala.css';
+import '/src/styles/componentes-padrao.css';
+import '/src/styles/responsive-system.css';
 ${tipos} ${padrao}
 function App(){
 const [novoParceiro,setNovoParceiro]=useState(${JSON.stringify(base)});
@@ -203,6 +238,7 @@ return <main><p>{mensagem}</p>${modal}</main>;
     const erros = []; page.on('pageerror', error => erros.push(error.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture`);
     await page.getByRole('heading', { name: 'Cadastrar Credor', exact: true }).waitFor();
+    assert.equal(await page.locator('[name="nome_fantasia"]').count(), 0, 'PF nao deve pedir nome fantasia.');
     assert.equal(await page.locator('[name="novo_credor_endereco"]').count(), 1);
     assert.equal(await page.getByText('Endereço (segunda entrada, já existente na tela)').count(), 0);
     await page.getByLabel('Chave PIX fixa 2', { exact: true }).fill('00000000000000');
@@ -217,6 +253,40 @@ return <main><p>{mensagem}</p>${modal}</main>;
     assert.equal(await page.getByRole('heading', { name: 'Cadastrar Credor', exact: true }).count(), 0);
     assert.deepEqual(erros, []);
     console.log('Modal real no Edge: endereco unico, chave adicional invalida bloqueada e envio com somente primeira chave aprovados. Fixture sem API externa.');
+
+    // Mesmo modal real em desktop e celular, tema claro/escuro e entrada de PJ.
+    for (const width of [1280, 390]) {
+      for (const tema of ['light', 'dark']) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture`);
+        await page.evaluate(tema => document.documentElement.classList.toggle('dark', tema === 'dark'), tema);
+        await page.getByLabel('CPF/CNPJ', { exact: true }).fill(empresa.cpf_cnpj);
+        const fantasia = page.getByLabel('Nome fantasia', { exact: true });
+        await fantasia.waitFor();
+        assert.equal(await fantasia.isEnabled(), true);
+        await page.getByRole('button', { name: 'Salvar credor', exact: true }).click();
+        await page.getByRole('status').filter({ hasText: 'nome fantasia' }).waitFor();
+        assert.equal(await page.evaluate(() => window.payloadTeste), undefined);
+        await fantasia.fill(empresa.nome_fantasia);
+        await page.getByLabel('Nome do representante legal', { exact: true }).fill(empresa.representante_nome);
+        await page.getByLabel('CPF do representante legal', { exact: true }).fill(empresa.representante_cpf);
+        await page.getByLabel('Cargo do representante legal', { exact: true }).fill(empresa.representante_cargo);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        if (process.argv.includes('--capturas')) {
+          const pasta = fileURLToPath(new URL('../../outputs/credor-pj/', import.meta.url));
+          mkdirSync(pasta, { recursive: true });
+          await fantasia.scrollIntoViewIfNeeded();
+          await page.screenshot({ path: `${pasta}/credor-${width}-${tema}.png` });
+        }
+        await page.getByRole('button', { name: 'Salvar credor', exact: true }).click();
+        await page.getByText('Credor salvo', { exact: true }).waitFor();
+        const enviado = await page.evaluate(() => window.payloadTeste);
+        assert.equal(enviado.nome_fantasia, empresa.nome_fantasia);
+        assert.equal(enviado.representante_cpf, '52998224725');
+      }
+    }
+    assert.deepEqual(erros, []);
+    console.log('PJ: campos editaveis, validacao e envio aprovados em 1280/390px, claro/escuro.');
   } finally {
     await browser?.close(); await server.close();
   }

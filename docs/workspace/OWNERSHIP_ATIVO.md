@@ -1,5 +1,27 @@
 # Ownership Ativo
 
+## Publicacao autorizada - campos PJ no cadastro de credor - 06/10/2026
+
+Proprietario autorizou commit/push das alteracoes pendentes e retorno a main.
+Sessao `/root` reserva a publicacao dos arquivos do handoff de campos PJ,
+validadores e este registro no worktree `promocao-main-20261003/Fluxy`, ja em
+main. Capturas outputs/ e demais worktrees permanecem preservados e fora do
+commit. Testes focados reexecutados; build e QA visual registrados no handoff.
+Ownership de edicao encerrado. Sem deploy, banco, migration ou reinicio de EC2.
+
+## Ownership encerrado - campos PJ no cadastro de credor - 06/10/2026
+
+Sessao `/root`, worktree `promocao-main-20261003/Fluxy`: reserva
+`frontend/src/pages/NovaSolicitacao.jsx`, `frontend/src/pages/Parceiros.jsx`,
+`frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`,
+componente/helper compartilhados de dados de empresa, validadores de credor,
+handoff e este registro. Corrigir ausencia de nome fantasia/representante para
+CNPJ sem enfraquecer validacao, mudar permissoes ou exigir dados adicionais em
+Compra Direta/edicao de cadastros legados. Sem banco, deploy, commit ou push.
+Implementacao e validacoes locais concluidas, ownership liberado. Alteracoes
+aguardam publicacao autorizada. Continuidade no handoff
+`docs/handoffs/2026-10-06-credor-campos-empresa.md`.
+
 ## Ownership encerrado - migration estrutural dos prazos - 06/10/2026
 
 Proprietario autorizou corrigir e publicar a incompatibilidade com o runner.

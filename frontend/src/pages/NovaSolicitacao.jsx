@@ -39,6 +39,8 @@ import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import OverlayModal from '../components/ui/OverlayModal';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
 import CadastroRapidoFavorecidoButton from '../components/solicitacoes/CadastroRapidoFavorecidoButton';
+import DadosEmpresaParceiro from '../components/parceiros/DadosEmpresaParceiro';
+import { getDadosEmpresaParceiroError } from '../utils/dadosEmpresaParceiro';
 import RateioApropriacoesContrato, { numeroDoCampo } from '../components/contratos/RateioApropriacoesContrato';
 import PendingAttachmentsList from '../components/attachments/PendingAttachmentsList';
 import RecargaCartaoFields from '../components/recarga-cartao/RecargaCartaoFields';
@@ -140,6 +142,10 @@ function criarNovoParceiroPadrao() {
   return {
     cpf_cnpj: '',
     nome: '',
+    nome_fantasia: '',
+    representante_nome: '',
+    representante_cpf: '',
+    representante_cargo: '',
     telefone: '',
     email: '',
     endereco: '',
@@ -840,6 +846,11 @@ export default function NovaSolicitacao() {
         avisar.alerta(documentoErro);
         return;
       }
+      const empresaErro = getDadosEmpresaParceiroError(novoParceiro);
+      if (empresaErro) {
+        avisar.alerta(empresaErro);
+        return;
+      }
       if (!String(novoParceiro.pix_chave_fixa_1 || '').trim()) {
         avisar.alerta('Informe a primeira chave PIX do credor.');
         return;
@@ -858,6 +869,7 @@ export default function NovaSolicitacao() {
       const payload = {
         ...novoParceiro,
         cpf_cnpj: normalizarDocumento(novoParceiro.cpf_cnpj),
+        representante_cpf: onlyDigits(novoParceiro.representante_cpf),
         telefone: onlyDigits(novoParceiro.telefone),
         cep: onlyDigits(novoParceiro.cep)
       };
@@ -4554,6 +4566,12 @@ export default function NovaSolicitacao() {
               />
             </CampoForm>
           </FormSecao>
+
+          <DadosEmpresaParceiro
+            form={novoParceiro}
+            onChange={(campo, valor) => setNovoParceiro(prev => ({ ...prev, [campo]: valor }))}
+            disabled={salvandoNovoParceiro}
+          />
 
           {/* Endereco obrigatorio no cadastro (PI-20).
               Estes campos ja existiam no estado do formulario, mas nao eram renderizados — e e
