@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  HiOutlineArrowPath,
+  HiOutlineArrowUturnLeft,
+  HiOutlineArrowUturnRight,
+  HiOutlineCheck,
+  HiOutlineClipboardDocumentCheck,
+  HiOutlineEye,
+  HiOutlinePaperAirplane,
+  HiOutlineXMark
+} from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Avisos,
@@ -10,6 +20,7 @@ import {
   useConfirmacao
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
+import Button from '../components/ui/Button';
 import { competenciaISOParaBR } from '../components/CompetenciaInputBR';
 import '../styles/rh-pessoal-atividade.css';
 import {
@@ -171,6 +182,22 @@ function dadosOperacionais(solicitacao) {
   return Object.entries(solicitacao?.dados_json || {})
     .filter(([chave, valor]) => ROTULO_DADO[chave] && valor !== null && valor !== undefined && valor !== '')
     .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
+}
+
+function AcaoIconePessoal({ rotulo, icone: Icone, solicitacaoId, variant = 'outline', onClick }) {
+  return (
+    <Button
+      variant={variant}
+      size="sm"
+      iconOnly
+      className="rh-solicitacao-acao-icone"
+      title={rotulo}
+      aria-label={`${rotulo}: solicitação #${solicitacaoId}`}
+      onClick={onClick}
+    >
+      <Icone size={18} aria-hidden="true" />
+    </Button>
+  );
 }
 
 export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, onAbrirApuracao, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
@@ -710,12 +737,12 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
           urgencia={(s) => (s.nao_lida ? 'warning' : null)}
           classeLinha={(s) => (s.nao_lida ? 'rh-solicitacao-nao-lida' : '')}
           acoesLinha={(s) => (
-            <>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionarDetalhe(s)}>
-                Abrir
-              </button>
+            <div className="rh-acoes-icones rh-solicitacoes-acoes">
+              <AcaoIconePessoal rotulo="Abrir" icone={HiOutlineEye} solicitacaoId={s.id}
+                onClick={() => selecionarDetalhe(s)} />
               {s.tipo === 'JORNADA' && ['ABERTA', 'APROVADA'].includes(s.situacao) && onAbrirApuracao ? (
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => onAbrirApuracao(s)}>Conferir jornada</button>
+                <AcaoIconePessoal rotulo="Conferir jornada" icone={HiOutlineClipboardDocumentCheck}
+                  solicitacaoId={s.id} onClick={() => onAbrirApuracao(s)} />
               ) : null}
               {podeDecidir
                   && (s.tipo !== 'EVENTO_RECORRENTE' || podeDecidirEventoRecorrente)
@@ -723,41 +750,37 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
                   && s.tipo !== 'JORNADA' ? (
                 <>
                   {s.tipo !== 'ALTERACAO_SALARIAL' || podeAprovarSalario ? (
-                    <button type="button" className="btn btn-primary btn-sm" onClick={() => decidir(s, 'aprovar')}>
-                      {s.subtipo === 'RETORNO_AFASTAMENTO' ? 'Registrar ciencia' : 'Aprovar'}
-                    </button>
+                    <AcaoIconePessoal
+                      rotulo={s.subtipo === 'RETORNO_AFASTAMENTO' ? 'Registrar ciência' : 'Aprovar'}
+                      icone={HiOutlineCheck} variant="primary" solicitacaoId={s.id}
+                      onClick={() => decidir(s, 'aprovar')} />
                   ) : (
                     <span className="text-xs opacity-70">Aguardando a Diretoria</span>
                   )}
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => decidir(s, 'devolver')}>
-                    Devolver
-                  </button>
+                  <AcaoIconePessoal rotulo="Devolver" icone={HiOutlineArrowUturnLeft}
+                    solicitacaoId={s.id} onClick={() => decidir(s, 'devolver')} />
                 </>
               ) : null}
               {podeAbrir && s.situacao === 'RASCUNHO' && s.tipo !== 'JORNADA' ? (
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => enviarAoDp(s)}>
-                  Enviar
-                </button>
+                <AcaoIconePessoal rotulo="Enviar" icone={HiOutlinePaperAirplane} variant="primary"
+                  solicitacaoId={s.id} onClick={() => enviarAoDp(s)} />
               ) : null}
               {podeAbrir && s.situacao === 'REJEITADA' && s.tipo !== 'JORNADA' ? (
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => decidir(s, 'reenviar')}>
-                  Reenviar
-                </button>
+                <AcaoIconePessoal rotulo="Reenviar" icone={HiOutlineArrowPath}
+                  solicitacaoId={s.id} onClick={() => decidir(s, 'reenviar')} />
               ) : null}
               {podeAbrir && (Number(s.criada_por) === Number(user?.id) || user?.perfil === 'SUPERADMIN')
                 && s.situacao === 'ABERTA' && s.tipo !== 'JORNADA' ? (
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => solicitarRetorno(s)}>
-                  Solicitar retorno
-                </button>
+                <AcaoIconePessoal rotulo="Solicitar retorno" icone={HiOutlineArrowUturnRight}
+                  solicitacaoId={s.id} onClick={() => solicitarRetorno(s)} />
               ) : null}
               {podeAbrir && s.tipo !== 'JORNADA' && ['RASCUNHO', 'ABERTA'].includes(s.situacao) ? (
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => decidir(s, 'cancelar')}>
-                  Cancelar
-                </button>
+                <AcaoIconePessoal rotulo="Cancelar" icone={HiOutlineXMark}
+                  solicitacaoId={s.id} onClick={() => decidir(s, 'cancelar')} />
               ) : null}
-            </>
+            </div>
           )}
-          larguraAcoes={300}
+          larguraAcoes={220}
         />
       </div>
 

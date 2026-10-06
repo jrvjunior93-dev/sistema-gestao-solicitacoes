@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Publicacao autorizada - icones nas acoes de solicitacoes de Pessoal - 06/10/2026
+
+Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`, reserva
+`frontend/src/pages/RhDpPessoalSolicitacoes.jsx`,
+`frontend/src/styles/rh-pessoal-atividade.css`, `frontend/package.json`,
+`frontend/scripts/validarRhPessoalAcoesIcones.mjs` e handoff desta tarefa.
+Ajuste visual autorizado: somente a coluna Acoes da aba Solicitacoes de Pessoal.
+Reutilizar Button e preservar callbacks, permissoes, estados e confirmacoes.
+Proprietario autorizou commit e push na refactor/frontend e promocao para main.
+Sessao `/root` reserva essa publicacao Git. Sem banco, EC2, migrations ou deploy manual. Preservar alteracoes locais
+preexistentes neste documento e arquivos de auditoria nao rastreados.
+Edicao encerrada apos testes locais de icones e conferencia guiada, build e
+revisao visual em dois temas e larguras. Continuidade registrada em
+`docs/handoffs/2026-10-06-rhdp-acoes-em-icones.md`; promover somente este ajuste e manter as auditorias fora do commit.
+
 ## Publicacao autorizada - conferencia e fechamento guiados do DP - 06/10/2026
 
 Proprietario autorizou commit/push das alteracoes pendentes e retorno a main.
