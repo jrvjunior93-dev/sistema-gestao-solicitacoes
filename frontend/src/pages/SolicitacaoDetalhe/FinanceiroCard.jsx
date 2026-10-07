@@ -3650,13 +3650,13 @@ export default function FinanceiroCard({
                       {forma?.exige_cartao && (
                         <div className="space-y-2">
                           <label className="text-sm">
-                            <span className="mb-1 block text-[var(--c-muted)]">Cartão utilizado</span>
+                            <span className="mb-1 block text-[var(--c-muted)]">Cartão utilizado (opcional)</span>
                             <select
                               className="input w-full"
                               value={pagamento.cartao_id || ''}
                               onChange={(event) => updatePagamento(pagamentoIndex, { cartao_id: event.target.value })}
                             >
-                              <option value="">Selecione o cartão</option>
+                              <option value="">Não informar agora — baixar depois</option>
                               {cartoesFiltrados.map((cartao) => {
                                 const empresaCartao = cartao?.contaBancaria?.empresa?.nome;
                                 return (
@@ -3667,7 +3667,11 @@ export default function FinanceiroCard({
                               })}
                             </select>
                             <span className="mt-1 block text-xs text-[var(--c-muted)]">
-                              A conta vinculada ao cartão define a empresa que realizou o pagamento.
+                              {form.status === 'PREVISAO'
+                                ? 'Em previsão, o título não é quitado na criação, mesmo com cartão informado.'
+                                : pagamento.cartao_id
+                                  ? 'Com cartão informado, a quitação automática segue a regra atual. A conta vinculada define a empresa pagadora.'
+                                  : 'Sem cartão informado, o título fica em aberto. Informe o cartão utilizado ao realizar a baixa.'}
                             </span>
                           </label>
 

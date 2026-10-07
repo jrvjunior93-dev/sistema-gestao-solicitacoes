@@ -15,6 +15,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false
       },
+      usa_fluxo_recarga_cartao: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       ativo: {
         type: DataTypes.BOOLEAN,
         defaultValue: true

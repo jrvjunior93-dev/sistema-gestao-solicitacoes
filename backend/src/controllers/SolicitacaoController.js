@@ -3150,6 +3150,7 @@ module.exports = {
         boleto_anexo_nome,
         despesa_eventual_declaracoes,
         cartao_recarga_id,
+        recargas_cartoes,
         apropriacao_id,
         codigo_contrato,
         contrato_id,
@@ -3247,8 +3248,28 @@ module.exports = {
       if ([tipoSelecionado.nome, tipoSelecionado.codigo_interno].some((nome) => ['COMPRA_DIRETA', 'SOLICITACAO_DE_COMPRA', 'SOLICITACAO_COMPRA'].includes(normalizarTokenComparacao(nome)))) {
         await require('../services/pedidoEntregaService').assertObraPodeCriarCompra(obra_id);
       }
-      const usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
-      const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado);
+      let usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
+      let subtipoRecarga = null;
+      if (tipo_sub_id) {
+        subtipoRecarga = await TipoSubContrato.findOne({
+          where: { id: tipo_sub_id, ativo: true },
+          include: [{ model: TipoSolicitacao, as: 'tiposSolicitacao', where: { id: tipo_solicitacao_id }, attributes: ['id'], through: { attributes: [] }, required: true }]
+        });
+        if (!subtipoRecarga) return res.status(400).json({ error: 'Subtipo invalido para o tipo de solicitacao selecionado.' });
+      }
+      const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado) || subtipoRecarga?.usa_fluxo_recarga_cartao === true;
+      if (!usaFluxoRecargaCartao && recargas_cartoes !== undefined) return res.status(400).json({ error: 'Os cartoes exigem um tipo ou subtipo configurado para recarga.' });
+      const possuiSubtipoRecarga = Boolean(await TipoSubContrato.findOne({
+        where: { ativo: true, usa_fluxo_recarga_cartao: true },
+        include: [{ model: TipoSolicitacao, as: 'tiposSolicitacao', where: { id: tipo_solicitacao_id }, attributes: ['id'], through: { attributes: [] }, required: true }]
+      }));
+      if (usaFluxoRecargaCartao && (usaFluxoCadastroObra || comportamentoBase.usa_fluxo_contrato_novo || comportamentoBase.mostrar_periodo_medicao)) {
+        return res.status(400).json({ error: 'Vincule o subtipo de recarga a um tipo comum, sem fluxo de contrato, medicao ou cadastro de obra.' });
+      }
+      if (usaFluxoRecargaCartao) {
+        comportamentoBase.usa_apropriacao_automatica_obra = false;
+        usaFluxoDespesaEventual = false;
+      }
       if (
         (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao) &&
         setorDestinoSelecionado.eh_setor_geo !== true &&
@@ -3349,8 +3370,10 @@ module.exports = {
           tipoSubId: tipo_sub_id
         }
       );
-      const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento']);
+      const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento', ...(subtipoRecarga?.usa_fluxo_recarga_cartao ? ['subtipo'] : [])]);
       const campoVisivel = (campo) => (
+        (campo === 'subtipo' && possuiSubtipoRecarga)
+        ||
         (usaFluxoRecargaCartao && camposFixosRecargaCartao.has(campo))
         || (!usaFluxoRecargaCartao && camposNovaSolicitacao?.[campo]?.visivel !== false)
       );
@@ -3483,7 +3506,7 @@ module.exports = {
           error: `Informe a ${rotuloDataSolicitacao.toLocaleLowerCase('pt-BR')}.`
         });
       }
-      if (usaFluxoRecargaCartao && !cartao_recarga_id) {
+      if (usaFluxoRecargaCartao && !cartao_recarga_id && !recargas_cartoes?.length) {
         return res.status(400).json({ error: 'Selecione o cartao que recebera a recarga.' });
       }
       if (campoObrigatorio('data_demissao') && !data_demissao) {
@@ -4154,8 +4177,12 @@ module.exports = {
         : usaFluxoRecargaCartao
           ? await executarCriacaoRecargaComControle({
             cartaoId: cartao_recarga_id,
+            cartoes: recargas_cartoes,
             user: req.user,
-            dadosSolicitacao
+            dadosSolicitacao,
+            registrarDistribuicao: distribuicaoCentroCustoValidada ? (resultado, transaction) => SolicitacaoCentroCustoDistribuicao.bulkCreate(
+              distribuicaoCentroCustoValidada.linhas.map((item) => ({ solicitacao_id: resultado.id, centro_custo_id: Number(obra_id), obra_id: item.obra_id, abrangencia: item.abrangencia, criterio: item.criterio, percentual: item.percentual, valor_distribuido: item.valor_distribuido, criado_por: usuarioId })), { transaction }
+            ) : null
           })
           : usaFluxoDespesaEventual
             ? await executarCriacaoDespesaEventualComControle({
@@ -4172,7 +4199,7 @@ module.exports = {
       // Fluxos especiais possuem controle transacional proprio. Se algum deles for futuramente
       // liberado para Centro de Custo, a classificacao gerencial ainda e persistida sem tocar nos
       // titulos ou nos custos reais das obras.
-      if (distribuicaoCentroCustoValidada && (usaFluxoRecargaCartao || usaFluxoDespesaEventual)) {
+      if (distribuicaoCentroCustoValidada && usaFluxoDespesaEventual) {
         await SolicitacaoCentroCustoDistribuicao.bulkCreate(
           distribuicaoCentroCustoValidada.linhas.map((item) => ({
             solicitacao_id: solicitacao.id,
@@ -4206,6 +4233,7 @@ module.exports = {
           forma_pagamento_id: formaPagamentoIdPersistida,
           despesa_eventual_saldo: criacao.saldo,
           cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartao_recarga_id) : null,
+          recargas_cartoes: usaFluxoRecargaCartao ? criacao.recargas?.map((item) => ({ id: item.id, cartao_recarga_id: item.cartao_recarga_id, titulo_financeiro_id: item.titulo_financeiro_id, valor: item.valor_solicitado })) : null,
           apropriacao_id: apropriacao?.id || null,
           apropriacao_origem: usaApropriacaoAutomaticaObra ? 'PADRAO_OBRA_TIPO' : 'INFORMADA',
           distribuicao_centro_custo: distribuicaoCentroCustoValidada
@@ -4438,8 +4466,9 @@ module.exports = {
           {
             model: TipoSubContrato,
             as: 'tipoSubSolicitacao',
-            attributes: ['id', 'nome']
+            attributes: ['id', 'nome', 'usa_fluxo_recarga_cartao']
           },
+          { model: require('../models').SolicitacaoRecargaCartao, as: 'recargasCartao', attributes: ['id', 'cartao_recarga_id'] },
           // CONTRATO
           {
             model: Contrato,

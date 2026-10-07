@@ -6,6 +6,7 @@ const {
   CartaoRecargaPrestacao,
   CartaoRecargaPrestacaoRateio,
   CartaoRecargaUsuario,
+  CartaoRecargaObra,
   CategoriaFinanceira,
   EmpresaGrupo,
   Historico,
@@ -84,6 +85,7 @@ function validarDataRecarga(value) {
 }
 
 function tipoEhRecargaCartao(tipo = {}) {
+  if (tipo.usa_fluxo_recarga_cartao === true) return true;
   const codigo = normalizarToken(tipo.codigo_interno || tipo.nome);
   if (codigo === 'RECARGA_DE_CARTAO' || codigo === 'RECARGA_CARTAO') return true;
   try {
@@ -110,7 +112,18 @@ function assertSuperadmin(user) {
   if (!isSuperadmin(user)) throw erro(403, 'Somente SUPERADMIN pode gerenciar os cartoes de recarga.');
 }
 
-async function assertCartaoVinculado(cartaoId, userId, { transaction = null, lock = false } = {}) {
+async function assertOrigemAcessivel(obraId, user, transaction = null) {
+  if (!Number.isInteger(Number(obraId)) || Number(obraId) <= 0) throw erro(400, 'Selecione a obra ou centro de custo.');
+  const obra = await Obra.findOne({ where: { id: Number(obraId), ativo: true }, transaction });
+  if (!obra) throw erro(404, 'Obra ou centro de custo nao encontrado ou inativo.');
+  const auth = require('./authorizationService');
+  if (!(await auth.hasObraAccess(user, obraId)) && !(await auth.userCanCreateInAllObras(user))) {
+    throw erro(403, 'Acesso negado a esta obra ou centro de custo.');
+  }
+  return obra;
+}
+
+async function assertCartaoVinculado(cartaoId, userId, { transaction = null, lock = false, obraId = null } = {}) {
   const cartao = await CartaoRecarga.findOne({
     where: { id: Number(cartaoId), ativo: true },
     include: [{ model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'ativo', 'fornecedor'] }],
@@ -140,12 +153,12 @@ async function assertCartaoVinculado(cartaoId, userId, { transaction = null, loc
   if (!empresa) throw erro(409, 'A empresa configurada no cartao esta inativa ou nao existe.');
   if (!categoria) throw erro(409, 'A categoria financeira configurada no cartao nao aceita titulos a pagar ou esta inativa.');
 
-  const vinculo = await CartaoRecargaUsuario.findOne({
-    where: { cartao_recarga_id: cartao.id, user_id: Number(userId), ativo: true },
+  const vinculo = await (obraId ? CartaoRecargaObra : CartaoRecargaUsuario).findOne({
+    where: { cartao_recarga_id: cartao.id, ...(obraId ? { obra_id: Number(obraId) } : { user_id: Number(userId) }), ativo: true },
     transaction,
     lock: lock && transaction ? transaction.LOCK.UPDATE : undefined
   });
-  if (!vinculo) throw erro(403, 'Este cartao nao esta vinculado ao usuario.');
+  if (!vinculo) throw erro(403, obraId ? 'Este cartao nao esta vinculado a obra ou centro de custo selecionado.' : 'Este cartao nao esta vinculado ao usuario.');
   return cartao;
 }
 
@@ -220,6 +233,14 @@ async function resolverSetorCriador(solicitacao, transaction) {
   return String(historicoCriacao?.setor || 'OBRA').trim().toUpperCase();
 }
 
+async function resolverDestinoPrestacaoAposBaixa(solicitacao, transaction) {
+  const origem = await Obra.findByPk(solicitacao.obra_id, { transaction });
+  // Obras preservam o retorno operacional existente. Centros devolvem ao solicitante.
+  return origem?.tipo_centro_custo === 'CENTRO_CUSTO'
+    ? resolverSetorCriador(solicitacao, transaction)
+    : null;
+}
+
 function agendarAtualizacaoFila({
   transaction,
   solicitacaoId,
@@ -273,6 +294,27 @@ async function listarObrasDoUsuario(userId, transaction = null) {
   return vinculos.map((item) => item.obra).filter(Boolean);
 }
 
+async function listarDestinosPrestacao(recarga, transaction = null) {
+  const obras = await listarObrasDoUsuario(recarga.solicitacao?.criado_por || recarga.criado_por, transaction);
+  const origemId = Number(recarga.solicitacao?.obra_id);
+  if (origemId && !obras.some((obra) => Number(obra.id) === origemId)) {
+    const origem = await Obra.findByPk(origemId, { attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'], transaction });
+    if (origem) obras.push(origem);
+  }
+  return obras;
+}
+
+async function validarDestinoRateio(item, destinos, transaction) {
+  const obra = destinos.find((origem) => Number(origem.id) === item.obra_id);
+  if (!obra) throw erro(403, 'Destino fora do escopo da prestacao de contas.');
+  if (obra.tipo_centro_custo === 'CENTRO_CUSTO') {
+    if (item.apropriacao_id) throw erro(400, 'Centro de custo nao utiliza apropriacao de obra.');
+    return;
+  }
+  const apropriacao = await Apropriacao.findOne({ where: { id: item.apropriacao_id, obra_id: item.obra_id, ativo: true }, transaction });
+  if (!apropriacao || !apropriacaoPodeReceberLancamento(apropriacao)) throw erro(400, 'Selecione uma apropriacao valida da obra que aceite lancamentos.');
+}
+
 async function calcularMedia(cartaoId) {
   const ciclos = await SolicitacaoRecargaCartao.findAll({
     where: {
@@ -311,11 +353,16 @@ function serializarContexto(recarga, {
   };
 }
 
-async function listarDocumentosPrestacao(solicitacaoId, transaction = null) {
+async function tipoDocumentosPrestacao(recarga, transaction = null) {
+  const quantidade = await SolicitacaoRecargaCartao.count({ where: { solicitacao_id: recarga.solicitacao_id }, transaction });
+  return quantidade > 1 ? `${TIPO_DOCUMENTO_PRESTACAO}_${recarga.id}` : TIPO_DOCUMENTO_PRESTACAO;
+}
+
+async function listarDocumentosPrestacao(solicitacaoId, transaction = null, tipo = TIPO_DOCUMENTO_PRESTACAO) {
   return Anexo.findAll({
     where: {
       solicitacao_id: Number(solicitacaoId),
-      tipo: TIPO_DOCUMENTO_PRESTACAO,
+      tipo,
       deleted_at: null
     },
     attributes: ['id', 'nome_original', 'caminho_arquivo', 'uploaded_by', 'createdAt'],
@@ -324,9 +371,10 @@ async function listarDocumentosPrestacao(solicitacaoId, transaction = null) {
   });
 }
 
-async function listarMeusCartoes(user) {
-  const vinculos = await CartaoRecargaUsuario.findAll({
-    where: { user_id: Number(user.id), ativo: true },
+async function listarMeusCartoes(user, obraId) {
+  await assertOrigemAcessivel(obraId, user);
+  const vinculos = await CartaoRecargaObra.findAll({
+    where: { obra_id: Number(obraId), ativo: true },
     include: [{
       model: CartaoRecarga,
       as: 'cartao',
@@ -338,72 +386,108 @@ async function listarMeusCartoes(user) {
   return vinculos.map((item) => item.cartao).filter(Boolean);
 }
 
-async function obterContextoCartao(cartaoId, user) {
-  await assertCartaoVinculado(cartaoId, user.id);
+async function obterContextoCartao(cartaoId, user, obraId) {
+  await assertOrigemAcessivel(obraId, user);
+  await assertCartaoVinculado(cartaoId, user.id, { obraId });
   const recarga = await buscarUltimaRecarga(cartaoId);
-  const obras = recarga ? await listarObrasDoUsuario(recarga.solicitacao?.criado_por || user.id) : [];
-  return serializarContexto(recarga, { obras });
+  if (recarga && !(await require('./authorizationService').hasObraAccess(user, recarga.solicitacao?.obra_id)) && !isGerenciaProcessos(user)) {
+    return { bloqueado: Boolean(motivoBloqueio(recarga)), motivo_bloqueio: motivoBloqueio(recarga), ultima_recarga: null, obras_disponiveis: [] };
+  }
+  const obras = recarga ? await listarDestinosPrestacao(recarga) : [];
+  const contexto = serializarContexto(recarga, { obras });
+  if (recarga) {
+    contexto.tipo_documento_prestacao = await tipoDocumentosPrestacao(recarga);
+    contexto.documentos_prestacao = await listarDocumentosPrestacao(recarga.solicitacao_id, null, contexto.tipo_documento_prestacao);
+  }
+  return contexto;
 }
 
-async function executarCriacaoRecargaComControle({ cartaoId, user, dadosSolicitacao, transaction: externalTransaction = null }) {
-  const executar = async (transaction) => {
-    const cartao = await assertCartaoVinculado(cartaoId, user.id, { transaction, lock: true });
-    const anterior = await buscarUltimaRecarga(cartao.id, { transaction, lock: true });
-    const bloqueio = motivoBloqueio(anterior);
-    if (bloqueio) throw erro(409, bloqueio, 'RECARGA_CARTAO_BLOQUEADA');
+function normalizarRecargas(cartoes, cartaoId, valorTotal) {
+  const itens = Array.isArray(cartoes) ? cartoes : [{ cartao_recarga_id: cartaoId, valor: valorTotal }];
+  if (!itens.length || itens.length > 30) throw erro(400, 'Selecione entre 1 e 30 cartoes.');
+  const ids = new Set();
+  const linhas = itens.map((item) => {
+    const id = Number(item.cartao_recarga_id);
+    const valor = roundCurrency(item.valor);
+    if (!Number.isInteger(id) || id <= 0 || ids.has(id)) throw erro(400, 'Cartao invalido ou repetido na recarga.');
+    if (!Number.isFinite(valor) || valor <= 0) throw erro(400, 'Informe um valor maior que zero por cartao.');
+    ids.add(id);
+    return { cartao_recarga_id: id, valor };
+  });
+  if (roundCurrency(linhas.reduce((s, item) => s + item.valor, 0)) !== roundCurrency(valorTotal)) throw erro(400, 'O valor da solicitacao deve ser a soma das recargas dos cartoes.');
+  return linhas.sort((a, b) => a.cartao_recarga_id - b.cartao_recarga_id);
+}
 
-    const valor = roundCurrency(dadosSolicitacao.valor);
-    if (valor <= 0) throw erro(400, 'Informe um valor de recarga maior que zero.');
+async function executarCriacaoRecargaComControle({ cartaoId, cartoes, user, dadosSolicitacao, registrarDistribuicao = null, transaction: externalTransaction = null }) {
+  const linhas = normalizarRecargas(cartoes, cartaoId, dadosSolicitacao.valor);
+  const executar = async (transaction) => {
+    await assertOrigemAcessivel(dadosSolicitacao.obra_id, user, transaction);
+    const selecionados = [];
+    // Ordem estavel de locks evita deadlock entre solicitacoes com os mesmos cartoes.
+    for (const linha of linhas) {
+      const cartao = await assertCartaoVinculado(linha.cartao_recarga_id, user.id, { transaction, lock: true, obraId: dadosSolicitacao.obra_id });
+      const anterior = await buscarUltimaRecarga(cartao.id, { transaction, lock: true });
+      const bloqueio = motivoBloqueio(anterior);
+      if (bloqueio) throw erro(409, `${cartao.nome}: ${bloqueio}`, 'RECARGA_CARTAO_BLOQUEADA');
+      selecionados.push({ cartao, valor: linha.valor });
+    }
     if (!dadosSolicitacao.data_vencimento) throw erro(400, 'Informe a data prevista para recarga.');
 
     const solicitacao = await Solicitacao.create({
       ...dadosSolicitacao,
-      parceiro_id: cartao.parceiro_id,
+      parceiro_id: selecionados.length === 1 ? selecionados[0].cartao.parceiro_id : null,
       apropriacao_id: null,
-      descricao: `Recarga ${cartao.nome} final ${cartao.ultimos_quatro}`
+      descricao: selecionados.map(({ cartao }) => `Recarga ${cartao.nome} final ${cartao.ultimos_quatro}`).join('; ')
     }, { transaction });
 
-    const titulo = await TituloFinanceiro.create({
-      solicitacao_id: solicitacao.id,
-      obra_id: null,
-      apropriacao_id: null,
-      empresa_id: cartao.empresa_id,
-      parceiro_id: cartao.parceiro_id,
-      categoria_financeira_id: cartao.categoria_financeira_id,
-      forma_pagamento_id: null,
-      competencia_data: hojeEmSaoPaulo(),
-      considera_dre: false,
-      possui_rateio: false,
-      origem_titulo: 'RECARGA_CARTAO',
-      tipo: 'PAGAR',
-      status: 'PREVISAO',
-      descricao: `Recarga Flash - ${cartao.nome} final ${cartao.ultimos_quatro}`.slice(0, 255),
-      valor_original: valor,
-      valor_bruto: valor,
-      valor_impostos: 0,
-      valor_liquido: valor,
-      valor_saldo: valor,
-      valor_baixado: 0,
-      data_emissao: new Date().toISOString().slice(0, 10),
-      data_vencimento: dadosSolicitacao.data_vencimento,
-      data_quitacao: null,
-      criado_por: user.id,
-      atualizado_por: user.id
-    }, { transaction });
+    const recargas = [];
+    let criacaoUnica = null;
+    for (const { cartao, valor } of selecionados) {
+      const titulo = await TituloFinanceiro.create({
+        solicitacao_id: solicitacao.id,
+        obra_id: null,
+        apropriacao_id: null,
+        empresa_id: cartao.empresa_id,
+        parceiro_id: cartao.parceiro_id,
+        categoria_financeira_id: cartao.categoria_financeira_id,
+        forma_pagamento_id: null,
+        competencia_data: hojeEmSaoPaulo(),
+        considera_dre: false,
+        possui_rateio: false,
+        origem_titulo: 'RECARGA_CARTAO',
+        tipo: 'PAGAR',
+        status: 'PREVISAO',
+        descricao: `Recarga Flash - ${cartao.nome} final ${cartao.ultimos_quatro}`.slice(0, 255),
+        valor_original: valor,
+        valor_bruto: valor,
+        valor_impostos: 0,
+        valor_liquido: valor,
+        valor_saldo: valor,
+        valor_baixado: 0,
+        data_emissao: new Date().toISOString().slice(0, 10),
+        data_vencimento: dadosSolicitacao.data_vencimento,
+        data_quitacao: null,
+        criado_por: user.id,
+        atualizado_por: user.id
+      }, { transaction });
 
-    const recarga = await SolicitacaoRecargaCartao.create({
-      solicitacao_id: solicitacao.id,
-      cartao_recarga_id: cartao.id,
-      titulo_financeiro_id: titulo.id,
-      valor_solicitado: valor,
-      valor_efetivo: 0,
-      valor_nao_recarregado: 0,
-      status_ciclo: STATUS_CICLO.PENDENTE,
-      criado_por: user.id,
-      atualizado_por: user.id
-    }, { transaction });
-
-    return { resultado: solicitacao, titulo, recarga, cartao };
+      const recarga = await SolicitacaoRecargaCartao.create({
+        solicitacao_id: solicitacao.id,
+        cartao_recarga_id: cartao.id,
+        titulo_financeiro_id: titulo.id,
+        valor_solicitado: valor,
+        valor_efetivo: 0,
+        valor_nao_recarregado: 0,
+        status_ciclo: STATUS_CICLO.PENDENTE,
+        criado_por: user.id,
+        atualizado_por: user.id
+      }, { transaction });
+      recargas.push(recarga);
+      if (selecionados.length === 1) criacaoUnica = { titulo, recarga, cartao };
+    }
+    if (registrarDistribuicao) await registrarDistribuicao(solicitacao, transaction);
+    // Compatibilidade dos consumidores legados de uma unica recarga.
+    return { resultado: solicitacao, recargas, ...criacaoUnica };
   };
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
 }
@@ -412,26 +496,29 @@ async function sincronizarTituloComStatusSolicitacao(solicitacaoId, status, user
   const statusNormalizado = normalizarToken(status);
   if (!['LIBERADO', 'APROVADA', 'CANCELADA', 'REJEITADA'].includes(statusNormalizado)) return null;
   const executar = async (transaction) => {
-    const recarga = await SolicitacaoRecargaCartao.findOne({
+    const recargas = await SolicitacaoRecargaCartao.findAll({
       where: { solicitacao_id: Number(solicitacaoId) },
       include: [{ model: TituloFinanceiro, as: 'titulo' }],
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    if (!recarga?.titulo) return null;
+    let resultado = null;
+    for (const recarga of recargas) {
+      if (!recarga?.titulo) continue;
 
-    if (['LIBERADO', 'APROVADA'].includes(statusNormalizado) && recarga.titulo.status === 'PREVISAO') {
-      await recarga.titulo.update({ status: 'ABERTO', atualizado_por: userId }, { transaction });
-      await recarga.update({ status_ciclo: STATUS_CICLO.AGUARDANDO_PAGAMENTO, atualizado_por: userId }, { transaction });
-      return 'ABERTO';
-    }
+      if (['LIBERADO', 'APROVADA'].includes(statusNormalizado) && recarga.titulo.status === 'PREVISAO') {
+        await recarga.titulo.update({ status: 'ABERTO', atualizado_por: userId }, { transaction });
+        await recarga.update({ status_ciclo: STATUS_CICLO.AGUARDANDO_PAGAMENTO, atualizado_por: userId }, { transaction });
+        resultado = 'ABERTO';
+      }
 
-    if (['CANCELADA', 'REJEITADA'].includes(statusNormalizado) && Number(recarga.titulo.valor_baixado || 0) <= 0) {
-      await recarga.titulo.update({ status: 'CANCELADO', valor_saldo: 0, atualizado_por: userId }, { transaction });
-      await recarga.update({ status_ciclo: STATUS_CICLO.CANCELADA, atualizado_por: userId }, { transaction });
-      return 'CANCELADO';
+      if (['CANCELADA', 'REJEITADA'].includes(statusNormalizado) && Number(recarga.titulo.valor_baixado || 0) <= 0) {
+        await recarga.titulo.update({ status: 'CANCELADO', valor_saldo: 0, atualizado_por: userId }, { transaction });
+        await recarga.update({ status_ciclo: STATUS_CICLO.CANCELADA, atualizado_por: userId }, { transaction });
+        resultado = 'CANCELADO';
+      }
     }
-    return null;
+    return resultado;
   };
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
 }
@@ -453,8 +540,9 @@ async function editarRecargaPendente(solicitacaoId, payload, user, externalTrans
   const dataVencimento = validarDataRecarga(payload?.data_vencimento);
 
   const executar = async (transaction) => {
+    const filtroRecarga = await selecionarRecarga(solicitacaoId, payload.recarga_id, transaction);
     const recarga = await SolicitacaoRecargaCartao.findOne({
-      where: { solicitacao_id: Number(solicitacaoId) },
+      where: filtroRecarga,
       include: [
         { model: Solicitacao, as: 'solicitacao' },
         { model: TituloFinanceiro, as: 'titulo' },
@@ -482,8 +570,17 @@ async function editarRecargaPendente(solicitacaoId, payload, user, externalTrans
     const statusAnterior = recarga.solicitacao.status_global || null;
     const setorGeo = await resolverDestinoGeo(transaction);
 
+    const outras = await SolicitacaoRecargaCartao.findAll({ where: { solicitacao_id: Number(solicitacaoId), id: { [Op.ne]: recarga.id } }, transaction });
+    if (outras.some((item) => Number(item.valor_efetivo) > 0)) throw erro(409, 'Nao e possivel reabrir a analise enquanto outro cartao desta solicitacao ja possui pagamento.');
+    if (outras.some((item) => item.status_ciclo === STATUS_CICLO.CANCELADA)) throw erro(409, 'Nao e possivel reabrir automaticamente uma solicitacao com outro cartao cancelado.');
+    await sincronizarTituloComStatusSolicitacao(solicitacaoId, 'REJEITADA', user.id, transaction);
+    // Reabrir todos os titulos ainda sem pagamento para uma nova analise do conjunto.
+    for (const outra of outras) {
+      await TituloFinanceiro.update({ status: 'PREVISAO', valor_saldo: outra.valor_solicitado }, { where: { id: outra.titulo_financeiro_id }, transaction });
+      await outra.update({ status_ciclo: STATUS_CICLO.PENDENTE }, { transaction });
+    }
     await recarga.solicitacao.update({
-      valor,
+      valor: roundCurrency(valor + outras.reduce((s, item) => s + Number(item.valor_solicitado), 0)),
       data_vencimento: dataVencimento,
       area_responsavel: setorGeo,
       status_global: 'PENDENTE'
@@ -535,62 +632,75 @@ async function editarRecargaPendente(solicitacaoId, payload, user, externalTrans
       setorDestino: setorGeo,
       status: 'PENDENTE'
     });
-    return carregarRecargaPorSolicitacao(solicitacaoId, transaction);
+    return carregarRecargaPorSolicitacao(solicitacaoId, transaction, recarga.id);
   };
 
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
 }
 
 async function sincronizarCicloAposBaixa({ solicitacaoId, usuarioId, setor, transaction }) {
-  const recarga = await SolicitacaoRecargaCartao.findOne({
+  const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction?.LOCK?.UPDATE });
+  const recargas = await SolicitacaoRecargaCartao.findAll({
     where: { solicitacao_id: Number(solicitacaoId) },
     include: [{ model: TituloFinanceiro, as: 'titulo' }],
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
-  if (!recarga?.titulo) return null;
+  if (!recargas.length) return null;
+  let houvePagamento = false;
+  let houveAtualizacao = false;
+  for (const recarga of recargas) {
+    if (!recarga?.titulo) continue;
 
-  const pago = roundCurrency(recarga.titulo.valor_baixado);
-  if (pago <= 0) return null;
-  const solicitado = roundCurrency(recarga.valor_solicitado);
-  const parcial = pago < solicitado;
+    const pago = roundCurrency(recarga.titulo.valor_baixado);
+    if (pago <= 0) continue;
+    houvePagamento = true;
+    // Nao reabrir prestacao ja enviada/validada ao pagar outro cartao da solicitacao.
+    if (roundCurrency(recarga.valor_efetivo) === pago && recarga.status_ciclo !== STATUS_CICLO.AGUARDANDO_PAGAMENTO && recarga.status_ciclo !== STATUS_CICLO.PENDENTE) continue;
+    houveAtualizacao = true;
+    const solicitado = roundCurrency(recarga.valor_solicitado);
+    const parcial = pago < solicitado;
 
-  if (parcial) {
-    await recarga.titulo.update({
-      valor_original: pago,
-      valor_bruto: pago,
-      valor_liquido: pago,
-      valor_saldo: 0,
-      status: 'QUITADO',
-      data_quitacao: new Date().toISOString().slice(0, 10),
+    if (parcial) {
+      await recarga.titulo.update({
+        valor_original: pago,
+        valor_bruto: pago,
+        valor_liquido: pago,
+        valor_saldo: 0,
+        status: 'QUITADO',
+        data_quitacao: new Date().toISOString().slice(0, 10),
+        atualizado_por: usuarioId
+      }, { transaction });
+    }
+
+    await recarga.update({
+      valor_efetivo: pago,
+      valor_nao_recarregado: roundCurrency(Math.max(solicitado - pago, 0)),
+      status_ciclo: STATUS_CICLO.PRESTACAO_PENDENTE,
       atualizado_por: usuarioId
     }, { transaction });
+
+    const [prestacao] = await CartaoRecargaPrestacao.findOrCreate({
+      where: { solicitacao_recarga_id: recarga.id },
+      defaults: { valor_base: pago, status: 'PENDENTE' },
+      transaction
+    });
+    if (roundCurrency(prestacao.valor_base) !== pago || prestacao.status === 'VALIDADA') {
+      await prestacao.update({
+        valor_base: pago,
+        status: 'PENDENTE',
+        motivo_rejeicao: null,
+        validado_por: null,
+        validado_em: null
+      }, { transaction });
+    }
+
   }
-
-  await recarga.update({
-    valor_efetivo: pago,
-    valor_nao_recarregado: roundCurrency(Math.max(solicitado - pago, 0)),
-    status_ciclo: STATUS_CICLO.PRESTACAO_PENDENTE,
-    atualizado_por: usuarioId
-  }, { transaction });
-
-  const [prestacao] = await CartaoRecargaPrestacao.findOrCreate({
-    where: { solicitacao_recarga_id: recarga.id },
-    defaults: { valor_base: pago, status: 'PENDENTE' },
-    transaction
-  });
-  if (roundCurrency(prestacao.valor_base) !== pago || prestacao.status === 'VALIDADA') {
-    await prestacao.update({
-      valor_base: pago,
-      status: 'PENDENTE',
-      motivo_rejeicao: null,
-      validado_por: null,
-      validado_em: null
-    }, { transaction });
-  }
-
-  const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction?.LOCK?.UPDATE });
-  const statusNovo = parcial ? 'PARCIALMENTE PAGO' : 'PAGA';
+  if (!houvePagamento) return null;
+  // Repetir a sincronizacao nao pode desfazer ATENDIDO/APROVADA da prestacao.
+  if (!houveAtualizacao) return solicitacao?.status_global || null;
+  const todosEncerrados = recargas.every((item) => item.status_ciclo === STATUS_CICLO.CANCELADA || Number(item.valor_efetivo) > 0);
+  const statusNovo = todosEncerrados && recargas.every((item) => Number(item.valor_nao_recarregado) === 0) ? 'PAGA' : 'PARCIALMENTE PAGO';
   const statusAnterior = solicitacao?.status_global || null;
   if (solicitacao && normalizarToken(statusAnterior) !== normalizarToken(statusNovo)) {
     await solicitacao.update({ status_global: statusNovo }, { transaction });
@@ -601,31 +711,49 @@ async function sincronizarCicloAposBaixa({ solicitacaoId, usuarioId, setor, tran
       acao: 'RECARGA_CARTAO_ENCERRADA',
       status_anterior: statusAnterior,
       status_novo: statusNovo,
-      observacao: parcial
-        ? `Recarga encerrada pelo valor efetivamente pago: R$ ${pago.toFixed(2)}.`
-        : 'Recarga paga integralmente. Prestacao de contas pendente.'
+      observacao: 'Pagamento de recarga atualizado por cartao. As prestacoes permanecem independentes.'
     }, { transaction });
   }
   return statusNovo;
 }
 
-async function carregarRecargaPorSolicitacao(solicitacaoId, transaction = null) {
+async function selecionarRecarga(solicitacaoId, recargaId, transaction = null) {
+  if (transaction) await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
+  const where = { solicitacao_id: Number(solicitacaoId) };
+  if (recargaId !== undefined && recargaId !== null && recargaId !== '') {
+    if (!Number.isInteger(Number(recargaId)) || Number(recargaId) <= 0) throw erro(400, 'Recarga invalida.');
+    where.id = Number(recargaId);
+  } else if (await SolicitacaoRecargaCartao.count({ where, transaction }) > 1) {
+    throw erro(400, 'Selecione o cartao da prestacao de contas.');
+  }
+  return where;
+}
+
+async function carregarRecargaPorSolicitacao(solicitacaoId, transaction = null, recargaId = null) {
   return SolicitacaoRecargaCartao.findOne({
-    where: { solicitacao_id: Number(solicitacaoId) },
+    where: { solicitacao_id: Number(solicitacaoId), ...(recargaId ? { id: Number(recargaId) } : {}) },
     include: includeRecarga,
     transaction
   });
 }
 
-async function obterContextoSolicitacao(solicitacaoId, user, { acessoSolicitacaoValidado = false } = {}) {
-  const recarga = await carregarRecargaPorSolicitacao(solicitacaoId);
+async function obterContextoSolicitacao(solicitacaoId, user, { acessoSolicitacaoValidado = false, recargaId = null } = {}) {
+  if (!recargaId) {
+    const registros = await SolicitacaoRecargaCartao.findAll({ where: { solicitacao_id: Number(solicitacaoId) }, attributes: ['id'], order: [['id', 'ASC']] });
+    if (!registros.length) throw erro(404, 'Esta solicitacao nao pertence ao fluxo de Recarga de Cartao.');
+    const contextos = [];
+    for (const registro of registros) contextos.push(await obterContextoSolicitacao(solicitacaoId, user, { acessoSolicitacaoValidado, recargaId: registro.id }));
+    return { ...contextos[0], recargas: contextos };
+  }
+  const recarga = await carregarRecargaPorSolicitacao(solicitacaoId, null, recargaId);
   if (!recarga) throw erro(404, 'Esta solicitacao nao pertence ao fluxo de Recarga de Cartao.');
   const vinculado = await CartaoRecargaUsuario.findOne({
     where: { cartao_recarga_id: recarga.cartao_recarga_id, user_id: Number(user.id), ativo: true }
   });
   const podeValidar = isGerenciaProcessos(user);
   const criouSolicitacao = Number(recarga.solicitacao?.criado_por) === Number(user.id);
-  const podeOperarRecarga = Boolean(vinculado || podeValidar || criouSolicitacao);
+  const acessoOrigem = await require('./authorizationService').hasObraAccess(user, recarga.solicitacao?.obra_id);
+  const podeOperarRecarga = Boolean(vinculado || podeValidar || criouSolicitacao || acessoOrigem);
   if (
     !acessoSolicitacaoValidado &&
     !podeOperarRecarga
@@ -636,13 +764,13 @@ async function obterContextoSolicitacao(solicitacaoId, user, { acessoSolicitacao
   // da solicitacao (setor atual ou mencao) pode acompanhar o card, mas nao recebe escopo auxiliar
   // de outro usuario nem ganha permissao para operar a recarga.
   const obras = podeOperarRecarga
-    ? await listarObrasDoUsuario(recarga.solicitacao?.criado_por || recarga.criado_por)
+    ? await listarDestinosPrestacao(recarga)
     : [];
   const [media, documentosPrestacao] = await Promise.all([
     podeValidar ? calcularMedia(recarga.cartao_recarga_id) : Promise.resolve(null),
-    listarDocumentosPrestacao(solicitacaoId)
+    tipoDocumentosPrestacao(recarga).then((tipo) => listarDocumentosPrestacao(solicitacaoId, null, tipo))
   ]);
-  return serializarContexto(recarga, { obras, media, podeValidar, documentosPrestacao });
+  return { ...serializarContexto(recarga, { obras, media, podeValidar, documentosPrestacao }), tipo_documento_prestacao: await tipoDocumentosPrestacao(recarga) };
 }
 
 function normalizarRateios(rateios = []) {
@@ -650,11 +778,11 @@ function normalizarRateios(rateios = []) {
   if (rateios.length > 50) throw erro(400, 'A prestacao excede o limite de 50 linhas de rateio.');
   return rateios.map((item, index) => {
     const obraId = Number(item?.obra_id);
-    const apropriacaoId = Number(item?.apropriacao_id);
+    const apropriacaoId = item?.apropriacao_id ? Number(item.apropriacao_id) : null;
     const valor = roundCurrency(item?.valor_rateio);
     if (!Number.isInteger(obraId) || obraId <= 0) throw erro(400, `Selecione a obra da linha ${index + 1}.`);
-    if (!Number.isInteger(apropriacaoId) || apropriacaoId <= 0) throw erro(400, `Selecione a apropriacao da linha ${index + 1}.`);
-    if (valor <= 0) throw erro(400, `Informe um valor maior que zero na linha ${index + 1}.`);
+    if (apropriacaoId !== null && (!Number.isInteger(apropriacaoId) || apropriacaoId <= 0)) throw erro(400, `Apropriacao invalida na linha ${index + 1}.`);
+    if (!Number.isFinite(valor) || valor <= 0) throw erro(400, `Informe um valor maior que zero na linha ${index + 1}.`);
     return { obra_id: obraId, apropriacao_id: apropriacaoId, valor_rateio: valor };
   });
 }
@@ -662,10 +790,11 @@ function normalizarRateios(rateios = []) {
 async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction = null) {
   const rateios = normalizarRateios(payload.rateios);
   const executar = async (transaction) => {
+    const filtroRecarga = await selecionarRecarga(solicitacaoId, payload.recarga_id, transaction);
     const recarga = await SolicitacaoRecargaCartao.findOne({
-      where: { solicitacao_id: Number(solicitacaoId) },
+      where: filtroRecarga,
       include: [
-        { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'criado_por', 'area_responsavel', 'status_global'] },
+        { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'area_responsavel', 'status_global'] },
         { model: CartaoRecargaPrestacao, as: 'prestacao', required: false }
       ],
       transaction,
@@ -679,26 +808,13 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
       where: { cartao_recarga_id: recarga.cartao_recarga_id, user_id: Number(user.id), ativo: true },
       transaction
     });
-    if (!vinculo && !isGerenciaProcessos(user) && Number(recarga.solicitacao?.criado_por) !== Number(user.id)) {
+    if (!vinculo && !isGerenciaProcessos(user) && Number(recarga.solicitacao?.criado_por) !== Number(user.id) && !(await require('./authorizationService').hasObraAccess(user, recarga.solicitacao?.obra_id))) {
       throw erro(403, 'Acesso negado para prestar contas deste cartao.');
     }
 
-    const obrasPermitidas = await UsuarioObra.findAll({
-      where: { user_id: Number(recarga.solicitacao.criado_por) },
-      attributes: ['obra_id'],
-      raw: true,
-      transaction
-    });
-    const idsPermitidos = new Set(obrasPermitidas.map((item) => Number(item.obra_id)));
+    const obrasPermitidas = await listarDestinosPrestacao(recarga, transaction);
     for (const item of rateios) {
-      if (!idsPermitidos.has(item.obra_id)) throw erro(403, 'Uma das obras informadas nao esta vinculada ao solicitante da recarga.');
-      const apropriacao = await Apropriacao.findOne({
-        where: { id: item.apropriacao_id, obra_id: item.obra_id, ativo: true },
-        transaction
-      });
-      if (!apropriacao || !apropriacaoPodeReceberLancamento(apropriacao)) {
-        throw erro(400, 'Uma das apropriacoes nao pertence a obra informada ou nao aceita lancamentos.');
-      }
+      await validarDestinoRateio(item, obrasPermitidas, transaction);
     }
 
     const total = roundCurrency(rateios.reduce((acc, item) => acc + item.valor_rateio, 0));
@@ -708,7 +824,7 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
     const totalDocumentos = await Anexo.count({
       where: {
         solicitacao_id: recarga.solicitacao_id,
-        tipo: TIPO_DOCUMENTO_PRESTACAO,
+        tipo: await tipoDocumentosPrestacao(recarga, transaction),
         deleted_at: null
       },
       transaction
@@ -750,10 +866,13 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
     await recarga.update({ status_ciclo: STATUS_CICLO.PRESTACAO_ENVIADA, atualizado_por: user.id }, { transaction });
     const setorAnterior = recarga.solicitacao.area_responsavel || null;
     const statusAnterior = recarga.solicitacao.status_global || null;
-    const setorGeo = await resolverDestinoGeo(transaction);
+    const ciclos = await SolicitacaoRecargaCartao.findAll({ where: { solicitacao_id: Number(solicitacaoId) }, transaction });
+    const todasPrestadas = ciclos.every((item) => [STATUS_CICLO.PRESTACAO_ENVIADA, STATUS_CICLO.VALIDADA, STATUS_CICLO.CANCELADA].includes(item.status_ciclo));
+    const setorGeo = todasPrestadas ? await resolverDestinoGeo(transaction) : setorAnterior;
+    const statusConjunto = todasPrestadas ? 'ATENDIDO' : statusAnterior;
     await recarga.solicitacao.update({
       area_responsavel: setorGeo,
-      status_global: 'ATENDIDO'
+      status_global: statusConjunto
     }, { transaction });
     await Historico.create({
       solicitacao_id: recarga.solicitacao_id,
@@ -761,8 +880,9 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
       setor: user.area || recarga.solicitacao.area_responsavel,
       acao: 'PRESTACAO_RECARGA_ENVIADA',
       status_anterior: statusAnterior,
-      status_novo: 'ATENDIDO',
-      observacao: `Prestacao de contas enviada com ${rateios.length} rateio(s), ${totalDocumentos} documento(s) e total R$ ${base.toFixed(2)}.`
+      status_novo: statusConjunto,
+      observacao: `Cartao #${recarga.cartao_recarga_id}: prestacao enviada com ${rateios.length} rateio(s), ${totalDocumentos} documento(s) e total R$ ${base.toFixed(2)}.`,
+      metadata: JSON.stringify({ recarga_id: recarga.id, cartao_recarga_id: recarga.cartao_recarga_id })
     }, { transaction });
     if (normalizarToken(setorAnterior) !== normalizarToken(setorGeo)) {
       await Historico.create({
@@ -783,9 +903,9 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
       mensagem: `A prestacao de contas da solicitacao ${recarga.solicitacao.codigo || recarga.solicitacao_id} foi enviada para conferencia.`,
       setorOrigem: setorAnterior,
       setorDestino: setorGeo,
-      status: 'ATENDIDO'
+      status: statusConjunto
     });
-    return carregarRecargaPorSolicitacao(solicitacaoId, transaction);
+    return carregarRecargaPorSolicitacao(solicitacaoId, transaction, recarga.id);
   };
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
 }
@@ -799,10 +919,10 @@ function normalizarDestinosRateioGeo(rateios = []) {
   return rateios.map((item, index) => {
     const id = Number(item?.id);
     const obraId = Number(item?.obra_id);
-    const apropriacaoId = Number(item?.apropriacao_id);
+    const apropriacaoId = item?.apropriacao_id ? Number(item.apropriacao_id) : null;
     if (!Number.isInteger(id) || id <= 0 || ids.has(id)) throw erro(400, `Rateio invalido na linha ${index + 1}.`);
     if (!Number.isInteger(obraId) || obraId <= 0) throw erro(400, `Selecione a obra da linha ${index + 1}.`);
-    if (!Number.isInteger(apropriacaoId) || apropriacaoId <= 0) throw erro(400, `Selecione a apropriacao da linha ${index + 1}.`);
+    if (apropriacaoId !== null && (!Number.isInteger(apropriacaoId) || apropriacaoId <= 0)) throw erro(400, `Apropriacao invalida na linha ${index + 1}.`);
     ids.add(id);
     return { id, obra_id: obraId, apropriacao_id: apropriacaoId };
   });
@@ -815,10 +935,11 @@ async function editarRateiosPrestacaoGeo(solicitacaoId, payload, user, externalT
   const destinos = normalizarDestinosRateioGeo(payload?.rateios);
 
   const executar = async (transaction) => {
+    const filtroRecarga = await selecionarRecarga(solicitacaoId, payload.recarga_id, transaction);
     const recarga = await SolicitacaoRecargaCartao.findOne({
-      where: { solicitacao_id: Number(solicitacaoId) },
+      where: filtroRecarga,
       include: [
-        { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'criado_por', 'area_responsavel', 'status_global'] },
+        { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'area_responsavel', 'status_global'] },
         {
           model: CartaoRecargaPrestacao,
           as: 'prestacao',
@@ -840,25 +961,9 @@ async function editarRateiosPrestacaoGeo(solicitacaoId, payload, user, externalT
       throw erro(409, 'Os rateios foram alterados por outro usuario. Atualize a pagina e tente novamente.');
     }
 
-    const obrasPermitidas = await UsuarioObra.findAll({
-      where: { user_id: Number(recarga.solicitacao.criado_por) },
-      attributes: ['obra_id'],
-      raw: true,
-      transaction
-    });
-    const idsPermitidos = new Set(obrasPermitidas.map((item) => Number(item.obra_id)));
+    const obrasPermitidas = await listarDestinosPrestacao(recarga, transaction);
     for (const item of destinos) {
-      if (!idsPermitidos.has(item.obra_id)) {
-        throw erro(403, 'Uma das obras informadas nao esta vinculada ao solicitante da recarga.');
-      }
-      const apropriacao = await Apropriacao.findOne({
-        where: { id: item.apropriacao_id, obra_id: item.obra_id, ativo: true },
-        attributes: ['id', 'ativo', 'somadora', 'macro_formulario'],
-        transaction
-      });
-      if (!apropriacao || !apropriacaoPodeReceberLancamento(apropriacao)) {
-        throw erro(400, 'Uma das apropriacoes nao pertence a obra informada ou nao aceita lancamentos.');
-      }
+      await validarDestinoRateio(item, obrasPermitidas, transaction);
     }
 
     const alterados = destinos.filter((item) => {
@@ -872,7 +977,7 @@ async function editarRateiosPrestacaoGeo(solicitacaoId, payload, user, externalT
         apropriacao_id_anterior: Number(atual.apropriacao_id)
       };
     });
-    if (alterados.length === 0) return carregarRecargaPorSolicitacao(solicitacaoId, transaction);
+    if (alterados.length === 0) return carregarRecargaPorSolicitacao(solicitacaoId, transaction, recarga.id);
 
     for (const item of alterados) {
       await atuaisPorId.get(item.id).update({
@@ -901,7 +1006,7 @@ async function editarRateiosPrestacaoGeo(solicitacaoId, payload, user, externalT
       })
     }, { transaction });
 
-    return carregarRecargaPorSolicitacao(solicitacaoId, transaction);
+    return carregarRecargaPorSolicitacao(solicitacaoId, transaction, recarga.id);
   };
 
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
@@ -914,8 +1019,9 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
   if (!aprovar && !motivo) throw erro(400, 'Informe o motivo da rejeicao da prestacao.');
 
   const executar = async (transaction) => {
+    const filtroRecarga = await selecionarRecarga(solicitacaoId, payload.recarga_id, transaction);
     const recarga = await SolicitacaoRecargaCartao.findOne({
-      where: { solicitacao_id: Number(solicitacaoId) },
+      where: filtroRecarga,
       include: [
         { model: TituloFinanceiro, as: 'titulo' },
         {
@@ -948,7 +1054,7 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
     const setorAnterior = recarga.solicitacao?.area_responsavel || 'GEO';
     const statusAnterior = recarga.solicitacao?.status_global || null;
     let setorDestino = setorAnterior;
-    const statusDestino = aprovar ? 'APROVADA' : 'PENDENTE';
+    let statusDestino = aprovar ? 'APROVADA' : 'PENDENTE';
 
     if (!aprovar) {
       await recarga.prestacao.update({ status: 'REJEITADA', motivo_rejeicao: motivo, validado_por: user.id, validado_em: new Date() }, { transaction });
@@ -1002,6 +1108,8 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
       await recarga.update({ status_ciclo: STATUS_CICLO.VALIDADA, atualizado_por: user.id }, { transaction });
     }
 
+    const ciclos = await SolicitacaoRecargaCartao.findAll({ where: { solicitacao_id: Number(solicitacaoId) }, transaction });
+    if (aprovar && ciclos.some((item) => ![STATUS_CICLO.VALIDADA, STATUS_CICLO.CANCELADA].includes(item.status_ciclo))) statusDestino = 'ATENDIDO';
     await recarga.solicitacao.update({
       area_responsavel: setorDestino,
       status_global: statusDestino
@@ -1014,7 +1122,8 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
       acao: aprovar ? 'PRESTACAO_RECARGA_VALIDADA' : 'PRESTACAO_RECARGA_REJEITADA',
       status_anterior: statusAnterior,
       status_novo: statusDestino,
-      observacao: aprovar ? 'Prestacao validada e custo liberado para os relatorios das obras.' : motivo
+      observacao: `Cartao #${recarga.cartao_recarga_id}: ${aprovar ? 'prestacao validada e custo liberado para os relatorios.' : motivo}`,
+      metadata: JSON.stringify({ recarga_id: recarga.id, cartao_recarga_id: recarga.cartao_recarga_id })
     }, { transaction });
     if (normalizarToken(setorAnterior) !== normalizarToken(setorDestino)) {
       await Historico.create({
@@ -1039,20 +1148,21 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
       setorDestino,
       status: statusDestino
     });
-    return carregarRecargaPorSolicitacao(solicitacaoId, transaction);
+    return carregarRecargaPorSolicitacao(solicitacaoId, transaction, recarga.id);
   };
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
 }
 
 async function listarAdmin(user) {
   assertSuperadmin(user);
-  const [cartoes, usuarios, empresas, categorias] = await Promise.all([
+  const [cartoes, usuarios, empresas, categorias, obras] = await Promise.all([
     CartaoRecarga.findAll({
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] },
         { model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'codigo', 'nome'] },
         { model: CategoriaFinanceira, as: 'categoriaFinanceira', attributes: ['id', 'nome', 'tipo', 'dre_grupo', 'considera_dre'] },
-        { model: CartaoRecargaUsuario, as: 'vinculosUsuarios', required: false, include: [{ model: User, as: 'usuario', attributes: ['id', 'nome', 'email', 'ativo'] }] }
+        { model: CartaoRecargaUsuario, as: 'vinculosUsuarios', required: false, include: [{ model: User, as: 'usuario', attributes: ['id', 'nome', 'email', 'ativo'] }] },
+        { model: CartaoRecargaObra, as: 'vinculosObras', required: false, include: [{ model: Obra, as: 'obra', attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo', 'ativo'] }] }
       ],
       order: [['nome', 'ASC']]
     }),
@@ -1062,9 +1172,10 @@ async function listarAdmin(user) {
       where: { ativo: true, tipo: { [Op.in]: ['PAGAR', 'AMBOS'] } },
       attributes: ['id', 'nome', 'tipo', 'dre_grupo', 'considera_dre'],
       order: [['nome', 'ASC']]
-    })
+    }),
+    Obra.findAll({ where: { ativo: true }, attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'], order: [['nome', 'ASC']] })
   ]);
-  return { cartoes, usuarios, empresas, categorias };
+  return { cartoes, usuarios, empresas, categorias, obras };
 }
 
 function validarCartaoPayload(payload = {}) {
@@ -1075,13 +1186,15 @@ function validarCartaoPayload(payload = {}) {
   const empresaId = Number(payload.empresa_id);
   const categoriaFinanceiraId = Number(payload.categoria_financeira_id);
   const usuarioIds = [...new Set((Array.isArray(payload.usuario_ids) ? payload.usuario_ids : []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  const obraIds = [...new Set((Array.isArray(payload.obra_ids) ? payload.obra_ids : []).map(Number))];
+  if (obraIds.some((id) => !Number.isInteger(id) || id <= 0)) throw erro(400, 'Obra ou centro de custo invalido.');
   if (!nome) throw erro(400, 'Informe o nome de identificacao do cartao.');
   if (!identificador) throw erro(400, 'Informe o identificador interno do cartao.');
   if (ultimosQuatro.length !== 4) throw erro(400, 'Informe os quatro ultimos digitos do cartao.');
   if (!Number.isInteger(parceiroId) || parceiroId <= 0) throw erro(400, 'Selecione o fornecedor do cartao.');
   if (!Number.isInteger(empresaId) || empresaId <= 0) throw erro(400, 'Selecione a empresa responsavel pela recarga.');
   if (!Number.isInteger(categoriaFinanceiraId) || categoriaFinanceiraId <= 0) throw erro(400, 'Selecione a categoria financeira da recarga.');
-  if (usuarioIds.length === 0) throw erro(400, 'Vincule o cartao a pelo menos um usuario.');
+  if (obraIds.length === 0) throw erro(400, 'Vincule o cartao a pelo menos uma obra ou centro de custo.');
   return {
     nome,
     identificador,
@@ -1089,15 +1202,18 @@ function validarCartaoPayload(payload = {}) {
     parceiro_id: parceiroId,
     empresa_id: empresaId,
     categoria_financeira_id: categoriaFinanceiraId,
-    usuario_ids: usuarioIds
+    usuario_ids: usuarioIds,
+    obra_ids: obraIds
   };
 }
 
 async function salvarCartao(cartaoId, payload, user, externalTransaction = null) {
   assertSuperadmin(user);
   const dados = validarCartaoPayload(payload);
-  const { usuario_ids: usuarioIds, ...dadosCartao } = dados;
+  const { usuario_ids: usuarioIds, obra_ids: obraIds, ...dadosCartao } = dados;
   const executar = async (transaction) => {
+    const origens = await Obra.findAll({ where: { id: { [Op.in]: obraIds }, ativo: true }, attributes: ['id'], transaction });
+    if (origens.length !== obraIds.length) throw erro(400, 'Uma das obras ou centros de custo nao existe ou esta inativa.');
     const [parceiro, empresa, categoria, usuarios, cartaoDuplicado] = await Promise.all([
       Parceiro.findOne({ where: { id: dados.parceiro_id, ativo: true, fornecedor: true }, transaction }),
       EmpresaGrupo.findOne({ where: { id: dados.empresa_id, ativo: true }, attributes: ['id'], transaction }),
@@ -1152,12 +1268,21 @@ async function salvarCartao(cartaoId, payload, user, externalTransaction = null)
       });
       if (!vinculo.ativo) await vinculo.update({ ativo: true }, { transaction });
     }
+    await CartaoRecargaObra.update({ ativo: false }, { where: { cartao_recarga_id: cartao.id }, transaction });
+    for (const obraId of obraIds) {
+      const [vinculo] = await CartaoRecargaObra.findOrCreate({
+        where: { cartao_recarga_id: cartao.id, obra_id: obraId },
+        defaults: { ativo: true, criado_por: user.id }, transaction
+      });
+      if (!vinculo.ativo) await vinculo.update({ ativo: true }, { transaction });
+    }
     return cartao;
   };
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
 }
 
 module.exports = {
+  normalizarRecargas,
   STATUS_CICLO,
   calcularMedia,
   decidirPrestacao,
@@ -1172,6 +1297,7 @@ module.exports = {
   obterContextoSolicitacao,
   salvarCartao,
   salvarPrestacao,
+  resolverDestinoPrestacaoAposBaixa,
   sincronizarCicloAposBaixa,
   sincronizarTituloComStatusSolicitacao,
   tipoEhRecargaCartao

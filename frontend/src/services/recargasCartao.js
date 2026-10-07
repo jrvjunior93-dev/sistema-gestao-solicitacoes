@@ -7,13 +7,13 @@ async function parse(res, fallback) {
   return data;
 }
 
-export async function listarMeusCartoesRecarga() {
-  const res = await fetch(`${API_URL}/recargas-cartao/meus-cartoes`, { headers: authHeaders() });
+export async function listarMeusCartoesRecarga(obraId) {
+  const res = await fetch(`${API_URL}/recargas-cartao/meus-cartoes?obra_id=${encodeURIComponent(obraId)}`, { headers: authHeaders() });
   return parse(res, 'Nao foi possivel carregar seus cartoes de recarga.');
 }
 
-export async function obterContextoCartaoRecarga(cartaoId) {
-  const res = await fetch(`${API_URL}/recargas-cartao/cartoes/${cartaoId}/contexto`, { headers: authHeaders() });
+export async function obterContextoCartaoRecarga(cartaoId, obraId) {
+  const res = await fetch(`${API_URL}/recargas-cartao/cartoes/${cartaoId}/contexto?obra_id=${encodeURIComponent(obraId)}`, { headers: authHeaders() });
   return parse(res, 'Nao foi possivel conferir a ultima recarga do cartao.');
 }
 

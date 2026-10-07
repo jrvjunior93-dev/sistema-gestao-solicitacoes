@@ -1357,7 +1357,7 @@ function categoriaClassificadaParaDre(categoria) {
 async function validarFormaPagamentoFinanceira(
   formaPagamentoId,
   payload = {},
-  { dispensarCartaoInstrucional = false, permitirPendente = false } = {}
+  { dispensarCartaoInstrucional = false, permitirCartaoPendente = false, permitirPendente = false } = {}
 ) {
   if (!formaPagamentoId) {
     // Titulos automaticos de contrato nascem como PREVISAO. A forma real pertence a medicao e
@@ -1382,9 +1382,12 @@ async function validarFormaPagamentoFinanceira(
 
   // No fluxo novo de CONTRATO, "Cartao" e a instrucao combinada com o fornecedor — os dados
   // para pagamento ficam no historico da solicitacao. Nao representa uma baixa ja realizada em
-  // um cartao corporativo cadastrado. A dispensa so pode vir pela opcao interna do servico;
-  // payload HTTP nao consegue liga-la e os demais titulos continuam exigindo `cartao_id`.
-  if (forma.exige_cartao && !payload.cartao_id && !dispensarCartaoInstrucional) {
+  // um cartao corporativo cadastrado. A geracao pela solicitacao tambem permite escolher
+  // o cartao somente na baixa.
+  // Ambas as dispensas sao internas, nao flags aceitas do payload HTTP; a baixa efetiva
+  // e os demais lancamentos manuais continuam exigindo o cartao.
+  if (forma.exige_cartao && !payload.cartao_id && !dispensarCartaoInstrucional
+      && !(permitirCartaoPendente && isFormaCartao(forma))) {
     throw createHttpError(400, 'Informe o cartao utilizado nesta forma de pagamento.');
   }
 
@@ -2750,7 +2753,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     validarCategoriaDreTitulo(categoriaPagamento, { considera_dre: consideraDrePagamento });
     const formaPagamento = await validarFormaPagamentoFinanceira(
       pagamentoPayload.forma_pagamento_id || solicitacao.forma_pagamento_id,
-      pagamentoPayload
+      pagamentoPayload,
+      { permitirCartaoPendente: true }
     );
     const intercompanyFields = await resolverIntercompanyPagamento({
       formaPagamento,

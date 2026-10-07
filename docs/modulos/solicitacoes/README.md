@@ -107,6 +107,57 @@ selecionado. O nome `ADMINISTRATIVO/ESCRITORIO` nao cria uma regra de campos
 prioritaria; esse tipo tambem pode ser vinculado explicitamente a outros Centros
 de Custo sem duplicar a configuracao do formulario.
 
+## Recarga de cartoes por obra e centro de custo
+
+O fluxo aceita o tipo Recarga de Cartao e subtipos marcados com
+`usa_fluxo_recarga_cartao`. O subtipo pode ser vinculado ao tipo comum fixo do
+Centro de Custo, sem trocar o tipo principal. Contrato novo, medicao, cadastro
+de obra e tipos exclusivos do sistema nao aceitam essa combinacao.
+
+Configuracao pela interface, depois da migration estrutural:
+
+1. Em `Subtipos de Solicitacao`, criar/editar o subtipo, marcar o fluxo de
+   recarga e vincular ao tipo principal disponivel no Centro de Custo.
+2. Em `Cartoes de recarga`, informar as obras/centros atendidos por cada cartao.
+   Empresa, fornecedor e categoria financeira continuam obrigatorios.
+3. Na Nova Solicitacao, selecionar a origem, o subtipo quando aplicavel, os
+   cartoes e um valor por cartao. O total e calculado, nao digitado separadamente.
+
+Qualquer usuario com acesso normal a origem pode selecionar seus cartoes
+ativos, sem vinculo individual usuario-cartao. Isso nao dispensa permissoes
+de criacao, visualizacao e interacao da solicitacao. Os vinculos individuais
+antigos permanecem para compatibilidade; nao liberam novas recargas sem
+vinculo do cartao a origem. Nenhuma origem e atribuida automaticamente aos
+cartoes existentes: o administrador deve configurar os vinculos pela tela.
+
+Uma solicitacao comporta ate 30 cartoes distintos, com titulo e prestacao
+independentes. Criacao, titulos e distribuicao gerencial do Centro de Custo
+usam a mesma transacao. Locks de cartao e ciclo anterior impedem repetir uma
+recarga ativa. Valor zero, repeticao de cartao e soma divergente sao rejeitados.
+
+A prestacao possui rateios e comprovantes por cartao. Documento de um cartao
+nao satisfaz a exigencia de outro. Em solicitacoes multiplas, o tipo do anexo
+e `PRESTACAO_RECARGA_<id da recarga>`; solicitacoes de um cartao preservam
+`PRESTACAO_RECARGA`. As acoes indicam `recarga_id`; omiti-lo num conjunto
+com varios cartoes e erro, evitando operar o primeiro por engano. Obras exigem
+apropriacao analitica valida; Centros de Custo nao usam apropriacao de obra.
+
+A primeira baixa nao devolve o conjunto ao setor solicitante enquanto existir
+cartao sem pagamento. Quando todos os ciclos financeiros estiverem encerrados,
+Obras preservam o retorno para OBRA e Centros de Custo retornam ao setor
+criador. Cada prestacao e enviada e validada separadamente; o conjunto segue
+para GEO/ATENDIDO depois de todas serem enviadas e fica APROVADA depois de
+todas serem validadas. Atualizar um cartao nao apaga o formulario em andamento
+dos demais. A regra financeira de PAGA/PARCIALMENTE PAGO esta no
+[modulo Financeiro](../financeiro/README.md#recargas-de-cartoes).
+
+Implementacao: `recargaCartaoService`, `RecargaCartaoController`,
+`SolicitacaoController`, `operationalValidators`, `TipoSubContratoController`,
+`CartaoRecargaObra`, componentes de recarga e `NovaSolicitacao`.
+Migration: `202610070004_recargas_multiplos_cartoes_origens.js`, somente
+estrutura, sem inserir cadastros ou atualizar dados de negocio existentes.
+Validacao isolada: `cd backend && npm run test:recargas-multiplas`.
+
 ## Encaminhamento atual, compatibilidade e automacoes
 
 Novas solicitacoes abertas pela tela entram em `GEO / PENDENTE`; o navegador nao pode substituir esse destino por payload. Os campos e endpoints de diretoria permanecem no backend somente para compatibilidade com registros antigos que ja possuam `fluxo_aprovacao_diretoria = true`; eles nao devem ser reutilizados para criar novos fluxos. Prioridades da diretoria continuam sendo um dominio operacional separado e nao alteram o setor responsavel. A configuracao `Tipos por Setor (Recebimento)` continua controlando visibilidade e modo de recebimento depois que a solicitacao chega a um setor, mas nao controla o catalogo de abertura. Automacao por status so ocorre depois de uma transicao valida e nao pode ignorar permissoes ou consistencia.

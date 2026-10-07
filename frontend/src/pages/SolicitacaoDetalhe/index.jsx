@@ -426,7 +426,7 @@ export default function SolicitacaoDetalhe() {
   );
   const isCompraDiretaSolicitacao = tipoSolicitacaoNormalizado.includes('COMPRA DIRETA');
   const isSolicitacaoCompra = isCompraDiretaSolicitacao || tipoSolicitacaoNormalizado.includes('SOLICITACAO DE COMPRA');
-  const isRecargaCartaoSolicitacao = tipoSolicitacaoNormalizado.includes('RECARGA DE CARTAO');
+  const isRecargaCartaoSolicitacao = Boolean(solicitacao?.recargasCartao?.length) || solicitacao?.tipoSubSolicitacao?.usa_fluxo_recarga_cartao === true || tipoSolicitacaoNormalizado.includes('RECARGA DE CARTAO');
   const isCadastroObraSolicitacao = getTipoSolicitacaoBehavior(solicitacao?.tipo).usa_fluxo_cadastro_obra === true;
   const dadosCadastroObra = solicitacao?.dadosCadastroObra || null;
   const podeCadastrarObraDaSolicitacao = isCadastroObraSolicitacao

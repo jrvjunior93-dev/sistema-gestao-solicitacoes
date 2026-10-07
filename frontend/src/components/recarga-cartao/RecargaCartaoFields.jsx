@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineArrowUturnLeft, HiOutlineClock, HiOutlinePencilSquare } from 'react-icons/hi2';
 import DateInputBR from '../DateInputBR';
 import PrestacaoRecargaCartao from './PrestacaoRecargaCartao';
@@ -32,13 +32,14 @@ function hojeLocal() {
   return `${ano}-${mes}-${dia}`;
 }
 
-export default function RecargaCartaoFields({ ativo, value, onChange, onContextChange, onSolicitacaoAnteriorEnviada }) {
+export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false, value, onChange, onContextChange, onSolicitacaoAnteriorEnviada }) {
   const [cartoes, setCartoes] = useState([]);
   const [contexto, setContexto] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [retorno, setRetorno] = useState({ aberto: false, motivo: '', processando: false, erro: '' });
   const [edicao, setEdicao] = useState({ aberto: false, valor: '', data_vencimento: '', processando: false, erro: '' });
+  const geracaoContexto = useRef(0);
 
   useEffect(() => {
     if (!ativo) {
@@ -51,13 +52,16 @@ export default function RecargaCartaoFields({ ativo, value, onChange, onContextC
       return;
     }
     setCarregando(true);
-    listarMeusCartoesRecarga()
-      .then((dados) => setCartoes(dados?.cartoes || []))
-      .catch((error) => setErro(error.message))
-      .finally(() => setCarregando(false));
-  }, [ativo, onContextChange]);
+    let cancelado = false;
+    listarMeusCartoesRecarga(obraId)
+      .then((dados) => { if (!cancelado) setCartoes(dados?.cartoes || []); })
+      .catch((error) => { if (!cancelado) setErro(error.message); })
+      .finally(() => { if (!cancelado) setCarregando(false); });
+    return () => { cancelado = true; };
+  }, [ativo, obraId, onContextChange]);
 
   async function carregarContexto(cartaoId) {
+    const geracao = ++geracaoContexto.current;
     setRetorno({ aberto: false, motivo: '', processando: false, erro: '' });
     setEdicao({ aberto: false, valor: '', data_vencimento: '', processando: false, erro: '' });
     if (!cartaoId) {
@@ -68,21 +72,24 @@ export default function RecargaCartaoFields({ ativo, value, onChange, onContextC
     setCarregando(true);
     setErro('');
     try {
-      const dados = await obterContextoCartaoRecarga(cartaoId);
+      const dados = await obterContextoCartaoRecarga(cartaoId, obraId);
+      if (geracao !== geracaoContexto.current) return;
       setContexto(dados);
       onContextChange?.(dados);
     } catch (error) {
+      if (geracao !== geracaoContexto.current) return;
       setContexto(null);
       onContextChange?.(null);
       setErro(error.message);
     } finally {
-      setCarregando(false);
+      if (geracao === geracaoContexto.current) setCarregando(false);
     }
   }
 
   useEffect(() => {
     if (ativo && value) void carregarContexto(value);
-  }, [ativo, value]);
+    return () => { geracaoContexto.current += 1; };
+  }, [ativo, value, obraId]);
 
   const ultima = contexto?.ultima_recarga || null;
   const solicitacaoAnterior = ultima?.solicitacao || null;
@@ -116,7 +123,7 @@ export default function RecargaCartaoFields({ ativo, value, onChange, onContextC
       if (consultando) return;
       consultando = true;
       try {
-        const dados = await obterContextoCartaoRecarga(value);
+        const dados = await obterContextoCartaoRecarga(value, obraId);
         if (cancelado) return;
         setContexto(dados);
         onContextChange?.(dados);
@@ -133,7 +140,7 @@ export default function RecargaCartaoFields({ ativo, value, onChange, onContextC
       cancelado = true;
       window.clearInterval(timer);
     };
-  }, [ativo, value, contexto?.bloqueado, podePrestarNestaTela, onContextChange]);
+  }, [ativo, value, obraId, contexto?.bloqueado, podePrestarNestaTela, onContextChange]);
 
   async function solicitarRetorno() {
     const solicitacaoId = Number(solicitacaoAnterior?.id);
@@ -180,6 +187,7 @@ export default function RecargaCartaoFields({ ativo, value, onChange, onContextC
     setEdicao((atual) => ({ ...atual, processando: true, erro: '' }));
     try {
       await editarRecargaPendente(solicitacaoId, {
+        recarga_id: ultima.id,
         valor,
         data_vencimento: edicao.data_vencimento
       });
@@ -195,18 +203,20 @@ export default function RecargaCartaoFields({ ativo, value, onChange, onContextC
   }
 
   if (!ativo) return null;
+  // A linha de selecao ja identifica o cartao; repetir o formulario sem historico nao agrega informacao.
+  if (fixarCartao && !ultima && !erro && !contexto?.bloqueado) return null;
 
   return (
-    <section className="min-w-0 space-y-3 border-y border-[var(--c-border)] py-3 lg:col-span-12" aria-labelledby="recarga-cartao-heading">
+    <section className="min-w-0 space-y-3 border-y border-[var(--c-border)] py-3 lg:col-span-12" aria-label="Contexto do cartão">
       <div className="grid gap-3 md:grid-cols-[minmax(260px,1fr)_minmax(320px,1.4fr)]">
         <label className="grid gap-1 text-sm">
-          <span id="recarga-cartao-heading">Cartão para recarga *</span>
+          <span>Cartão para recarga *</span>
           <select
             className="input input-sm"
             value={value || ''}
             onChange={(event) => onChange(event.target.value)}
             required
-            disabled={carregando && cartoes.length === 0}
+            disabled={fixarCartao || (carregando && cartoes.length === 0)}
           >
             <option value="">{carregando ? 'Carregando cartões...' : 'Selecione um cartão vinculado'}</option>
             {cartoes.map((cartao) => (
@@ -214,7 +224,7 @@ export default function RecargaCartaoFields({ ativo, value, onChange, onContextC
             ))}
           </select>
           {!carregando && cartoes.length === 0 ? (
-            <span className="text-xs text-amber-700">Nenhum cartão ativo está vinculado ao seu usuário.</span>
+            <span className="text-xs text-amber-700">Nenhum cartão ativo está vinculado à obra/centro de custo.</span>
           ) : null}
         </label>
 

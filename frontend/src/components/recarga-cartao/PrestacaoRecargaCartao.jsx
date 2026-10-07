@@ -74,6 +74,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
   useEffect(() => {
     const ids = [...new Set(linhas.map((linha) => Number(linha.obra_id)).filter(Boolean))];
     ids.forEach((obraId) => {
+      if (obras.find((obra) => Number(obra.id) === obraId)?.tipo_centro_custo === 'CENTRO_CUSTO') return;
       if (apropriacoesPorObra[obraId]) return;
       listarApropriacoes({ obra_id: obraId })
         .then((dados) => {
@@ -115,10 +116,11 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
     setSalvando(true);
     try {
       await enviarPrestacaoRecarga(solicitacaoId, {
+        recarga_id: recarga.id,
         observacoes,
         rateios: linhas.map((linha) => ({
           obra_id: Number(linha.obra_id),
-          apropriacao_id: Number(linha.apropriacao_id),
+          apropriacao_id: linha.apropriacao_id ? Number(linha.apropriacao_id) : null,
           valor_rateio: numero(linha.valor_rateio)
         }))
       });
@@ -139,7 +141,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
     try {
       const novos = await uploadArquivos({
         files: arquivos,
-        tipo: 'PRESTACAO_RECARGA',
+        tipo: contexto.tipo_documento_prestacao || 'PRESTACAO_RECARGA',
         solicitacao_id: solicitacaoId
       });
       const registros = Array.isArray(novos) ? novos : [];
@@ -179,7 +181,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
     setErro('');
     setSalvando(true);
     try {
-      await decidirPrestacaoRecarga(solicitacaoId, { aprovar, motivo });
+      await decidirPrestacaoRecarga(solicitacaoId, { aprovar, motivo, recarga_id: recarga.id });
       await onAtualizado?.();
     } catch (error) {
       setErro(error.message);
@@ -194,10 +196,11 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
     setSalvando(true);
     try {
       await editarRateiosPrestacaoRecarga(solicitacaoId, {
+        recarga_id: recarga.id,
         rateios: linhas.map((linha) => ({
           id: Number(linha.id),
           obra_id: Number(linha.obra_id),
-          apropriacao_id: Number(linha.apropriacao_id)
+          apropriacao_id: linha.apropriacao_id ? Number(linha.apropriacao_id) : null
         }))
       });
       setRateiosAlterados(false);
@@ -212,14 +215,14 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
   if (!prestacao || valorBase <= 0) return null;
 
   return (
-    <section className="min-w-0 space-y-3" aria-labelledby={`prestacao-recarga-${solicitacaoId}`}>
+    <section className="min-w-0 space-y-3" aria-labelledby={`prestacao-recarga-${recarga.id}`}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] pb-3">
         <div>
-          <h3 id={`prestacao-recarga-${solicitacaoId}`} className="text-sm font-semibold text-[var(--c-text)]">
+          <h3 id={`prestacao-recarga-${recarga.id}`} className="text-sm font-semibold text-[var(--c-text)]">
             Prestação de contas da recarga
           </h3>
           <p className="text-xs text-[var(--c-muted)]">
-            Distribua {moeda(valorBase)} entre as obras e apropriações vinculadas ao solicitante.
+            Distribua {moeda(valorBase)} entre os destinos disponíveis. Obras exigem apropriação; centros de custo não.
           </p>
         </div>
         <span className="app-status-pill bg-[var(--ui-surface-2)] text-[var(--c-text)]">{status}</span>
@@ -259,14 +262,14 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
 
               <label className="grid min-w-0 gap-1 text-xs font-semibold text-[var(--c-muted)] lg:block">
                 <span className="lg:hidden">Apropriação</span>
-                  <ApropriacaoAutocomplete
+                  {obras.find((obra) => Number(obra.id) === Number(linha.obra_id))?.tipo_centro_custo === 'CENTRO_CUSTO' ? <span className="form-hint">Não se aplica ao centro de custo</span> : <ApropriacaoAutocomplete
                     value={linha.apropriacao_id}
                     options={apropriacoesPorObra[Number(linha.obra_id)] || []}
                     onChange={(value) => atualizar(index, 'apropriacao_id', value)}
                     disabled={!linha.obra_id || (!podeEditarPrestacao && !podeEditarDestinosGeo) || salvando}
                     placeholder={linha.obra_id ? 'Buscar apropriação' : 'Selecione a obra'}
                     inputClassName="input input-sm w-full"
-                  />
+                  />}
               </label>
 
               <label className="grid min-w-0 gap-1 text-xs font-semibold text-[var(--c-muted)] lg:block">

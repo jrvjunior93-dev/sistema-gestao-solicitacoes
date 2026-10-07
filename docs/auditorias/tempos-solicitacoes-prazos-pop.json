@@ -1,0 +1,706 @@
+{
+  "fonte": "POP-CSC-FLUXY-001 Anexo I",
+  "versao": "1.0",
+  "emissao": "2026-09-30",
+  "natureza": "Referencia fornecida pelo usuario; nao ativa prazo nem bloqueio e nao valida obrigacoes legais.",
+  "regras_gerais_originais": [
+    "Contagem: prazos em dias úteis. Exceções em dias corridos: prazos da CLT (Departamento Pessoal) e Custos e Recebíveis."
+  ],
+  "observacoes": [
+    "24/48 horas equivalem a 1/2 dias uteis no documento; nao a 24/48 horas de jornada.",
+    "Aprovacoes de Diretoria sem prazo; ainda exigem marcos de entrada e saida identificaveis.",
+    "Calendario, feriados, inicio, fim, pausas e regras de desempate precisam de homologacao.",
+    "Retornos, contestacoes, competencias e tarefas externas nao se inferem apenas do nome do setor."
+  ],
+  "etapas": [
+    {
+      "id": 1,
+      "grupo": "2.1 Cadastro de Obra",
+      "etapa": "Análise da solicitação",
+      "responsavel": "GEO",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 2,
+      "grupo": "2.1 Cadastro de Obra",
+      "etapa": "Correção da solicitação devolvida",
+      "responsavel": "Obra",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 3,
+      "grupo": "2.1 Cadastro de Obra",
+      "etapa": "Cadastro da obra, planilha e permissões",
+      "responsavel": "Suporte Fluxy",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 4,
+      "grupo": "2.2 Administração Local, Locação de Máquinas, Despesa Eventual, Pré-obra e Compra Direta",
+      "etapa": "Registro da solicitação",
+      "responsavel": "Obra",
+      "prazo_original": "Sem antecedência mínima",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 5,
+      "grupo": "2.2 Administração Local, Locação de Máquinas, Despesa Eventual, Pré-obra e Compra Direta",
+      "etapa": "Análise e geração do título",
+      "responsavel": "GEO",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 6,
+      "grupo": "2.2 Administração Local, Locação de Máquinas, Despesa Eventual, Pré-obra e Compra Direta",
+      "etapa": "Correção da solicitação devolvida",
+      "responsavel": "Obra",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 7,
+      "grupo": "2.2 Administração Local, Locação de Máquinas, Despesa Eventual, Pré-obra e Compra Direta",
+      "etapa": "Aprovação e liberação",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 8,
+      "grupo": "2.2 Administração Local, Locação de Máquinas, Despesa Eventual, Pré-obra e Compra Direta",
+      "etapa": "Pagamento, comprovante e baixa",
+      "responsavel": "Financeiro",
+      "prazo_original": "24 horas após a liberação",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 9,
+      "grupo": "2.2 Administração Local, Locação de Máquinas, Despesa Eventual, Pré-obra e Compra Direta",
+      "etapa": "Conferência do comprovante e finalização",
+      "responsavel": "Obra",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 10,
+      "grupo": "2.2 Administração Local, Locação de Máquinas, Despesa Eventual, Pré-obra e Compra Direta",
+      "etapa": "Análise de contestação",
+      "responsavel": "Financeiro",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 11,
+      "grupo": "2.3 Recarga de Cartão",
+      "etapa": "Análise do pedido e geração do título",
+      "responsavel": "GEO",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 12,
+      "grupo": "2.3 Recarga de Cartão",
+      "etapa": "Aprovação e liberação",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 13,
+      "grupo": "2.3 Recarga de Cartão",
+      "etapa": "Recarga, comprovante e baixa",
+      "responsavel": "Financeiro",
+      "prazo_original": "Mesmo dia da liberação",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 14,
+      "grupo": "2.3 Recarga de Cartão",
+      "etapa": "Prestação de contas",
+      "responsavel": "Obra",
+      "prazo_original": "Antes da próxima recarga",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 15,
+      "grupo": "2.3 Recarga de Cartão",
+      "etapa": "Análise da prestação de contas",
+      "responsavel": "GEO",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 16,
+      "grupo": "2.3 Recarga de Cartão",
+      "etapa": "Resposta a pendência da prestação de contas",
+      "responsavel": "Obra",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 17,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Registro da solicitação",
+      "responsavel": "Obra",
+      "prazo_original": "15 dias úteis antes da data de necessidade",
+      "dias_uteis_referencia": 15,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 18,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Análise da solicitação",
+      "responsavel": "GEO",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 19,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Aprovação e liberação para Compras",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 20,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Cotação, pedido de compra e título",
+      "responsavel": "Compras",
+      "prazo_original": "5 dias úteis após a liberação",
+      "dias_uteis_referencia": 5,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 21,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Envio dos títulos autorizados ao Financeiro",
+      "responsavel": "GEO / Diretoria",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 22,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Pagamento",
+      "responsavel": "Financeiro",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 23,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Confirmação do recebimento do material",
+      "responsavel": "Obra",
+      "prazo_original": "Até 2 dias após a data de entrega",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 24,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Resposta sobre mercadoria não entregue ou errada",
+      "responsavel": "Compras",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 25,
+      "grupo": "2.4 Solicitação de Compra",
+      "etapa": "Conferência do comprovante e aceite do item",
+      "responsavel": "Obra",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 26,
+      "grupo": "2.5 Contrato até R$ 50.000,00",
+      "etapa": "Registro da solicitação",
+      "responsavel": "Obra",
+      "prazo_original": "5 dias úteis antes do início do serviço",
+      "dias_uteis_referencia": 5,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 27,
+      "grupo": "2.5 Contrato até R$ 50.000,00",
+      "etapa": "Análise da solicitação",
+      "responsavel": "GEO",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 28,
+      "grupo": "2.5 Contrato até R$ 50.000,00",
+      "etapa": "Correção da solicitação devolvida",
+      "responsavel": "Obra",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 29,
+      "grupo": "2.5 Contrato até R$ 50.000,00",
+      "etapa": "Aprovação",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 30,
+      "grupo": "2.6 Contrato acima de R$ 50.000,00",
+      "etapa": "Registro da solicitação",
+      "responsavel": "Obra",
+      "prazo_original": "10 dias úteis antes do início do serviço",
+      "dias_uteis_referencia": 10,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 31,
+      "grupo": "2.6 Contrato acima de R$ 50.000,00",
+      "etapa": "Análise da solicitação",
+      "responsavel": "GEO",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 32,
+      "grupo": "2.6 Contrato acima de R$ 50.000,00",
+      "etapa": "Correção da solicitação devolvida (GEO ou Jurídico)",
+      "responsavel": "Obra",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 33,
+      "grupo": "2.6 Contrato acima de R$ 50.000,00",
+      "etapa": "Aprovação e liberação ao Jurídico",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 34,
+      "grupo": "2.6 Contrato acima de R$ 50.000,00",
+      "etapa": "Elaboração do contrato",
+      "responsavel": "Jurídico",
+      "prazo_original": "7 dias úteis",
+      "dias_uteis_referencia": 7,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 35,
+      "grupo": "2.6 Contrato acima de R$ 50.000,00",
+      "etapa": "Coleta das assinaturas",
+      "responsavel": "Obra",
+      "prazo_original": "5 dias úteis",
+      "dias_uteis_referencia": 5,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 36,
+      "grupo": "2.6 Contrato acima de R$ 50.000,00",
+      "etapa": "Conferência e aprovação do contrato",
+      "responsavel": "Jurídico",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 37,
+      "grupo": "2.7 Medição",
+      "etapa": "Registro da solicitação",
+      "responsavel": "Obra",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 38,
+      "grupo": "2.7 Medição",
+      "etapa": "Análise e geração do título",
+      "responsavel": "GEO",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 39,
+      "grupo": "2.7 Medição",
+      "etapa": "Correção da solicitação devolvida",
+      "responsavel": "Obra",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 40,
+      "grupo": "2.7 Medição",
+      "etapa": "Aprovação e liberação",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 41,
+      "grupo": "2.7 Medição",
+      "etapa": "Pagamento, comprovante e baixa",
+      "responsavel": "Financeiro",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 42,
+      "grupo": "2.7 Medição",
+      "etapa": "Conferência do comprovante e finalização",
+      "responsavel": "Obra",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 43,
+      "grupo": "2.7 Medição",
+      "etapa": "Análise de contestação",
+      "responsavel": "Financeiro",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 44,
+      "grupo": "2.8 Aditivo",
+      "etapa": "Registro da solicitação",
+      "responsavel": "Obra",
+      "prazo_original": "Antes de o saldo do contrato ser ultrapassado",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 45,
+      "grupo": "2.8 Aditivo",
+      "etapa": "Análise da solicitação",
+      "responsavel": "GEO",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 46,
+      "grupo": "2.8 Aditivo",
+      "etapa": "Correção da solicitação devolvida (GEO ou Jurídico)",
+      "responsavel": "Obra",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 47,
+      "grupo": "2.8 Aditivo",
+      "etapa": "Aprovação e liberação",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 48,
+      "grupo": "2.8 Aditivo",
+      "etapa": "Elaboração do termo aditivo (acima de R$ 50 mil)",
+      "responsavel": "Jurídico",
+      "prazo_original": "3 dias úteis",
+      "dias_uteis_referencia": 3,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 49,
+      "grupo": "2.8 Aditivo",
+      "etapa": "Coleta das assinaturas (acima de R$ 50 mil)",
+      "responsavel": "Obra",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 50,
+      "grupo": "2.8 Aditivo",
+      "etapa": "Conferência e aprovação (acima de R$ 50 mil)",
+      "responsavel": "Jurídico",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 51,
+      "grupo": "2.9 Custos e Recebíveis",
+      "etapa": "Planejamento do mês",
+      "responsavel": "Obra",
+      "prazo_original": "Do dia 25 do mês anterior ao dia 5 do mês",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false,
+      "observacao_interpretacao": "Excecao de Custos e Recebiveis: conferir janela/data/hora propria; nao converter automaticamente em dias uteis."
+    },
+    {
+      "id": 52,
+      "grupo": "2.9 Custos e Recebíveis",
+      "etapa": "Medição aprovada (obra pública)",
+      "responsavel": "Obra",
+      "prazo_original": "40 dias corridos contados do dia 1º do mês",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false,
+      "observacao_interpretacao": "Excecao de Custos e Recebiveis: conferir janela/data/hora propria; nao converter automaticamente em dias uteis."
+    },
+    {
+      "id": 53,
+      "grupo": "2.9 Custos e Recebíveis",
+      "etapa": "Decisão de pedido de reabertura ou dilatação",
+      "responsavel": "Administrador",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false,
+      "observacao_interpretacao": "Excecao de Custos e Recebiveis: conferir janela/data/hora propria; nao converter automaticamente em dias uteis."
+    },
+    {
+      "id": 54,
+      "grupo": "2.9 Custos e Recebíveis",
+      "etapa": "Reabertura de mês aprovada",
+      "responsavel": "—",
+      "prazo_original": "Vale por 24 horas",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false,
+      "observacao_interpretacao": "Excecao de Custos e Recebiveis: conferir janela/data/hora propria; nao converter automaticamente em dias uteis."
+    },
+    {
+      "id": 55,
+      "grupo": "2.9 Custos e Recebíveis",
+      "etapa": "Liberação temporária da obra travada",
+      "responsavel": "Administrador",
+      "prazo_original": "Até 48 horas",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false,
+      "observacao_interpretacao": "Excecao de Custos e Recebiveis: conferir janela/data/hora propria; nao converter automaticamente em dias uteis."
+    },
+    {
+      "id": 56,
+      "grupo": "3.1 Admissão",
+      "etapa": "Pedido de contratação",
+      "responsavel": "Obra",
+      "prazo_original": "3 dias úteis antes do início",
+      "dias_uteis_referencia": 3,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 57,
+      "grupo": "3.1 Admissão",
+      "etapa": "Aprovação ou resposta",
+      "responsavel": "RH",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 58,
+      "grupo": "3.1 Admissão",
+      "etapa": "Entrega dos documentos e exame admissional",
+      "responsavel": "Obra",
+      "prazo_original": "48 horas após a aprovação",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 59,
+      "grupo": "3.1 Admissão",
+      "etapa": "Registro do contratado (eSocial e cadastro)",
+      "responsavel": "DP",
+      "prazo_original": "Até o dia anterior ao início",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 60,
+      "grupo": "3.2 Demissão",
+      "etapa": "Aviso de pedido de demissão ou abandono",
+      "responsavel": "Obra",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 61,
+      "grupo": "3.2 Demissão",
+      "etapa": "Aprovação ou resposta ao pedido de demissão",
+      "responsavel": "RH",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 62,
+      "grupo": "3.2 Demissão",
+      "etapa": "Pagamento da rescisão",
+      "responsavel": "DP",
+      "prazo_original": "10 dias corridos (CLT)",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 63,
+      "grupo": "3.3 Férias",
+      "etapa": "Pedido de férias",
+      "responsavel": "Obra",
+      "prazo_original": "30 dias corridos antes do início",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 64,
+      "grupo": "3.3 Férias",
+      "etapa": "Aprovação ou resposta",
+      "responsavel": "RH",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 65,
+      "grupo": "3.3 Férias",
+      "etapa": "Pagamento das férias",
+      "responsavel": "DP",
+      "prazo_original": "2 dias antes do início (CLT)",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 66,
+      "grupo": "3.4 Alteração Salarial",
+      "etapa": "Aprovação ou resposta",
+      "responsavel": "RH",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 67,
+      "grupo": "3.5 Transferência de Funcionário entre Obras",
+      "etapa": "Pedido de transferência",
+      "responsavel": "Obra de origem",
+      "prazo_original": "Sem antecedência mínima",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 68,
+      "grupo": "3.5 Transferência de Funcionário entre Obras",
+      "etapa": "Aceite ou recusa",
+      "responsavel": "Obra de destino",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 69,
+      "grupo": "4.1 Despesas Administrativas, Despesa Comercial e Despesas de Marketing",
+      "etapa": "Análise e geração do título",
+      "responsavel": "GEO",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 70,
+      "grupo": "4.1 Despesas Administrativas, Despesa Comercial e Despesas de Marketing",
+      "etapa": "Correção da solicitação devolvida",
+      "responsavel": "Setor solicitante",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 71,
+      "grupo": "4.1 Despesas Administrativas, Despesa Comercial e Despesas de Marketing",
+      "etapa": "Aprovação e liberação",
+      "responsavel": "Diretoria / GEO",
+      "prazo_original": "Sem prazo",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 72,
+      "grupo": "4.1 Despesas Administrativas, Despesa Comercial e Despesas de Marketing",
+      "etapa": "Pagamento, comprovante e baixa",
+      "responsavel": "Financeiro",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 73,
+      "grupo": "4.1 Despesas Administrativas, Despesa Comercial e Despesas de Marketing",
+      "etapa": "Conferência do comprovante e finalização",
+      "responsavel": "Setor solicitante",
+      "prazo_original": "48 horas",
+      "dias_uteis_referencia": 2,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 74,
+      "grupo": "4.1 Despesas Administrativas, Despesa Comercial e Despesas de Marketing",
+      "etapa": "Análise de contestação",
+      "responsavel": "Financeiro",
+      "prazo_original": "24 horas",
+      "dias_uteis_referencia": 1,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 75,
+      "grupo": "5. Rotinas do Financeiro",
+      "etapa": "Abertura e fechamento do caixa físico",
+      "responsavel": "Financeiro",
+      "prazo_original": "Todo dia útil",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    },
+    {
+      "id": 76,
+      "grupo": "5. Rotinas do Financeiro",
+      "etapa": "Informar os saldos das contas no Painel do Gestor",
+      "responsavel": "Financeiro",
+      "prazo_original": "Todo dia útil, até o fim do dia",
+      "dias_uteis_referencia": null,
+      "aplicacao_automatica": false
+    }
+  ]
+}

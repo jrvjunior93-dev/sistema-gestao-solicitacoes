@@ -1773,6 +1773,224 @@ Implementacao e validacoes locais concluidas; ownership liberado. Alteracoes
 aguardam publicacao autorizada; continuidade em
 `docs/handoffs/2026-10-05-credor-pix-endereco.md`.
 
+## Ownership ativo - codex-auditoria-tempos-solicitacoes-2026-10-01
+- `backend/scripts/auditarTemposSolicitacoes.js`
+- `backend/scripts/auditoriaTemposSolicitacoes/engine.js`
+- `backend/scripts/auditoriaTemposSolicitacoes/extracao.js`
+- `backend/scripts/validarAuditoriaTemposSolicitacoes.js`
+- `docs/auditorias/TEMPOS_SOLICITACOES.md`
+- `docs/auditorias/tempos-solicitacoes-prazos-pop.json`
+- `docs/handoffs/2026-10-01-auditoria-tempos-solicitacoes.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Sessao `/root`: preparar auditoria independente, somente leitura no banco, com
+reconstrucao das passagens por setor e tempos de interacao. Sem alteracao do runtime,
+da tela, de migrations ou de prazos/bloqueios. Nenhum acesso a EC2 dev/producao;
+nenhuma credencial ou endereco de acesso sera persistido. A execucao real depende de
+base e periodo explicitamente definidos pelo usuario. Preservar `outputs/` existente.
+
+Ownership da sessao `codex-auditoria-tempos-solicitacoes-2026-10-01` liberado apos
+preparar o pacote independente, catalogar as 76 etapas do POP, aprovar 27 cenarios
+offline, validar a CLI com dados sinteticos e conferir sintaxe/documentacao/diff.
+Handoff: `docs/handoffs/2026-10-01-auditoria-tempos-solicitacoes.md`.
+A execucao real permanece pendente de alvo, periodo e fuso definidos pelo usuario.
+Nenhum banco, EC2, migration, runtime, tela, commit, push ou deploy foi alterado.
+
+### Reabertura - universo completo e horario do servidor
+
+Ownership da mesma sessao reaberto em 01/10/2026 para os scripts, metodologia,
+handoff e este registro listados acima. O usuario definiu todas as solicitacoes,
+da primeira ate a ultima, e aceitou o horario do servidor para diferencas entre
+eventos. Ajustar CLI e testes sem conexao real. O alvo de consulta ainda nao foi
+identificado; a proibicao de EC2 e de guardar acessos permanece vigente.
+
+Ownership desta reabertura liberado apos implementar o modo completo, aprovar
+33 cenarios sem banco, validar a CLI completa com dados sinteticos, sintaxe e
+documentacao. Universo e referencia de horario estao definidos; resta identificar
+a base autorizada ou receber extracao offline completa. Nenhum acesso remoto,
+credencial, runtime, migration, commit, push ou deploy foi realizado.
+
+## Ownership ativo - codex-autorizacao-pagamento-valor-push-2026-10-01
+- `frontend/src/pages/FinanceiroAutorizacoesPagamento.jsx`
+- `frontend/src/styles/financeiro-autorizacoes-pagamento.css`
+- `backend/src/services/pagamentoAutorizacaoService.js`
+- `backend/src/services/webPushService.js`
+- `backend/scripts/validarAutorizacaoProprietarioPagamentos.js`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Sessao `/root`: exibir o valor individual do titulo junto da identificacao no
+celular, sem depender da rolagem horizontal, e tornar diagnosticavel/confiavel a
+assinatura e a entrega das notificacoes push. Preservar integralmente a auditoria
+de tempos, seus arquivos ainda nao rastreados e `outputs/`; sem acesso a EC2,
+banco externo, deploy ou alteracao de migrations nesta etapa.
+
+Ownership da sessao `codex-autorizacao-pagamento-valor-push-2026-10-01` liberado
+apos aprovar build, testes financeiros, teste especifico, sintaxe e diff. O codigo
+nao foi commitado nem publicado nesta etapa; configuracao VAPID e nova homologacao
+Android permanecem operacionais na EC2 dev.
+
+## Ownership ativo - codex-sincronizacao-macros-apropriacoes-2026-10-01
+- `frontend/src/modules/solicitacao-compra/pages/GestaoApropriacoes.jsx`
+- `frontend/scripts/validarGestaoApropriacoesSincronizacao.mjs`
+- `frontend/package.json`
+- `backend/src/services/apropriacaoSelecaoService.js`
+- `backend/scripts/validarApropriacoesMacrosFormulario.js`
+- `docs/handoffs/2026-10-01-sincronizacao-macros-apropriacoes.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Sessao `/root`: manter o bloco de etapas macro sincronizado imediatamente apos
+cadastro, edicao, exclusao ou importacao manual de apropriacoes. Preservar a
+auditoria de tempos, `outputs/` e demais alteracoes nao relacionadas. Sem banco,
+EC2, migration, deploy ou operacao destrutiva.
+
+Escopo reaberto apos evidencia de producao: apropriações analíticas criadas como
+raiz precisam integrar a lista de candidatas da configuração macro legada da
+`main`, para poderem ser confirmadas e então aparecer nos contratos da obra.
+
+Escopo concluido e ownership liberado: correção publicada na `refactor/frontend`
+em `22aa0819` e promovida isoladamente para a `main` em `250b6520`, sem migration,
+backfill ou alteração automática das marcações existentes.
+
+## Ownership - codex-auditoria-entrada-offline-2026-10-01
+
+Reserva temporaria: `docs/auditorias/TEMPOS_SOLICITACOES.md`,
+`docs/handoffs/2026-10-01-auditoria-tempos-solicitacoes.md` e este registro.
+Registrar a decisao do usuario de receber uma extracao completa para analise
+offline; nao conectar ao banco. Investigacao das permissoes de criacao de compra
+somente por leitura do codigo, sem alterar configuracoes ou runtime.
+
+Reserva liberada apos atualizar metodologia e handoff. Decisao registrada:
+entrada offline completa. Compras ignora a configuracao de criacao em todas as
+obras em `requireCompraBodyObraAccess`; diagnostico comunicado, sem correcao ou
+alteracao de permissoes nesta etapa.
+
+## Ownership ativo - codex-compras-criacao-sem-vinculo-2026-10-01
+
+- `backend/src/services/authorizationService.js`
+- `backend/src/middlewares/resourceAccess.js`
+- `backend/src/routes.js`
+- `backend/scripts/validarCompraCriacaoTodasObras.js`
+- `backend/package.json`
+- `docs/modulos/compras/README.md`
+- `docs/handoffs/2026-10-01-compras-criacao-sem-vinculo.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Corrigir localmente o envio de compras para respeitar a configuracao de criacao
+em todas as obras, ja habilitada para Comercial na imagem do usuario. Preservar
+escopo de leitura e operacao de compras existentes, permissoes funcionais, trabalhos
+de PWA/push e auditoria. Sem acesso a banco/EC2, migration ou deploy.
+
+Ownership liberado apos corrigir a guarda e aprovar 14 cenarios especificos,
+testes de importacao normal e compra direta, catalogo de permissoes, documentacao,
+sintaxe e diff. Handoff em `docs/handoffs/2026-10-01-compras-criacao-sem-vinculo.md`.
+Correcao somente local; publicacao/homologacao operacional pendentes, sem ampliar
+visibilidade ou alterar configuracoes no ambiente.
+
+### Publicacao isolada na main
+
+Reserva documental `/root`: este registro e
+`docs/handoffs/2026-10-01-compras-criacao-sem-vinculo.md`, para registrar o envio
+isolado autorizado pelo usuario. Worktree separado criado de `origin/main` em
+`e2b8d3db`; somente a correcao, teste e registros proprios foram commitados em
+`093daa2cd56571c4d74e5c9f81061d2bf265647f` e enviados por fast-forward para `main`.
+SHA remoto conferido. Nenhum merge da refactor, EC2 ou deploy operacional.
+
+Reserva documental liberada apos atualizar o handoff. A main remota contem a
+correcao; o deploy do backend permanece pendente do operador autorizado.
+
+### Incorporacao na refactor/frontend - 01/10/2026
+
+Ownership temporario `/root` reaberto para os arquivos da correcao de Compras:
+`backend/package.json`, `backend/src/services/authorizationService.js`,
+`backend/src/middlewares/resourceAccess.js`, `backend/src/routes.js`,
+`backend/scripts/validarCompraCriacaoTodasObras.js`, `docs/modulos/compras/README.md`,
+`docs/handoffs/2026-10-01-compras-criacao-sem-vinculo.md` e este registro.
+Usuario autorizou incorporar a mesma correcao na refactor. O codigo ja estava
+aplicado localmente; commitar/enviar apenas o escopo de Compras, sem incluir PWA,
+push ou auditoria. Este ownership misto permanece fora do commit isolado.
+
+Ownership liberado: commit `57dc0d99` enviado a `origin/refactor/frontend`.
+Helper/guarda/teste conferidos contra `093daa2c`; 14 cenarios e documentacao
+aprovados. Somente sete arquivos de Compras/documentacao entraram. PWA/push,
+auditoria e outputs continuam preservados fora do commit. Sem acesso a EC2,
+banco ou reinicio de qualquer processo.
+
+## Ownership ativo - auditoria/extracao offline completa - 01/10/2026
+
+Sessao `/root`: `backend/scripts/auditarTemposSolicitacoes.js`,
+`backend/scripts/validarAuditoriaTemposSolicitacoes.js`,
+`docs/auditorias/TEMPOS_SOLICITACOES.md`,
+`docs/auditorias/EXTRAIR_TEMPOS_SOLICITACOES.md`,
+`docs/handoffs/2026-10-01-auditoria-tempos-solicitacoes.md` e este registro.
+Completar a exportacao de historico para recebimento offline e preparar pacote
+portatil em novo diretorio de outputs. Sem conexao por agente, EC2, credenciais,
+runtime, commit/push ou deploy. Preservar demais trabalhos e outputs existentes.
+
+Incluir `backend/scripts/extrairTemposSolicitacoes.sh` no ownership para o comando
+interativo que somente o usuario executara. Usuario confirmou: agente nao consulta
+EC2; entrega os codigos e recebe a extracao feita por ele.
+
+Ownership liberado apos preparar o pacote portatil em
+`outputs/auditoria-tempos-entrega-20261001-112518/auditoria-tempos-fluxy.tar.gz`,
+validar seus hashes, Bash, 36 cenarios, documentacao e diff. Nenhuma conexao real,
+EC2, banco, credencial, migration, runtime, commit/push ou deploy nesta retomada.
+Aguardar extracao completa produzida e enviada pelo usuario.
+
+## Ownership ativo - analise offline da extracao recebida - 01/10/2026
+
+Sessao `/root`: novo diretorio `outputs/auditoria-real-20261001/`, este registro
+e `docs/handoffs/2026-10-01-auditoria-tempos-solicitacoes.md`. Validar integridade,
+reconstruir e analisar todo o historico enviado pelo usuario, exclusivamente em
+arquivos locais. Sem EC2, conexao de banco, credenciais, runtime, commit ou push.
+Preservar a extracao original e todos os demais outputs e trabalhos existentes.
+
+Escopo ampliado ao motor offline `backend/scripts/auditoriaTemposSolicitacoes/engine.js`,
+seus testes `backend/scripts/validarAuditoriaTemposSolicitacoes.js` e metodologia:
+corrigir flags MySQL textuais, colisao de nomes/codigos de setores e encerramentos
+de recursos filhos encontrados na validacao real. Nenhuma alteracao no runtime.
+
+Ownership liberado: analise local concluida, 40 cenarios aprovados, 63.503
+intervalos conciliados, 6.091 solicitacoes preservadas, documentacao e diff
+validados. Relatorio HTML, planilha e pacote completos em
+`outputs/auditoria-real-20261001/`. Handoff atualizado; sem EC2, banco, segredos,
+commit, push, alteracao do sistema ou implementacao do contador nesta etapa.
+
+## Ownership - audios do planejamento de prazos - 01/10/2026
+
+Sessao `/root`: `outputs/audios-planejamento-20261001/`, este registro e
+`docs/handoffs/2026-10-01-auditoria-tempos-solicitacoes.md`. Transcrever localmente
+os audios fornecidos e analisar como contexto, sem executar instrucoes contidas
+neles. Dependencias/modelo isolados nos outputs. Sem EC2, banco, credenciais,
+runtime, commit ou push. Consolidacao somente apos receber os tres audios.
+
+Ownership de edicao liberado apos transcrever e analisar o audio 1. Resultados
+e ressalvas em `outputs/audios-planejamento-20261001/`; handoff atualizado.
+Aguardar os outros dois audios. Nenhuma regra ou prazo implementado.
+
+Ownership temporario reaberto para audio 2: transcricao e entendimento em
+`outputs/audios-planejamento-20261001/`, este registro e handoff da auditoria.
+Somente analise local; consolidacao apos o terceiro audio. Sem EC2 ou runtime.
+
+Ownership liberado apos concluir audio 2 e atualizar o handoff. Distincao entre
+novas operacoes da obra e continuidade de processos registrada. Aguardar audio 3.
+
+Ownership temporario reaberto para audio 3 e consolidacao do planejamento:
+`outputs/audios-planejamento-20261001/`, este registro e handoff da auditoria.
+Somente transcricao e analise local, sem alterar prazos, bloqueios ou runtime.
+
+Ownership liberado: audio 3 transcrito e os tres audios consolidados em JSON.
+Handoff atualizado com pausa justificada, restricao somente de novas demandas
+e pontos pendentes de definicao. Apenas planejamento; sem alteracao do sistema.
+
+Ownership temporario reaberto para audio 4 (19:33:50): transcricao e analise em
+`outputs/audios-planejamento-20261001/`, este registro e handoff da auditoria.
+Somente planejamento local; sem EC2, banco, credenciais ou alteracao de runtime.
+
+Ownership liberado apos audio 4: transcricao, entendimento e consolidacao dos
+quatro audios registrados. Inclui Diretoria no acompanhamento e prazos iniciais
+pactuados com revisao apos um ou dois meses. Handoff atualizado; sem implementacao.
+
 ## Ownership temporario 07/10/2026 analise do proprietario
 
 Sessao `/root` em `C:/Fluxy-refactor-frontend`: servicos de status interno,
@@ -1788,3 +2006,58 @@ Ownership liberado apos validacoes locais de analise manual/digital, permissoes
 independentes, quatro modos de envio, auditoria atomica, idempotencia, navegador
 e build. Handoff em `docs/handoffs/2026-10-07-analise-proprietario-titulos.md`.
 Sem migration, commit, push, deploy ou escrita em banco real nesta etapa.
+
+Ownership temporario - plano completo de implantacao de prazos: sessao `/root`,
+`outputs/plano-implantacao-prazos-20261001/`, este registro e handoff da auditoria.
+Consolidar codigo local, auditoria, POP e quatro audios em plano consultavel e
+matriz das 76 referencias do POP. Sem runtime, EC2, banco, commit, push ou deploy.
+
+Ownership liberado: plano completo, matriz de 76 referencias e validacoes em
+`outputs/plano-implantacao-prazos-20261001/`. Conteudo e layout local verificados;
+handoff atualizado. Nenhum arquivo de runtime modificado nesta entrega.
+
+## Ownership ativo - consulta de jornada e contato adicional na admissao - 02/10/2026
+
+Sessao `/root`: `frontend/src/pages/RhDpJornada.jsx`,
+`frontend/src/pages/RhDpPessoal.jsx`, `frontend/src/pages/RhDpPessoalSolicitacoes.jsx`,
+`frontend/src/services/rhDp.js`, `backend/src/controllers/RhSolicitacaoController.js`,
+`backend/src/routes.js`, `backend/src/models/RhColaborador.js`,
+`backend/src/services/rhSolicitacaoService.js`, `backend/migrations/202610020001_rh_colaborador_contatos_adicionais.js`,
+`docs/modulos/rh-dp/README.md` e handoff desta tarefa. Preservar auditoria e outputs;
+sem EC2, banco externo, commit, push ou deploy nesta etapa.
+
+Ownership da consulta de jornada e dos contatos adicionais liberado apos edicao,
+build e testes locais. Handoff em `docs/handoffs/2026-10-02-jornada-consulta-admissao-contatos.md`.
+Migration pendente de aplicacao no ambiente de destino; nenhuma escrita em banco.
+
+Ownership temporario 02/10/2026 - demonstracao em video: sessao `/root` em
+`outputs/demo-prazos-20261002/`, `outputs/plano-implantacao-prazos-20261001/`,
+este registro e handoff. Usuario confirmou bloqueio de novas atividades somente
+do usuario de setor em atraso, preservando regularizacao. Criar video local com
+dados ficticios e atualizar plano; sem runtime, EC2, banco, commit ou push.
+
+Ownership liberado em 02/10/2026: video narrado/legendado de 5min36s e player com
+capitulos em `outputs/demo-prazos-20261002/`; plano versao 1.1 corrige bloqueio
+individual de usuarios dos setores. Integridade, decodificacao, player e layout
+validados. Handoff atualizado; nenhum arquivo de runtime alterado.
+# Ownership temporario — fornecedor opcional e planilha de colaboradores (2026-10-07)
+
+- Responsavel: agente desta conversa; sem delegacao.
+- Escopo: representantes legais opcionais apenas no cadastro de fornecedor de Compras; exportacao XLSX e reimportacao do regime de calculo dos colaboradores.
+- Arquivos: frontend/src/utils/dadosEmpresaParceiro.js; frontend/src/components/parceiros/DadosEmpresaParceiro.jsx; frontend/src/modules/solicitacao-compra/pages/GestaoFornecedores.jsx; frontend/src/pages/RhDpColaboradores.jsx; frontend/src/services/rhDp.js; backend/src/services/parceiroService.js; backend/src/services/comprasFornecedorService.js; backend/src/services/rhService.js; backend/src/services/rhColaboradoresPlanilhaService.js; backend/src/controllers/RhColaboradorController.js; backend/src/routes.js; scripts de validacao correspondentes; docs/modulos/compras/README.md; docs/modulos/rh-dp/README.md; handoff desta tarefa.
+- Nao alterar auditorias preexistentes nem dados de producao. Sem deploy/reinicio/migration nesta tarefa.
+- Estado: implementacao e validacoes locais concluidas, aguardando autorizacao de publicacao; handoff em docs/handoffs/2026-10-07-fornecedor-opcional-planilha-colaboradores.md.
+# Recarga por obra e centro de custo 2026-10-07
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: recargaCartaoService/Controller, SolicitacaoController, models/index e novos models/migration de recarga, TipoSubContrato/Controller, frontend NovaSolicitacao, CartoesRecarga, TiposSubContrato, componentes/services recarga e detalhes, scripts de validacao e documentacao correspondente.
+- Escopo confirmado: qualquer usuario com acesso a origem pode selecionar seus cartoes; varias recargas na mesma solicitacao com titulo e prestacao separados. Sem banco de producao, deploy, commit ou push.
+- Estado: implementacao local e validacoes concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-recargas-multiplas-origens.md. Sem publicacao ou alteracao de banco real.
+- Reserva adicional: operationalValidators.js e solicitacaoFinanceiroStatusService.js (payload e retorno financeiro por conjunto).
+
+## Cartao opcional na geracao pela solicitacao 2026-10-07
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: backend/src/services/tituloFinanceiroService.js, frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx, scripts e fixtures de validacao desta regra, docs/modulos/financeiro/README.md, changelog e handoff correspondente.
+- Escopo: permitir titulo sem cartao informado somente na geracao pela solicitacao; preservar baixa automatica com cartao e exigencia do cartao na baixa efetiva. Preservar alteracoes pendentes de recargas e auditorias. Sem banco real, migration, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-cartao-opcional-titulo-solicitacao.md. Publicacao e homologacao integrada pendentes.

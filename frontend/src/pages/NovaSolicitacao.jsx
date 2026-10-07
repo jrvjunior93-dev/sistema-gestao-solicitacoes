@@ -1,5 +1,5 @@
 import DateInputBR from '../components/DateInputBR';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Avisos,
@@ -43,7 +43,7 @@ import DadosEmpresaParceiro from '../components/parceiros/DadosEmpresaParceiro';
 import { getDadosEmpresaParceiroError } from '../utils/dadosEmpresaParceiro';
 import RateioApropriacoesContrato, { numeroDoCampo } from '../components/contratos/RateioApropriacoesContrato';
 import PendingAttachmentsList from '../components/attachments/PendingAttachmentsList';
-import RecargaCartaoFields from '../components/recarga-cartao/RecargaCartaoFields';
+import RecargasCartoesFields from '../components/recarga-cartao/RecargasCartoesFields';
 import { hasEnabledModule } from '../utils/acessoProduto';
 import { destinoSolicitacaoContratoCriado } from '../utils/destinoSolicitacaoContrato';
 import {
@@ -281,6 +281,7 @@ export default function NovaSolicitacao() {
     nao_fracionada: false
   });
   const [cartaoRecargaId, setCartaoRecargaId] = useState('');
+  const [recargasCartoes, setRecargasCartoes] = useState([]);
   const [recargaCartaoContexto, setRecargaCartaoContexto] = useState(null);
   const [criandoSolicitacao, setCriandoSolicitacao] = useState(false);
   const [valorTexto, setValorTexto] = useState('');
@@ -960,6 +961,8 @@ export default function NovaSolicitacao() {
   }
 
   const tipoSelecionado = tipos.find(t => String(t.id) === String(form.tipo_solicitacao_id));
+  const subtipoRecarga = tiposSub.find((item) => String(item.id) === String(form.tipo_sub_id))?.usa_fluxo_recarga_cartao === true;
+  const possuiSubtipoRecarga = tiposSub.some((item) => item.usa_fluxo_recarga_cartao === true);
   const comportamentoTipo = useMemo(() => {
     const comportamentoBase = getTipoSolicitacaoBehavior(tipoSelecionado);
     return applyTipoSolicitacaoModuleAvailability(comportamentoBase, {
@@ -988,10 +991,10 @@ export default function NovaSolicitacao() {
     // re-resolve os campos e a regra `tipo:subtipo` inteira nao tem efeito na tela (o motor, a
     // tela de configuracao e o backend ja resolviam certo — so esta lista estava incompleta).
   ), [comportamentoTipo, camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, areasConfiguracaoCampos, form.tipo_sub_id, moduloApropriacoesHabilitado]);
-  const tipoConfiguradoComoDespesaEventual = Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
-  const tipoConfiguradoComoRecargaCartao = isTipoRecargaCartao(tipoSelecionado, comportamentoTipo);
+  const tipoConfiguradoComoDespesaEventual = !subtipoRecarga && !isTipoRecargaCartao(tipoSelecionado, comportamentoTipo) && Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
+  const tipoConfiguradoComoRecargaCartao = isTipoRecargaCartao(tipoSelecionado, comportamentoTipo) || subtipoRecarga;
   const tipoSolicitacaoEscolhido = Boolean(form.tipo_solicitacao_id);
-  const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento']);
+  const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento', ...(subtipoRecarga ? ['subtipo'] : [])]);
   const campoVisivel = (campo) => {
     // Antes de o tipo ser escolhido, nenhum campo funcional deve herdar o comportamento
     // generico. A obra, o setor e o proprio tipo continuam fixos no topo; o restante entra
@@ -1025,7 +1028,7 @@ export default function NovaSolicitacao() {
   const usaFluxoCadastroObra = Boolean(comportamentoTipo.usa_fluxo_cadastro_obra);
   const exibirPessoasCadastroObra = usaFluxoCadastroObra && campoVisivel('pessoas_vinculadas');
   const pessoasCadastroObraObrigatorias = exibirPessoasCadastroObra && campoObrigatorio('pessoas_vinculadas');
-  const usaApropriacaoAutomaticaObra = Boolean(comportamentoTipo.usa_apropriacao_automatica_obra);
+  const usaApropriacaoAutomaticaObra = !usaFluxoRecargaCartao && Boolean(comportamentoTipo.usa_apropriacao_automatica_obra);
   const rotuloDataSolicitacao = obterRotuloDataSolicitacao(comportamentoTipo, {
     recargaCartao: usaFluxoRecargaCartao
   });
@@ -1145,11 +1148,25 @@ export default function NovaSolicitacao() {
   useEffect(() => {
     if (usaFluxoRecargaCartao) return;
     setCartaoRecargaId('');
+    setRecargasCartoes([]);
     setRecargaCartaoContexto(null);
   }, [usaFluxoRecargaCartao]);
 
+  useEffect(() => {
+    setCartaoRecargaId(''); setRecargasCartoes([]); setRecargaCartaoContexto(null);
+  }, [form.obra_id]);
+
+  const atualizarRecargasCartoes = useCallback((linhas) => {
+    setRecargasCartoes(linhas);
+    setCartaoRecargaId(linhas[0]?.cartao_recarga_id || '');
+    const total = Math.round(linhas.reduce((soma, linha) => soma + (numeroDoCampo(linha.valor) || 0), 0) * 100) / 100;
+    setForm((atual) => ({ ...atual, valor: total }));
+    setValorTexto(total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  }, []);
+
   function limparCamposNovaRecargaAposReenvio() {
     setCartaoRecargaId('');
+    setRecargasCartoes([]);
     setRecargaCartaoContexto(null);
     setValorTexto('');
     setForm((atual) => ({ ...atual, valor: '', data_vencimento: '' }));
@@ -1188,7 +1205,7 @@ export default function NovaSolicitacao() {
   // Consequencia registrada no plano: a configuracao de "campos por subtipo" (PI-13) deixa de valer
   // para CONTRATO — passa a valer a do tipo. As solicitacoes antigas guardam o subtipo e seguem
   // legiveis; nada e apagado.
-  const exibirCampoSubtipo = campoVisivel('subtipo') && !usaFluxoContratoNovo && tiposSub.length > 0;
+  const exibirCampoSubtipo = (campoVisivel('subtipo') || possuiSubtipoRecarga) && !usaFluxoContratoNovo && tiposSub.length > 0;
   const exibirCampoCredor = campoVisivel('credor');
 
   // Busca do credor AO DIGITAR (pedido do cliente, 19/08), sem minimo de caracteres: procura desde
@@ -2452,6 +2469,7 @@ export default function NovaSolicitacao() {
       boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null,
       despesa_eventual_declaracoes: usaFluxoDespesaEventual ? despesaEventualDeclaracoes : undefined,
       cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartaoRecargaId) : undefined,
+      recargas_cartoes: usaFluxoRecargaCartao ? recargasCartoes.map((linha) => ({ cartao_recarga_id: Number(linha.cartao_recarga_id), valor: numeroDoCampo(linha.valor) })) : undefined,
       cadastro_obra_usuario_ids: usaFluxoCadastroObra ? cadastroObraUsuarioIds : undefined,
       cadastro_obra_dados: usaFluxoCadastroObra ? {
         ...cadastroObraDados,
@@ -3146,10 +3164,11 @@ export default function NovaSolicitacao() {
           )}
 
           {/* Campos da recarga de cartão: componente próprio, largura inteira. */}
-          <RecargaCartaoFields
+          <RecargasCartoesFields
             ativo={usaFluxoRecargaCartao}
-            value={cartaoRecargaId}
-            onChange={setCartaoRecargaId}
+            obraId={form.obra_id}
+            value={recargasCartoes}
+            onChange={atualizarRecargasCartoes}
             onContextChange={setRecargaCartaoContexto}
             onSolicitacaoAnteriorEnviada={limparCamposNovaRecargaAposReenvio}
           />
@@ -3714,6 +3733,7 @@ export default function NovaSolicitacao() {
                     type="text"
                     className="input input-sm input-moeda"
                     value={valorTexto}
+                    readOnly={usaFluxoRecargaCartao}
                     onChange={e => { limparErroCampo('valor'); atualizarValor(e.target.value); }}
                     placeholder="R$ 0,00"
                     required={valorObrigatorio && campoObrigatorio('valor')}

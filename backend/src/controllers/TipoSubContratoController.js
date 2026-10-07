@@ -65,6 +65,15 @@ async function validarTipos(ids, transaction) {
   return tipos;
 }
 
+function validarFluxoRecarga(tipos, ativo) {
+  if (!ativo) return;
+  const { normalizeTipoSolicitacaoBehavior } = require('../services/tipoSolicitacaoBehaviorService');
+  if (tipos.some((tipo) => {
+    const behavior = normalizeTipoSolicitacaoBehavior(tipo);
+    return behavior.usa_fluxo_contrato_novo || behavior.usa_fluxo_cadastro_obra || behavior.mostrar_periodo_medicao || behavior.somente_sistema;
+  })) throw Object.assign(new Error('Recarga deve ser vinculada a tipos comuns, sem fluxo de contrato, medicao ou cadastro de obra.'), { statusCode: 400 });
+}
+
 module.exports = {
   async index(req, res) {
     try {
@@ -94,7 +103,8 @@ module.exports = {
 
       const criadoId = await sequelize.transaction(async (transaction) => {
         const macros = await validarTipos(ids, transaction);
-        const tipo = await TipoSubContrato.create({ nome, tipo_macro_id: ids[0] }, { transaction });
+        validarFluxoRecarga(macros, req.body.usa_fluxo_recarga_cartao === true);
+        const tipo = await TipoSubContrato.create({ nome, tipo_macro_id: ids[0], usa_fluxo_recarga_cartao: req.body.usa_fluxo_recarga_cartao === true }, { transaction });
         await tipo.setTiposSolicitacao(macros, { transaction });
         return tipo.id;
       });
@@ -124,7 +134,8 @@ module.exports = {
         if (!tipo) {
           throw Object.assign(new Error('Subtipo não encontrado.'), { statusCode: 404 });
         }
-        await tipo.update({ nome, tipo_macro_id: ids[0] }, { transaction });
+        validarFluxoRecarga(macros, req.body.usa_fluxo_recarga_cartao === undefined ? tipo.usa_fluxo_recarga_cartao : req.body.usa_fluxo_recarga_cartao === true);
+        await tipo.update({ nome, tipo_macro_id: ids[0], ...(req.body.usa_fluxo_recarga_cartao !== undefined ? { usa_fluxo_recarga_cartao: req.body.usa_fluxo_recarga_cartao === true } : {}) }, { transaction });
         await tipo.setTiposSolicitacao(macros, { transaction });
       });
 

@@ -136,6 +136,7 @@ db.TituloFinanceiroImposto = require('./TituloFinanceiroImposto')(sequelize, Seq
 db.TituloFinanceiroSequencia = require('./TituloFinanceiroSequencia')(sequelize, Sequelize);
 db.CartaoRecarga = require('./CartaoRecarga')(sequelize, Sequelize);
 db.CartaoRecargaUsuario = require('./CartaoRecargaUsuario')(sequelize, Sequelize);
+db.CartaoRecargaObra = require('./CartaoRecargaObra')(sequelize, Sequelize);
 db.SolicitacaoRecargaCartao = require('./SolicitacaoRecargaCartao')(sequelize, Sequelize);
 db.CartaoRecargaPrestacao = require('./CartaoRecargaPrestacao')(sequelize, Sequelize);
 db.CartaoRecargaPrestacaoRateio = require('./CartaoRecargaPrestacaoRateio')(sequelize, Sequelize);
@@ -529,11 +530,15 @@ db.CartaoRecarga.belongsTo(db.Parceiro, { foreignKey: 'parceiro_id', as: 'parcei
 db.CartaoRecarga.belongsTo(db.EmpresaGrupo, { foreignKey: 'empresa_id', as: 'empresa' });
 db.CartaoRecarga.belongsTo(db.CategoriaFinanceira, { foreignKey: 'categoria_financeira_id', as: 'categoriaFinanceira' });
 db.CartaoRecarga.hasMany(db.CartaoRecargaUsuario, { foreignKey: 'cartao_recarga_id', as: 'vinculosUsuarios' });
+db.CartaoRecarga.hasMany(db.CartaoRecargaObra, { foreignKey: 'cartao_recarga_id', as: 'vinculosObras' });
+db.CartaoRecargaObra.belongsTo(db.CartaoRecarga, { foreignKey: 'cartao_recarga_id', as: 'cartao' });
+db.CartaoRecargaObra.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra' });
 db.CartaoRecargaUsuario.belongsTo(db.CartaoRecarga, { foreignKey: 'cartao_recarga_id', as: 'cartao' });
 db.CartaoRecargaUsuario.belongsTo(db.User, { foreignKey: 'user_id', as: 'usuario' });
 db.User.hasMany(db.CartaoRecargaUsuario, { foreignKey: 'user_id', as: 'cartoesRecargaVinculos' });
 
 db.Solicitacao.hasOne(db.SolicitacaoRecargaCartao, { foreignKey: 'solicitacao_id', as: 'recargaCartao' });
+db.Solicitacao.hasMany(db.SolicitacaoRecargaCartao, { foreignKey: 'solicitacao_id', as: 'recargasCartao' });
 db.SolicitacaoRecargaCartao.belongsTo(db.Solicitacao, { foreignKey: 'solicitacao_id', as: 'solicitacao' });
 db.CartaoRecarga.hasMany(db.SolicitacaoRecargaCartao, { foreignKey: 'cartao_recarga_id', as: 'recargas' });
 db.SolicitacaoRecargaCartao.belongsTo(db.CartaoRecarga, { foreignKey: 'cartao_recarga_id', as: 'cartao' });

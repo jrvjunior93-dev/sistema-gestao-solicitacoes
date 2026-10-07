@@ -13,6 +13,53 @@ Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, 
 - status e saldo derivam dos movimentos ativos;
 - edicao de titulo movimentado possui restricoes e auditoria.
 
+## Cartao na geracao pela solicitacao
+
+Na aba Financeiro dos detalhes da solicitacao, o cartao utilizado e opcional
+para as formas Cartao de Credito e Cartao de Debito. Sem cartao informado,
+o titulo nasce em `ABERTO`, sem baixa, movimento, fatura ou quitacao automatica.
+Com cartao informado, continuam as validacoes de atividade, tipo e conta
+pagadora e a quitacao automatica existente (credito com fatura ou debito).
+A escolha explicita de `PREVISAO` preserva o comportamento de previsao.
+
+A baixa posterior pelo Financeiro exige informar o cartao efetivamente
+utilizado e registra o pagamento no titulo original. Parcelamento, datas,
+rateios, empresa e permissoes existentes permanecem inalterados. Esta
+dispensa pertence somente ao servico `criarTituloPorSolicitacao`, chamado
+por `POST /solicitacoes/:id/gerar-conta` com `financeiro.titulos.criar`;
+nao e flag de payload e nao dispensa cartao no lancamento manual nem na baixa.
+Nao requer nova permissao, variavel ou migration.
+
+Validacao sem banco: `npm run test:cartao-opcional-solicitacao` no backend.
+Formulario real com APIs simuladas: `npm run test:cartao-opcional-solicitacao-ui`
+no frontend, com Playwright e Chrome disponiveis.
+
+## Recargas de cartoes
+
+Uma solicitacao de recarga pode conter varios cartoes. Cada cartao gera seu
+proprio titulo PAGAR em PREVISAO, com fornecedor, empresa e categoria do
+cadastro do cartao. A liberacao da solicitacao abre todos os titulos ainda em
+previsao; baixa e prestacao de contas continuam separadas por cartao.
+
+O status agregado fica `PARCIALMENTE PAGO` enquanto houver cartao com valor
+pendente e muda para `PAGA` quando todos estiverem integralmente pagos. A
+regra anterior de recarga parcial permanece: a baixa encerra o titulo pelo
+valor efetivamente pago e registra o valor nao recarregado no ciclo; esse caso
+mantem o agregado parcial. Estornos nao foram ampliados nesta entrega e devem
+seguir as restricoes financeiras existentes.
+
+A primeira baixa nao retira do Financeiro uma solicitacao com outros cartoes
+aguardando pagamento. Quando todos os ciclos estiverem pagos ou cancelados,
+o retorno ocorre para OBRA ou, em Centro de Custo, para o setor criador.
+Prestacao validada grava somente os rateios do titulo daquele cartao e libera
+sua classificacao de custo. Repetir a sincronizacao sem nova baixa nao desfaz
+o status ATENDIDO/APROVADA da prestacao.
+
+Configuracao, documentos e escopo:
+[Recarga de cartoes por origem](../solicitacoes/README.md#recarga-de-cartoes-por-obra-e-centro-de-custo).
+Implementacao: `recargaCartaoService` e `solicitacaoFinanceiroStatusService`.
+Validacao sem banco: `npm run test:recargas-multiplas` no backend.
+
 ## Importacao em massa de contas a pagar
 
 A importacao em massa esta implementada no repositorio e depende da migration `202607200001_financeiro_titulos_importacao.js` no ambiente de destino. O fluxo e exclusivo para `PAGAR`: o usuario exporta o modelo versionado em Contas a Pagar, envia o `.xlsx`, revisa o preview persistido e confirma a criacao atomica.

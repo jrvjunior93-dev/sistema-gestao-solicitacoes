@@ -1,5 +1,23 @@
 # Changelog Documental e Operacional
 
+## 2026-10-07 - Cartao opcional ao criar titulo pela solicitacao
+
+- cartao de credito/debito pode ser informado somente na baixa posterior;
+- sem cartao, titulo ABERTO sem movimento ou fatura; com cartao, quitacao automatica existente preservada;
+- campo identificado como opcional e ajuda contextual na aba Financeiro;
+- lancamento manual, escolha de PREVISAO, permissoes e validacoes da baixa preservados;
+- testes locais com servico real isolado e formulario real com APIs simuladas; sem banco real ou deploy.
+
+## 2026-10-07 - Recargas multiplas por obra e centro de custo
+
+- preparado fluxo de recarga em subtipo do tipo fixo do Centro de Custo;
+- cartoes vinculados a varias origens, acessiveis a quem possui acesso normal a origem;
+- uma solicitacao com valores, titulos, prestacoes e anexos separados por cartao;
+- agregado PARCIALMENTE PAGO ate todos os cartoes serem integralmente pagos;
+- retorno financeiro somente depois dos pagamentos do conjunto, preservando o setor criador do Centro de Custo;
+- migration exclusivamente estrutural, sem seed ou atribuicao automatica de cartoes;
+- entrega local validada com mocks e browser isolado, ainda sem deploy.
+
 ## 2026-07-20 - Importacao em massa de contas a pagar
 
 - implementados modelo XLSX versionado, referencias por escopo, preview persistido e erros por linha;

@@ -117,7 +117,8 @@ class AnexoController {
 
       const tipoNormalizado = String(tipo).toUpperCase();
 
-      if (!tiposPermitidos.includes(tipoNormalizado)) {
+      const documentoRecarga = /^PRESTACAO_RECARGA_([1-9]\d*)$/.exec(tipoNormalizado);
+      if (!tiposPermitidos.includes(tipoNormalizado) && !documentoRecarga) {
         return res.status(400).json({ error: 'tipo inválido' });
       }
 
@@ -132,6 +133,11 @@ class AnexoController {
 
       if (!acessoSolicitacao.permitido) {
         return res.status(acessoSolicitacao.status).json({ error: acessoSolicitacao.error });
+      }
+      if (documentoRecarga) {
+        const { SolicitacaoRecargaCartao } = require('../models');
+        const recarga = await SolicitacaoRecargaCartao.findOne({ where: { id: Number(documentoRecarga[1]), solicitacao_id: Number(solicitacao_id) } });
+        if (!recarga) return res.status(400).json({ error: 'O documento deve pertencer a um cartao desta solicitacao.' });
       }
 
       if (!solicitacao) {

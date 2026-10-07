@@ -126,6 +126,7 @@ async function executar() {
       empresa_id: base.empresa_grupo_id,
       categoria_financeira_id: base.categoria_financeira_id,
       usuario_ids: [base.user_id],
+      obra_ids: [base.obra_id],
       observacoes: 'Edicao QA transacional',
       ativo: true
     }, usuario, transaction);

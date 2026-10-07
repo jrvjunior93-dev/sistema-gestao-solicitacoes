@@ -1763,6 +1763,7 @@ function validateSolicitacaoCreateBody(body = {}) {
       'boleto_anexo_nome',
       'despesa_eventual_declaracoes',
       'cartao_recarga_id',
+      'recargas_cartoes',
       'apropriacao_id',
       'area_responsavel',
       'diretoria_fluxo_codigo',
@@ -1817,6 +1818,22 @@ function validateSolicitacaoCreateBody(body = {}) {
         }
       : undefined,
     cartao_recarga_id: parseInteger(body.cartao_recarga_id, 'Cartao de recarga'),
+    recargas_cartoes: (() => {
+      if (body.recargas_cartoes === undefined) return undefined;
+      if (!Array.isArray(body.recargas_cartoes) || body.recargas_cartoes.length < 1 || body.recargas_cartoes.length > 30) {
+        throw new ValidationError('Selecione entre 1 e 30 cartoes para recarga.');
+      }
+      const ids = new Set();
+      return body.recargas_cartoes.map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ValidationError('Recarga de cartao invalida.');
+        ensureAllowedKeys(item, ['cartao_recarga_id', 'valor'], 'Recarga do cartao');
+        const id = parseInteger(item.cartao_recarga_id, 'Cartao de recarga', { required: true });
+        const valor = parseDecimal(item.valor, 'Valor da recarga', { required: true, min: 0.01 });
+        if (ids.has(id)) throw new ValidationError('Cartao repetido na solicitacao.');
+        ids.add(id);
+        return { cartao_recarga_id: id, valor };
+      });
+    })(),
     apropriacao_id: parseInteger(body.apropriacao_id, 'Apropriacao'),
     // Compatibilidade temporaria com frontends anteriores: o campo ainda e aceito, mas o
     // controller nao confia nele e sempre deriva o destino GEO no servidor.

@@ -63,6 +63,7 @@ const FORM_VAZIO = {
   empresa_id: '',
   categoria_financeira_id: '',
   usuario_ids: [],
+  obra_ids: [],
   observacoes: '',
   ativo: true
 };
@@ -214,6 +215,7 @@ export default function CartoesRecarga() {
       empresa_id: cartao.empresa_id || cartao.empresa?.id || '',
       categoria_financeira_id: cartao.categoria_financeira_id || cartao.categoriaFinanceira?.id || '',
       usuario_ids: (cartao.vinculosUsuarios || []).filter((item) => item.ativo !== false).map((item) => Number(item.user_id || item.usuario?.id)),
+      obra_ids: (cartao.vinculosObras || []).filter((item) => item.ativo !== false).map((item) => Number(item.obra_id)),
       observacoes: cartao.observacoes || '',
       ativo: cartao.ativo !== false
     });
@@ -422,11 +424,21 @@ export default function CartoesRecarga() {
             </CampoForm>
           </FormSecao>
 
-          <FormSecao legenda="Usuários vinculados" colunas={2}>
+          <FormSecao legenda="Obras e centros de custo vinculados" colunas={2}>
+            <CampoForm label="Origens autorizadas" span={2} obrigatorio hint="Todos os usuários com acesso à origem poderão selecionar este cartão. Marque uma ou mais obras/centros.">
+              <div className="grid max-h-56 gap-1 overflow-y-auto md:grid-cols-2">
+                {(dados.obras || []).map((obra) => <label key={obra.id} className="flex items-center gap-2 px-2 py-2 text-sm">
+                  <input type="checkbox" checked={form.obra_ids.includes(Number(obra.id))} onChange={(event) => setForm((atual) => ({ ...atual, obra_ids: event.target.checked ? [...atual.obra_ids, Number(obra.id)] : atual.obra_ids.filter((id) => id !== Number(obra.id)) }))} />
+                  <span>{obra.codigo} · {obra.nome}<small className="block text-[var(--c-muted)]">{obra.tipo_centro_custo === 'CENTRO_CUSTO' ? 'Centro de custo' : 'Obra'}</small></span>
+                </label>)}
+              </div>
+            </CampoForm>
+          </FormSecao>
+          <FormSecao legenda="Usuários vinculados (legado)" colunas={2}>
             <CampoForm
               label="Filtrar usuários"
               span={2}
-              hint="Marque ao menos um usuário — são eles que poderão pedir recarga neste cartão."
+              hint="Vínculos antigos são preservados. Novas recargas usam a obra/centro de custo, sem exigir vínculo individual."
             >
               <input
                 className="input w-full"
@@ -514,6 +526,10 @@ export default function CartoesRecarga() {
                   sub={cartao.categoriaFinanceira?.nome || 'Categoria não configurada'}
                 />
               )
+            },
+            {
+              id: 'origens', titulo: 'Obras / centros', tipo: 'texto',
+              render: (cartao) => (cartao.vinculosObras || []).filter((item) => item.ativo !== false).map((item) => item.obra?.nome || `#${item.obra_id}`).join(', ') || 'Configurar vínculos'
             },
             {
               id: 'usuarios',

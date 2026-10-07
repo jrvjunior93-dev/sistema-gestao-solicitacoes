@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:recargas-multiplas-ui": "node scripts/validarRecargasMultiplasUI.mjs",
+    "test:cartao-opcional-solicitacao-ui": "node scripts/validarCartaoOpcionalSolicitacaoUI.mjs",
     "test:anexos-remocao": "node scripts/validarRemocaoAnexosHistorico.mjs",
     "test:rhdp-acoes-icones": "node scripts/validarRhPessoalAcoesIcones.mjs",
     "test:rhdp-conferencia-guiada": "node scripts/validarRhConferenciaGuiada.mjs",

@@ -26,7 +26,7 @@ function responderErro(res, error, fallback) {
 module.exports = {
   async meusCartoes(req, res) {
     try {
-      return res.json({ cartoes: await listarMeusCartoes(req.user) });
+      return res.json({ cartoes: await listarMeusCartoes(req.user, req.query.obra_id) });
     } catch (error) {
       return responderErro(res, error, 'Erro ao buscar os cartoes vinculados ao usuario.');
     }
@@ -34,9 +34,15 @@ module.exports = {
 
   async contextoCartao(req, res) {
     try {
-      const contexto = await obterContextoCartao(req.params.id, req.user);
+      const contexto = await obterContextoCartao(req.params.id, req.user, req.query.obra_id);
       const solicitacaoAnterior = contexto?.ultima_recarga?.solicitacao || null;
       if (solicitacaoAnterior) {
+        try {
+          await assertPodeVisualizarSolicitacao(req, solicitacaoAnterior.id);
+        } catch (error) {
+          if (Number(error.statusCode) !== 403) throw error;
+          return res.json({ bloqueado: contexto.bloqueado, motivo_bloqueio: contexto.motivo_bloqueio, ultima_recarga: null, obras_disponiveis: [] });
+        }
         contexto.contexto_interacao = await montarContextoInteracao(req, solicitacaoAnterior);
       }
       return res.json(contexto);

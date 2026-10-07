@@ -102,7 +102,7 @@ async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, us
   return true;
 }
 
-async function devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos = null }) {
+async function devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos = null, setorDestino = null }) {
   const titulosAtuais = Array.isArray(titulos) ? titulos : await TituloFinanceiro.findAll({
     where: {
       solicitacao_id: solicitacao.id,
@@ -119,7 +119,7 @@ async function devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transactio
   if (!setoresEquivalentes(solicitacao.area_responsavel, setorFinanceiro)) return false;
 
   const setorObraModel = await findSetorByCapability('eh_setor_obra', { transaction });
-  const setorObra = resolveSetorPersistenciaValue(setorObraModel, 'OBRA');
+  const setorObra = setorDestino || resolveSetorPersistenciaValue(setorObraModel, 'OBRA');
   const setorAnterior = solicitacao.area_responsavel || null;
   const idsComBaixa = titulosAtuais.filter(tituloComBaixa).map((titulo) => Number(titulo.id)).filter(Boolean);
   const metadataRetorno = {
@@ -136,7 +136,7 @@ async function devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transactio
     setor: setorObra,
     acao: 'ENVIADA_SETOR',
     observacao: `De ${setorAnterior || '-'} para ${setorObra}`,
-    descricao: 'Retorno automatico para Obra apos baixa integral ou parcial de titulo financeiro.',
+    descricao: `Retorno automatico para ${setorObra} apos baixa integral ou parcial de titulo financeiro.`,
     metadata: JSON.stringify(metadataRetorno)
   }, { transaction });
 
@@ -148,7 +148,7 @@ async function devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transactio
       await SolicitacaoPedidoRetorno.update(
         {
           status: 'EXPIRADO',
-          motivo_decisao: 'A solicitacao voltou automaticamente para Obra apos baixa de titulo.'
+          motivo_decisao: `A solicitacao voltou automaticamente para ${setorObra} apos baixa de titulo.`
         },
         { where: { solicitacao_id: solicitacao.id, status: 'PENDENTE' } }
       );
@@ -195,7 +195,7 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
   if (!Number.isInteger(id) || id <= 0) return null;
 
   const solicitacao = await Solicitacao.findByPk(id, {
-    attributes: ['id', 'status_global', 'area_responsavel'],
+    attributes: ['id', 'status_global', 'area_responsavel', 'obra_id'],
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
@@ -239,7 +239,7 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
   // Recarga de cartao encerra pelo valor efetivamente pago. Um titulo PARCIAL nao pode continuar
   // com saldo em aberto porque o ciclo da recarga terminou; o valor solicitado original permanece
   // na extensao auditavel do fluxo e a prestacao cobra somente o que efetivamente saiu do caixa.
-  const { sincronizarCicloAposBaixa } = require('./recargaCartaoService');
+  const { sincronizarCicloAposBaixa, resolverDestinoPrestacaoAposBaixa } = require('./recargaCartaoService');
   const statusRecarga = await sincronizarCicloAposBaixa({
     solicitacaoId: id,
     usuarioId,
@@ -247,7 +247,12 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
     transaction
   });
   if (statusRecarga) {
-    await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos });
+    const { SolicitacaoRecargaCartao } = require('../models');
+    const ciclos = await SolicitacaoRecargaCartao.findAll({ where: { solicitacao_id: id }, transaction });
+    if (ciclos.every((item) => Number(item.valor_efetivo) > 0 || item.status_ciclo === 'CANCELADA')) {
+      const setorDestino = await resolverDestinoPrestacaoAposBaixa(solicitacao, transaction);
+      await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, setorDestino });
+    }
     return statusRecarga;
   }
 

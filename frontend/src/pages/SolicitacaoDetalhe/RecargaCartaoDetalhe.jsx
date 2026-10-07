@@ -43,7 +43,8 @@ export default function RecargaCartaoDetalhe({ solicitacaoId, podeInteragir = tr
 
   useEffect(() => { void carregar(); }, [solicitacaoId]);
 
-  if (carregando) {
+  // Atualizar um cartao nao desmonta os formularios ainda em preenchimento dos demais.
+  if (carregando && !contexto) {
     return (
       <BlocoConteudo titulo="Recarga de cartão">
         <p className="text-sm text-[var(--c-muted)]">Carregando dados da recarga...</p>
@@ -51,6 +52,13 @@ export default function RecargaCartaoDetalhe({ solicitacaoId, podeInteragir = tr
     );
   }
   if (erro) return <div className="app-alert app-alert--error">{erro}</div>;
+
+  return <>{(contexto?.recargas || [contexto]).filter(Boolean).map((item) => (
+    <RecargaCartaoItem key={item.ultima_recarga?.id} solicitacaoId={solicitacaoId} contexto={item} podeInteragir={podeInteragir} carregar={carregar} />
+  ))}</>;
+}
+
+function RecargaCartaoItem({ solicitacaoId, contexto, podeInteragir, carregar }) {
 
   const recarga = contexto?.ultima_recarga;
   if (!recarga) return null;
