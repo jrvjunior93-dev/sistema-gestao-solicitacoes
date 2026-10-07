@@ -2083,3 +2083,10 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Reservados: pagamentoManualFilaService.js, pagamentoAutorizacaoService.js, novos helpers de eventos/sincronizacao, FinanceiroTitulos.jsx, FinanceiroAutorizacoesPagamento.jsx, testes isolados, package.json e documentacao financeira/handoff.
 - Escopo: envio direto pela permissao independente da fila encerra a pendencia digital; reconhecer fila existente nos dois mecanismos e sincronizar o dossie sem duplicar. Preservar escopo, auditoria, passkeys e saldo. Sem banco real, commit, push ou deploy.
 - Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-fila-dossie-convergencia.md. Sem commit, push ou deploy desta correcao. Deploy anterior confirmado pelo usuario no commit 12123c0f, schema sem pendencias e health local/publico OK.
+
+## Cadastro de credor por tipo e subtipo 2026-10-07
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: backend/src/controllers/ParceiroController.js, frontend/src/pages/NovaSolicitacao.jsx, teste isolado de cadastro de credor e backend/package.json, docs/modulos/solicitacoes/README.md e handoff desta tarefa.
+- Escopo: usar comportamento real do tipo ativo na validacao do cadastro e transmitir subtipo para respeitar a configuracao de campos. Preservar validacoes cadastrais, permissoes, vinculo contratual e protecao existente contra repeticao. Sem banco real, migration, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-cadastro-credor-tipo-subtipo.md. Sem commit, push ou deploy.

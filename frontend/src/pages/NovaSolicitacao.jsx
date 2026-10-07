@@ -881,6 +881,7 @@ export default function NovaSolicitacao() {
         ...payload,
         obra_id: form.obra_id,
         tipo_solicitacao_id: form.tipo_solicitacao_id,
+        tipo_sub_id: form.tipo_sub_id || null,
         area_responsavel: form.area_responsavel,
         contrato_id: permitirCredorAvulsoComContrato ? null : (form.contrato_id || null)
       });

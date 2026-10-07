@@ -393,6 +393,9 @@ module.exports = {
   async createCredorNovaSolicitacao(req, res) {
     try {
       const tipoSolicitacaoId = Number(req.body?.tipo_solicitacao_id);
+      const tipoSubId = req.body?.tipo_sub_id !== undefined && req.body?.tipo_sub_id !== null && req.body?.tipo_sub_id !== ''
+        ? Number(req.body.tipo_sub_id)
+        : null;
       const areaResponsavel = String(req.body?.area_responsavel || '').trim();
       const areasConfiguracaoCampos = await obterAreasConfiguracaoCampos(req.body);
       const contratoId = req.body?.contrato_id !== undefined && req.body?.contrato_id !== null && req.body?.contrato_id !== ''
@@ -401,6 +404,17 @@ module.exports = {
 
       if (!Number.isInteger(tipoSolicitacaoId) || tipoSolicitacaoId <= 0 || !areaResponsavel) {
         return res.status(400).json({ error: 'Informe area responsavel e tipo da solicitacao para cadastrar o credor.' });
+      }
+
+      if (tipoSubId !== null && (!Number.isInteger(tipoSubId) || tipoSubId <= 0)) {
+        return res.status(400).json({ error: 'Subtipo de solicitacao informado e invalido.' });
+      }
+      const tipo = await TipoSolicitacao.findOne({
+        where: { id: tipoSolicitacaoId, ativo: true },
+        attributes: ['id', 'nome', 'codigo_interno', 'comportamento']
+      });
+      if (!tipo) {
+        return res.status(404).json({ error: 'Tipo de solicitacao nao encontrado ou inativo.' });
       }
 
       let contrato = null;
@@ -420,10 +434,10 @@ module.exports = {
 
       const configCampos = await obterConfigCamposNovaSolicitacao();
       const campos = resolverCamposNovaSolicitacao(
-        {},
+        normalizeTipoSolicitacaoBehavior(tipo),
         configCampos,
         tipoSolicitacaoId,
-        { areaResponsavel: areasConfiguracaoCampos }
+        { areaResponsavel: areasConfiguracaoCampos, tipoSubId }
       );
 
       if (campos?.cadastro_credor?.visivel !== true) {
@@ -465,6 +479,7 @@ module.exports = {
       };
 
       delete payload.tipo_solicitacao_id;
+      delete payload.tipo_sub_id;
       delete payload.area_responsavel;
       delete payload.obra_id;
       delete payload.contrato_id;

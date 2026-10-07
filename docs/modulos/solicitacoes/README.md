@@ -40,6 +40,18 @@ A qualificacao obrigatoria pertence ao fluxo proprio do contrato acima do
 limite juridico configurado. Ocultar o cadastro do representante nao apaga
 informacoes existentes nem dispensa essa validacao contratual.
 
+O cadastro na Nova Solicitacao usa o comportamento real do tipo ativo,
+incluindo o padrao habilitado do fluxo de contrato novo. A configuracao de
+`cadastro_credor` por area/tipo/subtipo continua prevalecendo: desabilitar
+o campo bloqueia tambem o endpoint. A tela envia o subtipo selecionado no
+cadastro; esses campos de contexto nao sao gravados no parceiro. Tipos
+inativos ou inexistentes nao permitem cadastro por esta rota.
+
+Validacao isolada, sem banco ou rede:
+`npm run test:cadastro-credor-tipo-subtipo` no backend. Exercita controller,
+resolvedor e handler do frontend reais, com persistencia simulada.
+Nao exige migration, nova permissao ou variavel de ambiente.
+
 ## Anexos removidos do historico
 
 Ao remover um anexo, a linha original fica preservada para auditoria, mas

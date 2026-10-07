@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:cadastro-credor-tipo-subtipo": "node scripts/validarCadastroCredorTipoSubtipo.js",
     "test:anexos-remocao": "node scripts/validarRemocaoAnexosHistorico.js",
     "test:rhdp-conferencia-guiada": "node scripts/validarRhConferenciaGuiada.js",
     "test:pedido-entregas": "node scripts/validarPedidoEntregas.js && node scripts/validarPedidoEntregasAcesso.js",
