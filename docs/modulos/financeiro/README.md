@@ -67,18 +67,33 @@ A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Co
 
 Permissoes independentes: `visualizar`, `preparar`, `baixar`, `reportar` e `resolver`. Elas nao liberam as demais telas do Financeiro.
 
-### Autorização do proprietário antes da fila
+### Analise do proprietario e envio independente
 
-A branch `refactor/frontend` possui uma primeira implementação completa e ainda inativa da
-camada opcional de autorização do proprietário por PWA e passkey antes do ingresso na Fila
-de Pagamentos. Ela inclui dossiê isolado, segregação entre preparador e autorizador,
-revalidação material, WebAuthn, Web Push genérico, revogação de dispositivo, auditoria e
-reuso transacional da fila atual. O contrato, estado de homologação e limites estão em
+Solicitar autorizacao exige `financeiro.autorizacoes_pagamento.preparar`.
+Enviar para pagamento exige somente `financeiro.fila_pagamentos.preparar`,
+em OFF, PILOT, ENFORCED e PAUSED. As permissoes sao independentes: quem
+possui ambas ve os dois botoes. O envio direto usa a confirmacao habitual,
+sem declaracao de autorizacao em papel ou permissao adicional. A auditoria
+registra o responsavel pelo envio, sem simular assinatura do proprietario.
+
+O status interno nativo `EM ANÁLISE DO PROPRIETÁRIO` pode ser aplicado
+individualmente ou em massa com `financeiro.titulos.status_interno`.
+Preparar um dossie digital aplica o mesmo status e atualiza as solicitacoes
+vinculadas, sem mudar o setor, saldo ou status financeiro. Analise nao
+significa autorizacao nem baixa. O ingresso efetivo na fila muda o status
+interno para `ENVIADO PARA PAGAMENTO` e encaminha a solicitacao ao Financeiro.
+Rejeicao ou invalidacao digital sinaliza ajuste; estados finais sao preservados.
+
+A camada digital usa PWA, passkey, dossie isolado, segregacao entre preparador
+e autorizador, revalidacao material e reuso transacional da fila atual.
+Dossie ativo impede envio concorrente do mesmo titulo pela via direta.
+O contrato, configuracoes e limites estao em
 [`AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`](./AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md).
 
-Enquanto `PAYMENT_OWNER_APPROVAL_MODE=OFF`, a fila manual descrita acima continua sendo a
-regra operacional vigente, sem mudança de comportamento. Nenhuma migration, configuração
-de ambiente ou ativação foi executada por esta implementação local.
+Em OFF ou PAUSED, o botao de solicitar autorizacao permanece visivel para
+quem tem a permissao, mas desabilitado. A marcacao manual de analise e o
+envio direto continuam disponiveis pelas suas proprias permissoes. Este
+ajuste nao exige migration, variavel nova ou seed de status em producao.
 
 ## Cheques de terceiros e baixa com multiplas fontes
 

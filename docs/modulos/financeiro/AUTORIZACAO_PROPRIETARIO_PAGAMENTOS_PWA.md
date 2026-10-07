@@ -76,8 +76,8 @@ Valores aceitos:
 |---|---|
 | `OFF` | Fluxo legado preservado integralmente; módulo novo indisponível. |
 | `PILOT` | Somente autorizadores e preparadores explicitamente incluídos no piloto usam o novo fluxo. |
-| `ENFORCED` | Todo novo envio elegível à fila exige autorização do proprietário. |
-| `PAUSED` | Congelamento emergencial após ativação; não reabre o atalho legado e não aceita novas decisões/envios. |
+| `ENFORCED` | O fluxo digital exige decisao valida; envio direto permanece permitido com `financeiro.fila_pagamentos.preparar`. |
+| `PAUSED` | Congela preparacao, decisao e envio digital; preserva envio direto pela permissao da fila. |
 
 Regras:
 
@@ -88,8 +88,8 @@ Regras:
   atual considera módulos desconhecidos habilitados;
 - `PILOT` exige lista nominal ativa no backend; não pode depender apenas de condição
   visual no frontend;
-- `PAUSED` é o rollback operacional seguro após o início do uso. Voltar para `OFF`
-  depois de `ENFORCED` exige decisão de negócio, pois poderia reabrir o envio direto;
+- `PAUSED` congela a camada digital. Nao revoga a permissao independente de
+  envio direto; retirar essa capacidade exige ajustar a permissao da fila;
 - notificações push e futura integração com WhatsApp também têm configurações próprias,
   mas nunca podem operar quando a flag mestre estiver `OFF` ou `PAUSED`.
 
@@ -110,6 +110,12 @@ Contas a Pagar
 
 Criar o lote não deve mudar o status da solicitação para `ENVIADO PARA PAGAMENTO`.
 Essa mudança continua pertencendo ao ingresso efetivo na fila.
+
+Preparar o lote marca o titulo e a solicitacao como `EM ANÁLISE DO PROPRIETÁRIO`,
+sem mover setor ou alterar saldo. A marcacao manual pela permissao de status
+interno aplica a mesma regra para analise em papel. Rejeicao ou invalidacao
+digital sinaliza `AGUARDANDO AJUSTE DE PAGAMENTO` no titulo e `AGUARDANDO AJUSTE`
+na solicitacao ainda em analise; estados finais sao preservados.
 
 O proprietário poderá autorizar parte do lote. Itens não autorizados permanecem
 pendentes, são rejeitados ou devolvidos para correção conforme a decisão registrada.
@@ -230,17 +236,24 @@ item ativo e elegibilidade já aplicada pela fila atual. Divergência resulta em
 
 O serviço atual de enqueue deve ser separado conceitualmente em:
 
-- um wrapper do fluxo legado, preservado para `OFF` e para usuários fora do piloto;
+- um wrapper de envio direto, autorizado pela permissao independente da fila;
 - um serviço interno de enqueue já autorizado, não exposto como atalho HTTP público.
 
 Comportamento por modo:
 
 - `OFF`: `POST /financeiro/fila-pagamentos` mantém o comportamento atual;
-- `PILOT`: usuários/lotes do piloto passam pela autorização; demais mantêm legado;
-- `ENFORCED`: a rota direta bloqueia novos envios elegíveis, e somente o serviço interno
-  chamado após decisão válida pode criar itens na fila;
-- `PAUSED`: bloqueia novas decisões e novos envios do módulo, sem apagar lotes nem mexer
-  nos itens já existentes na fila.
+- `PILOT` e `ENFORCED`: o usuario pode preparar autorizacao digital ou enviar
+  diretamente, conforme a permissao propria de cada acao;
+- `PAUSED`: bloqueia novas decisoes e envios digitais, mas preserva o envio
+  direto de usuarios com `financeiro.fila_pagamentos.preparar`.
+
+Regra expressamente aprovada em 07/10/2026: o envio direto exige apenas a
+permissao da fila, em qualquer modo. Nao exige preparar autorizacao nem
+declarar autorizacao em papel. Mantem a confirmacao habitual e registra
+auditoria obrigatoria na mesma transacao, sem fabricar assinatura digital.
+Dossie ativo impede envio concorrente do mesmo titulo; concluir o fluxo
+digital antes de reutilizar a via direta. Escopo, saldo, bloqueios materiais
+e idempotencia continuam obrigatorios.
 
 O serviço interno deve reutilizar locks de linha, transação, validações financeiras e
 idempotência existentes. Não duplicar a regra de elegibilidade em outro controller.
@@ -256,6 +269,11 @@ financeiro.autorizacoes_pagamento.decidir
 financeiro.autorizacoes_pagamento.configurar
 financeiro.autorizacoes_pagamento.auditar
 ```
+
+Preparar autorizacao e enviar diretamente para a fila nao liberam uma a
+outra. Contas a Pagar mostra ambos os botoes quando o usuario possui as duas
+permissoes. Solicitar autorizacao fica desabilitado em OFF ou PAUSED; enviar
+para pagamento permanece habilitado pela permissao da fila.
 
 `SUPERADMIN` possui bypass das permissões granulares para acessar, visualizar,
 preparar, configurar e auditar o módulo, coerente com sua função de configurador
@@ -366,8 +384,9 @@ O preflight deve conferir:
 - existência de passkey válida para cada autorizador do piloto;
 - VAPID e push, quando habilitado;
 - integração interna com a fila;
-- inexistência de bypass da assinatura no modo `ENFORCED`: até `SUPERADMIN` precisa
-  ser autorizador nominal ativo e confirmar a decisão com passkey;
+- assinatura digital sem bypass: ate `SUPERADMIN` precisa ser autorizador
+  nominal ativo e confirmar a decisao digital com passkey. O envio direto
+  permitido pela fila e uma acao distinta e nao registra decisao digital;
 - proteção contra impersonação;
 - configuração de retenção/auditoria.
 
@@ -404,7 +423,8 @@ Cada agente deve registrar sua sessão, ownership e fase nos arquivos de workspa
 
 - seleção e envio atual de Contas a Pagar permanecem iguais;
 - fila, baixa, comprovantes, divergências e permissões atuais permanecem iguais;
-- status da solicitação continua mudando no mesmo ponto atual;
+- marcar analise atualiza o status sem mover setor; encaminhar para pagamento
+  continua ocorrendo somente no ingresso efetivo na fila;
 - não existem chamadas de push/WhatsApp/WebAuthn;
 - nenhuma rota nova permite mutação financeira;
 - build frontend e suites atuais do Financeiro continuam aprovados.
@@ -441,7 +461,7 @@ Cada agente deve registrar sua sessão, ownership e fase nos arquivos de workspa
 - nunca habilitar `ENFORCED` no mesmo passo do deploy de código;
 - em incidente antes do uso, voltar a `OFF`;
 - em incidente após início do uso, mudar para `PAUSED`, preservar lotes/eventos e
-  tratar o retorno sem abrir o atalho legado;
+  tratar o retorno. Para impedir tambem envios diretos, revisar a permissao da fila;
 - rollback de código não deve executar `down`, `DROP` nem apagar credenciais, snapshots
   ou eventos; confirmar compatibilidade migration por migration.
 

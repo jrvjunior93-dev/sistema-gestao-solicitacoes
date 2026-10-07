@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { ConfiguracaoSistema, TituloFinanceiro, sequelize } = require('../models');
 const { getFinanceiroObraScopeIds } = require('./authorizationService');
+const { incluirStatusOperacionais, emAnaliseProprietario, marcarAnaliseProprietario, STATUS_ANALISE_PROPRIETARIO } = require('./analiseProprietarioService');
 
 const CHAVE = 'CONTAS_PAGAR_STATUS_INTERNOS';
 function erro(statusCode, message) { return Object.assign(new Error(message), { statusCode }); }
@@ -17,7 +18,7 @@ async function carregar(transaction = null) {
 }
 
 async function listarStatusInternosPagar() {
-  return (await carregar()).status;
+  return incluirStatusOperacionais((await carregar()).status);
 }
 
 async function criarStatusInternoPagar(nome) {
@@ -26,13 +27,13 @@ async function criarStatusInternoPagar(nome) {
   if (valor.toUpperCase() === '__CLEAR__') throw erro(400, 'Este nome de status e reservado pelo sistema.');
   return sequelize.transaction(async (transaction) => {
     const { registro, status } = await carregar(transaction);
-    if (status.some((item) => item.toLocaleLowerCase('pt-BR') === valor.toLocaleLowerCase('pt-BR'))) {
+    if (incluirStatusOperacionais([...status, valor]).length === incluirStatusOperacionais(status).length) {
       throw erro(409, 'Este status interno ja existe.');
     }
     const proximos = [...status, valor];
     if (registro) await registro.update({ valor: JSON.stringify(proximos) }, { transaction });
     else await ConfiguracaoSistema.create({ chave: CHAVE, valor: JSON.stringify(proximos) }, { transaction });
-    return proximos;
+    return incluirStatusOperacionais(proximos);
   });
 }
 
@@ -41,7 +42,7 @@ async function atribuirStatusInternoPagar(user, tituloIds, nome) {
   if (!ids.length || ids.length > 200 || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
     throw erro(400, 'Selecione entre 1 e 200 titulos validos.');
   }
-  const valor = nome == null || nome === '' ? null : normalizar(nome);
+  const valor = nome == null || nome === '' ? null : emAnaliseProprietario(nome) ? STATUS_ANALISE_PROPRIETARIO : normalizar(nome);
   if (valor && !(await listarStatusInternosPagar()).includes(valor)) throw erro(400, 'Status interno nao cadastrado.');
   const obrasPermitidas = await getFinanceiroObraScopeIds(user);
   const where = { id: { [Op.in]: ids }, tipo: 'PAGAR' };
@@ -49,12 +50,15 @@ async function atribuirStatusInternoPagar(user, tituloIds, nome) {
   return sequelize.transaction(async (transaction) => {
     const titulos = await TituloFinanceiro.findAll({
       where,
-      attributes: ['id'], transaction, lock: transaction.LOCK.UPDATE
+      attributes: ['id', 'codigo', 'tipo', 'status', 'valor_saldo', 'solicitacao_id', 'status_interno_pagar'],
+      order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE
     });
     if (titulos.length !== ids.length) throw erro(400, 'A selecao contem titulo inexistente ou que nao pertence ao Contas a Pagar.');
-    await TituloFinanceiro.update({ status_interno_pagar: valor }, {
-      where, transaction
-    });
+    if (emAnaliseProprietario(valor)) {
+      await marcarAnaliseProprietario({ titulos, usuarioId: user?.id, transaction });
+    } else {
+      await TituloFinanceiro.update({ status_interno_pagar: valor }, { where, transaction });
+    }
     return { quantidade: ids.length, status_interno_pagar: valor };
   });
 }

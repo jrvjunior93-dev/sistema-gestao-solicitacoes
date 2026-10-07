@@ -6,6 +6,9 @@ const {
   EmpresaGrupo,
   FormaPagamentoFinanceira,
   Obra,
+  SecurityEventLog,
+  PagamentoAutorizacaoItem,
+  PagamentoAutorizacaoLote,
   PagamentoManualFilaItem,
   PagamentoManualFilaComprovante,
   Parceiro,
@@ -18,7 +21,8 @@ const {
 } = require('../models');
 const { baixarTitulo } = require('./tituloFinanceiroService');
 const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
-const { registrarEventoSeguranca } = require('./securityLogService');
+const { registrarEventoSeguranca, getRequestIp } = require('./securityLogService');
+const { atualizarAnaliseAoEnfileirar } = require('./analiseProprietarioService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { canAccessSolicitacaoFile } = require('./fileAccessService');
 const { canAccessFilaPagamentos, getFinanceiroObraScopeIds } = require('./authorizationService');
@@ -183,13 +187,15 @@ async function listarContasPagadorasFila() {
 }
 
 async function enfileirarTitulos(req, payload = {}, options = {}) {
-  const participantePiloto = !options.autorizacaoInterna && env.paymentOwnerApprovalMode === 'PILOT'
-    ? await userHasNominalAreaPermission(req.user, ['financeiro.autorizacoes_pagamento.preparar'])
-    : false;
+  const podeEnviarDiretamente = !options.autorizacaoInterna
+    && await userHasNominalAreaPermission(req.user, ['financeiro.fila_pagamentos.preparar']);
+  if (!options.autorizacaoInterna && !podeEnviarDiretamente) {
+    throw createHttpError(403, 'Permissao de enviar para a fila de pagamentos obrigatoria.');
+  }
   const gate = resolvePaymentQueueGate({
     mode: env.paymentOwnerApprovalMode,
-    pilotParticipant: participantePiloto,
-    internalAuthorization: Boolean(options.autorizacaoInterna)
+    internalAuthorization: Boolean(options.autorizacaoInterna),
+    directQueuePermission: podeEnviarDiretamente
   });
   if (gate === 'PAUSED') {
     throw createHttpError(423, 'O envio para a fila esta temporariamente pausado pela governanca de pagamentos.');
@@ -211,7 +217,12 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    if (repetidos.length === tituloIds.length) return repetidos;
+    if (repetidos.length === tituloIds.length) {
+      if (repetidos.some((item) => (!options.autorizacaoInterna && Number(item.selecionado_por) !== Number(req.user.id)) || !tituloIds.includes(Number(item.titulo_financeiro_id)))) {
+        throw createHttpError(409, 'A chave de envio ja foi utilizada por outra operacao.');
+      }
+      return repetidos;
+    }
     if (repetidos.length > 0) {
       throw createHttpError(409, 'A tentativa anterior foi recebida parcialmente. Atualize a consulta antes de reenviar.');
     }
@@ -251,6 +262,22 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       throw createHttpError(409, 'Um ou mais titulos ja possuem pagamento bancario em andamento.');
     }
 
+    if (!options.autorizacaoInterna) {
+      // Nao disputar o mesmo titulo com um dossie digital ativo. Os titulos
+      // estao bloqueados; a leitura dos itens nao inverte a ordem dos locks
+      // usada pela decisao digital (lote/item antes de titulo).
+      const itensDigitais = await PagamentoAutorizacaoItem.findAll({ where: {
+        titulo_financeiro_id: { [Op.in]: tituloIds }, status: { [Op.in]: ['PENDENTE', 'AUTORIZADO'] }
+      }, attributes: ['lote_id', 'status'], transaction });
+      const lotesAtivos = itensDigitais.length ? await PagamentoAutorizacaoLote.findAll({ where: {
+        id: { [Op.in]: itensDigitais.map((item) => item.lote_id) },
+        status: { [Op.in]: ['AGUARDANDO', 'AUTORIZADO'] }, expira_em: { [Op.gt]: new Date() }
+      }, attributes: ['id'], transaction }) : [];
+      if (itensDigitais.some((item) => item.status === 'AUTORIZADO' || lotesAtivos.some((lote) => Number(lote.id) === Number(item.lote_id)))) {
+        throw createHttpError(409, 'Um ou mais titulos possuem dossie digital ativo. Conclua esse fluxo antes do envio direto.');
+      }
+    }
+
     for (const titulo of titulos) {
       if (obrasPermitidas !== null && !obrasPermitidas.includes(Number(titulo.obra_id))) {
         throw createHttpError(403, `O titulo ${titulo.codigo || titulo.id} nao pertence a uma obra do seu acesso.`);
@@ -277,7 +304,21 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       idempotency_key: `${requestKey}:${titulo.id}`.slice(0, 120)
     }, { transaction })));
 
-    for (const solicitacaoId of new Set(titulos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))) {
+    if (!options.autorizacaoInterna) {
+      // Falha de auditoria deve reverter tambem a criacao da fila. Nenhum
+      // usuario e registrado como decisor digital ou como o proprietario.
+      await SecurityEventLog.create({ usuario_id: req.user.id, tipo_evento: 'MANUAL_PAYMENT_QUEUE_PREPARED',
+        recurso_tipo: 'PAGAMENTO_MANUAL_FILA', recurso_id: requestKey, status: 'SUCCESS',
+        descricao: 'Titulos encaminhados diretamente para pagamento por usuario com permissao de enviar para a fila',
+        ip_origem: getRequestIp(req), user_agent: String(req.headers?.['user-agent'] || '').slice(0, 255),
+        metadata: { modo: env.paymentOwnerApprovalMode, origem: 'ENVIO_DIRETO',
+          ...(req.dev_user_switch ? { dev_user_switch: req.dev_user_switch } : {}),
+          titulos: titulos.map((titulo) => ({ id: Number(titulo.id), saldo: roundCurrency(titulo.valor_saldo), vencimento: titulo.data_vencimento })) }
+      }, { transaction });
+    }
+    await atualizarAnaliseAoEnfileirar(titulos, transaction);
+
+    for (const solicitacaoId of [...new Set(titulos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))].sort((a, b) => a - b)) {
       const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
       if (!solicitacao) continue;
       await encaminharSolicitacaoParaFinanceiroAoEnfileirar({
@@ -300,7 +341,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
     metadata: {
       titulo_ids: tituloIds,
       quantidade: items.length,
-      autorizacao_lote_id: options.autorizacaoLoteId || null
+      autorizacao_lote_id: options.autorizacaoLoteId || null,
+      origem: options.autorizacaoInterna ? 'AUTORIZACAO_DIGITAL' : 'ENVIO_DIRETO'
     }
   });
 

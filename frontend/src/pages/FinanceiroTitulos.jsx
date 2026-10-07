@@ -44,7 +44,6 @@ import {
   canImportTitulosFinanceiros,
   canPrepareFilaPagamentos,
   canResolverFilaPagamentos,
-  devePrepararAutorizacaoPagamento,
   hasPermissao
 } from '../utils/acessoProduto';
 import FinanceiroTitulosImportacaoPanel from '../components/financeiro/FinanceiroTitulosImportacaoPanel';
@@ -1092,6 +1091,10 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [titulosNegociacao, setTitulosNegociacao] = useState(null);
   const canImportTitulos = canImportTitulosFinanceiros(user);
   const canPrepareFila = canPrepareFilaPagamentos(user);
+  const canPrepareAutorizacao = hasPermissao(user, 'financeiro.autorizacoes_pagamento.preparar');
+  const autorizacaoDigitalDisponivel = Boolean(user?.autorizacao_pagamentos?.enabled
+    && user.autorizacao_pagamentos.can_prepare && !user.autorizacao_pagamentos.paused);
+  const canAlterarStatusInterno = hasPermissao(user, 'financeiro.titulos.status_interno');
   // `financeiro.cadastros.visualizar` só existia aqui para pintar um link
   // de "ir para Cadastros" — link que a R11 tirou da barra de ações. A
   // permissão continua sendo cobrada onde a tela de cadastros mora
@@ -1226,11 +1229,14 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [statusInternosPagar, setStatusInternosPagar] = useState([]);
   const [statusEmMassa, setStatusEmMassa] = useState('');
   const [alterandoStatusInterno, setAlterandoStatusInterno] = useState(false);
+  const statusInternoPendenteRef = useRef(false);
   const [modalBaixaMassaOpen, setModalBaixaMassaOpen] = useState(false);
   const [modalBaixaCompostaOpen, setModalBaixaCompostaOpen] = useState(false);
   const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm());
   const [savingBaixaMassa, setSavingBaixaMassa] = useState(false);
   const [sendingFilaPagamentos, setSendingFilaPagamentos] = useState(false);
+  const envioPagamentoPendenteRef = useRef(false);
+  const envioPagamentoChaveRef = useRef(null);
   const [importandoCodigos, setImportandoCodigos] = useState(false);
   const [fretesPendentes, setFretesPendentes] = useState([]);
   const [loadingFretesPendentes, setLoadingFretesPendentes] = useState(false);
@@ -1954,17 +1960,20 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }
 
   async function alterarStatusInterno(ids, status) {
-    if (fixedTipo !== 'PAGAR' || !ids.length || alterandoStatusInterno) return;
+    if (!canAlterarStatusInterno || fixedTipo !== 'PAGAR' || !ids.length || statusInternoPendenteRef.current) return;
+    statusInternoPendenteRef.current = true;
     setAlterandoStatusInterno(true);
     try {
-      await atribuirStatusInternoContasPagar(ids, status === '__CLEAR__' ? null : status);
+      const result = await atribuirStatusInternoContasPagar(ids, status === '__CLEAR__' ? null : status);
+      const novoStatus = result?.status_interno_pagar ?? (status === '__CLEAR__' ? null : status);
       setTitulos((atuais) => atuais.map((titulo) => ids.includes(Number(titulo.id))
-        ? { ...titulo, status_interno_pagar: status === '__CLEAR__' ? null : status } : titulo));
+        ? { ...titulo, status_interno_pagar: novoStatus } : titulo));
       avisar.sucesso(ids.length === 1 ? 'Status interno atualizado.' : `${ids.length} status internos atualizados.`);
       setStatusEmMassa('');
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível alterar o status interno.');
     } finally {
+      statusInternoPendenteRef.current = false;
       setAlterandoStatusInterno(false);
     }
   }
@@ -1980,30 +1989,37 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setModalBaixaMassaOpen(true);
   }
 
-  async function enviarSelecionadosParaPagamento() {
-    if (!canPrepareFila || tipoReferencia !== 'PAGAR') return;
+  async function enviarSelecionadosParaPagamento(destino = 'FILA') {
+    const requerAutorizacao = destino === 'AUTORIZACAO';
+    if (envioPagamentoPendenteRef.current || tipoReferencia !== 'PAGAR'
+      || (requerAutorizacao ? !canPrepareAutorizacao || !autorizacaoDigitalDisponivel : !canPrepareFila)) return;
     if (selectedTitulosBaixaveis.length === 0) {
       setError('Selecione ao menos um titulo em aberto ou parcial para enviar ao pagamento.');
       return;
     }
-    const requerAutorizacao = devePrepararAutorizacaoPagamento(user);
-    const { ok } = await confirmar({
-      titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
-      mensagem: requerAutorizacao
-        ? `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, serão reunidos em um dossiê para decisão do proprietário.`
-        : `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, ficarão disponíveis na Fila de Pagamentos.`,
-      rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
-    });
-    if (!ok) return;
-
-    const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    // Congela a selecao antes do modal e impede duplo clique entre renders.
+    const tituloIds = selectedTitulosBaixaveis.map((titulo) => Number(titulo.id)).sort((a, b) => a - b);
+    envioPagamentoPendenteRef.current = true;
     setSendingFilaPagamentos(true);
     setError('');
     try {
-      const tituloIds = selectedTitulosBaixaveis.map((titulo) => Number(titulo.id));
+      const { ok } = await confirmar({
+        titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
+        mensagem: requerAutorizacao
+          ? `${tituloIds.length} título(s), no total de ${formatCurrency(selectedSaldo)}, serão reunidos em um dossiê para decisão do proprietário.`
+          : `${tituloIds.length} título(s), no total de ${formatCurrency(selectedSaldo)}, ficarão disponíveis na Fila de Pagamentos.`,
+        rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
+      });
+      if (!ok) return;
+      const fingerprint = JSON.stringify({ destino, tituloIds });
+      if (envioPagamentoChaveRef.current?.fingerprint !== fingerprint) {
+        const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        envioPagamentoChaveRef.current = { fingerprint, chave: `titulos-${random}` };
+      }
+      const chave = envioPagamentoChaveRef.current.chave;
       const result = requerAutorizacao
-        ? await criarAutorizacaoPagamento(tituloIds, `titulos-${random}`)
-        : await enviarTitulosFilaPagamentos(tituloIds, `titulos-${random}`);
+        ? await criarAutorizacaoPagamento(tituloIds, chave)
+        : await enviarTitulosFilaPagamentos(tituloIds, chave);
       avisar.sucesso(requerAutorizacao
         ? `Lote ${result?.codigo || ''} enviado ao proprietário para autorização.`
         : `${result?.quantidade || selectedTitulosBaixaveis.length} título(s) enviado(s) para a Fila de Pagamentos.`);
@@ -2017,9 +2033,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       setTitulos(Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : []);
       if (data?.pagination) setPagination((current) => ({ ...current, ...data.pagination }));
       setSelectedTituloIds([]);
+      envioPagamentoChaveRef.current = null;
     } catch (err) {
       setError(err?.message || 'Erro ao enviar os títulos para pagamento.');
     } finally {
+      envioPagamentoPendenteRef.current = false;
       setSendingFilaPagamentos(false);
     }
   }
@@ -3207,15 +3225,28 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               disabled={!podeNegociarTitulos(selectedTitulos, 2) || savingBaixaMassa}
               title="Selecione de 2 a 100 títulos com saldo, do mesmo parceiro, empresa e tipo"
               onClick={() => setTitulosNegociacao([...selectedTitulos])}>Negociar selecionados</button>}
+            {canPrepareAutorizacao && tipoReferencia === 'PAGAR' ? (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => enviarSelecionadosParaPagamento('AUTORIZACAO')}
+                disabled={!autorizacaoDigitalDisponivel || selectedTitulosBaixaveis.length === 0 || savingBaixaMassa || sendingFilaPagamentos}
+                title={autorizacaoDigitalDisponivel ? 'Preparar dossiê digital para análise do proprietário'
+                  : 'A autorização digital está desativada ou pausada. O envio autorizado em papel é independente.'}
+              >
+                Solicitar autorização
+                {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
+              </button>
+            ) : null}
             {canPrepareFila && tipoReferencia === 'PAGAR' ? (
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={enviarSelecionadosParaPagamento}
+                onClick={() => enviarSelecionadosParaPagamento('FILA')}
                 disabled={selectedTitulosBaixaveis.length === 0 || savingBaixaMassa || sendingFilaPagamentos}
                 title="Disponibilizar os títulos na fila operacional de pagamento"
               >
-                {sendingFilaPagamentos ? 'Enviando...' : (devePrepararAutorizacaoPagamento(user) ? 'Solicitar autorização' : 'Enviar para pagamento')}
+                {sendingFilaPagamentos ? 'Enviando...' : 'Enviar para pagamento'}
                 {!sendingFilaPagamentos && selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
               </button>
             ) : null}
@@ -3290,7 +3321,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {canDeleteTitulos && selectedTitulosExcluiveis.length > 0 ? ` / ${selectedTitulosExcluiveis.length} para exclusao` : ''}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[var(--c-muted)]">
-              {fixedTipo === 'PAGAR' ? (
+              {fixedTipo === 'PAGAR' && canAlterarStatusInterno ? (
                 <>
                   <select className="input input-sm" aria-label="Status interno para títulos selecionados" value={statusEmMassa} onChange={(event) => setStatusEmMassa(event.target.value)}>
                     <option value="">Escolha um status interno</option>
@@ -3378,7 +3409,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 titulo: 'Status interno',
                 ordenavel: true,
                 tipo: 'texto',
-                render: (titulo) => (
+                render: (titulo) => canAlterarStatusInterno ? (
                   <select
                     className="input input-sm min-w-40"
                     aria-label={`Status interno de ${getTituloCodigo(titulo)}`}
@@ -3387,9 +3418,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                     onChange={(event) => alterarStatusInterno([Number(titulo.id)], event.target.value || '__CLEAR__')}
                   >
                     <option value="">Sem status interno</option>
+                    {titulo.status_interno_pagar && !statusInternosPagar.includes(titulo.status_interno_pagar)
+                      ? <option value={titulo.status_interno_pagar}>{titulo.status_interno_pagar}</option> : null}
                     {statusInternosPagar.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
-                )
+                ) : <span>{titulo.status_interno_pagar || 'Sem status interno'}</span>
               }] : []),
               ...(showTipoColumn ? [{
                 id: 'tipo',
@@ -3523,7 +3556,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             aoMudarColunas={aoMudarColunas}
             storageKey={tabelaStorageKey}
             rotuloRolagem={`Titulos ${tipoLabel}`}
-            selecao={(canBaixarTitulo || canNegociar || canPrepareFila || canCreateBaixaComposta || canDeleteTitulos) ? {
+            selecao={(canBaixarTitulo || canNegociar || canPrepareFila || canPrepareAutorizacao || canAlterarStatusInterno || canCreateBaixaComposta || canDeleteTitulos) ? {
               selecionados: selectedTituloIds.map((id) => Number(id)),
               elegivel: (titulo) => fixedTipo === 'PAGAR' ? titulo.tipo === 'PAGAR' : isTituloBaixavel(titulo),
               aoAlternar: (id, titulo) => toggleTituloSelecionado(titulo, !selectedTituloSet.has(Number(id))),

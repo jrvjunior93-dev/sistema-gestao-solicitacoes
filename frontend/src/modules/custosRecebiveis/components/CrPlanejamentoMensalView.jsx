@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineArrowLeft,
   HiOutlineCalendarDays,
@@ -52,6 +52,7 @@ export default function CrPlanejamentoMensalView({
   const [detailArea, setDetailArea] = useState('planning');
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [error, setError] = useState('');
   const [reopeningTarget, setReopeningTarget] = useState(null);
   const [dilatacaoTarget, setDilatacaoTarget] = useState(null);
@@ -139,7 +140,16 @@ export default function CrPlanejamentoMensalView({
   }
 
   async function createMonth(target = nextNewMonth) {
-    if (!target || creating) return;
+    if (!canCreate || creatingRef.current || loading || !data) return;
+    // A acao continua visivel no primeiro acesso. Sem competencia liberada,
+    // explique o pre-requisito sem inventar um mes nem enviar POST vazio.
+    if (!target) {
+      setError(prazos?.planejamento?.situacao === 'SEM_ESTRUTURA'
+        ? 'Para criar o primeiro ou um novo mês, importe e publique a planilha da obra (estrutura micro). Se você não tem essa permissão, solicite a publicação ao responsável pelo módulo.'
+        : 'Não há um novo mês liberado para criação. Verifique a competência de início configurada para os responsáveis da obra e a abertura da próxima janela de planejamento.');
+      return;
+    }
+    creatingRef.current = true;
     try {
       setCreating(true);
       setError('');
@@ -150,6 +160,7 @@ export default function CrPlanejamentoMensalView({
     } catch (requestError) {
       setError(requestError.message || 'Não foi possível criar a competência.');
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   }
@@ -239,15 +250,15 @@ export default function CrPlanejamentoMensalView({
             <h2>{obra.nome}</h2>
           </div>
         </div>
-        {canCreate && nextNewMonth ? (
+        {canCreate ? (
           <button
             type="button"
             className={registerPlanningPrimary ? 'btn btn-outline' : 'btn btn-primary'}
-            disabled={creating}
+            disabled={creating || loading || !data}
             onClick={() => createMonth()}
           >
             <HiOutlinePlus className="h-4 w-4" />
-            {creating ? 'Criando...' : `Novo mês · ${monthLabel(nextNewMonth)}`}
+            {creating ? 'Criando...' : (nextNewMonth ? `Novo mês · ${monthLabel(nextNewMonth)}` : 'Novo mês')}
           </button>
         ) : null}
       </header>
@@ -265,7 +276,7 @@ export default function CrPlanejamentoMensalView({
               <button
                 type="button"
                 className={registerPlanningPrimary ? 'btn btn-primary' : 'btn btn-outline'}
-                disabled={creating}
+                disabled={creating || loading || !data}
                 onClick={registerPendingPlanning}
                 aria-label={`Registrar planejamento de ${monthLabel(pendingPlanning)}`}
               >
@@ -317,8 +328,8 @@ export default function CrPlanejamentoMensalView({
       ) : null}
 
       {error ? (
-        <div className="cr-feedback" data-tone="error">
-          <HiOutlineExclamationTriangle className="h-5 w-5" />
+        <div className="cr-feedback" data-tone="error" role="alert">
+          <HiOutlineExclamationTriangle className="h-5 w-5" aria-hidden="true" />
           {error}
         </div>
       ) : null}

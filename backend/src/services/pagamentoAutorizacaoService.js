@@ -19,7 +19,8 @@ const {
   WebauthnCredential,
   sequelize
 } = require('../models');
-const { userHasNominalAreaPermission } = require('./authorizationService');
+const { userHasNominalAreaPermission, getFinanceiroObraScopeIds } = require('./authorizationService');
+const { marcarAnaliseProprietario, registrarAnaliseRecusada } = require('./analiseProprietarioService');
 const { enfileirarTitulosAutorizados } = require('./pagamentoManualFilaService');
 const { copyStorageObject, getPresignedUrl } = require('./s3');
 const { saveChallenge, consumeChallenge } = require('./webauthnChallengeStore');
@@ -195,12 +196,16 @@ async function createBatch(req, payload = {}) {
   const titleIds = Array.from(new Set((payload.titulo_ids || []).map(Number).filter((id) => Number.isInteger(id) && id > 0)));
   if (!titleIds.length || titleIds.length > 200) throw httpError(400, 'Selecione entre 1 e 200 titulos para autorizacao.');
   const idempotencyKey = String(payload.idempotency_key || crypto.randomUUID()).slice(0, 120);
+  const obrasPermitidas = await getFinanceiroObraScopeIds(req.user);
   const existing = await PagamentoAutorizacaoLote.findOne({ where: { idempotency_key: idempotencyKey } });
   if (existing) return getBatch(req, existing.id);
 
   const result = await sequelize.transaction(async (transaction) => {
     const titles = await TituloFinanceiro.findAll({ where: { id: { [Op.in]: titleIds } }, include: titleInclude(), transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
     if (titles.length !== titleIds.length) throw httpError(404, 'Um ou mais titulos nao foram encontrados.');
+    if (obrasPermitidas !== null && titles.some((title) => !obrasPermitidas.includes(Number(title.obra_id)))) {
+      throw httpError(403, 'Um ou mais titulos nao pertencem a uma obra do seu acesso.');
+    }
     const concurrentDuplicate = await PagamentoAutorizacaoLote.findOne({ where: { idempotency_key: idempotencyKey }, transaction, lock: transaction.LOCK.UPDATE });
     if (concurrentDuplicate) return concurrentDuplicate;
     const activeItems = await PagamentoAutorizacaoItem.findAll({
@@ -253,6 +258,7 @@ async function createBatch(req, payload = {}) {
       }
     }
     await recordEvent({ loteId: lot.id, userId: req.user.id, type: 'LOTE_CRIADO', data: { titulo_ids: titleIds, dossie_hash: dossierHash }, transaction });
+    await marcarAnaliseProprietario({ titulos: titles, usuarioId: req.user.id, transaction, origem: 'DIGITAL', loteId: lot.id });
     return lot;
   });
   const authorizerIds = await PagamentoAutorizador.findAll({ where: { ativo: true }, attributes: ['usuario_id'] });
@@ -501,6 +507,8 @@ async function decideBatch(req, lotId, payload = {}) {
         if (!stillEligible) {
           await item.update({ status: 'INVALIDADO', motivo_decisao: 'Titulo ou saldo alterado apos a montagem do dossie.', decidido_em: new Date() }, { transaction });
           await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_INVALIDADO', data: { titulo_id: item.titulo_financeiro_id }, transaction });
+          await registrarAnaliseRecusada({ tituloId: item.titulo_financeiro_id, usuarioId: req.user.id,
+            motivo: 'Titulo ou saldo alterado apos a montagem do dossie.', resultado: 'INVALIDADO', transaction });
           continue;
         }
         await item.update({ status: 'AUTORIZADO', motivo_decisao: decision.motivo, decidido_em: new Date() }, { transaction });
@@ -509,6 +517,8 @@ async function decideBatch(req, lotId, payload = {}) {
         if (!decision.motivo) throw httpError(400, 'Informe o motivo para rejeitar um pagamento.');
         await item.update({ status: 'REJEITADO', motivo_decisao: decision.motivo, decidido_em: new Date() }, { transaction });
         await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_REJEITADO', data: { motivo: decision.motivo }, transaction });
+        await registrarAnaliseRecusada({ tituloId: item.titulo_financeiro_id, usuarioId: req.user.id,
+          motivo: decision.motivo, resultado: 'REJEITADO', transaction });
       }
     }
     stage = 'CREDENTIAL_UPDATE';

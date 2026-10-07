@@ -767,7 +767,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       }
       avisar.sucesso(
         `${enviados} arquivo(s) anexado(s) à Jornada #${jornadaEnviada.id}. `
-        + 'As fichas e fotos da empreitada já estão disponíveis no detalhe da solicitação.'
+        + 'As fichas e fotos da jornada já estão disponíveis no detalhe da solicitação.'
       );
     } catch (error) {
       avisar.erro(
@@ -1191,7 +1191,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         titulo="Jornada da obra"
         descricao={ETAPAS_HABILITADAS
           ? 'Informe apenas dias e ajustes deste período. No mensalista, a primeira jornada libera 40% do salário; acréscimos, descontos e 13º dessa jornada entram no saldo de 60%, junto com os ajustes da segunda. O custo final é rateado pelos dias das duas etapas.'
-          : 'Informe dias trabalhados, faltas apenas para registro, acréscimos, descontos e 13º. Para empreitada, selecione o regime e registre o serviço e o valor; anexos podem ser enviados após a jornada.'}
+          : 'Informe dias trabalhados, faltas apenas para registro, acréscimos, descontos e 13º. Anexos podem ser enviados após a jornada.'}
         variante={linhas.length ? undefined : 'primario'}
         cor={linhas.length ? undefined : 'var(--c-primary)'}
         acoes={(
@@ -1386,14 +1386,6 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   ))
                 },
                 {
-                  id: 'salario',
-                  titulo: 'Base de calculo',
-                  tipo: 'valor',
-                  render: (linha) => (linha.forma_calculo_gerencial === 'DIARIA'
-                    ? `${formatCurrencyInput(String(linha.valor_diaria || 0))} / diaria`
-                    : (linha.salario_base ? formatCurrencyInput(String(linha.salario_base)) : '—'))
-                },
-                {
                   id: 'dias',
                   titulo: 'Dias',
                   tipo: 'numero',
@@ -1440,49 +1432,6 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       value={linha.faltas}
                       disabled={!podeEditarLinha(linha)}
                       onChange={(e) => alterar(linha.__indice, 'faltas', e.target.value)}
-                    />
-                  ))
-                },
-                {
-                  id: 'regime_pagamento',
-                  titulo: 'Pagamento',
-                  tipo: 'texto',
-                  render: (linha) => (linha.aindaNaoComecou ? '—' : (
-                    <select
-                      className="form-control min-w-36"
-                      value={linha.regime_pagamento}
-                      disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'regime_pagamento', e.target.value)}
-                    >
-                      <option value="NORMAL">Salário / diária</option>
-                      <option value="EMPREITADA">Empreitada</option>
-                    </select>
-                  ))
-                },
-                {
-                  id: 'servico_executado',
-                  titulo: 'Serviço executado',
-                  tipo: 'texto',
-                  render: (linha) => (linha.regime_pagamento !== 'EMPREITADA' ? '—' : (
-                    <input
-                      className="form-control min-w-56"
-                      value={linha.servico_executado}
-                      disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'servico_executado', e.target.value)}
-                    />
-                  ))
-                },
-                {
-                  id: 'valor_empreitada',
-                  titulo: 'Valor empreitada',
-                  tipo: 'valor',
-                  render: (linha) => (linha.regime_pagamento !== 'EMPREITADA' ? '—' : (
-                    <input
-                      className="form-control rh-jornada-numero"
-                      value={linha.valor_empreitada}
-                      disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'valor_empreitada', normalizeCurrencyTyping(e.target.value))}
-                      onBlur={(e) => alterar(linha.__indice, 'valor_empreitada', formatCurrencyInput(e.target.value))}
                     />
                   ))
                 },
@@ -1656,7 +1605,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   multiple
                   accept="image/*,.pdf"
                   className="sr-only"
-                  aria-label="Selecionar fichas ou fotos da empreitada"
+                  aria-label="Selecionar fichas ou fotos da jornada"
                   onChange={anexarComprovantesDaJornada}
                 />
                 <button
@@ -1665,7 +1614,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   disabled={!jornadaEnviada?.id || anexandoFichas}
                   title={jornadaEnviada?.id
                     ? `Anexar fichas ou fotos à Jornada #${jornadaEnviada.id}`
-                    : 'Envie a jornada antes de anexar fichas ou fotos da empreitada.'}
+                    : 'Envie a jornada antes de anexar fichas ou fotos da jornada.'}
                   onClick={() => inputFichasRef.current?.click()}
                 >
                   {anexandoFichas ? 'Anexando...' : 'Anexar fichas ou fotos'}

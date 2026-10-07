@@ -1,5 +1,46 @@
 # Ownership Ativo
 
+## Publicacao autorizada dos ajustes operacionais em 07/10/2026
+
+Sessao `/root` em `C:/Fluxy-refactor-frontend`. Usuario autorizou commit e
+push dos ajustes de Novo mes, Jornada e analise do proprietario na
+`refactor/frontend`, seguidos de promocao para `main`. Reserva adicional
+dos READMEs de Custos e Recebiveis, RH/DP e Financeiro e do contrato de
+autorizacao do proprietario para alinhar as regras operacionais publicadas.
+Branches remotas conferidas no mesmo ponto antes da publicacao. Preservar
+auditorias, outputs e registros de ownership alheios; sem banco, EC2,
+migration, reinicio ou ativacao de flags.
+
+Reserva documental adicional de `AGENTS.md` e
+`docs/seguranca/autenticacao_autorizacao.md`: atualizar somente as metricas
+obsoletas de permissoes detectadas pelo validador documental, sem alterar
+regras ou conceder acesso.
+
+## Ownership encerrado - simplificacao da grade de envio da jornada - 07/10/2026
+
+Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`, branch refactor/frontend.
+Reserva RhDpJornada.jsx, teste validarRhJornadaColunas.mjs e handoff deste
+ajuste. Remover base salarial/diaria, seletor de empreitada, servico executado
+e valor da empreitada da grade de envio. Preservar historico, dados legados,
+planilha de importacao, calculos, permissoes e endpoints. Sem banco real,
+migration, EC2, commit, push ou deploy. Preservar a correcao de Novo mes e
+as auditorias locais preexistentes.
+Implementacao, teste focado com servicos simulados, QA local e build
+concluidos. Aguardando publicacao autorizada. Continuidade em
+`docs/handoffs/2026-10-07-pessoal-jornada-colunas.md`.
+
+## Ownership encerrado - Novo mes no primeiro planejamento - 07/10/2026
+
+Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`, branch refactor/frontend.
+Reserva CrPlanejamentoMensalView.jsx, teste validarCrNovoMes.mjs e handoff
+deste ajuste. Manter Novo mes visivel para quem pode preencher planejamento,
+explicar a falta de planilha ou janela no clique e preservar calendario,
+permissoes, endpoint e idempotencia. Sem banco real, migration, EC2, commit,
+push ou deploy. Preservar auditorias e demais alteracoes preexistentes.
+Implementacao, teste de dominio sem banco, QA local e build concluidos.
+Alteracoes aguardam publicacao autorizada. Continuidade em
+`docs/handoffs/2026-10-07-custos-recebiveis-novo-mes.md`.
+
 ## Publicacao autorizada - anexos do historico e empresa em fornecedores - 06/10/2026
 
 Usuario autorizou commit e push na refactor/frontend e promocao para main.
@@ -1705,3 +1746,19 @@ vinculo ao contrato e demais cadastros. Sem banco remoto, deploy, commit ou push
 Implementacao e validacoes locais concluidas; ownership liberado. Alteracoes
 aguardam publicacao autorizada; continuidade em
 `docs/handoffs/2026-10-05-credor-pix-endereco.md`.
+
+## Ownership temporario 07/10/2026 analise do proprietario
+
+Sessao `/root` em `C:/Fluxy-refactor-frontend`: servicos de status interno,
+analise do proprietario, autorizacao de pagamentos, fila manual e politica de
+entrada na fila; validator de pagamentos; pagina FinanceiroTitulos, servico
+financeiro frontend, testes isolados e handoff desta tarefa. Permissoes de
+preparar e enviar devem coexistir e ser independentes. Cada acao exige apenas
+sua propria permissao; envio direto para fila em qualquer modo, sem declaracao
+adicional ou permissao de preparar autorizacao. Preservar alteracoes de
+Novo mes, Jornada, auditoria e outputs. Sem banco externo, EC2, deploy ou push.
+
+Ownership liberado apos validacoes locais de analise manual/digital, permissoes
+independentes, quatro modos de envio, auditoria atomica, idempotencia, navegador
+e build. Handoff em `docs/handoffs/2026-10-07-analise-proprietario-titulos.md`.
+Sem migration, commit, push, deploy ou escrita em banco real nesta etapa.

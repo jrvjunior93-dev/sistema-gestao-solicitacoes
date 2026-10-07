@@ -564,6 +564,12 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
 - "Novo mes" libera as competencias atrasadas ainda sem registro e a competencia
   cuja janela ja abriu (`competencias_permitidas`); `POST /competencias` recusa
   as demais com `CR_COMPETENCIA_FORA_JANELA`.
+- O botao aparece para quem pode preencher custos ou recebiveis, inclusive no
+  primeiro planejamento. Sem planilha publicada, o clique orienta importar e
+  publicar a estrutura e nao cria registros. Sem competencia liberada, orienta
+  conferir a competencia inicial dos responsaveis e a janela. Nao e necessario
+  ter um mes anterior cadastrado; carregamento, erro de consulta e envio em
+  andamento mantem o botao desabilitado.
 - `GET /obras/:obraId/competencias` devolve `planejamento_editavel` por mes: so
   e verdadeiro com planejamento aberto (ou reaberto com reabertura vigente) e
   nao finalizado.
