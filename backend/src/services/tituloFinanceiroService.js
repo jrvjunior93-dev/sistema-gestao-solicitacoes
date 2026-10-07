@@ -2225,10 +2225,17 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
   return carregarTituloPorId(req, titulo.id, { includeMovimentos: true, transaction });
 }
 
-async function listarTitulos(req, filters = {}) {
+async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
   await assertFinanceAccess(req);
 
   const where = {};
+  if (tituloIds !== null) {
+    if (!Array.isArray(tituloIds) || tituloIds.length === 0 || tituloIds.length > 5000 ||
+      tituloIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+      throw createHttpError(400, 'Selecao de titulos invalida.');
+    }
+    where.id = { [Op.in]: [...new Set(tituloIds)] };
+  }
   const obraFiltro = Number(filters.obra_id);
   const obrasPermitidas = await getFinanceiroObraScopeIds(req.user);
   const paginated = ['1', 'true', 'sim'].includes(String(filters.paginated || '').trim().toLowerCase());

@@ -231,6 +231,7 @@ const {
   validateFinanceTituloEstornoBody,
   validateFinanceTituloMovimentoParams,
   validateFinanceTituloQuery,
+  validateFinanceTituloRelatorioBody,
   validateFinanceTituloUpdateBody,
   validateFinanceTarifasBancariasConfigBody,
   validateFinanceTransferenciaBody,
@@ -2306,6 +2307,7 @@ router.post('/financeiro/titulos/negociacoes/preview', allowFinanceiro, critical
 router.post('/financeiro/titulos/negociacoes/confirmar', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').confirmar);
 router.get('/financeiro/titulos/:id/negociacao', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/TituloRenegociacaoController').consultar);
 router.get('/financeiro/titulos/relatorio.pdf', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery }), TituloFinanceiroController.relatorioPdf);
+router.post('/financeiro/titulos/relatorio.pdf', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery, body: validateFinanceTituloRelatorioBody }), TituloFinanceiroController.relatorioPdf);
 router.post('/financeiro/titulos', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceTituloCreateBody }), TituloFinanceiroController.create);
 router.get('/financeiro/titulos/importacoes/modelo', allowTituloImportar, TituloFinanceiroImportacaoController.modelo);
 router.post('/financeiro/titulos/importacoes/preview', allowTituloImportar, uploadRateLimit, uploadComprovantes.single('file'), TituloFinanceiroImportacaoController.preview);

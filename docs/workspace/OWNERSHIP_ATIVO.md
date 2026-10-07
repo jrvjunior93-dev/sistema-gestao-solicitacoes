@@ -2068,3 +2068,11 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Reservados: backend/src/services/tituloFinanceiroRelatorioPdfService.js, backend/scripts/validarRelatorioTitulosSolicitacao.js, backend/package.json, docs/modulos/financeiro/README.md e handoff desta tarefa.
 - Escopo: coluna Solicitacao imediatamente apos Titulo no PDF, com codigo real da origem; preservar filtros, acesso, totais e fluxos financeiros. Sem banco real, migration, commit, push ou deploy.
 - Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-relatorio-titulos-solicitacao.md. PDF sintetico inspecionado em quatro paginas; sem publicacao ou escrita em banco.
+
+## Selecao no relatorio de titulos 2026-10-07
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: FinanceiroTitulos.jsx, frontend/services/financeiro.js, TituloFinanceiroController.js, tituloFinanceiroService.js, financialValidators.js, financeiroRotaPermissoesService.js, routes.js, scripts de validacao, package.json dos dois pacotes, documentacao financeira e handoff.
+- Escopo confirmado: com selecao gerar somente selecionados; sem selecao gerar todos os filtrados. Preservar acesso, filtros, totais e coluna Solicitacao. Sem banco real, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-relatorio-titulos-selecao.md. Sem publicacao ou escrita em banco real.
+- Reserva adicional: backend/src/middlewares/controlePrazosOperacionais.js, para preservar consulta do relatorio por POST sem dispensar bloqueios de escrita.

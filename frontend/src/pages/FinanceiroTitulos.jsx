@@ -1248,6 +1248,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [relatorioError, setRelatorioError] = useState('');
   const [relatorioPdfUrl, setRelatorioPdfUrl] = useState('');
   const [relatorioFilename, setRelatorioFilename] = useState('relatorio-titulos-financeiros.pdf');
+  const [relatorioSelecaoCount, setRelatorioSelecaoCount] = useState(0);
   const relatorioRequestIdRef = useRef(0);
 
   useEffect(() => {
@@ -2428,6 +2429,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   async function abrirRelatorio() {
     if (!appliedFilters || relatorioLoading) return;
 
+    const tituloIds = selectedTitulos.map(titulo => Number(titulo.id));
+    setRelatorioSelecaoCount(tituloIds.length);
     const requestId = relatorioRequestIdRef.current + 1;
     relatorioRequestIdRef.current = requestId;
     setRelatorioModalOpen(true);
@@ -2437,7 +2440,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
     try {
       const result = await gerarRelatorioTitulosFinanceirosPdf(
-        compactFilters(appliedFilters)
+        compactFilters(appliedFilters), tituloIds
       );
       const objectUrl = URL.createObjectURL(result.blob);
       if (relatorioRequestIdRef.current !== requestId) {
@@ -3304,11 +3307,14 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               onClick={abrirRelatorio}
               disabled={!hasConsulted || loading || relatorioLoading}
               title={hasConsulted
-                ? 'Gerar PDF com todos os titulos dos filtros aplicados'
+                ? (selectedTitulos.length
+                  ? 'Gerar PDF somente com os titulos selecionados'
+                  : 'Gerar PDF com todos os titulos dos filtros aplicados')
                 : 'Consulte os titulos antes de gerar o relatorio'}
             >
               <HiOutlineDocumentText className="h-4 w-4" />
               {relatorioLoading ? 'Gerando...' : 'Gerar relatorio'}
+              {!relatorioLoading && selectedTitulos.length > 0 ? ` (${selectedTitulos.length})` : ''}
             </button>}
           </div>
         )}
@@ -3679,7 +3685,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                       Relatorio de {pageTitle}
                     </h2>
                     <p className="text-xs text-[var(--c-muted)]">
-                      Todos os títulos encontrados pelos filtros aplicados, respeitando seu escopo de acesso.
+                      {relatorioSelecaoCount > 0
+                        ? `${relatorioSelecaoCount} titulo(s) selecionado(s), respeitando os filtros e seu escopo de acesso.`
+                        : 'Todos os títulos encontrados pelos filtros aplicados, respeitando seu escopo de acesso.'}
                     </p>
                   </div>
                 </div>
@@ -3716,7 +3724,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   <div className="text-center">
                     <span className="loading loading-spinner loading-md text-primary" aria-hidden="true" />
                     <p className="mt-3 text-sm font-semibold text-[var(--c-text)]">Preparando o relatório completo...</p>
-                    <p className="mt-1 text-xs text-[var(--c-muted)]">Aguarde enquanto os títulos filtrados são consolidados.</p>
+                    <p className="mt-1 text-xs text-[var(--c-muted)]">{relatorioSelecaoCount > 0 ? 'Aguarde enquanto os títulos selecionados são consolidados.' : 'Aguarde enquanto os títulos filtrados são consolidados.'}</p>
                   </div>
                 </div>
               ) : relatorioError ? (

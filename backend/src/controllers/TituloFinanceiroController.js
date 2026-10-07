@@ -17,6 +17,7 @@ const {
   listarTitulosPorSolicitacao
 } = require('../services/tituloFinanceiroService');
 const { gerarRelatorioTitulosFinanceirosPdf } = require('../services/tituloFinanceiroRelatorioPdfService');
+const { validateFinanceTituloRelatorioBody } = require('../validators/financialValidators');
 const { userHasAreaPermission } = require('../services/authorizationService');
 const { responderErroController } = require('../utils/controllerError');
 
@@ -98,13 +99,23 @@ module.exports = {
 
   async relatorioPdf(req, res) {
     try {
+      const tituloIds = req.method === 'POST'
+        ? validateFinanceTituloRelatorioBody(req.body).titulo_ids
+        : null;
       const resultado = await listarTitulos(req, {
         ...(req.query || {}),
         paginated: true,
         page: 1,
         limit: 'all'
-      });
+      }, { tituloIds });
       const titulos = Array.isArray(resultado) ? resultado : (resultado?.data || []);
+      const idsDisponiveis = new Set(titulos.map(titulo => Number(titulo.id)));
+      if (tituloIds && (titulos.length !== tituloIds.length ||
+        tituloIds.some(id => !idsDisponiveis.has(id)))) {
+        const error = new Error('Alguns titulos selecionados nao estao disponiveis nos filtros e no seu acesso atual. Atualize a consulta e selecione novamente.');
+        error.statusCode = 409;
+        throw error;
+      }
       const pdf = await gerarRelatorioTitulosFinanceirosPdf({
         titulos,
         filtros: req.query || {},

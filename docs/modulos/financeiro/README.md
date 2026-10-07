@@ -15,14 +15,29 @@ Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, 
 
 ## Relatorio PDF de titulos
 
-O botao Gerar relatorio em Contas a Pagar usa `GET /financeiro/titulos/relatorio.pdf`
-com os filtros atuais e o escopo financeiro autorizado, incluindo todas as paginas
-da consulta. A coluna Solicitacao fica imediatamente apos Titulo e mostra
+O botao Gerar relatorio em Contas a Pagar gera somente os titulos selecionados
+quando ha selecao. Sem selecao, gera todos os titulos dos filtros aplicados,
+incluindo todas as paginas da consulta. O botao indica a quantidade selecionada.
+Ambos os casos preservam os filtros e o escopo financeiro autorizado.
+
+Sem selecao, usa `GET /financeiro/titulos/relatorio.pdf`. Com selecao, usa `POST`
+na mesma rota, com `titulo_ids` no JSON e os filtros na query. A permissao
+continua sendo `financeiro.titulos.exportar`. O POST aceita ate 5000 IDs e nao
+altera registros. Se algum titulo selecionado nao estiver mais disponivel nos
+filtros ou no acesso atual, retorna erro e pede nova selecao; nunca gera todos
+os filtrados como alternativa silenciosa. O bloqueio operacional de obras
+mantem esse POST disponivel como consulta, sem liberar escritas. O controle
+diario de caixa permanece inalterado para GET e POST.
+
+A coluna Solicitacao fica imediatamente apos Titulo e mostra
 `solicitacao.codigo` (por exemplo, `SOL-6240`), nunca o ID interno. Sem codigo
 vinculado, mostra `-`. O renderer compartilhado de Contas a Receber segue a mesma
 ordem. Totais, datas e filtros permanecem inalterados.
 
 Validacao isolada: `npm run test:relatorio-titulos-solicitacao` no backend.
+Selecao, filtros e acesso: `npm run test:relatorio-titulos-selecao` no backend;
+handler, botao e HTTP reais com APIs simuladas: comando de mesmo nome no frontend,
+com Playwright e Chrome disponiveis.
 Nao requer migration ou nova permissao.
 
 ## Cartao na geracao pela solicitacao

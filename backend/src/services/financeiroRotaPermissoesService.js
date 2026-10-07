@@ -71,6 +71,7 @@ const PERMISSOES_ROTAS_FINANCEIRAS = Object.freeze({
   'POST /financeiro/titulos/negociacoes/confirmar': ['financeiro.titulos.renegociar'],
   'GET /financeiro/titulos/:id/negociacao': ['financeiro.titulos.visualizar'],
   'GET /financeiro/titulos/relatorio.pdf': ['financeiro.titulos.exportar'],
+  'POST /financeiro/titulos/relatorio.pdf': ['financeiro.titulos.exportar'],
   'POST /financeiro/titulos': ['financeiro.titulos.criar'],
   'GET /financeiro/fretes-pedidos/pendentes': ['financeiro.titulos.visualizar'],
   'POST /financeiro/titulos/excluir-em-massa': ['financeiro.titulos.excluir'],

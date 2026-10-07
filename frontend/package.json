@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:relatorio-titulos-selecao": "node scripts/validarRelatorioTitulosSelecao.mjs",
     "test:recargas-multiplas-ui": "node scripts/validarRecargasMultiplasUI.mjs",
     "test:cartao-opcional-solicitacao-ui": "node scripts/validarCartaoOpcionalSolicitacaoUI.mjs",
     "test:anexos-remocao": "node scripts/validarRemocaoAnexosHistorico.mjs",

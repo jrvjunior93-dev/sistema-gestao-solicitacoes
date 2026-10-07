@@ -427,6 +427,19 @@ function parseBoolean(value, fieldName) {
   throw new ValidationError(`${fieldName} invalido.`);
 }
 
+function validateFinanceTituloRelatorioBody(body = {}) {
+  ensureAllowedKeys(body, ['titulo_ids'], 'Selecao do relatorio de titulos');
+  if (!Array.isArray(body.titulo_ids) || body.titulo_ids.length === 0 || body.titulo_ids.length > 5000) {
+    throw new ValidationError('Selecione de 1 a 5000 titulos para o relatorio.');
+  }
+  const ids = body.titulo_ids.map(value => {
+    if (!['string', 'number'].includes(typeof value)) throw new ValidationError('Titulo invalido.');
+    return parseInteger(value, 'Titulo', { required: true });
+  });
+  if (ids.some(id => !Number.isSafeInteger(id))) throw new ValidationError('Titulo invalido.');
+  return { titulo_ids: [...new Set(ids)] };
+}
+
 function validateFinanceTituloQuery(query = {}) {
   ensureAllowedKeys(
     query,
@@ -2178,5 +2191,6 @@ module.exports = {
   validateFinanceTituloUpdateBody,
   validateFinanceTituloEstornoBody,
   validateFinanceTituloMovimentoParams,
-  validateFinanceTituloQuery
+  validateFinanceTituloQuery,
+  validateFinanceTituloRelatorioBody
 };

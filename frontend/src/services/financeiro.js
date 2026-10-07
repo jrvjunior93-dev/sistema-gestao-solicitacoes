@@ -186,7 +186,7 @@ export async function resolverFilaPagamento(id, acao, motivo = '') {
   return parseJson(response, 'Erro ao resolver a pendencia de pagamento');
 }
 
-export async function gerarRelatorioTitulosFinanceirosPdf(params = {}) {
+export async function gerarRelatorioTitulosFinanceirosPdf(params = {}, tituloIds = []) {
   const query = new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
   ).toString();
@@ -194,8 +194,10 @@ export async function gerarRelatorioTitulosFinanceirosPdf(params = {}) {
     ? `${API_URL}/financeiro/titulos/relatorio.pdf?${query}`
     : `${API_URL}/financeiro/titulos/relatorio.pdf`;
   const response = await fetch(url, {
+    method: tituloIds.length ? 'POST' : 'GET',
     cache: 'no-store',
-    headers: authHeaders()
+    headers: authHeaders(tituloIds.length ? { 'Content-Type': 'application/json' } : {}),
+    ...(tituloIds.length ? { body: JSON.stringify({ titulo_ids: tituloIds }) } : {})
   });
 
   if (!response.ok) {

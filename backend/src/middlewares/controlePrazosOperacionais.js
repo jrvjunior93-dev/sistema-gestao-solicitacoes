@@ -3,6 +3,8 @@ const service = require('../services/prazosOperacionaisService');
 const rotas = require('../services/prazosOperacionaisRotaService');
 function criarControle({ estado = service.estado, resolver = rotas.obrasDaOperacao } = {}) {
   return async (req, res, next) => {
+    // POST transporta apenas a selecao do PDF; continua sendo consulta, como o GET.
+    if (req.method === 'POST' && /^\/financeiro\/titulos\/relatorio\.pdf\/?$/i.test(req.path)) return next();
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || !rotas.MODULOS_OBRA.test(req.path)
       || rotas.CADASTROS_GLOBAIS.test(req.path) || rotas.regularizacao(req)) return next();
     // Nestes dois formulários o vínculo vem do multipart. A mesma guarda é obrigatória após o multer.
