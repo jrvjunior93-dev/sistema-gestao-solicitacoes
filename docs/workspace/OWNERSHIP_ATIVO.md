@@ -2076,3 +2076,10 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Escopo confirmado: com selecao gerar somente selecionados; sem selecao gerar todos os filtrados. Preservar acesso, filtros, totais e coluna Solicitacao. Sem banco real, commit, push ou deploy.
 - Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-relatorio-titulos-selecao.md. Sem publicacao ou escrita em banco real.
 - Reserva adicional: backend/src/middlewares/controlePrazosOperacionais.js, para preservar consulta do relatorio por POST sem dispensar bloqueios de escrita.
+
+## Fila e dossie sem envio duplicado 2026-10-07
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: pagamentoManualFilaService.js, pagamentoAutorizacaoService.js, novos helpers de eventos/sincronizacao, FinanceiroTitulos.jsx, FinanceiroAutorizacoesPagamento.jsx, testes isolados, package.json e documentacao financeira/handoff.
+- Escopo: envio direto pela permissao independente da fila encerra a pendencia digital; reconhecer fila existente nos dois mecanismos e sincronizar o dossie sem duplicar. Preservar escopo, auditoria, passkeys e saldo. Sem banco real, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-fila-dossie-convergencia.md. Sem commit, push ou deploy desta correcao. Deploy anterior confirmado pelo usuario no commit 12123c0f, schema sem pendencias e health local/publico OK.

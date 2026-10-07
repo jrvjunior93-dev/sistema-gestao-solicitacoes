@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import { Avisos, Pagina, PageHeader, useAvisos } from '../components/padrao';
@@ -29,7 +29,7 @@ const titleDescription = (value) => String(value || '')
   .trim();
 
 function Status({ value }) {
-  return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{String(value || '').replaceAll('_', ' ')}</span>;
+  return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{value === 'ENFILEIRADO' ? 'Na fila de pagamento' : String(value || '').replaceAll('_', ' ')}</span>;
 }
 
 export default function FinanceiroAutorizacoesPagamento() {
@@ -46,17 +46,24 @@ export default function FinanceiroAutorizacoesPagamento() {
   const [authorizerUserId, setAuthorizerUserId] = useState('');
   const [pushActive, setPushActive] = useState(false);
   const [passkeys, setPasskeys] = useState([]);
+  const listaRequestRef = useRef(0);
 
   const selected = useMemo(() => lots.find((lot) => Number(lot.id) === Number(selectedId)) || lots[0] || null, [lots, selectedId]);
   const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE'), [selected]);
-  const selectedTotal = useMemo(() => (selected?.itens || []).filter((item) => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.valor_snapshot || 0), 0), [selected, selectedItems]);
+  const selectedTotal = useMemo(() => pendingItems.filter((item) => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.valor_snapshot || 0), 0), [pendingItems, selectedItems]);
+
+  async function carregarLotes() {
+    const requestId = ++listaRequestRef.current;
+    const response = await listarAutorizacoesPagamento();
+    if (requestId !== listaRequestRef.current) return;
+    const rows = response?.data || [];
+    setLots(rows);
+    setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
+  }
 
   async function load() {
     try {
-      const response = await listarAutorizacoesPagamento();
-      const rows = response?.data || [];
-      setLots(rows);
-      setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
+      await carregarLotes();
       if (caps.can_decide) {
         const passkeyResponse = await listarPasskeysPagamento();
         setPasskeys(passkeyResponse?.data || []);
@@ -72,7 +79,33 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   useEffect(() => { load(); }, []);
-  useEffect(() => { setSelectedItems(pendingItems.map((item) => Number(item.id))); }, [selected?.id, pendingItems.length]);
+  useEffect(() => { setSelectedItems(pendingItems.map((item) => Number(item.id))); }, [selected?.id]);
+  useEffect(() => {
+    setSelectedItems(current => {
+      const validos = current.filter(id => pendingItems.some(item => Number(item.id) === id));
+      return validos.length === current.length ? current : validos;
+    });
+  }, [pendingItems]);
+  useEffect(() => {
+    if (busy) return undefined;
+    let ativo = true, pendente = false;
+    const atualizar = async () => {
+      if (!ativo || pendente || document.visibilityState !== 'visible') return;
+      pendente = true;
+      try { await carregarLotes(); } catch { /* Atualizacao silenciosa; botao permite tentar novamente. */ }
+      finally { pendente = false; }
+    };
+    const timer = window.setInterval(atualizar, 30000);
+    window.addEventListener('focus', atualizar);
+    document.addEventListener('visibilitychange', atualizar);
+    return () => {
+      ativo = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', atualizar);
+      document.removeEventListener('visibilitychange', atualizar);
+      listaRequestRef.current++;
+    };
+  }, [busy]);
   useEffect(() => {
     if (!caps.can_decide || !caps.push_available || !suportaWebPush()) {
       setPushActive(false);
@@ -179,6 +212,7 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   async function retryQueue() {
+    if (busy) return;
     setBusy(true);
     try { await reenviarAutorizacaoParaFila(selected.id); await load(); avisar.sucesso('Itens autorizados encaminhados para a fila.'); }
     catch (error) { avisar.erro(error?.message || 'Não foi possível reenviar para a fila.'); }
@@ -193,6 +227,7 @@ export default function FinanceiroAutorizacoesPagamento() {
       <div className="pa-toolbar">
         <div><strong>Modo {caps.mode}</strong><span>{caps.paused ? 'Novas decisões pausadas' : 'Dossiês sem acesso de edição à solicitação'}</span></div>
         <div className="pa-toolbar__actions">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={busy}>Atualizar</button>
           {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()} title={!caps.push_available ? 'O envio de avisos ainda não foi configurado neste ambiente.' : (!suportaWebPush() ? 'Este navegador não oferece notificações push.' : undefined)}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>}
           {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> {caps.passkey_count ? 'Adicionar passkey' : 'Cadastrar passkey'}</button>}
         </div>
@@ -228,7 +263,7 @@ export default function FinanceiroAutorizacoesPagamento() {
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
                     <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc.id)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
-                    <td><Status value={item.status} /></td>
+                    <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}</td>
                   </tr>;
                 })}</tbody>
               </table>

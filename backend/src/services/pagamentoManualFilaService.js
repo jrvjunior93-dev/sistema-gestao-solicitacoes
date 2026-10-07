@@ -8,7 +8,6 @@ const {
   Obra,
   SecurityEventLog,
   PagamentoAutorizacaoItem,
-  PagamentoAutorizacaoLote,
   PagamentoManualFilaItem,
   PagamentoManualFilaComprovante,
   Parceiro,
@@ -23,6 +22,7 @@ const { baixarTitulo } = require('./tituloFinanceiroService');
 const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
 const { registrarEventoSeguranca, getRequestIp } = require('./securityLogService');
 const { atualizarAnaliseAoEnfileirar } = require('./analiseProprietarioService');
+const { sincronizarDossiesComFila } = require('./pagamentoAutorizacaoFilaService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { canAccessSolicitacaoFile } = require('./fileAccessService');
 const { canAccessFilaPagamentos, getFinanceiroObraScopeIds } = require('./authorizationService');
@@ -206,52 +206,54 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
   if (options.autorizacaoInterna && !Number.isInteger(Number(options.autorizacaoLoteId))) {
     throw createHttpError(403, 'Contexto interno de autorizacao invalido.');
   }
-  const tituloIds = payload.titulo_ids || [];
+  const tituloIds = [...new Set((payload.titulo_ids || []).map(Number))].sort((a, b) => a - b);
+  if (!tituloIds.length || tituloIds.length > 200 || tituloIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    throw createHttpError(400, 'Selecione entre 1 e 200 titulos validos para pagamento.');
+  }
   const obrasPermitidas = await getFinanceiroObraScopeIds(req.user);
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const itemKeys = tituloIds.map((tituloId) => `${requestKey}:${tituloId}`.slice(0, 120));
 
-  const items = await sequelize.transaction(async (transaction) => {
-    const repetidos = await PagamentoManualFilaItem.findAll({
-      where: { idempotency_key: { [Op.in]: itemKeys } },
-      transaction,
-      lock: transaction.LOCK.UPDATE
-    });
-    if (repetidos.length === tituloIds.length) {
-      if (repetidos.some((item) => (!options.autorizacaoInterna && Number(item.selecionado_por) !== Number(req.user.id)) || !tituloIds.includes(Number(item.titulo_financeiro_id)))) {
-        throw createHttpError(409, 'A chave de envio ja foi utilizada por outra operacao.');
-      }
-      return repetidos;
-    }
-    if (repetidos.length > 0) {
-      throw createHttpError(409, 'A tentativa anterior foi recebida parcialmente. Atualize a consulta antes de reenviar.');
-    }
-
+  const resultado = await sequelize.transaction(async (transaction) => {
+    // Lock do titulo serializa as duas vias; escopo e conferido inclusive no replay.
     const titulos = await TituloFinanceiro.findAll({
       where: { id: { [Op.in]: tituloIds } },
-      include: [{
-        model: FormaPagamentoFinanceira,
-        as: 'formaPagamento',
-        attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'gera_fatura']
-      }],
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-      order: [['id', 'ASC']]
+      include: [{ model: FormaPagamentoFinanceira, as: 'formaPagamento',
+        attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'gera_fatura'] }],
+      transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']]
     });
     if (titulos.length !== tituloIds.length) throw createHttpError(404, 'Um ou mais titulos nao foram encontrados.');
+    for (const titulo of titulos) {
+      if (obrasPermitidas !== null && !obrasPermitidas.includes(Number(titulo.obra_id))) {
+        throw createHttpError(403, `O titulo ${titulo.codigo || titulo.id} nao pertence a uma obra do seu acesso.`);
+      }
+      if (String(titulo.tipo || '').toUpperCase() !== 'PAGAR') {
+        throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao pertence ao Contas a Pagar.`);
+      }
+    }
+    const repetidos = await PagamentoManualFilaItem.findAll({
+      where: { idempotency_key: { [Op.in]: itemKeys } },
+      transaction
+    });
+    if (repetidos.some(item => (!options.autorizacaoInterna && Number(item.selecionado_por) !== Number(req.user.id)) ||
+      !tituloIds.includes(Number(item.titulo_financeiro_id)))) {
+      throw createHttpError(409, 'A chave de envio ja foi utilizada por outra operacao.');
+    }
 
     const existentes = await PagamentoManualFilaItem.findAll({
       where: { titulo_financeiro_id: { [Op.in]: tituloIds }, status: { [Op.in]: ACTIVE_STATUSES } },
-      transaction,
-      lock: transaction.LOCK.UPDATE
+      transaction
     });
-    if (existentes.length > 0) {
-      throw createHttpError(409, 'Um ou mais titulos ja estao na fila de pagamentos. Atualize a consulta e tente novamente.');
-    }
+    // Nao atualiza entradas reutilizadas nem trava fila -> titulo contra a baixa.
+    // A criacao e serializada pelo titulo e protegida pelo indice ativo unico.
+    // Preserva entrada ativa e seus comprovantes/valor/responsavel, mesmo com outra chave.
+    const porTitulo = new Map(repetidos.map(item => [Number(item.titulo_financeiro_id), item]));
+    existentes.forEach(item => porTitulo.set(Number(item.titulo_financeiro_id), item));
+    const novos = titulos.filter(titulo => !porTitulo.has(Number(titulo.id)));
 
     const intentsAtivos = await PaymentIntent.findAll({
       where: {
-        titulo_financeiro_id: { [Op.in]: tituloIds },
+        titulo_financeiro_id: { [Op.in]: novos.map(titulo => titulo.id) },
         status: { [Op.notIn]: PAYMENT_INTENT_INACTIVE_STATUSES }
       },
       attributes: ['titulo_financeiro_id'],
@@ -262,29 +264,14 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       throw createHttpError(409, 'Um ou mais titulos ja possuem pagamento bancario em andamento.');
     }
 
-    if (!options.autorizacaoInterna) {
-      // Nao disputar o mesmo titulo com um dossie digital ativo. Os titulos
-      // estao bloqueados; a leitura dos itens nao inverte a ordem dos locks
-      // usada pela decisao digital (lote/item antes de titulo).
-      const itensDigitais = await PagamentoAutorizacaoItem.findAll({ where: {
-        titulo_financeiro_id: { [Op.in]: tituloIds }, status: { [Op.in]: ['PENDENTE', 'AUTORIZADO'] }
-      }, attributes: ['lote_id', 'status'], transaction });
-      const lotesAtivos = itensDigitais.length ? await PagamentoAutorizacaoLote.findAll({ where: {
-        id: { [Op.in]: itensDigitais.map((item) => item.lote_id) },
-        status: { [Op.in]: ['AGUARDANDO', 'AUTORIZADO'] }, expira_em: { [Op.gt]: new Date() }
-      }, attributes: ['id'], transaction }) : [];
-      if (itensDigitais.some((item) => item.status === 'AUTORIZADO' || lotesAtivos.some((lote) => Number(lote.id) === Number(item.lote_id)))) {
-        throw createHttpError(409, 'Um ou mais titulos possuem dossie digital ativo. Conclua esse fluxo antes do envio direto.');
-      }
+    if (options.autorizacaoInterna && novos.length) {
+      const autorizados = await PagamentoAutorizacaoItem.findAll({ where: {
+        lote_id: Number(options.autorizacaoLoteId), titulo_financeiro_id: { [Op.in]: novos.map(titulo => titulo.id) }, status: 'AUTORIZADO'
+      }, transaction });
+      if (autorizados.length !== novos.length) throw createHttpError(409, 'Um ou mais titulos nao possuem autorizacao digital neste lote.');
     }
 
-    for (const titulo of titulos) {
-      if (obrasPermitidas !== null && !obrasPermitidas.includes(Number(titulo.obra_id))) {
-        throw createHttpError(403, `O titulo ${titulo.codigo || titulo.id} nao pertence a uma obra do seu acesso.`);
-      }
-      if (String(titulo.tipo || '').toUpperCase() !== 'PAGAR') {
-        throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao pertence ao Contas a Pagar.`);
-      }
+    for (const titulo of novos) {
       if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()) || roundCurrency(titulo.valor_saldo) <= 0) {
         throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao possui saldo disponivel para pagamento.`);
       }
@@ -294,7 +281,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       assertTituloDisponivelParaBaixa(titulo);
     }
 
-    const criados = await Promise.all(titulos.map((titulo) => PagamentoManualFilaItem.create({
+    const criados = await Promise.all(novos.map((titulo) => PagamentoManualFilaItem.create({
       titulo_financeiro_id: titulo.id,
       status: 'PENDENTE',
       valor_previsto: roundCurrency(titulo.valor_saldo),
@@ -304,7 +291,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       idempotency_key: `${requestKey}:${titulo.id}`.slice(0, 120)
     }, { transaction })));
 
-    if (!options.autorizacaoInterna) {
+    if (!options.autorizacaoInterna && criados.length) {
       // Falha de auditoria deve reverter tambem a criacao da fila. Nenhum
       // usuario e registrado como decisor digital ou como o proprietario.
       await SecurityEventLog.create({ usuario_id: req.user.id, tipo_evento: 'MANUAL_PAYMENT_QUEUE_PREPARED',
@@ -313,12 +300,16 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
         ip_origem: getRequestIp(req), user_agent: String(req.headers?.['user-agent'] || '').slice(0, 255),
         metadata: { modo: env.paymentOwnerApprovalMode, origem: 'ENVIO_DIRETO',
           ...(req.dev_user_switch ? { dev_user_switch: req.dev_user_switch } : {}),
-          titulos: titulos.map((titulo) => ({ id: Number(titulo.id), saldo: roundCurrency(titulo.valor_saldo), vencimento: titulo.data_vencimento })) }
+          titulos: novos.map((titulo) => ({ id: Number(titulo.id), saldo: roundCurrency(titulo.valor_saldo), vencimento: titulo.data_vencimento })) }
       }, { transaction });
     }
-    await atualizarAnaliseAoEnfileirar(titulos, transaction);
+    criados.forEach(item => porTitulo.set(Number(item.titulo_financeiro_id), item));
+    const itens = titulos.map(titulo => porTitulo.get(Number(titulo.id)));
+    await sincronizarDossiesComFila({ req, itensFila: itens, transaction,
+      origem: options.autorizacaoInterna ? 'AUTORIZACAO_DIGITAL' : 'ENVIO_DIRETO' });
+    await atualizarAnaliseAoEnfileirar(novos, transaction);
 
-    for (const solicitacaoId of [...new Set(titulos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))].sort((a, b) => a - b)) {
+    for (const solicitacaoId of [...new Set(novos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))].sort((a, b) => a - b)) {
       const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
       if (!solicitacao) continue;
       await encaminharSolicitacaoParaFinanceiroAoEnfileirar({
@@ -327,8 +318,11 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
         transaction
       });
     }
-    return criados;
+    const processados = itens.filter(item => !ACTIVE_STATUSES.includes(item.status)).length;
+    return { itens, criados: criados.length, jaNaFila: itens.length - criados.length - processados, processados };
   });
+
+  const items = resultado.itens;
 
   await registrarEventoSeguranca({
     req,
@@ -340,7 +334,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
     descricao: 'Titulos encaminhados para a fila de pagamentos',
     metadata: {
       titulo_ids: tituloIds,
-      quantidade: items.length,
+      quantidade: items.length, criados: resultado.criados, ja_na_fila: resultado.jaNaFila, ja_processados: resultado.processados,
       autorizacao_lote_id: options.autorizacaoLoteId || null,
       origem: options.autorizacaoInterna ? 'AUTORIZACAO_DIGITAL' : 'ENVIO_DIRETO'
     }
@@ -348,6 +342,9 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
 
   return {
     quantidade: items.length,
+    criados: resultado.criados,
+    ja_na_fila: resultado.jaNaFila,
+    ja_processados: resultado.processados,
     ids: items.map((item) => item.id),
     itens: items.map((item) => ({ id: Number(item.id), titulo_financeiro_id: Number(item.titulo_financeiro_id) }))
   };

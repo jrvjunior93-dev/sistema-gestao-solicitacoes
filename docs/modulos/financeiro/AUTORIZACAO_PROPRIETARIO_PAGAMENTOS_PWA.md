@@ -251,9 +251,25 @@ Regra expressamente aprovada em 07/10/2026: o envio direto exige apenas a
 permissao da fila, em qualquer modo. Nao exige preparar autorizacao nem
 declarar autorizacao em papel. Mantem a confirmacao habitual e registra
 auditoria obrigatoria na mesma transacao, sem fabricar assinatura digital.
-Dossie ativo impede envio concorrente do mesmo titulo; concluir o fluxo
-digital antes de reutilizar a via direta. Escopo, saldo, bloqueios materiais
-e idempotencia continuam obrigatorios.
+Dossie ativo nao impede a via direta. Ambos os caminhos consultam a fila
+ativa do titulo e reutilizam sua entrada sem repetir o envio. Na mesma
+transacao, o item pendente ou autorizado do dossie passa a `ENFILEIRADO`
+com `fila_item_id`, e o evento identifica envio direto ou autorizacao
+digital. A via direta nao preenche decisor, data de decisao ou assinatura.
+Escopo, saldo, bloqueios materiais e idempotencia continuam obrigatorios.
+
+Os locks seguem titulo, lote e itens, com titulos ordenados por ID.
+O calculo do status do lote usa leitura corrente bloqueada dos itens,
+evitando que um snapshot anterior preserve pendencias ja encerradas.
+Fila e atualizacao do dossie fazem rollback juntas se a auditoria falhar.
+Um challenge obtido antes de um envio direto nao pode decidir novamente
+um item ja enfileirado. Reenvio com a mesma chave apos processamento nao
+reabre a entrada; uma entrada ativa mais recente prevalece no reuso.
+
+Na tela, `ENFILEIRADO` aparece como `Na fila de pagamento`, com referencia
+da entrada. Atualizar, foco da janela e consulta periodica de 30 segundos
+reconciliam pendencias sem reenvios nem novas decisoes. Consultas antigas
+nao podem substituir uma resposta mais recente.
 
 O serviço interno deve reutilizar locks de linha, transação, validações financeiras e
 idempotência existentes. Não duplicar a regra de elegibilidade em outro controller.

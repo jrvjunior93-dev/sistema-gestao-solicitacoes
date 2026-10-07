@@ -15,6 +15,7 @@ import {
   HiOutlineXMark
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { mensagemEnvioFila } from '../utils/filaPagamentoMensagem';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import StatusBadge from '../components/StatusBadge';
 import {
@@ -2023,7 +2024,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         : await enviarTitulosFilaPagamentos(tituloIds, chave);
       avisar.sucesso(requerAutorizacao
         ? `Lote ${result?.codigo || ''} enviado ao proprietário para autorização.`
-        : `${result?.quantidade || selectedTitulosBaixaveis.length} título(s) enviado(s) para a Fila de Pagamentos.`);
+        : mensagemEnvioFila(result, selectedTitulosBaixaveis.length));
       const data = await getTitulosFinanceiros({
         ...compactFilters(appliedFilters),
         ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),

@@ -11,14 +11,17 @@ const root = path.resolve(__dirname, '..');
 const Op = { in: '$in', notIn: '$notIn', gt: '$gt' };
 const PREPARE = 'financeiro.autorizacoes_pagamento.preparar';
 const QUEUE = 'financeiro.fila_pagamentos.preparar';
+const DECIDE = 'financeiro.autorizacoes_pagamento.decidir';
 const user = { id: 2, grants: [PREPARE, QUEUE] };
 const req = { user, headers: {}, ip: '127.0.0.1' };
-let state, scope = null, auditFails = false;
-const env = { paymentOwnerApprovalMode: 'PILOT', paymentOwnerApprovalTtlHours: 24 };
+let state, scope = null, auditFails = false, eventFails = false, serial = false, challenge = null;
+let transactionTail = Promise.resolve();
+const locks = [];
+const env = { paymentOwnerApprovalMode: 'PILOT', paymentOwnerApprovalTtlHours: 24, webauthnRpId: 'qa.invalid', webauthnOrigins: ['https://qa.invalid'] };
 const models = {};
 const names = ['ConfiguracaoSistema', 'TituloFinanceiro', 'Solicitacao', 'Historico', 'StatusArea', 'SecurityEventLog',
   'PagamentoManualFilaItem', 'PagamentoAutorizacaoItem', 'PagamentoAutorizacaoLote', 'PagamentoAutorizacaoEvento',
-  'Anexo', 'PagamentoAutorizador', 'WebauthnCredential', 'PaymentIntent'];
+  'Anexo', 'PagamentoAutorizacaoDocumento', 'PagamentoAutorizador', 'WebauthnCredential', 'PaymentIntent'];
 function matches(row, where = {}) {
   return Object.entries(where).every(([key, value]) => value && typeof value === 'object' && !(value instanceof Date)
     ? Object.entries(value).every(([op, candidate]) => op === '$in' ? candidate.includes(row[key])
@@ -32,13 +35,28 @@ function instance(row) {
   } };
 }
 for (const name of names) models[name] = {
-  async findAll(options = {}) { return state[name].filter((row) => matches(row, options.where)).map(instance); },
+  async findAll(options = {}) {
+    if (options.lock) locks.push(name);
+    const rows = state[name].filter((row) => matches(row, options.where));
+    if (options.order) rows.sort((a, b) => {
+      for (const [field, direction] of options.order) {
+        const delta = a[field] === b[field] ? 0 : (a[field] < b[field] ? -1 : 1);
+        if (delta) return direction === 'DESC' ? -delta : delta;
+      }
+      return 0;
+    });
+    return rows.map(instance);
+  },
   async findOne(options) { return (await this.findAll(options))[0] || null; },
-  async findByPk(id) { const row = state[name].find((item) => item.id === Number(id)); return row ? instance(row) : null; },
+  async findByPk(id, options = {}) {
+    if (options.lock) locks.push(name);
+    const row = state[name].find((item) => item.id === Number(id)); return row ? instance(row) : null;
+  },
   async count(options) { return (await this.findAll(options)).length; },
   async create(values, options) {
     assert(options.transaction, `${name} sem transacao`);
     if (name === 'SecurityEventLog' && auditFails) throw new Error('Auditoria indisponivel');
+    if (name === 'PagamentoAutorizacaoEvento' && eventFails) throw new Error('Evento indisponivel');
     const row = { id: state[name].length + 1, ...values }; state[name].push(row); return instance(row);
   },
   async update(values, options) {
@@ -46,9 +64,16 @@ for (const name of names) models[name] = {
   }
 };
 models.sequelize = { async transaction(callback) {
+  let liberar;
+  if (serial) {
+    const anterior = transactionTail;
+    transactionTail = new Promise(resolve => { liberar = resolve; });
+    await anterior;
+  }
   const before = structuredClone(state);
   try { return await callback({ LOCK: { UPDATE: 'UPDATE' } }); }
   catch (error) { state = before; throw error; }
+  finally { liberar?.(); }
 } };
 const services = new Map();
 const stubs = {
@@ -59,18 +84,26 @@ const stubs = {
     if (title.bloqueio_retorno_obra) throw Object.assign(new Error('Retorno pendente'), { statusCode: 409 });
   } }, './s3': {}, './fileAccessService': {},
   './securityLogService': { registrarEventoSeguranca: async () => {}, getRequestIp: () => req.ip },
-  './webauthnChallengeStore': {},
+  './webauthnChallengeStore': { consumeChallenge: async () => { const value = challenge; challenge = null; return value; } },
   './webPushService': { isConfigured: () => false, hasActiveSubscription: async () => false, sendPendingAuthorizationNotification: async () => {} },
   './setorCapabilityService': { findSetorByCapability: async () => ({}), resolveSetorPersistenciaValue: (_, fallback) => fallback }
 };
 function load(name) {
   if (services.has(name)) return services.get(name);
-  const sandbox = { module: { exports: {} }, console, Date, Buffer, Uint8Array, require(dependency) {
+  const sandbox = { module: { exports: {} }, console, Date, Buffer, Uint8Array,
+    __webauthn: { verifyAuthenticationResponse: async () => ({ verified: true, authenticationInfo: { newCounter: 1 } }) },
+    require(dependency) {
     if (Object.hasOwn(stubs, dependency)) return stubs[dependency];
     if (dependency.startsWith('./')) return load(dependency.slice(2));
     throw new Error(`Dependencia nao simulada: ${dependency}`);
   } };
-  vm.runInNewContext(fs.readFileSync(path.join(root, 'src/services', `${name}.js`), 'utf8'), sandbox, { filename: name });
+  let source = fs.readFileSync(path.join(root, 'src/services', `${name}.js`), 'utf8');
+  // Somente transporte/verificador biometrico simulado; regras da decisao sao reais.
+  if (name === 'pagamentoAutorizacaoService') {
+    assert(source.includes("return import('@simplewebauthn/server');"));
+    source = source.replace("return import('@simplewebauthn/server');", 'return __webauthn;');
+  }
+  vm.runInNewContext(source, sandbox, { filename: name });
   services.set(name, sandbox.module.exports); return sandbox.module.exports;
 }
 const analysis = load('analiseProprietarioService');
@@ -81,7 +114,8 @@ const policy = load('paymentOwnerApprovalPolicy');
 const { validateManualPaymentQueueCreateBody } = require('../src/validators/paymentValidators');
 const analysisStatus = analysis.STATUS_ANALISE_PROPRIETARIO;
 function reset() {
-  state = Object.fromEntries(names.map((name) => [name, []])); scope = null; auditFails = false; env.paymentOwnerApprovalMode = 'PILOT';
+  state = Object.fromEntries(names.map((name) => [name, []])); scope = null; auditFails = false; eventFails = false;
+  serial = false; challenge = null; locks.length = 0; env.paymentOwnerApprovalMode = 'PILOT';
   state.TituloFinanceiro = [
     { id: 1, codigo: 'TIT-1', tipo: 'PAGAR', status: 'ABERTO', obra_id: 7, valor_saldo: 100, solicitacao_id: 6 },
     { id: 2, codigo: 'TIT-2', tipo: 'PAGAR', status: 'PARCIAL', obra_id: 7, valor_saldo: 50, solicitacao_id: 6 },
@@ -125,7 +159,10 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
   assert(lot.id); assert.equal(state.Solicitacao[0].status_global, analysisStatus); assert.equal(state.PagamentoAutorizacaoItem.length, 2);
   await digital.createBatch(req, { titulo_ids: [1, 2], idempotency_key: 'digital-1' });
   assert.equal(state.PagamentoAutorizacaoLote.length, 1); assert.equal(state.Historico.length, 1);
-  await assert.rejects(send(), { statusCode: 409 }); assert.equal(state.PagamentoManualFilaItem.length, 0);
+  await send(); assert.equal(state.PagamentoManualFilaItem.length, 2);
+  assert.equal(state.PagamentoAutorizacaoLote[0].status, 'CONCLUIDO');
+  assert(state.PagamentoAutorizacaoItem.every(item => item.status === 'ENFILEIRADO' && item.fila_item_id));
+  assert(!state.PagamentoAutorizacaoLote[0].decidido_por, 'Envio direto nao fabrica decisao do proprietario');
   reset(); scope = [8]; await assert.rejects(digital.createBatch(req, { titulo_ids: [1] }), { statusCode: 403 });
   assert.equal(state.PagamentoAutorizacaoLote.length, 0);
   reset(); await digital.createBatch({ ...req, user: { id: 4, grants: [PREPARE] } }, { titulo_ids: [1] });
@@ -155,7 +192,9 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
     assert.equal(audit.usuario_id, 2); assert.equal(audit.metadata.modo, mode); assert.equal(audit.metadata.titulos[0].saldo, 100);
     assert.equal(audit.metadata.origem, 'ENVIO_DIRETO');
     await send(); assert.equal(state.PagamentoManualFilaItem.length, 2); assert.equal(state.SecurityEventLog.length, 2);
-    await assert.rejects(send(user, 'direct-nova'), { statusCode: 409 });
+    const replay = await send(user, 'direct-nova');
+    assert.equal(replay.criados, 0); assert.equal(replay.ja_na_fila, 2);
+    assert.equal(state.PagamentoManualFilaItem.length, 2);
     for (const grants of [[PREPARE], []]) {
       await assert.rejects(send({ id: 3, grants }), { statusCode: 403 });
     }
@@ -175,5 +214,94 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
     assert.equal(policy.resolvePaymentQueueGate({ mode, pilotParticipant: true, directQueuePermission: true }), 'MANUAL_QUEUE_ALLOWED');
   }
   assert.equal(policy.resolvePaymentQueueGate({ mode: 'PILOT', pilotParticipant: true }), 'AUTHORIZATION_REQUIRED');
-  console.log('OK: analise manual/digital, setor preservado, titulo avulso, fila em quatro modos, permissoes independentes, escopo, auditoria atomica e idempotencia. Sem banco ou rede.');
+
+  reset();
+  let lote = await digital.createBatch(req, { titulo_ids: [1, 2] });
+  let result = await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: 'primeiro' });
+  assert.equal(result.criados, 1); assert.equal(state.PagamentoAutorizacaoLote[0].status, 'AGUARDANDO');
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
+  assert.equal(state.PagamentoAutorizacaoItem[1].status, 'PENDENTE');
+  result = await send(user, 'misto'); assert.equal(result.criados, 1); assert.equal(result.ja_na_fila, 1);
+  assert.equal(state.PagamentoAutorizacaoLote[0].status, 'CONCLUIDO');
+  assert.equal(state.PagamentoAutorizacaoEvento.filter(event => event.tipo === 'ITEM_ENFILEIRADO').length, 2);
+  assert.equal(state.PagamentoAutorizacaoEvento[1].dados_json.origem, 'ENVIO_DIRETO');
+  await send(user, 'terceiro'); assert.equal(state.PagamentoAutorizacaoEvento.length, 3, 'Reenvio nao duplica eventos do dossie');
+  let hashAnterior = null;
+  for (const event of state.PagamentoAutorizacaoEvento) {
+    assert.equal(event.hash_anterior, hashAnterior);
+    const material = { lote_id: Number(event.lote_id), item_id: event.item_id ? Number(event.item_id) : null,
+      usuario_id: event.usuario_id ? Number(event.usuario_id) : null, tipo: event.tipo, dados: event.dados_json,
+      criado_em: new Date(event.createdAt).toISOString(), hash_anterior: hashAnterior };
+    assert.equal(event.evento_hash, digital.sha256(material), 'Extracao do helper preserva o contrato de hash dos eventos');
+    hashAnterior = event.evento_hash;
+  }
+  scope = [8]; await assert.rejects(send(user, 'terceiro'), { statusCode: 403 });
+  assert.equal(state.PagamentoManualFilaItem.length, 2, 'Replay respeita escopo atual');
+
+  reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] });
+  state.PagamentoAutorizacaoItem.forEach(item => { item.status = 'AUTORIZADO'; });
+  state.PagamentoAutorizacaoLote[0].status = 'AUTORIZADO';
+  await digital.enqueueAuthorizedItems(req, lote.id);
+  result = await send(user, 'depois-digital');
+  assert.equal(result.criados, 0); assert.equal(result.ja_na_fila, 2);
+  assert.equal(state.PagamentoManualFilaItem.length, 2);
+  assert(state.PagamentoAutorizacaoEvento.filter(event => event.tipo === 'ITEM_ENFILEIRADO').every(event => event.dados_json.origem === 'AUTORIZACAO_DIGITAL'));
+
+  // Simula a janela legada: fila existe, item continua AUTORIZADO.
+  state.PagamentoAutorizacaoItem[0].status = 'AUTORIZADO';
+  state.PagamentoAutorizacaoLote[0].status = 'AUTORIZADO';
+  await digital.enqueueAuthorizedItems(req, lote.id);
+  assert.equal(state.PagamentoManualFilaItem.length, 2);
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
+  assert.equal(state.PagamentoAutorizacaoLote[0].status, 'CONCLUIDO');
+
+  reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] }); eventFails = true;
+  await assert.rejects(send(), /Evento/);
+  assert.equal(state.PagamentoManualFilaItem.length, 0, 'Falha de evento reverte criacao de fila');
+  assert(state.PagamentoAutorizacaoItem.every(item => item.status === 'PENDENTE'));
+  assert.equal(state.PagamentoAutorizacaoLote[0].status, 'AGUARDANDO');
+  eventFails = false; await send();
+  const fila = state.PagamentoManualFilaItem[0];
+  fila.status = 'BAIXADO'; fila.comprovante_hash = 'preservar'; state.TituloFinanceiro[0].status = 'QUITADO';
+  result = await send(); assert.equal(result.ja_processados, 1); assert.equal(result.criados, 0);
+  assert.equal(state.PagamentoManualFilaItem[0].comprovante_hash, 'preservar');
+  assert.equal(state.PagamentoManualFilaItem[0].status, 'BAIXADO');
+
+  reset(); await digital.createBatch(req, { titulo_ids: [1, 2] });
+  await assert.rejects(queue.enfileirarTitulosAutorizados(req, { titulo_ids: [1] }, 1), { statusCode: 409 });
+  assert.equal(state.PagamentoManualFilaItem.length, 0, 'Pendencia nao e autorizacao digital');
+  serial = true;
+  const parallel = await Promise.all([send(user, 'concorrente-1'), send(user, 'concorrente-2')]);
+  assert.equal(parallel.reduce((sum, value) => sum + value.criados, 0), 2);
+  assert.equal(state.PagamentoManualFilaItem.length, 2, 'Chamadas simultaneas com transacoes serializadas nao duplicam');
+
+  // Decisao real com biometria/challenge simulados, incluindo ordem dos locks.
+  reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] });
+  state.PagamentoAutorizador.push({ id: 1, usuario_id: 31, ativo: true });
+  state.WebauthnCredential.push({ id: 1, usuario_id: 31, credential_id: 'qa-key', public_key: 'AA==', ativo: true, counter: 0 });
+  const diretor = { user: { id: 31, grants: [DECIDE] }, headers: {} };
+  const decisoes = [{ item_id: 1, decisao: 'AUTORIZAR', motivo: null }, { item_id: 2, decisao: 'REJEITAR', motivo: 'Ajustar' }];
+  challenge = { challenge: 'qa', decisions_hash: digital.sha256(decisoes), dossie_hash: lote.dossie_hash };
+  locks.length = 0;
+  await digital.decideBatch(diretor, lote.id, { decisoes, credential: { id: 'qa-key' } });
+  assert(locks.indexOf('TituloFinanceiro') < locks.indexOf('PagamentoAutorizacaoLote'), 'Decisao trava titulo antes do lote');
+  assert.equal(state.PagamentoManualFilaItem.length, 1);
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
+  assert.equal(state.PagamentoAutorizacaoItem[1].status, 'REJEITADO');
+  assert.equal(state.PagamentoAutorizacaoLote[0].status, 'CONCLUIDO');
+  result = await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: 'direto-apos-decisao' });
+  assert.equal(result.criados, 0); assert.equal(state.PagamentoManualFilaItem.length, 1);
+
+  // Challenge obtido antes do envio direto nao pode decidir um item ja enfileirado.
+  reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] });
+  state.PagamentoAutorizador.push({ id: 1, usuario_id: 31, ativo: true });
+  state.WebauthnCredential.push({ id: 1, usuario_id: 31, credential_id: 'qa-key', public_key: 'AA==', ativo: true, counter: 0 });
+  await queue.enfileirarTitulos(req, { titulo_ids: [1] });
+  const antiga = [{ item_id: 1, decisao: 'AUTORIZAR', motivo: null }];
+  challenge = { challenge: 'qa', decisions_hash: digital.sha256(antiga), dossie_hash: lote.dossie_hash };
+  await assert.rejects(digital.decideBatch(diretor, lote.id, { decisoes: antiga, credential: { id: 'qa-key' } }), { statusCode: 409 });
+  assert.equal(state.PagamentoManualFilaItem.length, 1);
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
+  assert.equal(state.PagamentoAutorizacaoEvento.filter(event => event.tipo === 'ITEM_AUTORIZADO').length, 0);
+  console.log('OK: analise, convergencia direta/digital, mistos, replay, lote parcial/concluido, escopo, auditoria atomica, decisao obsoleta e locks. Models/biometria simulados; sem banco ou rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

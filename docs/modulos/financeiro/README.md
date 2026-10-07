@@ -160,7 +160,24 @@ Rejeicao ou invalidacao digital sinaliza ajuste; estados finais sao preservados.
 
 A camada digital usa PWA, passkey, dossie isolado, segregacao entre preparador
 e autorizador, revalidacao material e reuso transacional da fila atual.
-Dossie ativo impede envio concorrente do mesmo titulo pela via direta.
+Dossie ativo nao impede o envio direto pela permissao da fila. Os dois
+caminhos reutilizam a entrada ativa do titulo, sem duplicar fila, baixa ou
+comprovantes. Na mesma transacao do envio, o item do dossie recebe
+`ENFILEIRADO` e `fila_item_id`; a auditoria distingue `ENVIO_DIRETO` de
+`AUTORIZACAO_DIGITAL`, sem atribuir uma decisao por passkey ao envio direto.
+Lotes com pendencias continuam `AGUARDANDO`; sem pendencias nem itens
+autorizados por enfileirar, ficam `CONCLUIDO` quando existe item na fila.
+
+A tela de autorizacoes mostra `Na fila de pagamento` e a referencia da fila.
+Atualiza pelo botao Atualizar, ao retornar a janela e a cada 30 segundos
+enquanto visivel e sem operacao em andamento. A atualizacao preserva as
+desmarcacoes dos itens ainda pendentes e descarta respostas antigas. O aviso
+do envio direto informa quantos titulos foram criados, ja estavam na fila
+ou ja foram processados no replay da mesma chave, sem anunciar novo envio.
+
+Validacoes isoladas: `npm run test:fila-autorizacao-convergencia` no backend
+e `npm run test:fila-autorizacao-convergencia-ui` no frontend (Playwright e
+Chrome). Nao requer migration, variavel ou permissao nova.
 O contrato, configuracoes e limites estao em
 [`AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`](./AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md).
 

@@ -8,7 +8,6 @@ const {
   Obra,
   PagamentoAutorizador,
   PagamentoAutorizacaoDocumento,
-  PagamentoAutorizacaoEvento,
   PagamentoAutorizacaoItem,
   PagamentoAutorizacaoLote,
   Parceiro,
@@ -22,6 +21,7 @@ const {
 const { userHasNominalAreaPermission, getFinanceiroObraScopeIds } = require('./authorizationService');
 const { marcarAnaliseProprietario, registrarAnaliseRecusada } = require('./analiseProprietarioService');
 const { enfileirarTitulosAutorizados } = require('./pagamentoManualFilaService');
+const { sha256, recordEvent } = require('./pagamentoAutorizacaoEventosService');
 const { copyStorageObject, getPresignedUrl } = require('./s3');
 const { saveChallenge, consumeChallenge } = require('./webauthnChallengeStore');
 const { isConfigured: isPushConfigured, saveSubscription, removeSubscription, hasActiveSubscription, sendPendingAuthorizationNotification } = require('./webPushService');
@@ -40,21 +40,6 @@ function httpError(statusCode, message, code) {
   error.statusCode = statusCode;
   if (code) error.code = code;
   return error;
-}
-
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === 'object') {
-    return Object.keys(value).sort().reduce((result, key) => {
-      result[key] = stable(value[key]);
-      return result;
-    }, {});
-  }
-  return value;
-}
-
-function sha256(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
 function roundCurrency(value) {
@@ -130,25 +115,6 @@ async function capabilitiesForUser(user) {
     passkey_count: passkeyCount,
     push_subscribed: pushSubscribed
   };
-}
-
-async function recordEvent({ loteId, itemId = null, userId = null, type, data = null, transaction }) {
-  const previous = await PagamentoAutorizacaoEvento.findOne({
-    where: { lote_id: loteId }, order: [['id', 'DESC']], transaction, lock: transaction?.LOCK?.UPDATE
-  });
-  const createdAt = new Date();
-  const eventData = { lote_id: Number(loteId), item_id: itemId ? Number(itemId) : null, usuario_id: userId ? Number(userId) : null, tipo: type, dados: data, criado_em: createdAt.toISOString(), hash_anterior: previous?.evento_hash || null };
-  return PagamentoAutorizacaoEvento.create({
-    lote_id: loteId,
-    item_id: itemId,
-    usuario_id: userId,
-    tipo: type,
-    dados_json: data,
-    hash_anterior: previous?.evento_hash || null,
-    evento_hash: sha256(eventData),
-    createdAt,
-    updatedAt: createdAt
-  }, { transaction });
 }
 
 function titleInclude() {
@@ -479,6 +445,14 @@ async function decideBatch(req, lotId, payload = {}) {
       logWebauthnVerificationFailure({ req, lotId, error: null, reason: 'NOT_VERIFIED' });
       throw httpError(403, 'Confirmacao biometrica invalida.', 'PAYMENT_OWNER_WEBAUTHN_NOT_VERIFIED');
     }
+    // Igual ao envio direto/criacao: titulos em ordem estavel antes de lote/item.
+    // Releitura bloqueada dos itens abaixo rejeita uma decisao que ficou obsoleta.
+    stage = 'TITLES_LOCK';
+    const candidatos = await PagamentoAutorizacaoItem.findAll({ where: {
+      lote_id: lotId, id: { [Op.in]: decisions.map(item => item.item_id) }
+    }, attributes: ['titulo_financeiro_id'], transaction });
+    await TituloFinanceiro.findAll({ where: { id: { [Op.in]: candidatos.map(item => Number(item.titulo_financeiro_id)) } },
+      attributes: ['id'], transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
     stage = 'LOT_LOCK';
     const currentLot = await PagamentoAutorizacaoLote.findByPk(lotId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!currentLot || currentLot.status !== 'AGUARDANDO' || new Date(currentLot.expira_em).getTime() <= Date.now()) throw httpError(409, 'Lote indisponivel ou expirado.');
@@ -524,11 +498,11 @@ async function decideBatch(req, lotId, payload = {}) {
     stage = 'CREDENTIAL_UPDATE';
     await credential.update({ counter: Number(verification.authenticationInfo.newCounter || credential.counter), ultimo_uso_em: new Date() }, { transaction });
     stage = 'LOT_STATUS';
-    const [pending, authorized, enqueued] = await Promise.all([
-      PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'PENDENTE' }, transaction }),
-      PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'AUTORIZADO' }, transaction }),
-      PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'ENFILEIRADO' }, transaction })
-    ]);
+    const currentItems = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId },
+      transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
+    const pending = currentItems.some(item => item.status === 'PENDENTE');
+    const authorized = currentItems.filter(item => item.status === 'AUTORIZADO').length;
+    const enqueued = currentItems.some(item => item.status === 'ENFILEIRADO');
     shouldEnqueue = authorized > 0;
     const nextStatus = pending ? 'AGUARDANDO' : (authorized ? 'AUTORIZADO' : (enqueued ? 'CONCLUIDO' : 'REJEITADO'));
     await currentLot.update({ status: nextStatus, decidido_por: req.user.id, decidido_em: new Date() }, { transaction });
@@ -556,20 +530,7 @@ async function enqueueAuthorizedItems(req, lotId, options = {}) {
   if (!authorized.length) return getBatch(req, lotId);
   const titleIds = authorized.map((item) => Number(item.titulo_financeiro_id));
   const key = `owner-auth-${lotId}-${sha256(titleIds).slice(0, 24)}`;
-  const queued = await enfileirarTitulosAutorizados(req, { titulo_ids: titleIds, idempotency_key: key }, Number(lotId));
-  await sequelize.transaction(async (transaction) => {
-    for (const queuedItem of queued.itens || []) {
-      const item = await PagamentoAutorizacaoItem.findOne({ where: { lote_id: lotId, titulo_financeiro_id: queuedItem.titulo_financeiro_id }, transaction, lock: transaction.LOCK.UPDATE });
-      if (!item) continue;
-      await item.update({ status: 'ENFILEIRADO', fila_item_id: queuedItem.id }, { transaction });
-      await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_ENFILEIRADO', data: { fila_item_id: queuedItem.id }, transaction });
-    }
-    const [pending, enqueued] = await Promise.all([
-      PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'PENDENTE' }, transaction }),
-      PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'ENFILEIRADO' }, transaction })
-    ]);
-    await PagamentoAutorizacaoLote.update({ status: pending ? 'AGUARDANDO' : (enqueued ? 'CONCLUIDO' : 'REJEITADO') }, { where: { id: lotId }, transaction });
-  });
+  await enfileirarTitulosAutorizados(req, { titulo_ids: titleIds, idempotency_key: key }, Number(lotId));
   return getBatch(req, lotId);
 }
 
