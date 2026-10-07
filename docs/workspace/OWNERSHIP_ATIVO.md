@@ -2061,3 +2061,10 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Reservados: backend/src/services/tituloFinanceiroService.js, frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx, scripts e fixtures de validacao desta regra, docs/modulos/financeiro/README.md, changelog e handoff correspondente.
 - Escopo: permitir titulo sem cartao informado somente na geracao pela solicitacao; preservar baixa automatica com cartao e exigencia do cartao na baixa efetiva. Preservar alteracoes pendentes de recargas e auditorias. Sem banco real, migration, commit, push ou deploy.
 - Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-cartao-opcional-titulo-solicitacao.md. Publicacao e homologacao integrada pendentes.
+
+## Solicitacao no relatorio de titulos 2026-10-07
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: backend/src/services/tituloFinanceiroRelatorioPdfService.js, backend/scripts/validarRelatorioTitulosSolicitacao.js, backend/package.json, docs/modulos/financeiro/README.md e handoff desta tarefa.
+- Escopo: coluna Solicitacao imediatamente apos Titulo no PDF, com codigo real da origem; preservar filtros, acesso, totais e fluxos financeiros. Sem banco real, migration, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-relatorio-titulos-solicitacao.md. PDF sintetico inspecionado em quatro paginas; sem publicacao ou escrita em banco.

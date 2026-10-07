@@ -13,6 +13,18 @@ Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, 
 - status e saldo derivam dos movimentos ativos;
 - edicao de titulo movimentado possui restricoes e auditoria.
 
+## Relatorio PDF de titulos
+
+O botao Gerar relatorio em Contas a Pagar usa `GET /financeiro/titulos/relatorio.pdf`
+com os filtros atuais e o escopo financeiro autorizado, incluindo todas as paginas
+da consulta. A coluna Solicitacao fica imediatamente apos Titulo e mostra
+`solicitacao.codigo` (por exemplo, `SOL-6240`), nunca o ID interno. Sem codigo
+vinculado, mostra `-`. O renderer compartilhado de Contas a Receber segue a mesma
+ordem. Totais, datas e filtros permanecem inalterados.
+
+Validacao isolada: `npm run test:relatorio-titulos-solicitacao` no backend.
+Nao requer migration ou nova permissao.
+
 ## Cartao na geracao pela solicitacao
 
 Na aba Financeiro dos detalhes da solicitacao, o cartao utilizado e opcional

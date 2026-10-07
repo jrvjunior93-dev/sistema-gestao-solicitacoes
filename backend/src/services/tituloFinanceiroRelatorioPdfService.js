@@ -228,9 +228,10 @@ function drawSummary(doc, summary) {
 
 const TABLE_COLUMNS = [
   { key: 'titulo', label: 'TITULO', width: 68, align: 'left' },
-  { key: 'credor', label: 'CREDOR / DOCUMENTO', width: 142, align: 'left' },
-  { key: 'obra', label: 'OBRA', width: 105, align: 'left' },
-  { key: 'categoria', label: 'CATEGORIA', width: 100, align: 'left' },
+  { key: 'solicitacao', label: 'SOLICITACAO', width: 62, align: 'left' },
+  { key: 'credor', label: 'CREDOR / DOCUMENTO', width: 128, align: 'left' },
+  { key: 'obra', label: 'OBRA', width: 99, align: 'left' },
+  { key: 'categoria', label: 'CATEGORIA', width: 95, align: 'left' },
   { key: 'emissao', label: 'EMISSAO', width: 58, align: 'center' },
   { key: 'vencimento', label: 'VENCIMENTO', width: 64, align: 'center' },
   { key: 'status', label: 'STATUS', width: 61, align: 'left' },
@@ -256,6 +257,7 @@ function rowData(titulo) {
   const documento = truncate(titulo?.parceiro?.cpf_cnpj || titulo?.numero_documento, 20);
   return {
     titulo: truncate(getTituloCodigo(titulo), 14),
+    solicitacao: normalizeText(titulo?.solicitacao?.codigo),
     credor: `${credor}\n${documento}`,
     obra: truncate(titulo?.obra?.nome || 'Sem obra', 21),
     categoria: truncate(getCategoriaNomeRelatorio(titulo?.categoriaFinanceira), 20),
