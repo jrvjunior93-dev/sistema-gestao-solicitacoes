@@ -500,10 +500,8 @@ module.exports = {
 
   async createCredorCompraDireta(req, res) {
     try {
-      // COMPRAS, e nao contratos: a exigencia de nome fantasia e representante legal (23/08) fica
-      // DESLIGADA aqui porque o formulario de compra direta e do outro agente e ainda nao tem esses
-      // campos. Ligar sem o campo existir derrubaria o cadastro rapido de fornecedor dele.
-      // Registrado no PROTOCOLO-AGENTES-PARALELOS para ser completado do lado de Compras.
+      // Cadastro rapido preserva nome fantasia opcional. Representante legal
+      // e opcional em todo cadastro geral, independentemente deste endpoint.
       const parceiro = await criarParceiro({
         ...req.body,
         fornecedor: true,

@@ -3083,6 +3083,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             form={novoCredor}
             onChange={(campo, valor) => setNovoCredor(atual => ({ ...atual, [campo]: valor }))}
             obrigatorio={false}
+            mostrarRepresentante={false}
             disabled={salvandoCredor}
           />
         </div>

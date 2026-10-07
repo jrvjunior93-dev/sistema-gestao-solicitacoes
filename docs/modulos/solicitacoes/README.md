@@ -27,6 +27,19 @@ Solicitacoes e o hub operacional entre usuarios, setores, obras, parceiros, cont
 - arquivamento e individual por usuario e nao altera o registro global;
 - alteracoes de status, envio e automacao geram historico.
 
+## Cadastro de credor e favorecido
+
+Nome e CPF do representante legal sao opcionais no cadastro geral, inclusive
+nos detalhes da solicitacao. CPF preenchido deve ser valido. Na Nova
+Solicitacao, o modal de credor nao exibe nome, CPF ou cargo do representante;
+nome fantasia continua disponivel e obrigatorio para nova PJ no cadastro
+completo. Endereco, primeira chave PIX, permissoes e configuracao do cadastro
+mantem suas regras. O modal rapido de favorecido permanece sem representante.
+
+A qualificacao obrigatoria pertence ao fluxo proprio do contrato acima do
+limite juridico configurado. Ocultar o cadastro do representante nao apaga
+informacoes existentes nem dispensa essa validacao contratual.
+
 ## Anexos removidos do historico
 
 Ao remover um anexo, a linha original fica preservada para auditoria, mas

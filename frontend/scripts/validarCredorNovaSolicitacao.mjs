@@ -55,12 +55,16 @@ assert.deepEqual(umaChave.modalAberto, [false]);
 const empresa = { cpf_cnpj: '04.252.011/0001-10', nome: 'Empresa de teste',
   nome_fantasia: 'Fantasia de teste', representante_nome: 'Representante de teste',
   representante_cpf: '529.982.247-25', representante_cargo: 'Socio' };
-for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf']) {
+for (const campo of ['nome_fantasia']) {
   const incompleto = formulario({ ...empresa, [campo]: ' ' });
   await incompleto.executar();
   assert.equal(incompleto.payloads.length, 0, `PJ deve exigir ${campo} antes do envio.`);
   assert.equal(incompleto.avisos.length, 1);
 }
+const pjSemRepresentante = formulario({ ...empresa, representante_nome: '', representante_cpf: '', representante_cargo: '' });
+await pjSemRepresentante.executar();
+assert.deepEqual(pjSemRepresentante.avisos, []);
+assert.equal(pjSemRepresentante.payloads.length, 1, 'Cadastro geral nao exige representante.');
 const representanteInvalido = formulario({ ...empresa, representante_cpf: '00000000000' });
 await representanteInvalido.executar();
 assert.match(representanteInvalido.avisos[0], /CPF do representante legal invalido/);
@@ -120,6 +124,9 @@ assert.doesNotMatch(modal, /label="Chave PIX (fixa 2|variável)" obrigatorio/);
 assert.match(modal, /cep: maskCep\(e.target.value\)/);
 assert.match(modal, /estado: e.target.value.toUpperCase\(\)/);
 assert.match(modal, /disabled=\{salvandoNovoParceiro\}/);
+assert.match(modal, /<DadosEmpresaParceiro[\s\S]*?mostrarRepresentante=\{false\}/);
+const favorecido = readFileSync(new URL('../src/components/solicitacoes/CadastroRapidoFavorecidoButton.jsx', import.meta.url), 'utf8');
+assert.doesNotMatch(favorecido, /representante_nome|representante_cpf|representante_cargo/);
 
 // Controller real e normalizadores reais, com models e servicos externos substituidos.
 const require = createRequire(import.meta.url);
@@ -171,11 +178,15 @@ const apiEmpresa = await testarApi(empresa);
 assert.equal(apiEmpresa.res.codigo, 201);
 assert.equal(apiEmpresa.criados[0].nome_fantasia, empresa.nome_fantasia);
 assert.equal(apiEmpresa.criados[0].representante_cpf, '52998224725');
-for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf']) {
+for (const campo of ['nome_fantasia']) {
   const rejeitado = await testarApi({ ...empresa, [campo]: '' });
   assert.equal(rejeitado.res.codigo, 400);
   assert.equal(rejeitado.criados.length, 0);
 }
+const apiSemRepresentante = await testarApi({ ...empresa, representante_nome: '', representante_cpf: '' });
+assert.equal(apiSemRepresentante.res.codigo, 201);
+assert.equal(apiSemRepresentante.criados.length, 1);
+assert.equal((await testarApi({ ...empresa, representante_cpf: '00000000000' })).res.codigo, 400);
 console.log('Cadastro de credor: primeira PIX obrigatoria, adicionais opcionais, endereco unico, bloqueio de clique, permissoes e API validados. Sem banco ou servicos externos.');
 
 if (process.argv.includes('--ui')) {
@@ -268,9 +279,9 @@ return <main><p>{mensagem}</p>${modal}</main>;
         await page.getByRole('status').filter({ hasText: 'nome fantasia' }).waitFor();
         assert.equal(await page.evaluate(() => window.payloadTeste), undefined);
         await fantasia.fill(empresa.nome_fantasia);
-        await page.getByLabel('Nome do representante legal', { exact: true }).fill(empresa.representante_nome);
-        await page.getByLabel('CPF do representante legal', { exact: true }).fill(empresa.representante_cpf);
-        await page.getByLabel('Cargo do representante legal', { exact: true }).fill(empresa.representante_cargo);
+        for (const campo of ['representante_nome', 'representante_cpf', 'representante_cargo']) {
+          assert.equal(await page.locator(`[name="${campo}"]`).count(), 0, `${campo} nao deve aparecer no modal.`);
+        }
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
         if (process.argv.includes('--capturas')) {
           const pasta = fileURLToPath(new URL('../../outputs/credor-pj/', import.meta.url));
@@ -282,11 +293,11 @@ return <main><p>{mensagem}</p>${modal}</main>;
         await page.getByText('Credor salvo', { exact: true }).waitFor();
         const enviado = await page.evaluate(() => window.payloadTeste);
         assert.equal(enviado.nome_fantasia, empresa.nome_fantasia);
-        assert.equal(enviado.representante_cpf, '52998224725');
+        assert.equal(enviado.representante_cpf, '');
       }
     }
     assert.deepEqual(erros, []);
-    console.log('PJ: campos editaveis, validacao e envio aprovados em 1280/390px, claro/escuro.');
+    console.log('PJ: nome fantasia editavel, representante oculto e envio aprovado em 1280/390px, claro/escuro.');
   } finally {
     await browser?.close(); await server.close();
   }

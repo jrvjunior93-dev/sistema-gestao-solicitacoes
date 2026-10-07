@@ -2034,6 +2034,8 @@ router.post('/rh/empresas-grupo', allowRhDpEmpresasManage, criticalRateLimit, va
 router.patch('/rh/empresas-grupo/:id', allowRhDpEmpresasManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Empresa do grupo RH/DP'), body: validateRhEmpresaGrupoUpdateBody }), RhEmpresaGrupoController.update);
 router.get('/rh/relatorios/operacional', allowRhDpDashboardRead, validateRequest({ query: validateRhRelatorioOperacionalQuery }), RhRelatorioController.operacional);
 router.get('/rh/colaboradores', allowRhDpColaboradoresRead, validateRequest({ query: validateRhColaboradorQuery }), RhColaboradorController.index);
+router.get('/rh/colaboradores/exportar-xlsx', allowRhDpColaboradoresRead, auditSuccess({ eventType: 'RH_COLABORADORES_EXPORTED', resourceType: 'RH_COLABORADOR', description: 'Cadastro de colaboradores exportado para XLSX' }), RhColaboradorController.exportarPlanilha);
+router.get('/rh/colaboradores/modelo-xlsx', allowRhDpColaboradoresWrite, auditSuccess({ eventType: 'RH_COLABORADORES_EXPORTED', resourceType: 'RH_COLABORADOR', description: 'Modelo preenchido de colaboradores exportado para XLSX' }), RhColaboradorController.modeloPlanilha);
 router.get('/rh/colaboradores/:id', allowRhDpColaboradoresRead, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhColaboradorController.show);
 router.post('/rh/colaboradores', allowRhDpColaboradoresWrite, criticalRateLimit, validateRequest({ body: validateRhColaboradorCreateBody }), RhColaboradorController.create);
 router.patch('/rh/colaboradores/:id', allowRhDpColaboradoresWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP'), body: validateRhColaboradorUpdateBody }), RhColaboradorController.update);

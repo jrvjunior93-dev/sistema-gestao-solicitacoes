@@ -36,9 +36,13 @@ const novo = await testar(empresa, { duplo: true });
 assert.equal(novo.enviados.length, 1, 'Duplo envio protegido de forma sincrona');
 assert.equal(novo.enviados[0].nome_fantasia, empresa.nome_fantasia);
 assert.equal(novo.enviados[0].representante_cpf, '52998224725');
-for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf']) {
+for (const campo of ['nome_fantasia']) {
   const resultado = await testar({ ...empresa, [campo]: '' });
   assert.equal(resultado.enviados.length, 0); assert.equal(resultado.erros.length, 1);
+}
+for (const campo of ['representante_nome', 'representante_cpf']) {
+  assert.equal((await testar({ ...empresa, [campo]: '' })).enviados.length, 1, `${campo} opcional em Compras`);
+  assert.ok(!getDadosEmpresaParceiroError({ ...empresa, cpf_cnpj: empresa.cnpj, [campo]: '' }), `${campo} opcional tambem no cadastro completo`);
 }
 assert.equal((await testar({ ...empresa, representante_cpf: empresa.cnpj })).enviados.length, 0);
 assert.equal((await testar({ id: 8, nome: empresa.nome, cnpj: empresa.cnpj })).enviados.length, 1, 'Edicao legada continua opcional');
@@ -102,8 +106,10 @@ try {
   await page.locator('[name="nome_fantasia"]').waitFor();
   assert.equal(await page.locator('[name="nome_fantasia"]').isEnabled(), true);
   assert.equal(await page.locator('[name="nome_fantasia"]').getAttribute('required'), '');
+  assert.equal(await page.locator('[name="representante_nome"]').getAttribute('required'), null);
+  assert.equal(await page.locator('[name="representante_cpf"]').getAttribute('required'), null);
   await page.getByLabel('Nome / Razão social', { exact: true }).fill(empresa.nome);
-  for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf', 'representante_cargo']) await page.locator(`[name="${campo}"]`).fill(empresa[campo]);
+  await page.locator('[name="nome_fantasia"]').fill(empresa.nome_fantasia);
   const output = path.resolve(root, '../outputs/fornecedor-empresa'); mkdirSync(output, { recursive: true });
   await page.screenshot({ path: path.join(output, 'claro.png') });
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; document.documentElement.classList.add('dark'); });
@@ -111,7 +117,7 @@ try {
   await page.getByRole('button', { name: 'Criar fornecedor', exact: true }).evaluate(el => { el.click(); el.click(); });
   await page.getByText('Fornecedor cadastrado.', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.enviados.length), 1);
-  assert.equal(await page.evaluate(() => window.enviados[0].representante_cpf), '52998224725');
+  assert.equal(await page.evaluate(() => window.enviados[0].representante_cpf), '');
   // A tabela conserva sua rolagem horizontal; aciona o callback sem alterar colunas.
   await page.getByRole('button', { name: 'Editar', exact: true }).first().evaluate(el => el.click());
   assert.equal(await page.locator('[name="nome_fantasia"]').inputValue(), empresa.nome_fantasia);

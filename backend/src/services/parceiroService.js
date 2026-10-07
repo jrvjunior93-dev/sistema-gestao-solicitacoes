@@ -233,27 +233,18 @@ function normalizeParceiroPayload(payload = {}, { partial = false, exigirCadastr
       throw new Error('Nao foi possivel identificar o tipo de pessoa.');
     }
 
-    // PJ EXIGE NOME FANTASIA E REPRESENTANTE LEGAL (itens 12, 27 e 28 do lote de 23/08).
-    //
-    // Em pessoa FISICA nao se aplica: nome fantasia de pessoa nao existe, e quem assina e ela
-    // mesma. Exigir dos dois levaria a repetir o nome no campo, que e pior do que nao ter.
-    //
-    // A regra e da CRIACAO, e so onde `exigirCadastroCompleto` for pedido — ver o comentario em
-    // `criarParceiro`. Parceiro que ja existe nao vira invalido por uma regra nova.
-    // `inferirTipoPessoa` devolve 'J' e 'F', e nao 'PJ'/'PF' — conferido na propria funcao. Comparar
-    // com 'PJ' deixava a regra sempre falsa e a exigencia nunca disparava.
+    // Nome fantasia e obrigatorio apenas na criacao completa de PJ.
+    // Representante legal e opcional no cadastro geral. Sua qualificacao
+    // obrigatoria e validada pelo contrato acima do limite juridico configurado.
     if (exigirCadastroCompleto && tipoPessoa === 'J') {
       if (!sanitizeText(payload.nome_fantasia)) {
         throw new Error('Informe o nome fantasia da empresa.');
       }
-      if (!sanitizeText(payload.representante_nome)) {
-        throw new Error('Informe o nome do representante legal da empresa.');
-      }
-      const cpfRepresentante = normalizarCpfCnpj(payload.representante_cpf);
-      if (!cpfRepresentante || !isValidCpfCentral(cpfRepresentante)) {
-        throw new Error('Informe um CPF valido para o representante legal.');
-      }
     }
+  }
+
+  if (String(payload.representante_cpf || '').trim() && !isValidCpfCentral(normalizarCpfCnpj(payload.representante_cpf))) {
+    throw new Error('Informe um CPF valido para o representante legal.');
   }
 
   const data = {
@@ -602,16 +593,8 @@ async function criarFavorecidoSimplificado(payload = {}, options = {}) {
 }
 
 /**
- * `exigirCadastroCompleto` liga a regra PF/PJ de 23/08 (nome fantasia e representante legal na PJ).
- *
- * Vem LIGADA por padrao — e o cadastro de credor que o cliente pediu para fechar. Fica desligada
- * apenas no cadastro rapido de fornecedor de COMPRA DIRETA, que e do modulo de Compras: ligar la
- * sem o campo existir no formulario derrubaria o cadastro do outro agente, e derrubar o modulo
- * alheio para cumprir regra do meu e o que o PROTOCOLO-AGENTES-PARALELOS proibe. Anotado la para
- * ele completar.
- *
- * A importacao por XLSX nao passa por aqui (grava pelo model), entao planilha antiga continua
- * importando — exigir nome fantasia em 5.000 linhas historicas travaria a carga inteira.
+ * A criacao completa exige nome fantasia para PJ; cadastro rapido e importacao
+ * preservam suas regras. Representante legal e opcional no cadastro compartilhado.
  */
 async function criarParceiro(payload, options = {}) {
   const categoriaIds = parseCategoriaIds(payload?.categoria_ids);

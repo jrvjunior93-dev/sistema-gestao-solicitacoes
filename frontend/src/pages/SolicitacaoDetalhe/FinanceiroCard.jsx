@@ -593,8 +593,7 @@ function criarCredorFormPadrao() {
     cpf_cnpj: '',
     telefone: '',
     email: '',
-    // PJ exige nome fantasia e representante legal (23/08). Em pessoa fisica nao se aplica: nome
-    // fantasia de pessoa nao existe, e quem assina e ela mesma.
+    // Nome fantasia se aplica a PJ; representante e opcional no cadastro geral.
     nome_fantasia: '',
     representante_nome: '',
     representante_cpf: '',
@@ -2346,7 +2345,7 @@ export default function FinanceiroCard({
     }
     if (onlyDigits(cadastroCredorForm.cpf_cnpj).length === 14) {
       const representanteErro = getCpfCnpjError(cadastroCredorForm.representante_cpf, {
-        required: true,
+        required: false,
         type: 'cpf',
         label: 'CPF do representante legal'
       });
@@ -2363,7 +2362,7 @@ export default function FinanceiroCard({
         cpf_cnpj: onlyDigits(cadastroCredorForm.cpf_cnpj),
         telefone: onlyDigits(cadastroCredorForm.telefone),
         email: cadastroCredorForm.email,
-        // Vao vazios quando o documento e de pessoa fisica — o backend so os exige na PJ.
+        // Dados opcionais do representante sao preservados quando informados.
         nome_fantasia: cadastroCredorForm.nome_fantasia,
         representante_nome: cadastroCredorForm.representante_nome,
         representante_cpf: onlyDigits(cadastroCredorForm.representante_cpf),
@@ -2734,7 +2733,7 @@ export default function FinanceiroCard({
             {/* Aparecem e somem conforme o DOCUMENTO digitado: 14 digitos e CNPJ. Mostrar sempre
                 faria o formulario pedir nome fantasia de pessoa fisica, que nao existe. */}
             {onlyDigits(cadastroCredorForm.cpf_cnpj).length === 14 && (
-              <FormSecao legenda="Representante legal" colunas={2}>
+              <FormSecao legenda="Dados da empresa e representante legal" colunas={2}>
                 <CampoForm label="Nome fantasia" obrigatorio linha>
                   <input
                     className="input"
@@ -2746,7 +2745,7 @@ export default function FinanceiroCard({
                   />
                 </CampoForm>
 
-                <CampoForm label="Nome" obrigatorio>
+                <CampoForm label="Nome">
                   <input
                     className="input"
                     name="representante_nome"
@@ -2756,7 +2755,7 @@ export default function FinanceiroCard({
                     disabled={cadastroCredorSaving}
                   />
                 </CampoForm>
-                <CampoForm label="CPF" obrigatorio>
+                <CampoForm label="CPF">
                   <input
                     className="input"
                     name="representante_cpf"

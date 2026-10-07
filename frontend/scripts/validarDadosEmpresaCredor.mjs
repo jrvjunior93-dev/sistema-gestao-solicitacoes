@@ -46,11 +46,18 @@ const novo = await testarPessoas(empresa);
 assert.deepEqual(novo.erros, []);
 assert.equal(novo.enviados[0].payload.nome_fantasia, empresa.nome_fantasia);
 assert.equal(novo.enviados[0].payload.representante_cpf, '52998224725');
-for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf']) {
+for (const campo of ['nome_fantasia']) {
   const ausente = await testarPessoas({ ...empresa, [campo]: '' });
   assert.equal(ausente.enviados.length, 0);
   assert.equal(ausente.erros.length, 1);
 }
+for (const campo of ['representante_nome', 'representante_cpf']) {
+  const opcional = await testarPessoas({ ...empresa, [campo]: '' });
+  assert.deepEqual(opcional.erros, []);
+  assert.equal(opcional.enviados.length, 1);
+}
+const semRepresentante = await testarPessoas({ ...empresa, representante_nome: '', representante_cpf: '' });
+assert.equal(semRepresentante.enviados.length, 1);
 const legado = await testarPessoas({ id: 22, cpf_cnpj: empresa.cpf_cnpj, nome: empresa.nome });
 assert.deepEqual(legado.erros, []);
 assert.equal(legado.enviados[0].acao, 'editar', 'Edicao legada nao pode exigir cadastro novo completo.');
@@ -82,6 +89,7 @@ assert.deepEqual(compraOpcional.erros, []);
 assert.equal(compraOpcional.enviados.length, 1);
 assert.equal((await testarCompra({ representante_cpf: '00000000000' })).enviados.length, 0);
 assert.match(compra, /<DadosEmpresaParceiro[\s\S]*?obrigatorio=\{false\}/);
+assert.match(compra, /<DadosEmpresaParceiro[\s\S]*?mostrarRepresentante=\{false\}/);
 assert.match(pessoas, /<DadosEmpresaParceiro[\s\S]*?obrigatorio=\{!parceiroForm.id\}/);
 
 // O cadastro nos detalhes ja possuia os campos: protecao contra regressao.
@@ -91,4 +99,23 @@ for (const campo of ['nome_fantasia', 'representante_nome', 'representante_cpf']
   assert.match(detalhe, new RegExp(`${campo}: (?:onlyDigits\\()?cadastroCredorForm\\.${campo}`));
 }
 assert.match(detalhe, /onlyDigits\(cadastroCredorForm.cpf_cnpj\).length === 14/);
+assert.match(detalhe, /getCpfCnpjError\(cadastroCredorForm.representante_cpf,\s*\{\s*required: false/);
+assert.doesNotMatch(detalhe, /<CampoForm label="(?:Nome|CPF)" obrigatorio>\s*<input\s*className="input"\s*name="representante_/);
+const salvarDetalhe = detalhe.slice(detalhe.indexOf('async function handleCadastrarCredor()'), detalhe.indexOf('// Um modal por vez:'));
+async function testarDetalhe(dados) {
+  const enviados = [], erros = [];
+  const handler = vm.runInNewContext(`${salvarDetalhe}; handleCadastrarCredor`, {
+    cadastroCredorForm: { ...empresa, ...dados }, solicitacao: { id: 6275 },
+    getCpfCnpjError, onlyDigits, avisar: { erro: error => erros.push(error), sucesso() {} },
+    cadastrarCredorSolicitacao: async (id, payload) => { assert.equal(id, 6275); enviados.push(payload); },
+    setCadastroCredorSaving() {}, limparAvisos() {}, fecharCadastroCredorModal() {},
+    onSolicitacaoAtualizada: async () => {}
+  });
+  await handler();
+  return { enviados, erros };
+}
+const detalheOpcional = await testarDetalhe({ representante_nome: '', representante_cpf: '' });
+assert.deepEqual(detalheOpcional.erros, []);
+assert.equal(detalheOpcional.enviados.length, 1);
+assert.equal((await testarDetalhe({ representante_cpf: '00000000000' })).enviados.length, 0);
 console.log('Credores PJ: criacao/edicao de Pessoas, Compra Direta opcional e cadastro nos detalhes validados sem banco ou API externa.');

@@ -36,12 +36,14 @@ import {
   getRhTicketStatus,
   gerarLoteRhTicket,
   importarRhColaboradores,
+  baixarPlanilhaRhColaboradores,
   substituirRhDocumento,
   uploadRhDocumento
 } from '../services/rhDp';
 import { getSetores } from '../services/setores';
 import {
   canManageRhDpColaboradores,
+  canViewRhDpColaboradores,
   canManageRhDpDocumentos,
   canGenerateRhDpTicket
 } from '../utils/acessoProduto';
@@ -239,87 +241,6 @@ function buildPayload(form) {
   };
 }
 
-function downloadModeloColaboradores() {
-  const linhas = [
-    [
-      'Nome',
-      'CPF',
-      'Matricula',
-      'Empresa_Codigo',
-      'Obra_Codigo',
-      'Setor_Codigo',
-      'Cargo',
-      'Tipo_Vinculo',
-      'Data_Admissao',
-      'Data_Demissao',
-      'Status',
-      'Salario_Base',
-      'Valor_Contratual',
-      'Forma_Calculo_Gerencial',
-      'Valor_Diaria',
-      'Pagamento_Automatico_40_60',
-      'Valor_Ticket',
-      'Banco',
-      'Agencia',
-      'Conta',
-      'Tipo_Conta',
-      'Favorecido_Nome',
-      'Favorecido_Documento',
-      'Chave_PIX',
-      'Chave_PIX_Secundaria',
-      'Chave_PIX_Variavel',
-      'Telefone',
-      'Email',
-      'Observacoes'
-    ],
-    [
-      'Colaborador Exemplo',
-      '12345678909',
-      'MAT-001',
-      'EMP-01',
-      'OBRA-01',
-      'FIN',
-      'Analista',
-      'CLT',
-      '2026-04-01',
-      '',
-      'ATIVO',
-      '3500,00',
-      '',
-      'MENSAL',
-      '',
-      'SIM',
-      '450,00',
-      'Banco Exemplo',
-      '1234',
-      '98765-0',
-      'CORRENTE',
-      'Colaborador Exemplo',
-      '12345678909',
-      'colaborador@pix',
-      '27999999999',
-      '',
-      '27999999999',
-      'colaborador@empresa.com',
-      'Importacao inicial RH/DP'
-    ]
-  ];
-
-  const csv = linhas
-    .map((colunas) => colunas.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
-    .join('\r\n');
-
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'modelo-importacao-rh-colaboradores.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
-}
-
 /*
   QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
   único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
@@ -383,6 +304,9 @@ export default function RhDpColaboradores() {
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [importando, setImportando] = useState(false);
+  const [baixandoPlanilha, setBaixandoPlanilha] = useState(false);
+  const importandoRef = useRef(false);
+  const baixandoPlanilhaRef = useRef(false);
   const [carregandoDocumentos, setCarregandoDocumentos] = useState(false);
   const [carregandoDossie, setCarregandoDossie] = useState(false);
   const [salvandoDocumento, setSalvandoDocumento] = useState(false);
@@ -740,39 +664,62 @@ export default function RhDpColaboradores() {
   async function onSelecionarArquivoImportacao(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
-
-    const { ok } = await confirmar({
-      titulo: 'Importar colaboradores em massa',
-      mensagem: `Importar colaboradores em massa usando o arquivo "${file.name}"?`,
-      rotuloConfirmar: 'Importar'
-    });
-    if (!ok) {
-      return;
-    }
+    if (!file || !podeEditar || importandoRef.current) return;
+    importandoRef.current = true;
 
     try {
       setImportando(true);
+      const { ok } = await confirmar({
+        titulo: 'Importar colaboradores em massa',
+        mensagem: `Importar "${file.name}"? Novos colaboradores serão cadastrados. Para quem já existe, serão atualizados somente o tipo de pagamento (mensalista/diarista), valor da diária e cálculo automático 40/60, respeitando a vigência. Salário, vínculo e dados bancários serão preservados.`,
+        rotuloConfirmar: 'Importar'
+      });
+      if (!ok) return;
       const resultado = await importarRhColaboradores(file);
       await recarregarColaboradores();
 
       const importados = Number(resultado?.importados || 0);
+      const atualizados = Number(resultado?.atualizados || 0);
       const ignorados = Number(resultado?.ignorados || 0);
       const erros = Array.isArray(resultado?.erros) ? resultado.erros : [];
       if (erros.length > 0) {
         const resumo = erros.slice(0, 5).map((item) => `Linha ${item.linha}: ${item.error}`).join(' · ');
         avisar.alerta(
-          `Importados: ${importados}. Ignorados: ${ignorados}. Erros: ${erros.length}. ${resumo}${erros.length > 5 ? ' …' : ''}`,
+          `Importados: ${importados}. Atualizados: ${atualizados}. Ignorados: ${ignorados}. Erros: ${erros.length}. ${resumo}${erros.length > 5 ? ' …' : ''}`,
           'Importacao concluida com erros'
         );
       } else {
-        avisar.sucesso(`Importacao concluida. Importados: ${importados}. Ignorados: ${ignorados}.`);
+        avisar.sucesso(`Importacao concluida. Importados: ${importados}. Atualizados: ${atualizados}. Ignorados: ${ignorados}.`);
       }
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao importar colaboradores RH/DP');
     } finally {
+      importandoRef.current = false;
       setImportando(false);
+    }
+  }
+
+  async function baixarPlanilhaColaboradores(modelo = false) {
+    if (baixandoPlanilhaRef.current || (modelo ? !podeEditar : !canViewRhDpColaboradores(user))) return;
+    baixandoPlanilhaRef.current = true;
+    setBaixandoPlanilha(true);
+    let url;
+    try {
+      const { blob, filename } = await baixarPlanilhaRhColaboradores({ modelo });
+      url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (error) {
+      avisar.erro(error?.message || 'Erro ao baixar planilha de colaboradores');
+    } finally {
+      if (url) window.URL.revokeObjectURL(url);
+      baixandoPlanilhaRef.current = false;
+      setBaixandoPlanilha(false);
     }
   }
 
@@ -921,9 +868,13 @@ export default function RhDpColaboradores() {
         contagem={carregando ? null : `${colaboradores.length} colaborador(es)`}
         descricao="Base cadastral com empresa do grupo, obra, vínculo, dados pessoais e dados de pagamento."
         acaoPrincipal={podeEditar ? { rotulo: 'Novo colaborador', onClick: abrirNovoColaborador } : undefined}
-        /* Saíram do "⋯" (removido do sistema em 07/09) e viraram botões
-           visíveis: três na faixa, uma linha só a 1920 e a 1366. */
+        /* Acoes visiveis na faixa; exportacao nao usa os filtros da lista. */
         secundarias={[
+          ...(canViewRhDpColaboradores(user) ? [{
+            rotulo: baixandoPlanilha ? 'Baixando Excel...' : 'Exportar todos (Excel)',
+            onClick: () => baixarPlanilhaColaboradores(),
+            desabilitada: baixandoPlanilha
+          }] : []),
           ...(podeGerarTicket ? [{
             rotulo: `Gerar lote de ticket${selecionadosTicket.size ? ` (${selecionadosTicket.size})` : ''}`,
             onClick: abrirModalTicket,
@@ -931,7 +882,7 @@ export default function RhDpColaboradores() {
             icone: <HiOutlineTicket aria-hidden="true" />
           }] : []),
           ...(podeEditar ? [
-            { rotulo: 'Baixar modelo', onClick: downloadModeloColaboradores },
+            { rotulo: 'Baixar modelo (Excel)', onClick: () => baixarPlanilhaColaboradores(true), desabilitada: baixandoPlanilha },
             {
               rotulo: importando ? 'Importando massa...' : 'Importar massa',
               onClick: () => inputImportacaoRef.current?.click(),

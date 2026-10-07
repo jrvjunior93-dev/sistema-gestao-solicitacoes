@@ -4570,6 +4570,7 @@ export default function NovaSolicitacao() {
           <DadosEmpresaParceiro
             form={novoParceiro}
             onChange={(campo, valor) => setNovoParceiro(prev => ({ ...prev, [campo]: valor }))}
+            mostrarRepresentante={false}
             disabled={salvandoNovoParceiro}
           />
 

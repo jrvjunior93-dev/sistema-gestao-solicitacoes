@@ -4,6 +4,12 @@
 
 Compras e dono da solicitacao de compra, origem normal/direta, itens, quantidades e rateios de apropriacao. Cotacoes, respostas e pedidos pertencem ao modulo COTACOES. Obras e dono das apropriacoes e Parceiros e dono dos credores/fornecedores referenciados.
 
+## Cadastro de fornecedores
+
+No cadastro de fornecedores de Compras, nome e CPF do representante legal sao opcionais. Se preenchido, o CPF deve ser valido. Nome fantasia continua obrigatorio na criacao de uma empresa. O contato comercial permanece separado do representante legal, e a sincronizacao com Pessoas preserva o ID do fornecedor e os vinculos das cotacoes.
+
+Representante legal tambem e opcional no cadastro geral de Pessoas/credores. Os modais da Nova Solicitacao e da Compra Direta nao exibem seus campos. A qualificacao obrigatoria e propria da solicitacao de contrato cujo valor ultrapassa o limite juridico configurado; nao e uma exigencia do cadastro de fornecedor. Dados existentes e edicoes legadas sao preservados.
+
 ## Regras dos itens
 
 - item pode vir do cadastro ou ser manual;

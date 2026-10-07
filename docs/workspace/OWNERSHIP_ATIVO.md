@@ -1,5 +1,31 @@
 # Ownership Ativo
 
+## Modelo preenchido de colaboradores - 07/10/2026
+
+Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`. Reserva
+RhColaboradorController.js, validarRhColaboradoresPlanilha.js,
+rhColaboradoresPlanilhaService.js (orientacoes), README RH/DP e handoff
+da planilha anterior. Baixar modelo deve incluir os cadastros reais dentro
+do escopo autorizado, sem filtros de tela. Preservar importacao, permissoes
+e demais alteracoes pendentes. Sem banco real, migration ou publicacao.
+Concluido: testes de XLSX/controller e reimportacao sem duplicidade,
+frontend local e documentacao aprovados. Handoff da planilha atualizado.
+
+## Representante legal opcional fora dos contratos - 07/10/2026
+
+Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`. Reserva o service de
+parceiros e comentario correspondente no ParceiroController,
+componente/helper DadosEmpresaParceiro, GestaoFornecedores,
+NovaSolicitacao, NovaSolicitacaoCompra e FinanceiroCard; testes de credores,
+fornecedores e planilha RH (somente assertions do cadastro compartilhado),
+teste isolado do limite contratual e documentacao/handoffs correspondentes.
+Representante opcional no cadastro geral; oculto nos modais de nova
+solicitacao. Preservar qualificacao contratual acima do limite configurado,
+alteracoes anteriores da exportacao RH e auditorias alheias. Sem escrita em
+banco, migration, commit, push, reinicio ou deploy neste ajuste.
+Implementacao e validacoes concluidas; handoff registrado em
+`docs/handoffs/2026-10-07-representante-legal-somente-contratos.md`.
+
 ## Publicacao autorizada dos ajustes operacionais em 07/10/2026
 
 Sessao `/root` em `C:/Fluxy-refactor-frontend`. Usuario autorizou commit e

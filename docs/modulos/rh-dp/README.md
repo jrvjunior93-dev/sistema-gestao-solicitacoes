@@ -23,6 +23,23 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 - para usuario de OBRA, listas, detalhes, solicitacoes e jornada ficam limitados as obras vinculadas em `usuarios_obras`, inclusive quando a API e chamada diretamente;
 - o cadastro geral de colaboradores, documentos, importacoes, fechamentos e relatorios permanece restrito ao RH/DP e aos administradores autorizados.
 
+## Exportacao e reimportacao de colaboradores
+
+Em Colaboradores, `Exportar todos (Excel)` baixa todos os cadastros no escopo autorizado, inclusive inativos, afastados e, quando o acesso e global, colaboradores sem obra. Nao aplica os filtros atuais da tela. Exige a mesma permissao da consulta de colaboradores, aplica o escopo no servidor e registra a exportacao na auditoria de seguranca sem incluir dados pessoais no evento. O arquivo contem dados pessoais e financeiros e deve ser compartilhado somente com pessoas autorizadas.
+
+`Baixar modelo (Excel)` e `Importar massa` exigem a permissao de gerenciar colaboradores. O modelo XLSX vem preenchido com todos os colaboradores cadastrados no escopo autorizado, inclusive inativos, afastados e, para acesso global, sem obra. Ignora os filtros da tela, nao traz cadastros ficticios e inclui uma aba de orientacoes. Modelo e exportacao podem ser ajustados e reimportados, preservando CPF, matricula e codigos como texto para nao perder zeros iniciais.
+
+- `Tipo_Pagamento`: MENSALISTA ou DIARISTA. Modelos antigos com `Forma_Calculo_Gerencial` MENSAL/DIARIA continuam aceitos; informacoes contraditorias nas duas colunas sao rejeitadas.
+- `Valor_Diaria`: valor positivo para diarista. O calculo automatico 40/60 fica desativado para esse regime.
+- `Calculo_Vigencia_Inicio`: data efetiva da mudanca; obrigatoria quando `RH_JORNADA_40_60_ETAPAS=ON`, seguindo a mesma validacao temporal do cadastro normal.
+- Para cadastrados, a importacao localiza pelo CPF e altera somente regime, diaria e pagamento automatico 40/60. Salario, identidade, obra, empresa e banco nao sao sobrescritos. Campos de calculo em branco preservam os valores atuais.
+- Novos colaboradores continuam usando o fluxo de criacao. CPF/matricula conflitantes, CPF repetido no arquivo e registros fora das obras autorizadas sao rejeitados por linha.
+- O resultado informa importados, atualizados, ignorados e erros. Cada linha usa a transacao do cadastro; erro de vigencia reverte a alteracao da linha. Reenviar uma linha sem mudancas nao cria registro nem historico duplicado.
+
+APIs: `GET /rh/colaboradores/exportar-xlsx`, `GET /rh/colaboradores/modelo-xlsx` e `POST /rh/colaboradores/importar-massa`.
+
+Validacao local, sem banco: `node scripts/validarRhColaboradoresPlanilha.js` no backend e `node scripts/validarRhColaboradoresPlanilha.mjs` no frontend.
+
 ## Primeira lotacao em obra
 
 - a movimentacao `Vincular a uma obra` aplica-se ao colaborador ainda sem obra; quem ja esta lotado usa a aba `Transferencias entre obras`;

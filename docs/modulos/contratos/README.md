@@ -13,6 +13,17 @@ Contratos mantem o contexto contratual operacional, seus vinculos, referencias e
 - alteracao ou encerramento nao pode apagar historico nem invalidar silenciosamente solicitacoes existentes;
 - exclusao deve ser logica quando houver qualquer vinculo.
 
+## Representante legal e limite juridico
+
+No cadastro geral de Pessoas, credores e fornecedores, nome e CPF do
+representante legal sao opcionais. Para novas solicitacoes de contrato,
+qualificacao e exigida somente quando o valor ultrapassa o limite juridico
+configurado. Valor igual ao limite nao exige qualificacao. A regra usa o
+limite vigente, nao um valor fixo de R$ 50 mil, e e revalidada pelo backend.
+Nome, CPF valido e demais dados da qualificacao obrigatoria permanecem no
+fluxo contratual, separados do cadastro geral. Contratos legados sem essa
+fotografia nao se tornam retroativamente invalidos.
+
 ## Fluxos coexistentes
 
 ### Legado

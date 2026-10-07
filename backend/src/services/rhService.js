@@ -1470,7 +1470,7 @@ async function obterLinkDocumentoRh(id) {
   };
 }
 
-async function importarColaboradoresRh(file, user) {
+async function importarColaboradoresRh(file, user, { obra_ids = null } = {}) {
   const rows = await parseSpreadsheetRows(file?.buffer, file?.originalname);
   if (!rows.length) {
     throw new ValidationError('A planilha nao contem registros para importar.');
@@ -1510,8 +1510,11 @@ async function importarColaboradoresRh(file, user) {
   });
 
   let importados = 0;
+  let atualizados = 0;
   let ignorados = 0;
   const erros = [];
+  const cpfsProcessados = new Set();
+  const obrasPermitidas = Array.isArray(obra_ids) ? new Set(obra_ids.map(Number)) : null;
 
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
@@ -1531,6 +1534,10 @@ async function importarColaboradoresRh(file, user) {
       if (!cpf || cpf.length !== 11) {
         throw new ValidationError('CPF invalido ou ausente.');
       }
+      if (cpfsProcessados.has(cpf)) {
+        throw new ValidationError('CPF repetido na planilha. Mantenha somente uma linha por colaborador.');
+      }
+      cpfsProcessados.add(cpf);
 
       const empresa =
         empresaByCodigo.get(empresaCodigo) ||
@@ -1541,18 +1548,70 @@ async function importarColaboradoresRh(file, user) {
         throw new ValidationError('Empresa do grupo nao encontrada para a linha.');
       }
 
-      const existing = await RhColaborador.findOne({
+      const encontrados = await RhColaborador.findAll({
         where: {
           [Op.or]: [
             { cpf },
             ...(matricula ? [{ matricula }] : [])
           ]
-        },
-        attributes: ['id']
+        }
       });
+      if (encontrados.length > 1 || (encontrados[0] && normalizeDigits(encontrados[0].cpf) !== cpf)) {
+        throw new ValidationError('CPF e matricula identificam colaboradores diferentes. Confira a linha.');
+      }
+      const existing = encontrados[0];
+
+      const normalizarRegime = valor => {
+        const token = normalizeToken(valor);
+        if (!token) return undefined;
+        if (['MENSAL', 'MENSALISTA'].includes(token)) return 'MENSAL';
+        if (['DIARIA', 'DIARISTA'].includes(token)) return 'DIARIA';
+        throw new ValidationError('Tipo de pagamento invalido. Use MENSALISTA ou DIARISTA.');
+      };
+      const tipoPagamento = normalizarRegime(pickImportValue(row, ['tipo_pagamento']));
+      const formaAntiga = normalizarRegime(pickImportValue(row, ['forma_calculo_gerencial', 'forma_calculo', 'calculo']));
+      if (tipoPagamento && formaAntiga && tipoPagamento !== formaAntiga) {
+        throw new ValidationError('Tipo_Pagamento e Forma_Calculo_Gerencial estao em conflito.');
+      }
+      const formaCalculo = tipoPagamento || formaAntiga;
+      const diariaInformada = pickImportValue(row, ['valor_diaria', 'diaria']);
+      const valorDiaria = String(diariaInformada ?? '').trim() ? parseImportDecimal(diariaInformada, 'Valor da diaria') : undefined;
+      if (valorDiaria !== undefined && (!Number.isFinite(valorDiaria) || valorDiaria <= 0)) {
+        throw new ValidationError('Valor da diaria deve ser positivo.');
+      }
+      if (String(diariaInformada ?? '').trim() && valorDiaria === undefined) {
+        throw new ValidationError('Valor da diaria invalido.');
+      }
+      const automaticoToken = normalizeToken(pickImportValue(row, ['pagamento_automatico_40_60', 'automatico_40_60', '40_60']));
+      if (automaticoToken && !['SIM', 'S', 'TRUE', '1', 'NAO', 'N', 'FALSE', '0'].includes(automaticoToken)) {
+        throw new ValidationError('Pagamento automatico 40/60 invalido. Use SIM ou NAO.');
+      }
+      const automatico = automaticoToken ? ['SIM', 'S', 'TRUE', '1'].includes(automaticoToken) : undefined;
 
       if (existing) {
-        ignorados += 1;
+        if (Number(existing.empresa_grupo_id) !== Number(empresa.id)) {
+          throw new ValidationError('Empresa da planilha difere do cadastro. A importacao nao transfere colaboradores.');
+        }
+        if (obrasPermitidas && !obrasPermitidas.has(Number(existing.obra_id))) {
+          throw new ValidationError('Colaborador fora das obras autorizadas para este usuario.');
+        }
+        const mudancas = {};
+        if (formaCalculo && formaCalculo !== existing.forma_calculo_gerencial) mudancas.forma_calculo_gerencial = formaCalculo;
+        if (valorDiaria !== undefined && valorDiaria !== Number(existing.valor_diaria)) mudancas.valor_diaria = valorDiaria;
+        const regimeResultante = formaCalculo || existing.forma_calculo_gerencial || 'MENSAL';
+        const automaticoResultante = regimeResultante === 'DIARIA' ? false : automatico;
+        if (automaticoResultante !== undefined && automaticoResultante !== Boolean(existing.pagamento_automatico_40_60)) {
+          mudancas.pagamento_automatico_40_60 = automaticoResultante;
+        }
+        if (regimeResultante === 'DIARIA' && !(Number(valorDiaria ?? existing.valor_diaria) > 0)) {
+          throw new ValidationError('Informe Valor_Diaria positivo para DIARISTA.');
+        }
+        if (!Object.keys(mudancas).length) { ignorados += 1; continue; }
+        mudancas.calculo_vigencia_inicio = parseImportDate(pickImportValue(row, ['calculo_vigencia_inicio']));
+        // Reutiliza a transacao, bloqueio e historico por vigencia do cadastro normal.
+        // Nunca envia dados de salario/vinculo/banco da planilha para uma atualizacao.
+        await atualizarColaboradorRh(existing.id, mudancas, user);
+        atualizados += 1;
         continue;
       }
 
@@ -1564,6 +1623,11 @@ async function importarColaboradoresRh(file, user) {
         setorByCodigo.get(setorCodigo) ||
         setorByNome.get(setorNome) ||
         null;
+      if ((obraCodigo || obraNome) && !obra) throw new ValidationError('Obra da linha nao encontrada.');
+      if ((setorCodigo || setorNome) && !setor) throw new ValidationError('Setor da linha nao encontrado.');
+      if (obrasPermitidas && !obrasPermitidas.has(Number(obra?.id))) {
+        throw new ValidationError('Obra fora do escopo autorizado para este usuario.');
+      }
       const dataAdmissaoImportada =
         parseImportDate(pickImportValue(row, ['data_admissao', 'admissao'])) ||
         parseImportDate(pickImportValue(row, ['data_inicio', 'inicio'])) ||
@@ -1594,16 +1658,9 @@ async function importarColaboradoresRh(file, user) {
           pickImportValue(row, ['valor_contratual', 'valor_contrato']),
           'Valor contratual'
         ) || undefined,
-        forma_calculo_gerencial: normalizeToken(
-          pickImportValue(row, ['forma_calculo_gerencial', 'forma_calculo', 'calculo'])
-        ) || 'MENSAL',
-        valor_diaria: parseImportDecimal(
-          pickImportValue(row, ['valor_diaria', 'diaria']),
-          'Valor da diaria'
-        ) || undefined,
-        pagamento_automatico_40_60: ['SIM', 'S', 'TRUE', '1'].includes(normalizeToken(
-          pickImportValue(row, ['pagamento_automatico_40_60', 'automatico_40_60', '40_60'])
-        )),
+        forma_calculo_gerencial: formaCalculo || 'MENSAL',
+        valor_diaria: valorDiaria,
+        pagamento_automatico_40_60: formaCalculo === 'DIARIA' ? false : (automatico ?? false),
         valor_ticket: parseImportDecimal(
           pickImportValue(row, ['valor_ticket', 'ticket']),
           'Valor do ticket'
@@ -1661,6 +1718,7 @@ async function importarColaboradoresRh(file, user) {
 
   return {
     importados,
+    atualizados,
     ignorados,
     erros
   };

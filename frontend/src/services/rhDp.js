@@ -540,6 +540,18 @@ export async function registrarJornadaRh(data) {
   return parseJson(response, 'Erro ao registrar a jornada');
 }
 
+export async function baixarPlanilhaRhColaboradores({ modelo = false } = {}) {
+  const response = await fetch(`${API_URL}/rh/colaboradores/${modelo ? 'modelo-xlsx' : 'exportar-xlsx'}`, {
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(mensagemDeErro(await response.text(), 'Erro ao baixar a planilha de colaboradores', response.status));
+  }
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'rh-colaboradores.xlsx';
+  return { blob: await response.blob(), filename };
+}
+
 export async function baixarModeloJornadaRh(params = {}) {
   const query = buildQuery(params);
   const response = await fetch(`${API_URL}/rh/jornada/modelo${query ? `?${query}` : ''}`, {

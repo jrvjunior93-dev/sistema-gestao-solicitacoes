@@ -46,8 +46,8 @@ const parceiroService = {
   async criarParceiro(data, opts) {
     assert.ok(opts.transaction);
     assert.ok(data.cpf_cnpj);
-    if (data.cpf_cnpj.length === 14 && (!data.nome_fantasia || !data.representante_nome || !data.representante_cpf)) {
-      throw new Error('Informe o nome fantasia e representante legal.');
+    if (data.cpf_cnpj.length === 14 && !data.nome_fantasia) {
+      throw new Error('Informe o nome fantasia.');
     }
     const row = { id: parceiros.length + 10, ...data }; parceiros.push(row); return row;
   },
@@ -109,6 +109,8 @@ async function chamar(action, body = {}, id = 1) {
   assert.match(duplicado.body.error, /outro fornecedor/);
   assert.equal(fornecedores.find(f => f.id === 51).parceiro_id, null);
   assert.equal(parceiros.find(p => p.cpf_cnpj === empresa.cnpj).nome_fantasia, empresa.nome_fantasia, 'Conflito reverte a escrita central');
+  const opcional = await chamar('create', { ...empresa, cnpj: '27865757000102', representante_nome: '', representante_cpf: '' });
+  assert.equal(opcional.statusCode, 201, 'PJ sem representante permitida em Compras');
   permitido = false; const txAntes = transacoes;
   for (const action of ['create', 'update', 'index', 'show']) assert.equal((await chamar(action, empresa)).statusCode, 403);
   assert.equal(transacoes, txAntes, 'Sem permissao nao inicia escrita');

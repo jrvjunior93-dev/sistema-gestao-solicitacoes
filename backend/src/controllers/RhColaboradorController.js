@@ -7,8 +7,28 @@ const {
 } = require('../services/rhService');
 const { responderErroController } = require('../utils/controllerError');
 const { getRhDpObraScopeIds } = require('../services/authorizationService');
+const { gerarPlanilhaColaboradores } = require('../services/rhColaboradoresPlanilhaService');
+
+async function baixarPlanilha(req, res, modelo) {
+  try {
+    const obraIds = await getRhDpObraScopeIds(req.user);
+    // Modelo preenchido para revisar/reimportar os cadastros existentes.
+    // Os dois downloads ignoram filtros da tela, mas preservam o escopo.
+    const colaboradores = await listarColaboradoresRh({ obra_ids: obraIds });
+    const buffer = await gerarPlanilhaColaboradores(colaboradores);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${modelo ? 'modelo-importacao' : 'cadastro-completo'}-rh-colaboradores.xlsx"`);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(buffer);
+  } catch (error) {
+    console.error(error);
+    return responderErroController(res, error, 'Erro ao baixar planilha de colaboradores RH/DP');
+  }
+}
 
 module.exports = {
+  exportarPlanilha(req, res) { return baixarPlanilha(req, res, false); },
+  modeloPlanilha(req, res) { return baixarPlanilha(req, res, true); },
   async index(req, res) {
     try {
       const obraIds = await getRhDpObraScopeIds(req.user);
@@ -57,7 +77,8 @@ module.exports = {
         return res.status(400).json({ error: 'Arquivo de importacao nao enviado.' });
       }
 
-      const data = await importarColaboradoresRh(req.file, req.user);
+      const obraIds = await getRhDpObraScopeIds(req.user);
+      const data = await importarColaboradoresRh(req.file, req.user, { obra_ids: obraIds });
       return res.json(data);
     } catch (error) {
       console.error(error);
