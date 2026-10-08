@@ -42,6 +42,7 @@ export default function OverlayModal({
   largura = 'var(--modal-max-w-lg, 860px)',
   rotulo,
   onFechar,
+  fecharAoClicarFora = false,
   fecharComEscape = true,
   children
 }) {
@@ -79,6 +80,9 @@ export default function OverlayModal({
         role="dialog"
         aria-modal="true"
         aria-label={rotulo}
+        onClick={(event) => {
+          if (fecharAoClicarFora && event.target === event.currentTarget) onFechar?.();
+        }}
       >
         {/*
           R18 (02/09): `overflow: clip`, NUNCA `hidden`. O painel precisa

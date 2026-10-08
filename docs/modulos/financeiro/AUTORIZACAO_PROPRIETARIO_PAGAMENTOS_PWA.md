@@ -41,9 +41,33 @@ Objetivos:
 - preflight somente leitura e teste de contrato do modo `OFF`.
 
 Ainda dependem de homologação ou evolução posterior: dupla autorização por alçada,
-delegação temporária, expiração persistida por job, WhatsApp notificativo, teste E2E real
+delegação temporária, WhatsApp notificativo, teste E2E real
 em iOS/Android e uma suíte de integração com banco/S3/Redis. Essas ausências impedem
 `ENFORCED`, mas não alteram o fluxo legado porque o padrão permanece `OFF`.
+
+## 1.2 Lotes e interface compacta no PWA
+
+Lotes novos usam `LOTE-<id>` com o ID auto-incrementado do banco. O código é
+definido dentro da transação, antes das cópias de documentos, sem contador
+separado. A sequência pode ter lacunas após rollback. Datas, autoria e
+auditoria permanecem registradas. Lotes antigos usam o mesmo rótulo na tela,
+mas seu código original, paths e hashes não são alterados; o código registrado
+fica disponível em Registro do lote. Não há migration ou backfill.
+
+O PWA instalado abre as autorizações após o login ou na rota inicial quando
+a sessão traz o módulo habilitado e `can_decide`, que exige cadastro nominal
+e permissão granular. Perfil administrativo não substitui essas condições.
+MFA pendente conserva o redirecionamento prioritário para o perfil. Navegador
+comum e preparadores mantêm a preferência individual de início.
+
+Somente a rota de autorizações desse usuário no PWA recolhe o cabeçalho
+global e as abas. A barra compacta mantém Conta para tema, perfil, saída,
+busca, módulos e notificações gerais. Opções contém avisos e passkey; o
+primeiro cadastro de passkey permanece exposto. Dispositivos ficam recolhidos
+e continuam permitindo revogação. As proteções operacionais do shell e a
+auditoria não são removidas. O teste isolado `test:autorizacao-pwa` exercita
+o shell e a página reais com sessão, APIs, guardas e biometria simulados;
+a homologação em aparelhos reais continua necessária antes da produção.
 
 ## 2. Princípios obrigatórios
 
@@ -138,9 +162,11 @@ pendentes, são rejeitados ou devolvidos para correção conforme a decisão reg
 - `ENFILEIRADO`
 
 As transições devem ser explícitas, transacionais e auditadas. Não usar exclusão
-física para corrigir estado. Estados mais detalhados de devolução, expiração persistida
-e falha de envio continuam como evolução posterior; hoje a expiração é validada em tempo
-de decisão e falha de enqueue mantém o item `AUTORIZADO` para reprocessamento seguro.
+física para corrigir estado. Desde o ajuste de 08/10/2026, lotes nao expiram:
+permanecem `AGUARDANDO` enquanto houver itens pendentes, inclusive quando o
+metadado legado `expira_em` estiver no passado. Falha de enqueue mantém o item
+`AUTORIZADO` para reprocessamento seguro. O challenge de passkey continua expirando
+em cinco minutos e e consumido uma unica vez; nao confundir esse prazo com o lote.
 
 ## 6. Dados e migrations
 
@@ -168,7 +194,11 @@ Requisitos estruturais:
 - nenhum lote é criado retroativamente por migration.
 
 Campos do lote incluem preparador, status, totais,
-hash do snapshot, expiração, idempotência e timestamps. O item preserva título,
+hash do snapshot, idempotência e timestamps. `expira_em` continua sendo gravado por
+compatibilidade com o schema NOT NULL, mas nao limita decisoes nem aparece na tela.
+`PAYMENT_OWNER_APPROVAL_TTL_HOURS` passa a afetar somente esse metadado legado,
+sem prazo operacional. Nao ha migration ou reescrita de lotes existentes neste ajuste.
+O item preserva título,
 saldo/valor proposto e decisão individual. O documento preserva origem, cópia isolada e
 hash canônico da referência de origem. Os eventos são append-only e encadeados por hash.
 Metadados ampliados de sessão/dispositivo e hash binário do arquivo permanecem como
@@ -188,6 +218,18 @@ solicitação. O dossiê dedicado deve mostrar apenas:
 - descrição e justificativas pertinentes;
 - documentos congelados no momento da preparação;
 - histórico do lote e de suas decisões.
+
+Na tabela, a coluna Solicitacao destaca o codigo SOL do snapshot, sem link de
+edicao; o codigo TIT permanece como referencia secundaria. Titulos avulsos sem
+solicitacao preservam TIT como identificador. A coluna MOTIVO fica imediatamente
+apos STATUS e mostra o motivo da decisao ou `-` quando ausente, inclusive no mobile
+por rolagem horizontal. A lista de lotes mostra a data de criacao, nao expiracao.
+
+Para titulos referentes a Solicitacao de Compra ou Compra Direta, o resumo mostra
+somente o tipo, sem itens, observacoes ou detalhamento da compra. A origem e
+identificada na descricao congelada da solicitacao ou no prefixo legado do titulo,
+nao pela forma de pagamento. Isso nao modifica o snapshot/hash, os documentos ou
+as descricoes nas outras telas. Os demais tipos preservam sua descricao.
 
 Endpoints implementados:
 
@@ -265,6 +307,39 @@ Fila e atualizacao do dossie fazem rollback juntas se a auditoria falhar.
 Um challenge obtido antes de um envio direto nao pode decidir novamente
 um item ja enfileirado. Reenvio com a mesma chave apos processamento nao
 reabre a entrada; uma entrada ativa mais recente prevalece no reuso.
+
+Na lista e no detalhe do lote, `CONCLUIDO` aparece como `NA FILA`. E apenas
+um rotulo de apresentacao: o status interno permanece `CONCLUIDO`. Indica
+que o fluxo do lote encerrou com encaminhamento; nao significa pagamento
+realizado nem transforma itens rejeitados em autorizados.
+
+Reprocessar o envio trata apenas itens ja `AUTORIZADO`, sem nova decisao
+ou segunda assinatura do proprietario. Revalida a elegibilidade e reutiliza
+a entrada existente para evitar duplicidade.
+
+### Revogacao antes do pagamento
+
+O autorizador nominal com permissao de decidir pode revogar um item autorizado
+ou todas as autorizacoes do lote. A acao exige motivo e uma nova confirmacao
+com passkey, vinculada aos itens e a revisao corrente da autorizacao.
+
+Na mesma transacao, as entradas ativas da fila passam a `RESOLVIDO` com o
+motivo da retirada, e os itens do dossie voltam a `PENDENTE`, sem vinculo ativo
+com a fila. O lote volta a `AGUARDANDO`, com novo prazo para decidir. O titulo
+e a solicitacao voltam a analise do proprietario, sem mudanca de setor ou saldo.
+Snapshots e documentos originais permanecem intactos; o evento de revogacao
+registra o motivo, responsavel, fila retirada e revisao anterior.
+
+Baixa total ou parcial, movimento ja registrado, pagamento bancario ativo
+ou um ciclo de autorizacao mais recente impedem a revogacao. Se qualquer
+item do lote falhar, nenhuma retirada e gravada. Nao ha estorno automatico.
+Challenges antigos e tentativas de reprocessamento de uma revisao revogada
+sao recusados. Uma nova autorizacao usa outra chave de envio e nao reutiliza
+a entrada retirada. O envio direto continua com sua permissao independente.
+
+Rejeicoes atuais aparecem tambem em `Nao pagos` da fila, com o motivo e em
+somente consulta. Novo ciclo ou entrada ativa impede a exibicao de uma
+rejeicao historica como pendencia atual.
 
 Na tela, `ENFILEIRADO` aparece como `Na fila de pagamento`, com referencia
 da entrada. Atualizar, foco da janela e consulta periodica de 30 segundos
@@ -484,7 +559,6 @@ Cada agente deve registrar sua sessão, ownership e fase nos arquivos de workspa
 ## 18. Decisões pendentes antes da Fase 0
 
 - valor/regra que exige dupla autorização;
-- prazo de expiração do lote;
 - prazo jurídico/contábil de retenção de dossiê e eventos;
 - autorizador substituto e política de férias/ausência;
 - usuário(s) e empresas do piloto;

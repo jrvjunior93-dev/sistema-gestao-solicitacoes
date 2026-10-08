@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import { Avisos, Pagina, PageHeader, useAvisos } from '../components/padrao';
@@ -20,26 +21,35 @@ import {
 } from '../services/pagamentoAutorizacao';
 import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../utils/webauthn';
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
+import { codigoLoteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
+import { isAutorizadorPwa } from '../utils/autorizacaoPagamentoPwa';
+import OverlayModal from '../components/ui/OverlayModal';
 import '../styles/financeiro-autorizacoes-pagamento.css';
 
 const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = (value) => value ? new Date(value).toLocaleString('pt-BR') : '-';
-const titleDescription = (value) => String(value || '')
-  .replace(/\s*valor total\s*:\s*r\$\s*[\d.]+(?:,\d{1,2})?/gi, '')
-  .trim();
 
 function Status({ value }) {
-  return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{value === 'ENFILEIRADO' ? 'Na fila de pagamento' : String(value || '').replaceAll('_', ' ')}</span>;
+  const label = value === 'CONCLUIDO' ? 'NA FILA'
+    : value === 'ENFILEIRADO' ? 'Na fila de pagamento' : String(value || '').replaceAll('_', ' ');
+  return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{label}</span>;
 }
 
 export default function FinanceiroAutorizacoesPagamento() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, refreshSession } = useAuth();
   const caps = user?.autorizacao_pagamentos || {};
+  const compactPwa = isAutorizadorPwa(user);
   const { avisos, avisar, fechar } = useAvisos();
   const [lots, setLots] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [rejectReason, setRejectReason] = useState('');
+  const [revokeItems, setRevokeItems] = useState([]);
+  const [revokeReason, setRevokeReason] = useState('');
+  const mutationRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [users, setUsers] = useState([]);
   const [authorizers, setAuthorizers] = useState([]);
@@ -51,6 +61,33 @@ export default function FinanceiroAutorizacoesPagamento() {
   const selected = useMemo(() => lots.find((lot) => Number(lot.id) === Number(selectedId)) || lots[0] || null, [lots, selectedId]);
   const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE'), [selected]);
   const selectedTotal = useMemo(() => pendingItems.filter((item) => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.valor_snapshot || 0), 0), [pendingItems, selectedItems]);
+  const justificativaId = searchParams.get('justificativa');
+  const loteJustificativa = lots.find(lot => (lot.itens || []).some(item => String(item.id) === justificativaId));
+  const itemJustificativa = loteJustificativa?.itens.find(item => String(item.id) === justificativaId);
+  const textoJustificativa = itemJustificativa?.titulo?.solicitacao?.justificativa;
+
+  useEffect(() => {
+    if (loteJustificativa) setSelectedId(loteJustificativa.id);
+  }, [loteJustificativa?.id]);
+
+  function abrirJustificativa(itemId) {
+    const next = new URLSearchParams(searchParams);
+    next.set('justificativa', String(itemId));
+    // Uma entrada na mesma rota permite que voltar/gesto do aparelho feche
+    // apenas o modal, preservando lote, selecao e lista montados.
+    setSearchParams(next, { state: { ...location.state, modalJustificativa: true } });
+  }
+
+  function fecharJustificativa() {
+    if (location.state?.modalJustificativa && Number(window.history.state?.idx) > 0) {
+      navigate(-1);
+      return;
+    }
+    // Link direto/sem historico seguro: nao sair da pagina de autorizacoes.
+    const next = new URLSearchParams(searchParams);
+    next.delete('justificativa');
+    setSearchParams(next, { replace: true, state: { ...location.state, modalJustificativa: false } });
+  }
 
   async function carregarLotes() {
     const requestId = ++listaRequestRef.current;
@@ -80,6 +117,7 @@ export default function FinanceiroAutorizacoesPagamento() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { setSelectedItems(pendingItems.map((item) => Number(item.id))); }, [selected?.id]);
+  useEffect(() => { setRevokeItems([]); setRevokeReason(''); }, [selected?.id]);
   useEffect(() => {
     setSelectedItems(current => {
       const validos = current.filter(id => pendingItems.some(item => Number(item.id) === id));
@@ -165,9 +203,10 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   async function decide(decision) {
-    if (!selectedItems.length || busy) return;
+    if (!selectedItems.length || busy || mutationRef.current) return;
     if (decision === 'REJEITAR' && !rejectReason.trim()) return avisar.erro('Informe o motivo da rejeição.');
     const decisions = selectedItems.map((itemId) => ({ item_id: itemId, decisao: decision, motivo: decision === 'REJEITAR' ? rejectReason.trim() : null }));
+    mutationRef.current = true;
     setBusy(true);
     try {
       const options = await obterOpcoesDecisaoPasskey(selected.id, decisions);
@@ -178,7 +217,24 @@ export default function FinanceiroAutorizacoesPagamento() {
       avisar.sucesso(decision === 'AUTORIZAR' ? 'Pagamentos autorizados e encaminhados à fila.' : 'Pagamentos rejeitados com rastreabilidade.');
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível registrar a decisão.');
-    } finally { setBusy(false); }
+    } finally { mutationRef.current = false; setBusy(false); }
+  }
+
+  async function revokeAuthorization() {
+    if (busy || mutationRef.current || !revokeItems.length || !caps.can_decide) return;
+    if (!revokeReason.trim()) return avisar.erro('Informe o motivo da revogação.');
+    const decisions = revokeItems.map(itemId => ({ item_id: itemId, decisao: 'REVOGAR', motivo: revokeReason.trim() }));
+    mutationRef.current = true;
+    setBusy(true);
+    try {
+      const options = await obterOpcoesDecisaoPasskey(selected.id, decisions);
+      const credential = await autenticarComPasskey(options);
+      await decidirAutorizacaoPagamento(selected.id, decisions, credential);
+      setRevokeItems([]); setRevokeReason('');
+      await load();
+      avisar.sucesso('Autorização revogada. Os títulos saíram da fila e voltaram para decisão do proprietário.');
+    } catch (error) { avisar.erro(error?.message || 'Não foi possível revogar a autorização.'); }
+    finally { mutationRef.current = false; setBusy(false); }
   }
 
   async function openDocument(documentId) {
@@ -212,26 +268,40 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   async function retryQueue() {
-    if (busy) return;
+    if (busy || mutationRef.current) return;
+    mutationRef.current = true;
     setBusy(true);
     try { await reenviarAutorizacaoParaFila(selected.id); await load(); avisar.sucesso('Itens autorizados encaminhados para a fila.'); }
     catch (error) { avisar.erro(error?.message || 'Não foi possível reenviar para a fila.'); }
-    finally { setBusy(false); }
+    finally { mutationRef.current = false; setBusy(false); }
   }
 
   return (
     <Pagina>
-      <PageHeader title="Autorizações de pagamento" subtitle="Decisão do proprietário antes de os títulos entrarem na fila operacional." />
+      {!compactPwa && <PageHeader title="Autorizações de pagamento" subtitle="Decisão do proprietário antes de os títulos entrarem na fila operacional." />}
       <Avisos avisos={avisos} onFechar={fechar} />
 
-      <div className="pa-toolbar">
+      {compactPwa ? <div className="pa-pwa-toolbar">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={busy}>Atualizar</button>
+        {!caps.passkey_count && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> Cadastrar passkey</button>}
+        <details className="pa-pwa-options">
+          <summary>Opções</summary>
+          <div className="pa-pwa-options__content">
+            <span>Modo {caps.mode}</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>
+            {Boolean(caps.passkey_count) && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> Adicionar passkey</button>}
+            <a href="#pa-dispositivos">Dispositivos autorizados</a>
+          </div>
+        </details>
+      </div> : <div className="pa-toolbar">
         <div><strong>Modo {caps.mode}</strong><span>{caps.paused ? 'Novas decisões pausadas' : 'Dossiês sem acesso de edição à solicitação'}</span></div>
         <div className="pa-toolbar__actions">
           <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={busy}>Atualizar</button>
           {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()} title={!caps.push_available ? 'O envio de avisos ainda não foi configurado neste ambiente.' : (!suportaWebPush() ? 'Este navegador não oferece notificações push.' : undefined)}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>}
           {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> {caps.passkey_count ? 'Adicionar passkey' : 'Cadastrar passkey'}</button>}
         </div>
-      </div>
+      </div>}
+      {compactPwa && caps.paused && <p role="status">Novas decisões pausadas.</p>}
 
       <div className="pa-layout">
         <aside className="pa-list" aria-label="Lotes de autorização">
@@ -239,9 +309,9 @@ export default function FinanceiroAutorizacoesPagamento() {
           {lots.length === 0 && <p className="pa-empty">Nenhum lote disponível.</p>}
           {lots.map((lot) => (
             <button key={lot.id} type="button" className={`pa-lot ${Number(selected?.id) === Number(lot.id) ? 'is-active' : ''}`} onClick={() => setSelectedId(lot.id)}>
-              <span><strong>{lot.codigo}</strong><Status value={lot.status} /></span>
+              <span><strong title={lot.codigo}>{codigoLoteAutorizacao(lot)}</strong><Status value={lot.status} /></span>
               <span>{money(lot.valor_total)} · {lot.quantidade_itens} título(s)</span>
-              <small>Expira em {date(lot.expira_em)}</small>
+              <small>Criado em {date(lot.createdAt)}</small>
             </button>
           ))}
         </aside>
@@ -249,21 +319,39 @@ export default function FinanceiroAutorizacoesPagamento() {
         <section className="pa-detail">
           {!selected ? <p className="pa-empty">Selecione um lote.</p> : <>
             <header className="pa-detail__head">
-              <div><strong>{selected.codigo}</strong><span>Criado por {selected.criadoPor?.nome || '-'} · hash {String(selected.dossie_hash).slice(0, 12)}…</span></div>
-              <Status value={selected.status} />
+              <div><strong title={selected.codigo}>{codigoLoteAutorizacao(selected)}</strong><span>Criado por {selected.criadoPor?.nome || '-'} · hash {String(selected.dossie_hash).slice(0, 12)}…</span>
+                <details className="pa-lot-record"><summary>Registro do lote</summary><small>Criado em {date(selected.createdAt)} · Código registrado: {selected.codigo}</small></details>
+              </div>
+              <div><Status value={selected.status} />
+                {caps.can_decide && (selected.itens || []).some(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)) &&
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
+                    onClick={() => setRevokeItems((selected.itens || []).filter(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)).map(item => Number(item.id)))}>Revogar autorizações do lote</button>}
+              </div>
             </header>
             <div className="pa-table-wrap">
               <table className="pa-table">
-                <thead><tr><th aria-label="Selecionar" /><th>Título</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num pa-value-column">Valor</th><th>Documentos</th><th>Status</th></tr></thead>
+                <thead><tr><th aria-label="Selecionar" /><th>Solicitação</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num pa-value-column">Valor</th><th>Documentos</th><th>Status</th><th>Justificativa</th><th>Motivo</th></tr></thead>
                 <tbody>{(selected.itens || []).map((item) => {
                   const snapshot = item.snapshot_json || {};
                   return <tr key={item.id}>
                     <td>{item.status === 'PENDENTE' && <input type="checkbox" checked={selectedItems.includes(Number(item.id))} onChange={(event) => setSelectedItems((current) => event.target.checked ? [...current, Number(item.id)] : current.filter((id) => id !== Number(item.id)))} />}</td>
-                    <td><strong>{snapshot.codigo || `#${snapshot.titulo_id}`}</strong><small>{titleDescription(snapshot.descricao)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
+                    <td><strong>{snapshot.solicitacao?.codigo || snapshot.codigo || `#${snapshot.titulo_id}`}</strong>
+                      {snapshot.solicitacao?.codigo && <small>Título {snapshot.codigo || `#${snapshot.titulo_id}`}</small>}
+                      <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
                     <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc.id)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
-                    <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}</td>
+                    <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
+                      {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
+                        Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
+                          disabled={busy} onClick={() => setRevokeItems([Number(item.id)])}>Revogar autorização</button>}
+                    </td>
+                    <td className="pa-justification-column">{String(item.titulo?.solicitacao?.justificativa || '').trim() ?
+                      <button type="button" className="pa-justification-preview" onClick={() => abrirJustificativa(item.id)}
+                        aria-label={`Ler justificativa de ${snapshot.solicitacao?.codigo || snapshot.codigo || `título ${snapshot.titulo_id}`}`}>
+                        {item.titulo.solicitacao.justificativa}
+                      </button> : '-'}</td>
+                    <td className="pa-reason-column">{item.motivo_decisao || '-'}</td>
                   </tr>;
                 })}</tbody>
               </table>
@@ -274,14 +362,34 @@ export default function FinanceiroAutorizacoesPagamento() {
               {!caps.passkey_count && <small><HiOutlineLockClosed /> Cadastre uma passkey antes da primeira autorização.</small>}
             </div>}
             {caps.can_prepare && (selected.itens || []).some((item) => item.status === 'AUTORIZADO') && <div className="pa-retry"><span>A autorização foi registrada, mas há itens ainda não encaminhados.</span><button type="button" className="btn btn-secondary btn-sm" onClick={retryQueue} disabled={busy}>Reprocessar envio à fila</button></div>}
+            {caps.can_decide && revokeItems.length > 0 && <div className="pa-decision">
+              <label>Motivo da revogação<input value={revokeReason} maxLength={500} onChange={event => setRevokeReason(event.target.value)} /></label>
+              <p>{revokeItems.length} título(s) voltarão para autorização. Nenhum pagamento será estornado. Se houver baixa, inclusive parcial, a operação inteira será recusada.</p>
+              <div><button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setRevokeItems([])}>Manter autorização</button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !revokeReason.trim() || !caps.passkey_count}
+                  onClick={revokeAuthorization}>Confirmar revogação com passkey</button></div>
+            </div>}
           </>}
         </section>
       </div>
 
-      {caps.can_decide && passkeys.length > 0 && <section className="pa-devices">
+      {String(textoJustificativa || '').trim() && <OverlayModal rotulo="Justificativa da solicitação"
+        largura="680px" onFechar={fecharJustificativa} fecharAoClicarFora>
+        <header data-modal="cabecalho" className="pa-justification-head">
+          <strong>Justificativa da solicitação</strong>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={fecharJustificativa}>Fechar</button>
+        </header>
+        <p className="pa-justification-text">{textoJustificativa}</p>
+      </OverlayModal>}
+
+      {caps.can_decide && (compactPwa || passkeys.length > 0) && <details id="pa-dispositivos" className="pa-device-disclosure" open={compactPwa ? undefined : true}>
+        <summary>Dispositivos autorizados ({passkeys.length})</summary>
+        {passkeys.length === 0 && <p>Nenhuma passkey cadastrada.</p>}
+        {passkeys.length > 0 && <section className="pa-devices">
         <div><strong>Dispositivos autorizados</strong><span>Revogue imediatamente um aparelho perdido ou que não esteja mais sob seu controle.</span></div>
         <div>{passkeys.map((passkey) => <span key={passkey.id}><span>{passkey.nome_dispositivo || 'Dispositivo'} · {date(passkey.ultimo_uso_em || passkey.createdAt)}</span><button type="button" onClick={() => revokePasskey(passkey.id)} disabled={busy}>Revogar</button></span>)}</div>
       </section>}
+      </details>}
 
       {caps.can_configure && <section className="pa-config">
         <div><strong>Autorizadores nominais</strong><span>Não há bypass de perfil: o usuário também precisa da permissão granular “Autorizar pagamentos”.</span></div>

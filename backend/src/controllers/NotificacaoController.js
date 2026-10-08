@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { NotificacaoDestinatario, Notificacao } = require('../models');
+const { filtrarNotificacoesRetornoParaDecisao } = require('../services/solicitacaoRetornoService');
 const DEFAULT_NOTIFICACOES_LIMIT = 20;
 const MAX_NOTIFICACOES_LIMIT = 50;
 
@@ -18,6 +19,7 @@ module.exports = {
   async index(req, res) {
     try {
       const { nao_lidas, limit, page, tipos } = req.query;
+      const retornosParaDecisao = String(req.query.retornos_para_decisao) === '1';
       const where = { usuario_id: req.user.id };
       const limite = Math.min(
         Number(limit) > 0 ? Number(limit) : DEFAULT_NOTIFICACOES_LIMIT,
@@ -25,7 +27,7 @@ module.exports = {
       );
       const pagina = Math.max(Number(page) > 0 ? Number(page) : 1, 1);
       const offset = (pagina - 1) * limite;
-      const tiposFiltro = normalizarTiposFiltro(tipos);
+      const tiposFiltro = retornosParaDecisao ? ['RETORNO_SOLICITADO'] : normalizarTiposFiltro(tipos);
       const includeNotificacao = {
         model: Notificacao,
         as: 'notificacao',
@@ -37,7 +39,7 @@ module.exports = {
           : undefined
       };
 
-      if (String(nao_lidas) === '1' || String(nao_lidas) === 'true') {
+      if (retornosParaDecisao || String(nao_lidas) === '1' || String(nao_lidas) === 'true') {
         where.lida_em = null;
       }
 
@@ -63,7 +65,7 @@ module.exports = {
         })
       ]);
 
-      const resultado = itens.map(item => ({
+      const notificacoes = itens.map(item => ({
         destinatario_id: item.id,
         lida_em: item.lida_em,
         createdAt: item.notificacao?.createdAt,
@@ -74,6 +76,9 @@ module.exports = {
           ? JSON.parse(item.notificacao.metadata)
           : null
       }));
+      const resultado = retornosParaDecisao
+        ? await filtrarNotificacoesRetornoParaDecisao(req, notificacoes)
+        : notificacoes;
 
       return res.json({
         total_nao_lidas: totalNaoLidas,

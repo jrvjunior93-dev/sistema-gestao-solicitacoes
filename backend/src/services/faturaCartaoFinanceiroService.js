@@ -77,11 +77,12 @@ async function assertFinanceAccess(req) {
   }
 }
 
-async function recalcularFaturaCartao(faturaId, { transaction = null } = {}) {
+async function recalcularFaturaCartao(faturaId, { transaction = null, leituraCorrente = false } = {}) {
   const titulos = await TituloFinanceiro.findAll({
     where: { fatura_cartao_id: faturaId },
     attributes: ['valor_original'],
-    transaction
+    transaction,
+    ...(leituraCorrente && transaction ? { lock: transaction.LOCK.UPDATE } : {})
   });
   const valorTotal = titulos.reduce((total, titulo) => roundCurrency(total + Number(titulo.valor_original || 0)), 0);
   await FaturaCartaoFinanceiro.update(
@@ -91,7 +92,7 @@ async function recalcularFaturaCartao(faturaId, { transaction = null } = {}) {
   return valorTotal;
 }
 
-async function obterOuCriarFaturaCartao({ cartaoId, dataCompra, parcelaOffset = 0, usuarioId = null, transaction = null }) {
+async function obterOuCriarFaturaCartao({ cartaoId, dataCompra, parcelaOffset = 0, usuarioId = null, transaction = null, novaCompraFila = false }) {
   const cartao = await CartaoFinanceiro.findByPk(cartaoId, { transaction });
   if (!cartao || cartao.ativo === false) {
     throw createHttpError(400, 'Cartao financeiro invalido ou inativo.');
@@ -101,7 +102,7 @@ async function obterOuCriarFaturaCartao({ cartaoId, dataCompra, parcelaOffset = 
   }
 
   const datas = calcularDatasFatura(cartao, dataCompra, parcelaOffset);
-  const [fatura] = await FaturaCartaoFinanceiro.findOrCreate({
+  let [fatura] = await FaturaCartaoFinanceiro.findOrCreate({
     where: {
       cartao_id: cartao.id,
       competencia: datas.competencia
@@ -117,10 +118,16 @@ async function obterOuCriarFaturaCartao({ cartaoId, dataCompra, parcelaOffset = 
     transaction
   });
 
+  if (novaCompraFila) {
+    fatura = await FaturaCartaoFinanceiro.findByPk(fatura.id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (String(fatura.status).toUpperCase() !== 'ABERTA') {
+      throw createHttpError(409, 'A fatura desta compra nao esta aberta. Confira a data e o cartao antes de registrar o pagamento.');
+    }
+  }
   return { fatura, cartao, datas };
 }
 
-async function vincularTituloAFatura({ titulo, fatura, transaction = null }) {
+async function vincularTituloAFatura({ titulo, fatura, transaction = null, leituraCorrente = false }) {
   await FaturaCartaoTitulo.findOrCreate({
     where: { titulo_financeiro_id: titulo.id },
     defaults: {
@@ -134,7 +141,7 @@ async function vincularTituloAFatura({ titulo, fatura, transaction = null }) {
     cartao_id: fatura.cartao_id,
     data_vencimento: fatura.data_vencimento
   }, { transaction });
-  await recalcularFaturaCartao(fatura.id, { transaction });
+  await recalcularFaturaCartao(fatura.id, { transaction, leituraCorrente });
 }
 
 async function listarFaturasCartao(req, filters = {}) {
@@ -158,7 +165,7 @@ async function listarFaturasCartao(req, filters = {}) {
   });
 }
 
-async function carregarFaturaCartao(req, faturaId, { transaction = null } = {}) {
+async function carregarFaturaCartao(req, faturaId, { transaction = null, leituraCorrente = false } = {}) {
   await assertFinanceAccess(req);
   const fatura = await FaturaCartaoFinanceiro.findByPk(faturaId, {
     include: [
@@ -169,7 +176,8 @@ async function carregarFaturaCartao(req, faturaId, { transaction = null } = {}) 
         include: [{ model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] }]
       }
     ],
-    transaction
+    transaction,
+    ...(leituraCorrente && transaction ? { lock: transaction.LOCK.UPDATE } : {})
   });
 
   if (!fatura) throw createHttpError(404, 'Fatura de cartao nao encontrada.');
@@ -232,7 +240,8 @@ async function baixarFaturaCartao(req, faturaId, payload = {}, { transaction: ex
   const ownTransaction = !externalTransaction;
 
   try {
-    const fatura = await carregarFaturaCartao(req, faturaId, { transaction });
+    await FaturaCartaoFinanceiro.findByPk(faturaId, { transaction, lock: transaction.LOCK.UPDATE });
+    const fatura = await carregarFaturaCartao(req, faturaId, { transaction, leituraCorrente: true });
     if (!['ABERTA', 'FECHADA', 'PARCIAL'].includes(String(fatura.status || '').toUpperCase())) {
       throw createHttpError(400, 'Somente faturas abertas, fechadas ou parciais podem ser baixadas.');
     }

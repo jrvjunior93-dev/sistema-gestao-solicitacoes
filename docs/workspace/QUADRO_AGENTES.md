@@ -2,14 +2,50 @@
 
 ## Promocao operacional para main em 08/10/2026
 
-- Sessao: codex-promocao-operacional-main-20261008; status: em_andamento.
+- Sessao: codex-promocao-operacional-main-20261008; status: finalizado;
+  ownership liberado para publicacao Git autorizada.
 - Plano: integrar main 0c164d7c e refactor/frontend 27220d13 preservando
   vigencia contratual e ambos os historicos documentais. Conflitos previstos
   somente nos registros; codigo de contratos identico entre as duas pontas.
 - Backup de producao confirmado pelo usuario; snapshot Git local completo
-  verificado. Testes da origem aprovados; validar novamente apos integrar.
+  verificado. Integracao validada: backend financeiro/retorno/contratos,
+  UI de fila/justificativa/vinculos/pop-up/contratos, PWA, navegacao e build.
+- Registros dos dois agentes preservados; contratos e demais arquivos de
+  runtime conferidos sem diferenca contra suas bases corretas.
 - Sem banco, migration aplicada ou deploy; publicar somente Git autorizado.
 - Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+
+## Fila e publicacao dev 08/10/2026
+
+- codex-fila-comprovante-pendente-2026-10-08: finalizado, sem delegacao;
+  ownership liberado. Baixa sem PDF, recorte de pendencias e upload tardio
+  validados sem banco real. PWA/LOTE-ID anteriores incluidos na publicacao
+  autorizada apenas da refactor/frontend; main e deploy fora do escopo.
+- Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+## Lotes e PWA do autorizador 08/10/2026
+
+- Sessao: codex-autorizacao-pwa-2026-10-08; status: finalizado; sem delegacao.
+- LOTE-ID dentro da transacao, legado preservado, inicio direto e shell compacto
+  somente no PWA instalado do autorizador nominal habilitado.
+- Validacoes: fila backend, UI/convergencia, tela inicial, PWA/QA mobile,
+  navegacao/abas, build e docs aprovados. Sem banco real ou publicacao.
+  Ownership liberado; handoff em docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+
+## Autorizacao sem expiracao e resumo do proprietario - 08/10/2026
+
+- Sessao: codex-autorizacao-resumo-2026-10-08; status: finalizado.
+- Plano: retirar prazo do lote sem alterar schema/snapshots; manter passkey curta; reorganizar identificacao e motivo sem mudar acoes. Compra Direta e Solicitacao de Compra mostram somente tipo, sem itens na descricao.
+- Validacao: testes isolados do backend, UI/QA responsiva claro/escuro, build, sintaxe e documentacao aprovados. Sem banco real ou publicacao. Ownership liberado; handoff em docs/handoffs/2026-10-08-autorizacao-sem-expiracao-identificacao.md.
+
+
+## Consulta de autorizacoes de pagamento 08/10/2026
+
+- Sessao: codex-autorizacoes-consulta-2026-10-08.
+- Status: finalizado.
+- Plano: tornar opcional a associacao do titulo no lote, preservando soft delete e paginação dos lotes; testar SQL real, filtros, detalhes e negativa de permissao sem conexao de banco.
+- Validacao: consulta SQL/hidratacao reais, regressao negativa, suite da fila, sintaxe, diff-check e documentacao aprovados.
+- Pendencias: homologacao em dev apos commit/publicacao autorizados pelo usuario. Handoff: docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md. Ownership liberado; sem banco real ou EC2 nesta etapa.
 
 ## Trabalho em andamento
 
@@ -243,3 +279,13 @@ Nao ha nova implementacao planejada aguardando inicio nesta sessao.
 - Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
 
 Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
+
+## Edicao de vigencia contratual - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-2026-10-08; responsavel: agente desta conversa.
+- Estado: em_andamento.
+- Reservados: frontend/src/pages/GestaoContratos.jsx; backend/src/controllers/ContratoController.js; backend/src/validators/operationalValidators.js; backend/src/services/contratoVigenciaEdicao.js; backend/scripts/validarContratoVigenciaEdicao.js; frontend/scripts/validarContratoVigenciaEdicao.mjs; docs/modulos/contratos/README.md; docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Escopo: editar inicio/fim da vigencia com validacao e historico, preservando parcelas, medicoes, titulos e pagamentos. Sem banco real, EC2, migration, commit, push ou deploy.
+- Colaboracao: usuario informou outro agente em autorizacao/fila de pagamentos. Esses fluxos, routes.js e package.json ficam fora desta reserva. Registros do painel apenas acrescentados, preservando os anteriores.
+
+Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.

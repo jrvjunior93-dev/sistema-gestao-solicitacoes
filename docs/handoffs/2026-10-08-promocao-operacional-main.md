@@ -31,9 +31,19 @@ A simulacao de merge encontrou somente conflitos documentais.
 
 ## Estado e proximo passo
 
-Integracao local em andamento na branch codex/promocao-operacional-main-20261008.
-Conciliar registros sem apagar a promocao isolada contratual, repetir
-validacoes e publicar o resultado na main somente por fast-forward.
+Integracao local concluida e validada na branch
+codex/promocao-operacional-main-20261008, liberada para publicacao na main
+por fast-forward. Os cinco conflitos eram documentais; ambas as linhas de
+historico foram mantidas. Os arquivos funcionais de contratos continuam
+iguais a main anterior, e todo o codigo backend/frontend e igual a ponta
+congelada da refactor/frontend.
+
+Depois da integracao passaram novamente fila-instrumentos,
+fila-comprovante-pendente, devolucao backend, vigencia backend e UI,
+fila-instrumentos UI, convergencia e modal de justificativa, vinculos de
+usuarios, pop-up de retorno, PWA Android/iOS simulado, tela inicial,
+navegacao/abas, build Vite e documentacao. Apenas os avisos existentes
+de Browserslist e chunk acima de 500 kB permaneceram. Ownership liberado.
 
 A entrega inclui `202610080001_fila_pagamentos_instrumento.js`, que adiciona
 instrumento_pagamento_json na fila e revisao_autorizacao nos lotes; somente

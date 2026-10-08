@@ -2,7 +2,8 @@
 
 ## Promocao operacional para main em 08/10/2026
 
-- Sessao: codex-promocao-operacional-main-20261008; status: em_andamento.
+- Sessao: codex-promocao-operacional-main-20261008; status: finalizado;
+  ownership liberado para publicacao Git autorizada.
 - Checkout: C:/Fluxy-refactor-frontend; branch de integracao criada de origin/main.
 - Reserva: referencias desta integracao, docs/workspace/OWNERSHIP_ATIVO.md,
   QUADRO_AGENTES.md, SESSOES_ATIVAS.md, HANDOFF_GLOBAL.md e os handoffs
@@ -14,6 +15,128 @@
   fora da EC2 em outputs/main-pre-promocao-20261008-0c164d7c.bundle.
 - Sem banco real, aplicacao de migration, EC2 ou reinicio nesta sessao.
   Preservar outputs/ fora do Git e registros dos dois agentes.
+- Integracao e conflitos documentais conciliados; codigo igual a origem e
+  contratos iguais a main anterior. Backend, UI, PWA, navegacao, build e
+  documentacao aprovados novamente. Handoff de promocao atualizado.
+
+## Publicacao dev de usuarios, justificativa e retorno 08/10/2026
+
+- Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.
+- Usuario autorizou commit na refactor/frontend e comandos EC2 dev;
+  publicacao no remoto disponibiliza o commit. Sem main ou deploy executado.
+- Reserva temporaria: este registro, handoff e index dos arquivos da tarefa.
+  Preservar outputs/ sem versionar e nao alterar registros de outras sessoes.
+- Estado: revisao, diff e validacoes backend/docs/UI aprovados novamente;
+  reserva liberada para commit/publicacao autorizados. Sem banco real,
+  migration, alteracao de ambiente ou reinicio.
+
+## Vinculos de usuarios com centros de custo 08/10/2026
+
+- Sessao: codex-usuario-centros-custo-2026-10-08; finalizado; ownership liberado; sem delegacao.
+- Reserva: UsuarioNovo.jsx, Usuarios.jsx, teste UI isolado de vinculos,
+  frontend/package.json, README de Configuracoes e handoff desta tarefa.
+- Escopo: usar GET /obras?escopo=TODOS no cadastro/edicao de usuarios;
+  identificar obras e centros de custo sem alterar a rota padrao, permissoes
+  ou o contrato de gravacao em usuarios_obras. Preservar vinculos existentes.
+- Sem banco real, migration, commit/push, main ou deploy. Preservar outputs/.
+- Adicao do usuario: reservar pagamentoAutorizacaoService.js, consulta SQL,
+  FinanceiroAutorizacoesPagamento.jsx, estilos/testes PWA/convergencia,
+  OverlayModal.jsx e documentacao Financeiro. Justificativa somente leitura;
+  nao alterar snapshots/hashes, autorizacoes, status ou fluxo da fila.
+- Adicao de retorno: reservar RetornoSolicitacaoBar.jsx, NotificacoesBell.jsx,
+  services/notificacoes.js, NotificacaoController.js, solicitacaoRetornoService.js,
+  testes de devolucao/pop-up e README Solicitacoes. Preservar regra transacional
+  existente, destino original, permissoes e bloqueios financeiros.
+- Componente reservado: RetornoNotificacaoPopup.jsx e seu teste UI isolado;
+  reutilizar Alert/portal sem modificar o canal global de sucesso/erro.
+- Testes backend offline, SQL/hidratacao reais simulados, UI/QA mobile,
+  PWA Android/iOS simulado, navegacao, build e docs aprovados. Alteracoes
+  permanecem locais, sem commit/push ou deploy.
+- Handoff: docs/handoffs/2026-10-08-usuarios-justificativa-retorno.md.
+
+## Fila baixada sem comprovante e publicacao dev 08/10/2026
+
+- Sessao: codex-fila-comprovante-pendente-2026-10-08; finalizado; ownership liberado; sem delegacao.
+- Reserva: pagamentoManualFilaService.js, pagamentoComprovantePdfService.js,
+  paymentValidators.js, novo dominio de comprovantes da fila, testes offline
+  de fila/recibos, FinanceiroFilaPagamentos.jsx, testes UI e package.json;
+  docs Financeiro, handoffs e coordenacao da publicacao.
+- Adicao do usuario antes da publicacao: reservar InstrumentoPagamentoFila.jsx
+  e a pagina/teste UI para modal de cheque proprio, limpeza da conta ao trocar
+  forma e icones das acoes sob o titulo. Preservar dados/payload/permissoes.
+- Pedido: card Pendentes de comprovante apos Pendentes, baixa sem PDF,
+  anexo posterior sem nova baixa; commit/push das pendencias na refactor/frontend
+  e comandos dev. Inclui pendencias locais de LOTE-ID/PWA da mesma conversa.
+- Preservar permissoes, atomicidade, instrumentos/faturas/cheques, regras de
+  divergencia e outputs/ fora do Git. Sem banco real, main ou execucao de deploy.
+- Testes offline backend, UI/QA, PWA, tela inicial, convergencia, navegacao,
+  build e docs aprovados. Publicacao autorizada apenas em refactor/frontend.
+- Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+## Lotes sequenciais e PWA compacto do autorizador 08/10/2026
+
+- Sessao: codex-autorizacao-pwa-2026-10-08; estado: finalizado; ownership liberado; sem delegacao.
+- Reserva: pagamentoAutorizacaoService.js, validarAnaliseProprietario.js,
+  autorizacaoPagamentoResumo.js, novo helper autorizacaoPagamentoPwa.js,
+  telaInicialRoute.js, Layout.jsx, FinanceiroAutorizacoesPagamento.jsx,
+  financeiro-autorizacoes-pagamento.css, testes isolados de tela inicial/PWA,
+  validarFilaAutorizacaoConvergencia.mjs, documentacao Financeiro e handoff.
+- Escopo: codigo LOTE-ID sem renumerar banco legado; inicio e shell compacto
+  apenas no PWA instalado do autorizador nominal habilitado. Preservar guardas,
+  MFA, permissoes, decisoes, auditoria e acesso a opcoes. Sem migration,
+  banco real, commit, push ou deploy. Preservar outputs/ sem versionar.
+- Validacoes: fila backend, UI/convergencia, tela inicial, PWA Android/iOS
+  simulado, QA visual claro/escuro, navegacao/abas, build e docs aprovados.
+  Continuidade em docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+
+## Publicacao autorizada do resumo de autorizacoes - 08/10/2026
+
+- Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.
+- Usuario autorizou commit/push na refactor/frontend e comandos para EC2 dev;
+  nao inclui main, banco real ou execucao de deploy.
+- Reserva temporaria: handoff e registro desta publicacao, revisao do index e
+  publicacao dos arquivos do ajuste de lotes sem prazo e resumo do proprietario.
+  Preservar outputs/ sem versionar.
+- Estado: testes e revisao aprovados novamente; reserva liberada para
+  commit/publicacao autorizados. Conferir resultado no historico/remoto.
+
+
+## Autorizacao sem expiracao e resumo do proprietario - 08/10/2026
+
+- Sessao: codex-autorizacao-resumo-2026-10-08; estado: finalizado; ownership liberado; sem delegacao.
+- Reserva: pagamentoAutorizacaoService.js, validarAnaliseProprietario.js, validarAutorizacaoProprietarioPagamentos.js (contrato do resumo), FinanceiroAutorizacoesPagamento.jsx, financeiro-autorizacoes-pagamento.css, novo helper autorizacaoPagamentoResumo.js, validarFilaAutorizacaoConvergencia.mjs, README e contrato documental do Financeiro, handoff e registros desta sessao.
+- Escopo: remover validade operacional dos lotes inclusive legados, preservar expiracao de challenges, destacar SOL, mostrar somente o tipo para compras e separar MOTIVO apos STATUS. Preservar hash, regras de decisao, permissoes e idempotencia. Sem migration, banco real, commit/push ou deploy.
+- Validacao: backend, UI/QA responsiva, build, sintaxe e documentacao aprovados. Continuidade em docs/handoffs/2026-10-08-autorizacao-sem-expiracao-identificacao.md; commit/push autorizados posteriormente, homologacao dev pelo usuario.
+
+
+## Publicacao da consulta de autorizacoes 08/10/2026
+
+- Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.
+- Pedido: commit na refactor/frontend e instrucoes de atualizacao da EC2 dev; publicacao no remoto para disponibilizar o commit. Nao inclui main ou execucao de deploy.
+- Reserva temporaria: handoff e registro de ownership da consulta; revisao do index e publicacao somente dos arquivos desta correcao. Preservar outputs/.
+- Estado: testes e revisao aprovados; reserva liberada para commit/publicacao autorizados. Sem banco real, migration, reinicio ou promocao para main.
+
+## Consulta de autorizacoes de pagamento 08/10/2026
+
+- Sessao: codex-autorizacoes-consulta-2026-10-08; responsavel: agente desta conversa, sem delegacao.
+- Estado: finalizado; ownership liberado.
+- Reserva: backend/src/services/pagamentoAutorizacaoService.js; backend/scripts/validarAutorizacaoConsultaSql.js; backend/package.json; docs/modulos/financeiro/README.md; docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md.
+- Escopo autorizado: corrigir a consulta de lista/detalhe dos lotes e testar SQL real gerado pelo Sequelize, sem mudar permissoes, decisoes ou pagamentos. Registros de coordenacao apenas acrescentados, preservando outras sessoes. Publicacao autorizada posteriormente pelo usuario; sem banco real, migration ou deploy.
+- Validacoes: SQL/hidratacao reais sem conexao, suite da fila, sintaxe e documentacao aprovadas. Continuidade em docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md; homologacao dev pendente apos publicacao autorizada.
+
+## Publicacao da fila e revogacao em dev
+
+- Responsavel: agente desta conversa, checkout `C:/Fluxy-refactor-frontend`.
+- Usuario autorizou commit e push das pendencias na `refactor/frontend` e instrucoes para EC2 dev. Nao inclui promocao para main nem execucao de deploy nesta sessao.
+- Reserva temporaria: ownership e handoff da fila; index/commit da implementacao, testes e documentacao. Preservar `outputs/` sem versionar.
+- Estado: testes backend e telas isoladas aprovados novamente; reserva liberada para o commit autorizado. Publicacao Git deve ser conferida no historico/remoto; deploy da EC2 sera executado pelo usuario, somente em dev.
+
+## Fila multiforma e revogacao de autorizacao - 08/10/2026
+
+- Responsavel: agente desta conversa, sem delegacao, checkout refactor/frontend.
+- Reserva: pagamentoManualFilaService.js, pagamentoAutorizacaoService.js, controllers/rotas/validators de pagamento, models/migration da fila se necessarios, tituloFinanceiroService.js somente protecoes de cartao, telas e services de fila/autorizacao, componente reutilizavel de instrumento de pagamento, testes isolados e documentacao/handoff.
+- Escopo autorizado: forma efetiva na baixa, cartao ainda nao usado com vinculo a fatura, cheques proprios e da carteira, rejeitados somente consulta em Nao pagos e revogar autorizacoes nao baixadas. Preservar pendencias locais do rotulo NA FILA. Sem banco real, commit, push ou deploy.
+- Estado: implementacao e testes isolados concluidos; reserva liberada. Handoff em `docs/handoffs/2026-10-08-fila-instrumentos-revogacao.md`. Migration criada, nao aplicada; homologacao financeira em dev pendente antes de producao.
 
 ## Modelo preenchido de colaboradores - 07/10/2026
 
@@ -2121,3 +2244,23 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
 
 Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
+
+## Rotulo de lote na fila 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: FinanceiroAutorizacoesPagamento.jsx, validarFilaAutorizacaoConvergencia.mjs, documentacao de autorizacao do proprietario e handoff.
+- Escopo: exibir CONCLUIDO como NA FILA na lista e detalhe, sem alterar enum, decisoes, pagamentos, permissoes ou reprocessamento. Sem banco, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-08-autorizacao-rotulo-na-fila.md. Sem commit, push ou deploy.
+
+## Edicao de vigencia contratual - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-2026-10-08; responsavel: agente desta conversa.
+- Estado: em_andamento.
+- Reservados: frontend/src/pages/GestaoContratos.jsx; backend/src/controllers/ContratoController.js; backend/src/validators/operationalValidators.js; backend/src/services/contratoVigenciaEdicao.js; backend/scripts/validarContratoVigenciaEdicao.js; frontend/scripts/validarContratoVigenciaEdicao.mjs; docs/modulos/contratos/README.md; docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Escopo: editar inicio/fim da vigencia com validacao e historico, preservando parcelas, medicoes, titulos e pagamentos. Sem banco real, EC2, migration, commit, push ou deploy.
+- Colaboracao: usuario informou outro agente em autorizacao/fila de pagamentos. Esses fluxos, routes.js e package.json ficam fora desta reserva. Registros do painel apenas acrescentados, preservando os anteriores.
+
+Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.
+
+Publicacao da sessao codex-contrato-vigencia-2026-10-08 autorizada pelo usuario em 08/10/2026: reserva documental do handoff para registrar commit/push na refactor/frontend; sem EC2.
+Reserva documental de publicacao encerrada; handoff atualizado e ownership liberado.

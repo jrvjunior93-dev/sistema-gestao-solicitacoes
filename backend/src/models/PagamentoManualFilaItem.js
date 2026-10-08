@@ -23,6 +23,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true
     },
+    instrumento_pagamento_json: { type: DataTypes.JSON, allowNull: true },
     data_vencimento_prevista: {
       type: DataTypes.DATEONLY,
       allowNull: true

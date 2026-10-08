@@ -13,6 +13,7 @@ const {
 } = require('../models');
 const { uploadToS3 } = require('./s3');
 const { registrarEventoSeguranca } = require('./securityLogService');
+const { wherePendenteComprovante, podeAnexarComprovanteFila } = require('./pagamentoFilaComprovanteDomain');
 
 const MAX_TEXT_LENGTH = 120000;
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
@@ -296,7 +297,7 @@ function scoreCandidate(receipt, queueItem) {
   }
 
   const amount = roundCurrency(receipt.valor);
-  const expectedValues = [queueItem.valor_previsto, title.valor_saldo, title.valor_original].map(roundCurrency);
+  const expectedValues = [queueItem.valor_informado, queueItem.valor_previsto, title.valor_saldo, title.valor_original].map(roundCurrency);
   if (amount > 0 && expectedValues.includes(amount)) {
     score += 50;
     reasons.push('Valor igual');
@@ -319,9 +320,9 @@ function scoreCandidate(receipt, queueItem) {
     reasons.push('Nome do favorecido confere');
   }
 
-  if (receipt.data_pagamento && title.data_vencimento === receipt.data_pagamento) {
+  if (receipt.data_pagamento && (queueItem.data_baixa || title.data_vencimento) === receipt.data_pagamento) {
     score += 10;
-    reasons.push('Data igual ao vencimento');
+    reasons.push(queueItem.data_baixa ? 'Data igual a baixa' : 'Data igual ao vencimento');
   }
   return { score, reasons };
 }
@@ -345,7 +346,7 @@ async function findAccount(receipt, loadedAccounts = null) {
 
 async function loadQueueRows() {
   return PagamentoManualFilaItem.findAll({
-    where: { status: 'PENDENTE' },
+    where: { [Op.or]: [{ status: { [Op.in]: ['PENDENTE', 'DIVERGENTE'] } }, wherePendenteComprovante()] },
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
@@ -377,6 +378,9 @@ function getQueueCandidates(receipt, rows) {
       favorecido: row.titulo.paymentBeneficiary?.nome || row.titulo.favorecidoPagamento?.nome || row.titulo.parceiro?.nome || null,
       documento: row.titulo.paymentBeneficiary?.cpf_cnpj || row.titulo.favorecidoPagamento?.cpf_cnpj || row.titulo.parceiro?.cpf_cnpj || null,
       valor_previsto: Number(row.valor_previsto || 0),
+      status_fila: row.status,
+      pagamento_registrado: Number(row.movimento_financeiro_id) > 0,
+      valor_pago: Number(row.valor_informado || 0),
       valor_saldo: Number(row.titulo.valor_saldo || 0),
       vencimento: row.titulo.data_vencimento,
       score: scored.score,
@@ -442,6 +446,9 @@ async function previewReceipts(files = []) {
       titulo_descricao: row.titulo.descricao,
       favorecido: row.titulo.paymentBeneficiary?.nome || row.titulo.favorecidoPagamento?.nome || row.titulo.parceiro?.nome || null,
       valor_previsto: Number(row.valor_previsto || 0),
+      status_fila: row.status,
+      pagamento_registrado: Number(row.movimento_financeiro_id) > 0,
+      valor_pago: Number(row.valor_informado || 0),
       valor_saldo: Number(row.titulo.valor_saldo || 0),
       vencimento: row.titulo.data_vencimento
     }))
@@ -493,7 +500,7 @@ async function linkReceipts(req, files = [], rawMappings) {
     });
     if (queueRows.length !== filaIds.length) throw createHttpError(404, 'Um ou mais itens da fila nao foram encontrados.');
     for (const row of queueRows) {
-      if (row.status !== 'PENDENTE') throw createHttpError(409, `O titulo ${row.titulo?.codigo || row.id} nao esta mais pendente na fila.`);
+      if (!podeAnexarComprovanteFila(row)) throw createHttpError(409, `O titulo ${row.titulo?.codigo || row.id} nao permite vincular comprovantes.`);
     }
     const duplicates = await PagamentoManualFilaItem.findAll({
       where: { comprovante_hash: { [Op.in]: mappings.map((item) => item.arquivo_hash) } },
@@ -524,7 +531,7 @@ async function linkReceipts(req, files = [], rawMappings) {
         transaction,
         lock: transaction.LOCK.UPDATE
       });
-      if (!row || row.status !== 'PENDENTE') {
+      if (!podeAnexarComprovanteFila(row)) {
         throw createHttpError(409, `O item ${mapping.fila_id} mudou enquanto os comprovantes eram processados. Atualize a fila.`);
       }
       const { parsed, url } = uploads.get(mapping.arquivo_hash);
@@ -562,9 +569,13 @@ async function linkReceipts(req, files = [], rawMappings) {
           comprovante_dados_json: parsed.dados,
           comprovante_vinculado_por: req.user?.id || null,
           comprovante_vinculado_em: vinculadoEm,
-          valor_informado: parsed.dados.valor || row.valor_informado,
-          data_baixa: parsed.dados.data_pagamento || row.data_baixa,
-          conta_bancaria_id: account?.id || row.conta_bancaria_id
+          // Somente um item ainda nao processado pode receber sugestoes do PDF.
+          // Anexo tardio nunca reescreve os dados ja usados na baixa/divergencia.
+          ...(row.status === 'PENDENTE' && !row.movimento_financeiro_id ? {
+            valor_informado: parsed.dados.valor || row.valor_informado,
+            data_baixa: parsed.dados.data_pagamento || row.data_baixa,
+            conta_bancaria_id: account?.id || row.conta_bancaria_id
+          } : {})
         }, { transaction });
       }
     }

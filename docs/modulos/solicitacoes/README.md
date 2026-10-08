@@ -174,6 +174,31 @@ Validacao isolada: `cd backend && npm run test:recargas-multiplas`.
 
 Novas solicitacoes abertas pela tela entram em `GEO / PENDENTE`; o navegador nao pode substituir esse destino por payload. Os campos e endpoints de diretoria permanecem no backend somente para compatibilidade com registros antigos que ja possuam `fluxo_aprovacao_diretoria = true`; eles nao devem ser reutilizados para criar novos fluxos. Prioridades da diretoria continuam sendo um dominio operacional separado e nao alteram o setor responsavel. A configuracao `Tipos por Setor (Recebimento)` continua controlando visibilidade e modo de recebimento depois que a solicitacao chega a um setor, mas nao controla o catalogo de abertura. Automacao por status so ocorre depois de uma transicao valida e nao pode ignorar permissoes ou consistencia.
 
+## Retorno e devolucao ao setor anterior
+
+Apos o retorno aprovado, quem o solicitou (ou SUPERADMIN) continua vendo a
+faixa e a acao `Devolver solicitacao`. A confirmacao identifica o setor que
+aprovou o retorno, registrado no pedido original. A devolucao preserva status
+e titulos, respeita permissao/pendencias/cancelamento e usa a transacao e
+protecao contra repeticao existentes. Colegas nao concluem o pedido alheio.
+
+Pedidos de retorno geram um pop-up informativo abaixo do sino, com acao para
+abrir a solicitacao. O canal consulta somente notificacoes nao lidas do
+usuario autenticado via `GET /notificacoes?retornos_para_decisao=1`; revalida
+permissao `solicitacoes.retorno.decidir`, visibilidade, setor atual e pedido
+PENDENTE. Pedidos decididos, cancelados, de setor antigo ou sem acesso nao
+geram o aviso. A configuracao do evento `RETORNO_SOLICITADO` continua vigente.
+
+Atualizacao a cada 30 segundos, ao retomar a janela e no evento local de
+atualizacao. Dispensa nao marca leitura; abrir usa o fluxo existente do sino
+e marca a notificacao lida. A sessao do navegador evita repetir um pop-up ja
+exibido, separadamente por usuario. O sino e os avisos de sucesso/erro continuam
+independentes; falha do canal nao bloqueia operacoes nem aprova pedidos.
+
+Testes sem banco: `node backend/scripts/validarDevolucaoRetornoSolicitacao.js`,
+`node frontend/scripts/validarDevolucaoRetornoSolicitacao.mjs` e
+`cd frontend && npm run test:retorno-popup-ui`. Sem migration ou ativacao nova.
+
 ## Dependencias
 
 - recebe obra e apropriacao de `OBRAS`;

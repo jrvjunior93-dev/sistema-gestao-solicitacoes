@@ -10,6 +10,24 @@ const server = await createServer({ root: raiz, logLevel: 'error', server: { mid
 
 try {
   const { resolverRotaInicial } = await server.ssrLoadModule('/src/navigation/telaInicialRoute.js');
+  const { isInstalledPwa, isAutorizacaoPwaCompacta } = await server.ssrLoadModule('/src/utils/autorizacaoPagamentoPwa.js');
+  const owner = { autorizacao_pagamentos: { enabled: true, mode: 'PILOT', can_decide: true },
+    tela_inicial: { id: 'perfil', to: '/perfil' } };
+  const authorizationRoute = '/financeiro/autorizacoes-pagamento';
+  assert.equal(isInstalledPwa(undefined), false);
+  assert.equal(isInstalledPwa({ matchMedia: () => ({ matches: true }) }), true);
+  assert.equal(isInstalledPwa({ navigator: { standalone: true } }), true, 'PWA iOS');
+  assert.equal(isInstalledPwa({ matchMedia: () => ({ matches: false }) }), false);
+  assert.equal(resolverRotaInicial(owner, { installedPwa: true }), authorizationRoute);
+  assert.equal(resolverRotaInicial(owner, { installedPwa: false }), '/perfil', 'Navegador preserva preferencia');
+  assert.equal(isAutorizacaoPwaCompacta(owner, authorizationRoute, true), true);
+  assert.equal(isAutorizacaoPwaCompacta(owner, '/modulos', true), false);
+  assert.equal(isAutorizacaoPwaCompacta(owner, authorizationRoute, false), false);
+  for (const caps of [{ enabled: false, can_decide: true }, { enabled: true, can_prepare: true }, {}]) {
+    const limited = { perfil: 'SUPERADMIN', autorizacao_pagamentos: caps };
+    assert.equal(resolverRotaInicial(limited, { installedPwa: true }), '/');
+    assert.equal(isAutorizacaoPwaCompacta(limited, authorizationRoute, true), false, 'Sem bypass por perfil');
+  }
   const superadmin = { id: 1, perfil: 'SUPERADMIN', setor: { codigo: 'SUPORTE' }, modulos_habilitados: [] };
 
   assert.equal(resolverRotaInicial(superadmin), '/', 'Sem escolha, Inicio abre o menu.');
@@ -39,6 +57,8 @@ try {
   assert.match(app, /<Route index element={<HomeEntry \/>} \/>/);
   assert.match(app, /<Route path="modulos" element={<HomeHub \/>} \/>/);
   assert.match(login, /navigate\(resolverRotaInicial\(data\?\.user\)\)/);
+  assert.match(login, /if \(data\?\.user\?\.mfa_setup_pending\)\s*{\s*navigate\('\/perfil'\);\s*return;/, 'MFA continua antes do destino inicial');
+  assert.match(fonte('src/components/PrivateRoute.jsx'), /user\?\.mfa_setup_pending[\s\S]*?<Navigate to="\/perfil" replace \/>/);
   assert.match(layout, /<Link to="\/modulos" className="fx-brand"/);
   assert.match(layout, /<Link to="\/" className="fx-home-btn"/);
   assert.match(perfil, /Menu de módulos \(padrão\)/);

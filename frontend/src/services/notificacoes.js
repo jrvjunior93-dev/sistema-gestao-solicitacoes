@@ -1,8 +1,9 @@
 import { API_URL, authHeaders } from './api';
 
-export async function getNotificacoes({ nao_lidas = false, limit = 50, page = 1, tipos = [] } = {}) {
+export async function getNotificacoes({ nao_lidas = false, limit = 50, page = 1, tipos = [], retornos_para_decisao = false } = {}) {
   const params = new URLSearchParams();
   if (nao_lidas) params.set('nao_lidas', '1');
+  if (retornos_para_decisao) params.set('retornos_para_decisao', '1');
   if (limit) params.set('limit', String(limit));
   if (page) params.set('page', String(page));
   if (Array.isArray(tipos) && tipos.length > 0) {

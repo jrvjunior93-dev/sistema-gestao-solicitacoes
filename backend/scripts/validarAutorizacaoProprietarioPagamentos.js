@@ -97,7 +97,7 @@ assert(approvalService.includes('push_subscribed: pushSubscribed'), 'Sessao deve
 const approvalPage = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/FinanceiroAutorizacoesPagamento.jsx'), 'utf8');
 assert(approvalPage.includes('Valor do título'), 'Tela movel deve identificar o valor individual do titulo junto ao item.');
 assert(approvalPage.includes('money(item.valor_snapshot)'), 'Valor exibido no item deve vir do snapshot individual autorizado.');
-assert(approvalPage.includes('titleDescription(snapshot.descricao)'), 'Descricao deve remover o total agregado que confundia o autorizador.');
+assert(approvalPage.includes('resumoSolicitacaoAutorizacao(snapshot)'), 'Resumo deve preservar descricao dos demais tipos e ocultar itens de compras.');
 assert(approvalPage.includes('caps.push_subscribed'), 'Tela deve reconciliar a assinatura do navegador com o backend.');
 
 const rateLimitStore = fs.readFileSync(path.resolve(__dirname, '../src/services/rateLimitStore.js'), 'utf8');

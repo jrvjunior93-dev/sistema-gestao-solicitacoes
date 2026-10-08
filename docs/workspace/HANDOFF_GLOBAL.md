@@ -1,5 +1,59 @@
 # Handoff Global
 
+## Promocao operacional para main em 08/10/2026
+
+- Sessao codex-promocao-operacional-main-20261008 finalizada; ownership liberado.
+- Integracao da refactor/frontend 27220d13 sobre main 0c164d7c autorizada.
+  Vigencia contratual e registros dos dois agentes preservados; conflitos
+  somente documentais, sem nova alteracao de codigo de contratos.
+- Backend, UI, PWA, navegacao, build e documentacao aprovados novamente.
+- Usuario confirmou backup recente cifrado no Drive e timer ativo; bundle
+  completo da main anterior verificado fora da EC2 e mantido fora do Git.
+- Somente publicacao Git. EC2/schema ainda exigem preflight e procedimento
+  de deploy; inclui 202610080001_fila_pagamentos_instrumento.js nao aplicada.
+- Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+
+## Fila sem PDF e publicacao dev 08/10/2026
+
+- Sessao codex-fila-comprovante-pendente-2026-10-08 finalizada; ownership liberado.
+- Card virtual apos Pendentes, baixa regular sem PDF e anexo posterior sem
+  alterar movimento, conta, data ou valor. Divergencias preservadas.
+- UX adicional validada: modal cheque proprio, conta limpa ao trocar forma
+  e icones acessiveis sob o titulo; rotas e payloads preservados.
+- Inclui LOTE-ID e PWA compacto anteriores. Commit/push autorizado somente
+  na refactor/frontend; sem banco real, main ou deploy executado.
+- Testes backend/UI/PWA, navegacao, build e docs aprovados. Homologar dev.
+- Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+## Lotes e PWA do autorizador 08/10/2026
+
+- Sessao: codex-autorizacao-pwa-2026-10-08; finalizado localmente; ownership liberado.
+- Handoff: docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+- LOTE-ID unico sem renumeracao de banco; inicio direto e shell compacto no
+  PWA nominal. Datas, auditoria, MFA, guardas, permissoes e assinaturas preservados.
+- Testes isolados, QA mobile claro/escuro, build, navegacao e docs aprovados.
+  Proximo passo: publicacao autorizada e homologacao dev em aparelhos reais.
+  Sem migration, banco real, commit/push ou deploy nesta tarefa.
+
+## Autorizacao sem prazo e resumo do proprietario - 08/10/2026
+
+- Sessao: codex-autorizacao-resumo-2026-10-08; status: finalizado localmente.
+- Handoff: docs/handoffs/2026-10-08-autorizacao-sem-expiracao-identificacao.md.
+- Lotes novos/legados nao expiram; challenge curto e revalidacao permanecem. SOL
+  principal, MOTIVO apos STATUS e compras sem itens no resumo; snapshot preservado.
+- Backend, UI/QA responsiva, build, sintaxe e docs aprovados. Ownership liberado.
+- Proximo passo: publicacao autorizada e homologacao dev. Sem migration, banco real,
+  commit/push, reinicio ou deploy executados nesta tarefa.
+
+
+## Consulta de autorizacoes de pagamento 08/10/2026
+
+- Sessao: codex-autorizacoes-consulta-2026-10-08; status: finalizado localmente.
+- Handoff: docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md.
+- Correcao: LEFT JOIN explicito do titulo na leitura de lotes, preservando soft delete, historico, limite, permissoes e decisoes.
+- Validacoes: SQL/hidratacao reais sem banco, regressao, suite da fila, sintaxe e documentacao aprovadas; ownership liberado.
+- Proximo passo: commit/publicacao autorizados pelo usuario, seguidos de homologacao de lista/detalhe no backend dev. Sem migration, banco real ou execucao de deploy nesta sessao.
+
 Nao ha handoff multirrepositorio ativo.
 
 Quando houver uma sessao explicitamente autorizada, registrar data, repositorios, arquivos, validacoes, riscos e proximo passo. Handoffs concluidos permanecem no historico do Git e nao devem continuar como estado ativo.
@@ -123,3 +177,5 @@ Quando houver uma sessao explicitamente autorizada, registrar data, repositorios
 - Ambientes externos: nenhum banco, migration, deploy, API ou processo PM2 acionado.
 
 Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
+
+Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.

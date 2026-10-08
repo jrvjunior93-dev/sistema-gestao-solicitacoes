@@ -220,7 +220,7 @@ function validateManualPaymentQueueCreateBody(payload = {}) {
 function validateManualPaymentQueueQuery(payload = {}) {
   ensureAllowedKeys(payload, ['status', 'q'], 'Consulta da fila de pagamentos');
   return cleanUndefined({
-    status: parseEnum(payload.status, 'Status', ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'BAIXADO', 'RESOLVIDO', 'TODOS']),
+    status: parseEnum(payload.status, 'Status', ['PENDENTE', 'PENDENTE_COMPROVANTE', 'NAO_PAGO', 'DIVERGENTE', 'BAIXADO', 'RESOLVIDO', 'TODOS']),
     q: parseOptionalText(payload.q, 'Busca', 120)
   });
 }
@@ -234,12 +234,27 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
 
   const ids = new Set();
   const itens = payload.itens.map((item, index) => {
-    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'motivo'], `Item ${index + 1}`);
+    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'motivo',
+      'forma_pagamento_id', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
+      'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
+      'cheque_conta', 'data_emissao', 'data_vencimento'], `Item ${index + 1}`);
     const filaId = parseInteger(item.fila_id, `Item ${index + 1}`, { required: true });
     if (ids.has(filaId)) throw new ValidationError(`O item ${filaId} foi informado mais de uma vez.`);
     ids.add(filaId);
     return cleanUndefined({
       fila_id: filaId,
+      forma_pagamento_id: parseInteger(item.forma_pagamento_id, 'Forma de pagamento'),
+      cartao_id: parseInteger(item.cartao_id, 'Cartao'),
+      usar_cheque_terceiro: parseBoolean(item.usar_cheque_terceiro),
+      cheque_terceiro_id: parseInteger(item.cheque_terceiro_id, 'Cheque da carteira'),
+      cheque_numero: parseOptionalText(item.cheque_numero, 'Numero do cheque', 60),
+      cheque_emitente: parseOptionalText(item.cheque_emitente, 'Emitente', 160),
+      titular_documento: parseCpfCnpj(item.titular_documento, 'Documento do titular'),
+      cheque_banco: parseOptionalText(item.cheque_banco, 'Banco', 120),
+      cheque_agencia: parseOptionalText(item.cheque_agencia, 'Agencia', 40),
+      cheque_conta: parseOptionalText(item.cheque_conta, 'Conta do cheque', 60),
+      data_emissao: parseDateOnly(item.data_emissao, 'Emissao do cheque'),
+      data_vencimento: parseDateOnly(item.data_vencimento, 'Vencimento do cheque'),
       data_baixa: parseDateOnly(item.data_baixa, `Data da baixa do item ${index + 1}`, { required: true }),
       conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: true }),
       valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),

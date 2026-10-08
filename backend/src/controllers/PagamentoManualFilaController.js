@@ -4,6 +4,7 @@ const {
   enfileirarTitulos,
   informarNaoPagamento,
   listarContasPagadorasFila,
+  listarInstrumentosFila,
   listarFilaPagamentos,
   obterComprovanteFila,
   obterComprovanteAdicionalFila,
@@ -22,6 +23,10 @@ function responderErro(res, error, fallback) {
 }
 
 module.exports = {
+  async instrumentos(req, res) {
+    try { return res.json(await listarInstrumentosFila(req)); }
+    catch (error) { return responderErro(res, error, 'Erro ao carregar instrumentos de pagamento'); }
+  },
   async index(req, res) {
     try {
       return res.json(await listarFilaPagamentos(req, req.query || {}));

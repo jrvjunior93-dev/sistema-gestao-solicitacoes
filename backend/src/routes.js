@@ -2163,6 +2163,7 @@ router.post('/financeiro/favorecidos/:id/validar', allowFavorecidosManage, criti
 router.get('/financeiro/favorecidos/:id/auditoria', allowFavorecidosAudit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.auditoria);
 router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueQuery }), PagamentoManualFilaController.index);
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
+router.get('/financeiro/fila-pagamentos/instrumentos', allowFilaPagamentosBaixa, PagamentoManualFilaController.instrumentos);
 router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), PagamentoManualFilaController.arquivosSolicitacao);
 router.get('/financeiro/fila-pagamentos/:id/comprovante', validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.comprovante);
 router.get('/financeiro/fila-pagamentos/:id/comprovantes/:comprovanteId', PagamentoManualFilaController.comprovanteAdicional);

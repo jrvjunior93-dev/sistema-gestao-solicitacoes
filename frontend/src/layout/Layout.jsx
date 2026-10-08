@@ -26,6 +26,8 @@ import AtalhosTopbar from '../navigation/AtalhosTopbar';
 import { isNativeApp, registerNativeBackButtonHandler } from '../mobile/runtime';
 import { getFallbackRoute, hasSafeBrowserHistory } from '../utils/navigation';
 import { nomeProprio } from '../utils/texto';
+import { isAutorizacaoPwaCompacta } from '../utils/autorizacaoPagamentoPwa';
+import '../styles/financeiro-autorizacoes-pagamento.css';
 import OperationalAuditTracker from '../modules/governanca/components/OperationalAuditTracker';
 import DevUserSwitcher from '../components/DevUserSwitcher';
 import CrObrasTravadasAviso from '../modules/custosRecebiveis/components/CrObrasTravadasAviso';
@@ -139,6 +141,7 @@ export default function Layout() {
   const podeVerComunicacao = canAccessComunicacao(user);
   const comprasResponsiveRoute = isComprasResponsiveRoute(location.pathname);
   const custosRecebiveisResponsiveRoute = location.pathname.startsWith('/custos-recebiveis');
+  const compactAuthorizationPwa = isAutorizacaoPwaCompacta(user, location.pathname);
   const {
     tabs: workspaceTabs,
     activeId: activeWorkspaceTabId,
@@ -311,7 +314,7 @@ export default function Layout() {
           vira um scrollport que nunca rola — a topbar e o cabeçalho fixo
           (R13) "grudavam" nele em vez de grudar na janela (defeito 02/09). */}
       <div
-        className={`layout-shell fluxy-app-shell flex min-h-screen overflow-x-clip ${nativeApp ? 'layout-shell-native' : ''} ${custosRecebiveisResponsiveRoute ? 'custos-recebiveis-layout-scope' : ''}`}
+        className={`layout-shell fluxy-app-shell flex min-h-screen overflow-x-clip ${nativeApp ? 'layout-shell-native' : ''} ${custosRecebiveisResponsiveRoute ? 'custos-recebiveis-layout-scope' : ''} ${compactAuthorizationPwa ? 'autorizacao-pwa-layout-scope' : ''}`}
         onClickCapture={abrirLinkEmAbaInterna}
         onAuxClickCapture={abrirLinkEmAbaInterna}
       >
@@ -320,7 +323,29 @@ export default function Layout() {
 
         <main className={`layout-main flex-1 min-w-0 transition-colors duration-200 ${nativeApp ? 'layout-main-native' : ''}`}>
           <div className={`layout-content-shell ${comprasResponsiveRoute ? 'compras-responsive-scope' : ''}`}>
-            <header className={`fx-topbar ${nativeApp ? 'topbar-shell-native' : ''}`}>
+            {compactAuthorizationPwa ? (
+              <header className="pa-pwa-shell">
+                <h1>Autorizações de pagamento</h1>
+                <details className="pa-pwa-options">
+                  <summary>Conta</summary>
+                  <div className="pa-pwa-options__content">
+                    <span>{nomeProprio(user?.nome)}</span>
+                    <DevUserSwitcher />
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={toggleTheme}>
+                      {theme === 'dark' ? <HiOutlineSun /> : <HiOutlineMoon />}
+                      {theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+                    </button>
+                    <NotificacoesBell />
+                    <Link to="/perfil">Meu perfil</Link>
+                    <Link to="/modulos">Menu de módulos</Link>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={abrirBuscaAtual}>Buscar tela</button>
+                    {podeVerComunicacao && <Link to="/comunicacao-interna">Chat interno</Link>}
+                    {suporteWhatsappUrl && <a href={suporteWhatsappUrl} target="_blank" rel="noopener noreferrer">Suporte</a>}
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={logout}><HiOutlineArrowRightOnRectangle /> Sair do sistema</button>
+                  </div>
+                </details>
+              </header>
+            ) : <header className={`fx-topbar ${nativeApp ? 'topbar-shell-native' : ''}`}>
               <div className="fx-topbar-nav">
                 {/* O logo preserva o acesso direto ao menu, inclusive quando
                     Início aponta para a página escolhida no perfil. */}
@@ -485,7 +510,7 @@ export default function Layout() {
                 onClose={closeWorkspaceTab}
                 onNewTab={abrirBuscaNovaAba}
               />
-            </header>
+            </header>}
 
             {/* Custos e Recebíveis: obra travada por atraso (29/09/2026). */}
             <ControleDiarioCaixa>

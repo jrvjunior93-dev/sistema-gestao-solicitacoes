@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:usuario-centros-custo-ui": "node scripts/validarUsuarioCentrosCusto.mjs",
+    "test:retorno-popup-ui": "node scripts/validarRetornoNotificacaoPopup.mjs",
+    "test:fila-instrumentos-ui": "node scripts/validarFilaInstrumentosUI.mjs",
     "test:fila-autorizacao-convergencia-ui": "node scripts/validarFilaAutorizacaoConvergencia.mjs",
     "test:relatorio-titulos-selecao": "node scripts/validarRelatorioTitulosSelecao.mjs",
     "test:recargas-multiplas-ui": "node scripts/validarRecargasMultiplasUI.mjs",
@@ -19,6 +22,7 @@
     "test:apropriacoes-gestao": "node scripts/validarGestaoApropriacoesSincronizacao.mjs",
     "test:cores-cards-financeiros": "node scripts/validarCoresCardsFinanceiros.mjs",
     "test:tela-inicial": "node scripts/validarTelaInicial.mjs",
+    "test:autorizacao-pwa": "node scripts/validarAutorizacaoPwa.mjs",
     "dev": "vite",
     "gerar:navegacao": "node scripts/gerarCatalogoNavegacaoBackend.mjs",
     "prebuild": "npm run gerar:navegacao",

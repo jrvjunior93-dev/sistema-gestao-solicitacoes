@@ -100,7 +100,7 @@ try {
   const faixa=page.getByTestId('devolucao-retorno-aprovado');
   await faixa.waitFor();
   await page.reload();await faixa.waitFor();
-  const botao = page.getByRole('button', { name: 'Devolver para FINANCEIRO' });
+  const botao = page.getByRole('button', { name: 'Devolver solicitação', exact: true });
   await botao.evaluate(el=>{el.click();el.click()});
   const confirmacao = page.getByRole('dialog', { name: 'Devolver solicitação ao setor anterior' });
   await confirmacao.getByRole('button', { name: 'Cancelar' }).click();

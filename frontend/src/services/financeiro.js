@@ -83,6 +83,11 @@ export async function getFilaPagamentos(params = {}) {
   return parseJson(response, 'Erro ao carregar a fila de pagamentos');
 }
 
+export async function getInstrumentosFilaPagamentos() {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/instrumentos`, { headers: authHeaders(), cache: 'no-store' });
+  return parseJson(response, 'Erro ao carregar formas, cartoes e cheques disponiveis');
+}
+
 export async function getContasFilaPagamentos() {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/contas`, {
     headers: authHeaders(),

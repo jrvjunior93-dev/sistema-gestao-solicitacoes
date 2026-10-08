@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define('PagamentoAutorizaca
   valor_total: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
   quantidade_itens: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   dossie_hash: { type: DataTypes.STRING(64), allowNull: false },
+  revisao_autorizacao: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   idempotency_key: { type: DataTypes.STRING(120), allowNull: false, unique: true },
   criado_por: { type: DataTypes.INTEGER, allowNull: false },
   decidido_por: { type: DataTypes.INTEGER, allowNull: true },

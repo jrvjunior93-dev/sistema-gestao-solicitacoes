@@ -1,10 +1,27 @@
 # Sessoes Ativas
 
-Sessao codex-promocao-operacional-main-20261008: em_andamento no checkout
+Sessao codex-promocao-operacional-main-20261008: finalizado no checkout
 C:/Fluxy-refactor-frontend, branch codex/promocao-operacional-main-20261008.
 Integracao autorizada de refactor/frontend na main, preservando contratos e
-registros de ambos os agentes. Ownership documental reservado; sem banco,
-EC2, aplicacao de migration ou reinicio. Backup confirmado pelo usuario.
+registros de ambos os agentes. Ownership documental liberado, integracao
+validada e publicacao Git autorizada; sem banco, EC2, aplicacao de migration
+ou reinicio. Backup confirmado pelo usuario.
+
+Sessao codex-fila-comprovante-pendente-2026-10-08 finalizada no checkout
+C:/Fluxy-refactor-frontend. Ownership liberado; validacoes backend/UI,
+PWA, navegacao, build e docs aprovadas. Commit/push autorizado nesta branch,
+incluindo LOTE-ID/PWA; sem main, banco real ou deploy executado.
+Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+Sessao codex-autorizacao-pwa-2026-10-08: finalizado no checkout C:/Fluxy-refactor-frontend.
+LOTE-ID transacional e alias legado; PWA do autorizador com inicio direto e shell compacto.
+Validacoes isoladas, QA mobile, build e docs aprovados; ownership liberado.
+Sem migration, banco real ou publicacao. Handoff: docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+
+Sessao codex-autorizacao-resumo-2026-10-08: finalizado no checkout C:/Fluxy-refactor-frontend. Lotes sem expiracao operacional, codigo SOL e coluna MOTIVO, compras sem itens no resumo. Validacoes isoladas aprovadas e ownership liberado. Sem banco real, migration ou publicacao; continuidade no handoff deste ajuste.
+
+
+Sessao codex-autorizacoes-consulta-2026-10-08: finalizado. Consulta SQL dos lotes corrigida e validada localmente; ownership liberado. Commit/publicacao autorizados posteriormente para atualizar dev. Handoff em docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md. Sem banco real ou EC2 nesta sessao.
 
 Sessao `codex-rhdp-jornadas-40-60-2026-10-02` em andamento no worktree
 `backend-dependency-security`. Escopo: duas etapas de jornada para mensalistas,
@@ -63,3 +80,7 @@ commit/publicacao mediante pedido do usuario.
 - Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
 
 Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
+
+Sessao codex-contrato-vigencia-2026-10-08: em_andamento; edicao cadastral da vigencia. Arquivos em OWNERSHIP_ATIVO.md. Autorizacao/fila de pagamentos fora do escopo.
+
+Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.

@@ -205,7 +205,7 @@ export default function Usuarios() {
     },
     {
       id: 'obras',
-      titulo: 'Obras',
+      titulo: 'Obras / centros de custo',
       tipo: 'texto',
       render: (u) => {
         const obras = resumirObras(u.vinculos);

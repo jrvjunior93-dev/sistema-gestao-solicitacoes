@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import RetornoNotificacaoPopup from './RetornoNotificacaoPopup';
 import {
   HiOutlineBell,
   HiOutlineCheck,
@@ -172,6 +173,8 @@ export default function NotificacoesBell() {
           </span>
         )}
       </button>
+
+      <RetornoNotificacaoPopup sinoRef={botaoRef} onAbrir={abrirSolicitacao} />
 
       {aberto && (
         <>
