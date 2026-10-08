@@ -16,6 +16,9 @@ import StatusBadge from '../../components/StatusBadge';
 import AtencaoPendente from './AtencaoPendente';
 import { ContadorPrazo } from '../../components/PrazosOperacionais';
 import OverlayModal from '../../components/ui/OverlayModal';
+import ModalEditarDadosSolicitacao from '../../components/solicitacoes/ModalEditarDadosSolicitacao';
+import AcaoEditarDadosSolicitacao from '../../components/solicitacoes/AcaoEditarDadosSolicitacao';
+import { permissoesEdicaoSolicitacao } from '../../utils/solicitacaoEdicao';
 import {
   Pagina,
   PageHeader,
@@ -227,6 +230,8 @@ export default function Solicitacoes({ arquivadas = false }) {
   }, []);
   const localMutationsRef = useRef(new Map());
   const { user } = useAuth();
+  const [edicaoDados, setEdicaoDados] = useState(null);
+  const permissoesEdicao = permissoesEdicaoSolicitacao(user);
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
 
   // Filtro por ids vindo da faixa de pendências do Hub (?ids=1,2,3):
@@ -1851,7 +1856,11 @@ export default function Solicitacoes({ arquivadas = false }) {
         titulo: 'Valor',
         ordenavel: true,
         larguraPadrao: 130,
-        render: (item) => moeda(item.valor_exibicao ?? item.valor)
+        render: (item) => <div className="flex items-center gap-2">
+          <span className="min-w-0 truncate" title={moeda(item.valor_exibicao ?? item.valor)}>{moeda(item.valor_exibicao ?? item.valor)}</span>
+          {!arquivadas && permissoesEdicao.valor ? <AcaoEditarDadosSolicitacao
+            solicitacao={item} campo="valor" onEditar={setEdicaoDados} /> : null}
+        </div>
       },
       {
         id: 'status',
@@ -1871,7 +1880,11 @@ export default function Solicitacoes({ arquivadas = false }) {
         titulo: 'Vencimento',
         ordenavel: true,
         larguraPadrao: 130,
-        render: (item) => (item.data_vencimento ? vencimentoHumano(item.data_vencimento) : '-'),
+        render: (item) => <div className="flex items-center gap-2">
+          <span className="min-w-0 truncate">{item.data_vencimento ? vencimentoHumano(item.data_vencimento) : '-'}</span>
+          {!arquivadas && permissoesEdicao.vencimento ? <AcaoEditarDadosSolicitacao
+            solicitacao={item} campo="vencimento" onEditar={setEdicaoDados} /> : null}
+        </div>,
         tituloCelula: (item) => (item.data_vencimento ? dataCurta(item.data_vencimento) : '')
       },
       // ---- opcionais (seletor de colunas; escolha salva por usuário) ----
@@ -1931,7 +1944,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       }
     ];
     return todas;
-  }, [moduloContratosHabilitado]);
+  }, [moduloContratosHabilitado, arquivadas, permissoesEdicao.valor, permissoesEdicao.vencimento]);
 
   const renderCardSolicitacao = (item) => (
     <div className="sol-card-compacto">
@@ -1964,9 +1977,14 @@ export default function Solicitacoes({ arquivadas = false }) {
         </span>
       </div>
       <div className="sol-card-compacto-base">
-        <span className="sol-card-compacto-valor">{moeda(item.valor_exibicao ?? item.valor)}</span>
+        <span className="sol-card-compacto-valor flex items-center gap-2">{moeda(item.valor_exibicao ?? item.valor)}
+          {!arquivadas && permissoesEdicao.valor ? <AcaoEditarDadosSolicitacao
+            solicitacao={item} campo="valor" onEditar={setEdicaoDados} /> : null}
+        </span>
         <span className="sol-card-compacto-venc">
           {item.data_vencimento ? vencimentoHumano(item.data_vencimento) : 'Sem vencimento'}
+          {!arquivadas && permissoesEdicao.vencimento ? <AcaoEditarDadosSolicitacao
+            solicitacao={item} campo="vencimento" onEditar={setEdicaoDados} /> : null}
         </span>
       </div>
     </div>
@@ -2164,6 +2182,14 @@ export default function Solicitacoes({ arquivadas = false }) {
           onSelecaoChange={(ids) => setSelecionadasIds(ids.map(Number))}
         />
       </BlocoConteudo>
+
+      {edicaoDados ? <ModalEditarDadosSolicitacao
+        key={`${user?.id}:${edicaoDados.solicitacao.id}:${edicaoDados.campo}`}
+        {...edicaoDados} onFechar={() => setEdicaoDados(null)}
+        onSalvo={async ({ id: alvoId, campo, codigo }) => {
+          avisar.sucesso(`${campo === 'valor' ? 'Valor' : 'Vencimento'} de ${codigo} atualizado.`);
+          await handleAtualizarLista({ type: 'refresh_item', id: alvoId });
+        }} /> : null}
 
       {/* R9: modal, porque a ação INTERROMPE o trabalho da lista — a tela
           não existe para atribuir nem para enviar. R27: o corpo rola e o

@@ -1,5 +1,24 @@
 # Ownership Ativo
 
+## Edicao de valor e vencimento de solicitacoes - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: publicacao
+  isolada autorizada na refactor/frontend e promocao apenas deste ajuste.
+- Reserva temporaria: arquivos desta tarefa, handoff e index; integracao
+  em branch de escopo unico baseada na main, sem incorporar o commit DP
+  118209c0. Preservar outputs/ e documentos de outras tarefas.
+- Reserva: Solicitacoes/index.jsx, SolicitacaoDetalhe/index.jsx, componente
+  compartilhado de edicao, helper de permissoes, testes UI isolados,
+  documentacao Solicitacoes e handoff desta tarefa.
+- Escopo: restaurar edicao na lista e adicionar nos detalhes, pelas rotas
+  existentes e permissoes distintas. Nao alterar titulos, compras, contratos,
+  rateios, schema ou regras do backend. Preservar outputs/ fora do Git.
+- Commit/promocao autorizados. Publicacao main condicionada a confirmacao
+  de backup recente conferido e timer ativo; sem EC2, migration ou banco.
+- Reserva adicional: teste backend offline das rotas existentes e script
+  em frontend/package.json. Nenhuma regra do controller sera modificada.
+- Handoff: docs/handoffs/2026-10-08-edicao-valor-vencimento-solicitacao.md.
+
 ## Pessoal por obra e conferencia por solicitacao - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: implementacao
