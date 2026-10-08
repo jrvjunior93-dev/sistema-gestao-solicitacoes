@@ -109,6 +109,7 @@ const {
   validateSolicitacaoComentarioBody,
   validateSolicitacaoCreateBody,
   validateSolicitacaoCredorCreateBody,
+  validateCompraDiretaCredorCreateBody,
   validateSolicitacaoCredorBody,
   validateSolicitacaoDataVencimentoBody,
   validateSolicitacaoEnviarSetorBody,
@@ -2417,7 +2418,7 @@ router.post(
   '/compras/solicitacoes-diretas/credores',
   allowCompraSolicitacoesCreate,
   criticalRateLimit,
-  validateRequest({ body: validateSolicitacaoCredorCreateBody }),
+  validateRequest({ body: validateCompraDiretaCredorCreateBody }),
   auditSuccess({
     eventType: 'COMPRA_DIRETA_CREDOR_CREATED',
     resourceType: 'PARCEIRO',

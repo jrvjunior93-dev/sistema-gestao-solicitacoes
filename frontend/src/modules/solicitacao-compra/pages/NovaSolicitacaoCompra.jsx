@@ -155,9 +155,6 @@ function criarNovoCredorPadrao() {
     cpf_cnpj: '',
     nome: '',
     nome_fantasia: '',
-    representante_nome: '',
-    representante_cpf: '',
-    representante_cargo: '',
     telefone: '',
     email: ''
   };
@@ -369,6 +366,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [erroRateiosModal, setErroRateiosModal] = useState('');
   const [novoCredor, setNovoCredor] = useState(criarNovoCredorPadrao);
   const [salvandoCredor, setSalvandoCredor] = useState(false);
+  const salvandoCredorRef = useRef(false);
   const [buscaInsumo, setBuscaInsumo] = useState('');
   const [itens, setItens] = useState([]);
   const [uploadingArquivos, setUploadingArquivos] = useState({});
@@ -1147,7 +1145,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   async function cadastrarCredorCompraDireta() {
-    if (salvandoCredor) return;
+    if (salvandoCredorRef.current) return;
     if (!novoCredor.nome.trim()) {
       reprovarCampo('credor_nome', 'Informe o nome do credor.');
       return;
@@ -1167,13 +1165,15 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
+    salvandoCredorRef.current = true;
     setSalvandoCredor(true);
     try {
       const parceiro = await criarCredorCompraDireta({
-        ...novoCredor,
+        nome: novoCredor.nome,
+        nome_fantasia: novoCredor.nome_fantasia,
         cpf_cnpj: onlyDigits(novoCredor.cpf_cnpj),
-        representante_cpf: onlyDigits(novoCredor.representante_cpf),
-        telefone: novoCredor.telefone.replace(/\D/g, '')
+        telefone: novoCredor.telefone.replace(/\D/g, ''),
+        email: novoCredor.email
       });
       selecionarCredorCompraDireta(parceiro);
       setNovoCredor(criarNovoCredorPadrao());
@@ -1184,6 +1184,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao cadastrar credor');
     } finally {
+      salvandoCredorRef.current = false;
       setSalvandoCredor(false);
     }
   }

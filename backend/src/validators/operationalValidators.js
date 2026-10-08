@@ -1996,6 +1996,28 @@ function validateSolicitacaoCredorCreateBody(body = {}) {
   };
 }
 
+function validateCompraDiretaCredorCreateBody(body = {}) {
+  // Rota propria: nao ampliar o cadastro financeiro dos detalhes da solicitacao.
+  // Campos vazios de representante continuam aceitos para telas ja abertas.
+  const camposBasicos = ['nome', 'cpf_cnpj', 'telefone', 'email'];
+  ensureAllowedKeys(body, [...camposBasicos, 'nome_fantasia', 'representante_nome',
+    'representante_cpf', 'representante_cargo'], 'Cadastro de credor da compra direta');
+  const basico = validateSolicitacaoCredorCreateBody(
+    Object.fromEntries(camposBasicos.map(campo => [campo, body[campo]]))
+  );
+  const representanteCpf = parseCpfCnpj(body.representante_cpf, 'CPF do representante legal');
+  if (representanteCpf && representanteCpf.length !== 11) {
+    throw new ValidationError('CPF do representante legal invalido.');
+  }
+  return {
+    ...basico,
+    nome_fantasia: sanitizeString(body.nome_fantasia, 'Nome fantasia', { max: 180 }),
+    representante_nome: sanitizeString(body.representante_nome, 'Nome do representante legal', { max: 180 }),
+    representante_cpf: representanteCpf,
+    representante_cargo: sanitizeString(body.representante_cargo, 'Cargo do representante legal', { max: 80 })
+  };
+}
+
 function validateSolicitacaoFavorecidoCreateBody(body = {}) {
   ensureAllowedKeys(
     body,
@@ -2134,6 +2156,7 @@ module.exports = {
   validateSolicitacaoCreateBody,
   validateSolicitacaoApropriacoesBody,
   validateSolicitacaoCredorCreateBody,
+  validateCompraDiretaCredorCreateBody,
   validateSolicitacaoCredorBody,
   validateSolicitacaoFavorecidoCreateBody,
   validateSolicitacaoDataVencimentoBody,

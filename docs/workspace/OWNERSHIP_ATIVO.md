@@ -2090,3 +2090,10 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Reservados: backend/src/controllers/ParceiroController.js, frontend/src/pages/NovaSolicitacao.jsx, teste isolado de cadastro de credor e backend/package.json, docs/modulos/solicitacoes/README.md e handoff desta tarefa.
 - Escopo: usar comportamento real do tipo ativo na validacao do cadastro e transmitir subtipo para respeitar a configuracao de campos. Preservar validacoes cadastrais, permissoes, vinculo contratual e protecao existente contra repeticao. Sem banco real, migration, commit, push ou deploy.
 - Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-07-cadastro-credor-tipo-subtipo.md. Sem commit, push ou deploy.
+
+## Credor da Compra Direta 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: operationalValidators.js, routes.js, NovaSolicitacaoCompra.jsx, teste isolado de credor da Compra Direta, backend/package.json, README de Compras e handoff desta tarefa.
+- Escopo: alinhar campos do modal e da rota exclusiva de Compra Direta; preservar cadastro financeiro, contratos, permissoes e validacoes de documento/duplicidade. Sem banco real, migration, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-08-credor-compra-direta.md. Homologacao pela interface real pendente; sem commit, push ou deploy.

@@ -43,7 +43,8 @@ Validacao local sem banco: `npm run test:compra-criacao-obras` em `backend/`.
 - usa fluxo proprio de criacao/revisao e pode importar itens por XLSX;
 - exige obra e credor ativo marcado como fornecedor;
 - permite localizar o credor na base de Parceiros ou cadastra-lo no proprio fluxo;
-- cadastro rapido exige nome, CPF/CNPJ e telefone e aceita email;
+- cadastro rapido exige nome, CPF/CNPJ e telefone e aceita email e nome fantasia opcional;
+- a rota de credor da Compra Direta possui validacao propria, sem ampliar os campos do cadastro financeiro nos detalhes da solicitacao; campos vazios de representante enviados por telas antigas sao aceitos, sem tornar o representante obrigatorio;
 - valores, desconto, anexos, itens e apropriacoes sao validados no backend.
 - o frete pode ser informado como ausente, embutido no pagamento ao credor principal ou pago a terceiro;
 - todo frete informado compoe o custo total da compra direta;
