@@ -248,7 +248,9 @@ function lotInclude() {
     { model: User, as: 'decididoPor', attributes: ['id', 'nome'] },
     { model: PagamentoAutorizacaoItem, as: 'itens', include: [
       { model: PagamentoAutorizacaoDocumento, as: 'documentos', attributes: ['id', 'nome', 'origem_tipo', 'arquivo_hash'] },
-      { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado'] }
+      // O defaultScope do titulo filtra deleted_at. Mantem LEFT JOIN para nao
+      // eliminar o historico nem mover esta juncao para a subquery dos lotes.
+      { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado'], required: false }
     ] }
   ];
 }

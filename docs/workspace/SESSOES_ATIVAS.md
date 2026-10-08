@@ -1,5 +1,7 @@
 # Sessoes Ativas
 
+Sessao codex-autorizacoes-consulta-2026-10-08: finalizado. Consulta SQL dos lotes corrigida e validada localmente; ownership liberado. Commit/publicacao autorizados posteriormente para atualizar dev. Handoff em docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md. Sem banco real ou EC2 nesta sessao.
+
 Sessao `codex-rhdp-jornadas-40-60-2026-10-02` em andamento no worktree
 `backend-dependency-security`. Escopo: duas etapas de jornada para mensalistas,
 pagamentos por envio para diaristas, rateio multiobra e vigencia da mudanca de regime.

@@ -1,5 +1,13 @@
 # Quadro de Agentes
 
+## Consulta de autorizacoes de pagamento 08/10/2026
+
+- Sessao: codex-autorizacoes-consulta-2026-10-08.
+- Status: finalizado.
+- Plano: tornar opcional a associacao do titulo no lote, preservando soft delete e paginação dos lotes; testar SQL real, filtros, detalhes e negativa de permissao sem conexao de banco.
+- Validacao: consulta SQL/hidratacao reais, regressao negativa, suite da fila, sintaxe, diff-check e documentacao aprovados.
+- Pendencias: homologacao em dev apos commit/publicacao autorizados pelo usuario. Handoff: docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md. Ownership liberado; sem banco real ou EC2 nesta etapa.
+
 ## Trabalho em andamento
 
 - id: 2026-10-02-rhdp-jornadas-40-60

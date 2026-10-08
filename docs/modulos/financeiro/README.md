@@ -193,6 +193,19 @@ quem tem a permissao, mas desabilitado. A marcacao manual de analise e o
 envio direto continuam disponiveis pelas suas proprias permissoes. Este
 ajuste nao exige migration, variavel nova ou seed de status em producao.
 
+### Consulta dos lotes de autorizacao
+
+A lista limita os 100 lotes mais recentes, nao seus itens ou documentos. A
+associacao do titulo e opcional e preserva o filtro de exclusao logica: quando
+o titulo deixa de existir na consulta, o item e seu snapshot continuam no
+historico. Isso evita uma juncao invalida na subquery paginada do Sequelize.
+Lista e detalhe mantem as permissoes e regras de decisao existentes.
+
+Validacao isolada com gerador SQL MySQL e hidratacao reais do Sequelize:
+`npm run test:autorizacao-consulta-sql` no backend, tambem incluido em
+`test:fila-instrumentos`. O transporte de banco e simulado, sem conexao ou
+escrita. Nao requer migration ou mudanca de configuracao.
+
 ## Cheques de terceiros e baixa com multiplas fontes
 
 Cheques recebidos de terceiros sao controlados em carteira de custodia, sem simular uma conta bancaria. O financeiro pode registrar/importar saldo legado, transferir a custodia entre empresas, depositar em conta da mesma empresa ou utilizar o cheque integralmente como um componente de uma baixa composta.

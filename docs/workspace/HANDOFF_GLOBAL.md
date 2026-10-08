@@ -1,5 +1,13 @@
 # Handoff Global
 
+## Consulta de autorizacoes de pagamento 08/10/2026
+
+- Sessao: codex-autorizacoes-consulta-2026-10-08; status: finalizado localmente.
+- Handoff: docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md.
+- Correcao: LEFT JOIN explicito do titulo na leitura de lotes, preservando soft delete, historico, limite, permissoes e decisoes.
+- Validacoes: SQL/hidratacao reais sem banco, regressao, suite da fila, sintaxe e documentacao aprovadas; ownership liberado.
+- Proximo passo: commit/publicacao autorizados pelo usuario, seguidos de homologacao de lista/detalhe no backend dev. Sem migration, banco real ou execucao de deploy nesta sessao.
+
 Nao ha handoff multirrepositorio ativo.
 
 Quando houver uma sessao explicitamente autorizada, registrar data, repositorios, arquivos, validacoes, riscos e proximo passo. Handoffs concluidos permanecem no historico do Git e nao devem continuar como estado ativo.

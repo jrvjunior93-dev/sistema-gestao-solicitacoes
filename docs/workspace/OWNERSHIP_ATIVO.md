@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Publicacao da consulta de autorizacoes 08/10/2026
+
+- Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.
+- Pedido: commit na refactor/frontend e instrucoes de atualizacao da EC2 dev; publicacao no remoto para disponibilizar o commit. Nao inclui main ou execucao de deploy.
+- Reserva temporaria: handoff e registro de ownership da consulta; revisao do index e publicacao somente dos arquivos desta correcao. Preservar outputs/.
+- Estado: testes e revisao aprovados; reserva liberada para commit/publicacao autorizados. Sem banco real, migration, reinicio ou promocao para main.
+
+## Consulta de autorizacoes de pagamento 08/10/2026
+
+- Sessao: codex-autorizacoes-consulta-2026-10-08; responsavel: agente desta conversa, sem delegacao.
+- Estado: finalizado; ownership liberado.
+- Reserva: backend/src/services/pagamentoAutorizacaoService.js; backend/scripts/validarAutorizacaoConsultaSql.js; backend/package.json; docs/modulos/financeiro/README.md; docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md.
+- Escopo autorizado: corrigir a consulta de lista/detalhe dos lotes e testar SQL real gerado pelo Sequelize, sem mudar permissoes, decisoes ou pagamentos. Registros de coordenacao apenas acrescentados, preservando outras sessoes. Publicacao autorizada posteriormente pelo usuario; sem banco real, migration ou deploy.
+- Validacoes: SQL/hidratacao reais sem conexao, suite da fila, sintaxe e documentacao aprovadas. Continuidade em docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md; homologacao dev pendente apos publicacao autorizada.
+
 ## Publicacao da fila e revogacao em dev
 
 - Responsavel: agente desta conversa, checkout `C:/Fluxy-refactor-frontend`.
