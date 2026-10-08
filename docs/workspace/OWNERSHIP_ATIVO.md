@@ -2307,3 +2307,40 @@ execucao de deploy, migration ou escrita no banco; outputs/ fora do commit.
 Backup recente/Drive e timer ativo confirmados pelo usuario nesta janela.
 Main ef5329f1 preservada em tag/bundle verificado fora da EC2. Validacoes locais
 aprovadas; reserva documental encerrada e ownership liberado para publicacao.
+
+## RH/DP - autocomplete de obras e centros de custo - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: frontend/src/pages/RhDpColaboradores.jsx,
+  frontend/src/components/ui/ObraAutocomplete.jsx, novo teste de cadastro RH,
+  README de RH/DP e handoff desta tarefa.
+- Escopo: catalogo de obras e centros de custo no cadastro, pesquisa por nome
+  ou codigo com componente existente. Preservar IDs, permissoes, vigencia,
+  transferencia formal, documentos e calculos. Sem banco real, migration,
+  commit, push ou deploy.
+- Teste da tela/combo/catalogo e persistencia simulada aprovado em desktop e
+  celular; exportacao/importacao, primeira lotacao, escopo RH e build aprovados.
+  Handoff: docs/handoffs/2026-10-08-rh-colaborador-centro-custo.md.
+
+Publicacao RH autorizada em 08/10/2026: reserva documental desta tarefa para
+commit/publicacao na refactor/frontend, integracao a partir de origin/main e
+comandos da EC2. outputs/ fora do Git; sem deploy ou escrita no banco pelo agente.
+Backup/timer de producao aguardam confirmacao atual; nao promover main antes.
+
+Commit funcional RH local 13967624 concluido; push bloqueado por autenticacao
+do GitHub. Main nao alterada. Snapshot local main/tag e bundle verificado;
+publicacao e promocao aguardam login GitHub e confirmacao backup/timer.
+Reserva documental encerrada; ownership liberado. Proximo passo detalhado no
+handoff RH desta tarefa. Sem deploy ou acesso ao banco real.
+
+Retomada da promocao RH: push refactor/frontend confirmado em c7e3d31a;
+usuario respondeu "Feito" ao pedido de push e confirmacao backup/timer.
+Reserva documental temporaria para registrar integracao a partir da main
+2fee98ae. Autenticacao nao interativa continua bloqueando publicacao; main
+remota permanece intacta. Preparar merge local validado e comando de push
+para o terminal Windows do usuario, sem credenciais no chat.
+
+Integracao RH local validada sem conflitos; seis arquivos no delta da main,
+sem backend/migrations/dependencias. Testes RH, documentacao e build aprovados.
+Reserva documental encerrada e ownership liberado. Publicacao remota depende
+do comando de push atomico no terminal autenticado do usuario; sem deploy.
