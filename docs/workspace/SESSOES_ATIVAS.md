@@ -48,3 +48,7 @@ Sessao `codex-autorizacao-proprietario-pagamentos-2026-09-30` concluida localmen
 Implementacao inativa da PWA/passkeys/push e gate anterior a fila validada; feature flag
 permanece `OFF`. Nenhum ambiente externo foi alterado e o conjunto aguarda eventual
 commit/publicacao mediante pedido do usuario.
+
+Sessao codex-contrato-vigencia-2026-10-08: em_andamento; edicao cadastral da vigencia. Arquivos em OWNERSHIP_ATIVO.md. Autorizacao/fila de pagamentos fora do escopo.
+
+Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.

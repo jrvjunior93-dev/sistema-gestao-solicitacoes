@@ -223,3 +223,13 @@ Nao ha nova implementacao planejada aguardando inicio nesta sessao.
     - Commit e validacao visual no ambiente dev.
   validacao:
     - Ver `docs/handoffs/PROJECAO_REAJUSTE_PARCELAS_MEDICAO_2026-08-31.md`.
+
+## Edicao de vigencia contratual - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-2026-10-08; responsavel: agente desta conversa.
+- Estado: em_andamento.
+- Reservados: frontend/src/pages/GestaoContratos.jsx; backend/src/controllers/ContratoController.js; backend/src/validators/operationalValidators.js; backend/src/services/contratoVigenciaEdicao.js; backend/scripts/validarContratoVigenciaEdicao.js; frontend/scripts/validarContratoVigenciaEdicao.mjs; docs/modulos/contratos/README.md; docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Escopo: editar inicio/fim da vigencia com validacao e historico, preservando parcelas, medicoes, titulos e pagamentos. Sem banco real, EC2, migration, commit, push ou deploy.
+- Colaboracao: usuario informou outro agente em autorizacao/fila de pagamentos. Esses fluxos, routes.js e package.json ficam fora desta reserva. Registros do painel apenas acrescentados, preservando os anteriores.
+
+Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.

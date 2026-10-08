@@ -121,3 +121,5 @@ Quando houver uma sessao explicitamente autorizada, registrar data, repositorios
 - Validacoes: 438 Markdown sem links locais quebrados, `npm run test:docs` aprovado
   com 19 canonicos e `git diff --check` aprovado.
 - Ambientes externos: nenhum banco, migration, deploy, API ou processo PM2 acionado.
+
+Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.
