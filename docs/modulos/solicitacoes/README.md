@@ -209,6 +209,15 @@ Testes sem banco: `node backend/scripts/validarDevolucaoRetornoSolicitacao.js`,
 
 ## Permissoes e seguranca
 
+O acompanhamento historico entre setores reconhece tanto `ENVIADA_SETOR`
+quanto `SOLICITACAO_COMPRA_ENCAMINHADA_COMPRAS`. No segundo evento, origem e
+destino sao lidos de `metadata.area_anterior/area_nova`, nao do ID numerico do
+setor do ator. Isso mantem as compras ja encaminhadas visiveis para GEO na
+lista, contadores, busca, detalhe e anexos conforme as permissoes existentes.
+Historicos antigos sao reconhecidos na leitura, sem backfill ou nova migration.
+O acompanhamento nao permite editar/comentar fora do setor principal: o fluxo
+de retorno e as validacoes de escrita continuam obrigatorios.
+
 Visibilidade combina perfil, setores, obra, autoria, atribuicao, historico e configuracoes especiais. Filtros e exportacao devem usar o mesmo universo autorizado da listagem. O frontend apenas oculta acoes; o backend revalida detalhe, anexos, status, envio, assuncao e exportacao.
 
 ## Mudanca segura

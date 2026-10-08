@@ -84,7 +84,7 @@ vm.createContext(sandbox);
 for (const name of ['getComprasVisibilityScope', 'canViewAllComprasScope', 'canAccessSolicitacaoCompraByScope']) {
   vm.runInContext(declaration(authorization, name), sandbox);
 }
-for (const name of ['podeGerenciarCompraNaFilaGeo', 'podeAcessarCompraDiretaNaFilaGeo', 'validarEscopoSolicitacaoCompra']) {
+for (const name of ['podeGerenciarCompraNaFilaGeo', 'podeAcessarCompraDiretaNaFilaGeo', 'podeAcompanharCompraEncaminhadaGeo', 'validarEscopoSolicitacaoCompra']) {
   vm.runInContext(declaration(controller, name), sandbox);
 }
 vm.runInContext(`handlers = { ${[

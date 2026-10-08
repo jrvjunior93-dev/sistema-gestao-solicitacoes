@@ -46,6 +46,11 @@ const {
   obterDestinatariosCriacaoSetor
 } = require('../services/notificacoes');
 const { registrarEventoSeguranca } = require('../services/securityLogService');
+const {
+  ACOES_ENCAMINHAMENTO_SETOR,
+  extrairEncaminhamentoCompra,
+  sqlEncaminhamentoCompraPorSetores
+} = require('../services/historicoEncaminhamentoCompraService');
 const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { uploadToS3 } = require('../services/s3');
@@ -800,7 +805,7 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLei
     if (Array.isArray(solicitacao.historicos) && solicitacao.historicos.length > 0) {
       historicoSetorGeo = solicitacao.historicos.some((item) => {
         if (isGeoToken(item?.setor)) return true;
-        if (String(item?.acao || '').toUpperCase() !== 'ENVIADA_SETOR') return false;
+        if (!ACOES_ENCAMINHAMENTO_SETOR.includes(String(item?.acao || '').trim().toUpperCase())) return false;
         const envio = extrairSetoresEnvioHistorico(item);
         return isGeoToken(envio?.origem) || isGeoToken(envio?.destino);
       });
@@ -809,7 +814,7 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLei
         where: {
           solicitacao_id: solicitacao.id,
           [Op.or]: [
-            { acao: 'ENVIADA_SETOR' },
+            { acao: { [Op.in]: ACOES_ENCAMINHAMENTO_SETOR } },
             { setor: { [Op.in]: tokensSetorUsuario.filter(isGeoToken) } }
           ]
         },
@@ -818,7 +823,7 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLei
 
       historicoSetorGeo = historicosGeo.some((item) => {
         if (isGeoToken(item?.setor)) return true;
-        if (String(item?.acao || '').toUpperCase() !== 'ENVIADA_SETOR') return false;
+        if (!ACOES_ENCAMINHAMENTO_SETOR.includes(String(item?.acao || '').trim().toUpperCase())) return false;
         const envio = extrairSetoresEnvioHistorico(item);
         return isGeoToken(envio?.origem) || isGeoToken(envio?.destino);
       });
@@ -1481,8 +1486,10 @@ function montarLiteralHistoricoSetoresEnvolvidos(tokens = []) {
     SELECT DISTINCT h.solicitacao_id
     FROM historicos h
     WHERE h.solicitacao_id = Solicitacao.id
-      AND UPPER(TRIM(h.acao)) = 'ENVIADA_SETOR'
-      AND (${likes})
+      AND (
+        (UPPER(TRIM(h.acao)) = 'ENVIADA_SETOR' AND (${likes}))
+        OR ${sqlEncaminhamentoCompraPorSetores(tokensValidos)}
+      )
   )`);
 }
 
@@ -1545,7 +1552,7 @@ function montarCondicoesVisibilidadeSetores(tokens = []) {
 
 function historicoPertenceASetoresVisiveis(historico, tokens = []) {
   if (!historico) return false;
-  if (String(historico?.acao || '').toUpperCase() !== 'ENVIADA_SETOR') return false;
+  if (!ACOES_ENCAMINHAMENTO_SETOR.includes(String(historico?.acao || '').trim().toUpperCase())) return false;
   const tokensValidos = normalizarTokensHistoricoSetores(tokens);
   if (tokensValidos.length === 0) return false;
   const envio = extrairSetoresEnvioHistorico(historico);
@@ -1608,7 +1615,7 @@ async function solicitacaoPertenceASetoresVisiveis(solicitacao, tokens = []) {
   const historicos = await Historico.findAll({
     where: {
       solicitacao_id: solicitacao.id,
-      acao: 'ENVIADA_SETOR'
+      acao: { [Op.in]: ACOES_ENCAMINHAMENTO_SETOR }
     },
     attributes: ['acao', 'setor', 'observacao', 'descricao', 'metadata']
   });
@@ -1724,6 +1731,8 @@ function parseHistoricoMetadata(metadata) {
 }
 
 function extrairSetoresEnvioHistorico(historico) {
+  const encaminhamentoCompra = extrairEncaminhamentoCompra(historico);
+  if (encaminhamentoCompra) return encaminhamentoCompra;
   if (!historico || String(historico?.acao || '').toUpperCase() !== 'ENVIADA_SETOR') {
     return { origem: null, destino: null };
   }

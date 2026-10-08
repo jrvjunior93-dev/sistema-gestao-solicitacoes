@@ -151,6 +151,18 @@ As rotas antigas `PATCH /compras/solicitacoes/:id/integrar` e `PATCH /compras/so
 
 ## Idempotencia
 
+Depois do envio GEO para Compras, usuarios GEO com permissao de visualizar
+podem continuar consultando o detalhe da compra que possui encaminhamento
+auditado do GEO, desde que tambem tenham acesso a solicitacao principal.
+Essa excecao e opt-in somente nos GETs de detalhe e de itens por solicitacao;
+nao amplia listas gerais de Compras, cotacoes, pedidos ou permissoes de escrita.
+Nenhuma permissao do usuario e alterada automaticamente.
+
+Na aba de etapas da solicitacao, uma falha ao recarregar depois de uma acao
+gravada nao anuncia falha de envio. O sucesso permanece informado com aviso
+de atualizacao pendente; uma negativa real da gravacao continua como erro.
+Duplo clique continua bloqueado ate o fim do processamento.
+
 Criacao, encaminhamento, aprovacao, cancelamento e envio para cotacao devem impedir repeticao concorrente. O backend deve revalidar status em transacao; o frontend bloqueia multiplos cliques.
 
 No fechamento de cotacao, a mesma chave de idempotencia nao pode repetir pedidos, alocacoes nem frete pago a terceiro. Quantidade acima da solicitada exige justificativa auditavel e nunca pode ultrapassar a disponibilidade declarada pelo fornecedor.

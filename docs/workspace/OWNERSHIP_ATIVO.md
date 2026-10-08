@@ -2264,3 +2264,23 @@ Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locai
 
 Publicacao da sessao codex-contrato-vigencia-2026-10-08 autorizada pelo usuario em 08/10/2026: reserva documental do handoff para registrar commit/push na refactor/frontend; sem EC2.
 Reserva documental de publicacao encerrada; handoff atualizado e ownership liberado.
+
+## Acompanhamento GEO apos envio a Compras - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: SolicitacaoController.js, SolicitacaoCompraController.js, novo helper de historico de encaminhamento, CompraEtapas.jsx, testes isolados correspondentes, README de Solicitacoes/Compras e handoff desta tarefa.
+- Escopo: reconhecer o encaminhamento ja auditado na leitura/lista, preservar restricoes de escrita e distinguir envio concluido de falha ao atualizar a tela. Sem alterar permissoes, dados reais, migration, commit, push ou deploy.
+- Reserva adicional: fileAccessService.js e validarAcessoAnexosSolicitacoes.js, para manter a mesma leitura historica nos anexos da solicitacao.
+- Reserva adicional: validarCompraDiretaGeoAcesso.js para adaptar a fixture VM ao helper de acompanhamento sem alterar os casos anteriores.
+- Reserva adicional: validarCompraEtapasResumoPedido.js; fixture antiga sem req.user/leituras precisa acompanhar o contrato atual do endpoint para testar a regressao de leitura.
+- Validacoes: acompanhamento GEO/SQL, mensagem apos envio/duplo clique, Compra Direta, anexos, resumo de pedidos, retorno, sintaxe, docs e build aprovados. Handoff: docs/handoffs/2026-10-08-acompanhamento-geo-compras.md. Publicacao/deploy e teste real com Liz pendentes.
+
+Publicacao autorizada pelo usuario em 08/10/2026: commit na refactor/frontend,
+promocao para main e comandos de deploy da EC2. Reserva documental desta sessao
+para registrar a publicacao; outputs/ permanece fora do Git. Sem execucao de
+deploy, migration ou escrita no banco. Backup confirmado e snapshot de codigo
+sao gates antes do merge/publicacao em main.
+
+Backup recente/Drive cifrado e timer ativo confirmados pelo usuario nesta
+publicacao. Base main 3e216c46 preservada em snapshot e bundle local verificado.
+Reserva documental encerrada; ownership liberado para commit autorizado.
