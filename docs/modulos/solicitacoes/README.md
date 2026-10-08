@@ -27,6 +27,34 @@ Solicitacoes e o hub operacional entre usuarios, setores, obras, parceiros, cont
 - arquivamento e individual por usuario e nao altera o registro global;
 - alteracoes de status, envio e automacao geram historico.
 
+## Edicao de valor e vencimento
+
+- Nos detalhes, `Editar valor` e `Editar vencimento` ficam no cabecalho.
+  Na lista ativa (tabela ou cards), o icone de lapis fica junto a cada dado.
+  A lista de arquivadas permanece somente leitura.
+- Cada acao exige sua permissao: `solicitacoes.acoes.alterar_valor` ou
+  `solicitacoes.acoes.alterar_data_vencimento`. Excecoes administrativas
+  existentes permanecem alinhadas ao backend; escopo de obra segue validado
+  pelo servidor.
+- O modal edita somente um campo por vez e fixa o ID/codigo ao abrir.
+  Durante a PATCH, impede novo envio e fechamento. Erro preserva o rascunho;
+  cancelar nao grava; salvar sem alteracao nao faz PATCH.
+- Valor editado e o total proprio da solicitacao, nao o saldo restante.
+  Entrada brasileira: `2.000` ou `2.000,00` significa dois mil reais.
+  Valores negativos/invalidos nao sao enviados. Zero e limpeza do valor
+  continuam aceitos conforme o endpoint existente.
+- Vencimento aceita hoje/data futura em Sao Paulo ou limpeza, mantendo a
+  regra vigente do backend. Quando a lista mostra vencimento derivado de
+  medicao, o editor usa `data_vencimento_solicitacao` e explica a diferenca.
+- As rotas existentes `/solicitacoes/:id/valor` e
+  `/solicitacoes/:id/data-vencimento` preservam historico, notificacoes,
+  realtime e auditoria. Nenhum titulo, parcela contratual, item de compra,
+  rateio ou status e recalculado por esta edicao.
+
+Validacoes isoladas: `npm run test:solicitacoes-edicao-ui` no frontend e
+`node scripts/validarEdicaoDadosSolicitacao.js` no backend. Sem banco/rede
+externa, migration, nova permissao ou variavel de ambiente.
+
 ## Cadastro de credor e favorecido
 
 Nome e CPF do representante legal sao opcionais no cadastro geral, inclusive

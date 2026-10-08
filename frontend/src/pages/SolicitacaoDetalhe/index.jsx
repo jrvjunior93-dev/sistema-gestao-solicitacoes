@@ -28,6 +28,8 @@ import StatusBadge from '../../components/StatusBadge';
 import { formatarDataLocalPtBr } from '../../utils/dateLocal';
 import { getTipoSolicitacaoBehavior } from '../../utils/tipoSolicitacao';
 import OverlayModal from '../../components/ui/OverlayModal';
+import ModalEditarDadosSolicitacao from '../../components/solicitacoes/ModalEditarDadosSolicitacao';
+import { permissoesEdicaoSolicitacao } from '../../utils/solicitacaoEdicao';
 import {
   Avisos,
   BlocoConteudo,
@@ -351,6 +353,8 @@ export default function SolicitacaoDetalhe() {
   const podeCatalogarItensManuaisCompra = moduloComprasHabilitado && canCatalogarItensManuaisCompras(user);
 
   const [solicitacao, setSolicitacao] = useState(null);
+  const [edicaoDados, setEdicaoDados] = useState(null);
+  const permissoesEdicao = permissoesEdicaoSolicitacao(user);
   // PI-16: o contrato do fluxo novo vive DENTRO desta solicitacao. O estado dele decide o que a
   // barra de acoes oferece — e e o contrato quem tem a maquina de estados; a solicitacao espelha.
   const [contratoDoFluxo, setContratoDoFluxo] = useState(null);
@@ -1308,6 +1312,12 @@ export default function SolicitacaoDetalhe() {
     dentro do Header).
   */
   const acoesSecundarias = [
+    permissoesEdicao.valor
+      ? { rotulo: 'Editar valor', onClick: () => setEdicaoDados({ solicitacao: { ...solicitacao }, campo: 'valor' }) }
+      : null,
+    permissoesEdicao.vencimento
+      ? { rotulo: 'Editar vencimento', onClick: () => setEdicaoDados({ solicitacao: { ...solicitacao }, campo: 'vencimento' }) }
+      : null,
     podeAlterarStatus && acaoPrincipalResolvida?.acao !== 'alterar_status'
       ? { rotulo: 'Alterar status', onClick: () => setModalStatus(true) }
       : null,
@@ -1797,6 +1807,13 @@ export default function SolicitacaoDetalhe() {
       />
 
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
+      {edicaoDados ? <ModalEditarDadosSolicitacao
+        key={`${user?.id}:${edicaoDados.solicitacao.id}:${edicaoDados.campo}`}
+        {...edicaoDados} onFechar={() => setEdicaoDados(null)}
+        onSalvo={async ({ campo, codigo }) => {
+          avisar.sucesso(`${campo === 'valor' ? 'Valor' : 'Vencimento'} de ${codigo} atualizado.`);
+          await carregar({ silent: true });
+        }} /> : null}
 
       {/* O que TRAVA a decisão vem antes de qualquer dado: pedido de
           retorno da Obra e falha de acesso ao contrato. */}

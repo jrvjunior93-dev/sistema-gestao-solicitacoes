@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:solicitacoes-edicao-ui": "node scripts/validarEdicaoDadosSolicitacao.mjs",
     "test:usuario-centros-custo-ui": "node scripts/validarUsuarioCentrosCusto.mjs",
     "test:retorno-popup-ui": "node scripts/validarRetornoNotificacaoPopup.mjs",
     "test:fila-instrumentos-ui": "node scripts/validarFilaInstrumentosUI.mjs",
