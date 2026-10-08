@@ -2279,3 +2279,22 @@ execucao de deploy, migration ou escrita no banco; outputs/ fora do commit.
 Backup recente/Drive e timer ativo confirmados pelo usuario nesta janela.
 Main ef5329f1 preservada em tag/bundle verificado fora da EC2. Validacoes locais
 aprovadas; reserva documental encerrada e ownership liberado para publicacao.
+
+## RH/DP - autocomplete de obras e centros de custo - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: frontend/src/pages/RhDpColaboradores.jsx,
+  frontend/src/components/ui/ObraAutocomplete.jsx, novo teste de cadastro RH,
+  README de RH/DP e handoff desta tarefa.
+- Escopo: catalogo de obras e centros de custo no cadastro, pesquisa por nome
+  ou codigo com componente existente. Preservar IDs, permissoes, vigencia,
+  transferencia formal, documentos e calculos. Sem banco real, migration,
+  commit, push ou deploy.
+- Teste da tela/combo/catalogo e persistencia simulada aprovado em desktop e
+  celular; exportacao/importacao, primeira lotacao, escopo RH e build aprovados.
+  Handoff: docs/handoffs/2026-10-08-rh-colaborador-centro-custo.md.
+
+Publicacao RH autorizada em 08/10/2026: reserva documental desta tarefa para
+commit/publicacao na refactor/frontend, integracao a partir de origin/main e
+comandos da EC2. outputs/ fora do Git; sem deploy ou escrita no banco pelo agente.
+Backup/timer de producao aguardam confirmacao atual; nao promover main antes.

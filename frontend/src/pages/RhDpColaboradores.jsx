@@ -49,6 +49,7 @@ import {
 } from '../utils/acessoProduto';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
 import CategoriaFinanceiraAutocomplete from '../components/ui/CategoriaFinanceiraAutocomplete';
+import ObraAutocomplete from '../components/ui/ObraAutocomplete';
 import { formatCurrencyInput, getCpfCnpjError, maskCpfCnpj, maskPhone, normalizeCurrencyTyping, onlyDigits } from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
 
@@ -259,7 +260,7 @@ function buildPayload(form) {
 const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
   { id: 'empresa_grupo_id', rotulo: 'Empresa' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / centro de custo' },
   { id: 'tipo_vinculo', rotulo: 'Vínculo' },
   { id: 'status', rotulo: 'Status' }
 ];
@@ -458,7 +459,7 @@ export default function RhDpColaboradores() {
       setCarregando(true);
       const [listaEmpresas, listaObras, listaSetores] = await Promise.all([
         getRhEmpresasGrupo({ ativo: true }),
-        getObras(),
+        getObras({ escopo: 'TODOS' }),
         getSetores()
       ]);
 
@@ -927,7 +928,7 @@ export default function RhDpColaboradores() {
             },
             {
               id: 'obra_id',
-              rotulo: 'Obra',
+              rotulo: 'Obra / centro de custo',
               unico: true,
               opcoes: obras.map((item) => ({
                 valor: String(item.id),
@@ -1168,18 +1169,24 @@ export default function RhDpColaboradores() {
                     ))}
                   </select>
                 </CampoForm>
-                <CampoForm label="Obra principal">
-                  <select
-                    className="form-control"
-                    value={form.obra_id}
-                    onChange={(e) => setForm((prev) => ({ ...prev, obra_id: e.target.value }))}
-                    disabled={!podeEditar}
-                  >
-                    <option value="">Não vinculada</option>
-                    {obras.map((item) => (
-                      <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} - ${item.nome}` : item.nome}</option>
-                    ))}
-                  </select>
+                <CampoForm label="Obra / centro de custo principal">
+                  <div onKeyDown={(event) => {
+                    // Esc fecha primeiro as sugestoes, sem descartar o cadastro no modal.
+                    if (event.key === 'Escape' && event.target.getAttribute('aria-expanded') === 'true') {
+                      event.stopPropagation();
+                    }
+                  }}>
+                    <ObraAutocomplete
+                      ariaLabel="Obra / centro de custo principal"
+                      value={form.obra_id}
+                      options={obras}
+                      onChange={(obraId) => setForm((prev) => ({ ...prev, obra_id: obraId }))}
+                      disabled={!podeEditar || carregando || salvando}
+                      placeholder="Não vinculada — pesquise por código ou nome..."
+                      disabledPlaceholder="Obra / centro de custo"
+                      emptyText="Nenhuma obra ou centro de custo encontrado"
+                    />
+                  </div>
                 </CampoForm>
 
                 <CampoForm label="Nome" obrigatorio>

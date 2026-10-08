@@ -23,6 +23,22 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 - para usuario de OBRA, listas, detalhes, solicitacoes e jornada ficam limitados as obras vinculadas em `usuarios_obras`, inclusive quando a API e chamada diretamente;
 - o cadastro geral de colaboradores, documentos, importacoes, fechamentos e relatorios permanece restrito ao RH/DP e aos administradores autorizados.
 
+## Obra ou centro de custo no cadastro
+
+O campo `Obra / centro de custo principal` usa autocomplete por codigo ou nome,
+inclusive sem acentos, consultando `GET /obras?escopo=TODOS`. O filtro da lista
+usa o mesmo catalogo e inclui centros de custo. O vinculo continua opcional e
+grava o ID em `obra_id`, sem novo campo ou migration. Limpar a pesquisa retira
+a selecao no formulario. Esc fecha primeiro as sugestoes, sem fechar o cadastro.
+
+As permissoes de consulta/edicao, datas de admissao/vigencia e o fluxo formal
+de transferencia permanecem inalterados: selecionar outro destino na edicao
+nao dispensa a solicitacao de transferencia exigida pelo backend.
+
+Teste isolado da tela, catalogo HTTP local e persistencia simulada:
+`node scripts/validarRhColaboradorCentroCusto.mjs` no frontend. Nao acessa banco
+nem servicos externos.
+
 ## Exportacao e reimportacao de colaboradores
 
 Em Colaboradores, `Exportar todos (Excel)` baixa todos os cadastros no escopo autorizado, inclusive inativos, afastados e, quando o acesso e global, colaboradores sem obra. Nao aplica os filtros atuais da tela. Exige a mesma permissao da consulta de colaboradores, aplica o escopo no servidor e registra a exportacao na auditoria de seguranca sem incluir dados pessoais no evento. O arquivo contem dados pessoais e financeiros e deve ser compartilhado somente com pessoas autorizadas.

@@ -11,6 +11,7 @@ import ApropriacaoAutocomplete from './ApropriacaoAutocomplete';
 export default function ObraAutocomplete({
   placeholder = 'Digite o codigo ou nome da obra...',
   disabledPlaceholder = 'Carregando obras ativas...',
+  emptyText = 'Nenhuma obra ativa encontrada',
   ...props
 }) {
   return (
@@ -18,7 +19,7 @@ export default function ObraAutocomplete({
       {...props}
       placeholder={placeholder}
       disabledPlaceholder={disabledPlaceholder}
-      emptyText="Nenhuma obra ativa encontrada"
+      emptyText={emptyText}
       inputClassName="form-control"
       portalZIndex="var(--z-modal-acima)"
       mostrarConsultaCompleta={false}
