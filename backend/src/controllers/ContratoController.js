@@ -25,6 +25,8 @@ const {
   sequelize
 } = require('../models');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
+const { ValidationError } = require('../middlewares/validation');
+const { prepararEdicaoVigencia } = require('../services/contratoVigenciaEdicao');
 const { env } = require('../config/env');
 const { uploadToS3 } = require('../services/s3');
 const {
@@ -2028,7 +2030,15 @@ module.exports = {
         : null;
 
       await sequelize.transaction(async (transaction) => {
+        // Compartilha o bloqueio usado na aprovacao de aditivos e evita historico duplicado.
+        const obraAutorizada = contrato.obra_id;
+        await contrato.reload({ transaction, lock: transaction.LOCK.UPDATE });
+        if (Number(contrato.obra_id) !== Number(obraAutorizada)) {
+          throw new ValidationError('O contrato mudou de obra. Recarregue a tela antes de editar.', 409);
+        }
+        const vigencia = prepararEdicaoVigencia(contrato, req.body);
         await contrato.update({
+          ...vigencia.patch,
           obra_id: obraFinalId,
           codigo: codigo ?? contrato.codigo,
           ref_contrato: (ref_contrato ?? fornecedor) ?? contrato.ref_contrato,
@@ -2041,6 +2051,19 @@ module.exports = {
           ajuste_solicitado: ajuste_solicitado ?? contrato.ajuste_solicitado,
           ajuste_pago: ajuste_pago ?? contrato.ajuste_pago
         }, { transaction });
+
+        if (vigencia.alteracao && contrato.solicitacao_id) {
+          const { anterior, atual } = vigencia.alteracao;
+          const periodo = (datas) => `${datas.vigencia_inicio || 'nao informado'} a ${datas.vigencia_fim || 'nao informado'}`;
+          await Historico.create({
+            solicitacao_id: contrato.solicitacao_id,
+            usuario_responsavel_id: req.user?.id || null,
+            setor: codigoDoSetor(req.user) || String(req.user?.setor_id || '') || '-',
+            acao: 'CONTRATO_VIGENCIA_ALTERADA',
+            descricao: `Vigencia do contrato ${contrato.codigo || contrato.id} alterada de ${periodo(anterior)} para ${periodo(atual)}.`,
+            metadata: JSON.stringify({ contrato_id: contrato.id, ...vigencia.alteracao })
+          }, { transaction });
+        }
 
         if (apropriacoesNormalizadas !== null) {
           await salvarApropriacoesContrato(contrato.id, apropriacoesNormalizadas, transaction);

@@ -68,6 +68,30 @@ perfil seguro de upload, vinculado ao aditivo e nao substitui a negociacao origi
 contrato. Aditivos historicos sem documento continuam validos. Criacao usa idempotencia
 para impedir duplicidade por retry/duplo clique.
 
+## Edicao cadastral da vigencia
+
+Em Gestao de Contratos, selecionar o contrato e clicar em Editar permite corrigir
+Inicio da vigencia e Fim da vigencia (DD/MM/AAAA). Mantem a permissao de edicao de
+contratos e o escopo de obras atuais. Datas inexistentes, incompletas ou fim anterior
+ao inicio sao rejeitados. Datas ausentes continuam permitidas para compatibilidade
+com cadastros existentes; limpar um campo remove aquela data.
+
+O PATCH `/contratos/:id` aceita `vigencia_inicio` e `vigencia_fim` em ISO, ou `null`
+para limpar. Campos omitidos sao preservados. A interface envia somente as datas
+alteradas, evitando sobrescrever a vigencia ao editar outro dado cadastral.
+O backend bloqueia o contrato na transacao e valida o intervalo com os valores
+atuais. Havendo solicitacao vinculada, grava `CONTRATO_VIGENCIA_ALTERADA` no historico
+com autor e periodo anterior/novo, na mesma transacao. Repetir a mesma alteracao nao
+duplica esse evento; o evento geral `CONTRACT_UPDATED` da rota permanece existente.
+
+Esta correcao cadastral nao cria termo aditivo nem recalcula parcelas, medicoes,
+titulos, pagamentos ou vencimentos. O fluxo formal de prorrogacao por aditivo
+continua com suas regras e documentos. Nao requer migration: as colunas ja existem.
+
+Validacoes locais, sem banco real: `node backend/scripts/validarContratoVigenciaEdicao.js`
+e, na pasta frontend, `node scripts/validarContratoVigenciaEdicao.mjs` (Playwright;
+aceita `PLAYWRIGHT_EXECUTABLE_PATH` para usar navegador instalado).
+
 ## Integracoes
 
 Solicitacoes consome o contrato como contexto. Obras pode consolidar contratos relacionados. Arquivos fornece o objeto fisico; o modulo Contratos decide quem pode acessa-lo. Comercial possui seus proprios contratos de venda e apenas integra quando houver regra explicita.

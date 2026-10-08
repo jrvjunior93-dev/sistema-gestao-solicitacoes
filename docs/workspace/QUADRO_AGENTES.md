@@ -223,3 +223,12 @@ Nao ha nova implementacao planejada aguardando inicio nesta sessao.
     - Commit e validacao visual no ambiente dev.
   validacao:
     - Ver `docs/handoffs/PROJECAO_REAJUSTE_PARCELAS_MEDICAO_2026-08-31.md`.
+
+## Promocao isolada da vigencia - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-main; estado: em_andamento; worktree compras-criacao-main, branch codex/contrato-vigencia-main.
+- Base: origin/main ba8c9816. Origem da correcao: f5ba51f3, sem incorporar seu pai financeiro 3a470ece.
+- Arquivos reservados: ContratoController.js, operationalValidators.js, contratoVigenciaEdicao.js, validarContratoVigenciaEdicao.js, GestaoContratos.jsx, validarContratoVigenciaEdicao.mjs, docs/modulos/contratos/README.md e docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
+
+Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.

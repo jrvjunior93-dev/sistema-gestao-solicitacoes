@@ -48,3 +48,12 @@ Sessao `codex-autorizacao-proprietario-pagamentos-2026-09-30` concluida localmen
 Implementacao inativa da PWA/passkeys/push e gate anterior a fila validada; feature flag
 permanece `OFF`. Nenhum ambiente externo foi alterado e o conjunto aguarda eventual
 commit/publicacao mediante pedido do usuario.
+
+## Promocao isolada da vigencia - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-main; estado: em_andamento; worktree compras-criacao-main, branch codex/contrato-vigencia-main.
+- Base: origin/main ba8c9816. Origem da correcao: f5ba51f3, sem incorporar seu pai financeiro 3a470ece.
+- Arquivos reservados: ContratoController.js, operationalValidators.js, contratoVigenciaEdicao.js, validarContratoVigenciaEdicao.js, GestaoContratos.jsx, validarContratoVigenciaEdicao.mjs, docs/modulos/contratos/README.md e docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
+
+Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.

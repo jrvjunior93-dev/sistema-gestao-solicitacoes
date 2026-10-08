@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import DateInputBR from '../components/DateInputBR';
 import {
   HiArrowDownTray,
   HiArrowUpTray,
@@ -151,6 +152,8 @@ export default function GestaoContratos() {
   const [salvando, setSalvando] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [salvandoEdicaoId, setSalvandoEdicaoId] = useState(null);
+  const salvandoEdicaoRef = useRef(false);
+  const camposEdicaoRef = useRef(null);
   const [negociacaoEdicaoArquivo, setNegociacaoEdicaoArquivo] = useState(null);
   const [documentacaoJuridicaEdicao, setDocumentacaoJuridicaEdicao] = useState({
     'cartao-cnpj': null,
@@ -163,6 +166,8 @@ export default function GestaoContratos() {
   const [erroDetalhe, setErroDetalhe] = useState('');
   const [rescindindoId, setRescindindoId] = useState(null);
   const [formEdicao, setFormEdicao] = useState({
+    vigencia_inicio: '',
+    vigencia_fim: '',
     obra_id: '',
     codigo: '',
     ref_contrato: '',
@@ -474,6 +479,8 @@ export default function GestaoContratos() {
   function contratoPossuiAlteracoesCadastrais(contrato, payload) {
     const ordenarPorId = (lista, campo) => [...lista].sort((a, b) => Number(a[campo]) - Number(b[campo]));
     const atual = {
+      vigencia_inicio: contrato?.vigencia_inicio || null,
+      vigencia_fim: contrato?.vigencia_fim || null,
       obra_id: contrato?.obra_id ? Number(contrato.obra_id) : null,
       codigo: String(contrato?.codigo || '').trim(),
       ref_contrato: String(contrato?.ref_contrato || '').trim(),
@@ -819,6 +826,8 @@ export default function GestaoContratos() {
       'representante-legal': null
     });
     setFormEdicao({
+      vigencia_inicio: contrato.vigencia_inicio || '',
+      vigencia_fim: contrato.vigencia_fim || '',
       obra_id: contrato.obra_id ? String(contrato.obra_id) : '',
       codigo: String(contrato.codigo || ''),
       ref_contrato: String(contrato.ref_contrato || ''),
@@ -850,6 +859,8 @@ export default function GestaoContratos() {
       'representante-legal': null
     });
     setFormEdicao({
+      vigencia_inicio: '',
+      vigencia_fim: '',
       obra_id: '',
       codigo: '',
       ref_contrato: '',
@@ -900,7 +911,15 @@ export default function GestaoContratos() {
       avisar.erro('Seu usuário não tem permissão para editar contratos.');
       return;
     }
-    if (salvandoEdicaoId) return;
+    if (salvandoEdicaoRef.current || salvandoEdicaoId) return;
+    // O modal usa botao, nao submit nativo: validar tambem texto parcial/invalidado.
+    for (const input of camposEdicaoRef.current?.querySelectorAll('input[name^="vigencia_"]') || []) {
+      if (!input.reportValidity()) return;
+    }
+    if (formEdicao.vigencia_inicio && formEdicao.vigencia_fim && formEdicao.vigencia_fim < formEdicao.vigencia_inicio) {
+      avisar.alerta('O fim da vigência deve ser igual ou posterior ao início.');
+      return;
+    }
 
     const valorTotalEdicao = String(formEdicao.valor_total || '').trim();
     const ajusteSolicitadoEdicao = String(formEdicao.ajuste_solicitado || '').trim();
@@ -925,6 +944,8 @@ export default function GestaoContratos() {
     }
 
     const payload = {
+      vigencia_inicio: formEdicao.vigencia_inicio || null,
+      vigencia_fim: formEdicao.vigencia_fim || null,
       obra_id: formEdicao.obra_id ? Number(formEdicao.obra_id) : null,
       codigo: String(formEdicao.codigo || '').trim(),
       ref_contrato: String(formEdicao.ref_contrato || '').trim(),
@@ -954,6 +975,7 @@ export default function GestaoContratos() {
     let documentacaoJuridicaAtualizada = false;
     let dadosContratoAtualizados = false;
     try {
+      salvandoEdicaoRef.current = true;
       setSalvandoEdicaoId(contrato.id);
 
       if (negociacaoEdicaoArquivo) {
@@ -974,6 +996,10 @@ export default function GestaoContratos() {
       }
 
       if (possuiAlteracoesCadastrais) {
+        // Edicoes de outros campos nao devem sobrescrever uma vigencia alterada por aditivo.
+        for (const campo of ['vigencia_inicio', 'vigencia_fim']) {
+          if (payload[campo] === (contrato[campo] || null)) delete payload[campo];
+        }
         await atualizarContrato(contrato.id, payload);
         dadosContratoAtualizados = true;
       }
@@ -1001,6 +1027,7 @@ export default function GestaoContratos() {
           : 'Erro ao atualizar contrato.'));
       }
     } finally {
+      salvandoEdicaoRef.current = false;
       setSalvandoEdicaoId(null);
     }
   }
@@ -1981,7 +2008,7 @@ export default function GestaoContratos() {
               </button>
             </div>
 
-            <div className="contratos-edit-modal__body">
+            <div className="contratos-edit-modal__body" ref={camposEdicaoRef}>
               {modalNoTopo === 'edicao' && faixaAvisos}
               {/* R10 — a trilha tinha px escrito na tela (180px/220px). As
                   proporcoes ficam, as medidas saem. */}
@@ -2033,6 +2060,30 @@ export default function GestaoContratos() {
                     rows="3"
                   />
                 </label>
+
+                <label className="sol-filter-field">
+                  <span className="sol-filter-label">Início da vigência</span>
+                  <DateInputBR
+                    name="vigencia_inicio"
+                    value={formEdicao.vigencia_inicio}
+                    onChange={onChangeEdicao}
+                    disabled={Boolean(salvandoEdicaoId)}
+                    className="input w-full"
+                  />
+                </label>
+                <label className="sol-filter-field">
+                  <span className="sol-filter-label">Fim da vigência</span>
+                  <DateInputBR
+                    name="vigencia_fim"
+                    value={formEdicao.vigencia_fim}
+                    onChange={onChangeEdicao}
+                    disabled={Boolean(salvandoEdicaoId)}
+                    className="input w-full"
+                  />
+                </label>
+                <p className="text-xs text-slate-500 md:col-span-2 xl:col-span-3">
+                  A edição da vigência atualiza o cadastro do contrato. Parcelas, medições e vencimentos permanecem como cadastrados.
+                </p>
 
                 {/* R6 — os tres campos abaixo sao dinheiro: `.input-moeda` da
                     o piso de 180px (cabe R$ 9.999.999.999,99), o alinhamento a

@@ -4,6 +4,7 @@ const {
   sanitizeString
 } = require('../middlewares/validation');
 const { onlyDigits, isValidCpfCnpj, isValidPixDocument } = require('../utils/cpfCnpj');
+const { parseVigenciaContrato } = require('../services/contratoVigenciaEdicao');
 
 function isBlank(value) {
   return value == null || String(value).trim() === '';
@@ -323,6 +324,8 @@ function validateContratoUpdateBody(body = {}) {
       'descricao',
       'itens_apropriacao',
       'valor_total',
+      'vigencia_inicio',
+      'vigencia_fim',
       'tipo_macro_id',
       'tipo_sub_id',
       'ativo',
@@ -342,6 +345,8 @@ function validateContratoUpdateBody(body = {}) {
     descricao: parseOptionalText(body.descricao, 'Descricao', 5000),
     itens_apropriacao: parseOptionalText(body.itens_apropriacao, 'Itens de apropriacao', 5000),
     valor_total: parseDecimal(body.valor_total, 'Valor total', { min: 0 }),
+    vigencia_inicio: parseVigenciaContrato(body.vigencia_inicio, 'Inicio da vigencia'),
+    vigencia_fim: parseVigenciaContrato(body.vigencia_fim, 'Fim da vigencia'),
     tipo_macro_id: parseInteger(body.tipo_macro_id, 'Tipo macro'),
     tipo_sub_id: parseInteger(body.tipo_sub_id, 'Tipo sub'),
     ativo: parseBoolean(body.ativo, 'Ativo'),
