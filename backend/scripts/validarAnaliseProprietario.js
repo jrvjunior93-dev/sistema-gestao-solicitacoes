@@ -85,14 +85,20 @@ const stubs = {
     if (title.bloqueio_retorno_obra) throw Object.assign(new Error('Retorno pendente'), { statusCode: 409 });
   } }, './s3': {}, './fileAccessService': {},
   './securityLogService': { registrarEventoSeguranca: async () => {}, getRequestIp: () => req.ip },
-  './webauthnChallengeStore': { consumeChallenge: async () => { const value = challenge; challenge = null; return value; } },
+  './webauthnChallengeStore': {
+    saveChallenge: async (_, value) => { challenge = value; },
+    consumeChallenge: async () => { const value = challenge; challenge = null; return value; }
+  },
   './webPushService': { isConfigured: () => false, hasActiveSubscription: async () => false, sendPendingAuthorizationNotification: async () => {} },
   './setorCapabilityService': { findSetorByCapability: async () => ({}), resolveSetorPersistenciaValue: (_, fallback) => fallback }
 };
 function load(name) {
   if (services.has(name)) return services.get(name);
   const sandbox = { module: { exports: {} }, console, Date, Buffer, Uint8Array,
-    __webauthn: { verifyAuthenticationResponse: async () => ({ verified: true, authenticationInfo: { newCounter: 1 } }) },
+    __webauthn: {
+      generateAuthenticationOptions: async () => ({ challenge: 'qa' }),
+      verifyAuthenticationResponse: async () => ({ verified: true, authenticationInfo: { newCounter: 1 } })
+    },
     require(dependency) {
     if (Object.hasOwn(stubs, dependency)) return stubs[dependency];
     if (dependency.startsWith('./')) return load(dependency.slice(2));
@@ -282,7 +288,15 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
   state.WebauthnCredential.push({ id: 1, usuario_id: 31, credential_id: 'qa-key', public_key: 'AA==', ativo: true, counter: 0 });
   const diretor = { user: { id: 31, grants: [DECIDE] }, headers: {} };
   const decisoes = [{ item_id: 1, decisao: 'AUTORIZAR', motivo: null }, { item_id: 2, decisao: 'REJEITAR', motivo: 'Ajustar' }];
-  challenge = { challenge: 'qa', decisions_hash: digital.sha256(decisoes), dossie_hash: lote.dossie_hash };
+  state.PagamentoAutorizacaoLote[0].expira_em = new Date('2000-01-01T00:00:00Z');
+  await assert.rejects(digital.authenticationOptions({ user: { id: 31, grants: [] } }, lote.id, decisoes), { statusCode: 403 });
+  const authentication = await digital.authenticationOptions(diretor, lote.id, decisoes);
+  assert.equal(authentication.challenge, 'qa', 'Lote legado vencido aceita nova confirmacao');
+  challenge = null; // Redis nao retorna challenges vencidos.
+  await assert.rejects(digital.decideBatch(diretor, lote.id, { decisoes, credential: { id: 'qa-key' } }), /Desafio expirado/);
+  assert.equal(state.PagamentoAutorizacaoLote[0].status, 'AGUARDANDO');
+  assert.equal(state.PagamentoManualFilaItem.length, 0, 'Challenge vencido nao autoriza ou cria fila');
+  await digital.authenticationOptions(diretor, lote.id, decisoes);
   locks.length = 0;
   await digital.decideBatch(diretor, lote.id, { decisoes, credential: { id: 'qa-key' } });
   assert(locks.indexOf('TituloFinanceiro') < locks.indexOf('PagamentoAutorizacaoLote'), 'Decisao trava titulo antes do lote');
@@ -290,8 +304,23 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
   assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
   assert.equal(state.PagamentoAutorizacaoItem[1].status, 'REJEITADO');
   assert.equal(state.PagamentoAutorizacaoLote[0].status, 'CONCLUIDO');
+  assert.equal(state.PagamentoAutorizacaoLote[0].expira_em.toISOString(), '2000-01-01T00:00:00.000Z', 'Nao reescreve metadado legado');
+  await assert.rejects(digital.decideBatch(diretor, lote.id, { decisoes, credential: { id: 'qa-key' } }), /Desafio expirado/);
+  await assert.rejects(digital.authenticationOptions(diretor, lote.id, decisoes), { statusCode: 409 });
   result = await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: 'direto-apos-decisao' });
   assert.equal(result.criados, 0); assert.equal(state.PagamentoManualFilaItem.length, 1);
+
+  // Sem prazo do lote, alteracao material ainda invalida o snapshot antes da fila.
+  reset(); lote = await digital.createBatch(req, { titulo_ids: [1] });
+  state.PagamentoAutorizador.push({ id: 1, usuario_id: 31, ativo: true });
+  state.WebauthnCredential.push({ id: 1, usuario_id: 31, credential_id: 'qa-key', public_key: 'AA==', ativo: true, counter: 0 });
+  state.PagamentoAutorizacaoLote[0].expira_em = new Date('2000-01-01T00:00:00Z');
+  const autorizar = [{ item_id: 1, decisao: 'AUTORIZAR', motivo: null }];
+  await digital.authenticationOptions(diretor, lote.id, autorizar);
+  state.TituloFinanceiro[0].valor_saldo = 90;
+  await digital.decideBatch(diretor, lote.id, { decisoes: autorizar, credential: { id: 'qa-key' } });
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'INVALIDADO');
+  assert.equal(state.PagamentoManualFilaItem.length, 0, 'Lote antigo nao dispensa revalidacao material');
 
   // Challenge obtido antes do envio direto nao pode decidir um item ja enfileirado.
   reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] });

@@ -208,6 +208,8 @@ async function createBatch(req, payload = {}) {
     });
     const dossierHash = sha256(dossierMaterial.map(({ snapshot, documents }) => ({ snapshot, documents })));
     const now = new Date();
+    // Metadado legado NOT NULL: preservado para compatibilidade do schema.
+    // Nao representa mais um prazo operacional de decisao do lote.
     const expiresAt = new Date(now.getTime() + env.paymentOwnerApprovalTtlHours * 60 * 60 * 1000);
     const lot = await PagamentoAutorizacaoLote.create({
       codigo: `AUT-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
@@ -414,7 +416,6 @@ async function authenticationOptions(req, lotId, decisions) {
   const revogando = normalized.every(item => item.decisao === 'REVOGAR');
   if (!lot || (!revogando && lot.status !== 'AGUARDANDO')) throw httpError(409, 'Lote nao esta disponivel para decisao.');
   if (!revogando && Number(lot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
-  if (!revogando && new Date(lot.expira_em).getTime() <= Date.now()) throw httpError(409, 'Lote expirado.');
   if (normalized.some((item) => !['AUTORIZAR', 'REJEITAR', 'REVOGAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
   if (normalized.some((item) => ['REJEITAR', 'REVOGAR'].includes(item.decisao) && !item.motivo)) throw httpError(400, 'Informe o motivo para rejeitar ou revogar um pagamento.');
   const availableItems = await PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, id: { [Op.in]: normalized.map((item) => item.item_id) }, status: revogando ? { [Op.in]: ['AUTORIZADO', 'ENFILEIRADO'] } : 'PENDENTE' } });
@@ -470,7 +471,7 @@ async function decideBatch(req, lotId, payload = {}) {
       attributes: ['id'], transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
     stage = 'LOT_LOCK';
     const currentLot = await PagamentoAutorizacaoLote.findByPk(lotId, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!currentLot || (!revogando && (currentLot.status !== 'AGUARDANDO' || new Date(currentLot.expira_em).getTime() <= Date.now()))) throw httpError(409, 'Lote indisponivel ou expirado.');
+    if (!currentLot || (!revogando && currentLot.status !== 'AGUARDANDO')) throw httpError(409, 'Lote indisponivel para decisao.');
     if (!revogando && Number(currentLot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
     if (Number(stored.revisao_autorizacao || 0) !== Number(currentLot.revisao_autorizacao || 0)) throw httpError(409, 'Autorizacao alterada. Recarregue antes de decidir.');
     if (stored.dossie_hash !== currentLot.dossie_hash) throw httpError(409, 'O dossie foi alterado. Recarregue antes de decidir.');
@@ -546,8 +547,7 @@ async function decideBatch(req, lotId, payload = {}) {
     shouldEnqueue = !revogando && authorized > 0;
     const nextStatus = pending ? 'AGUARDANDO' : (authorized ? 'AUTORIZADO' : (enqueued ? 'CONCLUIDO' : 'REJEITADO'));
     await currentLot.update({ status: nextStatus, decidido_por: req.user.id, decidido_em: new Date(),
-      ...(revogando ? { revisao_autorizacao: Number(currentLot.revisao_autorizacao || 0) + 1,
-        expira_em: new Date(Date.now() + env.paymentOwnerApprovalTtlHours * 3600000) } : {}) }, { transaction });
+      ...(revogando ? { revisao_autorizacao: Number(currentLot.revisao_autorizacao || 0) + 1 } : {}) }, { transaction });
     return currentLot;
   });
 

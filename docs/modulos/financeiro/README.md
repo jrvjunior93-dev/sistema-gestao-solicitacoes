@@ -195,6 +195,18 @@ ajuste nao exige migration, variavel nova ou seed de status em producao.
 
 ### Consulta dos lotes de autorizacao
 
+Lotes nao expiram operacionalmente: pendencias continuam aguardando decisao,
+inclusive lotes antigos cujo `expira_em` esteja no passado. Esse campo e o TTL
+de lote permanecem apenas como metadados de compatibilidade, sem migration ou
+atualizacao em massa. A passkey continua exigindo um challenge valido de cinco
+minutos, de uso unico; saldo, documentos, hash e elegibilidade sao revalidados.
+
+A tabela destaca o codigo SOL e mantem TIT como referencia secundaria (ou
+principal para titulo avulso). MOTIVO fica apos STATUS. Titulos de Solicitacao
+de Compra e Compra Direta mostram somente o tipo no resumo, nao seus itens;
+snapshots, documentos e descricoes originais nao sao alterados. A lista mostra
+data de criacao em vez de expiracao. Mobile preserva as colunas por rolagem.
+
 A lista limita os 100 lotes mais recentes, nao seus itens ou documentos. A
 associacao do titulo e opcional e preserva o filtro de exclusao logica: quando
 o titulo deixa de existir na consulta, o item e seu snapshot continuam no

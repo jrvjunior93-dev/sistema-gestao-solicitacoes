@@ -1,5 +1,12 @@
 # Quadro de Agentes
 
+## Autorizacao sem expiracao e resumo do proprietario - 08/10/2026
+
+- Sessao: codex-autorizacao-resumo-2026-10-08; status: finalizado.
+- Plano: retirar prazo do lote sem alterar schema/snapshots; manter passkey curta; reorganizar identificacao e motivo sem mudar acoes. Compra Direta e Solicitacao de Compra mostram somente tipo, sem itens na descricao.
+- Validacao: testes isolados do backend, UI/QA responsiva claro/escuro, build, sintaxe e documentacao aprovados. Sem banco real ou publicacao. Ownership liberado; handoff em docs/handoffs/2026-10-08-autorizacao-sem-expiracao-identificacao.md.
+
+
 ## Consulta de autorizacoes de pagamento 08/10/2026
 
 - Sessao: codex-autorizacoes-consulta-2026-10-08.

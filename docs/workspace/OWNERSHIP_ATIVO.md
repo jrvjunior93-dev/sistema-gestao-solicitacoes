@@ -1,5 +1,25 @@
 # Ownership Ativo
 
+## Publicacao autorizada do resumo de autorizacoes - 08/10/2026
+
+- Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.
+- Usuario autorizou commit/push na refactor/frontend e comandos para EC2 dev;
+  nao inclui main, banco real ou execucao de deploy.
+- Reserva temporaria: handoff e registro desta publicacao, revisao do index e
+  publicacao dos arquivos do ajuste de lotes sem prazo e resumo do proprietario.
+  Preservar outputs/ sem versionar.
+- Estado: testes e revisao aprovados novamente; reserva liberada para
+  commit/publicacao autorizados. Conferir resultado no historico/remoto.
+
+
+## Autorizacao sem expiracao e resumo do proprietario - 08/10/2026
+
+- Sessao: codex-autorizacao-resumo-2026-10-08; estado: finalizado; ownership liberado; sem delegacao.
+- Reserva: pagamentoAutorizacaoService.js, validarAnaliseProprietario.js, validarAutorizacaoProprietarioPagamentos.js (contrato do resumo), FinanceiroAutorizacoesPagamento.jsx, financeiro-autorizacoes-pagamento.css, novo helper autorizacaoPagamentoResumo.js, validarFilaAutorizacaoConvergencia.mjs, README e contrato documental do Financeiro, handoff e registros desta sessao.
+- Escopo: remover validade operacional dos lotes inclusive legados, preservar expiracao de challenges, destacar SOL, mostrar somente o tipo para compras e separar MOTIVO apos STATUS. Preservar hash, regras de decisao, permissoes e idempotencia. Sem migration, banco real, commit/push ou deploy.
+- Validacao: backend, UI/QA responsiva, build, sintaxe e documentacao aprovados. Continuidade em docs/handoffs/2026-10-08-autorizacao-sem-expiracao-identificacao.md; commit/push autorizados posteriormente, homologacao dev pelo usuario.
+
+
 ## Publicacao da consulta de autorizacoes 08/10/2026
 
 - Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.

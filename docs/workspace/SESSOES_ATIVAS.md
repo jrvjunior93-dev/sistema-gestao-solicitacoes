@@ -1,5 +1,8 @@
 # Sessoes Ativas
 
+Sessao codex-autorizacao-resumo-2026-10-08: finalizado no checkout C:/Fluxy-refactor-frontend. Lotes sem expiracao operacional, codigo SOL e coluna MOTIVO, compras sem itens no resumo. Validacoes isoladas aprovadas e ownership liberado. Sem banco real, migration ou publicacao; continuidade no handoff deste ajuste.
+
+
 Sessao codex-autorizacoes-consulta-2026-10-08: finalizado. Consulta SQL dos lotes corrigida e validada localmente; ownership liberado. Commit/publicacao autorizados posteriormente para atualizar dev. Handoff em docs/handoffs/2026-10-08-autorizacoes-consulta-sql.md. Sem banco real ou EC2 nesta sessao.
 
 Sessao `codex-rhdp-jornadas-40-60-2026-10-02` em andamento no worktree

@@ -41,7 +41,7 @@ Objetivos:
 - preflight somente leitura e teste de contrato do modo `OFF`.
 
 Ainda dependem de homologação ou evolução posterior: dupla autorização por alçada,
-delegação temporária, expiração persistida por job, WhatsApp notificativo, teste E2E real
+delegação temporária, WhatsApp notificativo, teste E2E real
 em iOS/Android e uma suíte de integração com banco/S3/Redis. Essas ausências impedem
 `ENFORCED`, mas não alteram o fluxo legado porque o padrão permanece `OFF`.
 
@@ -138,9 +138,11 @@ pendentes, são rejeitados ou devolvidos para correção conforme a decisão reg
 - `ENFILEIRADO`
 
 As transições devem ser explícitas, transacionais e auditadas. Não usar exclusão
-física para corrigir estado. Estados mais detalhados de devolução, expiração persistida
-e falha de envio continuam como evolução posterior; hoje a expiração é validada em tempo
-de decisão e falha de enqueue mantém o item `AUTORIZADO` para reprocessamento seguro.
+física para corrigir estado. Desde o ajuste de 08/10/2026, lotes nao expiram:
+permanecem `AGUARDANDO` enquanto houver itens pendentes, inclusive quando o
+metadado legado `expira_em` estiver no passado. Falha de enqueue mantém o item
+`AUTORIZADO` para reprocessamento seguro. O challenge de passkey continua expirando
+em cinco minutos e e consumido uma unica vez; nao confundir esse prazo com o lote.
 
 ## 6. Dados e migrations
 
@@ -168,7 +170,11 @@ Requisitos estruturais:
 - nenhum lote é criado retroativamente por migration.
 
 Campos do lote incluem preparador, status, totais,
-hash do snapshot, expiração, idempotência e timestamps. O item preserva título,
+hash do snapshot, idempotência e timestamps. `expira_em` continua sendo gravado por
+compatibilidade com o schema NOT NULL, mas nao limita decisoes nem aparece na tela.
+`PAYMENT_OWNER_APPROVAL_TTL_HOURS` passa a afetar somente esse metadado legado,
+sem prazo operacional. Nao ha migration ou reescrita de lotes existentes neste ajuste.
+O item preserva título,
 saldo/valor proposto e decisão individual. O documento preserva origem, cópia isolada e
 hash canônico da referência de origem. Os eventos são append-only e encadeados por hash.
 Metadados ampliados de sessão/dispositivo e hash binário do arquivo permanecem como
@@ -188,6 +194,18 @@ solicitação. O dossiê dedicado deve mostrar apenas:
 - descrição e justificativas pertinentes;
 - documentos congelados no momento da preparação;
 - histórico do lote e de suas decisões.
+
+Na tabela, a coluna Solicitacao destaca o codigo SOL do snapshot, sem link de
+edicao; o codigo TIT permanece como referencia secundaria. Titulos avulsos sem
+solicitacao preservam TIT como identificador. A coluna MOTIVO fica imediatamente
+apos STATUS e mostra o motivo da decisao ou `-` quando ausente, inclusive no mobile
+por rolagem horizontal. A lista de lotes mostra a data de criacao, nao expiracao.
+
+Para titulos referentes a Solicitacao de Compra ou Compra Direta, o resumo mostra
+somente o tipo, sem itens, observacoes ou detalhamento da compra. A origem e
+identificada na descricao congelada da solicitacao ou no prefixo legado do titulo,
+nao pela forma de pagamento. Isso nao modifica o snapshot/hash, os documentos ou
+as descricoes nas outras telas. Os demais tipos preservam sua descricao.
 
 Endpoints implementados:
 
@@ -517,7 +535,6 @@ Cada agente deve registrar sua sessão, ownership e fase nos arquivos de workspa
 ## 18. Decisões pendentes antes da Fase 0
 
 - valor/regra que exige dupla autorização;
-- prazo de expiração do lote;
 - prazo jurídico/contábil de retenção de dossiê e eventos;
 - autorizador substituto e política de férias/ausência;
 - usuário(s) e empresas do piloto;

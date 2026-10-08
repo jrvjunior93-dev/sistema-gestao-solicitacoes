@@ -20,13 +20,11 @@ import {
 } from '../services/pagamentoAutorizacao';
 import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../utils/webauthn';
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
+import { resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import '../styles/financeiro-autorizacoes-pagamento.css';
 
 const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = (value) => value ? new Date(value).toLocaleString('pt-BR') : '-';
-const titleDescription = (value) => String(value || '')
-  .replace(/\s*valor total\s*:\s*r\$\s*[\d.]+(?:,\d{1,2})?/gi, '')
-  .trim();
 
 function Status({ value }) {
   const label = value === 'CONCLUIDO' ? 'NA FILA'
@@ -266,7 +264,7 @@ export default function FinanceiroAutorizacoesPagamento() {
             <button key={lot.id} type="button" className={`pa-lot ${Number(selected?.id) === Number(lot.id) ? 'is-active' : ''}`} onClick={() => setSelectedId(lot.id)}>
               <span><strong>{lot.codigo}</strong><Status value={lot.status} /></span>
               <span>{money(lot.valor_total)} · {lot.quantidade_itens} título(s)</span>
-              <small>Expira em {date(lot.expira_em)}</small>
+              <small>Criado em {date(lot.createdAt)}</small>
             </button>
           ))}
         </aside>
@@ -283,21 +281,23 @@ export default function FinanceiroAutorizacoesPagamento() {
             </header>
             <div className="pa-table-wrap">
               <table className="pa-table">
-                <thead><tr><th aria-label="Selecionar" /><th>Título</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num pa-value-column">Valor</th><th>Documentos</th><th>Status</th></tr></thead>
+                <thead><tr><th aria-label="Selecionar" /><th>Solicitação</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num pa-value-column">Valor</th><th>Documentos</th><th>Status</th><th>Motivo</th></tr></thead>
                 <tbody>{(selected.itens || []).map((item) => {
                   const snapshot = item.snapshot_json || {};
                   return <tr key={item.id}>
                     <td>{item.status === 'PENDENTE' && <input type="checkbox" checked={selectedItems.includes(Number(item.id))} onChange={(event) => setSelectedItems((current) => event.target.checked ? [...current, Number(item.id)] : current.filter((id) => id !== Number(item.id)))} />}</td>
-                    <td><strong>{snapshot.codigo || `#${snapshot.titulo_id}`}</strong><small>{titleDescription(snapshot.descricao)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
+                    <td><strong>{snapshot.solicitacao?.codigo || snapshot.codigo || `#${snapshot.titulo_id}`}</strong>
+                      {snapshot.solicitacao?.codigo && <small>Título {snapshot.codigo || `#${snapshot.titulo_id}`}</small>}
+                      <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
                     <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc.id)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
                     <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
-                      {item.motivo_decisao && <small>{item.motivo_decisao}</small>}
                       {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
                         Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
                           disabled={busy} onClick={() => setRevokeItems([Number(item.id)])}>Revogar autorização</button>}
                     </td>
+                    <td className="pa-reason-column">{item.motivo_decisao || '-'}</td>
                   </tr>;
                 })}</tbody>
               </table>

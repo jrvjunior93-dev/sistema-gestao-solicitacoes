@@ -1,5 +1,16 @@
 # Handoff Global
 
+## Autorizacao sem prazo e resumo do proprietario - 08/10/2026
+
+- Sessao: codex-autorizacao-resumo-2026-10-08; status: finalizado localmente.
+- Handoff: docs/handoffs/2026-10-08-autorizacao-sem-expiracao-identificacao.md.
+- Lotes novos/legados nao expiram; challenge curto e revalidacao permanecem. SOL
+  principal, MOTIVO apos STATUS e compras sem itens no resumo; snapshot preservado.
+- Backend, UI/QA responsiva, build, sintaxe e docs aprovados. Ownership liberado.
+- Proximo passo: publicacao autorizada e homologacao dev. Sem migration, banco real,
+  commit/push, reinicio ou deploy executados nesta tarefa.
+
+
 ## Consulta de autorizacoes de pagamento 08/10/2026
 
 - Sessao: codex-autorizacoes-consulta-2026-10-08; status: finalizado localmente.
