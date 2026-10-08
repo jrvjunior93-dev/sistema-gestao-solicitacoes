@@ -1,5 +1,11 @@
 # Sessoes Ativas
 
+Sessao codex-promocao-operacional-main-20261008: em_andamento no checkout
+C:/Fluxy-refactor-frontend, branch codex/promocao-operacional-main-20261008.
+Integracao autorizada de refactor/frontend na main, preservando contratos e
+registros de ambos os agentes. Ownership documental reservado; sem banco,
+EC2, aplicacao de migration ou reinicio. Backup confirmado pelo usuario.
+
 Sessao `codex-rhdp-jornadas-40-60-2026-10-02` em andamento no worktree
 `backend-dependency-security`. Escopo: duas etapas de jornada para mensalistas,
 pagamentos por envio para diaristas, rateio multiobra e vigencia da mudanca de regime.

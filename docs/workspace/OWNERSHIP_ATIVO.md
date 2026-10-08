@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Promocao operacional para main em 08/10/2026
+
+- Sessao: codex-promocao-operacional-main-20261008; status: em_andamento.
+- Checkout: C:/Fluxy-refactor-frontend; branch de integracao criada de origin/main.
+- Reserva: referencias desta integracao, docs/workspace/OWNERSHIP_ATIVO.md,
+  QUADRO_AGENTES.md, SESSOES_ATIVAS.md, HANDOFF_GLOBAL.md e os handoffs
+  2026-10-08-promocao-operacional-main.md e 2026-10-08-edicao-vigencia-contrato.md.
+- Pedido: integrar pendencias da refactor/frontend sem perder a promocao
+  isolada de contratos ja publicada na main. Sem nova implementacao funcional.
+- Bases: main 0c164d7c; refactor/frontend 27220d13. Usuario confirmou backup
+  recente cifrado no Drive e timer ativo. Bundle completo da main verificado
+  fora da EC2 em outputs/main-pre-promocao-20261008-0c164d7c.bundle.
+- Sem banco real, aplicacao de migration, EC2 ou reinicio nesta sessao.
+  Preservar outputs/ fora do Git e registros dos dois agentes.
+
 ## Modelo preenchido de colaboradores - 07/10/2026
 
 Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`. Reserva

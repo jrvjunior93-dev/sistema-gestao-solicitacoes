@@ -1,5 +1,16 @@
 # Quadro de Agentes
 
+## Promocao operacional para main em 08/10/2026
+
+- Sessao: codex-promocao-operacional-main-20261008; status: em_andamento.
+- Plano: integrar main 0c164d7c e refactor/frontend 27220d13 preservando
+  vigencia contratual e ambos os historicos documentais. Conflitos previstos
+  somente nos registros; codigo de contratos identico entre as duas pontas.
+- Backup de producao confirmado pelo usuario; snapshot Git local completo
+  verificado. Testes da origem aprovados; validar novamente apos integrar.
+- Sem banco, migration aplicada ou deploy; publicar somente Git autorizado.
+- Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+
 ## Trabalho em andamento
 
 - id: 2026-10-02-rhdp-jornadas-40-60
