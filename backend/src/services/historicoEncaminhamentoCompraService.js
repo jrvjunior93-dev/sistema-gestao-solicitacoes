@@ -15,12 +15,13 @@ function extrairEncaminhamentoCompra(historico) {
 }
 
 // Fragmento somente de leitura; usa o alias h da consulta de historicos.
-// CHAR(36) evita que o Sequelize interprete o caminho JSON como bind parameter.
+// CHAR(36 USING utf8mb4) evita bind indevido do Sequelize e gera caminho
+// textual: CHAR sem USING produz binary, rejeitado pelas funcoes JSON MySQL.
 function sqlEncaminhamentoCompraPorSetores(tokens) {
   const valores = [...new Set(tokens.map(value => String(value || '').trim().toUpperCase()).filter(Boolean))];
   if (!valores.length) return '1 = 0';
   const lista = valores.map(value => `'${value.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`).join(', ');
-  const json = name => `JSON_EXTRACT(IF(JSON_VALID(h.metadata), h.metadata, '{}'), CONCAT(CHAR(36), '.${name}'))`;
+  const json = name => `JSON_EXTRACT(IF(JSON_VALID(h.metadata), h.metadata, '{}'), CONCAT(CHAR(36 USING utf8mb4), '.${name}'))`;
   const campo = name => `UPPER(TRIM(JSON_UNQUOTE(${json(name)})))`;
   const origem = campo('area_anterior');
   const destino = campo('area_nova');
