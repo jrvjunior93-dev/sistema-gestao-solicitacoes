@@ -266,6 +266,39 @@ Um challenge obtido antes de um envio direto nao pode decidir novamente
 um item ja enfileirado. Reenvio com a mesma chave apos processamento nao
 reabre a entrada; uma entrada ativa mais recente prevalece no reuso.
 
+Na lista e no detalhe do lote, `CONCLUIDO` aparece como `NA FILA`. E apenas
+um rotulo de apresentacao: o status interno permanece `CONCLUIDO`. Indica
+que o fluxo do lote encerrou com encaminhamento; nao significa pagamento
+realizado nem transforma itens rejeitados em autorizados.
+
+Reprocessar o envio trata apenas itens ja `AUTORIZADO`, sem nova decisao
+ou segunda assinatura do proprietario. Revalida a elegibilidade e reutiliza
+a entrada existente para evitar duplicidade.
+
+### Revogacao antes do pagamento
+
+O autorizador nominal com permissao de decidir pode revogar um item autorizado
+ou todas as autorizacoes do lote. A acao exige motivo e uma nova confirmacao
+com passkey, vinculada aos itens e a revisao corrente da autorizacao.
+
+Na mesma transacao, as entradas ativas da fila passam a `RESOLVIDO` com o
+motivo da retirada, e os itens do dossie voltam a `PENDENTE`, sem vinculo ativo
+com a fila. O lote volta a `AGUARDANDO`, com novo prazo para decidir. O titulo
+e a solicitacao voltam a analise do proprietario, sem mudanca de setor ou saldo.
+Snapshots e documentos originais permanecem intactos; o evento de revogacao
+registra o motivo, responsavel, fila retirada e revisao anterior.
+
+Baixa total ou parcial, movimento ja registrado, pagamento bancario ativo
+ou um ciclo de autorizacao mais recente impedem a revogacao. Se qualquer
+item do lote falhar, nenhuma retirada e gravada. Nao ha estorno automatico.
+Challenges antigos e tentativas de reprocessamento de uma revisao revogada
+sao recusados. Uma nova autorizacao usa outra chave de envio e nao reutiliza
+a entrada retirada. O envio direto continua com sua permissao independente.
+
+Rejeicoes atuais aparecem tambem em `Nao pagos` da fila, com o motivo e em
+somente consulta. Novo ciclo ou entrada ativa impede a exibicao de uma
+rejeicao historica como pendencia atual.
+
 Na tela, `ENFILEIRADO` aparece como `Na fila de pagamento`, com referencia
 da entrada. Atualizar, foco da janela e consulta periodica de 30 segundos
 reconciliam pendencias sem reenvios nem novas decisoes. Consultas antigas

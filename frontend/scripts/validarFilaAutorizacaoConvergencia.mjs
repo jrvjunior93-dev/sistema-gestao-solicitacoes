@@ -19,8 +19,10 @@ const plugin = {
     if (!importer?.endsWith('/FinanceiroAutorizacoesPagamento.jsx')) return;
     if (source === '../contexts/AuthContext') return stub + 'auth';
     if (source === '../components/padrao') return stub + 'padrao';
+    if (source === '../utils/webauthn') return stub + 'webauthn';
   },
   load(id) {
+    if (id === stub + 'webauthn') return `export const autenticarComPasskey=async()=>({id:'qa-key'}),registrarPasskey=async()=>({}),suportaPasskeys=()=>true;`;
     if (id === stub + 'auth') return `export const useAuth=()=>({user:{autorizacao_pagamentos:{mode:'PILOT',can_decide:true,can_prepare:true,passkey_count:1}},refreshSession:async()=>{}});`;
     if (id === stub + 'padrao') return `import React from 'react'; export const Pagina=({children})=>React.createElement('main',null,children);export const PageHeader=({title})=>React.createElement('h1',null,title);export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},avisar:{erro:()=>{},sucesso:()=>{}}});`;
   },
@@ -43,10 +45,17 @@ try {
     { id: 1, status: 'PENDENTE', valor_snapshot: 100, snapshot_json: { codigo: 'TIT-1' } },
     { id: 2, status: 'PENDENTE', valor_snapshot: 50, snapshot_json: { codigo: 'TIT-2' } }
   ] }];
-  let holdNext = false, releaseHeld, heldStarted;
+  let holdNext = false, releaseHeld, heldStarted; const decisions = [];
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     const json = data => route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
+    if (url.pathname.endsWith('/autenticacao/opcoes')) return json({ challenge: 'qa' });
+    if (url.pathname.endsWith('/decidir')) {
+      decisions.push(request.postDataJSON());
+      rows[0].status = 'AGUARDANDO';
+      rows[0].itens[0].status = 'PENDENTE'; delete rows[0].itens[0].fila_item_id;
+      return json(rows[0]);
+    }
     if (url.pathname.endsWith('/financeiro/autorizacoes-pagamento')) {
       assert.equal(request.method(), 'GET');
       const snapshot = structuredClone(rows);
@@ -86,7 +95,37 @@ try {
   await page.waitForResponse(response => response.url().endsWith('/financeiro/autorizacoes-pagamento'));
   assert.equal(await checks.count(), 0);
   assert.equal(await page.getByText('Na fila de pagamento', { exact: true }).count(), 2);
+  assert.equal(await page.getByText('NA FILA', { exact: true }).count(), 2, 'Rotulo do lote na lista e no detalhe');
+  assert.equal(await page.getByText('CONCLUIDO', { exact: true }).count(), 0);
+  assert.equal(await page.locator('.pa-status--concluido').count(), 2, 'Status interno e estilo preservados');
   assert.equal(await page.getByRole('button', { name: /^Autorizar/ }).count(), 0);
+
+  // Lote misto: o rotulo nao transforma um item rejeitado em enfileirado.
+  rows[0].itens[1].status = 'REJEITADO'; delete rows[0].itens[1].fila_item_id;
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.getByText('REJEITADO', { exact: true }).waitFor();
+  assert.equal(await page.getByText('NA FILA', { exact: true }).count(), 2);
+  assert.equal(await page.getByText('Na fila de pagamento', { exact: true }).count(), 1);
+
+  // Autorizacao ja gravada: somente o preparo pode reprocessar, sem nova decisao.
+  rows[0].status = 'AUTORIZADO'; rows[0].itens[0].status = 'AUTORIZADO'; delete rows[0].itens[0].fila_item_id;
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.getByRole('button', { name: 'Reprocessar envio à fila', exact: true }).waitFor();
+  assert.equal(await checks.count(), 0);
+  assert.equal(await page.getByText('NA FILA', { exact: true }).count(), 0);
+  assert.equal(await page.getByText('AUTORIZADO', { exact: true }).count(), 3);
+  assert.equal(await page.getByRole('button', { name: /^Autorizar/ }).count(), 0);
+  // Revogar titulo autorizado exige motivo + passkey, sem nova baixa/estorno.
+  rows[0].itens[0].titulo = { status: 'ABERTO', valor_baixado: 0 };
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.getByRole('button', { name: 'Revogar autorização', exact: true }).click();
+  const confirmRevoke = page.getByRole('button', { name: 'Confirmar revogação com passkey', exact: true });
+  assert.equal(await confirmRevoke.isDisabled(), true);
+  await page.getByLabel('Motivo da revogação', { exact: true }).fill('Revisar documento');
+  await confirmRevoke.click();
+  await checks.first().waitFor();
+  assert.equal(decisions.length, 1); assert.equal(decisions[0].decisoes[0].decisao, 'REVOGAR');
+  assert.equal(decisions[0].decisoes[0].motivo, 'Revisar documento'); assert.equal(decisions[0].credential.id, 'qa-key');
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('OK: tela real, atualizacao manual/foco, fila vinculada, selecao preservada, resposta obsoleta e mensagens sem reenvio. APIs simuladas.');
+  console.log('OK: tela real, atualizacao manual/foco, fila vinculada, selecao preservada, resposta obsoleta, NA FILA na lista/detalhe, lote misto e reprocessar sem nova decisao. APIs simuladas.');
 } finally { await browser?.close(); await server.close(); }

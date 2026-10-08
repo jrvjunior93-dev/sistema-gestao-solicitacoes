@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
@@ -12,6 +12,7 @@ import {
   anexarComprovanteFilaPagamento,
   aprovarDivergenciasFilaPagamentos,
   getContasFilaPagamentos,
+  getInstrumentosFilaPagamentos,
   getComprovanteFilaPagamento,
   getFilaPagamentos,
   informarNaoPagamentoFila,
@@ -31,6 +32,7 @@ import DateInputBR from '../components/DateInputBR';
 import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
+import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
 import {
@@ -82,6 +84,7 @@ const PAYMENT_QUEUE_COLUMNS = [
   { key: 'saldo', size: 'standard' },
   { key: 'data', size: 'standard' },
   { key: 'conta', size: 'wide' },
+  { key: 'instrumento', size: 'wider' },
   { key: 'empresa', size: 'standard' },
   { key: 'valor', size: 'standard' },
   { key: 'justificativa', size: 'wider' },
@@ -555,6 +558,8 @@ export default function FinanceiroFilaPagamentos() {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
   const [accounts, setAccounts] = useState([]);
+  const [instrumentos, setInstrumentos] = useState({ formas: [], cartoes: [], cheques: [] });
+  const settleLockRef = useRef(false);
   const [drafts, setDrafts] = useState({});
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -583,14 +588,16 @@ export default function FinanceiroFilaPagamentos() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [queueResult, accountResult] = await Promise.all([
+      const [queueResult, accountResult, instrumentResult] = await Promise.all([
         getFilaPagamentos({ status, q: appliedSearch || undefined }),
-        getContasFilaPagamentos()
+        getContasFilaPagamentos(),
+        canSettle ? getInstrumentosFilaPagamentos() : Promise.resolve({ formas: [], cartoes: [], cheques: [] })
       ]);
       const nextRows = queueResult?.data || [];
       setRows(nextRows);
       setSummary(queueResult?.resumo || {});
       setAccounts(Array.isArray(accountResult) ? accountResult : accountResult?.data || []);
+      setInstrumentos(instrumentResult);
       setSelected((current) => current.filter((id) => nextRows.some((row) => Number(row.id) === Number(id))));
       setDrafts((current) => {
         const next = { ...current };
@@ -600,7 +607,9 @@ export default function FinanceiroFilaPagamentos() {
               data_baixa: row.data_baixa || hojeISO(),
               conta_bancaria_id: row.conta_bancaria_id || '',
               valor_pago: valorParaInput(row.valor_informado || row?.titulo?.valor_saldo || row.valor_previsto),
-              motivo: row.motivo || ''
+              motivo: row.motivo || '',
+              forma_pagamento_id: row.titulo?.forma_pagamento_id || '',
+              ...(row.instrumento_pagamento_json || {})
             };
           }
         });
@@ -611,7 +620,7 @@ export default function FinanceiroFilaPagamentos() {
     } finally {
       setLoading(false);
     }
-  }, [status, appliedSearch, avisar]);
+  }, [status, appliedSearch, avisar, canSettle]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -620,7 +629,9 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   function compatibleAccounts(row) {
-    return accounts.filter((account) => account.ativo !== false && account.empresa_id);
+    const card = instrumentos.cartoes.find(item => Number(item.id) === Number(drafts[row.id]?.cartao_id));
+    return accounts.filter((account) => account.ativo !== false && account.empresa_id &&
+      (!card || Number(account.id) === Number(card.conta_bancaria_id)));
   }
 
   function selectedAccount(row) {
@@ -631,6 +642,13 @@ export default function FinanceiroFilaPagamentos() {
   function validateRows(targetRows) {
     for (const row of targetRows) {
       const draft = drafts[row.id] || {};
+      const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
+      if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id };
+      const tipo = tipoInstrumentoFila(forma);
+      if (tipo === 'CARTAO' && !draft.cartao_id) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id };
+      if (tipo === 'CHEQUE' && (draft.usar_cheque_terceiro ? !draft.cheque_terceiro_id : (!draft.cheque_numero || !draft.cheque_emitente))) {
+        return { mensagem: 'Informe o cheque usado no pagamento.', correcao: 'Selecione um cheque da carteira ou preencha número e emitente do cheque próprio.', filaId: row.id };
+      }
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
       if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
       if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
@@ -685,6 +703,13 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function settle(targetRows) {
+    if (settleLockRef.current || !targetRows.length || !canSettle) return;
+    settleLockRef.current = true;
+    try { await performSettle(targetRows); }
+    finally { settleLockRef.current = false; }
+  }
+
+  async function performSettle(targetRows) {
     const problem = validateRows(targetRows);
     if (problem) {
       setErroBaixa({ ...problem, lote: targetRows.length > 1 });
@@ -704,6 +729,7 @@ export default function FinanceiroFilaPagamentos() {
     try {
       const result = await registrarBaixasFilaPagamentos(targetRows.map((row) => ({
         fila_id: row.id,
+        ...payloadInstrumentoFila(drafts[row.id], instrumentos.formas),
         data_baixa: drafts[row.id].data_baixa,
         conta_bancaria_id: Number(drafts[row.id].conta_bancaria_id),
         valor_pago: Number(drafts[row.id].valor_pago),
@@ -808,7 +834,7 @@ export default function FinanceiroFilaPagamentos() {
   );
   const approvingDivergences = status === 'DIVERGENTE';
   const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (status === 'PENDENTE' && canSettle);
-  const showReasonColumn = status === 'DIVERGENTE' || status === 'PENDENTE';
+  const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'TODOS', 'RESOLVIDO'].includes(status);
   const busy = Boolean(actionKey);
 
   return (
@@ -911,17 +937,18 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="saldo" className="px-3 py-3 text-right">Previsto / saldo</ResizableTh>
                 <ResizableTh columnKey="data" className="px-3 py-3">Data da baixa</ResizableTh>
                 <ResizableTh columnKey="conta" className="px-3 py-3">Conta pagadora</ResizableTh>
+                <ResizableTh columnKey="instrumento" className="px-3 py-3">Forma / instrumento</ResizableTh>
                 <ResizableTh columnKey="empresa" className="px-3 py-3">Empresa</ResizableTh>
                 <ResizableTh columnKey="valor" className="px-3 py-3">Valor pago</ResizableTh>
-                {showReasonColumn ? <ResizableTh columnKey="justificativa" className="px-3 py-3">Justificativa</ResizableTh> : null}
+                {showReasonColumn ? <ResizableTh columnKey="justificativa" className="px-3 py-3">Motivo / justificativa</ResizableTh> : null}
                 <ResizableTh columnKey="acoes" className="px-3 py-3">Status / ações</ResizableTh>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
               {loading ? (
-                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
+                <tr><td colSpan={showReasonColumn ? 13 : 12} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
+                <tr><td colSpan={showReasonColumn ? 13 : 12} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
                 const title = row.titulo || {};
                 const solicitacaoId = Number(title.solicitacao_id || title.solicitacao?.id);
@@ -940,7 +967,7 @@ export default function FinanceiroFilaPagamentos() {
                 const reasonVisible = reasonOpenId === row.id;
                 const tipoDivergencia = editable ? tipoDivergenciaPagamento(row, drafts[row.id]) : '';
                 const comprovantes = listarComprovantesFila(row);
-                const podeAnexarMais = canSettle && (row.status === 'PENDENTE' || Boolean(row.comprovante_hash));
+                const podeAnexarMais = !row.somente_consulta && canSettle && (row.status === 'PENDENTE' || Boolean(row.comprovante_hash));
                 return (
                   <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : row.status === 'NAO_PAGO' ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
@@ -1044,6 +1071,10 @@ export default function FinanceiroFilaPagamentos() {
                       {editable && accountOptions.length === 0 ? <div className="mt-1 text-xs text-[var(--sem-danger)]">Nenhuma conta bancária ativa com empresa vinculada.</div> : null}
                     </td>
                     <td className="px-3 py-3 align-top">
+                      <InstrumentoPagamentoFila row={row} draft={drafts[row.id]} instrumentos={instrumentos}
+                        conta={account} disabled={!editable || busy} onChange={patch => updateDraft(row.id, patch)} />
+                    </td>
+                    <td className="px-3 py-3 align-top">
                       <div className="max-w-48 text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">
@@ -1088,6 +1119,7 @@ export default function FinanceiroFilaPagamentos() {
                     ) : null}
                     <td className="px-3 py-3 align-top">
                       <StatusBadge status={String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
+                      {row.somente_consulta && <div className="mt-1 text-xs text-[var(--sem-danger)]">Rejeitado pelo proprietário · somente consulta</div>}
                       {!showReasonColumn && row.motivo ? <div className="mt-2 max-w-64 text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}
                       <div className="mt-2 flex flex-wrap gap-1">
                         {editable && canSettle ? (
@@ -1099,7 +1131,7 @@ export default function FinanceiroFilaPagamentos() {
                         {row.status === 'DIVERGENTE' && canResolve ? (
                           <button className="btn btn-primary btn-sm" type="button" onClick={() => approveDivergences([row])} disabled={busy}>Autorizar baixa</button>
                         ) : null}
-                        {['NAO_PAGO', 'DIVERGENTE'].includes(row.status) && canResolve ? (
+                        {!row.somente_consulta && ['NAO_PAGO', 'DIVERGENTE'].includes(row.status) && canResolve ? (
                           <>
                             {Number(title.valor_saldo || 0) > 0 ? <button className="btn btn-outline btn-sm" type="button" onClick={() => resolve(row, 'REABRIR')} disabled={busy}>Reabrir</button> : null}
                             <button className="btn btn-outline btn-sm" type="button" onClick={() => resolve(row, 'ENCERRAR')} disabled={busy}>Encerrar</button>

@@ -131,15 +131,22 @@ A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Co
 
 - a tela operacional e uma tabela responsiva com rolagem horizontal, sem modal de baixa;
 - cada linha mostra titulo, credor/favorecido, documento, PIX ou codigo do boleto, vencimento, saldo e forma de pagamento;
-- o operador informa data da baixa, conta pagadora e valor efetivamente pago; a empresa e derivada da conta bancaria e validada contra a empresa do titulo;
+- o operador informa a forma efetiva, data da baixa, conta pagadora e valor pago; a empresa e derivada da conta e as regras existentes de caixa e intercompany continuam aplicadas;
 - valor exato registra baixa total, valor menor registra baixa parcial e cria alerta de divergencia, valor maior nao baixa e permanece divergente;
 - `NAO_PAGO` mantem o titulo aberto e exige motivo;
 - a grade de Contas a Pagar mostra na propria linha os estados `Em fila de pagamento`, `Pagamento nao realizado` e `Pagamento divergente`;
-- titulos de cartao continuam no fluxo da fatura e nao entram nesta fila;
+- previsao de pagamento por cartao sem vinculo a fatura pode entrar na fila: o cartao e informado ao registrar a baixa. Credito quita o titulo e vincula a compra a uma fatura aberta; debito usa a conta vinculada. Titulos ja vinculados a fatura continuam no fluxo da fatura, sem segunda baixa;
+- credito exige quitacao integral sem baixa anterior, pois a fatura soma o valor integral do titulo. Cartao, conta e forma devem ser compativeis;
+- cheque proprio registra numero, emitente e demais dados do documento. Cheque de terceiro consome um cheque disponivel da carteira, com valor exato e empresa compativel, sem duplicar saida bancaria;
+- rejeicoes atuais do proprietario aparecem em Nao pagos com motivo, somente para consulta; nao viram pagamentos executaveis nem permitem reabrir pela fila;
 - o lote usa uma unica transacao e locks por titulo/item: se uma linha falhar, nenhuma baixa do lote e confirmada;
 - uma chave de idempotencia protege criacao e processamento contra clique ou envio repetido.
 
 Permissoes independentes: `visualizar`, `preparar`, `baixar`, `reportar` e `resolver`. Elas nao liberam as demais telas do Financeiro.
+
+Autorizadores nominais com `financeiro.autorizacoes_pagamento.decidir` podem revogar itens ou todas as autorizacoes de um lote, com motivo e passkey. A revogacao retira as entradas ativas da fila e retorna os itens a pendentes, preservando comprovantes, dossie e eventos. Baixa parcial/total, movimento financeiro registrado, pagamento bancario ativo ou ciclo mais recente impedem a operacao. Nao e um estorno.
+
+A migration `202610080001_fila_pagamentos_instrumento.js` adiciona o instrumento efetivo na fila e a revisao da autorizacao no lote. Deve ser aplicada antes do backend atualizado. Nao insere cadastros ou pagamentos e nao deve ter suas colunas removidas depois do uso.
 
 ### Analise do proprietario e envio independente
 

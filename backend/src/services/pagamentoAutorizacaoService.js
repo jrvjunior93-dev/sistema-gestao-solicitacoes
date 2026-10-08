@@ -12,6 +12,8 @@ const {
   PagamentoAutorizacaoLote,
   Parceiro,
   PaymentBeneficiary,
+  PaymentIntent,
+  PagamentoManualFilaItem,
   Solicitacao,
   TituloFinanceiro,
   User,
@@ -244,7 +246,10 @@ function lotInclude() {
   return [
     { model: User, as: 'criadoPor', attributes: ['id', 'nome'] },
     { model: User, as: 'decididoPor', attributes: ['id', 'nome'] },
-    { model: PagamentoAutorizacaoItem, as: 'itens', include: [{ model: PagamentoAutorizacaoDocumento, as: 'documentos', attributes: ['id', 'nome', 'origem_tipo', 'arquivo_hash'] }] }
+    { model: PagamentoAutorizacaoItem, as: 'itens', include: [
+      { model: PagamentoAutorizacaoDocumento, as: 'documentos', attributes: ['id', 'nome', 'origem_tipo', 'arquivo_hash'] },
+      { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado'] }
+    ] }
   ];
 }
 
@@ -390,26 +395,33 @@ async function revokePasskey(req, credentialId) {
 
 function normalizeDecisions(decisions) {
   if (!Array.isArray(decisions) || !decisions.length) throw httpError(400, 'Selecione ao menos um item para decidir.');
-  return decisions.map((item) => ({ item_id: Number(item.item_id), decisao: String(item.decisao || '').toUpperCase(), motivo: item.motivo ? String(item.motivo).slice(0, 500) : null })).sort((a, b) => a.item_id - b.item_id);
+  const result = decisions.map((item) => ({ item_id: Number(item.item_id), decisao: String(item.decisao || '').toUpperCase(), motivo: item.motivo ? String(item.motivo).trim().slice(0, 500) : null })).sort((a, b) => a.item_id - b.item_id);
+  if (result.length > 200 || result.some(item => !Number.isSafeInteger(item.item_id) || item.item_id <= 0) ||
+    new Set(result.map(item => item.item_id)).size !== result.length) throw httpError(400, 'Itens de decisao invalidos ou repetidos.');
+  if (result.some(item => item.decisao === 'REVOGAR') && result.some(item => item.decisao !== 'REVOGAR')) {
+    throw httpError(400, 'Revogacao nao pode ser combinada com autorizacao ou rejeicao.');
+  }
+  return result;
 }
 
 async function authenticationOptions(req, lotId, decisions) {
   assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
   await assertActiveAuthorizer(req.user);
   const lot = await PagamentoAutorizacaoLote.findByPk(lotId);
-  if (!lot || lot.status !== 'AGUARDANDO') throw httpError(409, 'Lote nao esta disponivel para decisao.');
-  if (Number(lot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
-  if (new Date(lot.expira_em).getTime() <= Date.now()) throw httpError(409, 'Lote expirado.');
   const normalized = normalizeDecisions(decisions);
-  if (normalized.some((item) => !['AUTORIZAR', 'REJEITAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
-  if (normalized.some((item) => item.decisao === 'REJEITAR' && !item.motivo)) throw httpError(400, 'Informe o motivo para rejeitar um pagamento.');
-  const availableItems = await PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, id: { [Op.in]: normalized.map((item) => item.item_id) }, status: 'PENDENTE' } });
+  const revogando = normalized.every(item => item.decisao === 'REVOGAR');
+  if (!lot || (!revogando && lot.status !== 'AGUARDANDO')) throw httpError(409, 'Lote nao esta disponivel para decisao.');
+  if (!revogando && Number(lot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
+  if (!revogando && new Date(lot.expira_em).getTime() <= Date.now()) throw httpError(409, 'Lote expirado.');
+  if (normalized.some((item) => !['AUTORIZAR', 'REJEITAR', 'REVOGAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
+  if (normalized.some((item) => ['REJEITAR', 'REVOGAR'].includes(item.decisao) && !item.motivo)) throw httpError(400, 'Informe o motivo para rejeitar ou revogar um pagamento.');
+  const availableItems = await PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, id: { [Op.in]: normalized.map((item) => item.item_id) }, status: revogando ? { [Op.in]: ['AUTORIZADO', 'ENFILEIRADO'] } : 'PENDENTE' } });
   if (availableItems !== normalized.length) throw httpError(409, 'Um ou mais itens ja foram decididos ou nao pertencem ao lote.');
   const credentials = await WebauthnCredential.findAll({ where: { usuario_id: req.user.id, ativo: true } });
   if (!credentials.length) throw httpError(409, 'Cadastre uma passkey antes de autorizar pagamentos.');
   const { generateAuthenticationOptions } = await webauthnLib();
   const options = await generateAuthenticationOptions({ rpID: env.webauthnRpId, userVerification: 'required', allowCredentials: credentials.map((item) => ({ id: item.credential_id, transports: item.transports || undefined })) });
-  await saveChallenge({ purpose: 'decide', userId: req.user.id, lotId }, { challenge: options.challenge, decisions_hash: sha256(normalized), dossie_hash: lot.dossie_hash });
+  await saveChallenge({ purpose: 'decide', userId: req.user.id, lotId }, { challenge: options.challenge, decisions_hash: sha256(normalized), dossie_hash: lot.dossie_hash, revisao_autorizacao: Number(lot.revisao_autorizacao || 0) });
   return options;
 }
 
@@ -419,7 +431,8 @@ async function decideBatch(req, lotId, payload = {}) {
     assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
     const authorizer = await assertActiveAuthorizer(req.user);
     const decisions = normalizeDecisions(payload.decisoes);
-    if (decisions.some((item) => !['AUTORIZAR', 'REJEITAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
+    const revogando = decisions.every(item => item.decisao === 'REVOGAR');
+    if (decisions.some((item) => !['AUTORIZAR', 'REJEITAR', 'REVOGAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
     stage = 'CHALLENGE_CONSUME';
     const stored = await consumeChallenge({ purpose: 'decide', userId: req.user.id, lotId });
     if (!stored?.challenge || stored.decisions_hash !== sha256(decisions)) throw httpError(409, 'Desafio expirado ou diferente da decisao confirmada.');
@@ -455,16 +468,41 @@ async function decideBatch(req, lotId, payload = {}) {
       attributes: ['id'], transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
     stage = 'LOT_LOCK';
     const currentLot = await PagamentoAutorizacaoLote.findByPk(lotId, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!currentLot || currentLot.status !== 'AGUARDANDO' || new Date(currentLot.expira_em).getTime() <= Date.now()) throw httpError(409, 'Lote indisponivel ou expirado.');
-    if (Number(currentLot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
+    if (!currentLot || (!revogando && (currentLot.status !== 'AGUARDANDO' || new Date(currentLot.expira_em).getTime() <= Date.now()))) throw httpError(409, 'Lote indisponivel ou expirado.');
+    if (!revogando && Number(currentLot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
+    if (Number(stored.revisao_autorizacao || 0) !== Number(currentLot.revisao_autorizacao || 0)) throw httpError(409, 'Autorizacao alterada. Recarregue antes de decidir.');
     if (stored.dossie_hash !== currentLot.dossie_hash) throw httpError(409, 'O dossie foi alterado. Recarregue antes de decidir.');
     stage = 'ITEMS_LOCK';
-    const items = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, id: { [Op.in]: decisions.map((item) => item.item_id) }, status: 'PENDENTE' }, transaction, lock: transaction.LOCK.UPDATE });
+    const items = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, id: { [Op.in]: decisions.map((item) => item.item_id) }, status: revogando ? { [Op.in]: ['AUTORIZADO', 'ENFILEIRADO'] } : 'PENDENTE' }, transaction, lock: transaction.LOCK.UPDATE });
     if (items.length !== decisions.length) throw httpError(409, 'Um ou mais itens ja foram decididos ou nao pertencem ao lote.');
     if (authorizer.limite_por_lote && decisions.filter((item) => item.decisao === 'AUTORIZAR').reduce((sum, decision) => sum + roundCurrency(items.find((item) => Number(item.id) === decision.item_id)?.valor_snapshot), 0) > Number(authorizer.limite_por_lote)) throw httpError(403, 'O valor autorizado excede o limite nominal deste autorizador.');
     for (const decision of decisions) {
       const item = items.find((candidate) => Number(candidate.id) === decision.item_id);
-      if (decision.decisao === 'AUTORIZAR') {
+      if (decision.decisao === 'REVOGAR') {
+        if (!decision.motivo) throw httpError(400, 'Informe o motivo da revogacao.');
+        const title = await TituloFinanceiro.findByPk(item.titulo_financeiro_id, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!title || title.status !== 'ABERTO' || Number(title.valor_baixado || 0) > 0 || roundCurrency(title.valor_saldo) <= 0) {
+          throw httpError(409, 'Titulo baixado, mesmo parcialmente, nao permite revogar a autorizacao.');
+        }
+        const outrosCiclos = await PagamentoAutorizacaoItem.findAll({ where: { titulo_financeiro_id: title.id,
+          status: { [Op.in]: ['PENDENTE', 'AUTORIZADO', 'ENFILEIRADO'] } }, attributes: ['id', 'lote_id'], transaction,
+          lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
+        if (outrosCiclos.some(candidate => Number(candidate.id) > Number(item.id) && Number(candidate.lote_id) !== Number(lotId))) {
+          throw httpError(409, 'Existe um ciclo de autorizacao mais recente para este titulo. Abra o lote atual para revogar.');
+        }
+        const bankPayment = await PaymentIntent.findOne({ where: { titulo_financeiro_id: title.id,
+          status: { [Op.notIn]: ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'] } }, transaction, lock: transaction.LOCK.UPDATE });
+        if (bankPayment) throw httpError(409, 'Pagamento bancario em andamento: cancele esse fluxo antes de revogar.');
+        const fila = await PagamentoManualFilaItem.findAll({ where: { titulo_financeiro_id: title.id,
+          status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } }, transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
+        if (fila.some(row => row.movimento_financeiro_id)) throw httpError(409, 'A fila ja registrou baixa; revogacao indisponivel.');
+        for (const row of fila) await row.update({ status: 'RESOLVIDO', resolvido_por: req.user.id, resolvido_em: new Date(),
+          motivo: `Autorizacao revogada pelo proprietario: ${decision.motivo}` }, { transaction });
+        await item.update({ status: 'PENDENTE', fila_item_id: null, decidido_em: null, motivo_decisao: null }, { transaction });
+        await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZACAO_REVOGADA',
+          data: { motivo: decision.motivo, fila_ids: fila.map(row => row.id), revisao_anterior: Number(currentLot.revisao_autorizacao || 0) }, transaction });
+        await marcarAnaliseProprietario({ titulos: [title], usuarioId: req.user.id, transaction, origem: 'REVOGACAO_DIGITAL', loteId: lotId });
+      } else if (decision.decisao === 'AUTORIZAR') {
         stage = 'ITEM_REVALIDATION';
         const title = await TituloFinanceiro.findByPk(item.titulo_financeiro_id, { include: titleInclude(), transaction, lock: transaction.LOCK.UPDATE });
         const storedDocuments = await PagamentoAutorizacaoDocumento.findAll({ where: { item_id: item.id }, attributes: ['origem_id', 'nome', 'origem_tipo', 'arquivo_hash'], transaction, order: [['origem_id', 'ASC']] });
@@ -503,9 +541,11 @@ async function decideBatch(req, lotId, payload = {}) {
     const pending = currentItems.some(item => item.status === 'PENDENTE');
     const authorized = currentItems.filter(item => item.status === 'AUTORIZADO').length;
     const enqueued = currentItems.some(item => item.status === 'ENFILEIRADO');
-    shouldEnqueue = authorized > 0;
+    shouldEnqueue = !revogando && authorized > 0;
     const nextStatus = pending ? 'AGUARDANDO' : (authorized ? 'AUTORIZADO' : (enqueued ? 'CONCLUIDO' : 'REJEITADO'));
-    await currentLot.update({ status: nextStatus, decidido_por: req.user.id, decidido_em: new Date() }, { transaction });
+    await currentLot.update({ status: nextStatus, decidido_por: req.user.id, decidido_em: new Date(),
+      ...(revogando ? { revisao_autorizacao: Number(currentLot.revisao_autorizacao || 0) + 1,
+        expira_em: new Date(Date.now() + env.paymentOwnerApprovalTtlHours * 3600000) } : {}) }, { transaction });
     return currentLot;
   });
 
@@ -529,8 +569,10 @@ async function enqueueAuthorizedItems(req, lotId, options = {}) {
   const authorized = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, status: 'AUTORIZADO' }, order: [['id', 'ASC']] });
   if (!authorized.length) return getBatch(req, lotId);
   const titleIds = authorized.map((item) => Number(item.titulo_financeiro_id));
-  const key = `owner-auth-${lotId}-${sha256(titleIds).slice(0, 24)}`;
-  await enfileirarTitulosAutorizados(req, { titulo_ids: titleIds, idempotency_key: key }, Number(lotId));
+  const lot = await PagamentoAutorizacaoLote.findByPk(lotId);
+  const revisao = Number(lot?.revisao_autorizacao || 0);
+  const key = `owner-auth-${lotId}-${revisao}-${sha256(titleIds).slice(0, 24)}`;
+  await enfileirarTitulosAutorizados(req, { titulo_ids: titleIds, idempotency_key: key }, Number(lotId), revisao);
   return getBatch(req, lotId);
 }
 

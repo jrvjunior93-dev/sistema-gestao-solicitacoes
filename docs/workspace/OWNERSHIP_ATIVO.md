@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+## Publicacao da fila e revogacao em dev
+
+- Responsavel: agente desta conversa, checkout `C:/Fluxy-refactor-frontend`.
+- Usuario autorizou commit e push das pendencias na `refactor/frontend` e instrucoes para EC2 dev. Nao inclui promocao para main nem execucao de deploy nesta sessao.
+- Reserva temporaria: ownership e handoff da fila; index/commit da implementacao, testes e documentacao. Preservar `outputs/` sem versionar.
+- Estado: testes backend e telas isoladas aprovados novamente; reserva liberada para o commit autorizado. Publicacao Git deve ser conferida no historico/remoto; deploy da EC2 sera executado pelo usuario, somente em dev.
+
+## Fila multiforma e revogacao de autorizacao - 08/10/2026
+
+- Responsavel: agente desta conversa, sem delegacao, checkout refactor/frontend.
+- Reserva: pagamentoManualFilaService.js, pagamentoAutorizacaoService.js, controllers/rotas/validators de pagamento, models/migration da fila se necessarios, tituloFinanceiroService.js somente protecoes de cartao, telas e services de fila/autorizacao, componente reutilizavel de instrumento de pagamento, testes isolados e documentacao/handoff.
+- Escopo autorizado: forma efetiva na baixa, cartao ainda nao usado com vinculo a fatura, cheques proprios e da carteira, rejeitados somente consulta em Nao pagos e revogar autorizacoes nao baixadas. Preservar pendencias locais do rotulo NA FILA. Sem banco real, commit, push ou deploy.
+- Estado: implementacao e testes isolados concluidos; reserva liberada. Handoff em `docs/handoffs/2026-10-08-fila-instrumentos-revogacao.md`. Migration criada, nao aplicada; homologacao financeira em dev pendente antes de producao.
+
 ## Modelo preenchido de colaboradores - 07/10/2026
 
 Sessao `/root`, checkout `C:/Fluxy-refactor-frontend`. Reserva
@@ -2097,3 +2111,18 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Reservados: operationalValidators.js, routes.js, NovaSolicitacaoCompra.jsx, teste isolado de credor da Compra Direta, backend/package.json, README de Compras e handoff desta tarefa.
 - Escopo: alinhar campos do modal e da rota exclusiva de Compra Direta; preservar cadastro financeiro, contratos, permissoes e validacoes de documento/duplicidade. Sem banco real, migration, commit, push ou deploy.
 - Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-08-credor-compra-direta.md. Homologacao pela interface real pendente; sem commit, push ou deploy.
+
+## Rotulo de lote na fila 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao.
+- Reservados: FinanceiroAutorizacoesPagamento.jsx, validarFilaAutorizacaoConvergencia.mjs, documentacao de autorizacao do proprietario e handoff.
+- Escopo: exibir CONCLUIDO como NA FILA na lista e detalhe, sem alterar enum, decisoes, pagamentos, permissoes ou reprocessamento. Sem banco, commit, push ou deploy.
+- Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-08-autorizacao-rotulo-na-fila.md. Sem commit, push ou deploy.
+
+## Edicao de vigencia contratual - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-2026-10-08; responsavel: agente desta conversa.
+- Estado: em_andamento.
+- Reservados: frontend/src/pages/GestaoContratos.jsx; backend/src/controllers/ContratoController.js; backend/src/validators/operationalValidators.js; backend/src/services/contratoVigenciaEdicao.js; backend/scripts/validarContratoVigenciaEdicao.js; frontend/scripts/validarContratoVigenciaEdicao.mjs; docs/modulos/contratos/README.md; docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Escopo: editar inicio/fim da vigencia com validacao e historico, preservando parcelas, medicoes, titulos e pagamentos. Sem banco real, EC2, migration, commit, push ou deploy.
+- Colaboracao: usuario informou outro agente em autorizacao/fila de pagamentos. Esses fluxos, routes.js e package.json ficam fora desta reserva. Registros do painel apenas acrescentados, preservando os anteriores.

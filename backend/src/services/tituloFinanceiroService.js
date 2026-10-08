@@ -479,7 +479,7 @@ async function resolverFormaPagamentoBaixa(payload = {}, options = {}) {
   return { formaPagamento, formaPagamentoId, formaRecebimento };
 }
 
-async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaBaixaId, dataMovimento, usuarioId, transaction }) {
+async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaBaixaId, dataMovimento, usuarioId, transaction, novaCompraFila = false }) {
   if (String(formaRecebimento || '').toUpperCase() !== 'CARTAO') {
     if (cartaoId) {
       throw createHttpError(400, 'Cartao deve ser informado apenas quando a forma de recebimento for CARTAO.');
@@ -537,7 +537,8 @@ async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaB
     cartaoId: cartao.id,
     dataCompra: dataMovimento,
     usuarioId,
-    transaction
+    transaction,
+    novaCompraFila
   });
   const contaCartao = cartao.contaBancaria || (cartao.conta_bancaria_id
     ? await ContaBancaria.findByPk(cartao.conta_bancaria_id, { transaction })
@@ -3857,7 +3858,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       empresaBaixaId,
       dataMovimento: payload.data_movimento,
       usuarioId: req.user?.id || null,
-      transaction
+      transaction,
+      novaCompraFila: options.autorizadoPorFilaPagamento === true
     });
     const contaMovimento = cartaoBaixa.conta || conta;
     const formaMovimento = cartaoBaixa.formaRecebimento;
@@ -3979,7 +3981,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       await vincularTituloAFatura({
         titulo,
         fatura: cartaoBaixa.fatura,
-        transaction
+        transaction,
+        leituraCorrente: options.autorizadoPorFilaPagamento === true
       });
     }
 

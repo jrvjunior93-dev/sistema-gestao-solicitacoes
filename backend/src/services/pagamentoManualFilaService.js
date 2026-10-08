@@ -3,11 +3,14 @@ const { Op } = require('sequelize');
 const {
   Anexo,
   ContaBancaria,
+  CartaoFinanceiro,
+  ChequeTerceiro,
   EmpresaGrupo,
   FormaPagamentoFinanceira,
   Obra,
   SecurityEventLog,
   PagamentoAutorizacaoItem,
+  PagamentoAutorizacaoLote,
   PagamentoManualFilaItem,
   PagamentoManualFilaComprovante,
   Parceiro,
@@ -30,6 +33,7 @@ const { encaminharSolicitacaoParaFinanceiroAoEnfileirar } = require('./solicitac
 const { env } = require('../config/env');
 const { userHasNominalAreaPermission } = require('./authorizationService');
 const { resolvePaymentQueueGate } = require('./paymentOwnerApprovalPolicy');
+const { tipoInstrumento, instrumentoPayload } = require('./pagamentoFilaInstrumentoDomain');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -61,7 +65,8 @@ function filaInclude() {
         'id', 'codigo', 'descricao', 'numero_documento', 'status', 'tipo',
         'valor_original', 'valor_saldo', 'valor_baixado', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
-        'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id'
+        'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
+        'cartao_id', 'fatura_cartao_id'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -137,6 +142,29 @@ async function listarFilaPagamentos(req, filters = {}) {
   const data = rows
     .filter((item) => matchesSearch(item, filters.q))
     .map((item) => item.toJSON());
+  // Rejeicao e uma decisao, nao um pagamento executavel. Projecao somente leitura:
+  // nenhum registro de fila e criado e o id negativo nunca passa no validator de baixa.
+  const historicoAutorizacoes = await PagamentoAutorizacaoItem.findAll({
+    include: [filaInclude().find(include => include.as === 'titulo')], order: [['id', 'DESC']]
+  });
+  const filasAtivas = await PagamentoManualFilaItem.findAll({ where: { status: { [Op.in]: ACTIVE_STATUSES } },
+    attributes: ['titulo_financeiro_id'] });
+  const ocupados = new Set(filasAtivas.map(item => Number(item.titulo_financeiro_id)));
+  const vistos = new Set();
+  const rejeitados = [];
+  for (const item of historicoAutorizacoes) {
+    const tituloId = Number(item.titulo_financeiro_id);
+    if (vistos.has(tituloId)) continue;
+    vistos.add(tituloId);
+    const titulo = item.titulo;
+    if (item.status !== 'REJEITADO' || ocupados.has(tituloId) || !titulo ||
+      !['ABERTO', 'PARCIAL'].includes(titulo.status) || Number(titulo.valor_saldo) <= 0) continue;
+    rejeitados.push({ id: -Number(item.id), titulo_financeiro_id: tituloId, titulo: titulo.toJSON ? titulo.toJSON() : titulo,
+      status: 'NAO_PAGO', somente_consulta: true, origem: 'REJEICAO_PROPRIETARIO',
+      motivo: item.motivo_decisao, autorizacao_lote_id: item.lote_id, valor_previsto: item.valor_snapshot,
+      selecionado_em: item.decidido_em, comprovantes: [] });
+  }
+  if (['NAO_PAGO', 'TODOS'].includes(status)) data.push(...rejeitados.filter(item => matchesSearch(item, filters.q)));
   const solicitacaoIds = Array.from(new Set(
     data
       .map((item) => Number(item?.titulo?.solicitacao_id || item?.titulo?.solicitacao?.id))
@@ -174,6 +202,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     acc[String(item.status || '').toUpperCase()] = Number(item.total || 0);
     return acc;
   }, {});
+  resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitados.length;
   return { data, resumo };
 }
 
@@ -184,6 +213,76 @@ async function listarContasPagadorasFila() {
     include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'codigo', 'nome', 'razao_social', 'cnpj'] }],
     order: [['nome', 'ASC']]
   });
+}
+
+async function listarInstrumentosFila() {
+  // Rota restrita a registrar baixas; nao concede acesso aos cadastros administrativos.
+  const [formas, cartoes, cheques] = await Promise.all([
+    FormaPagamentoFinanceira.findAll({ where: { ativo: true },
+      attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'gera_fatura'], order: [['nome', 'ASC']] }),
+    CartaoFinanceiro.findAll({ where: { ativo: true },
+      attributes: ['id', 'nome', 'tipo', 'conta_bancaria_id'], order: [['nome', 'ASC']] }),
+    ChequeTerceiro.findAll({ where: { status: 'EM_CARTEIRA' },
+      attributes: ['id', 'codigo', 'numero_cheque', 'titular_nome', 'valor', 'empresa_id', 'data_vencimento'],
+      order: [['data_vencimento', 'ASC'], ['id', 'ASC']] })
+  ]);
+  return { formas, cartoes, cheques };
+}
+
+async function resolverInstrumentoFila(titulo, payload, transaction) {
+  if (titulo.fatura_cartao_id) throw createHttpError(409, 'Titulo ja vinculado a fatura: use o pagamento da fatura.');
+  const instrumento = instrumentoPayload(payload);
+  instrumento.forma_pagamento_id = payload.forma_pagamento_id || titulo.forma_pagamento_id || undefined;
+  const forma = instrumento.forma_pagamento_id
+    ? await FormaPagamentoFinanceira.findByPk(instrumento.forma_pagamento_id, { transaction }) : null;
+  if (instrumento.forma_pagamento_id && (!forma || forma.ativo === false)) {
+    throw createHttpError(400, 'Forma de pagamento inexistente ou inativa.');
+  }
+  const tipo = tipoInstrumento(forma);
+  const temCheque = Object.keys(instrumento).some(key => key.startsWith('cheque_') ||
+    ['titular_documento', 'data_emissao', 'data_vencimento'].includes(key));
+  if (tipo !== 'CHEQUE' && (temCheque || instrumento.usar_cheque_terceiro)) {
+    throw createHttpError(400, 'Dados de cheque permitidos somente para pagamento em cheque.');
+  }
+  if (tipo !== 'CARTAO' && instrumento.cartao_id) throw createHttpError(400, 'Cartao permitido somente para pagamento com cartao.');
+  if (tipo === 'CARTAO') {
+    const cartao = instrumento.cartao_id && await CartaoFinanceiro.findByPk(instrumento.cartao_id, { transaction });
+    if (!cartao || cartao.ativo === false) throw createHttpError(400, 'Informe um cartao ativo utilizado no pagamento.');
+    const tipoCartao = String(cartao.tipo || 'CREDITO').toUpperCase();
+    const texto = `${forma.tipo} ${forma.codigo} ${forma.nome}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    if ((texto.includes('DEBITO') && tipoCartao !== 'DEBITO') ||
+      ((texto.includes('CREDITO') || forma.gera_fatura) && tipoCartao !== 'CREDITO')) {
+      throw createHttpError(400, 'O tipo do cartao deve corresponder a forma de pagamento selecionada.');
+    }
+    if (Number(payload.conta_bancaria_id) !== Number(cartao.conta_bancaria_id)) {
+      throw createHttpError(400, 'A conta pagadora deve ser a vinculada ao cartao utilizado.');
+    }
+    // A fatura existente soma o valor integral do titulo. Nao vincular saldo parcial
+    // ou valor divergente como se toda a compra tivesse sido realizada no cartao.
+    if (tipoCartao === 'CREDITO' && (Number(titulo.valor_baixado || 0) > 0 ||
+      roundCurrency(payload.valor_pago) !== roundCurrency(titulo.valor_saldo))) {
+      throw createHttpError(400, 'Pagamento com cartao de credito deve quitar o titulo integralmente, sem baixa anterior.');
+    }
+  }
+  if (tipo === 'CHEQUE') {
+    if (instrumento.usar_cheque_terceiro) {
+      if (!instrumento.cheque_terceiro_id) throw createHttpError(400, 'Selecione um cheque disponivel da carteira.');
+      if (temCheque && Object.keys(instrumento).some(key => key !== 'cheque_terceiro_id' &&
+        (key.startsWith('cheque_') || ['titular_documento', 'data_emissao', 'data_vencimento'].includes(key)))) {
+        throw createHttpError(400, 'Cheque da carteira nao aceita dados substitutos do documento.');
+      }
+    } else if (!instrumento.cheque_numero || !instrumento.cheque_emitente || instrumento.cheque_terceiro_id) {
+      throw createHttpError(400, 'Informe numero e emitente do cheque proprio.');
+    }
+  }
+  return instrumento;
+}
+
+async function bloquearTitulosDaFila(filaIds, transaction) {
+  const candidatos = await PagamentoManualFilaItem.findAll({ where: { id: { [Op.in]: filaIds } },
+    attributes: ['titulo_financeiro_id'], transaction });
+  return TituloFinanceiro.findAll({ where: { id: { [Op.in]: candidatos.map(item => item.titulo_financeiro_id) } },
+    attributes: ['id'], transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
 }
 
 async function enfileirarTitulos(req, payload = {}, options = {}) {
@@ -264,7 +363,14 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       throw createHttpError(409, 'Um ou mais titulos ja possuem pagamento bancario em andamento.');
     }
 
-    if (options.autorizacaoInterna && novos.length) {
+    if (options.autorizacaoInterna) {
+      const lote = await PagamentoAutorizacaoLote.findByPk(Number(options.autorizacaoLoteId), {
+        transaction, lock: transaction.LOCK.UPDATE
+      });
+      if (options.autorizacaoRevisao !== undefined &&
+        Number(lote?.revisao_autorizacao || 0) !== Number(options.autorizacaoRevisao)) {
+        throw createHttpError(409, 'Autorizacao revogada ou alterada. Atualize o lote antes de reenviar.');
+      }
       const autorizados = await PagamentoAutorizacaoItem.findAll({ where: {
         lote_id: Number(options.autorizacaoLoteId), titulo_financeiro_id: { [Op.in]: novos.map(titulo => titulo.id) }, status: 'AUTORIZADO'
       }, transaction });
@@ -275,7 +381,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()) || roundCurrency(titulo.valor_saldo) <= 0) {
         throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao possui saldo disponivel para pagamento.`);
       }
-      if (titulo.formaPagamento?.exige_cartao || titulo.formaPagamento?.gera_fatura) {
+      if (titulo.fatura_cartao_id) {
         throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} usa cartao e deve ser baixado pelo fluxo da fatura do cartao.`);
       }
       assertTituloDisponivelParaBaixa(titulo);
@@ -350,8 +456,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
   };
 }
 
-function enfileirarTitulosAutorizados(req, payload, autorizacaoLoteId) {
-  return enfileirarTitulos(req, payload, { autorizacaoInterna: true, autorizacaoLoteId });
+function enfileirarTitulosAutorizados(req, payload, autorizacaoLoteId, autorizacaoRevisao) {
+  return enfileirarTitulos(req, payload, { autorizacaoInterna: true, autorizacaoLoteId, autorizacaoRevisao });
 }
 
 async function anexarComprovanteFila(req, filaId, file) {
@@ -503,6 +609,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
   const valorPago = roundCurrency(itemPayload.valor_pago);
+  const instrumento = await resolverInstrumentoFila(titulo, itemPayload, transaction);
   const saldoAtual = roundCurrency(titulo.valor_saldo);
   const valorPrevisto = roundCurrency(filaItem.valor_previsto);
   const tipoDivergencia = classificarDivergenciaPagamento(valorPago, saldoAtual, valorPrevisto);
@@ -522,6 +629,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   }
 
   const commonUpdate = {
+    instrumento_pagamento_json: instrumento,
     valor_informado: valorPago,
     data_baixa: itemPayload.data_baixa,
     conta_bancaria_id: conta.id,
@@ -538,8 +646,8 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   const baixa = await baixarTitulo(req, titulo.id, {
     empresa_id: conta.empresa_id,
     conta_bancaria_id: conta.id,
-    forma_pagamento_id: titulo.forma_pagamento_id || undefined,
-    forma_recebimento: titulo.forma_pagamento_id ? undefined : 'TRANSFERENCIA',
+    ...instrumento,
+    forma_recebimento: instrumento.forma_pagamento_id ? undefined : 'TRANSFERENCIA',
     valor: valorPago,
     juros: 0,
     multa: 0,
@@ -571,6 +679,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
 async function registrarBaixasFila(req, payload = {}) {
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const resultados = await sequelize.transaction(async (transaction) => {
+    await bloquearTitulosDaFila(payload.itens.map(item => item.fila_id), transaction);
     const ordered = [...payload.itens].sort((a, b) => Number(a.fila_id) - Number(b.fila_id));
     const processed = [];
     for (const item of ordered) {
@@ -611,6 +720,7 @@ async function aprovarDivergenciasFila(req, payload = {}) {
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const orderedIds = [...payload.fila_ids].sort((a, b) => Number(a) - Number(b));
   const resultados = await sequelize.transaction(async (transaction) => {
+    await bloquearTitulosDaFila(orderedIds, transaction);
     const processed = [];
 
     for (const filaId of orderedIds) {
@@ -665,8 +775,9 @@ async function aprovarDivergenciasFila(req, payload = {}) {
         const baixa = await baixarTitulo(req, titulo.id, {
           empresa_id: conta.empresa_id,
           conta_bancaria_id: conta.id,
-          forma_pagamento_id: titulo.forma_pagamento_id || undefined,
-          forma_recebimento: titulo.forma_pagamento_id ? undefined : 'TRANSFERENCIA',
+          ...await resolverInstrumentoFila(titulo, { ...(current.instrumento_pagamento_json || {}),
+            conta_bancaria_id: conta.id, valor_pago: valorPago }, transaction),
+          forma_recebimento: (current.instrumento_pagamento_json?.forma_pagamento_id || titulo.forma_pagamento_id) ? undefined : 'TRANSFERENCIA',
           valor: valorPago,
           juros: 0,
           multa: 0,
@@ -755,6 +866,7 @@ async function informarNaoPagamento(req, id, payload = {}) {
 
 async function resolverItemFila(req, id, payload = {}) {
   const result = await sequelize.transaction(async (transaction) => {
+    await bloquearTitulosDaFila([Number(id)], transaction);
     const current = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!current) throw createHttpError(404, 'Item da fila nao encontrado.');
     if (!['NAO_PAGO', 'DIVERGENTE'].includes(String(current.status || '').toUpperCase())) {
@@ -822,6 +934,8 @@ module.exports = {
   enfileirarTitulosAutorizados,
   informarNaoPagamento,
   listarContasPagadorasFila,
+  listarInstrumentosFila,
+  resolverInstrumentoFila,
   listarFilaPagamentos,
   obterComprovanteFila,
   obterComprovanteAdicionalFila,

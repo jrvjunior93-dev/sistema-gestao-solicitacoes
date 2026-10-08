@@ -29,7 +29,9 @@ const titleDescription = (value) => String(value || '')
   .trim();
 
 function Status({ value }) {
-  return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{value === 'ENFILEIRADO' ? 'Na fila de pagamento' : String(value || '').replaceAll('_', ' ')}</span>;
+  const label = value === 'CONCLUIDO' ? 'NA FILA'
+    : value === 'ENFILEIRADO' ? 'Na fila de pagamento' : String(value || '').replaceAll('_', ' ');
+  return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{label}</span>;
 }
 
 export default function FinanceiroAutorizacoesPagamento() {
@@ -40,6 +42,9 @@ export default function FinanceiroAutorizacoesPagamento() {
   const [selectedId, setSelectedId] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [rejectReason, setRejectReason] = useState('');
+  const [revokeItems, setRevokeItems] = useState([]);
+  const [revokeReason, setRevokeReason] = useState('');
+  const mutationRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [users, setUsers] = useState([]);
   const [authorizers, setAuthorizers] = useState([]);
@@ -80,6 +85,7 @@ export default function FinanceiroAutorizacoesPagamento() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { setSelectedItems(pendingItems.map((item) => Number(item.id))); }, [selected?.id]);
+  useEffect(() => { setRevokeItems([]); setRevokeReason(''); }, [selected?.id]);
   useEffect(() => {
     setSelectedItems(current => {
       const validos = current.filter(id => pendingItems.some(item => Number(item.id) === id));
@@ -165,9 +171,10 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   async function decide(decision) {
-    if (!selectedItems.length || busy) return;
+    if (!selectedItems.length || busy || mutationRef.current) return;
     if (decision === 'REJEITAR' && !rejectReason.trim()) return avisar.erro('Informe o motivo da rejeição.');
     const decisions = selectedItems.map((itemId) => ({ item_id: itemId, decisao: decision, motivo: decision === 'REJEITAR' ? rejectReason.trim() : null }));
+    mutationRef.current = true;
     setBusy(true);
     try {
       const options = await obterOpcoesDecisaoPasskey(selected.id, decisions);
@@ -178,7 +185,24 @@ export default function FinanceiroAutorizacoesPagamento() {
       avisar.sucesso(decision === 'AUTORIZAR' ? 'Pagamentos autorizados e encaminhados à fila.' : 'Pagamentos rejeitados com rastreabilidade.');
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível registrar a decisão.');
-    } finally { setBusy(false); }
+    } finally { mutationRef.current = false; setBusy(false); }
+  }
+
+  async function revokeAuthorization() {
+    if (busy || mutationRef.current || !revokeItems.length || !caps.can_decide) return;
+    if (!revokeReason.trim()) return avisar.erro('Informe o motivo da revogação.');
+    const decisions = revokeItems.map(itemId => ({ item_id: itemId, decisao: 'REVOGAR', motivo: revokeReason.trim() }));
+    mutationRef.current = true;
+    setBusy(true);
+    try {
+      const options = await obterOpcoesDecisaoPasskey(selected.id, decisions);
+      const credential = await autenticarComPasskey(options);
+      await decidirAutorizacaoPagamento(selected.id, decisions, credential);
+      setRevokeItems([]); setRevokeReason('');
+      await load();
+      avisar.sucesso('Autorização revogada. Os títulos saíram da fila e voltaram para decisão do proprietário.');
+    } catch (error) { avisar.erro(error?.message || 'Não foi possível revogar a autorização.'); }
+    finally { mutationRef.current = false; setBusy(false); }
   }
 
   async function openDocument(documentId) {
@@ -212,11 +236,12 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   async function retryQueue() {
-    if (busy) return;
+    if (busy || mutationRef.current) return;
+    mutationRef.current = true;
     setBusy(true);
     try { await reenviarAutorizacaoParaFila(selected.id); await load(); avisar.sucesso('Itens autorizados encaminhados para a fila.'); }
     catch (error) { avisar.erro(error?.message || 'Não foi possível reenviar para a fila.'); }
-    finally { setBusy(false); }
+    finally { mutationRef.current = false; setBusy(false); }
   }
 
   return (
@@ -250,7 +275,11 @@ export default function FinanceiroAutorizacoesPagamento() {
           {!selected ? <p className="pa-empty">Selecione um lote.</p> : <>
             <header className="pa-detail__head">
               <div><strong>{selected.codigo}</strong><span>Criado por {selected.criadoPor?.nome || '-'} · hash {String(selected.dossie_hash).slice(0, 12)}…</span></div>
-              <Status value={selected.status} />
+              <div><Status value={selected.status} />
+                {caps.can_decide && (selected.itens || []).some(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)) &&
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
+                    onClick={() => setRevokeItems((selected.itens || []).filter(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)).map(item => Number(item.id)))}>Revogar autorizações do lote</button>}
+              </div>
             </header>
             <div className="pa-table-wrap">
               <table className="pa-table">
@@ -263,7 +292,12 @@ export default function FinanceiroAutorizacoesPagamento() {
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
                     <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc.id)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
-                    <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}</td>
+                    <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
+                      {item.motivo_decisao && <small>{item.motivo_decisao}</small>}
+                      {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
+                        Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
+                          disabled={busy} onClick={() => setRevokeItems([Number(item.id)])}>Revogar autorização</button>}
+                    </td>
                   </tr>;
                 })}</tbody>
               </table>
@@ -274,6 +308,13 @@ export default function FinanceiroAutorizacoesPagamento() {
               {!caps.passkey_count && <small><HiOutlineLockClosed /> Cadastre uma passkey antes da primeira autorização.</small>}
             </div>}
             {caps.can_prepare && (selected.itens || []).some((item) => item.status === 'AUTORIZADO') && <div className="pa-retry"><span>A autorização foi registrada, mas há itens ainda não encaminhados.</span><button type="button" className="btn btn-secondary btn-sm" onClick={retryQueue} disabled={busy}>Reprocessar envio à fila</button></div>}
+            {caps.can_decide && revokeItems.length > 0 && <div className="pa-decision">
+              <label>Motivo da revogação<input value={revokeReason} maxLength={500} onChange={event => setRevokeReason(event.target.value)} /></label>
+              <p>{revokeItems.length} título(s) voltarão para autorização. Nenhum pagamento será estornado. Se houver baixa, inclusive parcial, a operação inteira será recusada.</p>
+              <div><button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setRevokeItems([])}>Manter autorização</button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !revokeReason.trim() || !caps.passkey_count}
+                  onClick={revokeAuthorization}>Confirmar revogação com passkey</button></div>
+            </div>}
           </>}
         </section>
       </div>
