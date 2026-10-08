@@ -252,7 +252,7 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
   if (data.empresa_grupo_id) colaboradorWhere.empresa_grupo_id = data.empresa_grupo_id;
   if (data.tipo_vinculo) colaboradorWhere.tipo_vinculo = data.tipo_vinculo;
 
-  const linhas = await RhImportacaoLinha.findAll({
+  let linhas = await RhImportacaoLinha.findAll({
     where: {
       status: 'CONFIRMADA'
     },
@@ -303,6 +303,21 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
     transaction
   });
 
+  // A preparacao geral continua disponivel, mas nao reaproveita linhas que
+  // ja pertencem a uma apuracao isolada por solicitacao. A identidade inclui
+  // colaborador+fonte: o restante de um envio misto/multiobra nao e descartado.
+  if (!data.importacao_id && linhas.length) {
+    const isolados = await RhApuracaoEvento.findAll({
+      attributes: ['colaborador_id', 'detalhes_json'],
+      include: [{ model: RhApuracao, as: 'apuracao', required: true, attributes: ['id'],
+        where: { competencia: data.competencia, etapa_pagamento: data.etapa_pagamento || null,
+          importacao_id: { [Op.ne]: null }, status: { [Op.in]: ['RASCUNHO', 'CONFERIDA'] } } }],
+      transaction
+    });
+    const pertencemAOutra = new Set(isolados.flatMap((item) =>
+      (item.detalhes_json?.importacao_ids || []).map((id) => `${Number(item.colaborador_id)}:${Number(id)}`)));
+    linhas = linhas.filter((linha) => !pertencemAOutra.has(`${Number(linha.colaborador_id)}:${Number(linha.importacao?.id)}`));
+  }
   if (!linhas.length) {
     throw new ValidationError('Nao existem importacoes confirmadas para gerar a apuracao neste recorte.');
   }
@@ -1971,7 +1986,13 @@ async function gerarApuracaoRh(data, user) {
 }
 
 async function contextoApuracaoJornadaRh(id, { preparar = false, user } = {}) {
+  // Resolve apenas o mutex fora da transacao. Dentro dele o pedido e relido
+  // e validado: nenhum snapshot REPEATABLE READ precede o lock da obra.
+  const referencia = preparar ? await RhSolicitacao.findByPk(id) : null;
   return sequelize.transaction(async (transaction) => {
+    if (preparar && referencia?.obra_id) {
+      await Obra.findByPk(referencia.obra_id, { transaction, lock: transaction.LOCK.UPDATE });
+    }
     const solicitacao = await RhSolicitacao.findByPk(id, {
       transaction, ...(preparar ? { lock: transaction.LOCK.UPDATE } : {})
     });
@@ -1994,9 +2015,14 @@ async function contextoApuracaoJornadaRh(id, { preparar = false, user } = {}) {
       competencia: fonte.competencia, obra_id: fonte.obra_id,
       empresa_grupo_id: fonte.empresa_grupo_id || null, tipo_vinculo: fonte.tipo_vinculo || null,
       etapa_pagamento: fonte.etapa_pagamento || null,
-      importacao_id: fonte.etapa_pagamento === 'DIARIA' ? fonte.id : null,
+      // Individual e coletivo compartilham uma fonte; nunca agregar outros
+      // pedidos mensais da obra ao preparar esta solicitacao.
+      importacao_id: fonte.id,
       dias_base: Number(dados.dias_base || 30)
     };
+    if (preparar && Number(referencia?.obra_id) !== Number(fonte.obra_id)) {
+      throw new ValidationError('A origem desta jornada mudou. Atualize a solicitacao antes de preparar.', 409);
+    }
     const candidatas = await RhApuracao.findAll({
       where: { competencia: recorte.competencia, etapa_pagamento: recorte.etapa_pagamento,
         [Op.or]: [{ obra_id: fonte.obra_id }, { obra_id: null }] },
@@ -2024,7 +2050,13 @@ async function contextoApuracaoJornadaRh(id, { preparar = false, user } = {}) {
       }
       apuracoes.unshift(await gerarApuracaoRecorteRh(recorte, user, transaction));
     }
-    return { solicitacao_id: Number(solicitacao.id), recorte, apuracoes };
+    const compartilhadas = apuracoes.filter((apuracao) =>
+      Number(apuracao.obra_id) !== Number(fonte.obra_id)
+      || (apuracao.itens || []).some((item) => {
+        const ids = (item.detalhes_json?.importacao_ids || []).map(Number);
+        return !ids.length || ids.some((fonteId) => fonteId !== Number(fonte.id));
+      })).map((apuracao) => Number(apuracao.id));
+    return { solicitacao_id: Number(solicitacao.id), recorte, apuracoes, compartilhadas };
   });
 }
 

@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## Pessoal por obra e conferencia por solicitacao - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: implementacao
+  concluida, reserva liberada. Alteracoes locais aguardam homologacao.
+- Reserva: RhDpPessoal.jsx, RhDpPessoalSolicitacoes.jsx, RhDpJornada.jsx,
+  RhDpJornadaGerencial.jsx, RhDpApuracao.jsx, componentes/estilos RH novos,
+  rhApuracaoService.js, testes isolados deste fluxo, documentacao RH e handoff.
+- Escopo autorizado: entrada por obras/centros vinculados, tres abas e modal
+  individual/coletivo de pagamento; DP confere/ajusta/fecha por solicitacao
+  no mesmo modal. Preservar calculos, escopos, multiobra e idempotencia.
+- Sem banco real, migration, commit, push, EC2 ou deploy nesta tarefa.
+- Reserva adicional: RhSolicitacaoController.js (filtro local dentro do
+  escopo autorizado, sem ampliar visibilidade), testes de escopo existentes.
+- Reserva adicional: rhJornadaFormularioService.js, RhDpJornadaGerencial.css
+  e testes isolados de envio. Novos modais devem criar pedidos independentes
+  tambem com etapas desligadas, sem substituir o pedido de outro colaborador.
+- Reserva adicional: backend/package.json e frontend/package.json apenas para
+  expor os testes isolados do novo fluxo.
+- Validacao adicional: validarRhConferenciaGuiada.mjs com cache exclusivo e
+  espera de montagem, sem alterar as assercoes funcionais do teste.
+- Handoff: docs/handoffs/2026-10-08-pessoal-locais-conferencia-solicitacao.md.
+- Publicacao autorizada pelo usuario nesta conversa: commit e push somente
+  na refactor/frontend. Reserva temporaria deste registro, handoff e index;
+  preservar outputs/ fora do commit. Sem main, banco, migration ou EC2.
+
 ## Publicacao dev de usuarios, justificativa e retorno 08/10/2026
 
 - Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.

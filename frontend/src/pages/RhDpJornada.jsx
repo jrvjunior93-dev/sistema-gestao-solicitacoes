@@ -201,7 +201,16 @@ const FILTROS_DA_TELA = [
   { id: 'empresa', rotulo: 'Empresa do grupo' }
 ];
 
-export default function RhDpJornada({ onAbrirApuracao }) {
+function TabelaJornada({ compacta, colunas, ...props }) {
+  if (!compacta) return <TabelaPadrao colunas={colunas} {...props} />;
+  const principais = new Set(['colaborador', 'dias', 'faltas', 'acrescimos', 'descontos', 'observacao']);
+  return <TabelaPadrao {...props} colunas={colunas.filter((coluna) => principais.has(coluna.id))}
+    linhaExpansivel={(linha) => <div className="rh-pagamento-detalhes">{colunas.filter((coluna) => !principais.has(coluna.id))
+      .map((coluna) => <div key={coluna.id}><strong>{coluna.titulo}</strong>{coluna.render(linha)}</div>)}</div>}
+    rotuloDetalhe={(linha) => `Outros dados e PIX de ${linha.nome}`} />;
+}
+
+export default function RhDpJornada({ onAbrirApuracao, obraFixaId, colaboradorId, comoModal = false, aoEnviar, aoOcupado, aoAlterar }) {
   const { user } = useAuth();
   const [parametros, setParametros] = useSearchParams();
   const usuarioOperacionalDaObra = !isBusinessAdmin(user)
@@ -213,7 +222,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   const [empresas, setEmpresas] = useState([]);
   // Empresa continua como recorte opcional. Obra e um campo explicito e
   // obrigatorio, pois sem ela nao existe jornada que possa ser montada.
-  const [ativos, setAtivos] = useState(SEM_FILTRO);
+  const [ativos, setAtivos] = useState(() => obraFixaId
+    ? { ...SEM_FILTRO, obra: new Set([String(obraFixaId)]) } : SEM_FILTRO);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -293,10 +303,12 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   const [importandoPlanilha, setImportandoPlanilha] = useState(false);
   const inputFichasRef = useRef(null);
   const envioPendenteRef = useRef(false);
+  const consultaListaRef = useRef(0);
+  useEffect(() => () => { consultaListaRef.current++; }, []);
   const idempotencyKeyRef = useRef(null);
 
   const secaoDaUrl = parametros.get('jornada_secao');
-  const secaoAtiva = secaoDaUrl === 'enviadas' ? 'enviadas' : 'enviar';
+  const secaoAtiva = !comoModal && secaoDaUrl === 'enviadas' ? 'enviadas' : 'enviar';
 
   const mudarSecao = useCallback((secao) => {
     setParametros((atuais) => {
@@ -307,13 +319,17 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     });
   }, [setParametros]);
 
-  const obra = useMemo(() => primeiroValor(ativos.obra), [ativos]);
+  const obra = obraFixaId ? String(obraFixaId) : primeiroValor(ativos.obra);
   const empresa = useMemo(() => primeiroValor(ativos.empresa), [ativos]);
 
   const podeEnviar = hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.abrir']);
   const podeDecidirEdicao = hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.decidir']);
 
+  useEffect(() => { aoOcupado?.(salvando || importandoPlanilha || anexandoFichas); },
+    [salvando, importandoPlanilha, anexandoFichas, aoOcupado]);
+
   function mudarCompetencia(valor) {
+    aoAlterar?.();
     setJornadaEnviada(null);
     setCompetencia(valor);
     setLinhas([]);
@@ -379,7 +395,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     (async () => {
       try {
         const listaObras = await (
-          usuarioOperacionalDaObra ? getMinhasObras({ escopo: 'OBRAS' }) : getObras()
+          usuarioOperacionalDaObra ? getMinhasObras({ escopo: 'TODOS' }) : getObras({ escopo: 'TODOS' })
         );
         const obrasCarregadas = Array.isArray(listaObras) ? listaObras : [];
         setObras(obrasCarregadas);
@@ -416,6 +432,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       avisar.erro('Escolha a obra, a competência e o tipo de pagamento.');
       return;
     }
+    const consulta = ++consultaListaRef.current;
     setCarregando(true);
     limpar();
     try {
@@ -424,6 +441,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         competencia,
         etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined
       });
+      if (consulta !== consultaListaRef.current) return;
       const elegiveis = (Array.isArray(lista) ? lista : []).filter((colaborador) => {
         if (!ETAPAS_HABILITADAS) return true;
         if (colaborador.regime_em_transicao) return true;
@@ -432,7 +450,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
           : colaborador.forma_calculo_gerencial === 'MENSAL'
             && colaborador.pagamento_automatico_40_60;
       });
-      setLinhas(elegiveis.map(linhaVazia));
+      setLinhas(elegiveis.filter((item) => !colaboradorId
+        || Number(item.colaborador_id || item.id) === Number(colaboradorId)).map(linhaVazia));
       const comecaram = (Array.isArray(lista) ? lista : []).filter((c) => !c.ainda_nao_comecou);
       const futuros = (Array.isArray(lista) ? lista : []).filter((c) => c.ainda_nao_comecou);
 
@@ -447,14 +466,20 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         avisar.alerta('Nenhum colaborador esteve nesta obra nesta competência.');
       }
     } catch (error) {
+      if (consulta !== consultaListaRef.current) return;
       avisar.erro(error.message || 'Não foi possível montar a lista.');
       setLinhas([]);
     } finally {
-      setCarregando(false);
+      if (consulta === consultaListaRef.current) setCarregando(false);
     }
-  }, [obra, competencia, etapaPagamento, avisar, limpar]);
+  }, [obra, competencia, etapaPagamento, colaboradorId, avisar, limpar]);
+
+  useEffect(() => {
+    if (comoModal && obra && (!GERENCIAL_V2_HABILITADO || modoLegado)) carregar();
+  }, [comoModal, obra, competencia, etapaPagamento, colaboradorId, modoLegado, carregar]);
 
   function alterar(indice, campo, valor) {
+    aoAlterar?.();
     setLinhas((atuais) => atuais.map((linha, i) => {
       if (i !== indice) return linha;
       if (campo === 'chave_pix_titulo' && valor !== linha.chave_pix_titulo) {
@@ -465,6 +490,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   }
 
   function alternarDiaDiaria(colaboradorId, dia) {
+    aoAlterar?.();
     setLinhas((atuais) => atuais.map((linha) => {
       if (linha.colaborador_id !== colaboradorId) return linha;
       const selecionados = new Set(linha.diasSelecionados);
@@ -478,6 +504,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   /** Preenche o período de uma vez — o caso comum é quase todo mundo ter trabalhado todos os dias. */
   function preencherMesCheio() {
     if (etapaPagamento === 'DIARIA') return;
+    aoAlterar?.();
     setLinhas((atuais) => atuais.map((linha) => (
       linha.aindaNaoComecou || !podeEditarLinha(linha) ? linha : {
       ...linha,
@@ -681,13 +708,15 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
     const substituicoes = preenchidas.filter((linha) => linha.jaInformado);
     if (substituicoes.length) {
-      const { ok } = await confirmar({
+      envioPendenteRef.current = true;
+      let resposta;
+      try { resposta = await confirmar({
         titulo: 'Substituir a jornada já informada',
         mensagem: `O envio substituirá a jornada anterior de ${substituicoes.length} colaborador(es) `
           + 'neste mesmo período. A versão anterior ficará no histórico. Enviar mesmo assim?',
         rotuloConfirmar: 'Substituir e enviar'
-      });
-      if (!ok) return;
+      }); } finally { envioPendenteRef.current = false; }
+      if (!resposta.ok) return;
     }
 
     setJornadaEnviada(null);
@@ -695,6 +724,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     envioPendenteRef.current = true;
     try {
       const payload = {
+        ...(comoModal ? { solicitacao_independente: true } : {}),
         competencia,
         etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined,
         obra_id: Number(obra),
@@ -721,7 +751,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
           favorecido_pix_cpf: l.favorecido_pix_cpf || undefined
         }))
       };
-      if (ETAPAS_HABILITADAS) {
+      if (ETAPAS_HABILITADAS || comoModal) {
         const assinatura = JSON.stringify(payload);
         if (idempotencyKeyRef.current?.assinatura !== assinatura) {
           idempotencyKeyRef.current = { assinatura, chave: crypto.randomUUID() };
@@ -731,6 +761,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       const resultado = await registrarJornadaRh(payload);
       idempotencyKeyRef.current = null;
       setJornadaEnviada(resultado?.solicitacao || null);
+      aoEnviar?.(resultado);
       /**
        * A confirmacao vem DEPOIS de remontar a lista, e nao antes.
        *
@@ -841,18 +872,20 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         tamanho: planilhaImportacao.size,
         modificadoEm: planilhaImportacao.lastModified
       });
-      if (ETAPAS_HABILITADAS && idempotencyKeyRef.current?.assinatura !== assinatura) {
+      if ((ETAPAS_HABILITADAS || comoModal) && idempotencyKeyRef.current?.assinatura !== assinatura) {
         idempotencyKeyRef.current = { assinatura, chave: crypto.randomUUID() };
       }
       const resultado = await importarJornadaPlanilhaRh({
         dados: {
           ...dadosDoPeriodo(),
-          idempotency_key: ETAPAS_HABILITADAS ? idempotencyKeyRef.current?.chave : undefined
+          ...(comoModal ? { solicitacao_independente: true } : {}),
+          idempotency_key: ETAPAS_HABILITADAS || comoModal ? idempotencyKeyRef.current?.chave : undefined
         },
         planilha: planilhaImportacao,
         fichas: fichasImportacao
       });
       setJornadaEnviada(resultado?.solicitacao || null);
+      aoEnviar?.(resultado);
       idempotencyKeyRef.current = null;
       setModalImportacaoAberto(false);
       setPlanilhaImportacao(null);
@@ -1093,14 +1126,15 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   }
 
   if (GERENCIAL_V2_HABILITADO && !modoLegado) {
-    return <RhDpJornadaGerencial abasJornada={abasJornada} podeEnviar={podeEnviar}
+    return <RhDpJornadaGerencial abasJornada={comoModal ? null : abasJornada} podeEnviar={podeEnviar}
+      obraFixaId={obraFixaId} colaboradorId={colaboradorId} aoEnviar={aoEnviar} aoOcupado={aoOcupado} aoAlterar={aoAlterar}
       onAbrirLegado={() => setModoLegado(true)} />;
   }
 
   return (
     <div className="app-pagina">
       <Avisos avisos={avisos} aoFechar={fechar} />
-      {abasJornada}
+      {!comoModal && abasJornada}
       {GERENCIAL_V2_HABILITADO ? <div className="app-actionbar">
         <button type="button" className="btn btn-outline btn-sm" onClick={() => setModoLegado(false)}>
           Voltar ao envio gerencial
@@ -1196,15 +1230,15 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         cor={linhas.length ? undefined : 'var(--c-primary)'}
         acoes={(
           <div className="flex flex-wrap gap-2">
-            <button
+            {!colaboradorId ? <button
               type="button"
               className="btn btn-outline btn-sm"
               disabled={!obra || baixandoModelo}
               onClick={baixarModeloDaJornada}
             >
               {baixandoModelo ? 'Gerando modelo...' : 'Baixar modelo da jornada'}
-            </button>
-            {podeEnviar ? (
+            </button> : null}
+            {podeEnviar && !colaboradorId ? (
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
@@ -1240,7 +1274,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                 rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
               })),
               required: true,
-              disabled: obras.length === 0
+              disabled: Boolean(obraFixaId) || obras.length === 0 || carregando || salvando || importandoPlanilha
             },
             ...(ETAPAS_HABILITADAS ? [{
               id: 'etapaPagamento',
@@ -1249,24 +1283,27 @@ export default function RhDpJornada({ onAbrirApuracao }) {
               valor: etapaPagamento,
               aoMudar: (valor) => {
                 setEtapaPagamento(valor);
+                aoAlterar?.();
                 setJornadaEnviada(null);
                 setLinhas([]);
               },
               opcoes: ETAPAS_PAGAMENTO,
-              required: true
+              required: true,
+              disabled: carregando || salvando || importandoPlanilha
             }] : []),
             {
               id: 'competencia',
               rotulo: 'Competência',
               tipo: 'month',
               valor: competencia,
-              aoMudar: mudarCompetencia
+              aoMudar: mudarCompetencia,
+              disabled: carregando || salvando || importandoPlanilha
             },
           ].filter((campo) => (
             ['obra', 'etapaPagamento'].includes(campo.id)
             || visibilidadeFiltros.ehVisivel(campo.id)
           ))}
-          filtros={dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          filtros={comoModal ? [] : dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
           ativos={ativos}
           aoAlternar={(dimensao, valor, opcoes) => {
             setJornadaEnviada(null);
@@ -1327,7 +1364,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
             cor="var(--c-primary)"
             contagem={`${linhas.length} colaborador(es)`}
           >
-            <TabelaPadrao
+            <TabelaJornada compacta={comoModal}
               /*
                 GRADE DE LANÇAMENTO, NÃO LISTA DE CONSULTA (05/09).
                 A maioria das colunas aqui é campo de digitação, não dado a ler.

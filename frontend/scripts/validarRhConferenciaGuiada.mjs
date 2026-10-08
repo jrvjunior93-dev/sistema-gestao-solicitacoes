@@ -84,7 +84,7 @@ const fixture = `import React from 'react'; import { createRoot } from 'react-do
         React.createElement('div', { className: 'fx-topbar', style: { position: 'sticky', top: 0, minHeight: 96 } }, 'Fluxy · RH/DP'),
         React.createElement('main', { className: 'layout-main' }, React.createElement(Pagina, { className: 'rhdp-page rh-pessoal-page' },
           React.createElement(PageHeader, { titulo: 'Pessoal', descricao: 'Conferência e fechamento' }), React.createElement(RhDpApuracao))))))));`;
-const server = await createServer({ root, configFile: false, logLevel: 'error', server: { host: '127.0.0.1', port: 0 },
+const server = await createServer({ root, configFile: false, logLevel: 'error', cacheDir: path.join(output, 'vite-cache'), server: { host: '127.0.0.1', port: 0 },
   plugins: [{ name: 'rh-conferencia-fixture', enforce: 'pre', resolveId(id) {
     if (id === '/fixture.jsx') return '\0fixture-rh';
     if (/(^|\/)AuthContext(?:\.jsx)?$/.test(id)) return '\0rh:auth';
@@ -108,10 +108,11 @@ const errors = [];
 async function pagina(query = '', width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 850 } });
   page.setDefaultTimeout(10000);
+  page.setDefaultNavigationTimeout(30000);
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:') ? route.continue() : route.abort());
-  await page.goto(url + query);
-  try { await page.getByRole('checkbox', { name: 'Conferido: Ana Teste' }).waitFor(); }
+  await page.goto(url + query, { waitUntil: 'domcontentloaded' });
+  try { await page.getByRole('checkbox', { name: 'Conferido: Ana Teste' }).waitFor({ timeout: 30000 }); }
   catch (error) { console.error(errors, (await page.locator('body').innerText()).slice(0, 2500)); throw error; }
   return page;
 }

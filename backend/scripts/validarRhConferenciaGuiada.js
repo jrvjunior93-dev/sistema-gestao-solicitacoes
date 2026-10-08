@@ -14,6 +14,7 @@ const raiz = path.resolve(__dirname, '..');
 const locks = [];
 let geracoes = 0;
 let retornoPendente = false;
+let etapaFonte = 'DIARIA';
 const item = { id: 4, status: 'PENDENTE', ajuste_credito_manual: 0, ajuste_debito_manual: 0,
   valor_bruto: 1000, valor_descontos: 0, valor_liquido: 1000, observacoes: '',
   detalhes_json: { importacao_ids: [19] },
@@ -24,18 +25,19 @@ let candidatas = [];
 let transactionCount = 0;
 const transaction = { LOCK: { UPDATE: 'UPDATE' } };
 const models = {
+  Obra: { findByPk: async (_id, opts) => { assert.equal(opts.lock, 'UPDATE'); locks.push('OBRA'); return { id: 7 }; } },
   sequelize: { transaction: async (callback) => { transactionCount++; return callback(transaction); } },
   RhApuracao: {
     findByPk: async (_id, opts) => { locks.push(opts.lock); return apuracao; },
-    findAll: async (opts) => { assert.equal(opts.where.etapa_pagamento, 'DIARIA'); return candidatas; },
+    findAll: async (opts) => { assert.equal(opts.where.etapa_pagamento, etapaFonte); return candidatas; },
     findOne: async () => null
   },
   RhApuracaoEvento: { findOne: async () => item, findAll: async () => [item] },
-  RhSolicitacao: { findByPk: async (_id, opts) => {
+  RhSolicitacao: { findByPk: async (_id, opts = {}) => {
     if (opts.lock) assert.equal(opts.lock, 'UPDATE');
     return { id: 55, tipo: 'JORNADA', situacao: 'ABERTA', obra_id: 7, dados_json: { importacao_id: 19, dias_base: 30 } };
   } },
-  RhImportacao: { findByPk: async () => ({ id: 19, status: 'CONFIRMADA', competencia: '2026-10', etapa_pagamento: 'DIARIA', obra_id: 7 }) }
+  RhImportacao: { findByPk: async () => ({ id: 19, status: 'CONFIRMADA', competencia: '2026-10', etapa_pagamento: etapaFonte, obra_id: 7 }) }
 };
 function carregarServico(nome, complemento) {
   const codigo = fs.readFileSync(path.join(raiz, 'src/services', nome), 'utf8');
@@ -82,6 +84,18 @@ async function main() {
   await api.contextoApuracaoJornadaRh(55, { preparar: true, user: { id: 2 } });
   await api.contextoApuracaoJornadaRh(55, { preparar: true, user: { id: 2 } });
   assert.equal(geracoes, 1, 'Retomar nunca regera ou apaga conferencia');
+  // Mensais tambem sao isoladas por fonte, nao por toda a competencia da obra.
+  etapaFonte = 'ADIANTAMENTO_40'; apuracao.etapa_pagamento = etapaFonte; candidatas = [];
+  const mensal = await api.contextoApuracaoJornadaRh(55, { preparar: true, user: { id: 2 } });
+  assert.equal(mensal.recorte.importacao_id, 19);
+  assert.equal(mensal.compartilhadas.length, 0);
+  item.detalhes_json.importacao_ids = [19, 20];
+  const legada = await api.contextoApuracaoJornadaRh(55);
+  assert.deepEqual(Array.from(legada.compartilhadas), [12], 'Apuracao que mistura pedidos e identificada sem regerar');
+  const antesLegada = geracoes;
+  await api.contextoApuracaoJornadaRh(55, { preparar: true, user: { id: 2 } });
+  assert.equal(geracoes, antesLegada, 'Preparar nao duplica nem substitui apuracao legada');
+  etapaFonte = 'DIARIA'; apuracao.etapa_pagamento = etapaFonte; item.detalhes_json.importacao_ids = [19];
 
   const revisaoAntes = revisaoItem(item);
   await api.atualizarItemApuracaoRh(12, 4, { status: 'CONFERIDO', revisao_conferencia: revisaoAntes }, { id: 2 });

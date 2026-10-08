@@ -141,6 +141,14 @@ module.exports = {
         }
       }
 
+      if (req.query.obra_id !== undefined && req.query.obra_id !== '') {
+        const localId = Number(req.query.obra_id);
+        if (!Number.isInteger(localId) || localId <= 0) throw new ValidationError('Obra/centro de custo invalido.');
+        if (Array.isArray(obraIds) && !obraIds.includes(localId)) return res.json([]);
+        // Estreita o escopo existente; nunca substitui a autorizacao acima.
+        where.obra_id = localId;
+      }
+
       const dados = await RhSolicitacao.findAll({
         where,
         order: [['situacao', 'ASC'], ['createdAt', 'DESC']],

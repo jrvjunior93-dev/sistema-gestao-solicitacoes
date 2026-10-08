@@ -56,11 +56,12 @@ function intencoesDisponiveis(item) {
   });
 }
 
-export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirLegado }) {
+export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirLegado,
+  obraFixaId, colaboradorId, aoEnviar, aoOcupado, aoAlterar }) {
   const { user } = useAuth();
   const { avisos, avisar, fechar } = useAvisos();
   const [obras, setObras] = useState([]);
-  const [obraId, setObraId] = useState('');
+  const [obraId, setObraId] = useState(() => obraFixaId ? String(obraFixaId) : '');
   const [competencia, setCompetencia] = useState(COMPETENCIA_ATUAL);
   const [linhas, setLinhas] = useState([]);
   const [passo, setPasso] = useState(1);
@@ -69,11 +70,19 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
   const [resultado, setResultado] = useState(null);
   const chaveEnvioRef = useRef(null);
   const emEnvioRef = useRef(false);
+  const consultaRef = useRef(0);
+
+  useEffect(() => { aoOcupado?.(salvando); }, [salvando, aoOcupado]);
+  useEffect(() => {
+    if (obraFixaId) montarLista();
+    // A competencia fixa desta montagem e selecionavel antes de atualizar a lista.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obraFixaId, colaboradorId]);
 
   useEffect(() => {
     let ativo = true;
     const operacional = !isBusinessAdmin(user) && userHasSetorCapability(user, 'eh_setor_obra');
-    (operacional ? getMinhasObras({ escopo: 'OBRAS' }) : getObras())
+    (operacional ? getMinhasObras({ escopo: 'TODOS' }) : getObras({ escopo: 'TODOS' }))
       .then((dados) => { if (ativo) setObras(Array.isArray(dados) ? dados : dados?.obras || []); })
       .catch((error) => avisar.erro(error.message || 'Não foi possível carregar as obras.'));
     return () => { ativo = false; };
@@ -84,18 +93,25 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
     && !item.regime_em_transicao && item.dias_vinculados && intencoesDisponiveis(item).length);
 
   function alterar(id, mudanca) {
+    aoAlterar?.();
     setLinhas((atuais) => atuais.map((item) => Number(item.colaborador_id) === Number(id)
       ? { ...item, ...mudanca } : item));
     chaveEnvioRef.current = null;
   }
 
   async function montarLista() {
-    if (!obraId || !competencia) return avisar.erro('Selecione obra e competência.');
+    if (!obraId || !competencia || carregando || emEnvioRef.current) return;
+    const consulta = ++consultaRef.current;
     setCarregando(true);
     setResultado(null);
     try {
       const dados = await colaboradoresParaJornadaGerencialRh({ obra_id: obraId, competencia });
-      setLinhas((Array.isArray(dados) ? dados : []).map(linhaInicial));
+      if (consulta !== consultaRef.current) return;
+      setLinhas((Array.isArray(dados) ? dados : []).filter((item) => !colaboradorId
+        || Number(item.colaborador_id) === Number(colaboradorId)).map((item) => ({
+          ...linhaInicial(item), selecionado: Boolean(colaboradorId) && !item.ainda_nao_comecou
+            && !item.regime_em_transicao && Boolean(item.dias_vinculados) && Boolean(intencoesDisponiveis(item).length)
+        })));
       setPasso(2);
       if (!dados?.length) avisar.alerta('Não há colaboradores vinculados à obra nessa competência.');
     } catch (error) {
@@ -174,6 +190,7 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
       setLinhas([]);
       setPasso(1);
       chaveEnvioRef.current = null;
+      aoEnviar?.(dados);
       avisar.sucesso(`${selecionadas.length} colaborador(es) enviado(s) ao DP. A apuração definirá o valor líquido.`);
     } catch (error) {
       avisar.erro(error.message || 'Não foi possível enviar a jornada.');
@@ -201,11 +218,12 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
           <button type="button" className="btn btn-outline btn-sm" onClick={onAbrirLegado}>Planilha e lançamentos especiais</button>
         </div></div>
         <div className="rh-gerencial-filtros">
-          <label>Obra<select value={obraId} onChange={(evento) => { setObraId(evento.target.value); setLinhas([]); setPasso(1); }}>
+          <label>Obra / centro de custo<select value={obraId} disabled={Boolean(obraFixaId) || carregando || salvando} onChange={(evento) => { setObraId(evento.target.value); setLinhas([]); setPasso(1); }}>
             <option value="">Selecione a obra</option>
             {obras.map((obra) => <option key={obra.id} value={obra.id}>{obra.codigo ? `${obra.codigo} · ` : ''}{obra.nome}</option>)}
           </select></label>
-          <label>Competência<input type="month" value={competencia} onChange={(evento) => {
+          <label>Competência<input type="month" value={competencia} disabled={carregando || salvando} onChange={(evento) => {
+            aoAlterar?.();
             setCompetencia(evento.target.value); setLinhas([]); setPasso(1);
           }} /></label>
           <button type="button" className="btn btn-primary" disabled={carregando || !obraId} onClick={montarLista}>
@@ -243,6 +261,8 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
                     ? 'Dias totais nesta obra' : 'Dias desta etapa'}<input type="number" min="1" max={limiteDaLinha(item)} value={item.dias_trabalhados}
                     readOnly={diario} onChange={(evento) => alterar(item.colaborador_id, { dias_trabalhados: evento.target.value })}
                     placeholder={diario ? 'Selecione abaixo' : '0'} /></label>
+                  <label>Faltas (registro)<input type="number" min="0" max={limiteDaLinha(item)} value={item.faltas}
+                    onChange={(evento) => alterar(item.colaborador_id, { faltas: evento.target.value })} /></label>
                   <label>Acréscimos<input type="text" inputMode="decimal" value={item.adicionais}
                     onChange={(evento) => alterar(item.colaborador_id, { adicionais: evento.target.value })}
                     onBlur={() => alterar(item.colaborador_id, { adicionais: item.adicionais ? formatCurrencyInput(String(parseCurrencyInput(item.adicionais))) : '' })}
@@ -261,8 +281,6 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
                 </details> : null}
                 <details className="rh-gerencial-extras"><summary>Outros ajustes e PIX</summary>
                   <div className="rh-gerencial-campos">
-                    <label>Faltas (registro)<input type="number" min="0" max={limiteDaLinha(item)} value={item.faltas}
-                      onChange={(evento) => alterar(item.colaborador_id, { faltas: evento.target.value })} /></label>
                     <label>13º<input type="text" inputMode="decimal" value={item.decimo_terceiro}
                       onChange={(evento) => alterar(item.colaborador_id, { decimo_terceiro: evento.target.value })}
                       onBlur={() => alterar(item.colaborador_id, { decimo_terceiro: item.decimo_terceiro
@@ -293,7 +311,7 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
           <strong>{item.nome}</strong><span>{INTENCOES[item.intencao_pagamento]} · {item.dias_trabalhados} dias</span>
           <small>+ {moeda(parseCurrencyInput(item.adicionais))} · − {moeda(parseCurrencyInput(item.descontos))}</small>
         </div>)}</div>
-        <div className="rh-gerencial-rodape"><button type="button" className="btn btn-outline" onClick={() => setPasso(2)}>Voltar</button>
+        <div className="rh-gerencial-rodape"><button type="button" className="btn btn-outline" disabled={salvando} onClick={() => setPasso(2)}>Voltar</button>
           <button type="button" className="btn btn-primary" disabled={salvando} onClick={enviar}>
             {salvando ? 'Enviando...' : 'Enviar ao DP'}</button></div>
       </section> : null}

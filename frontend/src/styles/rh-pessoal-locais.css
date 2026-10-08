@@ -1,0 +1,16 @@
+.rh-pessoal-locais { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.rh-pessoal-local { padding: 14px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rh-pessoal-local h2 { font-size: var(--fonte-corpo); margin: 3px 0 0; }
+.rh-pessoal-local .app-note { margin: 0; }
+.rh-local-modal-cabecalho { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--ui-border); }
+.rh-local-modal-cabecalho p { margin: 4px 0 0; }
+.rh-local-modal-cabecalho > .app-page-header-row { flex: 1; min-width: 0; }
+.rh-pagamento-detalhes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
+.rh-pagamento-detalhes > div { display: flex; flex-direction: column; gap: 4px; }
+.rh-local-modal-corpo { padding: 12px 16px; min-width: 0; }
+.rh-conferencia--modal .rh-conferencia-toolbar { top: 0; }
+.rh-conferencia--modal .rh-conferencia-workspace { scroll-margin-top: 12px; }
+@media (max-width: 640px) {
+  .rh-local-modal-corpo { padding: 10px; }
+  .rh-pessoal-local { min-height: 84px; }
+}

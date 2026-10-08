@@ -221,14 +221,11 @@ const FILTROS_DA_TELA = [
   { id: 'status', rotulo: 'Status' }
 ];
 
-export default function RhDpApuracao() {
+export default function RhDpApuracao({ solicitacaoId, comoModal = false, aoOcupado, aoFechar, aoConcluir }) {
   const { user } = useAuth();
   const [parametros, setParametros] = useSearchParams();
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
-  const podeEditar = canEditRhDpApuracao(user);
-  const podeFechar = canExecuteRhDpFechamento(user);
-  const podeReabrirFechamento = canReopenRhDpFechamento(user);
   const financeiroHabilitado = hasEnabledModule(user, 'FINANCEIRO');
   const [empresas, setEmpresas] = useState([]);
   const [obras, setObras] = useState([]);
@@ -239,12 +236,16 @@ export default function RhDpApuracao() {
   );
   const progresso = progressoConferencia(detalhe?.itens, edicoes, estados);
   const [contextoJornada, setContextoJornada] = useState(null);
+  const compartilhada = comoModal && contextoJornada?.compartilhadas?.map(Number).includes(Number(detalhe?.id));
+  const podeEditar = canEditRhDpApuracao(user) && !compartilhada;
+  const podeFechar = canExecuteRhDpFechamento(user) && !compartilhada;
+  const podeReabrirFechamento = canReopenRhDpFechamento(user) && !compartilhada;
   const [carregandoContexto, setCarregandoContexto] = useState(false);
   const [erroContexto, setErroContexto] = useState('');
   const [resultadoFechamento, setResultadoFechamento] = useState(null);
   const workspaceRef = useRef(null);
   const operacaoRef = useRef(false);
-  const jornadaId = parametros.get('jornada_id');
+  const jornadaId = solicitacaoId || parametros.get('jornada_id');
   const [carregandoBase, setCarregandoBase] = useState(false);
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [gerando, setGerando] = useState(false);
@@ -303,8 +304,11 @@ export default function RhDpApuracao() {
   });
 
   useEffect(() => {
-    carregarBase();
-  }, []);
+    if (!comoModal) carregarBase();
+  }, [comoModal]);
+
+  useEffect(() => { aoOcupado?.(progresso.gravacoesPendentes || gerando || conferindo || fechando); },
+    [progresso.gravacoesPendentes, gerando, conferindo, fechando, aoOcupado]);
 
   useEffect(() => {
     const header = document.querySelector('.layout-main .app-page-header');
@@ -316,19 +320,20 @@ export default function RhDpApuracao() {
   }, [detalhe?.id]);
 
   useEffect(() => {
-    if (!form.competencia) {
+    if (comoModal || !form.competencia) {
       setMultiobra({ resumo: {}, colaboradores: [] });
       return;
     }
     carregarJornadasMultiobra(form.competencia);
-  }, [form.competencia]);
+  }, [form.competencia, comoModal]);
 
   // Filtro marcado aplica na hora (padrao Solicitacoes); a competencia
   // digitada espera 350ms para nao martelar a API a cada tecla.
   useEffect(() => {
+    if (comoModal) return;
     const atraso = setTimeout(() => carregarApuracoes(filtros), 350);
     return () => clearTimeout(atraso);
-  }, [filtros]);
+  }, [filtros, comoModal]);
 
   useEffect(() => {
     setResultadoFechamento(null);
@@ -373,7 +378,7 @@ export default function RhDpApuracao() {
       const contexto = await abrirConferenciaRhJornada(jornadaId, true);
       setContextoJornada(contexto);
       setDetalhe(contexto.apuracoes[0] || null);
-      await carregarApuracoes();
+      if (!comoModal) await carregarApuracoes();
     } catch (error) { avisar.erro(error.message); }
     finally { operacaoRef.current = false; setGerando(false); }
   }
@@ -383,7 +388,18 @@ export default function RhDpApuracao() {
       avisar.alerta('Salve os ajustes pendentes ou aguarde a gravacao antes de sair.'); return;
     }
     setDetalhe(null); setContextoJornada(null); setResultadoFechamento(null);
+    if (comoModal) { aoFechar?.(); return; }
     setParametros((old) => { const next = new URLSearchParams(old); next.delete('apuracao_id'); next.delete('jornada_id'); return next; });
+  }
+
+  function abrirConsolidacaoGeral() {
+    if (temPendencias() || gerando || fechando || conferindo) return;
+    setParametros((old) => {
+      const next = new URLSearchParams(old);
+      next.set('aba', 'apuracao'); next.set('competencia', contextoJornada.recorte.competencia);
+      next.delete('solicitacao'); next.delete('jornada_id'); next.delete('apuracao_id'); next.delete('local_id');
+      return next;
+    });
   }
 
   async function recarregarConferencia() {
@@ -471,6 +487,7 @@ export default function RhDpApuracao() {
   }
 
   async function carregarApuracoes(nextFiltros = filtros) {
+    if (comoModal) return;
     try {
       setCarregandoLista(true);
       const data = await getRhApuracoes({
@@ -525,7 +542,7 @@ export default function RhDpApuracao() {
       const apuracoesIgnoradas = Array.isArray(data?.ignoradas) ? data.ignoradas : [];
       setDetalhe(apuracoesGeradas[0] || null);
       reiniciar(apuracoesGeradas[0] || null);
-      await carregarApuracoes();
+      if (!comoModal) await carregarApuracoes();
       if (apuracoesGeradas.length > 1) {
         avisar.informacao(`${apuracoesGeradas.length} apuracoes foram geradas, uma para cada obra confirmada na importacao.`);
       } else if (apuracoesGeradas.length === 1) {
@@ -601,8 +618,9 @@ export default function RhDpApuracao() {
       // O sucesso financeiro fica visivel mesmo se uma consulta posterior falhar.
       setResultadoFechamento(data);
       setDetalhe((atual) => ({ ...atual, fechamentoRh: data }));
+      aoConcluir?.(data);
       avisar.sucesso('Fechamento concluído. Confira os títulos gerados abaixo.');
-      await carregarApuracoes();
+      if (!comoModal) await carregarApuracoes();
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao fechar a apuracao RH/DP');
@@ -922,15 +940,19 @@ export default function RhDpApuracao() {
             ];
 
   return (
-    <div className="app-pagina rh-conferencia">
+    <div className={`app-pagina rh-conferencia${comoModal ? ' rh-conferencia--modal' : ''}`}>
       <Avisos avisos={avisos} aoFechar={fechar} />
 
       {carregandoContexto ? <p role="status">Localizando a apuração desta jornada...</p> : null}
       {erroContexto ? <Alert type="error" message={erroContexto} /> : null}
+      {compartilhada ? <Alert type="warning" title="Apuração compartilhada"
+        message="Este envio já integra uma apuração legada ou multiobra com outros pedidos. A consulta aqui é somente leitura. Use a conferência geral para consolidar e fechar sem duplicar pagamentos." /> : null}
       {contextoJornada ? (
         <div className="rh-conferencia-contexto">
           <strong>Jornada #{contextoJornada.solicitacao_id} · {contextoJornada.recorte.competencia} · {contextoJornada.recorte.etapa_pagamento || 'Jornada legada'}</strong>
-          {!detalhe ? <p>Prepare a apuração para conferir. Colaboradores multiobra continuam sujeitos à consolidação abaixo.</p> : null}
+          {!detalhe ? <p>Prepare a apuração para conferir. Colaboradores multiobra continuam sujeitos à consolidação do DP.</p> : null}
+          {comoModal && (compartilhada || !detalhe) && canEditRhDpApuracao(user) ? <button type="button" className="btn btn-outline btn-sm"
+            disabled={gerando || fechando || conferindo || progresso.gravacoesPendentes} onClick={abrirConsolidacaoGeral}>Abrir consolidação geral</button> : null}
           {!contextoJornada.apuracoes.some((item) => Number(item.obra_id) === Number(contextoJornada.recorte.obra_id)) && podeEditar ? <button type="button" className="btn btn-primary btn-sm" disabled={gerando || progresso.gravacoesPendentes} onClick={prepararJornada}>{gerando ? 'Preparando...' : 'Preparar apuração desta jornada'}</button> : null}
           {!detalhe && !podeEditar ? <p>É necessária a permissão de editar apuração para prepará-la.</p> : null}
           {contextoJornada.apuracoes.length > 1 ? <div className="app-actionbar">Apurações deste envio:
@@ -938,7 +960,7 @@ export default function RhDpApuracao() {
           </div> : null}
         </div>
       ) : null}
-      <details className="rh-conferencia-ferramentas" open={!detalhe && !jornadaId}>
+      {!comoModal ? <details className="rh-conferencia-ferramentas" open={!detalhe && !jornadaId}>
         <summary>Preparação, consolidação multiobra e lista de apurações</summary>
 
       {/* Formulario de ACAO, nao filtro: e daqui que a pre-folha nasce. */}
@@ -1252,7 +1274,7 @@ export default function RhDpApuracao() {
         />
       </BlocoConteudo>
 
-      </details>
+      </details> : null}
       {detalhe ? (
         <div className="rh-conferencia-workspace" ref={workspaceRef}>
           <div className="rh-conferencia-toolbar">

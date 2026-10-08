@@ -1,6 +1,6 @@
 # Modulo RH/DP
 
-Para o percurso completo das sete abas da tela Pessoal, suas permissões,
+Para o percurso completo da tela Pessoal, suas permissões,
 situações, cálculos e integração financeira, consulte o
 [Guia operacional de Pessoal](GUIA_OPERACIONAL_PESSOAL.md).
 
@@ -22,6 +22,36 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 - usuario operacional do setor OBRA acessa somente a porta `Pessoal` do modulo;
 - para usuario de OBRA, listas, detalhes, solicitacoes e jornada ficam limitados as obras vinculadas em `usuarios_obras`, inclusive quando a API e chamada diretamente;
 - o cadastro geral de colaboradores, documentos, importacoes, fechamentos e relatorios permanece restrito ao RH/DP e aos administradores autorizados.
+
+## Pessoal por local e conferencia por solicitacao
+
+- Usuarios operacionais fora do DP e dos perfis administrativos entram em
+  `Pessoal` pelas obras/centros vinculados. `Abrir` exibe Gestao de Colaboradores
+  com Colaboradores, Solicitacoes e Transferencias entre obras, nessa ordem.
+- O primeiro icone de cada colaborador solicita pagamento individual. O botao
+  acima da lista abre o envio coletivo do local. Competencia e vinculos
+  historicos determinam quem pode ser informado; dias, faltas, acrescimos,
+  descontos e observacao usam o mesmo servico de jornada ja existente.
+- Os novos modais criam pedidos independentes mesmo no modo legado sem etapas:
+  `solicitacao_independente=true` exige chave de idempotencia. Um envio posterior
+  nao substitui o pedido de outro colaborador; repeticao da mesma chave/hash
+  retorna o envio anterior. Correcoes continuam exigindo autorizacao do DP.
+- O DP preserva suas abas globais. Ao abrir uma solicitacao de jornada, consulta
+  e prepara explicitamente a apuracao daquela fonte, ajusta, marca Conferido,
+  conclui a conferencia e fecha/gera titulos no mesmo modal. Abrir o modal nao
+  grava nem recalcula. Permissoes de editar e fechar continuam separadas.
+- A preparacao geral exclui linhas ja reservadas por apuracoes independentes.
+  Apuracoes legadas compartilhadas sao somente leitura no modal; o atalho
+  `Abrir consolidacao geral` preserva o tratamento multiobra, sem reconstruir
+  registros ou pagar duas vezes a base mensal. Jornadas exclusivamente multiobra
+  continuam exigindo todas as partes e consolidacao antes do fechamento.
+- As flags 40/60 e gerencial v2 nao sao ativadas por esta alteracao. Titulos
+  continuam sujeitos a empresa, categoria, PIX, conferencia, bloqueios de
+  conversao contabil e protecoes financeiras existentes. Gerar nao e baixar.
+
+Testes sem banco/rede externa: `node scripts/validarRhPessoalPorSolicitacao.js`
+no backend e `node scripts/validarRhPessoalPorLocal.mjs` no frontend (tambem
+com `--etapas` e `--gerencial`).
 
 ## Obra ou centro de custo no cadastro
 

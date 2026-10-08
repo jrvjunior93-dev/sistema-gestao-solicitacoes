@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
   HiOutlineArrowsRightLeft,
+  HiOutlineBanknotes,
   HiOutlineEye,
   HiOutlineUserMinus
 } from 'react-icons/hi2';
@@ -44,6 +45,8 @@ import RhDpJornada from './RhDpJornada';
 import RhDpApuracao from './RhDpApuracao';
 import RhDpFechamentos from './RhDpFechamentos';
 import RhDpEventosRecorrentes from './RhDpEventosRecorrentes';
+import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
+import '../styles/rh-pessoal-locais.css';
 import {
   canViewRhDpApuracao,
   canViewRhDpEventosRecorrentes,
@@ -403,6 +406,10 @@ export default function RhDpPessoal() {
   const podeVerEventosRecorrentes = canViewRhDpEventosRecorrentes(user);
   const podeVerFechamentos = canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO');
   const usuarioDoDp = userBelongsToDpSetor(user);
+  const porLocal = !usuarioDoDp && !isBusinessAdmin(user);
+  const localId = parametros.get('local_id') || '';
+  const localSelecionado = obras.find((item) => String(item.id) === localId);
+  const [pagamento, setPagamento] = useState(null);
   /*
     Uma fonte só para rótulo, apoio do cabeçalho e ordem. O `apoio` existe
     porque o cabeçalho é ÚNICO para as quatro abas: o texto fixo antigo
@@ -433,7 +440,7 @@ export default function RhDpPessoal() {
     {
       id: 'jornada',
       rotulo: 'Pagamento de Mão de Obra',
-      apoio: 'A obra informa dias trabalhados, faltas, ajustes, 13º e empreitadas; o DP confere e gera a apuração.'
+      apoio: 'Informe dias, faltas e ajustes. O DP confere a solicitação e gera os títulos.'
     },
     ...(podeVerApuracao ? [{
       id: 'apuracao',
@@ -473,11 +480,11 @@ export default function RhDpPessoal() {
     if (!podeVerApuracao) return;
     setParametros((atuais) => {
       const proximos = new URLSearchParams(atuais);
-      proximos.set('aba', 'apuracao');
-      proximos.delete('solicitacao');
+      proximos.set('aba', 'solicitacoes');
+      proximos.set('solicitacao', String(solicitacao.id));
       proximos.delete('jornada_secao');
       proximos.delete('apuracao_id');
-      if (solicitacao?.id) proximos.set('jornada_id', String(solicitacao.id));
+      proximos.delete('jornada_id');
       if (solicitacao?.dados_json?.competencia) {
         proximos.set('competencia', String(solicitacao.dados_json.competencia));
       }
@@ -544,7 +551,7 @@ export default function RhDpPessoal() {
    * parametro de antes; conjunto vazio = todas as obras que a pessoa enxerga.
    */
   const [marcados, setMarcados] = useState({ obra_id: new Set() });
-  const filtroObra = marcados.obra_id.size === 1
+  const filtroObra = localSelecionado ? String(localSelecionado.id) : marcados.obra_id.size === 1
     ? marcados.obra_id.values().next().value
     : '';
   const [busca, setBusca] = useState('');
@@ -566,6 +573,7 @@ export default function RhDpPessoal() {
     setMarcados({ obra_id: new Set() });
     setBusca('');
     setFormulario(null);
+    setPagamento(null);
     setPedidosDoColaborador({ id: null, lista: [] });
     setTotalSolicitacoesAbertas(0);
     setTotalSolicitacoesNaoLidas(0);
@@ -612,12 +620,14 @@ export default function RhDpPessoal() {
     ultimaConsultaColaboradoresRef.current = consultaId;
     setCarregando(true);
     try {
-      const [lista, listaObras, solicitacoesAbertas] = await Promise.all([
-        getRhColaboradores({ obra_id: filtroObra || undefined, q: busca || undefined }),
-        obras.length
-          ? Promise.resolve(obras)
-          : (usuarioOperacionalDaObra ? getMinhasObras({ escopo: 'OBRAS' }) : getObras()),
-        listarRhSolicitacoes({ situacao: 'ABERTA' })
+      const listaObras = obras.length ? obras : await (porLocal
+        ? getMinhasObras({ escopo: 'TODOS' }) : getObras({ escopo: 'TODOS' }));
+      if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
+      const localValido = (Array.isArray(listaObras) ? listaObras : []).find((item) => String(item.id) === localId);
+      const [lista, solicitacoesAbertas] = await Promise.all([
+        porLocal && !localValido ? Promise.resolve([])
+          : getRhColaboradores({ obra_id: localValido?.id || filtroObra || undefined, q: busca || undefined }),
+        listarRhSolicitacoes({ situacao: 'ABERTA', obra_id: localValido?.id || undefined })
       ]);
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
       setColaboradores(Array.isArray(lista) ? lista : []);
@@ -630,7 +640,7 @@ export default function RhDpPessoal() {
       if (consultaId === ultimaConsultaColaboradoresRef.current) setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroObra, busca, obras, empresas, usuarioOperacionalDaObra, user?.id]);
+  }, [filtroObra, localId, busca, obras, empresas, porLocal, user?.id]);
 
   /**
    * A marcacao aplica sozinha; a busca digitada espera 350ms para nao martelar
@@ -645,7 +655,7 @@ export default function RhDpPessoal() {
     const atraso = setTimeout(() => { carregar(); }, 350);
     return () => clearTimeout(atraso);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroObra, busca]);
+  }, [filtroObra, localId, busca, user?.id]);
 
   const pendentes = useMemo(
     () => colaboradores.filter((c) => c.tem_solicitacao_aberta),
@@ -1106,7 +1116,7 @@ export default function RhDpPessoal() {
    * vive dentro dele; modal fechado, logo abaixo do PageHeader.
    */
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
-  const algumModalAberto = Boolean(formulario || pedidosDoColaborador.id);
+  const algumModalAberto = Boolean(formulario || pedidosDoColaborador.id || pagamento);
 
   /**
    * AS ACOES DO CABECALHO SAO AS DA ABA QUE ESTA ABERTA.
@@ -1134,7 +1144,8 @@ export default function RhDpPessoal() {
 
   const acoesDaAba = abaAtiva === 'colaboradores'
     ? [
-      podeAbrir ? { rotulo: 'Enviar jornada', onClick: () => setAbaAtiva('jornada') } : null,
+      podeAbrir ? { rotulo: 'Solicitar pagamento', onClick: () => localSelecionado
+        ? setPagamento({ colaborador: null }) : setAbaAtiva('jornada') } : null,
       {
         rotulo: carregando ? 'Carregando...' : 'Atualizar',
         onClick: carregar,
@@ -1143,16 +1154,47 @@ export default function RhDpPessoal() {
     ].filter(Boolean)
     : [];
 
+  const abasLocais = localSelecionado && porLocal
+    ? ['colaboradores', 'solicitacoes', 'transferencias'].map((id) => ABAS.find((aba) => aba.id === id))
+    : ABAS;
+  function abrirLocal(item) {
+    setBusca(''); setMarcados({ obra_id: new Set() });
+    setParametros({ local_id: String(item.id), aba: 'colaboradores' });
+  }
+  function voltarAosLocais() {
+    setBusca(''); setColaboradores([]); setMarcados({ obra_id: new Set() });
+    setParametros({});
+  }
+  if (porLocal && !parametros.get('solicitacao') && !localSelecionado
+    && (!parametros.get('aba') || localId)) {
+    return <Pagina className="rhdp-page rh-pessoal-page">
+      <PageHeader titulo="Pessoal" descricao="Minhas obras e centros de custo" secundarias={[
+        { rotulo: 'Atualizar', onClick: carregar, desabilitada: carregando }
+      ]} />
+      {faixaAvisos}
+      {carregando ? <p role="status">Carregando locais vinculados...</p> : <>
+        {localId ? <p role="alert">Este local não está disponível para seu usuário.</p> : null}
+        {!obras.length ? <p>Nenhuma obra ou centro de custo disponível. Solicite a conferência do seu vínculo.</p> : null}
+        <div className="rh-pessoal-locais">{obras.map((item) => <section key={item.id} className="rh-pessoal-local">
+          <div><p className="app-note">{item.codigo} · {item.tipo_centro_custo === 'CENTRO_CUSTO' ? 'Centro de custo' : 'Obra'}</p>
+            <h2>{item.nome}</h2></div>
+          <button type="button" className="btn btn-outline btn-sm" aria-label={`Abrir ${item.nome}`} onClick={() => abrirLocal(item)}>Abrir</button>
+        </section>)}</div>
+      </>}
+    </Pagina>;
+  }
+
   return (
     <Pagina className="rhdp-page rh-pessoal-page">
       <PageHeader
-        titulo="Pessoal"
+        titulo={localSelecionado ? 'Gestão de Colaboradores' : 'Pessoal'}
         contagem={contagemDaAba}
-        descricao={ABAS.find((aba) => aba.id === abaAtiva)?.apoio}
+        descricao={localSelecionado ? `${localSelecionado.codigo} · ${localSelecionado.nome}`
+          : ABAS.find((aba) => aba.id === abaAtiva)?.apoio}
         acaoPrincipal={abaAtiva === 'colaboradores' && podeAbrir
           ? { rotulo: 'Pedir admissao', onClick: () => novoPedido('ADMISSAO') }
           : undefined}
-        secundarias={acoesDaAba}
+        secundarias={[...(localSelecionado ? [{ rotulo: 'Voltar aos locais', onClick: voltarAosLocais }] : []), ...acoesDaAba]}
       />
 
       {!algumModalAberto && faixaAvisos}
@@ -1173,7 +1215,7 @@ export default function RhDpPessoal() {
         página.
       */}
       <div className="rh-pessoal-abas" role="tablist" aria-label="Áreas do Pessoal">
-        {ABAS.map((aba) => (
+        {abasLocais.map((aba) => (
           <button
             key={aba.id}
             type="button"
@@ -1203,11 +1245,13 @@ export default function RhDpPessoal() {
 
       {abaAtiva === 'solicitacoes' ? (
         <RhDpPessoalSolicitacoes
+          key={`${user?.id}:${localSelecionado?.id || 'global'}`}
           podeAbrir={podeAbrir}
           podeDecidir={podeDecidir}
           podeDecidirEventoRecorrente={usuarioDoDp}
           podeAprovarSalario={podeAprovarSalario}
           aoMudar={carregar}
+          obraId={localSelecionado?.id}
           onAbrirListaJornadas={abrirListaDeJornadas}
           onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined}
           aoContarAbertas={setTotalSolicitacoesAbertas}
@@ -1248,7 +1292,7 @@ export default function RhDpPessoal() {
       */}
       <BarraFiltros
         busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Nome, CPF ou matricula' }}
-        filtros={[
+        filtros={localSelecionado ? [] : [
           {
             id: 'obra_id',
             rotulo: 'Obra',
@@ -1334,6 +1378,12 @@ export default function RhDpPessoal() {
           urgencia={(colaborador) => (colaborador.tem_solicitacao_aberta ? 'warning' : null)}
           acoesLinha={(colaborador) => (
             <div className="rh-acoes-icones">
+              {podeAbrir ? <button type="button" className="rh-acao-icone" title="Solicitar pagamento"
+                aria-label={`Solicitar pagamento: ${colaborador.nome}`} onClick={() => {
+                  const local = localSelecionado || obras.find((item) => Number(item.id) === Number(colaborador.obra_id));
+                  if (local) setPagamento({ local, colaborador });
+                  else avisar.alerta('Selecione a obra ou centro de custo do colaborador antes de solicitar pagamento.');
+                }}><HiOutlineBanknotes aria-hidden="true" /></button> : null}
               <button
                 type="button"
                 className="rh-acao-icone"
@@ -1357,7 +1407,7 @@ export default function RhDpPessoal() {
               )) : null}
             </div>
           )}
-          larguraAcoes={215}
+          larguraAcoes={250}
         />
       </div>
 
@@ -2327,6 +2377,10 @@ export default function RhDpPessoal() {
       ) : null}
 
       {elementoConfirmacao}
+      {pagamento && (pagamento.local || localSelecionado) ? <RhDpPagamentoModal
+        key={`${user?.id}:${(pagamento.local || localSelecionado).id}:${pagamento.colaborador?.id || 'todos'}`}
+        local={pagamento.local || localSelecionado} colaborador={pagamento.colaborador}
+        onFechar={() => setPagamento(null)} aoEnviar={() => { carregar(); }} /> : null}
     </Pagina>
   );
 }
