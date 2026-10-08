@@ -226,7 +226,7 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
               </div>
             </div>
             <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando) || !devolucao} onClick={devolver}>
-              {processando === 'devolver' ? 'Devolvendo...' : `Devolver para ${retornoAprovado.setor_destino}`}
+              {processando === 'devolver' ? 'Devolvendo...' : 'Devolver solicitação'}
             </button>
           </div>
         </section>

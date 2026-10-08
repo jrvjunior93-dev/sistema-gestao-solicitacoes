@@ -135,6 +135,31 @@ async function podeDecidirRetorno(user) {
   return userHasAreaPermission(user, [PERMISSAO_DECIDIR]);
 }
 
+// Somente para o aviso de decisao: nao altera o historico do sino ou pedidos.
+async function filtrarNotificacoesRetornoParaDecisao(req, notificacoes = []) {
+  if (!(await podeDecidirRetorno(req.user))) return [];
+  const pedidoIds = [...new Set(notificacoes.map(item => Number(item.metadata?.pedido_retorno_id))
+    .filter(id => Number.isInteger(id) && id > 0))];
+  if (!pedidoIds.length) return [];
+  const pedidos = await SolicitacaoPedidoRetorno.findAll({
+    where: { id: { [Op.in]: pedidoIds }, status: STATUS.PENDENTE },
+    attributes: ['id', 'solicitacao_id', 'setor_atual_pedido', 'status']
+  });
+  const permitidos = new Map();
+  for (const pedido of pedidos) {
+    if (pedido.status !== STATUS.PENDENTE) continue;
+    const solicitacao = await Solicitacao.findByPk(pedido.solicitacao_id, {
+      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada']
+    });
+    if (!solicitacao || solicitacao.cancelada || /CANCELAD/i.test(String(solicitacao.status_global || ''))
+      || !setoresEquivalentes(pedido.setor_atual_pedido, solicitacao.area_responsavel)) continue;
+    const contexto = await avaliarInteracao(req, solicitacao);
+    if (contexto.allowed && contexto.estaNoSetorUsuario) permitidos.set(Number(pedido.id), Number(solicitacao.id));
+  }
+  return notificacoes.filter(item => item.tipo === 'RETORNO_SOLICITADO' && !item.lida_em
+    && permitidos.get(Number(item.metadata?.pedido_retorno_id)) === Number(item.solicitacao_id));
+}
+
 async function buscarPedidosPendentesAtuais(solicitacao) {
   const pedidos = await SolicitacaoPedidoRetorno.findAll({
     where: {
@@ -698,6 +723,7 @@ module.exports = {
   cancelarRetorno,
   decidirRetorno,
   devolverAoSetorAnterior,
+  filtrarNotificacoesRetornoParaDecisao,
   montarContextoInteracao,
   solicitarRetorno
 };

@@ -256,7 +256,10 @@ function lotInclude() {
       { model: PagamentoAutorizacaoDocumento, as: 'documentos', attributes: ['id', 'nome', 'origem_tipo', 'arquivo_hash'] },
       // O defaultScope do titulo filtra deleted_at. Mantem LEFT JOIN para nao
       // eliminar o historico nem mover esta juncao para a subquery dos lotes.
-      { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado'], required: false }
+      { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado'], required: false,
+        // Contexto atual, somente leitura, fora do material assinado. Nao
+        // modificar snapshots legados nem invalidar autorizacoes existentes.
+        include: [{ model: Solicitacao, as: 'solicitacao', attributes: ['id', 'justificativa'], required: false }] }
     ] }
   ];
 }

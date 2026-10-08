@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_URL, authHeaders } from '../services/api';
 import { getUsuario, criarUsuario, atualizarUsuario } from '../services/usuarios';
+import { getObras } from '../services/obras';
 import { useAuth } from '../contexts/AuthContext';
 import { isBusinessAdmin, isSuperadmin } from '../utils/acessoProduto';
 import { useSafeNavigateBack } from '../utils/navigation';
@@ -35,6 +36,9 @@ export default function UsuarioNovo() {
   const [listaSetores, setListaSetores] = useState([]);
   const [listaObras, setListaObras] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const salvandoRef = useRef(false);
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const isSuperadminLogado = isSuperadmin(user);
@@ -52,9 +56,10 @@ export default function UsuarioNovo() {
   async function carregarDados() {
     try {
       setLoading(true);
+      setDadosCarregados(false);
       const [setores, obrasLista] = await Promise.all([
         fetch(`${API_URL}/setores`, { headers: authHeaders() }).then(r => r.json()),
-        fetch(`${API_URL}/obras`, { headers: authHeaders() }).then(r => r.json())
+        getObras({ escopo: 'TODOS' })
       ]);
 
       setListaSetores(Array.isArray(setores) ? setores : []);
@@ -70,6 +75,7 @@ export default function UsuarioNovo() {
         const vinculos = Array.isArray(usuario.vinculos) ? usuario.vinculos : [];
         setObras(vinculos.map(v => v.obra_id).filter(Boolean));
       }
+      setDadosCarregados(true);
     } catch (error) {
       console.error(error);
       avisar.erro('Erro ao carregar dados do usuário');
@@ -88,6 +94,7 @@ export default function UsuarioNovo() {
 
   async function salvar(e) {
     e.preventDefault();
+    if (!dadosCarregados || salvandoRef.current) return;
 
     const payload = {
       nome,
@@ -113,6 +120,8 @@ export default function UsuarioNovo() {
       return;
     }
 
+    salvandoRef.current = true;
+    setSalvando(true);
     try {
       const resultado = editando
         ? await atualizarUsuario(id, payload)
@@ -135,6 +144,9 @@ export default function UsuarioNovo() {
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar usuario');
+    } finally {
+      salvandoRef.current = false;
+      setSalvando(false);
     }
   }
 
@@ -152,7 +164,7 @@ export default function UsuarioNovo() {
           voltar à esquerda — affordance primária de retorno à listagem. */}
       <PageHeader
         titulo={editando ? 'Editar usuario' : 'Novo usuario'}
-        descricao="Dados de acesso, perfil, permissões e obras vinculadas."
+        descricao="Dados de acesso, perfil, permissões e vínculos com obras e centros de custo."
         voltar={{ to: '/usuarios', title: 'Voltar para usuários' }}
       />
 
@@ -291,13 +303,13 @@ export default function UsuarioNovo() {
             )}
 
             <BlocoConteudo
-              titulo={`Obras vinculadas (${obras.length} selecionada(s))`}
+              titulo={`Obras e centros de custo vinculados (${obras.length} selecionado(s))`}
               variante="secundario"
             >
               <div className="max-h-72 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
                 {listaObras.length === 0 ? (
                   <div className="px-4 py-4 text-sm text-[var(--c-muted)]">
-                    Nenhuma obra disponível para vínculo.
+                    Nenhuma obra ou centro de custo disponível para vínculo.
                   </div>
                 ) : (
                   listaObras.map((obra) => {
@@ -316,8 +328,11 @@ export default function UsuarioNovo() {
                           checked={checked}
                           onChange={() => toggleObra(obra.id)}
                         />
-                        <span className="font-medium">
+                        <span className="min-w-0 flex-1 font-medium break-words">
                           {obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome}
+                        </span>
+                        <span className="shrink-0 text-xs text-[var(--c-muted)]">
+                          {obra.tipo_centro_custo === 'CENTRO_CUSTO' ? 'Centro de custo' : 'Obra'}
                         </span>
                       </label>
                     );
@@ -327,8 +342,8 @@ export default function UsuarioNovo() {
             </BlocoConteudo>
 
             <div className="app-actionbar">
-              <button type="submit" className="btn btn-primary">
-                Salvar
+              <button type="submit" className="btn btn-primary" disabled={!dadosCarregados || salvando}>
+                {salvando ? 'Salvando...' : 'Salvar'}
               </button>
               <button
                 type="button"

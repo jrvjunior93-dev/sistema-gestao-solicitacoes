@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:usuario-centros-custo-ui": "node scripts/validarUsuarioCentrosCusto.mjs",
+    "test:retorno-popup-ui": "node scripts/validarRetornoNotificacaoPopup.mjs",
     "test:fila-instrumentos-ui": "node scripts/validarFilaInstrumentosUI.mjs",
     "test:fila-autorizacao-convergencia-ui": "node scripts/validarFilaAutorizacaoConvergencia.mjs",
     "test:relatorio-titulos-selecao": "node scripts/validarRelatorioTitulosSelecao.mjs",

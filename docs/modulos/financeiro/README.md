@@ -264,7 +264,8 @@ atualizacao em massa. A passkey continua exigindo um challenge valido de cinco
 minutos, de uso unico; saldo, documentos, hash e elegibilidade sao revalidados.
 
 A tabela destaca o codigo SOL e mantem TIT como referencia secundaria (ou
-principal para titulo avulso). MOTIVO fica apos STATUS. Titulos de Solicitacao
+principal para titulo avulso). JUSTIFICATIVA fica apos STATUS e antes de
+MOTIVO. Titulos de Solicitacao
 de Compra e Compra Direta mostram somente o tipo no resumo, nao seus itens;
 snapshots, documentos e descricoes originais nao sao alterados. A lista mostra
 data de criacao em vez de expiracao. Mobile preserva as colunas por rolagem.
@@ -274,6 +275,25 @@ associacao do titulo e opcional e preserva o filtro de exclusao logica: quando
 o titulo deixa de existir na consulta, o item e seu snapshot continuam no
 historico. Isso evita uma juncao invalida na subquery paginada do Sequelize.
 Lista e detalhe mantem as permissoes e regras de decisao existentes.
+
+A justificativa e o texto atual da solicitacao de origem, consultado somente
+para leitura pelo proprio endpoint de lotes, inclusive nos lotes antigos.
+Nao usa a descricao do titulo nem revela itens de compra como alternativa.
+Sem justificativa/origem disponivel, mostra `-`. Nao altera snapshots,
+hashes, documentos, assinaturas, revisoes, status ou elegibilidade.
+
+O trecho clicavel abre um modal com o texto integral e quebras de linha, sem
+interpretar HTML. Fechar, Escape, clique no fundo e voltar do navegador/PWA
+retornam a lista no mesmo lote e preservam a selecao. A entrada de historico
+e temporaria na mesma rota; link direto sem historico fecha por substituicao
+da query, sem sair da tela. O modal compartilhado nao muda o comportamento
+de clique fora para seus outros consumidores.
+
+Atualizar faz somente consultas e preserva lote/selecao ainda disponiveis.
+O controle de sequencia ignora respostas antigas; nao prepara, autoriza ou
+reenvia pagamentos. Revisao com `test:fila-autorizacao-convergencia-ui` e
+`test:autorizacao-pwa` no frontend, com APIs simuladas. A consulta SQL real
+simulada valida LEFT JOIN da solicitacao sem perder titulos avulsos/historico.
 
 Validacao isolada com gerador SQL MySQL e hidratacao reais do Sequelize:
 `npm run test:autorizacao-consulta-sql` no backend, tambem incluido em

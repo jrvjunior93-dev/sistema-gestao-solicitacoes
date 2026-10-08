@@ -18,6 +18,9 @@ for (const name of ['PagamentoAutorizacaoLote', 'PagamentoAutorizacaoItem', 'Pag
 models.User = sequelize.define('User', {
   id: { type: DataTypes.INTEGER, primaryKey: true }, nome: DataTypes.STRING
 }, { tableName: 'users' });
+models.Solicitacao = sequelize.define('Solicitacao', {
+  id: { type: DataTypes.INTEGER, primaryKey: true }, justificativa: DataTypes.TEXT
+}, { tableName: 'solicitacoes' });
 const { PagamentoAutorizacaoLote: Lote, PagamentoAutorizacaoItem: Item,
   PagamentoAutorizacaoDocumento: Documento, TituloFinanceiro: Titulo, User } = models;
 Lote.belongsTo(User, { foreignKey: 'criado_por', as: 'criadoPor' });
@@ -25,6 +28,7 @@ Lote.belongsTo(User, { foreignKey: 'decidido_por', as: 'decididoPor' });
 Lote.hasMany(Item, { foreignKey: 'lote_id', as: 'itens' });
 Item.hasMany(Documento, { foreignKey: 'item_id', as: 'documentos' });
 Item.belongsTo(Titulo, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
+Titulo.belongsTo(models.Solicitacao, { foreignKey: 'solicitacao_id', as: 'solicitacao' });
 models.PagamentoAutorizador = { findOne: async () => null };
 models.WebauthnCredential = { count: async () => 0 };
 const env = { paymentOwnerApprovalMode: 'PILOT' };
@@ -55,6 +59,11 @@ function assertQuery(sql, options) {
   const itemInclude = options.include.find(include => include.as === 'itens');
   const titleInclude = itemInclude.include.find(include => include.as === 'titulo');
   assert.equal(titleInclude.required, false, 'Historico deve sobreviver ao titulo ausente/excluido');
+  const solicitationInclude = titleInclude.include.find(include => include.as === 'solicitacao');
+  assert.equal(solicitationInclude.required, false, 'Titulo avulso preservado');
+  assert.deepEqual(Array.from(solicitationInclude.attributes), ['id', 'justificativa']);
+  assert.match(sql, /LEFT OUTER JOIN `solicitacoes` AS `itens->titulo->solicitacao`/);
+  assert.match(sql, /`itens->titulo->solicitacao`\.`justificativa` AS `itens\.titulo\.solicitacao\.justificativa`/);
   assert.match(sql, /LEFT OUTER JOIN `titulos_financeiros` AS `itens->titulo`/);
   assert.match(sql, /`itens->titulo`\.`deleted_at` IS NULL/);
   assert.match(sql, /`itens->titulo`\.`valor_baixado` AS `itens\.titulo\.valor_baixado`/);
@@ -83,7 +92,9 @@ function row(itemId, documentId, titlePresent = true) {
     'itens.documentos.id': documentId, 'itens.documentos.nome': documentId ? 'Documento QA' : null,
     'itens.titulo.id': titlePresent ? 90 + itemId : null,
     'itens.titulo.status': titlePresent ? 'ABERTO' : null,
-    'itens.titulo.valor_baixado': titlePresent ? '0.00' : null
+    'itens.titulo.valor_baixado': titlePresent ? '0.00' : null,
+    'itens.titulo.solicitacao.id': titlePresent ? 12 : null,
+    'itens.titulo.solicitacao.justificativa': titlePresent ? 'Material para concluir a obra.' : null
   };
 }
 (async () => {
@@ -93,6 +104,8 @@ function row(itemId, documentId, titlePresent = true) {
   assert.equal(lots[0].itens.length, 2, 'Documentos nao podem duplicar itens');
   assert.equal(lots[0].itens[0].documentos.length, 2);
   assert.equal(lots[0].itens[0].titulo.status, 'ABERTO');
+  assert.equal(lots[0].itens[0].titulo.solicitacao.justificativa, 'Material para concluir a obra.');
+  assert.deepEqual(lots[0].itens[0].snapshot_json, { codigo: 'TIT-QA-1' }, 'Contexto nao altera snapshot/hash');
   assert.equal(lots[0].itens[1].titulo, null);
   assert.equal(lots[0].itens[1].snapshot_json.codigo, 'TIT-QA-2', 'Snapshot historico preservado');
   await service.listBatches(req, { status: ' autorizado ' });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import { Avisos, Pagina, PageHeader, useAvisos } from '../components/padrao';
@@ -22,6 +23,7 @@ import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../util
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
 import { codigoLoteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import { isAutorizadorPwa } from '../utils/autorizacaoPagamentoPwa';
+import OverlayModal from '../components/ui/OverlayModal';
 import '../styles/financeiro-autorizacoes-pagamento.css';
 
 const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -34,6 +36,9 @@ function Status({ value }) {
 }
 
 export default function FinanceiroAutorizacoesPagamento() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, refreshSession } = useAuth();
   const caps = user?.autorizacao_pagamentos || {};
   const compactPwa = isAutorizadorPwa(user);
@@ -56,6 +61,33 @@ export default function FinanceiroAutorizacoesPagamento() {
   const selected = useMemo(() => lots.find((lot) => Number(lot.id) === Number(selectedId)) || lots[0] || null, [lots, selectedId]);
   const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE'), [selected]);
   const selectedTotal = useMemo(() => pendingItems.filter((item) => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.valor_snapshot || 0), 0), [pendingItems, selectedItems]);
+  const justificativaId = searchParams.get('justificativa');
+  const loteJustificativa = lots.find(lot => (lot.itens || []).some(item => String(item.id) === justificativaId));
+  const itemJustificativa = loteJustificativa?.itens.find(item => String(item.id) === justificativaId);
+  const textoJustificativa = itemJustificativa?.titulo?.solicitacao?.justificativa;
+
+  useEffect(() => {
+    if (loteJustificativa) setSelectedId(loteJustificativa.id);
+  }, [loteJustificativa?.id]);
+
+  function abrirJustificativa(itemId) {
+    const next = new URLSearchParams(searchParams);
+    next.set('justificativa', String(itemId));
+    // Uma entrada na mesma rota permite que voltar/gesto do aparelho feche
+    // apenas o modal, preservando lote, selecao e lista montados.
+    setSearchParams(next, { state: { ...location.state, modalJustificativa: true } });
+  }
+
+  function fecharJustificativa() {
+    if (location.state?.modalJustificativa && Number(window.history.state?.idx) > 0) {
+      navigate(-1);
+      return;
+    }
+    // Link direto/sem historico seguro: nao sair da pagina de autorizacoes.
+    const next = new URLSearchParams(searchParams);
+    next.delete('justificativa');
+    setSearchParams(next, { replace: true, state: { ...location.state, modalJustificativa: false } });
+  }
 
   async function carregarLotes() {
     const requestId = ++listaRequestRef.current;
@@ -298,7 +330,7 @@ export default function FinanceiroAutorizacoesPagamento() {
             </header>
             <div className="pa-table-wrap">
               <table className="pa-table">
-                <thead><tr><th aria-label="Selecionar" /><th>Solicitação</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num pa-value-column">Valor</th><th>Documentos</th><th>Status</th><th>Motivo</th></tr></thead>
+                <thead><tr><th aria-label="Selecionar" /><th>Solicitação</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num pa-value-column">Valor</th><th>Documentos</th><th>Status</th><th>Justificativa</th><th>Motivo</th></tr></thead>
                 <tbody>{(selected.itens || []).map((item) => {
                   const snapshot = item.snapshot_json || {};
                   return <tr key={item.id}>
@@ -314,6 +346,11 @@ export default function FinanceiroAutorizacoesPagamento() {
                         Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
                           disabled={busy} onClick={() => setRevokeItems([Number(item.id)])}>Revogar autorização</button>}
                     </td>
+                    <td className="pa-justification-column">{String(item.titulo?.solicitacao?.justificativa || '').trim() ?
+                      <button type="button" className="pa-justification-preview" onClick={() => abrirJustificativa(item.id)}
+                        aria-label={`Ler justificativa de ${snapshot.solicitacao?.codigo || snapshot.codigo || `título ${snapshot.titulo_id}`}`}>
+                        {item.titulo.solicitacao.justificativa}
+                      </button> : '-'}</td>
                     <td className="pa-reason-column">{item.motivo_decisao || '-'}</td>
                   </tr>;
                 })}</tbody>
@@ -335,6 +372,15 @@ export default function FinanceiroAutorizacoesPagamento() {
           </>}
         </section>
       </div>
+
+      {String(textoJustificativa || '').trim() && <OverlayModal rotulo="Justificativa da solicitação"
+        largura="680px" onFechar={fecharJustificativa} fecharAoClicarFora>
+        <header data-modal="cabecalho" className="pa-justification-head">
+          <strong>Justificativa da solicitação</strong>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={fecharJustificativa}>Fechar</button>
+        </header>
+        <p className="pa-justification-text">{textoJustificativa}</p>
+      </OverlayModal>}
 
       {caps.can_decide && (compactPwa || passkeys.length > 0) && <details id="pa-dispositivos" className="pa-device-disclosure" open={compactPwa ? undefined : true}>
         <summary>Dispositivos autorizados ({passkeys.length})</summary>

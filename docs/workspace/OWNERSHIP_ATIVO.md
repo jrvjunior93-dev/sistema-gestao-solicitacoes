@@ -1,5 +1,40 @@
 # Ownership Ativo
 
+## Publicacao dev de usuarios, justificativa e retorno 08/10/2026
+
+- Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.
+- Usuario autorizou commit na refactor/frontend e comandos EC2 dev;
+  publicacao no remoto disponibiliza o commit. Sem main ou deploy executado.
+- Reserva temporaria: este registro, handoff e index dos arquivos da tarefa.
+  Preservar outputs/ sem versionar e nao alterar registros de outras sessoes.
+- Estado: revisao, diff e validacoes backend/docs/UI aprovados novamente;
+  reserva liberada para commit/publicacao autorizados. Sem banco real,
+  migration, alteracao de ambiente ou reinicio.
+
+## Vinculos de usuarios com centros de custo 08/10/2026
+
+- Sessao: codex-usuario-centros-custo-2026-10-08; finalizado; ownership liberado; sem delegacao.
+- Reserva: UsuarioNovo.jsx, Usuarios.jsx, teste UI isolado de vinculos,
+  frontend/package.json, README de Configuracoes e handoff desta tarefa.
+- Escopo: usar GET /obras?escopo=TODOS no cadastro/edicao de usuarios;
+  identificar obras e centros de custo sem alterar a rota padrao, permissoes
+  ou o contrato de gravacao em usuarios_obras. Preservar vinculos existentes.
+- Sem banco real, migration, commit/push, main ou deploy. Preservar outputs/.
+- Adicao do usuario: reservar pagamentoAutorizacaoService.js, consulta SQL,
+  FinanceiroAutorizacoesPagamento.jsx, estilos/testes PWA/convergencia,
+  OverlayModal.jsx e documentacao Financeiro. Justificativa somente leitura;
+  nao alterar snapshots/hashes, autorizacoes, status ou fluxo da fila.
+- Adicao de retorno: reservar RetornoSolicitacaoBar.jsx, NotificacoesBell.jsx,
+  services/notificacoes.js, NotificacaoController.js, solicitacaoRetornoService.js,
+  testes de devolucao/pop-up e README Solicitacoes. Preservar regra transacional
+  existente, destino original, permissoes e bloqueios financeiros.
+- Componente reservado: RetornoNotificacaoPopup.jsx e seu teste UI isolado;
+  reutilizar Alert/portal sem modificar o canal global de sucesso/erro.
+- Testes backend offline, SQL/hidratacao reais simulados, UI/QA mobile,
+  PWA Android/iOS simulado, navegacao, build e docs aprovados. Alteracoes
+  permanecem locais, sem commit/push ou deploy.
+- Handoff: docs/handoffs/2026-10-08-usuarios-justificativa-retorno.md.
+
 ## Fila baixada sem comprovante e publicacao dev 08/10/2026
 
 - Sessao: codex-fila-comprovante-pendente-2026-10-08; finalizado; ownership liberado; sem delegacao.

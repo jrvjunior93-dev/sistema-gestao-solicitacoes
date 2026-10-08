@@ -48,7 +48,7 @@ const plugin = {
   configureServer(server) {
     server.middlewares.use('/qa-autorizacao', async (_, res) => {
       res.setHeader('Content-Type', 'text/html');
-      res.end(await server.transformIndexHtml('/qa-autorizacao', `<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><div id="root" class="layout-shell"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import Page from '/src/pages/FinanceiroAutorizacoesPagamento.jsx';createRoot(document.getElementById('root')).render(React.createElement(Page));</script></body></html>`));
+      res.end(await server.transformIndexHtml('/qa-autorizacao', `<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><div id="root" class="layout-shell"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import Page from '/src/pages/FinanceiroAutorizacoesPagamento.jsx';createRoot(document.getElementById('root')).render(React.createElement(BrowserRouter,null,React.createElement(Page)));</script></body></html>`));
     });
   }
 };
@@ -64,6 +64,8 @@ try {
     { id: 1, status: 'PENDENTE', valor_snapshot: 100, snapshot_json: { codigo: 'TIT-1', solicitacao: { codigo: 'SOL-1993', descricao: 'Solicitação de Compra\nItens: Cimento [manual]' }, descricao: 'Forma 1 - SOL-1993 - SOLICITAÇÃO DE COMPRA: Itens: Tijolo [manual]' } },
     { id: 2, status: 'PENDENTE', valor_snapshot: 50, snapshot_json: { codigo: 'TIT-2', solicitacao: { codigo: 'SOL-1994', descricao: 'Compra Direta\nItens: Areia [manual]' }, descricao: 'Forma 1 - SOL-1994 - COMPRA DIRETA: Itens: Areia [manual]' } }
   ] }];
+  const justification = 'Compra necessária para continuidade da obra.\n' + 'Texto detalhado e seguro <script> sem executar HTML. '.repeat(100);
+  rows[0].itens[0].titulo = { status: 'ABERTO', valor_baixado: 0, solicitacao: { justificativa: justification } };
   let holdNext = false, releaseHeld, heldStarted; const decisions = [];
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
@@ -94,7 +96,8 @@ try {
   assert.equal(await page.getByText(/Expira em/).count(), 0);
   const headers = await page.locator('.pa-table th').allTextContents();
   assert.equal(headers[1], 'Solicitação');
-  assert.equal(headers[headers.indexOf('Status') + 1], 'Motivo');
+  assert.equal(headers[headers.indexOf('Status') + 1], 'Justificativa');
+  assert.equal(headers[headers.indexOf('Status') + 2], 'Motivo');
   assert.equal(await page.locator('.pa-table tbody tr').nth(0).locator('td').nth(1).locator('strong').first().textContent(), 'SOL-1993');
   assert.equal(await page.getByText('Título TIT-1', { exact: true }).count(), 1);
   assert.equal(await page.getByText('Solicitação de Compra', { exact: true }).count(), 1);
@@ -103,6 +106,29 @@ try {
   assert.equal(await page.getByRole('button', { name: /^Autorizar/ }).isEnabled(), true, 'Lote com prazo antigo continua aguardando decisao');
   assert.equal(await checks.nth(0).isChecked(), true);
   await checks.nth(1).uncheck();
+  const preview=page.getByRole('button',{name:'Ler justificativa de SOL-1993',exact:true});
+  const modal=page.getByRole('dialog',{name:'Justificativa da solicitação',exact:true});
+  assert.equal(await page.locator('.pa-justification-column').nth(1).textContent(),'-');
+  const baseUrl=page.url();
+  await preview.click();await modal.waitFor();
+  assert.equal(await modal.locator('.pa-justification-text').textContent(),justification,'Texto integral, inclusive quebras e caracteres HTML como texto');
+  assert.equal(await modal.locator('script').count(),0);
+  await modal.locator('.pa-justification-text').click();assert(await modal.isVisible(),'Clique dentro nao fecha');
+  await page.keyboard.press('Escape');await modal.waitFor({state:'hidden'});assert.equal(page.url(),baseUrl);
+  assert.equal(await checks.nth(1).isChecked(),false,'Modal nao altera a selecao para decisao');
+  for(const width of[390,1440]){
+    await page.setViewportSize({width,height:844});
+    await preview.click();await modal.waitFor();
+    assert(await modal.getByRole('button',{name:'Fechar',exact:true}).isVisible());
+    assert(await modal.evaluate(el=>el.getBoundingClientRect().width<=innerWidth));
+    // Back real do navegador usa a mesma pilha do gesto/acao voltar do PWA.
+    await page.goBack();await modal.waitFor({state:'hidden'});assert.equal(page.url(),baseUrl);
+    await preview.click();await modal.waitFor();
+    await modal.click({position:{x:2,y:2}});await modal.waitFor({state:'hidden'});assert.equal(page.url(),baseUrl);
+    await preview.click();await modal.waitFor();
+    await modal.getByRole('button',{name:'Fechar',exact:true}).click();await modal.waitFor({state:'hidden'});
+  }
+  assert.equal(decisions.length,0,'Ler/fechar nao envia qualquer decisao');
   rows[0].itens[0].status = 'ENFILEIRADO'; rows[0].itens[0].fila_item_id = 11;
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
   await page.getByText('Fila #11', { exact: true }).waitFor();
@@ -182,6 +208,30 @@ try {
   await checks.first().waitFor();
   assert.equal(decisions.length, 1); assert.equal(decisions[0].decisoes[0].decisao, 'REVOGAR');
   assert.equal(decisions[0].decisoes[0].motivo, 'Revisar documento'); assert.equal(decisions[0].credential.id, 'qa-key');
+  // Outro lote permanece selecionado apos abrir e voltar; Atualizar preserva
+  // contexto e consulta a justificativa sem buscar detalhes da solicitacao.
+  rows.push({id:7,codigo:'LOTE-7',status:'AGUARDANDO',itens:[{id:70,status:'PENDENTE',valor_snapshot:50,
+    snapshot_json:{codigo:'TIT-70',solicitacao:{codigo:'SOL-70'}},
+    titulo:{status:'ABERTO',valor_baixado:0,solicitacao:{justificativa:justification}}}]});
+  await page.getByRole('button',{name:'Atualizar',exact:true}).click();
+  await page.getByRole('button',{name:/LOTE-7/}).click();
+  await page.getByRole('button',{name:'Ler justificativa de SOL-70',exact:true}).click();await modal.waitFor();
+  await page.goBack();await modal.waitFor({state:'hidden'});
+  assert.equal(await page.locator('.pa-lot.is-active strong').textContent(),'LOTE-7');
+  await page.getByRole('checkbox').uncheck();
+  await page.getByRole('button',{name:'Atualizar',exact:true}).click();await page.getByRole('button',{name:'Ler justificativa de SOL-70',exact:true}).waitFor();
+  assert.equal(await page.locator('.pa-lot.is-active strong').textContent(),'LOTE-7');
+  assert.equal(await page.getByRole('checkbox').isChecked(),false,'Atualizar nao resseleciona item dispensado');
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'Ler justificativa de SOL-70',exact:true}).click();await modal.waitFor();
+  await page.screenshot({path:path.join(output,'justificativa-mobile.png'),fullPage:true});
+  await page.evaluate(()=>document.documentElement.classList.add('dark'));
+  await page.screenshot({path:path.join(output,'justificativa-mobile-dark.png'),fullPage:true});
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();await modal.waitFor({state:'hidden'});
+  // Link direto sem entrada propria: Fechar remove somente a query, nao sai.
+  await page.goto('http://127.0.0.1:5307/qa-autorizacao?justificativa=70');await modal.waitFor();
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();await modal.waitFor({state:'hidden'});
+  assert.equal(new URL(page.url()).pathname,'/qa-autorizacao');assert.equal(new URL(page.url()).search,'');
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('OK: lotes sem expiracao visual, SOL principal, compras sem itens, MOTIVO apos STATUS, mobile e titulo avulso; atualizacao/convergencia/revogacao preservadas. APIs simuladas.');
+  console.log('OK: justificativa entre STATUS/MOTIVO, leitura integral segura, modal/fora/Escape/voltar/link direto, selecao/lote preservados; Atualizar e concorrencia, convergencia/revogacao. APIs simuladas.');
 } finally { await browser?.close(); await server.close(); }

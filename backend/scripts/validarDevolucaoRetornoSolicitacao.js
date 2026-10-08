@@ -187,5 +187,46 @@ const usuarioObra = { user: { id: 11, setor: 'OBRA' } };
   reiniciar();
   ultimaTroca = { id: 22, metadata: '{}' };
   assert.equal((await service.montarContextoInteracao(usuarioObra, solicitacao)).retorno_aprovado, null);
-  console.log('OK: ciclo pedido/aprovacao/ajustes/devolucao, faixa persistente, autor, superadmin, status preservado, pendencias e repeticao protegidas (sem banco).');
+  // Avisos devem respeitar permissao e contexto ATUAIS, nao apenas o registro
+  // historico da notificacao ou quem podia decidir na data da criacao.
+  reiniciar();solicitacao.area_responsavel='FINANCEIRO';
+  Object.assign(pedido,{status:'PENDENTE',setor_atual_pedido:'FINANCEIRO'});
+  const anteriorFindAll=models.SolicitacaoPedidoRetorno.findAll;
+  models.SolicitacaoPedidoRetorno.findAll=async()=>[pedido];
+  const alerta={destinatario_id:1,tipo:'RETORNO_SOLICITADO',solicitacao_id:42,lida_em:null,metadata:{pedido_retorno_id:17}};
+  const aprovador={user:{id:99,setor:'FINANCEIRO'}};
+  const filtrar=async(actor=aprovador,item=alerta)=>service.filtrarNotificacoesRetornoParaDecisao(actor,[item]);
+  assert.equal((await filtrar()).length,1);
+  assert.equal((await filtrar({user:{id:99,setor:'FINANCEIRO',semPermissao:true}})).length,0);
+  assert.equal((await filtrar(usuarioObra)).length,0);
+  assert.equal((await filtrar(aprovador,{...alerta,lida_em:'2026-10-08'})).length,0);
+  assert.equal((await filtrar(aprovador,{...alerta,solicitacao_id:99})).length,0);
+  pedido.status='APROVADO';assert.equal((await filtrar()).length,0);
+  pedido.status='PENDENTE';solicitacao.area_responsavel='GEO';assert.equal((await filtrar()).length,0);
+  solicitacao.area_responsavel='FINANCEIRO';solicitacao.cancelada=true;assert.equal((await filtrar()).length,0);
+  solicitacao.cancelada=false;solicitacao.status_global='CANCELADA';assert.equal((await filtrar()).length,0);
+  solicitacao.status_global='PENDENTE';
+  const consultas=[];
+  const destinatario={id:1,lida_em:null,notificacao:{tipo:'RETORNO_SOLICITADO',solicitacao_id:42,
+    mensagem:'Retorno pendente',metadata:JSON.stringify({pedido_retorno_id:17})}};
+  const notifModels={Notificacao:{},NotificacaoDestinatario:{
+    count:async options=>{consultas.push(options);return 1},
+    findAll:async options=>{consultas.push(options);return [destinatario]}
+  }};
+  const notifSandbox={module:{exports:{}},console,Number,String,Set,JSON,
+    require:dependency=>dependency==='sequelize'?{Op}:dependency==='../models'?notifModels:
+      dependency==='../services/solicitacaoRetornoService'?service:(()=>{throw new Error(dependency)})()};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/controllers/NotificacaoController.js'),'utf8'),notifSandbox);
+  let resposta;
+  const res={json:value=>{resposta=value},status:()=>{throw new Error('Resposta inesperada')}};
+  await notifSandbox.module.exports.index({...aprovador,query:{retornos_para_decisao:'1'}},res);
+  assert.equal(resposta.itens.length,1);
+  assert(consultas.every(options=>options.where.usuario_id===99),'Consulta sempre limitada ao destinatario autenticado');
+  assert(consultas.every(options=>options.include[0].where.tipo[Op.in][0]==='RETORNO_SOLICITADO'));
+  assert.equal(consultas.at(-1).where.lida_em,null);
+  pedido.status='APROVADO';
+  await notifSandbox.module.exports.index({...aprovador,query:{retornos_para_decisao:'1'}},res);assert.equal(resposta.itens.length,0);
+  await notifSandbox.module.exports.index({...aprovador,query:{}},res);assert.equal(resposta.itens.length,1,'Historico normal do sino preservado');
+  models.SolicitacaoPedidoRetorno.findAll=anteriorFindAll;
+  console.log('OK: ciclo pedido/aprovacao/ajustes/devolucao, destino/status, concorrencia e avisos com permissao, setor e pendencia atuais; sem banco.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
