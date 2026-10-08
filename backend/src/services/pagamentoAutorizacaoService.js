@@ -212,13 +212,17 @@ async function createBatch(req, payload = {}) {
     // Nao representa mais um prazo operacional de decisao do lote.
     const expiresAt = new Date(now.getTime() + env.paymentOwnerApprovalTtlHours * 60 * 60 * 1000);
     const lot = await PagamentoAutorizacaoLote.create({
-      codigo: `AUT-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+      codigo: `TMP-${crypto.randomUUID()}`,
       status: 'AGUARDANDO', modo: env.paymentOwnerApprovalMode,
       valor_total: snapshots.reduce((sum, item) => sum + item.valor_saldo, 0),
       quantidade_itens: snapshots.length, dossie_hash: dossierHash,
       idempotency_key: idempotencyKey, criado_por: req.user.id, expira_em: expiresAt,
       observacao: payload.observacao || null
     }, { transaction });
+    // O ID auto-incrementado ja e exclusivo, inclusive em criacoes concorrentes.
+    // O codigo temporario acima atende NOT NULL/UNIQUE ate obtermos esse ID.
+    // Atualizar na mesma transacao antes de copiar documentos preserva rollback.
+    await lot.update({ codigo: `LOTE-${lot.id}` }, { transaction });
     for (const dossierItem of dossierMaterial) {
       const { snapshot, sourceDocuments } = dossierItem;
       const item = await PagamentoAutorizacaoItem.create({ lote_id: lot.id, titulo_financeiro_id: snapshot.titulo_id, status: 'PENDENTE', valor_snapshot: snapshot.valor_saldo, vencimento_snapshot: snapshot.data_vencimento, snapshot_json: snapshot, snapshot_hash: sha256(snapshot) }, { transaction });

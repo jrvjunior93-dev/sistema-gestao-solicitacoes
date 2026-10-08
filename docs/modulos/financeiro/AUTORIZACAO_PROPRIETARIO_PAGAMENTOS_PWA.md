@@ -45,6 +45,30 @@ delegação temporária, WhatsApp notificativo, teste E2E real
 em iOS/Android e uma suíte de integração com banco/S3/Redis. Essas ausências impedem
 `ENFORCED`, mas não alteram o fluxo legado porque o padrão permanece `OFF`.
 
+## 1.2 Lotes e interface compacta no PWA
+
+Lotes novos usam `LOTE-<id>` com o ID auto-incrementado do banco. O código é
+definido dentro da transação, antes das cópias de documentos, sem contador
+separado. A sequência pode ter lacunas após rollback. Datas, autoria e
+auditoria permanecem registradas. Lotes antigos usam o mesmo rótulo na tela,
+mas seu código original, paths e hashes não são alterados; o código registrado
+fica disponível em Registro do lote. Não há migration ou backfill.
+
+O PWA instalado abre as autorizações após o login ou na rota inicial quando
+a sessão traz o módulo habilitado e `can_decide`, que exige cadastro nominal
+e permissão granular. Perfil administrativo não substitui essas condições.
+MFA pendente conserva o redirecionamento prioritário para o perfil. Navegador
+comum e preparadores mantêm a preferência individual de início.
+
+Somente a rota de autorizações desse usuário no PWA recolhe o cabeçalho
+global e as abas. A barra compacta mantém Conta para tema, perfil, saída,
+busca, módulos e notificações gerais. Opções contém avisos e passkey; o
+primeiro cadastro de passkey permanece exposto. Dispositivos ficam recolhidos
+e continuam permitindo revogação. As proteções operacionais do shell e a
+auditoria não são removidas. O teste isolado `test:autorizacao-pwa` exercita
+o shell e a página reais com sessão, APIs, guardas e biometria simulados;
+a homologação em aparelhos reais continua necessária antes da produção.
+
 ## 2. Princípios obrigatórios
 
 1. O backend é a autoridade. Ocultar botão no frontend nunca substitui autorização.

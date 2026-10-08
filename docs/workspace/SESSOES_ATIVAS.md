@@ -1,5 +1,16 @@
 # Sessoes Ativas
 
+Sessao codex-fila-comprovante-pendente-2026-10-08 finalizada no checkout
+C:/Fluxy-refactor-frontend. Ownership liberado; validacoes backend/UI,
+PWA, navegacao, build e docs aprovadas. Commit/push autorizado nesta branch,
+incluindo LOTE-ID/PWA; sem main, banco real ou deploy executado.
+Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+Sessao codex-autorizacao-pwa-2026-10-08: finalizado no checkout C:/Fluxy-refactor-frontend.
+LOTE-ID transacional e alias legado; PWA do autorizador com inicio direto e shell compacto.
+Validacoes isoladas, QA mobile, build e docs aprovados; ownership liberado.
+Sem migration, banco real ou publicacao. Handoff: docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+
 Sessao codex-autorizacao-resumo-2026-10-08: finalizado no checkout C:/Fluxy-refactor-frontend. Lotes sem expiracao operacional, codigo SOL e coluna MOTIVO, compras sem itens no resumo. Validacoes isoladas aprovadas e ownership liberado. Sem banco real, migration ou publicacao; continuidade no handoff deste ajuste.
 
 

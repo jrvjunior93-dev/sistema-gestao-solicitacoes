@@ -20,7 +20,8 @@ import {
 } from '../services/pagamentoAutorizacao';
 import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../utils/webauthn';
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
-import { resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
+import { codigoLoteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
+import { isAutorizadorPwa } from '../utils/autorizacaoPagamentoPwa';
 import '../styles/financeiro-autorizacoes-pagamento.css';
 
 const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -35,6 +36,7 @@ function Status({ value }) {
 export default function FinanceiroAutorizacoesPagamento() {
   const { user, refreshSession } = useAuth();
   const caps = user?.autorizacao_pagamentos || {};
+  const compactPwa = isAutorizadorPwa(user);
   const { avisos, avisar, fechar } = useAvisos();
   const [lots, setLots] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -244,17 +246,30 @@ export default function FinanceiroAutorizacoesPagamento() {
 
   return (
     <Pagina>
-      <PageHeader title="Autorizações de pagamento" subtitle="Decisão do proprietário antes de os títulos entrarem na fila operacional." />
+      {!compactPwa && <PageHeader title="Autorizações de pagamento" subtitle="Decisão do proprietário antes de os títulos entrarem na fila operacional." />}
       <Avisos avisos={avisos} onFechar={fechar} />
 
-      <div className="pa-toolbar">
+      {compactPwa ? <div className="pa-pwa-toolbar">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={busy}>Atualizar</button>
+        {!caps.passkey_count && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> Cadastrar passkey</button>}
+        <details className="pa-pwa-options">
+          <summary>Opções</summary>
+          <div className="pa-pwa-options__content">
+            <span>Modo {caps.mode}</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>
+            {Boolean(caps.passkey_count) && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> Adicionar passkey</button>}
+            <a href="#pa-dispositivos">Dispositivos autorizados</a>
+          </div>
+        </details>
+      </div> : <div className="pa-toolbar">
         <div><strong>Modo {caps.mode}</strong><span>{caps.paused ? 'Novas decisões pausadas' : 'Dossiês sem acesso de edição à solicitação'}</span></div>
         <div className="pa-toolbar__actions">
           <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={busy}>Atualizar</button>
           {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()} title={!caps.push_available ? 'O envio de avisos ainda não foi configurado neste ambiente.' : (!suportaWebPush() ? 'Este navegador não oferece notificações push.' : undefined)}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>}
           {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> {caps.passkey_count ? 'Adicionar passkey' : 'Cadastrar passkey'}</button>}
         </div>
-      </div>
+      </div>}
+      {compactPwa && caps.paused && <p role="status">Novas decisões pausadas.</p>}
 
       <div className="pa-layout">
         <aside className="pa-list" aria-label="Lotes de autorização">
@@ -262,7 +277,7 @@ export default function FinanceiroAutorizacoesPagamento() {
           {lots.length === 0 && <p className="pa-empty">Nenhum lote disponível.</p>}
           {lots.map((lot) => (
             <button key={lot.id} type="button" className={`pa-lot ${Number(selected?.id) === Number(lot.id) ? 'is-active' : ''}`} onClick={() => setSelectedId(lot.id)}>
-              <span><strong>{lot.codigo}</strong><Status value={lot.status} /></span>
+              <span><strong title={lot.codigo}>{codigoLoteAutorizacao(lot)}</strong><Status value={lot.status} /></span>
               <span>{money(lot.valor_total)} · {lot.quantidade_itens} título(s)</span>
               <small>Criado em {date(lot.createdAt)}</small>
             </button>
@@ -272,7 +287,9 @@ export default function FinanceiroAutorizacoesPagamento() {
         <section className="pa-detail">
           {!selected ? <p className="pa-empty">Selecione um lote.</p> : <>
             <header className="pa-detail__head">
-              <div><strong>{selected.codigo}</strong><span>Criado por {selected.criadoPor?.nome || '-'} · hash {String(selected.dossie_hash).slice(0, 12)}…</span></div>
+              <div><strong title={selected.codigo}>{codigoLoteAutorizacao(selected)}</strong><span>Criado por {selected.criadoPor?.nome || '-'} · hash {String(selected.dossie_hash).slice(0, 12)}…</span>
+                <details className="pa-lot-record"><summary>Registro do lote</summary><small>Criado em {date(selected.createdAt)} · Código registrado: {selected.codigo}</small></details>
+              </div>
               <div><Status value={selected.status} />
                 {caps.can_decide && (selected.itens || []).some(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)) &&
                   <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
@@ -319,10 +336,14 @@ export default function FinanceiroAutorizacoesPagamento() {
         </section>
       </div>
 
-      {caps.can_decide && passkeys.length > 0 && <section className="pa-devices">
+      {caps.can_decide && (compactPwa || passkeys.length > 0) && <details id="pa-dispositivos" className="pa-device-disclosure" open={compactPwa ? undefined : true}>
+        <summary>Dispositivos autorizados ({passkeys.length})</summary>
+        {passkeys.length === 0 && <p>Nenhuma passkey cadastrada.</p>}
+        {passkeys.length > 0 && <section className="pa-devices">
         <div><strong>Dispositivos autorizados</strong><span>Revogue imediatamente um aparelho perdido ou que não esteja mais sob seu controle.</span></div>
         <div>{passkeys.map((passkey) => <span key={passkey.id}><span>{passkey.nome_dispositivo || 'Dispositivo'} · {date(passkey.ultimo_uso_em || passkey.createdAt)}</span><button type="button" onClick={() => revokePasskey(passkey.id)} disabled={busy}>Revogar</button></span>)}</div>
       </section>}
+      </details>}
 
       {caps.can_configure && <section className="pa-config">
         <div><strong>Autorizadores nominais</strong><span>Não há bypass de perfil: o usuário também precisa da permissão granular “Autorizar pagamentos”.</span></div>

@@ -6,7 +6,13 @@ import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { createServer } from 'vite';
 import { mensagemEnvioFila } from '../src/utils/filaPagamentoMensagem.js';
-import { resumoSolicitacaoAutorizacao } from '../src/utils/autorizacaoPagamentoResumo.js';
+import { codigoLoteAutorizacao, resumoSolicitacaoAutorizacao } from '../src/utils/autorizacaoPagamentoResumo.js';
+
+const legacyLot = Object.freeze({ id: 42, codigo: 'AUT-20261008-ABCDEF' });
+assert.equal(codigoLoteAutorizacao(legacyLot), 'LOTE-42');
+assert.equal(legacyLot.codigo, 'AUT-20261008-ABCDEF');
+assert.equal(codigoLoteAutorizacao({ id: 3, codigo: 'LOTE-3' }), 'LOTE-3');
+assert.equal(codigoLoteAutorizacao({ codigo: 'LEGADO' }), 'LEGADO');
 
 assert.equal(resumoSolicitacaoAutorizacao({ solicitacao: { descricao: 'Solicitação de Compra\nItens: Cimento' }, descricao: 'Forma 1 - SOL-1993 - SOLICITAÇÃO DE COMPRA: Itens: Tijolo' }), 'Solicitação de Compra');
 assert.equal(resumoSolicitacaoAutorizacao({ solicitacao: { descricao: 'Compra Direta\nItens: Areia\nObservações: teste' }, descricao: 'Titulo personalizado' }), 'Compra Direta');

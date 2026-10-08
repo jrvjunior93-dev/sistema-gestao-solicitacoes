@@ -1,5 +1,40 @@
 # Ownership Ativo
 
+## Fila baixada sem comprovante e publicacao dev 08/10/2026
+
+- Sessao: codex-fila-comprovante-pendente-2026-10-08; finalizado; ownership liberado; sem delegacao.
+- Reserva: pagamentoManualFilaService.js, pagamentoComprovantePdfService.js,
+  paymentValidators.js, novo dominio de comprovantes da fila, testes offline
+  de fila/recibos, FinanceiroFilaPagamentos.jsx, testes UI e package.json;
+  docs Financeiro, handoffs e coordenacao da publicacao.
+- Adicao do usuario antes da publicacao: reservar InstrumentoPagamentoFila.jsx
+  e a pagina/teste UI para modal de cheque proprio, limpeza da conta ao trocar
+  forma e icones das acoes sob o titulo. Preservar dados/payload/permissoes.
+- Pedido: card Pendentes de comprovante apos Pendentes, baixa sem PDF,
+  anexo posterior sem nova baixa; commit/push das pendencias na refactor/frontend
+  e comandos dev. Inclui pendencias locais de LOTE-ID/PWA da mesma conversa.
+- Preservar permissoes, atomicidade, instrumentos/faturas/cheques, regras de
+  divergencia e outputs/ fora do Git. Sem banco real, main ou execucao de deploy.
+- Testes offline backend, UI/QA, PWA, tela inicial, convergencia, navegacao,
+  build e docs aprovados. Publicacao autorizada apenas em refactor/frontend.
+- Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+## Lotes sequenciais e PWA compacto do autorizador 08/10/2026
+
+- Sessao: codex-autorizacao-pwa-2026-10-08; estado: finalizado; ownership liberado; sem delegacao.
+- Reserva: pagamentoAutorizacaoService.js, validarAnaliseProprietario.js,
+  autorizacaoPagamentoResumo.js, novo helper autorizacaoPagamentoPwa.js,
+  telaInicialRoute.js, Layout.jsx, FinanceiroAutorizacoesPagamento.jsx,
+  financeiro-autorizacoes-pagamento.css, testes isolados de tela inicial/PWA,
+  validarFilaAutorizacaoConvergencia.mjs, documentacao Financeiro e handoff.
+- Escopo: codigo LOTE-ID sem renumerar banco legado; inicio e shell compacto
+  apenas no PWA instalado do autorizador nominal habilitado. Preservar guardas,
+  MFA, permissoes, decisoes, auditoria e acesso a opcoes. Sem migration,
+  banco real, commit, push ou deploy. Preservar outputs/ sem versionar.
+- Validacoes: fila backend, UI/convergencia, tela inicial, PWA Android/iOS
+  simulado, QA visual claro/escuro, navegacao/abas, build e docs aprovados.
+  Continuidade em docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+
 ## Publicacao autorizada do resumo de autorizacoes - 08/10/2026
 
 - Responsavel: agente desta conversa, checkout C:/Fluxy-refactor-frontend.

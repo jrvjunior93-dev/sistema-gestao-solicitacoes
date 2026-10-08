@@ -34,6 +34,7 @@ const { env } = require('../config/env');
 const { userHasNominalAreaPermission } = require('./authorizationService');
 const { resolvePaymentQueueGate } = require('./paymentOwnerApprovalPolicy');
 const { tipoInstrumento, instrumentoPayload } = require('./pagamentoFilaInstrumentoDomain');
+const { pendenteComprovanteFila, wherePendenteComprovante, podeAnexarComprovanteFila } = require('./pagamentoFilaComprovanteDomain');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -132,7 +133,8 @@ function matchesSearch(item, rawTerm) {
 
 async function listarFilaPagamentos(req, filters = {}) {
   const status = String(filters.status || 'PENDENTE').trim().toUpperCase();
-  const where = status && status !== 'TODOS' ? { status } : {};
+  const where = status === 'PENDENTE_COMPROVANTE' ? wherePendenteComprovante()
+    : (status && status !== 'TODOS' ? { status } : {});
   const rows = await PagamentoManualFilaItem.findAll({
     where,
     include: filaInclude(),
@@ -141,7 +143,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   });
   const data = rows
     .filter((item) => matchesSearch(item, filters.q))
-    .map((item) => item.toJSON());
+    .map((item) => ({ ...item.toJSON(), pendente_comprovante: pendenteComprovanteFila(item) }));
   // Rejeicao e uma decisao, nao um pagamento executavel. Projecao somente leitura:
   // nenhum registro de fila e criado e o id negativo nunca passa no validator de baixa.
   const historicoAutorizacoes = await PagamentoAutorizacaoItem.findAll({
@@ -203,6 +205,8 @@ async function listarFilaPagamentos(req, filters = {}) {
     return acc;
   }, {});
   resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitados.length;
+  resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: wherePendenteComprovante(),
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [] }] });
   return { data, resumo };
 }
 
@@ -470,11 +474,8 @@ async function anexarComprovanteFila(req, filaId, file) {
   }
   const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
   const itemAtual = await PagamentoManualFilaItem.findByPk(id);
-  if (!itemAtual || !['PENDENTE', 'BAIXADO', 'DIVERGENTE', 'RESOLVIDO'].includes(itemAtual.status)) {
+  if (!podeAnexarComprovanteFila(itemAtual)) {
     throw createHttpError(409, 'O item nao permite anexar comprovantes.');
-  }
-  if (itemAtual.status !== 'PENDENTE' && !itemAtual.comprovante_hash) {
-    throw createHttpError(409, 'Nao e possivel anexar um primeiro comprovante apos encerrar o pagamento.');
   }
   if (itemAtual.comprovante_hash === hash) return itemAtual;
   const comprovanteExistente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash } });
@@ -485,11 +486,8 @@ async function anexarComprovanteFila(req, filaId, file) {
   const url = await uploadToS3(file, `financeiro/fila-pagamentos/${id}/comprovantes`);
   return sequelize.transaction(async (transaction) => {
     const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!item || !['PENDENTE', 'BAIXADO', 'DIVERGENTE', 'RESOLVIDO'].includes(item.status)) {
+    if (!podeAnexarComprovanteFila(item)) {
       throw createHttpError(409, 'O item nao permite anexar comprovantes.');
-    }
-    if (item.status !== 'PENDENTE' && !item.comprovante_hash) {
-      throw createHttpError(409, 'Nao e possivel anexar um primeiro comprovante apos encerrar o pagamento.');
     }
     if (item.comprovante_hash === hash) return item;
     const existente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash }, transaction });
@@ -582,9 +580,6 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   }
   if (String(filaItem.status || '').toUpperCase() !== 'PENDENTE') {
     throw createHttpError(409, `O item ${filaItem.id} nao esta mais pendente de pagamento.`);
-  }
-  if (!filaItem.comprovante_hash || !filaItem.comprovante_url) {
-    throw createHttpError(400, `Anexe o comprovante do item ${filaItem.id} antes de registrar a baixa.`);
   }
 
   const titulo = await TituloFinanceiro.findByPk(filaItem.titulo_financeiro_id, {
@@ -699,14 +694,19 @@ async function registrarBaixasFila(req, payload = {}) {
     metadata: {
       fila_ids: payload.itens.map((item) => item.fila_id),
       baixados: resultados.filter((item) => item.baixaRegistrada).length,
-      divergentes: resultados.filter((item) => item.divergente).length
+      divergentes: resultados.filter((item) => item.divergente).length,
+      pendentes_comprovante: resultados.filter((item) => pendenteComprovanteFila(item.filaItem)).map(item => item.filaItem.id)
     }
   });
 
   return {
     quantidade: resultados.length,
     baixados: resultados.filter((item) => item.baixaRegistrada).length,
-    divergentes: resultados.filter((item) => item.divergente).length
+    divergentes: resultados.filter((item) => item.divergente).length,
+    pendentes_comprovante: resultados.filter((item) => pendenteComprovanteFila(item.filaItem)).length,
+    itens_pendentes_comprovante: resultados.filter((item) => pendenteComprovanteFila(item.filaItem)).map(item => ({
+      fila_id: item.filaItem.id, titulo_financeiro_id: item.filaItem.titulo_financeiro_id, titulo_codigo: item.titulo?.codigo || null
+    }))
   };
 }
 

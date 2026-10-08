@@ -220,7 +220,7 @@ function validateManualPaymentQueueCreateBody(payload = {}) {
 function validateManualPaymentQueueQuery(payload = {}) {
   ensureAllowedKeys(payload, ['status', 'q'], 'Consulta da fila de pagamentos');
   return cleanUndefined({
-    status: parseEnum(payload.status, 'Status', ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'BAIXADO', 'RESOLVIDO', 'TODOS']),
+    status: parseEnum(payload.status, 'Status', ['PENDENTE', 'PENDENTE_COMPROVANTE', 'NAO_PAGO', 'DIVERGENTE', 'BAIXADO', 'RESOLVIDO', 'TODOS']),
     q: parseOptionalText(payload.q, 'Busca', 120)
   });
 }

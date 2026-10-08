@@ -1,4 +1,10 @@
 // Apresentacao do snapshot: nao modifica o dossie assinado nem sua descricao.
+// Alias de exibicao para legados: nao altera codigo persistido, anexos ou hash.
+export function codigoLoteAutorizacao(lot = {}) {
+  const id = Number(lot.id);
+  return Number.isSafeInteger(id) && id > 0 ? `LOTE-${id}` : String(lot.codigo || '-');
+}
+
 export function resumoSolicitacaoAutorizacao(snapshot = {}) {
   const descriptions = [snapshot.solicitacao?.descricao, snapshot.descricao];
   for (const description of descriptions) {

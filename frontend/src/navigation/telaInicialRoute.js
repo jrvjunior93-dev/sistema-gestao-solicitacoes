@@ -1,9 +1,11 @@
 import { getFixableItems } from './navigationConfig';
+import { AUTORIZACAO_PAGAMENTO_ROUTE, isAutorizadorPwa, isInstalledPwa } from '../utils/autorizacaoPagamentoPwa';
 
 // A preferência vem validada do backend. Conferimos também no catálogo
 // visível da sessão para não criar um ciclo entre a rota inicial e um guarda
 // de permissão quando o acesso mudar com a sessão ainda aberta.
-export function resolverRotaInicial(user) {
+export function resolverRotaInicial(user, { installedPwa = isInstalledPwa() } = {}) {
+  if (isAutorizadorPwa(user, installedPwa)) return AUTORIZACAO_PAGAMENTO_ROUTE;
   const preferencia = user?.tela_inicial;
   if (!preferencia?.id || !preferencia?.to) return '/';
 

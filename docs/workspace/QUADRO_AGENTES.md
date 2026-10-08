@@ -1,5 +1,22 @@
 # Quadro de Agentes
 
+## Fila e publicacao dev 08/10/2026
+
+- codex-fila-comprovante-pendente-2026-10-08: finalizado, sem delegacao;
+  ownership liberado. Baixa sem PDF, recorte de pendencias e upload tardio
+  validados sem banco real. PWA/LOTE-ID anteriores incluidos na publicacao
+  autorizada apenas da refactor/frontend; main e deploy fora do escopo.
+- Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+## Lotes e PWA do autorizador 08/10/2026
+
+- Sessao: codex-autorizacao-pwa-2026-10-08; status: finalizado; sem delegacao.
+- LOTE-ID dentro da transacao, legado preservado, inicio direto e shell compacto
+  somente no PWA instalado do autorizador nominal habilitado.
+- Validacoes: fila backend, UI/convergencia, tela inicial, PWA/QA mobile,
+  navegacao/abas, build e docs aprovados. Sem banco real ou publicacao.
+  Ownership liberado; handoff em docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+
 ## Autorizacao sem expiracao e resumo do proprietario - 08/10/2026
 
 - Sessao: codex-autorizacao-resumo-2026-10-08; status: finalizado.

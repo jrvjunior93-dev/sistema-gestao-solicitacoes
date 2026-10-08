@@ -98,7 +98,8 @@ const queueDependencies = { ...dependencies,
   './analiseProprietarioService': {}, './pagamentoAutorizacaoFilaService': {},
   './s3': {}, './fileAccessService': {}, '../config/env': { env: {} },
   './paymentOwnerApprovalPolicy': {},
-  './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain')
+  './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
+  './pagamentoFilaComprovanteDomain': require('../src/services/pagamentoFilaComprovanteDomain')
 };
 vm.runInNewContext(fs.readFileSync(queueFile, 'utf8'), { module: queueModule, console, Date, Intl,
   require(id) { if (!(id in queueDependencies)) throw new Error(`Dependencia de fila nao isolada: ${id}`); return queueDependencies[id]; }
@@ -199,8 +200,11 @@ async function main() {
   for (const [formaId, cartaoId] of [[1, 10], [2, 20], [3, undefined]]) {
     reset();
     const titulo = await gerar([pagamento(formaId)]), fila = colocarNaFila(titulo);
+    fila.comprovante_hash = null; fila.comprovante_url = null;
     const payload = { idempotency_key: 'qa-fila-cartao', itens: [itemFila(fila, { forma_pagamento_id: formaId, cartao_id: cartaoId })] };
-    await registrarBaixasFila(req, payload);
+    const resultado = await registrarBaixasFila(req, payload);
+    assert.equal(resultado.pendentes_comprovante, 1, 'Credito/debito/PIX baixam sem comprovante');
+    assert.equal(resultado.itens_pendentes_comprovante[0].fila_id, fila.id);
     assert.equal(titulo.status, 'QUITADO'); assert.equal(fila.status, 'BAIXADO');
     assert.equal(state.movimentos.length, 1); assert.equal(state.faturas.length, formaId === 1 ? 1 : 0);
     if (formaId === 1) { assert.equal(state.faturas[0].novaCompraFila, true);
@@ -209,8 +213,20 @@ async function main() {
     assert.equal(state.movimentos.length, 1); assert.equal(state.faturas.length, formaId === 1 ? 1 : 0);
     await assert.rejects(registrarBaixasFila(req, { ...payload, idempotency_key: 'nova-chave' }), /nao esta mais pendente/);
   }
+  // Parcial sem PDF continua divergente, mas a baixa real tambem deve ser cobrada.
   reset();
-  let titulo = await gerar([pagamento(1)]), fila = colocarNaFila(titulo);
+  let titulo = await gerar([pagamento(3)]), fila = colocarNaFila(titulo);
+  fila.comprovante_hash = null; fila.comprovante_url = null;
+  const parcial = await registrarBaixasFila(req, { itens: [itemFila(fila, { forma_pagamento_id: 3, valor_pago: 100, motivo: 'Parcial QA' })] });
+  assert.equal(parcial.pendentes_comprovante, 1); assert.equal(fila.status, 'DIVERGENTE');
+  assert.equal(titulo.valor_saldo, 100); assert.equal(state.movimentos.length, 1);
+  reset(); titulo = await gerar([pagamento(3)]); fila = colocarNaFila(titulo);
+  fila.comprovante_hash = null; fila.comprovante_url = null;
+  const acima = await registrarBaixasFila(req, { itens: [itemFila(fila, { forma_pagamento_id: 3, valor_pago: 300, motivo: 'Acima QA' })] });
+  assert.equal(acima.pendentes_comprovante, 0); assert.equal(fila.status, 'DIVERGENTE');
+  assert.equal(titulo.valor_saldo, 200); assert.equal(state.movimentos.length, 0);
+  reset();
+  titulo = await gerar([pagamento(1)]); fila = colocarNaFila(titulo);
   await assert.rejects(registrarBaixasFila(req, { itens: [itemFila(fila, { forma_pagamento_id: 1 })] }), /cartao ativo/);
   await assert.rejects(registrarBaixasFila(req, { itens: [itemFila(fila, { forma_pagamento_id: 1, cartao_id: 20 })] }), /tipo do cartao/);
   await assert.rejects(registrarBaixasFila(req, { itens: [itemFila(fila, { forma_pagamento_id: 1, cartao_id: 10, valor_pago: 100, motivo: 'Parcial' })] }), /integralmente/);

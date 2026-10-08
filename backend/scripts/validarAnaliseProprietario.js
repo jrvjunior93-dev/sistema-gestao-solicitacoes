@@ -163,13 +163,19 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
   assert.equal(state.Solicitacao[0].status_global, 'CANCELADA');
 
   reset(); const lot = await digital.createBatch(req, { titulo_ids: [1, 2], idempotency_key: 'digital-1' });
+  assert.equal(lot.codigo, `LOTE-${lot.id}`, 'Codigo gerado pelo ID unico na transacao');
+  assert.equal(state.PagamentoAutorizacaoLote[0].codigo, 'LOTE-1');
   assert(lot.id); assert.equal(state.Solicitacao[0].status_global, analysisStatus); assert.equal(state.PagamentoAutorizacaoItem.length, 2);
   await digital.createBatch(req, { titulo_ids: [1, 2], idempotency_key: 'digital-1' });
   assert.equal(state.PagamentoAutorizacaoLote.length, 1); assert.equal(state.Historico.length, 1);
+  assert.equal(state.PagamentoAutorizacaoLote[0].codigo, 'LOTE-1', 'Replay nao renumera');
   await send(); assert.equal(state.PagamentoManualFilaItem.length, 2);
   assert.equal(state.PagamentoAutorizacaoLote[0].status, 'CONCLUIDO');
   assert(state.PagamentoAutorizacaoItem.every(item => item.status === 'ENFILEIRADO' && item.fila_item_id));
   assert(!state.PagamentoAutorizacaoLote[0].decidido_por, 'Envio direto nao fabrica decisao do proprietario');
+  const nextLot = await digital.createBatch(req, { titulo_ids: [3], idempotency_key: 'digital-2' });
+  assert.equal(nextLot.codigo, 'LOTE-2');
+  assert.notEqual(nextLot.codigo, lot.codigo);
   reset(); scope = [8]; await assert.rejects(digital.createBatch(req, { titulo_ids: [1] }), { statusCode: 403 });
   assert.equal(state.PagamentoAutorizacaoLote.length, 0);
   reset(); await digital.createBatch({ ...req, user: { id: 4, grants: [PREPARE] } }, { titulo_ids: [1] });

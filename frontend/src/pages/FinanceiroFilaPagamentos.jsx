@@ -5,6 +5,8 @@ import {
   HiOutlineCheckCircle,
   HiOutlineDocumentArrowUp,
   HiOutlineExclamationTriangle,
+  HiOutlineFolderOpen,
+  HiOutlineDocumentText,
   HiOutlineMagnifyingGlass
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,6 +48,7 @@ import {
 
 const STATUS_OPTIONS = [
   ['PENDENTE', 'Pendentes'],
+  ['PENDENTE_COMPROVANTE', 'Pendentes de comprovante'],
   ['NAO_PAGO', 'Não pagos'],
   ['DIVERGENTE', 'Divergentes'],
   ['BAIXADO', 'Baixados'],
@@ -56,6 +59,7 @@ const STATUS_OPTIONS = [
 const STATUS_VALUES = new Set(STATUS_OPTIONS.map(([value]) => value));
 const SUMMARY_FILTERS = [
   { status: 'PENDENTE', label: 'Pendentes', tone: 'info' },
+  { status: 'PENDENTE_COMPROVANTE', label: 'Pendentes de comprovante', tone: 'warning' },
   { status: 'NAO_PAGO', label: 'Não pagos', tone: 'warning' },
   { status: 'DIVERGENTE', label: 'Divergentes', tone: 'danger' },
   { status: 'BAIXADO', label: 'Baixados', tone: 'success' },
@@ -499,7 +503,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                               <option value="">Selecione para revisar</option>
                               {options.map((option) => (
                                 <option key={option.fila_id} value={option.fila_id}>
-                                  {option.titulo_codigo || `#${option.titulo_id}`} · {currency(option.valor_saldo)} · {option.favorecido || 'Sem favorecido'}
+                                  {option.titulo_codigo || `#${option.titulo_id}`} · {option.pagamento_registrado ? `Pago ${currency(option.valor_pago)}` : `Saldo ${currency(option.valor_saldo)}`} · {option.favorecido || 'Sem favorecido'}
                                 </option>
                               ))}
                             </select>
@@ -652,7 +656,6 @@ export default function FinanceiroFilaPagamentos() {
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
       if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
       if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
-      if (!row.comprovante_hash) return { mensagem: `O título ${row.titulo?.codigo || row.id} está sem comprovante de pagamento.`, correcao: 'Anexe um PDF na linha do título antes de registrar a baixa.', filaId: row.id, campo: 'comprovante' };
       const tipoDivergencia = tipoDivergenciaPagamento(row, draft);
       if (tipoDivergencia && !String(draft.motivo || '').trim()) {
         return { mensagem: `O valor do título ${row.titulo?.codigo || row.id} é divergente e está sem justificativa.`, correcao: mensagemJustificativaDivergencia(tipoDivergencia), filaId: row.id, campo: 'motivo' };
@@ -718,7 +721,7 @@ export default function FinanceiroFilaPagamentos() {
     const total = targetRows.reduce((sum, row) => sum + Number(drafts[row.id]?.valor_pago || 0), 0);
     const { ok } = await confirmar({
       titulo: targetRows.length === 1 ? 'Registrar baixa deste título?' : 'Registrar baixas selecionadas?',
-      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
+      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. O comprovante pode ser anexado depois; a baixa sem PDF será listada em Pendentes de comprovante. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
       rotuloConfirmar: targetRows.length === 1 ? 'Registrar baixa' : 'Registrar baixas',
       destrutiva: false
     });
@@ -736,6 +739,7 @@ export default function FinanceiroFilaPagamentos() {
         motivo: String(drafts[row.id].motivo || '').trim() || undefined
       })), key);
       avisar.sucesso(`${result?.baixados || 0} baixa(s) registrada(s). ${result?.divergentes || 0} divergência(s) sinalizada(s).`);
+      if (result?.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante. Anexe os PDFs pelo card Pendentes de comprovante.`);
       setSelected([]);
       await load();
     } catch (error) {
@@ -869,7 +873,7 @@ export default function FinanceiroFilaPagamentos() {
 
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" aria-label="Filtros rápidos da fila">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-label="Filtros rápidos da fila">
         {SUMMARY_FILTERS.map((item) => (
           <SummaryFilter
             key={item.status}
@@ -881,9 +885,12 @@ export default function FinanceiroFilaPagamentos() {
           />
         ))}
       </div>
+      {status === 'PENDENTE_COMPROVANTE' && <p className="text-sm text-[var(--c-muted)]" role="status">
+        Estes pagamentos já têm baixa registrada. Anexe os comprovantes na linha ou importe os PDFs; não é necessário registrar outra baixa.
+      </p>}
 
       <BlocoConteudo
-        titulo="Pagamentos preparados"
+        titulo={status === 'PENDENTE_COMPROVANTE' ? 'Pagamentos pendentes de comprovante' : 'Pagamentos preparados'}
         variante="primario"
         cor="var(--module-financeiro)"
         descricao="A empresa é determinada pela conta bancária selecionada; não há escolha separada."
@@ -967,7 +974,8 @@ export default function FinanceiroFilaPagamentos() {
                 const reasonVisible = reasonOpenId === row.id;
                 const tipoDivergencia = editable ? tipoDivergenciaPagamento(row, drafts[row.id]) : '';
                 const comprovantes = listarComprovantesFila(row);
-                const podeAnexarMais = !row.somente_consulta && canSettle && (row.status === 'PENDENTE' || Boolean(row.comprovante_hash));
+                const podeAnexarMais = !row.somente_consulta && canSettle && (['PENDENTE', 'DIVERGENTE'].includes(row.status) ||
+                  (['BAIXADO', 'RESOLVIDO'].includes(row.status) && (Number(row.movimento_financeiro_id) > 0 || Boolean(row.comprovante_hash))));
                 return (
                   <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : row.status === 'NAO_PAGO' ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
@@ -989,31 +997,38 @@ export default function FinanceiroFilaPagamentos() {
                       )}
                       <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
                       <div className="text-xs text-[var(--c-muted)]">{title.numero_documento || 'Sem documento'} · {title.formaPagamento?.nome || 'Forma não informada'}</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label={`Ações e comprovantes de ${title.codigo || row.id}`}>
                       {solicitacaoVinculada ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <Link className="btn btn-outline btn-sm" to={`/solicitacoes/${solicitacaoVinculada.id}`}>
-                            Solicitação {solicitacaoVinculada.codigo}
+                        <>
+                          <Link className="btn btn-outline btn-sm btn-icon-only" to={`/solicitacoes/${solicitacaoVinculada.id}`}
+                            title={`Abrir solicitação ${solicitacaoVinculada.codigo}`} aria-label={`Abrir solicitação ${solicitacaoVinculada.codigo}`}>
+                            <HiOutlineDocumentText className="h-4 w-4" aria-hidden="true" />
                           </Link>
-                          <button type="button" className="btn btn-outline btn-sm" onClick={() => setSolicitacaoArquivos(solicitacaoVinculada)}>
-                            {solicitacaoVinculada.temBoleto ? 'Boleto / arquivos' : 'Arquivos'}
+                          <button type="button" className="btn btn-outline btn-sm btn-icon-only" onClick={() => setSolicitacaoArquivos(solicitacaoVinculada)}
+                            title={`Abrir ${solicitacaoVinculada.temBoleto ? 'boleto e arquivos' : 'arquivos'} de ${solicitacaoVinculada.codigo}`}
+                            aria-label={`Abrir arquivos de ${solicitacaoVinculada.codigo}`}>
+                            <HiOutlineFolderOpen className="h-4 w-4" aria-hidden="true" />
                           </button>
-                        </div>
+                        </>
                       ) : null}
                       {comprovantes.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1" aria-label={`Comprovantes de ${title.codigo || row.id}`}>
+                        <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`Comprovantes de ${title.codigo || row.id}`}>
                           {comprovantes.map((comprovante) => (
                             <button key={`${comprovante.filaId}-${comprovante.id || 'legado'}`}
-                              type="button" className="btn btn-outline btn-sm max-w-48 truncate"
+                              type="button" className="btn btn-outline btn-sm btn-icon-only"
                               title={comprovante.nome}
+                              aria-label={`Abrir comprovante ${comprovante.nome}`}
                               onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
-                              {comprovante.nome}
+                              <HiOutlineDocumentText className="h-4 w-4" aria-hidden="true" />
                             </button>
                           ))}
                         </div>
                       ) : null}
                       {podeAnexarMais ? (
-                        <label className="btn btn-outline btn-sm mt-2 inline-flex cursor-pointer" data-fila-id={row.id} data-fila-campo="comprovante">
-                          {comprovantes.length ? 'Adicionar comprovantes PDF' : 'Anexar comprovantes PDF'}
+                        <label className="btn btn-outline btn-sm btn-icon-only inline-flex cursor-pointer focus-within:ring-2 focus-within:ring-[var(--module-financeiro)]"
+                          title={comprovantes.length ? 'Adicionar comprovantes PDF' : 'Anexar comprovantes PDF'}
+                          data-fila-id={row.id} data-fila-campo="comprovante">
+                          <HiOutlineDocumentArrowUp className="h-4 w-4" aria-hidden="true" />
                           <input
                             className="sr-only"
                             type="file"
@@ -1029,6 +1044,7 @@ export default function FinanceiroFilaPagamentos() {
                           />
                         </label>
                       ) : null}
+                      </div>
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-60 font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
@@ -1058,7 +1074,7 @@ export default function FinanceiroFilaPagamentos() {
                         className="input input-sm min-w-0 w-full"
                         data-fila-id={row.id}
                         data-fila-campo="conta_bancaria_id"
-                        value={drafts[row.id]?.conta_bancaria_id || row.conta_bancaria_id || ''}
+                        value={drafts[row.id]?.conta_bancaria_id ?? row.conta_bancaria_id ?? ''}
                         onChange={(event) => updateDraft(row.id, { conta_bancaria_id: event.target.value })}
                         disabled={!editable || busy}
                         aria-label={`Conta pagadora de ${title.codigo || row.id}`}
@@ -1119,6 +1135,7 @@ export default function FinanceiroFilaPagamentos() {
                     ) : null}
                     <td className="px-3 py-3 align-top">
                       <StatusBadge status={String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
+                      {row.pendente_comprovante && <div className="mt-1 text-xs font-semibold text-[var(--sem-warning)]">Pagamento registrado · pendente de comprovante</div>}
                       {row.somente_consulta && <div className="mt-1 text-xs text-[var(--sem-danger)]">Rejeitado pelo proprietário · somente consulta</div>}
                       {!showReasonColumn && row.motivo ? <div className="mt-2 max-w-64 text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}
                       <div className="mt-2 flex flex-wrap gap-1">
@@ -1168,7 +1185,7 @@ export default function FinanceiroFilaPagamentos() {
           onVinculados={async (quantidade) => {
             setComprovantesOpen(false);
             setDrafts({});
-            avisar.sucesso(`${quantidade} comprovante(s) vinculado(s). Confira os dados preenchidos antes de registrar a baixa.`);
+            avisar.sucesso(`${quantidade} comprovante(s) vinculado(s). Pagamentos já baixados permanecem inalterados; para os ainda pendentes, confira os dados antes da baixa.`);
             await load();
           }}
           onParcial={async (quantidade) => {

@@ -1,5 +1,27 @@
 # Handoff Global
 
+## Fila sem PDF e publicacao dev 08/10/2026
+
+- Sessao codex-fila-comprovante-pendente-2026-10-08 finalizada; ownership liberado.
+- Card virtual apos Pendentes, baixa regular sem PDF e anexo posterior sem
+  alterar movimento, conta, data ou valor. Divergencias preservadas.
+- UX adicional validada: modal cheque proprio, conta limpa ao trocar forma
+  e icones acessiveis sob o titulo; rotas e payloads preservados.
+- Inclui LOTE-ID e PWA compacto anteriores. Commit/push autorizado somente
+  na refactor/frontend; sem banco real, main ou deploy executado.
+- Testes backend/UI/PWA, navegacao, build e docs aprovados. Homologar dev.
+- Handoff: docs/handoffs/2026-10-08-fila-pendentes-comprovante.md.
+
+## Lotes e PWA do autorizador 08/10/2026
+
+- Sessao: codex-autorizacao-pwa-2026-10-08; finalizado localmente; ownership liberado.
+- Handoff: docs/handoffs/2026-10-08-autorizacao-lote-sequencial-pwa.md.
+- LOTE-ID unico sem renumeracao de banco; inicio direto e shell compacto no
+  PWA nominal. Datas, auditoria, MFA, guardas, permissoes e assinaturas preservados.
+- Testes isolados, QA mobile claro/escuro, build, navegacao e docs aprovados.
+  Proximo passo: publicacao autorizada e homologacao dev em aparelhos reais.
+  Sem migration, banco real, commit/push ou deploy nesta tarefa.
+
 ## Autorizacao sem prazo e resumo do proprietario - 08/10/2026
 
 - Sessao: codex-autorizacao-resumo-2026-10-08; status: finalizado localmente.
