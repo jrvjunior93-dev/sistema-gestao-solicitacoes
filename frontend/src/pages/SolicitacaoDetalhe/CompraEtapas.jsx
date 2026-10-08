@@ -167,9 +167,16 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     setProcessando(chave);
     try {
       await acao();
-      await carregar();
-      onUpdated?.();
       avisar.sucesso(mensagem);
+      // A gravacao ja terminou. Falha de leitura nao pode ser apresentada como
+      // falha do envio nem induzir o usuario a repetir uma operacao concluida.
+      try {
+        onUpdated?.();
+        await carregar();
+      } catch (error) {
+        console.error('Acao de compra concluida; falha ao atualizar a tela:', error);
+        avisar.alerta('A ação foi concluída, mas a tela não pôde ser atualizada. Atualize a página antes de continuar.');
+      }
       return true;
     } catch (error) {
       avisar.erro(error.message || 'A ação não foi concluída.');

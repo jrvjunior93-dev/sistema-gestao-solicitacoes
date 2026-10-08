@@ -71,7 +71,7 @@ function validateIntegracaoComAutorizacao() {
     'Autorizacao de anexos nao consulta a passagem historica do setor.'
   );
   assert(
-    source.includes("acao: 'ENVIADA_SETOR'"),
+    source.includes('acao: { [Op.in]: ACOES_ENCAMINHAMENTO_SETOR }'),
     'Consulta historica nao esta restrita a envios entre setores.'
   );
 }

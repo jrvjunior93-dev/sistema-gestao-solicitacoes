@@ -94,7 +94,8 @@ const {
   isSuperadmin,
   isBusinessAdmin
 } = require('../services/authorizationService');
-const { assertPodeInteragirSolicitacao } = require('../services/solicitacaoRetornoService');
+const { assertPodeInteragirSolicitacao, assertPodeVisualizarSolicitacao } = require('../services/solicitacaoRetornoService');
+const { ACAO_ENCAMINHAMENTO_COMPRA, extrairEncaminhamentoCompra } = require('../services/historicoEncaminhamentoCompraService');
 const { validateCompraEnviarBody } = require('../validators/operationalValidators');
 const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
 const {
@@ -2108,7 +2109,33 @@ async function podeAcessarCompraDiretaNaFilaGeo(usuario, solicitacao, transactio
   }
 }
 
+async function podeAcompanharCompraEncaminhadaGeo(usuario, solicitacao) {
+  if (isSolicitacaoCompraDireta(solicitacao) || !Number(solicitacao?.solicitacao_principal_id)) return false;
+  if (!(await userHasSetorCapability(usuario, 'eh_setor_geo')) || !(await canViewCompraSolicitacoes(usuario))) return false;
+  const historicos = await Historico.findAll({
+    where: { solicitacao_id: solicitacao.solicitacao_principal_id, acao: ACAO_ENCAMINHAMENTO_COMPRA },
+    attributes: ['acao', 'metadata']
+  });
+  const setorGeo = await buscarSetorGerenciaProcessos();
+  if (!historicos.some(item => {
+    const envio = extrairEncaminhamentoCompra(item);
+    return envio && (isGeoToken(envio.origem)
+      || normalizeFluxoTokenCompra(envio.origem) === normalizeFluxoTokenCompra(setorGeo));
+  })) return false;
+  try {
+    await assertPodeVisualizarSolicitacao({ user: usuario }, solicitacao.solicitacao_principal_id);
+    return true;
+  } catch (error) {
+    if ([403, 404, 409].includes(error.statusCode)) return false;
+    throw error;
+  }
+}
+
 async function validarEscopoSolicitacaoCompra(usuario, solicitacao, res, transaction = null, options = {}) {
+  // Opt-in exclusivo dos handlers GET: acompanhamento nao concede escrita,
+  // cotacao/pedidos nem um novo encaminhamento fora da fila GEO.
+  if (options.permitirAcompanhamentoGeo && !transaction
+    && await podeAcompanharCompraEncaminhadaGeo(usuario, solicitacao)) return true;
   // Excecao opt-in apenas para leitura dos itens e suas acoes granulares.
   // Nao amplia as listas, pedidos, cotacoes, encaminhamentos ou demais acoes.
   if (options.permitirCompraDiretaGeo && await podeAcessarCompraDiretaNaFilaGeo(usuario, solicitacao, transaction)) {
@@ -3292,7 +3319,7 @@ module.exports = {
         return responderCompraAguardandoLiberacao(res);
       }
 
-      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res))) {
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, null, { permitirAcompanhamentoGeo: true }))) {
         return;
       }
 
@@ -3376,7 +3403,7 @@ module.exports = {
         }
       }
 
-      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, null, { permitirCompraDiretaGeo: true }))) {
+      if (!(await validarEscopoSolicitacaoCompra(usuario, solicitacao, res, null, { permitirCompraDiretaGeo: true, permitirAcompanhamentoGeo: true }))) {
         return;
       }
 

@@ -28,6 +28,7 @@ const { userHasSetorCapability } = require('./setorCapabilityService');
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { podeVisualizarSolicitacaoPelaFila } = require('./solicitacaoFilaPagamentoAcessoService');
 const { arquivoHistoricoRemovido } = require('./anexoHistoricoService');
+const { ACOES_ENCAMINHAMENTO_SETOR, extrairEncaminhamentoCompra } = require('./historicoEncaminhamentoCompraService');
 
 async function hasLegacyContractGlobalAccess(tokens, user) {
   return (
@@ -154,6 +155,8 @@ function parseObservacaoEnvioSetor(observacao) {
 }
 
 function extrairSetoresEnvioHistorico(historico) {
+  const envioCompra = extrairEncaminhamentoCompra(historico);
+  if (envioCompra) return envioCompra;
   if (!historico || normalizeAccessToken(historico.acao) !== 'ENVIADA_SETOR') {
     return { origem: null, destino: null };
   }
@@ -181,7 +184,7 @@ function extrairSetoresEnvioHistorico(historico) {
 }
 
 function historicoPertenceAoEscopoSetor(historico, tokens = []) {
-  if (!historico || normalizeAccessToken(historico.acao) !== 'ENVIADA_SETOR') {
+  if (!historico || !ACOES_ENCAMINHAMENTO_SETOR.includes(normalizeAccessToken(historico.acao))) {
     return false;
   }
 
@@ -203,7 +206,7 @@ async function userSetorParticipatedInSolicitacao(user, solicitacaoId, tokens = 
   const historicos = await Historico.findAll({
     where: {
       solicitacao_id: solicitacaoId,
-      acao: 'ENVIADA_SETOR'
+      acao: { [Op.in]: ACOES_ENCAMINHAMENTO_SETOR }
     },
     attributes: ['acao', 'setor', 'observacao', 'descricao', 'metadata']
   });
