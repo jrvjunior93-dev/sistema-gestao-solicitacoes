@@ -2284,3 +2284,26 @@ sao gates antes do merge/publicacao em main.
 Backup recente/Drive cifrado e timer ativo confirmados pelo usuario nesta
 publicacao. Base main 3e216c46 preservada em snapshot e bundle local verificado.
 Reserva documental encerrada; ownership liberado para commit autorizado.
+
+## Correcao charset JSON no acompanhamento GEO - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: backend/src/services/historicoEncaminhamentoCompraService.js,
+  backend/scripts/validarAcompanhamentoGeoCompras.js, novo teste MySQL somente
+  leitura, README de Solicitacoes, handoff de acompanhamento GEO e novo handoff
+  de charset. Este registro e atualizado apenas para esta tarefa.
+- Escopo: corrigir ER_INVALID_JSON_CHARSET confirmado no log de producao;
+  preservar regras de visibilidade/escrita e validar caminhos JSON UTF-8.
+- Sem acesso a producao, migration, escrita de dados, commit/push ou deploy.
+- Validacoes offline, regressoes, sintaxe/documentacao e diff aprovados. Teste
+  integrado MySQL opt-in preparado, execucao real pendente (Docker indisponivel).
+  Handoff: docs/handoffs/2026-10-08-geo-compras-json-charset.md.
+
+Publicacao do hotfix autorizada em 08/10/2026: commit/publicacao na
+refactor/frontend, promocao para main e comandos da EC2. Reserva documental
+temporaria desta sessao para registrar bases/snapshot e verificacoes. Sem
+execucao de deploy, migration ou escrita no banco; outputs/ fora do commit.
+
+Backup recente/Drive e timer ativo confirmados pelo usuario nesta janela.
+Main ef5329f1 preservada em tag/bundle verificado fora da EC2. Validacoes locais
+aprovadas; reserva documental encerrada e ownership liberado para publicacao.

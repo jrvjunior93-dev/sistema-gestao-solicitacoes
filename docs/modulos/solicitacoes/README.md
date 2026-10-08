@@ -215,6 +215,13 @@ destino sao lidos de `metadata.area_anterior/area_nova`, nao do ID numerico do
 setor do ator. Isso mantem as compras ja encaminhadas visiveis para GEO na
 lista, contadores, busca, detalhe e anexos conforme as permissoes existentes.
 Historicos antigos sao reconhecidos na leitura, sem backfill ou nova migration.
+Os caminhos JSON construidos no SQL usam `CHAR(36 USING utf8mb4)`: `CHAR(36)`
+sem charset gera binary e provoca `ER_INVALID_JSON_CHARSET`, interrompendo
+listagem e contadores. Validacao isolada: `node backend/scripts/validarAcompanhamentoGeoCompras.js`.
+Para verificar a execucao real no MySQL configurado, executar no backend
+`node scripts/validarAcompanhamentoGeoComprasMysql.js --somente-leitura`.
+Esse teste usa apenas SELECT sobre fixtures constantes, sem ler tabelas de
+negocio, alterar registros ou criar estruturas.
 O acompanhamento nao permite editar/comentar fora do setor principal: o fluxo
 de retorno e as validacoes de escrita continuam obrigatorios.
 

@@ -80,13 +80,16 @@ function response() { return { status(code) { this.code = code; return this; }, 
   const literal = sandbox.montarLiteralHistoricoSetoresEnvolvidos(['GEO']);
   assert.match(literal.val, /SOLICITACAO_COMPRA_ENCAMINHADA_COMPRAS/);
   assert.match(literal.val, /ENVIADA_SETOR/);
-  assert.match(literal.val, /CHAR\(36\)/);
+  assert.match(literal.val, /CHAR\(36 USING utf8mb4\)/);
+  assert.doesNotMatch(literal.val, /CHAR\(36\)/, 'Caminho binario causa ER_INVALID_JSON_CHARSET no MySQL');
   assert.doesNotMatch(literal.val, /\$\./);
   assert.match(literal.val, /JSON_VALID/);
   assert.match(literal.val, /JSON_TYPE/);
   const sequelize = new Sequelize('fixture', 'fixture', 'fixture', { dialect: 'mysql', logging: false });
   const sql = sequelize.dialect.queryGenerator.selectQuery('solicitacoes', { attributes: ['id'], where: { id: { [Op.in]: literal } } });
   assert.match(sql, /area_anterior/);
+  assert.match(sql, /CHAR\(36 USING utf8mb4\)/);
+  assert.doesNotMatch(sql, /CHAR\(36\)/);
   assert.doesNotMatch(sql, /\$\./);
   await sequelize.close();
 

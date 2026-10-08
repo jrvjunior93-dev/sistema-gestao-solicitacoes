@@ -55,6 +55,13 @@ preexistente preservado.
 
 ## Proximo passo
 
+Incidente posterior ao deploy: log de producao confirmou ER_INVALID_JSON_CHARSET
+nas consultas da lista/obras/contadores da Liz. CHAR(36) gerava caminho binary.
+Hotfix autorizado usa CHAR(36 USING utf8mb4), com teste de execucao MySQL somente
+leitura. Continuidade: docs/handoffs/2026-10-08-geo-compras-json-charset.md.
+As validacoes anteriores de SQL gerado nao cobriram a execucao no servidor;
+nao tratar sua aprovacao como homologacao integrada dessa consulta.
+
 Usuario autorizou em 08/10/2026 commit/publicacao na refactor/frontend e
 promocao para main, seguidos de comandos de atualizacao da EC2 de producao.
 Esta correcao nao adiciona migrations nem depende de backfill. O deploy deve
