@@ -2298,3 +2298,9 @@ Publicacao RH autorizada em 08/10/2026: reserva documental desta tarefa para
 commit/publicacao na refactor/frontend, integracao a partir de origin/main e
 comandos da EC2. outputs/ fora do Git; sem deploy ou escrita no banco pelo agente.
 Backup/timer de producao aguardam confirmacao atual; nao promover main antes.
+
+Commit funcional RH local 13967624 concluido; push bloqueado por autenticacao
+do GitHub. Main nao alterada. Snapshot local main/tag e bundle verificado;
+publicacao e promocao aguardam login GitHub e confirmacao backup/timer.
+Reserva documental encerrada; ownership liberado. Proximo passo detalhado no
+handoff RH desta tarefa. Sem deploy ou acesso ao banco real.

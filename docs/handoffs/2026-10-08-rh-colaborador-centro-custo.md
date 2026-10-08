@@ -54,3 +54,21 @@ O delta anterior entre as branches e somente documental; preservar as
 evidencias e a integracao contratual existentes em main.
 Nao executar deploy ou migrations. Backup/timer aguardam confirmacao atual
 antes da promocao. Nenhuma migration nova ou alteracao de backend nesta tarefa.
+
+## Estado da publicacao
+
+- Commit funcional local: 13967624e505f93b7d72c6368ad3f478a126cc1c.
+- Teste especifico repetido apos o commit: aprovado.
+- Push de refactor/frontend bloqueado por autenticacao do GitHub:
+  `Cannot prompt because user interactivity has been disabled`.
+  Tentativas interativas sem resposta canceladas; nao houve force-push.
+- Snapshot local main: tag backup/main-pre-rh-centros-20261008-2fee98ae;
+  bundle completo verificado em outputs/main-pre-rh-centros-20261008-2fee98ae.bundle,
+  SHA256 92D75289C81940BA240391B51BA1A0009AB594EEAE6C6F9AFA750AEEAC511240.
+  Tag ainda nao publicada; bundle fora da EC2, em copia local Windows.
+- Main nao alterada; integracao, push e comandos definitivos EC2 pendentes.
+- Proximo passo exato: usuario autenticar GitHub no terminal Windows usando
+  `git push origin refactor/frontend`, sem compartilhar tokens. Confirmar
+  backup/timer atual; reconsultar refs, publicar snapshot, integrar a partir
+  de origin/main, validar, publicar main e fornecer SHA final para EC2.
+- Reserva documental encerrada; ownership liberado. Sem deploy/banco real.
