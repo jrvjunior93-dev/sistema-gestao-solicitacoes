@@ -2,7 +2,8 @@
 
 ## Promocao isolada medicao e recarga - 2026-10-09
 
-- Responsavel: agente desta conversa, sem delegacao; estado: integracao local.
+- Responsavel: agente desta conversa, sem delegacao; estado: integracao validada,
+  ownership liberado para publicacao autorizada.
 - Usuario confirmou backup recente no Drive cifrado/timer ativo e reiterou
   exclusao de Pessoal/DP 118209c0. Sem acesso a EC2/banco ou deploy executado.
 - Main congelada a06bdfdc; refactor/frontend f7f91559. Selecionados somente
@@ -18,6 +19,12 @@
   SHA256 E8DD8AB089661EFFFD410316153EE1C886012F0B73D634EF3F1D4D6995E42CD9.
 - Branch de integracao codex/promocao-medicao-recarga-main-20261009 baseada
   na main. Preservar todos os demais worktrees e excluir arquivos de RH/DP.
+- Conflitos apenas neste documento; registros de ambas as branches preservados.
+  Arquivos funcionais iguais a refactor/frontend exceto Pessoal/DP, que continua
+  identico a main anterior. Sem migrations/lockfiles/env novos.
+- Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
+  sintaxe e documentacao aprovados. Handoff:
+  docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
 
 Publicacao do total compacto de recarga autorizada em 09/10/2026 nesta conversa:
 reserva documental temporaria deste registro e do handoff correspondente.
