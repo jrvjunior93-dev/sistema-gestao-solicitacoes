@@ -8,6 +8,7 @@ const { TituloFinanceiro, PagamentoManualFilaItem, ContratoMedicao,
 const { resolverSolicitacoesDosTitulos } = require('./tituloSolicitacaoContratoService');
 const { encaminharSolicitacaoParaFinanceiroAoEnfileirar } = require('./solicitacaoFinanceiroStatusService');
 const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
+const { titulosQueAtualizamMedicaoAtual, obterMedicaoAtual } = require('./medicaoAtualContratoService');
 
 const assinatura = planos => crypto.createHash('sha256').update(JSON.stringify(planos)).digest('hex');
 function validarIds(ids) {
@@ -46,6 +47,14 @@ async function planejar(titulos, transaction, leituraCorrente = false) {
     where: { titulo_financeiro_id: { [Op.in]: titulos.map(t => Number(t.id)) }, status: { [Op.in]: ['PENDENTE', 'AUTORIZADO'] } },
     attributes: ['id', 'titulo_financeiro_id', 'status', 'updatedAt'], order: [['id', 'ASC']], transaction, lock
   }) : [];
+  const atuais = new Set();
+  const medicoesAtuais = new Map();
+  for (const id of idsSolicitacao) {
+    const associados = titulos.filter(t => vinculos.get(Number(t.id))?.solicitacao_id === id);
+    const permitidos = await titulosQueAtualizamMedicaoAtual({ solicitacaoId: id, titulos: associados, transaction });
+    (permitidos ?? associados).forEach(t => atuais.add(Number(t.id)));
+  }
+  for (const id of contratos) medicoesAtuais.set(id, await obterMedicaoAtual(id, transaction));
   return titulos.map(titulo => {
     const vinculo = vinculos.get(Number(titulo.id));
     const solicitacao = solicitacoes.find(s => Number(s.id) === vinculo?.solicitacao_id);
@@ -60,7 +69,7 @@ async function planejar(titulos, transaction, leituraCorrente = false) {
       && ativas.length === 1 && ativas[0].status === 'PENDENTE'
       && !filasTitulo.some(f => f.movimento_financeiro_id || f.processado_em)
       && !autorizacoes.length;
-    const atualizarStatus = Boolean(elegivel && !pendentes.length && !pedidosRetorno.length
+    const atualizarStatus = Boolean(elegivel && atuais.has(Number(titulo.id)) && !pendentes.length && !pedidosRetorno.length
       && ['LIBERADO', 'EM ANÁLISE DO PROPRIETÁRIO', 'ENVIADO PARA PAGAMENTO'].includes(solicitacao.status_global));
     const motivo = titulo.solicitacao_id ? 'Vinculo ja existente; nenhuma alteracao.'
       : vinculo?.motivo || (!vinculo ? 'Sem vinculo contratual comprovado.'
@@ -77,6 +86,7 @@ async function planejar(titulos, transaction, leituraCorrente = false) {
       filas: filasTitulo.map(f => ({ id: Number(f.id), status: f.status, movimento_id: f.movimento_financeiro_id || null,
         processado_em: f.processado_em || null, atualizado_em: f.updatedAt || null })),
       medicoes_pendentes: pendentes.map(m => ({ id: Number(m.id), atualizado_em: m.updatedAt || null })),
+      medicao_atual: medicoesAtuais.get(vinculo?.contrato_id)?.id || null,
       retornos: pedidosRetorno.map(r => ({ id: Number(r.id), status: r.status, atualizado_em: r.updatedAt || null })),
       autorizacoes_ativas: autorizacoes.map(a => ({ id: Number(a.id), status: a.status, atualizado_em: a.updatedAt || null })),
       status_solicitacao_atual: solicitacao?.status_global || null, setor_atual: solicitacao?.area_responsavel || null,
@@ -138,7 +148,7 @@ async function aplicarVinculosTitulosContrato({ tituloIds = [], confirmacao, usu
           fila_ids: plano.filas.map(f => f.id), confirmacao }) }, { transaction });
       if (plano.atualizar_status_solicitacao && !solicitacoesAtualizadas.has(plano.solicitacao_id)) {
         const solicitacao = await Solicitacao.findByPk(plano.solicitacao_id, { transaction, lock: transaction.LOCK.UPDATE });
-        await encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, usuarioId, transaction, retornarParaObra: true });
+        await encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, usuarioId, transaction, retornarParaObra: true, titulos: [titulo] });
         solicitacoesAtualizadas.add(plano.solicitacao_id);
       }
       quantidade++;

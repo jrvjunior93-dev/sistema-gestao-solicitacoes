@@ -10,7 +10,8 @@ const root = path.resolve(__dirname, '../src');
 let state, falhaAuditoria = false, mudarDuranteLock = false;
 const locks = [], mutacoes = [];
 const names = ['TituloFinanceiro', 'PagamentoManualFilaItem', 'ContratoParcela', 'Contrato', 'ContratoMedicao',
-  'Solicitacao', 'Historico', 'StatusArea', 'User', 'SecurityEventLog', 'PagamentoAutorizacaoItem', 'SolicitacaoPedidoRetorno'];
+  'Solicitacao', 'Historico', 'StatusArea', 'User', 'SecurityEventLog', 'PagamentoAutorizacaoItem', 'SolicitacaoPedidoRetorno',
+  'MedicaoParcela', 'TituloRenegociacaoAlocacao'];
 const models = {};
 const tx = { LOCK: { UPDATE: 'UPDATE' } };
 function matches(row, where = {}) {
@@ -33,7 +34,13 @@ for (const name of names) models[name] = {
     if (name === 'TituloFinanceiro' && options.lock && mudarDuranteLock) {
       state.PagamentoManualFilaItem[0].status = 'NAO_PAGO'; mudarDuranteLock = false;
     }
-    let rows = state[name].filter(row => matches(row, options.where)).sort((a, b) => a.id - b.id);
+    let rows = state[name].filter(row => matches(row, options.where)).sort((a, b) => {
+      for (const [field, direction] of options.order || [['id', 'ASC']]) {
+        const delta = Number(a[field] || 0) - Number(b[field] || 0);
+        if (delta) return direction === 'DESC' ? -delta : delta;
+      }
+      return 0;
+    });
     if (options.limit) rows = rows.slice(0, options.limit);
     return rows.map(row => {
       const result = instance(row);
@@ -44,6 +51,7 @@ for (const name of names) models[name] = {
       return result;
     });
   },
+  async findOne(options) { return (await this.findAll(options))[0] || null; },
   async findByPk(id, options = {}) { return (await this.findAll({ ...options, where: { id: Number(id) } }))[0] || null; },
   async create(values, options) {
     assert.equal(options.transaction, tx);
@@ -165,6 +173,24 @@ for (const name of ['normalizarTokensHistoricoSetores', 'historicoPertenceASetor
   const comMedicao = await conferencia(); assert.equal(comMedicao.planos[0].atualizar_status_solicitacao, false);
   await aplicar(comMedicao.confirmacao); assert.equal(state.TituloFinanceiro[0].solicitacao_id, 2011);
   assert.equal(state.Solicitacao[0].status_global, 'LIBERADO');
+  reset();
+  state.ContratoMedicao = [1, 2].map(id => ({ id, numero: id, contrato_id: 3, aprovada_em: '2026-10-01' }));
+  state.MedicaoParcela = [{ id: 1, medicao_id: 1, contrato_parcela_id: 10, devolvido_em: null },
+    { id: 2, medicao_id: 2, contrato_parcela_id: 20, devolvido_em: null }];
+  state.ContratoParcela.push({ id: 20, contrato_id: 3, titulo_financeiro_id: 200 });
+  const antigaNaFila = await conferencia();
+  assert.equal(antigaNaFila.planos[0].medicao_atual, 2);
+  assert.equal(antigaNaFila.planos[0].atualizar_status_solicitacao, false, 'Recon nao toma status de medicao mais recente aprovada.');
+  await aplicar(antigaNaFila.confirmacao);
+  assert.equal(state.TituloFinanceiro[0].solicitacao_id, 2011);
+  assert.equal(state.Solicitacao[0].status_global, 'LIBERADO');
+  state.Solicitacao[0].area_responsavel = 'GEO';
+  await financeiro.encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao: instance(state.Solicitacao[0]),
+    usuarioId: 1, transaction: tx, retornarParaObra: true, titulos: state.TituloFinanceiro });
+  assert.equal(state.Solicitacao[0].area_responsavel, 'GEO');
+  const registroFinanceiroAntigo = state.Historico.find(h => h.acao === 'ENVIADA_SETOR');
+  assert(registroFinanceiroAntigo && sandbox.historicoPertenceASetoresVisiveis(registroFinanceiroAntigo, ['FINANCEIRO']));
+  assert(sandbox.historicoPertenceAoEscopoSetor(registroFinanceiroAntigo, ['FINANCEIRO']));
   reset(); state.Solicitacao[0].status_global = 'NEC. DE MEDICAO';
   const outroFluxo = await conferencia(); await aplicar(outroFluxo.confirmacao);
   assert.equal(state.Solicitacao[0].status_global, 'NEC. DE MEDICAO');

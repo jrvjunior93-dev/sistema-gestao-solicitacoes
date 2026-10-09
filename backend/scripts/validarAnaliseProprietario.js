@@ -22,7 +22,8 @@ const models = {};
 const names = ['ConfiguracaoSistema', 'TituloFinanceiro', 'Solicitacao', 'Historico', 'StatusArea', 'SecurityEventLog',
   'PagamentoManualFilaItem', 'PagamentoAutorizacaoItem', 'PagamentoAutorizacaoLote', 'PagamentoAutorizacaoEvento',
   'Anexo', 'PagamentoAutorizacaoDocumento', 'PagamentoAutorizador', 'WebauthnCredential', 'PaymentIntent',
-  'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria', 'ContratoParcela', 'Contrato'];
+  'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria', 'ContratoParcela', 'Contrato',
+  'ContratoMedicao', 'MedicaoParcela', 'TituloRenegociacaoAlocacao'];
 function matches(row, where = {}) {
   return Object.entries(where).every(([key, value]) => value && typeof value === 'object' && !(value instanceof Date)
     ? Object.entries(value).every(([op, candidate]) => op === '$in' ? candidate.includes(row[key])
@@ -136,8 +137,61 @@ function reset() {
 const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...req, user: actor }, {
   titulo_ids: [1, 2], idempotency_key: key
 });
+function contratoComDuasMedicoes(aprovada = true) {
+  reset();
+  state.Contrato = [{ id: 1, fluxo_novo: true, obra_id: 7, solicitacao_id: 6 }];
+  state.ContratoMedicao = [1, 2].map(id => ({ id, numero: id, contrato_id: 1,
+    aprovada_em: id === 1 || aprovada ? '2026-10-01' : null }));
+  state.ContratoParcela = [1, 2].map(id => ({ id, contrato_id: 1, titulo_financeiro_id: id }));
+  state.MedicaoParcela = [1, 2].map(id => ({ id, medicao_id: id, contrato_parcela_id: id, devolvido_em: null }));
+  state.Solicitacao[0].status_global = aprovada ? 'LIBERADO' : 'NEC. DE MEDICAO';
+}
+async function testarMedicoesIndependentes() {
+  for (const aprovada of [false, true]) {
+    contratoComDuasMedicoes(aprovada);
+    const statusInicial = state.Solicitacao[0].status_global;
+    await internal.atribuirStatusInternoPagar(user, [1], analysisStatus);
+    assert.equal(state.TituloFinanceiro[0].status_interno_pagar, analysisStatus);
+    assert.equal(state.Solicitacao[0].status_global, statusInicial, 'Analise antiga nao domina M2.');
+    await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: `old-${aprovada}` });
+    assert.equal(state.PagamentoManualFilaItem.length, 1);
+    assert.equal(state.Solicitacao[0].status_global, statusInicial);
+    assert.equal(state.Solicitacao[0].area_responsavel, 'GEO');
+    assert(state.Historico.some(h => h.setor === 'FINANCEIRO' && JSON.parse(h.metadata || '{}').fluxo_atual_preservado));
+    const quantidadeHistorico = state.Historico.length;
+    await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: `old-retry-${aprovada}` });
+    assert.equal(state.Historico.length, quantidadeHistorico, 'Retry nao repete registro financeiro antigo.');
+  }
+  contratoComDuasMedicoes();
+  await internal.atribuirStatusInternoPagar(user, [1, 2], analysisStatus);
+  assert.equal(state.Solicitacao[0].status_global, analysisStatus);
+  await models.sequelize.transaction(transaction => analysis.registrarAnaliseRecusada({ tituloId: 1,
+    usuarioId: 31, motivo: 'Corrigir M1.', resultado: 'REJEITADO', transaction }));
+  assert.equal(state.TituloFinanceiro[0].status_interno_pagar, 'AGUARDANDO AJUSTE DE PAGAMENTO');
+  assert.equal(state.Solicitacao[0].status_global, analysisStatus, 'Rejeicao antiga nao recusa M2.');
+  await models.sequelize.transaction(transaction => analysis.registrarAnaliseRecusada({ tituloId: 2,
+    usuarioId: 31, motivo: 'Corrigir M2.', resultado: 'REJEITADO', transaction }));
+  assert.equal(state.Solicitacao[0].status_global, 'AGUARDANDO AJUSTE');
+  contratoComDuasMedicoes();
+  await send();
+  assert.equal(state.PagamentoManualFilaItem.length, 2, 'Lote misto envia as duas medicoes sem duplicar.');
+  assert.equal(state.Solicitacao[0].status_global, 'ENVIADO PARA PAGAMENTO');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'OBRA');
+
+  contratoComDuasMedicoes(false);
+  const lote = await digital.createBatch(req, { titulo_ids: [1], idempotency_key: 'digital-old-measurement' });
+  assert.equal(state.Solicitacao[0].status_global, 'NEC. DE MEDICAO');
+  state.PagamentoAutorizacaoItem[0].status = 'AUTORIZADO'; state.PagamentoAutorizacaoLote[0].status = 'AUTORIZADO';
+  await digital.enqueueAuthorizedItems(req, lote.id);
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
+  assert.equal(state.Solicitacao[0].status_global, 'NEC. DE MEDICAO');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'GEO');
+  await digital.enqueueAuthorizedItems(req, lote.id);
+  assert.equal(state.PagamentoManualFilaItem.length, 1, 'Reprocessar antigo nao exige outra autorizacao nem duplica fila.');
+}
 
 (async () => {
+  await testarMedicoesIndependentes();
   assert.equal(validateManualPaymentQueueCreateBody({ titulo_ids: [1] }).titulo_ids[0], 1);
   assert.throws(() => validateManualPaymentQueueCreateBody({ titulo_ids: [1], directQueuePermission: true }), { statusCode: 400 });
   assert.throws(() => validateManualPaymentQueueCreateBody({ titulo_ids: [1], autorizacaoInterna: true }), { statusCode: 400 });

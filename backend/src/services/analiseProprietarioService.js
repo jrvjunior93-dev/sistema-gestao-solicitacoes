@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { Historico, StatusArea, Solicitacao, TituloFinanceiro, PagamentoManualFilaItem, SecurityEventLog } = require('../models');
 const { resolverSolicitacoesDosTitulos } = require('./tituloSolicitacaoContratoService');
+const { titulosQueAtualizamMedicaoAtual } = require('./medicaoAtualContratoService');
 
 const STATUS_ANALISE_PROPRIETARIO = 'EM ANÁLISE DO PROPRIETÁRIO';
 const STATUS_ENVIADO_PAGAMENTO = 'ENVIADO PARA PAGAMENTO';
@@ -44,6 +45,9 @@ async function marcarAnaliseProprietario({ titulos, usuarioId, transaction, orig
   for (const id of solicitacaoIds) {
     const solicitacao = await Solicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!solicitacao || ['PAGA', 'CANCELADA', 'CANCELADO', 'EXCLUIDA', 'EXCLUIDO', 'ARQUIVADA', 'ARQUIVADO'].includes(normalizar(solicitacao.status_global))) continue;
+    const titulosDaSolicitacao = titulos.filter(titulo => solicitacaoDoTitulo(titulo) === id);
+    const atuais = await titulosQueAtualizamMedicaoAtual({ solicitacaoId: id, titulos: titulosDaSolicitacao, transaction });
+    if (atuais && !atuais.length) continue;
     const anterior = solicitacao.status_global;
     const mudouStatus = !emAnaliseProprietario(anterior);
     if (!mudouStatus && !alterados.some((titulo) => solicitacaoDoTitulo(titulo) === id)) continue;
@@ -82,6 +86,8 @@ async function registrarAnaliseRecusada({ tituloId, usuarioId, motivo, resultado
   if (!solicitacaoId) return;
   const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
   if (!solicitacao || !emAnaliseProprietario(solicitacao.status_global)) return;
+  const atuais = await titulosQueAtualizamMedicaoAtual({ solicitacaoId, titulos: [titulo], transaction });
+  if (atuais && !atuais.length) return;
   const anterior = solicitacao.status_global;
   await solicitacao.update({ status_global: 'AGUARDANDO AJUSTE' }, { transaction });
   const observacao = `Analise digital de pagamento ${resultado === 'INVALIDADO' ? 'invalidada' : 'rejeitada'}: ${motivo}`;

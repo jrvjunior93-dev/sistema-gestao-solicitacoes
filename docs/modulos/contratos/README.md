@@ -104,8 +104,16 @@ titulos de outras medicoes. Titulos ja em fila ativa nao permitem novo envio.
 
 A preparacao atualiza a solicitacao para `EM ANALISE DO PROPRIETARIO` (com
 acentuacao cadastrada); o envio a fila usa `ENVIADO PARA PAGAMENTO` e o
-encaminhamento existente ao Financeiro. Recalcular o contrato nao apaga analise,
-fila ativa ou ajuste de pagamento enquanto houver medicao em aberto nesse fluxo.
+registro no Financeiro seguido do retorno a Obra para novas medicoes.
+A medicao mais recente por numero/ID de registro governa o status da solicitacao:
+pendente -> `NEC. DE MEDICAO`; aprovada -> `LIBERADO`; analise ->
+`EM ANALISE DO PROPRIETARIO`; rejeicao -> `AGUARDANDO AJUSTE`; fila ->
+`ENVIADO PARA PAGAMENTO`. Mantem-se a acentuacao dos status existentes.
+Enviar, aprovar, rejeitar, revogar ou baixar uma medicao anterior nao substitui
+status/setor da atual. O titulo anterior conserva seu pagamento e auditoria;
+o Financeiro acompanha seu envio pelo historico, sem assumir o ciclo atual.
+`PAGA` continua exigindo quitacao de todas as medicoes e nada positivo por medir.
+Nao ha recalculo com escrita em GET nem regularizacao automatica no deploy.
 Os contratos legados continuam com solicitacoes de medicao proprias.
 
 Testes isolados: `npm run test:medicao-recarga-envio` no backend e
