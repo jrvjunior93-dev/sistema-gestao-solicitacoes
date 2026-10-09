@@ -3169,6 +3169,7 @@ export default function NovaSolicitacao() {
             ativo={usaFluxoRecargaCartao}
             obraId={form.obra_id}
             value={recargasCartoes}
+            totalSolicitado={form.valor}
             onChange={atualizarRecargasCartoes}
             onContextChange={setRecargaCartaoContexto}
             onSolicitacaoAnteriorEnviada={limparCamposNovaRecargaAposReenvio}
@@ -3717,7 +3718,7 @@ export default function NovaSolicitacao() {
 
         {/* O valor permanece antes da apropriacao para preservar a sequencia do preenchimento e
             permitir que o rateio use um total ja informado. */}
-        {(exibirValor || usaFluxoDespesaEventual || exibirCampoApropriacao) && (
+        {!usaFluxoRecargaCartao && (exibirValor || usaFluxoDespesaEventual || exibirCampoApropriacao) && (
           <BlocoConteudo titulo="Valor">
             <FormSecao colunas={2}>
               {exibirValor && (
