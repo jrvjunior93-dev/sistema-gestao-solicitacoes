@@ -6,6 +6,7 @@ const { codigoDoSetor, setorParaHistorico } = require('../utils/codigoDoSetor');
 const { paraCentavos, somenteData, formatarISO } = require('./contratoParcelasService');
 const { formaPagamentoEhBoleto, formaPagamentoEhPix, listarFormasDaMedicao } = require('./formasPagamentoMedicaoService');
 const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
+const { obterMedicaoAtual, obterParcelasDaMedicao } = require('./medicaoAtualContratoService');
 
 /**
  * Medicao de contrato do fluxo novo (wireframe 2).
@@ -802,7 +803,7 @@ async function registrarMedicaoDoContrato({ contratoId, itens, periodoInicio, pe
       }, { transaction });
     }
 
-    // A solicitacao do contrato sai de APROVADA e passa a dizer que ha medicao esperando pagamento.
+    // Cada nova medicao inicia a conferencia, mesmo com outra medicao ainda por pagar.
     // Dentro da MESMA transacao: medicao aplicada com status antigo seria a solicitacao contando
     // uma historia diferente das parcelas.
     await sincronizarStatusDaSolicitacaoDoContrato(
@@ -827,22 +828,12 @@ async function registrarMedicaoDoContrato({ contratoId, itens, periodoInicio, pe
 }
 
 /**
- * NEC. DE MEDICAO / APROVADA / PAGA — o status da solicitacao UNICA do contrato (20/08).
- *
- * No fluxo novo a solicitacao do contrato nao morre na aprovacao: ela acompanha o contrato inteiro,
- * medicao a medicao. Ate aqui ela virava APROVADA quando o contrato ficava ATIVO e **ficava la** —
- * medir nao mudava nada, e quem olhava a lista nao distinguia contrato parado de contrato com
- * medicao pedida esperando pagamento.
- *
- * Regra do cliente:
- *
- *   medicao com titulo em aberto    -> NEC. DE MEDICAO
- *   titulo baixado, contrato segue  -> APROVADA
- *   nada em aberto e nada por medir -> PAGA
- *
- * `PAGA` exige as DUAS condicoes. So "todos os titulos quitados" nao basta: num contrato de 5
- * parcelas com 1 medida existe UM titulo, e quita-lo diria que o contrato acabou faltando 4
- * parcelas. Enquanto houver parcela por medir, a solicitacao volta para APROVADA.
+ * A solicitacao UNICA acompanha o ciclo da medicao mais recentemente registrada.
+ * Pendente de conferencia -> NEC. DE MEDICAO; aprovada -> LIBERADO; depois,
+ * analise do proprietario, ajuste ou fila conforme os status operacionais existentes.
+ * Eventos financeiros antigos continuam validos, mas nao governam esse ciclo.
+ * PAGA exige todos os titulos medidos quitados e nenhuma parcela positiva por medir.
+ * Enquanto o contrato nao se encerra, o fim do ciclo aguarda a proxima medicao.
  */
 const STATUS_SOLICITACAO_CONTRATO = {
   NECESSITA_MEDICAO: 'NEC. DE MEDICAO',
@@ -854,6 +845,9 @@ const STATUS_SOLICITACAO_CONTRATO = {
 };
 
 async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
+  const medicaoAtual = await obterMedicaoAtual(contratoId, transaction);
+  // Uma nova medicao reinicia a conferencia mesmo que outra ja esteja na fila.
+  if (medicaoAtual && !medicaoAtual.aprovada_em) return STATUS_SOLICITACAO_CONTRATO.NECESSITA_MEDICAO;
   const parcelas = await ContratoParcela.findAll({
     where: { contrato_id: contratoId },
     include: [{
@@ -862,7 +856,8 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
       attributes: ['id', 'status', 'valor_saldo', 'valor_baixado', 'status_interno_pagar'],
       required: false
     }],
-    transaction
+    transaction,
+    lock: transaction?.LOCK?.UPDATE
   });
   if (parcelas.length === 0) return null;
   await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelas, 'titulo', { transaction });
@@ -891,8 +886,9 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
   // "existe titulo em aberto" deixaria a solicitacao em NEC. DE MEDICAO desde a aprovacao e para
   // sempre — foi o que a suite pegou. O que o cliente descreveu e: medicao pedida esperando
   // pagamento. Entao a pergunta certa e sobre as parcelas JA MEDIDAS.
+  const parcelasAtuais = medicaoAtual ? await obterParcelasDaMedicao(medicaoAtual.id, transaction) : medidas;
   const medidasEmAberto = parcelas.filter(
-    (p) => medidas.has(p.id) && ativo(p.titulo) && paraCentavos(p.titulo.valor_saldo) > 0
+    (p) => parcelasAtuais.has(Number(p.id)) && ativo(p.titulo) && paraCentavos(p.titulo.valor_saldo) > 0
   );
   const titulosDeMedicao = parcelas.filter((p) => medidas.has(p.id) && ativo(p.titulo));
 
@@ -900,13 +896,15 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
   // e esperando a Gerencia, `NEC. DE MEDICAO`; aprovada, `LIBERADO` — o titulo esta liberado para
   // pagamento. Sem `aprovada_em`, o calculo nao teria como distinguir as duas situacoes.
   if (medidasEmAberto.length > 0) {
-    // Recalcular uma medicao nao pode apagar o andamento dos pagamentos de outras
-    // parcelas do mesmo contrato. A fila ativa e a analise prevalecem sobre LIBERADO.
-    const emFila = await PagamentoManualFilaItem.count({
-      where: { titulo_financeiro_id: { [Op.in]: medidasEmAberto.map((p) => p.titulo.id) },
-        status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } }, transaction
+    // Somente os titulos da medicao mais recente governam o ciclo da solicitacao.
+    const idsOperacionais = medidasEmAberto.flatMap(p => [Number(p.titulo.id),
+      ...(p.titulo.renegociacao_titulos || []).filter(t => paraCentavos(t.valor_saldo) > 0).map(t => Number(t.id))]);
+    const emFila = await PagamentoManualFilaItem.findAll({
+      where: { titulo_financeiro_id: { [Op.in]: idsOperacionais },
+        status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } }, attributes: ['id'],
+      transaction, lock: transaction?.LOCK?.UPDATE
     });
-    if (emFila > 0) return 'ENVIADO PARA PAGAMENTO';
+    if (emFila.length > 0) return 'ENVIADO PARA PAGAMENTO';
     const { emAnaliseProprietario, STATUS_ANALISE_PROPRIETARIO } = require('./analiseProprietarioService');
     if (medidasEmAberto.some((p) => emAnaliseProprietario(p.titulo.status_interno_pagar))) {
       return STATUS_ANALISE_PROPRIETARIO;
@@ -934,7 +932,9 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
 
   // Nada por pagar: enquanto houver parcela por medir o contrato continua andando, e a solicitacao
   // volta a esperar a proxima medicao.
-  if (aindaPorMedir || titulosDeMedicao.length === 0) return STATUS_SOLICITACAO_CONTRATO.NECESSITA_MEDICAO;
+  // PAGA continua exigindo o encerramento financeiro do contrato inteiro.
+  const anterioresEmAberto = titulosDeMedicao.some(p => paraCentavos(p.titulo.valor_saldo) > 0);
+  if (aindaPorMedir || anterioresEmAberto || titulosDeMedicao.length === 0) return STATUS_SOLICITACAO_CONTRATO.NECESSITA_MEDICAO;
   return STATUS_SOLICITACAO_CONTRATO.PAGA;
 }
 
@@ -1232,11 +1232,12 @@ async function sincronizarStatusDaSolicitacaoDoContrato(
   // (`NEC. DE MEDICAO` / `LIBERADO` / `PAGA`) e calculado a partir deles.
   await reconciliarParcelasComOPago(contrato.id, { usuarioId, setor }, transaction);
 
+  const solicitacao = await Solicitacao.findByPk(contrato.solicitacao_id, {
+    transaction, lock: transaction?.LOCK?.UPDATE
+  });
+  if (!solicitacao) return null;
   const statusNovo = await calcularStatusDaSolicitacaoDoContrato(contrato.id, transaction);
   if (!statusNovo) return null;
-
-  const solicitacao = await Solicitacao.findByPk(contrato.solicitacao_id, { transaction });
-  if (!solicitacao) return null;
 
   const statusAnterior = solicitacao.status_global || null;
   if (String(statusAnterior || '').toUpperCase() === statusNovo) return statusAnterior;
@@ -1640,12 +1641,15 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
 
     // A aprovacao libera os titulos e devolve a solicitacao para a Obra. O Financeiro somente
     // assume a solicitacao quando um titulo for efetivamente enviado para a fila de pagamentos.
+    let enviadaPara = null;
     if (contrato?.solicitacao_id) {
       const solicitacao = await Solicitacao.findByPk(contrato.solicitacao_id, {
         transaction,
         lock: transaction.LOCK.UPDATE
       });
       if (solicitacao) {
+        const medicaoAtual = await obterMedicaoAtual(contrato.id, transaction);
+        const atualizaSetor = Number(medicaoAtual?.id) === Number(medicao.id);
         const setorObraModel = await findSetorByCapability('eh_setor_obra', {
           transaction,
           attributes: ['id', 'codigo', 'nome']
@@ -1653,7 +1657,7 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
         const setorObra = resolveSetorPersistenciaValue(setorObraModel, 'OBRA');
         const setorAnterior = solicitacao.area_responsavel || null;
 
-        if (String(setorAnterior || '').trim().toUpperCase() !== String(setorObra).trim().toUpperCase()) {
+        if (atualizaSetor && String(setorAnterior || '').trim().toUpperCase() !== String(setorObra).trim().toUpperCase()) {
           await solicitacao.update({ area_responsavel: setorObra }, { transaction });
           await Historico.create({
             solicitacao_id: solicitacao.id,
@@ -1678,14 +1682,15 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
           usuario_responsavel_id: usuario?.id || null,
           setor: codigoDoSetor(usuario) || setorObra,
           acao: 'MEDICAO_APROVADA',
-          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada; titulos abertos e solicitacao devolvida para ${setorObra}. GEO pode enviar os titulos a autorizacao ou fila de pagamentos.`,
+          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada; titulos abertos. ${atualizaSetor ? `Solicitacao devolvida para ${setorObra}.` : 'Setor preservado: existe medicao mais recente.'} GEO pode enviar os titulos a autorizacao ou fila de pagamentos.`,
           metadata: JSON.stringify({
             medicao_id: medicao.id,
             valor_total: Number(medicao.valor_total),
-            setor_destino: setorObra,
+            setor_destino: atualizaSetor ? setorObra : setorAnterior,
             movimentacao_financeiro: 'SOMENTE_AO_ENFILEIRAR_TITULO'
           })
         }, { transaction });
+        enviadaPara = solicitacao.area_responsavel;
       }
     }
 
@@ -1701,7 +1706,7 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
 
     return {
       medicao: { id: medicao.id, numero: medicao.numero, aprovada_em: medicao.aprovada_em },
-      enviada_para: 'OBRA'
+      enviada_para: enviadaPara
     };
   });
 }

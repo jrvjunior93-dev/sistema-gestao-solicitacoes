@@ -19,6 +19,33 @@
 - Branch de integracao codex/promocao-medicao-recarga-main-20261009 baseada
   na main. Preservar todos os demais worktrees e excluir arquivos de RH/DP.
 
+Publicacao DEV autorizada em 09/10/2026 nesta conversa: reserva documental
+temporaria para o handoff de medicao mais recente e esta anotacao. Commit/push
+somente na refactor/frontend; main, deploy e banco real fora do escopo.
+outputs/ excluido. Base local/remota 6e2e859f conferida, sem divergencia.
+Revalidacoes de medicao/recarga/analise, vinculos e comprovantes aprovadas;
+build/UI da implementacao permanecem validos (codigo funcional nao alterado).
+Reserva documental encerrada; ownership liberado para commit/push autorizado.
+
+## Medicao mais recente governa a solicitacao - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-09-medicao-mais-recente-status.md.
+- Reservados: medicaoContratoService.js, analiseProprietarioService.js,
+  pagamentoManualFilaService.js, solicitacaoFinanceiroStatusService.js,
+  tituloContratoReconService.js, novo helper medicaoAtualContratoService.js;
+  testes offline associados e handoff desta tarefa.
+- Reserva documental adicional: docs/modulos/contratos/README.md.
+- Reserva adicional: frontend/src/pages/SolicitacaoDetalhe/ModalMedicao.jsx,
+  apenas textos da aprovacao para nao prometer retorno a Obra no evento antigo.
+- Escopo autorizado: implementar localmente a precedencia da medicao mais
+  recente usando os status existentes. Preservar pagamentos, permissoes e
+  visibilidade do Financeiro. Sem banco real, migration, commit, push ou deploy.
+- outputs/ e alteracoes de outras tarefas permanecem fora deste escopo.
+- Validacoes: testes de medicao/recarga/analise, fila/instrumentos/encargos,
+  comprovantes, vinculos/reconciliacao, acesso GEO/anexos e contratos aprovados;
+  UI desktop/mobile, build, sintaxe e documentacao aprovados. Sem banco real.
+
 Publicacao autorizada pelo usuario nesta conversa: commit e push do ajuste de
 medicao/vinculo legado somente na refactor/frontend, com comandos de EC2 DEV.
 Reserva documental temporaria do handoff desta tarefa para registrar publicacao

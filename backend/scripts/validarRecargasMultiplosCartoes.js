@@ -97,6 +97,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/solicit
   if (id === 'sequelize') return { Op };
   if (id === '../models') return { ...models, Contrato: { findOne: async () => null }, SolicitacaoPedidoRetorno: { update: async () => [0] } };
   if (id === './recargaCartaoService') return service;
+  if (id === './medicaoAtualContratoService') return { titulosQueAtualizamMedicaoAtual: async () => null, obterMedicaoAtual: async () => null };
   if (id === './setorCapabilityService') return { findSetorByCapability: async (cap) => ({ codigo: cap === 'eh_setor_financeiro' ? 'FINANCEIRO' : 'OBRA' }), resolveSetorPersistenciaValue: (setor) => setor.codigo };
   throw new Error(`Dependencia financeira inesperada: ${id}`);
 } });

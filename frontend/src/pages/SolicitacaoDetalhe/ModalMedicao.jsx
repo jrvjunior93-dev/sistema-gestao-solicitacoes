@@ -230,7 +230,7 @@ export default function ModalMedicao({
     try {
       const { ok } = await confirmar({
         titulo: `Aprovar a medicao ${alvo.numero}`,
-        mensagem: `Aprovar a medicao ${alvo.numero} (${periodo(alvo)}) abre ${quantasParcelas} titulo(s), no total de ${moeda(total)}, para ${favorecido} por ${formaPagamento}. Conferido em ${quantosAnexos} arquivo(s) anexado(s). A solicitacao volta a Obra para novas medicoes; GEO pode enviar os titulos a autorizacao ou a fila. Depois de aprovada, valor e vencimento ficam somente para consulta.`,
+        mensagem: `Aprovar a medicao ${alvo.numero} (${periodo(alvo)}) abre ${quantasParcelas} titulo(s), no total de ${moeda(total)}, para ${favorecido} por ${formaPagamento}. Conferido em ${quantosAnexos} arquivo(s) anexado(s). A solicitacao volta a Obra apenas se esta for a medicao mais recente; GEO pode enviar os titulos a autorizacao ou a fila. Depois de aprovada, valor e vencimento ficam somente para consulta.`,
         rotuloConfirmar: 'Aprovar medição'
       });
       if (!ok) return;
@@ -238,7 +238,7 @@ export default function ModalMedicao({
       const resposta = await aprovarMedicaoContrato(alvo.id);
       setAprovacaoLocal(resposta.medicao);
       await onSalvo?.();
-      avisar.sucesso('Medição aprovada. Títulos abertos e solicitação devolvida à Obra.');
+      avisar.sucesso('Medição aprovada. Títulos abertos para envio à autorização ou à fila de pagamentos.');
     } catch (e) {
       avisar.erro(e.message || 'Nao foi possivel aprovar a medicao.');
     } finally {
@@ -584,7 +584,7 @@ export default function ModalMedicao({
                   ? (idsParaEnviar.length ? `${idsParaEnviar.length} título(s) desta medição disponível(is) para envio.`
                     : todosNaFila ? 'Os títulos desta medição já estão na fila de pagamentos.'
                       : 'Não há títulos desta medição disponíveis para novo envio.')
-                  : 'Aprovar abre os títulos e devolve a solicitação à Obra.'}
+                  : 'Aprovar libera os títulos desta medição para envio.'}
             </span>
             <div className="flex flex-wrap items-center gap-2">
               {podeSalvar && (

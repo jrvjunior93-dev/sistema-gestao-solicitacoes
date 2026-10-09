@@ -11,6 +11,7 @@ const {
   findSetorByCapability,
   resolveSetorPersistenciaValue
 } = require('./setorCapabilityService');
+const { titulosQueAtualizamMedicaoAtual, obterMedicaoAtual } = require('./medicaoAtualContratoService');
 
 const STATUS_SOLICITACAO_PAGA = 'PAGA';
 const STATUS_SOLICITACAO_PAGAMENTO_PARCIAL = 'PARCIALMENTE PAGO';
@@ -53,12 +54,28 @@ function setoresEquivalentes(a, b) {
   return aliasesGeo.has(esquerda) && aliasesGeo.has(direita);
 }
 
-async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, usuarioId, transaction, retornarParaObra = false }) {
+async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, usuarioId, transaction, retornarParaObra = false, titulos = [] }) {
   if (!solicitacao) return false;
   const setorFinanceiroModel = await findSetorByCapability('eh_setor_financeiro', { transaction });
   const setorFinanceiro = resolveSetorPersistenciaValue(setorFinanceiroModel, 'FINANCEIRO');
   const setorAnterior = solicitacao.area_responsavel || null;
   const statusAnterior = solicitacao.status_global || null;
+  if (retornarParaObra) {
+    const atuais = await titulosQueAtualizamMedicaoAtual({ solicitacaoId: solicitacao.id, titulos, transaction });
+    if (atuais && !atuais.length) {
+      // O Financeiro recebe os titulos antigos, nao a responsabilidade pelo ciclo novo.
+      // ENVIADA_SETOR identifica a participacao financeira nas regras de acompanhamento.
+      await Historico.create({ solicitacao_id: solicitacao.id, usuario_responsavel_id: usuarioId || null,
+        setor: setorFinanceiro, acao: 'ENVIADA_SETOR',
+        observacao: `De ${setorAnterior || '-'} para ${setorFinanceiro}`,
+        descricao: 'Titulos de medicao anterior encaminhados ao Financeiro. Status e setor da medicao atual preservados.',
+        metadata: JSON.stringify({ origem: 'FILA_PAGAMENTOS_MEDICAO_ANTERIOR',
+          setor_origem: setorAnterior, setor_destino: setorFinanceiro, fluxo_atual_preservado: true,
+          titulo_ids: titulos.map(t => Number(t.id)) })
+      }, { transaction });
+      return false;
+    }
+  }
   const mudouSetor = !setoresEquivalentes(setorAnterior, setorFinanceiro);
   const mudouStatus = normalizarStatus(statusAnterior) !== 'ENVIADO PARA PAGAMENTO';
   if (!mudouSetor && !mudouStatus && !retornarParaObra) return false;
@@ -244,7 +261,11 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
       { usuarioId, setor, motivo: observacao || 'Status atualizado apos baixa de titulo do contrato.' },
       transaction
     );
-    await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos });
+    // No ciclo por medicao o retorno ja ocorre na aprovacao e no enqueue.
+    // Nenhuma baixa/estorno posterior deve movimentar o setor da medicao atual.
+    if (!await obterMedicaoAtual(contratoDoFluxoNovo.id, transaction)) {
+      await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos });
+    }
     return statusContrato;
   }
 

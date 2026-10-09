@@ -444,7 +444,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
         solicitacao,
         usuarioId: req.user?.id || null,
         transaction,
-        retornarParaObra: solicitacoesContrato.has(solicitacaoId)
+        retornarParaObra: solicitacoesContrato.has(solicitacaoId),
+        titulos: novos.filter(t => vinculosSolicitacoes.get(Number(t.id))?.solicitacao_id === solicitacaoId)
       });
     }
     const processados = itens.filter(item => !ACTIVE_STATUSES.includes(item.status)).length;

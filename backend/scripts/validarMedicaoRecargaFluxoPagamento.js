@@ -63,6 +63,8 @@ function instance(name, row, options = {}) {
 }
 for (const name of names) models[name] = {
   async findAll(options = {}) { return state[name].filter((row) => matches(row, options.where)).map((row) => instance(name, row, options)); },
+  async findOne(options = {}) { return (await this.findAll(options))[0] || null; },
+  async max(field, options = {}) { return Math.max(0, ...state[name].filter(row => matches(row, options.where)).map(row => Number(row[field]))); },
   async findByPk(id, options = {}) { return instance(name, state[name].find((row) => row.id === Number(id)), options); },
   async count(options = {}) {
     let rows = state[name].filter((row) => matches(row, options.where));
@@ -70,7 +72,8 @@ for (const name of names) models[name] = {
     return rows.length;
   },
   async update(values, options) { assert.equal(options.transaction, tx); const rows = state[name].filter((row) => matches(row, options.where)); rows.forEach((row) => Object.assign(row, values)); return [rows.length]; },
-  async create(values, options) { assert.equal(options.transaction, tx); if (failHistory) throw new Error('Auditoria QA'); state[name].push({ id: state[name].length + 1, ...values }); }
+  async create(values, options) { assert.equal(options.transaction, tx); if (failHistory) throw new Error('Auditoria QA');
+    const row = { id: state[name].length + 1, ...values }; state[name].push(row); return instance(name, row); }
 };
 models.sequelize = { async transaction(action) {
   const before = structuredClone(state); try { return await action(tx); } catch (error) { state = before; throw error; }
@@ -80,6 +83,7 @@ models.Parceiro = { findOne: async () => ({ id: 10 }) };
 models.FormaPagamentoFinanceira = { findByPk: async () => ({ id: 1, tipo: 'PIX' }) };
 const analise = { STATUS_ANALISE_PROPRIETARIO: 'EM ANÁLISE DO PROPRIETÁRIO',
   emAnaliseProprietario: (value) => value === 'EM ANÁLISE DO PROPRIETÁRIO' };
+const medicaoAtual = load('medicaoAtualContratoService.js', { sequelize: { Op }, '../models': models });
 const service = load('medicaoContratoService.js', {
   sequelize: { Op }, '../models': models,
   '../utils/codigoDoSetor': { codigoDoSetor: () => 'GEO', setorParaHistorico: (value) => value },
@@ -90,7 +94,8 @@ const service = load('medicaoContratoService.js', {
     assert.equal(cap, 'eh_setor_obra'); assert.equal(options.transaction, tx); return { codigo: 'OBRA' };
   }, resolveSetorPersistenciaValue: (setor) => setor.codigo },
   './tituloRenegociacaoVinculos': { projetarAssociacoes: async () => {} },
-  './analiseProprietarioService': analise
+  './analiseProprietarioService': analise,
+  './medicaoAtualContratoService': medicaoAtual
 });
 async function medicao() {
   reset(); grants = false;
@@ -124,6 +129,87 @@ async function medicao() {
   state.TituloFinanceiro[0].status_interno_pagar = 'AGUARDANDO AJUSTE DE PAGAMENTO';
   await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
   assert.equal(state.Solicitacao[0].status_global, 'AGUARDANDO AJUSTE');
+}
+async function medicaoMaisRecente() {
+  // Orquestrador de registro REAL, isolando somente validacao/calculo de parcelas.
+  // Recalculo de status e consultas de medicao sao os servicos reais acima.
+  const source = fs.readFileSync(path.join(root, 'medicaoContratoService.js'), 'utf8');
+  const inicio = source.indexOf('async function registrarMedicaoDoContrato(');
+  const fim = source.indexOf('/**', inicio);
+  const module = { exports: {} };
+  vm.runInNewContext(`${source.slice(inicio, fim)}\nmodule.exports=registrarMedicaoDoContrato;`, {
+    module, ...models, SETOR_GERENCIA_PROCESSOS: 'GEO', erro: mensagem => Error(mensagem),
+    validarDadosDePagamento: async () => ({ favorecido_id: 10, forma_pagamento_id: 1 }),
+    aplicarMedicaoNasParcelas: async ({ medicaoId }) => {
+      state.MedicaoParcela.push({ id: 2, medicao_id: medicaoId, contrato_parcela_id: 2, devolvido_em: null });
+      return { total_medido: 200 };
+    }, sincronizarStatusDaSolicitacaoDoContrato: service.sincronizarStatusDaSolicitacaoDoContrato
+  });
+  reset();
+  state.ContratoMedicao[0].aprovada_em = '2026-10-01';
+  state.ContratoParcela[0].status = 'APROVADA'; state.TituloFinanceiro[0].status = 'ABERTO';
+  state.PagamentoManualFilaItem.push({ id: 1, titulo_financeiro_id: 1, status: 'PENDENTE' });
+  Object.assign(state.Solicitacao[0], { status_global: 'ENVIADO PARA PAGAMENTO', area_responsavel: 'OBRA' });
+  const registrada = await module.exports({ contratoId: 1, usuarioId: 2, itens: [] });
+  assert.equal(registrada.medicao.numero, 2);
+  assert.equal(state.Solicitacao[0].status_global, 'NEC. DE MEDICAO', 'Registro de M2 aplica o novo ciclo na mesma transacao.');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'GEO');
+  assert.equal(state.PagamentoManualFilaItem.length, 1, 'Fila de M1 permanece intacta.');
+  function segundaMedicao() {
+    reset();
+    state.ContratoMedicao.push({ ...state.ContratoMedicao[0], id: 2, numero: 2,
+      periodo_inicio: '2026-01-01', periodo_fim: '2026-01-31' });
+    state.MedicaoParcela.push({ id: 2, medicao_id: 2, contrato_parcela_id: 2, devolvido_em: null });
+    state.Solicitacao[0].area_responsavel = 'GEO';
+    state.TituloFinanceiro.forEach(t => { t.solicitacao_id = 50; });
+  }
+  segundaMedicao();
+  state.ContratoMedicao[0].aprovada_em = '2026-10-01';
+  state.ContratoParcela[0].status = 'APROVADA'; state.TituloFinanceiro[0].status = 'ABERTO';
+  state.PagamentoManualFilaItem.push({ id: 1, titulo_financeiro_id: 1, status: 'PENDENTE' });
+  state.Solicitacao[0].status_global = 'ENVIADO PARA PAGAMENTO';
+  await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
+  assert.equal(state.Solicitacao[0].status_global, 'NEC. DE MEDICAO', 'M2 pendente vence a fila de M1.');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'GEO');
+  await service.aprovarMedicaoDoContrato(2, { usuario: { id: 2 } });
+  assert.equal(state.Solicitacao[0].status_global, 'LIBERADO', 'A fila antiga nao substitui a aprovacao de M2.');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'OBRA');
+  state.TituloFinanceiro[0].status_interno_pagar = 'AGUARDANDO AJUSTE DE PAGAMENTO';
+  state.TituloFinanceiro[1].status_interno_pagar = analise.STATUS_ANALISE_PROPRIETARIO;
+  await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
+  assert.equal(state.Solicitacao[0].status_global, analise.STATUS_ANALISE_PROPRIETARIO);
+
+  const financeiro = load('solicitacaoFinanceiroStatusService.js', {
+    sequelize: { Op }, '../models': models, './medicaoContratoService': service,
+    './medicaoAtualContratoService': medicaoAtual,
+    './setorCapabilityService': { findSetorByCapability: async () => ({ codigo: 'FINANCEIRO' }),
+      resolveSetorPersistenciaValue: s => s.codigo }
+  });
+  state.Solicitacao[0].area_responsavel = 'GEO';
+  Object.assign(state.TituloFinanceiro[0], { status: 'QUITADO', valor_saldo: 0, valor_baixado: 100 });
+  state.PagamentoManualFilaItem[0].status = 'BAIXADO';
+  await financeiro.sincronizarStatusSolicitacaoPorBaixaTitulos({ solicitacaoId: 50, transaction: tx });
+  assert.equal(state.Solicitacao[0].status_global, analise.STATUS_ANALISE_PROPRIETARIO, 'Baixa antiga nao apaga analise de M2.');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'GEO');
+  state.PagamentoManualFilaItem.push({ id: 2, titulo_financeiro_id: 2, status: 'PENDENTE' });
+  await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
+  assert.equal(state.Solicitacao[0].status_global, 'ENVIADO PARA PAGAMENTO');
+  Object.assign(state.TituloFinanceiro[1], { status: 'QUITADO', valor_saldo: 0, valor_baixado: 200 });
+  state.PagamentoManualFilaItem[1].status = 'BAIXADO';
+  // Ultima medicao paga nao equivale a contrato quitado se a primeira continuar devendo.
+  Object.assign(state.TituloFinanceiro[0], { status: 'ABERTO', valor_saldo: 100, valor_baixado: 0 });
+  await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
+  assert.equal(state.Solicitacao[0].status_global, 'NEC. DE MEDICAO');
+  Object.assign(state.TituloFinanceiro[0], { status: 'QUITADO', valor_saldo: 0, valor_baixado: 100 });
+  await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
+  assert.equal(state.Solicitacao[0].status_global, 'PAGA', 'Encerramento ainda exige todas as medicoes pagas.');
+
+  segundaMedicao();
+  const antiga = await service.aprovarMedicaoDoContrato(1, { usuario: { id: 2 } });
+  assert.equal(state.TituloFinanceiro[0].status, 'ABERTO', 'Aprovacao antiga continua funcional.');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'GEO', 'Aprovacao antiga nao tira M2 de GEO.');
+  assert.equal(state.Solicitacao[0].status_global, 'NEC. DE MEDICAO');
+  assert.equal(antiga.enviada_para, 'GEO');
 }
 async function relatorio() {
   const titulos = [
@@ -229,6 +315,6 @@ async function leituraParcelasEnvio() {
   tituloAtual = null;
   assert.equal((await read(1)).parcelas[0].titulo_pagamento, null);
 }
-(async () => { await leituraParcelasEnvio(); await medicao(); await relatorio(); filtroFinanceiroObras();
-  console.log('OK: medicao abre somente parcelas medidas, retorna Obra, preserva analise/fila/ajuste; permissoes, anexos, rollback e replay. Recarga nao antecipa nem duplica custo. Sem banco/rede.');
+(async () => { await leituraParcelasEnvio(); await medicao(); await medicaoMaisRecente(); await relatorio(); filtroFinanceiroObras();
+  console.log('OK: medicao mais recente governa registro/aprovacao/analise/fila; aprovar ou baixar a anterior preserva status/setor atuais e quitacao integral. Permissoes, anexos, rollback, replay e custo de recarga preservados. Sem banco/rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
