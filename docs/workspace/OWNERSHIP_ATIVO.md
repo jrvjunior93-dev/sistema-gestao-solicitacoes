@@ -1,5 +1,24 @@
 # Ownership Ativo
 
+## Promocao isolada medicao e recarga - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: integracao local.
+- Usuario confirmou backup recente no Drive cifrado/timer ativo e reiterou
+  exclusao de Pessoal/DP 118209c0. Sem acesso a EC2/banco ou deploy executado.
+- Main congelada a06bdfdc; refactor/frontend f7f91559. Selecionados somente
+  c75fc396, a3ab0dec, 6e2e859f, 14421ece e f7f91559, em ordem de dependencia.
+- Edicao de valor/vencimento, comprovantes e encargos ja publicados na main:
+  preservar suas implementacoes e auditoria, sem reaplicar entregas antigas.
+- Reservados: arquivos tocados pelos cinco commits de medicao/recarga e seus
+  testes/documentos; conflitos resolvidos somente no escopo de integracao.
+  Reserva documental adicional do handoff de promocao e deste registro.
+- Snapshot main: tag backup/main-pre-medicao-recarga-20261009-a06bdfdc e bundle
+  completo verificado em outputs/main-pre-medicao-recarga-20261009-a06bdfdc.bundle
+  fora da EC2. Tag publicada sem mover main; outputs/ excluido de commits.
+  SHA256 E8DD8AB089661EFFFD410316153EE1C886012F0B73D634EF3F1D4D6995E42CD9.
+- Branch de integracao codex/promocao-medicao-recarga-main-20261009 baseada
+  na main. Preservar todos os demais worktrees e excluir arquivos de RH/DP.
+
 ## Juros, multa e saldo atual na fila - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: publicacao
