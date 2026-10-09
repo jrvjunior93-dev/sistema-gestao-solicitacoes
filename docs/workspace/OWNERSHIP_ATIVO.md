@@ -3,9 +3,9 @@
 ## Juros, multa e saldo atual na fila - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: publicacao
-  autorizada na refactor/frontend e promocao isolada para main.
-- Reserva temporaria: arquivos desta tarefa, handoff e index; nao incorporar
-  implantacao DP 118209c0. Promocao depende de backup/timer confirmados.
+  autorizada e integracao isolada validada; reserva liberada ao concluir push.
+- Backup recente no Drive cifrado e timer ativo confirmados pelo usuario.
+  Refactor: 8bb9daed; integracao main: 905dd2a1, sem DP 118209c0.
 - Reserva: pagamentoManualFilaService.js, tituloFinanceiroService.js,
   faturaCartaoFinanceiroService.js, paymentValidators.js, novo dominio de valores
   e sincronizacao da fila, FinanceiroFilaPagamentos.jsx, testes isolados da fila,
