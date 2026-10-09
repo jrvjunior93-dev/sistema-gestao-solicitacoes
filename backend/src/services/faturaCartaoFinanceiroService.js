@@ -85,11 +85,21 @@ async function recalcularFaturaCartao(faturaId, { transaction = null, leituraCor
     ...(leituraCorrente && transaction ? { lock: transaction.LOCK.UPDATE } : {})
   });
   const valorTotal = titulos.reduce((total, titulo) => roundCurrency(total + Number(titulo.valor_original || 0)), 0);
+  // Compras quitadas com cartao na fila podem incluir encargos, separados do
+  // principal do titulo. A fatura deve refletir o total efetivamente usado.
+  const movimentos = await MovimentoFinanceiro.findAll({
+    where: { fatura_cartao_id: faturaId, tipo_movimento: 'BAIXA', status: 'ATIVO', forma_recebimento: 'CARTAO_CREDITO' },
+    attributes: ['juros', 'multa', 'desconto'], transaction,
+    ...(leituraCorrente && transaction ? { lock: transaction.LOCK.UPDATE } : {})
+  });
+  const encargos = movimentos.reduce((total, movimento) => roundCurrency(total + Number(movimento.juros || 0)
+    + Number(movimento.multa || 0) - Number(movimento.desconto || 0)), 0);
+  const totalComEncargos = roundCurrency(valorTotal + encargos);
   await FaturaCartaoFinanceiro.update(
-    { valor_total: valorTotal },
+    { valor_total: totalComEncargos },
     { where: { id: faturaId }, transaction }
   );
-  return valorTotal;
+  return totalComEncargos;
 }
 
 async function obterOuCriarFaturaCartao({ cartaoId, dataCompra, parcelaOffset = 0, usuarioId = null, transaction = null, novaCompraFila = false }) {

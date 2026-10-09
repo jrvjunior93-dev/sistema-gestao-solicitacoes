@@ -163,7 +163,17 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
   reset(); state.Solicitacao[0].status_global = 'CANCELADA'; await internal.atribuirStatusInternoPagar(user, [1], analysisStatus);
   assert.equal(state.Solicitacao[0].status_global, 'CANCELADA');
 
+  reset(); state.TituloFinanceiro[0].juros = 10; state.TituloFinanceiro[0].multa = 3;
+  await digital.createBatch(req, { titulo_ids: [1], idempotency_key: 'encargos' });
+  assert.equal(state.PagamentoAutorizacaoLote[0].valor_total, 113);
+  assert.equal(state.PagamentoAutorizacaoItem[0].valor_snapshot, 113);
+  assert.equal(state.PagamentoAutorizacaoItem[0].snapshot_json.valor_saldo, 100);
+  assert.equal(state.PagamentoAutorizacaoItem[0].snapshot_json.juros, 10);
+  await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: 'encargos-fila' });
+  assert.equal(state.PagamentoManualFilaItem[0].valor_previsto, 100);
+  assert.equal(state.PagamentoManualFilaItem[0].juros, 10); assert.equal(state.PagamentoManualFilaItem[0].multa, 3);
   reset(); const lot = await digital.createBatch(req, { titulo_ids: [1, 2], idempotency_key: 'digital-1' });
+  assert(!Object.hasOwn(state.PagamentoAutorizacaoItem[0].snapshot_json, 'juros'), 'Zeros preservam formato/hash legado');
   assert.equal(lot.codigo, `LOTE-${lot.id}`, 'Codigo gerado pelo ID unico na transacao');
   assert.equal(state.PagamentoAutorizacaoLote[0].codigo, 'LOTE-1');
   assert(lot.id); assert.equal(state.Solicitacao[0].status_global, analysisStatus); assert.equal(state.PagamentoAutorizacaoItem.length, 2);
@@ -328,6 +338,17 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
   await digital.decideBatch(diretor, lote.id, { decisoes: autorizar, credential: { id: 'qa-key' } });
   assert.equal(state.PagamentoAutorizacaoItem[0].status, 'INVALIDADO');
   assert.equal(state.PagamentoManualFilaItem.length, 0, 'Lote antigo nao dispensa revalidacao material');
+
+  // Encargos alterados tambem sao mudanca material; nao usar decisao obsoleta.
+  reset(); state.TituloFinanceiro[0].juros = 10; state.TituloFinanceiro[0].multa = 3;
+  lote = await digital.createBatch(req, { titulo_ids: [1] });
+  state.PagamentoAutorizador.push({ id: 1, usuario_id: 31, ativo: true });
+  state.WebauthnCredential.push({ id: 1, usuario_id: 31, credential_id: 'qa-key', public_key: 'AA==', ativo: true, counter: 0 });
+  await digital.authenticationOptions(diretor, lote.id, autorizar);
+  state.TituloFinanceiro[0].juros = 15;
+  await digital.decideBatch(diretor, lote.id, { decisoes: autorizar, credential: { id: 'qa-key' } });
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'INVALIDADO');
+  assert.equal(state.PagamentoManualFilaItem.length, 0, 'Encargos corrigidos exigem snapshot atual');
 
   // Challenge obtido antes do envio direto nao pode decidir um item ja enfileirado.
   reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] });

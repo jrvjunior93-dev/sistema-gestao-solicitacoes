@@ -13,6 +13,47 @@ Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, 
 - status e saldo derivam dos movimentos ativos;
 - edicao de titulo movimentado possui restricoes e auditoria.
 
+## Juros e multa na edicao e na fila
+
+Juros e multa sao valores em reais, nao percentuais. Na edicao do titulo ficam
+em campos distintos e o total previsto e o valor liquido/base mais esses dois
+encargos. O principal, os impostos e os rateios nao sao capitalizados pelos
+encargos. Na Fila de Pagamentos ha uma coluna para cada encargo; o valor pago
+e o desembolso total. A baixa abate apenas o principal do saldo e grava juros
+e multa separadamente no movimento financeiro existente.
+
+Exemplo: saldo de R$ 200,00, juros de R$ 10,00 e multa de R$ 3,00 esperam
+pagamento de R$ 213,00, sem divergencia. Valor pago acima/abaixo desse total
+continua seguindo o fluxo de divergencia justificada. Cartao de credito
+continua exigindo quitacao integral, e sua fatura inclui os encargos efetivos.
+Cheque de terceiro cobre o desembolso total, nao somente o principal.
+
+Salvar uma edicao sincroniza saldo, vencimento e encargos com itens ativos da
+fila ainda sem movimento, na mesma transacao (lock titulo antes de fila).
+Nao altera pagamentos anteriores, comprovantes, valor pago informado, motivo
+ou status de divergencia. Corrigir um titulo divergente nao autoriza sua baixa
+automaticamente: a aprovacao existente permanece obrigatoria. Titulos ja
+movimentados continuam sujeitos aos bloqueios de edicao anteriores.
+
+Atualizar a tela busca o saldo/encargos novos, preservando valores de pagamento
+digitados manualmente. Encargos configurados no titulo so sao copiados na
+entrada/reabertura sem baixa anterior, evitando repeti-los numa segunda baixa
+parcial. O dossie digital inclui encargos nao zerados no total e na revalidacao
+material; titulos sem encargos mantem o formato/hash legado.
+
+Reutiliza as rotas/permissoes de edicao de titulos, registro de baixas e
+aprovacao de divergencias; nenhuma permissao nova. Requer aplicar a migration
+estrutural `202610080002_fila_pagamentos_juros_multa.js` antes de iniciar o
+backend atualizado. Adiciona `juros`/`multa` DECIMAL(14,2), default zero, em
+`titulos_financeiros` e `pagamentos_manuais_fila`, sem DML/backfill. Os dados
+ficam separados para evolucao dos relatorios; layouts de relatorios nao foram
+alterados nesta entrega.
+
+Validacoes isoladas no backend: `test:fila-juros-multa`,
+`test:fila-instrumentos`, `test:fila-comprovante-pendente`.
+No frontend: `test:fila-instrumentos-ui`, `test:titulo-juros-multa-ui` e build.
+Os testes UI usam a pagina real com APIs simuladas, em desktop/mobile.
+
 ## Relatorio PDF de titulos
 
 O botao Gerar relatorio em Contas a Pagar gera somente os titulos selecionados

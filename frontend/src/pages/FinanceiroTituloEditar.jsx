@@ -234,6 +234,8 @@ function buildFormFromTitulo(titulo) {
     descricao: titulo?.descricao || '',
     numero_documento: titulo?.numero_documento || '',
     valor: formatCurrencyInput(titulo?.valor_bruto ?? titulo?.valor_original),
+    juros: formatCurrencyInput(titulo?.juros || 0, { emptyZero: false }),
+    multa: formatCurrencyInput(titulo?.multa || 0, { emptyZero: false }),
     desconto_financeiro: descontoFinanceiro > 0 ? formatCurrencyInput(descontoFinanceiro) : '',
     data_emissao: titulo?.data_emissao || today(),
     data_vencimento: titulo?.data_vencimento || today(),
@@ -753,6 +755,7 @@ export default function FinanceiroTituloEditar() {
     if (!form.parceiro_id) return 'Selecione o parceiro.';
     if (!form.descricao.trim()) return 'Informe a descricao.';
     if (toCurrencyNumber(form.valor) <= 0) return 'Informe o valor do titulo.';
+    if (toCurrencyNumber(form.juros) < 0 || toCurrencyNumber(form.multa) < 0) return 'Juros e multa nao podem ser negativos.';
     if (descontoFinanceiro < 0) return 'Informe um desconto valido.';
     if (descontoFinanceiro > valorTitulo) return 'O desconto nao pode ser maior que o valor do titulo.';
     if (!form.data_vencimento) return 'Informe o vencimento.';
@@ -788,14 +791,17 @@ export default function FinanceiroTituloEditar() {
     return '';
   }
 
+  const submitLockRef = useRef(false);
   async function handleSubmit(event) {
     event.preventDefault();
+    if (submitLockRef.current) return;
     const erroValidacao = validar();
     if (erroValidacao) {
       avisar.erro(erroValidacao);
       return;
     }
 
+    submitLockRef.current = true;
     try {
       setSaving(true);
       limpar();
@@ -804,6 +810,8 @@ export default function FinanceiroTituloEditar() {
         empresa_id: empresaDaObraId,
         status: form.status || 'ABERTO',
         valor: toCurrencyNumber(form.valor),
+        juros: toCurrencyNumber(form.juros),
+        multa: toCurrencyNumber(form.multa),
         apropriacao_id: form.apropriacao_id || null,
         categoria_financeira_id: form.categoria_financeira_id || null,
         numero_documento: form.numero_documento || null,
@@ -879,6 +887,7 @@ export default function FinanceiroTituloEditar() {
     } catch (err) {
       avisar.erro(err?.message || 'Erro ao salvar edicao do titulo');
     } finally {
+      submitLockRef.current = false;
       setSaving(false);
     }
   }
@@ -1172,6 +1181,19 @@ export default function FinanceiroTituloEditar() {
                   placeholder="R$ 0,00"
                 />
               </CampoForm>
+              {['juros', 'multa'].map(campo => (
+                <CampoForm key={campo} label={campo === 'juros' ? 'Juros (R$)' : 'Multa (R$)'}>
+                  <input className="input input-moeda w-full" inputMode="decimal"
+                    aria-label={campo === 'juros' ? 'Juros do título' : 'Multa do título'}
+                    value={form[campo] || ''}
+                    onChange={event => updateField(campo, normalizeCurrencyTyping(event.target.value))}
+                    onBlur={event => updateField(campo, formatCurrencyInput(event.target.value, { emptyZero: false }))}
+                    disabled={Boolean(bloqueio)} placeholder="R$ 0,00" />
+                </CampoForm>
+              ))}
+              <div className="col-span-full text-sm font-semibold text-[var(--c-text)]" aria-live="polite">
+                Total previsto com juros e multa: {formatCurrency(valorLiquidoPrevisto + toCurrencyNumber(form.juros) + toCurrencyNumber(form.multa))}
+              </div>
             </FormSecao>
 
             <FormSecao legenda="Datas" colunas={3}>

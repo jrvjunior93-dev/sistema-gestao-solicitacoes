@@ -1,5 +1,27 @@
 # Ownership Ativo
 
+## Juros, multa e saldo atual na fila - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: publicacao
+  autorizada na refactor/frontend e promocao isolada para main.
+- Reserva temporaria: arquivos desta tarefa, handoff e index; nao incorporar
+  implantacao DP 118209c0. Promocao depende de backup/timer confirmados.
+- Reserva: pagamentoManualFilaService.js, tituloFinanceiroService.js,
+  faturaCartaoFinanceiroService.js, paymentValidators.js, novo dominio de valores
+  e sincronizacao da fila, FinanceiroFilaPagamentos.jsx, testes isolados da fila,
+  README Financeiro e handoff desta tarefa.
+- Adicoes solicitadas: colunas distintas, modelo/migration estrutural de juros
+  e multa na fila e titulo; FinanceiroTituloEditar.jsx, financialValidators.js.
+  Dependencias: snapshot de autorizacao inclui total com encargos sem mudar
+  hash legado sem encargos; testes de autorizacao e edicao isolados.
+- Escopo: encargos em reais separados do principal, comparacao com saldo atual,
+  sincronizacao transacional na edicao antes da baixa, divergencia justificada
+  preservada para autorizacao posterior. Preservar historico, comprovantes,
+  permissoes, instrumentos, faturas e idempotencia. Migration somente preparada,
+  nao executada. Sem banco real ou deploy executado pelo agente.
+  Checkout refactor/frontend; outputs/ preservado.
+- Handoff: docs/handoffs/2026-10-08-fila-juros-multa.md.
+
 ## Comprovantes da fila no historico - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: publicacao
