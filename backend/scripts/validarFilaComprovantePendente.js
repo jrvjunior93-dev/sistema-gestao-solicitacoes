@@ -102,6 +102,7 @@ function load(name) {
   return module.exports;
 }
 deps['./pagamentoFilaHistoricoService'] = load('pagamentoFilaHistoricoService');
+deps['./tituloSolicitacaoContratoService'] = load('tituloSolicitacaoContratoService');
 const fila = load('pagamentoManualFilaService'), pdf = load('pagamentoComprovantePdfService');
 const recon = load('pagamentoFilaHistoricoReconService');
 const file = name => ({ originalname: name, buffer: Buffer.from(`%PDF-QA-${name}`) });

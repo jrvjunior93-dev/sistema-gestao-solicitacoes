@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HiEye } from 'react-icons/hi2';
 import { getContratoParcelas } from '../../services/contratos';
+import { rotuloOperacionalPagamento } from '../../utils/envioTitulosPagamento';
 import { BlocoConteudo, StatGrid, StatTile, TabelaPadrao } from '../../components/padrao';
 
 /**
@@ -161,7 +162,12 @@ export default function PrevisoesContrato({
             titulo: 'Situação',
             tipo: 'status',
             render: (p) => (
-              <span data-testid={`situacao-parcela-${p.numero}`}>{rotuloSituacao(p.situacao || p.status)}</span>
+              <span data-testid={`situacao-parcela-${p.numero}`}>
+                {rotuloSituacao(p.situacao || p.status)}
+                {rotuloOperacionalPagamento(p.titulo_pagamento) && (
+                  <span className="block text-xs text-[var(--c-muted)]">{rotuloOperacionalPagamento(p.titulo_pagamento)}</span>
+                )}
+              </span>
             )
           },
           {

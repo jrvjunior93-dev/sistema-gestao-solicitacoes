@@ -9,13 +9,13 @@ const root = path.resolve(__dirname, '../src/services');
 const { resumoTituloEnvioMedicao } = require('../src/services/tituloMedicaoEnvioDomain');
 const tituloResumo = { id: 9, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: '1000.00' };
 assert.deepEqual(resumoTituloEnvioMedicao(tituloResumo, [{ id: 7, status: 'PENDENTE', segredo: 'omitido' }]),
-  { id: 9, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: 1000, filaPagamentosManuais: [{ id: 7, status: 'PENDENTE' }] });
+  { id: 9, tipo: 'PAGAR', status: 'ABERTO', status_interno_pagar: null, valor_saldo: 1000, filaPagamentosManuais: [{ id: 7, status: 'PENDENTE' }] });
 assert.equal(resumoTituloEnvioMedicao(null), null);
 assert.equal(resumoTituloEnvioMedicao({ ...tituloResumo, renegociado_por_id: 30 }).status, 'RENEGOCIADO');
 assert.equal(resumoTituloEnvioMedicao({ ...tituloResumo, valor_saldo: '0.00', status: 'QUITADO' }).valor_saldo, 0);
 const fonteParcelasEnvio = fs.readFileSync(path.join(root, 'contratoFluxoNovoService.js'), 'utf8');
 assert.match(fonteParcelasEnvio, /titulo_pagamento: resumoTituloEnvioMedicao\(p\.titulo,/);
-assert.match(fonteParcelasEnvio, /attributes: \['id', 'tipo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'\]/);
+assert.match(fonteParcelasEnvio, /attributes: \['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'\]/);
 function load(name, dependencies, extra = {}) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(root, name), 'utf8'), {

@@ -16,7 +16,7 @@ import {
 } from '../../components/padrao';
 import PreviewAnexoModal from './PreviewAnexoModal';
 import AcoesEnvioTitulosPagamento from '../../components/AcoesEnvioTitulosPagamento';
-import { tituloElegivelParaEnvioPagamento } from '../../utils/envioTitulosPagamento';
+import { tituloElegivelParaEnvioPagamento, rotuloOperacionalPagamento } from '../../utils/envioTitulosPagamento';
 
 /**
  * A MEDICAO do contrato — conferir, ajustar e APROVAR.
@@ -151,6 +151,8 @@ export default function ModalMedicao({
   const idsParaEnviar = titulos.filter((titulo) => idsDaMedicao.has(Number(titulo.id))
     && tituloElegivelParaEnvioPagamento(titulo)).map((titulo) => Number(titulo.id));
   const podeEnviarTitulos = medicaoAprovada && (podeEnviarParaAutorizacao || podeEnviarParaFila);
+  const todosNaFila = daMedicao.length > 0 && daMedicao.every(p =>
+    ['Na fila', 'Não pago', 'Divergente'].includes(rotuloOperacionalPagamento(p.titulo_pagamento)));
   const temAnexo = anexos.length > 0;
   const podeCompletarAnexos = podeAnexar && !medicaoAprovada && Boolean(solicitacaoId);
 
@@ -515,6 +517,11 @@ export default function ModalMedicao({
                         <div>
                           <span className="text-sm font-medium text-[var(--c-text)]">Parcela {p.numero}</span>
                           <span className="block text-xs text-[var(--c-muted)]">{p.situacao || p.status}</span>
+                          {rotuloOperacionalPagamento(p.titulo_pagamento) && (
+                            <span className="block text-xs text-[var(--c-muted)]" data-testid={`fila-parcela-${p.numero}`}>
+                              {rotuloOperacionalPagamento(p.titulo_pagamento)}
+                            </span>
+                          )}
                         </div>
                         <span className="text-sm text-[var(--c-text)]">{moeda(p.valor)}</span>
                         <span className="text-sm text-[var(--c-text)]">{brData(p.vencimento)}</span>
@@ -574,7 +581,9 @@ export default function ModalMedicao({
               {podeSalvar
                 ? 'A diferenca de valor e redistribuida nas ultimas parcelas do contrato.'
                 : medicaoAprovada
-                  ? (idsParaEnviar.length ? `${idsParaEnviar.length} título(s) desta medição disponível(is) para envio.` : 'Nenhum título aberto desta medição disponível para novo envio.')
+                  ? (idsParaEnviar.length ? `${idsParaEnviar.length} título(s) desta medição disponível(is) para envio.`
+                    : todosNaFila ? 'Os títulos desta medição já estão na fila de pagamentos.'
+                      : 'Não há títulos desta medição disponíveis para novo envio.')
                   : 'Aprovar abre os títulos e devolve a solicitação à Obra.'}
             </span>
             <div className="flex flex-wrap items-center gap-2">

@@ -8,6 +8,17 @@ export function tituloElegivelParaEnvioPagamento(titulo) {
       ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(String(item.status).toUpperCase()));
 }
 
+// Indicacao operacional separada do estado financeiro: na fila nao e quitado.
+export function rotuloOperacionalPagamento(titulo) {
+  if (!titulo || !['ABERTO', 'PARCIAL'].includes(String(titulo.status).toUpperCase()) || Number(titulo.valor_saldo) <= 0) return '';
+  const ativa = [...(titulo.filaPagamentosManuais || [])]
+    .filter(item => ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(String(item.status).toUpperCase()))
+    .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0];
+  if (ativa) return { PENDENTE: 'Na fila', NAO_PAGO: 'Não pago', DIVERGENTE: 'Divergente' }[String(ativa.status).toUpperCase()];
+  if (titulo.status_interno_pagar === 'EM ANÁLISE DO PROPRIETÁRIO') return 'Em análise do proprietário';
+  return '';
+}
+
 // Somente o contrato dono pode complementar a lista da solicitacao. O resumo
 // vem do titulo no backend, nunca de situacao/valor da parcela na tela.
 export function titulosParaEnvioComContrato(titulos, dadosContrato, solicitacaoId) {

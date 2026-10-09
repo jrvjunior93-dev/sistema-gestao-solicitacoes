@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Historico, StatusArea, Solicitacao, TituloFinanceiro, PagamentoManualFilaItem, SecurityEventLog } = require('../models');
+const { resolverSolicitacoesDosTitulos } = require('./tituloSolicitacaoContratoService');
 
 const STATUS_ANALISE_PROPRIETARIO = 'EM ANÁLISE DO PROPRIETÁRIO';
 const STATUS_ENVIADO_PAGAMENTO = 'ENVIADO PARA PAGAMENTO';
@@ -32,18 +33,20 @@ async function marcarAnaliseProprietario({ titulos, usuarioId, transaction, orig
   });
   if (emFila.length) throw Object.assign(new Error('Um ou mais titulos ja estao na fila de pagamentos.'), { statusCode: 409 });
   const alterados = titulos.filter((titulo) => !emAnaliseProprietario(titulo.status_interno_pagar));
+  const vinculos = await resolverSolicitacoesDosTitulos(titulos, transaction);
+  const solicitacaoDoTitulo = titulo => vinculos.get(Number(titulo.id))?.solicitacao_id;
   if (alterados.length) await TituloFinanceiro.update({ status_interno_pagar: STATUS_ANALISE_PROPRIETARIO }, {
     where: { id: { [Op.in]: alterados.map((titulo) => titulo.id) } }, transaction
   });
   const metadata = { origem, lote_id: loteId, titulo_ids: titulos.map((titulo) => Number(titulo.id)) };
   let mudouSolicitacao = false;
-  const solicitacaoIds = [...new Set(titulos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))].sort((a, b) => a - b);
+  const solicitacaoIds = [...new Set(titulos.map(solicitacaoDoTitulo).filter(Boolean))].sort((a, b) => a - b);
   for (const id of solicitacaoIds) {
     const solicitacao = await Solicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!solicitacao || ['PAGA', 'CANCELADA', 'CANCELADO', 'EXCLUIDA', 'EXCLUIDO', 'ARQUIVADA', 'ARQUIVADO'].includes(normalizar(solicitacao.status_global))) continue;
     const anterior = solicitacao.status_global;
     const mudouStatus = !emAnaliseProprietario(anterior);
-    if (!mudouStatus && !alterados.some((titulo) => Number(titulo.solicitacao_id) === id)) continue;
+    if (!mudouStatus && !alterados.some((titulo) => solicitacaoDoTitulo(titulo) === id)) continue;
     if (mudouStatus) {
       mudouSolicitacao = true;
       await solicitacao.update({ status_global: STATUS_ANALISE_PROPRIETARIO }, { transaction });
@@ -53,7 +56,7 @@ async function marcarAnaliseProprietario({ titulos, usuarioId, transaction, orig
     await Historico.create({ solicitacao_id: id, usuario_responsavel_id: usuarioId || null, setor: solicitacao.area_responsavel,
       acao: 'STATUS_ALTERADO', status_anterior: anterior, status_novo: STATUS_ANALISE_PROPRIETARIO,
       observacao: `Titulo(s) em analise do proprietario (${origem === 'DIGITAL' ? 'dossie digital' : 'analise em papel'}). Esta marcacao nao autoriza nem quita o pagamento.`,
-      metadata: JSON.stringify({ ...metadata, titulo_ids: titulos.filter((titulo) => Number(titulo.solicitacao_id) === id).map((titulo) => Number(titulo.id)) })
+      metadata: JSON.stringify({ ...metadata, titulo_ids: titulos.filter((titulo) => solicitacaoDoTitulo(titulo) === id).map((titulo) => Number(titulo.id)) })
     }, { transaction });
   }
   // Auditoria obrigatoria/atomica, inclusive para titulos sem solicitacao.
@@ -73,9 +76,11 @@ async function registrarAnaliseRecusada({ tituloId, usuarioId, motivo, resultado
     await titulo.update({ status_interno_pagar: null }, { transaction });
     return;
   }
+  const vinculos = await resolverSolicitacoesDosTitulos([titulo], transaction);
   await titulo.update({ status_interno_pagar: STATUS_AJUSTE_PAGAMENTO }, { transaction });
-  if (!titulo.solicitacao_id) return;
-  const solicitacao = await Solicitacao.findByPk(titulo.solicitacao_id, { transaction, lock: transaction.LOCK.UPDATE });
+  const solicitacaoId = vinculos.get(Number(titulo.id))?.solicitacao_id;
+  if (!solicitacaoId) return;
+  const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
   if (!solicitacao || !emAnaliseProprietario(solicitacao.status_global)) return;
   const anterior = solicitacao.status_global;
   await solicitacao.update({ status_global: 'AGUARDANDO AJUSTE' }, { transaction });

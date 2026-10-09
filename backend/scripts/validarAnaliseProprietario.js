@@ -22,7 +22,7 @@ const models = {};
 const names = ['ConfiguracaoSistema', 'TituloFinanceiro', 'Solicitacao', 'Historico', 'StatusArea', 'SecurityEventLog',
   'PagamentoManualFilaItem', 'PagamentoAutorizacaoItem', 'PagamentoAutorizacaoLote', 'PagamentoAutorizacaoEvento',
   'Anexo', 'PagamentoAutorizacaoDocumento', 'PagamentoAutorizador', 'WebauthnCredential', 'PaymentIntent',
-  'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria'];
+  'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria', 'ContratoParcela', 'Contrato'];
 function matches(row, where = {}) {
   return Object.entries(where).every(([key, value]) => value && typeof value === 'object' && !(value instanceof Date)
     ? Object.entries(value).every(([op, candidate]) => op === '$in' ? candidate.includes(row[key])
@@ -46,7 +46,9 @@ for (const name of names) models[name] = {
       }
       return 0;
     });
-    return rows.map(instance);
+    return rows.map(row => name === 'ContratoParcela' && options.include
+      ? { ...instance(row), contrato: state.Contrato.find(c => c.id === row.contrato_id) }
+      : instance(row));
   },
   async findOne(options) { return (await this.findAll(options))[0] || null; },
   async findByPk(id, options = {}) {
@@ -162,6 +164,45 @@ const send = (actor = user, key = 'direct-1') => queue.enfileirarTitulos({ ...re
   assert.equal(state.Historico.length, 0); assert.equal(state.Solicitacao[0].status_global, 'TITULO_CADASTRADO');
   reset(); state.Solicitacao[0].status_global = 'CANCELADA'; await internal.atribuirStatusInternoPagar(user, [1], analysisStatus);
   assert.equal(state.Solicitacao[0].status_global, 'CANCELADA');
+
+  // Contrato legado: fallback somente de leitura, com aprovacao/fila reais.
+  reset();
+  state.TituloFinanceiro[0].solicitacao_id = null;
+  state.Solicitacao[0].obra_id = 7;
+  state.Contrato = [{ id: 1, fluxo_novo: true, obra_id: 7, solicitacao_id: 6 }];
+  state.ContratoParcela = [{ id: 1, contrato_id: 1, titulo_financeiro_id: 1 }];
+  await internal.atribuirStatusInternoPagar(user, [1], analysisStatus);
+  assert.equal(state.Solicitacao[0].status_global, analysisStatus);
+  assert.equal(state.TituloFinanceiro[0].solicitacao_id, null, 'Operacao nao faz backfill automatico');
+  const filasAntes = state.PagamentoManualFilaItem.length;
+  await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: 'legacy-contract' });
+  assert.equal(state.PagamentoManualFilaItem.length, filasAntes + 1);
+  assert.equal(state.Solicitacao[0].status_global, 'ENVIADO PARA PAGAMENTO');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'OBRA');
+  assert(state.Historico.some(h => h.observacao === 'De FINANCEIRO para OBRA'));
+  assert.equal(state.TituloFinanceiro[0].solicitacao_id, 6, 'Novo envio persiste vinculo para baixa e comprovantes futuros');
+  const historicoAposEnvio = state.Historico.length;
+  await queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: 'legacy-contract-retry' });
+  assert.equal(state.PagamentoManualFilaItem.length, filasAntes + 1);
+  assert.equal(state.Historico.length, historicoAposEnvio, 'Reprocessamento nao repete encaminhamento');
+
+  reset();
+  state.TituloFinanceiro[0].solicitacao_id = null; state.Solicitacao[0].obra_id = 7;
+  state.Contrato = [{ id: 1, fluxo_novo: true, obra_id: 7, solicitacao_id: 6 }];
+  state.ContratoParcela = [{ id: 1, contrato_id: 1, titulo_financeiro_id: 1 }];
+  const loteLegado = await digital.createBatch(req, { titulo_ids: [1], idempotency_key: 'digital-legacy-contract' });
+  assert.equal(state.Solicitacao[0].status_global, analysisStatus);
+  const snapshotLegado = JSON.stringify(state.PagamentoAutorizacaoItem[0].snapshot_json);
+  state.PagamentoAutorizacaoItem[0].status = 'AUTORIZADO'; state.PagamentoAutorizacaoLote[0].status = 'AUTORIZADO';
+  await digital.enqueueAuthorizedItems(req, loteLegado.id);
+  assert.equal(state.TituloFinanceiro[0].solicitacao_id, 6);
+  assert.equal(state.TituloFinanceiro[0].status, 'ABERTO');
+  assert.equal(state.Solicitacao[0].area_responsavel, 'OBRA');
+  assert.equal(state.Solicitacao[0].status_global, 'ENVIADO PARA PAGAMENTO');
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
+  assert.equal(JSON.stringify(state.PagamentoAutorizacaoItem[0].snapshot_json), snapshotLegado, 'Snapshot original nao e reescrito');
+  await digital.enqueueAuthorizedItems(req, loteLegado.id);
+  assert.equal(state.PagamentoManualFilaItem.length, 1, 'Autorizacao anterior nao pede segunda decisao');
 
   reset(); state.TituloFinanceiro[0].juros = 10; state.TituloFinanceiro[0].multa = 3;
   await digital.createBatch(req, { titulo_ids: [1], idempotency_key: 'encargos' });

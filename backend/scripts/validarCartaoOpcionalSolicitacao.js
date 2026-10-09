@@ -104,7 +104,12 @@ vm.runInNewContext(fs.readFileSync(file, 'utf8') + '\nmodule.exports.test = { va
 const { criarTituloPorSolicitacao, atualizarTitulo, baixarTitulo, test } = isolated.exports;
 const queueFile = path.resolve(__dirname, '../src/services/pagamentoManualFilaService.js');
 const queueModule = { exports: {} };
+const vinculoModule = { exports: {} };
+vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/tituloSolicitacaoContratoService.js'), 'utf8'), {
+  module: vinculoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia de vinculo nao isolada: ${id}`); return dependencies[id]; }
+});
 const queueDependencies = { ...dependencies,
+  './tituloSolicitacaoContratoService': vinculoModule.exports,
   './tituloFinanceiroService': { baixarTitulo },
   './analiseProprietarioService': {}, './pagamentoAutorizacaoFilaService': {},
   './s3': {}, './fileAccessService': {}, '../config/env': { env: {} },

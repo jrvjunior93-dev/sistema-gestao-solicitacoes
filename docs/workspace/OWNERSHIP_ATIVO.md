@@ -1,5 +1,35 @@
 # Ownership Ativo
 
+Publicacao autorizada pelo usuario nesta conversa: commit e push do ajuste de
+medicao/vinculo legado somente na refactor/frontend, com comandos de EC2 DEV.
+Reserva documental temporaria do handoff desta tarefa para registrar publicacao
+e gates. outputs/ fora do Git; main, deploy e reconciliacao com escrita nao
+autorizados nesta etapa. Nenhum outro ownership e alterado.
+Validacoes locais aprovadas e handoff de publicacao DEV registrado. Reserva
+documental encerrada; ownership liberado para commit/push autorizado.
+
+## Medicao - vinculo legado e status de fila - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-08-medicao-vinculo-legado-fila.md.
+- Reservados: analiseProprietarioService.js, pagamentoManualFilaService.js,
+  contratoFluxoNovoService.js, tituloMedicaoEnvioDomain.js; novos servicos de
+  resolucao/reconciliacao de vinculos de titulo contratual e scripts associados;
+  PrevisoesContrato.jsx, ModalMedicao.jsx, envioTitulosPagamento.js; testes
+  validarAnaliseProprietario.js, validarMedicaoRecargaFluxoPagamento.js e
+  validarMedicaoRecargaEnvioUI.mjs; handoff desta tarefa.
+- Escopo: resolver solicitacao de titulos legados pelo contrato nos proximos
+  envios/analises; indicar fila sem confundir com baixa; preparar conferencia
+  e aplicacao opt-in, nunca automatica no deploy. Sem banco real, migration,
+  commit, push, promocao para main ou deploy nesta etapa.
+- Reserva adicional: solicitacaoFinanceiroStatusService.js e teste de visibilidade
+  historica; pedido complementar: contrato registra Financeiro e retorna Obra na
+  mesma transacao do envio, mantendo ENVIADO PARA PAGAMENTO.
+- Reserva adicional: validarCartaoOpcionalSolicitacao.js (fixture VM do novo
+  helper de vinculo); fluxos e assercoes de cartao permanecem intactos.
+- Reserva adicional: validarFilaComprovantePendente.js (carregamento isolado
+  do novo helper); baixas, comprovantes e anexos mantem testes existentes.
+
 ## Parcelas abertas junto ao Financeiro e envio da medicao - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; implementacao local
