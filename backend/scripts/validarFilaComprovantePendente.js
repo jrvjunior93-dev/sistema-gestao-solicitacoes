@@ -82,6 +82,7 @@ const deps = {
   './securityLogService': { registrarEventoSeguranca: async () => {} },
   './pagamentoFilaComprovanteDomain': domain,
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
+  './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),
   './tituloFinanceiroService': { baixarTitulo: async (_, id, payload, options) => {
     if (!allowSettlement) throw new Error('Anexo nao pode baixar titulo'); assert(options.transaction); settlements++;
     const title = rows.find(row => row.titulo_financeiro_id === Number(id)).titulo;

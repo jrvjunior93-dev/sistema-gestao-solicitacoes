@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:fila-juros-multa": "node scripts/validarFilaJurosMulta.js && node scripts/validarCartaoOpcionalSolicitacao.js && node scripts/validarFilaInstrumentos.js",
     "test:fila-comprovante-pendente": "node scripts/validarFilaComprovantePendente.js",
     "test:fila-instrumentos": "node scripts/validarAutorizacaoConsultaSql.js && node scripts/validarFilaInstrumentos.js && node scripts/validarCartaoOpcionalSolicitacao.js && node scripts/validarAnaliseProprietario.js",
     "test:autorizacao-consulta-sql": "node scripts/validarAutorizacaoConsultaSql.js",

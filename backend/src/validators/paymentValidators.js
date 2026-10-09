@@ -234,7 +234,7 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
 
   const ids = new Set();
   const itens = payload.itens.map((item, index) => {
-    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'motivo',
+    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'juros', 'multa', 'motivo',
       'forma_pagamento_id', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
       'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
       'cheque_conta', 'data_emissao', 'data_vencimento'], `Item ${index + 1}`);
@@ -258,6 +258,8 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
       data_baixa: parseDateOnly(item.data_baixa, `Data da baixa do item ${index + 1}`, { required: true }),
       conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: true }),
       valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),
+      juros: parseDecimal(item.juros, `Juros do item ${index + 1}`, { min: 0 }),
+      multa: parseDecimal(item.multa, `Multa do item ${index + 1}`, { min: 0 }),
       motivo: parseOptionalText(item.motivo, `Observacao do item ${index + 1}`, 500)
     });
   });

@@ -25,11 +25,11 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
     if (id === stub + 'auth') return `export const useAuth=()=>({user:{id:1}});`;
     if (id === stub + 'permissoes') return `export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=()=>true,canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>true;`;
-    if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
+    if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       export const getFilaPagamentos=async({status})=>{
-        const paid=window.__paid,receipt=window.__receipt;
-        const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:200,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:200,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
+        const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
+        const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         return{data:status==='NAO_PAGO'?[{id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
       };
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
@@ -153,6 +153,46 @@ try {
   await page.goto('http://127.0.0.1:5308/qa-fila?receipt=1&readonly=1&status=PENDENTE_COMPROVANTE');
   await page.getByText('Pagamento registrado · pendente de comprovante', { exact: true }).waitFor();
   assert.equal(await page.getByLabel('Comprovantes de pagamento de TIT-QA', { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel('Juros de TIT-QA', { exact: true }).isDisabled(), true);
+  assert.equal(await page.getByLabel('Multa de TIT-QA', { exact: true }).isDisabled(), true);
+  await page.setViewportSize({width:1366,height:900});
+  await page.goto('http://127.0.0.1:5308/qa-fila');
+  await forma.waitFor(); await forma.selectOption('3'); await conta.selectOption('5');
+  const juros = page.getByLabel('Juros de TIT-QA', { exact: true }), multa = page.getByLabel('Multa de TIT-QA', { exact: true });
+  const pago = page.getByLabel('Valor pago de TIT-QA', { exact: true });
+  for (const [key, label] of [['juros', 'Juros (R$)'], ['multa', 'Multa (R$)']]) {
+    const column = page.locator(`th[data-coluna="${key}"]`);
+    assert.equal(await column.count(), 1);
+    assert.equal(await column.isVisible(), true);
+    assert((await column.textContent()).includes(label));
+  }
+  await page.evaluate(() => { window.__juros=5; window.__multa=2; });
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[data-fila-campo="valor_pago"]').value === '207.00');
+  assert.equal(Number(await juros.inputValue()), 5); assert.equal(Number(await multa.inputValue()), 2);
+  await juros.fill('10'); await multa.fill('3'); assert.equal(await pago.inputValue(), '213.00');
+  for (const input of [juros, multa, pago]) {
+    assert(await input.evaluate(node => node.getBoundingClientRect().width <= node.closest('td').getBoundingClientRect().width),
+      'Campo monetario deve caber na coluna sem cortar o valor');
+  }
+  await page.evaluate(() => { window.__saldo=250; });
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[data-fila-campo="valor_pago"]').value === '263.00');
+  await pago.fill('200');
+  await page.evaluate(() => { window.__saldo=275; });
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.getByText(/Saldo.*275/).waitFor();
+  assert.equal(await pago.inputValue(), '200', 'Atualizar preserva valor pago divergente informado manualmente');
+  await pago.fill('288');
+  await page.getByRole('button', { name: 'Registrar baixa', exact: true }).click();
+  await page.waitForFunction(() => window.__settles.length === 1);
+  payload = await page.evaluate(() => window.__settles[0].itens[0]);
+  assert.equal(payload.juros, 10); assert.equal(payload.multa, 3); assert.equal(payload.valor_pago, 288);
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await page.screenshot({path:path.join(root,'../outputs/fila-encargos-mobile.png'),fullPage:true});
+  await page.setViewportSize({width:1366,height:900});
+  await page.screenshot({path:path.join(root,'../outputs/fila-encargos-desktop.png'),fullPage:true});
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('OK: fila real, instrumentos, modal cheque proprio/confirmar/cancelar, conta limpa ao trocar forma, icones acessiveis, rejeicao readonly, baixa sem PDF e anexo posterior sem segunda baixa. APIs isoladas.');
+  console.log('OK: fila real, colunas separadas de juros/multa, total e atualizacao de saldo/encargos preservando valor manual, instrumentos, modal cheque, conta limpa, icones, baixa sem PDF e anexo posterior sem segunda baixa. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

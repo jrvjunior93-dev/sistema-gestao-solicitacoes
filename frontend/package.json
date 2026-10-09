@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:titulo-juros-multa-ui": "node scripts/validarTituloJurosMultaUI.mjs",
     "test:solicitacoes-edicao-ui": "node scripts/validarEdicaoDadosSolicitacao.mjs",
     "test:usuario-centros-custo-ui": "node scripts/validarUsuarioCentrosCusto.mjs",
     "test:retorno-popup-ui": "node scripts/validarRetornoNotificacaoPopup.mjs",

@@ -138,6 +138,11 @@ function buildSnapshot(title) {
     codigo: title.codigo || null,
     descricao: title.descricao,
     valor_saldo: roundCurrency(title.valor_saldo),
+    // Omitir zeros mantem hashes de dossies legados sem encargos inalterados.
+    ...(Number(title.valor_baixado || 0) <= 0 && (Number(title.juros || 0) || Number(title.multa || 0)) ? {
+      juros: roundCurrency(title.juros), multa: roundCurrency(title.multa),
+      valor_total: roundCurrency(Number(title.valor_saldo) + Number(title.juros || 0) + Number(title.multa || 0))
+    } : {}),
     data_vencimento: title.data_vencimento,
     empresa: title.empresa ? { id: Number(title.empresa.id), nome: title.empresa.nome } : null,
     obra: title.obra ? { id: Number(title.obra.id), codigo: title.obra.codigo, nome: title.obra.nome } : null,
@@ -214,7 +219,7 @@ async function createBatch(req, payload = {}) {
     const lot = await PagamentoAutorizacaoLote.create({
       codigo: `TMP-${crypto.randomUUID()}`,
       status: 'AGUARDANDO', modo: env.paymentOwnerApprovalMode,
-      valor_total: snapshots.reduce((sum, item) => sum + item.valor_saldo, 0),
+      valor_total: snapshots.reduce((sum, item) => sum + (item.valor_total ?? item.valor_saldo), 0),
       quantidade_itens: snapshots.length, dossie_hash: dossierHash,
       idempotency_key: idempotencyKey, criado_por: req.user.id, expira_em: expiresAt,
       observacao: payload.observacao || null
@@ -225,7 +230,7 @@ async function createBatch(req, payload = {}) {
     await lot.update({ codigo: `LOTE-${lot.id}` }, { transaction });
     for (const dossierItem of dossierMaterial) {
       const { snapshot, sourceDocuments } = dossierItem;
-      const item = await PagamentoAutorizacaoItem.create({ lote_id: lot.id, titulo_financeiro_id: snapshot.titulo_id, status: 'PENDENTE', valor_snapshot: snapshot.valor_saldo, vencimento_snapshot: snapshot.data_vencimento, snapshot_json: snapshot, snapshot_hash: sha256(snapshot) }, { transaction });
+      const item = await PagamentoAutorizacaoItem.create({ lote_id: lot.id, titulo_financeiro_id: snapshot.titulo_id, status: 'PENDENTE', valor_snapshot: snapshot.valor_total ?? snapshot.valor_saldo, vencimento_snapshot: snapshot.data_vencimento, snapshot_json: snapshot, snapshot_hash: sha256(snapshot) }, { transaction });
       for (const document of sourceDocuments) {
         const arquivoUrlSnapshot = await copyStorageObject(document.source_url, `financeiro/autorizacoes/${lot.codigo}`);
         await PagamentoAutorizacaoDocumento.create({ item_id: item.id, origem_tipo: document.origem_tipo, origem_id: document.origem_id, nome: document.nome, arquivo_url_snapshot: arquivoUrlSnapshot, arquivo_hash: document.arquivo_hash }, { transaction });
@@ -525,7 +530,7 @@ async function decideBatch(req, lotId, payload = {}) {
           snapshot: title ? buildSnapshot(title) : null,
           documents: currentAttachments.filter((attachment) => attachment.caminho_arquivo).map((attachment) => ({ origem_id: Number(attachment.id), nome: attachment.nome_original || `Documento ${attachment.id}`, origem_tipo: attachment.tipo || 'ANEXO', arquivo_hash: sha256({ source_url: attachment.caminho_arquivo }) }))
         };
-        const stillEligible = title && String(title.tipo).toUpperCase() === 'PAGAR' && ['ABERTO', 'PARCIAL'].includes(String(title.status).toUpperCase()) && roundCurrency(title.valor_saldo) === roundCurrency(item.valor_snapshot) && sha256(storedMaterial) === sha256(currentMaterial);
+        const stillEligible = title && String(title.tipo).toUpperCase() === 'PAGAR' && ['ABERTO', 'PARCIAL'].includes(String(title.status).toUpperCase()) && roundCurrency(currentMaterial.snapshot.valor_total ?? title.valor_saldo) === roundCurrency(item.valor_snapshot) && sha256(storedMaterial) === sha256(currentMaterial);
         if (!stillEligible) {
           await item.update({ status: 'INVALIDADO', motivo_decisao: 'Titulo ou saldo alterado apos a montagem do dossie.', decidido_em: new Date() }, { transaction });
           await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_INVALIDADO', data: { titulo_id: item.titulo_financeiro_id }, transaction });

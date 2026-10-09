@@ -1486,7 +1486,9 @@ function validateFinanceTituloUpdateBody(body = {}) {
       'impostos',
       'desconto_financeiro',
       'valor_bruto',
-      'valor_liquido'
+      'valor_liquido',
+      'juros',
+      'multa'
     ],
     'Edicao de titulo financeiro'
   );
@@ -1529,7 +1531,9 @@ function validateFinanceTituloUpdateBody(body = {}) {
     impostos: parseImpostosTitulo(body.impostos),
     desconto_financeiro: parseDecimal(body.desconto_financeiro, 'Desconto financeiro', { min: 0 }),
     valor_bruto: parseDecimal(body.valor_bruto, 'Valor bruto', { min: 0.01 }),
-    valor_liquido: parseDecimal(body.valor_liquido, 'Valor liquido', { min: 0.01 })
+    valor_liquido: parseDecimal(body.valor_liquido, 'Valor liquido', { min: 0.01 }),
+    juros: parseDecimal(body.juros, 'Juros', { min: 0 }),
+    multa: parseDecimal(body.multa, 'Multa', { min: 0 })
   };
 }
 

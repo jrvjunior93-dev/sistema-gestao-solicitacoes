@@ -90,6 +90,8 @@ const PAYMENT_QUEUE_COLUMNS = [
   { key: 'conta', size: 'wide' },
   { key: 'instrumento', size: 'wider' },
   { key: 'empresa', size: 'standard' },
+  { key: 'juros', size: 'compact' },
+  { key: 'multa', size: 'compact' },
   { key: 'valor', size: 'standard' },
   { key: 'justificativa', size: 'wider' },
   { key: 'acoes', size: 'wider' }
@@ -201,19 +203,27 @@ function valorEmCentavos(value) {
 function tipoDivergenciaPagamento(row, draft = {}) {
   const valorPago = valorEmCentavos(draft.valor_pago);
   const saldo = valorEmCentavos(row?.titulo?.valor_saldo);
-  const previsto = valorEmCentavos(row?.valor_previsto);
-  if (!valorPago || saldo === null || previsto === null) return '';
-  if (valorPago < saldo) return 'PARCIAL';
-  if (valorPago > saldo) return 'ACIMA_SALDO';
-  if (valorPago !== previsto) return 'DIFERENTE_PREVISTO';
+  const juros = valorEmCentavos(draft.juros || 0);
+  const multa = valorEmCentavos(draft.multa || 0);
+  if (!valorPago || saldo === null || juros === null || multa === null) return '';
+  const principal = valorPago - juros - multa;
+  if (principal < saldo) return 'PARCIAL';
+  if (principal > saldo) return 'ACIMA_SALDO';
   return '';
+}
+
+function totalPrevistoFila(row, draft = {}) {
+  const base = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(row.status) && !Number(row.movimento_financeiro_id)
+    ? row.titulo?.valor_saldo : row.valor_previsto;
+  return ((valorEmCentavos(base) || 0) + (valorEmCentavos(draft.juros || 0) || 0)
+    + (valorEmCentavos(draft.multa || 0) || 0)) / 100;
 }
 
 function mensagemJustificativaDivergencia(tipo) {
   if (tipo === 'PARCIAL') return 'Justifique por que o pagamento será parcial.';
   if (tipo === 'ACIMA_SALDO') return 'Justifique por que o pagamento será maior que o saldo.';
   if (tipo === 'DIFERENTE_PREVISTO') return 'Justifique a diferença em relação ao valor previsto.';
-  return 'Opcional quando o valor pago corresponde ao saldo e ao previsto.';
+  return 'Opcional quando o valor pago corresponde ao saldo + juros + multa.';
 }
 
 function orientarErroRegistroBaixa(error) {
@@ -606,15 +616,35 @@ export default function FinanceiroFilaPagamentos() {
       setDrafts((current) => {
         const next = { ...current };
         nextRows.forEach((row) => {
-          if (!next[row.id]) {
+          if (!next[row.id] || next[row.id]._status_referencia !== row.status) {
             next[row.id] = {
               data_baixa: row.data_baixa || hojeISO(),
               conta_bancaria_id: row.conta_bancaria_id || '',
-              valor_pago: valorParaInput(row.valor_informado || row?.titulo?.valor_saldo || row.valor_previsto),
+              valor_pago: valorParaInput(row.valor_informado || totalPrevistoFila(row, row)),
               motivo: row.motivo || '',
               forma_pagamento_id: row.titulo?.forma_pagamento_id || '',
+              juros: valorParaInput(row.juros || 0),
+              multa: valorParaInput(row.multa || 0),
+              _saldo_referencia: Number(row.titulo?.valor_saldo || 0),
+              _juros_referencia: Number(row.juros || 0),
+              _multa_referencia: Number(row.multa || 0),
+              _status_referencia: row.status,
               ...(row.instrumento_pagamento_json || {})
             };
+          } else if (next[row.id]._saldo_referencia !== Number(row.titulo?.valor_saldo || 0)
+            || next[row.id]._juros_referencia !== Number(row.juros || 0)
+            || next[row.id]._multa_referencia !== Number(row.multa || 0)) {
+            const draft = next[row.id];
+            const anterior = totalPrevistoFila({ ...row, titulo: { ...row.titulo, valor_saldo: draft._saldo_referencia } }, draft);
+            const atualizado = { ...draft,
+              juros: row.status !== 'PENDENTE' || valorEmCentavos(draft.juros) === valorEmCentavos(draft._juros_referencia)
+                ? valorParaInput(row.juros) : draft.juros,
+              multa: row.status !== 'PENDENTE' || valorEmCentavos(draft.multa) === valorEmCentavos(draft._multa_referencia)
+                ? valorParaInput(row.multa) : draft.multa };
+            next[row.id] = { ...atualizado, _saldo_referencia: Number(row.titulo?.valor_saldo || 0),
+              _juros_referencia: Number(row.juros || 0), _multa_referencia: Number(row.multa || 0),
+              valor_pago: row.status === 'PENDENTE' && valorEmCentavos(draft.valor_pago) === valorEmCentavos(anterior)
+                ? valorParaInput(totalPrevistoFila(row, atualizado)) : draft.valor_pago };
           }
         });
         return next;
@@ -629,7 +659,16 @@ export default function FinanceiroFilaPagamentos() {
   useEffect(() => { load(); }, [load]);
 
   function updateDraft(id, patch) {
-    setDrafts((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
+    setDrafts((current) => {
+      const previous = current[id] || {};
+      const next = { ...previous, ...patch };
+      const row = rows.find(item => Number(item.id) === Number(id));
+      if (row && ('juros' in patch || 'multa' in patch)
+        && valorEmCentavos(previous.valor_pago) === valorEmCentavos(totalPrevistoFila(row, previous))) {
+        next.valor_pago = valorParaInput(totalPrevistoFila(row, next));
+      }
+      return { ...current, [id]: next };
+    });
   }
 
   function compatibleAccounts(row) {
@@ -656,6 +695,14 @@ export default function FinanceiroFilaPagamentos() {
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
       if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
       if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
+      for (const campo of ['juros', 'multa']) {
+        if (!Number.isFinite(Number(draft[campo] || 0)) || Number(draft[campo] || 0) < 0) {
+          return { mensagem: `${campo === 'juros' ? 'Juros' : 'Multa'} inválidos.`, correcao: 'Informe um valor em reais maior ou igual a zero.', filaId: row.id, campo };
+        }
+      }
+      if (valorEmCentavos(draft.valor_pago) <= (valorEmCentavos(draft.juros || 0) + valorEmCentavos(draft.multa || 0))) {
+        return { mensagem: 'Valor pago deve ser maior que a soma de juros e multa.', correcao: 'Confira o total pago e os encargos em reais.', filaId: row.id, campo: 'valor_pago' };
+      }
       const tipoDivergencia = tipoDivergenciaPagamento(row, draft);
       if (tipoDivergencia && !String(draft.motivo || '').trim()) {
         return { mensagem: `O valor do título ${row.titulo?.codigo || row.id} é divergente e está sem justificativa.`, correcao: mensagemJustificativaDivergencia(tipoDivergencia), filaId: row.id, campo: 'motivo' };
@@ -736,6 +783,8 @@ export default function FinanceiroFilaPagamentos() {
         data_baixa: drafts[row.id].data_baixa,
         conta_bancaria_id: Number(drafts[row.id].conta_bancaria_id),
         valor_pago: Number(drafts[row.id].valor_pago),
+        juros: Number(drafts[row.id].juros || 0),
+        multa: Number(drafts[row.id].multa || 0),
         motivo: String(drafts[row.id].motivo || '').trim() || undefined
       })), key);
       avisar.sucesso(`${result?.baixados || 0} baixa(s) registrada(s). ${result?.divergentes || 0} divergência(s) sinalizada(s).`);
@@ -946,6 +995,8 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="conta" className="px-3 py-3">Conta pagadora</ResizableTh>
                 <ResizableTh columnKey="instrumento" className="px-3 py-3">Forma / instrumento</ResizableTh>
                 <ResizableTh columnKey="empresa" className="px-3 py-3">Empresa</ResizableTh>
+                <ResizableTh columnKey="juros" className="px-3 py-3 text-right">Juros (R$)</ResizableTh>
+                <ResizableTh columnKey="multa" className="px-3 py-3 text-right">Multa (R$)</ResizableTh>
                 <ResizableTh columnKey="valor" className="px-3 py-3">Valor pago</ResizableTh>
                 {showReasonColumn ? <ResizableTh columnKey="justificativa" className="px-3 py-3">Motivo / justificativa</ResizableTh> : null}
                 <ResizableTh columnKey="acoes" className="px-3 py-3">Status / ações</ResizableTh>
@@ -953,9 +1004,9 @@ export default function FinanceiroFilaPagamentos() {
             </thead>
             <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
               {loading ? (
-                <tr><td colSpan={showReasonColumn ? 13 : 12} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
+                <tr><td colSpan={showReasonColumn ? 15 : 14} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={showReasonColumn ? 13 : 12} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
+                <tr><td colSpan={showReasonColumn ? 15 : 14} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
                 const title = row.titulo || {};
                 const solicitacaoId = Number(title.solicitacao_id || title.solicitacao?.id);
@@ -1055,8 +1106,9 @@ export default function FinanceiroFilaPagamentos() {
                     </td>
                     <td className="px-3 py-3 align-top whitespace-nowrap">{dateBR(title.data_vencimento || row.data_vencimento_prevista)}</td>
                     <td className="px-3 py-3 align-top text-right whitespace-nowrap">
-                      <div>{currency(row.valor_previsto)}</div>
+                      <div>{currency(totalPrevistoFila(row, drafts[row.id]))}</div>
                       <div className="text-xs font-semibold text-[var(--c-muted)]">Saldo {currency(title.valor_saldo)}</div>
+                      <div className="text-xs text-[var(--c-muted)]">Previsto com juros e multa</div>
                     </td>
                     <td className="px-3 py-3 align-top">
                       <DateInputBR
@@ -1093,9 +1145,20 @@ export default function FinanceiroFilaPagamentos() {
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-48 text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
                     </td>
+                    {['juros', 'multa'].map(campo => (
+                      <td key={campo} className="px-3 py-3 align-top">
+                            <input className="input input-sm input-moeda min-w-0 w-full text-right" style={{ minWidth: 0 }}
+                              type="number" min="0" step="0.01" data-fila-id={row.id} data-fila-campo={campo}
+                              value={drafts[row.id]?.[campo] ?? row[campo] ?? '0.00'}
+                              onChange={event => updateDraft(row.id, { [campo]: event.target.value })}
+                              disabled={!editable || busy}
+                              aria-label={`${campo === 'juros' ? 'Juros' : 'Multa'} de ${title.codigo || row.id}`} />
+                      </td>
+                    ))}
                     <td className="px-3 py-3 align-top">
                       <input
                         className="input input-sm input-moeda min-w-0 w-full text-right"
+                        style={{ minWidth: 0 }}
                         data-fila-id={row.id}
                         data-fila-campo="valor_pago"
                         type="number"

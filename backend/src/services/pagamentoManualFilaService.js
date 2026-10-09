@@ -36,6 +36,7 @@ const { resolvePaymentQueueGate } = require('./paymentOwnerApprovalPolicy');
 const { tipoInstrumento, instrumentoPayload } = require('./pagamentoFilaInstrumentoDomain');
 const { pendenteComprovanteFila, wherePendenteComprovante, podeAnexarComprovanteFila } = require('./pagamentoFilaComprovanteDomain');
 const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
+const { calcularValoresFila, filaSemBaixaAtualizavel } = require('./pagamentoFilaValoresDomain');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -65,7 +66,7 @@ function filaInclude() {
       required: true,
       attributes: [
         'id', 'codigo', 'descricao', 'numero_documento', 'status', 'tipo',
-        'valor_original', 'valor_saldo', 'valor_baixado', 'data_vencimento',
+        'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
         'cartao_id', 'fatura_cartao_id'
@@ -144,7 +145,10 @@ async function listarFilaPagamentos(req, filters = {}) {
   });
   const data = rows
     .filter((item) => matchesSearch(item, filters.q))
-    .map((item) => ({ ...item.toJSON(), pendente_comprovante: pendenteComprovanteFila(item) }));
+    .map((item) => ({ ...item.toJSON(),
+      // Leitura tambem cobre filas antigas, sem reescrever historico de pagamentos.
+      valor_previsto: filaSemBaixaAtualizavel(item) ? roundCurrency(item.titulo.valor_saldo) : item.valor_previsto,
+      pendente_comprovante: pendenteComprovanteFila(item) }));
   // Rejeicao e uma decisao, nao um pagamento executavel. Projecao somente leitura:
   // nenhum registro de fila e criado e o id negativo nunca passa no validator de baixa.
   const historicoAutorizacoes = await PagamentoAutorizacaoItem.findAll({
@@ -265,7 +269,7 @@ async function resolverInstrumentoFila(titulo, payload, transaction) {
     // A fatura existente soma o valor integral do titulo. Nao vincular saldo parcial
     // ou valor divergente como se toda a compra tivesse sido realizada no cartao.
     if (tipoCartao === 'CREDITO' && (Number(titulo.valor_baixado || 0) > 0 ||
-      roundCurrency(payload.valor_pago) !== roundCurrency(titulo.valor_saldo))) {
+      calcularValoresFila(payload.valor_pago, titulo.valor_saldo, payload).principal !== roundCurrency(titulo.valor_saldo))) {
       throw createHttpError(400, 'Pagamento com cartao de credito deve quitar o titulo integralmente, sem baixa anterior.');
     }
   }
@@ -396,6 +400,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       titulo_financeiro_id: titulo.id,
       status: 'PENDENTE',
       valor_previsto: roundCurrency(titulo.valor_saldo),
+      juros: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.juros),
+      multa: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.multa),
       data_vencimento_prevista: titulo.data_vencimento || null,
       selecionado_por: req.user?.id || null,
       selecionado_em: new Date(),
@@ -622,10 +628,11 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
   const valorPago = roundCurrency(itemPayload.valor_pago);
-  const instrumento = await resolverInstrumentoFila(titulo, itemPayload, transaction);
+  const encargos = { juros: itemPayload.juros ?? filaItem.juros, multa: itemPayload.multa ?? filaItem.multa };
+  const valores = calcularValoresFila(itemPayload.valor_pago, titulo.valor_saldo, encargos);
+  const instrumento = await resolverInstrumentoFila(titulo, { ...itemPayload, ...encargos }, transaction);
   const saldoAtual = roundCurrency(titulo.valor_saldo);
-  const valorPrevisto = roundCurrency(filaItem.valor_previsto);
-  const tipoDivergencia = classificarDivergenciaPagamento(valorPago, saldoAtual, valorPrevisto);
+  const tipoDivergencia = valores.divergencia;
   const divergente = Boolean(tipoDivergencia);
   const motivo = String(itemPayload.motivo || '').trim();
 
@@ -643,6 +650,9 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
 
   const commonUpdate = {
     instrumento_pagamento_json: instrumento,
+    juros: valores.juros,
+    multa: valores.multa,
+    valor_previsto: saldoAtual,
     valor_informado: valorPago,
     data_baixa: itemPayload.data_baixa,
     conta_bancaria_id: conta.id,
@@ -651,7 +661,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
     idempotency_key: itemKey
   };
 
-  if (valorPago > saldoAtual) {
+  if (valores.principal > saldoAtual) {
     await filaItem.update({ ...commonUpdate, status: 'DIVERGENTE', motivo }, { transaction });
     return { filaItem, titulo, baixaRegistrada: false, divergente: true };
   }
@@ -661,9 +671,9 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
     conta_bancaria_id: conta.id,
     ...instrumento,
     forma_recebimento: instrumento.forma_pagamento_id ? undefined : 'TRANSFERENCIA',
-    valor: valorPago,
-    juros: 0,
-    multa: 0,
+    valor: valores.principal,
+    juros: valores.juros,
+    multa: valores.multa,
     desconto: 0,
     data_movimento: itemPayload.data_baixa,
     observacoes: motivo || `Baixa registrada pela fila de pagamentos #${filaItem.id}.`,
@@ -788,6 +798,7 @@ async function aprovarDivergenciasFila(req, payload = {}) {
         const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
         const valorPago = roundCurrency(current.valor_informado);
+        const valores = calcularValoresFila(current.valor_informado, titulo.valor_saldo, current);
         if (valorPago <= 0 || !current.data_baixa) {
           throw createHttpError(409, `A divergencia do titulo ${titulo.codigo || titulo.id} nao possui dados completos para a baixa.`);
         }
@@ -796,11 +807,11 @@ async function aprovarDivergenciasFila(req, payload = {}) {
           empresa_id: conta.empresa_id,
           conta_bancaria_id: conta.id,
           ...await resolverInstrumentoFila(titulo, { ...(current.instrumento_pagamento_json || {}),
-            conta_bancaria_id: conta.id, valor_pago: valorPago }, transaction),
+            conta_bancaria_id: conta.id, valor_pago: valorPago, juros: current.juros, multa: current.multa }, transaction),
           forma_recebimento: (current.instrumento_pagamento_json?.forma_pagamento_id || titulo.forma_pagamento_id) ? undefined : 'TRANSFERENCIA',
-          valor: valorPago,
-          juros: 0,
-          multa: 0,
+          valor: valores.principal,
+          juros: valores.juros,
+          multa: valores.multa,
           desconto: 0,
           data_movimento: current.data_baixa,
           observacoes: `Baixa divergente autorizada na fila #${current.id}. ${payload.justificativa}`,
@@ -921,6 +932,8 @@ async function resolverItemFila(req, id, payload = {}) {
       titulo_financeiro_id: titulo.id,
       status: 'PENDENTE',
       valor_previsto: roundCurrency(titulo.valor_saldo),
+      juros: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.juros),
+      multa: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.multa),
       motivo: null,
       data_vencimento_prevista: titulo.data_vencimento || null,
       selecionado_por: req.user?.id || null,

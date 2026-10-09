@@ -2077,7 +2077,9 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
     throw createHttpError(400, 'Descricao e obrigatoria para editar o titulo.');
   }
 
-  if (titulo.fatura_cartao_id && roundCurrency(valorOriginal) !== roundCurrency(titulo.valor_original)) {
+  if (titulo.fatura_cartao_id && (roundCurrency(valorOriginal) !== roundCurrency(titulo.valor_original)
+    || roundCurrency(payload.juros ?? titulo.juros) !== roundCurrency(titulo.juros)
+    || roundCurrency(payload.multa ?? titulo.multa) !== roundCurrency(titulo.multa))) {
     throw createHttpError(
       400,
       'Titulo vinculado a fatura de cartao nao permite alterar valor por esta tela. Ajuste a fatura ou cancele o lancamento de origem.'
@@ -2118,6 +2120,8 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
     ? await normalizarRateiosTitulo(req, payload, obra, apropriacao, valorOriginal)
     : [];
   const valorLiquidoTitulo = impostosResumo.valorLiquido;
+  const encargos = require('./pagamentoFilaValoresDomain').calcularTotalComEncargos(
+    valorLiquidoTitulo, { juros: payload.juros ?? titulo.juros, multa: payload.multa ?? titulo.multa });
 
   const antes = {
     tipo: titulo.tipo,
@@ -2128,6 +2132,8 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
     categoria_financeira_id: titulo.categoria_financeira_id,
     status: titulo.status,
     valor_original: roundCurrency(titulo.valor_original),
+    juros: roundCurrency(titulo.juros),
+    multa: roundCurrency(titulo.multa),
     data_vencimento: titulo.data_vencimento,
     competencia_data: titulo.competencia_data,
     considera_dre: titulo.considera_dre,
@@ -2150,6 +2156,8 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
     valor_impostos: impostosResumo.valorImpostos,
     valor_liquido: impostosResumo.valorLiquido,
     valor_saldo: valorLiquidoTitulo,
+    juros: encargos.juros,
+    multa: encargos.multa,
     valor_baixado: 0,
     possui_rateio: atualizarRateios ? rateiosTitulo.length > 0 : Boolean(titulo.possui_rateio),
     data_emissao: payload.data_emissao || null,
@@ -2161,6 +2169,8 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
     ...buildCobrancaFields(payload, tipo),
     atualizado_por: req.user?.id || null
   }, { transaction });
+
+  await require('./pagamentoFilaSaldoService').sincronizarSaldoFilaAposEdicao(titulo, transaction);
 
   if (atualizarRateios) {
     await TituloFinanceiroRateio.destroy({
@@ -2211,6 +2221,9 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
         categoria_financeira_id: categoria?.id || null,
         status: statusTitulo,
         valor_original: valorLiquidoTitulo,
+        juros: encargos.juros,
+        multa: encargos.multa,
+        valor_total: encargos.totalEsperado,
         valor_bruto: impostosResumo.valorBruto,
         valor_impostos: impostosResumo.valorImpostos,
         valor_liquido: impostosResumo.valorLiquido,
@@ -3934,7 +3947,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
           req,
           chequeTerceiroId: payload.cheque_terceiro_id,
           movimento,
-          valor: valorBaixa,
+          valor: options.autorizadoPorFilaPagamento === true ? valorQuitacao : valorBaixa,
           transaction
         });
       }

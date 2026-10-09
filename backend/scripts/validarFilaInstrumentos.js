@@ -15,7 +15,12 @@ for (const item of [{ ...base, titulo_id: 1 }, { ...base, fila_id: -7 }, { ...ba
 assert.throws(() => validate({ itens: [base, base] }), /mais de uma vez/);
 const locks = [];
 const fatura = { id: 1, status: 'ABERTA', cartao_id: 10 };
+let encargosFatura = [];
 const models = {
+  MovimentoFinanceiro: { findAll: async options => {
+    assert.equal(options.where.tipo_movimento, 'BAIXA'); assert.equal(options.where.status, 'ATIVO');
+    assert.equal(options.where.forma_recebimento, 'CARTAO_CREDITO'); return encargosFatura;
+  } },
   TituloFinanceiro: { findAll: async options => [{ valor_original: options.lock ? 400 : 200 }] },
   FaturaCartaoTitulo: { findOrCreate: async () => [{ id: 1 }] },
   CartaoFinanceiro: { findByPk: async () => ({ id: 10, ativo: true, tipo: 'CREDITO', dia_fechamento: 15, dia_vencimento: 25 }) },
@@ -41,6 +46,10 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/fatu
   await mod.exports.vincularTituloAFatura({ titulo: { id: 2, update: async () => {} }, fatura,
     transaction: input.transaction, leituraCorrente: true });
   assert.equal(fatura.valor_total, 400, 'Recalculo da fila usa leitura corrente, nao snapshot anterior de outra compra.');
+  encargosFatura = [{ juros: 10, multa: 3, desconto: 0 }];
+  await mod.exports.vincularTituloAFatura({ titulo: { id: 2, update: async () => {} }, fatura,
+    transaction: input.transaction, leituraCorrente: true });
+  assert.equal(fatura.valor_total, 413, 'Fatura inclui encargos da compra sem aumentar principal do titulo');
   const migration = require('../migrations/202610080001_fila_pagamentos_instrumento');
   const columns = new Set(), added = [];
   const fake = { DataTypes: { JSON: 'JSON', INTEGER: 'INTEGER' },
