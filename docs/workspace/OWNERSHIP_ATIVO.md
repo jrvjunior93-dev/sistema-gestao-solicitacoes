@@ -19,6 +19,28 @@
 - Branch de integracao codex/promocao-medicao-recarga-main-20261009 baseada
   na main. Preservar todos os demais worktrees e excluir arquivos de RH/DP.
 
+## Medicao e recarga alinhadas ao envio GEO - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: implementacao
+  local validada, commit/push autorizados somente na refactor/frontend;
+  reserva liberada ao concluir publicacao.
+- Reserva: medicaoContratoService.js, recargaCartaoService.js,
+  resultadoObrasService.js, obraGestaoApropriacaoService.js,
+  relatorioFinanceiroService.js (somente WHERE Financeiro Obras), FinanceiroCard.jsx,
+  ModalMedicao.jsx, helper/acoes
+  compartilhadas de envio de titulos, testes offline e UI desses fluxos,
+  documentacao dos modulos e handoff desta tarefa.
+- Escopo ajustado pelo usuario: medicao aprovada devolve a Obra para novas
+  medicoes; titulos ABERTO e duas acoes
+  independentes conforme permissoes; recarga ABERTO com origem selecionada,
+  custo/DRE somente apos prestacao validada. Preservar idempotencia, fila,
+  autorizacao, pagamentos parciais e rateios. Sem banco real ou deploy
+  executados pelo agente. Main nao autorizada: usuario testara em dev antes
+  de promover. Preservar outputs/.
+- Validacoes: test:medicao-recarga-envio, test:medicao-recarga-envio-ui,
+  regressao cartao opcional UI, build frontend e diff --check aprovados.
+  Handoff: docs/handoffs/2026-10-08-medicao-recarga-envio-geo.md.
+
 ## Juros, multa e saldo atual na fila - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: publicacao

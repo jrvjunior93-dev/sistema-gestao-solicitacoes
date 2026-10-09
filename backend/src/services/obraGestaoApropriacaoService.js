@@ -134,6 +134,10 @@ function distribuirCentavos(valor, fonteApropriacao) {
 }
 
 function distribuirPorApropriacao({ valor, titulo = null, solicitacao = null } = {}) {
+  // A origem do titulo de recarga e operacional. Nao usar o fallback da
+  // solicitacao para antecipar despesas antes dos rateios da prestacao validada.
+  if (titulo?.origem_titulo === 'RECARGA_CARTAO'
+    && (titulo.considera_dre === false || !titulo.possui_rateio || !normalizarRateios(titulo.rateios).length)) return [];
   return distribuirCentavos(
     valor,
     selecionarFonteApropriacao({ titulo, solicitacao })

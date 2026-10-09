@@ -166,6 +166,11 @@ async function main() {
   assert.equal(tabelas.Solicitacao.length, 1); assert.equal(tabelas.TituloFinanceiro.length, 2); assert.equal(criado.recargas.length, 2);
   assert.equal(tabelas.TituloFinanceiro[0].valor_original, 100);
   assert.equal(tabelas.TituloFinanceiro[1].valor_original, 200);
+  assert(tabelas.TituloFinanceiro.every((item) => item.status === 'ABERTO' && item.obra_id === 11));
+  assert(tabelas.TituloFinanceiro.every((item) => item.considera_dre === false && item.possui_rateio === false));
+  assert(tabelas.SolicitacaoRecargaCartao.every((item) => item.status_ciclo === 'AGUARDANDO_PAGAMENTO'));
+  assert.equal(tabelas.Solicitacao[0].area_responsavel, 'GEO');
+  assert.equal(tabelas.TituloFinanceiroRateio.length, 0, 'Sem custo antes da prestacao.');
   assert(chamadas.filter((item) => item.criacao).every((item) => item.options.transaction === transaction));
   const locks = chamadas.filter((item) => item.nome === 'CartaoRecarga' && item.options.lock === 'UPDATE').slice(-2).map((item) => item.options.where.id);
   assert.deepEqual(locks, [1, 2]);
@@ -210,6 +215,9 @@ async function main() {
   await rejeita(() => service.salvarPrestacao(1, prestacao2, user), 409);
   const geo = { id: 5, perfil: 'ADMIN', area: 'GEO' };
   await service.decidirPrestacao(1, { recarga_id: 2, aprovar: true }, geo);
+  assert.equal(tabelas.TituloFinanceiro[0].considera_dre, false, 'Outro cartao nao pode ser classificado junto.');
+  assert.equal(tabelas.TituloFinanceiro[1].considera_dre, true);
+  assert.equal(tabelas.TituloFinanceiro[1].obra_id, 11, 'A origem permanece, os custos usam os rateios.');
   assert.equal(tabelas.SolicitacaoRecargaCartao[1].status_ciclo, 'VALIDADA');
   assert.notEqual(tabelas.Solicitacao[0].status_global, 'APROVADA');
   await service.decidirPrestacao(1, { recarga_id: 1, aprovar: true }, geo);
@@ -226,6 +234,11 @@ async function main() {
   assert.equal(unico.recarga.id, unico.recargas[0].id);
   assert.equal(unico.titulo.id, unico.recarga.titulo_financeiro_id);
   assert.equal(unico.cartao.id, 3);
+  assert.equal(unico.titulo.obra_id, 10);
+  await service.editarRecargaPendente(unico.resultado.id, { valor: 70, data_vencimento: '2099-10-10' }, user);
+  const editado = tabelas.TituloFinanceiro.find((item) => item.id === unico.titulo.id);
+  assert.equal(editado.status, 'ABERTO'); assert.equal(editado.obra_id, 10);
+  assert.equal(editado.considera_dre, false); assert.equal(editado.valor_saldo, 70);
   const legado = await service.obterContextoSolicitacao(unico.resultado.id, user, { acessoSolicitacaoValidado: true });
   assert.equal(legado.tipo_documento_prestacao, 'PRESTACAO_RECARGA');
   console.log('Recargas multiplas: origem, acesso sem vinculo individual, rollback, locks ordenados, duplicidade, baixa parcial/integral, anexos e prestacoes separados validados. Sem banco ou servicos externos.');

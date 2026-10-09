@@ -127,6 +127,12 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
         obra_id: { [Op.in]: obraIds },
         renegociacao_id: null,
         status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] },
+        // A obra da recarga identifica a origem, nao uma despesa. Custos entram somente
+        // pelos rateios validados abaixo, evitando antecipacao e dupla contagem.
+        [Op.and]: [{ [Op.or]: [
+          { origem_titulo: { [Op.ne]: 'RECARGA_CARTAO' } },
+          { origem_titulo: null }
+        ] }],
         ...excluirRhRateadoDoDireto
       },
       group: ['obra_id', 'tipo'],

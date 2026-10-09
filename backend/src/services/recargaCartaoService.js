@@ -445,7 +445,8 @@ async function executarCriacaoRecargaComControle({ cartaoId, cartoes, user, dado
     for (const { cartao, valor } of selecionados) {
       const titulo = await TituloFinanceiro.create({
         solicitacao_id: solicitacao.id,
-        obra_id: null,
+        // Origem operacional; o custo so e apropriado pelos rateios da prestacao validada.
+        obra_id: solicitacao.obra_id,
         apropriacao_id: null,
         empresa_id: cartao.empresa_id,
         parceiro_id: cartao.parceiro_id,
@@ -456,7 +457,7 @@ async function executarCriacaoRecargaComControle({ cartaoId, cartoes, user, dado
         possui_rateio: false,
         origem_titulo: 'RECARGA_CARTAO',
         tipo: 'PAGAR',
-        status: 'PREVISAO',
+        status: 'ABERTO',
         descricao: `Recarga Flash - ${cartao.nome} final ${cartao.ultimos_quatro}`.slice(0, 255),
         valor_original: valor,
         valor_bruto: valor,
@@ -478,7 +479,7 @@ async function executarCriacaoRecargaComControle({ cartaoId, cartoes, user, dado
         valor_solicitado: valor,
         valor_efetivo: 0,
         valor_nao_recarregado: 0,
-        status_ciclo: STATUS_CICLO.PENDENTE,
+        status_ciclo: STATUS_CICLO.AGUARDANDO_PAGAMENTO,
         criado_por: user.id,
         atualizado_por: user.id
       }, { transaction });
@@ -576,8 +577,8 @@ async function editarRecargaPendente(solicitacaoId, payload, user, externalTrans
     await sincronizarTituloComStatusSolicitacao(solicitacaoId, 'REJEITADA', user.id, transaction);
     // Reabrir todos os titulos ainda sem pagamento para uma nova analise do conjunto.
     for (const outra of outras) {
-      await TituloFinanceiro.update({ status: 'PREVISAO', valor_saldo: outra.valor_solicitado }, { where: { id: outra.titulo_financeiro_id }, transaction });
-      await outra.update({ status_ciclo: STATUS_CICLO.PENDENTE }, { transaction });
+      await TituloFinanceiro.update({ status: 'ABERTO', obra_id: recarga.solicitacao.obra_id, valor_saldo: outra.valor_solicitado }, { where: { id: outra.titulo_financeiro_id }, transaction });
+      await outra.update({ status_ciclo: STATUS_CICLO.AGUARDANDO_PAGAMENTO }, { transaction });
     }
     await recarga.solicitacao.update({
       valor: roundCurrency(valor + outras.reduce((s, item) => s + Number(item.valor_solicitado), 0)),
@@ -587,7 +588,8 @@ async function editarRecargaPendente(solicitacaoId, payload, user, externalTrans
     }, { transaction });
     await recarga.titulo.update({
       competencia_data: dataVencimento,
-      status: 'PREVISAO',
+      status: 'ABERTO',
+      obra_id: recarga.solicitacao.obra_id,
       valor_original: valor,
       valor_bruto: valor,
       valor_liquido: valor,
@@ -597,7 +599,7 @@ async function editarRecargaPendente(solicitacaoId, payload, user, externalTrans
     }, { transaction });
     await recarga.update({
       valor_solicitado: valor,
-      status_ciclo: STATUS_CICLO.PENDENTE,
+      status_ciclo: STATUS_CICLO.AGUARDANDO_PAGAMENTO,
       atualizado_por: user.id
     }, { transaction });
 
@@ -1029,7 +1031,7 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
           as: 'cartao',
           attributes: ['id', 'empresa_id', 'categoria_financeira_id']
         },
-        { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'area_responsavel', 'status_global'] },
+        { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'area_responsavel', 'status_global', 'obra_id'] },
         {
           model: CartaoRecargaPrestacao,
           as: 'prestacao',
@@ -1096,7 +1098,7 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
         atualizado_por: user.id
       })), { transaction });
       await recarga.titulo.update({
-        obra_id: null,
+        obra_id: recarga.solicitacao.obra_id,
         apropriacao_id: null,
         empresa_id: empresa.id,
         categoria_financeira_id: categoria.id,

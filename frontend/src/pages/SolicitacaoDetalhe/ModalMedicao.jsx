@@ -15,12 +15,15 @@ import {
   useConfirmacao
 } from '../../components/padrao';
 import PreviewAnexoModal from './PreviewAnexoModal';
+import AcoesEnvioTitulosPagamento from '../../components/AcoesEnvioTitulosPagamento';
+import { tituloElegivelParaEnvioPagamento } from '../../utils/envioTitulosPagamento';
 
 /**
  * A MEDICAO do contrato — conferir, ajustar e APROVAR.
  *
- * Aprovar aqui e o que LIBERA O PAGAMENTO: a parcela sai de PREVISAO e vira titulo aberto no
- * Financeiro. Por isso duas coisas nao sao negociaveis nesta tela:
+ * Aprovar aqui abre os titulos medidos e devolve a solicitacao a Obra. Autorizacao e
+ * envio a fila sao acoes posteriores, independentes, com suas proprias permissoes.
+ * Por isso duas coisas nao sao negociaveis nesta tela:
  *
  * 1. **Anexo obrigatorio antes de aprovar.** Ja era regra e continua: sem documento nao ha o que
  *    conferir depois, e o pagamento fica sem lastro.
@@ -42,8 +45,7 @@ import PreviewAnexoModal from './PreviewAnexoModal';
  * vencimento de todas as parcelas", numa faixa no topo), o que obriga a pessoa a caçar qual das
  * seis linhas esta incompleta. Agora `erroPorParcela` guarda a mensagem por
  * `contrato_parcela_id` e o `erro` do `CampoForm` a exibe ao lado do campo que a causou.
- * Estado interno novo, ZERO prop nova: `medicao`, `historicos`, `parcelas`, `solicitacaoId`,
- * `podeEditar`, `podeAprovar`, `podeAnexar`, `onFechar` e `onSalvo` seguem exatamente como eram.
+ * O envio usa os titulos carregados pelo FinanceiroCard e apenas as parcelas desta medicao.
  */
 
 const dataHora = (v) => (v ? new Date(v).toLocaleString('pt-BR') : '');
@@ -82,6 +84,12 @@ export default function ModalMedicao({
   podeEditar = false,
   podeAprovar = false,
   podeAnexar = false,
+  titulos = [],
+  podeEnviarParaAutorizacao = false,
+  podeEnviarParaFila = false,
+  autorizacaoDisponivel = false,
+  enviandoTitulos = false,
+  onEnviarTitulos,
   onFechar,
   onSalvo
 }) {
@@ -95,6 +103,8 @@ export default function ModalMedicao({
   const [erroPorParcela, setErroPorParcela] = useState({});
   const [salvando, setSalvando] = useState(false);
   const [aprovando, setAprovando] = useState(false);
+  const [aprovacaoLocal, setAprovacaoLocal] = useState(null);
+  const aprovacaoPendenteRef = useRef(false);
   const [abrindoAnexoId, setAbrindoAnexoId] = useState(null);
   const [baixandoAnexoId, setBaixandoAnexoId] = useState(null);
   const [previewAnexo, setPreviewAnexo] = useState(null);
@@ -111,12 +121,14 @@ export default function ModalMedicao({
     });
     setEdicao(inicial);
     setErroPorParcela({});
-    limpar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [medicao?.id, parcelas]);
 
   useEffect(() => {
     setAnexosAdicionados([]);
+    limpar();
+    // Limpar apenas ao trocar de medicao; recarregar parcelas nao apaga o resultado do envio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [medicao?.id]);
 
   if (!medicao || typeof document === 'undefined') return null;
@@ -133,7 +145,12 @@ export default function ModalMedicao({
   const favorecido = medicao.favorecido?.nome || 'Nao informado';
   const documentoFavorecido = medicao.favorecido?.cpf_cnpj || '';
   const ehPix = /PIX/i.test(`${medicao.forma_pagamento?.nome || ''} ${medicao.forma_pagamento?.tipo || ''}`);
-  const medicaoAprovada = Boolean(medicao.aprovada_em);
+  const aprovadaEm = medicao.aprovada_em || (Number(aprovacaoLocal?.id) === Number(medicao.id) ? aprovacaoLocal.aprovada_em : null);
+  const medicaoAprovada = Boolean(aprovadaEm);
+  const idsDaMedicao = new Set(daMedicao.map((parcela) => Number(parcela.titulo_financeiro_id)));
+  const idsParaEnviar = titulos.filter((titulo) => idsDaMedicao.has(Number(titulo.id))
+    && tituloElegivelParaEnvioPagamento(titulo)).map((titulo) => Number(titulo.id));
+  const podeEnviarTitulos = medicaoAprovada && (podeEnviarParaAutorizacao || podeEnviarParaFila);
   const temAnexo = anexos.length > 0;
   const podeCompletarAnexos = podeAnexar && !medicaoAprovada && Boolean(solicitacaoId);
 
@@ -193,6 +210,7 @@ export default function ModalMedicao({
   }
 
   async function aprovar() {
+    if (!podeAprovar || medicaoAprovada || aprovacaoPendenteRef.current || salvando || enviandoAnexos) return;
     // R26: alvo fixado ANTES do await. Aprovar a medicao errada libera pagamento errado, e a
     // trilha registra um consentimento valido para a acao que ninguem autorizou.
     const alvo = medicao;
@@ -205,22 +223,25 @@ export default function ModalMedicao({
       return;
     }
 
-    const { ok } = await confirmar({
-      titulo: `Aprovar a medicao ${alvo.numero}`,
-      mensagem: `Aprovar a medicao ${alvo.numero} (${periodo(alvo)}) LIBERA O PAGAMENTO de ${quantasParcelas} parcela(s), no total de ${moeda(total)}, para ${favorecido} por ${formaPagamento}. Conferido em ${quantosAnexos} arquivo(s) anexado(s). Depois de aprovada, valor e vencimento ficam somente para consulta e a medicao nao volta a ser editavel por aqui.`,
-      rotuloConfirmar: 'Aprovar e enviar ao Financeiro'
-    });
-    if (!ok) return;
-
+    aprovacaoPendenteRef.current = true;
     setAprovando(true);
     try {
-      await aprovarMedicaoContrato(alvo.id);
-      onSalvo?.();
-      onFechar?.();
+      const { ok } = await confirmar({
+        titulo: `Aprovar a medicao ${alvo.numero}`,
+        mensagem: `Aprovar a medicao ${alvo.numero} (${periodo(alvo)}) abre ${quantasParcelas} titulo(s), no total de ${moeda(total)}, para ${favorecido} por ${formaPagamento}. Conferido em ${quantosAnexos} arquivo(s) anexado(s). A solicitacao volta a Obra para novas medicoes; GEO pode enviar os titulos a autorizacao ou a fila. Depois de aprovada, valor e vencimento ficam somente para consulta.`,
+        rotuloConfirmar: 'Aprovar medição'
+      });
+      if (!ok) return;
+
+      const resposta = await aprovarMedicaoContrato(alvo.id);
+      setAprovacaoLocal(resposta.medicao);
+      await onSalvo?.();
+      avisar.sucesso('Medição aprovada. Títulos abertos e solicitação devolvida à Obra.');
     } catch (e) {
       avisar.erro(e.message || 'Nao foi possivel aprovar a medicao.');
     } finally {
       setAprovando(false);
+      aprovacaoPendenteRef.current = false;
     }
   }
 
@@ -305,8 +326,8 @@ export default function ModalMedicao({
         aberto
         largura="var(--modal-max-w-lg, 860px)"
         rotulo={`Medição ${medicao.numero}`}
-        onFechar={onFechar}
-        fecharComEscape={!previewAnexo}
+        onFechar={aprovando || enviandoTitulos || salvando ? undefined : onFechar}
+        fecharComEscape={!previewAnexo && !aprovando && !enviandoTitulos && !salvando}
       >
         {/* R27: cabecalho FIXO — a identificacao da medicao e a situacao nao rolam para fora. */}
         <header
@@ -327,7 +348,7 @@ export default function ModalMedicao({
             </div>
             <p className="mt-1 text-xs text-[var(--c-muted)]">Periodo: {periodo(medicao)}</p>
           </div>
-          <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={onFechar}>Fechar</button>
+          <button type="button" className="btn btn-outline btn-sm shrink-0" disabled={aprovando || enviandoTitulos} onClick={onFechar}>Fechar</button>
         </header>
 
         <div data-testid="modal-medicao" className="space-y-4 px-4 py-4">
@@ -443,7 +464,7 @@ export default function ModalMedicao({
 
             {medicaoAprovada && (
               <p className="border-t border-[var(--c-border)] pt-3 text-xs text-[var(--sem-success)]">
-                Aprovada em {dataHora(medicao.aprovada_em)} e liberada para o Financeiro.
+                Aprovada em {dataHora(aprovadaEm)}. O encaminhamento depende do envio dos títulos para autorização ou fila de pagamentos.
               </p>
             )}
           </section>
@@ -508,7 +529,7 @@ export default function ModalMedicao({
 
               {medicaoAprovada && (
                 <p className="border-t border-[var(--c-border)] pt-3 text-xs text-[var(--c-muted)]" data-testid="medicao-aprovada-somente-leitura">
-                  Medição aprovada e liberada para o Financeiro. Valor e vencimento permanecem somente para consulta.
+                  Medição aprovada. Valor e vencimento permanecem somente para consulta.
                 </p>
               )}
 
@@ -544,7 +565,7 @@ export default function ModalMedicao({
 
         {/* R27: rodape FIXO — os botoes que gravam e que aprovam nunca saem da vista, por mais
             anexos e comentarios que a medicao tenha. Antes eles eram parte do corpo rolante. */}
-        {(podeSalvar || (podeAprovar && !medicaoAprovada)) && (
+        {(podeSalvar || (podeAprovar && !medicaoAprovada) || podeEnviarTitulos) && (
           <div
             data-modal="rodape"
             className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] px-4 py-3"
@@ -552,7 +573,9 @@ export default function ModalMedicao({
             <span className="text-xs text-[var(--c-muted)]">
               {podeSalvar
                 ? 'A diferenca de valor e redistribuida nas ultimas parcelas do contrato.'
-                : 'Aprovar libera o pagamento desta medicao no Financeiro.'}
+                : medicaoAprovada
+                  ? (idsParaEnviar.length ? `${idsParaEnviar.length} título(s) desta medição disponível(is) para envio.` : 'Nenhum título aberto desta medição disponível para novo envio.')
+                  : 'Aprovar abre os títulos e devolve a solicitação à Obra.'}
             </span>
             <div className="flex flex-wrap items-center gap-2">
               {podeSalvar && (
@@ -560,7 +583,7 @@ export default function ModalMedicao({
                   type="button"
                   className="btn btn-outline btn-sm"
                   data-testid="salvar-medicao"
-                  disabled={salvando}
+                  disabled={salvando || aprovando}
                   onClick={salvar}
                 >
                   {salvando ? 'Salvando...' : 'Salvar alteracoes'}
@@ -571,13 +594,17 @@ export default function ModalMedicao({
                   type="button"
                   className="btn btn-primary btn-sm"
                   data-testid="aprovar-medicao"
-                  disabled={aprovando || !temAnexo}
+                  disabled={aprovando || salvando || enviandoAnexos || !temAnexo}
                   title={!temAnexo ? 'Anexe ao menos um arquivo antes de aprovar.' : undefined}
                   onClick={aprovar}
                 >
-                  {aprovando ? 'Aprovando...' : 'Aprovar e enviar ao Financeiro'}
+                  {aprovando ? 'Aprovando...' : 'Aprovar medição'}
                 </button>
               )}
+              {podeEnviarTitulos && <AcoesEnvioTitulosPagamento ids={idsParaEnviar}
+                podeAutorizar={podeEnviarParaAutorizacao} podeFila={podeEnviarParaFila}
+                autorizacaoDisponivel={autorizacaoDisponivel} enviando={enviandoTitulos || aprovando}
+                aoEnviar={(destino, ids) => onEnviarTitulos?.(destino, ids, avisar)} />}
             </div>
           </div>
         )}
