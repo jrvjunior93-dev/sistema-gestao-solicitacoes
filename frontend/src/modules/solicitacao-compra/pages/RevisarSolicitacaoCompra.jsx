@@ -18,6 +18,7 @@ import { criarPreviewCompra } from '../utils/preview';
 import { prepararPayloadSolicitacaoCompra } from '../utils/payloadSolicitacaoCompra';
 import { montarLinhasResumoApropriacao, montarTextoResumoApropriacao } from '../utils/apropriacoes';
 import { useAuth } from '../../../contexts/AuthContext';
+import { opcoesAvisoPendenciasEntrega } from '../../../utils/avisoPendenciasEntrega';
 import {
   buildComprasDraftKey,
   readComprasDraft,
@@ -373,7 +374,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       });
     } catch (error) {
       console.error(error);
-      avisar.erro(error.message || 'Erro ao criar solicitacao de compra');
+      avisar.erro(error.message || 'Erro ao criar solicitacao de compra', undefined, opcoesAvisoPendenciasEntrega(error));
     } finally {
       criacaoEmAndamentoRef.current = false;
       setLoading(false);

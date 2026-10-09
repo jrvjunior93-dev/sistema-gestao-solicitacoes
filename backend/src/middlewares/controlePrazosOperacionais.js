@@ -1,6 +1,7 @@
 'use strict';
 const service = require('../services/prazosOperacionaisService');
 const rotas = require('../services/prazosOperacionaisRotaService');
+const { agruparPendenciasEntrega } = require('../services/avisoPendenciasEntregaService');
 function criarControle({ estado = service.estado, resolver = rotas.obrasDaOperacao } = {}) {
   return async (req, res, next) => {
     // POST transporta apenas a selecao do PDF; continua sendo consulta, como o GET.
@@ -19,7 +20,11 @@ function criarControle({ estado = service.estado, resolver = rotas.obrasDaOperac
       if (!afetadas.length) return next();
       return res.status(423).json({ codigo: 'OBRA_PRAZO_OPERACIONAL_PENDENTE',
         error: 'Esta obra possui informação de entrega vencida. Informe a entrega total, parcial ou não entrega para liberar suas operações. Consultas e o acompanhamento de entregas continuam disponíveis.',
-        servidor_agora: situacao.servidor_agora, obras: afetadas });
+        servidor_agora: situacao.servidor_agora, obras: afetadas,
+        code: 'COMPRA_ENTREGA_PENDENTE',
+        details: { solicitacoes: agruparPendenciasEntrega(afetadas.flatMap((obra) =>
+          (obra.pendencias || []).filter((p) => Date.parse(p.limite_em) <= Date.parse(situacao.servidor_agora)))) }
+      });
     } catch (error) {
       if (!error.statusCode) console.error('Verificação de prazo operacional indisponível:', error.message);
       return res.status(error.statusCode || 503).json({ error: error.statusCode ? error.message : 'Não foi possível verificar os prazos da obra. Tente novamente; nenhuma operação foi autorizada.' });

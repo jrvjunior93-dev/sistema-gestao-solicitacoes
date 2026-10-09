@@ -95,6 +95,7 @@ async function main() {
         MODULOS_OBRA: /^\/financeiro/, CADASTROS_GLOBAIS: /^\/cadastros/,
         regularizacao: () => false, FORMULARIOS_OBRA: new Set(), obrasDaOperacao: async () => [10]
       };
+      if (name === '../services/avisoPendenciasEntregaService') return require('../src/services/avisoPendenciasEntregaService');
       throw new Error(`Dependencia nao permitida: ${name}`);
     }
   });

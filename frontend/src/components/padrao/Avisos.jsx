@@ -84,6 +84,7 @@ export function useAvisos() {
       id,
       tipo,
       mensagem: texto,
+      itens: Array.isArray(opcoes?.itens) ? opcoes.itens.filter((item) => typeof item === 'string' && item.trim()) : [],
       titulo: String(titulo || '').trim() || TITULOS_PADRAO[tipo] || 'Atualização'
     }]);
 
@@ -137,7 +138,12 @@ export default function Avisos({ avisos = [], aoFechar }) {
           key={aviso.id}
           type={aviso.tipo}
           title={aviso.titulo}
-          message={aviso.mensagem}
+          message={aviso.itens?.length ? <>
+            <p>{aviso.mensagem}</p>
+            <ul className="app-aviso-lista" aria-label="Solicitações com entrega pendente" tabIndex={0}>
+              {aviso.itens.map((item, index) => <li key={index}>{item}</li>)}
+            </ul>
+          </> : aviso.mensagem}
           onClose={aoFechar ? () => aoFechar(aviso.id) : undefined}
         />
       ))}

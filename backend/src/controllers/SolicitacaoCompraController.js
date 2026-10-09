@@ -4645,7 +4645,8 @@ module.exports = {
       console.error(error);
       const status = Number(error?.statusCode) || 500;
       return res.status(status).json({
-        error: status >= 500 ? 'Erro ao criar solicitacao de compra' : error.message
+        error: status >= 500 ? 'Erro ao criar solicitacao de compra' : error.message,
+        ...(error.code === 'COMPRA_ENTREGA_PENDENTE' ? { code: error.code, details: error.details } : {})
       });
     }
   },

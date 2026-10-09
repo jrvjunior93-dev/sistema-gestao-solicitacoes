@@ -1,4 +1,5 @@
 import DateInputBR from '../components/DateInputBR';
+import { opcoesAvisoPendenciasEntrega } from '../utils/avisoPendenciasEntrega';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -2601,7 +2602,7 @@ export default function NovaSolicitacao() {
       navigate(`/solicitacoes/${solicitacao.id}`, { replace: true });
     } catch (error) {
       console.error(error);
-      avisar.erro(error?.message || 'Erro ao criar solicitação');
+      avisar.erro(error?.message || 'Erro ao criar solicitação', undefined, opcoesAvisoPendenciasEntrega(error));
     } finally {
       criandoSolicitacaoRef.current = false;
       setCriandoSolicitacao(false);

@@ -1719,6 +1719,14 @@ fieldset.form-section {
 .app-avisos .alert-content { flex: 1; min-width: 0; }
 .app-avisos .alert-title { margin: 0; font-weight: 700; }
 .app-avisos .alert-message { margin: var(--esp-1) 0 0; overflow-wrap: anywhere; }
+.app-avisos .app-aviso-lista {
+  margin: var(--esp-2) 0 0;
+  padding-left: var(--esp-4);
+  list-style: disc;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.app-avisos .app-aviso-lista li + li { margin-top: var(--esp-1); }
 .app-avisos .alert-close { color: currentColor; }
 
 .app-avisos .alert-info { background: var(--sem-info-bg); border-color: var(--sem-info-border); color: var(--sem-info); }
