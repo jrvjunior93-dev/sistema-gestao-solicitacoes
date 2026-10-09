@@ -1182,7 +1182,8 @@ export async function getTituloFinanceiroAuditoria(id) {
 
 export async function getTitulosFinanceirosPorSolicitacao(solicitacaoId) {
   const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/titulos-financeiros`, {
-    headers: authHeaders()
+    headers: authHeaders(),
+    cache: 'no-store'
   });
 
   return parseJson(response, 'Erro ao buscar titulos financeiros da solicitacao');

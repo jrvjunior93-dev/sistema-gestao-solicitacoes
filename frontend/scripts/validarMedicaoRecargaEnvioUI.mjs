@@ -5,12 +5,23 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { tituloElegivelParaEnvioPagamento, titulosParaEnvioComContrato } from '../src/utils/envioTitulosPagamento.js';
+const resumo = { id: 10, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: 1000, filaPagamentosManuais: [] };
+const dto = { contrato: { fluxo_novo: true, solicitacao_id: 100 }, parcelas: [{ titulo_financeiro_id: 10, titulo_pagamento: resumo }] };
+assert.deepEqual(titulosParaEnvioComContrato([], dto, 100), [resumo]);
+assert.deepEqual(titulosParaEnvioComContrato([], dto, 101), []);
+assert.deepEqual(titulosParaEnvioComContrato([], { ...dto, parcelas: [{ titulo_financeiro_id: 11, titulo_pagamento: resumo }] }, 100), []);
+assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, status: 'PREVISAO' }), false);
+assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, tipo: 'RECEBER' }), false);
+assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, valor_saldo: 0 }), false);
+assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, status: 'RENEGOCIADO' }), false);
+assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, filaPagamentosManuais: [{ status: 'PENDENTE' }] }), false);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), port = 5321;
 const server = await createServer({ root, server: { host: '127.0.0.1', port, strictPort: true, proxy: {} } });
 const saida = path.join(root, '../outputs/qa-medicao-recarga-envio');
 await mkdir(saida, { recursive: true });
 await server.listen();
-let browser, page, approved, queued, failSend, recarga;
+let browser, page, approved, queued, failSend, recarga, listaLegada;
 const sends = [], approvals = [], unexpected = [], errors = [];
 const delay = () => new Promise((resolve) => setTimeout(resolve, 150));
 try {
@@ -28,12 +39,13 @@ try {
   await page.route('**/*', async (route) => {
     const request = route.request(), url = new URL(request.url());
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
-    if (url.pathname.endsWith('/solicitacoes/100/titulos-financeiros')) return json(titles());
+    if (url.pathname.endsWith('/solicitacoes/100/titulos-financeiros')) return json(listaLegada ? [] : titles());
     if (url.pathname.endsWith('/contratos/1/parcelas')) return json({
       contrato: { id: 1, fluxo_novo: true, solicitacao_id: 100, permissoes: { aprovar: true, editar_medicao: true } },
       saldo: { saldo: 100, comprometido: 100 }, totais: { quantidade: 2 },
       parcelas: [1, 2].map((id) => ({ id, numero: id, valor: 100, valor_previsto: 100, vencimento: '2026-10-20',
-        titulo_financeiro_id: id, situacao: id === 1 && approved ? 'ABERTO' : 'PREVISAO', medicao: id === 1 ? medicao() : null }))
+        titulo_financeiro_id: id, titulo_pagamento: titles().find(titulo => titulo.id === id),
+        situacao: id === 1 && approved ? 'ABERTO' : 'PREVISAO', medicao: id === 1 ? medicao() : null }))
     });
     if (url.pathname.endsWith('/contratos/medicoes/1/aprovar')) {
       approvals.push(1); await delay(); approved = true; return json({ medicao: medicao(), enviada_para: 'OBRA' });
@@ -52,10 +64,15 @@ try {
   });
   async function open(options = '') {
     approved = false; queued = false; failSend = false; recarga = options.includes('recarga');
+    listaLegada = options.includes('listaLegada');
     await page.goto(`http://127.0.0.1:${port}/scripts/fixtures/medicaoRecargaEnvio.html?${options}`);
     await page.getByRole('heading', { name: 'Financeiro', exact: true }).click();
     if (!recarga) {
+      // Abrir Financeiro ja revela a tabela, sem segundo clique no subcard.
+      await page.getByTestId('abrir-medicao-1').waitFor({ state: 'visible' });
+      assert(await page.getByTestId('abrir-medicao-1').isVisible());
       await page.getByRole('heading', { name: /parcelas do contrato/i }).click();
+      assert(await page.getByTestId('abrir-medicao-1').isVisible(), 'Clique no subcard nao recolhe Financeiro.');
       await page.getByTestId('abrir-medicao-1').click();
     }
   }
@@ -103,6 +120,13 @@ try {
   await open('mode=OFF'); await approve();
   assert(await modal().getByRole('button', { name: 'Enviar para autorização', exact: true }).isDisabled());
   assert(await modal().getByRole('button', { name: 'Enviar para fila de pagamentos', exact: true }).isEnabled());
+  await open('listaLegada=1'); await approve();
+  const filaLegada = modal().getByRole('button', { name: 'Enviar para fila de pagamentos', exact: true });
+  assert(await filaLegada.isEnabled(), 'Titulo real da parcela disponivel mesmo ausente da lista generica.');
+  await filaLegada.click(); await page.getByRole('button', { name: 'Enviar para pagamento', exact: true }).click();
+  await page.waitForFunction(() => document.body.innerText.includes('Títulos enviados para a Fila de Pagamentos'));
+  assert.deepEqual(sends.at(-1).titulo_ids, [1]);
+  assert(await filaLegada.isDisabled(), 'Resumo da parcela impede reenvio apos entrar na fila.');
   await open('recarga=1');
   await page.getByRole('checkbox', { name: 'Selecionar linha 1' }).check();
   assert(await page.getByRole('button', { name: 'Enviar para autorização', exact: true }).isEnabled());

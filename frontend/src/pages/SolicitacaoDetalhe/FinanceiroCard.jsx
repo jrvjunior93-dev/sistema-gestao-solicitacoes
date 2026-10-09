@@ -17,7 +17,7 @@ import PrevisoesContrato from './PrevisoesContrato';
 import ModalMedicao from './ModalMedicao';
 import AcoesEnvioTitulosPagamento from '../../components/AcoesEnvioTitulosPagamento';
 import useEnvioTitulosPagamento from '../../hooks/useEnvioTitulosPagamento';
-import { tituloElegivelParaEnvioPagamento as elegivelParaFila } from '../../utils/envioTitulosPagamento';
+import { tituloElegivelParaEnvioPagamento as elegivelParaFila, titulosParaEnvioComContrato } from '../../utils/envioTitulosPagamento';
 import { Link } from 'react-router-dom';
 import { buscarParceiroPorId, buscarParceiros } from '../../services/parceiros';
 import { cadastrarCredorSolicitacao, updateCredorSolicitacao } from '../../services/solicitacoes';
@@ -1277,8 +1277,12 @@ export default function FinanceiroCard({
     await onSolicitacaoAtualizada?.();
   }
 
+  const titulosEnvio = useMemo(() => titulosParaEnvioComContrato(
+    titulos, dadosContrato, solicitacao?.id
+  ), [titulos, dadosContrato, solicitacao?.id]);
+
   const { enviando: enviandoFila, enviar: enviarTitulosParaPagamento } = useEnvioTitulosPagamento({
-    titulos, podeAutorizar: podeEnviarParaAutorizacao, podeFila: podeEnviarParaFila,
+    titulos: titulosEnvio, podeAutorizar: podeEnviarParaAutorizacao, podeFila: podeEnviarParaFila,
     autorizacaoDisponivel, confirmar, avisar, aoAtualizar: atualizarAposMedicaoOuEnvio
   });
 
@@ -2460,7 +2464,7 @@ export default function FinanceiroCard({
         podeEditar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.editar_medicao === true}
         podeAprovar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.aprovar === true}
         podeAnexar={somenteLeitura}
-        titulos={titulos}
+        titulos={titulosEnvio}
         podeEnviarParaAutorizacao={podeEnviarParaAutorizacao}
         podeEnviarParaFila={podeEnviarParaFila}
         autorizacaoDisponivel={autorizacaoDisponivel}

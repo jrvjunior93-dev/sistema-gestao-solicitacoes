@@ -270,7 +270,7 @@ export async function exportarContratosCsv({ obra_id, ref, codigo } = {}) {
 }
 
 export async function getContratoParcelas(id) {
-  const res = await fetch(`${API_URL}/contratos/${id}/parcelas`, { headers: authHeaders() });
+  const res = await fetch(`${API_URL}/contratos/${id}/parcelas`, { headers: authHeaders(), cache: 'no-store' });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || 'Erro ao buscar parcelas do contrato');
   return json;

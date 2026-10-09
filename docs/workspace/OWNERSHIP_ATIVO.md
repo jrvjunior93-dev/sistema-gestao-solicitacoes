@@ -19,6 +19,22 @@
 - Branch de integracao codex/promocao-medicao-recarga-main-20261009 baseada
   na main. Preservar todos os demais worktrees e excluir arquivos de RH/DP.
 
+## Parcelas abertas junto ao Financeiro e envio da medicao - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao local
+  validada, commit/push autorizados na refactor/frontend; reserva liberada
+  ao concluir publicacao.
+- Arquivos: FinanceiroCard.jsx, PrevisoesContrato.jsx, envioTitulosPagamento.js,
+  services/financeiro.js e contratos.js, contratoFluxoNovoService.js,
+  novo dominio de resumo de titulo para medicao, testes destes fluxos e handoff.
+- Escopo: abrir parcelas ao expandir Financeiro; usar titulo real vinculado a
+  parcela para os envios, sem inferir abertura, duplicar fila ou alterar dados.
+- Publicacao somente na refactor/frontend para teste dev. Main fora do escopo.
+  Sem migration, banco real ou deploy executados pelo agente nesta etapa.
+- Testes backend/DTO real simulado, UI desktop/mobile, regressao cartao
+  opcional, build e diff --check aprovados.
+- Handoff: docs/handoffs/2026-10-08-medicao-parcela-titulo-envio.md.
+
 ## Medicao e recarga alinhadas ao envio GEO - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: implementacao
