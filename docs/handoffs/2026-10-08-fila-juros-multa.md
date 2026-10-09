@@ -7,7 +7,11 @@ encargos separados na fila e na edicao do titulo, total sem falsa divergencia
 e sincronizacao de valores para posterior aprovacao de divergencias.
 Usuario autorizou commit/push na refactor/frontend e promocao para main.
 Promocao isolada, sem DP 118209c0 e sem descartar hotfixes da main.
-Publicacao main depende de confirmar backup/timer. Sem deploy executado,
+Backup recente no Drive cifrado e timer ativo confirmados pelo usuario.
+Refactor publicada em 8bb9daed; integracao isolada main em 905dd2a1.
+Conflito de package.json resolvido adicionando somente o teste financeiro,
+sem o script da implantacao DP. Backend, UI desktop/mobile, build e docs
+revalidados na integracao main. Sem deploy executado,
 acesso a banco real ou execucao de migration pelo agente.
 Nao modificar outputs/ nem incorporar implantacoes DP numa promocao isolada.
 
