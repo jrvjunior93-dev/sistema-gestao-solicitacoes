@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao isolada aviso de entregas - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: em integracao.
+- Usuario autorizou migrar para main sem Pessoal/DP e confirmou novamente
+  backup recente conferido no Drive cifrado e timer ativo nesta janela.
+- Base main 17be4609; refactor/frontend abcfe89b. Apenas abcfe89b selecionado;
+  ajustes de medicao/recarga ja incorporados, DP 118209c0 continua excluido.
+- Reservados: os arquivos do commit abcfe89b e handoff de promocao; resolver
+  conflitos preservando implementacoes e historico documental da main.
+- Branch codex/promocao-aviso-entregas-main-20261009 criada da main atual.
+- Sem banco, migration, restart ou deploy EC2; outputs/ fora dos commits.
+
 ## Promocao isolada medicao e recarga - 2026-10-09
 
 - Responsavel: agente desta conversa, sem delegacao; estado: integracao validada,
