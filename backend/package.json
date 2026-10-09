@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:medicao-recarga-envio": "node scripts/validarMedicaoRecargaFluxoPagamento.js && node scripts/validarRecargasMultiplosCartoes.js && node scripts/validarObraGestaoApropriacoes.js && node scripts/validarAnaliseProprietario.js",
     "test:fila-juros-multa": "node scripts/validarFilaJurosMulta.js && node scripts/validarCartaoOpcionalSolicitacao.js && node scripts/validarFilaInstrumentos.js",
     "test:rhdp-pessoal-solicitacao": "node scripts/validarRhPessoalPorSolicitacao.js && node scripts/validarRhConferenciaGuiada.js",
     "test:fila-comprovante-pendente": "node scripts/validarFilaComprovantePendente.js",

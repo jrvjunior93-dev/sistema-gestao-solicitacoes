@@ -150,8 +150,8 @@ async function executar() {
     });
     ids = { cartao: cartao.id, solicitacao: criacao.resultado.id, titulo: criacao.titulo.id, recarga: criacao.recarga.id };
 
-    assert.strictEqual(criacao.titulo.status, 'PREVISAO');
-    assert.strictEqual(criacao.titulo.obra_id, null);
+    assert.strictEqual(criacao.titulo.status, 'ABERTO');
+    assert.strictEqual(Number(criacao.titulo.obra_id), Number(base.obra_id));
     assert.strictEqual(Number(criacao.titulo.empresa_id), Number(base.empresa_grupo_id));
     assert.strictEqual(Number(criacao.titulo.categoria_financeira_id), Number(base.categoria_financeira_id));
     assert.strictEqual(criacao.titulo.considera_dre, false);
@@ -184,7 +184,7 @@ async function executar() {
     assert.strictEqual(Number(criacao.titulo.valor_original), 90);
     assert.strictEqual(Number(criacao.titulo.valor_saldo), 90);
     assert.strictEqual(criacao.titulo.data_vencimento, dataReagendada);
-    assert.strictEqual(criacao.titulo.status, 'PREVISAO');
+    assert.strictEqual(criacao.titulo.status, 'ABERTO');
     assert.strictEqual(Number(criacao.recarga.valor_solicitado), 90);
     assert(isGeoToken(criacao.resultado.area_responsavel), 'A edicao deve reenviar a recarga para a Gerencia de Processos.');
 

@@ -94,6 +94,23 @@ aceita `PLAYWRIGHT_EXECUTABLE_PATH` para usar navegador instalado).
 
 ## Integracoes
 
+### Medicao e envio de pagamento por GEO
+
+Aprovar a medicao abre somente seus titulos medidos e devolve a solicitacao
+a Obra para novas medicoes, conforme decisao do usuario em 08/10/2026. O modal
+permanece aberto apos aprovar e oferece enviar para autorizacao ou para fila,
+cada acao com sua permissao independente. Nenhuma delas inclui previsoes ou
+titulos de outras medicoes. Titulos ja em fila ativa nao permitem novo envio.
+
+A preparacao atualiza a solicitacao para `EM ANALISE DO PROPRIETARIO` (com
+acentuacao cadastrada); o envio a fila usa `ENVIADO PARA PAGAMENTO` e o
+encaminhamento existente ao Financeiro. Recalcular o contrato nao apaga analise,
+fila ativa ou ajuste de pagamento enquanto houver medicao em aberto nesse fluxo.
+Os contratos legados continuam com solicitacoes de medicao proprias.
+
+Testes isolados: `npm run test:medicao-recarga-envio` no backend e
+`npm run test:medicao-recarga-envio-ui` no frontend. Sem migration ou backfill.
+
 Solicitacoes consome o contrato como contexto. Obras pode consolidar contratos relacionados. Arquivos fornece o objeto fisico; o modulo Contratos decide quem pode acessa-lo. Comercial possui seus proprios contratos de venda e apenas integra quando houver regra explicita.
 
 ## Mudanca segura

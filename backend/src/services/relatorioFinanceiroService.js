@@ -1486,7 +1486,14 @@ function normalizeFinanceiroObrasAnalise(value) {
 function buildFinanceiroObrasTituloWhere(filters, obraWhere, periodo, analise) {
   const where = {
     ...obraWhere,
-    status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] }
+    status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] },
+    // Neste relatorio de obras a recarga e custo somente apos classificacao
+    // da prestacao. Nao aplicar esta guarda ao contas a pagar ou fluxo de caixa.
+    [Op.and]: [...(obraWhere[Op.and] || []), { [Op.or]: [
+      { origem_titulo: { [Op.ne]: 'RECARGA_CARTAO' } },
+      { origem_titulo: null },
+      { origem_titulo: 'RECARGA_CARTAO', possui_rateio: true, considera_dre: true }
+    ] }]
   };
 
   if (filters.tipo) {

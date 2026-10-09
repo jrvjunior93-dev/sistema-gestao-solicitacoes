@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { sequelize, Anexo, Contrato, ContratoMedicao, ContratoParcela, FormaPagamentoFinanceira, Historico, MedicaoParcela, Parceiro, Solicitacao, TituloFinanceiro, TituloFinanceiroRateio } = require('../models');
+const { sequelize, Anexo, Contrato, ContratoMedicao, ContratoParcela, FormaPagamentoFinanceira, Historico, MedicaoParcela, PagamentoManualFilaItem, Parceiro, Solicitacao, TituloFinanceiro, TituloFinanceiroRateio } = require('../models');
 const { codigoDoSetor, setorParaHistorico } = require('../utils/codigoDoSetor');
 const { paraCentavos, somenteData, formatarISO } = require('./contratoParcelasService');
 const { formaPagamentoEhBoleto, formaPagamentoEhPix, listarFormasDaMedicao } = require('./formasPagamentoMedicaoService');
@@ -859,7 +859,7 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'status', 'valor_saldo', 'valor_baixado'],
+      attributes: ['id', 'status', 'valor_saldo', 'valor_baixado', 'status_interno_pagar'],
       required: false
     }],
     transaction
@@ -900,6 +900,20 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
   // e esperando a Gerencia, `NEC. DE MEDICAO`; aprovada, `LIBERADO` — o titulo esta liberado para
   // pagamento. Sem `aprovada_em`, o calculo nao teria como distinguir as duas situacoes.
   if (medidasEmAberto.length > 0) {
+    // Recalcular uma medicao nao pode apagar o andamento dos pagamentos de outras
+    // parcelas do mesmo contrato. A fila ativa e a analise prevalecem sobre LIBERADO.
+    const emFila = await PagamentoManualFilaItem.count({
+      where: { titulo_financeiro_id: { [Op.in]: medidasEmAberto.map((p) => p.titulo.id) },
+        status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } }, transaction
+    });
+    if (emFila > 0) return 'ENVIADO PARA PAGAMENTO';
+    const { emAnaliseProprietario, STATUS_ANALISE_PROPRIETARIO } = require('./analiseProprietarioService');
+    if (medidasEmAberto.some((p) => emAnaliseProprietario(p.titulo.status_interno_pagar))) {
+      return STATUS_ANALISE_PROPRIETARIO;
+    }
+    if (medidasEmAberto.some((p) => p.titulo.status_interno_pagar === 'AGUARDANDO AJUSTE DE PAGAMENTO')) {
+      return 'AGUARDANDO AJUSTE';
+    }
     const idsEmAberto = medidasEmAberto.map((p) => p.id);
     const pendenteDeAprovacao = await MedicaoParcela.count({
       where: { devolvido_em: null, contrato_parcela_id: idsEmAberto },
@@ -1274,7 +1288,7 @@ async function atualizarMedicaoDoContrato(medicaoId, { itens, usuario } = {}) {
     if (!medicao) throw erro('Medicao nao encontrada.', 404);
     if (medicao.aprovada_em) {
       throw erro(
-        `Medicao ${medicao.numero} ja foi aprovada e liberada para o Financeiro; valor e vencimento nao podem mais ser alterados.`,
+        `Medicao ${medicao.numero} ja foi aprovada; valor e vencimento nao podem mais ser alterados por este fluxo.`,
         409
       );
     }
@@ -1569,7 +1583,7 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
     }
 
     // A aprovacao da medicao e o marco financeiro. O contrato/aditivo apenas cria a previsao;
-    // aqui, e na mesma transacao da aprovacao e do encaminhamento ao Financeiro, somente os
+    // aqui, na mesma transacao da aprovacao, somente os
     // titulos efetivamente medidos passam a ABERTO.
     const vinculos = await MedicaoParcela.findAll({
       where: { medicao_id: medicao.id, devolvido_em: null },
@@ -1664,7 +1678,7 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
           usuario_responsavel_id: usuario?.id || null,
           setor: codigoDoSetor(usuario) || setorObra,
           acao: 'MEDICAO_APROVADA',
-          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada; titulos liberados e solicitacao devolvida para ${setorObra}.`,
+          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada; titulos abertos e solicitacao devolvida para ${setorObra}. GEO pode enviar os titulos a autorizacao ou fila de pagamentos.`,
           metadata: JSON.stringify({
             medicao_id: medicao.id,
             valor_total: Number(medicao.valor_total),

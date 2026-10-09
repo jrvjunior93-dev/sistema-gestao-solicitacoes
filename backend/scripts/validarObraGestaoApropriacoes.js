@@ -15,6 +15,18 @@ function total(distribuicoes) {
 }
 
 {
+  const titulo = { origem_titulo: 'RECARGA_CARTAO', obra_id: 3, considera_dre: false, possui_rateio: false, rateios: [] };
+  const solicitacao = { obra_id: 3, apropriacao_id: 99, apropriacoes: [{ obra_id: 3, apropriacao_id: 99, valor_rateio: 100 }] };
+  assert.deepStrictEqual(distribuirPorApropriacao({ valor: 100, titulo, solicitacao }), []);
+  titulo.considera_dre = true;
+  assert.deepStrictEqual(distribuirPorApropriacao({ valor: 100, titulo, solicitacao }), [], 'DRE sozinho nao substitui prestacao.');
+  titulo.possui_rateio = true; titulo.rateios = [{ obra_id: 4, apropriacao_id: 1, valor_rateio: 100 }];
+  const distribuicoes = distribuirPorApropriacao({ valor: 100, titulo, solicitacao });
+  assert.strictEqual(total(distribuicoes), 100);
+  assert.strictEqual(distribuicoes[0].obra_id, 4, 'Custo na obra do rateio, nao na origem.');
+}
+
+{
   const titulo = {
     obra_id: 3,
     apropriacao_id: 99,

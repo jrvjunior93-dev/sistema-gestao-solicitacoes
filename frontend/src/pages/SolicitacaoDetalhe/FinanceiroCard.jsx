@@ -15,6 +15,9 @@ import {
 } from '../../components/padrao';
 import PrevisoesContrato from './PrevisoesContrato';
 import ModalMedicao from './ModalMedicao';
+import AcoesEnvioTitulosPagamento from '../../components/AcoesEnvioTitulosPagamento';
+import useEnvioTitulosPagamento from '../../hooks/useEnvioTitulosPagamento';
+import { tituloElegivelParaEnvioPagamento as elegivelParaFila } from '../../utils/envioTitulosPagamento';
 import { Link } from 'react-router-dom';
 import { buscarParceiroPorId, buscarParceiros } from '../../services/parceiros';
 import { cadastrarCredorSolicitacao, updateCredorSolicitacao } from '../../services/solicitacoes';
@@ -36,9 +39,8 @@ import {
 import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanceiraAutocomplete';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
-import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, devePrepararAutorizacaoPagamento, hasPermissao } from '../../utils/acessoProduto';
+import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, hasPermissao } from '../../utils/acessoProduto';
 import { listarComprovantesFila } from '../../utils/comprovantesFila';
-import { criarAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -48,7 +50,6 @@ import {
   getFormasPagamentoFinanceiras,
   getPaymentBeneficiaries,
   getTitulosFinanceirosPorSolicitacao,
-  enviarTitulosFilaPagamentos,
   getComprovanteFilaPagamento
 } from '../../services/financeiro';
 
@@ -1076,6 +1077,11 @@ export default function FinanceiroCard({
   const podeCriarTitulo = podeExecutarAcoesFinanceiras && hasPermissao(user, 'financeiro.titulos.criar');
   // Preparar a fila tem permissao propria e independe do setor atual da solicitacao.
   const podeEnviarParaFila = podeExecutarAcoesFinanceiras && podeVisualizarTitulos && canPrepareFilaPagamentos(user);
+  const podeEnviarParaAutorizacao = podeExecutarAcoesFinanceiras && podeVisualizarTitulos
+    && hasPermissao(user, 'financeiro.autorizacoes_pagamento.preparar');
+  const autorizacaoDisponivel = Boolean(user?.autorizacao_pagamentos?.enabled
+    && user.autorizacao_pagamentos.can_prepare && !user.autorizacao_pagamentos.paused);
+  const podeEnviarTitulos = podeEnviarParaFila || podeEnviarParaAutorizacao;
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeGerenciarDadosPagamento = canManagePaymentBeneficiaries(user);
   const freteTerceiroObrigatorio = exigeTitulosSeparadosCompraDireta(solicitacao);
@@ -1089,7 +1095,6 @@ export default function FinanceiroCard({
   const [recarregarParcelas, setRecarregarParcelas] = useState(0);
   const [titulos, setTitulos] = useState([]);
   const [titulosSelecionados, setTitulosSelecionados] = useState([]);
-  const [enviandoFila, setEnviandoFila] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   /*
@@ -1266,39 +1271,16 @@ export default function FinanceiroCard({
       .sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
   }
 
-  function elegivelParaFila(titulo) {
-    if (String(titulo.tipo).toUpperCase() !== 'PAGAR') return false;
-    if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status).toUpperCase())) return false;
-    if (!(Number(titulo.valor_saldo) > 0)) return false;
-    return !(titulo.filaPagamentosManuais || []).some((item) => ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(item.status));
+  async function atualizarAposMedicaoOuEnvio() {
+    setRecarregarParcelas((n) => n + 1);
+    await carregarTitulos();
+    await onSolicitacaoAtualizada?.();
   }
 
-  async function enviarSelecionadosParaFila() {
-    if (!podeEnviarParaFila || enviandoFila || titulosSelecionados.length === 0) return;
-    const requerAutorizacao = devePrepararAutorizacaoPagamento(user);
-    const { ok } = await confirmar({
-      titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
-      mensagem: requerAutorizacao
-        ? `${titulosSelecionados.length} título(s) serão reunidos para decisão do proprietário.`
-        : `${titulosSelecionados.length} título(s) ficarão disponíveis na Fila de Pagamentos.`,
-      rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
-    });
-    if (!ok) return;
-    setEnviandoFila(true);
-    try {
-      const chave = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      if (requerAutorizacao) await criarAutorizacaoPagamento(titulosSelecionados, `solicitacao-${chave}`);
-      else await enviarTitulosFilaPagamentos(titulosSelecionados, `solicitacao-${chave}`);
-      await carregarTitulos();
-      await onSolicitacaoAtualizada?.();
-      setTitulosSelecionados([]);
-      avisar.sucesso(requerAutorizacao ? 'Títulos enviados ao proprietário para autorização.' : 'Títulos enviados para a Fila de Pagamentos.');
-    } catch (error) {
-      avisar.erro(error?.message || 'Não foi possível enviar os títulos para pagamento.');
-    } finally {
-      setEnviandoFila(false);
-    }
-  }
+  const { enviando: enviandoFila, enviar: enviarTitulosParaPagamento } = useEnvioTitulosPagamento({
+    titulos, podeAutorizar: podeEnviarParaAutorizacao, podeFila: podeEnviarParaFila,
+    autorizacaoDisponivel, confirmar, avisar, aoAtualizar: atualizarAposMedicaoOuEnvio
+  });
 
   async function abrirComprovante(filaId, comprovanteId) {
     try {
@@ -2478,8 +2460,14 @@ export default function FinanceiroCard({
         podeEditar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.editar_medicao === true}
         podeAprovar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.aprovar === true}
         podeAnexar={somenteLeitura}
+        titulos={titulos}
+        podeEnviarParaAutorizacao={podeEnviarParaAutorizacao}
+        podeEnviarParaFila={podeEnviarParaFila}
+        autorizacaoDisponivel={autorizacaoDisponivel}
+        enviandoTitulos={enviandoFila}
+        onEnviarTitulos={enviarTitulosParaPagamento}
         onFechar={() => setMedicaoAberta(null)}
-        onSalvo={() => setRecarregarParcelas((n) => n + 1)}
+        onSalvo={atualizarAposMedicaoOuEnvio}
       />
       {/*
         B2 — bloco SECUNDARIO, como os demais blocos do detalhe da solicitacao.
@@ -2567,7 +2555,11 @@ export default function FinanceiroCard({
           contratoId={solicitacao?.contrato_id || null}
           solicitacaoId={solicitacao?.id}
           atualizarEm={recarregarParcelas}
-          onDados={setDadosContrato}
+          onDados={(dados) => {
+            setDadosContrato(dados);
+            setMedicaoAberta((atual) => atual ? (dados?.parcelas || [])
+              .find((parcela) => Number(parcela.medicao?.id) === Number(atual.id))?.medicao || atual : null);
+          }}
           onAbrirMedicao={setMedicaoAberta}
           somenteLeitura={somenteLeitura}
           permitirAbrirMedicaoSomenteLeitura={somenteLeitura}
@@ -2605,20 +2597,21 @@ export default function FinanceiroCard({
         )}
 
         {exibirTitulosDetalhados && (
-          podeEnviarParaFila && titulos.some(elegivelParaFila) ? (
+          podeEnviarTitulos && titulos.some(elegivelParaFila) ? (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm text-[var(--c-muted)]">Selecione os títulos abertos na tabela.</span>
-              <button type="button" className="btn btn-primary btn-sm" onClick={enviarSelecionadosParaFila} disabled={!titulosSelecionados.length || enviandoFila}>
-                {enviandoFila ? 'Enviando...' : `${devePrepararAutorizacaoPagamento(user) ? 'Solicitar autorização' : 'Enviar para fila de pagamento'}${titulosSelecionados.length ? ` (${titulosSelecionados.length})` : ''}`}
-              </button>
+              <AcoesEnvioTitulosPagamento ids={titulosSelecionados}
+                podeAutorizar={podeEnviarParaAutorizacao} podeFila={podeEnviarParaFila}
+                autorizacaoDisponivel={autorizacaoDisponivel} enviando={enviandoFila}
+                aoEnviar={enviarTitulosParaPagamento} />
             </div>
           ) : null
         )}
 
-        {exibirTitulosDetalhados && podeAcessarModuloFinanceiro && !podeEnviarParaFila
+        {exibirTitulosDetalhados && podeAcessarModuloFinanceiro && !podeEnviarTitulos
           && titulos.some(elegivelParaFila) && (
           <p className="mb-3 text-xs text-[var(--c-muted)]">
-            Para enviar títulos deste card à fila, é necessária a permissão Financeiro → Fila de Pagamentos → Enviar títulos para a fila.
+            O envio exige sua permissão específica: preparar autorização ou enviar títulos para a fila de pagamentos.
           </p>
         )}
 
@@ -2627,7 +2620,7 @@ export default function FinanceiroCard({
             colunas={colunasTitulos}
             itens={titulos}
             getId={(titulo) => titulo.id}
-            selecao={podeEnviarParaFila ? {
+            selecao={podeEnviarTitulos ? {
               selecionados: titulosSelecionados,
               elegivel: elegivelParaFila,
               aoAlternar: (id) => setTitulosSelecionados((atual) => atual.includes(Number(id))

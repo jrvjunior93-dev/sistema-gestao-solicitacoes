@@ -13,6 +13,29 @@ Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, 
 - status e saldo derivam dos movimentos ativos;
 - edicao de titulo movimentado possui restricoes e auditoria.
 
+## Recarga de cartao e envio independente
+
+Novas recargas criam um titulo `ABERTO` por cartao, com a obra/centro de custo
+da solicitacao como origem. Reabrir uma recarga ainda sem baixa preserva essa
+origem e o estado aberto. A obrigacao a pagar e o movimento de caixa continuam
+visiveis; nao sao custos apropriados antes da prestacao validada por cartao.
+`considera_dre=false`, sem rateios financeiros, ate a validacao existente.
+
+Resultado de Obras exclui a recarga do agregado direto; o custo entra somente
+pelos rateios classificados da prestacao, sem somar a origem outra vez. Gestao
+de Obras tambem nao usa a origem nem rateios da solicitacao como fallback de
+custo antes dessa classificacao. O relatorio Financeiro Obras tambem exclui
+recargas ainda sem essa classificacao, preservando filtros de obra, periodo e
+busca. Pagamentos e anexos separados por cartao, status parcialmente pago/PAGA
+e regras de prestacao permanecem existentes.
+
+No card Financeiro dos detalhes, preparar autorizacao e enviar para fila sao
+botoes separados. Cada permissao habilita apenas sua acao; a fila nao exige
+permissao de preparar autorizacao, mesmo em PILOT/ENFORCED. A autorizacao
+digital precisa estar disponivel, conforme regras do modulo. Selecoes e
+destino sao congelados antes da confirmacao; trava e chave de idempotencia
+sao compartilhadas com o modal de medicao e preservadas ao repetir uma falha.
+
 ## Juros e multa na edicao e na fila
 
 Juros e multa sao valores em reais, nao percentuais. Na edicao do titulo ficam

@@ -298,7 +298,7 @@ export async function getFormasPagamentoMedicao() {
   return getFormasPagamentoFluxos();
 }
 
-// A Gerencia de Processos aprova a medicao: a solicitacao vai para LIBERADO e segue ao Financeiro.
+// GEO aprova a medicao: abre os titulos e devolve a solicitacao a Obra; pagamento e enviado separadamente.
 export async function aprovarMedicaoContrato(medicaoId) {
   const res = await fetch(`${API_URL}/contratos/medicoes/${medicaoId}/aprovar`, {
     method: 'POST',
