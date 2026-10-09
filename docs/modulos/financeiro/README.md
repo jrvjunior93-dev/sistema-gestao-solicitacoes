@@ -184,6 +184,23 @@ consulta nao recebem anexos nem nova baixa. Consultar a fila continua
 exigindo `financeiro.fila_pagamentos.visualizar`.
 
 Anexar o comprovante retira o item desse recorte, sem remover o historico.
+O PDF tambem e vinculado ao historico e aos anexos da solicitacao do titulo,
+reutilizando a URL permanente no S3. Isso ocorre na transacao da baixa
+quando o comprovante ja existe, ou na transacao de upload/importacao tardia.
+Cada arquivo tem uma entrada `COMPROVANTE_ADICIONADO`, com IDs da fila,
+titulo e movimento. Baixa parcial tambem recebe comprovante; divergencia
+sem movimento so publica o arquivo quando a baixa for de fato autorizada.
+Titulos sem solicitacao continuam somente na fila. Replay nao duplica
+historico/anexo nem ressuscita arquivos removidos.
+
+Registros antigos nao recebem backfill durante o deploy. O script
+`backend/scripts/reconciliarHistoricoComprovantesFila.js` prepara conferencia
+somente leitura por padrao, em lotes de ate 100 itens. A aplicacao separada
+exige IDs revisados, hash da conferencia, superadmin ativo e opt-in
+`ALLOW_PAYMENT_RECEIPT_HISTORY_RECONCILIATION=true`. Revalida sob locks e
+registra auditoria na mesma transacao; nao altera valores, saldos, status,
+datas ou movimentos. A execucao de escrita precisa de autorizacao propria.
+
 Reabrir uma divergencia cria outro ciclo para o saldo, preservando o
 pagamento e eventual pendencia de comprovante do ciclo anterior. A aprovacao
 de baixa divergente acima do saldo continua exigindo comprovante; esta

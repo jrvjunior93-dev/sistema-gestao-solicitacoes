@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## Comprovantes da fila no historico - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: publicacao
+  autorizada na refactor/frontend e promocao isolada para main.
+- Reserva temporaria: arquivos desta tarefa, handoff e index. Nao incorporar
+  o commit DP 118209c0 nem documentos exclusivos de outras implantacoes.
+- Reserva: pagamentoManualFilaService.js, pagamentoComprovantePdfService.js,
+  novo helper de historico, testes offline da fila/comprovantes, scripts de
+  testes relacionados, backend/package.json, README Financeiro e handoff.
+- Escopo: vincular PDFs existentes no S3 ao historico/anexos da solicitacao
+  na baixa e no upload tardio, inclusive importacao. Preservar permissoes,
+  transacoes, remocao de anexos, idempotencia e dados financeiros.
+- Sem frontend, DP, migrations, banco real ou execucao de backfill/deploy.
+  Preservar outputs/ fora do Git. Usuario pediu comandos EC2 e conferencia
+  primeiro; execucao de escrita depende da revisao do resultado.
+- Usuario autorizou preparar reconciliacao dos antigos, nao executar:
+  registrar helper de planejamento SELECT-only, servico/script de reparo
+  com recorte, hash de conferencia, opt-in, superadmin e auditoria atomica.
+- Publicacao autorizada: backup conferido no Drive cifrado e timer ativo
+  confirmados pelo usuario. Testes offline aprovados; sem acesso a producao.
+- Integracao isolada sobre 9358a692 concluida, ownership liberado: testes
+  de comprovantes/instrumentos/remocao/acesso/documentacao e build aprovados.
+  Frontend, migrations e RH_DP preservados iguais a main anterior.
+- Handoff: docs/handoffs/2026-10-08-fila-comprovantes-historico.md.
+
 ## Edicao de valor e vencimento de solicitacoes - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: publicacao

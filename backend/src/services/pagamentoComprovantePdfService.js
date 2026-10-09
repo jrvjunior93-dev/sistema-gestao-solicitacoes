@@ -14,6 +14,7 @@ const {
 const { uploadToS3 } = require('./s3');
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { wherePendenteComprovante, podeAnexarComprovanteFila } = require('./pagamentoFilaComprovanteDomain');
+const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
 
 const MAX_TEXT_LENGTH = 120000;
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
@@ -578,6 +579,7 @@ async function linkReceipts(req, files = [], rawMappings) {
           } : {})
         }, { transaction });
       }
+      await registrarComprovantesFilaNoHistorico(req, row, transaction);
     }
   });
 
