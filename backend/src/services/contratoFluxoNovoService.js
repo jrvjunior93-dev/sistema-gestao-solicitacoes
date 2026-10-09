@@ -2276,13 +2276,28 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'status', 'valor_original', 'valor_baixado', 'valor_saldo'],
+      attributes: ['id', 'tipo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'],
       required: false
     }],
     order: [['numero', 'ASC']]
   });
 
   await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelas, 'titulo');
+  // Uma leitura operacional para parcela, modal e envio. A consulta generica
+  // da solicitacao pode nao conter titulos de vinculos legados do contrato.
+  const tituloIdsEnvio = parcelas.map(p => Number(p.titulo?.id)).filter(Boolean);
+  const filasEnvio = tituloIdsEnvio.length ? await require('../models').PagamentoManualFilaItem.findAll({
+    where: { titulo_financeiro_id: { [Op.in]: tituloIdsEnvio } },
+    attributes: ['id', 'titulo_financeiro_id', 'status'],
+    raw: true
+  }) : [];
+  const filasPorTituloEnvio = new Map();
+  for (const item of filasEnvio) {
+    const id = Number(item.titulo_financeiro_id);
+    if (!filasPorTituloEnvio.has(id)) filasPorTituloEnvio.set(id, []);
+    filasPorTituloEnvio.get(id).push(item);
+  }
+  const { resumoTituloEnvioMedicao } = require('./tituloMedicaoEnvioDomain');
   // Soma em centavos: somar float e arredondar no fim ja divergiu do DECIMAL do MySQL antes.
   const somaCent = (lista) => lista.reduce((acc, p) => acc + paraCentavos(p.valor), 0);
   const aprovadasCent = somaCent(parcelas.filter((p) => p.status === STATUS_PARCELA.APROVADA));
@@ -2580,6 +2595,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         status_parcela: p.status,
         travada: Boolean(p.travada),
         titulo_financeiro_id: p.titulo_financeiro_id,
+        titulo_pagamento: resumoTituloEnvioMedicao(p.titulo, filasPorTituloEnvio.get(Number(p.titulo?.id)) || []),
         titulo_valor_baixado: p.titulo ? Number(p.titulo.valor_baixado || 0) : null,
         titulo_valor_saldo: p.titulo ? Number(p.titulo.valor_saldo || 0) : null,
         renegociado_por_id: p.titulo?.renegociado_por_id || null,

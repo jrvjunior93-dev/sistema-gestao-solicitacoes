@@ -6,6 +6,16 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { Op, fn, col, literal } = require('sequelize');
 const root = path.resolve(__dirname, '../src/services');
+const { resumoTituloEnvioMedicao } = require('../src/services/tituloMedicaoEnvioDomain');
+const tituloResumo = { id: 9, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: '1000.00' };
+assert.deepEqual(resumoTituloEnvioMedicao(tituloResumo, [{ id: 7, status: 'PENDENTE', segredo: 'omitido' }]),
+  { id: 9, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: 1000, filaPagamentosManuais: [{ id: 7, status: 'PENDENTE' }] });
+assert.equal(resumoTituloEnvioMedicao(null), null);
+assert.equal(resumoTituloEnvioMedicao({ ...tituloResumo, renegociado_por_id: 30 }).status, 'RENEGOCIADO');
+assert.equal(resumoTituloEnvioMedicao({ ...tituloResumo, valor_saldo: '0.00', status: 'QUITADO' }).valor_saldo, 0);
+const fonteParcelasEnvio = fs.readFileSync(path.join(root, 'contratoFluxoNovoService.js'), 'utf8');
+assert.match(fonteParcelasEnvio, /titulo_pagamento: resumoTituloEnvioMedicao\(p\.titulo,/);
+assert.match(fonteParcelasEnvio, /attributes: \['id', 'tipo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'\]/);
 function load(name, dependencies, extra = {}) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(root, name), 'utf8'), {
@@ -158,6 +168,67 @@ function filtroFinanceiroObras() {
   const busca = module.exports({ q: 'QA' }, obraWhere, {}, 'REALIZADO');
   assert.equal(busca[Op.and].length, 2, 'Busca textual nao sobrepoe a guarda de classificacao.');
 }
-(async () => { await medicao(); await relatorio(); filtroFinanceiroObras();
+async function leituraParcelasEnvio() {
+  // Executa o DTO real com models simulados; sem carregar .env/banco.
+  const source = fonteParcelasEnvio;
+  const inicio = source.indexOf('async function listarParcelasDoContrato(');
+  const fim = source.indexOf('async function tramitarNoJuridico(', inicio);
+  assert(inicio >= 0 && fim > inicio);
+  let tituloAtual = { ...tituloResumo };
+  let filas = [];
+  let consultasFila = 0;
+  const parcela = { id: 10, numero: 10, valor: 1000, valor_previsto: 1000,
+    titulo_financeiro_id: 9, status: 'APROVADA', data_vencimento: '2026-10-20' };
+  const vazio = { findAll: async () => [], findOne: async () => null };
+  const models = {
+    Contrato: { findByPk: async () => ({ id: 1, codigo: 'CT-QA', solicitacao_id: 100,
+      fluxo_novo: true, valor_total: 1000, ativo: true, status_contrato: 'ATIVO' }) },
+    ContratoParcela: { findAll: async consulta => {
+      assert(consulta.include[0].attributes.includes('tipo'));
+      assert(consulta.include[0].attributes.includes('renegociado_por_id'));
+      return [{ ...parcela, titulo: tituloAtual }];
+    } },
+    TituloFinanceiro: {}, MedicaoParcela: { findAll: async () => [{ contrato_parcela_id: 10,
+      valor_medido: 1000, medicao: { id: 1, numero: 1, aprovada_em: '2026-10-08' } }] },
+    ContratoMedicao: {}, Parceiro: vazio, FormaPagamentoFinanceira: vazio,
+    User: vazio, ContratoCredor: vazio, ContratoApropriacao: vazio,
+    Apropriacao: {}, ContratoAnexo: vazio, Anexo: vazio,
+    PagamentoManualFilaItem: { findAll: async consulta => {
+      consultasFila++;
+      assert.deepEqual(Array.from(consulta.where.titulo_financeiro_id[Op.in]), [9]);
+      assert.equal(consulta.raw, true);
+      return filas;
+    } }
+  };
+  const dependencies = {
+    '../models': models,
+    './medicaoContratoService': { calcularSaldoDoContrato: async () => ({ saldo_cent: 0, total_cent: 100000 }),
+      statusEfetivo: p => ({ status: p.titulo?.status || p.status, origem: 'TITULO', editavel: false }) },
+    './tituloRenegociacaoVinculos': { projetarAssociacoes: async () => {} },
+    './tituloMedicaoEnvioDomain': { resumoTituloEnvioMedicao },
+    './alertaSaldoContratoService': { classificarSaldo: async () => null }
+  };
+  const module = { exports: {} };
+  vm.runInNewContext(`${source.slice(inicio, fim)}\nmodule.exports=listarParcelasDoContrato;`, {
+    module, ...models, Op, STATUS_PARCELA: { APROVADA: 'APROVADA', PREVISAO: 'PREVISAO' },
+    STATUS_CONTRATO: { ATIVO: 'ATIVO' }, TIPO_ANEXO_MINUTA: 'MINUTA',
+    paraCentavos: v => Math.round(Number(v || 0) * 100), somenteData: v => v,
+    formatarISO: v => v, permissoesDoUsuarioNoContrato: async () => ({ aprovar: true }),
+    require: id => { if (id in dependencies) return dependencies[id]; throw new Error(id); }
+  });
+  const read = module.exports;
+  let dto = await read(1);
+  assert.deepEqual(JSON.parse(JSON.stringify(dto.parcelas[0].titulo_pagamento)), resumoTituloEnvioMedicao(tituloAtual));
+  assert.equal(dto.parcelas[0].medicao.id, 1);
+  assert.equal(consultasFila, 1, 'Fila consultada em lote, sem consulta por parcela.');
+  filas = [{ id: 7, titulo_financeiro_id: 9, status: 'PENDENTE' }];
+  dto = await read(1);
+  assert.equal(dto.parcelas[0].titulo_pagamento.filaPagamentosManuais[0].status, 'PENDENTE');
+  tituloAtual = { ...tituloResumo, status: 'PREVISAO' };
+  assert.equal((await read(1)).parcelas[0].titulo_pagamento.status, 'PREVISAO');
+  tituloAtual = null;
+  assert.equal((await read(1)).parcelas[0].titulo_pagamento, null);
+}
+(async () => { await leituraParcelasEnvio(); await medicao(); await relatorio(); filtroFinanceiroObras();
   console.log('OK: medicao abre somente parcelas medidas, retorna Obra, preserva analise/fila/ajuste; permissoes, anexos, rollback e replay. Recarga nao antecipa nem duplica custo. Sem banco/rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
