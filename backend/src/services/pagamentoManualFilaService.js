@@ -35,6 +35,7 @@ const { userHasNominalAreaPermission } = require('./authorizationService');
 const { resolvePaymentQueueGate } = require('./paymentOwnerApprovalPolicy');
 const { tipoInstrumento, instrumentoPayload } = require('./pagamentoFilaInstrumentoDomain');
 const { pendenteComprovanteFila, wherePendenteComprovante, podeAnexarComprovanteFila } = require('./pagamentoFilaComprovanteDomain');
+const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -477,11 +478,11 @@ async function anexarComprovanteFila(req, filaId, file) {
   if (!podeAnexarComprovanteFila(itemAtual)) {
     throw createHttpError(409, 'O item nao permite anexar comprovantes.');
   }
-  if (itemAtual.comprovante_hash === hash) return itemAtual;
+  if (itemAtual.comprovante_hash === hash) return sincronizarComprovanteRepetido(req, id);
   const comprovanteExistente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash } });
   if (comprovanteExistente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
   const comprovanteNovoExistente = await PagamentoManualFilaComprovante.findOne({ where: { hash } });
-  if (comprovanteNovoExistente?.fila_id === id) return itemAtual;
+  if (comprovanteNovoExistente?.fila_id === id) return sincronizarComprovanteRepetido(req, id);
   if (comprovanteNovoExistente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
   const url = await uploadToS3(file, `financeiro/fila-pagamentos/${id}/comprovantes`);
   return sequelize.transaction(async (transaction) => {
@@ -489,11 +490,17 @@ async function anexarComprovanteFila(req, filaId, file) {
     if (!podeAnexarComprovanteFila(item)) {
       throw createHttpError(409, 'O item nao permite anexar comprovantes.');
     }
-    if (item.comprovante_hash === hash) return item;
+    if (item.comprovante_hash === hash) {
+      await registrarComprovantesFilaNoHistorico(req, item, transaction);
+      return item;
+    }
     const existente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash }, transaction });
     if (existente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
     const existenteNovo = await PagamentoManualFilaComprovante.findOne({ where: { hash }, transaction });
-    if (existenteNovo?.fila_id === id) return item;
+    if (existenteNovo?.fila_id === id) {
+      await registrarComprovantesFilaNoHistorico(req, item, transaction);
+      return item;
+    }
     if (existenteNovo) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
     const vinculadoEm = new Date();
     await PagamentoManualFilaComprovante.create({
@@ -510,6 +517,16 @@ async function anexarComprovanteFila(req, filaId, file) {
         comprovante_vinculado_em: vinculadoEm
       }, { transaction });
     }
+    await registrarComprovantesFilaNoHistorico(req, item, transaction);
+    return item;
+  });
+}
+
+async function sincronizarComprovanteRepetido(req, id) {
+  return sequelize.transaction(async transaction => {
+    const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!podeAnexarComprovanteFila(item)) throw createHttpError(409, 'O item nao permite anexar comprovantes.');
+    await registrarComprovantesFilaNoHistorico(req, item, transaction);
     return item;
   });
 }
@@ -576,6 +593,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
 
   const itemKey = `${requestKey}:${filaItem.id}`.slice(0, 120);
   if (filaItem.idempotency_key === itemKey && ['BAIXADO', 'DIVERGENTE'].includes(String(filaItem.status).toUpperCase())) {
+    await registrarComprovantesFilaNoHistorico(req, filaItem, transaction);
     return { filaItem, idempotente: true };
   }
   if (String(filaItem.status || '').toUpperCase() !== 'PENDENTE') {
@@ -668,6 +686,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
     movimento_financeiro_id: baixa.movimento_financeiro_id || baixa.movimento?.id || null
   }, { transaction });
 
+  await registrarComprovantesFilaNoHistorico(req, filaItem, transaction, titulo);
   return { filaItem, titulo, baixa, baixaRegistrada: true, divergente };
 }
 
@@ -732,6 +751,7 @@ async function aprovarDivergenciasFila(req, payload = {}) {
 
       const itemKey = `${requestKey}:${current.id}`.slice(0, 120);
       if (String(current.status || '').toUpperCase() === 'RESOLVIDO' && current.idempotency_key === itemKey) {
+        await registrarComprovantesFilaNoHistorico(req, current, transaction);
         processed.push({ item: current, baixaRegistrada: Boolean(current.movimento_financeiro_id), idempotente: true });
         continue;
       }
@@ -808,6 +828,7 @@ async function aprovarDivergenciasFila(req, payload = {}) {
         resolvido_em: new Date(),
         idempotency_key: itemKey
       }, { transaction });
+      await registrarComprovantesFilaNoHistorico(req, current, transaction, titulo);
       processed.push({ item: current, baixaRegistrada, idempotente: false });
     }
 

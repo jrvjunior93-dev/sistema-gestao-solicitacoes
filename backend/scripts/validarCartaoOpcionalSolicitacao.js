@@ -99,7 +99,9 @@ const queueDependencies = { ...dependencies,
   './s3': {}, './fileAccessService': {}, '../config/env': { env: {} },
   './paymentOwnerApprovalPolicy': {},
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
-  './pagamentoFilaComprovanteDomain': require('../src/services/pagamentoFilaComprovanteDomain')
+  './pagamentoFilaComprovanteDomain': require('../src/services/pagamentoFilaComprovanteDomain'),
+  // Historico de arquivos e exercitado com o helper real em validarFilaComprovantePendente.
+  './pagamentoFilaHistoricoService': { registrarComprovantesFilaNoHistorico: async () => {} }
 };
 vm.runInNewContext(fs.readFileSync(queueFile, 'utf8'), { module: queueModule, console, Date, Intl,
   require(id) { if (!(id in queueDependencies)) throw new Error(`Dependencia de fila nao isolada: ${id}`); return queueDependencies[id]; }

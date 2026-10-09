@@ -78,6 +78,7 @@ models.sequelize = { async transaction(callback) {
 } };
 const services = new Map();
 const stubs = {
+  '../utils/fileName': require('../src/utils/fileName'),
   sequelize: { Op }, '../models': models, '../config/env': { env }, crypto,
   './authorizationService': { getFinanceiroObraScopeIds: async () => scope,
     userHasNominalAreaPermission: async (actor, keys) => keys.every((key) => actor.grants.includes(key)) },
