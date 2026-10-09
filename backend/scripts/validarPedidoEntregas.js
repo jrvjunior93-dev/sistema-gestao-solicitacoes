@@ -64,6 +64,7 @@ const arquivo = path.resolve(__dirname, '../src/services/pedidoEntregaService.js
 const sandbox = { module: { exports: {} }, console, require: (id) => {
   if (id === '../models') return models;
   if (id === './pedidoEntregaDomain') return domain;
+  if (id === './avisoPendenciasEntregaService') return require('../src/services/avisoPendenciasEntregaService');
   if (id === './prazosOperacionaisService') return {
     configuracao: async () => ({ ativo: prazosAtivos, revisao: 0 }),
     registrarEntrega: async ({ itemId, versao, transaction }) => {
@@ -123,8 +124,32 @@ const operar = (acao, itens, extras = {}) => service.operarEntrega({ pedidoId: 8
   await assert.rejects(service.operarEntrega({ pedidoId: 8, compraId: 99, payload: { acao: 'RECEBER', itens: [{ id: 1 }], idempotency_key: 'teste_outra_compra' } }), /não pertence/);
   await assert.rejects(operar('PREVISAO', [{ id: 999, versao: 0, previsao: hoje }]), /não pertence/);
   prazosAtivos = false;
+  pendenciasQuery = [
+    { solicitacao_id: 10, solicitacao_codigo: 'SOL-6265', pedido_id: 227, item_id: 1, obra_id: 3 },
+    { solicitacao_id: 10, solicitacao_codigo: 'SOL-6265', pedido_id: 227, item_id: 2, obra_id: 3 },
+    { solicitacao_id: 10, solicitacao_codigo: 'SOL-6265', pedido_id: 228, item_id: 3, obra_id: 3 },
+    { solicitacao_id: 11, solicitacao_codigo: 'SOL-6300', pedido_id: 229, item_id: 4, obra_id: 3 },
+    { solicitacao_id: 12, solicitacao_codigo: 'SOL-OUTRA-OBRA', pedido_id: 230, item_id: 5, obra_id: 4 }
+  ];
+  await assert.rejects(service.assertObraPodeCriarCompra(3), (erro) => {
+    assert.equal(erro.statusCode, 409);
+    assert.equal(erro.code, 'COMPRA_ENTREGA_PENDENTE');
+    assert.deepEqual(erro.details.solicitacoes, [
+      { solicitacao_id: 10, codigo: 'SOL-6265', pedidos: [227, 228], itens_pendentes: 3 },
+      { solicitacao_id: 11, codigo: 'SOL-6300', pedidos: [229], itens_pendentes: 1 }
+    ]);
+    return true;
+  });
+  assert.match(ultimoSql, /LEFT JOIN solicitacoes es ON es.id = ec.solicitacao_principal_id/);
+  assert.match(ultimoSql, /es.codigo AS solicitacao_codigo/);
+  pendenciasQuery = pendenciasQuery.slice(0, 1);
+  await assert.rejects(service.assertObraPodeCriarCompra(3), /SOL-6265/);
   pendenciasQuery = [{ pedido_id: 8, item_id: 1, obra_id: 3, vencida: 1, prazo_compras: '2026-09-01' }];
-  await assert.rejects(service.assertObraPodeCriarCompra(3), /Informe a entrega/);
+  await assert.rejects(service.assertObraPodeCriarCompra(3), (erro) => {
+    assert.match(erro.message, /Informe a entrega.*pedido #8/);
+    assert.equal(erro.details.solicitacoes[0].codigo, null, 'Nao inventa codigo SOL com ID');
+    return true;
+  });
   await service.assertObraPodeCriarCompra(4);
   prazosAtivos = true; itensAcompanhados = [1];
   await service.assertObraPodeCriarCompra(3); // Novo ciclo usa prazo e tolerância, não o guard legado por data.

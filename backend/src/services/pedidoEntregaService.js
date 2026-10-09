@@ -5,6 +5,7 @@ const { Op, QueryTypes } = require('sequelize');
 const { sequelize, PedidoCompra, PedidoCompraItem, PedidoCompraItemRecebimento,
   PedidoCompraEntrega, PedidoCompraEntregaOperacao, SolicitacaoCompra, Historico, ConfiguracaoSistema } = require('../models');
 const { arredondar, hojeBrasil, dataValida, adicionarDiasUteis, situacaoEntrega } = require('./pedidoEntregaDomain');
+const { agruparPendenciasEntrega } = require('./avisoPendenciasEntregaService');
 
 function falhar(mensagem, statusCode = 409) { throw Object.assign(new Error(mensagem), { statusCode }); }
 const sqlBase = `FROM pedido_compra_entregas e
@@ -33,12 +34,13 @@ async function pendenciasEntrega({ obraId, solicitacaoIds, setor = 'OBRA', trans
     if (!solicitacaoIds.length) return [];
     filtros.push('ec.solicitacao_principal_id IN (:ids)'); replacements.ids = solicitacaoIds;
   }
-  return sequelize.query(`SELECT ec.solicitacao_principal_id AS solicitacao_id,
+  return sequelize.query(`SELECT ec.solicitacao_principal_id AS solicitacao_id, es.codigo AS solicitacao_codigo,
     ep.id AS pedido_id, ep.obra_id, ei.id AS item_id, ei.descricao, e.estado,
     DATE_FORMAT(e.previsao, '%Y-%m-%d') AS previsao,
     DATE_FORMAT(e.prazo_compras, '%Y-%m-%d') AS prazo_compras, e.updatedAt,
     (e.estado = 'COMPRAS' AND e.prazo_compras < :hoje) AS vencida
-    ${sqlBase} WHERE ${sqlAtivo} AND (${condicaoPendencia(setor)})
+    ${sqlBase} LEFT JOIN solicitacoes es ON es.id = ec.solicitacao_principal_id
+    WHERE ${sqlAtivo} AND (${condicaoPendencia(setor)})
     ${filtros.map((f) => `AND ${f}`).join(' ')} ORDER BY e.updatedAt DESC`, {
     type: QueryTypes.SELECT, replacements: { ...replacements, hoje: hojeBrasil() }, transaction
   });
@@ -57,7 +59,15 @@ async function assertObraPodeCriarCompra(obraId, transaction) {
     const ids = new Set(acompanhados.map((p) => Number(p.referencia_id)));
     pendencias = pendencias.filter((p) => !ids.has(Number(p.item_id)));
   }
-  if (pendencias.length) falhar(`Informe a entrega vencida do pedido #${pendencias[0].pedido_id} (${pendencias.length} item(ns) pendente(s) nesta obra) antes de criar Solicitação de Compra ou Compra Direta.`);
+  if (pendencias.length) {
+    const solicitacoes = agruparPendenciasEntrega(pendencias);
+    const primeira = solicitacoes[0];
+    const referencia = solicitacoes.length > 1 ? ' das solicitações abaixo'
+      : primeira.codigo ? ` da solicitação ${primeira.codigo}` : ` do pedido #${primeira.pedidos[0]}`;
+    throw Object.assign(new Error(`Informe a entrega vencida${referencia} antes de criar Solicitação de Compra ou Compra Direta.`), {
+      statusCode: 409, code: 'COMPRA_ENTREGA_PENDENTE', details: { solicitacoes }
+    });
+  }
 }
 async function assertComprasPodeGerarPedido(transaction) {
   const pendencias = await pendenciasEntrega({ setor: 'COMPRAS', transaction });

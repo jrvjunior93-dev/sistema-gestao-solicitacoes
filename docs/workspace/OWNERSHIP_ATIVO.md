@@ -38,6 +38,30 @@
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
 
+Publicacao do aviso de entregas pendentes autorizada pelo usuario em 09/10/2026:
+reserva documental temporaria deste registro e do handoff correspondente.
+Commit/push apenas na refactor/frontend; main, EC2 e banco fora do escopo.
+outputs/ preservado e excluido do commit. Reserva documental encerrada ao
+preparar o commit; ownership liberado.
+
+## Aviso de entrega pendente em compras - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-09-aviso-entregas-solicitacoes.md.
+- Reserva: pedidoEntregaService.js, novo avisoPendenciasEntregaService.js,
+  controlePrazosOperacionais.js, catches de criacao em SolicitacaoController.js
+  e SolicitacaoCompraController.js; Avisos.jsx, Alert.jsx, CSS dos avisos,
+  novo helper frontend de aviso de entrega e catches de NovaSolicitacao e
+  RevisarSolicitacaoCompra; testes associados e handoff.
+- Reserva adicional: validarRelatorioTitulosSelecao.js, apenas nova dependencia
+  de apresentacao simulada para preservar o teste da guarda em exportacoes.
+- Escopo: codigo principal SOL e lista agrupada em um unico aviso nos dois
+  fluxos; preservar bloqueios, escopo por obra, ciclos, permissoes e envios.
+- Sem banco real, migration, commit/push ou deploy; outputs/ preservado.
+- Validacoes aprovadas: entregas e acesso, prazos operacionais backend/UI,
+  relatorio de titulos, aviso real desktop/mobile com HTTP simulado, build,
+  sintaxe, documentacao e diff. Guardas e idempotencia preservadas.
+
 Publicacao do total compacto de recarga autorizada em 09/10/2026 nesta conversa:
 reserva documental temporaria deste registro e do handoff correspondente.
 Commit/push apenas na refactor/frontend; main/deploy/banco fora do escopo.

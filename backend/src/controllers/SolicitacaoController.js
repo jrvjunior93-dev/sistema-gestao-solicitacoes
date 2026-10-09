@@ -4402,7 +4402,8 @@ module.exports = {
       console.error(error);
       return res.status(error.statusCode || 500).json({
         error: error.message || 'Erro ao criar solicitacao',
-        code: error.code || undefined
+        code: error.code || undefined,
+        ...(error.code === 'COMPRA_ENTREGA_PENDENTE' ? { details: error.details } : {})
       });
     }
   },

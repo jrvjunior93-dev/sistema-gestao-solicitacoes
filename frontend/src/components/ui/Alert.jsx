@@ -45,7 +45,7 @@ export default function Alert({ type = 'info', title, message, onClose, classNam
 
       <div className="alert-content">
         {title ? <p className="alert-title">{title}</p> : null}
-        <p className="alert-message">{message}</p>
+        {typeof message === 'string' ? <p className="alert-message">{message}</p> : <div className="alert-message">{message}</div>}
       </div>
 
       {onClose && (

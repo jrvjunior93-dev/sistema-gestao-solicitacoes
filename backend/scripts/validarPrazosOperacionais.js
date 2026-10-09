@@ -81,7 +81,8 @@ const service = carregar('../src/services/prazosOperacionaisService.js', { '../m
   './prazosOperacionaisDomain': d, './setorCapabilityService': { userHasSetorCapability: async (u) => u.setor === 'OBRA' } });
 const rotas = carregar('../src/services/prazosOperacionaisRotaService.js', { '../models': {} });
 const middleware = carregar('../src/middlewares/controlePrazosOperacionais.js', {
-  '../services/prazosOperacionaisService': service, '../services/prazosOperacionaisRotaService': rotas });
+  '../services/prazosOperacionaisService': service, '../services/prazosOperacionaisRotaService': rotas,
+  '../services/avisoPendenciasEntregaService': require('../src/services/avisoPendenciasEntregaService') });
 function req(pathname, body = {}, method = 'POST', user = { id: 1, setor: 'OBRA' }) { return { path: pathname, body, method, user }; }
 async function resposta(guard, request) {
   let code = 200, data = null, passou = false;
@@ -155,6 +156,24 @@ async function resposta(guard, request) {
   assert.equal((await service.estado({ id: 2, perfil: 'SUPERADMIN', setor: 'OBRA' })).obras.length, 0);
   const guard = middleware.criarControle({ estado: service.estado, resolver: async (r) => r.body.alvos || [3] });
   assert.equal((await resposta(guard, req('/solicitacoes/7'))).code, 423);
+  const agoraAviso = new Date().toISOString();
+  const guardAviso = middleware.criarControle({
+    estado: async () => ({ servidor_agora: agoraAviso, obras: [
+      { id: 3, bloqueada: true, pendencias: [
+        { id: 1, solicitacao_id: 7, codigo: 'SOL-6265', pedido_id: 227, limite_em: agoraAviso },
+        { id: 2, solicitacao_id: 7, codigo: 'SOL-6265', pedido_id: 227, limite_em: agoraAviso },
+        { id: 3, solicitacao_id: 8, codigo: 'SOL-FUTURA', pedido_id: 228, limite_em: '2099-01-01' }
+      ] },
+      { id: 4, bloqueada: true, pendencias: [
+        { id: 4, solicitacao_id: 9, codigo: 'SOL-OUTRA-OBRA', pedido_id: 229, limite_em: agoraAviso }
+      ] }
+    ] }), resolver: async () => [3]
+  });
+  const aviso = (await resposta(guardAviso, req('/compras/solicitacoes-diretas'))).data;
+  assert.equal(aviso.codigo, 'OBRA_PRAZO_OPERACIONAL_PENDENTE', 'Contrato anterior preservado');
+  assert.deepEqual(aviso.details.solicitacoes, [
+    { solicitacao_id: 7, codigo: 'SOL-6265', pedidos: [227], itens_pendentes: 2 }
+  ], 'Agrupa por SOL e lista somente vencidas da obra afetada');
   assert.equal((await resposta(guard, req('/SOLICITACOES/7'))).code, 423, 'Capitalização aceita pelo Express não contorna a guarda');
   assert.equal((await resposta(guard, req('/solicitacoes/7', {}, 'GET'))).passou, true);
   assert.equal((await resposta(guard, req('/solicitacoes/7', { alvos: [4] }))).passou, true);
