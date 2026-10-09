@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const {
   Anexo,
   ContaBancaria,
+  Contrato,
   CartaoFinanceiro,
   ChequeTerceiro,
   EmpresaGrupo,
@@ -25,6 +26,7 @@ const { baixarTitulo } = require('./tituloFinanceiroService');
 const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
 const { registrarEventoSeguranca, getRequestIp } = require('./securityLogService');
 const { atualizarAnaliseAoEnfileirar } = require('./analiseProprietarioService');
+const { resolverSolicitacoesDosTitulos, registrarVinculosContratuaisAoEnfileirar } = require('./tituloSolicitacaoContratoService');
 const { sincronizarDossiesComFila } = require('./pagamentoAutorizacaoFilaService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { canAccessSolicitacaoFile } = require('./fileAccessService');
@@ -426,13 +428,23 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       origem: options.autorizacaoInterna ? 'AUTORIZACAO_DIGITAL' : 'ENVIO_DIRETO' });
     await atualizarAnaliseAoEnfileirar(novos, transaction);
 
-    for (const solicitacaoId of [...new Set(novos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))].sort((a, b) => a - b)) {
+    const vinculosSolicitacoes = await resolverSolicitacoesDosTitulos(novos, transaction);
+    await registrarVinculosContratuaisAoEnfileirar({ titulos: novos, vinculos: vinculosSolicitacoes,
+      usuarioId: req.user?.id || null, transaction });
+    const solicitacaoIdsEnvio = [...new Set([...vinculosSolicitacoes.values()].map(v => v.solicitacao_id).filter(Boolean))].sort((a, b) => a - b);
+    const contratosEnvio = solicitacaoIdsEnvio.length ? await Contrato.findAll({
+      where: { solicitacao_id: { [Op.in]: solicitacaoIdsEnvio }, fluxo_novo: true },
+      attributes: ['solicitacao_id'], transaction
+    }) : [];
+    const solicitacoesContrato = new Set(contratosEnvio.map(c => Number(c.solicitacao_id)));
+    for (const solicitacaoId of solicitacaoIdsEnvio) {
       const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
       if (!solicitacao) continue;
       await encaminharSolicitacaoParaFinanceiroAoEnfileirar({
         solicitacao,
         usuarioId: req.user?.id || null,
-        transaction
+        transaction,
+        retornarParaObra: solicitacoesContrato.has(solicitacaoId)
       });
     }
     const processados = itens.filter(item => !ACTIVE_STATUSES.includes(item.status)).length;

@@ -53,7 +53,7 @@ function setoresEquivalentes(a, b) {
   return aliasesGeo.has(esquerda) && aliasesGeo.has(direita);
 }
 
-async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, usuarioId, transaction }) {
+async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, usuarioId, transaction, retornarParaObra = false }) {
   if (!solicitacao) return false;
   const setorFinanceiroModel = await findSetorByCapability('eh_setor_financeiro', { transaction });
   const setorFinanceiro = resolveSetorPersistenciaValue(setorFinanceiroModel, 'FINANCEIRO');
@@ -61,7 +61,7 @@ async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, us
   const statusAnterior = solicitacao.status_global || null;
   const mudouSetor = !setoresEquivalentes(setorAnterior, setorFinanceiro);
   const mudouStatus = normalizarStatus(statusAnterior) !== 'ENVIADO PARA PAGAMENTO';
-  if (!mudouSetor && !mudouStatus) return false;
+  if (!mudouSetor && !mudouStatus && !retornarParaObra) return false;
 
   await solicitacao.update({
     area_responsavel: setorFinanceiro,
@@ -97,6 +97,18 @@ async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, us
         setor_origem: setorAnterior,
         setor_destino: setorFinanceiro
       })
+    }, { transaction });
+  }
+  // Medicoes: registrar a passagem real pelo Financeiro, mas liberar o setor
+  // Obra para novas medicoes. Nao e baixa nem retorno financeiro apos pagamento.
+  if (retornarParaObra) {
+    const setorObraModel = await findSetorByCapability('eh_setor_obra', { transaction });
+    const setorObra = resolveSetorPersistenciaValue(setorObraModel, 'OBRA');
+    await solicitacao.update({ area_responsavel: setorObra }, { transaction });
+    await Historico.create({ solicitacao_id: solicitacao.id, usuario_responsavel_id: usuarioId || null,
+      setor: setorObra, acao: 'ENVIADA_SETOR', observacao: `De ${setorFinanceiro} para ${setorObra}`,
+      descricao: 'Medicao registrada no Financeiro; solicitacao devolvida a Obra para novas medicoes, sem alterar o pagamento.',
+      metadata: JSON.stringify({ origem: 'FILA_PAGAMENTOS_MEDICAO', setor_origem: setorFinanceiro, setor_destino: setorObra })
     }, { transaction });
   }
   return true;

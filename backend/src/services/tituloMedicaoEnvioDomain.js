@@ -8,6 +8,7 @@ function resumoTituloEnvioMedicao(titulo, itensFila = []) {
     id: titulo.id,
     tipo: titulo.tipo,
     status: titulo.renegociado_por_id ? 'RENEGOCIADO' : titulo.status,
+    status_interno_pagar: titulo.status_interno_pagar || null,
     valor_saldo: Number(titulo.valor_saldo || 0),
     filaPagamentosManuais: itensFila.map(item => ({ id: item.id, status: item.status }))
   };

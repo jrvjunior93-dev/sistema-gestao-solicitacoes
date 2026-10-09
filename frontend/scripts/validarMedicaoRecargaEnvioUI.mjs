@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-import { tituloElegivelParaEnvioPagamento, titulosParaEnvioComContrato } from '../src/utils/envioTitulosPagamento.js';
+import { tituloElegivelParaEnvioPagamento, titulosParaEnvioComContrato, rotuloOperacionalPagamento } from '../src/utils/envioTitulosPagamento.js';
 const resumo = { id: 10, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: 1000, filaPagamentosManuais: [] };
 const dto = { contrato: { fluxo_novo: true, solicitacao_id: 100 }, parcelas: [{ titulo_financeiro_id: 10, titulo_pagamento: resumo }] };
 assert.deepEqual(titulosParaEnvioComContrato([], dto, 100), [resumo]);
@@ -16,6 +16,9 @@ assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, tipo: 'RECEBER' }), f
 assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, valor_saldo: 0 }), false);
 assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, status: 'RENEGOCIADO' }), false);
 assert.equal(tituloElegivelParaEnvioPagamento({ ...resumo, filaPagamentosManuais: [{ status: 'PENDENTE' }] }), false);
+assert.equal(rotuloOperacionalPagamento({ ...resumo, filaPagamentosManuais: [{ status: 'PENDENTE' }] }), 'Na fila');
+assert.equal(rotuloOperacionalPagamento({ ...resumo, status: 'QUITADO', valor_saldo: 0, filaPagamentosManuais: [{ status: 'PENDENTE' }] }), '');
+assert.equal(rotuloOperacionalPagamento({ ...resumo, filaPagamentosManuais: [{ id: 1, status: 'PENDENTE' }, { id: 2, status: 'DIVERGENTE' }] }), 'Divergente');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), port = 5321;
 const server = await createServer({ root, server: { host: '127.0.0.1', port, strictPort: true, proxy: {} } });
 const saida = path.join(root, '../outputs/qa-medicao-recarga-envio');
@@ -107,6 +110,9 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes('Títulos enviados para a Fila de Pagamentos'));
   assert.equal(sends[1].idempotency_key, sends[2].idempotency_key, 'Retry usa mesma chave.');
   assert.deepEqual(sends[2].titulo_ids, [1]); assert(await fila.isDisabled(), 'Ja enfileirado nao envia de novo.');
+  assert.equal(await modal().getByTestId('fila-parcela-1').innerText(), 'Na fila');
+  assert(await modal().getByText('Os títulos desta medição já estão na fila de pagamentos.', { exact: true }).isVisible());
+  assert((await page.getByTestId('situacao-parcela-1').innerText()).includes('Na fila'));
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   await page.screenshot({ path: path.join(saida, 'medicao-mobile.png') });

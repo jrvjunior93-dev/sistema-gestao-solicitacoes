@@ -2276,7 +2276,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'tipo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'],
+      attributes: ['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'],
       required: false
     }],
     order: [['numero', 'ASC']]
