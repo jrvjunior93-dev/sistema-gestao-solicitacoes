@@ -8,7 +8,7 @@ function numero(valor) {
 }
 
 // Cada linha possui valor proprio; o total da solicitacao e somente a soma.
-export default function RecargasCartoesFields({ ativo, obraId, value, onChange, onContextChange, onSolicitacaoAnteriorEnviada }) {
+export default function RecargasCartoesFields({ ativo, obraId, value, totalSolicitado = 0, onChange, onContextChange, onSolicitacaoAnteriorEnviada }) {
   const [cartoes, setCartoes] = useState([]);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -52,6 +52,12 @@ export default function RecargasCartoesFields({ ativo, obraId, value, onChange, 
           </label>}
         </div>;
       })}
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--c-border)] pt-2 text-sm">
+      <span>Total solicitado</span>
+      <output aria-label="Total solicitado" className="font-semibold tabular-nums">
+        {Number(value.length ? (totalSolicitado || 0) : 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </output>
     </div>
     {value.map((linha) => <ContextoCartao key={`${obraId}:${linha.cartao_recarga_id}`} obraId={obraId} id={linha.cartao_recarga_id} receber={receberContexto} onSolicitacaoAnteriorEnviada={onSolicitacaoAnteriorEnviada} />)}
   </section>;

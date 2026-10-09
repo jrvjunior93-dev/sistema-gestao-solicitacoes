@@ -7,16 +7,21 @@ import '../../src/styles/design-tokens.css';
 import '../../src/styles/escala.css';
 import '../../src/styles/componentes-padrao.css';
 import { ThemeContext, TEMA_PADRAO } from '../../src/contexts/ThemeContext';
+import { numeroDoCampo } from '../../src/components/contratos/RateioApropriacoesContrato';
 
 function Fixture() {
   const [origem, setOrigem] = useState('11');
   const [linhas, setLinhas] = useState([]);
+  const [total, setTotal] = useState(0);
   const [contexto, setContexto] = useState(null);
-  const alterar = useCallback((itens) => setLinhas(itens), []);
+  const alterar = useCallback((itens) => {
+    setLinhas(itens);
+    setTotal(Math.round(itens.reduce((soma, linha) => soma + (numeroDoCampo(linha.valor) || 0), 0) * 100) / 100);
+  }, []);
   return <main className="app-page space-y-4 p-4 bg-[var(--c-bg)] text-[var(--c-text)]">
     <h1 className="text-lg font-semibold">Nova solicitação · recarga de cartões</h1>
-    <label>Obra / Centro de custo <select aria-label="Origem" className="input" value={origem} onChange={(event) => { setOrigem(event.target.value); setLinhas([]); }}><option value="11">Centro administrativo</option><option value="10">Obra QA</option></select></label>
-    <RecargasCartoesFields ativo obraId={origem} value={linhas} onChange={alterar} onContextChange={setContexto} />
+    <label>Obra / Centro de custo <select aria-label="Origem" className="input" value={origem} onChange={(event) => { setOrigem(event.target.value); alterar([]); }}><option value="11">Centro administrativo</option><option value="10">Obra QA</option></select></label>
+    <RecargasCartoesFields ativo obraId={origem} value={linhas} totalSolicitado={total} onChange={alterar} onContextChange={setContexto} />
     <output data-testid="linhas">{JSON.stringify(linhas)}</output>
     <output data-testid="bloqueio">{String(contexto?.bloqueado)}</output>
     <h2 className="text-lg font-semibold">Detalhes · prestações por cartão</h2>

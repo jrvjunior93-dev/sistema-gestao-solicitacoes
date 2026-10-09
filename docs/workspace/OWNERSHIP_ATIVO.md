@@ -19,6 +19,29 @@
 - Branch de integracao codex/promocao-medicao-recarga-main-20261009 baseada
   na main. Preservar todos os demais worktrees e excluir arquivos de RH/DP.
 
+Publicacao do total compacto de recarga autorizada em 09/10/2026 nesta conversa:
+reserva documental temporaria deste registro e do handoff correspondente.
+Commit/push apenas na refactor/frontend; main/deploy/banco fora do escopo.
+Base local/remota 14421ece conferida sem divergencia; outputs/ fora do commit.
+Testes UI de recargas e backend offline reexecutados e aprovados.
+Reserva documental encerrada; ownership liberado para commit/push autorizado.
+
+## Recarga - total compacto na Nova Solicitacao - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-09-recarga-total-compacto.md.
+- Reservados: frontend/src/pages/NovaSolicitacao.jsx,
+  frontend/src/components/recarga-cartao/RecargasCartoesFields.jsx,
+  frontend/scripts/fixtures/recargasCartoes.jsx,
+  frontend/scripts/validarRecargasMultiplasUI.mjs e handoff desta tarefa.
+- Escopo: total somente leitura junto aos cartoes, sem nova mensagem fixa;
+  ocultar card Valor apenas para recarga. Preservar soma/payload, titulo,
+  prestacao/anexos por cartao, permissoes e demais tipos/subtipos.
+- Sem backend, migration, dados reais, commit, push ou deploy. outputs/ preservado.
+- Validacoes: componente real desktop/mobile com APIs simuladas, soma/edicao/
+  remocao e troca de origem, prestacoes/anexos independentes, backend offline,
+  build e diff aprovados. Calculo e payload da Nova Solicitacao preservados.
+
 Publicacao DEV autorizada em 09/10/2026 nesta conversa: reserva documental
 temporaria para o handoff de medicao mais recente e esta anotacao. Commit/push
 somente na refactor/frontend; main, deploy e banco real fora do escopo.
