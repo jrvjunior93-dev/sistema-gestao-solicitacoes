@@ -2,7 +2,8 @@
 
 ## Promocao isolada aviso de entregas - 2026-10-09
 
-- Responsavel: agente desta conversa, sem delegacao; estado: em integracao.
+- Responsavel: agente desta conversa, sem delegacao; estado: integracao validada,
+  ownership liberado para publicacao autorizada.
 - Usuario autorizou migrar para main sem Pessoal/DP e confirmou novamente
   backup recente conferido no Drive cifrado e timer ativo nesta janela.
 - Base main 17be4609; refactor/frontend abcfe89b. Apenas abcfe89b selecionado;
@@ -11,6 +12,13 @@
   conflitos preservando implementacoes e historico documental da main.
 - Branch codex/promocao-aviso-entregas-main-20261009 criada da main atual.
 - Sem banco, migration, restart ou deploy EC2; outputs/ fora dos commits.
+- Commit abcfe89b incorporado com -x como 7059c880; conflito somente neste
+  documento, resolvido preservando as duas linhas de historico.
+- Arquivos do pacote DP identicos a main anterior; delta funcional contra
+  refactor/frontend contem somente os 11 arquivos de RH/DP excluidos.
+- Tag publicada backup/main-pre-aviso-entregas-20261009-17be4609 e bundle
+  completo verificado fora da EC2. Testes backend, UI, build e docs aprovados.
+- Handoff: docs/handoffs/2026-10-09-promocao-isolada-aviso-entregas-main.md.
 
 ## Promocao isolada medicao e recarga - 2026-10-09
 
