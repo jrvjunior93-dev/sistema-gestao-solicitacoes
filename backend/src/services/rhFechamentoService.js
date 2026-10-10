@@ -1786,6 +1786,11 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
 }
 
 module.exports = {
+  // Primitivas compartilhadas. O novo fluxo NAO usa acumulo mensal nem reconcilia 40/60 antigos.
+  ensureCategoriaFinanceiraPagar,
+  syncParceiroFavorecido,
+  syncFavorecidoBancarioRh,
+  buildTituloRhPayload,
   detalharFechamentoRh,
   fecharApuracaoRh,
   listarFechamentosRh,

@@ -38,6 +38,12 @@ const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7
     ajuste_credito_manual: 0, ajuste_debito_manual: 0, revisao_conferencia: 'qa-' + index,
     detalhes_json: { importacao_ids: [19] } })) };
 const overrides = {
+  pagamentoRhSolicitacao: `async(path,options={})=>{
+    if(!path){window.pagamento={id:99,codigo:'RH-QA-99',obra_id:options.data.obra_id,situacao:'RASCUNHO',dados_json:{revisao:0,competencia:'2026-10',data_vencimento:'2026-10-15',linhas:window.pessoas.filter(p=>p.obra_id===options.data.obra_id).map(p=>({...p,selecionado:p.id===options.data.colaborador_id,dias:30,faltas:0,acrescimos:0,descontos:0,parcela_40:false,parcela_60:false,conferido_obra:false,conferido_dp:false}))}};}
+    if(options.method==='PUT')window.pagamento.dados_json={...options.data,revisao:options.data.revisao+1};
+    if(path.endsWith('/enviar')){window.envios.push({...window.pagamento.dados_json,obra_id:window.pagamento.obra_id});window.pagamento.situacao='ABERTA';}
+    return structuredClone({solicitacao:window.pagamento,pode_conferir:false,pode_enviar_fila:false,responsaveis:[],avisos:[]});
+  }`,
   getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return [...window.pessoas,...window.cadastrosExtras].filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.status||i.status===p.status));}`,
   listarRhSolicitacoes: `async p=>{window.chamadas.push(['solicitacoes',p]);return [window.pedido];}`,
   getRhSolicitacao: `async()=>window.pedido`,
@@ -116,44 +122,24 @@ try {
   }
   await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).click();
   const modal = page.getByRole('dialog', { name: 'Solicitar pagamento', exact: true });
-  if (gerencial) {
-    await modal.locator('.rh-gerencial-linha').waitFor();
-    assert.equal(await modal.locator('.rh-gerencial-linha').count(), 1);
-    await modal.locator('.rh-gerencial-campos select').first().selectOption('ADIANTAMENTO_40');
-    await modal.getByLabel('Dias desta etapa').fill('5');
-    await modal.screenshot({ path: path.join(output, 'pagamento-individual-gerencial.png') });
-    await modal.getByRole('button', { name: 'Revisar envio', exact: true }).click();
-    await modal.getByRole('button', { name: 'Enviar ao DP', exact: true }).click();
-  } else {
-    await modal.getByRole('spinbutton', { name: /Dias trabalhados de Ana QA/ }).fill('5');
-    assert.equal(await modal.getByRole('spinbutton', { name: /Dias trabalhados de Beatriz QA/ }).count(), 0);
-    await modal.screenshot({ path: path.join(output, 'pagamento-individual-legado.png') });
-    await modal.getByRole('button', { name: /Enviar jornada/ }).click();
-  }
+  await modal.getByLabel('Dias: Ana QA', { exact: true }).fill('5');
+  await modal.getByLabel('Conferido: Ana QA', { exact: true }).check();
+  await modal.screenshot({ path: path.join(output, 'pagamento-individual-solicitacao.png') });
+  await modal.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Solicitar pagamento ao DP', exact: true })
+    .getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
   await page.waitForFunction(() => window.envios.length === 1);
-  const payload = await page.evaluate(() => window.envios[0]);
-  assert.equal(payload.obra_id, 7);assert.deepEqual(payload.linhas.map(i => i.colaborador_id), [11]);
-  assert.ok(payload.idempotency_key);
-  if (!gerencial) assert.equal(payload.solicitacao_independente, true);
+  assert.deepEqual(await page.evaluate(() => window.envios[0].linhas.filter(l => l.selecionado).map(l => l.colaborador_id)), [11]);
   await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
   await modal.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
-  if (gerencial) {
-    await modal.locator('.rh-gerencial-linha').first().waitFor();assert.equal(await modal.locator('.rh-gerencial-linha').count(), 2);
-    for (const row of await modal.locator('.rh-gerencial-linha').all()) {
-      await row.locator('input[type="checkbox"]').first().check();
-      await row.locator('.rh-gerencial-campos select').first().selectOption('ADIANTAMENTO_40');
-      await row.getByLabel('Dias desta etapa').fill('4');
-    }
-    await modal.getByRole('button', { name: 'Revisar envio', exact: true }).click();
-    await modal.getByRole('button', { name: 'Enviar ao DP', exact: true }).click();
-  } else {
-    await modal.getByRole('spinbutton', { name: /Dias trabalhados de Beatriz QA/ }).fill('4');
-    await modal.getByRole('spinbutton', { name: /Dias trabalhados de Ana QA/ }).fill('4');
-    await modal.getByRole('button', { name: /Enviar jornada/ }).click();
-  }
+  await modal.getByLabel('Selecionar todos', { exact: true }).check();
+  await modal.getByLabel('Aplicar aos selecionados').selectOption('conferir');
+  await modal.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Solicitar pagamento ao DP', exact: true })
+    .getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
   await page.waitForFunction(() => window.envios.length === 2);
-  assert.deepEqual(await page.evaluate(() => window.envios[1].linhas.map(i => i.colaborador_id)), [11, 12]);
+  assert.deepEqual(await page.evaluate(() => window.envios[1].linhas.filter(l => l.selecionado).map(l => l.colaborador_id)), [11, 12]);
   await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
   await modal.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Voltar aos locais', exact: true }).click();

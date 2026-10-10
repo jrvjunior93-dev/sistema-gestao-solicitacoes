@@ -2082,6 +2082,16 @@ router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacao
 
 // --- Jornada por formulario, pagamento individual e historicos (Fases 4 e 5) ---
 router.get('/rh/jornada/modelo', allowRhDpSolicitacaoVer, RhJornadaController.modelo);
+// Pagamento independente por solicitacao; permissao/escopo e conferidos novamente no servico.
+const RhPagamentoSolicitacaoController = require('./controllers/RhPagamentoSolicitacaoController');
+const allowRhDpPagamentoWrite = permit({ resource: 'RH_DP_SOLICITACOES', custom: async req =>
+  (await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.abrir'])
+    || await require('./services/rhPagamentoSolicitacaoService').ehDp(req.user))
+    ? true : 'Acesso negado ao pagamento RH/DP' });
+router.post('/rh/pagamentos-solicitacao', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.iniciar);
+router.get('/rh/pagamentos-solicitacao/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.mostrar);
+router.put('/rh/pagamentos-solicitacao/:id', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.salvar);
+router.post('/rh/pagamentos-solicitacao/:id/enviar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.enviar);
 router.post('/rh/jornada/importar', allowRhDpSolicitacaoAbrir, uploadRateLimit, criticalRateLimit, uploadComprovantes.fields([{ name: 'planilha', maxCount: 1 }, { name: 'fichas', maxCount: 20 }]), RhJornadaController.importar);
 router.get('/rh/jornada/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetencia);
 router.get('/rh/jornada/gerencial/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetenciaGerencial);

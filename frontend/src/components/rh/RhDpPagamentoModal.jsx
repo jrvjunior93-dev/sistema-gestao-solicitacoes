@@ -1,35 +1,192 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import OverlayModal from '../ui/OverlayModal';
-import { useConfirmacao } from '../padrao';
-import RhDpJornada from '../../pages/RhDpJornada';
+import { Avisos, useAvisos, useConfirmacao } from '../padrao';
+import { pagamentoRhSolicitacao } from '../../services/rhDp';
+import '../../styles/rh-pagamento-solicitacao.css';
 
-// Reutiliza o envio real de jornada (legado ou gerencial conforme a instalacao).
-// O modal nao calcula folha, nao cria titulos e nao amplia permissoes.
-export default function RhDpPagamentoModal({ local, colaborador, onFechar, aoEnviar }) {
-  const [ocupado, setOcupado] = useState(false);
-  const [enviado, setEnviado] = useState(false);
+const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const arredondar = v => Math.round((v + Number.EPSILON) * 100) / 100;
+export function valoresDaLinha(l) {
+  const diaria = l.forma_calculo_gerencial === 'DIARIA';
+  const percentual = diaria || Boolean(l.parcela_40) === Boolean(l.parcela_60) ? 100 : l.parcela_40 ? 40 : 60;
+  const bruto = arredondar(diaria ? Number(l.valor_diaria || 0) * (Number(l.dias || 0) - Number(l.faltas || 0))
+    : Number(l.salario_base || 0) * (Number(l.dias || 0) - Number(l.faltas || 0)) / 30 * percentual / 100);
+  return { percentual, bruto, liquido: arredondar(bruto + Number(l.acrescimos || 0) - Number(l.descontos || 0)) };
+}
+
+function DadosRecebimento({ dados, alterar, reembolso = false }) {
+  return <div className="rh-pagamento-conta">
+    <label>Recebimento<select aria-label="Recebimento" className="form-control" value={dados.modo_recebimento || 'PIX'}
+      onChange={e => alterar({ ...(e.target.value === 'CONTA_SALARIO' ? dados.conta_salario || {} : {}), modo_recebimento: e.target.value })}>
+      <option value="PIX">Pix</option>{!reembolso && <option value="CONTA_SALARIO">Conta salário</option>}
+      <option value="OUTRA_CONTA">Outra conta</option></select></label>
+    {dados.modo_recebimento !== 'CONTA_SALARIO' && <>
+      <label>Favorecido<input className="form-control" value={dados.favorecido_nome || ''} onChange={e => alterar({ favorecido_nome: e.target.value })} /></label>
+      <label>CPF/CNPJ<input className="form-control" value={dados.favorecido_documento || ''} maxLength={20} onChange={e => alterar({ favorecido_documento: e.target.value })} /></label>
+    </>}
+    {(dados.modo_recebimento || 'PIX') === 'PIX' ? <label className="rh-pagamento-conta-chave">Chave Pix / Copia e Cola
+      <textarea className="form-control" rows={2} maxLength={8192} value={dados.chave_pix || ''} onChange={e => alterar({ chave_pix: e.target.value })} /></label>
+      : <>{[['banco', 'Banco (código)'], ['agencia', 'Agência'], ['conta', 'Conta'], ['tipo_conta', 'Tipo de conta']].map(([campo, rotulo]) =>
+        <label key={campo}>{rotulo}<input className="form-control" value={dados[campo] || ''}
+          readOnly={dados.modo_recebimento === 'CONTA_SALARIO'} onChange={e => alterar({ [campo]: e.target.value })} /></label>)}</>}
+  </div>;
+}
+
+export default function RhDpPagamentoModal({ local, locais = [], colaborador, solicitacaoId, onFechar, aoEnviar }) {
+  const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
-  async function fechar() {
-    if (ocupado) return;
-    if (!enviado) {
-      const { ok } = await confirmar({ titulo: 'Fechar solicitação de pagamento',
-        mensagem: 'Os dados ainda não enviados serão descartados. Fechar o formulário?',
-        rotuloConfirmar: 'Fechar formulário' });
-      if (!ok) return;
-    }
-    onFechar();
+  const [resposta, setResposta] = useState(null);
+  const [form, setForm] = useState(null);
+  const [localId, setLocalId] = useState(local?.id || '');
+  const [ocupado, setOcupado] = useState(false);
+  const [carregando, setCarregando] = useState(false);
+  const [sujo, setSujo] = useState(false);
+  const [editor, setEditor] = useState(null);
+  const [busca, setBusca] = useState('');
+  const trava = useRef(false);
+  const atual = useRef(null);
+  const sujoRef = useRef(false);
+  const iniciarPromise = useRef(null);
+  const falhaAutomatica = useRef(false);
+  atual.current = form; sujoRef.current = sujo;
+  const dp = Boolean(resposta?.pode_conferir);
+  const concluido = resposta?.solicitacao?.situacao === 'APROVADA';
+  const editavel = resposta && (resposta.solicitacao.situacao === 'RASCUNHO' || (dp && resposta.solicitacao.situacao === 'ABERTA'));
+  function receber(result) { setResposta(result); setForm(result.solicitacao.dados_json); setSujo(false); }
+  useEffect(() => {
+    if (!solicitacaoId && !localId) return undefined;
+    let ativo = true;
+    setCarregando(true);
+    iniciarPromise.current ||= solicitacaoId ? pagamentoRhSolicitacao(`/${solicitacaoId}`)
+      : pagamentoRhSolicitacao('', { method: 'POST', data: { obra_id: Number(localId), colaborador_id: colaborador?.id } });
+    iniciarPromise.current.then(result => { if (ativo) receber(result); })
+      .catch(e => { if (ativo) avisar.erro(e.message); iniciarPromise.current = null; })
+      .finally(() => { if (ativo) setCarregando(false); });
+    return () => { ativo = false; };
+  }, [solicitacaoId, localId, colaborador?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  function alterar(patch) { falhaAutomatica.current = false; setForm(f => ({ ...f, ...patch })); setSujo(true); }
+  function linhaAlterar(id, patch, conferindo = false) {
+    alterar({ linhas: atual.current.linhas.map(l => Number(l.colaborador_id) === Number(id)
+      ? { ...l, ...(!conferindo ? { [dp ? 'conferido_dp' : 'conferido_obra']: false } : {}), ...patch } : l) });
   }
-  return <OverlayModal largura="1440px" rotulo="Solicitar pagamento" onFechar={fechar}>
+  async function salvar() {
+    if (!sujoRef.current) return resposta;
+    const result = await pagamentoRhSolicitacao(`/${resposta.solicitacao.id}`, { method: 'PUT', data: {
+      ...atual.current, linhas: atual.current.linhas.map(l => ({ ...l, conferir_alteracoes: Boolean(l.conferido_dp) }))
+    } });
+    receber(result); return result;
+  }
+  async function operacao(fn) {
+    if (trava.current) return;
+    trava.current = true; setOcupado(true);
+    try { await fn(); } catch (e) { falhaAutomatica.current = true; avisar.erro(e.message); }
+    finally { trava.current = false; setOcupado(false); }
+  }
+  useEffect(() => {
+    if (!sujo || !resposta || !editavel || ocupado || editor || falhaAutomatica.current) return undefined;
+    const timer = setTimeout(() => operacao(salvar), 900);
+    return () => clearTimeout(timer);
+  }, [sujo, form, ocupado, editor]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function fechar() {
+    if (trava.current || carregando) return;
+    await operacao(async () => { await salvar(); onFechar(); });
+  }
+  async function enviar() {
+    await operacao(async () => {
+      const result = await salvar();
+      const selecionados = result.solicitacao.dados_json.linhas.filter(l => l.selecionado);
+      if (!selecionados.length) throw new Error('Selecione os colaboradores do pagamento.');
+      const { ok } = await confirmar({ titulo: dp ? 'Enviar pagamentos para a fila' : 'Solicitar pagamento ao DP',
+        mensagem: `${selecionados.length} colaborador(es) · ${moeda(selecionados.reduce((s, l) => s + valoresDaLinha(l).liquido, 0))}${result.avisos?.length ? '\nHá pagamentos anteriores nesta competência. Esta solicitação será independente.' : ''}`,
+        rotuloConfirmar: dp ? 'Enviar para a fila' : 'Solicitar pagamento' });
+      if (!ok) return;
+      const enviado = await pagamentoRhSolicitacao(`/${result.solicitacao.id}/enviar`, { method: 'POST', data: { revisao: result.solicitacao.dados_json.revisao } });
+      receber(enviado); aoEnviar?.(enviado);
+      avisar.sucesso(dp ? 'Títulos gerados e enviados para a fila.' : 'Pagamento solicitado ao DP.');
+    });
+  }
+  async function perguntarVale(linha) {
+    if (Number(linha.descontos || 0) <= 0 || linha.reembolso || linha.desconto_sem_reembolso) return;
+    const { ok } = await confirmar({ titulo: 'Desconto de vale', mensagem: 'Este desconto é um vale e você deseja solicitar o reembolso?', rotuloConfirmar: 'Solicitar reembolso', rotuloCancelar: 'Sem reembolso' });
+    if (ok) setEditor({ id: linha.colaborador_id, tipo: 'reembolso', dados: { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' } });
+    else linhaAlterar(linha.colaborador_id, { desconto_sem_reembolso: true });
+  }
+  const linhas = form?.linhas || [];
+  const selecionados = linhas.filter(l => l.selecionado);
+  const visiveis = linhas.filter(l => l.nome.toLocaleLowerCase().includes(busca.toLocaleLowerCase()));
+  function todos(campo, valor) {
+    alterar({ linhas: linhas.map(l => {
+      if (campo !== 'selecionado' && !l.selecionado) return l;
+      return { ...l, [campo]: valor,
+        ...(!campo.startsWith('conferido') ? { [dp ? 'conferido_dp' : 'conferido_obra']: false } : {}) };
+    }) });
+  }
+  return <OverlayModal largura="1480px" rotulo="Solicitar pagamento" onFechar={editor ? () => setEditor(null) : fechar}>
     <div data-modal="cabecalho" className="rh-local-modal-cabecalho">
-      <div><h2 className="app-bloco-titulo">Solicitar pagamento</h2>
-        <p className="app-note">{local.nome} · {colaborador?.nome || 'Colaboradores do período'}</p></div>
-      <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={fechar}>Fechar</button>
+      <div><h2 className="app-bloco-titulo">{dp ? 'Conferir pagamento' : 'Solicitar pagamento'}{resposta ? ` · ${resposta.solicitacao.codigo}` : ''}</h2>
+        <p className="app-note">{local?.nome || locais.find(l => Number(l.id) === Number(localId))?.nome || 'Obra / Centro de custo'}</p></div>
+      <button type="button" className="btn btn-outline btn-sm" disabled={ocupado || carregando} onClick={fechar}>Fechar</button>
     </div>
-    <div className="rh-local-modal-corpo">
-      <RhDpJornada obraFixaId={local.id} colaboradorId={colaborador?.id} comoModal
-        aoAlterar={() => setEnviado(false)}
-        aoOcupado={setOcupado} aoEnviar={(resultado) => { setEnviado(true); aoEnviar?.(resultado); }} />
+    <div className="rh-local-modal-corpo rh-pagamento-solicitacao">
+      <Avisos avisos={avisos} aoFechar={fecharAviso} />
+      {!localId && !solicitacaoId && <label>Obra / Centro de custo<select aria-label="Obra / Centro de custo" className="form-control" value={localId} onChange={e => setLocalId(e.target.value)}>
+        <option value="">Selecione</option>{locais.map(o => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}</select></label>}
+      {carregando && <p role="status">Carregando pagamento…</p>}
+      {form && <>
+        <div className="rh-pagamento-toolbar">
+          <label>Competência<input disabled={ocupado || !editavel} className="form-control" type="month" value={form.competencia} onChange={e => alterar({ competencia: e.target.value, linhas: linhas.map(l => ({ ...l, conferido_dp: false, conferido_obra: false })) })} /></label>
+          <label>Vencimento<input disabled={ocupado || !editavel} className="form-control" type="date" value={form.data_vencimento} onChange={e => alterar({ data_vencimento: e.target.value, linhas: linhas.map(l => ({ ...l, conferido_dp: false, conferido_obra: false })) })} /></label>
+          <label>Aplicar aos selecionados<select disabled={ocupado || !editavel} aria-label="Aplicar aos selecionados" className="form-control" defaultValue="" onChange={e => {
+            const valor = e.target.value;
+            if (valor === '100') alterar({ linhas: linhas.map(l => l.selecionado ? { ...l, parcela_40: false, parcela_60: false, conferido_dp: false, conferido_obra: false } : l) });
+            else if (valor === 'conferir') todos(dp ? 'conferido_dp' : 'conferido_obra', true);
+            else if (valor) alterar({ linhas: linhas.map(l => l.selecionado && l.forma_calculo_gerencial !== 'DIARIA' ? { ...l, parcela_40: valor === '40', parcela_60: valor === '60', conferido_dp: false, conferido_obra: false } : l) });
+            e.target.value = '';
+          }}><option value="">Selecione</option><option value="40">40%</option><option value="60">60%</option><option value="100">100%</option><option value="conferir">Conferido</option></select></label>
+          <label>Pesquisar<input className="form-control" type="search" value={busca} onChange={e => setBusca(e.target.value)} /></label>
+        </div>
+        {resposta.avisos?.length > 0 && <details className="rh-pagamento-aviso"><summary>Pagamentos anteriores nesta competência ({resposta.avisos.length})</summary>
+          <ul>{resposta.avisos.map(a => <li key={a.id}>{a.codigo} · {a.status} · {moeda(a.valor_original)}</li>)}</ul></details>}
+        <fieldset disabled={ocupado || !editavel} className="rh-pagamento-table-wrap">
+          <table className="rh-pagamento-tabela"><thead><tr>
+            <th><input aria-label="Selecionar todos" type="checkbox" checked={linhas.length > 0 && selecionados.length === linhas.length} onChange={e => todos('selecionado', e.target.checked)} /></th>
+            <th>Colaborador</th><th>Conferido</th><th>40%</th><th>60%</th><th>Salário bruto</th><th>Acréscimos</th><th>Descontos</th><th>Líquido</th><th>Dias</th><th>Faltas</th><th>Recebimento</th><th>Observações</th>
+          </tr></thead><tbody>{visiveis.map(l => {
+            const calculo = valoresDaLinha(l);
+            const diaria = l.forma_calculo_gerencial === 'DIARIA';
+            const check = (campo, rotulo, disabled = false) => <input type="checkbox" aria-label={`${rotulo}: ${l.nome}`} disabled={disabled} checked={Boolean(l[campo])} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.checked }, campo.startsWith('conferido'))} />;
+            const numero = (campo, rotulo, max) => <input className="form-control" aria-label={`${rotulo}: ${l.nome}`} type="number" min="0" max={max} step={['dias', 'faltas'].includes(campo) ? '0.5' : '0.01'} value={l[campo]} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.value, ...(campo === 'descontos' ? { reembolso: null, desconto_sem_reembolso: false } : {}) })} onBlur={campo === 'descontos' ? () => perguntarVale(l) : undefined} />;
+            return <tr key={l.colaborador_id} data-selecionado={l.selecionado}>
+              <td>{check('selecionado', 'Selecionar')}</td><td><strong>{l.nome}</strong><small>{diaria ? `${moeda(l.valor_diaria)} / dia` : `${moeda(l.salario_base)} · ${calculo.percentual}%`}</small></td>
+              <td>{check(dp ? 'conferido_dp' : 'conferido_obra', 'Conferido', !l.selecionado)}</td><td>{check('parcela_40', '40%', diaria)}</td><td>{check('parcela_60', '60%', diaria)}</td>
+              <td>{moeda(calculo.bruto)}</td><td>{numero('acrescimos', 'Acréscimos')}</td><td>{numero('descontos', 'Descontos')}{l.reembolso && <button type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: { ...l.reembolso } })}>Reembolso</button>}</td>
+              <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{moeda(calculo.liquido)}</strong></td><td>{numero('dias', 'Dias', 31)}</td><td>{numero('faltas', 'Faltas', l.dias)}</td>
+              <td><button type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: { ...l } })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button></td>
+              <td><input className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
+            </tr>;
+          })}</tbody></table>
+          {!visiveis.length && <p className="app-note">Nenhum colaborador encontrado.</p>}
+        </fieldset>
+        {concluido && <ul className="rh-pagamento-titulos">{form.titulos?.map(t => <li key={t.id}>{t.codigo} · {t.tipo === 'REEMBOLSO' ? 'Reembolso' : 'Salário'} · {moeda(t.valor)}</li>)}</ul>}
+        <div className="rh-pagamento-rodape"><span role="status">{ocupado ? 'Salvando…' : sujo ? 'Alterações pendentes' : 'Salvo'} · {selecionados.length} selecionado(s) · <strong>{moeda(selecionados.reduce((s, l) => s + valoresDaLinha(l).liquido, 0))}</strong></span>
+          {editavel && <div><button type="button" className="btn btn-outline btn-sm" disabled={ocupado || !sujo} onClick={() => operacao(salvar)}>Salvar</button><button type="button" className="btn btn-primary btn-sm" disabled={ocupado || !selecionados.length || (dp && !resposta.pode_enviar_fila)} onClick={enviar}>{dp ? 'Enviar para a fila' : 'Solicitar pagamento'}</button></div>}
+        </div>
+        {dp && editavel && !resposta.pode_enviar_fila && <p className="app-note">O envio exige as permissões de gerar títulos e preparar a fila de pagamentos.</p>}
+      </>}
     </div>
+    {editor && <OverlayModal largura="660px" rotulo={editor.tipo === 'reembolso' ? 'Reembolso de vale' : 'Dados de recebimento'} onFechar={() => setEditor(null)}>
+      <div className="rh-local-modal-cabecalho"><h3 className="app-bloco-titulo">{editor.tipo === 'reembolso' ? 'Reembolso de vale' : 'Dados de recebimento'}</h3><button className="btn btn-outline btn-sm" onClick={() => setEditor(null)}>Voltar</button></div>
+      <div className="rh-local-modal-corpo">{editor.tipo === 'reembolso' && <label>Responsável<select aria-label="Responsável" className="form-control" value={editor.dados.responsavel_id} onChange={e => { const pessoa = resposta.responsaveis.find(r => Number(r.id) === Number(e.target.value)); setEditor(v => ({ ...v, dados: { ...v.dados, responsavel_id: Number(e.target.value), favorecido_nome: pessoa?.nome || '' } })); }}><option value="">Selecione</option>{resposta.responsaveis.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select></label>}
+        <DadosRecebimento dados={editor.dados} reembolso={editor.tipo === 'reembolso'} alterar={patch => setEditor(v => ({ ...v, dados: { ...v.dados, ...patch } }))} />
+        <div className="rh-pagamento-rodape"><button className="btn btn-outline btn-sm" onClick={() => setEditor(null)}>Cancelar</button>
+          {editor.tipo === 'reembolso' && <button className="btn btn-outline btn-sm" onClick={() => { linhaAlterar(editor.id, { reembolso: null, desconto_sem_reembolso: true }); setEditor(null); }}>Sem reembolso</button>}
+          <button className="btn btn-primary btn-sm" onClick={() => {
+            if (editor.tipo === 'reembolso' && !editor.dados.responsavel_id) { avisar.erro('Selecione o responsável pelo reembolso.'); return; }
+            const conta = Object.fromEntries(['modo_recebimento', 'favorecido_nome', 'favorecido_documento', 'chave_pix', 'banco', 'agencia', 'conta', 'tipo_conta'].map(k => [k, editor.dados[k] || '']));
+            linhaAlterar(editor.id, editor.tipo === 'reembolso' ? { reembolso: editor.dados } : conta); setEditor(null);
+          }}>Confirmar</button></div>
+      </div>
+    </OverlayModal>}
     {elementoConfirmacao}
   </OverlayModal>;
 }

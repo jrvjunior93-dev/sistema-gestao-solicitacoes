@@ -324,7 +324,10 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const itemKeys = tituloIds.map((tituloId) => `${requestKey}:${tituloId}`.slice(0, 120));
 
-  const resultado = await sequelize.transaction(async (transaction) => {
+  const executar = options.transaction
+    ? callback => callback(options.transaction)
+    : callback => sequelize.transaction(callback);
+  const resultado = await executar(async (transaction) => {
     // Lock do titulo serializa as duas vias; escopo e conferido inclusive no replay.
     const titulos = await TituloFinanceiro.findAll({
       where: { id: { [Op.in]: tituloIds } },
@@ -454,7 +457,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
 
   const items = resultado.itens;
 
-  await registrarEventoSeguranca({
+  const registrarEnvio = () => registrarEventoSeguranca({
     req,
     usuarioId: req.user?.id || null,
     tipoEvento: 'MANUAL_PAYMENT_QUEUE_CREATED',
@@ -469,6 +472,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       origem: options.autorizacaoInterna ? 'AUTORIZACAO_DIGITAL' : 'ENVIO_DIRETO'
     }
   });
+  if (options.transaction) options.transaction.afterCommit(registrarEnvio);
+  else await registrarEnvio();
 
   return {
     quantidade: items.length,

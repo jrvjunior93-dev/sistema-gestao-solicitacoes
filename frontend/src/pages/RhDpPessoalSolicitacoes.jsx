@@ -22,6 +22,7 @@ import {
 import OverlayModal from '../components/ui/OverlayModal';
 import Button from '../components/ui/Button';
 import RhDpApuracao from './RhDpApuracao';
+import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
 import { competenciaISOParaBR } from '../components/CompetenciaInputBR';
 import '../styles/rh-pessoal-atividade.css';
 import {
@@ -93,6 +94,7 @@ const OPCOES_SITUACAO = [
 ];
 
 const SEM_FILTRO = { situacao: new Set(), tipo: new Set() };
+const ehPagamentoPorSolicitacao = s => s.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO';
 
 /** Dimensao de valor UNICO: o `ativos` guarda um conjunto, o servico recebe um valor. */
 function primeiroValor(conjunto) {
@@ -318,10 +320,18 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
     setAnexos([]);
     setConferencia(null);
     try {
+      const pagamento = await getRhSolicitacao(solicitacao.id);
+      if (pagamento.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO') {
+        if (detalheAtual.current !== solicitacao.id) return;
+        setAberta(pagamento);
+        setSolicitacoes(lista => lista.map(s => s.id === solicitacao.id ? { ...s, nao_lida: false } : s));
+        if (solicitacao.nao_lida) aoMarcarVisualizada?.();
+        return;
+      }
       const [listaAnexos, conferido, detalhe] = await Promise.all([
         listarAnexosRhSolicitacao(solicitacao.id),
         conferirDocumentacaoRhSolicitacao(solicitacao.id),
-        getRhSolicitacao(solicitacao.id)
+        Promise.resolve(pagamento)
       ]);
       if (detalheAtual.current !== solicitacao.id) return;
       const ultimoHistorico = (detalhe.historicos || []).reduce(
@@ -677,7 +687,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                   */}
                   {(s.tipo === 'TROCA_OBRA' || s.subtipo === 'TRANSFERENCIA_OBRA') && !s.colaborador?.obra_id
                     ? 'Vincular a obra'
-                    : ROTULO_TIPO[s.tipo] || s.tipo}
+                    : ehPagamentoPorSolicitacao(s) ? 'Pagamento' : ROTULO_TIPO[s.tipo] || s.tipo}
                 </span>
               )
             },
@@ -689,7 +699,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
               noCard: 'titulo',
               /* Na admissao o colaborador ainda nao existe: o nome vive no pedido. */
               render: (s) => s.tipo === 'JORNADA'
-                ? `${s.dados_json?.total_colaboradores || 0} colaborador(es)`
+                ? `${s.dados_json?.total_colaboradores ?? s.dados_json?.linhas?.filter(l => l.selecionado).length ?? 0} colaborador(es)`
                 : s.colaborador?.nome || s.dados_json?.nome || <span className="opacity-60">a admitir</span>
             },
             {
@@ -721,7 +731,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
               tipo: 'status',
               render: (s) => (
                 <>
-                  <span className={chipDaSituacao(s.situacao)}>{ROTULO_SITUACAO[s.situacao] || s.situacao}</span>
+                  <span className={chipDaSituacao(s.situacao)}>{ehPagamentoPorSolicitacao(s) && s.situacao === 'APROVADA' ? 'Enviado para a fila' : ROTULO_SITUACAO[s.situacao] || s.situacao}</span>
                   {s.motivo_rejeicao ? (
                     <div className="text-xs rh-pessoal-devolucao">{s.motivo_rejeicao}</div>
                   ) : null}
@@ -748,7 +758,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
               <AcaoIconePessoal rotulo="Abrir" icone={HiOutlineEye} solicitacaoId={s.id}
                 onClick={() => selecionarDetalhe(s)} />
               {s.tipo === 'JORNADA' && ['ABERTA', 'APROVADA'].includes(s.situacao) && onAbrirApuracao ? (
-                <AcaoIconePessoal rotulo="Conferir jornada" icone={HiOutlineClipboardDocumentCheck}
+                <AcaoIconePessoal rotulo={ehPagamentoPorSolicitacao(s) ? 'Conferir pagamento' : 'Conferir jornada'} icone={HiOutlineClipboardDocumentCheck}
                   solicitacaoId={s.id} onClick={() => onAbrirApuracao(s)} />
               ) : null}
               {podeDecidir
@@ -797,7 +807,10 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
         tela, e concluia que o sistema tinha ignorado o clique. Mesmo defeito que ja tinha sido
         corrigido na aba de colaboradores; este aqui passou batido.
       */}
-      {aberta ? (
+      {aberta?.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO' ? (
+        <RhDpPagamentoModal key={aberta.id} solicitacaoId={aberta.id} local={aberta.obra}
+          onFechar={fecharDetalhe} aoEnviar={() => { carregar(); aoMudar?.(); }} />
+      ) : aberta ? (
         <OverlayModal
           rotulo={`${ROTULO_TIPO[aberta.tipo] || aberta.tipo} ${aberta.codigo || `#${aberta.id}`}`}
           largura={aberta.tipo === 'JORNADA' && onAbrirApuracao ? '1440px' : '1120px'}

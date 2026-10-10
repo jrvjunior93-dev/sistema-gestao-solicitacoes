@@ -94,6 +94,10 @@ async function exigirColaboradorNoEscopoDoUsuario(req, colaboradorId, { permitir
 async function exigirSolicitacaoNoEscopoDoUsuario(req, solicitacaoId) {
   const pedido = await RhSolicitacao.findByPk(solicitacaoId);
   if (!pedido) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+  if (pedido.subtipo === 'PAGAMENTO_POR_SOLICITACAO' && pedido.situacao === 'RASCUNHO'
+    && Number(pedido.criada_por) !== Number(req.user.id)) {
+    throw new ValidationError('Este rascunho pertence a outro usuario.', 403);
+  }
   if (ehTransferencia(pedido)) throw new ValidationError('Use a aba Transferencias entre obras. A decisao cabe aos responsaveis das obras.', 403);
   const visiveis = await obrasVisiveis(req);
   if (Array.isArray(visiveis) && (!visiveis.length || (pedido.obra_id && !visiveis.includes(Number(pedido.obra_id))))) {
@@ -167,7 +171,10 @@ module.exports = {
        *
        * Uma consulta para todos os destinos da pagina, e nao uma por linha.
        */
-      const planos = dados.filter(linha => !ehTransferencia(linha)).map((linha) => linha.get({ plain: true }));
+      const planos = dados.filter(linha => !ehTransferencia(linha)
+        && !(linha.subtipo === 'PAGAMENTO_POR_SOLICITACAO' && linha.situacao === 'RASCUNHO'
+          && Number(linha.criada_por) !== Number(req.user.id)))
+        .map((linha) => linha.get({ plain: true }));
       const idsDestino = Array.from(new Set(
         planos
           .map((linha) => Number(linha.dados_json?.obra_destino_id))

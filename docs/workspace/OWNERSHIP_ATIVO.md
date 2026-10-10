@@ -1,5 +1,36 @@
 # Ownership Ativo
 
+## Publicacao do pagamento DP por solicitacao - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; reserva documental deste
+  registro e do handoff do modal de pagamento para registrar a publicacao.
+- Base: 34fa7c5b. Preservar outputs/ fora do commit. Sem main, deploy,
+  migration, reinicio ou escrita em banco real.
+- Revalidacao aprovada: dominio/servico em memoria, UI desktop/mobile, Pessoal
+  nos tres modos, conferencia por solicitacao, fila/instrumentos/governanca,
+  regras RH/DP, build, sintaxe e diff. Sem banco/rede externa.
+- Revisao final concluida; reserva documental encerrada para commit/push
+  autorizado, ownership liberado. Handoff do modal registra escopo e limites.
+
+## Pagamento DP por solicitacao - 2026-10-10 (concluido localmente)
+
+- Responsavel: agente desta conversa, sem delegacao. Implementacao autorizada
+  apos confirmacao das regras de descontos, reembolso e pagamentos independentes.
+- Reserva: novos rhPagamentoSolicitacaoDomain/Service/Controller, routes.js,
+  rhFechamentoService.js (helpers), pagamentoManualFilaService.js (transacao),
+  RhDpPagamentoModal.jsx, RhDpPessoal.jsx, RhDpPessoalSolicitacoes.jsx,
+  services/rhDp.js, styles/rh-pagamento-solicitacao.css, scripts de validacao
+  novos e handoff correspondente.
+- Reserva ampliada: frontend/scripts/validarRhPessoalPorLocal.mjs (expectativas
+  do novo modal), RhSolicitacaoController.js (privacidade do rascunho).
+- Preservar jornada/apuracao legada, pagamentos existentes e outputs/.
+  Sem banco real, migration aplicada, commit, push, main ou deploy.
+- Ownership liberado; handoff em
+  docs/handoffs/2026-10-10-dp-pagamento-modal-solicitacao.md.
+- Validacoes em memoria, UI real desktop/mobile, regressao Pessoal nos tres
+  modos, fila/permissoes/governanca, build, sintaxe e diff aprovados.
+
 ## Publicacao das pendencias DEV - 2026-10-10
 
 - Autorizada pelo usuario nesta conversa: commit e push na refactor/frontend

@@ -20,6 +20,14 @@ function buildQuery(params = {}) {
   ).toString();
 }
 
+export async function pagamentoRhSolicitacao(path = '', { method = 'GET', data } = {}) {
+  const response = await fetch(`${API_URL}/rh/pagamentos-solicitacao${path}`, {
+    method, headers: authHeaders({ 'Content-Type': 'application/json' }),
+    ...(data ? { body: JSON.stringify(data) } : {})
+  });
+  return parseJson(response, 'Erro na solicitação de pagamento');
+}
+
 export async function rhTransferencias(path = '', { method = 'GET', data, params } = {}) {
   const query = buildQuery(params);
   const response = await fetch(`${API_URL}/rh/transferencias${path}${query ? `?${query}` : ''}`, {

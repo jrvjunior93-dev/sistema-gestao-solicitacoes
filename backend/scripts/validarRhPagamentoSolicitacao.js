@@ -1,0 +1,161 @@
+'use strict';
+// Servico real, modelos transacionais em memoria. Sem .env, banco, rede ou pagamentos reais.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { Op } = require('sequelize');
+const domain = require('../src/services/rhPagamentoSolicitacaoDomain');
+const { ValidationError } = require('../src/middlewares/validation');
+const cadastro = { id: 11, nome: 'Ana QA', cpf: '52998224725', obra_id: 7, status: 'ATIVO', empresa_grupo_id: 3,
+  forma_calculo_gerencial: 'MENSAL', salario_base: 3000, pix_chave: 'ana@example.test' };
+const dados = { dias: 30, faltas: 0, acrescimos: 0, descontos: 100, parcela_40: true, parcela_60: false };
+assert.equal(domain.calcularLinha(dados, cadastro).liquido, 1100);
+assert.equal(domain.calcularLinha({ ...dados, parcela_60: true }, cadastro).bruto, 3000);
+assert.equal(domain.calcularLinha({ ...dados, parcela_40: false }, cadastro).bruto, 3000);
+assert.equal(domain.calcularLinha({ ...dados, parcela_40: false, parcela_60: true }, cadastro).liquido, 1700);
+assert.equal(domain.calcularLinha({ ...dados, dias: 5, faltas: 1 }, { ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }).liquido, 300);
+assert.throws(() => domain.calcularLinha({ ...dados, faltas: 31 }, cadastro), /Faltas/);
+assert.throws(() => domain.calcularLinha({ ...dados, descontos: 9999 }, cadastro), /Descontos maiores/);
+assert.throws(() => domain.validarPeriodo({ competencia: '2026-10', data_vencimento: '2026-02-30' }), /vencimento/);
+const contaSalario = { favorecido_nome: 'Ana QA', favorecido_documento: cadastro.cpf, banco: '104', agencia: '1234', conta: '23456', tipo_conta: 'SALARIO' };
+assert.equal(domain.recebimento({ modo_recebimento: 'CONTA_SALARIO', conta: 'fraude' }, { ...cadastro, conta_salario: contaSalario }, {}, true).conta, '23456');
+let store = { requests: [], titles: [{ id: 1, codigo: 'TIT-ANTERIOR', status: 'BAIXADO', valor_original: 8760,
+  numero_documento: 'RHDP-2026-10-COL-11-INTEGRAL' }], historicos: [], filas: [] };
+let bloquearFila = false, scope = [7], ativo = true, podeFila = true;
+let tail = Promise.resolve();
+const instance = data => ({ ...data, get() { const { get, update, ...p } = this; return p; }, async update(p) { Object.assign(this, p); return this; } });
+const hydrate = () => { store.requests = store.requests.map(instance); store.titles = store.titles.map(instance); };
+hydrate();
+const models = {
+  sequelize: { async transaction(fn) {
+    const before = tail; let release; tail = new Promise(ok => { release = ok; }); await before;
+    const snapshot = JSON.stringify(store);
+    const callbacks = [];
+    try { const result = await fn({ LOCK: { UPDATE: 'UPDATE' }, afterCommit: cb => callbacks.push(cb) });
+      for (const cb of callbacks) await cb(); return result;
+    } catch (e) { store = JSON.parse(snapshot); hydrate(); throw e; } finally { release(); }
+  } },
+  Obra: { findByPk: async id => Number(id) === 7 ? { id: 7 } : null },
+  RhColaborador: { findAll: async () => ativo ? [instance({ ...cadastro, pagamento: contaSalario })] : [] },
+  RhColaboradorPagamento: {},
+  RhSolicitacao: {
+    findOne: async o => store.requests.find(r => Object.entries(o.where).every(([k, v]) => r[k] === v)),
+    findByPk: async id => store.requests.find(r => r.id === Number(id)),
+    create: async p => { const r = instance({ id: store.requests.length + 1, ...p }); store.requests.push(r); return r; }
+  },
+  RhSolicitacaoHistorico: { create: async p => store.historicos.push(p) },
+  CrResponsavelObra: { findAll: async () => [{ user_id: 77 }] },
+  User: { findAll: async () => [{ id: 77, nome: 'Responsavel QA' }] },
+  FormaPagamentoFinanceira: { findOne: async o => ({ id: o.where.tipo === 'PIX' ? 4 : 5 }) },
+  TituloFinanceiro: {
+    findAll: async () => store.titles,
+    create: async p => { const t = instance({ id: store.titles.length + 1, codigo: `TIT-${store.titles.length + 1}`, ...p }); store.titles.push(t); return t; }
+  }
+};
+const deps = {
+  sequelize: { Op }, '../models': models, '../middlewares/validation': { ValidationError },
+  './rhPagamentoSolicitacaoDomain': domain,
+  '../utils/codigoDoSetor': { codigoDoSetor: u => u.dp ? 'DP' : 'OBRA' },
+  './setorCapabilityService': { userBelongsToDpSetor: async u => u.dp },
+  './authorizationService': { isBusinessAdmin: () => false, canEditRhDpApuracao: async u => u.dp,
+    canExecuteRhDpFechamento: async u => u.dp, getRhDpObraScopeIds: async () => scope,
+    getUserObraIds: async () => [7], userHasAreaPermission: async () => true,
+    userHasNominalAreaPermission: async () => podeFila },
+  './rhSolicitacaoCodigoService': { garantirCodigoRhSolicitacao: async s => s.update({ codigo: `RH-${s.id}` }) },
+  './rhFechamentoService': {
+    ensureCategoriaFinanceiraPagar: async () => ({ id: 12 }),
+    syncParceiroFavorecido: async p => ({ id: p.favorecidoNome === 'Ana QA' ? 11 : 77 }),
+    syncFavorecidoBancarioRh: async p => { assert.ok(p.chavePix || p.conta); return { id: 100 }; },
+    buildTituloRhPayload: p => ({ origem_titulo: 'RH_DP', tipo: 'PAGAR', status: 'ABERTO',
+      categoria_financeira_id: p.categoriaFinanceiraId, empresa_id: p.empresaId, obra_id: p.apuracao.obra_id,
+      valor_original: p.valor, valor_saldo: p.valor, observacoes: '' })
+  },
+  '../modules/custosRecebiveis/services/bloqueioObraService': { assertObrasSemTrava: async () => {} },
+  './pagamentoManualFilaService': { enfileirarTitulos: async (req, p, o) => {
+    assert.ok(o.transaction, 'Titulos/fila devem ser atomicos');
+    if (bloquearFila) throw new ValidationError('Governanca pausada', 423);
+    store.filas.push(...p.titulo_ids);
+  } }
+};
+const sandbox = { module: { exports: {} }, console, Date, require: key => {
+  if (key in deps) return deps[key]; throw new Error('Dependencia nao simulada: ' + key);
+} };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/rhPagamentoSolicitacaoService.js'), 'utf8'), sandbox);
+const service = sandbox.module.exports;
+const obra = { user: { id: 2, dp: false } }, dp = { user: { id: 3, dp: true } };
+async function filaCanonicaTransacaoExterna() {
+  const source = fs.readFileSync(path.join(__dirname, '../src/services/pagamentoManualFilaService.js'), 'utf8');
+  const trecho = source.slice(source.indexOf('async function enfileirarTitulos('), source.indexOf('function enfileirarTitulosAutorizados('));
+  let transacoes = 0, nominal = true, gate = 'DIRECT';
+  const audits = [], callbacks = [], criados = [];
+  const tx = { LOCK: { UPDATE: 'UPDATE' }, afterCommit: fn => callbacks.push(fn) };
+  const context = { module: { exports: {} }, Op, crypto: require('node:crypto'), Map, Set,
+    createHttpError: (code, message) => new ValidationError(message, code),
+    userHasNominalAreaPermission: async () => nominal,
+    resolvePaymentQueueGate: () => gate, env: { paymentOwnerApprovalMode: 'PILOT' },
+    getFinanceiroObraScopeIds: async () => null, roundCurrency: domain.dinheiro,
+    ACTIVE_STATUSES: ['PENDENTE'], PAYMENT_INTENT_INACTIVE_STATUSES: ['CANCELADO'],
+    sequelize: { transaction: async fn => { transacoes++; return fn(tx); } },
+    TituloFinanceiro: { findAll: async () => [{ id: 701, obra_id: 7, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: 1100 }] },
+    FormaPagamentoFinanceira: {}, PaymentIntent: { findAll: async () => [] },
+    PagamentoManualFilaItem: { findAll: async () => [], create: async p => { const i = { id: 1, ...p }; criados.push(i);return i; } },
+    SecurityEventLog: { create: async p => audits.push(p.tipo_evento) },
+    getRequestIp: () => '127.0.0.1', assertTituloDisponivelParaBaixa: () => {},
+    sincronizarDossiesComFila: async () => {}, atualizarAnaliseAoEnfileirar: async () => {},
+    resolverSolicitacoesDosTitulos: async () => new Map(), registrarVinculosContratuaisAoEnfileirar: async () => {},
+    registrarEventoSeguranca: async p => audits.push(p.tipoEvento)
+  };
+  vm.runInNewContext(trecho + '\nmodule.exports = enfileirarTitulos;', context);
+  const enfileirar = context.module.exports;
+  const resultado = await enfileirar(dp, { titulo_ids: [701], idempotency_key: 'QA-FILA' }, { transaction: tx });
+  assert.equal(resultado.criados, 1);assert.equal(transacoes, 0, 'Nao abrir transacao separada');
+  assert.equal(criados[0].valor_previsto, 1100);
+  assert.equal(audits.includes('MANUAL_PAYMENT_QUEUE_CREATED'), false, 'Auditoria de sucesso somente apos commit externo');
+  await callbacks[0]();assert.ok(audits.includes('MANUAL_PAYMENT_QUEUE_CREATED'));
+  await enfileirar(dp, { titulo_ids: [701] });assert.equal(transacoes, 1, 'Via existente conserva transacao propria');
+  nominal = false;await assert.rejects(enfileirar(dp, { titulo_ids: [701] }, { transaction: tx }), /Permissao/);
+  nominal = true;gate = 'AUTHORIZATION_REQUIRED';
+  await assert.rejects(enfileirar(dp, { titulo_ids: [701] }, { transaction: tx }), /proprietario/);
+}
+(async () => {
+  await filaCanonicaTransacaoExterna();
+  const [primeiro, replay] = await Promise.all([service.iniciar(obra, { obra_id: 7 }), service.iniciar(obra, { obra_id: 7 })]);
+  assert.equal(primeiro.solicitacao.id, replay.solicitacao.id); assert.equal(store.requests.length, 1);
+  const id = primeiro.solicitacao.id;
+  let f = { ...primeiro.solicitacao.dados_json, competencia: '2026-10', linhas: primeiro.solicitacao.dados_json.linhas.map(l => ({ ...l, ...dados, selecionado: true, conferido_obra: true,
+    reembolso: { responsavel_id: 77, modo_recebimento: 'PIX', favorecido_nome: 'Responsavel QA', favorecido_documento: cadastro.cpf, chave_pix: 'responsavel@example.test' } })) };
+  let saved = await service.salvar(obra, id, f);
+  assert.equal(saved.solicitacao.dados_json.linhas[0].conferido_obra, true);
+  assert.ok(saved.avisos.length); // Pagamento anterior nao bloqueia.
+  await assert.rejects(service.salvar(obra, id, f), /atualizada/);
+  await assert.rejects(service.mostrar({ user: { id: 88 } }, id), /outro usuario/);
+  await service.enviar(obra, id, { revisao: saved.solicitacao.dados_json.revisao });
+  assert.equal(store.titles.length, 1, 'A obra nao cria titulos');
+  const conf = await service.mostrar(dp, id);
+  f = conf.solicitacao.dados_json;
+  await assert.rejects(service.enviar(dp, id, { revisao: f.revisao }), /conferidos/);
+  saved = await service.salvar(dp, id, { ...f, linhas: f.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+  const rev = saved.solicitacao.dados_json.revisao;
+  podeFila = false;
+  await assert.rejects(service.enviar(dp, id, { revisao: rev }), /Permissoes/); podeFila = true;
+  bloquearFila = true;
+  await assert.rejects(service.enviar(dp, id, { revisao: rev }), /Governanca/);
+  assert.equal(store.titles.length, 1); assert.equal(store.requests[0].situacao, 'ABERTA');
+  bloquearFila = false;
+  await Promise.all([service.enviar(dp, id, { revisao: rev }), service.enviar(dp, id, { revisao: rev })]);
+  assert.equal(store.titles.length, 3); assert.equal(store.filas.length, 2);
+  assert.deepEqual(store.titles.slice(1).map(t => t.valor_original), [1100, 100]);
+  assert.ok(store.titles.slice(1).every(t => t.categoria_financeira_id === 12 && t.tipo === 'PAGAR'));
+  assert.equal(store.titles[0].valor_original, 8760, 'Pagamento anterior preservado');
+  assert.equal(store.requests[0].situacao, 'APROVADA');
+  assert.notEqual(store.titles[1].numero_documento, store.titles[2].numero_documento);
+  const proximo = await service.iniciar(obra, { obra_id: 7 });
+  assert.notEqual(proximo.solicitacao.id, id);
+  ativo = false;
+  await assert.rejects(service.salvar(obra, proximo.solicitacao.id, { ...proximo.solicitacao.dados_json,
+    linhas: proximo.solicitacao.dados_json.linhas.map(l => ({ ...l, selecionado: true })) }), /mais ativo/);
+  scope = [];
+  await assert.rejects(service.mostrar(dp, id), /Acesso negado/);
+  console.log('Pagamento por solicitacao: calculos, rascunho, escopo, conferencia, reembolso, aviso sem bloqueio, rollback, idempotencia e fila canonica/transacao/governanca OK. Sem banco/rede.');
+})().catch(e => { console.error(e); process.exitCode = 1; });

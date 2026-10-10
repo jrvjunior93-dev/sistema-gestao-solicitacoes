@@ -1,0 +1,31 @@
+.rh-pagamento-solicitacao { min-width: 0; }
+.rh-pagamento-toolbar { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; border: 0; padding: 0 0 12px; }
+.rh-pagamento-toolbar label, .rh-pagamento-conta label { display: grid; gap: 4px; font-size: .875rem; }
+.rh-pagamento-toolbar label:last-child { margin-left: auto; }
+.rh-pagamento-table-wrap { border: 1px solid var(--ui-border); border-radius: 6px; padding: 0; overflow: auto; max-height: 55vh; }
+.rh-pagamento-tabela { width: 100%; min-width: 1300px; font-family: inherit; font-size: .875rem; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+.rh-pagamento-tabela th { position: sticky; top: 0; background: var(--ui-surface); z-index: 1; font-size: .75rem; text-transform: uppercase; text-align: left; white-space: nowrap; }
+.rh-pagamento-tabela td, .rh-pagamento-tabela th { border-bottom: 1px solid var(--ui-border); padding: 8px; }
+.rh-pagamento-tabela td { vertical-align: middle; white-space: nowrap; }
+.rh-pagamento-tabela td:nth-child(2) { min-width: 185px; white-space: normal; }
+.rh-pagamento-tabela small { display: block; color: var(--ui-text-muted); font-size: .75rem; margin-top: 3px; }
+.rh-pagamento-tabela input[type=number] { width: 100px; text-align: right; padding: 6px; }
+.rh-pagamento-tabela td:nth-child(10) input, .rh-pagamento-tabela td:nth-child(11) input { width: 65px; }
+.rh-pagamento-tabela input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+.rh-pagamento-tabela tr[data-selecionado=true] { background: var(--ui-surface-alt, var(--ui-surface)); }
+.rh-pagamento-link { color: var(--ui-primary); display: block; font-size: .75rem; text-decoration: underline; padding-top: 4px; }
+.rh-pagamento-rodape { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; font-size: .875rem; }
+.rh-pagamento-rodape > div { display: flex; gap: 8px; }
+.rh-pagamento-conta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.rh-pagamento-conta-chave { grid-column: 1 / -1; }
+.rh-pagamento-aviso { margin-bottom: 12px; font-size: .875rem; }
+.rh-pagamento-aviso summary { cursor: pointer; }
+.rh-pagamento-titulos { font-size: .875rem; margin-top: 12px; }
+@media (max-width: 640px) {
+  .rh-pagamento-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rh-pagamento-toolbar label:last-child { margin-left: 0; }
+  .rh-pagamento-toolbar input, .rh-pagamento-toolbar select, .rh-pagamento-conta input, .rh-pagamento-conta select { min-width: 0; width: 100%; }
+  .rh-pagamento-conta { grid-template-columns: 1fr; }
+  .rh-pagamento-tabela input, .rh-pagamento-tabela button { min-height: 36px; }
+  .rh-pagamento-rodape > div { width: 100%; justify-content: end; }
+}

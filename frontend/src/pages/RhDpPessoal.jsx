@@ -1149,8 +1149,7 @@ export default function RhDpPessoal() {
 
   const acoesDaAba = abaAtiva === 'colaboradores'
     ? [
-      podeAbrir ? { rotulo: 'Solicitar pagamento', onClick: () => localSelecionado
-        ? setPagamento({ colaborador: null }) : setAbaAtiva('jornada') } : null,
+      podeAbrir ? { rotulo: 'Solicitar pagamento', onClick: () => setPagamento({ colaborador: null }) } : null,
       {
         rotulo: carregando ? 'Carregando...' : 'Atualizar',
         onClick: carregar,
@@ -2379,9 +2378,9 @@ export default function RhDpPessoal() {
       ) : null}
 
       {elementoConfirmacao}
-      {pagamento && (pagamento.local || localSelecionado) ? <RhDpPagamentoModal
-        key={`${user?.id}:${(pagamento.local || localSelecionado).id}:${pagamento.colaborador?.id || 'todos'}`}
-        local={pagamento.local || localSelecionado} colaborador={pagamento.colaborador}
+      {pagamento ? <RhDpPagamentoModal
+        key={`${user?.id}:${(pagamento.local || localSelecionado)?.id || 'selecionar'}:${pagamento.colaborador?.id || 'todos'}`}
+        local={pagamento.local || localSelecionado} locais={obras} colaborador={pagamento.colaborador}
         onFechar={() => setPagamento(null)} aoEnviar={() => { carregar(); }} /> : null}
     </Pagina>
   );
