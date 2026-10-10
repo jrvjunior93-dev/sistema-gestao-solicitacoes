@@ -10,7 +10,7 @@ const { ValidationError } = require('../src/middlewares/validation');
 function carregar(nome, mocks) {
   const arquivo = path.join(__dirname, '../src/services', nome);
   const sandbox = { module: { exports: {} }, exports: {}, console, Date,
-    require: key => { if (key in mocks) return mocks[key]; throw new Error(`Dependencia nao simulada: ${key}`); } };
+    require: key => { if (key === '../utils/pix') return require('../src/utils/pix'); if (key in mocks) return mocks[key]; throw new Error(`Dependencia nao simulada: ${key}`); } };
   vm.runInNewContext(fs.readFileSync(arquivo, 'utf8'), sandbox, { filename: arquivo });
   return sandbox.module.exports;
 }

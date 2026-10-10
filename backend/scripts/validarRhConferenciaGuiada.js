@@ -46,6 +46,7 @@ function carregarServico(nome, complemento) {
       if (id === '../models') return models;
       if (id === 'sequelize') return { Op: { in: Symbol('in'), lt: Symbol('lt') } };
       if (id === '../middlewares/validation') return { ValidationError };
+      if (id === '../utils/pix') return require('../src/utils/pix');
       if (id === './rhApuracaoConferenciaDomain') return { revisaoItem, alteraConferencia };
       if (id === './rhJornadaFormularioService') return { exigirJornadasSemRetornoPendente: async () => {
         if (retornoPendente) throw new ValidationError('Retorno de jornada pendente', 409);

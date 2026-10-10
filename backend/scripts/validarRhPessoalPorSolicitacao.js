@@ -10,7 +10,7 @@ class ValidationError extends Error { constructor(message, status = 400) { super
 function load(relative, deps, suffix = '') {
   const sandbox = { module: { exports: {} }, console: { ...console, error() {} },
     process: { env: { RH_JORNADA_40_60_ETAPAS: 'OFF' } },
-    require(key) { if (key in deps) return deps[key]; throw new Error('Dependencia nao simulada: ' + key); } };
+    require(key) { if (key === '../utils/pix') return require('../src/utils/pix'); if (key in deps) return deps[key]; throw new Error('Dependencia nao simulada: ' + key); } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src', relative), 'utf8') + suffix, sandbox);
   return sandbox.module.exports;
 }

@@ -1,4 +1,5 @@
 import DateInputBR from '../../../components/DateInputBR';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../../../utils/pix';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
@@ -138,6 +139,7 @@ function maskCnpj(value) {
 
 function maskPixKey(value, type) {
   const kind = String(type || '').toUpperCase();
+  if (kind === 'COPIA_COLA') return String(value || '');
   if (kind === 'CPF') return maskCpf(value);
   if (kind === 'CNPJ') return maskCnpj(value);
   if (kind === 'TELEFONE') return maskPhone(value);
@@ -2841,11 +2843,7 @@ export default function PedidoCompraDetalhe() {
                         })}
                         disabled={salvandoFrete}
                       >
-                        <option value="CPF">Chave CPF</option>
-                        <option value="CNPJ">Chave CNPJ</option>
-                        <option value="TELEFONE">Chave telefone</option>
-                        <option value="EMAIL">Chave e-mail</option>
-                        <option value="ALEATORIA">Chave aleatoria</option>
+                        {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                       </select>
                     </CampoForm>
                     <CampoForm label="Chave PIX">

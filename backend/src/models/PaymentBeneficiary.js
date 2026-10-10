@@ -28,7 +28,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       allowNull: false
     },
     pix_chave: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.TEXT,
       allowNull: false
     },
     banco_codigo: {

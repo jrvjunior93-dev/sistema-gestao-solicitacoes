@@ -1,4 +1,5 @@
 import DateInputBR from '../components/DateInputBR';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
@@ -39,7 +40,6 @@ import {
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
 const TIPOS_INTERCOMPANY = [
   ['APORTE', 'Aporte'],
   ['EMPRESTIMO', 'Emprestimo'],
@@ -2721,7 +2721,7 @@ export default function FinanceiroTituloNovo() {
                             value={paymentDraft.pix_tipo_chave}
                             onChange={(event) => setPaymentDraft((current) => ({ ...current, pix_tipo_chave: event.target.value }))}
                           >
-                            {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+                            {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                           </select>
                         </CampoForm>
 

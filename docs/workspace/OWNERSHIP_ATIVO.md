@@ -1,5 +1,63 @@
 # Ownership Ativo
 
+## Publicacao das pendencias DEV - 2026-10-10
+
+- Autorizada pelo usuario nesta conversa: commit e push na refactor/frontend
+  dos ajustes Pix Copia e Cola, resumo compacto da fila e colaboradores ativos
+  do local aberto no Pessoal. Responsavel: agente desta conversa, sem delegacao.
+- Reserva documental temporaria deste registro e dos tres handoffs associados.
+- Base local/remota abcfe89b conferida sem divergencia. Preservar outputs/ fora
+  do commit; nao publicar main, executar migration, alterar banco ou reiniciar EC2.
+- Revalidacao aprovada: Pix backend/UI, fila UI, cadastro/planilha RH,
+  conferencia por solicitacao e sintaxe/diff. UI Pessoal nos tres modos e build
+  aprovados na implementacao anterior, sem alteracao funcional posterior.
+- Reserva documental encerrada; ownership liberado para commit/push autorizado.
+
+## Pessoal - colaboradores ativos do local aberto - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-10-pessoal-colaboradores-ativos-local.md.
+- Reserva: backend/src/services/rhService.js,
+  frontend/src/pages/RhDpPessoal.jsx,
+  backend/scripts/validarRhColaboradoresPlanilha.js,
+  frontend/scripts/validarRhPessoalPorLocal.mjs e handoff desta tarefa.
+- Escopo: respeitar o local solicitado dentro do escopo autorizado e listar
+  apenas colaboradores ATIVO no card aberto. Preservar historico, transferencias,
+  pagamentos, cadastro global e exportacoes do RH/DP.
+- Preservar Pix e resumo compacto da fila pendentes. Sem banco real, migration,
+  commit, push, main ou deploy.
+- Validacoes: consulta em memoria, escopo/primeira lotacao, conferencia por
+  solicitacao, UI desktop/mobile nos modos legado/etapas/gerencial, build e
+  diff aprovados. Teste auxiliar antigo de transferencia com mock ausente
+  documentado no handoff, sem alterar o fluxo de transferencias.
+
+## Fila - remover resumo de documento e forma sob o titulo - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-10-fila-titulo-resumo-compacto.md.
+- Reserva: frontend/src/pages/FinanceiroFilaPagamentos.jsx,
+  frontend/scripts/validarFilaInstrumentosUI.mjs e handoff desta tarefa.
+- Escopo: remover apenas a linha documento/forma da celula do titulo;
+  preservar seletores, acoes, permissoes, comprovantes e regras de baixa.
+- Preservar ajustes Pix pendentes e outputs/. Sem backend, banco, commit,
+  push, main ou deploy.
+- Validacoes: teste UI real com APIs isoladas, desktop/mobile com e sem documento,
+  navegacao/arquivos/upload/instrumentos/baixas; build e diff aprovados.
+
+## Pix Copia e Cola - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-09-pix-copia-cola.md.
+- Reserva: seletores Pix em FinanceiroCard, FinanceiroTituloNovo/Editar,
+  FinanceiroCadastros, Parceiros, NovaSolicitacao, RhDpPessoal e PedidoCompraDetalhe;
+  cadastro rapido de favorecido (remover corte de chave longa), utilitarios Pix
+  novos; validadores payment/operational/RH; servicos parceiro,
+  favorecido, medicao e RH; modelos com chave Pix; migration expansiva de texto;
+  testes Pix e handoff desta tarefa. Preservar outputs/ e trabalhos anteriores.
+- Escopo: texto livre Copia e Cola sem mascara, alteracao de caixa ou truncamento.
+  Preservar permissoes, idempotencia e fluxos; nao ampliar a API bancaria por chave.
+  Sem banco real, execucao de migration, commit/push, main ou deploy.
+
 Publicacao do aviso de entregas pendentes autorizada pelo usuario em 09/10/2026:
 reserva documental temporaria deste registro e do handoff correspondente.
 Commit/push apenas na refactor/frontend; main, EC2 e banco fora do escopo.

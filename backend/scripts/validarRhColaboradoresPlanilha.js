@@ -77,6 +77,7 @@ function load(relative, overrides = {}) {
       if (name === '../utils/fileName') return {};
       if (name === '../constants/empresaGrupo') return {};
       if (name === '../utils/cpfCnpj') return require('../src/utils/cpfCnpj');
+      if (name === '../utils/pix') return require('../src/utils/pix');
       throw new Error(`Dependencia nao autorizada: ${name}`);
     }
   });
@@ -158,6 +159,30 @@ const base = { CPF: '01234567890', Matricula: '001', Empresa_Codigo: 'EMP-01' };
   assert.equal((await service.listarColaboradoresRh({ obra_ids: [] })).length, 0);
   assert.equal((await service.listarColaboradoresRh({ obra_ids: [51] })).length, 1);
   assert.equal((await service.listarColaboradoresRh({ obra_ids: [10] })).length, 0);
+  const cadastrosAntesDoTesteLocal = registros.length;
+  registros.push(
+    registro({ id: 201, nome: 'Ativo no centro de custo', obra_id: 51, status: 'ATIVO' }),
+    registro({ id: 202, nome: 'Ativo na outra obra', obra_id: 10, status: 'ATIVO' }),
+    registro({ id: 203, nome: 'Afastado no centro de custo', obra_id: 51, status: 'AFASTADO' }),
+    registro({ id: 204, nome: 'Ativo sem local', obra_id: null, status: 'ATIVO' })
+  );
+  const listarIds = async filtros => plain((await service.listarColaboradoresRh(filtros)).map(item => item.id));
+  assert.deepEqual(await listarIds({ obra_ids: [10, 51], obra_id: '51', status: 'ATIVO' }), [201],
+    'Card do centro de custo lista somente ativos com vinculo atual naquele local');
+  assert.deepEqual(await listarIds({ obra_ids: [10, 51], obra_id: 10, status: 'ATIVO' }), [202]);
+  assert.deepEqual(await listarIds({ obra_ids: [10, 51], obra_id: 51 }), [1, 201, 203],
+    'Filtro de local nao esconde inativos/afastados no cadastro global');
+  assert.deepEqual(await listarIds({ obra_ids: null, obra_id: 51, status: 'ATIVO' }), [201]);
+  assert.deepEqual(await listarIds({ obra_ids: [10, 51] }), [1, 201, 202, 203],
+    'Sem local selecionado, manter todos os locais autorizados');
+  assert.deepEqual(await listarIds({ obra_ids: null }), [1, 201, 202, 203, 204]);
+  assert.deepEqual(await listarIds({ obra_ids: [], obra_id: 51, status: 'ATIVO' }), []);
+  await assert.rejects(() => service.listarColaboradoresRh({ obra_ids: [10], obra_id: 51 }), /Acesso negado/);
+  await registros[1].update({ obra_id: 10 }, { transaction: {} });
+  assert.deepEqual(await listarIds({ obra_ids: [10, 51], obra_id: 51, status: 'ATIVO' }), [],
+    'Colaborador transferido deixa de constar no local anterior');
+  assert.deepEqual(await listarIds({ obra_ids: [10, 51], obra_id: 10, status: 'ATIVO' }), [201, 202]);
+  registros.splice(cadastrosAntesDoTesteLocal);
   let scopeController = [51], optionsList;
   const controller = load('controllers/RhColaboradorController.js', {
     '../services/rhService': { ...service, listarColaboradoresRh: async options => { optionsList = options; return service.listarColaboradoresRh(options); } },

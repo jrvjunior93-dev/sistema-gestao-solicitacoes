@@ -6,6 +6,21 @@ Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, 
 
 ## Titulos
 
+Tipos Pix incluem `COPIA_COLA` (rotulo **Copia e Cola**) nos cadastros,
+criacao/edicao de titulo, preparar Pix da solicitacao, RH/DP e fretes. Aceita
+texto livre ate 8192 caracteres, preservando caixa, simbolos e espacos internos;
+apenas espacos nas extremidades sao removidos como nos campos existentes.
+Nao validar esse texto como CPF/CNPJ/email/UUID nem corta-lo. Os tipos antigos
+mantem as validacoes existentes. A fila manual usa o dado cadastrado; o lote
+automatico BB atual por chave Pix rejeita Copia e Cola antes de gerar intents.
+
+Migration `202610090001_pix_copia_cola_texto.js`: expansao de 12 colunas para
+TEXT, preservando nulabilidade, dados e indice Pix com prefixo MySQL; nenhum
+backfill ou mudanca de status. Aplicar antes de usar codigos longos. Cadastro
+simplificado usa SHA-256 do texto em `pix_chave_canonica` apenas para este novo
+tipo, preservando unicidade sem reduzir ou alterar o codigo armazenado.
+Validacoes locais: `npm run test:pix-copia-cola` em backend e frontend.
+
 - tipo obrigatorio `PAGAR` ou `RECEBER`;
 - origem pode ser solicitacao, compra, comercial, RH/DP ou lancamento manual;
 - parceiro, empresa, categoria, vencimento e valor devem ser consistentes;

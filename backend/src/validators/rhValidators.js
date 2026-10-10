@@ -5,6 +5,7 @@ const {
 } = require('../middlewares/validation');
 const { TIPOS_GERENCIAIS_EMPRESA_GRUPO } = require('../constants/empresaGrupo');
 const { onlyDigits, isValidCpf, isValidCnpj, isValidCpfCnpj } = require('../utils/cpfCnpj');
+const { PIX_TEXTO_MAX } = require('../utils/pix');
 
 const RH_TIPOS_VINCULO = ['CLT', 'NAO_CLT'];
 const RH_FORMAS_CALCULO_GERENCIAL = ['MENSAL', 'DIARIA'];
@@ -326,9 +327,9 @@ function normalizePagamentoPayload(value) {
     agencia: parseOptionalText(value.agencia, 'Agencia', 30),
     conta: parseOptionalText(value.conta, 'Conta', 40),
     tipo_conta: parseOptionalText(value.tipo_conta, 'Tipo de conta', 30),
-    chave_pix: parseOptionalText(value.chave_pix, 'Chave PIX principal', 120),
-    chave_pix_secundaria: parseOptionalText(value.chave_pix_secundaria, 'Chave PIX fixa 2', 120),
-    chave_pix_variavel: parseOptionalText(value.chave_pix_variavel, 'Chave PIX variavel', 120),
+    chave_pix: parseOptionalText(value.chave_pix, 'Chave PIX principal', PIX_TEXTO_MAX),
+    chave_pix_secundaria: parseOptionalText(value.chave_pix_secundaria, 'Chave PIX fixa 2', PIX_TEXTO_MAX),
+    chave_pix_variavel: parseOptionalText(value.chave_pix_variavel, 'Chave PIX variavel', PIX_TEXTO_MAX),
     observacoes: parseOptionalText(value.observacoes, 'Observacoes do pagamento', 2000)
   };
 }
@@ -724,7 +725,7 @@ function validateRhApuracaoItemUpdateBody(body = {}) {
     ajuste_debito_manual: parseDecimal(body.ajuste_debito_manual, 'Ajuste de debito manual', { min: 0 }),
     observacoes: body.observacoes !== undefined && isBlank(body.observacoes) ? null : parseOptionalText(body.observacoes, 'Observacoes', 4000),
     status: parseEnum(body.status, 'Status do item da apuracao', RH_STATUS_APURACAO_ITEM),
-    chave_pix_titulo: body.chave_pix_titulo !== undefined && isBlank(body.chave_pix_titulo) ? null : parseOptionalText(body.chave_pix_titulo, 'Chave PIX do titulo', 120)
+    chave_pix_titulo: body.chave_pix_titulo !== undefined && isBlank(body.chave_pix_titulo) ? null : parseOptionalText(body.chave_pix_titulo, 'Chave PIX do titulo', PIX_TEXTO_MAX)
   };
 
   const normalized = Object.fromEntries(

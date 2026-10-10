@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 import {
   HiOutlineMagnifyingGlass,
   HiOutlinePencilSquare,
@@ -1847,11 +1848,7 @@ export default function FinanceiroCadastros() {
                     value={favorecidoForm.pix_tipo_chave}
                     onChange={(e) => setFavorecidoForm((c) => ({ ...c, pix_tipo_chave: e.target.value }))}
                   >
-                    <option value="CPF">CPF</option>
-                    <option value="CNPJ">CNPJ</option>
-                    <option value="EMAIL">EMAIL</option>
-                    <option value="TELEFONE">TELEFONE</option>
-                    <option value="ALEATORIA">ALEATORIA</option>
+                    {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                   </select>
                 </CampoForm>
 

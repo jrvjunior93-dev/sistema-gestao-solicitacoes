@@ -1,4 +1,5 @@
 import DateInputBR from '../components/DateInputBR';
+import { PIX_OPCOES_CHAVE as PIX_TIPOS_CHAVE } from '../utils/pix';
 import { opcoesAvisoPendenciasEntrega } from '../utils/avisoPendenciasEntrega';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -131,13 +132,6 @@ function getTipoCentroCustoLabel(obra) {
   return isCadastroObra(obra) ? 'Obra' : 'Centro de custo';
 }
 
-const PIX_TIPOS_CHAVE = [
-  { value: 'CPF', label: 'CPF' },
-  { value: 'CNPJ', label: 'CNPJ' },
-  { value: 'EMAIL', label: 'E-mail' },
-  { value: 'TELEFONE', label: 'Telefone' },
-  { value: 'ALEATORIA', label: 'Aleatoria' }
-];
 
 function criarNovoParceiroPadrao() {
   return {

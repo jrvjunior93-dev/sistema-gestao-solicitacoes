@@ -25,7 +25,7 @@ import DateInputBR from '../components/DateInputBR';
 import DadosEmpresaParceiro from '../components/parceiros/DadosEmpresaParceiro';
 import { getDadosEmpresaParceiroError } from '../utils/dadosEmpresaParceiro';
 
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 const PAGE_SIZE_OPTIONS = ['25', '50', '100', '200', 'all'];
 
 function defaultParceiroForm() {
@@ -666,7 +666,7 @@ export default function Parceiros() {
                 ].map(([campoTipo, campoChave, rotulo]) => (
                   <div key={campoChave} className="mb-2 grid gap-3 md:grid-cols-[120px_minmax(0,1fr)]">
                     <select className="input w-full" value={parceiroForm[campoTipo]} onChange={atualizarCampo(campoTipo)} aria-label={`Tipo da ${rotulo}`}>
-                      {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+                      {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                     </select>
                     <input className="input w-full" placeholder={rotulo} value={parceiroForm[campoChave]} onChange={atualizarCampo(campoChave)} />
                   </div>

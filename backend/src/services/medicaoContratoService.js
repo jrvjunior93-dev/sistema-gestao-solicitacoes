@@ -714,7 +714,7 @@ async function validarDadosDePagamento(pagamento = {}, { transaction = null } = 
 
   return {
     favorecido_id: favorecidoId,
-    favorecido_chave_pix: chave ? chave.slice(0, 180) : null,
+    favorecido_chave_pix: chave || null,
     favorecido_contato: dadosParaPagamento.slice(0, 180) || null,
     forma_pagamento_id: formaPagamentoId
   };

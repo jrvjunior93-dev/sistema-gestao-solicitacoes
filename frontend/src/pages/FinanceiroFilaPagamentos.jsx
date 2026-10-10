@@ -1047,7 +1047,6 @@ export default function FinanceiroFilaPagamentos() {
                         <span className="font-semibold text-[var(--c-text)]">{title.codigo || `#${title.id}`}</span>
                       )}
                       <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
-                      <div className="text-xs text-[var(--c-muted)]">{title.numero_documento || 'Sem documento'} · {title.formaPagamento?.nome || 'Forma não informada'}</div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label={`Ações e comprovantes de ${title.codigo || row.id}`}>
                       {solicitacaoVinculada ? (
                         <>

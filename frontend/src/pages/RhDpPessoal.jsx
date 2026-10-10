@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 import { useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
@@ -626,7 +627,11 @@ export default function RhDpPessoal() {
       const localValido = (Array.isArray(listaObras) ? listaObras : []).find((item) => String(item.id) === localId);
       const [lista, solicitacoesAbertas] = await Promise.all([
         porLocal && !localValido ? Promise.resolve([])
-          : getRhColaboradores({ obra_id: localValido?.id || filtroObra || undefined, q: busca || undefined }),
+          : getRhColaboradores({
+            obra_id: localValido?.id || filtroObra || undefined,
+            status: localValido ? 'ATIVO' : undefined,
+            q: busca || undefined
+          }),
         listarRhSolicitacoes({ situacao: 'ABERTA', obra_id: localValido?.id || undefined })
       ]);
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
@@ -1849,10 +1854,7 @@ export default function RhDpPessoal() {
                   <select className="form-control" value={formulario.pix_chave_tipo || ''}
                     onChange={(e) => setFormulario({ ...formulario, pix_chave_tipo: e.target.value })}>
                     <option value="">Selecione</option>
-                    <option value="CPF">CPF</option>
-                    <option value="EMAIL">E-mail</option>
-                    <option value="TELEFONE">Telefone</option>
-                    <option value="ALEATORIA">Aleatoria</option>
+                    {PIX_TIPOS_CHAVE.filter((tipo) => tipo !== 'CNPJ').map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                   </select>
                 </label>
 

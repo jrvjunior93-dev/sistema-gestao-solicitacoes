@@ -30,6 +30,9 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       export const getFilaPagamentos=async({status})=>{
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
+        row.titulo.descricao='SOL-QA - MEDIÇÃO';
+        row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
+        row.titulo.formaPagamento=${JSON.stringify(forms[0])};
         return{data:status==='NAO_PAGO'?[{id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
       };
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
@@ -193,6 +196,24 @@ try {
   await page.screenshot({path:path.join(root,'../outputs/fila-encargos-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1366,height:900});
   await page.screenshot({path:path.join(root,'../outputs/fila-encargos-desktop.png'),fullPage:true});
+  // Celula do titulo compacta, com ou sem numero de documento: forma fica
+  // apenas na coluna propria. Navegacao, arquivos e upload continuam presentes.
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({width,height:900});
+    for (const documento of [false, true]) {
+      await page.goto(`http://127.0.0.1:5308/qa-fila${documento?'?documento=1':''}`);
+      await forma.waitFor();
+      const titleCell=page.getByRole('link',{name:'TIT-QA',exact:true}).locator('..');
+      const text=await titleCell.textContent();
+      assert(text.includes('SOL-QA - MEDIÇÃO'));
+      assert(!text.includes('Sem documento')&&!text.includes('DOC-QA'));
+      assert(!text.includes('Cartão de crédito')&&!text.includes('Forma não informada'));
+      assert.equal(await requestLink.count(),1);
+      assert.equal(await filesButton.count(),1);
+      assert.equal(await page.getByLabel('Comprovantes de pagamento de TIT-QA',{exact:true}).count(),1);
+      assert.equal(await forma.inputValue(),'1');
+    }
+  }
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real, colunas separadas de juros/multa, total e atualizacao de saldo/encargos preservando valor manual, instrumentos, modal cheque, conta limpa, icones, baixa sem PDF e anexo posterior sem segunda baixa. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

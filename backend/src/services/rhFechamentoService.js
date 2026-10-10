@@ -26,6 +26,7 @@ const {
 } = require('../models');
 const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
+const { parecePixCopiaCola } = require('../utils/pix');
 const { getPresignedUrl } = require('./s3');
 const { canAccessFinanceiro, getUsuariosAcessoFinanceiro } = require('./authorizationService');
 const { notificacaoEventoAtivo } = require('./notificacaoConfigService');
@@ -167,6 +168,7 @@ function inferTipoPessoa(documento) {
 function inferPixTipoChave(chavePix, documentoFallback) {
   const raw = String(chavePix || '').trim();
   if (!raw) return '';
+  if (parecePixCopiaCola(raw)) return 'COPIA_COLA';
   if (raw.includes('@')) return 'EMAIL';
 
   const digits = normalizeDigits(raw);

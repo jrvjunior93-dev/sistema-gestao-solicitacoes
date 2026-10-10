@@ -85,7 +85,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       favorecido_chave_pix: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true
       },
       dados_pagamento: {

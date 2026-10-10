@@ -1,4 +1,5 @@
 import DateInputBR from '../../components/DateInputBR';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import OverlayModal from '../../components/ui/OverlayModal';
 import StatusBadge from '../../components/StatusBadge';
@@ -53,7 +54,6 @@ import {
   getComprovanteFilaPagamento
 } from '../../services/financeiro';
 
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
 
 const TIPOS_INTERCOMPANY = [
   ['APORTE', 'Aporte'],
@@ -168,9 +168,10 @@ function getParceiroPixPrincipal(parceiro) {
   return getParceiroPixOptions(parceiro)[0] || null;
 }
 
-function normalizePixKey(value) {
+function normalizePixKey(value, tipo = '') {
   const texto = String(value || '').trim();
   if (!texto) return '';
+  if (tipo === 'COPIA_COLA' || texto.startsWith('000201')) return texto;
   if (texto.includes('@')) return texto.toLowerCase();
   const somenteDigitos = texto.replace(/\D/g, '');
   return somenteDigitos.length >= 10 ? somenteDigitos : texto.toLowerCase();
@@ -178,6 +179,7 @@ function normalizePixKey(value) {
 
 function inferPixKeyType(value, telefone = '') {
   const texto = String(value || '').trim();
+  if (texto.startsWith('000201')) return 'COPIA_COLA';
   const digitos = texto.replace(/\D/g, '');
   const telefoneDigitos = String(telefone || '').replace(/\D/g, '');
   const telefoneSemPais = telefoneDigitos.startsWith('55') && telefoneDigitos.length > 11
@@ -199,7 +201,7 @@ function inferPixKeyType(value, telefone = '') {
 function findPartnerPixOption(partner, pixKey) {
   const normalized = normalizePixKey(pixKey);
   if (!normalized) return null;
-  return getParceiroPixOptions(partner).find((item) => normalizePixKey(item.chave) === normalized) || null;
+  return getParceiroPixOptions(partner).find((item) => normalizePixKey(item.chave, item.tipo) === normalizePixKey(pixKey, item.tipo)) || null;
 }
 
 function createPaymentDraft() {
@@ -935,7 +937,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
               value={draft.pix_tipo_chave || 'CNPJ'}
               onChange={(event) => onChange(pagamentoIndex, { pix_tipo_chave: event.target.value })}
             >
-              {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+              {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
             </select>
           </CampoForm>
           <CampoForm
@@ -2160,7 +2162,7 @@ export default function FinanceiroCard({
         pix_chave: draft.pix_chave,
         ativo: true
       };
-      const chaveDoCredor = `${beneficiaryPayload.parceiro_id}:${normalizePixKey(beneficiaryPayload.pix_chave)}`;
+      const chaveDoCredor = `${beneficiaryPayload.parceiro_id}:${beneficiaryPayload.pix_tipo_chave}:${normalizePixKey(beneficiaryPayload.pix_chave, beneficiaryPayload.pix_tipo_chave)}`;
       const beneficiaryIdJaSalvo = beneficiaryIdsPorChave.get(chaveDoCredor);
       if (!draft.payment_beneficiary_id && beneficiaryIdJaSalvo) {
         idsPorPagamento.set(pagamento.id, beneficiaryIdJaSalvo);
@@ -3281,7 +3283,7 @@ export default function FinanceiroCard({
                           value={paymentDraft.pix_tipo_chave}
                           onChange={(event) => setPaymentDraft((current) => ({ ...current, pix_tipo_chave: event.target.value }))}
                         >
-                          {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+                          {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                         </select>
                       </CampoForm>
                       <CampoForm label="Chave PIX" obrigatorio>

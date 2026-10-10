@@ -1,4 +1,5 @@
 'use strict';
+const { PIX_TEXTO_MAX } = require('../utils/pix');
 
 const { createHash } = require('crypto');
 const { Op } = require('sequelize');
@@ -79,7 +80,7 @@ function pagamentoDoTituloDaJornada(linha, pagamentoCadastrado, colaboradorNome)
   const alterado = chaveIndicada !== chaveCadastrada;
   const nome = String(linha.favorecido_pix_nome || '').trim();
   const cpf = onlyDigits(linha.favorecido_pix_cpf || '');
-  if (chaveIndicada.length > 120) {
+  if (chaveIndicada.length > PIX_TEXTO_MAX) {
     throw new ValidationError(`${colaboradorNome}: a chave PIX excede o limite permitido.`);
   }
   if (alterado && (!chaveIndicada || !nome || !isValidCpf(cpf))) {

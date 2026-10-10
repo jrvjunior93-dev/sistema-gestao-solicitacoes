@@ -30,7 +30,7 @@ module.exports = (sequelize, DataTypes) => {
       favorecido_id: { type: DataTypes.INTEGER, allowNull: true },
       // A chave COPIADA, e nao um apontamento: a do cadastro pode mudar depois, e a medicao tem de
       // dizer para onde o dinheiro foi naquele pagamento. Mesma razao de `valor_previsto` existir.
-      favorecido_chave_pix: { type: DataTypes.STRING(180), allowNull: true },
+      favorecido_chave_pix: { type: DataTypes.TEXT, allowNull: true },
       favorecido_contato: { type: DataTypes.STRING(180), allowNull: true },
       forma_pagamento_id: { type: DataTypes.INTEGER, allowNull: true },
 

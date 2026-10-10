@@ -4,6 +4,7 @@ const {
   sanitizeString
 } = require('../middlewares/validation');
 const { onlyDigits, isValidCpfCnpj, isValidPixDocument } = require('../utils/cpfCnpj');
+const { PIX_TEXTO_MAX, parecePixCopiaCola } = require('../utils/pix');
 const { parseVigenciaContrato } = require('../services/contratoVigenciaEdicao');
 
 function isBlank(value) {
@@ -20,8 +21,9 @@ function parseCpfCnpj(value, fieldName, { required = false } = {}) {
 }
 
 function parsePixDocument(value, type, fieldName = 'Chave PIX', { required = false } = {}) {
-  const parsed = parseOptionalText(value, fieldName, 180, { required });
   const normalizedType = String(type || '').trim().toUpperCase();
+  const copiaCola = normalizedType === 'COPIA_COLA' || (!normalizedType && parecePixCopiaCola(value));
+  const parsed = parseOptionalText(value, fieldName, copiaCola ? PIX_TEXTO_MAX : 180, { required });
   if (parsed && !isValidPixDocument(parsed, normalizedType)) {
     throw new ValidationError(`${fieldName} ${normalizedType} invalida.`);
   }
@@ -479,7 +481,7 @@ function validateCompraQuery(query = {}) {
             valor: parseDecimal(item.valor, `Valor da forma de pagamento ${index + 1}`, { min: 0.01, scale: 2, required: true })
           };
           const favorecidoId = parseInteger(item.favorecido_id, `Favorecido da forma de pagamento ${index + 1}`, { positiveOnly: true });
-          const chavePix = parseOptionalText(item.chave_pix, `Chave PIX da forma de pagamento ${index + 1}`, 255);
+          const chavePix = parseOptionalText(item.chave_pix, `Chave PIX da forma de pagamento ${index + 1}`, PIX_TEXTO_MAX);
           const dadosPagamento = parseOptionalText(item.dados_pagamento, `Dados da forma de pagamento ${index + 1}`, 1500);
 
           if (favorecidoId !== undefined && favorecidoId !== null) formaNormalizada.favorecido_id = favorecidoId;
@@ -494,7 +496,7 @@ function validateCompraQuery(query = {}) {
       tipo_solicitacao_id: parseInteger(body.tipo_solicitacao_id, 'Tipo de solicitacao', { positiveOnly: true }),
       parceiro_id: parseInteger(body.parceiro_id, 'Credor', { positiveOnly: true }),
       favorecido_id: parseInteger(body.favorecido_id, 'Favorecido', { positiveOnly: true }),
-      favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', 255),
+      favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', PIX_TEXTO_MAX),
       necessario_para: parseDateOnly(body.necessario_para, 'Data de vencimento', { required: true }),
       observacoes: parseOptionalText(body.observacoes, 'Observacoes', 5000),
       dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 1500),
@@ -511,7 +513,7 @@ function validateCompraQuery(query = {}) {
       frete_dados_pagamento: parseOptionalText(body.frete_dados_pagamento, 'Dados para pagamento do frete', 1500),
       frete_forma_pagamento_id: parseInteger(body.frete_forma_pagamento_id, 'Forma de pagamento do frete', { positiveOnly: true }),
       frete_favorecido_id: parseInteger(body.frete_favorecido_id, 'Favorecido do frete', { positiveOnly: true }),
-      frete_favorecido_chave_pix: parseOptionalText(body.frete_favorecido_chave_pix, 'Chave PIX do frete', 255),
+      frete_favorecido_chave_pix: parseOptionalText(body.frete_favorecido_chave_pix, 'Chave PIX do frete', PIX_TEXTO_MAX),
       anexos_cabecalho: body.anexos_cabecalho || [],
       itens: body.itens
     };
@@ -1284,7 +1286,7 @@ function validateCompraPedidoPrevisoesBody(body = {}) {
     descricao: parseOptionalText(body.descricao, 'Descricao', 255),
     forma_pagamento_id: parseInteger(body.forma_pagamento_id, 'Forma de pagamento', { required: true }),
     favorecido_pagamento_id: parseInteger(body.favorecido_pagamento_id, 'Favorecido', { required: true }),
-    chave_pix: parseOptionalText(body.chave_pix, 'Chave PIX', 255),
+    chave_pix: parseOptionalText(body.chave_pix, 'Chave PIX', PIX_TEXTO_MAX),
     dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
     boletos: validarBoletos(body.boletos, 'Boletos da compra'),
     comprovacao,
@@ -1299,7 +1301,7 @@ function validateCompraPedidoPrevisoesBody(body = {}) {
         descricao: parseOptionalText(frete?.descricao, `Descricao do frete ${freteIndex + 1}`, 255),
         forma_pagamento_id: parseInteger(frete?.forma_pagamento_id, `Forma de pagamento do frete ${freteIndex + 1}`, { required: true }),
         favorecido_pagamento_id: parseInteger(frete?.favorecido_pagamento_id, `Favorecido do frete ${freteIndex + 1}`, { required: true }),
-        chave_pix: parseOptionalText(frete?.chave_pix, `Chave PIX do frete ${freteIndex + 1}`, 255),
+        chave_pix: parseOptionalText(frete?.chave_pix, `Chave PIX do frete ${freteIndex + 1}`, PIX_TEXTO_MAX),
         dados_pagamento: parseOptionalText(frete?.dados_pagamento, `Dados para pagamento do frete ${freteIndex + 1}`, 2000),
         boletos: validarBoletos(frete?.boletos, `Boletos do frete ${freteIndex + 1}`),
         parcelas: validarParcelas(frete?.parcelas, `o frete ${freteIndex + 1}`)
@@ -1812,7 +1814,7 @@ function validateSolicitacaoCreateBody(body = {}) {
     parceiro_id: parseInteger(body.parceiro_id, 'Parceiro'),
     favorecido_id: parseInteger(body.favorecido_id, 'Favorecido'),
     forma_pagamento_id: parseInteger(body.forma_pagamento_id, 'Forma de pagamento'),
-    favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', 255),
+    favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', PIX_TEXTO_MAX),
     dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
     boleto_anexo_nome: parseOptionalText(body.boleto_anexo_nome, 'Arquivo do boleto', 255),
     despesa_eventual_declaracoes: body.despesa_eventual_declaracoes && typeof body.despesa_eventual_declaracoes === 'object'

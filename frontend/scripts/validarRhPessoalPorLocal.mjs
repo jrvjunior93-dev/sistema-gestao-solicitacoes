@@ -22,6 +22,12 @@ const pessoas = ['Ana QA', 'Beatriz QA', 'Caio QA'].map((nome, index) => ({
   forma_calculo_gerencial: 'MENSAL', pagamento_automatico_40_60: true,
   dias_vinculados: 30, limite_dias_mensais: 30, salario_base: 3000, pix_titulo: { chave_pix: 'pix-qa' }
 }));
+const cadastrosExtras = [
+  { id: 21, nome: 'Inativo obra QA', obra_id: 7, obra: locais[0], status: 'INATIVO' },
+  { id: 22, nome: 'Afastado obra QA', obra_id: 7, obra: locais[0], status: 'AFASTADO' },
+  { id: 23, nome: 'Inativo escritório QA', obra_id: 51, obra: locais[1], status: 'INATIVO' },
+  { id: 24, nome: 'Ativo sem local QA', obra_id: null, status: 'ATIVO' }
+];
 const solicitacao = { id: 55, codigo: 'RHP-55', tipo: 'JORNADA', situacao: 'ABERTA', obra_id: 7,
   obra: locais[0], dados_json: { importacao_id: 19, competencia: '2026-09' }, historicos: [] };
 const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7, obra: locais[0],
@@ -32,7 +38,7 @@ const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7
     ajuste_credito_manual: 0, ajuste_debito_manual: 0, revisao_conferencia: 'qa-' + index,
     detalhes_json: { importacao_ids: [19] } })) };
 const overrides = {
-  getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return window.pessoas.filter(i=>!p.obra_id||i.obra_id===Number(p.obra_id));}`,
+  getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return [...window.pessoas,...window.cadastrosExtras].filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.status||i.status===p.status));}`,
   listarRhSolicitacoes: `async p=>{window.chamadas.push(['solicitacoes',p]);return [window.pedido];}`,
   getRhSolicitacao: `async()=>window.pedido`,
   conferirDocumentacaoRhSolicitacao: `async()=>({exigeConferencia:false,faltando:[],entregues:[]})`,
@@ -56,6 +62,7 @@ const fixture = `import React from 'react';import{createRoot}from'react-dom/clie
   import Page from '/src/pages/RhDpPessoal.jsx';import{ThemeContext,TEMA_PADRAO}from'/src/contexts/ThemeContext.jsx';
   import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import '/src/styles/escala.css';import '/src/styles/responsive-system.css';
   window.locais=${JSON.stringify(locais)};window.pessoas=${JSON.stringify(pessoas)};window.pedido=${JSON.stringify(solicitacao)};
+  window.cadastrosExtras=${JSON.stringify(cadastrosExtras)};
   window.apuracao=${JSON.stringify(apuracao)};window.chamadas=[];window.envios=[];window.compartilhada=new URLSearchParams(location.search).has('compartilhada');
   createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><div className="fx-topbar" style={{position:'fixed',top:0,height:96}}/><main className="layout-main" style={{paddingTop:96}}><Page/></main></ThemeContext.Provider></BrowserRouter>);`;
 let browser;
@@ -103,6 +110,10 @@ try {
   assert.deepEqual(await page.getByRole('tab').allTextContents(), ['Colaboradores', 'Solicitações', 'Transferências entre obras']);
   assert.ok(await page.evaluate(() => window.chamadas.some(c => c[0] === 'minhas' && c[1].escopo === 'TODOS')));
   assert.ok(await page.evaluate(() => window.chamadas.filter(c => c[0] === 'colaboradores').every(c => Number(c[1].obra_id) === 7)));
+  assert.ok(await page.evaluate(() => window.chamadas.filter(c => c[0] === 'colaboradores').every(c => c[1].status === 'ATIVO')));
+  for (const nome of ['Caio QA', ...cadastrosExtras.map(item => item.nome)]) {
+    assert.equal(await page.getByText(nome, { exact: true }).count(), 0, 'Card da obra exclui inativos, afastados e outros locais');
+  }
   await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).click();
   const modal = page.getByRole('dialog', { name: 'Solicitar pagamento', exact: true });
   if (gerencial) {
@@ -149,8 +160,19 @@ try {
   await page.getByRole('button', { name: 'Abrir Escritório QA', exact: true }).click();
   await page.getByRole('button', { name: 'Solicitar pagamento: Caio QA', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).count(), 0);
+  assert.equal(await page.getByText('Inativo escritório QA', { exact: true }).count(), 0);
   await page.getByRole('tab', { name: 'Solicitações', exact: true }).click();
   await page.getByText('Nenhuma solicitação neste filtro.').waitFor();
+  const cadastroGlobal = await abrir('?dp=1&aba=colaboradores');
+  await cadastroGlobal.getByText('Inativo obra QA', { exact: true }).waitFor();
+  for (const item of cadastrosExtras) await cadastroGlobal.getByText(item.nome, { exact: true }).waitFor();
+  assert.ok(await cadastroGlobal.evaluate(() => window.chamadas.filter(c => c[0] === 'colaboradores').every(c => !c[1].status)),
+    'Cadastro geral do DP preserva consulta a inativos, afastados e sem local');
+  const semAtivos = await abrir('?local_id=7&aba=colaboradores');
+  await semAtivos.getByText('Ana QA', { exact: true }).waitFor();
+  await semAtivos.evaluate(() => window.pessoas.filter(item => item.obra_id === 7).forEach(item => { item.status = 'INATIVO'; }));
+  await semAtivos.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await semAtivos.getByText('Nenhum colaborador nesta obra.', { exact: true }).waitFor();
   const dp = await abrir('?dp=1');
   await dp.getByRole('button', { name: 'Abrir: solicitação #55', exact: true }).click();
   const detalhe = dp.getByRole('dialog', { name: 'Jornada RHP-55', exact: true });
@@ -181,6 +203,7 @@ try {
   const mobile = await abrir('', 390);
   await mobile.getByRole('button', { name: 'Abrir Escritório QA', exact: true }).click();
   await mobile.getByRole('button', { name: 'Solicitar pagamento: Caio QA', exact: true }).waitFor();
+  assert.equal(await mobile.getByText('Inativo escritório QA', { exact: true }).count(), 0);
   const readonly = await abrir('?readonly=1');
   await readonly.getByRole('button', { name: 'Abrir Obra QA', exact: true }).click();
   await readonly.getByText('Ana QA', { exact: true }).waitFor();
@@ -188,7 +211,7 @@ try {
   await page.screenshot({ path: path.join(output, `local-${gerencial ? 'gerencial' : etapas ? 'etapas' : 'legado'}.png`), fullPage: true });
   await dp.screenshot({ path: path.join(output, 'dp-modal.png'), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('Pessoal por local: obras/centros, tres abas, pagamento individual/coletivo, permissoes, celular e conferencia/fechamento no modal validados (' + (gerencial ? 'gerencial' : etapas ? 'etapas' : 'legado') + ').');
+  console.log('Pessoal por local: ativos no vinculo atual, cadastro global preservado, obras/centros, tres abas, pagamento individual/coletivo, permissoes, celular e conferencia/fechamento no modal validados (' + (gerencial ? 'gerencial' : etapas ? 'etapas' : 'legado') + ').');
 } catch (error) {
   console.error('Erros JavaScript da fixture:', errors);
   for (const page of pages) if (!page.isClosed()) console.error('Tela:', page.url(), (await page.locator('body').innerText()).slice(0, 3000));

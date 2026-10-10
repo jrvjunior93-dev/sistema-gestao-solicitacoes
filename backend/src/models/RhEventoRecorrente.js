@@ -27,7 +27,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
     beneficiario_agencia: { type: DataTypes.STRING(30), allowNull: true },
     beneficiario_conta: { type: DataTypes.STRING(40), allowNull: true },
     beneficiario_tipo_conta: { type: DataTypes.STRING(30), allowNull: true },
-    beneficiario_chave_pix: { type: DataTypes.STRING(120), allowNull: true },
+    beneficiario_chave_pix: { type: DataTypes.TEXT, allowNull: true },
     ativo: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     solicitacao_id: { type: DataTypes.INTEGER, allowNull: true },
     observacoes: { type: DataTypes.TEXT, allowNull: true },

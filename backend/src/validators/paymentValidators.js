@@ -1,5 +1,6 @@
 const { ensureAllowedKeys, sanitizeString, ValidationError } = require('../middlewares/validation');
 const { onlyDigits, isValidCnpj, isValidCpfCnpj, isValidPixDocument } = require('../utils/cpfCnpj');
+const { PIX_TIPOS_CHAVE, PIX_TEXTO_MAX } = require('../utils/pix');
 
 function isBlank(value) {
   return value == null || String(value).trim() === '';
@@ -95,8 +96,8 @@ function validatePaymentBeneficiaryCreateBody(payload = {}) {
     'ativo'
   ], 'Favorecido bancario');
 
-  const pixTipoChave = parseEnum(payload.pix_tipo_chave, 'Tipo de chave PIX', ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'], { required: true });
-  let pixChave = sanitizeString(payload.pix_chave, 'Chave PIX', { required: true, max: 180 });
+  const pixTipoChave = parseEnum(payload.pix_tipo_chave, 'Tipo de chave PIX', PIX_TIPOS_CHAVE, { required: true });
+  let pixChave = sanitizeString(payload.pix_chave, 'Chave PIX', { required: true, max: pixTipoChave === 'COPIA_COLA' ? PIX_TEXTO_MAX : 180 });
   if (!isValidPixDocument(pixChave, pixTipoChave)) {
     throw new ValidationError(`Chave PIX ${pixTipoChave} invalida.`);
   }

@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { parecePixCopiaCola } = require('../utils/pix');
 const {
   Obra,
   Parceiro,
@@ -478,6 +479,7 @@ function inferTipoPessoaParceiro(documento) {
 function inferPixTipoChave(chavePix, documentoFallback) {
   const raw = String(chavePix || '').trim();
   if (!raw) return null;
+  if (parecePixCopiaCola(raw)) return 'COPIA_COLA';
   if (raw.includes('@')) return 'EMAIL';
 
   const digits = normalizeDigits(raw);
@@ -969,10 +971,10 @@ async function listarColaboradoresRh(filters = {}) {
   if (filters.empresa_grupo_id) {
     where.empresa_grupo_id = filters.empresa_grupo_id;
   }
-  if (Array.isArray(obraIdsPermitidas)) {
+  if (filters.obra_id) {
+    where.obra_id = Number(filters.obra_id);
+  } else if (Array.isArray(obraIdsPermitidas)) {
     where.obra_id = { [Op.in]: obraIdsPermitidas };
-  } else if (filters.obra_id) {
-    where.obra_id = filters.obra_id;
   }
   if (filters.setor_id) {
     where.setor_id = filters.setor_id;
