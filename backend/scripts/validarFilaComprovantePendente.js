@@ -118,6 +118,22 @@ function reset(status = 'BAIXADO', movimento = 10) {
 }
 const financial = row => JSON.stringify([row.status, row.movimento_financeiro_id, row.valor_informado, row.data_baixa, row.conta_bancaria_id, row.titulo]);
 async function main() {
+  // Encargos atuais do titulo valem para filas antigas ainda nao baixadas.
+  reset('PENDENTE', null);
+  rows[0].valor_informado = null; rows[0].juros = 0; rows[0].multa = 0;
+  Object.assign(rows[0].titulo, { status: 'ABERTO', valor_saldo: 200, valor_baixado: 0, juros: 10, multa: 3 });
+  let queueListing = await fila.listarFilaPagamentos(req, { status: 'PENDENTE' });
+  assert.equal(queueListing.data[0].juros, 10); assert.equal(queueListing.data[0].multa, 3);
+  assert.equal(rows[0].juros, 0, 'Projecao nao reescreve fila');
+  rows[0].titulo.valor_baixado = 100;
+  queueListing = await fila.listarFilaPagamentos(req, { status: 'PENDENTE' });
+  assert.equal(queueListing.data[0].juros, 0); assert.equal(queueListing.data[0].multa, 0, 'Nao repetir encargos apos baixa parcial');
+  rows[0].status = 'BAIXADO'; rows[0].movimento_financeiro_id = 10; rows[0].juros = 7; rows[0].multa = 2;
+  queueListing = await fila.listarFilaPagamentos(req, { status: 'BAIXADO' });
+  assert.equal(queueListing.data[0].juros, 7); assert.equal(queueListing.data[0].multa, 2, 'Baixas preservam snapshot');
+  rows[0].status = 'DIVERGENTE'; rows[0].movimento_financeiro_id = null;
+  queueListing = await fila.listarFilaPagamentos(req, { status: 'DIVERGENTE' });
+  assert.equal(queueListing.data[0].juros, 7); assert.equal(queueListing.data[0].multa, 2, 'Divergencia preserva encargos informados na tentativa de baixa');
   assert.equal(validateManualPaymentQueueQuery({ status: 'PENDENTE_COMPROVANTE' }).status, 'PENDENTE_COMPROVANTE');
   for (const status of ['BAIXADO', 'DIVERGENTE', 'RESOLVIDO']) {
     reset(status); assert(domain.pendenteComprovanteFila(rows[0]));
@@ -279,6 +295,22 @@ async function main() {
   assert.equal(await Queue.count({ where: domain.wherePendenteComprovante(), include: [{ model: Title, as: 'titulo', required: true, attributes: [] }] }), 3);
   assert.match(generated, /INNER JOIN/); assert.match(generated, /`movimento_financeiro_id` > 0/);
   assert.match(generated, /`comprovante_hash` IS NULL/); assert.match(generated, /`comprovante_url` = ''/);
-  console.log('OK: filtro/count MySQL; historico/anexos na baixa e no upload tardio individual/importado, total/parcial, replay, remocao e rollback. Banco/S3/PDF isolados.');
+  // Lote com encargos: erro na segunda linha desfaz tambem a primeira.
+  reset('PENDENTE', null); allowSettlement = true;
+  Object.assign(rows[0], { valor_informado: null, juros: 0, multa: 0 });
+  Object.assign(rows[0].titulo, { status: 'ABERTO', valor_saldo: 200, valor_baixado: 0, juros: 10, multa: 3 });
+  rows.push(record({ ...rows[0], id: 2, titulo_financeiro_id: 101,
+    titulo: { ...rows[0].titulo, id: 101, codigo: 'TIT-QA-2' } }));
+  const batch = { idempotency_key: 'qa-bulk-encargos', itens: [1,2].map(fila_id => ({
+    fila_id, conta_bancaria_id: 5, valor_pago: 213, juros: 10, multa: 3, data_baixa: '2026-10-11'
+  })) };
+  await assert.rejects(fila.registrarBaixasFila(req, { ...batch,
+    itens: [batch.itens[0], { ...batch.itens[1], valor_pago: 13 }] }), /maior que a soma/);
+  assert.equal(settlements, 0); assert(rows.every(row => row.status === 'PENDENTE' && row.titulo.valor_saldo === 200));
+  const massResult = await fila.registrarBaixasFila(req, batch);
+  assert.equal(massResult.baixados, 2); assert.equal(settlements, 2);
+  assert(rows.every(row => row.juros === 10 && row.multa === 3 && row.valor_informado === 213 && row.titulo.valor_saldo === 0));
+  await fila.registrarBaixasFila(req, batch); assert.equal(settlements, 2, 'Replay nao registra novas baixas');
+  console.log('OK: filtro/count MySQL; historico/anexos na baixa e upload tardio, encargos atuais/partial/snapshot, baixa em massa com encargos, replay e rollback atomico. Banco/S3/PDF isolados.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

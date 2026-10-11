@@ -4,6 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import tailwindcss from 'tailwindcss';
+import autoprefixer from 'autoprefixer';
+import tailwindConfig from '../tailwind.config.js';
+import { validarColunasFila } from './filaColunasQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -14,6 +18,7 @@ const forms = [
 const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   resolveId(source, importer) {
     if (source.endsWith('/ThemeContext')) return stub + 'tema';
+    if (importer?.endsWith('/PreferenciasContext.jsx') && source === './AuthContext') return stub + 'auth';
     if (importer?.endsWith('/ArquivosSolicitacaoFilaModal.jsx') && source === '../../services/financeiro') return stub + 'api';
     if (!importer?.endsWith('/FinanceiroFilaPagamentos.jsx')) return;
     if (source === '../contexts/AuthContext') return stub + 'auth';
@@ -23,7 +28,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   },
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
-    if (id === stub + 'auth') return `export const useAuth=()=>({user:{id:1}});`;
+    if (id === stub + 'auth') return `export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
     if (id === stub + 'permissoes') return `export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=()=>true,canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>true;`;
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
@@ -33,6 +38,14 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
+        if(new URLSearchParams(location.search).has('massa')) {
+          const items=Array.from({length:32},(_,i)=>({...row,id:i+1,juros:10,multa:3,
+            status:i===30?'BAIXADO':i===31?'EM_EDICAO':'PENDENTE',
+            movimento_financeiro_id:i===30?90:null,
+            titulo:{...row.titulo,id:i+1,codigo:'TIT-MASSA-'+(i+1),forma_pagamento_id:3,
+              obra:{id:3,codigo:'CC-3',nome:'Centro de custo QA'},valor_saldo:200}}));
+          return {data:items,resumo:{PENDENTE:30,BAIXADO:1}};
+        }
         if(new URLSearchParams(location.search).has('edicao')){row.status='EM_EDICAO';row.titulo.origem_titulo='RH_DP';row.titulo.status_interno_pagar='EM EDICAO DP';row.motivo='Revisao solicitada pelo DP';}
         const rh=new URLSearchParams(location.search).get('rh');
         if(rh){row.titulo.paymentBeneficiary={nome:'Responsavel RH',cpf_cnpj:'52998224725',metodo_preferencial:rh==='pix'?'PIX_CHAVE':'CONTA_BANCARIA',pix_tipo_chave:rh==='pix'?'EMAIL':'DADOS_BANCARIOS',pix_chave:rh==='pix'?'responsavel@example.test':'104:1234:23456',banco_codigo:'104',agencia:'1234',conta:'23456'};row.titulo.observacoes='Solicitacao RH: RH-24\\nReembolsos de vale:\\nAna QA: R$ 100,00\\nBruno QA: R$ 50,00';}
@@ -47,13 +60,15 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   },
   configureServer(server) { server.middlewares.use('/qa-fila', async (_, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.end(await server.transformIndexHtml('/qa-fila', `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root" style="padding:12px;min-width:0"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';import Page from '/src/pages/FinanceiroFilaPagamentos.jsx';import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/escala.css';import '/src/styles/componentes-padrao.css';import '/src/styles/responsive-system.css';window.__settles=[];window.__alerts=[];window.__uploads=0;window.__receiptScenario=new URLSearchParams(location.search).has('receipt');window.__readOnly=new URLSearchParams(location.search).has('readonly');window.__paid=window.__readOnly;createRoot(document.getElementById('root')).render(React.createElement(BrowserRouter,null,React.createElement(Page)));</script></body></html>`));
+    res.end(await server.transformIndexHtml('/qa-fila', `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root" style="padding:12px;min-width:0"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';import{PreferenciasProvider}from'/src/contexts/PreferenciasContext.jsx';import Page from '/src/pages/FinanceiroFilaPagamentos.jsx';import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/escala.css';import '/src/styles/componentes-padrao.css';import '/src/styles/responsive-system.css';window.__settles=[];window.__alerts=[];window.__uploads=0;window.__receiptScenario=new URLSearchParams(location.search).has('receipt');window.__readOnly=new URLSearchParams(location.search).has('readonly');window.__paid=window.__readOnly;const tela=React.createElement(BrowserRouter,null,React.createElement(Page));createRoot(document.getElementById('root')).render(new URLSearchParams(location.search).has('preferencias')?React.createElement(PreferenciasProvider,null,tela):tela);</script></body></html>`));
   }); }
 };
-const server = await createServer({ root, plugins: [plugin], server: { host: '127.0.0.1', port: 5308, strictPort: true, proxy: {} } });
+const server = await createServer({ root, cacheDir: path.join(root,'../outputs/fila-qa-cache'), plugins: [plugin],
+  css:{postcss:{plugins:[tailwindcss({...tailwindConfig,content:[path.join(root,'src/**/*.{js,jsx,ts,tsx}')]}),autoprefixer()]}},
+  server: { host: '127.0.0.1', port: 5308, strictPort: true, proxy: {} } });
 await server.listen(); let browser;
 try {
-  browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}) });
+  browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {channel:'chrome'}) });
   const page = await browser.newPage(); const errors = [], unexpected = [];
   page.on('pageerror', e => { errors.push(e.message); console.error('Erro da tela QA:', e.message); });
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
@@ -243,6 +258,54 @@ try {
     await page.screenshot({path:path.join(root,`../outputs/fila-edicao-dp-${width}.png`),fullPage:true});
   }
   assert.equal(await page.evaluate(()=>window.__settles.length),0);
+  for(const width of [1366,390]) {
+    await page.setViewportSize({width,height:900});
+    await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&status=TODOS');
+    const selectAll=page.getByLabel('Selecionar todos os elegíveis desta lista',{exact:true});
+    await selectAll.waitFor();
+    await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).check();
+    assert(await selectAll.evaluate(el=>el.indeterminate));
+    await selectAll.check();
+    assert.equal(await page.locator('tbody input[type="checkbox"]:checked').count(),30);
+    assert(await page.getByLabel('Selecionar TIT-MASSA-31',{exact:true}).isDisabled());
+    assert(await page.getByLabel('Selecionar TIT-MASSA-32',{exact:true}).isDisabled());
+    await page.getByRole('button',{name:'Baixa em massa (30)',exact:true}).evaluate(button=>{button.click();button.click();});
+    await page.waitForFunction(()=>window.__settles.length===1);
+    const bulk=await page.evaluate(()=>window.__settles[0]);
+    assert(bulk.key); assert.equal(bulk.itens.length,30);
+    assert(bulk.itens.every(item=>item.valor_pago===213 && item.juros===10 && item.multa===3));
+    assert.equal(await page.locator('th[data-coluna="local"]').count(),1);
+    assert((await page.locator('th[data-coluna="local"]').textContent()).includes('Obra / Centro de Custo'));
+    assert.equal(await page.getByText('CC-3 · Centro de custo QA',{exact:true}).count(),32);
+    const opener=page.getByRole('button',{name:'Abrir arquivos de SOL-QA',exact:true}).nth(20);
+    await opener.scrollIntoViewIfNeeded();
+    for(const close of ['button','Escape']) {
+      await page.evaluate(()=>{document.querySelector('.resizable-table-scroll').scrollLeft=12;});
+      const before=await page.evaluate(()=>({y:scrollY,x:document.querySelector('.resizable-table-scroll').scrollLeft}));
+      await opener.click();
+      const modal=page.getByRole('dialog',{name:'Arquivos da solicitação SOL-QA',exact:true});
+      await modal.waitFor();
+      const position=await page.evaluate(()=>({y:scrollY,x:document.querySelector('.resizable-table-scroll').scrollLeft}));
+      assert(Math.abs(position.y-before.y)<2 && Math.abs(position.x-before.x)<2,'Abrir tambem preserva a posicao');
+      assert(position.x>0,'Exercita rolagem horizontal');
+      assert(position.y>300,'Fixture exercita rolagem longa');
+      // Simula perda de posicao enquanto o modal esta aberto.
+      await page.evaluate(()=>{window.scrollTo(0,0);document.querySelector('.resizable-table-scroll').scrollLeft=0;});
+      if(close==='Escape') await page.keyboard.press('Escape');
+      else await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+      await modal.waitFor({state:'detached'});
+      await page.waitForFunction(p=>Math.abs(scrollY-p.y)<2 && Math.abs(document.querySelector('.resizable-table-scroll').scrollLeft-p.x)<2,position);
+      assert.equal(await page.evaluate(()=>window.__settles.length),1,'Consultar arquivos nao registra nova baixa');
+    }
+    await page.evaluate(()=>{window.scrollTo(0,0);document.querySelector('.resizable-table-scroll').scrollLeft=0;});
+    await page.screenshot({path:path.join(root,`../outputs/fila-massa-${width}.png`)});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  }
+  await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&readonly=1&status=TODOS');
+  await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).waitFor();
+  assert(await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).isDisabled());
+  assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0,'Sem permissao nao ha baixa em massa');
+  await validarColunasFila(browser);
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('OK: fila real, colunas separadas de juros/multa, total e atualizacao de saldo/encargos preservando valor manual, instrumentos, modal cheque, conta limpa, icones, baixa sem PDF e anexo posterior sem segunda baixa. APIs isoladas.');
+  console.log('OK: fila real, local, selecao parcial/todos elegiveis, baixa em massa com juros/multa e duplo clique, rolagem vertical/horizontal no fechamento/Esc desktop/mobile, instrumentos e baixa sem PDF. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

@@ -21,7 +21,7 @@ import useEnvioTitulosPagamento from '../../hooks/useEnvioTitulosPagamento';
 import { tituloElegivelParaEnvioPagamento as elegivelParaFila, titulosParaEnvioComContrato } from '../../utils/envioTitulosPagamento';
 import { Link } from 'react-router-dom';
 import { buscarParceiroPorId, buscarParceiros } from '../../services/parceiros';
-import { cadastrarCredorSolicitacao, updateCredorSolicitacao } from '../../services/solicitacoes';
+import { cadastrarCredorSolicitacao, updateCredorSolicitacao, getLinkSeguroAnexoSolicitacao } from '../../services/solicitacoes';
 import { getEmpresasGrupo } from '../../services/empresasGrupo';
 import { getObras } from '../../services/obras';
 import {
@@ -41,7 +41,7 @@ import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanc
 import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, hasPermissao } from '../../utils/acessoProduto';
-import { listarComprovantesFila } from '../../utils/comprovantesFila';
+import ComprovantesTituloSolicitacao from '../../components/financeiro/ComprovantesTituloSolicitacao';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -1288,9 +1288,11 @@ export default function FinanceiroCard({
     autorizacaoDisponivel, confirmar, avisar, aoAtualizar: atualizarAposMedicaoOuEnvio
   });
 
-  async function abrirComprovante(filaId, comprovanteId) {
+  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao) {
     try {
-      const resposta = await getComprovanteFilaPagamento(filaId, comprovanteId);
+      const resposta = caminhoSolicitacao
+        ? { url: await getLinkSeguroAnexoSolicitacao(caminhoSolicitacao) }
+        : await getComprovanteFilaPagamento(filaId, comprovanteId);
       const link = document.createElement('a');
       link.href = resposta.url;
       link.target = '_blank';
@@ -2432,21 +2434,7 @@ export default function FinanceiroCard({
       id: 'comprovante',
       titulo: 'Comprovante',
       tipo: 'acao',
-      render: (titulo) => {
-        const comprovantes = (titulo.filaPagamentosManuais || []).flatMap(listarComprovantesFila);
-        return comprovantes.length ? (
-          <div className="flex max-w-60 flex-col items-start gap-1">
-            {comprovantes.map((comprovante) => (
-              <button key={`${comprovante.filaId}-${comprovante.id || 'legado'}`}
-                type="button" className="btn btn-outline btn-sm max-w-full truncate"
-                title={comprovante.nome}
-                onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
-                {comprovante.nome}
-              </button>
-            ))}
-          </div>
-        ) : <span className="text-[var(--c-muted)]">Pendente</span>;
-      }
+      render: (titulo) => <ComprovantesTituloSolicitacao titulo={titulo} onAbrir={abrirComprovante} />
     },
     {
       id: 'saldo',

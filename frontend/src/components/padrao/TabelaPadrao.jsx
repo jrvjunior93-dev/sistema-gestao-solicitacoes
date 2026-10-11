@@ -550,7 +550,7 @@ const acimaDaPagina = (no) => {
   return false;
 };
 
-function PainelColunas({ colunas, visiveis, ordem, aoAlternar, aoMover, aoReordenar, aoRestaurar }) {
+export function PainelColunas({ colunas, visiveis, ordem, aoAlternar, aoMover, aoReordenar, aoRestaurar }) {
   const [aberto, setAberto] = useState(false);
   // Id do item que a alça liberou para arrasto, e id do item sob o ponteiro.
   const [arrastando, setArrastando] = useState(null);

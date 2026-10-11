@@ -1,5 +1,47 @@
 # Ownership Ativo
 
+## Publicacao Fila de Pagamentos - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; conferencia local concluida,
+  ownership liberado para publicacao autorizada.
+- Reserva: pendencias de fila/local/massa/comprovantes, colunas por usuario,
+  testes e documentacao associados. outputs/ preservado fora do Git.
+- Sem main, EC2, reinicio, migrations aplicadas ou acesso a banco real.
+- Revalidados: preferencias por usuario, encargos, anexos, query/ORM e permissao,
+  UI da fila/colunas/baixa em massa/rolagem, renderer de comprovantes, sintaxe,
+  diff e build. Origem do arquivo SOL-6278.pdf em producao ainda nao conferida.
+
+## Fila - colunas por usuario - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado.
+- Reserva: FinanceiroFilaPagamentos.jsx, export nomeado de PainelColunas em
+  TabelaPadrao.jsx, novo hook/componente de colunas para tabelas operacionais,
+  testes de fila/preferencias e documentacao financeira/handoff desta tarefa.
+- Reutiliza PreferenciasContext/endpoints existentes; sem novas regras de baixa,
+  banco real, migration, commit/push, main ou deploy. Preserva pendencias anteriores.
+- Validacoes: fila/painel/contexto reais em browser com APIs em memoria,
+  preferencias/seguranca por usuario no backend sem banco, build e diff.
+- Handoff: docs/handoffs/2026-10-11-fila-colunas-usuario.md.
+
+## Fila - selecao, local, rolagem e comprovantes - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado. Origem do arquivo em producao ainda
+  depende da conferencia somente leitura no ambiente real.
+- Reserva: FinanceiroFilaPagamentos.jsx, SolicitacaoDetalhe/FinanceiroCard.jsx,
+  componente financeiro ComprovantesTituloSolicitacao.jsx,
+  novo hook useRolagemModal.js, pagamentoManualFilaService.js,
+  tituloFinanceiroService.js, testes isolados e diagnostico somente leitura
+  correspondentes, documentacao/handoff desta tarefa.
+- Escopo: baixa em massa explicita somente de pendentes elegiveis, coluna local,
+  preservacao de rolagem no modal, encargos atuais e comprovantes de fila/solicitacao.
+- Sem commit, push, main, deploy, migration ou dados reais. outputs/ preservado.
+- Testes de query/ORM, encargos/lote atomico/replay, anexos/acesso/remocao,
+  UI da fila/coluna em 1366px e 390px, build, sintaxe e diff aprovados.
+- Handoff: docs/handoffs/2026-10-11-fila-local-massa-comprovantes.md.
+
 ## Publicacao Admissao - contatos visiveis - 2026-10-11
 
 - Usuario autorizou commit e push somente na refactor/frontend.

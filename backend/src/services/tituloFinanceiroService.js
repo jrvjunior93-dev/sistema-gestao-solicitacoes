@@ -2676,6 +2676,9 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     }];
   }
 
+  // O include geral filtra a fila ativa. Nao repetir o alias: Sequelize mescla
+  // includes iguais e pode manter esse where, ocultando comprovantes das baixas.
+  consulta.include = consulta.include.filter((item) => item.as !== 'filaPagamentosManuais');
   consulta.include.push({
     model: require('../models').PagamentoManualFilaItem,
     as: 'filaPagamentosManuais',
@@ -2691,7 +2694,16 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     order: [['id', 'DESC']]
   });
 
-  return require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
+  const titulos = await require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
+  // Importacao pelo nome SOL-xxxx vincula a solicitacao, nao um titulo especifico.
+  // Nao cria vinculos nem altera baixa/historico; o frontend identifica essa origem.
+  const comprovantes = await require('../models').Comprovante.findAll({
+    where: { solicitacao_id: solicitacao.id, deleted_at: null, status: 'VINCULADO' },
+    attributes: ['id', 'nome_original', 'caminho_arquivo', 'createdAt'],
+    order: [['id', 'ASC']]
+  });
+  const documentos = comprovantes.map((item) => item.toJSON());
+  return titulos.map((titulo) => ({ ...(titulo.toJSON ? titulo.toJSON() : titulo), comprovantesSolicitacao: documentos }));
 }
 
 async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {

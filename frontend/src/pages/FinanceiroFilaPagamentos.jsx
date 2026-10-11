@@ -37,6 +37,8 @@ import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolic
 import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
+import useRolagemModal from '../hooks/useRolagemModal';
+import useColunasOperacionais, { LinhaColunasOperacionais } from '../hooks/useColunasOperacionais';
 import {
   Avisos,
   BlocoConteudo,
@@ -81,21 +83,22 @@ const RECEIPT_PREVIEW_COLUMNS = [
 ];
 
 const PAYMENT_QUEUE_COLUMNS = [
-  { key: 'selecao', size: 'selection' },
-  { key: 'titulo', size: 'wider' },
-  { key: 'credor', size: 'wide' },
-  { key: 'dados', size: 'wide' },
-  { key: 'vencimento', size: 'compact' },
-  { key: 'saldo', size: 'standard' },
-  { key: 'data', size: 'standard' },
-  { key: 'conta', size: 'wide' },
-  { key: 'instrumento', size: 'wider' },
-  { key: 'empresa', size: 'standard' },
-  { key: 'juros', size: 'compact' },
-  { key: 'multa', size: 'compact' },
-  { key: 'valor', size: 'standard' },
-  { key: 'justificativa', size: 'wider' },
-  { key: 'acoes', size: 'wider' }
+  { key: 'selecao', titulo: 'Seleção', size: 'selection', sempreVisivel: true },
+  { key: 'titulo', titulo: 'Título / documento', size: 'wider', sempreVisivel: true },
+  { key: 'local', titulo: 'Obra / Centro de Custo', size: 'wide' },
+  { key: 'credor', titulo: 'Credor / favorecido', size: 'wide' },
+  { key: 'dados', titulo: 'Dados para pagamento', size: 'wide' },
+  { key: 'vencimento', titulo: 'Vencimento', size: 'compact' },
+  { key: 'saldo', titulo: 'Previsto / saldo', size: 'standard' },
+  { key: 'data', titulo: 'Data da baixa', size: 'standard' },
+  { key: 'conta', titulo: 'Conta pagadora', size: 'wide' },
+  { key: 'instrumento', titulo: 'Forma / instrumento', size: 'wider' },
+  { key: 'empresa', titulo: 'Empresa', size: 'standard' },
+  { key: 'juros', titulo: 'Juros (R$)', size: 'compact' },
+  { key: 'multa', titulo: 'Multa (R$)', size: 'compact' },
+  { key: 'valor', titulo: 'Valor pago', size: 'standard' },
+  { key: 'justificativa', titulo: 'Motivo / justificativa', size: 'wider' },
+  { key: 'acoes', titulo: 'Status / ações', size: 'wider', sempreVisivel: true }
 ];
 
 function splitIntoBatches(items, size = RECEIPT_BATCH_SIZE) {
@@ -585,6 +588,8 @@ export default function FinanceiroFilaPagamentos() {
   const [erroBaixa, setErroBaixa] = useState(null);
   const [comprovantesOpen, setComprovantesOpen] = useState(false);
   const [solicitacaoArquivos, setSolicitacaoArquivos] = useState(null);
+  const guardarRolagemArquivos = useRolagemModal(Boolean(solicitacaoArquivos));
+  const colunasConfiguradas = useColunasOperacionais(PAYMENT_QUEUE_COLUMNS, 'financeiro-fila-pagamentos');
 
   const canSettle = canBaixarFilaPagamentos(user);
   const canOpenTitle = hasPermissao(user, 'financeiro.titulos.visualizar');
@@ -689,11 +694,11 @@ export default function FinanceiroFilaPagamentos() {
     for (const row of targetRows) {
       const draft = drafts[row.id] || {};
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
-      if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id };
+      if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
       const tipo = tipoInstrumentoFila(forma);
-      if (tipo === 'CARTAO' && !draft.cartao_id) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id };
+      if (tipo === 'CARTAO' && !draft.cartao_id) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id, campo: 'forma_pagamento_id' };
       if (tipo === 'CHEQUE' && (draft.usar_cheque_terceiro ? !draft.cheque_terceiro_id : (!draft.cheque_numero || !draft.cheque_emitente))) {
-        return { mensagem: 'Informe o cheque usado no pagamento.', correcao: 'Selecione um cheque da carteira ou preencha número e emitente do cheque próprio.', filaId: row.id };
+        return { mensagem: 'Informe o cheque usado no pagamento.', correcao: 'Selecione um cheque da carteira ou preencha número e emitente do cheque próprio.', filaId: row.id, campo: 'forma_pagamento_id' };
       }
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
       if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
@@ -752,7 +757,13 @@ export default function FinanceiroFilaPagamentos() {
       ? `[data-fila-id="${erroBaixa.filaId}"][data-fila-campo="${erroBaixa.campo}"]`
       : '';
     setErroBaixa(null);
-    if (alvo) requestAnimationFrame(() => document.querySelector(alvo)?.focus());
+    const colunaErro = { conta_bancaria_id: 'conta', valor_pago: 'valor', motivo: 'justificativa',
+      data_baixa: 'data', juros: 'juros', multa: 'multa', forma_pagamento_id: 'instrumento',
+      cartao_id: 'instrumento', cheque_terceiro_id: 'instrumento', numero_cheque: 'instrumento' }[erroBaixa?.campo];
+    if (colunaErro) colunasConfiguradas.mostrar(colunaErro);
+    const filaId = erroBaixa?.filaId;
+    if (alvo) requestAnimationFrame(() => (document.querySelector(alvo) ||
+      document.querySelector(`[data-fila-linha="${filaId}"] [data-coluna="${colunaErro}"] select`))?.focus());
   }
 
   async function settle(targetRows) {
@@ -879,19 +890,22 @@ export default function FinanceiroFilaPagamentos() {
     }
   }
 
-  const pendingRows = useMemo(() => rows.filter((row) => row.status === 'PENDENTE'), [rows]);
+  const pendingRows = useMemo(() => rows.filter((row) => row.status === 'PENDENTE' && !row.somente_consulta
+    && Number(row.id) > 0 && !Number(row.movimento_financeiro_id)), [rows]);
   const divergentRows = useMemo(() => rows.filter((row) => row.status === 'DIVERGENTE'), [rows]);
   const selectableRows = status === 'DIVERGENTE' && canResolve
     ? divergentRows
-    : (status === 'PENDENTE' && canSettle ? pendingRows : []);
+    : (['PENDENTE', 'TODOS'].includes(status) && canSettle ? pendingRows : []);
   const selectedRows = useMemo(
     () => selectableRows.filter((row) => selected.includes(Number(row.id))),
     [selectableRows, selected]
   );
   const approvingDivergences = status === 'DIVERGENTE';
-  const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (status === 'PENDENTE' && canSettle);
+  const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (['PENDENTE', 'TODOS'].includes(status) && canSettle);
   const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'EM_EDICAO', 'TODOS', 'RESOLVIDO'].includes(status);
   const busy = Boolean(actionKey);
+  const colunasOriginais = PAYMENT_QUEUE_COLUMNS.filter(column => showReasonColumn || column.key !== 'justificativa');
+  const colunasVisiveis = colunasConfiguradas.disponiveis(colunasOriginais);
 
   return (
     <Pagina>
@@ -902,9 +916,9 @@ export default function FinanceiroFilaPagamentos() {
         acaoPrincipal={hasBulkAction ? {
           rotulo: busy
             ? 'Processando...'
-            : `${approvingDivergences ? 'Autorizar' : 'Registrar'} selecionados${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
+            : `${approvingDivergences ? 'Autorizar selecionados' : 'Baixa em massa'}${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
           onClick: () => approvingDivergences ? approveDivergences(selectedRows) : settle(selectedRows),
-          desabilitada: busy || selectedRows.length === 0,
+          desabilitada: loading || busy || selectedRows.length === 0,
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
         secundarias={[
@@ -948,6 +962,7 @@ export default function FinanceiroFilaPagamentos() {
         descricao="A empresa é determinada pela conta bancária selecionada; não há escolha separada."
         controles={(
           <div className="flex flex-wrap items-end gap-2">
+            {colunasConfiguradas.painel}
             <label className="text-sm">
               <span className="sr-only">Status</span>
               <select className="input input-sm" value={status} onChange={(event) => applyFilters(event.target.value, appliedSearch)} disabled={busy}>
@@ -962,7 +977,7 @@ export default function FinanceiroFilaPagamentos() {
                 className="input input-sm min-w-0 flex-1"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Título, credor, documento ou obra"
+                placeholder="Título, credor, obra ou centro de custo"
               />
               <button className="btn btn-outline btn-sm" type="submit" title="Pesquisar">
                 <HiOutlineMagnifyingGlass className="h-4 w-4" aria-hidden="true" />
@@ -971,25 +986,37 @@ export default function FinanceiroFilaPagamentos() {
           </div>
         )}
       >
+        {hasBulkAction && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" aria-label="Selecionar todos os elegíveis desta lista"
+              ref={(elemento) => { if (elemento) elemento.indeterminate = selectedRows.length > 0 && selectedRows.length < selectableRows.length; }}
+              checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
+              disabled={loading || busy || !selectableRows.length}
+              onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])} />
+            {approvingDivergences ? 'Todas as divergências desta lista' : 'Todos os pendentes desta lista'}
+          </label>
+          <span className="text-[var(--c-muted)]" role="status">{selectedRows.length} selecionado(s) · {currency(selectedRows.reduce((total, row) => total + Number(drafts[row.id]?.valor_pago || 0), 0))}</span>
+        </div>}
         <div className="min-w-0 rounded-xl border border-[var(--c-border)]">
           <ResizableTable
-            columns={PAYMENT_QUEUE_COLUMNS.filter((column) => showReasonColumn || column.key !== 'justificativa')}
+            columns={colunasVisiveis}
             storageKey="financeiro-fila-pagamentos"
             className="w-full border-collapse text-sm"
             scrollLabel="Tabela da fila de pagamentos"
           >
             <thead className="bg-[var(--ui-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
-              <tr>
+              <LinhaColunasOperacionais cabecalho originais={colunasOriginais} visiveis={colunasVisiveis} configuracao={colunasConfiguradas}>
                 <ResizableTh columnKey="selecao" className="px-3 py-3">
                   <input
                     type="checkbox"
                     aria-label={approvingDivergences ? 'Selecionar todas as divergências' : 'Selecionar todos os títulos pendentes'}
                     checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
                     onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])}
-                    disabled={selectableRows.length === 0 || busy}
+                    disabled={selectableRows.length === 0 || loading || busy}
                   />
                 </ResizableTh>
                 <ResizableTh columnKey="titulo" className="px-3 py-3">Título / documento</ResizableTh>
+                <ResizableTh columnKey="local" className="px-3 py-3">Obra / Centro de Custo</ResizableTh>
                 <ResizableTh columnKey="credor" className="px-3 py-3">Credor / favorecido</ResizableTh>
                 <ResizableTh columnKey="dados" className="px-3 py-3">Dados para pagamento</ResizableTh>
                 <ResizableTh columnKey="vencimento" className="px-3 py-3">Vencimento</ResizableTh>
@@ -1003,13 +1030,13 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="valor" className="px-3 py-3">Valor pago</ResizableTh>
                 {showReasonColumn ? <ResizableTh columnKey="justificativa" className="px-3 py-3">Motivo / justificativa</ResizableTh> : null}
                 <ResizableTh columnKey="acoes" className="px-3 py-3">Status / ações</ResizableTh>
-              </tr>
+              </LinhaColunasOperacionais>
             </thead>
             <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
               {loading ? (
-                <tr><td colSpan={showReasonColumn ? 15 : 14} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
+                <tr><td colSpan={colunasVisiveis.length} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={showReasonColumn ? 15 : 14} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
+                <tr><td colSpan={colunasVisiveis.length} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
                 const title = row.titulo || {};
                 const solicitacaoId = Number(title.solicitacao_id || title.solicitacao?.id);
@@ -1031,16 +1058,18 @@ export default function FinanceiroFilaPagamentos() {
                 const podeAnexarMais = !row.somente_consulta && canSettle && (['PENDENTE', 'DIVERGENTE'].includes(row.status) ||
                   (['BAIXADO', 'RESOLVIDO'].includes(row.status) && (Number(row.movimento_financeiro_id) > 0 || Boolean(row.comprovante_hash))));
                 return (
-                  <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : ['NAO_PAGO', 'EM_EDICAO'].includes(row.status) ? 'bg-[var(--sem-warning-bg)]' : ''}>
+                  <LinhaColunasOperacionais key={row.id} originais={colunasOriginais} visiveis={colunasVisiveis}
+                    data-fila-linha={row.id}
+                    className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : ['NAO_PAGO', 'EM_EDICAO'].includes(row.status) ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
                       <input
                         type="checkbox"
                         aria-label={`Selecionar ${title.codigo || row.id}`}
-                        checked={selected.includes(Number(row.id))}
+                        checked={selectable && selected.includes(Number(row.id))}
                         onChange={(event) => setSelected((current) => event.target.checked
                           ? [...new Set([...current, Number(row.id)])]
                           : current.filter((id) => id !== Number(row.id)))}
-                        disabled={!selectable || busy}
+                        disabled={!selectable || loading || busy}
                       />
                     </td>
                     <td className="px-3 py-3 align-top">
@@ -1057,7 +1086,10 @@ export default function FinanceiroFilaPagamentos() {
                             title={`Abrir solicitação ${solicitacaoVinculada.codigo}`} aria-label={`Abrir solicitação ${solicitacaoVinculada.codigo}`}>
                             <HiOutlineDocumentText className="h-4 w-4" aria-hidden="true" />
                           </Link>
-                          <button type="button" className="btn btn-outline btn-sm btn-icon-only" onClick={() => setSolicitacaoArquivos(solicitacaoVinculada)}
+                          <button type="button" className="btn btn-outline btn-sm btn-icon-only" onClick={(event) => {
+                            guardarRolagemArquivos(event.currentTarget);
+                            setSolicitacaoArquivos(solicitacaoVinculada);
+                          }}
                             title={`Abrir ${solicitacaoVinculada.temBoleto ? 'boleto e arquivos' : 'arquivos'} de ${solicitacaoVinculada.codigo}`}
                             aria-label={`Abrir arquivos de ${solicitacaoVinculada.codigo}`}>
                             <HiOutlineFolderOpen className="h-4 w-4" aria-hidden="true" />
@@ -1098,6 +1130,9 @@ export default function FinanceiroFilaPagamentos() {
                         </label>
                       ) : null}
                       </div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="max-w-60 font-medium" title={title.obra?.nome}>{[title.obra?.codigo, title.obra?.nome].filter(Boolean).join(' · ') || 'Não informado'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-60 font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
@@ -1238,7 +1273,7 @@ export default function FinanceiroFilaPagamentos() {
                         </div>
                       ) : null}
                     </td>
-                  </tr>
+                  </LinhaColunasOperacionais>
                 );
               })}
             </tbody>

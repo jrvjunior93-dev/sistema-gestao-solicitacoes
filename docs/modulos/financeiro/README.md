@@ -1,5 +1,45 @@
 # Modulo FINANCEIRO
 
+## Colunas da fila por usuario - 2026-10-11
+
+- O botao Colunas permite escolher as colunas visiveis e reordenar por arrasto
+  no painel/cabecalho. Setas no painel atendem teclado e celular.
+- Reutiliza preferencias do usuario no servidor, com espelho local e chave
+  `financeiro-fila-pagamentos`, tipo `colunas`. Ordem/visibilidade sao recuperadas
+  na sessao; Restaurar padrao nao apaga larguras ou filtros.
+- Selecao, titulo e status/acoes permanecem visiveis. Ocultar/mover nao apaga
+  valores digitados, nao altera permissoes e nao muda a elegibilidade de baixa.
+  Erros de validacao revelam a coluna necessaria ao voltar para corrigir.
+- Sem migration/backend novo. Teste: `test:fila-instrumentos-ui` e
+  `backend/scripts/validarListaPreferencias.js` (APIs/banco reais nao utilizados).
+  Handoff: `docs/handoffs/2026-10-11-fila-colunas-usuario.md`.
+
+## Fila e comprovantes - 2026-10-11
+
+- Coluna Obra/Centro de Custo usa o local do titulo (catalogo compartilhado),
+  sem mudar rateios, empresa pagadora ou permissoes.
+- Baixa em massa: selecao individual ou todos os pendentes da lista carregada,
+  inclusive no filtro Todos. Limite existente da consulta: 500 entradas; nao
+  inclui registros fora dos filtros, baixados, somente consulta ou em edicao DP.
+  Divergencias continuam na autorizacao separada. Mesma validacao, transacao e
+  idempotencia da baixa individual, comprovante opcional e encargos separados.
+- Encargos atuais do titulo sao projetados para filas antigas pendentes sem baixa;
+  pagamentos ja executados preservam snapshots. Encargos nao sao repetidos
+  no saldo restante apos pagamento parcial. Edicoes manuais na fila continuam
+  sendo enviadas explicitamente no payload e valores divergentes exigem motivo.
+  Divergencias preservam os encargos informados na tentativa de baixa; edicao
+  posterior do titulo usa a sincronizacao transacional ja existente.
+- Modal de arquivos guarda a rolagem vertical/horizontal da pagina/tabela ao
+  abrir e fechar (botao/Esc), sem alterar o comportamento global dos modais.
+- Financeiro da solicitacao usa apenas um include da fila, sem filtro de ativos:
+  alias duplicado no ORM preservava filtro que podia esconder filas baixadas.
+  Principal e adicionais sao deduplicados por hash na apresentacao existente.
+- Importacao pelo nome SOL-xxxx fica vinculada a solicitacao: arquivos ativos
+  tambem aparecem na coluna, com prefixo Solicitação. Nao presume um vinculo
+  individual ao titulo, nao registra nova baixa e nao muda conciliacao/historico.
+- Diagnostico opt-in: `conferirComprovantesSolicitacao.js --somente-leitura`.
+  Handoff: `docs/handoffs/2026-10-11-fila-local-massa-comprovantes.md`.
+
 ## Papel e propriedade
 
 Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, baixas, estornos, contas bancarias, categorias, conciliacao e calculos de previsto/realizado. Modulos de origem nao podem criar movimentos diretamente.

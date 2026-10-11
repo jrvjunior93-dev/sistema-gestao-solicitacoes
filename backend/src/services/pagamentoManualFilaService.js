@@ -151,6 +151,12 @@ async function listarFilaPagamentos(req, filters = {}) {
     .map((item) => ({ ...item.toJSON(),
       // Leitura tambem cobre filas antigas, sem reescrever historico de pagamentos.
       valor_previsto: filaSemBaixaAtualizavel(item) ? roundCurrency(item.titulo.valor_saldo) : item.valor_previsto,
+      // Filas antigas podem ter sido criadas antes dos encargos do titulo.
+      // Pagamentos executados preservam o snapshot; saldo parcial nao repete encargos.
+      juros: item.status === 'PENDENTE' && filaSemBaixaAtualizavel(item)
+        ? (Number(item.titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(item.titulo.juros)) : item.juros,
+      multa: item.status === 'PENDENTE' && filaSemBaixaAtualizavel(item)
+        ? (Number(item.titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(item.titulo.multa)) : item.multa,
       pendente_comprovante: pendenteComprovanteFila(item) }));
   // Rejeicao e uma decisao, nao um pagamento executavel. Projecao somente leitura:
   // nenhum registro de fila e criado e o id negativo nunca passa no validator de baixa.
