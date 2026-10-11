@@ -39,12 +39,12 @@ const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7
     detalhes_json: { importacao_ids: [19] } })) };
 const overrides = {
   pagamentoRhSolicitacao: `async(path,options={})=>{
-    if(!path){window.pagamento={id:99,codigo:'RH-QA-99',obra_id:options.data.obra_id,situacao:'RASCUNHO',dados_json:{revisao:0,competencia:'2026-10',data_vencimento:'2026-10-15',linhas:window.pessoas.filter(p=>p.obra_id===options.data.obra_id).map(p=>({...p,selecionado:p.id===options.data.colaborador_id,dias:30,faltas:0,acrescimos:0,descontos:0,parcela_40:false,parcela_60:false,conferido_obra:false,conferido_dp:false}))}};}
+    if(!path){const ids=options.data.colaborador_ids||(options.data.colaborador_id?[options.data.colaborador_id]:null);window.pagamento={id:99,codigo:'RH-QA-99',obra_id:options.data.obra_id,situacao:'RASCUNHO',dados_json:{revisao:0,competencia:'2026-10',data_vencimento:'2026-10-15',linhas:window.pessoas.filter(p=>p.obra_id===options.data.obra_id&&(!ids||ids.includes(p.id))).map(p=>({...p,selecionado:Boolean(ids),dias:30,faltas:0,acrescimos:0,descontos:0,parcela_40:false,parcela_60:false,conferido_obra:false,conferido_dp:false}))}};}
     if(options.method==='PUT')window.pagamento.dados_json={...options.data,revisao:options.data.revisao+1};
     if(path.endsWith('/enviar')){window.envios.push({...window.pagamento.dados_json,obra_id:window.pagamento.obra_id});window.pagamento.situacao='ABERTA';}
     return structuredClone({solicitacao:window.pagamento,pode_conferir:false,pode_enviar_fila:false,responsaveis:[],avisos:[]});
   }`,
-  getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return [...window.pessoas,...window.cadastrosExtras].filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.status||i.status===p.status));}`,
+  getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return [...window.pessoas,...window.cadastrosExtras].filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.status||i.status===p.status)&&(!p.q||i.nome.toLowerCase().includes(p.q.toLowerCase())));}`,
   listarRhSolicitacoes: `async p=>{window.chamadas.push(['solicitacoes',p]);return [window.pedido];}`,
   getRhSolicitacao: `async()=>window.pedido`,
   conferirDocumentacaoRhSolicitacao: `async()=>({exigeConferencia:false,faltando:[],entregues:[]})`,
@@ -120,9 +120,12 @@ try {
   for (const nome of ['Caio QA', ...cadastrosExtras.map(item => item.nome)]) {
     assert.equal(await page.getByText(nome, { exact: true }).count(), 0, 'Card da obra exclui inativos, afastados e outros locais');
   }
+  // O botao individual ignora inclusive uma selecao diferente feita na tabela.
+  await page.getByLabel('Selecionar linha 12', { exact: true }).check();
   await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).click();
   const modal = page.getByRole('dialog', { name: 'Solicitar pagamento', exact: true });
   await modal.getByLabel('Dias: Ana QA', { exact: true }).fill('5');
+  assert.equal(await modal.getByLabel('Dias: Beatriz QA', { exact: true }).count(), 0, 'Individual nao carrega outros colaboradores');
   await modal.getByLabel('Conferido: Ana QA', { exact: true }).check();
   await modal.screenshot({ path: path.join(output, 'pagamento-individual-solicitacao.png') });
   await modal.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
@@ -133,6 +136,24 @@ try {
   await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
   await modal.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await modal.getByLabel('Dias: Beatriz QA', { exact: true }).waitFor();
+  assert.equal(await modal.getByLabel('Dias: Ana QA', { exact: true }).count(), 0, 'Botao geral usa somente os marcados');
+  assert.deepEqual(await page.evaluate(() => window.pagamento.dados_json.linhas.map(l => l.colaborador_id)), [12]);
+  await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await modal.waitFor({ state: 'hidden' });
+  await page.getByLabel('Nome, CPF ou matricula', { exact: true }).fill('Ana');
+  await page.getByRole('button', { name: 'Solicitar pagamento: Beatriz QA', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await modal.getByLabel('Dias: Beatriz QA', { exact: true }).waitFor();
+  assert.equal(await modal.getByLabel('Dias: Ana QA', { exact: true }).count(), 0, 'Busca nao perde marcacao oculta');
+  await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await modal.waitFor({ state: 'hidden' });
+  await page.getByLabel('Nome, CPF ou matricula', { exact: true }).fill('');
+  await page.getByLabel('Selecionar linha 12', { exact: true }).waitFor();
+  await page.getByLabel('Selecionar linha 12', { exact: true }).uncheck();
+  await page.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await modal.getByLabel('Dias: Ana QA', { exact: true }).waitFor();
+  assert.equal(await modal.getByLabel('Dias: Beatriz QA', { exact: true }).count(), 1, 'Sem selecao abre todos do local');
   await modal.getByLabel('Selecionar todos', { exact: true }).check();
   await modal.getByLabel('Aplicar aos selecionados').selectOption('conferir');
   await modal.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
@@ -142,20 +163,40 @@ try {
   assert.deepEqual(await page.evaluate(() => window.envios[1].linhas.filter(l => l.selecionado).map(l => l.colaborador_id)), [11, 12]);
   await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
   await modal.waitFor({ state: 'hidden' });
+  await page.getByRole('checkbox', { name: 'Selecionar todos', exact: true }).check();
+  await page.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await modal.getByLabel('Dias: Ana QA', { exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.pagamento.dados_json.linhas.map(l => l.colaborador_id)), [11, 12]);
+  assert.ok(await page.evaluate(() => window.pagamento.dados_json.linhas.every(l => l.selecionado)));
+  await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await modal.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Voltar para Obras', exact: true }).click();
   await page.getByRole('button', { name: 'Abrir Escritório QA', exact: true }).click();
   await page.getByRole('button', { name: 'Solicitar pagamento: Caio QA', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).count(), 0);
   assert.equal(await page.getByText('Inativo escritório QA', { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel('Selecionar linha 13', { exact: true }).isChecked(), false, 'Troca de local limpa selecao');
+  await page.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await modal.getByLabel('Dias: Caio QA', { exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.pagamento.dados_json.linhas.map(l => l.colaborador_id)), [13]);
+  await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await modal.waitFor({ state: 'hidden' });
   await page.getByRole('tab', { name: 'Solicitações', exact: true }).click();
   await page.getByText('Nenhuma solicitação neste filtro.').waitFor();
   const cadastroGlobal = await abrir('?dp=1&aba=colaboradores');
   await cadastroGlobal.getByText('Inativo obra QA', { exact: true }).waitFor();
   for (const item of cadastrosExtras) await cadastroGlobal.getByText(item.nome, { exact: true }).waitFor();
+  for (const item of cadastrosExtras) assert.ok(await cadastroGlobal.getByLabel(`Selecionar linha ${item.id}`, { exact: true }).isDisabled());
+  await cadastroGlobal.getByLabel('Selecionar linha 11', { exact: true }).check();
+  await cadastroGlobal.getByLabel('Selecionar linha 13', { exact: true }).check();
+  await cadastroGlobal.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  await cadastroGlobal.getByText('Selecione colaboradores da mesma obra ou centro de custo para solicitar pagamento.', { exact: true }).waitFor();
+  assert.equal(await cadastroGlobal.getByRole('dialog', { name: 'Solicitar pagamento', exact: true }).count(), 0, 'Nao mistura obras');
   assert.ok(await cadastroGlobal.evaluate(() => window.chamadas.filter(c => c[0] === 'colaboradores').every(c => !c[1].status)),
     'Cadastro geral do DP preserva consulta a inativos, afastados e sem local');
   const semAtivos = await abrir('?local_id=7&aba=colaboradores');
   await semAtivos.getByText('Ana QA', { exact: true }).waitFor();
+  await semAtivos.getByLabel('Selecionar linha 11', { exact: true }).check();
   await semAtivos.evaluate(() => window.pessoas.filter(item => item.obra_id === 7).forEach(item => { item.status = 'INATIVO'; }));
   await semAtivos.getByRole('button', { name: 'Atualizar', exact: true }).click();
   await semAtivos.getByText('Nenhum colaborador nesta obra.', { exact: true }).waitFor();
@@ -190,10 +231,16 @@ try {
   await mobile.getByRole('button', { name: 'Abrir Escritório QA', exact: true }).click();
   await mobile.getByRole('button', { name: 'Solicitar pagamento: Caio QA', exact: true }).waitFor();
   assert.equal(await mobile.getByText('Inativo escritório QA', { exact: true }).count(), 0);
+  await mobile.getByLabel('Selecionar', { exact: true }).check();
+  await mobile.getByRole('button', { name: 'Solicitar pagamento', exact: true }).click();
+  const modalMobile = mobile.getByRole('dialog', { name: 'Solicitar pagamento', exact: true });
+  await modalMobile.getByLabel('Dias: Caio QA', { exact: true }).waitFor();
+  await modalMobile.screenshot({ path: path.join(output, 'pagamento-selecionados-mobile.png') });
   const readonly = await abrir('?readonly=1');
   await readonly.getByRole('button', { name: 'Abrir Obra QA', exact: true }).click();
   await readonly.getByText('Ana QA', { exact: true }).waitFor();
   assert.equal(await readonly.getByRole('button', { name: 'Solicitar pagamento', exact: true }).count(), 0);
+  assert.equal(await readonly.getByLabel('Selecionar linha 11', { exact: true }).count(), 0);
   await page.screenshot({ path: path.join(output, `local-${gerencial ? 'gerencial' : etapas ? 'etapas' : 'legado'}.png`), fullPage: true });
   await dp.screenshot({ path: path.join(output, 'dp-modal.png'), fullPage: true });
   assert.deepEqual(errors, []);

@@ -90,26 +90,47 @@ async function mostrar(req, id) {
 }
 
 async function iniciar(req, payload) {
+  const individual = payload.colaborador_id == null ? null : Number(payload.colaborador_id);
+  const ids = payload.colaborador_ids == null ? (individual == null ? null : [individual])
+    : Array.isArray(payload.colaborador_ids) ? payload.colaborador_ids.map(Number) : [];
+  if ((individual != null && (!Number.isSafeInteger(individual) || individual <= 0))
+    || (ids && (!ids.length || ids.length > 100 || ids.some(id => !Number.isSafeInteger(id) || id <= 0)
+      || new Set(ids).size !== ids.length))
+    || (individual != null && (ids.length !== 1 || ids[0] !== individual))) {
+    throw new ValidationError('Selecao de colaboradores invalida.');
+  }
+  const escopo = ids ? [...ids].sort((a, b) => a - b) : null;
+  const colaboradorId = escopo?.length === 1 ? escopo[0] : null;
   const id = await sequelize.transaction(async transaction => {
     // Lock do local serializa a criacao/reabertura do rascunho do mesmo usuario.
     const obra = await exigirLocal(req.user, Number(payload.obra_id), transaction, true);
-    const existente = await RhSolicitacao.findOne({ where: { obra_id: obra.id, criada_por: req.user.id,
-      tipo: 'JORNADA', subtipo: FLUXO, situacao: 'RASCUNHO',
-      colaborador_id: payload.colaborador_id ? Number(payload.colaborador_id) : null }, transaction });
-    if (existente) return existente.id;
     const lista = await colaboradores(obra.id, transaction);
-    if (payload.colaborador_id && !lista.some(c => Number(c.id) === Number(payload.colaborador_id))) {
+    if (escopo && escopo.some(id => !lista.some(c => Number(c.id) === id))) {
       throw new ValidationError('O colaborador nao esta ativo neste local.', 409);
     }
+    const rascunhos = await RhSolicitacao.findAll({ where: { obra_id: obra.id, criada_por: req.user.id,
+      tipo: 'JORNADA', subtipo: FLUXO, situacao: 'RASCUNHO',
+      colaborador_id: colaboradorId }, order: [['id', 'DESC']], transaction });
+    // Grupos diferentes nao compartilham edicoes nem incluem pessoas ocultas no pagamento.
+    // Rascunhos legados continuam consultaveis, sem cortar/regravar suas linhas.
+    const existente = rascunhos.find(s => {
+      const dados = dadosDe(s);
+      if (!escopo) return dados.colaboradores_escopo == null;
+      const anteriores = dados.colaboradores_escopo
+        || (s.colaborador_id ? (dados.linhas || []).map(l => Number(l.colaborador_id)) : []);
+      return JSON.stringify([...anteriores].sort((a, b) => a - b)) === JSON.stringify(escopo);
+    });
+    if (existente) return existente.id;
     const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     const s = await RhSolicitacao.create({ tipo: 'JORNADA', subtipo: FLUXO, obra_id: obra.id,
-      colaborador_id: payload.colaborador_id ? Number(payload.colaborador_id) : null,
+      colaborador_id: colaboradorId,
       criada_por: req.user.id, setor_origem: codigoDoSetor(req.user), situacao: 'RASCUNHO',
-      dados_json: { fluxo_pagamento: FLUXO, solicitacao_independente: true, revisao: 0, competencia: hoje.slice(0, 7), data_vencimento: hoje,
-        linhas: lista.map(c => ({ colaborador_id: c.id, nome: c.nome, cpf: c.cpf,
+      dados_json: { fluxo_pagamento: FLUXO, solicitacao_independente: true, colaboradores_escopo: escopo,
+        revisao: 0, competencia: hoje.slice(0, 7), data_vencimento: hoje,
+        linhas: lista.filter(c => !escopo || escopo.includes(Number(c.id))).map(c => ({ colaborador_id: c.id, nome: c.nome, cpf: c.cpf,
           empresa_grupo_id: c.empresa_grupo_id, forma_calculo_gerencial: c.forma_calculo_gerencial,
           salario_base: Number(c.salario_base || 0), valor_diaria: Number(c.valor_diaria || 0),
-          selecionado: Boolean(payload.colaborador_id && Number(payload.colaborador_id) === Number(c.id)),
+          selecionado: Boolean(escopo),
           dias: c.forma_calculo_gerencial === 'DIARIA' ? 0 : 30, faltas: 0, acrescimos: 0, descontos: 0,
           parcela_40: false, parcela_60: false, conferido_obra: false, conferido_dp: false,
           conta_salario: recebimento({ modo_recebimento: 'CONTA_SALARIO' }, c, c.pagamento || {}),

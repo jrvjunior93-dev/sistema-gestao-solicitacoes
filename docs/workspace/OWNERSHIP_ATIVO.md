@@ -1,5 +1,33 @@
 # Ownership Ativo
 
+## Publicacao DP - selecao para pagamento - 2026-10-10
+
+- Usuario autorizou commit e push das alteracoes pendentes na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao. Sem mudancas funcionais adicionais.
+- Somente os oito arquivos deste ajuste; outputs/ preservado fora do Git.
+- Servico/dominio em memoria, documentacao e diff revalidados antes do commit;
+  testes UI nos tres modos, desktop/celular e build aprovados na implementacao.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## DP - selecao de colaboradores para pagamento - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/pages/RhDpPessoal.jsx,
+  frontend/src/components/rh/RhDpPagamentoModal.jsx,
+  backend/src/services/rhPagamentoSolicitacaoService.js,
+  frontend/scripts/validarRhPessoalPorLocal.mjs,
+  backend/scripts/validarRhPagamentoSolicitacao.js, README RH/DP,
+  docs/handoffs/2026-10-10-dp-selecao-pagamento.md e este registro.
+- Escopo: botao individual abre somente o colaborador; selecao reutilizavel
+  na tabela abre somente os marcados; sem selecao conserva todos do local.
+- Preservar permissao, local/ativos, rascunhos existentes, conferencia,
+  calculos, reembolso e idempotencia. Sem banco real, migration, commit,
+  push, main ou deploy. outputs/ permanece fora do Git.
+- Ownership liberado. Servico/dominio em memoria, UI real nos tres modos,
+  desktop/celular, regressao de conferencia/pagamento, build e docs aprovados.
+- Handoff: docs/handoffs/2026-10-10-dp-selecao-pagamento.md.
+
 ## Publicacao menu Colaboradores OBRA - 2026-10-10
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.

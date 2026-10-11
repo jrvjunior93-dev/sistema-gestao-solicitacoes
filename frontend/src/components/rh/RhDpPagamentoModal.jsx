@@ -38,7 +38,7 @@ function DadosRecebimento({ dados, alterar, reembolso = false }) {
   </div>;
 }
 
-export default function RhDpPagamentoModal({ local, locais = [], colaborador, solicitacaoId, onFechar, aoEnviar }) {
+export default function RhDpPagamentoModal({ local, locais = [], colaborador, colaboradorIds, solicitacaoId, onFechar, aoEnviar }) {
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [resposta, setResposta] = useState(null);
@@ -75,12 +75,14 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, so
     let ativo = true;
     setCarregando(true);
     iniciarPromise.current ||= solicitacaoId ? pagamentoRhSolicitacao(`/${solicitacaoId}`)
-      : pagamentoRhSolicitacao('', { method: 'POST', data: { obra_id: Number(localId), colaborador_id: colaborador?.id } });
+      : pagamentoRhSolicitacao('', { method: 'POST', data: {
+        obra_id: Number(localId), colaborador_id: colaborador?.id, colaborador_ids: colaboradorIds
+      } });
     iniciarPromise.current.then(result => { if (ativo) receber(result); })
       .catch(e => { if (ativo) avisar.erro(e.message); iniciarPromise.current = null; })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
-  }, [solicitacaoId, localId, colaborador?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [solicitacaoId, localId, colaborador?.id, colaboradorIds]); // eslint-disable-line react-hooks/exhaustive-deps
   function alterar(patch) {
     falhaAutomatica.current = false;
     atual.current = { ...atual.current, ...patch }; sujoRef.current = true;

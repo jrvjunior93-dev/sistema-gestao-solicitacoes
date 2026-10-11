@@ -61,6 +61,17 @@ com `--etapas` e `--gerencial`).
 
 O modal `Solicitar pagamento` / `Conferir pagamento` usa o fluxo
 `PAGAMENTO_POR_SOLICITACAO`, separado das apuracoes legadas descritas acima.
+O botao da linha abre apenas aquele colaborador. A primeira coluna da tabela
+permite marcar colaboradores ativos do mesmo local: o botao geral abre apenas
+os marcados, ja selecionados no modal; sem marcacao abre todos do local.
+Busca preserva a marcacao; trocar usuario/obra/filtro de obra limpa a selecao.
+O rascunho guarda somente o grupo escolhido, tambem na conferencia do DP.
+Mesmo usuario/local/grupo reabre seu rascunho sob lock, sem duplicar pedido;
+grupos diferentes nao reaproveitam linhas ou edicoes de outro grupo.
+Rascunhos legados sao preservados: os individuais que continham toda a equipe
+nao sao cortados ou regravados; o novo botao cria um rascunho restrito separado.
+O ajuste usa dados_json e nao exige migration.
+
 Mensalista: salario base multiplicado pelo percentual 40%, 60% ou 100%; dias e
 faltas sao informativos. Diarista: diaria multiplicada pelos dias informados;
 faltas tambem sao informativas. Acrescimos e descontos informados entram no

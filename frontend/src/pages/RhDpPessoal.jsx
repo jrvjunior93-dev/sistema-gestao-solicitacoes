@@ -411,6 +411,7 @@ export default function RhDpPessoal() {
   const localId = parametros.get('local_id') || '';
   const localSelecionado = obras.find((item) => String(item.id) === localId);
   const [pagamento, setPagamento] = useState(null);
+  const [colaboradoresMarcados, setColaboradoresMarcados] = useState(new Map());
   /*
     Uma fonte só para rótulo, apoio do cabeçalho e ordem. O `apoio` existe
     porque o cabeçalho é ÚNICO para as quatro abas: o texto fixo antigo
@@ -557,6 +558,10 @@ export default function RhDpPessoal() {
     : '';
   const [busca, setBusca] = useState('');
 
+  useEffect(() => {
+    setColaboradoresMarcados(new Map());
+  }, [user?.id, localId, filtroObra]);
+
   const [formulario, setFormulario] = useState(null);
   const [criandoRascunho, setCriandoRascunho] = useState(false);
   const criacaoRascunhoEmAndamento = useRef(false);
@@ -635,7 +640,15 @@ export default function RhDpPessoal() {
         listarRhSolicitacoes({ situacao: 'ABERTA', obra_id: localValido?.id || undefined })
       ]);
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
-      setColaboradores(Array.isArray(lista) ? lista : []);
+      const listaConfirmada = Array.isArray(lista) ? lista : [];
+      setColaboradores(listaConfirmada);
+      const porId = new Map(listaConfirmada.map(c => [Number(c.id), c]));
+      // Busca pode ocultar uma linha marcada; atualizar tambem a lotacao das linhas relidas.
+      setColaboradoresMarcados(atuais => new Map([...atuais].flatMap(([id, anterior]) => {
+        const vigente = porId.get(id);
+        if (!vigente) return busca ? [[id, anterior]] : [];
+        return vigente.status === 'ATIVO' && vigente.obra_id ? [[id, vigente]] : [];
+      })));
       setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : 0);
       if (!obras.length) setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
@@ -1149,7 +1162,7 @@ export default function RhDpPessoal() {
 
   const acoesDaAba = abaAtiva === 'colaboradores'
     ? [
-      podeAbrir ? { rotulo: 'Solicitar pagamento', onClick: () => setPagamento({ colaborador: null }) } : null,
+      podeAbrir ? { rotulo: 'Solicitar pagamento', onClick: abrirPagamentoSelecionados, desabilitada: carregando } : null,
       {
         rotulo: carregando ? 'Carregando...' : 'Atualizar',
         onClick: carregar,
@@ -1161,6 +1174,21 @@ export default function RhDpPessoal() {
   const abasLocais = localSelecionado && porLocal
     ? ['colaboradores', 'solicitacoes', 'transferencias'].map((id) => ABAS.find((aba) => aba.id === id))
     : ABAS;
+  function abrirPagamentoSelecionados() {
+    const marcados = [...colaboradoresMarcados.values()];
+    if (!marcados.length) {
+      setPagamento({ colaborador: null });
+      return;
+    }
+    const locaisIds = new Set(marcados.map(c => Number(c.obra_id)));
+    const local = localSelecionado || obras.find(item => Number(item.id) === Number(marcados[0].obra_id));
+    if (locaisIds.size !== 1 || !local) {
+      avisar.alerta('Selecione colaboradores da mesma obra ou centro de custo para solicitar pagamento.');
+      return;
+    }
+    setPagamento({ local, colaboradorIds: marcados.map(c => Number(c.id)) });
+  }
+
   function abrirLocal(item) {
     setBusca(''); setMarcados({ obra_id: new Set() });
     setParametros({ local_id: String(item.id), aba: 'colaboradores' });
@@ -1374,6 +1402,24 @@ export default function RhDpPessoal() {
             }
           ]}
           itens={colaboradores}
+          selecao={podeAbrir ? {
+            selecionados: new Set(colaboradoresMarcados.keys()),
+            elegivel: c => !carregando && c.status === 'ATIVO' && Boolean(c.obra_id),
+            aoAlternar: (id, c) => setColaboradoresMarcados(atuais => {
+              const proximos = new Map(atuais);
+              if (proximos.has(Number(id))) proximos.delete(Number(id));
+              else proximos.set(Number(id), c);
+              return proximos;
+            }),
+            aoAlternarTodos: (marcar, ids) => setColaboradoresMarcados(atuais => {
+              const proximos = new Map(atuais);
+              ids.forEach(id => {
+                if (marcar) proximos.set(Number(id), colaboradores.find(c => Number(c.id) === Number(id)));
+                else proximos.delete(Number(id));
+              });
+              return proximos;
+            })
+          } : undefined}
           storageKey="tabela:rh-dp-pessoal:colaboradores"
           rotuloRolagem="Colaboradores da obra"
           carregando={carregando}
@@ -2381,6 +2427,7 @@ export default function RhDpPessoal() {
       {pagamento ? <RhDpPagamentoModal
         key={`${user?.id}:${(pagamento.local || localSelecionado)?.id || 'selecionar'}:${pagamento.colaborador?.id || 'todos'}`}
         local={pagamento.local || localSelecionado} locais={obras} colaborador={pagamento.colaborador}
+        colaboradorIds={pagamento.colaboradorIds}
         onFechar={() => setPagamento(null)} aoEnviar={() => { carregar(); }} /> : null}
     </Pagina>
   );

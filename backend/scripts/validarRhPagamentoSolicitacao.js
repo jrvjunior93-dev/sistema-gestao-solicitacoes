@@ -52,6 +52,7 @@ const models = {
   RhColaboradorPagamento: {},
   RhSolicitacao: {
     findOne: async o => store.requests.find(r => Object.entries(o.where).every(([k, v]) => r[k] === v)),
+    findAll: async o => store.requests.filter(r => Object.entries(o.where).every(([k, v]) => r[k] === v)).reverse(),
     findByPk: async id => store.requests.find(r => r.id === Number(id)),
     create: async p => { const r = instance({ id: store.requests.length + 1, ...p }); store.requests.push(r); return r; }
   },
@@ -227,6 +228,54 @@ async function filaCanonicaTransacaoExterna() {
   assert.equal(reembolsoPreparo.solicitacao.dados_json.linhas[0].desconto_sem_reembolso, false);
   await assert.rejects(service.salvar(obra, preparo.solicitacao.id, { ...reembolsoPreparo.solicitacao.dados_json,
     linhas: reembolsoPreparo.solicitacao.dados_json.linhas.map(l => ({ ...l, reembolso: { ...reembolso, responsavel_id: 999 } })) }), /responsavel vigente/);
+  cadastros = [cadastro, { ...cadastro, id: 12, nome: 'Bruno QA' }, { ...cadastro, id: 13, nome: 'Caio QA' }];
+  const antesSelecao = store.requests.length;
+  for (const colaborador_ids of [[], '11', [11, 11], [0], [-1], [1.5], [999], Array.from({ length: 101 }, (_, i) => i + 1)]) {
+    await assert.rejects(service.iniciar(obra, { obra_id: 7, colaborador_ids }), /invalida|ativo/);
+  }
+  await assert.rejects(service.iniciar(obra, { obra_id: 7, colaborador_id: 11, colaborador_ids: [12] }), /invalida/);
+  await assert.rejects(service.iniciar(obra, { obra_id: 51, colaborador_ids: [11] }), /Acesso negado/);
+  assert.equal(store.requests.length, antesSelecao, 'Selecao invalida nao cria rascunho');
+  const individual = await service.iniciar(obra, { obra_id: 7, colaborador_id: 11 });
+  assert.deepEqual(Array.from(individual.solicitacao.dados_json.linhas, l => l.colaborador_id), [11]);
+  assert.ok(individual.solicitacao.dados_json.linhas[0].selecionado);
+  assert.equal((await service.iniciar(obra, { obra_id: 7, colaborador_ids: [11] })).solicitacao.id, individual.solicitacao.id);
+  const [grupo, grupoReplay] = await Promise.all([
+    service.iniciar(obra, { obra_id: 7, colaborador_ids: [12, 11] }),
+    service.iniciar(obra, { obra_id: 7, colaborador_ids: [11, 12] })
+  ]);
+  assert.equal(grupo.solicitacao.id, grupoReplay.solicitacao.id, 'Mesmo grupo nao duplica rascunho');
+  assert.deepEqual(Array.from(grupo.solicitacao.dados_json.linhas, l => l.colaborador_id), [11, 12]);
+  assert.ok(grupo.solicitacao.dados_json.linhas.every(l => l.selecionado));
+  assert.notEqual(grupo.solicitacao.id, preparo.solicitacao.id, 'Rascunho geral nao contamina grupo escolhido');
+  const diferente = await service.iniciar(obra, { obra_id: 7, colaborador_ids: [11, 13] });
+  assert.notEqual(diferente.solicitacao.id, grupo.solicitacao.id);
+  assert.equal((await service.iniciar(obra, { obra_id: 7, colaborador_ids: [12, 11] })).solicitacao.id, grupo.solicitacao.id);
+  const grupoSalvoEscopo = await service.salvar(obra, grupo.solicitacao.id, { ...grupo.solicitacao.dados_json,
+    colaboradores_escopo: [13],
+    linhas: grupo.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_obra: true })) });
+  assert.deepEqual(Array.from(grupoSalvoEscopo.solicitacao.dados_json.colaboradores_escopo), [11, 12], 'PUT nao permite trocar grupo');
+  await service.enviar(obra, grupo.solicitacao.id, { revisao: grupoSalvoEscopo.solicitacao.dados_json.revisao });
+  const noDp = await service.mostrar(dp, grupo.solicitacao.id);
+  assert.deepEqual(Array.from(noDp.solicitacao.dados_json.linhas, l => l.colaborador_id), [11, 12], 'DP confere somente o grupo enviado');
+  await assert.rejects(service.salvar(dp, grupo.solicitacao.id, { ...noDp.solicitacao.dados_json,
+    linhas: [...noDp.solicitacao.dados_json.linhas, { ...noDp.solicitacao.dados_json.linhas[0], colaborador_id: 13 }] }), /Lista/);
+  const grupoConferidoEscopo = await service.salvar(dp, grupo.solicitacao.id, { ...noDp.solicitacao.dados_json,
+    linhas: noDp.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+  const titulosAntesEscopo = store.titles.length;
+  await service.enviar(dp, grupo.solicitacao.id, { revisao: grupoConferidoEscopo.solicitacao.dados_json.revisao });
+  assert.equal(store.titles.length, titulosAntesEscopo + 2, 'Fila recebe somente os dois salarios do grupo');
+  assert.ok(store.titles.slice(titulosAntesEscopo).every(t => !t.numero_documento.includes('-COL-13-')));
+  // Rascunho individual legado com roster inteiro nao deve aparecer nem ser cortado no novo modal.
+  store.requests.find(s => s.id === individual.solicitacao.id).dados_json = {
+    ...individual.solicitacao.dados_json, colaboradores_escopo: undefined,
+    linhas: cadastros.map(c => ({ ...individual.solicitacao.dados_json.linhas[0], colaborador_id: c.id }))
+  };
+  const legadoAntes = JSON.stringify(store.requests.find(s => s.id === individual.solicitacao.id).dados_json);
+  const novoIndividual = await service.iniciar(obra, { obra_id: 7, colaborador_id: 11 });
+  assert.notEqual(novoIndividual.solicitacao.id, individual.solicitacao.id);
+  assert.equal(novoIndividual.solicitacao.dados_json.linhas.length, 1);
+  assert.equal(JSON.stringify(store.requests.find(s => s.id === individual.solicitacao.id).dados_json), legadoAntes);
   const outroRascunho = await service.iniciar(obra, { obra_id: 7 });
   ativo = false;
   await assert.rejects(service.salvar(obra, outroRascunho.solicitacao.id, { ...outroRascunho.solicitacao.dados_json,
