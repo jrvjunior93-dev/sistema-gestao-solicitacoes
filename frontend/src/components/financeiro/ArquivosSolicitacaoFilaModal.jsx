@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import OverlayModal from '../ui/OverlayModal';
+import PreviewAnexoModal from '../../pages/SolicitacaoDetalhe/PreviewAnexoModal';
 import { getArquivosSolicitacaoFila } from '../../services/financeiro';
 import { getLinkSeguroAnexoSolicitacao } from '../../services/solicitacoes';
 
@@ -15,12 +16,19 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
   const [erro, setErro] = useState('');
   const [abrindoId, setAbrindoId] = useState(null);
   const [tentativa, setTentativa] = useState(0);
+  const [preview, setPreview] = useState(null);
+  const aberturaRef = useRef(null);
+  const previewDisparadorRef = useRef(null);
 
   useEffect(() => {
     let ativo = true;
     setCarregando(true);
     setErro('');
     setArquivos([]);
+    setPreview(null);
+    setAbrindoId(null);
+    aberturaRef.current = null;
+    previewDisparadorRef.current = null;
     getArquivosSolicitacaoFila(solicitacao.id)
       .then((dados) => {
         if (ativo) setArquivos(Array.isArray(dados) ? dados : []);
@@ -31,15 +39,31 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
       .finally(() => {
         if (ativo) setCarregando(false);
       });
-    return () => { ativo = false; };
+    return () => { ativo = false; aberturaRef.current = null; };
   }, [solicitacao.id, tentativa]);
 
-  async function abrirArquivo(arquivo, baixar = false) {
-    if (abrindoId !== null) return;
+  function fecharPreview() {
+    const disparador = previewDisparadorRef.current;
+    setPreview(null);
+    // O botao ficou desabilitado durante o presign e pode ter perdido o foco.
+    requestAnimationFrame(() => { if (disparador?.isConnected) disparador.focus({ preventScroll: true }); });
+  }
+
+  async function abrirArquivo(arquivo, baixar = false, disparador) {
+    if (aberturaRef.current !== null) return;
+    const abertura = Symbol('abrir-arquivo');
+    aberturaRef.current = abertura;
+    if (!baixar) previewDisparadorRef.current = disparador;
     setAbrindoId(arquivo.id);
     setErro('');
     try {
       const url = await getLinkSeguroAnexoSolicitacao(arquivo.caminho_arquivo);
+      if (aberturaRef.current !== abertura) return;
+      const nome = arquivo.nome_original || arquivo.caminho_arquivo || `Arquivo #${arquivo.id}`;
+      if (!baixar && /\.(pdf|jpg|jpeg|png|gif|webp)(\?|$)/i.test(nome)) {
+        setPreview({ nome, caminho: arquivo.caminho_arquivo, url, downloadUrl: url });
+        return;
+      }
       const link = document.createElement('a');
       link.href = url;
       link.target = '_blank';
@@ -49,13 +73,17 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
       link.click();
       link.remove();
     } catch (error) {
-      setErro(error?.message || 'Não foi possível abrir o arquivo.');
+      if (aberturaRef.current === abertura) setErro(error?.message || 'Não foi possível abrir o arquivo.');
     } finally {
-      setAbrindoId(null);
+      if (aberturaRef.current === abertura) {
+        aberturaRef.current = null;
+        setAbrindoId(null);
+      }
     }
   }
 
   return (
+    <>
     <OverlayModal rotulo={`Arquivos da solicitação ${solicitacao.codigo || solicitacao.id}`} largura="720px" onFechar={onFechar}>
       <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
         <div className="min-w-0">
@@ -85,10 +113,10 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
                   <div className="text-xs text-[var(--c-muted)]">{arquivo.tipo || 'Anexo'} · {dataArquivo(arquivo.createdAt)}</div>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(arquivo)} disabled={abrindoId !== null}>
+                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Visualizar ${arquivo.nome_original || `Arquivo #${arquivo.id}`}`} onClick={(event) => abrirArquivo(arquivo, false, event.currentTarget)} disabled={abrindoId !== null}>
                     {abrindoId === arquivo.id ? 'Abrindo...' : 'Visualizar'}
                   </button>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(arquivo, true)} disabled={abrindoId !== null}>
+                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Baixar ${arquivo.nome_original || `Arquivo #${arquivo.id}`}`} onClick={() => abrirArquivo(arquivo, true)} disabled={abrindoId !== null}>
                     Baixar
                   </button>
                 </div>
@@ -98,5 +126,8 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
         ) : null}
       </div>
     </OverlayModal>
+    {preview && <PreviewAnexoModal anexo={preview} onClose={fecharPreview}
+      largura="1200px" alturaPreview="min(76dvh, 780px)" />}
+    </>
   );
 }

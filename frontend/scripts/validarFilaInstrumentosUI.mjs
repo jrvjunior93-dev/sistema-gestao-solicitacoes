@@ -8,6 +8,7 @@ import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 import tailwindConfig from '../tailwind.config.js';
 import { validarColunasFila } from './filaColunasQA.mjs';
+import { validarArquivosPreviewFila } from './filaArquivosPreviewQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -55,7 +56,8 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2}]});
       export const registrarBaixasFilaPagamentos=async(itens,key)=>{window.__settles.push({itens,key});if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
-      export const getArquivosSolicitacaoFila=async()=>[];
+      export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
+        ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:'Anexo',createdAt:'2026-10-08T12:00:00Z'})) : [];
       export const aprovarDivergenciasFilaPagamentos=async()=>{},getComprovanteFilaPagamento=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{},resolverFilaPagamento=async()=>{},vincularComprovantesFilaPagamentos=async()=>{};`;
   },
   configureServer(server) { server.middlewares.use('/qa-fila', async (_, res) => {
@@ -306,6 +308,7 @@ try {
   assert(await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).isDisabled());
   assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0,'Sem permissao nao ha baixa em massa');
   await validarColunasFila(browser);
+  await validarArquivosPreviewFila(browser);
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real, local, selecao parcial/todos elegiveis, baixa em massa com juros/multa e duplo clique, rolagem vertical/horizontal no fechamento/Esc desktop/mobile, instrumentos e baixa sem PDF. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

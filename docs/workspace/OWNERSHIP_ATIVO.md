@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## Publicacao Preview de arquivos da fila - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao concluida,
+  ownership liberado para publicacao autorizada.
+- Reserva: modais ArquivosSolicitacaoFilaModal e PreviewAnexoModal, scripts
+  validarFilaInstrumentosUI e filaArquivosPreviewQA, README financeiro,
+  handoff do preview e este registro de ownership.
+- outputs/ preservado fora do Git. Sem main, EC2, migrations ou banco real.
+- Revalidados: UI real da fila/preview/colunas com APIs isoladas, acesso a
+  arquivos/anexos sem banco, sintaxe, diff e build. Copia nativa nao automatizada.
+
+## Fila - visualizacao interna de arquivos - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado.
+- Reserva: ArquivosSolicitacaoFilaModal.jsx, props opcionais de dimensao em
+  SolicitacaoDetalhe/PreviewAnexoModal.jsx, teste isolado de fila/preview e
+  documentacao financeira/handoff correspondentes.
+- Escopo: PDFs/imagens em preview amplo na mesma tela, acesso seguro existente,
+  downloads e formatos restantes preservados, fechamento/pilha/rolagem.
+- Sem backend, migration, banco real, commit/push, main ou deploy.
+- Validacoes: fila real, preview/presign frontend reais com transporte isolado,
+  PDF nativo e imagens, pilha/Escape/foco/rolagem, download, 403 e fechamento
+  em voo, regressao de fila/colunas, acesso backend sem banco e build.
+- Handoff: docs/handoffs/2026-10-11-fila-preview-arquivos.md.
+
 ## Publicacao Fila de Pagamentos - 2026-10-11
 
 - Usuario autorizou commit e push das pendencias somente na refactor/frontend.

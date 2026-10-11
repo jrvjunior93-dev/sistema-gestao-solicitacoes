@@ -1,5 +1,21 @@
 # Modulo FINANCEIRO
 
+## Preview interno de arquivos da fila - 2026-10-11
+
+- Visualizar PDFs e imagens (JPG/JPEG/PNG/GIF/WebP) na lista de arquivos abre
+  um segundo modal, amplo e responsivo (ate 1200px). Reutiliza PreviewAnexoModal
+  com dimensoes opcionais; os demais chamadores mantem dimensoes anteriores.
+- Presign/acesso seguro e download existentes preservados; nao cria vinculos,
+  nao altera pagamento e nao amplia permissoes. Formatos sem preview seguem
+  abertura externa. SVG nao e embutido.
+- Fechar/Escape retorna a lista de arquivos, com foco no botao e sem perder a
+  rolagem da fila. Abertura concorrente e resposta atrasada apos fechar bloqueadas.
+- PDF usa viewer nativo com selecao/copia de texto quando o documento permite.
+  Nao ha OCR de imagem/PDF escaneado; suporte nativo pode variar por navegador.
+- Teste: test:fila-instrumentos-ui inclui filaArquivosPreviewQA.mjs, com
+  APIs/arquivos simulados e viewport desktop/mobile, sem banco real.
+  Handoff: docs/handoffs/2026-10-11-fila-preview-arquivos.md.
+
 ## Colunas da fila por usuario - 2026-10-11
 
 - O botao Colunas permite escolher as colunas visiveis e reordenar por arrasto

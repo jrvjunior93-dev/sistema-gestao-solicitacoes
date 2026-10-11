@@ -23,7 +23,7 @@ import OverlayModal from '../../components/ui/OverlayModal';
  *    em silencio: a cor caia no valor herdado. O token que existe e
  *    `--c-muted`.
  */
-export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }) {
+export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false, largura, alturaPreview }) {
   const temUrlExplicita = Object.prototype.hasOwnProperty.call(anexo, 'url');
   const url = temUrlExplicita ? anexo.url : fileUrl(anexo.caminho);
   const downloadUrl = anexo.downloadUrl || url;
@@ -52,6 +52,7 @@ export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }
           src={url}
           alt={anexo.nome || 'Anexo'}
           className="max-h-[80vh] mx-auto"
+          style={alturaPreview ? { maxHeight: alturaPreview, maxWidth: '100%', objectFit: 'contain' } : undefined}
         />
       );
     }
@@ -61,6 +62,7 @@ export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }
         <iframe
           src={url}
           className="w-full h-[80vh]"
+          style={alturaPreview ? { height: alturaPreview } : undefined}
           title={`Pre-visualização de ${anexo.nome || 'PDF'}`}
         />
       );
@@ -72,13 +74,13 @@ export default function PreviewAnexoModal({ anexo, onClose, usarPortal = false }
   }
 
   return (
-    <OverlayModal rotulo={anexo?.nome || 'Anexo'} onFechar={onClose}>
+    <OverlayModal rotulo={anexo?.nome || 'Anexo'} onFechar={onClose} largura={largura}>
       <div
         data-modal="cabecalho"
         className="app-file-preview flex items-center justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3"
       >
-        <h2 className="app-file-preview__title text-lg font-semibold">{anexo.nome}</h2>
-        <button type="button" className="btn btn-outline btn-sm" onClick={onClose}>
+        <h2 className="app-file-preview__title min-w-0 break-words text-lg font-semibold">{anexo.nome}</h2>
+        <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={onClose}>
           Fechar
         </button>
       </div>
