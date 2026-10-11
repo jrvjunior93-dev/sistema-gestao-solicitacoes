@@ -1,5 +1,23 @@
 # Modulo SOLICITACOES
 
+## Adiantamento e obras para rateio - 2026-10-11
+
+ADIANTAMENTO e subtipo de DESPESA ADMINISTRATIVA, DESPESA COMERCIAL e DESPESA
+DE MARKETING. Exige valor, vencimento, descricao, favorecido e dados de
+pagamento. GEO define a categoria ao gerar um unico titulo PAGAR/ABERTO.
+A prestacao fica disponivel depois do pagamento integral e retorna a GEO
+para conferencia; sobra permanece pendente ate o recebimento da devolucao.
+
+SUPERADMIN configura Obras para rateio na linha do centro em Obras/Centros
+de Custo. Administrativo/DP podem distribuir entre obras ativas sem vinculos
+usuario-obra; Comercial/Marketing somente privadas. Usuarios OBRA mantem
+seus vinculos. Isso nao amplia visibilidade de solicitacoes. TODAS continua
+um agrupamento gerencial, nao um rateio financeiro automatico igualitario.
+
+Migration 202610110001_adiantamento_prestacao.js deve preceder o restart do
+backend no ambiente de homologacao. Nao foi executada em banco real nesta
+entrega. Fluxo e limites: [handoff de adiantamento](../../handoffs/2026-10-11-adiantamento-centros-custo.md).
+
 ## Documentacao operacional relacionada
 
 - [Fluxos de solicitacoes iniciais do setor OBRA](./FLUXOS_INICIAIS_OBRA.md): matriz de producao, campos, destinos, automacoes, fluxogramas e separacao entre regra vigente e legado.

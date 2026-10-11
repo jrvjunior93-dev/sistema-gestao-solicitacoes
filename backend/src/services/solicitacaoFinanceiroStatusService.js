@@ -137,7 +137,7 @@ async function devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transactio
       solicitacao_id: solicitacao.id,
       status: { [Op.notIn]: STATUS_TITULOS_IGNORADOS }
     },
-    attributes: ['id', 'status', 'valor_saldo', 'valor_baixado'],
+    attributes: ['id', 'status', 'valor_saldo', 'valor_baixado', 'origem_titulo'],
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
@@ -235,12 +235,15 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
       solicitacao_id: id,
       status: { [Op.notIn]: STATUS_TITULOS_IGNORADOS }
     },
-    attributes: ['id', 'status', 'valor_saldo', 'valor_baixado'],
+    attributes: ['id', 'status', 'valor_saldo', 'valor_baixado', 'origem_titulo'],
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
 
   // DESVIO PARA A SOLICITACAO DE CONTRATO DO FLUXO NOVO (20/08).
+  if (titulos.some(t => ['ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'].includes(t.origem_titulo))) {
+    return require('./adiantamentoService').sincronizarBaixa({ solicitacao, titulos, usuarioId, transaction });
+  }
   //
   // Ela nao segue a regra geral: e uma solicitacao so para o contrato inteiro, e o cliente definiu
   // NEC. DE MEDICAO / APROVADA / PAGA em vez de PARCIALMENTE PAGO. Ver

@@ -1,5 +1,23 @@
 # Modulo FINANCEIRO
 
+## Adiantamento e forma de pagamento - 2026-10-11
+
+O detalhe da solicitacao lista a forma de pagamento do proprio titulo,
+inclusive na leitura resumida autorizada, sem ampliar dados bancarios.
+A fila conserva a coluna Forma / instrumento existente.
+
+ADIANTAMENTO nasce PAGAR/ABERTO com categoria definida pelo GEO antes do
+pagamento, sem reconhecimento de custo antecipado. A conferencia aprovada
+preenche valor_despesa_prestacao e rateios efetivos no titulo pago; nao gera
+outro titulo de despesa. Sobra gera RECEBER/DEVOLUCAO_ADIANTAMENTO, nao DRE.
+Caixa mantem o principal; DRE/obras/custos usam somente a despesa aprovada.
+Pagamento 1000, despesa 800 e devolucao 200 resultam em custo 800.
+
+Unicidade e decisoes usam transacao/bloqueios. Edicao de valor/status da
+principal apos titulo, renegociacao, exclusao em massa e estorno original
+apos envio da prestacao sao bloqueados. Homologacao MySQL real ainda pendente.
+Detalhes: [handoff de adiantamento](../../handoffs/2026-10-11-adiantamento-centros-custo.md).
+
 ## Preview interno de arquivos da fila - 2026-10-11
 
 - Visualizar PDFs e imagens (JPG/JPEG/PNG/GIF/WebP) na lista de arquivos abre

@@ -2051,6 +2051,15 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
 
   const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: true, transaction });
   assertTituloEditavel(titulo);
+  if (titulo.origem_titulo === 'DEVOLUCAO_ADIANTAMENTO') throw createHttpError(409, 'A devolucao preserva o saldo conferido na prestacao; registre o recebimento sem editar o valor de origem.');
+  if (titulo.origem_titulo === 'ADIANTAMENTO') {
+    if (!require('./recargaCartaoService').isGerenciaProcessos(req.user)) throw createHttpError(403, 'Somente GEO pode alterar a classificacao do adiantamento.');
+    if ((payload.tipo && payload.tipo !== 'PAGAR') || (payload.status && payload.status !== 'ABERTO')
+      || Number(payload.valor) !== Number(titulo.valor_original) || Number(payload.obra_id) !== Number(titulo.obra_id)
+      || Number(payload.parceiro_id) !== Number(titulo.parceiro_id) || payload.rateios?.length || payload.impostos?.length
+      || Number(payload.juros || 0) || Number(payload.multa || 0) || Number(payload.desconto_financeiro || 0)) throw createHttpError(409, 'Preserve o valor, origem e favorecido do adiantamento. Rateios sao definidos na prestacao.');
+    payload = { ...payload, considera_dre: false, rateios: [] };
+  }
 
   const tipo = normalizarTipoTitulo(payload.tipo || titulo.tipo);
   if (!['PAGAR', 'RECEBER'].includes(tipo)) {
@@ -2667,11 +2676,16 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
       'valor_original',
       'valor_baixado',
       'valor_saldo',
+      'forma_pagamento_id',
       'data_vencimento'
     ];
     consulta.include = [{
       model: Parceiro,
       as: 'parceiro',
+      attributes: ['id', 'nome']
+    }, {
+      model: FormaPagamentoFinanceira,
+      as: 'formaPagamento',
       attributes: ['id', 'nome']
     }];
   }
@@ -2710,6 +2724,15 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   await assertFinanceAccess(req);
   const solicitacao = await carregarSolicitacaoFinanceira(req, solicitacaoId);
   const competenciaSolicitacao = resolverCompetenciaCriacaoSolicitacao(solicitacao);
+  const adiantamento = await require('./adiantamentoService').ehAdiantamento(solicitacao);
+  if (adiantamento) {
+    if (!require('./recargaCartaoService').isGerenciaProcessos(req.user)) throw createHttpError(403, 'O GEO deve classificar e gerar o titulo do adiantamento.');
+    await require('./solicitacaoRetornoService').assertPodeInteragirSolicitacao(req, solicitacao);
+    if (payload.tipo && payload.tipo !== 'PAGAR' || payload.status && payload.status !== 'ABERTO'
+      || Number(payload.quantidade_parcelas || 1) !== 1 || payload.pagamentos?.length > 1 || payload.parcelas?.length > 1
+      || payload.rateios?.length || payload.impostos?.length || Number(payload.valor_impostos || 0) > 0 || Number(payload.desconto_financeiro || 0) !== 0
+      || payload.intercompany || payload.transferencia_interna) throw createHttpError(400, 'Adiantamento deve gerar um titulo a pagar aberto, sem rateio/impostos ou parcelamento antecipado.');
+  }
   const recargaAutomatica = await SolicitacaoRecargaCartao.findOne({
     where: { solicitacao_id: solicitacao.id },
     attributes: ['id', 'titulo_financeiro_id']
@@ -2718,13 +2741,13 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     throw createHttpError(409, 'A Recarga de Cartao ja possui titulo automatico e nao aceita outro lancamento manual.');
   }
 
-  const tipo = normalizarTipoTitulo(payload.tipo || sugestaoTipoTitulo(solicitacao));
+  const tipo = normalizarTipoTitulo(payload.tipo || (adiantamento ? 'PAGAR' : sugestaoTipoTitulo(solicitacao)));
   if (!['PAGAR', 'RECEBER'].includes(tipo)) {
     throw createHttpError(400, 'Tipo de titulo invalido.');
   }
   const statusTitulo = normalizarStatusTituloInicial(payload.status);
 
-  const parceiroPadraoId = Number(payload.parceiro_id || solicitacao.parceiro_id);
+  const parceiroPadraoId = Number(payload.parceiro_id || solicitacao.parceiro_id || (adiantamento ? solicitacao.favorecido_id : null));
 
   const valorSolicitacao = Number(solicitacao.valor != null ? solicitacao.valor : payload.valor);
   if (!Number.isFinite(valorSolicitacao) || valorSolicitacao <= 0) {
@@ -2751,6 +2774,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
 
   const pagamentos = [];
   for (const [pagamentoIndex, pagamentoPayload] of pagamentosPayload.entries()) {
+    if (adiantamento && (pagamentoPayload.intercompany || pagamentoPayload.transferencia_interna
+      || pagamentoPayload.rateios?.length || pagamentoPayload.impostos?.length)) throw createHttpError(400, 'Adiantamento nao permite transferencia, rateio ou impostos antecipados.');
     const parceiroIdPagamento = Number(pagamentoPayload.parceiro_id || parceiroPadraoId);
     if (!Number.isInteger(parceiroIdPagamento) || parceiroIdPagamento <= 0) {
       throw createHttpError(400, `Parceiro e obrigatorio para o titulo ${pagamentoIndex + 1}.`);
@@ -2784,6 +2809,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
       ? await validarCategoriaFinanceira(pagamentoPayload.categoria_financeira_id, tipo)
       : categoriaPadrao;
     const consideraDrePagamento = payload.considera_dre !== false && categoriaClassificadaParaDre(categoriaPagamento);
+    if (adiantamento && (!categoriaPagamento || !solicitacao.favorecido_id || Number(favorecidoPagamentoId) !== Number(solicitacao.favorecido_id))) throw createHttpError(400, 'Informe a categoria do adiantamento e preserve o favorecido da solicitacao.');
     validarCategoriaDreTitulo(categoriaPagamento, { considera_dre: consideraDrePagamento });
     const formaPagamento = await validarFormaPagamentoFinanceira(
       pagamentoPayload.forma_pagamento_id || solicitacao.forma_pagamento_id,
@@ -2816,6 +2842,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
       contexto: `pagamento ${pagamentoIndex + 1}`
     });
     const totalPagamento = somarValores(valoresParcelas);
+    if (adiantamento && (quantidadeParcelas !== 1 || formaPagamento?.gera_fatura || pagamentoPayload.cartao_id)) throw createHttpError(400, 'Adiantamento nao permite parcelamento nem pagamento por fatura de cartao.');
 
     if (valorPagamentoInformado != null) {
       assertValoresIguais({
@@ -2851,7 +2878,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   });
 
   const impostosResumo = normalizarImpostosTitulo(payload, valorOriginal);
-  const rateiosTitulo = await normalizarRateiosTitulo(
+  const rateiosTitulo = adiantamento ? [] : await normalizarRateiosTitulo(
     req,
     payload,
     solicitacao.obra,
@@ -2864,6 +2891,13 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   const titulosCriados = [];
   const baixasCartaoNoAto = [];
   try {
+    if (adiantamento) {
+      const principal = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
+      await require('./solicitacaoRetornoService').assertPodeInteragirSolicitacao(req, principal);
+      if (!await require('./adiantamentoService').ehAdiantamento(principal, transaction)
+        || Number(principal.valor) !== valorOriginal || Number(principal.favorecido_id) !== Number(solicitacao.favorecido_id)) throw createHttpError(409, 'Solicitacao alterada. Atualize antes de gerar o titulo.');
+      if (await TituloFinanceiro.count({ where: { solicitacao_id: solicitacao.id }, transaction })) throw createHttpError(409, 'O adiantamento ja possui titulo; revise o lancamento existente.');
+    }
     for (const pagamento of pagamentos) {
       for (let index = 0; index < pagamento.quantidadeParcelas; index += 1) {
         const numeroParcela = index + 1;
@@ -2891,7 +2925,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
         const titulo = await TituloFinanceiro.create({
           solicitacao_id: solicitacao.id,
           obra_id: solicitacao.obra_id,
-          apropriacao_id: solicitacao.apropriacao_id || null,
+          apropriacao_id: adiantamento ? null : solicitacao.apropriacao_id || null,
           empresa_id: empresaTituloId,
           ...pagamento.intercompanyFields,
           parceiro_id: pagamento.parceiro.id,
@@ -2905,8 +2939,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           total_parcelas: totalParcelasDoGrupo > 1 ? totalParcelasDoGrupo : null,
           data_compra: pagamento.dataCompra,
           competencia_data: competenciaSolicitacao,
-          considera_dre: pagamento.consideraDre,
-          origem_titulo: 'SOLICITACAO',
+          considera_dre: adiantamento ? false : pagamento.consideraDre,
+          origem_titulo: adiantamento ? 'ADIANTAMENTO' : 'SOLICITACAO',
           tipo,
           status: statusTitulo,
           descricao: descricaoParcela || descricaoPadraoTitulo(solicitacao),
@@ -2916,7 +2950,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           valor_bruto: valoresParcela.valorBruto,
           valor_impostos: valoresParcela.valorImpostos,
           valor_liquido: valoresParcela.valorLiquido,
-          possui_rateio: rateiosTitulo.length > 0,
+          possui_rateio: !adiantamento && rateiosTitulo.length > 0,
           valor_saldo: valoresParcela.valorLiquido,
           valor_baixado: 0,
           data_emissao: payload.data_emissao || getHoje(),
@@ -2934,7 +2968,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
 
         await gravarComplementosTitulo({
           titulo,
-          rateios: rateiosTitulo,
+          rateios: adiantamento ? [] : rateiosTitulo,
           impostos: impostosResumo.impostos,
           valorBase: valorOriginal,
           valorParcela,
@@ -2979,6 +3013,9 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
       acao: 'TITULO_FINANCEIRO_CRIADO',
       observacao: `${titulosCriados.length} titulo(s) ${tipo} gerado(s) no valor de ${formatCurrency(valorOriginal)}`
     }, { transaction });
+
+    if (adiantamento) await require('../models').SolicitacaoAdiantamento.create({ solicitacao_id: solicitacao.id,
+      titulo_financeiro_id: titulosCriados[0].id, valor_solicitado: valorOriginal, status: 'AGUARDANDO_PAGAMENTO' }, { transaction });
 
     await marcarSolicitacaoComTituloCadastrado({
       solicitacao,
@@ -3053,6 +3090,10 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
 }
 
 async function criarTituloManual(req, payload = {}, options = {}) {
+  if (payload.solicitacao_id) {
+    const principal = await Solicitacao.findByPk(Number(payload.solicitacao_id));
+    if (principal && await require('./adiantamentoService').ehAdiantamento(principal)) throw createHttpError(409, 'Gere o titulo do adiantamento pelo Financeiro no detalhe da solicitacao.');
+  }
   const {
     transaction: externalTransaction = null,
     origemTitulo = 'MANUAL',
@@ -3846,6 +3887,9 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     }
 
     const saldoAtual = roundCurrency(titulo.valor_saldo);
+    if (['ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'].includes(titulo.origem_titulo) && (desconto !== 0 || valorBaixa > saldoAtual)) {
+      throw createHttpError(409, 'Adiantamento e devolucao devem preservar o principal do titulo, sem desconto ou baixa acima do saldo.');
+    }
     // A fila manual pode liberar pontualmente um valor divergente depois de uma
     // segunda pessoa autorizar a baixa com justificativa. Fora desse fluxo, a
     // protecao original continua valendo integralmente.
@@ -5153,6 +5197,7 @@ async function excluirTitulosEmMassa(req, payload = {}) {
 
   for (const titulo of titulos) {
     require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
+    if (['ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'].includes(titulo.origem_titulo)) throw createHttpError(409, 'Adiantamentos e devolucoes possuem prestacao vinculada e nao permitem exclusao em massa.');
     if (titulo.origem_titulo === 'RH_DP' && /-SOL-\d+-/.test(titulo.numero_documento || '')) {
       throw createHttpError(409, 'Cancele este pagamento na solicitacao RH/DP para preservar a fila e os reembolsos vinculados.');
     }

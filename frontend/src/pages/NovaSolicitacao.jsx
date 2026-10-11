@@ -958,7 +958,8 @@ export default function NovaSolicitacao() {
 
   const tipoSelecionado = tipos.find(t => String(t.id) === String(form.tipo_solicitacao_id));
   const subtipoRecarga = tiposSub.find((item) => String(item.id) === String(form.tipo_sub_id))?.usa_fluxo_recarga_cartao === true;
-  const possuiSubtipoRecarga = tiposSub.some((item) => item.usa_fluxo_recarga_cartao === true);
+  const subtipoAdiantamento = tiposSub.find((item) => String(item.id) === String(form.tipo_sub_id))?.usa_fluxo_adiantamento === true;
+  const possuiSubtipoRecarga = tiposSub.some((item) => item.usa_fluxo_recarga_cartao === true || item.usa_fluxo_adiantamento === true);
   const comportamentoTipo = useMemo(() => {
     const comportamentoBase = getTipoSolicitacaoBehavior(tipoSelecionado);
     return applyTipoSolicitacaoModuleAvailability(comportamentoBase, {
@@ -987,21 +988,24 @@ export default function NovaSolicitacao() {
     // re-resolve os campos e a regra `tipo:subtipo` inteira nao tem efeito na tela (o motor, a
     // tela de configuracao e o backend ja resolviam certo — so esta lista estava incompleta).
   ), [comportamentoTipo, camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, areasConfiguracaoCampos, form.tipo_sub_id, moduloApropriacoesHabilitado]);
-  const tipoConfiguradoComoDespesaEventual = !subtipoRecarga && !isTipoRecargaCartao(tipoSelecionado, comportamentoTipo) && Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
+  const tipoConfiguradoComoDespesaEventual = !subtipoAdiantamento && !subtipoRecarga && !isTipoRecargaCartao(tipoSelecionado, comportamentoTipo) && Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
   const tipoConfiguradoComoRecargaCartao = isTipoRecargaCartao(tipoSelecionado, comportamentoTipo) || subtipoRecarga;
   const tipoSolicitacaoEscolhido = Boolean(form.tipo_solicitacao_id);
   const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento', ...(subtipoRecarga ? ['subtipo'] : [])]);
+  const camposFixosAdiantamento = new Set(['subtipo', 'valor', 'data_vencimento', 'favorecido', 'forma_pagamento', 'descricao']);
   const campoVisivel = (campo) => {
     // Antes de o tipo ser escolhido, nenhum campo funcional deve herdar o comportamento
     // generico. A obra, o setor e o proprio tipo continuam fixos no topo; o restante entra
     // somente depois que a regra do tipo (e, quando houver, do subtipo) puder ser resolvida.
     if (!tipoSolicitacaoEscolhido) return false;
     if (tipoConfiguradoComoRecargaCartao) return camposFixosRecargaCartao.has(campo);
+    if (subtipoAdiantamento && camposFixosAdiantamento.has(campo)) return true;
     return camposNovaSolicitacao?.[campo]?.visivel !== false;
   };
   const campoObrigatorio = (campo) => {
     if (!tipoSolicitacaoEscolhido) return false;
     if (tipoConfiguradoComoRecargaCartao) return camposFixosRecargaCartao.has(campo);
+    if (subtipoAdiantamento && camposFixosAdiantamento.has(campo)) return true;
     return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
   };
   const opcoesNovaSolicitacao = useMemo(() => (
@@ -1024,7 +1028,7 @@ export default function NovaSolicitacao() {
   const usaFluxoCadastroObra = Boolean(comportamentoTipo.usa_fluxo_cadastro_obra);
   const exibirPessoasCadastroObra = usaFluxoCadastroObra && campoVisivel('pessoas_vinculadas');
   const pessoasCadastroObraObrigatorias = exibirPessoasCadastroObra && campoObrigatorio('pessoas_vinculadas');
-  const usaApropriacaoAutomaticaObra = !usaFluxoRecargaCartao && Boolean(comportamentoTipo.usa_apropriacao_automatica_obra);
+  const usaApropriacaoAutomaticaObra = !usaFluxoRecargaCartao && !subtipoAdiantamento && Boolean(comportamentoTipo.usa_apropriacao_automatica_obra);
   const rotuloDataSolicitacao = obterRotuloDataSolicitacao(comportamentoTipo, {
     recargaCartao: usaFluxoRecargaCartao
   });
@@ -1278,14 +1282,14 @@ export default function NovaSolicitacao() {
   // habilitado pela configuracao: o anexo geral ja nasce obrigatorio com o tipo. Selecionar
   // Boleto remove essa obrigatoriedade porque o boleto possui seu proprio upload.
   const usaRegraAnexoPorFormaPagamento = exibirFormaPagamento;
-  const exigirAnexoPagamento = usaRegraAnexoPorFormaPagamento && !pagamentoViaBoleto;
+  const exigirAnexoPagamento = usaRegraAnexoPorFormaPagamento && !pagamentoViaBoleto && !subtipoAdiantamento;
   const exibirAnexos = usaRegraAnexoPorFormaPagamento
     ? true
     : exibirAnexosConfigurados;
   const anexosObrigatorios = usaRegraAnexoPorFormaPagamento
     ? exigirAnexoPagamento
     : (tipoEhDeMedicao || campoObrigatorio('anexos'));
-  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada) && !pagamentoViaBoleto;
+  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada) && (!pagamentoViaBoleto || subtipoAdiantamento);
   // Para PIX e as demais formas nao-Boleto, o favorecido continua obrigatorio.
   const favorecidoObrigatorio = exibirFavorecidoPagamento;
 
@@ -3874,7 +3878,9 @@ export default function NovaSolicitacao() {
                     ))}
                   </div>
                   <span className="text-xs text-[var(--c-muted)]">
-                    {distribuicaoCentroCusto.regra === 'TODAS_PRIVADAS'
+                    {distribuicaoCentroCusto.regra === 'CONFIGURADAS_CENTRO_CUSTO'
+                      ? 'Obras configuradas para este centro de custo.'
+                      : distribuicaoCentroCusto.regra === 'TODAS_PRIVADAS'
                       ? 'Marketing/Comercial: obras privadas disponíveis.'
                       : distribuicaoCentroCusto.regra === 'VINCULADAS_USUARIO'
                         ? 'Somente obras vinculadas ao seu usuário.'

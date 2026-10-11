@@ -32,7 +32,7 @@ const context = vm.createContext({
   registrarEventoSeguranca: async () => {}, createHttpError: (status, message) => Object.assign(new Error(message), { status }),
   carregarSolicitacaoFinanceira: async () => { if (!scope) throw Object.assign(new Error('fora do escopo'), { status: 403 }); return { id: 6278 }; },
   buildTituloInclude: () => [{ as: 'parceiro' }, { as: 'filaPagamentosManuais', where: { status: 'PENDENTE' } }],
-  Parceiro: {}, TituloFinanceiro: { findAll: async options => { titleReads++; query = options; return [title]; } },
+  Parceiro: {}, FormaPagamentoFinanceira: {}, TituloFinanceiro: { findAll: async options => { titleReads++; query = options; return [title]; } },
   require: id => {
     if (id === '../models') return models;
     if (id === './tituloRenegociacaoVinculos') return { projetarOrigens: async titles => titles };
@@ -50,7 +50,14 @@ vm.runInContext(source.slice(start, end), context);
     assert.equal(result[0].filaPagamentosManuais[0].status, 'BAIXADO');
     assert.equal(result[0].comprovantesSolicitacao[0].nome_original, 'SOL-6278.pdf');
     assert(!('titulo_financeiro_id' in result[0].comprovantesSolicitacao[0]), 'Nao inventar vinculo de importacao');
-    if (!full) assert(!query.attributes.includes('conta_bancaria_id'));
+    if (!full) {
+      assert(!query.attributes.includes('conta_bancaria_id'));
+      assert(query.attributes.includes('forma_pagamento_id'));
+      const forma = query.include.find(item => item.as === 'formaPagamento');
+      assert(forma, 'Leitura operacional tambem mostra a forma cadastrada no titulo');
+      assert.deepEqual(Array.from(forma.attributes), ['id', 'nome'], 'Somente o rotulo, sem dados de banco/cartao');
+      assert(!query.include.some(item => ['cartao', 'contaBancaria', 'beneficiarios'].includes(item.as)));
+    }
   }
   allowed = false;
   await assert.rejects(context.listarTitulosPorSolicitacao({ user: { id: 1 } }, 6278), error => error.status === 403);

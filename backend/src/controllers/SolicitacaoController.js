@@ -3267,20 +3267,27 @@ module.exports = {
         if (!subtipoRecarga) return res.status(400).json({ error: 'Subtipo invalido para o tipo de solicitacao selecionado.' });
       }
       const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado) || subtipoRecarga?.usa_fluxo_recarga_cartao === true;
+      const usaFluxoAdiantamento = subtipoRecarga?.usa_fluxo_adiantamento === true;
+      if (usaFluxoAdiantamento && (!require('../services/adiantamentoDomain').tipoPermiteAdiantamento(tipoSelecionado) || usaFluxoRecargaCartao)) return res.status(400).json({ error: 'Adiantamento exige um tipo de despesa administrativa, comercial ou marketing, sem recarga simultanea.' });
+      if (usaFluxoAdiantamento) {
+        try {
+          if (require('../services/adiantamentoDomain').centavos(valor) <= 0) throw new Error('Informe um valor de adiantamento maior que zero.');
+        } catch (error) { return res.status(400).json({ error: error.message }); }
+      }
       if (!usaFluxoRecargaCartao && recargas_cartoes !== undefined) return res.status(400).json({ error: 'Os cartoes exigem um tipo ou subtipo configurado para recarga.' });
       const possuiSubtipoRecarga = Boolean(await TipoSubContrato.findOne({
-        where: { ativo: true, usa_fluxo_recarga_cartao: true },
+        where: { ativo: true, [Op.or]: [{ usa_fluxo_recarga_cartao: true }, { usa_fluxo_adiantamento: true }] },
         include: [{ model: TipoSolicitacao, as: 'tiposSolicitacao', where: { id: tipo_solicitacao_id }, attributes: ['id'], through: { attributes: [] }, required: true }]
       }));
-      if (usaFluxoRecargaCartao && (usaFluxoCadastroObra || comportamentoBase.usa_fluxo_contrato_novo || comportamentoBase.mostrar_periodo_medicao)) {
+      if ((usaFluxoRecargaCartao || usaFluxoAdiantamento) && (usaFluxoCadastroObra || comportamentoBase.usa_fluxo_contrato_novo || comportamentoBase.mostrar_periodo_medicao || comportamentoBase.somente_sistema)) {
         return res.status(400).json({ error: 'Vincule o subtipo de recarga a um tipo comum, sem fluxo de contrato, medicao ou cadastro de obra.' });
       }
-      if (usaFluxoRecargaCartao) {
+      if (usaFluxoRecargaCartao || usaFluxoAdiantamento) {
         comportamentoBase.usa_apropriacao_automatica_obra = false;
         usaFluxoDespesaEventual = false;
       }
       if (
-        (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao) &&
+        (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao || usaFluxoAdiantamento) &&
         setorDestinoSelecionado.eh_setor_geo !== true &&
         ![
           setorDestinoSelecionado.codigo,
@@ -3380,8 +3387,10 @@ module.exports = {
         }
       );
       const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento', ...(subtipoRecarga?.usa_fluxo_recarga_cartao ? ['subtipo'] : [])]);
+      const camposFixosAdiantamento = new Set(['subtipo', 'valor', 'data_vencimento', 'favorecido', 'forma_pagamento', 'descricao']);
       const campoVisivel = (campo) => (
         (campo === 'subtipo' && possuiSubtipoRecarga)
+        || (usaFluxoAdiantamento && camposFixosAdiantamento.has(campo))
         ||
         (usaFluxoRecargaCartao && camposFixosRecargaCartao.has(campo))
         || (!usaFluxoRecargaCartao && camposNovaSolicitacao?.[campo]?.visivel !== false)
@@ -3427,6 +3436,7 @@ module.exports = {
         // de contrato. Configuracao de campos legada nao exige um segundo pagamento.
         if (ehMedicaoFluxoNovo && ['forma_pagamento', 'favorecido'].includes(campo)) return false;
         if (usaFluxoRecargaCartao) return camposFixosRecargaCartao.has(campo);
+        if (usaFluxoAdiantamento && camposFixosAdiantamento.has(campo)) return true;
         return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
       };
       const rateioApropriacoes = (campoVisivel('contrato') || (registroSelecionadoEhObra && campoVisivel('apropriacao_principal')))
@@ -3976,12 +3986,12 @@ module.exports = {
       // Boleto usa o anexo obrigatorio, sem favorecido separado, em qualquer
       // tipo da Nova Solicitacao. PIX e outras formas preservam a exigencia.
       const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
-      const favorecidoEhObrigatorio = !pagamentoViaBoleto
-        && (campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada));
+      const favorecidoEhObrigatorio = usaFluxoAdiantamento || (!pagamentoViaBoleto
+        && (campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada)));
       if (favorecidoEhObrigatorio && !favorecido_id) {
         return res.status(400).json({ error: 'Selecione o favorecido do pagamento.' });
       }
-      if (!pagamentoViaBoleto && (campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
+      if ((!pagamentoViaBoleto || usaFluxoAdiantamento) && (campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
         favorecido = await Parceiro.findByPk(Number(favorecido_id), {
           attributes: ['id', 'nome', 'cpf_cnpj', 'ativo']
         });
@@ -4014,6 +4024,7 @@ module.exports = {
       }
       if (
         exibeFormaPagamentoNaNovaSolicitacao
+        && !usaFluxoAdiantamento
         && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
         && nomesAnexosPendentes.length === 0
       ) {
@@ -4476,7 +4487,7 @@ module.exports = {
           {
             model: TipoSubContrato,
             as: 'tipoSubSolicitacao',
-            attributes: ['id', 'nome', 'usa_fluxo_recarga_cartao']
+            attributes: ['id', 'nome', 'usa_fluxo_recarga_cartao', 'usa_fluxo_adiantamento']
           },
           { model: require('../models').SolicitacaoRecargaCartao, as: 'recargasCartao', attributes: ['id', 'cartao_recarga_id'] },
           // CONTRATO
@@ -4865,7 +4876,7 @@ module.exports = {
         }
       }
 
-      await solicitacao.update({ status_global: status });
+      await require('../services/adiantamentoService').atualizarPrincipalComProtecao(solicitacao, { status_global: status });
 
       await sincronizarTituloComStatusSolicitacao(solicitacao.id, status, usuarioId);
       await sincronizarTicketComSolicitacao(solicitacao.id, status, usuarioId);
@@ -5014,7 +5025,7 @@ module.exports = {
 
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao atualizar status' });
+      return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Erro ao atualizar status' });
     }
   },
 
@@ -5530,8 +5541,7 @@ module.exports = {
       }
 
       const valorAnterior = solicitacao.valor ?? null;
-
-      await solicitacao.update({
+      await require('../services/adiantamentoService').atualizarPrincipalComProtecao(solicitacao, {
         valor: novoValor
       });
 
@@ -5576,7 +5586,7 @@ module.exports = {
       return res.sendStatus(204);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao atualizar valor' });
+      return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Erro ao atualizar valor' });
     }
   },
 

@@ -1728,7 +1728,12 @@ const allowIntegracaoSiengeConfigManage = permit({
 
 router.post('/solicitacoes', validateRequest({ body: validateSolicitacaoCreateBody }), SolicitacaoController.create);
 router.get('/solicitacoes/centros-custo/:id/obras-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.obrasElegiveis);
+router.get('/solicitacoes/centros-custo/:id/configuracao-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.configuracao);
+router.put('/solicitacoes/centros-custo/:id/configuracao-distribuicao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.salvarConfiguracao);
 router.get('/recargas-cartao/meus-cartoes', RecargaCartaoController.meusCartoes);
+router.get('/adiantamentos/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').contexto);
+router.post('/adiantamentos/solicitacoes/:id/prestacao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').enviar);
+router.post('/adiantamentos/solicitacoes/:id/prestacao/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').decidir);
 router.get('/recargas-cartao/cartoes/:id/contexto', validateRequest({ params: validateNumericIdParam('id', 'Cartao de recarga') }), RecargaCartaoController.contextoCartao);
 router.get('/recargas-cartao/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.contextoSolicitacao);
 router.patch('/recargas-cartao/solicitacoes/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.editarPendente);

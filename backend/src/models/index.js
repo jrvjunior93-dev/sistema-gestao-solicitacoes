@@ -138,6 +138,7 @@ db.CartaoRecarga = require('./CartaoRecarga')(sequelize, Sequelize);
 db.CartaoRecargaUsuario = require('./CartaoRecargaUsuario')(sequelize, Sequelize);
 db.CartaoRecargaObra = require('./CartaoRecargaObra')(sequelize, Sequelize);
 db.SolicitacaoRecargaCartao = require('./SolicitacaoRecargaCartao')(sequelize, Sequelize);
+db.SolicitacaoAdiantamento = require('./SolicitacaoAdiantamento')(sequelize, Sequelize);
 db.CartaoRecargaPrestacao = require('./CartaoRecargaPrestacao')(sequelize, Sequelize);
 db.CartaoRecargaPrestacaoRateio = require('./CartaoRecargaPrestacaoRateio')(sequelize, Sequelize);
 db.FinanceiroTituloImportacao = require('./FinanceiroTituloImportacao')(sequelize, Sequelize);
@@ -538,6 +539,10 @@ db.CartaoRecargaUsuario.belongsTo(db.User, { foreignKey: 'user_id', as: 'usuario
 db.User.hasMany(db.CartaoRecargaUsuario, { foreignKey: 'user_id', as: 'cartoesRecargaVinculos' });
 
 db.Solicitacao.hasOne(db.SolicitacaoRecargaCartao, { foreignKey: 'solicitacao_id', as: 'recargaCartao' });
+db.Solicitacao.hasOne(db.SolicitacaoAdiantamento, { foreignKey: 'solicitacao_id', as: 'adiantamento' });
+db.SolicitacaoAdiantamento.belongsTo(db.Solicitacao, { foreignKey: 'solicitacao_id', as: 'solicitacao' });
+db.SolicitacaoAdiantamento.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
+db.SolicitacaoAdiantamento.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_devolucao_id', as: 'devolucao' });
 db.Solicitacao.hasMany(db.SolicitacaoRecargaCartao, { foreignKey: 'solicitacao_id', as: 'recargasCartao' });
 db.SolicitacaoRecargaCartao.belongsTo(db.Solicitacao, { foreignKey: 'solicitacao_id', as: 'solicitacao' });
 db.CartaoRecarga.hasMany(db.SolicitacaoRecargaCartao, { foreignKey: 'cartao_recarga_id', as: 'recargas' });

@@ -144,6 +144,13 @@ function resolveNaturalAllocations(movementValue, titleValue) {
   const titleAllocations = (title.rateios || []).map((item) => (
     normalizeSourceAllocation(item, title.obra_id)
   ));
+  if (title.origem_titulo === 'ADIANTAMENTO') {
+    if (title.valor_despesa_prestacao === null || title.valor_despesa_prestacao === undefined) return [];
+    // Os rateios da prestacao podem somar menos que o dinheiro antecipado.
+    // Nao renormalizar os pesos para 100%: a diferenca e devolucao, nao custo.
+    const proporcao = Math.min(1, Math.abs(number(movement.valor)) / number(title.valor_original));
+    return (title.rateios || []).map(plain).map(item => ({ ...normalizeSourceAllocation(item, title.obra_id), valor: money(number(item.valor_rateio) * proporcao) }));
+  }
   if (titleAllocations.length) {
     return allocateMoney(money(Math.abs(number(movement.valor_quitacao || movement.valor))), titleAllocations);
   }
@@ -697,6 +704,7 @@ function titleStatusGroup(statusValue) {
 
 function serializeAllocatedTitle(titleValue, obraId, competencia) {
   const title = plain(titleValue);
+  if (title.origem_titulo === 'DEVOLUCAO_ADIANTAMENTO' || (title.origem_titulo === 'ADIANTAMENTO' && title.valor_despesa_prestacao == null)) return null;
   const rateios = (title.rateios || []).map(plain);
   const workAllocations = rateios.filter((item) => Number(item.obra_id) === Number(obraId));
   const hasAuthoritativeAllocations = Boolean(title.possui_rateio) || rateios.length > 0;
@@ -831,6 +839,7 @@ async function listarTitulosFinanceirosAlocados(obraId, competencia, deps) {
       'parceiro_id',
       'categoria_financeira_id',
       'origem_titulo',
+      'valor_despesa_prestacao',
       'status',
       'descricao',
       'numero_documento',
@@ -923,6 +932,8 @@ async function totalTitulosEmitidosPorCompetencia(obraId, competencias, tipo, de
       'obra_id',
       'possui_rateio',
       'status',
+      'origem_titulo',
+      'valor_despesa_prestacao',
       'valor_original',
       'valor_saldo',
       'valor_baixado',

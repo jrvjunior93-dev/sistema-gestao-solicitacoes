@@ -13,6 +13,7 @@ import FinanceiroCard from './FinanceiroCard';
 import AcoesContrato from './AcoesContrato';
 import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
 import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
+import AdiantamentoDetalhe from './AdiantamentoDetalhe';
 import ObraCadastroModal from '../../components/obras/ObraCadastroModal';
 import CompraEtapas from './CompraEtapas';
 import { descricaoItensCompraDireta } from './estadoItensCompraDireta';
@@ -1904,6 +1905,9 @@ export default function SolicitacaoDetalhe() {
           podeInteragir={podeInteragirSolicitacao}
         />
       )}
+      {solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && <AdiantamentoDetalhe
+        key={`adiantamento-${id}-${statusDependenciasVersao}`} solicitacaoId={id}
+        podeInteragir={podeInteragirSolicitacao} onAtualizado={() => carregar({ silent: true })} />}
 
       {/* Barra fixa do mobile: a ação principal sempre visível. */}
       {isMobileDetalhe && (acaoPrincipalResolvida || podeAlterarStatus) && (

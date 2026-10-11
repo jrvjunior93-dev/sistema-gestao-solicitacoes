@@ -264,6 +264,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [tipoSolicitacaoIdContexto, setTipoSolicitacaoIdContexto] = useState(tipoSolicitacaoIdInicial);
   const [areaResponsavelContexto, setAreaResponsavelContexto] = useState(areaResponsavelInicial);
   const [necessarioPara, setNecessarioPara] = useState('');
+  const [tituloSolicitacao, setTituloSolicitacao] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [dadosPagamento, setDadosPagamento] = useState('');
   const [descontoTotal, setDescontoTotal] = useState('');
@@ -494,6 +495,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setObraId(obraIdInicial || '');
     setNecessarioPara('');
     setObservacoes('');
+    setTituloSolicitacao('');
     setDadosPagamento('');
     setDescontoTotal('');
     setFreteTipo('SEM_FRETE');
@@ -608,7 +610,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         return;
       }
       const payload = dados?.payload;
-      if (!payload || !payload.obra_id) {
+      if (!payload || (!payload.obra_id && !payload.titulo)) {
         if (obraIdInicial) setObraId(obraIdInicial);
         draftCarregadoRef.current = true;
         return;
@@ -629,6 +631,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       );
       setNecessarioPara(payload.necessario_para || '');
       setObservacoes(payload.observacoes || '');
+      setTituloSolicitacao(payload.titulo || '');
       setDadosPagamento(payload.dados_pagamento || '');
       setDescontoTotal(payload.desconto_total ? String(payload.desconto_total) : '');
       setFreteTipo(String(payload.frete_tipo || 'SEM_FRETE').toUpperCase());
@@ -743,7 +746,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       || suspenderAutosaveAteRef.current > Date.now()
     ) return undefined;
     const possuiConteudo = Boolean(
-      obraId || necessarioPara || observacoes || dadosPagamento || parceiroId || freteTipo !== 'SEM_FRETE' || itens.length
+      obraId || tituloSolicitacao || necessarioPara || observacoes || dadosPagamento || parceiroId || freteTipo !== 'SEM_FRETE' || itens.length
       || favorecidoSelecionado || favorecidoChavePix
     );
     if (!possuiConteudo) return undefined;
@@ -752,6 +755,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       writeComprasDraft(draftKey, {
         payload: {
           obra_id: obraId || null,
+          titulo: tituloSolicitacao,
           tipo_solicitacao_id: tipoSolicitacaoIdContexto || null,
           necessario_para: necessarioPara || null,
           observacoes: observacoes || '',
@@ -823,6 +827,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     itens,
     necessarioPara,
     obraId,
+    tituloSolicitacao,
     observacoes,
     parceiroBusca,
     parceiroId,
@@ -1625,8 +1630,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
-    if (modoCompraDireta && !necessarioPara) {
-      reprovarCampo('necessario_para', 'Informe a data de vencimento.');
+    if (!necessarioPara) {
+      reprovarCampo('necessario_para', modoCompraDireta ? 'Informe a data de vencimento.' : 'Informe a data da necessidade.');
       return;
     }
 
@@ -1808,6 +1813,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
       const payload = {
         obra_id: obraId,
+        titulo: tituloSolicitacao.trim() || undefined,
         tipo_solicitacao_id: modoCompraDireta ? tipoSolicitacaoIdContexto || null : undefined,
         origem: modoCompraDireta ? 'COMPRA_DIRETA' : undefined,
         parceiro_id: modoCompraDireta ? parceiroId || null : undefined,
@@ -1992,6 +1998,15 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       */}
       <BlocoConteudo titulo="Dados gerais" variante="primario" cor="var(--sem-info)">
         <FormSecao colunas={2}>
+          <CampoForm label="Título da solicitação" linha>
+            <input
+              className="input w-full"
+              value={tituloSolicitacao}
+              onChange={(event) => setTituloSolicitacao(event.target.value)}
+              maxLength={255}
+              placeholder="Informe um título para identificar a solicitação"
+            />
+          </CampoForm>
           <CampoForm label="Obra" obrigatorio linha erro={errosCampo.obra_id || obraTravadaMotivo}>
             <ApropriacaoAutocomplete
               value={obraId}
@@ -2009,14 +2024,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
           <CampoForm
             label={modoCompraDireta ? 'Data de vencimento' : 'Necessário para'}
-            obrigatorio={modoCompraDireta}
+            obrigatorio
             erro={errosCampo.necessario_para}
           >
             <DateInputBR
               className="input"
               value={necessarioPara}
               onChange={(event) => { limparErroCampo('necessario_para'); setNecessarioPara(event.target.value); }}
-              required={modoCompraDireta}
+              required
             />
           </CampoForm>
 

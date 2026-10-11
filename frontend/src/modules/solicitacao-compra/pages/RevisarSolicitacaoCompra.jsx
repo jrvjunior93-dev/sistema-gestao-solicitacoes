@@ -242,6 +242,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
         </head>
         <body>
           <h1>${modoCompraDireta ? 'Compra Direta' : 'Solicitacao de Compra'}</h1>
+          ${draft.payload?.titulo ? `<div class="meta"><strong>Título da solicitação:</strong> ${escapeHtml(draft.payload.titulo)}</div>` : ''}
           <div class="meta"><strong>Obra:</strong> ${escapeHtml(draft.resumo?.obra_nome || '-')}</div>
           <div class="meta"><strong>Solicitante:</strong> ${escapeHtml(draft.resumo?.solicitante_nome || '-')}</div>
           ${temDescontoCompraDireta ? `<div class="meta"><strong>Valor bruto:</strong> ${escapeHtml(formatarMoeda(valorBrutoCompraDireta))}</div>` : ''}
@@ -348,6 +349,13 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
+    if (!draft.payload?.necessario_para) {
+      avisar.alerta(modoCompraDireta
+        ? 'Informe a data de vencimento. Volte e edite a solicitação.'
+        : 'Informe a data da necessidade. Volte e edite a solicitação.');
+      return;
+    }
+
     if (!confirmado) {
       avisar.alerta('Confirme que revisou os dados antes de criar a solicitação.');
       return;
@@ -401,6 +409,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     existem na solicitação comum, então não podem contar como "vazios".
   */
   const camposDaCompra = [
+    { label: 'Título da solicitação', valor: draft.payload?.titulo, span: 3 },
     { label: 'Obra', valor: draft.resumo?.obra_nome },
     { label: 'Solicitante', valor: draft.resumo?.solicitante_nome },
     { label: 'Credor', valor: draft.resumo?.credor_nome, contexto: modoCompraDireta },

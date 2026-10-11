@@ -1,5 +1,16 @@
 # Modulo COMPRAS
 
+## Titulo e data da necessidade - 2026-10-11
+
+Solicitacao de Compra e Compra Direta possuem titulo opcional no cabecalho,
+ate 255 caracteres. Rascunho e revisao preservam o campo; a descricao da
+solicitacao principal o inclui para a pesquisa existente, sem ampliar acesso.
+
+Compra comum exige Necessario para no cabecalho e no POST de criacao,
+independentemente das datas dos itens. Rascunho incompleto pode ser salvo,
+mas precisa da data para criar. Compra Direta conserva Data de vencimento.
+Nenhum registro existente e reescrito, sem migration para esses campos.
+
 ## Papel e fronteira
 
 Compras e dono da solicitacao de compra, origem normal/direta, itens, quantidades e rateios de apropriacao. Cotacoes, respostas e pedidos pertencem ao modulo COTACOES. Obras e dono das apropriacoes e Parceiros e dono dos credores/fornecedores referenciados.

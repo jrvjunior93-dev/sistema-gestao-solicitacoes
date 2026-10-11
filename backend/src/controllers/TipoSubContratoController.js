@@ -73,6 +73,10 @@ function validarFluxoRecarga(tipos, ativo) {
     return behavior.usa_fluxo_contrato_novo || behavior.usa_fluxo_cadastro_obra || behavior.mostrar_periodo_medicao || behavior.somente_sistema;
   })) throw Object.assign(new Error('Recarga deve ser vinculada a tipos comuns, sem fluxo de contrato, medicao ou cadastro de obra.'), { statusCode: 400 });
 }
+function validarFluxos(tipos, recarga, adiantamento) {
+  validarFluxoRecarga(tipos, recarga || adiantamento);
+  if (adiantamento && (recarga || tipos.some(tipo => !require('../services/adiantamentoDomain').tipoPermiteAdiantamento(tipo)))) throw Object.assign(new Error('Adiantamento e exclusivo de despesa administrativa, comercial ou marketing e nao pode acumular recarga.'), { statusCode: 400 });
+}
 
 module.exports = {
   async index(req, res) {
@@ -103,8 +107,8 @@ module.exports = {
 
       const criadoId = await sequelize.transaction(async (transaction) => {
         const macros = await validarTipos(ids, transaction);
-        validarFluxoRecarga(macros, req.body.usa_fluxo_recarga_cartao === true);
-        const tipo = await TipoSubContrato.create({ nome, tipo_macro_id: ids[0], usa_fluxo_recarga_cartao: req.body.usa_fluxo_recarga_cartao === true }, { transaction });
+        validarFluxos(macros, req.body.usa_fluxo_recarga_cartao === true, req.body.usa_fluxo_adiantamento === true);
+        const tipo = await TipoSubContrato.create({ nome, tipo_macro_id: ids[0], usa_fluxo_recarga_cartao: req.body.usa_fluxo_recarga_cartao === true, usa_fluxo_adiantamento: req.body.usa_fluxo_adiantamento === true }, { transaction });
         await tipo.setTiposSolicitacao(macros, { transaction });
         return tipo.id;
       });
@@ -134,8 +138,11 @@ module.exports = {
         if (!tipo) {
           throw Object.assign(new Error('Subtipo não encontrado.'), { statusCode: 404 });
         }
-        validarFluxoRecarga(macros, req.body.usa_fluxo_recarga_cartao === undefined ? tipo.usa_fluxo_recarga_cartao : req.body.usa_fluxo_recarga_cartao === true);
-        await tipo.update({ nome, tipo_macro_id: ids[0], ...(req.body.usa_fluxo_recarga_cartao !== undefined ? { usa_fluxo_recarga_cartao: req.body.usa_fluxo_recarga_cartao === true } : {}) }, { transaction });
+        const recarga = req.body.usa_fluxo_recarga_cartao === undefined ? tipo.usa_fluxo_recarga_cartao : req.body.usa_fluxo_recarga_cartao === true;
+        const adiantamento = req.body.usa_fluxo_adiantamento === undefined ? tipo.usa_fluxo_adiantamento : req.body.usa_fluxo_adiantamento === true;
+        validarFluxos(macros, recarga, adiantamento);
+        if ((recarga !== tipo.usa_fluxo_recarga_cartao || adiantamento !== tipo.usa_fluxo_adiantamento) && await Solicitacao.count({ where: { tipo_sub_id: tipo.id }, transaction })) throw Object.assign(new Error('Subtipo em uso nao permite trocar o fluxo operacional.'), { statusCode: 409 });
+        await tipo.update({ nome, tipo_macro_id: ids[0], usa_fluxo_recarga_cartao: recarga, usa_fluxo_adiantamento: adiantamento }, { transaction });
         await tipo.setTiposSolicitacao(macros, { transaction });
       });
 

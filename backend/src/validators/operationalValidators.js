@@ -379,10 +379,17 @@ function validateCompraQuery(query = {}) {
   };
 }
 
+function parseTituloSolicitacaoCompra(value) {
+  if (value != null && typeof value !== 'string') {
+    throw new ValidationError('Titulo da solicitacao invalido.');
+  }
+  return parseOptionalText(value, 'Titulo da solicitacao', 255);
+}
+
   function validateCompraCreateBody(body = {}) {
     ensureAllowedKeys(
       body,
-      ['obra_id', 'necessario_para', 'observacoes', 'link_geral', 'itens'],
+      ['obra_id', 'titulo', 'necessario_para', 'observacoes', 'link_geral', 'itens'],
     'Solicitacao de compra'
   );
 
@@ -402,7 +409,8 @@ function validateCompraQuery(query = {}) {
 
   return {
     obra_id: parseInteger(body.obra_id, 'Obra', { required: true }),
-    necessario_para: parseDateOnly(body.necessario_para, 'Necessario para'),
+    titulo: parseTituloSolicitacaoCompra(body.titulo),
+    necessario_para: parseDateOnly(body.necessario_para, 'Necessario para', { required: true }),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 5000),
     link_geral: parseOptionalUrl(body.link_geral, 'Link geral'),
       itens: body.itens
@@ -415,6 +423,7 @@ function validateCompraQuery(query = {}) {
       [
         'obra_id',
         'tipo_solicitacao_id',
+        'titulo',
         'parceiro_id',
         'favorecido_id',
         'favorecido_chave_pix',
@@ -494,6 +503,7 @@ function validateCompraQuery(query = {}) {
     return {
       obra_id: parseInteger(body.obra_id, 'Obra', { required: true }),
       tipo_solicitacao_id: parseInteger(body.tipo_solicitacao_id, 'Tipo de solicitacao', { positiveOnly: true }),
+      titulo: parseTituloSolicitacaoCompra(body.titulo),
       parceiro_id: parseInteger(body.parceiro_id, 'Credor', { positiveOnly: true }),
       favorecido_id: parseInteger(body.favorecido_id, 'Favorecido', { positiveOnly: true }),
       favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', PIX_TEXTO_MAX),

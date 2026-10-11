@@ -112,7 +112,8 @@ class AnexoController {
         'BOLETO',
         'PLANILHA_ORCAMENTARIA',
         'DOCUMENTO_OBRA',
-        'PRESTACAO_RECARGA'
+        'PRESTACAO_RECARGA',
+        'PRESTACAO_ADIANTAMENTO'
       ];
 
       const tipoNormalizado = String(tipo).toUpperCase();

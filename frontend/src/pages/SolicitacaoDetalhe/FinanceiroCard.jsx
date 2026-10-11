@@ -473,9 +473,10 @@ function exigeTitulosSeparadosCompraDireta(solicitacao) {
 }
 
 function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', options = {}) {
-  const parceiro = options.parceiro || solicitacao?.parceiro || null;
+  const adiantamento = solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true;
+  const parceiro = options.parceiro || solicitacao?.parceiro || (adiantamento ? solicitacao?.favorecido : null) || null;
   const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
-  const favorecidoPadraoId = credorOriginalId && String(parceiro?.id) === String(credorOriginalId)
+  const favorecidoPadraoId = adiantamento || (credorOriginalId && String(parceiro?.id) === String(credorOriginalId))
     ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
     : null;
   return {
@@ -564,7 +565,7 @@ export function buildDefaultForm(solicitacao) {
     tipo: 'PAGAR',
     status: 'ABERTO',
     empresa_id: solicitacao?.obra?.empresa_grupo_id ? String(solicitacao.obra.empresa_grupo_id) : '',
-    parceiro_id: solicitacao?.parceiro?.id ? String(solicitacao.parceiro.id) : '',
+    parceiro_id: solicitacao?.parceiro?.id ? String(solicitacao.parceiro.id) : solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && solicitacao?.favorecido?.id ? String(solicitacao.favorecido.id) : '',
     categoria_financeira_id: '',
     valor: valorSolicitacao,
     data_vencimento: solicitacao?.data_vencimento || today(),
@@ -1192,10 +1193,12 @@ export default function FinanceiroCard({
   );
   const compraDiretaSolicitacao = tipoSolicitacao.includes('compra direta');
   const usaTituloAutomaticoRecarga = tipoSolicitacao.includes('recarga de cartao');
+  const adiantamentoComTitulo = solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && titulos.length > 0;
   const geracaoManualDesabilitada = usaTabelaParcelasFluxoNovo
     || usaTituloAutomaticoRecarga
+    || adiantamentoComTitulo
     || classificandoContrato;
-  const motivoGeracaoManualDesabilitada = usaTituloAutomaticoRecarga
+  const motivoGeracaoManualDesabilitada = adiantamentoComTitulo ? 'O adiantamento ja possui titulo financeiro.' : usaTituloAutomaticoRecarga
     ? 'A conta da Recarga de Cartao e criada automaticamente pela solicitacao.'
     : 'Os titulos do contrato do fluxo novo sao criados automaticamente pelo cronograma.';
 
@@ -2400,6 +2403,12 @@ export default function FinanceiroCard({
       titulo: 'Parceiro',
       tipo: 'texto',
       render: (titulo) => titulo.parceiro?.nome || '-'
+    },
+    {
+      id: 'forma_pagamento',
+      titulo: 'Forma de pagamento',
+      tipo: 'texto',
+      render: (titulo) => titulo.formaPagamento?.nome || getFormaPagamento(titulo.forma_pagamento_id)?.nome || '—'
     },
     {
       id: 'vencimento',

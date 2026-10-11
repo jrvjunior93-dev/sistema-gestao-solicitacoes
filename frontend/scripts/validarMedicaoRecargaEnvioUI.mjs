@@ -38,7 +38,8 @@ try {
     anexos: [{ id: 1, nome_original: 'Medicao QA.pdf', tipo: 'ANEXO' }] });
   const titles = () => [1, 2].map((id) => ({ id, codigo: `TIT-QA-${id}`, tipo: 'PAGAR',
     status: id === 1 && (approved || recarga) ? 'ABERTO' : 'PREVISAO', valor_original: 100, valor_saldo: 100, valor_baixado: 0,
-    parceiro: { nome: 'Credor QA' }, filaPagamentosManuais: id === 1 && queued ? [{ id: 1, status: 'PENDENTE' }] : [] }));
+    parceiro: { nome: 'Credor QA' }, formaPagamento: id === 1 ? { id: 4, nome: 'Pix QA', tipo: 'PIX' } : null,
+    filaPagamentosManuais: id === 1 && queued ? [{ id: 1, status: 'PENDENTE' }] : [] }));
   await page.route('**/*', async (route) => {
     const request = route.request(), url = new URL(request.url());
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
@@ -134,6 +135,17 @@ try {
   assert.deepEqual(sends.at(-1).titulo_ids, [1]);
   assert(await filaLegada.isDisabled(), 'Resumo da parcela impede reenvio apos entrar na fila.');
   await open('recarga=1');
+  await page.locator('thead th').filter({ hasText: /^Forma de pagamento$/i }).waitFor();
+  const formaTitulo = page.locator('tbody tr').filter({ has: page.getByTestId('situacao-titulo-1') });
+  assert(await formaTitulo.getByRole('cell', { name: 'Pix QA', exact: true }).isVisible(), 'Forma vem do titulo, mesmo sem catalogo financeiro');
+  const semForma = page.locator('tbody tr').filter({ has: page.getByTestId('situacao-titulo-2') });
+  assert(await semForma.getByRole('cell', { name: '—', exact: true }).isVisible(), 'Titulo sem forma nao herda forma de outro titulo/solicitacao');
+  await page.screenshot({ path: path.join(saida, 'forma-pagamento-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert(await page.getByText('Pix QA', { exact: true }).isVisible(), 'Cards compactos mobile tambem mostram a forma');
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await page.screenshot({ path: path.join(saida, 'forma-pagamento-mobile.png') });
+  await page.setViewportSize({ width: 1366, height: 900 });
   await page.getByRole('checkbox', { name: 'Selecionar linha 1' }).check();
   assert(await page.getByRole('button', { name: 'Enviar para autorização', exact: true }).isEnabled());
   assert(await page.getByRole('button', { name: 'Enviar para fila de pagamentos', exact: true }).isEnabled());

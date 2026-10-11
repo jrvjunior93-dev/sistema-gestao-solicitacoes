@@ -1,5 +1,63 @@
 # Ownership Ativo
 
+## Publicacao das pendencias desta conversa - 2026-10-11
+
+- Usuario autorizou commit e push somente na refactor/frontend: titulo de
+  compras, forma de pagamento/data da necessidade e adiantamento/rateio.
+- Reserva documental temporaria dos tres handoffs e READMEs canonicos para
+  registrar a publicacao. Sem nova alteracao funcional, main, banco ou EC2.
+- Auditoria do plano financeiro de outra conversa e outputs/ fora do commit.
+- Reserva encerrada apos conferencia local; ownership liberado para commit.
+
+## Adiantamento e obras de distribuicao por centro - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado. Homologacao MySQL real em dev pendente.
+- Autorizado: subtipo ADIANTAMENTO nas tres despesas, favorecido/titulo aberto,
+  prestacao posterior e saldo pendente ate devolucao; configuracao das obras
+  por centro. Administrativo/DP sem vinculo usuario-obra; Comercial/Marketing
+  somente privadas. Nao ampliar visibilidade de solicitacoes.
+- Reserva: centroCustoDistribuicaoService/controller, routes.js, Obras.jsx e
+  componente de configuracao; modelos/migrations/servico/controller de
+  adiantamento, TipoSubContrato/controller/tela, NovaSolicitacao, detalhe e
+  FinanceiroCard, sincronizacao financeira, relatorios afetados, testes e docs.
+- Inclui AnexoController (tipo de documento de prestacao) e servicos de
+  financeiro/custos para proteger o reconhecimento somente apos conferencia.
+- Preservar pendencias anteriores. Sem banco real, migrations executadas,
+  commit/push, main ou EC2. Etapas validadas com transporte/modelos isolados.
+- Handoff: docs/handoffs/2026-10-11-adiantamento-centros-custo.md.
+
+## Forma de pagamento e data da necessidade - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  concluidas, ownership liberado.
+- Reserva: FinanceiroCard.jsx, leitura resumida de titulos em
+  tituloFinanceiroService.js, NovaSolicitacaoCompra/RevisarSolicitacaoCompra,
+  operationalValidators, testes isolados correspondentes e novo handoff.
+- Escopo: coluna da forma do titulo na aba Financeiro; conferir a coluna
+  existente da fila sem duplicar; exigir data da necessidade na criacao de
+  Solicitacao de Compra, preservando vencimento da Compra Direta e rascunhos.
+- Preservar alteracoes pendentes do titulo da compra, permissoes, status,
+  anexos, rateios e baixas. Sem banco real, migration, commit/push ou deploy.
+- Handoff: docs/handoffs/2026-10-11-forma-pagamento-data-necessidade.md.
+- Testes reais de UI com transporte isolado, leitura/permissoes backend,
+  compras, fila/colunas/baixa em massa, build e diff aprovados.
+
+## Titulo na criacao de compras - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  concluidas, ownership liberado. Arquivos do escopo:
+  NovaSolicitacaoCompra, RevisarSolicitacaoCompra, payloadSolicitacaoCompra,
+  operationalValidators, SolicitacaoCompraController, testes correspondentes
+  e handoff desta tarefa.
+- Escopo autorizado: titulo opcional no cabecalho de Compra Direta e
+  Solicitacao de Compra, rascunho/revisao, persistencia e pesquisa na lista
+  geral pela descricao existente. Sem migration, banco real ou publicacao.
+- Preservar permissoes, formas de pagamento, itens, aprovacao e envio unico.
+- Handoff: docs/handoffs/2026-10-11-titulo-solicitacoes-compra.md; testes com
+  APIs/modelos isolados e build aprovados. Pendencias preexistentes de teste
+  de frete e hidratacao de rateios registradas separadamente, sem alteracao.
+
 ## Padronizacao dos visualizadores de arquivos - 2026-10-11
 
 - Responsavel: agente desta conversa, sem delegacao; implementacao local e
