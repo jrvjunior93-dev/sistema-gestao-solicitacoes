@@ -17,6 +17,9 @@ um agrupamento gerencial, nao um rateio financeiro automatico igualitario.
 Migration 202610110001_adiantamento_prestacao.js deve preceder o restart do
 backend no ambiente de homologacao. Nao foi executada em banco real nesta
 entrega. Fluxo e limites: [handoff de adiantamento](../../handoffs/2026-10-11-adiantamento-centros-custo.md).
+Ela e exclusivamente estrutural. Apos o deploy, SUPERADMIN cria o subtipo
+ADIANTAMENTO na tela Subtipos, seleciona fluxo Adiantamento e vincula os tres
+tipos de despesa permitidos. Nenhum subtipo e criado por migration.
 
 ## Documentacao operacional relacionada
 

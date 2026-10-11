@@ -6,7 +6,7 @@ Publicacao autorizada pelo usuario em 11/10/2026: commit e push das pendencias
 desta conversa somente na refactor/frontend. Sem main, migrations executadas,
 banco real ou EC2. Auditoria da outra conversa e outputs/ fora do commit.
 
-Implementacao local na refactor/frontend. Sem commit/push, migration executada,
+Implementacao publicada no commit 939ec09a na refactor/frontend. Sem migration executada,
 banco real, EC2, deploy ou alteracao na main. Pendencias anteriores e arquivos
 da auditoria do plano financeiro de outra conversa foram preservados.
 
@@ -106,8 +106,8 @@ interceptados, em Chrome instalado.
   devolucao, estorno, custo e negativas de edicao manual.
 - backend/scripts/validarAdiantamentoFinanceiro.js: funcao real de criar titulo,
   categoria GEO, favorecido, unicidade, rollback, negativas de baixa, DRE,
-  Financeiro/Resultado de Obras e planejamento, schema/seed idempotentes
-  simulados duas vezes. Nao substitui teste MySQL.
+  Financeiro/Resultado de Obras e planejamento, schema idempotente simulado
+  duas vezes e executor real isolado, sem seed. Nao substitui teste MySQL.
 - frontend/scripts/validarAdiantamentoUI.mjs: configuracao, despesas, upload sem
   perder digitacao, retry apos erro, conferencia/saldo, leitura e mobile 390px;
   defaults reais do FinanceiroCard para favorecido/categoria/forma.
@@ -130,7 +130,9 @@ interceptados, em Chrome instalado.
 2. Confirmar endpoint/banco dev distinto da producao, backup aplicavel e
    migrations pendentes. Executar a migration additive ANTES do restart do
    backend-dev; nao trocar nenhum processo PM2 de producao.
-3. Conferir seed dos tres subtipos e repetir preflight somente leitura.
+3. Repetir preflight somente leitura e cadastrar pela interface Subtipos:
+   nome ADIANTAMENTO, fluxo operacional Adiantamento, vinculado somente a
+   DESPESA ADMINISTRATIVA, DESPESA COMERCIAL e DESPESA DE MARKETING.
 4. Homologar com usuarios reais Administrativo/DP sem vinculos de obra e
    Comercial/Marketing: configuracao, TODAS e negativas publica/sem acesso.
 5. Criar adiantamento, GEO gerar titulo/categoria, autorizacao/fila, pagamento
@@ -139,3 +141,16 @@ interceptados, em Chrome instalado.
 6. Receber os 200 de devolucao; conferir encerramento, idempotencia e estorno
    permitido/negado. Testar SQL/concorrencia em MySQL real somente em dev.
 7. Nao promover a main sem homologacao e nova autorizacao/backup confirmado.
+
+## Correcao de compatibilidade do executor - 11/10/2026
+
+Na preparacao do deploy, identificada incompatibilidade do seed com a protecao
+MIGRATION_DATA_MUTATION_BLOCKED do executor. Usuario autorizou a correcao e
+publicacao. Seed removido: migration agora altera apenas duas colunas e cria
+a tabela da extensao. O executor e suas restricoes nao foram modificados.
+Subtipos/vinculos ficam a cargo do SUPERADMIN na interface existente.
+
+Teste adicional utiliza as funcoes reais de guarda estatica e SQL, confirma
+negativas de dados e executa runMigrations duas vezes com FS/banco isolados.
+Registro apenas em schema_migrations; sem SQL de cadastros. Homologacao MySQL
+e migration na EC2 continuam pendentes. Demais fluxos permanecem intactos.

@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Correcao da migration de adiantamento - 2026-10-11
+
+- Usuario autorizou remover o seed, testar a protecao do executor e publicar
+  na refactor/frontend. Sem enfraquecer o runner, main, EC2 ou banco real.
+- Reserva temporaria: migration 202610110001_adiantamento_prestacao.js,
+  validarAdiantamentoFinanceiro.js, handoff de adiantamento e README de
+  Solicitacoes. Auditoria de outra conversa e outputs/ preservados.
+- Correcao e testes locais concluidos; ownership liberado para commit/push
+  autorizado. Runner real isolado/idempotencia/negativas, adiantamento,
+  medicao/recarga, sintaxe e documentacao aprovados. Sem banco real.
+
 ## Publicacao das pendencias desta conversa - 2026-10-11
 
 - Usuario autorizou commit e push somente na refactor/frontend: titulo de

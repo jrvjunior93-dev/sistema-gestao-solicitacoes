@@ -10,10 +10,13 @@ const read = arquivo => fs.readFileSync(path.resolve(__dirname, '..', arquivo), 
 const row = data => ({ ...data, toJSON() { return { ...this }; } });
 const noop = async () => {};
 const error = (statusCode, message) => Object.assign(new Error(message), { statusCode });
-function load(arquivo, deps) {
+function load(arquivo, deps, env = {}) {
   const module = { exports: {} };
-  vm.runInNewContext(read(arquivo), { module, exports: module.exports, console, process: { env: {} },
-    require: nome => { if (!(nome in deps)) throw Error(`Dependencia nao isolada: ${nome}`); return deps[nome]; } }, { filename: arquivo });
+  const isolatedRequire = nome => { if (!(nome in deps)) throw Error(`Dependencia nao isolada: ${nome}`); return deps[nome]; };
+  isolatedRequire.resolve = nome => nome;
+  isolatedRequire.cache = {};
+  vm.runInNewContext(read(arquivo), { module, exports: module.exports, console, __dirname: path.dirname(path.resolve(__dirname, '..', arquivo)), process: { env },
+    require: isolatedRequire }, { filename: arquivo });
   return module.exports;
 }
 async function criacao() {
@@ -148,22 +151,47 @@ async function protecaoBaixa() {
   assert.equal(rollbacks, 4, 'Negativas nao gravam nenhuma baixa, mesmo em divergencia autorizada');
 }
 async function migration() {
-  const cols = new Set(), tables = new Set(), subs = new Map(), links = new Set(); let next = 50, additions = 0;
-  const migration = load('migrations/202610110001_adiantamento_prestacao.js', { sequelize: sequelizeLib,
-    '../src/database/schemaUtils': { columnExists: async (_db, table, col) => cols.has(`${table}.${col}`), tableExists: async (_db, table) => tables.has(table), resolveTableName: async (_db, _candidates, fallback) => fallback },
-    '../src/services/adiantamentoDomain': require('../src/services/adiantamentoDomain'),
-    '../src/services/tipoSolicitacaoBehaviorService': require('../src/services/tipoSolicitacaoBehaviorService') });
+  const name = '202610110001_adiantamento_prestacao.js';
+  const runner = load('src/database/runMigrations.js', {
+    fs, path, sequelize: sequelizeLib, '../config/env': { validateRequiredEnv() {} }, './index': {}
+  });
+  const source = read(`migrations/${name}`);
+  runner.assertMigrationSourceIsSchemaOnly(name, source);
+  for (const sql of ['INSERT INTO tipos_sub_contrato VALUES (1)', 'UPDATE tipos_sub_contrato SET ativo = 1', 'DELETE FROM tipos_sub_contrato']) {
+    assert.throws(() => runner.assertMigrationSourceIsSchemaOnly(name, `${source}\n${sql}`), { code: 'MIGRATION_DATA_MUTATION_BLOCKED' });
+    assert.throws(() => runner.assertSqlIsSchemaOnly(sql, name), { code: 'MIGRATION_DATA_MUTATION_BLOCKED' });
+  }
+  const cols = new Set(), tables = new Set(); let additions = 0;
+  const migration = load(`migrations/${name}`, {
+    '../src/database/schemaUtils': { columnExists: async (_db, table, col) => cols.has(`${table}.${col}`), tableExists: async (_db, table) => tables.has(table), resolveTableName: async (_db, _candidates, fallback) => fallback }
+  });
   const args = { DataTypes: sequelizeLib.DataTypes, queryInterface: {
-    addColumn: async (table, col) => { cols.add(`${table}.${col}`); additions++; }, createTable: async table => { tables.add(table); additions++; } },
-    sequelize: { transaction: async fn => fn({}), query: async (sql, opts) => {
-      if (sql.startsWith('SELECT id, nome')) return [{ id: 1, nome: 'DESPESA ADMINISTRATIVA' }, { id: 2, nome: 'DESPESA COMERCIAL' }, { id: 3, nome: 'DESPESA DE MARKETING' }, { id: 4, nome: 'CONTRATO' }];
-      if (sql.startsWith('SELECT id FROM tipos_sub_contrato')) return subs.has(opts.replacements.id) ? [{ id: subs.get(opts.replacements.id) }] : [];
-      if (sql.startsWith('INSERT INTO tipos_sub_contrato ')) { subs.set(opts.replacements.id, ++next); return [next, 1]; }
-      if (sql.startsWith('INSERT IGNORE INTO')) { links.add(`${opts.replacements.sub}:${opts.replacements.tipo}`); return [0, 1]; }
-      throw Error('SQL nao previsto');
-    } } };
+    addColumn: async (table, col) => { cols.add(`${table}.${col}`); additions++; }, createTable: async (table, fields) => {
+      assert.equal(fields.solicitacao_id.unique, true); assert.equal(fields.titulo_financeiro_id.unique, true);
+      tables.add(table); additions++;
+    } }, sequelize: { query: async () => { throw Error('SQL direto/seed indevido na migration isolada'); } } };
   await migration.up(args); await migration.up(args);
-  assert.equal(additions, 3); assert.equal(subs.size, 3); assert.equal(links.size, 3); assert(!subs.has(4));
+  assert.equal(additions, 3); assert.equal(cols.size, 2); assert.equal(tables.size, 1);
   await assert.rejects(migration.down(), /Preservar/);
+  // Executor real com FS e banco isolados: aplica uma vez e registra apenas
+  // schema_migrations. A segunda execucao nao repete DDL nem cria cadastros.
+  cols.clear(); tables.clear(); additions = 0;
+  const registered = new Set();
+  const db = {
+    getQueryInterface: () => ({ ...args.queryInterface, describeTable: async table => Object.fromEntries([...cols].filter(col => col.startsWith(`${table}.`)).map(col => [col.slice(table.length + 1), {}])) }),
+    escape: value => `'${value}'`, query: async sql => {
+      if (sql.includes('FROM information_schema.tables')) return [[{ exists: 1 }], {}];
+      if (sql.startsWith('SELECT name FROM schema_migrations')) return [[...registered].map(name => ({ name })), {}];
+      if (sql.startsWith('INSERT INTO schema_migrations')) { registered.add(name); return [1, 1]; }
+      throw Error(`SQL fora do registro de migrations: ${sql}`);
+    }
+  };
+  const executor = load('src/database/runMigrations.js', {
+    fs: { ...fs, existsSync: () => true, readdirSync: () => [name], readFileSync: () => source }, path,
+    sequelize: sequelizeLib, '../config/env': { validateRequiredEnv() {} }, './index': db,
+    [path.resolve(__dirname, '..', 'migrations', name)]: migration
+  }, { ALLOW_SCHEMA_MIGRATIONS: 'true' });
+  await executor.runMigrations({ authorized: true }); await executor.runMigrations({ authorized: true });
+  assert.equal(registered.size, 1); assert.equal(additions, 3);
 }
 (async () => { await criacao(); await relatorios(); await protecaoBaixa(); await migration(); console.log('OK: titulo GEO unico/aberto, categoria, favorecido, rollback; custo 800 de pagamento 1000, DRE, obras/resultado/planejamento e escopo; baixa preserva principal; migration aditiva/idempotente simulada. Sem banco/rede.'); })().catch(e => { console.error(e); process.exitCode = 1; });
