@@ -21,6 +21,7 @@ const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
+const { normalizarContatos } = require('./rhColaboradorContatosDomain');
 
 /**
  * O PEDIDO DE PESSOAL: a Obra pede, o DP decide (Fase 2 do modulo DP, 25/08).
@@ -212,20 +213,7 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
     if (!String(dados.nome || '').trim()) throw new ValidationError('Informe o nome do colaborador a admitir.');
     if (!String(dados.cpf || '').trim()) throw new ValidationError('Informe o CPF do colaborador a admitir.');
     if (!dados.obra_id) throw new ValidationError('Informe a obra da admissao.');
-    if (dados.telefone_secundario) {
-      const telefone = String(dados.telefone_secundario).replace(/\D/g, '');
-      if (telefone.length < 10 || telefone.length > 11) {
-        throw new ValidationError('Informe um segundo telefone valido, com DDD.');
-      }
-    }
-    const camposEnderecoSecundario = [
-      'endereco_secundario', 'numero_secundario', 'complemento_secundario',
-      'bairro_secundario', 'municipio_secundario', 'estado_secundario', 'cep_secundario'
-    ];
-    if (camposEnderecoSecundario.some((campo) => String(dados[campo] || '').trim())
-      && (!String(dados.endereco_secundario || '').trim() || !String(dados.municipio_secundario || '').trim())) {
-      throw new ValidationError('Informe o logradouro e o municipio do segundo endereco.');
-    }
+    normalizarContatos(dados);
 
     /**
      * OS CAMPOS OBRIGATORIOS DO ITEM 8, cobrados aqui e nao no schema.
@@ -762,6 +750,7 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
   const dados = dadosDo(solicitacao);
 
   if (efeito === 'ADMISSAO') {
+    const contatos = normalizarContatos(dados);
     const colaborador = await RhColaborador.create(
       {
         empresa_grupo_id: dados.empresa_grupo_id || null,
@@ -812,6 +801,7 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
         estado_secundario: dados.estado_secundario || null,
         cep: dados.cep || null,
         cep_secundario: dados.cep_secundario || null,
+        ...contatos,
         banco: dados.banco || null,
         agencia: dados.agencia || null,
         conta: dados.conta || null,

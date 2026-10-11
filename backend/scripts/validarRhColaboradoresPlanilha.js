@@ -78,6 +78,7 @@ function load(relative, overrides = {}) {
       if (name === '../constants/empresaGrupo') return {};
       if (name === '../utils/cpfCnpj') return require('../src/utils/cpfCnpj');
       if (name === '../utils/pix') return require('../src/utils/pix');
+      if (name === './rhColaboradorContatosDomain') return require('../src/services/rhColaboradorContatosDomain');
       throw new Error(`Dependencia nao autorizada: ${name}`);
     }
   });

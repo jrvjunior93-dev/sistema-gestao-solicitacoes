@@ -52,6 +52,9 @@ import CategoriaFinanceiraAutocomplete from '../components/ui/CategoriaFinanceir
 import ObraAutocomplete from '../components/ui/ObraAutocomplete';
 import { formatCurrencyInput, getCpfCnpjError, maskCpfCnpj, maskPhone, normalizeCurrencyTyping, onlyDigits } from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
+import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
+import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
+import { CAMPOS_ENDERECO, temEnderecoSecundario, erroTelefoneSecundario, telefoneComparavel } from '../utils/rhColaboradorContatos';
 
 function emptyForm() {
   return {
@@ -64,6 +67,9 @@ function emptyForm() {
     matricula: '',
     rg: '',
     telefone: '',
+    telefone_secundario: '',
+    ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) => [[campo, ''], [`${campo}_secundario`, '']])),
+    mostrarEnderecoSecundario: false,
     email: '',
     cargo: '',
     tipo_vinculo: 'CLT',
@@ -163,7 +169,11 @@ function toFormData(data) {
     cpf: maskCpfCnpj(data?.cpf),
     matricula: data?.matricula || '',
     rg: data?.rg || '',
-    telefone: maskPhone(data?.telefone),
+    telefone: maskPhone(telefoneComparavel(data?.telefone)),
+    telefone_secundario: maskPhone(telefoneComparavel(data?.telefone_secundario)),
+    ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) =>
+      [[campo, data?.[campo] || ''], [`${campo}_secundario`, data?.[`${campo}_secundario`] || '']])),
+    mostrarEnderecoSecundario: temEnderecoSecundario(data),
     email: data?.email || '',
     cargo: data?.cargo || '',
     tipo_vinculo: data?.tipo_vinculo || 'CLT',
@@ -205,6 +215,9 @@ function buildPayload(form) {
     matricula: form.matricula || undefined,
     rg: form.rg || undefined,
     telefone: onlyDigits(form.telefone) || undefined,
+    telefone_secundario: onlyDigits(form.telefone_secundario) || null,
+    ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) =>
+      [[campo, form[campo] || null], [`${campo}_secundario`, form[`${campo}_secundario`] || null]])),
     email: form.email || undefined,
     cargo: form.cargo || undefined,
     tipo_vinculo: form.tipo_vinculo,
@@ -629,6 +642,11 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   async function salvar(e) {
     e.preventDefault();
     if (!podeEditar || salvarRef.current) {
+      return;
+    }
+    const telefoneErro = erroTelefoneSecundario(form);
+    if (telefoneErro) {
+      avisar.erro(telefoneErro);
       return;
     }
     const cpfErro = getCpfCnpjError(form.cpf, { required: true, type: 'cpf' });
@@ -1316,14 +1334,8 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
               </FormSecao>
 
               <FormSecao legenda="Contato, contrato e calculo gerencial" colunas={2}>
-                <CampoForm label="Telefone">
-                  <input
-                    className="form-control"
-                    value={form.telefone}
-                    onChange={(e) => setForm((prev) => ({ ...prev, telefone: maskPhone(e.target.value) }))}
-                    disabled={!podeEditar}
-                  />
-                </CampoForm>
+                <RhColaboradorTelefone form={form} setForm={setForm} mascarar disabled={!podeEditar} />
+                <RhColaboradorTelefone form={form} setForm={setForm} mascarar secundario disabled={!podeEditar} />
                 <CampoForm label="Email">
                   <input
                     type="email"
@@ -1420,6 +1432,8 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                   />
                 </CampoForm>
               </FormSecao>
+
+              <RhColaboradorEnderecos form={form} setForm={setForm} disabled={!podeEditar || salvando} />
 
               <FormSecao legenda="Dados de pagamento" colunas={2}>
                 <CampoForm label="Favorecido">

@@ -6,6 +6,7 @@ const {
 const { TIPOS_GERENCIAIS_EMPRESA_GRUPO } = require('../constants/empresaGrupo');
 const { onlyDigits, isValidCpf, isValidCnpj, isValidCpfCnpj } = require('../utils/cpfCnpj');
 const { PIX_TEXTO_MAX } = require('../utils/pix');
+const { CAMPOS_CONTATO, normalizarContatos } = require('../services/rhColaboradorContatosDomain');
 
 const RH_TIPOS_VINCULO = ['CLT', 'NAO_CLT'];
 const RH_FORMAS_CALCULO_GERENCIAL = ['MENSAL', 'DIARIA'];
@@ -392,6 +393,7 @@ function validateRhColaboradorCreateBody(body = {}) {
       'matricula',
       'rg',
       'telefone',
+      ...CAMPOS_CONTATO,
       'email',
       'cargo',
       'tipo_vinculo',
@@ -421,6 +423,7 @@ function validateRhColaboradorCreateBody(body = {}) {
     matricula: parseOptionalText(body.matricula, 'Matricula', 60),
     rg: parseOptionalText(body.rg, 'RG', 30),
     telefone: parseOptionalText(body.telefone, 'Telefone', 30),
+    ...normalizarContatos(body),
     email: parseOptionalText(body.email, 'Email', 160),
     cargo: parseOptionalText(body.cargo, 'Cargo', 120),
     tipo_vinculo: parseEnum(body.tipo_vinculo, 'Tipo de vinculo', RH_TIPOS_VINCULO, { required: true }),
@@ -457,6 +460,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'matricula',
       'rg',
       'telefone',
+      ...CAMPOS_CONTATO,
       'email',
       'cargo',
       'tipo_vinculo',
@@ -487,6 +491,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
     matricula: parseOptionalText(body.matricula, 'Matricula', 60),
     rg: parseOptionalText(body.rg, 'RG', 30),
     telefone: parseOptionalText(body.telefone, 'Telefone', 30),
+    ...normalizarContatos(body, {}, { parcial: true }),
     email: parseOptionalText(body.email, 'Email', 160),
     cargo: parseOptionalText(body.cargo, 'Cargo', 120),
     tipo_vinculo: parseEnum(body.tipo_vinculo, 'Tipo de vinculo', RH_TIPOS_VINCULO),

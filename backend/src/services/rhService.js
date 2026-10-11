@@ -15,6 +15,7 @@ const {
 const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
 const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
+const { normalizarContatos } = require('./rhColaboradorContatosDomain');
 
 /**
  * Importado por funcao, e nao no topo: `rhSolicitacaoService` requer `rhVinculoObraService`, que
@@ -1065,6 +1066,7 @@ async function detalharColaboradorRh(id, options = {}) {
 }
 
 async function criarColaboradorRh(data, user) {
+  data = { ...data, ...normalizarContatos(data) };
   return sequelize.transaction(async (transaction) => {
     if (data.forma_calculo_gerencial === 'DIARIA' && !(Number(data.valor_diaria) > 0)) {
       throw new ValidationError('Informe o valor da diaria para colaboradores com calculo por diaria.');
@@ -1125,6 +1127,8 @@ async function atualizarColaboradorRh(id, data, user) {
       throw new ValidationError('Colaborador nao encontrado.', 404);
     }
 
+    const contatos = normalizarContatos(data, colaborador.get({ plain: true }));
+    data = { ...data, ...contatos };
     if (data.empresa_grupo_id) {
       await ensureEmpresaGrupoExists(data.empresa_grupo_id, transaction);
     }
@@ -1200,6 +1204,7 @@ async function atualizarColaboradorRh(id, data, user) {
         matricula: data.matricula,
         rg: data.rg,
         telefone: data.telefone,
+        ...contatos,
         email: data.email,
         cargo: data.cargo,
         tipo_vinculo: data.tipo_vinculo,

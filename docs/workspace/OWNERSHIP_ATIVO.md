@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## Publicacao Colaboradores - contatos - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao da publicacao
+  concluida, ownership liberado. Sem nova mudanca funcional.
+- Escopo: cadastro/admissao com dois enderecos e telefones, componentes comuns,
+  validadores e documentacao relacionados; outputs/ preservado fora do Git.
+- Contatos, planilha legada, documentacao e diff revalidados antes do commit;
+  build e testes de UI aprovados durante a implementacao.
+- Sem main, EC2, migration aplicada, escrita em banco real ou deploy pelo agente.
+
+## Colaboradores - dois enderecos e telefones - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao/revisao
+  concluidas, ownership liberado. Handoff: 2026-10-11-colaboradores-contatos.md.
+- Reserva: RhDpColaboradores.jsx, RhDpPessoal.jsx, componente/helper reutilizavel
+  de contatos; rhValidators.js, rhService.js, rhSolicitacaoService.js e helper
+  de contatos; validadores direcionados, README RH/DP, este registro e handoff.
+- Escopo: expor campos existentes no cadastro; copiar endereco na admissao;
+  impedir segundo telefone igual ao primeiro no frontend e no backend,
+  preservando edicao parcial, permissoes e dados legados. Sem migration nova.
+- Plano: mapear persistencia/aprovacao, implementar e validar cadastro,
+  admissao, reabertura/limpeza e negativas com modelos/APIs em memoria e UI.
+- Sem commit/push, main, EC2 ou operacoes em banco real nesta tarefa.
+
 ## Publicacao DP - envio parcial e revisao - 2026-10-11
 
 - Usuario autorizou commit e push das pendencias somente na refactor/frontend.

@@ -51,6 +51,9 @@ import RhDpDocumentos from './RhDpDocumentos';
 import RhDpRelatorioOperacional from './RhDpRelatorioOperacional';
 import RhDpColaboradores from './RhDpColaboradores';
 import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
+import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
+import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
+import { erroTelefoneSecundario } from '../utils/rhColaboradorContatos';
 import '../styles/rh-pessoal-locais.css';
 import {
   canViewRhDpApuracao,
@@ -275,7 +278,7 @@ function formularioVazio(tipo) {
     endereco: '', numero: '', complemento: '', bairro: '', municipio: '', estado: '', cep: '',
     endereco_secundario: '', numero_secundario: '', complemento_secundario: '',
     bairro_secundario: '', municipio_secundario: '', estado_secundario: '', cep_secundario: '',
-    mostrarEnderecoSecundario: false,
+    mostrarEnderecoSecundario: false, mesmo_endereco: false,
     banco: '', agencia: '', conta: '', conta_tipo: '', pix_chave_tipo: '', pix_chave: '',
     // ADMISSAO
     nome: '',
@@ -723,14 +726,19 @@ export default function RhDpPessoal() {
       return;
     }
     if (f.tipo === 'ADMISSAO') {
+      const telefoneErro = erroTelefoneSecundario(f);
+      if (telefoneErro) {
+        avisar.erro(telefoneErro);
+        return;
+      }
       const cpfErro = getCpfCnpjError(f.cpf, { required: true, type: 'cpf' });
       if (cpfErro) {
-        setRetorno({ tipo: 'erro', texto: cpfErro });
+        avisar.erro(cpfErro);
         return;
       }
       const pixErro = getPixDocumentError(f.pix_chave, f.pix_chave_tipo);
       if (pixErro) {
-        setRetorno({ tipo: 'erro', texto: pixErro });
+        avisar.erro(pixErro);
         return;
       }
     }
@@ -1755,19 +1763,9 @@ export default function RhDpPessoal() {
                 )}
               </div>
               <div className="rh-colaboradores-filter-grid">
-                <label className="form-field">
-                  <span className="form-label form-label--required">Telefone</span>
-                  <input className="form-control" type="tel" value={formulario.telefone || ''}
-                    onChange={(e) => setFormulario({ ...formulario, telefone: e.target.value })} required />
-                </label>
-
-                {formulario.mostrarTelefoneSecundario ? (
-                  <label className="form-field">
-                    <span className="form-label">Segundo telefone</span>
-                    <input className="form-control" type="tel" maxLength={30} value={formulario.telefone_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, telefone_secundario: e.target.value })} />
-                  </label>
-                ) : null}
+                <RhColaboradorTelefone form={formulario} setForm={setFormulario} required />
+                {formulario.mostrarTelefoneSecundario && <RhColaboradorTelefone
+                  form={formulario} setForm={setFormulario} secundario />}
 
                 <label className="form-field">
                   <span className="form-label form-label--required">E-mail</span>
@@ -1801,100 +1799,7 @@ export default function RhDpPessoal() {
 
               </div>
 
-              <div className="rh-colaboradores-filter-grid">
-                <label className="form-field">
-                  <span className="form-label form-label--required">Endereco</span>
-                  <input className="form-control" value={formulario.endereco || ''}
-                    onChange={(e) => setFormulario({ ...formulario, endereco: e.target.value })} required />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">Numero</span>
-                  <input className="form-control" value={formulario.numero || ''}
-                    onChange={(e) => setFormulario({ ...formulario, numero: e.target.value })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">Complemento</span>
-                  <input className="form-control" value={formulario.complemento || ''}
-                    onChange={(e) => setFormulario({ ...formulario, complemento: e.target.value })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">Bairro</span>
-                  <input className="form-control" value={formulario.bairro || ''}
-                    onChange={(e) => setFormulario({ ...formulario, bairro: e.target.value })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label form-label--required">Municipio</span>
-                  <input className="form-control" value={formulario.municipio || ''}
-                    onChange={(e) => setFormulario({ ...formulario, municipio: e.target.value })} required />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">UF</span>
-                  <input className="form-control" maxLength={2} value={formulario.estado || ''}
-                    onChange={(e) => setFormulario({ ...formulario, estado: e.target.value.toUpperCase() })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">CEP</span>
-                  <input className="form-control" value={formulario.cep || ''}
-                    onChange={(e) => setFormulario({ ...formulario, cep: e.target.value })} />
-                </label>
-
-              </div>
-
-              {formulario.mostrarEnderecoSecundario ? (
-                <div className="rh-colaboradores-filter-grid">
-                  <label className="form-field">
-                    <span className="form-label form-label--required">Segundo endereço</span>
-                    <input className="form-control" maxLength={255} value={formulario.endereco_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, endereco_secundario: e.target.value })} required />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">Número</span>
-                    <input className="form-control" maxLength={50} value={formulario.numero_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, numero_secundario: e.target.value })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">Complemento</span>
-                    <input className="form-control" maxLength={120} value={formulario.complemento_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, complemento_secundario: e.target.value })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">Bairro</span>
-                    <input className="form-control" maxLength={120} value={formulario.bairro_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, bairro_secundario: e.target.value })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label form-label--required">Município</span>
-                    <input className="form-control" maxLength={120} value={formulario.municipio_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, municipio_secundario: e.target.value })} required />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">UF</span>
-                    <input className="form-control" maxLength={2} value={formulario.estado_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, estado_secundario: e.target.value.toUpperCase() })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">CEP</span>
-                    <input className="form-control" maxLength={20} value={formulario.cep_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, cep_secundario: e.target.value })} />
-                  </label>
-                </div>
-              ) : null}
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormulario((atual) => ({
-                ...atual,
-                mostrarEnderecoSecundario: !atual.mostrarEnderecoSecundario,
-                ...(!atual.mostrarEnderecoSecundario ? {} : {
-                  endereco_secundario: '', numero_secundario: '', complemento_secundario: '',
-                  bairro_secundario: '', municipio_secundario: '', estado_secundario: '', cep_secundario: ''
-                })
-              }))}>
-                {formulario.mostrarEnderecoSecundario ? 'Remover segundo endereço' : 'Adicionar segundo endereço'}
-              </button>
+              <RhColaboradorEnderecos form={formulario} setForm={setFormulario} admissao />
 
               {/* Dados bancarios E chave PIX: o escopo pede os dois, e eles nao sao
                   alternativos — a conta recebe a folha, o PIX resolve pagamento avulso. */}

@@ -181,8 +181,20 @@ Validacao local, sem banco: `node scripts/validarRhColaboradoresPlanilha.js` no 
 ## Admissao e contatos adicionais
 
 - o pedido de admissao permite informar, opcionalmente, um segundo telefone e um segundo endereco completo;
+- o cadastro direto e a edicao pelo DP dentro do local tambem exibem os dois
+  telefones e os dois enderecos, preservando os campos ao reabrir a ficha;
+- na admissao, `Usar o mesmo endereco` copia os sete campos do primeiro para
+  o segundo e acompanha alteracoes enquanto marcado; desmarcar libera edicao
+  independente. Remover o segundo endereco limpa apenas os campos secundarios;
 - os dados adicionais ficam no pedido para conferencia e, apos aprovacao, no cadastro do colaborador; o cadastro exige a migration de esquema `202610020001_rh_colaborador_contatos_adicionais.js` antes de usar esses campos;
-- ao informar o segundo endereco, logradouro e municipio sao obrigatorios; o segundo telefone, quando preenchido, deve ter DDD.
+- ao informar o segundo endereco, logradouro e municipio sao obrigatorios; o
+  segundo telefone, quando preenchido, deve ter DDD e ser diferente do primeiro,
+  ignorando mascara e prefixo brasileiro +55. Cadastro, edicao parcial, abertura,
+  reenvio e aprovacao da admissao validam no backend; nenhum saneamento automatico
+  de dados legados e feito. Edicoes nao relacionadas preservam o legado;
+- o ajuste de 11/10/2026 reutiliza as colunas existentes, sem migration nova.
+  Validacao isolada: `node scripts/validarRhColaboradorContatos.js` no backend
+  e `node scripts/validarRhColaboradorContatos.mjs` no frontend.
 
 ## Colaborador em mais de uma obra
 
