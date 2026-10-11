@@ -25,6 +25,10 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 ## Pessoal por local e conferencia por solicitacao
 
+- Para usuarios do setor OBRA, o modulo RH/DP aparece no menu como
+  `Colaboradores`, com descricao `Solicitações e Pagamentos`. O id `rhdp`,
+  as rotas e as permissoes permanecem os mesmos; demais setores conservam
+  o nome RH/DP. Rotulo/descricao sao resolvidos na fonte unica de navegacao.
 - Usuarios operacionais fora do DP e dos perfis administrativos entram em
   `Pessoal` pelas obras/centros vinculados. `Abrir` exibe Gestao de Colaboradores
   com Colaboradores, Solicitacoes e Transferencias entre obras, nessa ordem.

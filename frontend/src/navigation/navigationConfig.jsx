@@ -167,6 +167,7 @@ import {
   SST_SIMPLIFIED_MODE
 } from '../modules/sst/constants/sstResources';
 import { canAccessCustosRecebiveis, canManageResponsaveisObra } from '../modules/custosRecebiveis/utils/access';
+import { userHasSetorCapability } from '../utils/setor';
 
 const SEMPRE = () => true;
 
@@ -563,7 +564,9 @@ export const NAV_MODULES = [
   {
     id: 'rhdp',
     label: 'RH/DP',
+    getLabel: (user) => userHasSetorCapability(user, 'eh_setor_obra') ? 'Colaboradores' : 'RH/DP',
     desc: 'Colaboradores, apuração e fechamentos.',
+    getDesc: (user) => userHasSetorCapability(user, 'eh_setor_obra') ? 'Solicitações e Pagamentos' : 'Colaboradores, apuração e fechamentos.',
     icon: HiOutlineUsers,
     gate: (user) => canAccessRhDp(user),
     children: [
@@ -781,7 +784,8 @@ export function getVisibleModules(user) {
         .slice()
         .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
       if (children.length === 0) return null;
-      return { ...mod, children };
+      return { ...mod, label: resolveLabel(mod, user),
+        desc: typeof mod.getDesc === 'function' ? mod.getDesc(user) : mod.desc, children };
     })
     .filter(Boolean);
 }

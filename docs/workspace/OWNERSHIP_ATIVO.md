@@ -1,5 +1,31 @@
 # Ownership Ativo
 
+## Publicacao menu Colaboradores OBRA - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao. Revisao documental
+  concluida; ownership liberado para publicacao dos seis arquivos do ajuste.
+- Somente os seis arquivos do ajuste; outputs/ preservado fora do Git.
+- Rotulos/guards e navegacao revalidados antes do commit; build e paridade
+  do catalogo gerado aprovados na implementacao sem mudancas posteriores.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## Menu Colaboradores para OBRA - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/navigation/navigationConfig.jsx,
+  frontend/scripts/validarAcessoPedidos.mjs, docs/modulos/rh-dp/README.md,
+  docs/handoffs/2026-10-10-menu-colaboradores-obra.md e este registro.
+- Escopo: rotulo/descricao RH/DP para usuarios do setor OBRA como
+  Colaboradores / Solicitacoes e Pagamentos, no catalogo central.
+- Preservar id rhdp, destinos, permissoes, atalhos, personalizacao e regras
+  de selecao de setor. Sem commit/push/main/banco/migration/deploy.
+- Reserva derivada: backend/src/generated/navegacaoFonteUnica.cjs,
+  recompilado automaticamente pelo prebuild; sem mudanca de regra backend.
+- Ownership liberado; rotulos/card real, guards, destinos, breadcrumb,
+  Ctrl+K/atalhos, navegacao completa, paridade do gerado, build e diff aprovados.
+- Handoff: docs/handoffs/2026-10-10-menu-colaboradores-obra.md.
+
 ## Publicacao DP - moeda nos ajustes - 2026-10-10
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.
