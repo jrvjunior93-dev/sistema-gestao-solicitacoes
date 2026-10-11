@@ -54,6 +54,32 @@ function recebimento(linha, cadastro, pagamento = {}, exigir = false) {
   return dados;
 }
 
+function agruparReembolsos(linhas) {
+  const grupos = new Map();
+  for (const linha of linhas.filter(l => l.selecionado && l.reembolso && Number(l.descontos) > 0)) {
+    const responsavelId = Number(linha.reembolso.responsavel_id);
+    const conta = recebimento(linha.reembolso, {
+      nome: linha.reembolso.favorecido_nome, cpf: linha.reembolso.favorecido_documento
+    }, {}, true);
+    conta.favorecido_documento = conta.favorecido_documento.replace(/\D/g, '');
+    // Nunca misturar empresas em um titulo; dados distintos nao podem ser escolhidos silenciosamente.
+    const chave = `${responsavelId}:${linha.empresa_grupo_id}`;
+    let grupo = grupos.get(chave);
+    if (grupo && JSON.stringify(grupo.dados) !== JSON.stringify(conta)) {
+      throw new ValidationError(`Os vales de ${conta.favorecido_nome} possuem dados para pagamento diferentes. Unifique os dados do responsavel nesta solicitacao.`);
+    }
+    if (!grupo) {
+      grupo = { responsavel_id: responsavelId, empresa_id: linha.empresa_grupo_id,
+        dados: conta, linha, valor: 0, origens: [] };
+      grupos.set(chave, grupo);
+    }
+    const valor = numero(linha.descontos, 'Vale');
+    grupo.valor = dinheiro(grupo.valor + valor);
+    grupo.origens.push({ colaborador_id: linha.colaborador_id, nome: linha.nome, valor });
+  }
+  return [...grupos.values()];
+}
+
 function validarPeriodo(dados) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(dados.competencia || '')) throw new ValidationError('Informe a competencia.');
   const vencimento = String(dados.data_vencimento || '');
@@ -64,4 +90,4 @@ function validarPeriodo(dados) {
   }
 }
 
-module.exports = { FLUXO, dinheiro, texto, calcularLinha, recebimento, validarPeriodo };
+module.exports = { FLUXO, dinheiro, texto, calcularLinha, recebimento, validarPeriodo, agruparReembolsos };

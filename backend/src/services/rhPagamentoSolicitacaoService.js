@@ -8,7 +8,7 @@ const auth = require('./authorizationService');
 const { userBelongsToDpSetor } = require('./setorCapabilityService');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
-const { FLUXO, calcularLinha, recebimento, validarPeriodo, texto } = require('./rhPagamentoSolicitacaoDomain');
+const { FLUXO, calcularLinha, recebimento, validarPeriodo, texto, agruparReembolsos } = require('./rhPagamentoSolicitacaoDomain');
 const { ensureCategoriaFinanceiraPagar, syncParceiroFavorecido, syncFavorecidoBancarioRh,
   buildTituloRhPayload } = require('./rhFechamentoService');
 
@@ -187,6 +187,9 @@ async function enviar(req, id, payload) {
     validarPeriodo(d);
     const selecionados = d.linhas.filter(l => l.selecionado);
     if (!selecionados.length || selecionados.length > 100) throw new ValidationError('Selecione entre 1 e 100 colaboradores.');
+    if (selecionados.some(l => Number(l.descontos) > 0 && !l.reembolso && !l.desconto_sem_reembolso)) {
+      throw new ValidationError('Identifique os descontos: informe o reembolso de vale ou marque sem reembolso antes de enviar.');
+    }
     if (selecionados.some(l => !l[dp ? 'conferido_dp' : 'conferido_obra'])) throw new ValidationError('Marque os colaboradores selecionados como conferidos.');
     await require('../modules/custosRecebiveis/services/bloqueioObraService')
       .assertObrasSemTrava([s.obra_id], 'Pagamento DP por solicitacao');
@@ -207,15 +210,18 @@ async function enviar(req, id, payload) {
     const formaPix = await FormaPagamentoFinanceira.findOne({ where: { tipo: 'PIX', ativo: true }, transaction });
     const formaConta = await FormaPagamentoFinanceira.findOne({ where: { tipo: 'TRANSFERENCIA', ativo: true }, transaction });
     const titulos = [];
+    const destinos = [];
     for (const l of selecionados) {
       const calculo = calcularLinha(l, l);
       if (calculo.liquido <= 0) throw new ValidationError(`Pagamento de ${l.nome} precisa ser maior que zero.`);
-      const destinos = [{ dados: l, valor: calculo.liquido, sufixo: 'SALARIO' }];
+      destinos.push({ linha: l, dados: l, valor: calculo.liquido, sufixo: 'SALARIO', calculo });
       if (l.reembolso && calculo.descontos > 0) {
         if (!responsaveisIds.has(Number(l.reembolso.responsavel_id))) throw new ValidationError('Responsavel do reembolso nao esta mais vigente.', 409);
-        destinos.push({ dados: l.reembolso, valor: calculo.descontos, sufixo: 'REEMBOLSO' });
       }
-      for (const destino of destinos) {
+    }
+    destinos.push(...agruparReembolsos(selecionados).map(g => ({ ...g, sufixo: 'REEMBOLSO' })));
+    for (const destino of destinos) {
+        const l = destino.linha;
         const conta = recebimento(destino.dados, { ...destino.dados,
           nome: destino.dados.favorecido_nome, cpf: destino.dados.favorecido_documento }, {}, true);
         const favorecido = { colaborador: l, favorecidoNome: conta.favorecido_nome,
@@ -233,12 +239,16 @@ async function enviar(req, id, payload) {
           paymentBeneficiaryId: beneficiario.id });
         const titulo = await TituloFinanceiro.create({ ...payloadTitulo, possui_rateio: false,
           forma_pagamento_id: forma.id,
-          numero_documento: `RHDP-${d.competencia}-COL-${l.colaborador_id}-SOL-${s.id}-${destino.sufixo}`,
-          descricao: `${s.codigo} - ${destino.sufixo === 'REEMBOLSO' ? 'Reembolso de vale' : `Salario ${calculo.percentual}%`} - ${conta.favorecido_nome}`.slice(0, 255),
-          observacoes: `${payloadTitulo.observacoes} | Solicitacao RH: ${s.codigo} | Bruto: ${calculo.bruto} | Acrescimos: ${calculo.acrescimos} | Descontos: ${calculo.descontos}` }, { transaction });
-        titulos.push({ id: titulo.id, codigo: titulo.codigo, colaborador_id: l.colaborador_id,
-          tipo: destino.sufixo, valor: destino.valor, responsavel_id: destino.dados.responsavel_id || null });
-      }
+          numero_documento: destino.sufixo === 'REEMBOLSO'
+            ? `RHDP-${d.competencia}-SOL-${s.id}-RESP-${destino.responsavel_id}-EMP-${destino.empresa_id}-REEMBOLSO`
+            : `RHDP-${d.competencia}-COL-${l.colaborador_id}-SOL-${s.id}-SALARIO`,
+          descricao: `${s.codigo} - ${destino.sufixo === 'REEMBOLSO' ? 'Reembolso de vale' : `Salario ${destino.calculo.percentual}%`} - ${conta.favorecido_nome}`.slice(0, 255),
+          observacoes: destino.sufixo === 'REEMBOLSO'
+            ? `${payloadTitulo.observacoes} | Solicitacao RH: ${s.codigo}\nReembolsos de vale:\n${destino.origens.map(o => `${o.nome} (colaborador #${o.colaborador_id}): R$ ${o.valor.toFixed(2).replace('.', ',')}`).join('\n')}`
+            : `${payloadTitulo.observacoes} | Solicitacao RH: ${s.codigo} | Bruto: ${destino.calculo.bruto} | Acrescimos: ${destino.calculo.acrescimos} | Descontos: ${destino.calculo.descontos}` }, { transaction });
+        titulos.push({ id: titulo.id, codigo: titulo.codigo,
+          ...(destino.sufixo === 'SALARIO' ? { colaborador_id: l.colaborador_id } : { origens: destino.origens }),
+          tipo: destino.sufixo, valor: destino.valor, responsavel_id: destino.responsavel_id || null });
     }
     // Mesma transacao: governanca/permissao da fila continuam sendo verificadas pelo servico canonico.
     await require('./pagamentoManualFilaService').enfileirarTitulos(req, {

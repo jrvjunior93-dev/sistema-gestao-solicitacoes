@@ -10,7 +10,10 @@
 .rh-pagamento-tabela td:nth-child(2) { min-width: 185px; white-space: normal; }
 .rh-pagamento-tabela small { display: block; color: var(--ui-text-muted); font-size: .75rem; margin-top: 3px; }
 .rh-pagamento-tabela input[type=number] { width: 100px; text-align: right; padding: 6px; }
-.rh-pagamento-tabela td:nth-child(10) input, .rh-pagamento-tabela td:nth-child(11) input { width: 65px; }
+.rh-pagamento-tabela td:nth-child(11) input, .rh-pagamento-tabela td:nth-child(12) input { width: 65px; }
+.rh-pagamento-dados { max-width: 220px; white-space: normal; overflow-wrap: anywhere; }
+.rh-pagamento-reembolsos { margin-top: 10px; font-size: .875rem; }
+.rh-pagamento-reembolsos summary, .rh-pagamento-titulos summary { cursor: pointer; }
 .rh-pagamento-tabela input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
 .rh-pagamento-tabela tr[data-selecionado=true] { background: var(--ui-surface-alt, var(--ui-surface)); }
 .rh-pagamento-link { color: var(--ui-primary); display: block; font-size: .75rem; text-decoration: underline; padding-top: 4px; }

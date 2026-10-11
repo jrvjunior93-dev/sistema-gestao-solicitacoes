@@ -166,7 +166,8 @@ function beneficiaryData(titulo) {
     let pagamento = 'Sem dados bancários cadastrados';
     if (form.includes('BOLETO') && boletoData) pagamento = `Boleto: ${boletoData}`;
     else if (form.includes('BOLETO') && boletoAnexado) pagamento = `Boleto anexado: ${boletoAnexado.nome}`;
-    else if (beneficiary.pix_chave) pagamento = `PIX ${beneficiary.pix_tipo_chave || ''}: ${beneficiary.pix_chave}`;
+    else if (beneficiary.pix_chave && beneficiary.pix_tipo_chave !== 'DADOS_BANCARIOS'
+      && beneficiary.metodo_preferencial !== 'CONTA_BANCARIA') pagamento = `PIX ${beneficiary.pix_tipo_chave || ''}: ${beneficiary.pix_chave}`;
     else if (form.includes('PIX') && solicitacao.favorecido_chave_pix) pagamento = `PIX: ${solicitacao.favorecido_chave_pix}`;
     else if (beneficiary.banco_codigo || beneficiary.agencia || beneficiary.conta) {
       pagamento = `Banco ${beneficiary.banco_codigo || '—'} · Ag. ${beneficiary.agencia || '—'} · Conta ${beneficiary.conta || '—'}`;
@@ -1102,6 +1103,10 @@ export default function FinanceiroFilaPagamentos() {
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-64 break-all text-xs" title={beneficiary.pagamento}>{beneficiary.pagamento}</div>
+                      {title.observacoes?.includes('\nReembolsos de vale:\n') && <details className="mt-2 max-w-64 text-xs">
+                        <summary className="cursor-pointer">Ver colaboradores do reembolso</summary>
+                        <div className="mt-1 whitespace-pre-wrap">{title.observacoes.split('\nReembolsos de vale:\n')[1]}</div>
+                      </details>}
                     </td>
                     <td className="px-3 py-3 align-top whitespace-nowrap">{dateBR(title.data_vencimento || row.data_vencimento_prevista)}</td>
                     <td className="px-3 py-3 align-top text-right whitespace-nowrap">

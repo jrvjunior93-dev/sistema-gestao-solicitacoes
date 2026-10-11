@@ -23,6 +23,8 @@ assert.equal(domain.recebimento({ modo_recebimento: 'CONTA_SALARIO', conta: 'fra
 let store = { requests: [], titles: [{ id: 1, codigo: 'TIT-ANTERIOR', status: 'BAIXADO', valor_original: 8760,
   numero_documento: 'RHDP-2026-10-COL-11-INTEGRAL' }], historicos: [], filas: [] };
 let bloquearFila = false, scope = [7], ativo = true, podeFila = true;
+let cadastros = [cadastro];
+const beneficiariosCriados = [];
 let tail = Promise.resolve();
 const instance = data => ({ ...data, get() { const { get, update, ...p } = this; return p; }, async update(p) { Object.assign(this, p); return this; } });
 const hydrate = () => { store.requests = store.requests.map(instance); store.titles = store.titles.map(instance); };
@@ -37,7 +39,7 @@ const models = {
     } catch (e) { store = JSON.parse(snapshot); hydrate(); throw e; } finally { release(); }
   } },
   Obra: { findByPk: async id => Number(id) === 7 ? { id: 7 } : null },
-  RhColaborador: { findAll: async () => ativo ? [instance({ ...cadastro, pagamento: contaSalario })] : [] },
+  RhColaborador: { findAll: async () => ativo ? cadastros.map(c => instance({ ...c, pagamento: contaSalario })) : [] },
   RhColaboradorPagamento: {},
   RhSolicitacao: {
     findOne: async o => store.requests.find(r => Object.entries(o.where).every(([k, v]) => r[k] === v)),
@@ -66,10 +68,10 @@ const deps = {
   './rhFechamentoService': {
     ensureCategoriaFinanceiraPagar: async () => ({ id: 12 }),
     syncParceiroFavorecido: async p => ({ id: p.favorecidoNome === 'Ana QA' ? 11 : 77 }),
-    syncFavorecidoBancarioRh: async p => { assert.ok(p.chavePix || p.conta); return { id: 100 }; },
+    syncFavorecidoBancarioRh: async p => { assert.ok(p.chavePix || p.conta); const id = 100 + beneficiariosCriados.length; beneficiariosCriados.push({ ...p, id }); return { id }; },
     buildTituloRhPayload: p => ({ origem_titulo: 'RH_DP', tipo: 'PAGAR', status: 'ABERTO',
       categoria_financeira_id: p.categoriaFinanceiraId, empresa_id: p.empresaId, obra_id: p.apuracao.obra_id,
-      valor_original: p.valor, valor_saldo: p.valor, observacoes: '' })
+      valor_original: p.valor, valor_saldo: p.valor, observacoes: '', payment_beneficiary_id: p.paymentBeneficiaryId })
   },
   '../modules/custosRecebiveis/services/bloqueioObraService': { assertObrasSemTrava: async () => {} },
   './pagamentoManualFilaService': { enfileirarTitulos: async (req, p, o) => {
@@ -150,12 +152,42 @@ async function filaCanonicaTransacaoExterna() {
   assert.equal(store.titles[0].valor_original, 8760, 'Pagamento anterior preservado');
   assert.equal(store.requests[0].situacao, 'APROVADA');
   assert.notEqual(store.titles[1].numero_documento, store.titles[2].numero_documento);
-  const proximo = await service.iniciar(obra, { obra_id: 7 });
+  cadastros = [cadastro, { ...cadastro, id: 12, nome: 'Bruno QA', salario_base: 2000 }];
+  const proximo = await service.iniciar(dp, { obra_id: 7 });
   assert.notEqual(proximo.solicitacao.id, id);
+  const reembolso = { responsavel_id: 77, modo_recebimento: 'PIX', favorecido_nome: 'Responsavel QA', favorecido_documento: cadastro.cpf, chave_pix: 'responsavel@example.test' };
+  let grupoForm = { ...proximo.solicitacao.dados_json, linhas: proximo.solicitacao.dados_json.linhas.map((l, i) => ({ ...l,
+    selecionado: true, descontos: i ? 200 : 100, conferido_dp: true, conferir_alteracoes: true,
+    modo_recebimento: i ? 'OUTRA_CONTA' : 'CONTA_SALARIO', banco: '104', agencia: '1234', conta: i ? '99999' : '23456' })) };
+  let grupoSalvo = await service.salvar(dp, proximo.solicitacao.id, grupoForm);
+  await assert.rejects(service.enviar(dp, proximo.solicitacao.id, { revisao: grupoSalvo.solicitacao.dados_json.revisao }), /Identifique os descontos/);
+  grupoForm = { ...grupoSalvo.solicitacao.dados_json, linhas: grupoSalvo.solicitacao.dados_json.linhas.map((l, i) => ({ ...l,
+    conferido_dp: true, conferir_alteracoes: true, reembolso: { ...reembolso, chave_pix: i ? 'outra@example.test' : reembolso.chave_pix } })) };
+  grupoSalvo = await service.salvar(dp, proximo.solicitacao.id, grupoForm);
+  const antesGrupo = store.titles.length;
+  await assert.rejects(service.enviar(dp, proximo.solicitacao.id, { revisao: grupoSalvo.solicitacao.dados_json.revisao }), /dados para pagamento diferentes/);
+  assert.equal(store.titles.length, antesGrupo, 'Dados distintos revertem todos os titulos');
+  grupoForm = { ...grupoSalvo.solicitacao.dados_json, linhas: grupoSalvo.solicitacao.dados_json.linhas.map(l => ({ ...l,
+    conferido_dp: true, conferir_alteracoes: true, reembolso })) };
+  grupoSalvo = await service.salvar(dp, proximo.solicitacao.id, grupoForm);
+  await Promise.all([service.enviar(dp, proximo.solicitacao.id, { revisao: grupoSalvo.solicitacao.dados_json.revisao }), service.enviar(dp, proximo.solicitacao.id, { revisao: grupoSalvo.solicitacao.dados_json.revisao })]);
+  const novos = store.titles.slice(antesGrupo);
+  assert.equal(novos.length, 3, 'Dois salarios e apenas um reembolso para o mesmo responsavel');
+  assert.deepEqual(novos.map(t => t.valor_original), [2900, 1800, 300]);
+  assert.ok(novos[2].observacoes.includes('Ana QA') && novos[2].observacoes.includes('Bruno QA'));
+  const finalGrupo = await service.mostrar(dp, proximo.solicitacao.id);
+  assert.equal(finalGrupo.solicitacao.dados_json.titulos[2].origens.length, 2);
+  assert.ok(novos.every(t => beneficiariosCriados.some(b => b.id === t.payment_beneficiary_id)));
+  assert.equal(beneficiariosCriados.find(b => b.id === novos[0].payment_beneficiary_id).conta, '23456');
+  assert.equal(beneficiariosCriados.find(b => b.id === novos[1].payment_beneficiary_id).conta, '99999');
+  assert.equal(beneficiariosCriados.find(b => b.id === novos[2].payment_beneficiary_id).chavePix, reembolso.chave_pix);
+  const empresas = domain.agruparReembolsos(grupoForm.linhas.map((l, i) => ({ ...l, empresa_grupo_id: i + 1 })));
+  assert.equal(empresas.length, 2, 'Empresas distintas nunca sao misturadas');
+  const outroRascunho = await service.iniciar(obra, { obra_id: 7 });
   ativo = false;
-  await assert.rejects(service.salvar(obra, proximo.solicitacao.id, { ...proximo.solicitacao.dados_json,
-    linhas: proximo.solicitacao.dados_json.linhas.map(l => ({ ...l, selecionado: true })) }), /mais ativo/);
+  await assert.rejects(service.salvar(obra, outroRascunho.solicitacao.id, { ...outroRascunho.solicitacao.dados_json,
+    linhas: outroRascunho.solicitacao.dados_json.linhas.map(l => ({ ...l, selecionado: true })) }), /mais ativo/);
   scope = [];
   await assert.rejects(service.mostrar(dp, id), /Acesso negado/);
-  console.log('Pagamento por solicitacao: calculos, rascunho, escopo, conferencia, reembolso, aviso sem bloqueio, rollback, idempotencia e fila canonica/transacao/governanca OK. Sem banco/rede.');
+  console.log('Pagamento por solicitacao: calculos, rascunho, escopo, conferencia, vales agrupados/discriminados, dados bancarios/Pix no titulo/fila, classificacao, aviso sem bloqueio, rollback, idempotencia e governanca OK. Sem banco/rede.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

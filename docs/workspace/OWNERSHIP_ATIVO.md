@@ -1,5 +1,35 @@
 # Ownership Ativo
 
+## Publicacao DP - 100%, dados e vales - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; reserva documental deste
+  registro e do handoff 2026-10-10-dp-percentual-dados-vales.md.
+- Base local/remota 5453352d sem divergencia. Preservar outputs/ fora do commit.
+  Sem main, deploy, migrations, reinicio ou banco real.
+- Revisao concluida; revalidacao dominio/servico, conferencia e UI modal
+  aprovada. Build e fila UI aprovados na implementacao sem mudanca funcional
+  posterior. Reserva documental encerrada, ownership liberado para publicacao.
+
+## DP - percentuais, dados para pagamento e vales agrupados - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao. Ajustes autorizados pelo
+  usuario: coluna 100%, dados para pagamento na fila, pergunta de vale ao editar
+  desconto e reembolso unico por responsavel com discriminacao dos colaboradores.
+- Reserva: rhPagamentoSolicitacaoDomain/Service.js, RhDpPagamentoModal.jsx,
+  rh-pagamento-solicitacao.css, testes backend/UI do modal, handoff correspondente.
+- Reserva ampliada: FinanceiroFilaPagamentos.jsx (conta bancaria nao pode ser
+  exibida como chave Pix; discriminacao do titulo de reembolso), teste UI da fila.
+- Fila e helpers canonicos inspecionados: beneficiario ja vinculado aos titulos;
+  preservados os endpoints, permissoes e transacao canonica de envio.
+- Preservar titulos ja gerados, fluxo legado, outputs/ e permissoes. Sem commit,
+  push, main, deploy, migration ou banco real neste pedido.
+- Concluido localmente, ownership liberado. Handoff:
+  docs/handoffs/2026-10-10-dp-percentual-dados-vales.md.
+- Validacoes aprovadas: dominio/servico em memoria, UI modal desktop/mobile
+  (incluindo Escape e envio com classificacao pendente), fila UI, regressao
+  pessoal/conferencia/fila/governanca, build, sintaxe e diff.
+
 ## Publicacao do pagamento DP por solicitacao - 2026-10-10
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.

@@ -33,6 +33,8 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
+        const rh=new URLSearchParams(location.search).get('rh');
+        if(rh){row.titulo.paymentBeneficiary={nome:'Responsavel RH',cpf_cnpj:'52998224725',metodo_preferencial:rh==='pix'?'PIX_CHAVE':'CONTA_BANCARIA',pix_tipo_chave:rh==='pix'?'EMAIL':'DADOS_BANCARIOS',pix_chave:rh==='pix'?'responsavel@example.test':'104:1234:23456',banco_codigo:'104',agencia:'1234',conta:'23456'};row.titulo.observacoes='Solicitacao RH: RH-24\\nReembolsos de vale:\\nAna QA: R$ 100,00\\nBruno QA: R$ 50,00';}
         return{data:status==='NAO_PAGO'?[{id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
       };
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
@@ -213,6 +215,17 @@ try {
       assert.equal(await page.getByLabel('Comprovantes de pagamento de TIT-QA',{exact:true}).count(),1);
       assert.equal(await forma.inputValue(),'1');
     }
+  }
+  for(const rh of ['banco','pix']) {
+    await page.goto(`http://127.0.0.1:5308/qa-fila?rh=${rh}`);
+    await page.getByText('Responsavel RH',{exact:true}).waitFor();
+    if(rh==='banco') {
+      await page.getByText('Banco 104 · Ag. 1234 · Conta 23456',{exact:true}).waitFor();
+      assert.equal(await page.getByText(/PIX DADOS_BANCARIOS/).count(),0);
+    } else await page.getByText('PIX EMAIL: responsavel@example.test',{exact:true}).waitFor();
+    await page.getByText('Ver colaboradores do reembolso',{exact:true}).click();
+    await page.getByText(/Ana QA: R\$ 100,00/).waitFor();
+    assert.ok((await page.locator('details[open]').innerText()).includes('Bruno QA: R$ 50,00'));
   }
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real, colunas separadas de juros/multa, total e atualizacao de saldo/encargos preservando valor manual, instrumentos, modal cheque, conta limpa, icones, baixa sem PDF e anexo posterior sem segunda baixa. APIs isoladas.');
