@@ -90,8 +90,9 @@ e dados para pagamento; confirmar solicita o reembolso, cancelar/Voltar/Escape
 conserva o desconto sem nova solicitacao de reembolso. Vales do mesmo
 responsavel/empresa continuam agrupados em um titulo com discriminacao.
 O modal permite informar o `Valor do reembolso`, em moeda, separado do desconto.
-Deve ser positivo e nao ultrapassar o desconto daquele colaborador; a opcao
-`Sem reembolso` conserva o desconto sem gerar verba de reembolso.
+Deve ser positivo e nao ultrapassar o desconto daquele colaborador.
+O rodape do editor tem apenas `Cancelar` e `Confirmar`. Cancelar/Voltar/Escape
+descartam a edicao do modal sem apagar um reembolso anteriormente confirmado.
 O desconto integral continua no liquido salarial. Somente o valor reembolsavel
 entra na soma por responsavel/empresa e nas origens discriminadas do titulo.
 Escolher o mesmo responsavel reutiliza dados bancarios, nao o valor de outra

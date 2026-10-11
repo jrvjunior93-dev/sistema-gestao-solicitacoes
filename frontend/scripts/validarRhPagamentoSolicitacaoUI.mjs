@@ -143,6 +143,7 @@ try {
   assert.equal(await page.getByRole('dialog',{name:'Desconto de vale',exact:true}).count(),0);
   await modal.locator('tbody tr').first().getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   assert.ok((await reembolso.innerText()).includes('Ana QA'));
+  assert.equal(await reembolso.getByRole('button',{name:'Sem reembolso',exact:true}).count(),0);
   const valorReembolso = reembolso.getByLabel('Valor do reembolso',{exact:true});
   assert.equal(semEspaco(await valorReembolso.inputValue()),'R$100,00');
   await valorReembolso.fill('6000');
@@ -170,7 +171,7 @@ try {
   await modal.getByLabel('Descontos: Bruno QA',{exact:true}).fill('5000');
   await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   assert.ok((await reembolso.innerText()).includes('Bruno QA'));
-  await reembolso.getByRole('button',{name:'Sem reembolso',exact:true}).click();
+  await reembolso.getByRole('button',{name:'Cancelar',exact:true}).click();
   await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   assert.equal(semEspaco(await valorReembolso.inputValue()),'R$50,00');
   await valorReembolso.fill('2500');
@@ -184,6 +185,19 @@ try {
   await modal.getByLabel('Conferido: Bruno QA',{exact:true}).check();
   await modal.getByLabel('Conferido: Ana QA',{exact:true}).check();
   await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].conferido_obra);
+  // Fechar uma edicao nao remove reembolso confirmado nem invalida conferencia.
+  const reembolsoSalvo = await page.evaluate(()=>structuredClone(window.pedido.dados_json.linhas[0].reembolso));
+  for (const fechar of ['Cancelar', 'Voltar', 'Escape']) {
+    await modal.locator('tbody tr').first().getByRole('button',{name:'Reembolso de vale',exact:true}).click();
+    await valorReembolso.fill('1000');
+    if (fechar === 'Escape') await page.keyboard.press('Escape');
+    else await reembolso.getByRole('button',{name:fechar,exact:true}).click();
+    await reembolso.waitFor({state:'hidden'});
+    assert.ok(await modal.isVisible());
+    assert.ok(await modal.getByLabel('Conferido: Ana QA',{exact:true}).isChecked());
+    assert.deepEqual(await page.evaluate(()=>window.pedido.dados_json.linhas[0].reembolso),reembolsoSalvo);
+    assert.ok((await resumoVale.innerText()).includes('85,00'));
+  }
   await modal.getByRole('button',{name:'Fechar',exact:true}).click();
   await modal.waitFor({state:'hidden'});
   await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();

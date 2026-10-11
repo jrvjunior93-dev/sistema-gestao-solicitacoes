@@ -1,5 +1,27 @@
 # Ownership Ativo
 
+## Publicacao DP - remover Sem reembolso - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao.
+- Escopo: cinco arquivos do ajuste; outputs/ preservado fora do Git.
+- UI desktop/mobile e build aprovados na implementacao sem alteracoes
+  funcionais posteriores. Sem backend, migration, banco real, main ou deploy.
+- Documentacao e diff revalidados antes do commit.
+
+## DP - remover botao Sem reembolso - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/components/rh/RhDpPagamentoModal.jsx,
+  frontend/scripts/validarRhPagamentoSolicitacaoUI.mjs, este registro,
+  README RH/DP e docs/handoffs/2026-10-10-dp-remover-sem-reembolso.md.
+- Escopo: remover apenas o botao Sem reembolso; Cancelar/Voltar/Escape
+  conservam o reembolso salvo sem aplicar os dados editados.
+- Sem backend, migration, banco real, commit/push, main ou deploy.
+- UI real desktop/mobile, cancelamento com/sem reembolso salvo, build,
+  documentacao e diff aprovados; ownership liberado.
+
 ## Publicacao DP - reembolso parcial - 2026-10-10
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.

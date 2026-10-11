@@ -268,7 +268,6 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
       </>}
         <DadosRecebimento dados={editor.dados} reembolso={editor.tipo === 'reembolso'} alterar={patch => setEditor(v => ({ ...v, dados: { ...v.dados, ...patch } }))} />
         <div className="rh-pagamento-rodape"><button className="btn btn-outline btn-sm" onClick={() => setEditor(null)}>Cancelar</button>
-          {editor.tipo === 'reembolso' && <button className="btn btn-outline btn-sm" onClick={() => { linhaAlterar(editor.id, { reembolso: null, desconto_sem_reembolso: true }); setEditor(null); }}>Sem reembolso</button>}
           <button className="btn btn-primary btn-sm" onClick={() => {
             if (editor.tipo === 'reembolso' && !editor.dados.responsavel_id) { avisar.erro('Selecione o responsável pelo reembolso.'); return; }
             if (editor.tipo === 'reembolso') {
