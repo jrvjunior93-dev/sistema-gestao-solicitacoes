@@ -62,6 +62,12 @@ faltas sao informativos. Diarista: diaria multiplicada pelos dias informados;
 faltas tambem sao informativas. Acrescimos e descontos informados entram no
 liquido integralmente. Os controles de dias/faltas avancam de um em um.
 
+Acrescimos e descontos usam mascara BRL durante digitacao, seguindo os
+formatters compartilhados do sistema (digitos entram como centavos).
+Apagar todo o campo mostra `R$ 0,00`; o PUT envia numeros, inclusive ao
+normalizar campos vazios de rascunhos antigos, nunca strings com `R$`.
+O calculo do liquido e as validacoes financeiras permanecem no dominio.
+
 Reembolso de vale e opcional e solicitado pelo link `Solicitar reembolso`
 sob o desconto. Digitar, pausar ou sair do campo nao abre modal, nem o envio
 exige uma pergunta para descontos comuns. O link abre diretamente responsavel

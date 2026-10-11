@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## Publicacao DP - moeda nos ajustes - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao. Revisao documental
+  concluida, ownership liberado para publicacao dos seis arquivos do ajuste.
+- Somente os seis arquivos do ajuste; outputs/ preservado fora do Git.
+- UI real desktop/mobile, regressao RH/DP, dominio e build ja aprovados.
+- Dominio/servico em memoria e diff revalidados antes do commit.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## DP - moeda nos acrescimos e descontos - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/components/rh/RhDpPagamentoModal.jsx,
+  frontend/src/styles/rh-pagamento-solicitacao.css,
+  frontend/scripts/validarRhPagamentoSolicitacaoUI.mjs, README RH/DP,
+  docs/handoffs/2026-10-10-dp-moeda-ajustes.md e este registro.
+- Escopo: mascara BRL durante digitacao usando formatters existentes,
+  campos apagados viram zero numerico; preservar liquido, conferencia,
+  reembolso manual e autosave sem interrupcao. Sem mudanca nos endpoints,
+  permissoes, regras de dias/faltas, titulos existentes ou backend.
+- Sem commit, push, main, migration, banco real ou deploy nesta tarefa.
+- Ownership liberado. UI real desktop/mobile (moeda, vazios, payload,
+  persistencia, rede lenta e regressao Obra/DP), dominio/servico em memoria,
+  regras RH/conferencia, build e diff aprovados. Capturas inspecionadas.
+- Handoff: docs/handoffs/2026-10-10-dp-moeda-ajustes.md.
+
 ## Publicacao DP - reembolso manual - 2026-10-10
 
 - Usuario autorizou commit e push na refactor/frontend e comandos da EC2 dev.

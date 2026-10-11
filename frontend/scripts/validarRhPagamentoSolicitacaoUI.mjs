@@ -22,7 +22,7 @@ import Modal from'/src/components/rh/RhDpPagamentoModal.jsx';import{ThemeContext
 import'/src/index.css';import'/src/styles/design-tokens.css';import'/src/styles/componentes-padrao.css';import'/src/styles/escala.css';import'/src/styles/responsive-system.css';import'/src/styles/rh-pessoal-locais.css';
 window.pedido=${JSON.stringify(seed)};window.chamadas=[];window.envios=[];window.dp=false;
 window.putsAtivos=0;window.maxPuts=0;
-window.api=async(path,options={})=>{window.chamadas.push([path,options]);if(options.method==='PUT'){window.putsAtivos++;window.maxPuts=Math.max(window.maxPuts,window.putsAtivos);}
+window.api=async(path,options={})=>{window.chamadas.push([path,structuredClone(options)]);if(options.method==='PUT'){window.putsAtivos++;window.maxPuts=Math.max(window.maxPuts,window.putsAtivos);}
 await new Promise(ok=>setTimeout(ok,options.method==='PUT'?(window.atrasoPut||100):100));if(options.method==='PUT')window.putsAtivos--;
  if(options.method==='PUT'){if(window.falhar){window.falhar=false;throw new Error('Falha simulada ao salvar');}if(options.data.revisao!==window.pedido.dados_json.revisao)throw new Error('Conflito');window.pedido.dados_json={...options.data,revisao:options.data.revisao+1};}
  if(path.endsWith('/enviar')){window.envios.push(options.data);window.pedido.situacao=window.dp?'APROVADA':'ABERTA';if(window.dp)window.pedido.dados_json.titulos=[{id:701,codigo:'TIT-QA-701',tipo:'SALARIO',valor:1100},{id:702,codigo:'TIT-QA-702',tipo:'REEMBOLSO',valor:150,origens:[{colaborador_id:11,nome:'Ana QA',valor:100},{colaborador_id:12,nome:'Bruno QA',valor:50}]}];}
@@ -51,6 +51,67 @@ try {
   await page.route('**/*',route=>route.request().url().startsWith(base)?route.continue():route.abort());
   await page.goto(base);
   const modal=page.getByRole('dialog',{name:'Solicitar pagamento',exact:true});
+  // Mascara existente BRL: digitos sao centavos; limpar envia zero, nunca texto formatado.
+  const acrescimoMoeda=modal.getByLabel('Acréscimos: Ana QA',{exact:true});
+  const descontoMoeda=modal.getByLabel('Descontos: Ana QA',{exact:true});
+  const semEspaco=v=>v.replace(/\s/g,'');
+  assert.equal(semEspaco(await acrescimoMoeda.inputValue()),'R$0,00');
+  assert.equal(await acrescimoMoeda.getAttribute('type'),'text');
+  assert.equal(await acrescimoMoeda.getAttribute('inputmode'),'numeric');
+  await acrescimoMoeda.focus();
+  await acrescimoMoeda.pressSequentially('123456');
+  assert.equal(semEspaco(await acrescimoMoeda.inputValue()),'R$1.234,56');
+  await descontoMoeda.focus(); await descontoMoeda.pressSequentially('12345');
+  assert.equal(semEspaco(await descontoMoeda.inputValue()),'R$123,45');
+  assert.ok((await modal.locator('tbody tr').first().innerText()).includes('4.111,11'));
+  await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].descontos===123.45);
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].acrescimos),1234.56);
+  assert.ok(await descontoMoeda.evaluate(el=>document.activeElement===el),'Autosave nao tira foco da moeda');
+  assert.equal(semEspaco(await descontoMoeda.inputValue()),'R$123,45');
+  await descontoMoeda.fill(''); await acrescimoMoeda.fill('');
+  assert.equal(semEspaco(await descontoMoeda.inputValue()),'R$0,00');
+  assert.equal(semEspaco(await acrescimoMoeda.inputValue()),'R$0,00');
+  await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].descontos===0&&window.pedido.dados_json.linhas[0].acrescimos===0);
+  await acrescimoMoeda.fill('R$ 1.234,56'); await descontoMoeda.fill('R$ 10,05');
+  assert.equal(semEspaco(await descontoMoeda.inputValue()),'R$10,05');
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await modal.waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();
+  assert.equal(semEspaco(await acrescimoMoeda.inputValue()),'R$1.234,56');
+  assert.equal(semEspaco(await descontoMoeda.inputValue()),'R$10,05');
+  // Rascunho antigo com campos vazios tambem e normalizado no payload sem alterar salario.
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await modal.waitFor({state:'hidden'});
+  await page.evaluate(()=>{window.pedido.dados_json.linhas[0].acrescimos='';window.pedido.dados_json.linhas[0].descontos='';});
+  await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();
+  assert.equal(semEspaco(await acrescimoMoeda.inputValue()),'R$0,00');
+  await modal.getByLabel('Observações: Ana QA',{exact:true}).fill('Normalizar vazios antigos');
+  await modal.getByRole('button',{name:'Salvar',exact:true}).click();
+  await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].acrescimos===0&&window.pedido.dados_json.linhas[0].descontos===0);
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].acrescimos),0);
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].descontos),0);
+  const moedaEnviada=await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='PUT').every(c=>c[1].data.linhas.every(l=>
+    typeof l.acrescimos==='number'&&Number.isFinite(l.acrescimos)&&typeof l.descontos==='number'&&Number.isFinite(l.descontos))));
+  assert.ok(moedaEnviada,'Todos os PUTs usam numeros finitos, sem R$ ou strings vazias');
+  await page.setViewportSize({width:390,height:844});
+  await acrescimoMoeda.fill('1250'); await descontoMoeda.fill('250');
+  await modal.screenshot({path:path.join(output,'moeda-mobile.png')});
+  assert.equal(semEspaco(await acrescimoMoeda.inputValue()),'R$12,50');
+  assert.equal(semEspaco(await descontoMoeda.inputValue()),'R$2,50');
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+  await page.setViewportSize({width:1550,height:920});
+  await modal.getByRole('button',{name:'Salvar',exact:true}).click();
+  await page.waitForFunction(()=>window.putsAtivos===0);
+  await page.evaluate(()=>{window.atrasoPut=700;});
+  await acrescimoMoeda.fill('1000');
+  await page.waitForFunction(()=>window.putsAtivos===1);
+  await acrescimoMoeda.press('End'); await acrescimoMoeda.pressSequentially('5');
+  await page.waitForFunction(()=>window.putsAtivos===0);
+  assert.equal(semEspaco(await acrescimoMoeda.inputValue()),'R$100,05','Resposta antiga nao substitui moeda em digitacao');
+  assert.ok(await acrescimoMoeda.evaluate(el=>document.activeElement===el));
+  await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].acrescimos===100.05);
+  assert.equal(await page.evaluate(()=>window.maxPuts),1);
+  await page.goto(base);
   await modal.getByLabel('Selecionar: Ana QA',{exact:true}).check();
   assert.ok(await modal.getByLabel('100%: Ana QA',{exact:true}).isChecked());
   await modal.getByLabel('Aplicar aos selecionados',{exact:true}).selectOption('40');
@@ -71,11 +132,11 @@ try {
   assert.equal(await modal.locator('thead th').filter({hasText:'Dados para pagamento'}).count(),1);
   const reembolso=page.getByRole('dialog',{name:'Reembolso de vale',exact:true});
   const descontoAna=modal.getByLabel('Descontos: Ana QA',{exact:true});
-  await descontoAna.fill('10');
+  await descontoAna.fill('1000');
   await page.waitForTimeout(1100);
   assert.equal(await reembolso.count(),0,'Pausa na digitacao nao abre modal');
   assert.ok(await descontoAna.evaluate(el=>document.activeElement===el));
-  await descontoAna.fill('100');
+  await descontoAna.fill('10000');
   await modal.getByLabel('Observações: Ana QA',{exact:true}).focus();
   await page.waitForTimeout(1100);
   assert.equal(await reembolso.count(),0,'Sair do campo nao abre modal');
@@ -87,7 +148,7 @@ try {
   await reembolso.getByLabel('Chave Pix / Copia e Cola',{exact:true}).fill('responsavel@example.test');
   await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
   await modal.getByLabel('Selecionar: Bruno QA',{exact:true}).check();
-  await modal.getByLabel('Descontos: Bruno QA',{exact:true}).fill('50');
+  await modal.getByLabel('Descontos: Bruno QA',{exact:true}).fill('5000');
   await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   assert.ok((await reembolso.innerText()).includes('Bruno QA'));
   await reembolso.getByRole('button',{name:'Sem reembolso',exact:true}).click();
@@ -152,13 +213,13 @@ try {
   // Reembolso e opcional: Escape/Cancelar/Voltar nao alteram o desconto nem forcam modal no envio.
   await page.goto(base);
   await modal.getByLabel('Selecionar: Ana QA',{exact:true}).check();
-  await modal.getByLabel('Descontos: Ana QA',{exact:true}).fill('75');
+  await modal.getByLabel('Descontos: Ana QA',{exact:true}).fill('7500');
   const acaoReembolso=modal.locator('tbody tr').first().getByRole('button',{name:'Solicitar reembolso',exact:true});
   await acaoReembolso.click(); await page.keyboard.press('Escape');
   await reembolso.waitFor({state:'hidden'}); assert.ok(await modal.isVisible());
   await acaoReembolso.click(); await reembolso.getByRole('button',{name:'Cancelar',exact:true}).click();
   await acaoReembolso.click(); await reembolso.getByRole('button',{name:'Voltar',exact:true}).click();
-  assert.equal(await modal.getByLabel('Descontos: Ana QA',{exact:true}).inputValue(),'75');
+  assert.equal((await modal.getByLabel('Descontos: Ana QA',{exact:true}).inputValue()).replace(/\s/g,''),'R$75,00');
   await modal.getByRole('button',{name:'Salvar',exact:true}).click();
   await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].desconto_sem_reembolso);
   assert.ok(await modal.getByLabel('100%: Ana QA',{exact:true}).isChecked());
@@ -253,7 +314,7 @@ try {
   assert.ok((await modal.locator('.rh-pagamento-rodape').innerText()).includes('850,00'));
   assert.ok(await diasAna.isDisabled());
   assert.deepEqual(errors,[]);
-  console.log('Modal real: reembolso somente no clique, sem abertura ao digitar/blur/enviar, desconto comum, Escape/Cancelar/Voltar; dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia, Obra/DP e celular OK.');
+  console.log('Modal real: moeda durante digitacao, limpar/legado vazio como zero, numeros no payload, persistencia/foco/mobile; reembolso somente no clique, desconto comum, dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia e Obra/DP OK.');
 } catch (error) {
   console.error('Erros JS:', errors);
   for (const p of browser?.contexts().flatMap(c => c.pages()) || []) console.error((await p.locator('body').innerText()).slice(0, 4000));

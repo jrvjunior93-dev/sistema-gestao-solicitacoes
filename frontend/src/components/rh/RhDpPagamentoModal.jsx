@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import OverlayModal from '../ui/OverlayModal';
 import { Avisos, useAvisos, useConfirmacao } from '../padrao';
 import { pagamentoRhSolicitacao } from '../../services/rhDp';
+import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../../utils/formatters';
 import '../../styles/rh-pagamento-solicitacao.css';
 
 const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -99,7 +100,9 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, so
         setSalvando(true);
         try {
           const result = await pagamentoRhSolicitacao(`/${respostaRef.current.solicitacao.id}`, { method: 'PUT', data: {
-            ...snapshot, linhas: snapshot.linhas.map(l => ({ ...l, conferir_alteracoes: Boolean(l.conferido_dp) }))
+            ...snapshot, linhas: snapshot.linhas.map(l => ({ ...l,
+              acrescimos: Number(l.acrescimos || 0), descontos: Number(l.descontos || 0),
+              conferir_alteracoes: Boolean(l.conferido_dp) }))
           } });
           if (!montado.current) return result;
           const editadoDuranteGravacao = atual.current !== snapshot;
@@ -199,12 +202,20 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, so
             const calculo = valoresDaLinha(l, concluido);
             const diaria = l.forma_calculo_gerencial === 'DIARIA';
             const check = (campo, rotulo, disabled = false) => <input type="checkbox" aria-label={`${rotulo}: ${l.nome}`} disabled={disabled} checked={Boolean(l[campo])} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.checked }, campo.startsWith('conferido'))} />;
-            const numero = (campo, rotulo, max) => <input className="form-control" aria-label={`${rotulo}: ${l.nome}`} type="number" min="0" max={max} step={['dias', 'faltas'].includes(campo) ? '1' : '0.01'} value={l[campo]} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.value, ...(campo === 'descontos' ? { reembolso: null, desconto_sem_reembolso: true } : {}) })} />;
+            const numero = (campo, rotulo, max) => <input className="form-control" aria-label={`${rotulo}: ${l.nome}`} type="number" min="0" max={max} step="1" value={l[campo]} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.value })} />;
+            const ajuste = (campo, rotulo) => <input className="form-control rh-pagamento-moeda" aria-label={`${rotulo}: ${l.nome}`} type="text" inputMode="numeric"
+              value={formatCurrencyInput(l[campo] || 0, { emptyZero: false })} onFocus={e => e.target.select()}
+              onChange={e => {
+                // A mascara e apenas visual: calculo/API recebem numero, inclusive ao apagar.
+                const valor = parseCurrencyInput(normalizeCurrencyTyping(e.target.value));
+                linhaAlterar(l.colaborador_id, { [campo]: valor, ...(campo === 'descontos' && valor !== Number(l.descontos || 0)
+                  ? { reembolso: null, desconto_sem_reembolso: true } : {}) });
+              }} />;
             return <tr key={l.colaborador_id} data-selecionado={l.selecionado}>
               <td>{check('selecionado', 'Selecionar')}</td><td><strong>{l.nome}</strong><small>{diaria ? `${moeda(l.valor_diaria)} / dia` : `${moeda(l.salario_base)} · ${calculo.percentual}%`}</small></td>
               <td>{check(dp ? 'conferido_dp' : 'conferido_obra', 'Conferido', !l.selecionado)}</td><td>{check('parcela_40', '40%', diaria)}</td><td>{check('parcela_60', '60%', diaria)}</td>
               <td><input type="checkbox" aria-label={`100%: ${l.nome}`} disabled={diaria} checked={!diaria && calculo.percentual === 100} onChange={() => linhaAlterar(l.colaborador_id, { parcela_40: false, parcela_60: false })} /></td>
-              <td>{moeda(calculo.bruto)}</td><td>{numero('acrescimos', 'Acréscimos')}</td><td>{numero('descontos', 'Descontos')}{Number(l.descontos) > 0 && <button type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: l.reembolso ? { ...l.reembolso } : { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
+              <td>{moeda(calculo.bruto)}</td><td>{ajuste('acrescimos', 'Acréscimos')}</td><td>{ajuste('descontos', 'Descontos')}{Number(l.descontos) > 0 && <button type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: l.reembolso ? { ...l.reembolso } : { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
               <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{moeda(calculo.liquido)}</strong></td><td>{numero('dias', 'Dias', 31)}</td><td>{numero('faltas', 'Faltas', 31)}</td>
               <td><button type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: { ...l } })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button><small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small></td>
               <td><input className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
