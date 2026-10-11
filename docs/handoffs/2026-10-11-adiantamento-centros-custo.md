@@ -24,6 +24,8 @@ visibilidade de solicitacoes nao deve ser ampliada.
    Esses campos permanecem visiveis/obrigatorios mesmo que o tipo os oculte.
    PIX requer chave; outras formas requerem dados; Boleto requer seu arquivo.
    Comprovantes das despesas futuras sao exigidos na prestacao, nao na abertura.
+   Conforme ajuste posterior autorizado, distribuicao gerencial nao participa
+   da abertura deste subtipo; destinos sao definidos na prestacao de contas.
 2. A solicitacao nasce em GEO pelo destino inicial existente. Nao nasce titulo
    automatico sem categoria: GEO abre Financeiro > Criar Titulo, escolhe a
    categoria e gera um unico PAGAR/ABERTO. Favorecido/forma existentes sao
@@ -112,7 +114,8 @@ interceptados, em Chrome instalado.
   perder digitacao, retry apos erro, conferencia/saldo, leitura e mobile 390px;
   defaults reais do FinanceiroCard para favorecido/categoria/forma.
 - frontend/scripts/validarNovaSolicitacaoAdiantamento.mjs: pagina completa,
-  tipo ocultando campos, subtipo, favorecido/PIX, valor, vencimento e TODAS;
+  tipo ocultando campos, subtipo, favorecido/PIX, valor e vencimento;
+  distribuicao oculta/omitida no Adiantamento e preservada na despesa normal;
   categoria nao solicitada ao criador.
 - Regressao: validarMedicaoRecargaFluxoPagamento,
   validarComprovantesTitulosSolicitacao, validarResultadoObrasHistorico,

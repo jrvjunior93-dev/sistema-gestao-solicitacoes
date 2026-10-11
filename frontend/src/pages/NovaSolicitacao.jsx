@@ -1945,7 +1945,7 @@ export default function NovaSolicitacao() {
     }
     // Sem obra selecionada, o fluxo especial tambem nao e Centro de Custo e
     // nao participa da distribuicao gerencial por obras.
-    if (!usaFluxoCadastroObra && !obraSelecionadaEhObra) {
+    if (!usaFluxoCadastroObra && !obraSelecionadaEhObra && !subtipoAdiantamento) {
       if (distribuicaoCentroCusto.status !== 'success') {
         reprovarCampo(
           'distribuicao_centro_custo',
@@ -2520,7 +2520,7 @@ export default function NovaSolicitacao() {
             observacao: String(item.observacao || '').trim() || null
           }))
           : [],
-      distribuicao_centro_custo: !usaFluxoCadastroObra && !obraSelecionadaEhObra
+      distribuicao_centro_custo: !usaFluxoCadastroObra && !obraSelecionadaEhObra && !subtipoAdiantamento
         ? {
             criterio: distribuicaoCentroCusto.criterio,
             abrangencia: distribuicaoCentroCusto.todas ? 'TODAS' : 'OBRA',
@@ -3852,7 +3852,7 @@ export default function NovaSolicitacao() {
           </BlocoConteudo>
         )}
 
-        {!obraSelecionadaEhObra && form.obra_id && (
+        {!obraSelecionadaEhObra && form.obra_id && !subtipoAdiantamento && (
           <BlocoConteudo
             titulo="Distribuição gerencial por obra"
             descricao="Classificação exclusiva do relatório do centro de custo. Estes valores não compõem o custo real das obras."

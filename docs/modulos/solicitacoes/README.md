@@ -7,6 +7,10 @@ DE MARKETING. Exige valor, vencimento, descricao, favorecido e dados de
 pagamento. GEO define a categoria ao gerar um unico titulo PAGAR/ABERTO.
 A prestacao fica disponivel depois do pagamento integral e retorna a GEO
 para conferencia; sobra permanece pendente ate o recebimento da devolucao.
+Na abertura do Adiantamento nao se exibe, exige ou envia distribuicao gerencial
+por obra. Os destinos e valores gastos sao definidos na prestacao. Despesas
+normais conservam a distribuicao obrigatoria do centro de custo. Payload com
+distribuicao antecipada no Adiantamento e recusado, sem persistir rateio.
 
 SUPERADMIN configura Obras para rateio na linha do centro em Obras/Centros
 de Custo. Administrativo/DP podem distribuir entre obras ativas sem vinculos

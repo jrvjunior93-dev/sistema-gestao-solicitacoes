@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Adiantamento sem distribuicao na abertura - 2026-10-11
+
+- Publicacao autorizada: commit/push desta pendencia na refactor/frontend.
+  Reserva documental temporaria do handoff e deste registro, encerrada apos
+  conferencia. Auditoria da outra conversa fora do commit; sem main/deploy.
+- Usuario autorizou ocultar e dispensar a distribuicao gerencial somente
+  no subtipo Adiantamento; obras/despesas ficam para a prestacao de contas.
+- Reserva: NovaSolicitacao.jsx, SolicitacaoController.js, validadores isolados
+  validarNovaSolicitacaoAdiantamento.mjs e validarAdiantamentoCentroCusto.js,
+  README de Solicitacoes e novo handoff. Preservar auditoria da outra conversa.
+- Sem commit/push, migrations, EC2 ou banco real nesta etapa.
+- Implementacao e testes concluidos; ownership liberado. Testes de abertura,
+  prestacao, financeiro/executor, medicao/recarga, build, sintaxe, docs e diff
+  aprovados. Handoff: docs/handoffs/2026-10-11-adiantamento-sem-distribuicao-abertura.md.
+
 ## Correcao da migration de adiantamento - 2026-10-11
 
 - Usuario autorizou remover o seed, testar a protecao do executor e publicar

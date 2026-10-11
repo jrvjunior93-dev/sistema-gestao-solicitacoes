@@ -62,6 +62,32 @@ async function centros() {
   await assert.rejects(service.listarObrasElegiveisDistribuicao({ centroCustoId: 30, usuario: { ...user, acesso: false } }), /Acesso negado/);
   const todas = await service.validarDistribuicaoCentroCusto({ centroCustoId: 30, usuario: user, valorTotal: 100, distribuicao: { todas: true } });
   assert.equal(todas.linhas.length, 1); assert.equal(todas.linhas[0].obra_id, null, 'TODAS preserva o agrupamento gerencial existente');
+  await assert.rejects(service.validarDistribuicaoCentroCusto({ centroCustoId: 30, usuario: user, valorTotal: 100 }), /distribuicao/);
+}
+async function abertura() {
+  const source = fs.readFileSync(path.join(__dirname, '../src/controllers/SolicitacaoController.js'), 'utf8');
+  const inicio = source.indexOf('      let distribuicaoCentroCustoValidada = null;');
+  const fim = source.indexOf('\n      if (rateioApropriacoesDetalhado.length > 0)', inicio);
+  assert(inicio > 0 && fim > inicio);
+  let chamadas = 0;
+  const context = vm.createContext({ validarDistribuicaoCentroCusto: async ({ distribuicao }) => {
+    chamadas++; if (!distribuicao) throw new Error('Distribuicao obrigatoria'); return { linhas: [distribuicao] };
+  } });
+  vm.runInContext(`async function testar(usaFluxoAdiantamento, distribuicaoCentroCusto, registroSelecionadoEhObra = false, usaFluxoCadastroObra = false) {
+    const obra_id = 30, valorPersistido = 100, req = { user: {} };
+    const res = { status: status => ({ json: body => ({ status, body }) }) };
+    ${source.slice(inicio, fim)}
+    return distribuicaoCentroCustoValidada;
+  }`, context);
+  assert.equal(await context.testar(true, undefined), null);
+  assert.equal(await context.testar(true, undefined, true), null);
+  assert.equal(chamadas, 0, 'Adiantamento nao consulta nem exige distribuicao');
+  const residual = await context.testar(true, { todas: true });
+  assert.equal(residual.status, 400); assert.match(residual.body.error, /prestacao/); assert.equal(chamadas, 0);
+  await assert.rejects(context.testar(false, undefined), /obrigatoria/);
+  assert.equal((await context.testar(false, { todas: true })).linhas.length, 1);
+  assert.equal(chamadas, 2, 'Despesa comum mantem validacao obrigatoria');
+  assert.equal((await context.testar(false, { todas: true }, true)).status, 400);
 }
 async function fluxo() {
   let principal, ciclo, titulo, titulos, anexos, rateios;
@@ -139,5 +165,5 @@ async function fluxo() {
   assert(domain.tipoPermiteAdiantamento({ nome: 'DESPESA DE MARKETING' })); assert(!domain.tipoPermiteAdiantamento({ nome: 'CONTRATO' }));
   for (const valor of ['', null, -1, NaN, {}, '1.001']) assert.throws(() => domain.centavos(valor));
   assert.equal(domain.saldoAdiantamento('1000.00', 800, 200), 0); assert.throws(() => domain.normalizarPrestacao({ itens: [null] }));
-  await centros(); await fluxo(); console.log('OK: centros, escopo sem vinculos/visibilidade, privadas, configuracao, negativas; adiantamento, prestacao, saldo/devolucao, concorrencia e custo isolado. Sem banco/rede.');
+  await centros(); await abertura(); await fluxo(); console.log('OK: centros, escopo sem vinculos/visibilidade, privadas, configuracao, negativas; abertura de adiantamento sem distribuicao/residual, despesa comum exige; prestacao, saldo/devolucao, concorrencia e custo isolado. Sem banco/rede.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

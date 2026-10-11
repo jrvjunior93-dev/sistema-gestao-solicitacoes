@@ -33,10 +33,17 @@ try {
     if (url.origin === `http://127.0.0.1:${port}` && !url.pathname.startsWith('/api')) return route.continue();
     unexpected.push(url.pathname); return route.abort('blockedbyclient');
   });
+  for (const comDistribuicaoResidual of [false, true]) {
   await page.goto(`http://127.0.0.1:${port}/scripts/fixtures/adiantamento.html?nova`);
   await page.getByPlaceholder(/buscar.*obra|buscar.*centro|digite.*obra/i).fill('Administrativo');
   await page.getByRole('button', { name: /Administrativo.*ADM/ }).click();
   await page.locator('[name="tipo_solicitacao_id"]').selectOption('5');
+  if (comDistribuicaoResidual) await page.getByRole('radio', { name: /TODAS/ }).check();
+  await page.locator('[name="tipo_sub_id"]').selectOption('7');
+  assert.equal(await page.getByText('Distribuição gerencial por obra', { exact: true }).count(), 0);
+  await page.locator('[name="tipo_sub_id"]').selectOption('8');
+  assert.equal(await page.getByText('Distribuição gerencial por obra', { exact: true }).count(), 1, 'Despesa normal conserva distribuicao');
+  assert.equal(await page.getByRole('radio', { name: /TODAS/ }).isChecked(), comDistribuicaoResidual, 'Troca de subtipo nao apaga distribuicao da despesa normal');
   await page.locator('[name="tipo_sub_id"]').selectOption('7');
   await page.locator('[name="forma_pagamento_id"]').selectOption('1');
   await page.getByRole('combobox', { name: /Favorecido do pagamento/ }).fill('Favorecido');
@@ -44,15 +51,16 @@ try {
   await page.locator('[name="valor"]').fill('1.000,00');
   await page.locator('[name="descricao"]').fill('Adiantamento para despesas administrativas');
   await page.locator('[name="data_vencimento"]').fill('01/12/2099');
-  await page.getByRole('radio', { name: /TODAS/ }).check();
   assert.equal(await page.getByText('Categoria financeira', { exact: true }).count(), 0, 'Categoria pertence ao GEO, nao ao solicitante');
   await page.getByRole('button', { name: /criar solicitação|enviar solicitação|salvar solicitação/i }).click();
   await page.waitForURL('**/solicitacoes/101').catch(async error => {
     console.error({ enviados, unexpected, errors, invalidos: await page.locator('input:invalid,select:invalid,textarea:invalid').evaluateAll(inputs => inputs.map(i => ({ name: i.name, valor: i.value, motivo: i.validationMessage }))), tela: (await page.locator('body').innerText()).slice(-3000) }); throw error;
   });
-  assert.equal(enviados.length, 1); assert.equal(enviados[0].tipo_sub_id, '7'); assert.equal(enviados[0].favorecido_id, '6');
-  assert.equal(Number(enviados[0].valor), 1000); assert.equal(enviados[0].forma_pagamento_id, '1');
-  assert.equal(enviados[0].distribuicao_centro_custo.todas, true); assert(!enviados[0].recargas_cartoes);
+  const enviado = enviados.at(-1);
+  assert.equal(enviados.length, comDistribuicaoResidual ? 2 : 1); assert.equal(enviado.tipo_sub_id, '7'); assert.equal(enviado.favorecido_id, '6');
+  assert.equal(Number(enviado.valor), 1000); assert.equal(enviado.forma_pagamento_id, '1');
+  assert(!('distribuicao_centro_custo' in enviado), 'Adiantamento nao envia distribuicao residual do tipo pai'); assert(!enviado.recargas_cartoes);
+  }
   assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
-  console.log('OK: Nova Solicitacao real com subtipo adiantamento, campos obrigatorios mesmo com tipo ocultando-os, favorecido/PIX, total e TODAS sem categoria antecipada. Sem banco/rede externa.');
+  console.log('OK: Nova Solicitacao real com adiantamento sem distribuicao antecipada/residual; despesa normal conserva distribuicao; campos obrigatorios, favorecido/PIX e total sem categoria antecipada. Sem banco/rede externa.');
 } finally { await browser?.close(); await server.close(); }

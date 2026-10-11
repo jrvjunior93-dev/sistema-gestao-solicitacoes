@@ -4038,7 +4038,7 @@ module.exports = {
         : (valor === '' || valor === undefined ? null : valor);
 
       let distribuicaoCentroCustoValidada = null;
-      if (!usaFluxoCadastroObra && !registroSelecionadoEhObra) {
+      if (!usaFluxoCadastroObra && !registroSelecionadoEhObra && !usaFluxoAdiantamento) {
         distribuicaoCentroCustoValidada = await validarDistribuicaoCentroCusto({
           centroCustoId: obra_id,
           usuario: req.user,
@@ -4047,7 +4047,9 @@ module.exports = {
         });
       } else if (distribuicaoCentroCusto) {
         return res.status(400).json({
-          error: 'A distribuicao gerencial por obras e exclusiva para solicitacoes de Centro de Custo.'
+          error: usaFluxoAdiantamento
+            ? 'Adiantamento nao recebe distribuicao por obras na abertura. Informe os destinos na prestacao de contas.'
+            : 'A distribuicao gerencial por obras e exclusiva para solicitacoes de Centro de Custo.'
         });
       }
 
