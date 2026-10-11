@@ -21,7 +21,7 @@ const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
-const { normalizarContatos } = require('./rhColaboradorContatosDomain');
+const { normalizarContatos, enderecosIguais } = require('./rhColaboradorContatosDomain');
 
 /**
  * O PEDIDO DE PESSOAL: a Obra pede, o DP decide (Fase 2 do modulo DP, 25/08).
@@ -418,6 +418,22 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
   }
 }
 
+// Usa o usuario autenticado, nunca uma flag enviada no payload. Aplicada somente
+// na abertura/reenvio: nao impede o DP de aprovar pedidos legados ja registrados.
+async function validarEnderecosDaAdmissao(tipo, dados, contexto) {
+  if (tipo !== 'ADMISSAO' || !enderecosIguais(dados)) return;
+  let usuarioObra = String(setorParaHistorico(contexto.setor)).trim().toUpperCase() === 'OBRA';
+  if (contexto.usuario) {
+    const { isRhDpUsuarioObra } = require('./authorizationService');
+    const { userBelongsToDpSetor } = require('./setorCapabilityService');
+    usuarioObra = await isRhDpUsuarioObra(contexto.usuario)
+      && !(await userBelongsToDpSetor(contexto.usuario));
+  }
+  if (usuarioObra) {
+    throw new ValidationError('O segundo endereço deve ser diferente do primeiro para usuários de Obra.');
+  }
+}
+
 /** Abre o pedido. Nasce ABERTA e com o setor de quem criou gravado — e para la que a devolucao volta. */
 async function abrirSolicitacao(payload = {}, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
@@ -427,6 +443,7 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
     const dados = payload.dados || {};
 
     validarPedido(tipo, dados, colaboradorId, subtipo);
+    await validarEnderecosDaAdmissao(tipo, dados, contexto);
 
     if (colaboradorId) {
       const colaborador = await RhColaborador.findByPk(colaboradorId, { transaction });
@@ -1217,6 +1234,7 @@ async function reenviarSolicitacao(id, payload = {}, contexto = {}) {
     // O subtipo entra aqui tambem: sem ele, o reenvio viraria a porta para gravar um pedido que a
     // abertura recusaria — que e exatamente o que `validarPedido` existe para impedir.
     validarPedido(solicitacao.tipo, dados, solicitacao.colaborador_id, solicitacao.subtipo);
+    await validarEnderecosDaAdmissao(solicitacao.tipo, dados, contexto);
 
     await solicitacao.update(
       {

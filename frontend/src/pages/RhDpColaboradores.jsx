@@ -45,8 +45,10 @@ import {
   canManageRhDpColaboradores,
   canViewRhDpColaboradores,
   canManageRhDpDocumentos,
-  canGenerateRhDpTicket
+  canGenerateRhDpTicket,
+  isBusinessAdmin
 } from '../utils/acessoProduto';
+import { userBelongsToDpSetor } from '../utils/setor';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
 import CategoriaFinanceiraAutocomplete from '../components/ui/CategoriaFinanceiraAutocomplete';
 import ObraAutocomplete from '../components/ui/ObraAutocomplete';
@@ -54,7 +56,7 @@ import { formatCurrencyInput, getCpfCnpjError, maskCpfCnpj, maskPhone, normalize
 import DateInputBR from '../components/DateInputBR';
 import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
 import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
-import { CAMPOS_ENDERECO, temEnderecoSecundario, erroTelefoneSecundario, telefoneComparavel } from '../utils/rhColaboradorContatos';
+import { CAMPOS_ENDERECO, erroTelefoneSecundario, telefoneComparavel } from '../utils/rhColaboradorContatos';
 
 function emptyForm() {
   return {
@@ -69,7 +71,7 @@ function emptyForm() {
     telefone: '',
     telefone_secundario: '',
     ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) => [[campo, ''], [`${campo}_secundario`, '']])),
-    mostrarEnderecoSecundario: false,
+    mesmo_endereco: false,
     email: '',
     cargo: '',
     tipo_vinculo: 'CLT',
@@ -173,7 +175,7 @@ function toFormData(data) {
     telefone_secundario: maskPhone(telefoneComparavel(data?.telefone_secundario)),
     ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) =>
       [[campo, data?.[campo] || ''], [`${campo}_secundario`, data?.[`${campo}_secundario`] || '']])),
-    mostrarEnderecoSecundario: temEnderecoSecundario(data),
+    mesmo_endereco: false,
     email: data?.email || '',
     cargo: data?.cargo || '',
     tipo_vinculo: data?.tipo_vinculo || 'CLT',
@@ -1433,7 +1435,8 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                 </CampoForm>
               </FormSecao>
 
-              <RhColaboradorEnderecos form={form} setForm={setForm} disabled={!podeEditar || salvando} />
+              <RhColaboradorEnderecos form={form} setForm={setForm} disabled={!podeEditar || salvando}
+                permitirMesmoEndereco={isBusinessAdmin(user) || userBelongsToDpSetor(user)} />
 
               <FormSecao legenda="Dados de pagamento" colunas={2}>
                 <CampoForm label="Favorecido">

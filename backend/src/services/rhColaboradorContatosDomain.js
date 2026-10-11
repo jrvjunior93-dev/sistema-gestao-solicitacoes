@@ -7,6 +7,15 @@ const CAMPOS_CONTATO = ['telefone_secundario', ...Object.keys(CAMPOS_ENDERECO)
   .flatMap(campo => [campo, `${campo}_secundario`])];
 const possui = (dados, campo) => Object.prototype.hasOwnProperty.call(dados, campo);
 
+const textoEndereco = valor => String(valor || '').normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+function enderecosIguais(dados) {
+  return Boolean(textoEndereco(dados.endereco) && textoEndereco(dados.municipio))
+    && Object.keys(CAMPOS_ENDERECO).every(campo =>
+      textoEndereco(dados[campo]) === textoEndereco(dados[`${campo}_secundario`]));
+}
+
 function telefoneComparavel(valor) {
   const digitos = String(valor || '').replace(/\D/g, '');
   return [12, 13].includes(digitos.length) && digitos.startsWith('55') ? digitos.slice(2) : digitos;
@@ -41,4 +50,4 @@ function normalizarContatos(dados = {}, anterior = {}, { parcial = false } = {})
   return resultado;
 }
 
-module.exports = { CAMPOS_CONTATO, normalizarContatos, telefoneComparavel };
+module.exports = { CAMPOS_CONTATO, normalizarContatos, telefoneComparavel, enderecosIguais };

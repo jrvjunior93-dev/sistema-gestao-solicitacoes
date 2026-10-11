@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## Publicacao Admissao - contatos visiveis - 2026-10-11
+
+- Usuario autorizou commit e push somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; conferencia da publicacao
+  concluida, ownership liberado. Sem nova mudanca funcional.
+- Escopo: organizacao da admissao, contatos secundarios visiveis, copia DP/admin
+  e validacao de enderecos distintos para Obra, testes e documentacao associados.
+- Contatos, importacao legada, pessoal por solicitacao, documentacao e diff
+  revalidados antes do commit. Build e UI aprovados na implementacao.
+- outputs/ preservado fora do Git. Sem main, EC2, migration, banco real ou deploy.
+
+## Admissao - organizacao e contatos visiveis - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao/revisao
+  concluidas, ownership liberado. Handoff: 2026-10-11-admissao-organizacao-contatos.md.
+- Reserva: RhDpPessoal.jsx, RhDpColaboradores.jsx, RhColaboradorEnderecos.jsx,
+  helpers de contatos frontend/backend, rhSolicitacaoService.js, validadores
+  de contatos, validarRhColaboradorCentroCusto.mjs (diagnostico de regressao),
+  README RH/DP e handoff deste ajuste.
+- Escopo: organizar admissao com FormSecao; contatos secundarios sempre visiveis;
+  copia de endereco para DP/admin e enderecos distintos para Obra operacional.
+- Plano: mapear abertura/reenvio e permissao, manter campos opcionais/legado,
+  validar API em memoria e UI local desktop/mobile. Sem commit/push/deploy,
+  migration, banco real ou alteracao de permissao.
+
 ## Publicacao Colaboradores - contatos - 2026-10-11
 
 - Usuario autorizou commit e push das pendencias somente na refactor/frontend.

@@ -5,6 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from 'tailwindcss';
+import autoprefixer from 'autoprefixer';
+import tailwindConfig from '../tailwind.config.js';
 import { chromium } from 'playwright';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '../outputs/rh-contatos'); mkdirSync(output, { recursive: true });
@@ -33,11 +36,13 @@ const Page=new URLSearchParams(location.search).has('admissao')?Pessoal:Cadastro
 createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}>
 <main className="layout-main"><Page/></main></ThemeContext.Provider></BrowserRouter>);`;
 const server = await createServer({ root, configFile: false, logLevel: 'error', cacheDir: path.join(output, 'vite-cache'),
+  css: { postcss: { plugins: [tailwindcss({ ...tailwindConfig,
+    content: [path.join(root, 'src/**/*.{js,jsx,ts,tsx}')] }), autoprefixer()] } },
   server: { host: '127.0.0.1', port: 0 }, plugins: [{ name: 'qa-rh-contatos', enforce: 'pre',
     resolveId(id) { if (id === '/fixture.jsx') return '\0qa-contatos.jsx'; },
     async load(id) { if (id === '\0qa-contatos.jsx') return transformWithEsbuild(entry, 'fixture.jsx', { loader: 'jsx', jsx: 'transform' }); },
     transform(code, id) {
-      if (id.endsWith('/src/contexts/AuthContext.jsx')) return `const readonly=new URLSearchParams(location.search).has('readonly');const user={id:2,perfil:readonly?'USUARIO':'SUPERADMIN',area:'DP',setor:{codigo:'DP'},areas_permissoes_configuradas:true,modulos_habilitados:['RH_DP'],areas_permissoes:readonly?['rh_dp.colaboradores.visualizar']:['rh_dp.colaboradores.visualizar','rh_dp.colaboradores.editar','rh_dp.solicitacoes.visualizar','rh_dp.solicitacoes.abrir','rh_dp.solicitacoes.ver_todas']};export const useAuth=()=>({user});`;
+      if (id.endsWith('/src/contexts/AuthContext.jsx')) return `const q=new URLSearchParams(location.search);const readonly=q.has('readonly'),obra=q.has('obra');const user={id:2,perfil:obra||readonly||q.has('dp')?'USUARIO':'SUPERADMIN',area:obra?'OBRA':'DP',setor:{codigo:obra?'OBRA':'DP'},obras_ids:[7],areas_permissoes_configuradas:true,modulos_habilitados:['RH_DP'],areas_permissoes:readonly?['rh_dp.colaboradores.visualizar']:['rh_dp.colaboradores.visualizar','rh_dp.colaboradores.editar','rh_dp.solicitacoes.visualizar','rh_dp.solicitacoes.abrir','rh_dp.solicitacoes.ver_todas']};export const useAuth=()=>({user});`;
       if (id.endsWith('/src/services/rhDp.js')) return nomes.map(n => `export const ${n}=${overrides[n] || 'async()=>[]'};`).join('\n');
       if (id.endsWith('/src/services/obras.js')) return 'export const getObras=async()=>window.locais;export const getMinhasObras=async()=>window.locais;';
       if (id.endsWith('/src/services/setores.js')) return 'export const getSetores=async()=>[];';
@@ -81,14 +86,22 @@ try {
   await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
   await page.getByRole('button', { name: 'Editar colaborador Contato QA', exact: true }).click();
   assert.equal(await segundo.getByLabel('Logradouro', { exact: true }).inputValue(), 'Rua Secundária Nova');
-  await modal.getByRole('button', { name: 'Remover segundo endereço', exact: true }).click();
+  assert.equal(await modal.getByRole('button', { name: /segundo endereço/ }).count(), 0);
+  await segundo.getByLabel('Usar o mesmo endereço', { exact: true }).check();
+  assert.equal(await segundo.getByLabel('Logradouro', { exact: true }).inputValue(), 'Rua Principal Nova');
+  await primeiro.getByLabel('Número', { exact: true }).fill('11');
+  assert.equal(await segundo.getByLabel('Número', { exact: true }).inputValue(), '11');
+  await segundo.getByLabel('Usar o mesmo endereço', { exact: true }).uncheck();
+  for (const field of ['Logradouro', 'Número', 'Complemento', 'Bairro', 'Município', 'UF', 'CEP']) {
+    await segundo.getByLabel(field, { exact: true }).fill('');
+  }
   await modal.getByLabel('Segundo telefone', { exact: true }).fill('');
   await modal.getByRole('button', { name: 'Salvar alteracoes', exact: true }).click();
   await page.waitForFunction(() => window.salvos.length === 2);
   const limpo = await page.evaluate(() => window.salvos[1]);
   assert.equal(limpo.endereco_secundario, null); assert.equal(limpo.telefone_secundario, null);
   assert.equal(limpo.endereco, 'Rua Principal Nova');
-  await page.goto(base + '?admissao=1&local_id=7&aba=colaboradores');
+  await page.goto(base + '?admissao=1&dp=1&local_id=7&aba=colaboradores');
   await page.getByRole('button', { name: 'Pedir admissao', exact: true }).click();
   const adm = page.getByRole('dialog');
   await adm.getByLabel('Nome completo', { exact: true }).fill('Novo Contato QA');
@@ -104,7 +117,8 @@ try {
   await a1.getByLabel('Logradouro', { exact: true }).fill('Rua da Admissão');
   await a1.getByLabel('Número', { exact: true }).fill('30');
   await a1.getByLabel('Município', { exact: true }).fill('Vitória');
-  await adm.getByRole('button', { name: 'Adicionar segundo endereço', exact: true }).click();
+  assert.equal(await adm.getByLabel('Segundo telefone', { exact: true }).count(), 1);
+  assert.equal(await adm.getByRole('button', { name: /segundo (endereço|telefone)/ }).count(), 0);
   await a2.getByLabel('Usar o mesmo endereço', { exact: true }).check();
   assert.equal(await a2.getByLabel('Logradouro', { exact: true }).inputValue(), 'Rua da Admissão');
   await a1.getByLabel('Número', { exact: true }).fill('31');
@@ -112,14 +126,16 @@ try {
   await a2.getByLabel('Usar o mesmo endereço', { exact: true }).uncheck();
   await a2.getByLabel('Logradouro', { exact: true }).fill('Outro endereço');
   await a2.getByLabel('Usar o mesmo endereço', { exact: true }).check();
-  await adm.getByRole('button', { name: 'Adicionar segundo telefone', exact: true }).click();
   await adm.getByLabel('Segundo telefone', { exact: true }).fill('+55 (27) 99999-1234');
   await adm.getByRole('button', { name: 'Criar rascunho', exact: true }).click();
   await adm.getByText('O segundo telefone deve ser diferente do primeiro.', { exact: true }).first().waitFor();
   assert.equal(await page.evaluate(() => window.admissoes.length), 0);
   await adm.getByLabel('Segundo telefone', { exact: true }).fill('27988884321');
+  await page.locator('.app-avisos').getByRole('button', { name: 'Fechar', exact: true }).first().click();
   for (const width of [1366, 390]) {
     await page.setViewportSize({ width, height: 900 });
+    await adm.getByRole('group', { name: 'Identificação e lotação', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, `admissao-topo-${width}.png`) });
     await a2.scrollIntoViewIfNeeded();
     const bounds = await a2.getByLabel('Logradouro', { exact: true }).boundingBox();
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, 'Endereco cabe no viewport');
@@ -129,7 +145,40 @@ try {
   await page.waitForFunction(() => window.admissoes.length === 1);
   const dados = (await page.evaluate(() => window.admissoes[0])).dados;
   assert.equal(dados.endereco_secundario, dados.endereco); assert.equal(dados.numero_secundario, '31');
-  assert.equal(dados.telefone_secundario, '27988884321'); assert.equal(dados.mesmo_endereco, undefined);
+  assert.equal(dados.telefone_secundario.replace(/\D/g, ''), '27988884321'); assert.equal(dados.mesmo_endereco, undefined);
+  await page.goto(base + '?admissao=1&obra=1&local_id=7&aba=colaboradores');
+  await page.getByRole('button', { name: 'Pedir admissao', exact: true }).click();
+  assert.equal(await a2.getByLabel('Usar o mesmo endereço', { exact: true }).count(), 0);
+  assert.equal(await adm.getByLabel('Segundo telefone', { exact: true }).count(), 1);
+  assert.equal(await a2.getByLabel('Logradouro', { exact: true }).isEditable(), true);
+  await adm.getByLabel('Nome completo', { exact: true }).fill('Obra QA');
+  await adm.getByLabel('CPF', { exact: true }).fill('52998224725');
+  await adm.getByLabel(/^Empresa do grupo/).selectOption('1');
+  await adm.getByLabel(/^Obra \/ Centro de Custo/).selectOption('7');
+  await adm.getByLabel('Data de admissao', { exact: true }).fill('11/10/2026');
+  await adm.getByLabel('Telefone', { exact: true }).fill('27999991234');
+  await adm.getByLabel('E-mail', { exact: true }).fill('obra@example.invalid');
+  await adm.getByLabel('Nome da mae', { exact: true }).fill('Mãe QA');
+  for (const group of [a1, a2]) {
+    await group.getByLabel('Logradouro', { exact: true }).fill('Rua Obra');
+    await group.getByLabel('Número', { exact: true }).fill('40');
+    await group.getByLabel('Município', { exact: true }).fill('Vitória');
+  }
+  await a2.getByLabel('Logradouro', { exact: true }).fill(' RUA obra. ');
+  await a2.getByLabel('Município', { exact: true }).fill('VITORIA');
+  await adm.getByRole('button', { name: 'Criar rascunho', exact: true }).click();
+  await page.getByText('O segundo endereço deve ser diferente do primeiro para usuários de Obra.', { exact: true }).first().waitFor();
+  assert.equal(await page.evaluate(() => window.admissoes.length), 0);
+  await a2.getByLabel('Número', { exact: true }).fill('41');
+  await page.locator('.app-avisos').getByRole('button', { name: 'Fechar', exact: true }).first().click();
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await a2.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, `admissao-obra-${width}.png`) });
+  }
+  await adm.getByRole('button', { name: 'Criar rascunho', exact: true }).click();
+  await page.waitForFunction(() => window.admissoes.length === 1);
+  assert.equal((await page.evaluate(() => window.admissoes[0])).dados.numero_secundario, '41');
   await page.goto(base + '?readonly=1');
   await page.getByRole('button', { name: 'Ver colaborador Contato QA', exact: true }).click();
   assert.equal(await modal.getByLabel('Segundo telefone', { exact: true }).isDisabled(), true);

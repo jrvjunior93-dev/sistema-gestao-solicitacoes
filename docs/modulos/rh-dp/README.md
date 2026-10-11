@@ -183,9 +183,20 @@ Validacao local, sem banco: `node scripts/validarRhColaboradoresPlanilha.js` no 
 - o pedido de admissao permite informar, opcionalmente, um segundo telefone e um segundo endereco completo;
 - o cadastro direto e a edicao pelo DP dentro do local tambem exibem os dois
   telefones e os dois enderecos, preservando os campos ao reabrir a ficha;
-- na admissao, `Usar o mesmo endereco` copia os sete campos do primeiro para
-  o segundo e acompanha alteracoes enquanto marcado; desmarcar libera edicao
-  independente. Remover o segundo endereco limpa apenas os campos secundarios;
+- admissao e cadastro mostram os dois telefones e os dois enderecos desde a
+  abertura, sem botoes de adicionar/remover. Os campos secundarios permanecem
+  opcionais; limpar seus campos no cadastro remove apenas os dados secundarios;
+- DP e administradores podem usar `Usar o mesmo endereco` no cadastro/admissao:
+  copia os sete campos e acompanha alteracoes enquanto marcado; desmarcar
+  preserva a copia e libera edicao independente;
+- Obra operacional nao tem opcao de copiar. Na abertura/reenvio da admissao,
+  quando preenchido, o segundo endereco precisa ser diferente do primeiro:
+  comparacao dos sete campos ignora caixa, acentos, espacos e pontuacao.
+  API usa usuario autenticado e regras de setor existentes (nao flag do payload).
+  Pedidos legados ja registrados continuam aprovaveis pelo DP;
+- admissao usa FormSecao para identificacao/lotacao, contrato/calculo,
+  contato, filiacao, enderecos e dados de pagamento, sem alterar permissoes,
+  obrigatoriedade dos campos primarios, anexos ou fluxo de rascunho/checklist;
 - os dados adicionais ficam no pedido para conferencia e, apos aprovacao, no cadastro do colaborador; o cadastro exige a migration de esquema `202610020001_rh_colaborador_contatos_adicionais.js` antes de usar esses campos;
 - ao informar o segundo endereco, logradouro e municipio sao obrigatorios; o
   segundo telefone, quando preenchido, deve ter DDD e ser diferente do primeiro,

@@ -11,6 +11,20 @@ export const CAMPOS_ENDERECO = [
 export const temEnderecoSecundario = dados => CAMPOS_ENDERECO.some(({ campo }) =>
   String(dados?.[`${campo}_secundario`] || '').trim());
 
+const textoEndereco = valor => String(valor || '').normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+export function enderecosIguais(dados) {
+  return Boolean(textoEndereco(dados.endereco) && textoEndereco(dados.municipio))
+    && CAMPOS_ENDERECO.every(({ campo }) =>
+      textoEndereco(dados[campo]) === textoEndereco(dados[`${campo}_secundario`]));
+}
+
+export function erroEnderecoSecundario(dados, exigirDiferentes = false) {
+  return exigirDiferentes && enderecosIguais(dados)
+    ? 'O segundo endereço deve ser diferente do primeiro para usuários de Obra.' : '';
+}
+
 export function enderecoSecundario(dados, copiar = false) {
   return Object.fromEntries(CAMPOS_ENDERECO.map(({ campo }) =>
     [`${campo}_secundario`, copiar ? dados[campo] || '' : '']));

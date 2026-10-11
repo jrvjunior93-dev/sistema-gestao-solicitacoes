@@ -14,6 +14,7 @@ import {
   Avisos,
   BarraFiltros,
   CelulaDupla,
+  FormSecao,
   Pagina,
   PageHeader,
   StatGrid,
@@ -53,7 +54,7 @@ import RhDpColaboradores from './RhDpColaboradores';
 import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
 import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
 import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
-import { erroTelefoneSecundario } from '../utils/rhColaboradorContatos';
+import { erroTelefoneSecundario, erroEnderecoSecundario } from '../utils/rhColaboradorContatos';
 import '../styles/rh-pessoal-locais.css';
 import {
   canViewRhDpApuracao,
@@ -273,12 +274,12 @@ function formularioVazio(tipo) {
     // Item 8 do escopo: cargo pelo catalogo e carga horaria.
     cargo_id: '',
     carga_horaria_semanal: '',
-    telefone: '', telefone_secundario: '', mostrarTelefoneSecundario: false,
+    telefone: '', telefone_secundario: '',
     email: '', nome_pai: '', nome_mae: '',
     endereco: '', numero: '', complemento: '', bairro: '', municipio: '', estado: '', cep: '',
     endereco_secundario: '', numero_secundario: '', complemento_secundario: '',
     bairro_secundario: '', municipio_secundario: '', estado_secundario: '', cep_secundario: '',
-    mostrarEnderecoSecundario: false, mesmo_endereco: false,
+    mesmo_endereco: false,
     banco: '', agencia: '', conta: '', conta_tipo: '', pix_chave_tipo: '', pix_chave: '',
     // ADMISSAO
     nome: '',
@@ -324,6 +325,7 @@ export default function RhDpPessoal() {
   const { user } = useAuth();
   const usuarioOperacionalDaObra = !isBusinessAdmin(user)
     && userHasSetorCapability(user, 'eh_setor_obra');
+  const permitirMesmoEndereco = isBusinessAdmin(user) || userBelongsToDpSetor(user);
 
   const [colaboradoresCarregados, setColaboradores] = useState([]);
   // A busca e disparada a cada alteracao depois do debounce. Uma resposta antiga pode chegar
@@ -726,7 +728,8 @@ export default function RhDpPessoal() {
       return;
     }
     if (f.tipo === 'ADMISSAO') {
-      const telefoneErro = erroTelefoneSecundario(f);
+      const telefoneErro = erroTelefoneSecundario(f)
+        || erroEnderecoSecundario(f, usuarioOperacionalDaObra && !permitirMesmoEndereco);
       if (telefoneErro) {
         avisar.erro(telefoneErro);
         return;
@@ -1638,7 +1641,7 @@ export default function RhDpPessoal() {
                 ninguem enxerga o que ainda falta preencher. */}
             {formulario.tipo === 'ADMISSAO' ? (
               <div className="space-y-3">
-              <div className="rh-colaboradores-filter-grid">
+              <FormSecao legenda="Identificação e lotação" colunas={2}>
                 <label className="form-field">
                   <span className="form-label form-label--required">Nome completo</span>
                   <input className="form-control" value={formulario.nome}
@@ -1678,6 +1681,8 @@ export default function RhDpPessoal() {
                   </select>
                 </label>
 
+              </FormSecao>
+              <FormSecao legenda="Contrato e cálculo gerencial" colunas={3}>
                 {/*
                   O CARGO VEM DO CATALOGO (Fase 7), e nao mais de texto livre.
                   O escopo pede "Cargo (lista do banco de dados)". Enquanto os cargos nao carregam,
@@ -1755,17 +1760,16 @@ export default function RhDpPessoal() {
                       onBlur={(e) => setFormulario({ ...formulario, valor_diaria: formatCurrencyInput(e.target.value) })} />
                   </label>
                 ) : (
-                  <label className="flex items-center gap-2">
+                  <label className="form-campo--linha flex items-center gap-2">
                     <input type="checkbox" checked={formulario.pagamento_automatico_40_60}
                       onChange={(e) => setFormulario({ ...formulario, pagamento_automatico_40_60: e.target.checked })} />
                     Gerar automaticamente 40% no dia 15 e 60% no fim do mes
                   </label>
                 )}
-              </div>
-              <div className="rh-colaboradores-filter-grid">
-                <RhColaboradorTelefone form={formulario} setForm={setFormulario} required />
-                {formulario.mostrarTelefoneSecundario && <RhColaboradorTelefone
-                  form={formulario} setForm={setFormulario} secundario />}
+              </FormSecao>
+              <FormSecao legenda="Contato" colunas={3}>
+                <RhColaboradorTelefone form={formulario} setForm={setFormulario} required mascarar />
+                <RhColaboradorTelefone form={formulario} setForm={setFormulario} secundario mascarar />
 
                 <label className="form-field">
                   <span className="form-label form-label--required">E-mail</span>
@@ -1773,18 +1777,11 @@ export default function RhDpPessoal() {
                     onChange={(e) => setFormulario({ ...formulario, email: e.target.value })} required />
                 </label>
 
-              </div>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormulario((atual) => ({
-                ...atual,
-                mostrarTelefoneSecundario: !atual.mostrarTelefoneSecundario,
-                telefone_secundario: atual.mostrarTelefoneSecundario ? '' : atual.telefone_secundario
-              }))}>
-                {formulario.mostrarTelefoneSecundario ? 'Remover segundo telefone' : 'Adicionar segundo telefone'}
-              </button>
+              </FormSecao>
 
               {/* O escopo pede "nome dos pais". Dois campos, e nao um: a certidao de
                   nascimento e o eSocial tratam pai e mae separadamente. */}
-              <div className="rh-colaboradores-filter-grid">
+              <FormSecao legenda="Filiação" colunas={2}>
                 <label className="form-field">
                   <span className="form-label">Nome do pai</span>
                   <input className="form-control" value={formulario.nome_pai || ''}
@@ -1797,13 +1794,14 @@ export default function RhDpPessoal() {
                     onChange={(e) => setFormulario({ ...formulario, nome_mae: e.target.value })} required />
                 </label>
 
-              </div>
+              </FormSecao>
 
-              <RhColaboradorEnderecos form={formulario} setForm={setFormulario} admissao />
+              <RhColaboradorEnderecos form={formulario} setForm={setFormulario} admissao
+                permitirMesmoEndereco={permitirMesmoEndereco} />
 
               {/* Dados bancarios E chave PIX: o escopo pede os dois, e eles nao sao
                   alternativos — a conta recebe a folha, o PIX resolve pagamento avulso. */}
-              <div className="rh-colaboradores-filter-grid">
+              <FormSecao legenda="Dados de pagamento" colunas={3}>
                 <label className="form-field">
                   <span className="form-label">Banco</span>
                   <input className="form-control" value={formulario.banco || ''}
@@ -1847,7 +1845,7 @@ export default function RhDpPessoal() {
                   <input className="form-control" value={formulario.pix_chave || ''}
                     onChange={(e) => setFormulario({ ...formulario, pix_chave: e.target.value })} />
                 </label>
-              </div>
+              </FormSecao>
             </div>
             ) : null}
 

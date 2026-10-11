@@ -45,7 +45,11 @@ function carregar(nome) {
     './rhColaboradorContatosDomain': contatos,
     './rhVinculoObraService': { registrarVinculo: async d => vinculos.push(d), encerrarVinculo: async () => {} },
     './rhCalculoHistoricoService': {}, './s3': {}, '../utils/fileName': {}, '../utils/excelWorkbook': {},
-    '../constants/empresaGrupo': {}, '../utils/codigoDoSetor': { setorParaHistorico: () => 'OBRA' },
+    '../constants/empresaGrupo': {}, '../utils/codigoDoSetor': { setorParaHistorico: v => typeof v === 'object' ? v.codigo : v },
+    './authorizationService': { isRhDpUsuarioObra: async u =>
+      !['SUPERADMIN', 'ADMINISTRADOR'].includes(u.perfil) && u.area === 'OBRA' },
+    './setorCapabilityService': { userBelongsToDpSetor: async u =>
+      u.area === 'DP' || (u.setores || []).some(s => s.codigo === 'DP') },
     './rhChecklistService': { checklistDoPedido: async () => [] },
     './rhSolicitacaoCodigoService': { garantirCodigoRhSolicitacao: async r => { r.codigo = `RH-${r.id}`; } }
   };
@@ -102,5 +106,30 @@ const base = { nome: 'Contato QA', cpf: '52998224725', empresa_grupo_id: 1, obra
   assert.equal(admitido.estado_secundario, 'ES'); assert.equal(vinculos.length, 2);
   await assert.rejects(admissao.aprovarSolicitacao(pedido.id, { usuarioId: 3 }), /ja esta/);
   assert.equal(rows.length, 2, 'Dupla aprovacao nao cria outro colaborador');
+  const igual = { ...base, cpf: '11234567890',
+    ...Object.fromEntries(['endereco', 'numero', 'complemento', 'bairro', 'municipio', 'estado', 'cep']
+      .map(c => [`${c}_secundario`, base[c] || ''])) };
+  const contextoObra = { usuarioId: 8, setor: 'OBRA', usuario: { id: 8, area: 'OBRA', perfil: 'USUARIO' } };
+  assert.equal(contatos.enderecosIguais({ ...igual, endereco_secundario: '  RUA a.  ', municipio_secundario: 'VITORIA' }), true);
+  await assert.rejects(admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: igual }, contextoObra), /segundo endereço/);
+  await assert.rejects(admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: { ...igual, mesmo_endereco: true } }, contextoObra), /segundo endereço/);
+  await assert.rejects(admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: igual }, { setor: 'OBRA' }), /segundo endereço/);
+  assert.equal(pedidos.length, 1, 'Endereco igual nao grava outro pedido');
+  const diferente = { ...igual, numero_secundario: '11' };
+  const daObra = await admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: diferente }, contextoObra);
+  await daObra.update({ situacao: 'REJEITADA' }, { transaction: {} });
+  await assert.rejects(admissao.reenviarSolicitacao(daObra.id, { dados: igual }, contextoObra), /segundo endereço/);
+  assert.equal(pedidos.at(-1).situacao, 'REJEITADA');
+  await admissao.reenviarSolicitacao(daObra.id, { dados: diferente }, contextoObra);
+  await admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: igual }, { setor: 'DP', usuario: { area: 'DP', perfil: 'USUARIO' } });
+  await admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: igual }, { setor: 'OBRA', usuario: { area: 'OBRA', perfil: 'SUPERADMIN' } });
+  await admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: igual }, { setor: 'OBRA', usuario: { area: 'OBRA', perfil: 'USUARIO', setores: [{ codigo: 'DP' }] } });
+  const semSegundo = { ...base, ...Object.fromEntries(['endereco', 'numero', 'complemento', 'bairro', 'municipio', 'estado', 'cep'].map(c => [`${c}_secundario`, ''])) };
+  await admissao.abrirSolicitacao({ tipo: 'ADMISSAO', dados: semSegundo }, contextoObra);
+  // Pedido antigo igual ja aberto nao deve ficar impedido de ser aprovado pelo DP.
+  const legado = pedidos.at(-1);
+  await legado.update({ situacao: 'ABERTA', dados_json: { ...igual, cpf: '21234567890' } }, { transaction: {} });
+  await admissao.aprovarSolicitacao(legado.id, { setor: 'DP' });
+  assert.equal(rows.at(-1).endereco_secundario, igual.endereco);
   console.log('OK contatos RH: cadastro, admissao/aprovacao, reabertura, patch parcial, limpeza, legado, duplicacao por DDD/formatacao e negativas. Sem banco/rede.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
