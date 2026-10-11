@@ -62,6 +62,15 @@ faltas sao informativos. Diarista: diaria multiplicada pelos dias informados;
 faltas tambem sao informativas. Acrescimos e descontos informados entram no
 liquido integralmente. Os controles de dias/faltas avancam de um em um.
 
+Reembolso de vale e opcional e solicitado pelo link `Solicitar reembolso`
+sob o desconto. Digitar, pausar ou sair do campo nao abre modal, nem o envio
+exige uma pergunta para descontos comuns. O link abre diretamente responsavel
+e dados para pagamento; confirmar solicita o reembolso, cancelar/Voltar/Escape
+conserva o desconto sem nova solicitacao de reembolso. Vales do mesmo
+responsavel/empresa continuam agrupados em um titulo com discriminacao.
+O retorno aos cards do local se chama `Voltar para Obras`, mantendo tambem
+os centros de custo na mesma lista.
+
 O salvamento automatico e em segundo plano, sem desabilitar campos ou substituir
 edicoes em voo. Fechar, salvar manualmente e enviar aguardam a ultima gravacao;
 falha conserva o formulario. Pagamentos ja gerados conservam o snapshot aprovado

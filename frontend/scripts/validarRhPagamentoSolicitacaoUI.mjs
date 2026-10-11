@@ -69,22 +69,29 @@ try {
   assert.ok(await modal.getByLabel('40%: Bruno QA',{exact:true}).isDisabled());
   assert.ok(await modal.getByLabel('100%: Bruno QA',{exact:true}).isDisabled());
   assert.equal(await modal.locator('thead th').filter({hasText:'Dados para pagamento'}).count(),1);
-  await modal.getByLabel('Descontos: Ana QA',{exact:true}).fill('100');
-  const pergunta=page.getByRole('dialog',{name:'Desconto de vale',exact:true});
-  await pergunta.waitFor(); // Sem blur nem envio: pergunta durante a edicao do campo.
-  assert.ok((await pergunta.innerText()).includes('Ana QA'));
-  await pergunta.getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   const reembolso=page.getByRole('dialog',{name:'Reembolso de vale',exact:true});
+  const descontoAna=modal.getByLabel('Descontos: Ana QA',{exact:true});
+  await descontoAna.fill('10');
+  await page.waitForTimeout(1100);
+  assert.equal(await reembolso.count(),0,'Pausa na digitacao nao abre modal');
+  assert.ok(await descontoAna.evaluate(el=>document.activeElement===el));
+  await descontoAna.fill('100');
+  await modal.getByLabel('Observações: Ana QA',{exact:true}).focus();
+  await page.waitForTimeout(1100);
+  assert.equal(await reembolso.count(),0,'Sair do campo nao abre modal');
+  assert.equal(await page.getByRole('dialog',{name:'Desconto de vale',exact:true}).count(),0);
+  await modal.locator('tbody tr').first().getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
+  assert.ok((await reembolso.innerText()).includes('Ana QA'));
   await reembolso.getByLabel('Responsável',{exact:true}).selectOption('77');
   await reembolso.getByLabel('CPF/CNPJ',{exact:true}).fill('52998224725');
   await reembolso.getByLabel('Chave Pix / Copia e Cola',{exact:true}).fill('responsavel@example.test');
   await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
   await modal.getByLabel('Selecionar: Bruno QA',{exact:true}).check();
   await modal.getByLabel('Descontos: Bruno QA',{exact:true}).fill('50');
-  await pergunta.waitFor(); assert.ok((await pergunta.innerText()).includes('Bruno QA'));
-  await pergunta.getByRole('button',{name:'Sem reembolso',exact:true}).click();
-  await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Sem reembolso',exact:true}).click();
-  await pergunta.getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
+  await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
+  assert.ok((await reembolso.innerText()).includes('Bruno QA'));
+  await reembolso.getByRole('button',{name:'Sem reembolso',exact:true}).click();
+  await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   await reembolso.getByLabel('Responsável',{exact:true}).selectOption('77');
   assert.equal(await reembolso.getByLabel('Chave Pix / Copia e Cola',{exact:true}).inputValue(),'responsavel@example.test','Reutiliza dados do mesmo responsavel');
   await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
@@ -142,18 +149,28 @@ try {
   await page.evaluate(()=>{window.semPermissao=true;});
   await page.getByRole('button',{name:'Conferir como DP',exact:true}).click();
   assert.ok(await modal.getByRole('button',{name:'Enviar para a fila',exact:true}).isDisabled());
-  // Voltar na pergunta nao transforma o desconto em "sem reembolso" nem permite pular a identificacao.
+  // Reembolso e opcional: Escape/Cancelar/Voltar nao alteram o desconto nem forcam modal no envio.
   await page.goto(base);
   await modal.getByLabel('Selecionar: Ana QA',{exact:true}).check();
   await modal.getByLabel('Descontos: Ana QA',{exact:true}).fill('75');
-  await pergunta.waitFor(); await page.keyboard.press('Escape');
-  await pergunta.waitFor({state:'hidden'}); assert.ok(await modal.isVisible());
-  await modal.getByRole('button',{name:'Solicitar pagamento',exact:true}).click();
-  await pergunta.waitFor(); assert.equal(await page.evaluate(()=>window.envios.length),0);
-  await pergunta.getByRole('button',{name:'Sem reembolso',exact:true}).click();
+  const acaoReembolso=modal.locator('tbody tr').first().getByRole('button',{name:'Solicitar reembolso',exact:true});
+  await acaoReembolso.click(); await page.keyboard.press('Escape');
+  await reembolso.waitFor({state:'hidden'}); assert.ok(await modal.isVisible());
+  await acaoReembolso.click(); await reembolso.getByRole('button',{name:'Cancelar',exact:true}).click();
+  await acaoReembolso.click(); await reembolso.getByRole('button',{name:'Voltar',exact:true}).click();
+  assert.equal(await modal.getByLabel('Descontos: Ana QA',{exact:true}).inputValue(),'75');
   await modal.getByRole('button',{name:'Salvar',exact:true}).click();
   await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].desconto_sem_reembolso);
   assert.ok(await modal.getByLabel('100%: Ana QA',{exact:true}).isChecked());
+  await modal.getByLabel('Conferido: Ana QA',{exact:true}).check();
+  await modal.getByRole('button',{name:'Solicitar pagamento',exact:true}).click();
+  const confirmacaoComum=page.getByRole('dialog',{name:'Solicitar pagamento ao DP',exact:true});
+  assert.ok((await confirmacaoComum.innerText()).includes('2.925,00'));
+  await confirmacaoComum.getByRole('button',{name:'Solicitar pagamento',exact:true}).click();
+  await page.waitForFunction(()=>window.pedido.situacao==='ABERTA');
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].reembolso),null);
+  assert.equal(await page.evaluate(()=>window.envios.length),1);
+  assert.equal(await reembolso.count(),0);
   // Dias/faltas informativos para mensalistas; apenas dias alteram diaria.
   await page.goto(base);
   const diasAna=modal.getByLabel('Dias: Ana QA',{exact:true});
@@ -236,7 +253,7 @@ try {
   assert.ok((await modal.locator('.rh-pagamento-rodape').innerText()).includes('850,00'));
   assert.ok(await diasAna.isDisabled());
   assert.deepEqual(errors,[]);
-  console.log('Modal real: dias/faltas informativos, diaria por dias, passo 1, autosave sem bloquear/foco perdido, edicoes em voo, fechar/enviar serializados, falha recuperavel; 100%, vales, contas, conferencia, Obra/DP e celular OK.');
+  console.log('Modal real: reembolso somente no clique, sem abertura ao digitar/blur/enviar, desconto comum, Escape/Cancelar/Voltar; dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia, Obra/DP e celular OK.');
 } catch (error) {
   console.error('Erros JS:', errors);
   for (const p of browser?.contexts().flatMap(c => c.pages()) || []) console.error((await p.locator('body').innerText()).slice(0, 4000));

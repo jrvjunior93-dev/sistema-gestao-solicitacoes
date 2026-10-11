@@ -1198,7 +1198,7 @@ export default function RhDpPessoal() {
         acaoPrincipal={abaAtiva === 'colaboradores' && podeAbrir
           ? { rotulo: 'Pedir admissao', onClick: () => novoPedido('ADMISSAO') }
           : undefined}
-        secundarias={[...(localSelecionado ? [{ rotulo: 'Voltar aos locais', onClick: voltarAosLocais }] : []), ...acoesDaAba]}
+        secundarias={[...(localSelecionado ? [{ rotulo: 'Voltar para Obras', onClick: voltarAosLocais }] : []), ...acoesDaAba]}
       />
 
       {!algumModalAberto && faixaAvisos}

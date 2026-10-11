@@ -149,7 +149,7 @@ async function salvar(req, id, payload) {
       const calculo = calcularLinha(l, original);
       const dadosConta = recebimento(l, original);
       let reembolso = null;
-      if (l.reembolso && l.selecionado && calculo.descontos > 0) {
+      if (l.reembolso && calculo.descontos > 0) {
         if (!responsaveisIds.has(Number(l.reembolso.responsavel_id))) throw new ValidationError('Selecione um responsavel vigente do local.');
         reembolso = { responsavel_id: Number(l.reembolso.responsavel_id),
           ...recebimento(l.reembolso, { nome: l.reembolso.favorecido_nome, cpf: l.reembolso.favorecido_documento }) };
@@ -158,7 +158,7 @@ async function salvar(req, id, payload) {
         acrescimos: calculo.acrescimos, descontos: calculo.descontos,
         parcela_40: !calculo.diaria && Boolean(l.parcela_40), parcela_60: !calculo.diaria && Boolean(l.parcela_60),
         observacoes: texto(l.observacoes, 1000), ...dadosConta, reembolso,
-        desconto_sem_reembolso: Boolean(l.desconto_sem_reembolso) };
+        desconto_sem_reembolso: calculo.descontos > 0 && !reembolso };
       const mudou = Object.keys(campos).some(k => JSON.stringify(campos[k] ?? null) !== JSON.stringify(original[k] ?? null));
       // Alterar dados invalida a conferencia anterior. A marcacao explicita pode conferir a nova versao.
       return { ...original, ...campos, ...calculo,
@@ -187,9 +187,6 @@ async function enviar(req, id, payload) {
     validarPeriodo(d);
     const selecionados = d.linhas.filter(l => l.selecionado);
     if (!selecionados.length || selecionados.length > 100) throw new ValidationError('Selecione entre 1 e 100 colaboradores.');
-    if (selecionados.some(l => Number(l.descontos) > 0 && !l.reembolso && !l.desconto_sem_reembolso)) {
-      throw new ValidationError('Identifique os descontos: informe o reembolso de vale ou marque sem reembolso antes de enviar.');
-    }
     if (selecionados.some(l => !l[dp ? 'conferido_dp' : 'conferido_obra'])) throw new ValidationError('Marque os colaboradores selecionados como conferidos.');
     await require('../modules/custosRecebiveis/services/bloqueioObraService')
       .assertObrasSemTrava([s.obra_id], 'Pagamento DP por solicitacao');

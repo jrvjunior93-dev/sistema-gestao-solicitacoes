@@ -172,7 +172,7 @@ async function filaCanonicaTransacaoExterna() {
     selecionado: true, descontos: i ? 200 : 100, conferido_dp: true, conferir_alteracoes: true,
     modo_recebimento: i ? 'OUTRA_CONTA' : 'CONTA_SALARIO', banco: '104', agencia: '1234', conta: i ? '99999' : '23456' })) };
   let grupoSalvo = await service.salvar(dp, proximo.solicitacao.id, grupoForm);
-  await assert.rejects(service.enviar(dp, proximo.solicitacao.id, { revisao: grupoSalvo.solicitacao.dados_json.revisao }), /Identifique os descontos/);
+  assert.ok(grupoSalvo.solicitacao.dados_json.linhas.every(l => l.desconto_sem_reembolso), 'Desconto comum nao exige confirmacao extra');
   grupoForm = { ...grupoSalvo.solicitacao.dados_json, linhas: grupoSalvo.solicitacao.dados_json.linhas.map((l, i) => ({ ...l,
     conferido_dp: true, conferir_alteracoes: true, reembolso: { ...reembolso, chave_pix: i ? 'outra@example.test' : reembolso.chave_pix } })) };
   grupoSalvo = await service.salvar(dp, proximo.solicitacao.id, grupoForm);
@@ -204,6 +204,29 @@ async function filaCanonicaTransacaoExterna() {
   await service.enviar(dp, diaria.solicitacao.id, { revisao: diariaSalva.solicitacao.dados_json.revisao });
   assert.equal(store.titles[antesDiaria].valor_original, 470, 'Titulo de diaria usa dias, nao subtrai faltas');
   assert.equal(store.requests[0].dados_json.linhas[0].liquido, 1100, 'Titulo anterior nao e recalculado');
+  cadastros = [cadastro];
+  const comum = await service.iniciar(obra, { obra_id: 7 });
+  let comumSalvo = await service.salvar(obra, comum.solicitacao.id, { ...comum.solicitacao.dados_json,
+    linhas: comum.solicitacao.dados_json.linhas.map(l => ({ ...l, selecionado: true, descontos: 75,
+      desconto_sem_reembolso: false, conferido_obra: true })) });
+  assert.equal(comumSalvo.solicitacao.dados_json.linhas[0].desconto_sem_reembolso, true);
+  // Rascunho legado sem classificacao tambem pode seguir, sem reembolso implicito.
+  store.requests.find(s => s.id === comum.solicitacao.id).dados_json.linhas[0].desconto_sem_reembolso = false;
+  await service.enviar(obra, comum.solicitacao.id, { revisao: comumSalvo.solicitacao.dados_json.revisao });
+  comumSalvo = await service.mostrar(dp, comum.solicitacao.id);
+  comumSalvo = await service.salvar(dp, comum.solicitacao.id, { ...comumSalvo.solicitacao.dados_json,
+    linhas: comumSalvo.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+  const antesComum = store.titles.length;
+  await service.enviar(dp, comum.solicitacao.id, { revisao: comumSalvo.solicitacao.dados_json.revisao });
+  assert.equal(store.titles.length, antesComum + 1, 'Desconto comum gera apenas salario, sem reembolso automatico');
+  assert.equal(store.titles[antesComum].valor_original, 2925);
+  const preparo = await service.iniciar(obra, { obra_id: 7 });
+  const reembolsoPreparo = await service.salvar(obra, preparo.solicitacao.id, { ...preparo.solicitacao.dados_json,
+    linhas: preparo.solicitacao.dados_json.linhas.map(l => ({ ...l, selecionado: false, descontos: 100, reembolso })) });
+  assert.equal(reembolsoPreparo.solicitacao.dados_json.linhas[0].reembolso.responsavel_id, 77, 'Opcao manual conservada antes da selecao');
+  assert.equal(reembolsoPreparo.solicitacao.dados_json.linhas[0].desconto_sem_reembolso, false);
+  await assert.rejects(service.salvar(obra, preparo.solicitacao.id, { ...reembolsoPreparo.solicitacao.dados_json,
+    linhas: reembolsoPreparo.solicitacao.dados_json.linhas.map(l => ({ ...l, reembolso: { ...reembolso, responsavel_id: 999 } })) }), /responsavel vigente/);
   const outroRascunho = await service.iniciar(obra, { obra_id: 7 });
   ativo = false;
   await assert.rejects(service.salvar(obra, outroRascunho.solicitacao.id, { ...outroRascunho.solicitacao.dados_json,

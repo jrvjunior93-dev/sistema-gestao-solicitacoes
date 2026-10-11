@@ -142,7 +142,7 @@ try {
   assert.deepEqual(await page.evaluate(() => window.envios[1].linhas.filter(l => l.selecionado).map(l => l.colaborador_id)), [11, 12]);
   await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
   await modal.waitFor({ state: 'hidden' });
-  await page.getByRole('button', { name: 'Voltar aos locais', exact: true }).click();
+  await page.getByRole('button', { name: 'Voltar para Obras', exact: true }).click();
   await page.getByRole('button', { name: 'Abrir Escritório QA', exact: true }).click();
   await page.getByRole('button', { name: 'Solicitar pagamento: Caio QA', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).count(), 0);

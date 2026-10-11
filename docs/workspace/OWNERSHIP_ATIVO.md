@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## Publicacao DP - reembolso manual - 2026-10-10
+
+- Usuario autorizou commit e push na refactor/frontend e comandos da EC2 dev.
+- Responsavel: agente desta conversa, sem delegacao. Ownership documental
+  liberado apos revisao; publicacao restrita aos arquivos descritos abaixo.
+- Somente os nove arquivos do ajuste; outputs/ preservado fora do Git.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+- Revalidacoes de pagamento por solicitacao, Pessoal/conferencia, regras RH/DP
+  e fila aprovadas antes da publicacao; UI/build ja aprovados na implementacao.
+
+## DP - reembolso manual e voltar para obras - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: RhDpPagamentoModal.jsx, RhDpPessoal.jsx,
+  rhPagamentoSolicitacaoService.js, validarRhPagamentoSolicitacaoUI.mjs,
+  validarRhPagamentoSolicitacao.js, validarRhPessoalPorLocal.mjs, README RH/DP
+  e handoff 2026-10-10-dp-reembolso-manual.md; este registro.
+- Escopo: remover abertura automatica e no blur do desconto, solicitar
+  reembolso somente por clique; desconto comum nao exige confirmacao extra.
+  Renomear Voltar aos locais para Voltar para Obras sem mudar navegacao.
+- Preservar calculos, autosave, responsaveis, agrupamento, conferencia,
+  permissoes, fila e titulos existentes. Sem banco real, migration, commit,
+  push, main ou deploy. outputs/ preservado fora do Git.
+- Ownership liberado. Servico/dominio em memoria, UI do modal desktop/mobile,
+  Pessoal nos tres modos, regressao RH/fila, build, sintaxe e diff aprovados.
+  Handoff: docs/handoffs/2026-10-10-dp-reembolso-manual.md.
+
 ## Publicacao DP - dias e salvamento - 2026-10-10
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.
