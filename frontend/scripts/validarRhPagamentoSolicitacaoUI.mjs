@@ -24,8 +24,8 @@ window.pedido=${JSON.stringify(seed)};window.chamadas=[];window.envios=[];window
 window.putsAtivos=0;window.maxPuts=0;
 window.api=async(path,options={})=>{window.chamadas.push([path,structuredClone(options)]);if(options.method==='PUT'){window.putsAtivos++;window.maxPuts=Math.max(window.maxPuts,window.putsAtivos);}
 await new Promise(ok=>setTimeout(ok,options.method==='PUT'?(window.atrasoPut||100):100));if(options.method==='PUT')window.putsAtivos--;
- if(options.method==='PUT'){if(window.falhar){window.falhar=false;throw new Error('Falha simulada ao salvar');}if(options.data.revisao!==window.pedido.dados_json.revisao)throw new Error('Conflito');window.pedido.dados_json={...options.data,revisao:options.data.revisao+1};}
- if(path.endsWith('/enviar')){window.envios.push(options.data);window.pedido.situacao=window.dp?'APROVADA':'ABERTA';if(window.dp)window.pedido.dados_json.titulos=[{id:701,codigo:'TIT-QA-701',tipo:'SALARIO',valor:1100},{id:702,codigo:'TIT-QA-702',tipo:'REEMBOLSO',valor:150,origens:[{colaborador_id:11,nome:'Ana QA',valor:100},{colaborador_id:12,nome:'Bruno QA',valor:50}]}];}
+ if(options.method==='PUT'){if(window.falhar){window.falhar=false;throw new Error('Falha simulada ao salvar');}if(options.data.revisao!==window.pedido.dados_json.revisao)throw new Error('Conflito');window.pedido.dados_json={...structuredClone(options.data),revisao:options.data.revisao+1};if(window.ignorarValor)window.pedido.dados_json.linhas.forEach(l=>{if(l.reembolso)delete l.reembolso.valor;});}
+ if(path.endsWith('/enviar')){window.envios.push(options.data);window.pedido.situacao=window.dp?'APROVADA':'ABERTA';if(window.dp){const origens=window.pedido.dados_json.linhas.filter(l=>l.selecionado&&l.reembolso).map(l=>({colaborador_id:l.colaborador_id,nome:l.nome,valor:l.reembolso.valor??Number(l.descontos)}));window.pedido.dados_json.titulos=[{id:701,codigo:'TIT-QA-701',tipo:'SALARIO',valor:1100},{id:702,codigo:'TIT-QA-702',tipo:'REEMBOLSO',valor:origens.reduce((s,o)=>s+o.valor,0),origens}];}}
  return structuredClone({solicitacao:window.pedido,pode_conferir:window.dp,pode_enviar_fila:window.dp&&!window.semPermissao,
  responsaveis:[{id:77,nome:'Responsavel QA'}],avisos:[{id:900,codigo:'TIT-ANTERIOR',status:'BAIXADO',valor_original:3000}]});};
 function App(){const[aberto,setAberto]=useState(true);const[modo,setModo]=useState(false);return <main className="layout-main">
@@ -143,22 +143,44 @@ try {
   assert.equal(await page.getByRole('dialog',{name:'Desconto de vale',exact:true}).count(),0);
   await modal.locator('tbody tr').first().getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   assert.ok((await reembolso.innerText()).includes('Ana QA'));
+  const valorReembolso = reembolso.getByLabel('Valor do reembolso',{exact:true});
+  assert.equal(semEspaco(await valorReembolso.inputValue()),'R$100,00');
+  await valorReembolso.fill('6000');
   await reembolso.getByLabel('Responsável',{exact:true}).selectOption('77');
+  assert.equal(semEspaco(await valorReembolso.inputValue()),'R$60,00','Trocar responsavel conserva valor informado');
   await reembolso.getByLabel('CPF/CNPJ',{exact:true}).fill('52998224725');
   await reembolso.getByLabel('Chave Pix / Copia e Cola',{exact:true}).fill('responsavel@example.test');
+  for (const valor of ['', '10001']) {
+    await valorReembolso.fill(valor);
+    await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
+    await reembolso.getByRole('alert').getByText('Informe um valor maior que zero e até o valor do desconto.',{exact:true}).waitFor();
+    assert.equal(await valorReembolso.getAttribute('aria-invalid'),'true');
+    assert.ok(await reembolso.isVisible());
+  }
+  await valorReembolso.fill('6000');
+  await reembolso.screenshot({path:path.join(output,'reembolso-parcial-desktop.png')});
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(semEspaco(await valorReembolso.inputValue()),'R$60,00');
+  await reembolso.screenshot({path:path.join(output,'reembolso-parcial-mobile.png')});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+  await page.setViewportSize({width:1550,height:920});
   await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
+  assert.ok((await modal.locator('tbody tr').first().innerText()).includes('1.100,00'),'Reembolso parcial nao muda liquido');
   await modal.getByLabel('Selecionar: Bruno QA',{exact:true}).check();
   await modal.getByLabel('Descontos: Bruno QA',{exact:true}).fill('5000');
   await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
   assert.ok((await reembolso.innerText()).includes('Bruno QA'));
   await reembolso.getByRole('button',{name:'Sem reembolso',exact:true}).click();
   await modal.locator('tbody tr').nth(1).getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
+  assert.equal(semEspaco(await valorReembolso.inputValue()),'R$50,00');
+  await valorReembolso.fill('2500');
   await reembolso.getByLabel('Responsável',{exact:true}).selectOption('77');
   assert.equal(await reembolso.getByLabel('Chave Pix / Copia e Cola',{exact:true}).inputValue(),'responsavel@example.test','Reutiliza dados do mesmo responsavel');
+  assert.equal(semEspaco(await valorReembolso.inputValue()),'R$25,00','Nao copia valor do outro colaborador');
   await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
   const resumoVale = modal.locator('.rh-pagamento-reembolsos details');
   assert.equal(await resumoVale.count(),1); await resumoVale.locator('summary').click();
-  assert.ok((await resumoVale.innerText()).includes('150,00') && (await resumoVale.innerText()).includes('Bruno QA'));
+  assert.ok((await resumoVale.innerText()).includes('85,00') && (await resumoVale.innerText()).includes('Bruno QA'));
   await modal.getByLabel('Conferido: Bruno QA',{exact:true}).check();
   await modal.getByLabel('Conferido: Ana QA',{exact:true}).check();
   await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].conferido_obra);
@@ -166,6 +188,8 @@ try {
   await modal.waitFor({state:'hidden'});
   await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();
   assert.ok(await modal.getByLabel('Conferido: Ana QA',{exact:true}).isChecked());
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].reembolso.valor),60);
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[1].reembolso.valor),25);
   assert.equal(await modal.getByRole('button',{name:'Montar lista',exact:true}).count(),0);
   await modal.locator('tbody tr').first().getByRole('button',{name:'Pix',exact:true}).click();
   const conta=page.getByRole('dialog',{name:'Dados de recebimento',exact:true});
@@ -183,11 +207,18 @@ try {
   await modal.waitFor({state:'hidden'});
   await page.getByRole('button',{name:'Conferir como DP',exact:true}).click();
   await modal.getByLabel('Aplicar aos selecionados',{exact:true}).selectOption('conferir');
+  await modal.locator('tbody tr').first().getByRole('button',{name:'Reembolso de vale',exact:true}).click();
+  assert.equal(semEspaco(await valorReembolso.inputValue()),'R$60,00');
+  await valorReembolso.fill('4000');
+  await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
+  assert.ok(!await modal.getByLabel('Conferido: Ana QA',{exact:true}).isChecked());
+  await modal.getByLabel('Conferido: Ana QA',{exact:true}).check();
   await modal.getByRole('button',{name:'Enviar para a fila',exact:true}).click();
   await page.getByRole('dialog',{name:'Enviar pagamentos para a fila',exact:true}).getByRole('button',{name:'Enviar para a fila',exact:true}).dblclick();
   await modal.getByText('TIT-QA-701',{exact:false}).waitFor();
   await modal.getByText('Ver colaboradores do reembolso',{exact:true}).click();
   assert.ok((await modal.locator('.rh-pagamento-titulos').innerText()).includes('Bruno QA'));
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.titulos[1].valor),65);
   assert.equal(await page.evaluate(()=>window.envios.length),2,'Um envio Obra + um DP');
   assert.equal(await modal.getByRole('button',{name:'Enviar para a fila',exact:true}).count(),0);
   await modal.screenshot({path:path.join(output,'dp-concluido-desktop.png')});
@@ -313,6 +344,22 @@ try {
   assert.ok((await modal.locator('tbody tr').first().innerText()).includes('850,00'),'Liquido historico preservado');
   assert.ok((await modal.locator('.rh-pagamento-rodape').innerText()).includes('850,00'));
   assert.ok(await diasAna.isDisabled());
+  // Backend antigo que ignora o campo nao pode receber o comando de gerar pagamentos.
+  await page.goto(base);
+  await page.evaluate(()=>{window.ignorarValor=true;});
+  await modal.getByLabel('Selecionar: Ana QA',{exact:true}).check();
+  await modal.getByLabel('Descontos: Ana QA',{exact:true}).fill('10000');
+  await modal.locator('tbody tr').first().getByRole('button',{name:'Solicitar reembolso',exact:true}).click();
+  await valorReembolso.fill('6000');
+  await reembolso.getByLabel('Responsável',{exact:true}).selectOption('77');
+  await reembolso.getByLabel('CPF/CNPJ',{exact:true}).fill('52998224725');
+  await reembolso.getByLabel('Chave Pix / Copia e Cola',{exact:true}).fill('responsavel@example.test');
+  await reembolso.getByRole('button',{name:'Confirmar',exact:true}).click();
+  await modal.getByLabel('Conferido: Ana QA',{exact:true}).check();
+  await modal.getByRole('button',{name:'Solicitar pagamento',exact:true}).click();
+  await page.getByText('O servidor não confirmou o valor do reembolso. Atualize o backend e reabra o pagamento.',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.envios.length),0);
+  assert.ok(await modal.isVisible());
   assert.deepEqual(errors,[]);
   console.log('Modal real: moeda durante digitacao, limpar/legado vazio como zero, numeros no payload, persistencia/foco/mobile; reembolso somente no clique, desconto comum, dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia e Obra/DP OK.');
 } catch (error) {

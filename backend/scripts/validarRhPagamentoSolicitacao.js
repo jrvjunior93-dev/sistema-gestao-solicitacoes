@@ -27,6 +27,11 @@ assert.throws(() => domain.calcularLinha({ ...dados, faltas: 32 }, cadastro), /F
 assert.throws(() => domain.calcularLinha({ ...dados, dias: 32 }, cadastro), /Dias/);
 assert.throws(() => domain.calcularLinha({ ...dados, descontos: 9999 }, cadastro), /Descontos maiores/);
 assert.throws(() => domain.validarPeriodo({ competencia: '2026-10', data_vencimento: '2026-02-30' }), /vencimento/);
+assert.equal(domain.valorReembolso({ nome: 'Ana', descontos: 100, reembolso: {} }), 100, 'Legado integral');
+assert.equal(domain.valorReembolso({ nome: 'Ana', descontos: 100, reembolso: { valor: 60.25 } }), 60.25);
+for (const valor of [0, '', null, -1, 100.01, NaN, Infinity, 'R$ 60,00']) {
+  assert.throws(() => domain.valorReembolso({ nome: 'Ana', descontos: 100, reembolso: { valor } }), /reembolso|Reembolso/);
+}
 const contaSalario = { favorecido_nome: 'Ana QA', favorecido_documento: cadastro.cpf, banco: '104', agencia: '1234', conta: '23456', tipo_conta: 'SALARIO' };
 assert.equal(domain.recebimento({ modo_recebimento: 'CONTA_SALARIO', conta: 'fraude' }, { ...cadastro, conta_salario: contaSalario }, {}, true).conta, '23456');
 let store = { requests: [], titles: [{ id: 1, codigo: 'TIT-ANTERIOR', status: 'BAIXADO', valor_original: 8760,
@@ -196,6 +201,39 @@ async function filaCanonicaTransacaoExterna() {
   assert.equal(beneficiariosCriados.find(b => b.id === novos[2].payment_beneficiary_id).chavePix, reembolso.chave_pix);
   const empresas = domain.agruparReembolsos(grupoForm.linhas.map((l, i) => ({ ...l, empresa_grupo_id: i + 1 })));
   assert.equal(empresas.length, 2, 'Empresas distintas nunca sao misturadas');
+  const parcial = await service.iniciar(obra, { obra_id: 7, colaborador_ids: [11, 12] });
+  const parcialSalvo = await service.salvar(obra, parcial.solicitacao.id, { ...parcial.solicitacao.dados_json,
+    linhas: parcial.solicitacao.dados_json.linhas.map((l, i) => ({ ...l, conferido_obra: true,
+      descontos: i ? 200 : 100, reembolso: { ...reembolso, valor: i ? 125.55 : 60.25 } })) });
+  assert.deepEqual(Array.from(parcialSalvo.solicitacao.dados_json.linhas, l => l.liquido), [2900, 1800], 'Desconto integral permanece no salario');
+  for (const valor of [0, null, -1, 101, 'invalido']) {
+    await assert.rejects(service.salvar(obra, parcial.solicitacao.id, { ...parcialSalvo.solicitacao.dados_json,
+      linhas: parcialSalvo.solicitacao.dados_json.linhas.map((l, i) => i ? l : { ...l, reembolso: { ...l.reembolso, valor } }) }), /reembolso|Reembolso/);
+  }
+  assert.equal((await service.mostrar(obra, parcial.solicitacao.id)).solicitacao.dados_json.revisao, parcialSalvo.solicitacao.dados_json.revisao, 'Valor invalido nao grava revisao');
+  await service.enviar(obra, parcial.solicitacao.id, { revisao: parcialSalvo.solicitacao.dados_json.revisao });
+  const parcialDp = await service.mostrar(dp, parcial.solicitacao.id);
+  assert.equal(parcialDp.solicitacao.dados_json.linhas[0].reembolso.valor, 60.25, 'Valor enviado ao DP');
+  const parcialEditado = await service.salvar(dp, parcial.solicitacao.id, { ...parcialDp.solicitacao.dados_json,
+    linhas: parcialDp.solicitacao.dados_json.linhas.map((l, i) => ({ ...l, conferido_dp: true,
+      reembolso: { ...l.reembolso, valor: i ? 125.55 : 50.25 } })) });
+  assert.equal(parcialEditado.solicitacao.dados_json.linhas[0].conferido_dp, false, 'Editar reembolso invalida conferencia da linha alterada');
+  assert.equal(parcialEditado.solicitacao.dados_json.linhas[1].conferido_dp, true, 'Linha inalterada pode ser conferida');
+  await assert.rejects(service.enviar(dp, parcial.solicitacao.id, { revisao: parcialEditado.solicitacao.dados_json.revisao }), /conferidos/);
+  const parcialConferido = await service.salvar(dp, parcial.solicitacao.id, { ...parcialEditado.solicitacao.dados_json,
+    linhas: parcialEditado.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+  const antesParcial = store.titles.length;
+  store.requests.find(s => s.id === parcial.solicitacao.id).dados_json.linhas[0].reembolso.valor = 101;
+  await assert.rejects(service.enviar(dp, parcial.solicitacao.id, { revisao: parcialConferido.solicitacao.dados_json.revisao }), /nao ultrapassar/);
+  assert.equal(store.titles.length, antesParcial, 'Envio revalida valor e nao gera titulos parciais');
+  store.requests.find(s => s.id === parcial.solicitacao.id).dados_json.linhas[0].reembolso.valor = 50.25;
+  await Promise.all([service.enviar(dp, parcial.solicitacao.id, { revisao: parcialConferido.solicitacao.dados_json.revisao }),
+    service.enviar(dp, parcial.solicitacao.id, { revisao: parcialConferido.solicitacao.dados_json.revisao })]);
+  assert.deepEqual(store.titles.slice(antesParcial).map(t => t.valor_original), [2900, 1800, 175.8], 'Soma somente parcelas reembolsaveis, sem duplicar');
+  const parcialFinal = await service.mostrar(dp, parcial.solicitacao.id);
+  assert.deepEqual(Array.from(parcialFinal.solicitacao.dados_json.titulos[2].origens, o => o.valor), [50.25, 125.55]);
+  assert.ok(store.titles[antesParcial + 2].observacoes.includes('50,25') && store.titles[antesParcial + 2].observacoes.includes('125,55'));
+  assert.equal(novos[2].valor_original, 300, 'Titulo anterior integral nunca e recalculado');
   cadastros = [{ ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }];
   const diaria = await service.iniciar(dp, { obra_id: 7 });
   const diariaSalva = await service.salvar(dp, diaria.solicitacao.id, { ...diaria.solicitacao.dados_json,

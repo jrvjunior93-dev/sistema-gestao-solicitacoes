@@ -89,6 +89,18 @@ exige uma pergunta para descontos comuns. O link abre diretamente responsavel
 e dados para pagamento; confirmar solicita o reembolso, cancelar/Voltar/Escape
 conserva o desconto sem nova solicitacao de reembolso. Vales do mesmo
 responsavel/empresa continuam agrupados em um titulo com discriminacao.
+O modal permite informar o `Valor do reembolso`, em moeda, separado do desconto.
+Deve ser positivo e nao ultrapassar o desconto daquele colaborador; a opcao
+`Sem reembolso` conserva o desconto sem gerar verba de reembolso.
+O desconto integral continua no liquido salarial. Somente o valor reembolsavel
+entra na soma por responsavel/empresa e nas origens discriminadas do titulo.
+Escolher o mesmo responsavel reutiliza dados bancarios, nao o valor de outra
+pessoa. O DP pode ajustar o reembolso e reconferir a linha antes de enviar.
+Pedidos legados sem valor explicito conservam o reembolso integral; titulos
+ja gerados nao sao recalculados. Campo guardado em dados_json, sem migration.
+Frontend e backend devem ser atualizados juntos. Antes do envio, a tela exige
+que a resposta do salvamento confirme o valor; backend antigo que ignora a
+parcela parcial bloqueia o envio, em vez de gerar reembolso integral indevido.
 O retorno aos cards do local se chama `Voltar para Obras`, mantendo tambem
 os centros de custo na mesma lista.
 

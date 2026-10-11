@@ -1,5 +1,31 @@
 # Ownership Ativo
 
+## Publicacao DP - reembolso parcial - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao. Sem alteracoes funcionais novas.
+- Escopo: somente os oito arquivos do ajuste; outputs/ preservado fora do Git.
+- Dominio/servico em memoria e diff revalidados; UI desktop/mobile, build e
+  demais regressoes aprovados na implementacao.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## DP - valor parcial de reembolso - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: RhDpPagamentoModal.jsx, rhPagamentoSolicitacaoDomain.js,
+  rhPagamentoSolicitacaoService.js, validarRhPagamentoSolicitacao.js,
+  validarRhPagamentoSolicitacaoUI.mjs, README RH/DP, este registro e
+  docs/handoffs/2026-10-10-dp-reembolso-parcial.md.
+- Escopo: valor de reembolso editavel em moeda, positivo e limitado ao
+  desconto; soma/geracao por responsavel usam apenas este valor.
+- Preservar desconto/liquido salarial, dados bancarios, agrupamento por empresa,
+  conferencia, permissoes, transacao e idempotencia. Legado sem valor conserva
+  reembolso integral. Sem commit/push/main/migration/banco real/deploy.
+- Ownership liberado. Dominio/servico, UI desktop/mobile e protecao contra
+  backend antigo, Pessoal, conferencia/regras, build, sintaxe e docs aprovados.
+- Handoff: docs/handoffs/2026-10-10-dp-reembolso-parcial.md.
+
 ## Publicacao DP - selecao para pagamento - 2026-10-10
 
 - Usuario autorizou commit e push das alteracoes pendentes na refactor/frontend.

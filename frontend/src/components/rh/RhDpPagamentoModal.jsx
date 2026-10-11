@@ -107,6 +107,13 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
               conferir_alteracoes: Boolean(l.conferido_dp) }))
           } });
           if (!montado.current) return result;
+          // Deploy desencontrado: backend antigo ignora o valor e reembolsa o desconto inteiro.
+          const divergente = snapshot.linhas.some(l => {
+            if (!l.reembolso || l.reembolso.valor == null) return false;
+            const salva = result.solicitacao.dados_json.linhas.find(s => Number(s.colaborador_id) === Number(l.colaborador_id));
+            return !salva?.reembolso || Number(salva.reembolso.valor ?? salva.descontos) !== Number(l.reembolso.valor);
+          });
+          if (divergente) throw new Error('O servidor não confirmou o valor do reembolso. Atualize o backend e reabra o pagamento.');
           const editadoDuranteGravacao = atual.current !== snapshot;
           respostaRef.current = result; setResposta(result);
           // Nao substituir os inputs: mantem foco, texto em digitacao e novas edicoes.
@@ -159,8 +166,9 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   const reembolsos = [...selecionados.filter(l => l.reembolso && Number(l.descontos) > 0).reduce((grupos, l) => {
     const chave = `${l.reembolso.responsavel_id}:${l.empresa_grupo_id}`;
     const grupo = grupos.get(chave) || { chave, nome: l.reembolso.favorecido_nome, valor: 0, origens: [] };
-    grupo.valor = arredondar(grupo.valor + Number(l.descontos));
-    grupo.origens.push({ colaborador_id: l.colaborador_id, nome: l.nome, valor: Number(l.descontos) });
+    const valor = Number(l.reembolso.valor ?? l.descontos);
+    grupo.valor = arredondar(grupo.valor + valor);
+    grupo.origens.push({ colaborador_id: l.colaborador_id, nome: l.nome, valor });
     grupos.set(chave, grupo); return grupos;
   }, new Map()).values()];
   function todos(campo, valor) {
@@ -217,7 +225,10 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
               <td>{check('selecionado', 'Selecionar')}</td><td><strong>{l.nome}</strong><small>{diaria ? `${moeda(l.valor_diaria)} / dia` : `${moeda(l.salario_base)} · ${calculo.percentual}%`}</small></td>
               <td>{check(dp ? 'conferido_dp' : 'conferido_obra', 'Conferido', !l.selecionado)}</td><td>{check('parcela_40', '40%', diaria)}</td><td>{check('parcela_60', '60%', diaria)}</td>
               <td><input type="checkbox" aria-label={`100%: ${l.nome}`} disabled={diaria} checked={!diaria && calculo.percentual === 100} onChange={() => linhaAlterar(l.colaborador_id, { parcela_40: false, parcela_60: false })} /></td>
-              <td>{moeda(calculo.bruto)}</td><td>{ajuste('acrescimos', 'Acréscimos')}</td><td>{ajuste('descontos', 'Descontos')}{Number(l.descontos) > 0 && <button type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: l.reembolso ? { ...l.reembolso } : { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
+              <td>{moeda(calculo.bruto)}</td><td>{ajuste('acrescimos', 'Acréscimos')}</td><td>{ajuste('descontos', 'Descontos')}{Number(l.descontos) > 0 && <button type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: {
+                ...(l.reembolso || { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' }),
+                valor: Number(l.reembolso?.valor ?? l.descontos)
+              } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
               <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{moeda(calculo.liquido)}</strong></td><td>{numero('dias', 'Dias', 31)}</td><td>{numero('faltas', 'Faltas', 31)}</td>
               <td><button type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: { ...l } })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button><small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small></td>
               <td><input className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
@@ -235,12 +246,39 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     </div>
     {editor && <OverlayModal largura="660px" rotulo={editor.tipo === 'reembolso' ? 'Reembolso de vale' : 'Dados de recebimento'} onFechar={() => setEditor(null)}>
       <div className="rh-local-modal-cabecalho"><h3 className="app-bloco-titulo">{editor.tipo === 'reembolso' ? 'Reembolso de vale' : 'Dados de recebimento'}</h3><button className="btn btn-outline btn-sm" onClick={() => setEditor(null)}>Voltar</button></div>
-      <div className="rh-local-modal-corpo">{editor.tipo === 'reembolso' && <><p><strong>{linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.nome} · {moeda(linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.descontos)}</strong></p><label>Responsável<select aria-label="Responsável" className="form-control" value={editor.dados.responsavel_id} onChange={e => { const pessoa = resposta.responsaveis.find(r => Number(r.id) === Number(e.target.value)); const existente = linhas.find(l => l.reembolso && Number(l.reembolso.responsavel_id) === Number(e.target.value))?.reembolso; setEditor(v => ({ ...v, dados: { modo_recebimento: 'PIX', favorecido_documento: '', chave_pix: '', banco: '', agencia: '', conta: '', tipo_conta: '', ...existente, responsavel_id: Number(e.target.value), favorecido_nome: pessoa?.nome || '' } })); }}><option value="">Selecione</option>{resposta.responsaveis.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select></label></>}
+      <div className="rh-local-modal-corpo">{editor.tipo === 'reembolso' && <>
+        <p><strong>{linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.nome} · Desconto: {moeda(linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.descontos)}</strong></p>
+        <div className="rh-pagamento-conta">
+          <label>Valor do reembolso<input aria-label="Valor do reembolso" className="form-control rh-pagamento-moeda" type="text" inputMode="numeric"
+            value={formatCurrencyInput(editor.dados.valor || 0, { emptyZero: false })}
+            aria-invalid={Boolean(editor.erroValor)} aria-describedby={editor.erroValor ? 'rh-reembolso-erro' : undefined}
+            onFocus={e => e.target.select()} onChange={e => {
+              const valor = parseCurrencyInput(normalizeCurrencyTyping(e.target.value));
+              setEditor(v => ({ ...v, erroValor: '', dados: { ...v.dados, valor } }));
+            }} />
+            {editor.erroValor && <span id="rh-reembolso-erro" role="alert" className="text-red-700">{editor.erroValor}</span>}
+          </label>
+          <label>Responsável<select aria-label="Responsável" className="form-control" value={editor.dados.responsavel_id} onChange={e => {
+            const pessoa = resposta.responsaveis.find(r => Number(r.id) === Number(e.target.value));
+            const existente = linhas.find(l => l.reembolso && Number(l.reembolso.responsavel_id) === Number(e.target.value))?.reembolso;
+            setEditor(v => ({ ...v, dados: { modo_recebimento: 'PIX', favorecido_documento: '', chave_pix: '', banco: '', agencia: '', conta: '', tipo_conta: '',
+              ...existente, valor: v.dados.valor, responsavel_id: Number(e.target.value), favorecido_nome: pessoa?.nome || '' } }));
+          }}><option value="">Selecione</option>{resposta.responsaveis.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select></label>
+        </div>
+      </>}
         <DadosRecebimento dados={editor.dados} reembolso={editor.tipo === 'reembolso'} alterar={patch => setEditor(v => ({ ...v, dados: { ...v.dados, ...patch } }))} />
         <div className="rh-pagamento-rodape"><button className="btn btn-outline btn-sm" onClick={() => setEditor(null)}>Cancelar</button>
           {editor.tipo === 'reembolso' && <button className="btn btn-outline btn-sm" onClick={() => { linhaAlterar(editor.id, { reembolso: null, desconto_sem_reembolso: true }); setEditor(null); }}>Sem reembolso</button>}
           <button className="btn btn-primary btn-sm" onClick={() => {
             if (editor.tipo === 'reembolso' && !editor.dados.responsavel_id) { avisar.erro('Selecione o responsável pelo reembolso.'); return; }
+            if (editor.tipo === 'reembolso') {
+              const desconto = Number(linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.descontos || 0);
+              const valor = Number(editor.dados.valor);
+              if (!Number.isFinite(valor) || valor <= 0 || valor > desconto) {
+                setEditor(v => ({ ...v, erroValor: 'Informe um valor maior que zero e até o valor do desconto.' }));
+                return;
+              }
+            }
             const conta = Object.fromEntries(['modo_recebimento', 'favorecido_nome', 'favorecido_documento', 'chave_pix', 'banco', 'agencia', 'conta', 'tipo_conta'].map(k => [k, editor.dados[k] || '']));
             linhaAlterar(editor.id, editor.tipo === 'reembolso' ? { reembolso: editor.dados, desconto_sem_reembolso: false } : conta); setEditor(null);
           }}>Confirmar</button></div>

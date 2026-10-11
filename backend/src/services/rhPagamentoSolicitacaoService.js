@@ -8,7 +8,7 @@ const auth = require('./authorizationService');
 const { userBelongsToDpSetor } = require('./setorCapabilityService');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
-const { FLUXO, calcularLinha, recebimento, validarPeriodo, texto, agruparReembolsos } = require('./rhPagamentoSolicitacaoDomain');
+const { FLUXO, calcularLinha, recebimento, validarPeriodo, texto, valorReembolso, agruparReembolsos } = require('./rhPagamentoSolicitacaoDomain');
 const { ensureCategoriaFinanceiraPagar, syncParceiroFavorecido, syncFavorecidoBancarioRh,
   buildTituloRhPayload } = require('./rhFechamentoService');
 
@@ -173,6 +173,7 @@ async function salvar(req, id, payload) {
       if (l.reembolso && calculo.descontos > 0) {
         if (!responsaveisIds.has(Number(l.reembolso.responsavel_id))) throw new ValidationError('Selecione um responsavel vigente do local.');
         reembolso = { responsavel_id: Number(l.reembolso.responsavel_id),
+          valor: valorReembolso({ nome: original.nome, descontos: calculo.descontos, reembolso: l.reembolso }),
           ...recebimento(l.reembolso, { nome: l.reembolso.favorecido_nome, cpf: l.reembolso.favorecido_documento }) };
       }
       const campos = { selecionado: Boolean(l.selecionado), dias: calculo.dias, faltas: calculo.faltas,

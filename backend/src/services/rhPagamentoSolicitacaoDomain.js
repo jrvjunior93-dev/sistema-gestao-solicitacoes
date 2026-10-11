@@ -54,6 +54,18 @@ function recebimento(linha, cadastro, pagamento = {}, exigir = false) {
   return dados;
 }
 
+function valorReembolso(linha) {
+  const descontos = numero(linha.descontos, 'Descontos');
+  // Compatibilidade: pedidos anteriores sem este campo reembolsavam o desconto integral.
+  const informado = Object.prototype.hasOwnProperty.call(linha.reembolso, 'valor')
+    ? linha.reembolso.valor : descontos;
+  const valor = numero(informado, 'Reembolso');
+  if (valor <= 0 || valor > descontos) {
+    throw new ValidationError(`O reembolso de ${linha.nome} deve ser maior que zero e nao ultrapassar o desconto.`);
+  }
+  return valor;
+}
+
 function agruparReembolsos(linhas) {
   const grupos = new Map();
   for (const linha of linhas.filter(l => l.selecionado && l.reembolso && Number(l.descontos) > 0)) {
@@ -73,7 +85,7 @@ function agruparReembolsos(linhas) {
         dados: conta, linha, valor: 0, origens: [] };
       grupos.set(chave, grupo);
     }
-    const valor = numero(linha.descontos, 'Vale');
+    const valor = valorReembolso(linha);
     grupo.valor = dinheiro(grupo.valor + valor);
     grupo.origens.push({ colaborador_id: linha.colaborador_id, nome: linha.nome, valor });
   }
@@ -90,4 +102,4 @@ function validarPeriodo(dados) {
   }
 }
 
-module.exports = { FLUXO, dinheiro, texto, calcularLinha, recebimento, validarPeriodo, agruparReembolsos };
+module.exports = { FLUXO, dinheiro, texto, calcularLinha, recebimento, validarPeriodo, valorReembolso, agruparReembolsos };
