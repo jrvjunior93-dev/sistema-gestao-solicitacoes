@@ -53,6 +53,21 @@ Testes sem banco/rede externa: `node scripts/validarRhPessoalPorSolicitacao.js`
 no backend e `node scripts/validarRhPessoalPorLocal.mjs` no frontend (tambem
 com `--etapas` e `--gerencial`).
 
+## Modal independente de pagamento (10/10/2026)
+
+O modal `Solicitar pagamento` / `Conferir pagamento` usa o fluxo
+`PAGAMENTO_POR_SOLICITACAO`, separado das apuracoes legadas descritas acima.
+Mensalista: salario base multiplicado pelo percentual 40%, 60% ou 100%; dias e
+faltas sao informativos. Diarista: diaria multiplicada pelos dias informados;
+faltas tambem sao informativas. Acrescimos e descontos informados entram no
+liquido integralmente. Os controles de dias/faltas avancam de um em um.
+
+O salvamento automatico e em segundo plano, sem desabilitar campos ou substituir
+edicoes em voo. Fechar, salvar manualmente e enviar aguardam a ultima gravacao;
+falha conserva o formulario. Pagamentos ja gerados conservam o snapshot aprovado
+e os titulos, sem recalculo retroativo. Nenhuma regra da jornada legada muda.
+Detalhes e testes: [handoff de dias e salvamento](../../handoffs/2026-10-10-dp-dias-salvamento.md).
+
 ## Obra ou centro de custo no cadastro
 
 O campo `Obra / centro de custo principal` usa autocomplete por codigo ou nome,

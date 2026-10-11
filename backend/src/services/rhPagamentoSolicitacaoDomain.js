@@ -16,12 +16,12 @@ function calcularLinha(linha, cadastro) {
   const percentual = diaria || Boolean(linha.parcela_40) === Boolean(linha.parcela_60)
     ? 100 : linha.parcela_40 ? 40 : 60;
   const dias = numero(linha.dias, 'Dias', 31);
-  const faltas = numero(linha.faltas, 'Faltas', dias);
+  const faltas = numero(linha.faltas, 'Faltas', 31);
   const base = numero(diaria ? cadastro.valor_diaria : cadastro.salario_base, 'Salario');
   const acrescimos = numero(linha.acrescimos, 'Acrescimos');
   const descontos = numero(linha.descontos, 'Descontos');
-  // A divisao mensal permanece de 30 dias. Os ajustes nao sao rateados pelo percentual.
-  const bruto = dinheiro(diaria ? base * (dias - faltas) : base * (dias - faltas) / 30 * percentual / 100);
+  // Faltas sao informativas. Dias afetam apenas diaristas; ajustes nao sao rateados.
+  const bruto = dinheiro(diaria ? base * dias : base * percentual / 100);
   const liquido = dinheiro(bruto + acrescimos - descontos);
   if (liquido < 0) throw new ValidationError(`Descontos maiores que o pagamento de ${cadastro.nome}.`);
   return { percentual, dias, faltas, acrescimos, descontos, bruto, liquido, diaria, base };

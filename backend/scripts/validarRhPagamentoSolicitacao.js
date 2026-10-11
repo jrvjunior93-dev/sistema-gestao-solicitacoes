@@ -14,8 +14,17 @@ assert.equal(domain.calcularLinha(dados, cadastro).liquido, 1100);
 assert.equal(domain.calcularLinha({ ...dados, parcela_60: true }, cadastro).bruto, 3000);
 assert.equal(domain.calcularLinha({ ...dados, parcela_40: false }, cadastro).bruto, 3000);
 assert.equal(domain.calcularLinha({ ...dados, parcela_40: false, parcela_60: true }, cadastro).liquido, 1700);
-assert.equal(domain.calcularLinha({ ...dados, dias: 5, faltas: 1 }, { ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }).liquido, 300);
-assert.throws(() => domain.calcularLinha({ ...dados, faltas: 31 }, cadastro), /Faltas/);
+assert.equal(domain.calcularLinha({ ...dados, dias: 5, faltas: 1 }, { ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }).liquido, 400);
+for (const dias of [0, 1, 15, 30, 31]) {
+  for (const faltas of [0, 10, 31]) {
+    assert.equal(domain.calcularLinha({ ...dados, dias, faltas }, cadastro).liquido, 1100, 'Dias/faltas nao alteram mensalista 40%');
+    assert.equal(domain.calcularLinha({ ...dados, dias, faltas, parcela_40: false, parcela_60: true }, cadastro).liquido, 1700);
+    assert.equal(domain.calcularLinha({ ...dados, dias, faltas, parcela_40: false }, cadastro).liquido, 2900);
+  }
+}
+assert.equal(domain.calcularLinha({ ...dados, dias: 2.5, faltas: 10 }, { ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }).liquido, 150, 'Fracao legada preservada; faltas informativas');
+assert.throws(() => domain.calcularLinha({ ...dados, faltas: 32 }, cadastro), /Faltas/);
+assert.throws(() => domain.calcularLinha({ ...dados, dias: 32 }, cadastro), /Dias/);
 assert.throws(() => domain.calcularLinha({ ...dados, descontos: 9999 }, cadastro), /Descontos maiores/);
 assert.throws(() => domain.validarPeriodo({ competencia: '2026-10', data_vencimento: '2026-02-30' }), /vencimento/);
 const contaSalario = { favorecido_nome: 'Ana QA', favorecido_documento: cadastro.cpf, banco: '104', agencia: '1234', conta: '23456', tipo_conta: 'SALARIO' };
@@ -125,10 +134,13 @@ async function filaCanonicaTransacaoExterna() {
   const [primeiro, replay] = await Promise.all([service.iniciar(obra, { obra_id: 7 }), service.iniciar(obra, { obra_id: 7 })]);
   assert.equal(primeiro.solicitacao.id, replay.solicitacao.id); assert.equal(store.requests.length, 1);
   const id = primeiro.solicitacao.id;
-  let f = { ...primeiro.solicitacao.dados_json, competencia: '2026-10', linhas: primeiro.solicitacao.dados_json.linhas.map(l => ({ ...l, ...dados, selecionado: true, conferido_obra: true,
+  let f = { ...primeiro.solicitacao.dados_json, competencia: '2026-10', linhas: primeiro.solicitacao.dados_json.linhas.map(l => ({ ...l, ...dados, dias: 1, faltas: 10, selecionado: true, conferido_obra: true,
     reembolso: { responsavel_id: 77, modo_recebimento: 'PIX', favorecido_nome: 'Responsavel QA', favorecido_documento: cadastro.cpf, chave_pix: 'responsavel@example.test' } })) };
   let saved = await service.salvar(obra, id, f);
   assert.equal(saved.solicitacao.dados_json.linhas[0].conferido_obra, true);
+  assert.equal(saved.solicitacao.dados_json.linhas[0].bruto, 1200);
+  assert.equal(saved.solicitacao.dados_json.linhas[0].dias, 1);
+  assert.equal(saved.solicitacao.dados_json.linhas[0].faltas, 10);
   assert.ok(saved.avisos.length); // Pagamento anterior nao bloqueia.
   await assert.rejects(service.salvar(obra, id, f), /atualizada/);
   await assert.rejects(service.mostrar({ user: { id: 88 } }, id), /outro usuario/);
@@ -183,6 +195,15 @@ async function filaCanonicaTransacaoExterna() {
   assert.equal(beneficiariosCriados.find(b => b.id === novos[2].payment_beneficiary_id).chavePix, reembolso.chave_pix);
   const empresas = domain.agruparReembolsos(grupoForm.linhas.map((l, i) => ({ ...l, empresa_grupo_id: i + 1 })));
   assert.equal(empresas.length, 2, 'Empresas distintas nunca sao misturadas');
+  cadastros = [{ ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }];
+  const diaria = await service.iniciar(dp, { obra_id: 7 });
+  const diariaSalva = await service.salvar(dp, diaria.solicitacao.id, { ...diaria.solicitacao.dados_json,
+    linhas: diaria.solicitacao.dados_json.linhas.map(l => ({ ...l, selecionado: true, dias: 5, faltas: 10,
+      acrescimos: 20, descontos: 50, desconto_sem_reembolso: true, conferido_dp: true, conferir_alteracoes: true })) });
+  const antesDiaria = store.titles.length;
+  await service.enviar(dp, diaria.solicitacao.id, { revisao: diariaSalva.solicitacao.dados_json.revisao });
+  assert.equal(store.titles[antesDiaria].valor_original, 470, 'Titulo de diaria usa dias, nao subtrai faltas');
+  assert.equal(store.requests[0].dados_json.linhas[0].liquido, 1100, 'Titulo anterior nao e recalculado');
   const outroRascunho = await service.iniciar(obra, { obra_id: 7 });
   ativo = false;
   await assert.rejects(service.salvar(obra, outroRascunho.solicitacao.id, { ...outroRascunho.solicitacao.dados_json,

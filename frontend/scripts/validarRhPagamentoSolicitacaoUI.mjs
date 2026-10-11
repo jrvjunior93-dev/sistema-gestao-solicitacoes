@@ -21,7 +21,9 @@ const fixture = `import React,{useState}from'react';import{createRoot}from'react
 import Modal from'/src/components/rh/RhDpPagamentoModal.jsx';import{ThemeContext,TEMA_PADRAO}from'/src/contexts/ThemeContext.jsx';
 import'/src/index.css';import'/src/styles/design-tokens.css';import'/src/styles/componentes-padrao.css';import'/src/styles/escala.css';import'/src/styles/responsive-system.css';import'/src/styles/rh-pessoal-locais.css';
 window.pedido=${JSON.stringify(seed)};window.chamadas=[];window.envios=[];window.dp=false;
-window.api=async(path,options={})=>{window.chamadas.push([path,options]);await new Promise(ok=>setTimeout(ok,100));
+window.putsAtivos=0;window.maxPuts=0;
+window.api=async(path,options={})=>{window.chamadas.push([path,options]);if(options.method==='PUT'){window.putsAtivos++;window.maxPuts=Math.max(window.maxPuts,window.putsAtivos);}
+await new Promise(ok=>setTimeout(ok,options.method==='PUT'?(window.atrasoPut||100):100));if(options.method==='PUT')window.putsAtivos--;
  if(options.method==='PUT'){if(window.falhar){window.falhar=false;throw new Error('Falha simulada ao salvar');}if(options.data.revisao!==window.pedido.dados_json.revisao)throw new Error('Conflito');window.pedido.dados_json={...options.data,revisao:options.data.revisao+1};}
  if(path.endsWith('/enviar')){window.envios.push(options.data);window.pedido.situacao=window.dp?'APROVADA':'ABERTA';if(window.dp)window.pedido.dados_json.titulos=[{id:701,codigo:'TIT-QA-701',tipo:'SALARIO',valor:1100},{id:702,codigo:'TIT-QA-702',tipo:'REEMBOLSO',valor:150,origens:[{colaborador_id:11,nome:'Ana QA',valor:100},{colaborador_id:12,nome:'Bruno QA',valor:50}]}];}
  return structuredClone({solicitacao:window.pedido,pode_conferir:window.dp,pode_enviar_fila:window.dp&&!window.semPermissao,
@@ -152,8 +154,89 @@ try {
   await modal.getByRole('button',{name:'Salvar',exact:true}).click();
   await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].desconto_sem_reembolso);
   assert.ok(await modal.getByLabel('100%: Ana QA',{exact:true}).isChecked());
+  // Dias/faltas informativos para mensalistas; apenas dias alteram diaria.
+  await page.goto(base);
+  const diasAna=modal.getByLabel('Dias: Ana QA',{exact:true});
+  const faltasAna=modal.getByLabel('Faltas: Ana QA',{exact:true});
+  const diasBruno=modal.getByLabel('Dias: Bruno QA',{exact:true});
+  const faltasBruno=modal.getByLabel('Faltas: Bruno QA',{exact:true});
+  await diasAna.fill('1'); await faltasAna.fill('10');
+  assert.ok((await modal.locator('tbody tr').first().innerText()).includes('3.000,00'));
+  await modal.getByLabel('40%: Ana QA',{exact:true}).check();
+  assert.ok((await modal.locator('tbody tr').first().innerText()).includes('1.200,00'));
+  await modal.getByLabel('100%: Ana QA',{exact:true}).click();
+  await faltasBruno.fill('10');
+  assert.ok((await modal.locator('tbody tr').nth(1).innerText()).includes('500,00'));
+  assert.equal(await diasBruno.getAttribute('step'),'1');
+  assert.equal(await faltasAna.getAttribute('step'),'1');
+  await diasBruno.focus(); await page.keyboard.press('ArrowUp');
+  assert.equal(await diasBruno.inputValue(),'6');
+  assert.ok((await modal.locator('tbody tr').nth(1).innerText()).includes('600,00'));
+  await page.keyboard.press('ArrowDown'); assert.equal(await diasBruno.inputValue(),'5');
+  await modal.getByRole('button',{name:'Salvar',exact:true}).click();
+  await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].faltas==='10');
+  // Rede lenta: edicao permanece habilitada e focada, resposta antiga nao sobrescreve a nova.
+  await page.evaluate(()=>{window.atrasoPut=700;});
+  const observacoes=modal.getByLabel('Observações: Ana QA',{exact:true});
+  await observacoes.fill('Primeira edicao');
+  await page.waitForFunction(()=>window.putsAtivos===1);
+  assert.ok(await observacoes.isEnabled(),'Autosave nao desabilita os campos');
+  assert.ok(await modal.getByLabel('Selecionar: Ana QA',{exact:true}).isEnabled());
+  await page.evaluate(()=>{window.inputEmEdicao=document.activeElement;
+    window.rolagemEmEdicao=document.querySelector('.rh-pagamento-table-wrap').scrollLeft;});
+  await observacoes.press('End'); await observacoes.pressSequentially(' durante gravacao');
+  await page.waitForFunction(()=>window.putsAtivos===0);
+  assert.equal(await observacoes.inputValue(),'Primeira edicao durante gravacao');
+  assert.ok(await page.evaluate(()=>document.activeElement===window.inputEmEdicao),'Foco preservado apos autosave');
+  assert.equal(await page.evaluate(()=>document.querySelector('.rh-pagamento-table-wrap').scrollLeft),await page.evaluate(()=>window.rolagemEmEdicao),'Rolagem preservada');
+  await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].observacoes==='Primeira edicao durante gravacao');
+  assert.equal(await page.evaluate(()=>window.maxPuts),1,'Gravacoes serializadas');
+  // Fechar durante autosave espera a gravacao e inclui a ultima edicao antes de fechar.
+  await observacoes.fill('Antes de fechar');
+  await page.waitForFunction(()=>window.putsAtivos===1);
+  await observacoes.fill('Edicao final antes de fechar');
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await modal.waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].observacoes),'Edicao final antes de fechar');
+  assert.equal(await page.evaluate(()=>window.maxPuts),1);
+  await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();
+  assert.equal(await observacoes.inputValue(),'Edicao final antes de fechar');
+  // Enviar durante autosave aguarda a revisao mais recente, sem duplicar o envio.
+  await modal.getByLabel('Selecionar: Ana QA',{exact:true}).check();
+  await observacoes.fill('Antes de enviar');
+  await page.waitForFunction(()=>window.putsAtivos===1);
+  await observacoes.fill('Ultima edicao enviada');
+  await modal.getByLabel('Conferido: Ana QA',{exact:true}).check();
+  await modal.getByRole('button',{name:'Solicitar pagamento',exact:true}).click();
+  await page.getByRole('dialog',{name:'Solicitar pagamento ao DP',exact:true}).getByRole('button',{name:'Solicitar pagamento',exact:true}).dblclick();
+  await page.waitForFunction(()=>window.pedido.situacao==='ABERTA');
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].observacoes),'Ultima edicao enviada');
+  assert.equal(await page.evaluate(()=>window.envios.length),1);
+  assert.equal(await page.evaluate(()=>window.maxPuts),1);
+  // Falha em segundo plano conserva os inputs e exige nova acao para tentar novamente.
+  await page.goto(base);
+  await page.evaluate(()=>{window.falhar=true;});
+  await observacoes.fill('Conservar apos erro');
+  await page.getByText('Falha simulada ao salvar',{exact:true}).waitFor();
+  assert.equal(await observacoes.inputValue(),'Conservar apos erro');
+  assert.ok(await observacoes.isEnabled());
+  const falhasPuts=await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='PUT').length);
+  await page.waitForTimeout(1200);
+  assert.equal(await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='PUT').length),falhasPuts);
+  await modal.getByRole('button',{name:'Salvar',exact:true}).click();
+  await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].observacoes==='Conservar apos erro');
+  // Solicitação concluida preserva o calculo aprovado sob a regra anterior.
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await modal.waitFor({state:'hidden'});
+  await page.evaluate(()=>{window.pedido.situacao='APROVADA';
+    Object.assign(window.pedido.dados_json.linhas[0],{selecionado:true,dias:10,faltas:1,bruto:900,liquido:850});});
+  await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();
+  await modal.locator('tbody tr').first().waitFor();
+  assert.ok((await modal.locator('tbody tr').first().innerText()).includes('850,00'),'Liquido historico preservado');
+  assert.ok((await modal.locator('.rh-pagamento-rodape').innerText()).includes('850,00'));
+  assert.ok(await diasAna.isDisabled());
   assert.deepEqual(errors,[]);
-  console.log('Modal real: 100% explicito, diaria, vale no campo antes do envio, classificacao individual, reembolso agrupado/discriminado, conta salario, rascunho, conferencia, envio Obra/DP e celular OK.');
+  console.log('Modal real: dias/faltas informativos, diaria por dias, passo 1, autosave sem bloquear/foco perdido, edicoes em voo, fechar/enviar serializados, falha recuperavel; 100%, vales, contas, conferencia, Obra/DP e celular OK.');
 } catch (error) {
   console.error('Erros JS:', errors);
   for (const p of browser?.contexts().flatMap(c => c.pages()) || []) console.error((await p.locator('body').innerText()).slice(0, 4000));

@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## Publicacao DP - dias e salvamento - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa; reserva documental deste registro e do
+  handoff 2026-10-10-dp-dias-salvamento.md para registrar esta publicacao.
+- Base local/remota bea8b8e2 sem divergencia. Preservar outputs/ fora do Git.
+  Sem main, EC2, migration, reinicio ou escrita em banco real.
+- Revisao e revalidacoes locais concluidas; reserva documental encerrada,
+  ownership liberado para o commit/push autorizado.
+
+## DP - dias informativos e salvamento discreto - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; em andamento.
+- Reserva: RhDpPagamentoModal.jsx, rhPagamentoSolicitacaoDomain.js, testes
+  validarRhPagamentoSolicitacao.js/validarRhPagamentoSolicitacaoUI.mjs e handoff
+  2026-10-10-dp-dias-salvamento.md; este registro.
+- Reserva documental ampliada: docs/modulos/rh-dp/README.md para distinguir a
+  regra do modal independente dos calculos dos fluxos legados.
+- Escopo: passo de um dia, faltas informativas para todos, dias informativos
+  para mensalistas; apenas dias de diaristas alteram o bruto. Autosave sem
+  bloquear campos, com gravacoes serializadas e preservacao de edicoes em voo.
+- Preservar conferencias, descontos/vales, permissoes, titulos existentes e
+  outputs/. Sem banco real, migration, main, commit, push ou deploy.
+- Concluido localmente; ownership liberado. Dominio/servico em memoria, UI real
+  com rede lenta/falha/gravacoes serializadas, snapshot aprovado, regressao RH,
+  fila, build, sintaxe e diff aprovados. Handoff documenta homologacao pendente.
+
 ## Publicacao DP - 100%, dados e vales - 2026-10-10
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.
