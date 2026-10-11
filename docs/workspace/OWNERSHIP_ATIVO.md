@@ -1,5 +1,40 @@
 # Ownership Ativo
 
+## Publicacao Colaboradores e seletores - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao.
+- Escopo: implementacao descrita abaixo, catalogo gerado, testes e documentos;
+  outputs/ preservado fora do Git. Nenhuma alteracao funcional adicional.
+- Build, UI desktop/mobile e regressoes aprovados na implementacao;
+  dominio/escopos em memoria, documentacao e diff revalidados antes do commit.
+- Sem main, EC2, migration, escrita em banco real ou deploy pelo agente.
+
+## Colaboradores e seletores Obra/Centro - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao concluida,
+  ownership liberado. Publicacao autorizada conforme registro acima.
+- Usuario autorizou estrutura local/global de Colaboradores, edicao pelo DP e
+  alinhamento dos seletores conforme mapa funcional, com estabilizacao.
+- Reserva: frontend/src/navigation/navigationConfig.jsx e catalogo gerado;
+  frontend/src/pages/RhDp*.jsx, frontend/src/styles/rh-pessoal-locais.css;
+  seletores nas paginas FinanceiroPagamentos, FinanceiroConciliacao,
+  GestaoContratos, ContratosRelatorioOperacional, SolicitacaoDetalhe/FinanceiroCard;
+  frontend/src/pages/ComercialEmpreendimentos.jsx (exibir vinculo legado);
+  frontend/src/modules/solicitacao-compra/pages/{PedidosCompra,ListaCotacoes}.jsx;
+  frontend/src/modules/sst/pages/{SstCrudPage,SstRelatorioOperacional}.jsx;
+  backend/src/services/{rhEventoRecorrenteService,rhTransferenciaService,
+  comercialService,provisaoFinanceiraService}.js e validadores/testes associados;
+  backend/src/controllers/RhTransferenciaController.js (recorte da leitura);
+  rotulos de origem nos filtros/relatorios mistos mapeados, scripts de validacao,
+  docs/modulos/rh-dp/README.md, este registro e handoff correspondente.
+- Preservar permissoes/escopo, rotas legadas, transferencias somente entre obras,
+  cadastro unico e consulta /obras padrao, apropriacoes/planejamento/VGV exclusivos
+  de obra; nenhuma ampliacao de acesso, migration ou operacao em banco real.
+- Implementacao sem main, EC2 ou integracoes externas. outputs/ fora do Git.
+- Plano/validacoes: docs/handoffs/2026-10-11-colaboradores-locais-escopos.md.
+
 ## Publicacao DP - remover Sem reembolso - 2026-10-10
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.

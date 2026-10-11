@@ -168,7 +168,7 @@ async function listScopedObras(user) {
 
   const obras = await Obra.findAll({
     where,
-    attributes: ['id', 'codigo', 'nome', 'ativo'],
+    attributes: ['id', 'codigo', 'nome', 'ativo', 'tipo_centro_custo'],
     order: [['nome', 'ASC']]
   });
 
@@ -176,6 +176,7 @@ async function listScopedObras(user) {
     id: obra.id,
     codigo: obra.codigo,
     nome: obra.nome,
+    tipo_centro_custo: obra.tipo_centro_custo,
     ativo: obra.ativo !== false
   }));
 }

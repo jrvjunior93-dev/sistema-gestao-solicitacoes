@@ -73,7 +73,7 @@ function validadeLabel(status) {
 const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
   { id: 'empresa_grupo_id', rotulo: 'Empresa' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'tipo_vinculo', rotulo: 'Vínculo' },
   { id: 'tipo_documento_id', rotulo: 'Tipo de documento' },
   { id: 'status', rotulo: 'Status' },
@@ -81,7 +81,8 @@ const FILTROS_DA_TELA = [
   { id: 'incluir_historico', rotulo: 'Histórico' }
 ];
 
-export default function RhDpDocumentos() {
+export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
+  const Moldura = comoAba ? 'section' : Pagina;
   const { user } = useAuth();
   const podeEditar = canManageRhDpDocumentos(user);
   // R3/R19: aviso e confirmação do sistema — nada de caixa do navegador.
@@ -117,7 +118,7 @@ export default function RhDpDocumentos() {
     TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
     então não há chave antiga de onde migrar.
   */
-  const visibilidadeFiltros = useFiltrosVisiveis('tabela:rh-dp-documentos', FILTROS_DA_TELA, {
+  const visibilidadeFiltros = useFiltrosVisiveis(obraId ? 'tabela:rh-dp-documentos:local' : 'tabela:rh-dp-documentos', FILTROS_DA_TELA.filter(filtro => !obraId || filtro.id !== 'obra_id'), {
     preenchidos: filtrosPreenchidos,
     /*
       Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
@@ -148,13 +149,13 @@ export default function RhDpDocumentos() {
       });
     }, 350);
     return () => clearTimeout(atraso);
-  }, [busca, ativos, pagina]);
+  }, [busca, ativos, pagina, obraId]);
 
   async function carregarBase() {
     try {
       const [listaEmpresas, listaObras, listaTipos] = await Promise.all([
         getRhEmpresasGrupo({ ativo: true }),
-        getObras(),
+        getObras({ escopo: 'TODOS' }),
         getRhDocumentoTipos({ ativo: true })
       ]);
 
@@ -179,7 +180,7 @@ export default function RhDpDocumentos() {
       const resposta = await getRhDocumentos({
         q: busca || undefined,
         empresa_grupo_id: valorUnico('empresa_grupo_id'),
-        obra_id: valorUnico('obra_id'),
+        obra_id: obraId || valorUnico('obra_id'),
         tipo_vinculo: valorUnico('tipo_vinculo'),
         tipo_documento_id: valorUnico('tipo_documento_id'),
         status: valorUnico('status'),
@@ -270,7 +271,7 @@ export default function RhDpDocumentos() {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       // O serviço aceita UM valor por recorte (getRhDocumentos).
       unico: true,
       opcoes: obras.map((item) => ({
@@ -330,12 +331,15 @@ export default function RhDpDocumentos() {
   const totalPaginas = Number(meta.total_pages || 0);
 
   return (
-    <Pagina className="rhdp-page">
-      <PageHeader
+    <Moldura className={comoAba ? 'rhdp-local-conteudo' : 'rhdp-page'}>
+      {comoAba ? <div className="app-page-actions">
+        <h2 className="app-bloco-titulo">Documentos</h2>
+        <span className="app-note">{carregando ? 'Carregando...' : `${meta.total} documento(s)`}</span>
+      </div> : <PageHeader
         titulo="Documentos"
         contagem={carregando ? null : `${meta.total} documento(s)`}
-        descricao="Painel geral de documentos por colaborador, com busca, validade, histórico e acesso por link assinado."
-      />
+        descricao={obraId ? 'Documentos dos colaboradores deste local.' : 'Painel geral de documentos por colaborador, com busca, validade, histórico e acesso por link assinado.'}
+      />}
 
       <Avisos avisos={avisos} aoFechar={fechar} />
 
@@ -346,7 +350,7 @@ export default function RhDpDocumentos() {
             aoMudar: (valor) => { setBusca(valor); setPagina(1); },
             placeholder: 'Buscar por colaborador, CPF, matrícula, arquivo ou observação'
           } : null}
-          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          filtros={dimensoes.filter((dim) => (!obraId || dim.id !== 'obra_id') && visibilidadeFiltros.ehVisivel(dim.id))}
           ativos={ativos}
           aoAlternar={alternarFiltro}
           aoLimpar={limparFiltros}
@@ -469,6 +473,6 @@ export default function RhDpDocumentos() {
       )}
 
       {elementoConfirmacao}
-    </Pagina>
+    </Moldura>
   );
 }

@@ -26,12 +26,25 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 ## Pessoal por local e conferencia por solicitacao
 
 - Para usuarios do setor OBRA, o modulo RH/DP aparece no menu como
-  `Colaboradores`, com descricao `Solicitações e Pagamentos`. O id `rhdp`,
-  as rotas e as permissoes permanecem os mesmos; demais setores conservam
-  o nome RH/DP. Rotulo/descricao sao resolvidos na fonte unica de navegacao.
-- Usuarios operacionais fora do DP e dos perfis administrativos entram em
+  `Colaboradores`, com descricao `Solicitações e Pagamentos`. Desde 11/10/2026,
+  o DP tambem usa esse nome e a mesma entrada por locais. O id `rhdp`,
+  as rotas e as permissoes permanecem os mesmos.
+- O menu possui Obras / Centros de Custo, Documentos globais, Relatorios
+  globais e Importacoes, conforme permissoes. Cadastro e Fechamentos continuam
+  acessiveis por acoes na entrada de locais, URLs antigas e busca Ctrl+K.
+- Usuarios do DP e usuarios operacionais entram em
   `Pessoal` pelas obras/centros vinculados. `Abrir` exibe Gestao de Colaboradores
-  com Colaboradores, Solicitacoes e Transferencias entre obras, nessa ordem.
+  com Colaboradores, Solicitacoes, Transferencias, Eventos recorrentes,
+  Documentos e Relatorios, conforme permissoes. Os tres ultimos nao ampliam
+  as autorizacoes existentes: documentos e relatorios continuam restritos
+  aos perfis autorizados. Transferencias permanecem apenas entre obras.
+- Documentos e Relatorios dentro de um local fixam `obra_id` em todas as
+  consultas, inclusive ao limpar/atualizar filtros. Na entrada global nao
+  ha local predefinido. Eventos e transferencias tambem aplicam o local no
+  servidor, sem substituir o escopo de leitura do usuario; transferencias
+  incluem origem ou destino e sua leitura nao marca avisos de outros locais.
+- O DP autorizado pode editar o cadastro pelo icone da linha do colaborador,
+  no mesmo formulario/endpoint de cadastro, sem sair do local selecionado.
 - O primeiro icone de cada colaborador solicita pagamento individual. O botao
   acima da lista abre o envio coletivo do local. Competencia e vinculos
   historicos determinam quem pode ser informado; dias, faltas, acrescimos,
@@ -40,7 +53,7 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
   `solicitacao_independente=true` exige chave de idempotencia. Um envio posterior
   nao substitui o pedido de outro colaborador; repeticao da mesma chave/hash
   retorna o envio anterior. Correcoes continuam exigindo autorizacao do DP.
-- O DP preserva suas abas globais. Ao abrir uma solicitacao de jornada, consulta
+- O DP preserva o acesso legado a Jornada/Apuracao/Fechamentos. Ao abrir uma solicitacao de jornada, consulta
   e prepara explicitamente a apuracao daquela fonte, ajusta, marca Conferido,
   conclui a conferencia e fecha/gera titulos no mesmo modal. Abrir o modal nao
   grava nem recalcula. Permissoes de editar e fechar continuam separadas.

@@ -180,7 +180,7 @@ const COLUNAS = [
   */
   { id: 'parceiro_nome', titulo: 'Parceiro', tipo: 'texto', texto: campoTexto('parceiro_nome'), render: (row) => <CelulaDupla principal={row.parceiro_nome || '-'} /> },
   { id: 'parceiro_cpf_cnpj', titulo: 'CPF/CNPJ', tipo: 'codigo', render: campoTexto('parceiro_cpf_cnpj') },
-  { id: 'obra_nome', titulo: 'Obra', tipo: 'texto', texto: campoTexto('obra_nome'), render: (row) => <CelulaDupla principal={row.obra_nome || '-'} /> },
+  { id: 'obra_nome', titulo: 'Obra / Centro de Custo', tipo: 'texto', texto: campoTexto('obra_nome'), render: (row) => <CelulaDupla principal={row.obra_nome || '-'} /> },
   { id: 'categoria_nome', titulo: 'Categoria', tipo: 'texto', texto: campoTexto('categoria_nome'), render: (row) => <CelulaDupla principal={row.categoria_nome || '-'} /> },
   { id: 'numero_documento', titulo: 'Documento', tipo: 'codigo', render: campoTexto('numero_documento') },
   { id: 'data_emissao', titulo: 'Emissão', tipo: 'data', render: campoData('data_emissao') },
@@ -438,7 +438,7 @@ export default function FinanceiroRelatorioAnalitico() {
             <DateInputBR className="input w-full input-sm" value={filters.vencimento_final} onChange={(event) => setFilter('vencimento_final', event.target.value)} />
           </label>
           <label className="app-filter-field xl:col-span-4">
-            <span className="app-filter-label">Obra</span>
+            <span className="app-filter-label">Obra / Centro de Custo</span>
             <select className="input w-full input-sm" value={filters.obra_id} onChange={(event) => setFilter('obra_id', event.target.value)} disabled={loadingOptions}>
               <option value="">Todas</option>
               {obras.map((obra) => <option key={obra.id} value={obra.id}>{obra.nome}</option>)}

@@ -79,7 +79,7 @@ const DESCRICAO_OBRA = 'Acompanhamento dos contratos vinculados as suas obras.';
 const FILTROS_DA_TELA = [
   { id: 'codigo', rotulo: 'Busca por código', obrigatorio: true },
   { id: 'ref', rotulo: 'Ref. do Contrato' },
-  { id: 'obra', rotulo: 'Obra' }
+  { id: 'obra', rotulo: 'Obra / Centro de Custo' }
 ];
 
 export default function GestaoContratos() {
@@ -349,7 +349,7 @@ export default function GestaoContratos() {
   async function carregarCombos() {
     try {
       const [obrasData] = await Promise.all([
-        isSetorObra ? getMinhasObras() : getObras()
+        isSetorObra ? getMinhasObras({ escopo: 'TODOS' }) : getObras({ escopo: 'TODOS' })
       ]);
       const lista = Array.isArray(obrasData) ? obrasData : [];
       const ordenadas = [...lista].sort((a, b) => {
@@ -1393,7 +1393,7 @@ export default function GestaoContratos() {
         }].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
         filtros={[{
           id: 'obra',
-          rotulo: 'Obra',
+          rotulo: 'Obra / Centro de Custo',
           unico: true,
           opcoes: obras.map((obra) => ({
             valor: String(obra.id),
@@ -1479,7 +1479,7 @@ export default function GestaoContratos() {
                 nasce em 180px e cede ao mesmo piso de 160px, e sao valores
                 cadastrados sem teto de tamanho.
               */
-              { id: 'obra', titulo: 'Obra', tipo: 'texto', render: c => <CelulaDupla principal={c.obra?.nome || '-'} /> },
+              { id: 'obra', titulo: 'Obra / Centro de Custo', tipo: 'texto', render: c => <CelulaDupla principal={c.obra?.nome || '-'} /> },
               { id: 'ref_contrato', titulo: 'Ref. do Contrato', tipo: 'texto', render: c => <CelulaDupla principal={c.ref_contrato || '-'} /> },
               { id: 'descricao', titulo: 'Descrição', tipo: 'texto', render: c => <CelulaDupla principal={c.descricao || '-'} /> },
               {
@@ -1655,7 +1655,7 @@ export default function GestaoContratos() {
 
             <form id="form-novo-contrato" onSubmit={handleCriarContrato} className="space-y-4">
               <FormSecao legenda="Dados do contrato" colunas={2}>
-                <CampoForm label="Obra" obrigatorio>
+                <CampoForm label="Obra / Centro de Custo" obrigatorio>
                   {/* Entrada de dado do cadastro: select de FORMULARIO segue
                       legitimo (R12 vale para recorte de lista). */}
                   <select
@@ -1835,7 +1835,7 @@ export default function GestaoContratos() {
               credores e apropriacoes ainda concatenam VARIOS itens com
               "; ", o que so aumenta o pior caso.
             */
-            { id: 'obra', titulo: 'Obra', tipo: 'texto', render: c => <CelulaDupla principal={c.obra?.nome || '-'} /> },
+            { id: 'obra', titulo: 'Obra / Centro de Custo', tipo: 'texto', render: c => <CelulaDupla principal={c.obra?.nome || '-'} /> },
             { id: 'ref_contrato', titulo: 'Ref. do Contrato', tipo: 'texto', render: c => <CelulaDupla principal={c.ref_contrato || '-'} /> },
             { id: 'descricao', titulo: 'Descrição', tipo: 'texto', render: c => <CelulaDupla principal={c.descricao || '-'} /> },
             { id: 'credores', titulo: 'Credores', tipo: 'texto', render: c => <CelulaDupla principal={resumoCredoresContrato(c)} /> },
@@ -2014,7 +2014,7 @@ export default function GestaoContratos() {
                   proporcoes ficam, as medidas saem. */}
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
                 <label className="sol-filter-field">
-                  <span className="sol-filter-label">Obra</span>
+                  <span className="sol-filter-label">Obra / Centro de Custo</span>
                   <select
                     name="obra_id"
                     value={formEdicao.obra_id}

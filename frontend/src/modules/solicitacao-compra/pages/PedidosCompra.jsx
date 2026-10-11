@@ -108,7 +108,7 @@ const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
   { id: 'status', rotulo: 'Status' },
   { id: 'status_financeiro', rotulo: 'Financeiro GEO' },
-  { id: 'obra_id', rotulo: 'Obra' }
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' }
 ];
 
 export default function PedidosCompra() {
@@ -177,7 +177,7 @@ export default function PedidosCompra() {
           obra_id: recorte.obra_id || undefined,
           visao: 'resumo'
         }),
-        getObras(),
+        getObras({ escopo: 'TODOS' }),
         carregarStatusPedidosComFallback()
       ]);
 
@@ -223,7 +223,7 @@ export default function PedidosCompra() {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
     },
@@ -263,7 +263,7 @@ export default function PedidosCompra() {
     },
     {
       id: 'obra',
-      titulo: 'Obra',
+      titulo: 'Obra / Centro de Custo',
       tipo: 'texto',
       render: (pedido) => pedido.obra?.nome || '-'
     },

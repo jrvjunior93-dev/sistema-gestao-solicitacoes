@@ -83,7 +83,7 @@ function codigoSolicitacao(solicitacao) {
 */
 const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'status', rotulo: 'Status' }
 ];
 
@@ -229,7 +229,7 @@ export default function SolicitacoesCompra() {
   const dimensoes = useMemo(() => [
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((obra) => ({
         valor: String(obra.id),
@@ -428,7 +428,7 @@ export default function SolicitacoesCompra() {
     },
     {
       id: 'obra',
-      titulo: 'Obra',
+      titulo: 'Obra / Centro de Custo',
       tipo: 'identidade',
       noCard: 'titulo',
       render: (solicitacao) => (

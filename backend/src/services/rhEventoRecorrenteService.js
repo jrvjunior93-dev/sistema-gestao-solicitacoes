@@ -332,9 +332,17 @@ async function listarEventosRecorrentes(filters = {}, contexto = {}) {
   if (status === 'CANCELADO' || status === 'INATIVO') where.ativo = false;
 
   const colaboradorWhere = {};
+  const localId = filters.obra_id === undefined || filters.obra_id === null || filters.obra_id === '' ? null : Number(filters.obra_id);
+  if (localId !== null && (!Number.isSafeInteger(localId) || localId <= 0)) {
+    throw new ValidationError('Obra/Centro de Custo invalido.');
+  }
   if (Array.isArray(contexto.obraIds)) {
     if (!contexto.obraIds.length) return [];
     colaboradorWhere.obra_id = { [Op.in]: contexto.obraIds };
+  }
+  if (localId) {
+    if (Array.isArray(contexto.obraIds) && !contexto.obraIds.map(Number).includes(localId)) return [];
+    colaboradorWhere.obra_id = localId;
   }
   if (filters.colaborador_id) colaboradorWhere.id = Number(filters.colaborador_id);
 

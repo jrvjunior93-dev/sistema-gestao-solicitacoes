@@ -831,7 +831,7 @@ export default function FinanceiroObras({ embutido = false }) {
             { id: 'credito', titulo: 'Crédito', tipo: 'valor', render: (linha) => <span className="font-semibold text-[var(--sem-success)]">{linha.credito ? formatCurrency(linha.credito) : '-'}</span> },
             { id: 'debito', titulo: 'Débito', tipo: 'valor', render: (linha) => <span className="font-semibold text-[var(--sem-danger)]">{linha.debito ? formatCurrency(linha.debito) : '-'}</span> },
             { id: 'saldo', titulo: 'Saldo', tipo: 'valor', render: (linha) => <strong>{formatCurrency(linha.saldo)}</strong> },
-            { id: 'obra_nome', titulo: 'Obra', tipo: 'texto', render: (linha) => (linha.obra_codigo ? `${linha.obra_codigo} - ${linha.obra_nome || ''}` : (linha.obra_nome || '-')) },
+            { id: 'obra_nome', titulo: 'Obra / Centro de Custo', tipo: 'texto', render: (linha) => (linha.obra_codigo ? `${linha.obra_codigo} - ${linha.obra_nome || ''}` : (linha.obra_nome || '-')) },
             { id: 'empresa_nome', titulo: 'Empresa', tipo: 'texto', render: (linha) => linha.empresa_nome || '-' },
             { id: 'status_titulo', titulo: 'Status', tipo: 'status', render: (linha) => <span className={statusClass(linha.status_titulo)}>{formatStatus(linha.status_titulo)}</span> }
           ]}

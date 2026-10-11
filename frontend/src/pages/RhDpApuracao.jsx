@@ -216,7 +216,7 @@ function toEditState(item) {
 const FILTROS_DA_TELA = [
   { id: 'competencia', rotulo: 'Competência' },
   { id: 'empresa_grupo_id', rotulo: 'Empresa do grupo' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'tipo_vinculo', rotulo: 'Vínculo' },
   { id: 'status', rotulo: 'Status' }
 ];
@@ -423,7 +423,7 @@ export default function RhDpApuracao({ solicitacaoId, comoModal = false, aoOcupa
       setCarregandoBase(true);
       const [listaEmpresas, listaObras] = await Promise.all([
         getRhEmpresasGrupo({ ativo: true }),
-        getObras()
+        getObras({ escopo: 'TODOS' })
       ]);
 
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
@@ -702,7 +702,7 @@ export default function RhDpApuracao({ solicitacaoId, comoModal = false, aoOcupa
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((item) => ({
         valor: String(item.id),
@@ -1184,7 +1184,7 @@ export default function RhDpApuracao({ solicitacaoId, comoModal = false, aoOcupa
                 listas, e a sobra passa a cair no texto que precisa dela.
               */
               id: 'obra',
-              titulo: 'Obra',
+              titulo: 'Obra / Centro de Custo',
               tipo: 'identidade',
               noCard: 'titulo',
               render: (item) => item.obra?.nome || (item.obra_id == null ? 'Consolidada multiobra' : '-')
@@ -1464,7 +1464,7 @@ export default function RhDpApuracao({ solicitacaoId, comoModal = false, aoOcupa
               ) : (
                 <Alert
                   type="success"
-                  message="Todas as obras enviaram suas jornadas. Confira os valores antes de formar a apuração única."
+                  message="Todas as obras / centros de custo enviaram suas jornadas. Confira os valores antes de formar a apuração única."
                 />
               )}
 
@@ -1472,7 +1472,7 @@ export default function RhDpApuracao({ solicitacaoId, comoModal = false, aoOcupa
                 colunas={[
                   {
                     id: 'obra',
-                    titulo: 'Obra',
+                    titulo: 'Obra / Centro de Custo',
                     tipo: 'identidade',
                     render: (obra) => <CelulaDupla principal={obra.nome} sub={obra.codigo || `#${obra.id}`} />
                   },

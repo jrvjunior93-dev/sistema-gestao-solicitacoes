@@ -1566,7 +1566,7 @@ export default function FinanceiroCard({
 
     let active = true;
     setLoadingObras(true);
-    getObras()
+    getObras({ escopo: 'TODOS' })
       .then((data) => {
         if (active) setObras(Array.isArray(data) ? data : []);
       })

@@ -1820,7 +1820,7 @@ export default function Solicitacoes({ arquivadas = false }) {
     },
     {
       id: 'obra',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       opcoes: obrasOptions.map((opcao) => ({ valor: String(opcao.value), rotulo: opcao.label }))
     }
   ]), [statusOptions, tiposSolicitacao, obrasOptions]);
@@ -1840,7 +1840,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       },
       {
         id: 'obra',
-        titulo: 'Obra',
+        titulo: 'Obra / Centro de Custo',
         larguraPadrao: 180,
         render: (item) => formatarMaiusculas(item.obra?.nome || '-')
       },
@@ -2399,7 +2399,7 @@ export default function Solicitacoes({ arquivadas = false }) {
                 },
                 {
                   id: 'obra',
-                  titulo: 'Obra',
+                  titulo: 'Obra / Centro de Custo',
                   tipo: 'texto',
                   render: (titulo) => titulo.obra?.nome || '-'
                 },

@@ -412,7 +412,7 @@ export default function FinanceiroPagamentos() {
         getPaymentBatches().catch(() => []),
         getPaymentsAwaitingBaixa().catch(() => []),
         getBbPaymentsHealth().catch(() => null),
-        getObras().catch(() => [])
+        getObras({ escopo: 'TODOS' }).catch(() => [])
       ]);
       const accountList = Array.isArray(accountsData) ? accountsData : [];
       const firstOperationalAccount = accountList.find((account) => getPaymentAccountPendencies(account).length === 0);
@@ -1021,12 +1021,12 @@ export default function FinanceiroPagamentos() {
                     <input className="input w-full" inputMode="numeric" value={filters.parceiro_id} onChange={(e) => setFilters((c) => ({ ...c, parceiro_id: e.target.value }))} />
                   </label>
                   <div className="sol-filter-field relative xl:col-span-3" ref={obraSugestoesRef}>
-                    <span className="sol-filter-label">Obra</span>
+                    <span className="sol-filter-label">Obra / Centro de Custo</span>
                     <div className="flex gap-2">
                       <input
                         className="input w-full"
                         value={obraSearch}
-                        placeholder="Digite o nome da obra"
+                        placeholder="Digite o nome da obra / centro de custo"
                         onChange={(e) => handleObraSearchChange(e.target.value)}
                         onFocus={() => setObraSuggestionsOpen(Boolean(obraSearch.trim()))}
                       />
@@ -1052,12 +1052,12 @@ export default function FinanceiroPagamentos() {
                             </button>
                           ))
                         ) : (
-                          <div className="px-3 py-2 text-sm text-[var(--c-muted)]">Nenhuma obra encontrada com esse texto.</div>
+                          <div className="px-3 py-2 text-sm text-[var(--c-muted)]">Nenhuma obra ou centro de custo encontrado com esse texto.</div>
                         )}
                       </div>
                     )}
                     <span className="app-note mt-2">
-                      Selecione uma obra da lista para aplicar o filtro.
+                      Selecione uma obra ou centro de custo da lista para aplicar o filtro.
                     </span>
                   </div>
                   <label className="sol-filter-field xl:col-span-1">

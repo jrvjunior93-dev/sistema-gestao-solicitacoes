@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
   HiOutlineArrowsRightLeft,
   HiOutlineBanknotes,
   HiOutlineEye,
+  HiOutlinePencilSquare,
   HiOutlineUserMinus
 } from 'react-icons/hi2';
 import OverlayModal from '../components/ui/OverlayModal';
@@ -46,10 +47,17 @@ import RhDpJornada from './RhDpJornada';
 import RhDpApuracao from './RhDpApuracao';
 import RhDpFechamentos from './RhDpFechamentos';
 import RhDpEventosRecorrentes from './RhDpEventosRecorrentes';
+import RhDpDocumentos from './RhDpDocumentos';
+import RhDpRelatorioOperacional from './RhDpRelatorioOperacional';
+import RhDpColaboradores from './RhDpColaboradores';
 import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
 import '../styles/rh-pessoal-locais.css';
 import {
   canViewRhDpApuracao,
+  canViewRhDpDocumentos,
+  canAccessRhDpDashboard,
+  canManageRhDpColaboradores,
+  canAccessRhDpCadastroColaboradores,
   canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   hasAnyExplicitPermissao,
@@ -314,7 +322,7 @@ export default function RhDpPessoal() {
   const usuarioOperacionalDaObra = !isBusinessAdmin(user)
     && userHasSetorCapability(user, 'eh_setor_obra');
 
-  const [colaboradores, setColaboradores] = useState([]);
+  const [colaboradoresCarregados, setColaboradores] = useState([]);
   // A busca e disparada a cada alteracao depois do debounce. Uma resposta antiga pode chegar
   // depois da consulta mais especifica (por exemplo, `QA-RHDP-0` depois de `QA-RHDP-001`) e nao
   // pode substituir o resultado atual da tela.
@@ -403,6 +411,11 @@ export default function RhDpPessoal() {
     com valor inválido, corrigir a URL não é um passo que mereça histórico).
   */
   const [parametros, setParametros] = useSearchParams();
+  const navigate = useNavigate();
+  const [editarColaboradorId, setEditarColaboradorId] = useState(null);
+  const podeEditarCadastro = canManageRhDpColaboradores(user) && canAccessRhDpCadastroColaboradores(user);
+  const podeVerDocumentos = canViewRhDpDocumentos(user);
+  const podeVerRelatorios = canAccessRhDpDashboard(user);
   const podeVerApuracao = canViewRhDpApuracao(user);
   const podeVerEventosRecorrentes = canViewRhDpEventosRecorrentes(user);
   const podeVerFechamentos = canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO');
@@ -410,6 +423,11 @@ export default function RhDpPessoal() {
   const porLocal = !usuarioDoDp && !isBusinessAdmin(user);
   const localId = parametros.get('local_id') || '';
   const localSelecionado = obras.find((item) => String(item.id) === localId);
+  // Não mostrar por um frame o recorte global/da obra anterior enquanto a
+  // consulta local aguarda o debounce. O servidor continua filtrando também.
+  const colaboradores = useMemo(() => localId
+    ? colaboradoresCarregados.filter(item => String(item.obra_id) === localId && item.status === 'ATIVO')
+    : colaboradoresCarregados, [colaboradoresCarregados, localId]);
   const [pagamento, setPagamento] = useState(null);
   const [colaboradoresMarcados, setColaboradoresMarcados] = useState(new Map());
   /*
@@ -439,6 +457,8 @@ export default function RhDpPessoal() {
         ? 'Acompanhe parcelas futuras, ajuste valores ainda não aplicados e encerre recorrências.'
         : 'Acompanhe os eventos aprovados dos colaboradores vinculados às suas obras.'
     }] : []),
+    ...(localId && podeVerDocumentos ? [{ id: 'documentos', rotulo: 'Documentos', apoio: 'Documentos dos colaboradores deste local.' }] : []),
+    ...(localId && podeVerRelatorios ? [{ id: 'relatorios', rotulo: 'Relatórios', apoio: 'Indicadores dos colaboradores deste local.' }] : []),
     {
       id: 'jornada',
       rotulo: 'Pagamento de Mão de Obra',
@@ -454,8 +474,8 @@ export default function RhDpPessoal() {
       rotulo: 'Fechamentos',
       apoio: 'Competências encerradas e títulos financeiros gerados a partir das apurações.'
     }] : [])
-  ], [podeVerApuracao, podeVerEventosRecorrentes, podeVerFechamentos, usuarioDoDp]);
-  const abasDisponiveis = useMemo(() => ABAS.map((aba) => aba.id), [ABAS]);
+  ], [podeVerApuracao, podeVerEventosRecorrentes, podeVerFechamentos, podeVerDocumentos, podeVerRelatorios, usuarioDoDp, localId]);
+  const abasDisponiveis = useMemo(() => ABAS.filter(aba => !localId || !['jornada', 'apuracao', 'fechamentos'].includes(aba.id)).map((aba) => aba.id), [ABAS, localId]);
   const abaDaUrl = parametros.get('aba');
   const abaAtiva = abasDisponiveis.includes(abaDaUrl) ? abaDaUrl : 'solicitacoes';
 
@@ -1134,7 +1154,7 @@ export default function RhDpPessoal() {
    * vive dentro dele; modal fechado, logo abaixo do PageHeader.
    */
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
-  const algumModalAberto = Boolean(formulario || pedidosDoColaborador.id || pagamento);
+  const algumModalAberto = Boolean(formulario || pedidosDoColaborador.id || pagamento || editarColaboradorId);
 
   /**
    * AS ACOES DO CABECALHO SAO AS DA ABA QUE ESTA ABERTA.
@@ -1171,8 +1191,8 @@ export default function RhDpPessoal() {
     ].filter(Boolean)
     : [];
 
-  const abasLocais = localSelecionado && porLocal
-    ? ['colaboradores', 'solicitacoes', 'transferencias'].map((id) => ABAS.find((aba) => aba.id === id))
+  const abasLocais = localSelecionado
+    ? ['colaboradores', 'solicitacoes', 'transferencias', 'eventos-recorrentes', 'documentos', 'relatorios'].map((id) => ABAS.find((aba) => aba.id === id)).filter(Boolean)
     : ABAS;
   function abrirPagamentoSelecionados() {
     const marcados = [...colaboradoresMarcados.values()];
@@ -1197,11 +1217,13 @@ export default function RhDpPessoal() {
     setBusca(''); setColaboradores([]); setMarcados({ obra_id: new Set() });
     setParametros({});
   }
-  if (porLocal && !parametros.get('solicitacao') && !localSelecionado
+  if (!parametros.get('solicitacao') && !localSelecionado
     && (!parametros.get('aba') || localId)) {
     return <Pagina className="rhdp-page rh-pessoal-page">
-      <PageHeader titulo="Pessoal" descricao="Minhas obras e centros de custo" secundarias={[
-        { rotulo: 'Atualizar', onClick: carregar, desabilitada: carregando }
+      <PageHeader titulo="Pessoal" descricao="Obras / Centros de Custo" secundarias={[
+        { rotulo: 'Atualizar', onClick: carregar, desabilitada: carregando },
+        ...(canAccessRhDpCadastroColaboradores(user) ? [{ rotulo: 'Cadastro de colaboradores', onClick: () => navigate('/rh-dp/colaboradores') }] : []),
+        ...(podeVerFechamentos ? [{ rotulo: 'Fechamentos', onClick: () => navigate('/rh-dp/fechamentos') }] : [])
       ]} />
       {faixaAvisos}
       {carregando ? <p role="status">Carregando locais vinculados...</p> : <>
@@ -1327,7 +1349,7 @@ export default function RhDpPessoal() {
         filtros={localSelecionado ? [] : [
           {
             id: 'obra_id',
-            rotulo: 'Obra',
+            rotulo: 'Obra / Centro de Custo',
             // O servico aceita UMA obra: marcar outra substitui (marca redonda).
             unico: true,
             opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
@@ -1355,7 +1377,7 @@ export default function RhDpPessoal() {
             },
             {
               id: 'obra',
-              titulo: 'Obra',
+              titulo: 'Obra / Centro de Custo',
               tipo: 'texto',
               render: (colaborador) => colaborador.obra?.nome || '—'
             },
@@ -1434,6 +1456,10 @@ export default function RhDpPessoal() {
                   if (local) setPagamento({ local, colaborador });
                   else avisar.alerta('Selecione a obra ou centro de custo do colaborador antes de solicitar pagamento.');
                 }}><HiOutlineBanknotes aria-hidden="true" /></button> : null}
+              {podeEditarCadastro ? <button type="button" className="rh-acao-icone" title="Editar cadastro"
+                aria-label={`Editar cadastro: ${colaborador.nome}`} onClick={() => setEditarColaboradorId(colaborador.id)}>
+                <HiOutlinePencilSquare aria-hidden="true" />
+              </button> : null}
               <button
                 type="button"
                 className="rh-acao-icone"
@@ -1474,15 +1500,23 @@ export default function RhDpPessoal() {
         Montadas so quando a aba esta ativa: cada uma carrega obras, empresas e a propria lista, e
         deixa-las montadas em segundo plano faria tres telas buscarem dados a cada visita.
       */}
-      {abaAtiva === 'transferencias' ? <RhDpTransferencias
+      {abaAtiva === 'transferencias' && localSelecionado?.tipo_centro_custo === 'CENTRO_CUSTO'
+        ? <p className="app-note">Transferências disponíveis somente entre obras.</p>
+        : abaAtiva === 'transferencias' ? <RhDpTransferencias key={`transfer-${localId}`} obraId={localSelecionado?.id}
         onNotificacoesLidas={limparNotificacoesTransferencia}
       /> : null}
       {abaAtiva === 'eventos-recorrentes' && podeVerEventosRecorrentes ? (
         <RhDpEventosRecorrentes
+          key={`eventos-${localId}`}
+          obraId={localSelecionado?.id}
           podeDecidir={usuarioDoDp && podeDecidir}
           somenteLeitura={!usuarioDoDp}
         />
       ) : null}
+      {abaAtiva === 'documentos' && podeVerDocumentos && localSelecionado ? <RhDpDocumentos key={`docs-${localId}`} obraId={localSelecionado.id} comoAba /> : null}
+      {abaAtiva === 'relatorios' && podeVerRelatorios && localSelecionado ? <RhDpRelatorioOperacional key={`rel-${localId}`} obraId={localSelecionado.id} comoAba /> : null}
+      {editarColaboradorId && podeEditarCadastro ? <RhDpColaboradores key={editarColaboradorId} colaboradorId={editarColaboradorId}
+        comoEditor onFecharEditor={() => setEditarColaboradorId(null)} onSalvo={carregar} /> : null}
       {abaAtiva === 'jornada' ? (
         <RhDpJornada onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined} />
       ) : null}
@@ -1628,7 +1662,7 @@ export default function RhDpPessoal() {
                 </label>
 
                 <label className="form-field">
-                  <span className="form-label form-label--required">Obra</span>
+                  <span className="form-label form-label--required">Obra / Centro de Custo</span>
                   <select className="form-control" value={formulario.obra_id}
                     onChange={(e) => setFormulario({ ...formulario, obra_id: e.target.value })} required>
                     <option value="">Selecione</option>

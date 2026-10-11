@@ -963,7 +963,7 @@ export default function RhDpJornada({ onAbrirApuracao, obraFixaId, colaboradorId
               },
               {
                 id: 'obra',
-                titulo: 'Obra',
+                titulo: 'Obra / Centro de Custo',
                 tipo: 'texto',
                 render: (item) => item.obra?.nome || `Obra #${item.obra_id}`
               },
@@ -1163,7 +1163,7 @@ export default function RhDpJornada({ onAbrirApuracao, obraFixaId, colaboradorId
               },
               {
                 id: 'obra',
-                titulo: 'Obra',
+                titulo: 'Obra / Centro de Custo',
                 tipo: 'texto',
                 render: (item) => item.obra?.nome || `Obra #${item.obra_id}`
               },

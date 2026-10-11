@@ -574,7 +574,7 @@ export function construirColunas({
     },
     {
       id: 'obra',
-      titulo: 'Obra',
+      titulo: 'Obra / Centro de Custo',
       tipo: 'texto',
       render: (item) => (
         <span title={item.obra?.nome || ''}>{limitarTexto(item.obra?.nome, 15) || '-'}</span>

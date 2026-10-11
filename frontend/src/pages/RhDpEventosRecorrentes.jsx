@@ -41,7 +41,7 @@ function eventoConcluido(evento) {
     && Number(evento.parcelas_aplicadas || 0) >= Number(evento.parcelas_total));
 }
 
-export default function RhDpEventosRecorrentes({ podeDecidir, somenteLeitura = false }) {
+export default function RhDpEventosRecorrentes({ podeDecidir, somenteLeitura = false, obraId }) {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [eventos, setEventos] = useState([]);
@@ -54,14 +54,14 @@ export default function RhDpEventosRecorrentes({ podeDecidir, somenteLeitura = f
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const lista = await listarEventosRecorrentesRh({ q: busca || undefined, status });
+      const lista = await listarEventosRecorrentesRh({ q: busca || undefined, status, obra_id: obraId });
       setEventos(Array.isArray(lista) ? lista : []);
     } catch (error) {
       avisar.erro(error.message || 'Não foi possível carregar os eventos recorrentes.');
     } finally {
       setCarregando(false);
     }
-  }, [avisar, busca, status]);
+  }, [avisar, busca, status, obraId]);
 
   useEffect(() => {
     const atraso = setTimeout(carregar, 300);

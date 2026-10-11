@@ -222,7 +222,7 @@ const FILTROS_DA_TELA = [
   { id: 'competencia', rotulo: 'Competência' },
   { id: 'tipo', rotulo: 'Tipo' },
   { id: 'empresa_grupo_id', rotulo: 'Empresa do grupo' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'tipo_vinculo', rotulo: 'Vínculo' },
   { id: 'status', rotulo: 'Status' }
 ];
@@ -320,7 +320,7 @@ export default function RhDpImportacoes() {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((item) => ({ valor: String(item.id), rotulo: rotuloObra(item) }))
     },
@@ -357,7 +357,7 @@ export default function RhDpImportacoes() {
       setCarregandoBase(true);
       const [listaEmpresas, listaObras] = await Promise.all([
         getRhEmpresasGrupo({ ativo: true }),
-        getObras()
+        getObras({ escopo: 'TODOS' })
       ]);
 
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
@@ -520,7 +520,7 @@ export default function RhDpImportacoes() {
               disabled={!podeEditar}
             />
           </CampoForm>
-          <CampoForm label="Obra" obrigatorio>
+          <CampoForm label="Obra / Centro de Custo" obrigatorio>
             <select
               className="input w-full"
               value={form.obra_id}
@@ -528,7 +528,7 @@ export default function RhDpImportacoes() {
               disabled={!podeEditar}
               required
             >
-              <option value="">Selecione a obra</option>
+              <option value="">Selecione a obra / centro de custo</option>
               {obras.map((item) => (
                 <option key={item.id} value={item.id}>{rotuloObra(item)}</option>
               ))}
@@ -658,7 +658,7 @@ export default function RhDpImportacoes() {
               },
               {
                 id: 'obra',
-                titulo: 'Obra',
+                titulo: 'Obra / Centro de Custo',
                 tipo: 'texto',
                 render: (item) => rotuloObra(item.obra) || '-'
               },

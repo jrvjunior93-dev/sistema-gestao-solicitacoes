@@ -219,7 +219,7 @@ export default function RhDpJornadaGerencial({ abasJornada, podeEnviar, onAbrirL
         </div></div>
         <div className="rh-gerencial-filtros">
           <label>Obra / centro de custo<select value={obraId} disabled={Boolean(obraFixaId) || carregando || salvando} onChange={(evento) => { setObraId(evento.target.value); setLinhas([]); setPasso(1); }}>
-            <option value="">Selecione a obra</option>
+            <option value="">Selecione a obra / centro de custo</option>
             {obras.map((obra) => <option key={obra.id} value={obra.id}>{obra.codigo ? `${obra.codigo} · ` : ''}{obra.nome}</option>)}
           </select></label>
           <label>Competência<input type="month" value={competencia} disabled={carregando || salvando} onChange={(evento) => {

@@ -74,7 +74,7 @@ function formatMoney(value) {
 const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
   { id: 'status', rotulo: 'Status' },
-  { id: 'obra_id', rotulo: 'Obra' }
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' }
 ];
 
 export default function ListaCotacoes() {
@@ -140,7 +140,7 @@ export default function ListaCotacoes() {
           status: recorte.status || undefined,
           obra_id: recorte.obra_id || undefined,
         }),
-        getObras(),
+        getObras({ escopo: 'TODOS' }),
       ]);
       setCotacoes(Array.isArray(dataCotacoes) ? dataCotacoes : []);
       setObras(Array.isArray(dataObras) ? dataObras : []);
@@ -178,7 +178,7 @@ export default function ListaCotacoes() {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
     }
@@ -220,7 +220,7 @@ export default function ListaCotacoes() {
     },
     {
       id: 'obra',
-      titulo: 'Obra',
+      titulo: 'Obra / Centro de Custo',
       tipo: 'texto',
       render: (cotacao) => cotacao.solicitacao?.obra?.nome || '-'
     },

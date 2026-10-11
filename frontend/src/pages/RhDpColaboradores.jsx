@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { Fragment, useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { HiOutlineEye, HiOutlinePencilSquare, HiOutlineTicket } from 'react-icons/hi2';
 import {
@@ -288,7 +288,9 @@ const FILTROS_DOCUMENTOS_DA_TELA = [
   { id: 'incluir_historico', rotulo: 'Histórico' }
 ];
 
-export default function RhDpColaboradores() {
+export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor = false, onFecharEditor, onSalvo } = {}) {
+  const Moldura = comoEditor ? Fragment : Pagina;
+  const salvarRef = useRef(false);
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const podeEditar = canManageRhDpColaboradores(user);
@@ -403,6 +405,7 @@ export default function RhDpColaboradores() {
   const incluirHistoricoDocumentos = marcadosDocumentos.incluir_historico.has('sim');
 
   function syncColaboradorNaQuery(colaboradorId) {
+    if (comoEditor) return;
     const next = new URLSearchParams(searchParams);
     if (colaboradorId) {
       next.set('colaborador_id', String(colaboradorId));
@@ -420,6 +423,7 @@ export default function RhDpColaboradores() {
   // digitada espera 350ms para não martelar a API a cada tecla. Os
   // parâmetros enviados são exatamente os de antes.
   useEffect(() => {
+    if (comoEditor) return;
     const atraso = setTimeout(() => { recarregarColaboradores(); }, 350);
     return () => clearTimeout(atraso);
   }, [busca, marcados]);
@@ -467,7 +471,7 @@ export default function RhDpColaboradores() {
       setObras(Array.isArray(listaObras) ? listaObras : []);
       setSetores(Array.isArray(listaSetores) ? listaSetores : []);
 
-      const colaboradorId = Number(searchParams.get('colaborador_id'));
+      const colaboradorId = Number(comoEditor ? editorId : searchParams.get('colaborador_id'));
       if (Number.isInteger(colaboradorId) && colaboradorId > 0) {
         await abrirColaborador(colaboradorId, { syncQuery: false });
       }
@@ -602,8 +606,10 @@ export default function RhDpColaboradores() {
   }
 
   function fecharFormulario() {
+    if (salvando) return;
     limparFormulario();
     setFormAberto(false);
+    if (comoEditor) onFecharEditor?.();
   }
 
   async function abrirColaborador(id, { syncQuery = true } = {}) {
@@ -622,7 +628,7 @@ export default function RhDpColaboradores() {
 
   async function salvar(e) {
     e.preventDefault();
-    if (!podeEditar) {
+    if (!podeEditar || salvarRef.current) {
       return;
     }
     const cpfErro = getCpfCnpjError(form.cpf, { required: true, type: 'cpf' });
@@ -640,6 +646,7 @@ export default function RhDpColaboradores() {
     }
 
     try {
+      salvarRef.current = true;
       setSalvando(true);
       const payload = buildPayload(form);
       let salvo;
@@ -652,12 +659,14 @@ export default function RhDpColaboradores() {
 
       setForm(toFormData(salvo));
       syncColaboradorNaQuery(salvo.id);
-      await recarregarColaboradores();
+      if (!comoEditor) await recarregarColaboradores();
+      await onSalvo?.();
       avisar.sucesso('Colaborador salvo.');
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar colaborador');
     } finally {
+      salvarRef.current = false;
       setSalvando(false);
     }
   }
@@ -863,7 +872,13 @@ export default function RhDpColaboradores() {
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
 
   return (
-    <Pagina className="rhdp-page rh-colaboradores-page">
+    <Moldura {...(!comoEditor ? { className: 'rhdp-page rh-colaboradores-page' } : {})}>
+      {comoEditor && !formAberto ? <OverlayModal rotulo="Editar colaborador" onFechar={onFecharEditor}>
+        {faixaAvisos}
+        <p role="status">{carregando ? 'Carregando cadastro...' : 'Não foi possível abrir o cadastro.'}</p>
+        <button type="button" className="btn btn-outline btn-sm" onClick={onFecharEditor}>Fechar</button>
+      </OverlayModal> : null}
+      {!comoEditor && <>
       <PageHeader
         titulo="Colaboradores"
         contagem={carregando ? null : `${colaboradores.length} colaborador(es)`}
@@ -1017,7 +1032,7 @@ export default function RhDpColaboradores() {
             },
             {
               id: 'obra',
-              titulo: 'Obra',
+              titulo: 'Obra / Centro de Custo',
               tipo: 'texto',
               render: (item) => item.obra?.nome || '-'
             },
@@ -1127,6 +1142,7 @@ export default function RhDpColaboradores() {
         </OverlayModal>
       )}
 
+      </>}
       {/* R1 da DoD / R9: cadastro abre em MODAL. Mesmos campos, mesma
           validação, mesmo salvar, mesmo limpar — só a moldura mudou. */}
       {formAberto && (
@@ -1817,6 +1833,6 @@ export default function RhDpColaboradores() {
       )}
 
       {elementoConfirmacao}
-    </Pagina>
+    </Moldura>
   );
 }

@@ -216,7 +216,7 @@ export default function SstCrudPage() {
     let active = true;
     Promise.allSettled([
       getRhEmpresasGrupo({ ativo: true }),
-      getObras({ ativo: true }),
+      getObras({ ativo: true, escopo: 'TODOS' }),
       getRhColaboradores({ status: 'ATIVO' }),
       listarSst('ambientes', { limit: 200 }),
       listarSst('riscos', { limit: 200 }),

@@ -151,7 +151,7 @@ const NATUREZAS_INTERCOMPANY_BAIXA = [
 const FILTER_DEFINITIONS = [
   { id: 'q', rotulo: 'Busca rápida', group: 'basic', span: 'xl:col-span-4', obrigatorio: true },
   { id: 'status', rotulo: 'Status', group: 'basic', span: 'xl:col-span-2' },
-  { id: 'obra_id', rotulo: 'Obra', group: 'basic', span: 'xl:col-span-4' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo', group: 'basic', span: 'xl:col-span-4' },
   { id: 'vencimento_inicial', rotulo: 'Vencimento início', group: 'basic', span: 'xl:col-span-2' },
   { id: 'vencimento_final', rotulo: 'Vencimento fim', group: 'basic', span: 'xl:col-span-2' },
   { id: 'codigo', rotulo: 'Título', group: 'basic', span: 'xl:col-span-2', padrao: false },
@@ -2686,13 +2686,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             key={filter.id}
             className={commonClass}
             inputClassName="input w-full input-sm"
-            label="Obra"
+            label="Obra / Centro de Custo"
             value={draftFilters.obra_id}
             options={obras}
             onChange={(nextValue) => setFilter('obra_id', nextValue)}
             disabled={loadingOptions}
             placeholder="Digite nome ou código da obra"
-            allLabel="Todas as obras"
+            allLabel="Todas as obras / centros de custo"
             emptyLabel="Nenhuma obra encontrada"
             getLabel={(obra) => [obra?.codigo, obra?.nome].filter(Boolean).join(' - ') || obra?.nome || ''}
             getDescription={(obra) => [obra?.cidade, obra?.uf].filter(Boolean).join(' - ')}
@@ -3116,7 +3116,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 },
                 {
                   id: 'obra',
-                  titulo: 'Obra',
+                  titulo: 'Obra / Centro de Custo',
                   tipo: 'texto',
                   render: (frete) => <span className="text-[var(--c-muted)]">{frete.obra?.nome || '-'}</span>
                 },
@@ -3459,7 +3459,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               },
               {
                 id: 'obra',
-                titulo: 'Obra',
+                titulo: 'Obra / Centro de Custo',
                 ordenavel: true,
                 tipo: 'texto',
                   render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || (titulo.renegociacao_id && titulo.possui_rateio ? 'Várias obras · rateado' : '-')}</span>

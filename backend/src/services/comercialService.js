@@ -481,13 +481,16 @@ function buildTabelaPrecoInclude({ includeItens = true } = {}) {
   return include;
 }
 
-async function ensureObraExists(obraId) {
+async function ensureObraExists(obraId, { somenteObra = false } = {}) {
   const obra = await Obra.findByPk(obraId, {
-    attributes: ['id', 'nome', 'codigo', 'empresa_grupo_id']
+    attributes: ['id', 'nome', 'codigo', 'empresa_grupo_id', 'tipo_centro_custo']
   });
 
   if (!obra) {
     throw createHttpError(400, 'Obra invalida.');
+  }
+  if (somenteObra && String(obra.tipo_centro_custo || 'OBRA').toUpperCase() !== 'OBRA') {
+    throw createHttpError(400, 'Empreendimentos comerciais devem ser vinculados a uma obra, nao a um centro de custo.');
   }
 
   return obra;
@@ -1266,7 +1269,7 @@ async function listarEmpreendimentos(filters = {}) {
 async function listarObrasComerciais() {
   return Obra.findAll({
     attributes: ['id', 'codigo', 'nome', 'empresa_grupo_id', 'tipo_centro_custo', 'ativo'],
-    where: { ativo: true },
+    where: { ativo: true, tipo_centro_custo: 'OBRA' },
     order: [
       ['nome', 'ASC'],
       ['codigo', 'ASC']
@@ -1276,7 +1279,7 @@ async function listarObrasComerciais() {
 
 async function criarEmpreendimento(payload = {}) {
   if (payload.obra_id) {
-    await ensureObraExists(payload.obra_id);
+    await ensureObraExists(payload.obra_id, { somenteObra: true });
   }
 
   return Empreendimento.create({
@@ -1297,7 +1300,7 @@ async function criarEmpreendimento(payload = {}) {
 async function atualizarEmpreendimento(id, payload = {}) {
   const empreendimento = await ensureEmpreendimentoExists(id);
   if (payload.obra_id) {
-    await ensureObraExists(payload.obra_id);
+    await ensureObraExists(payload.obra_id, { somenteObra: Number(payload.obra_id) !== Number(empreendimento.obra_id) });
   }
 
   await empreendimento.update(payload);

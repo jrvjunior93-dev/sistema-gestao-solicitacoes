@@ -11,7 +11,7 @@ const server = await createServer({ root: raiz, logLevel: 'error', server: { mid
 
 try {
   const { canViewComprasPedidos } = await server.ssrLoadModule('/src/utils/acessoProduto.js');
-  const { NAV_MODULES, getVisibleCommandItems, getVisibleModule, getVisibleItems, resolveLabel, findActiveNode } = await server.ssrLoadModule('/src/navigation/navigationConfig.jsx');
+  const { NAV_MODULES, getVisibleCommandItems, getVisibleModule, getVisibleItems, resolveLabel, findActiveNode, resolverAtalhos, findFixableByPath } = await server.ssrLoadModule('/src/navigation/navigationConfig.jsx');
   const base = {
     id: 33, perfil: 'USUARIO', setor: { codigo: 'OBRA' },
     pode_criar_solicitacao_compra: true, modulos_habilitados: [],
@@ -36,9 +36,13 @@ try {
   assert.equal(getVisibleModule({ ...base, setor: { codigo: 'CANTEIRO', eh_setor_obra: true } }, 'rhdp').label, 'Colaboradores');
   const administrador = { ...base, perfil: 'SUPERADMIN', setor: { codigo: 'DP' } };
   const moduloDp = getVisibleModule(administrador, 'rhdp');
-  assert.equal(moduloDp.label, 'RH/DP');
-  assert.equal(moduloDp.desc, 'Colaboradores, apuração e fechamentos.');
-  assert.equal(NAV_MODULES.find(mod => mod.id === 'rhdp').label, 'RH/DP', 'Catalogo base nao e mutado por usuario');
+  assert.equal(moduloDp.label, 'Colaboradores');
+  assert.equal(moduloDp.desc, 'Solicitações e Pagamentos');
+  assert.deepEqual(moduloDp.children.map(item => item.to).sort(), ['/rh-dp/pessoal', '/rh-dp/documentos', '/rh-dp/relatorios', '/rh-dp/importacoes'].sort());
+  assert.deepEqual(resolverAtalhos(administrador, ['rhdp-colaboradores','rhdp-fechamentos']).map(item=>item.id), ['rhdp-colaboradores','rhdp-fechamentos']);
+  assert.equal(findFixableByPath(administrador,'/rh-dp/colaboradores').id,'rhdp-colaboradores');
+  assert.deepEqual(resolverAtalhos(base, ['rhdp-colaboradores','rhdp-fechamentos']), [], 'Favoritos não ultrapassam permissão');
+  assert.equal(NAV_MODULES.find(mod => mod.id === 'rhdp').label, 'Colaboradores', 'Catalogo base nao e mutado por usuario');
   const { default: NavCard } = await server.ssrLoadModule('/src/navigation/NavCard.jsx');
   const card = renderToStaticMarkup(React.createElement(StaticRouter, { location: '/' },
     React.createElement(NavCard, { to: '/rh-dp/pessoal', label: moduloObra.label, desc: moduloObra.desc, icon: moduloObra.icon })));
@@ -55,7 +59,7 @@ try {
   assert.equal(pedidosNoCtrlK({ ...base, areas_permissoes_configuradas: false }), false,
     'Sem configuracao granular nao ha acesso implicito a pedidos');
 
-  console.log('Menu/card Colaboradores para OBRA, RH/DP nos demais setores, destinos/atalhos e Ctrl+K preservados; acesso a Pedidos coerente com permissoes.');
+  console.log('Colaboradores: quatro portas para o DP; permissões, destinos legados/atalhos e Ctrl+K preservados; acesso a Pedidos coerente com permissões.');
 } finally {
   await server.close();
 }

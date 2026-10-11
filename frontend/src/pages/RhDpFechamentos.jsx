@@ -90,7 +90,7 @@ function combina(conjunto, valor) {
 const FILTROS_DA_TELA = [
   { id: 'competencia', rotulo: 'Competência' },
   { id: 'empresa_grupo_id', rotulo: 'Empresa do grupo' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'status', rotulo: 'Status' }
 ];
 
@@ -207,7 +207,7 @@ export default function RhDpFechamentos({ comoAba = false }) {
       setCarregandoBase(true);
       const [listaEmpresas, listaObras] = await Promise.all([
         getRhEmpresasGrupo({ ativo: true }),
-        getObras()
+        getObras({ escopo: 'TODOS' })
       ]);
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
       setObras(Array.isArray(listaObras) ? listaObras : []);
@@ -328,7 +328,7 @@ export default function RhDpFechamentos({ comoAba = false }) {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       opcoes: obras.map((item) => ({
         valor: String(item.id),
         rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
@@ -463,9 +463,9 @@ export default function RhDpFechamentos({ comoAba = false }) {
             },
             {
               id: 'obra',
-              titulo: 'Obra',
+              titulo: 'Obra / Centro de Custo',
               tipo: 'texto',
-              render: (item) => item.apuracao?.obra?.nome || 'Todas as obras'
+              render: (item) => item.apuracao?.obra?.nome || 'Todas as obras / centros de custo'
             },
             {
               id: 'vencimento',
@@ -601,7 +601,7 @@ export default function RhDpFechamentos({ comoAba = false }) {
                   },
                   {
                     id: 'obra',
-                    titulo: 'Obra',
+                    titulo: 'Obra / Centro de Custo',
                     tipo: 'texto',
                     render: (item) => item.tituloFinanceiro?.obra?.nome || '-'
                   },
