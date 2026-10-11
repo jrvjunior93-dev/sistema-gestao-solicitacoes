@@ -470,7 +470,8 @@ async function syncFavorecidoBancarioRh({
   agencia,
   conta,
   tipoConta,
-  usuarioId
+  usuarioId,
+  isolado = false
 }, transaction) {
   const possuiPix = Boolean(String(chavePix || '').trim());
   const pixTipoChave = possuiPix ? inferPixTipoChave(chavePix, favorecidoDocumento) : 'DADOS_BANCARIOS';
@@ -506,7 +507,7 @@ async function syncFavorecidoBancarioRh({
     updated_by: usuarioId || null
   };
 
-  if (existing) {
+  if (existing && !isolado) {
     await existing.update(payload, { transaction });
     return existing;
   }

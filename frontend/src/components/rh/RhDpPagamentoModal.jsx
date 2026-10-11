@@ -61,7 +61,10 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   atual.current = form; sujoRef.current = sujo;
   const dp = Boolean(resposta?.pode_conferir);
   const concluido = resposta?.solicitacao?.situacao === 'APROVADA';
-  const editavel = resposta && (resposta.solicitacao.situacao === 'RASCUNHO' || (dp && resposta.solicitacao.situacao === 'ABERTA'));
+  const editavel = resposta && (resposta.solicitacao.situacao === 'RASCUNHO'
+    || (dp && ['ABERTA', 'APROVADA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(resposta.solicitacao.situacao)));
+  const estadoLinha = l => l.pagamento_estado || (concluido ? 'ENVIADO' : 'PENDENTE');
+  const linhaEditavel = l => editavel && ['PENDENTE', 'EM_EDICAO'].includes(estadoLinha(l));
   function receber(result) {
     respostaRef.current = result; atual.current = result.solicitacao.dados_json; sujoRef.current = false;
     setResposta(result); setForm(atual.current); setSujo(false);
@@ -89,7 +92,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     setForm(atual.current); setSujo(true);
   }
   function linhaAlterar(id, patch, conferindo = false) {
-    alterar({ linhas: atual.current.linhas.map(l => Number(l.colaborador_id) === Number(id)
+    alterar({ linhas: atual.current.linhas.map(l => Number(l.colaborador_id) === Number(id) && linhaEditavel(l)
       ? { ...l, ...(!conferindo ? { [dp ? 'conferido_dp' : 'conferido_obra']: false } : {}), ...patch } : l) });
   }
   async function salvar(completo = false) {
@@ -149,7 +152,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   async function enviar() {
     await operacao(async () => {
       const result = await salvar(true);
-      const selecionados = result.solicitacao.dados_json.linhas.filter(l => l.selecionado);
+      const selecionados = result.solicitacao.dados_json.linhas.filter(l => l.selecionado && linhaEditavel(l));
       if (!selecionados.length) throw new Error('Selecione os colaboradores do pagamento.');
       const { ok } = await confirmar({ titulo: dp ? 'Enviar pagamentos para a fila' : 'Solicitar pagamento ao DP',
         mensagem: `${selecionados.length} colaborador(es) · ${moeda(selecionados.reduce((s, l) => s + valoresDaLinha(l).liquido, 0))}${result.avisos?.length ? '\nHá pagamentos anteriores nesta competência. Esta solicitação será independente.' : ''}`,
@@ -161,7 +164,12 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     });
   }
   const linhas = form?.linhas || [];
-  const selecionados = linhas.filter(l => l.selecionado);
+  const selecionados = linhas.filter(l => l.selecionado && linhaEditavel(l));
+  const editaveis = linhas.filter(linhaEditavel);
+  // Consulta concluida conserva o resumo historico; novos envios contam apenas linhas editaveis.
+  const consultaSelecionadas = linhas.filter(l => estadoLinha(l) !== 'CANCELADO' && l.selecionado);
+  const resumo = !editaveis.length ? (consultaSelecionadas.length ? consultaSelecionadas : linhas.filter(l => estadoLinha(l) === 'ENVIADO')) : selecionados;
+  const resumoEnviado = !editaveis.length && resumo.every(l => estadoLinha(l) === 'ENVIADO');
   const visiveis = linhas.filter(l => l.nome.toLocaleLowerCase().includes(busca.toLocaleLowerCase()));
   const reembolsos = [...selecionados.filter(l => l.reembolso && Number(l.descontos) > 0).reduce((grupos, l) => {
     const chave = `${l.reembolso.responsavel_id}:${l.empresa_grupo_id}`;
@@ -173,15 +181,45 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   }, new Map()).values()];
   function todos(campo, valor) {
     alterar({ linhas: linhas.map(l => {
+      if (!linhaEditavel(l)) return l;
       if (campo !== 'selecionado' && !l.selecionado) return l;
       return { ...l, [campo]: valor,
         ...(!campo.startsWith('conferido') ? { [dp ? 'conferido_dp' : 'conferido_obra']: false } : {}) };
     }) });
   }
+  async function revisar(linha, acao) {
+    await operacao(async () => {
+      const result = await salvar(true);
+      const ids = new Set([Number(linha.colaborador_id)]);
+      if (acao === 'EDITAR') {
+        let mudou;
+        do {
+          mudou = false;
+          for (const t of result.solicitacao.dados_json.titulos || []) {
+            if (t.cancelado || !t.origens?.some(o => ids.has(Number(o.colaborador_id)))) continue;
+            for (const o of t.origens) if (!ids.has(Number(o.colaborador_id))) { ids.add(Number(o.colaborador_id)); mudou = true; }
+          }
+        } while (mudou);
+      }
+      const nomes = result.solicitacao.dados_json.linhas.filter(l => ids.has(Number(l.colaborador_id))).map(l => l.nome).join(', ');
+      const { ok, texto } = await confirmar({ titulo: acao === 'EDITAR' ? 'Editar e reenviar pagamento' : 'Cancelar pagamento',
+        mensagem: acao === 'EDITAR' ? `${nomes}. Os pagamentos serão bloqueados na fila até a conferência e o reenvio.${ids.size > 1 ? ' O reembolso agrupado exige revisar todos os colaboradores envolvidos.' : ''}`
+          : `${linha.nome}. O salário e a parte deste colaborador no reembolso serão cancelados. O histórico será preservado.`,
+        rotuloConfirmar: acao === 'EDITAR' ? 'Bloquear para edição' : 'Cancelar pagamento',
+        rotuloCancelar: 'Voltar', destrutiva: acao === 'CANCELAR', campo: { rotulo: 'Motivo', multilinha: true, obrigatorio: true } });
+      if (!ok) return;
+      if (!texto?.trim()) throw new Error('Informe o motivo.');
+      const revisado = await pagamentoRhSolicitacao(`/${result.solicitacao.id}/revisar`, { method: 'POST', data: {
+        colaborador_id: linha.colaborador_id, acao, motivo: texto, revisao: result.solicitacao.dados_json.revisao
+      } });
+      receber(revisado); aoEnviar?.(revisado);
+      avisar.sucesso(acao === 'EDITAR' ? 'Pagamento bloqueado na fila e liberado para edição.' : 'Pagamento cancelado. Histórico preservado.');
+    });
+  }
   return <OverlayModal largura="1480px" rotulo="Solicitar pagamento" onFechar={editor ? () => setEditor(null) : fechar}>
     <div data-modal="cabecalho" className="rh-local-modal-cabecalho">
       <div><h2 className="app-bloco-titulo">{dp ? 'Conferir pagamento' : 'Solicitar pagamento'}{resposta ? ` · ${resposta.solicitacao.codigo}` : ''}</h2>
-        <p className="app-note">{local?.nome || locais.find(l => Number(l.id) === Number(localId))?.nome || 'Obra / Centro de custo'}</p></div>
+        <p className="app-note">{local?.nome || locais.find(l => Number(l.id) === Number(localId))?.nome || 'Obra / Centro de custo'}{resposta?.solicitacao?.situacao === 'ENVIO_PARCIAL' ? ' · Envio parcial para pagamento' : resposta?.solicitacao?.situacao === 'EM_REVISAO' ? ' · Em edição pelo DP' : ''}</p></div>
       <button type="button" className="btn btn-outline btn-sm" disabled={ocupado || carregando} onClick={fechar}>Fechar</button>
     </div>
     <div className="rh-local-modal-corpo rh-pagamento-solicitacao">
@@ -191,29 +229,35 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
       {carregando && <p role="status">Carregando pagamento…</p>}
       {form && <>
         <div className="rh-pagamento-toolbar">
-          <label>Competência<input disabled={ocupado || !editavel} className="form-control" type="month" value={form.competencia} onChange={e => alterar({ competencia: e.target.value, linhas: linhas.map(l => ({ ...l, conferido_dp: false, conferido_obra: false })) })} /></label>
+          <label>Competência<input disabled={ocupado || !editavel || Boolean(form.titulos?.length)} className="form-control" type="month" value={form.competencia} onChange={e => alterar({ competencia: e.target.value, linhas: linhas.map(l => ({ ...l, conferido_dp: false, conferido_obra: false })) })} /></label>
           <label>Vencimento<input disabled={ocupado || !editavel} className="form-control" type="date" value={form.data_vencimento} onChange={e => alterar({ data_vencimento: e.target.value, linhas: linhas.map(l => ({ ...l, conferido_dp: false, conferido_obra: false })) })} /></label>
           <label>Aplicar aos selecionados<select disabled={ocupado || !editavel} aria-label="Aplicar aos selecionados" className="form-control" defaultValue="" onChange={e => {
             const valor = e.target.value;
-            if (valor === '100') alterar({ linhas: linhas.map(l => l.selecionado ? { ...l, parcela_40: false, parcela_60: false, conferido_dp: false, conferido_obra: false } : l) });
+            if (valor === '100') alterar({ linhas: linhas.map(l => l.selecionado && linhaEditavel(l) ? { ...l, parcela_40: false, parcela_60: false, conferido_dp: false, conferido_obra: false } : l) });
             else if (valor === 'conferir') todos(dp ? 'conferido_dp' : 'conferido_obra', true);
-            else if (valor) alterar({ linhas: linhas.map(l => l.selecionado && l.forma_calculo_gerencial !== 'DIARIA' ? { ...l, parcela_40: valor === '40', parcela_60: valor === '60', conferido_dp: false, conferido_obra: false } : l) });
+            else if (valor) alterar({ linhas: linhas.map(l => l.selecionado && linhaEditavel(l) && l.forma_calculo_gerencial !== 'DIARIA' ? { ...l, parcela_40: valor === '40', parcela_60: valor === '60', conferido_dp: false, conferido_obra: false } : l) });
             e.target.value = '';
           }}><option value="">Selecione</option><option value="40">40%</option><option value="60">60%</option><option value="100">100%</option><option value="conferir">Conferido</option></select></label>
           <label>Pesquisar<input className="form-control" type="search" value={busca} onChange={e => setBusca(e.target.value)} /></label>
         </div>
         {resposta.avisos?.length > 0 && <details className="rh-pagamento-aviso"><summary>Pagamentos anteriores nesta competência ({resposta.avisos.length})</summary>
           <ul>{resposta.avisos.map(a => <li key={a.id}>{a.codigo} · {a.status} · {moeda(a.valor_original)}</li>)}</ul></details>}
-        <fieldset disabled={ocupado || !editavel || Boolean(editor)} className="rh-pagamento-table-wrap">
+        <fieldset disabled={ocupado || Boolean(editor)} className="rh-pagamento-table-wrap">
           <table className="rh-pagamento-tabela"><thead><tr>
-            <th><input aria-label="Selecionar todos" type="checkbox" checked={linhas.length > 0 && selecionados.length === linhas.length} onChange={e => todos('selecionado', e.target.checked)} /></th>
+            <th><input aria-label="Selecionar todos" type="checkbox" disabled={!editaveis.length} checked={editaveis.length > 0 && selecionados.length === editaveis.length} onChange={e => todos('selecionado', e.target.checked)} /></th>
             <th>Colaborador</th><th>Conferido</th><th>40%</th><th>60%</th><th>100%</th><th>Salário bruto</th><th>Acréscimos</th><th>Descontos</th><th>Líquido</th><th>Dias</th><th>Faltas</th><th>Dados para pagamento</th><th>Observações</th>
           </tr></thead><tbody>{visiveis.map(l => {
-            const calculo = valoresDaLinha(l, concluido);
+            const bloqueada = !linhaEditavel(l);
+            const estado = estadoLinha(l);
+            const calculo = valoresDaLinha(l, ['ENVIADO', 'CANCELADO'].includes(estado));
+            const titulosLinha = form.titulos?.filter(t => !t.cancelado && (Number(t.colaborador_id) === Number(l.colaborador_id)
+              || t.origens?.some(o => Number(o.colaborador_id) === Number(l.colaborador_id)))) || [];
+            const comBaixa = titulosLinha.some(t => resposta.pagamentos_financeiros?.some(f => Number(f.id) === Number(t.id)
+              && (f.status !== 'ABERTO' || Number(f.valor_baixado) > 0)));
             const diaria = l.forma_calculo_gerencial === 'DIARIA';
-            const check = (campo, rotulo, disabled = false) => <input type="checkbox" aria-label={`${rotulo}: ${l.nome}`} disabled={disabled} checked={Boolean(l[campo])} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.checked }, campo.startsWith('conferido'))} />;
-            const numero = (campo, rotulo, max) => <input className="form-control" aria-label={`${rotulo}: ${l.nome}`} type="number" min="0" max={max} step="1" value={l[campo]} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.value })} />;
-            const ajuste = (campo, rotulo) => <input className="form-control rh-pagamento-moeda" aria-label={`${rotulo}: ${l.nome}`} type="text" inputMode="numeric"
+            const check = (campo, rotulo, disabled = false) => <input type="checkbox" aria-label={`${rotulo}: ${l.nome}`} disabled={disabled || bloqueada} checked={Boolean(l[campo])} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.checked }, campo.startsWith('conferido'))} />;
+            const numero = (campo, rotulo, max) => <input disabled={bloqueada} className="form-control" aria-label={`${rotulo}: ${l.nome}`} type="number" min="0" max={max} step="1" value={l[campo]} onChange={e => linhaAlterar(l.colaborador_id, { [campo]: e.target.value })} />;
+            const ajuste = (campo, rotulo) => <input disabled={bloqueada} className="form-control rh-pagamento-moeda" aria-label={`${rotulo}: ${l.nome}`} type="text" inputMode="numeric"
               value={formatCurrencyInput(l[campo] || 0, { emptyZero: false })} onFocus={e => e.target.select()}
               onChange={e => {
                 // A mascara e apenas visual: calculo/API recebem numero, inclusive ao apagar.
@@ -221,25 +265,30 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
                 linhaAlterar(l.colaborador_id, { [campo]: valor, ...(campo === 'descontos' && valor !== Number(l.descontos || 0)
                   ? { reembolso: null, desconto_sem_reembolso: true } : {}) });
               }} />;
-            return <tr key={l.colaborador_id} data-selecionado={l.selecionado}>
-              <td>{check('selecionado', 'Selecionar')}</td><td><strong>{l.nome}</strong><small>{diaria ? `${moeda(l.valor_diaria)} / dia` : `${moeda(l.salario_base)} · ${calculo.percentual}%`}</small></td>
+            return <tr key={l.colaborador_id} data-selecionado={l.selecionado} data-pagamento-estado={estado}>
+              <td>{check('selecionado', 'Selecionar')}</td><td><strong>{l.nome}</strong><small>{diaria ? `${moeda(l.valor_diaria)} / dia` : `${moeda(l.salario_base)} · ${calculo.percentual}%`}</small>
+                {estado !== 'PENDENTE' && <small className="rh-pagamento-estado">{comBaixa ? 'Pagamento processado' : { ENVIADO: 'Enviado para pagamento', EM_EDICAO: 'Em edição pelo DP', CANCELADO: 'Cancelado' }[estado]}</small>}
+                {dp && resposta.pode_enviar_fila && !comBaixa && ['ENVIADO', 'EM_EDICAO'].includes(estado) && <div className="rh-pagamento-acoes">
+                  {estado === 'ENVIADO' && <button type="button" className="btn btn-outline btn-sm" onClick={() => revisar(l, 'EDITAR')}>Editar e reenviar</button>}
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => revisar(l, 'CANCELAR')}>Cancelar pagamento</button>
+                </div>}</td>
               <td>{check(dp ? 'conferido_dp' : 'conferido_obra', 'Conferido', !l.selecionado)}</td><td>{check('parcela_40', '40%', diaria)}</td><td>{check('parcela_60', '60%', diaria)}</td>
-              <td><input type="checkbox" aria-label={`100%: ${l.nome}`} disabled={diaria} checked={!diaria && calculo.percentual === 100} onChange={() => linhaAlterar(l.colaborador_id, { parcela_40: false, parcela_60: false })} /></td>
-              <td>{moeda(calculo.bruto)}</td><td>{ajuste('acrescimos', 'Acréscimos')}</td><td>{ajuste('descontos', 'Descontos')}{Number(l.descontos) > 0 && <button type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: {
+              <td><input type="checkbox" aria-label={`100%: ${l.nome}`} disabled={diaria || bloqueada} checked={!diaria && calculo.percentual === 100} onChange={() => linhaAlterar(l.colaborador_id, { parcela_40: false, parcela_60: false })} /></td>
+              <td>{moeda(calculo.bruto)}</td><td>{ajuste('acrescimos', 'Acréscimos')}</td><td>{ajuste('descontos', 'Descontos')}{Number(l.descontos) > 0 && <button disabled={bloqueada} type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: {
                 ...(l.reembolso || { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' }),
                 valor: Number(l.reembolso?.valor ?? l.descontos)
               } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
               <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{moeda(calculo.liquido)}</strong></td><td>{numero('dias', 'Dias', 31)}</td><td>{numero('faltas', 'Faltas', 31)}</td>
-              <td><button type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: { ...l } })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button><small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small></td>
-              <td><input className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
+              <td><button disabled={bloqueada} type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: { ...l } })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button><small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small></td>
+              <td><input disabled={bloqueada} className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
             </tr>;
           })}</tbody></table>
           {!visiveis.length && <p className="app-note">Nenhum colaborador encontrado.</p>}
         </fieldset>
         {!concluido && reembolsos.length > 0 && <div className="rh-pagamento-reembolsos">{reembolsos.map(g => <details key={g.chave}><summary>Reembolso de vale · {g.nome} · {moeda(g.valor)} · {g.origens.length} colaborador(es)</summary><ul>{g.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {moeda(o.valor)}</li>)}</ul></details>)}</div>}
-        {concluido && <ul className="rh-pagamento-titulos">{form.titulos?.map(t => <li key={t.id}>{t.codigo} · {t.tipo === 'REEMBOLSO' ? 'Reembolso' : 'Salário'} · {moeda(t.valor)}{t.origens?.length > 0 && <details><summary>Ver colaboradores do reembolso</summary><ul>{t.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {moeda(o.valor)}</li>)}</ul></details>}</li>)}</ul>}
-        <div className="rh-pagamento-rodape"><span role="status">{salvando ? 'Salvando…' : ocupado ? 'Processando…' : sujo ? 'Alterações pendentes' : 'Salvo'} · {selecionados.length} selecionado(s) · <strong>{moeda(selecionados.reduce((s, l) => s + valoresDaLinha(l, concluido).liquido, 0))}</strong></span>
-          {editavel && <div><button type="button" className="btn btn-outline btn-sm" disabled={ocupado || !sujo} onClick={() => operacao(() => salvar(true))}>Salvar</button><button type="button" className="btn btn-primary btn-sm" disabled={ocupado || !selecionados.length || (dp && !resposta.pode_enviar_fila)} onClick={enviar}>{dp ? 'Enviar para a fila' : 'Solicitar pagamento'}</button></div>}
+        {form.titulos?.length > 0 && <details className="rh-pagamento-titulos" open={concluido}><summary>Títulos desta solicitação ({form.titulos.length})</summary><ul>{form.titulos.map(t => <li key={t.id}>{t.codigo} · {t.tipo === 'REEMBOLSO' ? 'Reembolso' : 'Salário'} · {moeda(t.valor)}{t.cancelado ? ' · Cancelado' : ''}{t.origens?.length > 0 && <details><summary>Ver colaboradores do reembolso</summary><ul>{t.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {moeda(o.valor)}</li>)}</ul></details>}</li>)}</ul></details>}
+        <div className="rh-pagamento-rodape"><span role="status">{salvando ? 'Salvando…' : ocupado ? 'Processando…' : sujo ? 'Alterações pendentes' : 'Salvo'} · {resumo.length} {resumoEnviado ? 'enviado(s)' : 'selecionado(s)'} · <strong>{moeda(resumo.reduce((s, l) => s + valoresDaLinha(l, estadoLinha(l) === 'ENVIADO').liquido, 0))}</strong></span>
+          {editavel && editaveis.length > 0 && <div><button type="button" className="btn btn-outline btn-sm" disabled={ocupado || !sujo} onClick={() => operacao(() => salvar(true))}>Salvar</button><button type="button" className="btn btn-primary btn-sm" disabled={ocupado || !selecionados.length || (dp && !resposta.pode_enviar_fila)} onClick={enviar}>{dp ? 'Enviar para a fila' : 'Solicitar pagamento'}</button></div>}
         </div>
         {dp && editavel && !resposta.pode_enviar_fila && <p className="app-note">O envio exige as permissões de gerar títulos e preparar a fila de pagamentos.</p>}
       </>}

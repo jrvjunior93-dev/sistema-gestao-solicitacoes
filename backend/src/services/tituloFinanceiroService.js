@@ -2015,6 +2015,7 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction, option
 }
 
 function assertTituloEditavel(titulo) {
+  require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
   if (titulo.renegociacao_id || titulo.renegociado_por_id) throw createHttpError(409, 'Título vinculado a uma negociação. Consulte o acordo de origem.');
   const status = String(titulo?.status || '').trim().toUpperCase();
   const valorBaixado = Number(titulo?.valor_baixado || 0);
@@ -5121,7 +5122,7 @@ async function excluirTitulosEmMassa(req, payload = {}) {
       id: { [Op.in]: idsUnicos },
       deleted_at: null
     },
-    attributes: ['id', 'codigo', 'status', 'obra_id']
+    attributes: ['id', 'codigo', 'status', 'obra_id', 'origem_titulo', 'status_interno_pagar', 'numero_documento']
   });
 
   if (titulos.length !== idsUnicos.length) {
@@ -5139,6 +5140,10 @@ async function excluirTitulosEmMassa(req, payload = {}) {
   }
 
   for (const titulo of titulos) {
+    require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
+    if (titulo.origem_titulo === 'RH_DP' && /-SOL-\d+-/.test(titulo.numero_documento || '')) {
+      throw createHttpError(409, 'Cancele este pagamento na solicitacao RH/DP para preservar a fila e os reembolsos vinculados.');
+    }
     if (titulo.obra_id) {
       await assertObraScope(
         req,

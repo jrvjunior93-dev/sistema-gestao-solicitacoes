@@ -51,6 +51,7 @@ const STATUS_OPTIONS = [
   ['PENDENTE_COMPROVANTE', 'Pendentes de comprovante'],
   ['NAO_PAGO', 'Não pagos'],
   ['DIVERGENTE', 'Divergentes'],
+  ['EM_EDICAO', 'Em edição pelo DP'],
   ['BAIXADO', 'Baixados'],
   ['RESOLVIDO', 'Resolvidos'],
   ['TODOS', 'Todos']
@@ -147,6 +148,7 @@ function idempotencyKey(prefix) {
 }
 
 function statusKind(status) {
+  if (status === 'EM_EDICAO') return 'warning';
   if (status === 'DIVERGENTE') return 'danger';
   if (status === 'NAO_PAGO') return 'warning';
   if (status === 'BAIXADO' || status === 'RESOLVIDO') return 'success';
@@ -888,7 +890,7 @@ export default function FinanceiroFilaPagamentos() {
   );
   const approvingDivergences = status === 'DIVERGENTE';
   const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (status === 'PENDENTE' && canSettle);
-  const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'TODOS', 'RESOLVIDO'].includes(status);
+  const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'EM_EDICAO', 'TODOS', 'RESOLVIDO'].includes(status);
   const busy = Boolean(actionKey);
 
   return (
@@ -1029,7 +1031,7 @@ export default function FinanceiroFilaPagamentos() {
                 const podeAnexarMais = !row.somente_consulta && canSettle && (['PENDENTE', 'DIVERGENTE'].includes(row.status) ||
                   (['BAIXADO', 'RESOLVIDO'].includes(row.status) && (Number(row.movimento_financeiro_id) > 0 || Boolean(row.comprovante_hash))));
                 return (
-                  <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : row.status === 'NAO_PAGO' ? 'bg-[var(--sem-warning-bg)]' : ''}>
+                  <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : ['NAO_PAGO', 'EM_EDICAO'].includes(row.status) ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
                       <input
                         type="checkbox"
@@ -1201,7 +1203,8 @@ export default function FinanceiroFilaPagamentos() {
                       </td>
                     ) : null}
                     <td className="px-3 py-3 align-top">
-                      <StatusBadge status={String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
+                      <StatusBadge status={row.status === 'EM_EDICAO' ? 'Em edição pelo DP' : String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
+                      {row.status === 'EM_EDICAO' && <div className="mt-1 text-xs font-semibold text-[var(--sem-warning)]">Baixa bloqueada até o reenvio pelo DP</div>}
                       {row.pendente_comprovante && <div className="mt-1 text-xs font-semibold text-[var(--sem-warning)]">Pagamento registrado · pendente de comprovante</div>}
                       {row.somente_consulta && <div className="mt-1 text-xs text-[var(--sem-danger)]">Rejeitado pelo proprietário · somente consulta</div>}
                       {!showReasonColumn && row.motivo ? <div className="mt-2 max-w-64 text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}

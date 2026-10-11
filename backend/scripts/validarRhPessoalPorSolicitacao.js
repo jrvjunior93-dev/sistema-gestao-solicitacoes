@@ -75,14 +75,15 @@ async function enviosIndependentes() {
   assert.equal(requests.length, 3);
 }
 async function escopoLocal() {
-  const queries = []; let scope = [7, 51];
+  const queries = []; let scope = [7, 51], registros = [];
   const controller = load('controllers/RhSolicitacaoController.js', {
     sequelize: { Op }, '../services/rhSolicitacaoService': {}, '../services/rhChecklistService': {},
-    '../models': { RhSolicitacao: { findAll: async o => { queries.push(o); return []; } } },
+    '../models': { RhSolicitacao: { findAll: async o => { queries.push(o); return registros; } } },
     '../utils/controllerError': { responderErroController: (res, error) => res.status(error.status).json({ erro: error.message }) },
     '../utils/codigoDoSetor': {}, '../services/setorCapabilityService': {},
     '../services/authorizationService': { getRhDpObraScopeIds: async () => scope, getUserObraIds: async () => [7, 51], userHasAreaPermission: async () => true },
     '../middlewares/validation': { ValidationError }, '../services/rhPessoalDomain': domain,
+    '../services/rhPagamentoSolicitacaoDomain': require('../src/services/rhPagamentoSolicitacaoDomain'),
     '../services/rhSolicitacaoAtividadeService': { comAtividade: async x => x }
   });
   const res = { status(n) { this.codigo = n; return this; }, json(d) { this.dados = d; return d; } };
@@ -96,6 +97,25 @@ async function escopoLocal() {
   scope = null;
   await controller.index(req, res);
   assert.equal(queries.at(-1).where.obra_id, 51, 'Permissao ver todas tambem respeita filtro local');
+  // Consulta filtra situacao efetiva dos legados sem executar update/reconciliacao.
+  const parcial = instance({ id: 71, subtipo: 'PAGAMENTO_POR_SOLICITACAO', situacao: 'APROVADA', dados_json: {
+    linhas: [{ colaborador_id: 11 }, { colaborador_id: 12 }], titulos: [{ id: 1, tipo: 'SALARIO', colaborador_id: 11 }] } });
+  const completo = instance({ id: 72, subtipo: 'PAGAMENTO_POR_SOLICITACAO', situacao: 'APROVADA', dados_json: {
+    linhas: [{ colaborador_id: 11 }], titulos: [{ id: 2, tipo: 'SALARIO', colaborador_id: 11 }] } });
+  const admissao = instance({ id: 73, subtipo: 'ADMISSAO', situacao: 'APROVADA', dados_json: {} });
+  registros = [parcial, completo, admissao];
+  await controller.index({ ...req, query: { situacao: 'ENVIO_PARCIAL' } }, res);
+  assert.equal(res.dados.length, 1); assert.equal(res.dados[0].id, 71);
+  assert.equal(res.dados[0].situacao, 'ENVIO_PARCIAL');
+  assert.equal(parcial.situacao, 'APROVADA', 'Leitura nao grava o status legado');
+  assert.ok(queries.at(-1).where.situacao[Op.in].includes('APROVADA'));
+  await controller.index({ ...req, query: { situacao: 'APROVADA' } }, res);
+  assert.deepEqual(Array.from(res.dados, x => x.id), [72, 73], 'Pagamento parcial sai de aprovadas; admissao inalterada');
+  registros.push(instance({ id: 74, subtipo: 'ADMISSAO', situacao: 'ABERTA', dados_json: {} }),
+    instance({ id: 75, subtipo: 'PAGAMENTO_POR_SOLICITACAO', situacao: 'EM_REVISAO', dados_json: {
+      linhas: [{ colaborador_id: 11, pagamento_estado: 'EM_EDICAO' }], titulos: [] } }));
+  await controller.index({ ...req, query: { situacao: 'EM_ANDAMENTO' } }, res);
+  assert.deepEqual(Array.from(res.dados, x => x.id), [71, 74, 75], 'Contador inclui parcial/revisao, nao aprovadas completas');
 }
 async function fontesJaIsoladas() {
   const people = [11, 12].map(id => instance({ id, nome: 'Pessoa ' + id }));

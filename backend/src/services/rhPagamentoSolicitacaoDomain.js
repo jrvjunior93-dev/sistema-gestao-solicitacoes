@@ -102,4 +102,41 @@ function validarPeriodo(dados) {
   }
 }
 
-module.exports = { FLUXO, dinheiro, texto, calcularLinha, recebimento, validarPeriodo, valorReembolso, agruparReembolsos };
+function normalizarAndamento(dados) {
+  const titulos = dados.titulos || [];
+  const linhas = (dados.linhas || []).map(l => {
+    const salario = titulos.find(t => t.tipo === 'SALARIO' && Number(t.colaborador_id) === Number(l.colaborador_id));
+    const estado = l.pagamento_estado || (salario ? (salario.cancelado ? 'CANCELADO' : 'ENVIADO') : 'PENDENTE');
+    return { ...l, pagamento_estado: estado,
+      // Selecao e conferencia de um envio anterior nao autorizam um novo envio.
+      selecionado: ['ENVIADO', 'CANCELADO'].includes(estado) ? false : Boolean(l.selecionado) };
+  });
+  return { ...dados, titulos, linhas };
+}
+
+function situacaoPagamento(dados, atual) {
+  if (['RASCUNHO', 'CANCELADA', 'REJEITADA'].includes(atual)) return atual;
+  const linhas = normalizarAndamento(dados).linhas;
+  if (linhas.some(l => l.pagamento_estado === 'EM_EDICAO')) return 'EM_REVISAO';
+  const enviados = linhas.some(l => l.pagamento_estado === 'ENVIADO');
+  const pendentes = linhas.some(l => l.pagamento_estado === 'PENDENTE');
+  if (enviados && pendentes) return 'ENVIO_PARCIAL';
+  if (!pendentes && linhas.length) return linhas.every(l => l.pagamento_estado === 'CANCELADO') ? 'CANCELADA' : 'APROVADA';
+  return 'ABERTA';
+}
+
+function grupoRevisao(dados, colaboradorId) {
+  const ids = new Set([Number(colaboradorId)]);
+  let mudou;
+  do {
+    mudou = false;
+    for (const t of dados.titulos || []) {
+      if (t.cancelado || t.tipo !== 'REEMBOLSO' || !t.origens?.some(o => ids.has(Number(o.colaborador_id)))) continue;
+      for (const o of t.origens) if (!ids.has(Number(o.colaborador_id))) { ids.add(Number(o.colaborador_id)); mudou = true; }
+    }
+  } while (mudou);
+  return [...ids];
+}
+
+module.exports = { FLUXO, dinheiro, texto, calcularLinha, recebimento, validarPeriodo, valorReembolso, agruparReembolsos,
+  normalizarAndamento, situacaoPagamento, grupoRevisao };

@@ -40,7 +40,7 @@ const { pendenteComprovanteFila, wherePendenteComprovante, podeAnexarComprovante
 const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
 const { calcularValoresFila, filaSemBaixaAtualizavel } = require('./pagamentoFilaValoresDomain');
 
-const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
+const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
 
 function createHttpError(statusCode, message) {
@@ -71,7 +71,7 @@ function filaInclude() {
         'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
-        'cartao_id', 'fatura_cartao_id'
+        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -138,7 +138,8 @@ function matchesSearch(item, rawTerm) {
 async function listarFilaPagamentos(req, filters = {}) {
   const status = String(filters.status || 'PENDENTE').trim().toUpperCase();
   const where = status === 'PENDENTE_COMPROVANTE' ? wherePendenteComprovante()
-    : (status && status !== 'TODOS' ? { status } : {});
+    : status === 'PENDENTE' ? { status: { [Op.in]: ['PENDENTE', 'EM_EDICAO'] } }
+      : (status && status !== 'TODOS' ? { status } : { status: { [Op.ne]: 'CANCELADO' } });
   const rows = await PagamentoManualFilaItem.findAll({
     where,
     include: filaInclude(),
@@ -212,6 +213,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     return acc;
   }, {});
   resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitados.length;
+  resumo.PENDENTE = Number(resumo.PENDENTE || 0) + Number(resumo.EM_EDICAO || 0);
   resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: wherePendenteComprovante(),
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [] }] });
   return { data, resumo };
@@ -342,6 +344,10 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       }
       if (String(titulo.tipo || '').toUpperCase() !== 'PAGAR') {
         throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao pertence ao Contas a Pagar.`);
+      }
+      // Acesso primeiro; nem replay/enqueue alternativo pode contornar a revisao.
+      if (titulo.origem_titulo === 'RH_DP' && titulo.status_interno_pagar === 'EM EDICAO DP') {
+        assertTituloDisponivelParaBaixa(titulo);
       }
     }
     const repetidos = await PagamentoManualFilaItem.findAll({

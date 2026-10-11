@@ -2,7 +2,7 @@
 .rh-pagamento-toolbar { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; border: 0; padding: 0 0 12px; }
 .rh-pagamento-toolbar label, .rh-pagamento-conta label { display: grid; gap: 4px; font-size: .875rem; }
 .rh-pagamento-toolbar label:last-child { margin-left: auto; }
-.rh-pagamento-table-wrap { border: 1px solid var(--ui-border); border-radius: 6px; padding: 0; overflow: auto; max-height: 55vh; }
+.rh-pagamento-table-wrap { min-width: 0; min-inline-size: 0; max-width: 100%; border: 1px solid var(--ui-border); border-radius: 6px; padding: 0; overflow: auto; max-height: 55vh; }
 .rh-pagamento-tabela { width: 100%; min-width: 1300px; font-family: inherit; font-size: .875rem; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 .rh-pagamento-tabela th { position: sticky; top: 0; background: var(--ui-surface); z-index: 1; font-size: .75rem; text-transform: uppercase; text-align: left; white-space: nowrap; }
 .rh-pagamento-tabela td, .rh-pagamento-tabela th { border-bottom: 1px solid var(--ui-border); padding: 8px; }
@@ -24,6 +24,9 @@
 .rh-pagamento-aviso { margin-bottom: 12px; font-size: .875rem; }
 .rh-pagamento-aviso summary { cursor: pointer; }
 .rh-pagamento-titulos { font-size: .875rem; margin-top: 12px; }
+.rh-pagamento-acoes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.rh-pagamento-tabela tr[data-pagamento-estado=EM_EDICAO] { background: var(--sem-warning-bg); }
+.rh-pagamento-tabela .rh-pagamento-estado { color: var(--ui-text); font-weight: 600; }
 @media (max-width: 640px) {
   .rh-pagamento-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .rh-pagamento-toolbar label:last-child { margin-left: 0; }

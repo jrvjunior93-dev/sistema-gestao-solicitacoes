@@ -118,7 +118,11 @@ module.exports = {
   async index(req, res) {
     try {
       const where = {};
-      if (req.query.situacao) where.situacao = String(req.query.situacao).toUpperCase();
+      const filtroSituacao = String(req.query.situacao || '').toUpperCase();
+      const emAndamento = ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'];
+      if (filtroSituacao) where.situacao = filtroSituacao === 'EM_ANDAMENTO'
+        ? { [Op.in]: [...emAndamento, 'APROVADA'] }
+        : ['ENVIO_PARCIAL', 'EM_REVISAO'].includes(filtroSituacao) ? { [Op.in]: [filtroSituacao, 'APROVADA'] } : filtroSituacao;
       if (req.query.tipo) where.tipo = String(req.query.tipo).toUpperCase();
       if (req.query.colaborador_id) where.colaborador_id = Number(req.query.colaborador_id);
 
@@ -174,7 +178,16 @@ module.exports = {
       const planos = dados.filter(linha => !ehTransferencia(linha)
         && !(linha.subtipo === 'PAGAMENTO_POR_SOLICITACAO' && linha.situacao === 'RASCUNHO'
           && Number(linha.criada_por) !== Number(req.user.id)))
-        .map((linha) => linha.get({ plain: true }));
+        .map((linha) => {
+          const plano = linha.get({ plain: true });
+          if (plano.subtipo === 'PAGAMENTO_POR_SOLICITACAO') {
+            const { normalizarAndamento, situacaoPagamento } = require('../services/rhPagamentoSolicitacaoDomain');
+            plano.dados_json = normalizarAndamento(typeof plano.dados_json === 'string' ? JSON.parse(plano.dados_json) : plano.dados_json || {});
+            plano.situacao = situacaoPagamento(plano.dados_json, plano.situacao);
+          }
+          return plano;
+        }).filter(linha => !filtroSituacao || (filtroSituacao === 'EM_ANDAMENTO'
+          ? emAndamento.includes(linha.situacao) : linha.situacao === filtroSituacao));
       const idsDestino = Array.from(new Set(
         planos
           .map((linha) => Number(linha.dados_json?.obra_destino_id))

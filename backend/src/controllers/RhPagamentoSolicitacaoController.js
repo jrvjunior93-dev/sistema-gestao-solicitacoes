@@ -5,4 +5,4 @@ const executar = metodo => async (req, res) => {
     ? [req.body || {}] : [req.params.id, req.body || {}]))); }
   catch (error) { return responderErroController(res, error, 'Erro na solicitacao de pagamento'); }
 };
-module.exports = { iniciar: executar('iniciar'), mostrar: executar('mostrar'), salvar: executar('salvar'), enviar: executar('enviar') };
+module.exports = { iniciar: executar('iniciar'), mostrar: executar('mostrar'), salvar: executar('salvar'), enviar: executar('enviar'), revisar: executar('revisar') };

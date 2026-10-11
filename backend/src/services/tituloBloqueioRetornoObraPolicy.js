@@ -17,11 +17,12 @@ function ehPedidoObraParaSolicitacaoNoFinanceiro(pedido) {
 }
 
 function tituloEstaBloqueado(titulo) {
-  return titulo?.bloqueado_retorno_obra === true
+  return require('./rhPagamentoRevisaoPolicy').emRevisaoDp(titulo) || titulo?.bloqueado_retorno_obra === true
     || Number(titulo?.bloqueado_retorno_obra) === 1;
 }
 
 function assertTituloDisponivelParaBaixa(titulo) {
+  require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
   if (!tituloEstaBloqueado(titulo)) return;
   const error = new Error(titulo.bloqueio_retorno_motivo || MENSAGEM_PADRAO);
   error.statusCode = 409;

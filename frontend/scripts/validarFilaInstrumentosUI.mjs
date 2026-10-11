@@ -33,6 +33,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
+        if(new URLSearchParams(location.search).has('edicao')){row.status='EM_EDICAO';row.titulo.origem_titulo='RH_DP';row.titulo.status_interno_pagar='EM EDICAO DP';row.motivo='Revisao solicitada pelo DP';}
         const rh=new URLSearchParams(location.search).get('rh');
         if(rh){row.titulo.paymentBeneficiary={nome:'Responsavel RH',cpf_cnpj:'52998224725',metodo_preferencial:rh==='pix'?'PIX_CHAVE':'CONTA_BANCARIA',pix_tipo_chave:rh==='pix'?'EMAIL':'DADOS_BANCARIOS',pix_chave:rh==='pix'?'responsavel@example.test':'104:1234:23456',banco_codigo:'104',agencia:'1234',conta:'23456'};row.titulo.observacoes='Solicitacao RH: RH-24\\nReembolsos de vale:\\nAna QA: R$ 100,00\\nBruno QA: R$ 50,00';}
         return{data:status==='NAO_PAGO'?[{id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
@@ -227,6 +228,21 @@ try {
     await page.getByText(/Ana QA: R\$ 100,00/).waitFor();
     assert.ok((await page.locator('details[open]').innerText()).includes('Bruno QA: R$ 50,00'));
   }
+  await page.goto('http://127.0.0.1:5308/qa-fila?edicao=1');
+  await page.locator('tbody').getByText('Em edição pelo DP',{exact:true}).waitFor();
+  assert.ok(await page.getByLabel('Conta pagadora de TIT-QA',{exact:true}).isDisabled());
+  assert.equal(await page.getByRole('button',{name:'Registrar baixa',exact:true}).count(),0);
+  const bloqueada=page.locator('tbody tr').filter({hasText:'TIT-QA'});
+  assert.ok((await bloqueada.getAttribute('class')).includes('sem-warning-bg'));
+  assert.equal(await bloqueada.locator('input[type="checkbox"]:enabled').count(),0);
+  await page.getByText('Baixa bloqueada até o reenvio pelo DP',{exact:true}).waitFor();
+  for(const width of [1366,390]) {
+    await page.setViewportSize({width,height:900});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.getByText('Baixa bloqueada até o reenvio pelo DP',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:path.join(root,`../outputs/fila-edicao-dp-${width}.png`),fullPage:true});
+  }
+  assert.equal(await page.evaluate(()=>window.__settles.length),0);
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real, colunas separadas de juros/multa, total e atualizacao de saldo/encargos preservando valor manual, instrumentos, modal cheque, conta limpa, icones, baixa sem PDF e anexo posterior sem segunda baixa. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

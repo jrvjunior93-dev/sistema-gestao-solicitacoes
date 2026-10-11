@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## Publicacao DP - envio parcial e revisao - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao. Handoff:
+  2026-10-11-dp-envio-parcial-revisao.md.
+- Escopo: implementacao descrita abaixo, validadores e documentacao associados;
+  outputs/ preservado fora do Git. Sem alteracoes funcionais adicionais.
+- Dominio, envio parcial/revisao, filtros legados e fila financeira revalidados
+  em memoria antes do commit; build e UI aprovados durante implementacao.
+- Sem main, EC2, migration, escrita em banco real ou deploy pelo agente.
+
+## DP - envio parcial e revisao de pagamentos - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e revisao
+  concluidas, ownership liberado. Handoff: 2026-10-11-dp-envio-parcial-revisao.md.
+- Pedido: rotulo Envio parcial para pagamento; enviar restantes; revisar e
+  reenviar sem duplicar; cancelar sem baixa, preservando historico e reembolsos.
+- Reserva: rhPagamentoSolicitacaoService/Domain e novo servico de revisao;
+  RhPagamentoSolicitacaoController, routes.js, pagamentoManualFilaService,
+  tituloFinanceiroService e guardas financeiras necessarias; RhDpPagamentoModal,
+  RhDpPessoalSolicitacoes, fila manual e estilos; testes e docs RH/DP/handoff.
+- Plano: mapear bloqueios/escopo, estado por linha e legado; transacoes em ordem
+  de lock financeira, bloqueio persistente de baixa/enqueue; UI compacta e
+  testes positivos/negativos/concorrencia em memoria e navegador.
+- Sem banco real, migration aplicada, commit/push/main/EC2 ou integracoes.
+
 ## Publicacao Colaboradores e seletores - 2026-10-11
 
 - Usuario autorizou commit e push das pendencias na refactor/frontend.

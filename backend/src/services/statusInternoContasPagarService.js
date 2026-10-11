@@ -24,7 +24,7 @@ async function listarStatusInternosPagar() {
 async function criarStatusInternoPagar(nome) {
   const valor = normalizar(nome);
   if (!valor || valor.length > 80) throw erro(400, 'Informe um nome de status com ate 80 caracteres.');
-  if (valor.toUpperCase() === '__CLEAR__') throw erro(400, 'Este nome de status e reservado pelo sistema.');
+  if (['__CLEAR__', 'EM EDICAO DP'].includes(valor.toUpperCase())) throw erro(400, 'Este nome de status e reservado pelo sistema.');
   return sequelize.transaction(async (transaction) => {
     const { registro, status } = await carregar(transaction);
     if (incluirStatusOperacionais([...status, valor]).length === incluirStatusOperacionais(status).length) {
@@ -43,6 +43,7 @@ async function atribuirStatusInternoPagar(user, tituloIds, nome) {
     throw erro(400, 'Selecione entre 1 e 200 titulos validos.');
   }
   const valor = nome == null || nome === '' ? null : emAnaliseProprietario(nome) ? STATUS_ANALISE_PROPRIETARIO : normalizar(nome);
+  if (valor?.toUpperCase() === 'EM EDICAO DP') throw erro(409, 'Status reservado para revisao na solicitacao do DP.');
   if (valor && !(await listarStatusInternosPagar()).includes(valor)) throw erro(400, 'Status interno nao cadastrado.');
   const obrasPermitidas = await getFinanceiroObraScopeIds(user);
   const where = { id: { [Op.in]: ids }, tipo: 'PAGAR' };
@@ -50,10 +51,11 @@ async function atribuirStatusInternoPagar(user, tituloIds, nome) {
   return sequelize.transaction(async (transaction) => {
     const titulos = await TituloFinanceiro.findAll({
       where,
-      attributes: ['id', 'codigo', 'tipo', 'status', 'valor_saldo', 'solicitacao_id', 'status_interno_pagar'],
+      attributes: ['id', 'codigo', 'tipo', 'status', 'valor_saldo', 'solicitacao_id', 'status_interno_pagar', 'origem_titulo'],
       order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE
     });
     if (titulos.length !== ids.length) throw erro(400, 'A selecao contem titulo inexistente ou que nao pertence ao Contas a Pagar.');
+    titulos.forEach(t => require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(t));
     if (emAnaliseProprietario(valor)) {
       await marcarAnaliseProprietario({ titulos, usuarioId: user?.id, transaction });
     } else {

@@ -4,6 +4,13 @@ Este guia partiu da revisão do código da `refactor/frontend` em 02/10/2026 (co
 
 ## Visão do processo
 
+Atualizacao de 11/10/2026: o modal atual de pagamento por solicitacao permite
+**Envio parcial para pagamento**, revisao com bloqueio persistente da fila e
+cancelamento individual sem baixa. Consulte as regras atuais em
+[Pagamento por solicitacao no README](README.md#pagamento-por-solicitacao-envio-parcial-e-revisao-11102026).
+As sessoes de jornada/apuracao abaixo descrevem tambem fluxos legados e nao
+devem ser usadas para substituir o modal atual ou ativar suas flags.
+
 | Momento | Quem inicia ou atua | Resultado no sistema |
 | --- | --- | --- |
 | Admissão ou movimentação | Obra ou usuário autorizado cria e envia; DP decide | Cadastro, situação funcional ou vínculo são alterados **somente após a aprovação**. |

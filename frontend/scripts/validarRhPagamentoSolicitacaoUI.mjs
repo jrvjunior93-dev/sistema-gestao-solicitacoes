@@ -334,6 +334,7 @@ try {
   await page.getByRole('dialog',{name:'Solicitar pagamento ao DP',exact:true}).getByRole('button',{name:'Solicitar pagamento',exact:true}).dblclick();
   await page.waitForFunction(()=>window.pedido.situacao==='ABERTA');
   assert.equal(await page.evaluate(()=>window.pedido.dados_json.linhas[0].observacoes),'Ultima edicao enviada');
+  assert.ok((await modal.locator('.rh-pagamento-rodape').innerText()).includes('1 selecionado(s)'), 'Obra consulta resumo do pedido enviado ao DP, nao zero pagamentos enviados');
   assert.equal(await page.evaluate(()=>window.envios.length),1);
   assert.equal(await page.evaluate(()=>window.maxPuts),1);
   // Falha em segundo plano conserva os inputs e exige nova acao para tentar novamente.
@@ -374,6 +375,129 @@ try {
   await page.getByText('O servidor não confirmou o valor do reembolso. Atualize o backend e reabra o pagamento.',{exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>window.envios.length),0);
   assert.ok(await modal.isVisible());
+  // Estados por colaborador: partial -> restantes -> bloquear/editar/reenviar -> cancelar.
+  await page.setViewportSize({width:1550,height:920});
+  await page.goto(base);
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await modal.waitFor({state:'hidden'});
+  await page.evaluate(()=>{
+    const d=window.pedido.dados_json;
+    window.pedido.situacao='ENVIO_PARCIAL';
+    Object.assign(d.linhas[0],{pagamento_estado:'ENVIADO',selecionado:false,bruto:3000,liquido:3000});
+    Object.assign(d.linhas[1],{pagamento_estado:'PENDENTE',selecionado:false});
+    d.titulos=[{id:701,codigo:'TIT-QA-701',tipo:'SALARIO',colaborador_id:11,valor:3000}];
+    window.financeiros=[{id:701,status:'ABERTO',valor_baixado:0}];
+    window.filas=[{id:801,titulo_id:701,status:'PENDENTE'}];window.revisoes=[];
+    window.api=async(path,options={})=>{
+      window.chamadas.push([path,structuredClone(options)]);
+      await new Promise(ok=>setTimeout(ok,80));
+      const d=window.pedido.dados_json;
+      if(options.method==='PUT'){
+        if(options.data.revisao!==d.revisao)throw Error('Conflito');
+        window.pedido.dados_json={...structuredClone(options.data),revisao:d.revisao+1};
+      }
+      const atual=window.pedido.dados_json;
+      if(path.endsWith('/revisar')){
+        window.revisoes.push(options.data);
+        const l=atual.linhas.find(l=>l.colaborador_id===options.data.colaborador_id);
+        const t=atual.titulos.find(t=>t.colaborador_id===l.colaborador_id);
+        const f=window.financeiros.find(f=>f.id===t.id),fila=window.filas.find(f=>f.titulo_id===t.id);
+        if(f.valor_baixado>0)throw Error('Pagamento processado');
+        l.pagamento_estado=options.data.acao==='EDITAR'?'EM_EDICAO':'CANCELADO';
+        l.selecionado=options.data.acao==='EDITAR';l.conferido_dp=false;
+        f.status_interno_pagar=options.data.acao==='EDITAR'?'EM EDICAO DP':'CANCELADO';
+        fila.status=options.data.acao==='EDITAR'?'EM_EDICAO':'CANCELADO';
+        if(options.data.acao==='CANCELAR'){f.status='CANCELADO';t.cancelado=true;}
+        window.pedido.situacao=options.data.acao==='EDITAR'?'EM_REVISAO':'APROVADA';atual.revisao++;
+      }
+      if(path.endsWith('/enviar')){
+        if(options.data.revisao!==atual.revisao)throw Error('Conflito');
+        window.envios.push(options.data);
+        atual.linhas.filter(l=>l.selecionado&&['PENDENTE','EM_EDICAO'].includes(l.pagamento_estado)).forEach(l=>{
+          l.bruto=l.forma_calculo_gerencial==='DIARIA'?l.valor_diaria*Number(l.dias):l.salario_base;
+          l.liquido=l.bruto+Number(l.acrescimos)-Number(l.descontos);
+          let t=atual.titulos.find(t=>t.colaborador_id===l.colaborador_id);
+          if(!t){t={id:702,codigo:'TIT-QA-702',tipo:'SALARIO',colaborador_id:l.colaborador_id};atual.titulos.push(t);
+            window.financeiros.push({id:t.id,status:'ABERTO',valor_baixado:0});window.filas.push({id:802,titulo_id:t.id,status:'PENDENTE'});}
+          t.valor=l.liquido;l.pagamento_estado='ENVIADO';l.selecionado=false;
+          window.filas.find(f=>f.titulo_id===t.id).status='PENDENTE';
+          window.financeiros.find(f=>f.id===t.id).status_interno_pagar='ENVIADO PARA PAGAMENTO';
+        });atual.revisao++;window.pedido.situacao='APROVADA';
+      }
+      return structuredClone({solicitacao:window.pedido,pode_conferir:window.dp,pode_enviar_fila:window.dp,
+        pagamentos_financeiros:window.financeiros,responsaveis:[],avisos:[]});
+    };
+  });
+  await page.getByRole('button',{name:'Conferir como DP',exact:true}).click();
+  await modal.getByText('Obra QA · Envio parcial para pagamento',{exact:true}).waitFor();
+  const ana=modal.locator('tbody tr').filter({hasText:'Ana QA'});
+  const bruno=modal.locator('tbody tr').filter({hasText:'Bruno QA'});
+  assert.ok(await modal.getByLabel('Descontos: Ana QA',{exact:true}).isDisabled());
+  assert.ok(await modal.getByLabel('Descontos: Bruno QA',{exact:true}).isEnabled());
+  await modal.getByLabel('Selecionar todos',{exact:true}).check();
+  assert.ok(!await modal.getByLabel('Selecionar: Ana QA',{exact:true}).isChecked());
+  assert.ok(await modal.getByLabel('Selecionar: Bruno QA',{exact:true}).isChecked());
+  await modal.getByLabel('Conferido: Bruno QA',{exact:true}).check();
+  async function enviarDp(){
+    await modal.getByRole('button',{name:'Enviar para a fila',exact:true}).click();
+    await page.getByRole('dialog',{name:'Enviar pagamentos para a fila',exact:true}).getByRole('button',{name:'Enviar para a fila',exact:true}).dblclick();
+    await page.waitForFunction(()=>window.pedido.situacao==='APROVADA');
+    await modal.getByRole('button',{name:'Fechar',exact:true}).waitFor({state:'visible'});
+  }
+  await modal.screenshot({path:path.join(output,'envio-parcial-desktop.png')});
+  await enviarDp();
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.titulos.length),2);
+  assert.equal(await page.evaluate(()=>window.envios.length),1);
+  // Voltar da confirmacao nao bloqueia nada; motivo obrigatorio.
+  await ana.getByRole('button',{name:'Editar e reenviar',exact:true}).click();
+  const edicao=page.getByRole('dialog',{name:'Editar e reenviar pagamento',exact:true});
+  assert.ok(await edicao.getByRole('button',{name:'Bloquear para edição',exact:true}).isDisabled());
+  await edicao.getByRole('button',{name:'Voltar',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.revisoes.length),0);
+  await ana.getByRole('button',{name:'Editar e reenviar',exact:true}).click();
+  await edicao.getByLabel('Motivo',{exact:true}).fill('Corrigir adicional');
+  await edicao.getByRole('button',{name:'Bloquear para edição',exact:true}).dblclick();
+  await page.waitForFunction(()=>window.filas[0].status==='EM_EDICAO');
+  await modal.getByLabel('Acréscimos: Ana QA',{exact:true}).fill('10000');
+  await modal.getByLabel('Conferido: Ana QA',{exact:true}).check();
+  await modal.screenshot({path:path.join(output,'edicao-dp-desktop.png')});
+  await page.setViewportSize({width:390,height:844});
+  await modal.getByLabel('Acréscimos: Ana QA',{exact:true}).scrollIntoViewIfNeeded();
+  assert.ok(await modal.locator('.rh-pagamento-solicitacao').evaluate(el=>el.scrollWidth<=el.clientWidth+1),
+    'Somente a tabela rola horizontalmente; toolbar e resumo nao sao deslocados');
+  await modal.screenshot({path:path.join(output,'edicao-dp-mobile.png')});
+  await page.setViewportSize({width:1550,height:920});
+  // Fechar/reabrir nao desbloqueia a fila e preserva edicao salva.
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await modal.waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(()=>window.filas[0].status),'EM_EDICAO');
+  await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();
+  await modal.getByLabel('Acréscimos: Ana QA',{exact:true}).waitFor();
+  assert.ok(await modal.getByLabel('Acréscimos: Ana QA',{exact:true}).isEnabled());
+  await enviarDp();
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.titulos.length),2);
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.titulos[0].id),701);
+  assert.equal(await page.evaluate(()=>window.pedido.dados_json.titulos[0].valor),3100);
+  assert.equal(await page.evaluate(()=>window.filas[0].id),801);
+  assert.equal(await page.evaluate(()=>window.filas[0].status),'PENDENTE');
+  await page.setViewportSize({width:390,height:844});
+  await bruno.getByRole('button',{name:'Cancelar pagamento',exact:true}).click();
+  const cancelamento=page.getByRole('dialog',{name:'Cancelar pagamento',exact:true});
+  await cancelamento.getByLabel('Motivo',{exact:true}).fill('Pagamento nao devido');
+  await cancelamento.screenshot({path:path.join(output,'cancelar-dp-mobile.png')});
+  await cancelamento.getByRole('button',{name:'Cancelar pagamento',exact:true}).click();
+  await page.waitForFunction(()=>window.filas[1].status==='CANCELADO');
+  await bruno.getByText('Cancelado',{exact:true}).waitFor();
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+  assert.equal(await bruno.getByRole('button',{name:'Editar e reenviar',exact:true}).count(),0);
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await modal.waitFor({state:'hidden'});
+  await page.evaluate(()=>{window.financeiros[0].valor_baixado=1;});
+  await page.getByRole('button',{name:'Abrir pagamento',exact:true}).click();
+  await ana.getByText('Pagamento processado',{exact:true}).waitFor();
+  assert.equal(await ana.getByRole('button',{name:'Cancelar pagamento',exact:true}).count(),0);
+  assert.equal(await ana.getByRole('button',{name:'Editar e reenviar',exact:true}).count(),0);
+  console.log('UI envio parcial, selecao somente restantes, motivo, bloqueio persistente, reenvio mesmos IDs, cancelamento e baixa parcial/mobile OK.');
   assert.deepEqual(errors,[]);
   console.log('Modal real: moeda durante digitacao, limpar/legado vazio como zero, numeros no payload, persistencia/foco/mobile; reembolso somente no clique, desconto comum, dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia e Obra/DP OK.');
 } catch (error) {

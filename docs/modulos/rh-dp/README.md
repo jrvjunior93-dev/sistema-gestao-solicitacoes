@@ -218,6 +218,51 @@ contra dia repetido entre 40% e 60% e por soma de quantidades, nao por data.
 - a obra informa dias e ajustes somente do seu periodo. Para mensalista multiobra, o DP consolida por etapa; no fechamento dos 60%, os rateios de custo dos dois titulos sao reconciliados pelos dias das duas etapas. A baixa e o valor dos 40% nao mudam. O rateio anterior e registrado no fechamento e restaurado se os 60% forem reabertos;
 - enquanto a flag estiver `OFF`, o frontend nao mostra etapas nem campo de vigencia, o backend rejeita envios/geracoes/fechamentos em etapa, e os fluxos legados permanecem disponiveis. O deploy ainda requer a migration antes do backend atualizado, pois o modelo inclui as novas colunas anulaveis. A conversao com compensacao e o rateio contabil dos titulos mistos precisam de homologacao integrada antes de ativar a flag.
 
+## Pagamento por solicitacao: envio parcial e revisao (11/10/2026)
+
+Este fluxo e o modal atual de Solicitar/Conferir pagamento, separado da
+apuracao gerencial legada. Nao altera flags de etapas nem titulos de outros fluxos.
+
+- O andamento e registrado por colaborador. Depois de enviar apenas uma parte,
+  a solicitacao mostra **Envio parcial para pagamento** (`ENVIO_PARCIAL`) e permite
+  selecionar, conferir e enviar os restantes, sem gerar os anteriores novamente.
+  Ao enviar todos, permanece `APROVADA`; isso nao significa baixa financeira.
+- O DP com permissao de conferir/gerar titulos e preparar a fila pode usar
+  **Editar e reenviar** ou **Cancelar pagamento**, informando motivo. Escopo de
+  obra/centro de custo e revisao otimista continuam obrigatorios no backend.
+- Editar muda a solicitacao para `EM_REVISAO` e as linhas para `EM_EDICAO`.
+  O titulo RH/DP recebe o marcador reservado `EM EDICAO DP`; o item da fila
+  fica `EM_EDICAO`, destacado e sem baixa, novo envio ou edicao financeira
+  generica. O bloqueio permanece ao fechar o modal. Reenvio apos conferencia
+  atualiza os mesmos IDs de salario e fila, exige nova conferencia financeira
+  e conserva comprovantes. Dados bancarios recebem snapshot independente.
+- Revisar um reembolso agrupado bloqueia os salarios dos colaboradores
+  envolvidos e o reembolso; todos precisam ser conferidos no reenvio.
+  Se o responsavel/agrupamento mudar, o reembolso antigo deixa de ser pagavel
+  e um novo pode ser criado, sem duplicar os salarios nem pagar ambos.
+- Cancelar tira o pagamento da fila operacional, sem apagar seu registro,
+  titulo, comprovantes ou historico. Num vale agrupado, remove somente a parte
+  do colaborador cancelado e recalcula o restante; cancela o titulo do vale
+  apenas quando nao restar contribuinte. Titulos desta jornada devem ser
+  cancelados na solicitacao, nao pela exclusao generica do Financeiro.
+- Qualquer baixa, inclusive parcial/estornada, ou pagamento bancario ativo
+  impede revisao/cancelamento. Locks seguem titulo -> fila, com transacao,
+  controle de revisao, replay e auditoria financeira/RH atomicos.
+- Legados `APROVADA` com colaboradores sem titulo sao projetados como parciais
+  na leitura/lista/filtro; nao ha reconciliacao ou escrita automatica na consulta.
+  A Obra envia ao DP apenas os colaboradores selecionados no pedido novo.
+  O contador de pedidos em aberto inclui parciais e em revisao. O recorte
+  `EM_ANDAMENTO` da consulta agrega esses estados e `ABERTA`, sem ser status gravado.
+- Estados cabem nas colunas STRING existentes; esta alteracao nao requer
+  migration. `EM_EDICAO` conta como pendente no resumo da fila e possui filtro
+  proprio. O indice gerado legado de fila ativa nao inclui esse estado;
+  a reserva durante revisao e garantida pelo lock do titulo e a busca de
+  estados ativos na API canonica, nao por uma promessa de novo indice SQL.
+- Validacoes isoladas: `npm run test:rhdp-envio-parcial`,
+  `node scripts/validarRhPagamentoSolicitacao.js`,
+  `node scripts/validarRhPessoalPorSolicitacao.js` (backend), testes reais de UI
+  `validarRhPagamentoSolicitacaoUI.mjs` e `validarFilaInstrumentosUI.mjs`.
+
 ## Ticket de beneficio
 
 - o DP seleciona colaboradores ativos com valor de ticket configurado e ainda sem lote na competencia;

@@ -657,7 +657,7 @@ export default function RhDpPessoal() {
             status: localValido ? 'ATIVO' : undefined,
             q: busca || undefined
           }),
-        listarRhSolicitacoes({ situacao: 'ABERTA', obra_id: localValido?.id || undefined })
+        listarRhSolicitacoes({ situacao: 'EM_ANDAMENTO', obra_id: localValido?.id || undefined })
       ]);
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
       const listaConfirmada = Array.isArray(lista) ? lista : [];

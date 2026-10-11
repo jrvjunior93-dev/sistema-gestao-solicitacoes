@@ -71,6 +71,8 @@ const ROTULO_SITUACAO = {
   RASCUNHO: 'Rascunho',
   ABERTA: 'Aguardando decisao',
   APROVADA: 'Aprovada',
+  ENVIO_PARCIAL: 'Envio parcial para pagamento',
+  EM_REVISAO: 'Em edição pelo DP',
   REJEITADA: 'Devolvida para correcao',
   CANCELADA: 'Cancelada'
 };
@@ -90,6 +92,8 @@ const OPCOES_SITUACAO = [
   { valor: 'ABERTA', rotulo: 'Aguardando decisão' },
   { valor: 'REJEITADA', rotulo: 'Devolvidas para correção' },
   { valor: 'APROVADA', rotulo: 'Aprovadas' },
+  { valor: 'ENVIO_PARCIAL', rotulo: 'Envio parcial para pagamento' },
+  { valor: 'EM_REVISAO', rotulo: 'Em edição pelo DP' },
   { valor: 'CANCELADA', rotulo: 'Canceladas' }
 ];
 
@@ -110,7 +114,7 @@ function chipDoTipo(tipo) {
 
 function chipDaSituacao(situacao) {
   if (situacao === 'RASCUNHO') return 'rh-chip rh-chip--rascunho';
-  if (situacao === 'ABERTA') return 'rh-chip rh-chip--aberta';
+  if (['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(situacao)) return 'rh-chip rh-chip--aberta';
   if (situacao === 'REJEITADA') return 'rh-chip rh-chip--devolvida';
   if (situacao === 'APROVADA') return 'rh-chip rh-chip--evento';
   return 'rh-chip';
@@ -278,7 +282,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
 
   useEffect(() => {
     if (filtroTipo || (filtroSituacao && filtroSituacao !== 'ABERTA')) return;
-    const abertas = solicitacoes.filter((solicitacao) => solicitacao.situacao === 'ABERTA');
+    const abertas = solicitacoes.filter((solicitacao) => ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(solicitacao.situacao));
     aoContarAbertas?.(abertas.length);
     aoContarNaoLidas?.(abertas.filter((solicitacao) => solicitacao.nao_lida).length);
   }, [solicitacoes, filtroSituacao, filtroTipo, aoContarAbertas, aoContarNaoLidas]);

@@ -24,12 +24,13 @@ function incluirStatusOperacionais(status = []) {
 // Nao altera saldo, status financeiro, setor ou autorizacao nominal/passkey.
 async function marcarAnaliseProprietario({ titulos, usuarioId, transaction, origem = 'PAPEL', loteId = null }) {
   for (const titulo of titulos) {
+    require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
     if (titulo.tipo !== 'PAGAR' || !['ABERTO', 'PARCIAL'].includes(titulo.status) || !Number.isFinite(Number(titulo.valor_saldo)) || Number(titulo.valor_saldo) <= 0) {
       throw Object.assign(new Error(`O titulo ${titulo.codigo || titulo.id} nao possui saldo em aberto para analise.`), { statusCode: 409 });
     }
   }
   const emFila = await PagamentoManualFilaItem.findAll({
-    where: { titulo_financeiro_id: { [Op.in]: titulos.map((titulo) => titulo.id) }, status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } },
+    where: { titulo_financeiro_id: { [Op.in]: titulos.map((titulo) => titulo.id) }, status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'] } },
     attributes: ['id'], transaction
   });
   if (emFila.length) throw Object.assign(new Error('Um ou mais titulos ja estao na fila de pagamentos.'), { statusCode: 409 });
