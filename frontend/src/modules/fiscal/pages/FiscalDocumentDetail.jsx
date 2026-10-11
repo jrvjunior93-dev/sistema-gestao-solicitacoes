@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -171,6 +172,7 @@ function JsonBlock({ value }) {
 }
 
 export default function FiscalDocumentDetail() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { id } = useParams();
   const [documento, setDocumento] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -220,8 +222,10 @@ export default function FiscalDocumentDetail() {
   const openFile = async (type) => {
     setOpeningFile(type);
     try {
-      const result = await getFiscalDocumentFileUrl(id, type);
-      if (result?.url) window.open(result.url, '_blank', 'noopener,noreferrer');
+      if (type === 'xml') {
+        const result = await getFiscalDocumentFileUrl(id, type);
+        if (result?.url) window.open(result.url, '_blank', 'noopener,noreferrer');
+      } else await abrirPreview(() => getFiscalDocumentFileUrl(id, type), { nome: 'Documento fiscal ' + id + '.pdf', mime: 'application/pdf' });
     } catch (err) {
       avisar.erro(err.message || 'Erro ao abrir arquivo fiscal');
     } finally {
@@ -235,7 +239,7 @@ export default function FiscalDocumentDetail() {
       const result = await generateFiscalDocumentDanfe(id);
       setDocumento(result?.document || await getFiscalDocument(id));
       avisar.sucesso('DANFE gerado com sucesso.');
-      if (result?.url) window.open(result.url, '_blank', 'noopener,noreferrer');
+      if (result?.url) await abrirPreview({ url: result.url, nome: 'DANFE ' + id + '.pdf', mime: 'application/pdf' });
     } catch (err) {
       avisar.erro(err.message || 'Erro ao gerar DANFE fiscal');
     } finally {
@@ -1111,6 +1115,7 @@ export default function FiscalDocumentDetail() {
 
       {/* R21: o modal de confirmação do sistema, no lugar do window.confirm. */}
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

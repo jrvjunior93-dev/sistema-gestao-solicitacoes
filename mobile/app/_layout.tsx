@@ -14,7 +14,9 @@ export default function RootLayout() {
             backgroundColor: colors.background
           }
         }}
-      />
+      >
+        <Stack.Screen name="anexo" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+      </Stack>
     </AppProviders>
   );
 }

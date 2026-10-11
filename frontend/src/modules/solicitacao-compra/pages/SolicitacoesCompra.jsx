@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import { HiOutlineArrowDownTray, HiOutlineEye, HiOutlinePaperAirplane, HiOutlineTrash } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
@@ -88,6 +89,7 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function SolicitacoesCompra() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { avisos, avisar, fechar } = useAvisos();
@@ -316,16 +318,9 @@ export default function SolicitacoesCompra() {
 
   async function handleBaixarPdf(id) {
     try {
-      const blob = await baixarPdfSolicitacaoCompra(id);
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 10000);
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao gerar PDF');
-    }
+      await abrirPreview(async () => ({ url: URL.createObjectURL(await baixarPdfSolicitacaoCompra(id)), revogarUrl: true }),
+        { nome: 'Solicitação de compra ' + id + '.pdf', mime: 'application/pdf' });
+    } catch (error) { avisar.erro(error?.message || 'Erro ao gerar PDF'); }
   }
 
   async function handleInativar(ids) {
@@ -625,6 +620,7 @@ export default function SolicitacoesCompra() {
       </BlocoConteudo>
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../../src/components/common/Button';
 import { Chip } from '../../../src/components/common/Chip';
 import { EmptyState } from '../../../src/components/common/EmptyState';
@@ -35,6 +35,12 @@ import {
 type DetailTab = 'resumo' | 'historico' | 'anexos' | 'interacoes';
 
 export default function SolicitacaoDetalhePage() {
+  const abrindoAnexo = useRef(false);
+  const previewAtivo = useRef(true);
+  useEffect(() => {
+    previewAtivo.current = true;
+    return () => { previewAtivo.current = false; };
+  }, []);
   const params = useLocalSearchParams<{ id: string }>();
   const solicitacaoId = params.id;
   const queryClient = useQueryClient();
@@ -221,12 +227,17 @@ export default function SolicitacaoDetalhePage() {
     }
   };
 
-  const openAttachment = async (path: string) => {
+  const openAttachment = async (path: string, title?: string) => {
+    if (abrindoAnexo.current) return;
+    abrindoAnexo.current = true;
     try {
       const signedUrl = await getSignedAttachmentUrl(path);
-      await Linking.openURL(signedUrl);
+      if (!previewAtivo.current) return;
+      router.push({ pathname: '/anexo', params: { url: signedUrl, title: title || 'Anexo da solicitação', source: path } });
     } catch (error) {
-      Alert.alert('Erro ao abrir arquivo', error instanceof Error ? error.message : 'Falha inesperada');
+      if (previewAtivo.current) Alert.alert('Erro ao abrir arquivo', error instanceof Error ? error.message : 'Falha inesperada');
+    } finally {
+      abrindoAnexo.current = false;
     }
   };
 
@@ -370,7 +381,7 @@ export default function SolicitacaoDetalhePage() {
                   key={`${attachment.id}-${attachment.path}`}
                   title={attachment.name}
                   createdAt={attachment.createdAt}
-                  onPress={() => void openAttachment(attachment.path)}
+                  onPress={() => void openAttachment(attachment.path, attachment.name)}
                 />
               ))}
             </View>

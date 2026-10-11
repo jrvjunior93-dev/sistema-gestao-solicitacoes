@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DateInputBR from '../components/DateInputBR';
 import {
@@ -83,6 +84,7 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function GestaoContratos() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1316,18 +1318,9 @@ export default function GestaoContratos() {
     }
   }
 
-  async function visualizarAnexoContrato(caminhoArquivo) {
-    try {
-      const urlArquivo = await obterUrlAssinada(caminhoArquivo);
-      if (!urlArquivo) {
-        avisar.erro('Arquivo inválido.');
-        return;
-      }
-      window.open(urlArquivo, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      console.error(error);
-      avisar.erro('Erro ao visualizar anexo.');
-    }
+  async function visualizarAnexoContrato(caminhoArquivo, nome) {
+    try { await abrirPreview(() => obterUrlAssinada(caminhoArquivo), { nome, caminho: caminhoArquivo }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao visualizar anexo.'); }
   }
 
   async function baixarAnexoContrato(caminhoArquivo, nomeArquivo) {
@@ -2320,7 +2313,7 @@ export default function GestaoContratos() {
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
-                      onClick={() => visualizarAnexoContrato(anexo.caminho_arquivo)}
+                      onClick={() => visualizarAnexoContrato(anexo.caminho_arquivo, anexo.nome_original)}
                     >
                       Visualizar
                     </button>
@@ -2382,6 +2375,7 @@ export default function GestaoContratos() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

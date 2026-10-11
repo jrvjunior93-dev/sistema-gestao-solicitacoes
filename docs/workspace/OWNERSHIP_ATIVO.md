@@ -1,5 +1,27 @@
 # Ownership Ativo
 
+## Padronizacao dos visualizadores de arquivos - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao local e
+  validacoes concluidas, ownership liberado para publicacao autorizada.
+- Usuario autorizou aplicar o mapa, testar cada etapa e, na sequencia,
+  commitar e fazer push das pendencias somente na refactor/frontend.
+- Publicacao inclui frontend, preview nativo mobile, testes e documentacao.
+  outputs/ preservado fora do Git. Sem main, EC2, deploy ou banco real.
+- Reserva: visualizador compartilhado, hook/contexto e integracao App;
+  chamadores de preview de Solicitacoes/Financeiro, Compras/Contratos,
+  RH/DP, Fiscal/SST, Biblioteca/Comunicacao/Obras/Provisionamento mapeados;
+  preview nativo mobile, testes e documentacao/handoff correspondentes.
+- Etapas: base + Solicitacoes/Financeiro; Compras/Contratos; RH/DP;
+  demais modulos; mobile. Transporte de testes isolado, sem banco real.
+- Preservar autorizacao de links/endpoints, downloads, geracao de documentos,
+  HTML de previa interna e regras de negocios. Nenhuma migration.
+- Handoff: docs/handoffs/2026-10-11-padrao-visualizadores-arquivos.md.
+- Aprovados: build, 27 handlers/endpoints e relatorios com APIs isoladas,
+  fila/preview/colunas reais, contraste, selecao de relatorio, medicao/recarga,
+  RH/DP gerencial, contratos e acesso backend sem banco, mobile por adaptadores.
+- Limites: sem clipboard nativo, Expo typecheck completo ou dispositivo fisico.
+
 ## Publicacao Preview de arquivos da fila - 2026-10-11
 
 - Usuario autorizou commit e push das pendencias somente na refactor/frontend.

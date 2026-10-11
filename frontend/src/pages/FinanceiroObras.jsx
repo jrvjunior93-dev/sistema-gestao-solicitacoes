@@ -1,6 +1,8 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import VisualizadorArquivoModal from '../components/ui/VisualizadorArquivoModal';
 import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HiOutlineArrowDownTray, HiOutlineArrowUpTray, HiOutlineBuildingOffice2, HiOutlineDocumentText, HiOutlineEye, HiOutlineXMark } from 'react-icons/hi2';
+import { HiOutlineArrowDownTray, HiOutlineArrowUpTray, HiOutlineBuildingOffice2, HiOutlineDocumentText, HiOutlineXMark } from 'react-icons/hi2';
 import OverlayModal from '../components/ui/OverlayModal';
 import {
   confirmarImportacaoCustosHistoricosObra,
@@ -180,6 +182,7 @@ function tomDoValor(tone) {
   padrão que preserva o comportamento de hoje (R21).
 */
 export default function FinanceiroObras({ embutido = false }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const podeImportarHistorico = hasPermissao(user, 'financeiro.relatorios.importar_historico_obras');
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
@@ -364,15 +367,7 @@ export default function FinanceiroObras({ embutido = false }) {
     }
   }
 
-  function baixarPdf() {
-    if (!pdfUrl) return;
-    const link = document.createElement('a');
-    link.href = pdfUrl;
-    link.download = pdfFilename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
+
 
   function resetImportModal() {
     setImportForm({
@@ -727,51 +722,11 @@ export default function FinanceiroObras({ embutido = false }) {
 
       {error ? <div className="app-alert app-alert--error">{error}</div> : null}
 
-      {pdfModalOpen ? (
-        <OverlayModal rotulo="Relatório financeiro de obras" largura="1500px" onFechar={fecharPdf}>
-          <header data-modal="cabecalho" className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
-            <div>
-              <h2 className="text-lg font-semibold text-[var(--c-text)]">Relatório financeiro de obras</h2>
-              <p className="text-xs text-[var(--c-muted)]">PDF do período e dos filtros aplicados, respeitando seu acesso.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {pdfUrl ? (
-                <>
-                  <button type="button" className="btn btn-outline btn-sm gap-2"
-                    onClick={() => window.open(pdfUrl, '_blank', 'noopener,noreferrer')}>
-                    <HiOutlineEye className="h-4 w-4" /> Abrir em nova aba
-                  </button>
-                  <button type="button" className="btn btn-primary btn-sm gap-2" onClick={baixarPdf}>
-                    <HiOutlineArrowDownTray className="h-4 w-4" /> Baixar PDF
-                  </button>
-                </>
-              ) : null}
-              <button type="button" className="btn btn-outline btn-sm btn-square" onClick={fecharPdf}
-                title="Fechar relatório" aria-label="Fechar relatório">
-                <HiOutlineXMark className="h-4 w-4" />
-              </button>
-            </div>
-          </header>
-          <div className="bg-[var(--ui-surface-soft)] p-2 sm:p-3" style={{ height: 'min(75dvh, 750px)' }}>
-            {pdfLoading ? (
-              <div className="flex h-full items-center justify-center bg-[var(--c-surface)] text-sm font-semibold text-[var(--c-text)]">
-                Preparando o relatório filtrado...
-              </div>
-            ) : pdfError ? (
-              <div className="flex h-full items-center justify-center bg-[var(--c-surface)] p-4">
-                <div className="max-w-md text-center">
-                  <h3 className="text-sm font-semibold text-[var(--sem-danger)]">Não foi possível gerar o PDF</h3>
-                  <p className="mt-2 text-sm text-[var(--c-muted)]">{pdfError}</p>
-                  <button type="button" className="btn btn-outline btn-sm mt-4" onClick={abrirPdf}>Tentar novamente</button>
-                </div>
-              </div>
-            ) : pdfUrl ? (
-              <iframe src={pdfUrl} title="Visualização do relatório financeiro de obras"
-                className="h-full w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]" />
-            ) : null}
-          </div>
-        </OverlayModal>
-      ) : null}
+      {pdfModalOpen ? <VisualizadorArquivoModal
+        arquivo={{ nome: pdfFilename, titulo: 'Relatório financeiro de obras', url: pdfUrl, mime: 'application/pdf', carregando: pdfLoading, erro: pdfError }}
+        onClose={fecharPdf}
+        acoes={pdfError ? <button type="button" className="btn btn-outline btn-sm" onClick={abrirPdf}>Tentar novamente</button> : null}
+      /> : null}
 
       <StatGrid colunas={4}>
         <StatTile
@@ -904,14 +859,10 @@ export default function FinanceiroObras({ embutido = false }) {
                       {arquivo.tipo ? ` · ${arquivo.tipo}` : ''}
                     </small>
                   </span>
-                  <a
-                    className="btn btn-outline btn-sm shrink-0"
-                    href={String(arquivo.caminho || '').startsWith('http') ? arquivo.caminho : fileUrl(arquivo.caminho)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <button type="button" className="btn btn-outline btn-sm shrink-0"
+                    onClick={() => abrirPreview({ url: fileUrl(arquivo.caminho), nome: arquivo.nome, caminho: arquivo.caminho })}>
                     Abrir
-                  </a>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -1119,6 +1070,7 @@ export default function FinanceiroObras({ embutido = false }) {
       ) : null}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

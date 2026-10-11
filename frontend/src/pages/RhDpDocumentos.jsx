@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -82,6 +83,7 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const Moldura = comoAba ? 'section' : Pagina;
   const { user } = useAuth();
   const podeEditar = canManageRhDpDocumentos(user);
@@ -216,16 +218,9 @@ export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
     setPagina(1);
   }
 
-  async function abrirDocumento(id) {
-    try {
-      const url = await getRhDocumentoLink(id);
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao abrir documento RH/DP');
-    }
+  async function abrirDocumento(item) {
+    try { await abrirPreview(() => getRhDocumentoLink(item.id), { nome: item.nome_original, caminho: item.caminho_arquivo, mime: item.mimetype || item.mime_type }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao abrir documento RH/DP'); }
   }
 
   async function onSelecionarSubstituicao(documento, file) {
@@ -415,7 +410,7 @@ export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
           vazio="Nenhum documento localizado"
           acoesLinha={(item) => (
             <>
-              <button type="button" className="btn btn-outline" onClick={() => abrirDocumento(item.id)}>
+              <button type="button" className="btn btn-outline" onClick={() => abrirDocumento(item)}>
                 Abrir
               </button>
               <Link
@@ -473,6 +468,7 @@ export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Moldura>
   );
 }

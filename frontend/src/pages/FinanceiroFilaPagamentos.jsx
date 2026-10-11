@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -564,6 +565,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
 }
 
 export default function FinanceiroFilaPagamentos() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
@@ -737,16 +739,9 @@ export default function FinanceiroFilaPagamentos() {
     }
   }
 
-  async function abrirComprovante(filaId, comprovanteId) {
+  async function abrirComprovante(filaId, comprovanteId, nome) {
     try {
-      const resposta = await getComprovanteFilaPagamento(filaId, comprovanteId);
-      const link = document.createElement('a');
-      link.href = resposta.url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await abrirPreview(() => getComprovanteFilaPagamento(filaId, comprovanteId), { nome: nome || 'Comprovante.pdf', mime: 'application/pdf' });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
     }
@@ -1103,7 +1098,7 @@ export default function FinanceiroFilaPagamentos() {
                               type="button" className="btn btn-outline btn-sm btn-icon-only"
                               title={comprovante.nome}
                               aria-label={`Abrir comprovante ${comprovante.nome}`}
-                              onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
+                              onClick={() => abrirComprovante(comprovante.filaId, comprovante.id, comprovante.nome)}>
                               <HiOutlineDocumentText className="h-4 w-4" aria-hidden="true" />
                             </button>
                           ))}
@@ -1308,6 +1303,7 @@ export default function FinanceiroFilaPagamentos() {
         />
       ) : null}
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

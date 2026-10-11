@@ -6,10 +6,11 @@ import { chromium } from 'playwright';
 const raiz = new URL('../', import.meta.url);
 const anexo = readFileSync(fileURLToPath(new URL('src/pages/SolicitacaoDetalhe/PreviewAnexoModal.jsx', raiz)), 'utf8');
 const compra = readFileSync(fileURLToPath(new URL('src/modules/solicitacao-compra/components/CompraPreviewModal.jsx', raiz)), 'utf8');
-assert.match(anexo, /app-file-preview__title/);
-assert.match(anexo, /data-modal="rodape"[\s\S]*?className="app-file-preview/);
-assert.match(compra, /className="app-file-preview flex/);
-assert.match(compra, /app-file-preview__title/);
+const visualizador = readFileSync(fileURLToPath(new URL('src/components/ui/VisualizadorArquivoModal.jsx', raiz)), 'utf8');
+assert.match(anexo, /<VisualizadorArquivoModal/);
+assert.match(compra, /<VisualizadorArquivoModal/);
+assert.match(visualizador, /app-file-preview__title/);
+assert.match(visualizador, /data-modal="rodape"[\s\S]*?className="app-file-preview/);
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 try {

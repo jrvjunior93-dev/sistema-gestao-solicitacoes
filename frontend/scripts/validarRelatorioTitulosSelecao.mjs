@@ -5,11 +5,24 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
+import { parse } from '@babel/parser';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = readFileSync(path.join(root, 'src/pages/FinanceiroTitulos.jsx'), 'utf8');
-const handler = source.slice(source.indexOf('async function abrirRelatorio()'), source.indexOf('function baixarRelatorio()'));
+const ast = parse(source, { sourceType: 'module', plugins: ['jsx'] });
+let handlerNode;
+function buscarHandler(node) {
+  if (!node || typeof node !== 'object') return;
+  if (node.type === 'FunctionDeclaration' && node.id?.name === 'abrirRelatorio') handlerNode = node;
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) value.forEach(buscarHandler);
+    else if (value && typeof value === 'object') buscarHandler(value);
+  }
+}
+buscarHandler(ast);
+assert.ok(handlerNode, 'Handler de relatorio deve existir independentemente dos helpers de download.');
+const handler = source.slice(handlerNode.start, handlerNode.end);
 const buttonStart = source.indexOf('{canExportTitulos && <button');
 const button = source.slice(buttonStart, source.indexOf('</button>}', buttonStart) + '</button>}'.length);
 assert.ok(handler.includes('selectedTitulos.map'));

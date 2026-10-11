@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:visualizadores-arquivos": "node scripts/validarVisualizadoresArquivos.mjs todos",
+    "test:preview-mobile": "node scripts/validarPreviewMobile.mjs",
     "test:pix-copia-cola": "node scripts/validarPixCopiaCola.mjs",
     "test:medicao-recarga-envio-ui": "node scripts/validarMedicaoRecargaEnvioUI.mjs",
     "test:titulo-juros-multa-ui": "node scripts/validarTituloJurosMultaUI.mjs",

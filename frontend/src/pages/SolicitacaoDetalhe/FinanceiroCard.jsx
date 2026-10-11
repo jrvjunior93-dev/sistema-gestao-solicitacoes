@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import DateInputBR from '../../components/DateInputBR';
 import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -1073,6 +1074,7 @@ export default function FinanceiroCard({
   podeVisualizarTitulos = false,
   somenteLeitura = false
 }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const podeExecutarAcoesFinanceiras = podeOperarAbaFinanceiro && !somenteLeitura;
   const podeConsultarTitulo = podeAcessarModuloFinanceiro && hasPermissao(user, 'financeiro.titulos.visualizar');
@@ -1288,18 +1290,12 @@ export default function FinanceiroCard({
     autorizacaoDisponivel, confirmar, avisar, aoAtualizar: atualizarAposMedicaoOuEnvio
   });
 
-  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao) {
+  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao, nome) {
     try {
-      const resposta = caminhoSolicitacao
-        ? { url: await getLinkSeguroAnexoSolicitacao(caminhoSolicitacao) }
-        : await getComprovanteFilaPagamento(filaId, comprovanteId);
-      const link = document.createElement('a');
-      link.href = resposta.url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await abrirPreview(() => caminhoSolicitacao
+        ? getLinkSeguroAnexoSolicitacao(caminhoSolicitacao)
+        : getComprovanteFilaPagamento(filaId, comprovanteId),
+        { nome: nome || 'Comprovante', caminho: caminhoSolicitacao, mime: caminhoSolicitacao ? undefined : 'application/pdf' });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
     }
@@ -3886,6 +3882,7 @@ export default function FinanceiroCard({
           </div>
         </OverlayModal>
       )}
+      {modalPreview}
     </>
   );
 }

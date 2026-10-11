@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -208,6 +209,7 @@ function AcaoIconePessoal({ rotulo, icone: Icone, solicitacaoId, variant = 'outl
 }
 
 export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, onAbrirApuracao, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -404,13 +406,10 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   }, [parametros]);
 
   async function abrirAnexo(anexo) {
+    const solicitacaoId = aberta.id;
     limpar();
-    try {
-      const url = await getRhSolicitacaoAnexoLink(aberta.id, anexo.id);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      avisar.erro(error.message || 'Nao foi possivel abrir o documento.');
-    }
+    try { await abrirPreview(() => getRhSolicitacaoAnexoLink(solicitacaoId, anexo.id), { nome: anexo.nome_original, caminho: anexo.caminho_arquivo, mime: anexo.mimetype || anexo.mime_type }); }
+    catch (error) { avisar.erro(error.message || 'Nao foi possivel abrir o documento.'); }
   }
 
   /*
@@ -1030,6 +1029,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
       ) : null}
 
       {elementoConfirmacao}
+      {modalPreview}
     </div>
   );
 }

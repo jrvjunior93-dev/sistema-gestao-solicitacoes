@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
@@ -36,6 +37,7 @@ function Status({ value }) {
 }
 
 export default function FinanceiroAutorizacoesPagamento() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -237,10 +239,9 @@ export default function FinanceiroAutorizacoesPagamento() {
     finally { mutationRef.current = false; setBusy(false); }
   }
 
-  async function openDocument(documentId) {
+  async function openDocument(doc) {
     try {
-      const response = await obterDocumentoAutorizacao(documentId);
-      window.open(response.url, '_blank', 'noopener,noreferrer');
+      await abrirPreview(() => obterDocumentoAutorizacao(doc.id), { nome: doc.nome, mime: doc.mime_type });
     } catch (error) { avisar.erro(error?.message || 'Não foi possível abrir o documento.'); }
   }
 
@@ -340,7 +341,7 @@ export default function FinanceiroAutorizacoesPagamento() {
                       <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
                     <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
-                    <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc.id)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
+                    <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
                     <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
                       {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
                         Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
@@ -396,6 +397,7 @@ export default function FinanceiroAutorizacoesPagamento() {
         <div className="pa-config__form"><select value={authorizerUserId} onChange={(event) => setAuthorizerUserId(event.target.value)}><option value="">Selecione um usuário ativo</option>{users.map((item) => <option key={item.id} value={item.id}>{item.nome} · {item.email}</option>)}</select><button type="button" className="btn btn-secondary btn-sm" onClick={addAuthorizer} disabled={!authorizerUserId || busy}>Adicionar</button></div>
         <div className="pa-config__chips">{authorizers.map((item) => <span key={item.id}><span>{item.usuario?.nome} · {item.ativo ? 'ativo' : 'inativo'}</span><button type="button" onClick={() => toggleAuthorizer(item)} disabled={busy}>{item.ativo ? 'Desativar' : 'Reativar'}</button></span>)}</div>
       </section>}
+      {modalPreview}
     </Pagina>
   );
 }

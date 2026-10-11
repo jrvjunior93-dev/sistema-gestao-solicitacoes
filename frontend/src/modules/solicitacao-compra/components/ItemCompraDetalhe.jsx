@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { HiOutlineDocumentArrowDown, HiOutlineLink } from 'react-icons/hi2';
 import { fileUrl } from '../../../services/api';
 import TratamentoItemManual from './TratamentoItemManual';
@@ -36,6 +37,7 @@ export default function ItemCompraDetalhe({
   onCadastrarUnidade,
   onCatalogado
 }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const detalheId = `compra-item-detalhe-${item.item_tipo}-${item.id}`;
 
   return (
@@ -68,9 +70,9 @@ export default function ItemCompraDetalhe({
             </a>
           ) : null}
           {item.arquivo_url ? (
-            <a className="btn btn-outline btn-sm" href={fileUrl(item.arquivo_url)} target="_blank" rel="noreferrer">
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirPreview({ url: fileUrl(item.arquivo_url), nome: item.arquivo_nome_original, caminho: item.arquivo_url })}>
               <HiOutlineDocumentArrowDown aria-hidden="true" /> {item.arquivo_nome_original || 'Abrir anexo'}
-            </a>
+            </button>
           ) : null}
         </div>
       </div>
@@ -97,6 +99,7 @@ export default function ItemCompraDetalhe({
       {item.tipo === 'MANUAL' && !podeCatalogar && !item.insumo_catalogado_id ? (
         <div className="compra-item-permission-note">Item pendente de cadastro. Somente usuários com permissão de catalogacao podem trata-lo.</div>
       ) : null}
+      {modalPreview}
     </div>
   );
 }

@@ -12,7 +12,7 @@ export default function ComprovantesTituloSolicitacao({ titulo, onAbrir }) {
       <button key={`${comprovante.filaId}-${comprovante.id || 'legado'}`}
         type="button" className="btn btn-outline btn-sm max-w-full"
         title={comprovante.caminhoSolicitacao ? `Comprovante vinculado à solicitação: ${comprovante.nome}` : comprovante.nome}
-        onClick={() => onAbrir(comprovante.filaId, comprovante.id, comprovante.caminhoSolicitacao)}>
+        onClick={() => onAbrir(comprovante.filaId, comprovante.id, comprovante.caminhoSolicitacao, comprovante.nome)}>
         <span className="min-w-0 truncate">{comprovante.caminhoSolicitacao ? 'Solicitação · ' : ''}{comprovante.nome}</span>
       </button>
     ))}

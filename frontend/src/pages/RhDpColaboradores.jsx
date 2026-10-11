@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { Fragment, useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { HiOutlineEye, HiOutlinePencilSquare, HiOutlineTicket } from 'react-icons/hi2';
@@ -304,6 +305,7 @@ const FILTROS_DOCUMENTOS_DA_TELA = [
 ];
 
 export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor = false, onFecharEditor, onSalvo } = {}) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const Moldura = comoEditor ? Fragment : Pagina;
   const salvarRef = useRef(false);
   const { user } = useAuth();
@@ -790,26 +792,15 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
     }
   }
 
-  async function abrirDocumento(id) {
-    try {
-      const url = await getRhDocumentoLink(id);
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao abrir documento RH/DP');
-    }
+  async function abrirDocumento(item) {
+    try { await abrirPreview(() => getRhDocumentoLink(item.id), { nome: item.nome_original, caminho: item.caminho_arquivo, mime: item.mimetype || item.mime_type }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao abrir documento RH/DP'); }
   }
 
   async function abrirArquivoDossie(item) {
-    try {
-      const url = await getRhDossieArquivoLink(form.id, item);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao abrir arquivo do dossie');
-    }
+    const colaboradorId = form.id;
+    try { await abrirPreview(() => getRhDossieArquivoLink(colaboradorId, item), { nome: item.nome, caminho: item.caminho_arquivo, mime: item.mime_type }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao abrir arquivo do dossie'); }
   }
 
   async function onSelecionarNovoDocumento(event) {
@@ -1720,7 +1711,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                         vazio="Nenhum documento localizado para este colaborador"
                         acoesLinha={(item) => (
                           <>
-                            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirDocumento(item.id)}>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirDocumento(item)}>
                               Abrir
                             </button>
                             {podeGerirDocumentos && item.ativo && (
@@ -1850,6 +1841,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Moldura>
   );
 }

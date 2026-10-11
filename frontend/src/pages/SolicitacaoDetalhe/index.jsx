@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -289,6 +290,7 @@ function mapearItemManualCompraDireta(item) {
 }
 
 export default function SolicitacaoDetalhe() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -1236,21 +1238,16 @@ export default function SolicitacaoDetalhe() {
 
   async function abrirBoletoCompraDireta(boleto) {
     try {
-      let url = fileUrl(boleto.caminho);
-      if (String(boleto.caminho).startsWith('http')) {
-        const params = new URLSearchParams({ url: String(boleto.caminho).replace(/%(?![0-9A-Fa-f]{2})/g, '%25'), historico_id: String(boleto.id) });
-        const response = await fetch(`${API_URL}/anexos/presign?${params}`, { headers: authHeaders() });
-        if (!response.ok) throw new Error('Não foi possível abrir o boleto.');
-        url = (await response.json()).url;
-      }
-      if (!url) throw new Error('Boleto indisponível.');
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await abrirPreview(async () => {
+        let url = fileUrl(boleto.caminho);
+        if (String(boleto.caminho).startsWith('http')) {
+          const params = new URLSearchParams({ url: String(boleto.caminho).replace(/%(?![0-9A-Fa-f]{2})/g, '%25'), historico_id: String(boleto.id) });
+          const response = await fetch(API_URL + '/anexos/presign?' + params, { headers: authHeaders() });
+          if (!response.ok) throw new Error('Não foi possível abrir o boleto.');
+          url = (await response.json()).url;
+        }
+        return url;
+      }, { nome: boleto.nome || 'Boleto.pdf', caminho: boleto.caminho });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o boleto.');
     }
@@ -2433,6 +2430,7 @@ export default function SolicitacaoDetalhe() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

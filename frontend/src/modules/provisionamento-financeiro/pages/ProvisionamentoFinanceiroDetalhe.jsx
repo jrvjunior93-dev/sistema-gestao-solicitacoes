@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import DateInputBR from '../../../components/DateInputBR';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -100,6 +101,7 @@ function formatarObraOuNulo(obra) {
 }
 
 export default function ProvisionamentoFinanceiroDetalhe() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { id } = useParams();
   const { avisos, avisar, fechar } = useAvisos();
   const [contexto, setContexto] = useState(null);
@@ -235,17 +237,8 @@ export default function ProvisionamentoFinanceiroDetalhe() {
   }
 
   async function abrirAnexo(anexo) {
-    try {
-      const data = await obterLinkAnexoProvisaoFinanceira(anexo?.id);
-      if (!data?.url) {
-        avisar.erro(`Arquivo indisponivel: ${anexo?.nome_original || 'anexo'}.`);
-        return;
-      }
-      window.open(data.url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao abrir anexo.');
-    }
+    try { await abrirPreview(() => obterLinkAnexoProvisaoFinanceira(anexo?.id), { nome: anexo?.nome_original, caminho: anexo?.caminho_arquivo }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao abrir anexo.'); }
   }
 
   if (loading || !provisao || !form) {
@@ -547,6 +540,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
           <p className="text-sm text-[var(--c-muted)]">Nenhum histórico registrado.</p>
         )}
       </BlocoConteudo>
+      {modalPreview}
     </Pagina>
   );
 }

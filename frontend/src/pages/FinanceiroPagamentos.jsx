@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -306,6 +307,7 @@ function getEventPayloadSummary(event = {}) {
 }
 
 export default function FinanceiroPagamentos() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('titulos');
   const [accounts, setAccounts] = useState([]);
@@ -754,7 +756,7 @@ export default function FinanceiroPagamentos() {
       const data = await gerarComprovantePaymentBatchItem(selectedBatch.id, item.id);
       const url = data?.signed_url || data?.comprovante_pdf_url;
       if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        await abrirPreview({ url, nome: 'Comprovante de pagamento.pdf', mime: 'application/pdf' });
       }
       await refreshAfterAction(selectedBatch.id);
     } catch (err) {
@@ -1678,6 +1680,7 @@ export default function FinanceiroPagamentos() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

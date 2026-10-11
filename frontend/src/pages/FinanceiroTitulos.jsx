@@ -1,3 +1,4 @@
+import VisualizadorArquivoModal from '../components/ui/VisualizadorArquivoModal';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -1308,23 +1309,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     if (relatorioPdfUrl) URL.revokeObjectURL(relatorioPdfUrl);
   }, [relatorioPdfUrl]);
 
-  useEffect(() => {
-    if (!relatorioModalOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        relatorioRequestIdRef.current += 1;
-        setRelatorioModalOpen(false);
-        setRelatorioPdfUrl('');
-      }
-    };
-    document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [relatorioModalOpen]);
+
 
   /*
     O efeito que RELIA a escolha na troca de usuário saiu (05/09): a
@@ -2461,20 +2446,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     }
   }
 
-  function baixarRelatorio() {
-    if (!relatorioPdfUrl) return;
-    const link = document.createElement('a');
-    link.href = relatorioPdfUrl;
-    link.download = relatorioFilename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
 
-  function abrirRelatorioNovaAba() {
-    if (!relatorioPdfUrl) return;
-    window.open(relatorioPdfUrl, '_blank', 'noopener,noreferrer');
-  }
+
+
 
   function exportarTitulos() {
     const columns = getTituloExportColumns();
@@ -3661,94 +3635,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         ) : null}
       </BlocoConteudo>
 
-      {relatorioModalOpen ? (
-        <div
-          className="fixed inset-0 z-modal flex items-center justify-center bg-[var(--modal-overlay)] p-0 backdrop-blur-sm sm:p-4"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) fecharRelatorio();
-          }}
-        >
-          <section
-            className="flex h-full w-full flex-col overflow-hidden bg-[var(--c-surface)] shadow-2xl sm:h-[min(92vh,920px)] sm:max-w-[min(96vw,1500px)] sm:rounded-2xl sm:border sm:border-[var(--c-border)]"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="relatorio-titulos-title"
-          >
-            <header className="flex shrink-0 flex-col gap-3 border-b border-[var(--c-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--sem-info-bg)] text-[var(--sem-info)]">
-                    <HiOutlineDocumentText className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <h2 id="relatorio-titulos-title" className="truncate text-lg font-semibold text-[var(--c-text)]">
-                      Relatorio de {pageTitle}
-                    </h2>
-                    <p className="text-xs text-[var(--c-muted)]">
-                      {relatorioSelecaoCount > 0
-                        ? `${relatorioSelecaoCount} titulo(s) selecionado(s), respeitando os filtros e seu escopo de acesso.`
-                        : 'Todos os títulos encontrados pelos filtros aplicados, respeitando seu escopo de acesso.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                {relatorioPdfUrl ? (
-                  <>
-                    <button type="button" className="btn btn-outline btn-sm gap-2" onClick={abrirRelatorioNovaAba}>
-                      <HiOutlineEye className="h-4 w-4" />
-                      <span className="hidden sm:inline">Abrir em nova aba</span>
-                      <span className="sm:hidden">Abrir</span>
-                    </button>
-                    <button type="button" className="btn btn-primary btn-sm gap-2" onClick={baixarRelatorio}>
-                      <HiOutlineArrowDownTray className="h-4 w-4" />
-                      Baixar PDF
-                    </button>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={fecharRelatorio}
-                  title="Fechar relatório"
-                  aria-label="Fechar relatório"
-                >
-                  <HiOutlineXMark className="h-4 w-4" />
-                </button>
-              </div>
-            </header>
-
-            <div className="min-h-0 flex-1 bg-[var(--c-bg)] p-2 sm:p-3">
-              {relatorioLoading ? (
-                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
-                  <div className="text-center">
-                    <span className="loading loading-spinner loading-md text-primary" aria-hidden="true" />
-                    <p className="mt-3 text-sm font-semibold text-[var(--c-text)]">Preparando o relatório completo...</p>
-                    <p className="mt-1 text-xs text-[var(--c-muted)]">{relatorioSelecaoCount > 0 ? 'Aguarde enquanto os títulos selecionados são consolidados.' : 'Aguarde enquanto os títulos filtrados são consolidados.'}</p>
-                  </div>
-                </div>
-              ) : relatorioError ? (
-                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-[var(--sem-danger-border)] bg-[var(--c-surface)] p-4">
-                  <div className="max-w-md text-center">
-                    <h3 className="text-sm font-semibold text-[var(--sem-danger)]">Não foi possível gerar o relatório</h3>
-                    <p className="mt-2 text-sm text-[var(--c-muted)]">{relatorioError}</p>
-                    <button type="button" className="btn btn-outline btn-sm mt-4" onClick={abrirRelatorio}>
-                      Tentar novamente
-                    </button>
-                  </div>
-                </div>
-              ) : relatorioPdfUrl ? (
-                <iframe
-                  src={relatorioPdfUrl}
-                  title={`Visualização do relatório de ${pageTitle.toLowerCase()}`}
-                  className="h-full min-h-64 w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]"
-                />
-              ) : null}
-            </div>
-          </section>
-        </div>
-      ) : null}
+      {relatorioModalOpen ? <VisualizadorArquivoModal
+        arquivo={{ nome: relatorioFilename, titulo: 'Relatório de ' + pageTitle, descricao: relatorioSelecaoCount > 0 ? relatorioSelecaoCount + ' título(s) selecionado(s)' : 'Filtros aplicados', url: relatorioPdfUrl, mime: 'application/pdf', carregando: relatorioLoading, erro: relatorioError }}
+        onClose={fecharRelatorio}
+        fecharAoClicarFora
+        acoes={relatorioError ? <button type="button" className="btn btn-outline btn-sm" onClick={abrirRelatorio}>Tentar novamente</button> : null}
+      /> : null}
 
       {modalBaixaMassaOpen ? (
         <div className="modal-overlay finance-operation-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="baixa-massa-titulo">

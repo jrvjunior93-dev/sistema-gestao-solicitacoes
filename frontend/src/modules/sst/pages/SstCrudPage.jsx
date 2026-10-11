@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { canManageSstArea, canViewSstArea } from '../../../utils/acessoProduto';
@@ -159,6 +160,7 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function SstCrudPage() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { resource } = useParams();
   const { user } = useAuth();
   const { isVisible } = useUiVisibility();
@@ -413,8 +415,7 @@ export default function SstCrudPage() {
 
   const openDocument = async (row) => {
     try {
-      const payload = await getDocumentoSstUrl(row.id);
-      if (payload?.url) window.open(payload.url, '_blank', 'noopener,noreferrer');
+      await abrirPreview(() => getDocumentoSstUrl(row.id), { nome: row.nome_original || row.arquivo_nome_original || row.titulo, caminho: row.caminho_arquivo || row.arquivo_url, mime: row.mimetype || row.mime_type });
     } catch (err) {
       avisar.erro(err.message || 'Erro ao abrir documento');
     }
@@ -721,6 +722,7 @@ export default function SstCrudPage() {
       ) : null}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

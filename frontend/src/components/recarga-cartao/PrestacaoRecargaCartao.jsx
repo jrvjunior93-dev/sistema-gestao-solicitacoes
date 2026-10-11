@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import ApropriacaoAutocomplete from '../ui/ApropriacaoAutocomplete';
 import { listarApropriacoes } from '../../services/apropriacoes';
@@ -29,6 +30,7 @@ function linhaVazia(obraId = '') {
 }
 
 export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeInteragir = true, onAtualizado }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const recarga = contexto?.ultima_recarga || null;
   const prestacao = recarga?.prestacao || null;
   const obras = contexto?.obras_disponiveis || [];
@@ -161,14 +163,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
     setErro('');
     setAbrindoDocumentoId(documento.id);
     try {
-      const url = await getLinkSeguroAnexoSolicitacao(documento.caminho_arquivo);
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await abrirPreview(() => getLinkSeguroAnexoSolicitacao(documento.caminho_arquivo), { nome: documento.nome_original, caminho: documento.caminho_arquivo });
     } catch (error) {
       setErro(error.message || 'Não foi possível abrir o documento.');
     } finally {
@@ -413,6 +408,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
       ) : null}
 
       {erro ? <div className="app-alert app-alert--error" role="alert">{erro}</div> : null}
+      {modalPreview}
     </section>
   );
 }
