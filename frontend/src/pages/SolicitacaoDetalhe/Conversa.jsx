@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { API_URL, authHeaders } from '../../services/api';
 import { HiPaperClip } from 'react-icons/hi2';
 import PendingAttachmentsList from '../../components/attachments/PendingAttachmentsList';
@@ -43,11 +44,12 @@ import { Avisos, BlocoConteudo, useAvisos } from '../../components/padrao';
  * continuam existindo mesmo quando o conteudo esta recolhido.
  */
 export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = true, podeAnexar = podeInteragir, motivoBloqueio = '' }) {
-  const [texto, setTexto] = useState('');
-  const [arquivos, setArquivos] = useState([]);
+  const [texto, setTexto] = useWorkspaceState('conversa:texto', '');
+  const [arquivos, setArquivos] = useWorkspaceState('conversa:arquivos', []);
   const [loading, setLoading] = useState(false);
   const [usuarios, setUsuarios] = useState([]);
-  const [usuariosSelecionados, setUsuariosSelecionados] = useState([]);
+  const [usuariosSelecionados, setUsuariosSelecionados] = useWorkspaceState('conversa:mencoes', []);
+  useWorkspaceWork(Boolean(texto.trim()) || arquivos.length > 0, loading, 'conversa');
   const [mostrarLista, setMostrarLista] = useState(false);
   const [buscaUsuario, setBuscaUsuario] = useState('');
   const inputRef = useRef(null);

@@ -1,5 +1,18 @@
 # Modulo SOLICITACOES
 
+## Piloto de navegacao e estado das abas - 2026-10-12
+
+Base de historico por aba e piloto em Nova Solicitacao, lista e detalhes.
+Rascunhos ficam apenas em memoria por usuario/escopo; nao sobrevivem a
+F5/logout. Lista/detalhes consultam novamente os endpoints autorizados,
+sem cache de DTO nem alteracao de ACL. Apenas um formulario novo fica
+retido; as demais paginas usam snapshots leves. Modais criticos e outros
+modulos continuam fora da expansao do piloto. Rollback por build com
+VITE_WORKSPACE_PILOT=off. Sem migration ou restart para este pacote.
+
+Contrato, cobertura, limites e homologacao:
+[piloto de navegacao](../../arquitetura/2026-10-11-piloto-navegacao-solicitacoes.md).
+
 ## Interacoes pendentes por usuario - 2026-10-11
 
 - Na lista (tabela/cards/celular), o balao junto ao codigo agrupa as

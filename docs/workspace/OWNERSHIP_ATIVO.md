@@ -1,5 +1,51 @@
 # Ownership Ativo
 
+## Publicacao do piloto de navegacao - 2026-10-12
+
+- Commit/push autorizado pelo usuario exclusivamente na refactor/frontend.
+- Reserva temporaria: arquivos proprios do mapa/piloto, handoff e README
+  Solicitacoes; paineis compartilhados somente nos acrescimos desta tarefa.
+- Auditoria financeira, seus scripts e outputs ficam fora da publicacao.
+- Sem main, acesso EC2, restart, banco ou migration real. Comandos DEV
+  devem interromper se o checkout tiver pendencias de backend anteriores.
+- Revalidacao piloto/build aprovada; reserva documental liberada apos
+  preparacao do commit isolado. Homologacao operacional em DEV pendente.
+
+## Base e piloto de navegacao em Solicitacoes 2026-10-11
+
+- Sessao: codex-workspace-piloto-20261011; finalizado local, ownership liberado, sem delegacao.
+- Autorizacao: base e piloto Solicitacoes, com testes por etapa e desempenho.
+- Reserva: navigation/useWorkspaceTabs.js e novos WorkspaceContext/View/model;
+  layout/Layout.jsx, utils/navigation.js, componentes de modal/lista e adapters
+  de NovaSolicitacao, Solicitacoes, SolicitacaoDetalhe/Conversa/Timeline/edicao;
+  inclui CompraEtapas somente para rascunhos de comentarios/motivos e estados
+  de UI, sem mudar aprovacoes, cotacao, encaminhamento ou suas permissoes;
+  scripts/fixtures de QA novos, contrato/handoff e acrescimos proprios no painel.
+- Sem banco, migration, commit/push, main ou EC2. Auditoria financeira preservada.
+- Revisao adicional de seguranca solicitada: reservar apenas o teste
+  backend/scripts/validarEdicaoDadosSolicitacao.js para atualizar seu mock da
+  dependencia de adiantamentos ja existente; nenhum runtime/ACL backend muda.
+- Retencao limitada ao formulario novo; listas/detalhes com snapshots leves,
+  sem duplicar polling, SSE, permissoes ou operacoes de negocio.
+- Handoff: docs/handoffs/2026-10-11-piloto-navegacao-solicitacoes.md;
+  contrato em docs/arquitetura/2026-10-11-piloto-navegacao-solicitacoes.md.
+
+## Mapa e plano de navegacao e estado das abas 2026-10-11
+
+- Sessao: codex-mapa-navegacao-estado-20261011; finalizado, ownership liberado, sem delegacao.
+- Reserva: novo frontend/scripts/mapearNavegacaoEstado.mjs, inventario e plano
+  novos em docs/arquitetura/2026-10-11-*, handoff correspondente e
+  outputs/mapa-navegacao-estado-20261011/. Painel somente por acrescimo.
+- Inclui diagnosticarAbasEstado.mjs: fixture local do hook/Outlet real para
+  reproduzir desmontagem e perda de estado, sem endpoints ou dados reais.
+- Escopo exclusivamente diagnostico/documental: todas as rotas, componentes,
+  navegacoes, estados e dependencias de API. Nenhuma mudanca de runtime,
+  regra, endpoint, migration, banco, commit/push, main ou EC2.
+- Preservar integralmente a auditoria financeira da outra conversa.
+- Inventario 221/221, diagnostico isolado desktop/mobile e validadores
+  aprovados. Plano inclui desempenho/limites de memoria e contratos por
+  fluxo; implementacao depende de autorizacao. Handoff correspondente criado.
+
 ## Publicacao das pendencias desta conversa - 2026-10-11
 
 - Commit/push autorizado exclusivamente na refactor/frontend: Pix e dados

@@ -1,5 +1,6 @@
 import { Children, isValidElement, useEffect, useState } from 'react';
 import ModalPortal from './ModalPortal';
+import { useWorkspaceActive } from '../../navigation/WorkspaceContext';
 
 /**
  * Casca de modal do sistema: centraliza sobre a AREA DE CONTEUDO e resolve o empilhamento.
@@ -46,10 +47,11 @@ export default function OverlayModal({
   fecharComEscape = true,
   children
 }) {
+  const active = useWorkspaceActive();
   const [recuoConteudo, setRecuoConteudo] = useState(0);
 
   useEffect(() => {
-    if (!aberto || typeof document === 'undefined') return undefined;
+    if (!active || !aberto || typeof document === 'undefined') return undefined;
     const medir = () => {
       const principal = document.querySelector('.layout-main');
       setRecuoConteudo(principal ? Math.max(0, Math.round(principal.getBoundingClientRect().left)) : 0);
@@ -57,7 +59,7 @@ export default function OverlayModal({
     medir();
     window.addEventListener('resize', medir);
     return () => window.removeEventListener('resize', medir);
-  }, [aberto]);
+  }, [aberto, active]);
 
   if (!aberto || typeof document === 'undefined') return null;
 

@@ -1,6 +1,8 @@
 import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useWorkspaceTitle, useWorkspaceState, useWorkspaceEdicaoSolicitacao, useWorkspaceWork } from '../../navigation/WorkspaceContext';
+import { useSafeNavigateBack } from '../../utils/navigation';
 import AtencaoPendente, { gruposInteracoes } from '../Solicitacoes/AtencaoPendente';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLiveUpdateSubscription } from '../../contexts/LiveUpdatesContext';
@@ -292,6 +294,7 @@ function mapearItemManualCompraDireta(item) {
 }
 
 export default function SolicitacaoDetalhe() {
+  const voltarWorkspace = useSafeNavigateBack('/solicitacoes');
   const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { id } = useParams();
   const navigate = useNavigate();
@@ -357,6 +360,10 @@ export default function SolicitacaoDetalhe() {
   const podeCatalogarItensManuaisCompra = moduloComprasHabilitado && canCatalogarItensManuaisCompras(user);
 
   const [solicitacao, setSolicitacao] = useState(null);
+  const paginaMontadaRef = useRef(true);
+  const versaoCargaRef = useRef(0);
+  useEffect(() => { paginaMontadaRef.current = true; return () => { paginaMontadaRef.current = false; }; }, []);
+  useWorkspaceTitle(solicitacao?.codigo || 'Solicitação');
   const versaoLeituraInteracoesRef = useRef(0);
   const locationInteracao = useLocation();
   const queryInteracao = new URLSearchParams(locationInteracao.search);
@@ -376,7 +383,7 @@ export default function SolicitacaoDetalhe() {
     window.addEventListener('fluxy:interacoes-lidas', leitura);
     return () => window.removeEventListener('fluxy:interacoes-lidas', leitura);
   }, [id, user?.id]);
-  const [edicaoDados, setEdicaoDados] = useState(null);
+  const [edicaoDados, setEdicaoDados] = useWorkspaceEdicaoSolicitacao();
   const permissoesEdicao = permissoesEdicaoSolicitacao(user);
   // PI-16: o contrato do fluxo novo vive DENTRO desta solicitacao. O estado dele decide o que a
   // barra de acoes oferece — e e o contrato quem tem a maquina de estados; a solicitacao espelha.
@@ -414,7 +421,7 @@ export default function SolicitacaoDetalhe() {
   const [isMobileDetalhe, setIsMobileDetalhe] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   ));
-  const [abaMobile, setAbaMobile] = useState('detalhes');
+  const [abaMobile, setAbaMobile] = useWorkspaceState('detalhe:abaMobile', 'detalhes');
   useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)');
     const listener = (event) => setIsMobileDetalhe(event.matches);
@@ -448,6 +455,7 @@ export default function SolicitacaoDetalhe() {
   const [quantidadeItemCompra, setQuantidadeItemCompra] = useState('');
   const [motivoQuantidadeItemCompra, setMotivoQuantidadeItemCompra] = useState('');
   const [salvandoCompraDireta, setSalvandoCompraDireta] = useState(false);
+  useWorkspaceWork(false, salvandoCompraDireta || salvandoApropriacoes || salvandoPendenciaFinanceira, 'detalhe:operacao');
   const [acaoItemCompraDireta, setAcaoItemCompraDireta] = useState('APROPRIAR');
   const localMutationsRef = useRef(new Map());
 
@@ -618,6 +626,8 @@ export default function SolicitacaoDetalhe() {
   }
 
   async function carregar({ silent = false } = {}) {
+    const carga = ++versaoCargaRef.current;
+    const aindaAtual = () => paginaMontadaRef.current && carga === versaoCargaRef.current;
     const versaoLeitura = versaoLeituraInteracoesRef.current;
     try {
       if (!silent) {
@@ -625,6 +635,7 @@ export default function SolicitacaoDetalhe() {
       }
 
       const data = await getSolicitacaoById(id);
+      if (!aindaAtual()) return;
       setSolicitacao((atual) => versaoLeitura !== versaoLeituraInteracoesRef.current
         && Number(atual?.id) === Number(data?.id)
         ? { ...data, interacoes_pendentes: atual.interacoes_pendentes } : data);
@@ -642,10 +653,12 @@ export default function SolicitacaoDetalhe() {
       if (data?.contrato_id) {
         try {
           const doContrato = await getContratoParcelas(data.contrato_id);
+          if (!aindaAtual()) return;
           const c = doContrato?.contrato;
           setContratoDoFluxo(c?.fluxo_novo && String(c.solicitacao_id) === String(data.id) ? c : null);
           setFalhaContrato('');
         } catch (erroContrato) {
+          if (!aindaAtual()) return;
           setContratoDoFluxo(null);
           setFalhaContrato(erroContrato?.message || 'Nao foi possivel carregar o contrato desta solicitacao.');
         }
@@ -654,6 +667,7 @@ export default function SolicitacaoDetalhe() {
         setFalhaContrato('');
       }
     } catch (err) {
+      if (!aindaAtual()) return;
       console.error(err);
       const status = Number(err?.status || 0);
       if (status === 403 || status === 404) {
@@ -665,7 +679,7 @@ export default function SolicitacaoDetalhe() {
         avisar.erro(err?.message || 'Erro ao carregar solicitacao');
       }
     } finally {
-      if (!silent) {
+      if (!silent && aindaAtual()) {
         setLoading(false);
       }
     }
@@ -1170,7 +1184,7 @@ export default function SolicitacaoDetalhe() {
         <PageHeader
           titulo="Solicitação"
           descricao="Carregando o registro..."
-          voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
+          voltar={{ onClick: () => voltarWorkspace(), title: 'Voltar' }}
         />
         <Avisos avisos={avisos} aoFechar={fecharAviso} />
         <BlocoConteudo>Carregando...</BlocoConteudo>
@@ -1807,7 +1821,7 @@ export default function SolicitacaoDetalhe() {
         titulo={tituloRegistro}
         contagem={formatarValorSolicitacao(solicitacao.valor) || undefined}
         descricao={apoioRegistro || undefined}
-        voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
+        voltar={{ onClick: () => voltarWorkspace(), title: 'Voltar' }}
         acaoPrincipal={acaoPrincipalCabecalho
           ? {
             rotulo: acaoPrincipalCabecalho.rotulo,
@@ -1841,7 +1855,7 @@ export default function SolicitacaoDetalhe() {
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
       {edicaoDados ? <ModalEditarDadosSolicitacao
         key={`${user?.id}:${edicaoDados.solicitacao.id}:${edicaoDados.campo}`}
-        {...edicaoDados} onFechar={() => setEdicaoDados(null)}
+        {...edicaoDados} solicitacao={solicitacao} onFechar={() => setEdicaoDados(null)}
         onSalvo={async ({ campo, codigo }) => {
           avisar.sucesso(`${campo === 'valor' ? 'Valor' : 'Vencimento'} de ${codigo} atualizado.`);
           await carregar({ silent: true });

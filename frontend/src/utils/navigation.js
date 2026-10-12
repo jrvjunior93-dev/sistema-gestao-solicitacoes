@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useWorkspace } from '../navigation/WorkspaceContext';
 
 export function getFallbackRoute(pathname = '/') {
   const path = String(pathname || '/').toLowerCase();
@@ -41,11 +42,13 @@ export function hasSafeBrowserHistory() {
 }
 
 export function useSafeNavigateBack(defaultFallback) {
+  const workspace = useWorkspace();
   const navigate = useNavigate();
   const location = useLocation();
 
   return useCallback((fallbackOverride) => {
     const fallback = fallbackOverride || defaultFallback || getFallbackRoute(location.pathname);
+    if (workspace) { workspace.back(fallback); return; }
 
     if (hasSafeBrowserHistory()) {
       navigate(-1);
@@ -53,5 +56,5 @@ export function useSafeNavigateBack(defaultFallback) {
     }
 
     navigate(fallback, { replace: true });
-  }, [defaultFallback, location.pathname, navigate]);
+  }, [defaultFallback, location.pathname, navigate, workspace?.back]);
 }

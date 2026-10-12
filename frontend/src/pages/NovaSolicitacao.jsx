@@ -1,4 +1,7 @@
 import DateInputBR from '../components/DateInputBR';
+import { useWorkspaceClearPage, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import { completedNewKey } from '../navigation/workspaceModel';
+import { useSafeNavigateBack } from '../utils/navigation';
 import { PIX_OPCOES_CHAVE as PIX_TIPOS_CHAVE } from '../utils/pix';
 import { opcoesAvisoPendenciasEntrega } from '../utils/avisoPendenciasEntrega';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -192,6 +195,8 @@ function BotaoAcaoCredor({ rotulo, onClick, disabled = false, carregando = false
 }
 
 export default function NovaSolicitacao() {
+  const voltarWorkspace = useSafeNavigateBack('/solicitacoes');
+  const limparWorkspace = useWorkspaceClearPage();
   const navigate = useNavigate();
   const { user } = useAuth();
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
@@ -372,6 +377,13 @@ export default function NovaSolicitacao() {
     data_inicio_medicao: '',
     data_fim_medicao: ''
   });
+  useWorkspaceWork(Object.values(form).some(Boolean) || arquivos.length > 0
+    || documentosCadastroObra.length > 0 || boletoArquivos.length > 0
+    || Boolean(contratoNovoDados), criandoSolicitacao || salvandoNovoParceiro, 'nova');
+  function abrirSolicitacaoCriada(id) {
+    limparWorkspace();
+    navigate(`/solicitacoes/${id}`, { replace: true, state: { [completedNewKey]: true } });
+  }
 
   const obraSelecionada = useMemo(
     () => obras.find((obra) => String(obra.id) === String(form.obra_id)) || null,
@@ -2383,7 +2395,7 @@ export default function NovaSolicitacao() {
         // (A1 da auditoria: o arquivo sumia sem requisicao, sem registro e sem aviso).
         const idContrato = r?.contrato?.id;
         const destinoSolicitacao = destinoSolicitacaoContratoCriado(r);
-        const abrirRegistroCriado = () => navigate(destinoSolicitacao || '/gestao-contratos', { replace: true });
+        const abrirRegistroCriado = () => { limparWorkspace(); navigate(destinoSolicitacao || '/gestao-contratos', { replace: true, state: { [completedNewKey]: true } }); };
 
         // A negociacao detalhada sobe ANTES dos anexos avulsos: sem ela o contrato nao pode ser
         // aprovado, entao falhar aqui e um problema maior do que falhar num anexo qualquer.
@@ -2553,7 +2565,7 @@ export default function NovaSolicitacao() {
             'Solicitacao criada sem o boleto',
             `A solicitacao ${solicitacao.codigo || solicitacao.id} foi criada, mas o boleto nao foi enviado. Abra a solicitacao e anexe o boleto novamente.`
           );
-          navigate(`/solicitacoes/${solicitacao.id}`, { replace: true });
+          abrirSolicitacaoCriada(solicitacao.id);
           return;
         }
       }
@@ -2573,7 +2585,7 @@ export default function NovaSolicitacao() {
             'Solicitacao criada sem os anexos',
             `A solicitacao ${solicitacao.codigo || solicitacao.id} foi criada, mas os anexos nao foram enviados. Abra a solicitacao e envie os anexos novamente.`
           );
-          navigate(`/solicitacoes/${solicitacao.id}`, { replace: true });
+          abrirSolicitacaoCriada(solicitacao.id);
           return;
         }
       }
@@ -2592,12 +2604,12 @@ export default function NovaSolicitacao() {
             'Solicitacao criada sem todos os documentos',
             `A solicitacao ${solicitacao.codigo || solicitacao.id} foi criada, mas a ART ou os documentos complementares nao foram enviados. Abra a solicitacao e envie-os novamente.`
           );
-          navigate(`/solicitacoes/${solicitacao.id}`, { replace: true });
+          abrirSolicitacaoCriada(solicitacao.id);
           return;
         }
       }
 
-      navigate(`/solicitacoes/${solicitacao.id}`, { replace: true });
+      abrirSolicitacaoCriada(solicitacao.id);
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao criar solicitação', undefined, opcoesAvisoPendenciasEntrega(error));
@@ -3020,7 +3032,7 @@ export default function NovaSolicitacao() {
       <PageHeader
         titulo="Nova Solicitação"
         descricao={apoioDoCabecalho}
-        voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
+        voltar={{ onClick: () => voltarWorkspace(), title: 'Voltar' }}
       />
 
       {!(exibirCadastroCredor && modalParceiroAberto) && faixaAvisos}

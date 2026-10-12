@@ -1,5 +1,23 @@
 # Quadro de Agentes
 
+## Base e piloto Solicitacoes 2026-10-11
+
+- codex-workspace-piloto-20261011: finalizado local, ownership liberado,
+  sem delegacao. Isolamento/ACL, desempenho e QA de paginas reais conferidos.
+- Publicacao Git na refactor/frontend autorizada em 12/10/2026; sem main,
+  backend runtime, banco, migration ou deploy executado. Preservar
+  auditoria financeira. Handoff: 2026-10-11-piloto-navegacao-solicitacoes.md.
+- Nao anunciar E2 integral: modais financeiros/status e E3-E8 ficam posteriores.
+
+## Mapa de navegacao e estado das abas 2026-10-11
+
+- codex-mapa-navegacao-estado-20261011: finalizado, ownership liberado, sem delegacao.
+- Plano: inventario estatistico rastreavel das rotas/fontes/APIs, diagnostico
+  de desmontagem/historico, etapas e criterios de homologacao. Sem runtime.
+- Reserva detalhada em OWNERSHIP_ATIVO.md. Auditoria financeira preservada.
+- Entrega: 221 rotas/fontes rastreadas, diagnostico isolado e plano E0-E8,
+  incluindo orcamento de desempenho. Aguardar autorizacao do piloto.
+
 ## Interacoes de solicitacoes - 2026-10-11
 - Sessao codex-interacoes-solicitacoes-20261011: finalizado, ownership liberado, sem delegacao.
 - Plano: armazenamento idempotente por evento/usuario, balão agrupado,

@@ -9,6 +9,7 @@ import {
   useState
 } from 'react';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
+import { useWorkspaceState, useWorkspaceRestored, useWorkspaceScroll } from '../../navigation/WorkspaceContext';
 import { usePosicaoFlutuante } from '../../hooks/usePosicaoFlutuante';
 
 /*
@@ -148,6 +149,7 @@ const ListaAvancada = forwardRef(function ListaAvancada({
 }, ref) {
   // ---------- preferências (banco, por usuário+lista) ----------
   const [prefs, setPrefs] = useState(null); // null = carregando
+  const tableScrollRef = useRef(null);
   const prefsRef = useRef({});
   const salvarPrefsTimer = useRef(null);
 
@@ -211,10 +213,12 @@ const ListaAvancada = forwardRef(function ListaAvancada({
     };
   }, []);
   const modoVisual = isMobile ? 'cards' : (prefs?.modo === 'cards' ? 'cards' : 'tabela');
+  useWorkspaceScroll(tableScrollRef, id + ':tabela', prefsProntas && modoVisual === 'tabela');
 
   // ---------- estado de consulta ----------
-  const [visaoAtiva, setVisaoAtiva] = useState(() => visaoInicial || visoes[0]?.id || null);
-  const [filtrosAtivos, setFiltrosAtivos] = useState(() => {
+  const queryRestored = useWorkspaceRestored(id + ':visao');
+  const [visaoAtiva, setVisaoAtiva] = useWorkspaceState(id + ':visao', () => visaoInicial || visoes[0]?.id || null);
+  const [filtrosAtivos, setFiltrosAtivos] = useWorkspaceState(id + ':filtros', () => {
     if (!filtrosIniciais) return {};
     const iniciais = {};
     for (const [dimensao, valores] of Object.entries(filtrosIniciais)) {
@@ -223,12 +227,12 @@ const ListaAvancada = forwardRef(function ListaAvancada({
     }
     return iniciais;
   });
-  const [buscaTexto, setBuscaTexto] = useState(() => String(buscaInicial || ''));
+  const [buscaTexto, setBuscaTexto] = useWorkspaceState(id + ':busca', () => String(buscaInicial || ''));
   const buscaDebounced = useDebounce(buscaTexto);
-  const [ordenacao, setOrdenacao] = useState(ordenacaoPadrao);
-  const [avancadosAbertos, setAvancadosAbertos] = useState(false);
+  const [ordenacao, setOrdenacao] = useWorkspaceState(id + ':ordem', ordenacaoPadrao);
+  const [avancadosAbertos, setAvancadosAbertos] = useWorkspaceState(id + ':avancados', false);
   const [contadores, setContadores] = useState({});
-  const [selecao, setSelecao] = useState(() => new Set());
+  const [selecao, setSelecao] = useWorkspaceState(id + ':selecao', () => new Set());
   const [filtrosSalvos, setFiltrosSalvos] = useState([]);
   const [salvandoFiltro, setSalvandoFiltro] = useState(false);
   const [nomeNovoFiltro, setNomeNovoFiltro] = useState('');
@@ -290,8 +294,10 @@ const ListaAvancada = forwardRef(function ListaAvancada({
   const primeiraConsultaRef = useRef(true);
   useEffect(() => {
     if (!prefsProntas) return;
-    setSelecao(new Set());
-    if (onSelecaoChange) onSelecaoChange([], []);
+    if (!(queryRestored && primeiraConsultaRef.current)) {
+      setSelecao(new Set());
+      if (onSelecaoChange) onSelecaoChange([], []);
+    }
     onQueryChangeRef.current?.({
       visao: visaoConfig,
       filtros: filtrosParaObjeto(filtrosAtivos),
@@ -991,7 +997,7 @@ const ListaAvancada = forwardRef(function ListaAvancada({
 
       {/* Conteúdo */}
       {modoVisual === 'tabela' ? (
-        <div className="la-tabela-wrap">
+        <div className="la-tabela-wrap" ref={tableScrollRef}>
           <table className="la-tabela" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 36 }} />

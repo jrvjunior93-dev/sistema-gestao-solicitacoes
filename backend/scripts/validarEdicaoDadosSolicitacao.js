@@ -17,6 +17,12 @@ async function verificar(nome, campo, acao) {
         const registro={id:90,codigo:'SOL-QA90',valor:1000,data_vencimento:'2099-10-10',
           update:async data=>alteracoes.push(data)};
         const context={
+          require: name => {
+            assert.equal(name, '../services/adiantamentoService');
+            return { atualizarPrincipalComProtecao: async (solicitacao, data) => {
+              assert.equal(solicitacao, registro); await registro.update(data);
+            } };
+          },
           isSetorGeo:async()=>perfil==='ADMIN',
           userHasAreaPermissionWhenConfigured:async(user,keys)=>{
             assert.deepEqual(Array.from(keys),[campo==='valor'?'solicitacoes.acoes.alterar_valor':'solicitacoes.acoes.alterar_data_vencimento']);

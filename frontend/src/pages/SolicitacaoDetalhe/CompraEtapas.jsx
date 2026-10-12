@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useWorkspaceState, useWorkspaceRestored, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { marcarInteracoesLidas } from '../../services/solicitacaoInteracoes';
 import { HiChatBubbleLeftRight, HiPencilSquare, HiCheck, HiXMark, HiArrowTopRightOnSquare, HiPaperClip, HiAdjustmentsHorizontal } from 'react-icons/hi2';
 import OverlayModal from '../../components/ui/OverlayModal';
@@ -80,8 +81,8 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   const [processando, setProcessando] = useState('');
   const executandoRef = useRef(false);
   const [comentando, setComentando] = useState(null);
-  const [pedidosRecolhidos, setPedidosRecolhidos] = useState(true);
-  const [itensRecolhidos, setItensRecolhidos] = useState(true);
+  const [pedidosRecolhidos, setPedidosRecolhidos] = useWorkspaceState('compra:pedidos-recolhidos', true);
+  const [itensRecolhidos, setItensRecolhidos] = useWorkspaceState('compra:itens-recolhidos', true);
   useEffect(() => {
     if (new URLSearchParams(location.search).get('interacao') === 'ENTREGA_PENDENTE') setPedidosRecolhidos(false);
     const query = new URLSearchParams(location.search);
@@ -91,8 +92,12 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   const [usuarios, setUsuarios] = useState([]);
   const [mencoes, setMencoes] = useState([]);
   const [buscaMencao, setBuscaMencao] = useState('');
-  const [motivos, setMotivos] = useState({});
-  const [selecionados, setSelecionados] = useState([]);
+  const [motivos, setMotivos] = useWorkspaceState('compra:motivos', {});
+  const selecaoRestaurada = useWorkspaceRestored('compra:selecao');
+  const [selecionados, setSelecionados] = useWorkspaceState('compra:selecao', []);
+  const [rascunhos, setRascunhos] = useWorkspaceState('compra:comentarios-rascunhos', {});
+  useWorkspaceWork(Object.values(rascunhos).some(d => d.texto?.trim() || d.mencoes?.length)
+    || Object.values(motivos).some(Boolean), Boolean(processando), 'compra:trabalho');
   const [leiturasComentarios, setLeiturasComentarios] = useState({});
   const consultaEntregaRef = useRef(0);
 
@@ -151,7 +156,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   useEffect(() => {
     let ativo = true;
     const consulta = ++consultaEntregaRef.current;
-    setSelecionados([]);
+    if (!selecaoRestaurada) setSelecionados([]);
     setCarregando(true);
     obterEtapasCompraSolicitacao(solicitacaoId)
       .then((retorno) => {
@@ -247,10 +252,17 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   function abrirComentario(escopo, referenciaId, itemTipo, titulo, item, podeComentar) {
     const alvo = { escopo, referencia_id: referenciaId, item_tipo: itemTipo, titulo, item, podeComentar };
     setComentando(alvo);
-    setTexto('');
-    setMencoes([]);
+    const draft = rascunhos[chaveLeituraComentario(escopo, referenciaId, itemTipo, item)];
+    setTexto(draft?.texto || '');
+    setMencoes(draft?.mencoes || []);
     setBuscaMencao('');
     // A leitura ocorre no efeito, depois de o modal ter sido montado.
+  }
+
+  function editarComentario(value, mentions = mencoes) {
+    const key = chaveLeituraComentario(comentando.escopo, comentando.referencia_id, comentando.item_tipo, comentando.item);
+    setTexto(value); setMencoes(mentions);
+    setRascunhos(old => ({ ...old, [key]: { texto: value, mencoes: mentions } }));
   }
 
   function listaComentarios(alvo) {
@@ -282,18 +294,18 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       <label className="min-w-0 w-full text-sm">
         Comentário
         <textarea className="input mt-1 w-full" rows={2} value={texto} maxLength={5000}
-          onChange={(event) => setTexto(event.target.value)} />
+          onChange={(event) => editarComentario(event.target.value)} />
       </label>
       <div className="w-full text-xs">
         {mencoes.length > 0 && <div className="mb-1 flex flex-wrap gap-1">{mencoes.map((usuario) => <button
           key={usuario.id} type="button" className="rounded border border-[var(--c-border)] px-2 py-1"
-          onClick={() => setMencoes((lista) => lista.filter((item) => item.id !== usuario.id))}
+          onClick={() => editarComentario(texto, mencoes.filter((item) => item.id !== usuario.id))}
           title="Remover menção">@{usuario.nome} ×</button>)}</div>}
         <input className="input w-full max-w-xs" value={buscaMencao} onChange={(event) => setBuscaMencao(event.target.value)}
           placeholder="Mencionar usuário (opcional)" aria-label="Buscar usuário para mencionar" />
         {buscaMencao.trim() && <div className="mt-1 flex flex-wrap gap-1">{usuariosFiltrados.map((usuario) => <button
           key={usuario.id} type="button" className="btn btn-outline btn-sm"
-          onClick={() => { setMencoes((lista) => [...lista, usuario]); setBuscaMencao(''); }}>{usuario.nome}</button>)}</div>}
+          onClick={() => { editarComentario(texto, [...mencoes, usuario]); setBuscaMencao(''); }}>{usuario.nome}</button>)}</div>}
       </div>
       <button type="button" className="btn btn-primary btn-sm" disabled={!texto.trim() || !!processando}
         onClick={() => executar('comentar', async () => {
@@ -304,8 +316,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
             descricao: texto,
             mencoes: mencoes.map((usuario) => usuario.id)
           });
-          setTexto('');
-          setMencoes([]);
+          editarComentario('', []);
         }, 'Comentário registrado e destacado para os envolvidos.')}>Enviar</button>
     </fieldset>;
   }

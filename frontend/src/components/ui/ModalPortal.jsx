@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useWorkspaceActive } from '../../navigation/WorkspaceContext';
 
 let modaisAbertos = 0;
 let overflowAnterior = '';
@@ -20,6 +21,12 @@ let paddingDireitoAnterior = '';
  * dona do topo.
  */
 const pilhaDeModais = [];
+
+export function closeTopWorkspaceModal() {
+  const top = pilhaDeModais.at(-1);
+  if (!top?.closeOnEscape || !top.onClose.current) return false;
+  top.onClose.current(); return true;
+}
 
 function bloquearRolagemDocumento() {
   if (modaisAbertos === 0) {
@@ -43,6 +50,7 @@ function liberarRolagemDocumento() {
 }
 
 export default function ModalPortal({ children, onClose, closeOnEscape = true }) {
+  const active = useWorkspaceActive();
   const focoAnterior = useRef(null);
   const onCloseRef = useRef(onClose);
 
@@ -51,12 +59,13 @@ export default function ModalPortal({ children, onClose, closeOnEscape = true })
   }, [onClose]);
 
   useEffect(() => {
+    if (!active) return undefined;
     focoAnterior.current = document.activeElement;
     bloquearRolagemDocumento();
 
     // Ordem de montagem = ordem de empilhamento: o último a montar é o que
     // o usuário está vendo por cima.
-    const marca = Symbol('modal');
+    const marca = { onClose: onCloseRef, closeOnEscape };
     pilhaDeModais.push(marca);
 
     function handleKeyDown(event) {
@@ -77,9 +86,9 @@ export default function ModalPortal({ children, onClose, closeOnEscape = true })
         focoAnterior.current.focus({ preventScroll: true });
       }
     };
-  }, [closeOnEscape]);
+  }, [closeOnEscape, active]);
 
-  if (typeof document === 'undefined') return null;
+  if (!active || typeof document === 'undefined') return null;
 
   /*
    * PORTAL NAO PODE ACIONAR O CARD QUE O ABRIU (21/09).

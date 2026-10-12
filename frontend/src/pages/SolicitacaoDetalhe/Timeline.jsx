@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useWorkspaceState } from '../../navigation/WorkspaceContext';
 import PreviewAnexoModal from './PreviewAnexoModal';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../components/padrao';
@@ -64,7 +65,7 @@ export default function Timeline({
   const [removendo, setRemovendo] = useState(new Set());
   const remocoesEmCurso = useRef(new Set());
   const listaRef = useRef(null);
-  const [recolhido, setRecolhido] = useState(true);
+  const [recolhido, setRecolhido] = useWorkspaceState('historico:recolhido', true);
   const idsPendentes = interacoesPendentes.filter((grupo) => grupo.tipo !== 'COMENTARIO_ITEM')
     .flatMap((grupo) => grupo.historico_ids || []);
   useInteracoesVisiveis(listaRef, solicitacaoId, idsPendentes, !recolhido);
