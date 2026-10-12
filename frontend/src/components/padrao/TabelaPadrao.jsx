@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceScroll, useWorkspaceState } from '../../navigation/WorkspaceContext';
 import { ResizableTable, ResizableTh } from '../ResizableTable';
 import { createPortal } from 'react-dom';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
@@ -812,12 +813,19 @@ export default function TabelaPadrao({
     servidor tem a própria navegação, e duas navegações na mesma tela é pior
     que uma.
   */
-  paginaLocal = 50      // linhas por fatia; 0 desliga a rolagem infinita local
+  paginaLocal = 50,     // linhas por fatia; 0 desliga a rolagem infinita local
+  chaveWorkspace = null, // opt-in: somente contexto de UI, nunca linhas/DTOs
+  consultaWorkspace = ''
 }) {
   const ehMovel = useEhMovel(larguraMaximaParaCards);
   const shellRef = useRef(null);
   const [larguraDisponivel, setLarguraDisponivel] = useState(null);
-  const [expandidas, setExpandidas] = useState(() => new Set());
+  const [expandidas, setExpandidas] = useWorkspaceState(chaveWorkspace ? `tabela:${chaveWorkspace}:expandidas` : null, () => new Set());
+  const scrollWorkspaceRef = useRef(null);
+  useLayoutEffect(() => {
+    scrollWorkspaceRef.current = shellRef.current?.querySelector('.resizable-table-scroll') || null;
+  }, [carregando, ehMovel]);
+  useWorkspaceScroll(scrollWorkspaceRef, `tabela:${chaveWorkspace}`, Boolean(chaveWorkspace) && !carregando && !ehMovel);
 
   // A tela declara o papel (`tipo`); a medida vem da tabela de tipos.
   const colunasDeclaradas = colunas.map(normalizarColuna);
@@ -998,7 +1006,7 @@ export default function TabelaPadrao({
     || 'left';
 
   /* ---- Ordenação (clique no título) ----------------------------------- */
-  const [ordem, setOrdem] = useState(null); // { coluna, direcao } | null
+  const [ordem, setOrdem] = useWorkspaceState(chaveWorkspace ? `tabela:${chaveWorkspace}:ordem` : null, null); // { coluna, direcao } | null
   /* Lista PAGINADA NO SERVIDOR não pode ser ordenada localmente: ordenar
      só a página à vista faz o usuário ler "os maiores do conjunto" quando
      são apenas os maiores DAQUELES 25 — mentira pior que a ausência da
@@ -1262,11 +1270,19 @@ export default function TabelaPadrao({
   */
   const paginacaoNumerada = Boolean(visual?.numerada);
   const rolagemLocalPossivel = paginaLocal > 0 && itensOrdenados.length > paginaLocal;
-  const [fatia, setFatia] = useState(paginaLocal);
+  const [fatia, setFatia] = useWorkspaceState(chaveWorkspace ? `tabela:${chaveWorkspace}:fatia` : null, paginaLocal);
+  const [consultaAnterior, setConsultaAnterior] = useWorkspaceState(chaveWorkspace ? `tabela:${chaveWorkspace}:consulta` : null, consultaWorkspace);
   // Lista nova (filtro, busca, outra consulta) volta ao começo: continuar
   // com a fatia esticada mostraria 300 linhas de um resultado de 300 e
   // esconderia que a lista mudou.
-  useEffect(() => { setFatia(paginaLocal); }, [itensOrdenados.length, paginaLocal]);
+  useEffect(() => {
+    if (!chaveWorkspace || consultaAnterior !== consultaWorkspace) {
+      setFatia(paginaLocal);
+      setConsultaAnterior(consultaWorkspace);
+    }
+    // No opt-in, a lista vazia durante o GET nao apaga a janela restaurada.
+    // A fatia e aplicada somente sobre os itens atuais autorizados.
+  }, [itensOrdenados.length, paginaLocal, chaveWorkspace, consultaAnterior, consultaWorkspace]);
   const sentinelaRef = useRef(null);
   useEffect(() => {
     if (paginacaoNumerada || !rolagemLocalPossivel) return undefined;

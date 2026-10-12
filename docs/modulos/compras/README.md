@@ -205,4 +205,22 @@ Reabrir um pedido libera ajustes operacionais, mas preserva as alocacoes ja comp
 
 ## Mudanca segura
 
+### Navegacao incremental E3a (12/10/2026)
+
+Listas de Solicitacoes de Compra, Pedidos e Cotacoes preservam busca e
+filtros em memoria por usuario/aba; selecao de solicitacoes e revalidada no
+GET de retorno. Tabela preserva janela e rolagem; nao guarda os registros
+consultados. Detalhes abrem em outra aba interna, mantendo origem e
+reutilizando o registro ja aberto. Portais publicos continuam externos.
+401/403 limpam resultados e respostas atrasadas nao restauram acesso.
+Parametros das consultas, permissoes, visibilidade e endpoints de negocio
+continuam iguais. Nao prometer rascunho de wizard/editor de cotacao/pedido
+neste lote nem recuperacao apos F5/logout.
+
+No cadastro rapido da cotacao, CNPJ mostra Nome fantasia (exigencia do
+servico central ja existente); CPF dispensa esse campo. Nome e CPF do
+representante legal nao sao exibidos nem exigidos nesse card. O cadastro
+geral de Pessoas permanece completo. Criar fornecedor e gerar links sao
+bloqueados durante a gravacao do cadastro rapido, evitando concorrencia.
+
 Testar compra normal e direta, destinos iniciais, compatibilidade de registros antigos, credor, itens cadastrados/manuais, importacao, rateio, edicao de apropriacoes, permissoes, cancelamento, cotacao, pedido, relatorios de compras e registros de origem.

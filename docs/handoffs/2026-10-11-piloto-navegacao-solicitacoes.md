@@ -119,3 +119,89 @@ ACL GEO/Compras, troca DEV e acesso a anexos aprovados. Runtime backend,
 migrations, AuthProvider, PrivateRoute, App.jsx e API continuam sem diff.
 Reserva documental encerrada. Arquivos da auditoria financeira nao fazem
 parte deste pacote. Push deve ser confirmado no remoto antes da entrega.
+
+## E3a listas de Compras e fornecedor rapido - 12/10/2026
+
+Usuario confirmou 0658c9e8 funcionando em DEV e autorizou a proxima etapa,
+sem alterar regras de visibilidade. Pedido adicional: no card de cotacoes
+do detalhe, mostrar Nome fantasia e nao exibir/exigir representante legal.
+Lote incremental autorizado: listas de Solicitacoes de Compra, Pedidos e
+Cotacoes; nao considerar toda a E3 concluida. Sem commit/push/deploy/main.
+
+Arquivos proprios: WorkspaceView.jsx, useWorkspaceController.js e
+workspaceModel.js; hooks novos useQueryRevision.js e
+useWorkspaceOpenRecord.js; TabelaPadrao.jsx; SolicitacoesCompra.jsx,
+PedidosCompra.jsx, ListaCotacoes.jsx e GerenciarCotacaoSolicitacao.jsx;
+validarWorkspacePiloto.mjs; plano/contrato/README Compras e este handoff.
+OWNERSHIP_ATIVO.md possui reserva desta tarefa e alteracoes alheias: separar
+o acrescimo proprio se houver pedido de publicacao. Auditoria financeira,
+scripts, outros paineis e outputs preservados, fora do futuro pacote.
+
+Contexto leve em memoria por usuario/aba: buscas, filtros e IDs de selecao,
+janela/ordem/expansoes da tabela e rolagem. GETs/parametros existentes
+reexecutados ao retornar; DTOs/catalogos nao sao restaurados. Guard de
+revisao/lifecycle ignora respostas tardias; 401/403 limpa resultados e IDs
+ausentes no GET autorizado saem da selecao. Detalhes abrem em outra aba e
+reutilizam registro aberto; portais publicos permanecem target=_blank.
+Confirmacao fixa alvo/revisao; mutex e busy evitam concorrencia/desmontagem
+durante gravacao. Restaurar nao repete operacao. Tabela sem opt-in fica
+legada. Shell nao grava o clamp de scrollY apos desmontar pagina longa;
+mantem a ultima posicao registrada pelo listener, captura sincronamente
+antes da navegacao interna (inclusive antes de scroll pendente) e restaura
+apos carga. Captura nao leva DTOs no evento nem altera regras de acesso.
+
+Fornecedor rapido: fantasia visivel para CNPJ, enviada em cadastrar e
+selecionar e no fornecedor novo junto com links. CPF dispensa fantasia;
+representante ausente/nao enviado, ja opcional no servico central. Criacao
+rapida tem mutex/busy e bloqueia gerar links enquanto cadastra. Cadastro
+completo de Pessoas, servicos e backend inalterados.
+
+QA de Compras aprovada em 1366/390 px: buscas/status/obra e mesmos recortes
+no GET de retorno, selecao, nova aba/origem/reuso, troca de usuario,
+403/resposta tardia nas tres listas; componente de tabela opt-in/legado,
+120 linhas/janela/ordenacao/expansao/scroll horizontal e vertical com
+consulta curta; selecao ausente no GET; operacao simulada cancelar/duplo
+clique/busy/retorno sem replay; PJ/PF, card embedded/standalone e fornecedor
+inline com item/fantasia, sem representante. Router/componentes/servicos
+reais, transporte local interceptado; nenhuma consulta/escrita real.
+
+Regressoes executadas: navegacao, abas, tela inicial, envio Compras,
+titulo/necessidade/wizard normal e direto, cotacao responsiva, frontend e
+backend fornecedor, envio cotacao, delegacao, ACL GEO/Compras, acesso a
+anexos e troca DEV. Documentacao/diff aprovados. Build 571 modulos;
+inicial gzip 149,92 kB versus 149,82 kB no HEAD (+0,07%). Runtime backend,
+migrations, AuthProvider, PrivateRoute, App.jsx e transporte API sem diff.
+Suite ampliada integral do piloto aprovada; ensaio local ABBA p95 baseline
+31,80 ms / piloto 31,95 ms, heap delta ~0,33 MiB apos 30 ciclos e GC. Teste
+adicional aprovado para scroll+navegacao no mesmo tick (650 e zero), sem
+esperar evento assincrono; reteste de tabela opt-in/legada aprovado.
+Gate local sem regressao detectada; nao equivale a benchmark de producao.
+Pendencias globais anteriores de layout e check
+obsoleto de SecurityHardening continuam fora do escopo; nao declarar toda
+a suite global verde nem alterar ACL para satisfaze-las.
+
+Proximo passo exato: publicar somente diff proprio na refactor/frontend
+quando usuario solicitar; homologar filtros/selecao/scroll/nova aba e
+cadastro rapido de PJ no card embutido em DEV. Nenhuma migration/restart
+necessario neste pacote frontend isolado. Conferir pendencias anteriores
+de backend antes de fornecer roteiro EC2. Apos aceite DEV, E3b mapear e
+aderir criacao/revisao de compra normal/direta, editor de cotacao/pedido,
+entregas/uploads/modais com rascunho/conflito/idempotencia proprios.
+Nao prometer que esses editores ja preservam tudo, nem rascunhos apos
+F5/logout. Ensaios locais nao garantem latencia/memoria em aparelhos reais.
+Ownership deste lote liberado; mudancas continuam locais, nao commitadas.
+
+Publicacao E3a autorizada pelo usuario na refactor/frontend em 12/10/2026.
+Revalidar QA/build e preparar commit somente dos arquivos proprios acima,
+incluindo apenas a secao E3a do ownership compartilhado. Confirmar push
+no remoto antes da entrega. Sem main, EC2, banco, migrations ou restart;
+homologacao operacional DEV continua como proximo gate.
+
+Revalidacao para publicacao E3a aprovada: suite ampliada integral em
+1366/390 px, regressoes de Compras/navegacao e negativas de ACL/anexos/
+troca DEV, documentacao e build. P95 local baseline 31,65 ms / piloto
+31,80 ms; heap delta ~0,32 MiB. Build inicial gzip 149,92 kB, 571 modulos.
+Backend/migrations, AuthProvider, PrivateRoute, App e servicos sem diff.
+Reserva documental E3a encerrada; pacote separado da auditoria alheia.
+Confirmar SHA remoto apos push. Comandos DEV devem parar se houver
+alteracoes de backend anteriores pendentes no checkout da EC2.

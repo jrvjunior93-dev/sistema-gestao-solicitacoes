@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineEye } from 'react-icons/hi2';
-import { useNavigate } from 'react-router-dom';
+import { useWorkspaceState } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
 import { listarPedidosCompra } from '../../../services/compras';
 import { getStatusPedidosCompra } from '../../../services/configuracoesSistema';
 import { getObras } from '../../../services/obras';
@@ -112,13 +114,13 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function PedidosCompra() {
-  const navigate = useNavigate();
   const { avisos, avisar, fechar } = useAvisos();
+  const abrirRegistro = useWorkspaceOpenRecord(avisar.alerta);
   const [pedidos, setPedidos] = useState([]);
   const [obras, setObras] = useState([]);
   const [statusOptions, setStatusOptions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [busca, setBusca] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busca, setBusca] = useWorkspaceState('pedidos:busca', '');
 
   /*
     `unico: true` nas duas dimensões, verificado NO SERVIÇO: o
@@ -127,7 +129,7 @@ export default function PedidosCompra() {
     valor cada. Marcação múltipla mostraria duas etiquetas e mandaria um
     valor só: a lista não estreitaria e a etiqueta mentiria (R15).
   */
-  const [ativos, setAtivos] = useState({ status: new Set(), status_financeiro: new Set(), obra_id: new Set() });
+  const [ativos, setAtivos] = useWorkspaceState('pedidos:filtros', { status: new Set(), status_financeiro: new Set(), obra_id: new Set() });
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -164,8 +166,12 @@ export default function PedidosCompra() {
   // "Atualizar" reconsultam o MESMO recorte que está na tela.
   const recorteRef = useRef({ q: '', status: '', status_financeiro: '', obra_id: '' });
   recorteRef.current = { q: busca, status, status_financeiro: statusFinanceiro, obra_id: obraId };
+  const consultaWorkspace = JSON.stringify([busca, status, statusFinanceiro, obraId]);
+  const consulta = useQueryRevision(consultaWorkspace);
+  useLayoutEffect(() => { setPedidos([]); setLoading(true); }, [consultaWorkspace]);
 
   async function carregar() {
+    const token = consulta.begin();
     const recorte = recorteRef.current;
     try {
       setLoading(true);
@@ -181,14 +187,19 @@ export default function PedidosCompra() {
         carregarStatusPedidosComFallback()
       ]);
 
+      if (!consulta.isCurrent(token)) return;
       setPedidos(Array.isArray(dataPedidos) ? dataPedidos : []);
       setObras(Array.isArray(dataObras) ? dataObras : []);
       setStatusOptions(Array.isArray(dataStatus) ? dataStatus : []);
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
+      if ([401, 403].includes(Number(error?.status))) {
+        setPedidos([]); setObras([]); setStatusOptions([]);
+      }
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar pedidos de compra');
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -382,12 +393,14 @@ export default function PedidosCompra() {
           carregando={loading}
           vazio="Nenhum pedido de compra encontrado para os filtros informados."
           storageKey="tabela:pedidos-compra"
+          chaveWorkspace="compras:pedidos"
+          consultaWorkspace={consultaWorkspace}
           rotuloRolagem="Lista de pedidos"
           acoesLinha={(pedido) => (
             <button
               type="button"
               className="btn btn-outline btn-sm"
-              onClick={() => navigate(`/pedidos-compra/${pedido.id}`)}
+              onClick={() => abrirRegistro(`/pedidos-compra/${pedido.id}`, pedido.numero || `PC-${String(pedido.id).padStart(5, '0')}`)}
               title="Abrir pedido"
               aria-label={`Abrir pedido PC-${String(pedido.id).padStart(5, '0')}`}
             >

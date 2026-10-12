@@ -1,11 +1,12 @@
 import { useContext, useLayoutEffect, useRef } from 'react';
 import { UNSAFE_LocationContext, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { WorkspacePageContext } from './WorkspaceContext';
-import { recordIdentity } from './workspaceModel';
+import { recordIdentity, scrollCaptureEvent } from './workspaceModel';
 import { workspaceRouteFromLocation } from './useWorkspaceTabs';
 
 export const isWorkspacePilot = pathname => pathname === '/nova-solicitacao'
   || pathname === '/compras/delegacao'
+  || ['/solicitacoes-compra', '/pedidos-compra', '/cotacoes'].includes(pathname)
   || pathname === '/solicitacoes' || pathname === '/solicitacoes-arquivadas'
   || /^\/solicitacoes\/\d+\/?$/.test(pathname);
 
@@ -22,12 +23,18 @@ function useScroll(key, memory, root) {
     if (root.current) observer.observe(root.current);
     const stop = () => { restoring = false; };
     const save = () => { if (!restoring) memory.set(key + '|scroll', { x: window.scrollX, y: window.scrollY }); };
+    const capture = () => { stop(); save(); };
+    window.addEventListener(scrollCaptureEvent, capture);
     window.addEventListener('scroll', save, { passive: true });
     window.addEventListener('wheel', stop, { passive: true });
     window.addEventListener('touchstart', stop, { passive: true });
     const timeout = setTimeout(stop, 3000);
     return () => {
-      save(); clearTimeout(timeout); observer.disconnect();
+      // O DOM da pagina pode ja ter sido substituido por uma consulta curta
+      // no cleanup. Ler scrollY aqui grava o clamp para zero em cima da
+      // posicao anterior; conservar a ultima posicao do listener de scroll.
+      clearTimeout(timeout); observer.disconnect();
+      window.removeEventListener(scrollCaptureEvent, capture);
       window.removeEventListener('scroll', save); window.removeEventListener('wheel', stop); window.removeEventListener('touchstart', stop);
     };
   }, [key, memory, root]);

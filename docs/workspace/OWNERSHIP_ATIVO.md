@@ -1,5 +1,33 @@
 # Ownership Ativo
 
+## Navegacao E3a Compras - 2026-10-12
+
+- Publicacao autorizada pelo usuario na refactor/frontend. Reserva
+  documental liberada apos revalidacao e preparacao do commit proprio;
+  sem main, EC2, banco ou inclusao da auditoria financeira alheia.
+- Sessao codex-navegacao-compras-20261012, sem delegacao; finalizada local,
+  ownership liberado apos QA/build. Sem commit/push/deploy.
+- Autorizacao: piloto corrigido aprovado em DEV; usuario autorizou a
+  proxima etapa com preenchimentos/filtros preservados e testes, sem ACL.
+- Reserva: SolicitacoesCompra.jsx, PedidosCompra.jsx e ListaCotacoes.jsx
+  em frontend/src/modules/solicitacao-compra/pages; WorkspaceView.jsx,
+  TabelaPadrao.jsx e novo hook de consultas em navigation; testes isolados
+  de Compras e validarWorkspacePiloto.mjs se necessario.
+- Reserva adicional da base: useWorkspaceController.js e workspaceModel.js
+  para capturar scroll antes da troca de aba, inclusive navegacao imediata
+  antes do evento assincrono de scroll; sem alterar rotas/ACL/DTOs.
+- Documentacao: plano/contrato/handoff da navegacao e README de Compras.
+- Pedido adicional do usuario: GerenciarCotacaoSolicitacao.jsx e testes
+  do cadastro rapido; incluir nome fantasia para PJ, representante legal
+  oculto/opcional, sem mudar servicos, ACL ou cadastro geral.
+- Escopo deste lote: listas, filtros, selecao autorizada, tabela/scroll e
+  detalhes em nova aba. Formularios/wizards e financeiro seguem futuros.
+- Sem backend, migrations, banco real, EC2 ou main. Auditoria
+  financeira e outros arquivos locais preservados.
+- Suite ampliada do piloto e Compras, negativas, tabela/scroll imediato,
+  fornecedor rapido embedded/standalone, regressoes e build aprovados.
+  Handoff atualizado; proximo gate e publicacao solicitada e aceite DEV.
+
 ## Correcao do piloto apos homologacao DEV - 2026-10-12
 
 - Publicacao autorizada pelo usuario na refactor/frontend em 2026-10-12.

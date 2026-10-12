@@ -297,3 +297,27 @@ quando um rascunho nao puder ser restaurado automaticamente.
 O primeiro pacote executavel proposto e E0/E1/E2: base e piloto de
 Solicitacoes, sem reforma visual nem mudanca dos fluxos financeiros. Os
 modulos seguintes so avancam depois do aceite dos criterios do piloto.
+
+## E3a autorizada apos aceite DEV - 12/10/2026
+
+Usuario confirmou o piloto corrigido funcionando em DEV e autorizou a
+proxima etapa, com preservacao de contexto e testes sem alterar visibilidade.
+Compras foi subdividido para estabilizacao: este lote adere apenas as listas
+Solicitacoes de Compra, Pedidos e Cotacoes, alem da Delegacao ja aderida.
+Busca, filtros, selecao elegivel, janela da tabela e rolagem ficam em memoria
+do usuario/aba. As linhas e permissoes sao consultadas novamente no retorno;
+nao ha cache restauravel de DTOs nem mudanca de parametros/ACL do backend.
+Abrir detalhe conserva a origem em outra aba interna e reutiliza registro
+ja aberto. Portais publicos de fornecedores permanecem externos.
+
+Pedido adicional: cadastro rapido de fornecedor na cotacao ganha o campo
+Nome fantasia quando CNPJ; representante legal nao aparece nem e exigido
+nesse card. O servico central ja trata representante como opcional; nao
+alterar o cadastro completo de Pessoas para ajustar o formulario rapido.
+
+E3 permanece parcial: criacao/revisao de compra normal/direta, editor de
+cotacao, pedido, entregas, anexos e modais criticos ainda exigem seus proprios
+contratos de rascunho, conflito e idempotencia antes de aderirem. A correcao
+pontual do fornecedor nao significa persistencia de todo o editor de cotacao.
+Sem autorizacao de commit/push/deploy/main neste lote; proximo gate e a
+publicacao solicitada separadamente e homologacao operacional em DEV.

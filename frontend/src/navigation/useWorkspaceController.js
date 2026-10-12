@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { MAX_WORKSPACE_TABS, normalizeWorkspaceRoute, resolveWorkspaceTitle, workspaceRouteFromLocation } from './useWorkspaceTabs';
-import { completedNewKey, makeEntry, makeTab, markerKey, moveTab, positionTab, recordIdentity, workspaceAccessIdentity } from './workspaceModel';
+import { completedNewKey, makeEntry, makeTab, markerKey, moveTab, positionTab, recordIdentity, scrollCaptureEvent, workspaceAccessIdentity } from './workspaceModel';
 
 const storageKey = id => `fluxy_workspace_tabs_v1:${Number(id) || 'anonimo'}`;
 function replaceStage(active, route, type, state) {
@@ -72,6 +72,9 @@ export default function useWorkspaceController(user) {
     return next;
   }, []);
   const go = useCallback((tab, replace = true) => {
+    // Captura o ultimo scroll antes de o novo DOM reduzir a altura da pagina.
+    // Nao depende de esperar o evento assincrono de scroll para abrir a aba.
+    window.dispatchEvent(new Event(scrollCaptureEvent));
     // BrowserRouter usa startTransition: o update local pode chegar antes
     // da URL. Nao reconciliar a URL antiga sobre a aba recem-aberta, nem
     // montar um Outlet antigo no namespace do destino durante esse intervalo.

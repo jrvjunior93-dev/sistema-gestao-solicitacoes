@@ -1,6 +1,7 @@
 // Somente metadados de navegacao. Nunca serializar formularios nesta camada.
 export const MAX_HISTORY = 64;
 export const markerKey = '__fluxyWorkspace';
+export const scrollCaptureEvent = 'fluxy:workspace-scroll-capture';
 export const completedNewKey = '__fluxyWorkspaceNewCompleted';
 // Invalida somente estado de UI quando a sessao informa outro escopo.
 // Nao concede acesso nem substitui nenhuma validacao do servidor.

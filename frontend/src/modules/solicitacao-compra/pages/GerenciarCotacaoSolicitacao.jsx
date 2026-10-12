@@ -1613,6 +1613,7 @@ function SecaoEnvioFornecedores({
   categoriaFornecedorId,
   fornecedorBusca,
   enviandoFornecedores,
+  salvandoFornecedor,
   itensSelecionadosEnvio,
   onChangeFornecedorBusca,
   onChangeCategoriaFornecedorId,
@@ -2051,6 +2052,11 @@ function SecaoEnvioFornecedores({
                 <CampoForm label="Nome do fornecedor" span={2}>
                   <input className="input" placeholder="Ex.: Fornecedor ABC" value={novoFornecedor.nome} onChange={(e) => onChangeNovoFornecedor('nome', e.target.value)} />
                 </CampoForm>
+                {onlyDigits(novoFornecedor.cnpj).length === 14 && (
+                  <CampoForm label="Nome fantasia" obrigatorio span={2}>
+                    <input className="input" aria-label="Nome fantasia" value={novoFornecedor.nome_fantasia || ''} onChange={(e) => onChangeNovoFornecedor('nome_fantasia', e.target.value)} />
+                  </CampoForm>
+                )}
                 <CampoForm label="CPF/CNPJ">
                   <input className="input" placeholder="CPF ou CNPJ do fornecedor" value={maskCpfCnpj(novoFornecedor.cnpj)} onChange={(e) => onChangeNovoFornecedor('cnpj', maskCpfCnpj(e.target.value))} inputMode="numeric" maxLength={18} />
                 </CampoForm>
@@ -2065,8 +2071,8 @@ function SecaoEnvioFornecedores({
                 </CampoForm>
               </FormSecao>
               <div className="grid gap-2 pt-1">
-                <button type="button" className="btn btn-outline w-full" onClick={onCriarFornecedorRapido}>Cadastrar e selecionar</button>
-                <button type="button" className="btn btn-primary w-full" onClick={onEnviarFornecedores} disabled={enviandoFornecedores}>
+                <button type="button" className="btn btn-outline w-full" onClick={onCriarFornecedorRapido} disabled={enviandoFornecedores || salvandoFornecedor}>{salvandoFornecedor ? 'Cadastrando...' : 'Cadastrar e selecionar'}</button>
+                <button type="button" className="btn btn-primary w-full" onClick={onEnviarFornecedores} disabled={enviandoFornecedores || salvandoFornecedor}>
                   {enviandoFornecedores ? 'Gerando links...' : 'Gerar links de cotacao'}
                 </button>
               </div>
@@ -2873,7 +2879,9 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState([]);
   const [fornecedoresSelecionadosDados, setFornecedoresSelecionadosDados] = useState({});
   const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useState({});
-  const [novoFornecedor, setNovoFornecedor] = useState({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+  const [novoFornecedor, setNovoFornecedor] = useState({ nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+  const cadastroFornecedorEmCursoRef = useRef(false);
+  const [salvandoFornecedor, setSalvandoFornecedor] = useState(false);
   const [vencedoresSelecionados, setVencedoresSelecionados] = useState({});
   const { confirmarEntregas, elementoEntregas } = useConfirmarEntregasPedidos();
   const encerramentoEmCursoRef = useRef(false);
@@ -3151,6 +3159,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleEnviarFornecedores() {
+    if (cadastroFornecedorEmCursoRef.current) return;
     try {
       const payload = [];
       const fornecedoresParaEnvio = fornecedoresSelecionados
@@ -3176,8 +3185,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         }
       });
       if (String(novoFornecedor.nome || '').trim()) {
+        if (onlyDigits(novoFornecedor.cnpj).length === 14 && !String(novoFornecedor.nome_fantasia || '').trim()) {
+          avisar.alerta('Informe o nome fantasia da empresa.'); return;
+        }
         payload.push({
           nome: novoFornecedor.nome,
+          nome_fantasia: novoFornecedor.nome_fantasia,
           cnpj: novoFornecedor.cnpj,
           email: novoFornecedor.email,
           whatsapp: novoFornecedor.whatsapp,
@@ -3205,7 +3218,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       setFornecedoresSelecionados([]);
       setFornecedoresSelecionadosDados({});
       setItensSelecionadosEnvio({});
-      setNovoFornecedor({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+      setNovoFornecedor({ nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
       await carregarTudo();
       avisar.sucesso('Links de cotação gerados. Use os botoes de WhatsApp para enviar a mensagem a cada fornecedor.');
     } catch (error) {
@@ -3461,6 +3474,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleCriarFornecedorRapido() {
+    if (cadastroFornecedorEmCursoRef.current || enviandoFornecedores) return;
     try {
       if (!String(novoFornecedor.nome || '').trim()) { avisar.alerta('Informe o nome do fornecedor.'); return; }
       if (!String(novoFornecedor.cnpj || '').trim()) { avisar.alerta('Informe o CPF/CNPJ do fornecedor.'); return; }
@@ -3469,7 +3483,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         label: 'CPF/CNPJ do fornecedor'
       });
       if (documentoErro) { avisar.alerta(documentoErro); return; }
+      if (onlyDigits(novoFornecedor.cnpj).length === 14 && !String(novoFornecedor.nome_fantasia || '').trim()) {
+        avisar.alerta('Informe o nome fantasia da empresa.'); return;
+      }
       if (!String(novoFornecedor.whatsapp || '').trim()) { avisar.alerta('Informe o WhatsApp/telefone do fornecedor.'); return; }
+      cadastroFornecedorEmCursoRef.current = true;
+      setSalvandoFornecedor(true);
       const fornecedor = await criarFornecedorCompra({ ...novoFornecedor, cnpj: onlyDigits(novoFornecedor.cnpj) });
       const fornecedorFormatado = {
         ...fornecedor,
@@ -3484,11 +3503,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         [fornecedorSelectionKey(fornecedorFormatado)]: fornecedorFormatado
       }));
       garantirItensEnvioSelecionados(fornecedorSelectionKey(fornecedorFormatado));
-      setNovoFornecedor({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+      setNovoFornecedor({ nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
       avisar.sucesso('Fornecedor criado e selecionado.');
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao criar fornecedor');
+    } finally {
+      cadastroFornecedorEmCursoRef.current = false;
+      setSalvandoFornecedor(false);
     }
   }
 
@@ -4008,6 +4030,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
               categoriaFornecedorId={categoriaFornecedorId}
               fornecedorBusca={fornecedorBusca}
               enviandoFornecedores={enviandoFornecedores}
+              salvandoFornecedor={salvandoFornecedor}
               itensSelecionadosEnvio={itensSelecionadosEnvio}
               onChangeFornecedorBusca={setFornecedorBusca}
               onChangeCategoriaFornecedorId={setCategoriaFornecedorId}

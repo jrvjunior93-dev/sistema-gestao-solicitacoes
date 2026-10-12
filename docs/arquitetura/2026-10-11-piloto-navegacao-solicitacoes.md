@@ -173,3 +173,62 @@ edicao, 12 abas, 403 e casos de login). P95 baseline 31,75 ms / piloto
 31,50 ms; heap delta ~0,34 MiB. Build 569 modulos, inicial gzip 149,82 kB
 versus 149,64 kB no piloto publicado (+0,12%). Ensaios isolados nao
 substituem homologacao na rede/aparelhos reais do DEV.
+
+## Contrato E3a: listas de Compras - 12/10/2026
+
+Piloto corrigido aceito em DEV pelo usuario. Opt-in acrescentado somente
+a /solicitacoes-compra, /pedidos-compra e /cotacoes. Lista ativa desmonta
+ao trocar de aba: nao manter instancias, timers e subscricoes de cada lista
+vivos nas abas de consulta. Retorno monta novamente e executa GET atual.
+useQueryRevision invalida respostas de outra consulta ou desmontagem.
+401/403 limpam linhas; selecao restaurada perde IDs ausentes no GET atual.
+Escopo de usuario/permissoes usa o namespace ja existente do workspace.
+
+| Lista | Contexto em memoria | Leituras preservadas | Escritas preservadas |
+| --- | --- | --- | --- |
+| Solicitacoes de Compra | Busca, Sets de obra/status, IDs selecionados | GET /compras/solicitacoes com visao=resumo e obra_id; GET /obras/minhas modo=CRIACAO | DELETE individual, POST inativar-massa; PATCH encaminhar-compras e POST encaminhar-compras-massa; mesmos guards |
+| Pedidos | Busca, status, Financeiro GEO e obra | GET /compras/pedidos com q/status/status_financeiro/obra_id/visao=resumo; GET /obras escopo=TODOS e configuracao de status existente | Nenhuma nova escrita |
+| Cotacoes | Busca, status e obra | GET /compras/cotacoes com q/status/obra_id; GET /obras escopo=TODOS existente | Nenhuma nova escrita |
+
+TabelaPadrao recebe chaveWorkspace/consultaWorkspace opcionais. Restaura
+apenas ordem, IDs expandidos, tamanho da janela e scroll horizontal, nunca
+linhas. Mudanca do recorte reinicia a janela; loading nao apaga a janela
+restaurada. Tabelas sem opt-in preservam comportamento anterior. Rolagem
+vertical continua no adapter do shell. As tres listas nao declaram novas
+capacidades de ordenacao/expansao: sao testadas no componente compartilhado.
+Teste de lista longa com consulta auxiliar curta revelou que salvar scrollY
+no cleanup apos substituir o DOM sobrescrevia a origem com o clamp para
+zero. O shell conserva a ultima posicao recebida pelo listener de scroll
+e captura a posicao sincronamente antes de go abrir/ativar/voltar/fechar aba,
+sem esperar um evento de scroll pendente. Listener e removido na troca de
+pagina. Retorno com carga assincrona restaura sem copiar linhas antigas.
+
+Abrir detalhe usa useWorkspaceOpenRecord, limite de 12 e reaproveitamento
+de registro. Portais /cotacao/:token continuam em target=_blank. Criacao
+de compra segue na mesma aba, fora da adesao de rascunho deste lote.
+Inativar/encaminhar fixam alvo autorizado e revisao antes da confirmacao;
+consulta alterada invalida confirmacao, mutex bloqueia concorrencia e busy
+impede desmontagem durante gravacao. Retorno nao reaplica operacao.
+
+Cadastro rapido (componente compartilhado embutido/standalone): CNPJ
+mostra Nome fantasia; CPF nao exige fantasia. Representante legal oculto
+e nao enviado; backend ja permite ausencia. Fantasia e enviada tanto no
+cadastro e selecao quanto na criacao junto com links de cotacao. Criar
+fornecedor bloqueia duplo clique e envio de links durante a gravacao.
+Sem mudar a obrigatoriedade dos campos do cadastro completo de Pessoas.
+
+QA usa paginas/router/componentes reais e transporte local interceptado,
+sem banco/rede externa. Cobre busca/filtros/recortes iguais, selecao,
+origem/reutilizacao, scope, 403/tardia, tabela opt-in/legada e gravacao
+simulada unica. Nao garante preservacao do editor/wizard de Compras, F5,
+logout nem latencia em aparelhos reais. Homologacao DEV continua separada.
+
+Revalidacao final E3a: suite ampliada integral aprovada em 1366/390 px,
+incluindo piloto anterior, login/MFA/POP, Delegacao, listas Compras,
+operacao simulada unica e cadastro rapido embedded/standalone/inline.
+Reteste dedicado aprovou scroll+navegacao no mesmo tick para 650 e zero,
+apos consulta curta, sem aguardar evento de scroll. Build 571 modulos;
+JS inicial gzip 149,92 kB contra 149,82 kB (+0,07%). Ensaio local ABBA
+p95 baseline 31,80 ms / piloto 31,95 ms; heap delta ~0,33 MiB apos ciclos
+e GC. Sem regressao detectada nos gates locais, sem garantia de desempenho
+em producao. Backend/ACL/transporte API inalterados; sem banco real.
