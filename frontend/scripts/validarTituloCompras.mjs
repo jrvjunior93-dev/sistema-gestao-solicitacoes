@@ -148,10 +148,10 @@ try {
     });
     const key = buildComprasDraftKey(991, modo ? 'compra-direta' : 'solicitacao');
     async function conferirRateio() {
-      // O efeito de troca de obra preexistente pode limpar o rateio ao hidratar
-      // um rascunho. Reconfere pelo controle real; nao mascara isso em producao.
-      await page.getByRole('button',{name:/^Apropriar/}).first().click();
+      // Hidratacao conserva a distribuicao; ainda permite editar pelo controle.
+      await page.getByRole('button',{name:/^Editar apropriação/}).first().click();
       const modal = page.getByRole('dialog',{name:'Apropriar item'}); await modal.waitFor();
+      assert.equal(await modal.getByRole('textbox',{name:'Quantidade apropriada do rateio 1'}).inputValue(),'1');
       await modal.getByRole('combobox').fill('1.1');
       await page.getByRole('button',{name:/1\.1.*Cobertura/}).click();
       await modal.getByRole('textbox',{name:'Quantidade apropriada do rateio 1'}).fill('1');

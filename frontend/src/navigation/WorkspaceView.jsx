@@ -7,6 +7,9 @@ import { workspaceRouteFromLocation } from './useWorkspaceTabs';
 export const isWorkspacePilot = pathname => pathname === '/nova-solicitacao'
   || pathname === '/compras/delegacao'
   || ['/solicitacoes-compra', '/pedidos-compra', '/cotacoes'].includes(pathname)
+  || ['/solicitacoes-compra/nova', '/solicitacoes-compra/revisar',
+    '/solicitacoes-compra-direta/nova', '/solicitacoes-compra-direta/revisar'].includes(pathname)
+  || /^\/solicitacoes-compra\/\d+\/cotacao\/?$/.test(pathname)
   || pathname === '/solicitacoes' || pathname === '/solicitacoes-arquivadas'
   || /^\/solicitacoes\/\d+\/?$/.test(pathname);
 

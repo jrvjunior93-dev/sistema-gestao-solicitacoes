@@ -300,6 +300,11 @@ modulos seguintes so avancam depois do aceite dos criterios do piloto.
 
 ## E3a autorizada apos aceite DEV - 12/10/2026
 
+Atualizacao posterior: usuario autorizou aplicar o plano completo por lotes.
+Execucao e gates registrados em
+[handoff de continuidade](../handoffs/2026-10-12-navegacao-completa.md).
+As restricoes de publicacao/main/banco e a homologacao de ambiente permanecem.
+
 Usuario confirmou o piloto corrigido funcionando em DEV e autorizou a
 proxima etapa, com preservacao de contexto e testes sem alterar visibilidade.
 Compras foi subdividido para estabilizacao: este lote adere apenas as listas
@@ -321,3 +326,17 @@ contratos de rascunho, conflito e idempotencia antes de aderirem. A correcao
 pontual do fornecedor nao significa persistencia de todo o editor de cotacao.
 Sem autorizacao de commit/push/deploy/main neste lote; proximo gate e a
 publicacao solicitada separadamente e homologacao operacional em DEV.
+
+## Avanco local E3b/E3c - 12/10/2026
+
+Criacao/revisao normal e direta aderidas com ultimo caractere em memoria,
+isolamento de payload entre abas, storage legado compativel, conferencia
+vinculada ao conteudo e bloqueio durante upload/criacao. Hidratacao conserva
+apropriacoes. Consultas de catalogo continuam novas; sem replay de criacao.
+Cotacao aderida parcialmente: texto/fornecedor rapido/filtros/visualizacao,
+resposta interna com revisao fresca e quantidades do comparativo inalterado.
+Mudanca comercial impede sobregravar e permite consultar/copiar draft.
+GET negado nao restaura modal nem DTO anterior; escopo efetivo separa memoria.
+Detalhes de testes, limites e continuidade no handoff de 12/10/2026.
+E3 inteira e E4-E8 ainda pendentes; nao representa protecao de todas as telas,
+nem autorizacao/publicacao de producao ou homologacao integrada concluida.

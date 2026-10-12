@@ -12,6 +12,13 @@ import tailwindConfig from '../tailwind.config.js';
 import { chromium } from 'playwright';
 import { makeTab, makeEntry, moveTab, recordIdentity } from '../src/navigation/workspaceModel.js';
 import { consultarJanela } from '../src/pages/Solicitacoes/consultarJanela.js';
+import { camposRespostaDraft, restaurarRespostaDraft, revisaoRespostaDraft } from '../src/modules/solicitacao-compra/utils/cotacaoWorkspaceDraft.js';
+const formQA = { preco: 'nao pertence ao cabecalho', condicao_pagamento: 'Boleto', token: 'SECRETO',
+ itens: [{ item_tipo: 'CADASTRADO', item_referencia_id: 5, preco: '12', saldo_solicitacao: 4, arquivo_url: 'privado' }] };
+const projected = camposRespostaDraft(formQA);
+assert(!('token' in projected));assert(!('saldo_solicitacao' in projected.itens[0]));assert(!('arquivo_url' in projected.itens[0]));
+assert.equal(restaurarRespostaDraft(formQA, projected).itens[0].saldo_solicitacao,4);
+assert.notEqual(revisaoRespostaDraft({id:77,status:'RESPONDIDO'},formQA),revisaoRespostaDraft({id:77,status:'CANCELADO'},formQA));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let tab = makeTab(makeEntry('/a', 'A'));
 for (let i = 0; i < 100; i++) tab = moveTab(tab, makeEntry('/b/'+i, 'B'));
@@ -38,6 +45,8 @@ import ListaCompras from '/src/modules/solicitacao-compra/pages/SolicitacoesComp
 import Pedidos from '/src/modules/solicitacao-compra/pages/PedidosCompra.jsx';
 import Cotacoes from '/src/modules/solicitacao-compra/pages/ListaCotacoes.jsx';
 import GerenciarCotacao from '/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx';
+import NovaCompra from '/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx';
+import RevisarCompra from '/src/modules/solicitacao-compra/pages/RevisarSolicitacaoCompra.jsx';
 import Tabela from '/src/components/padrao/TabelaPadrao.jsx';
 import Login from '/src/pages/Login/index.jsx';import PrivateRoute from '/src/components/PrivateRoute.jsx';
 import tabs,{useLegacyWorkspaceTabs}from'/src/navigation/useWorkspaceTabs';
@@ -66,6 +75,11 @@ createRoot(document.getElementById('root')).render(<BrowserRouter future={{v7_st
 <Route element={<PrivateRoute>{core?<CoreShell/>:<Layout/>}</PrivateRoute>}><Route path="/nova-solicitacao" element={core?<CoreForm/>:withToolbar(Nova)}/>
 <Route path="/compras/delegacao" element={withToolbar(Delegacao)}/>
 <Route path="/solicitacoes-compra" element={params.has('tableqa')?<TableFixture/>:withToolbar(ListaCompras)}/>
+<Route path="/solicitacoes-compra/nova" element={withToolbar(NovaCompra)}/>
+<Route path="/solicitacoes-compra/revisar" element={withToolbar(RevisarCompra)}/>
+<Route path="/solicitacoes-compra-direta/nova" element={<><Toolbar/><NovaCompra modoCompraDireta/></>}/>
+<Route path="/solicitacoes-compra-direta/revisar" element={<><Toolbar/><RevisarCompra modoCompraDireta/></>}/>
+<Route path="/solicitacoes-compra/finalizada/:id" element={<><Toolbar/><p>Compra QA criada</p></>}/>
 <Route path="/pedidos-compra" element={withToolbar(Pedidos)}/>
 <Route path="/cotacoes" element={withToolbar(Cotacoes)}/>
 <Route path="/pedidos-compra/:id" element={<><Toolbar/><p>Detalhe do pedido QA</p></>}/>
@@ -122,6 +136,8 @@ try{
     else if(req.method()!=='GET')writes.push({p,method:req.method()});else {reads.push(p);queries.push({p,params:Object.fromEntries(u.searchParams)});}
     let data=[];
     if(p==='/obras/minhas'||p==='/obras')data=[obra];
+    else if(p==='/apropriacoes')data=[{id:9,codigo:'1.1',descricao:'Cobertura',obra_id:7,ativo:true}];
+    else if(p.includes('formas-pagamento'))data=[{id:4,nome:'Boleto',codigo:'BOLETO',ativo:true,gera_boleto:true}];
     else if(p==='/compras/solicitacoes')data=[{id:8,solicitacao_principal_id:90,status:'PENDENTE',obra,solicitante:{nome:'QA'}},{id:9,status:'PENDENTE',obra,solicitante:{nome:'QA'}},{id:10,solicitacao_principal_id:91,status:'PENDENTE',obra,solicitante:{nome:'QA'}}];
     else if(p==='/compras/delegacao/usuarios')data=[{id:1,nome:'Comprador QA',setor:'COMPRAS'}];
     else if(p==='/compras/pedidos')data=[{id:8,solicitacao_compra_id:8,fornecedor:{nome:'Fornecedor QA'},obra,status:'ABERTO',valor_total:150}];
@@ -140,7 +156,7 @@ try{
     return route.fulfill({json:data});
    });return{errors,writes,reads,queries,navigationAudit};
  };
- if(!process.argv.includes('--compras-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')){
+ if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--compras-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
  for(const width of[1366,390]){
   const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
   await page.goto(base+'/nova-solicitacao?core');await page.getByLabel('Rascunho').fill('ultimo caractere!');
@@ -470,7 +486,7 @@ try{
  }
  }
  // E3a: listas reais de Compras, sem mudancas de endpoints/ACL/escritas.
- if(!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')){
+ if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
  for(const width of[1366,390]){
   for(const kind of ['solicitacoes-compra','pedidos-compra','cotacoes']){
    const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
@@ -554,7 +570,7 @@ try{
  }
  }
  // Tabela compartilhada opt-in e legado, com carga assincrona e janela local.
- for(const optin of(process.argv.includes('--correcoes-only')?[]:[true,false])){
+ for(const optin of(process.argv.includes('--cotacao-only')||process.argv.includes('--correcoes-only')||process.argv.includes('--wizard-only')?[]:[true,false])){
   const page=await browser.newPage({viewport:{width:1366,height:900}});const audit=await install(page);
   const origin='/solicitacoes-compra?comprasqa&tableqa'+(optin?'':'&notableoptin');
   await page.goto(base+origin);
@@ -598,7 +614,7 @@ try{
   assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
   console.log('OK tabela '+(optin?'opt-in: ordenacao, expansao, janela e scroll; novo recorte reinicia janela.':'legada: comportamento anterior preservado.'));
  }
- if(!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')){
+ if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
  {
   const page=await browser.newPage();const audit=await install(page);let omit=false;
   await page.route('**/api/compras/solicitacoes?*',async r=>omit?r.fulfill({json:[{id:9,status:'PENDENTE',obra:{id:7,nome:'Obra QA'}}]}):r.fallback());
@@ -680,7 +696,7 @@ try{
   console.log('OK card embutido: novo fornecedor junto com links envia fantasia e item, sem representante.');
  }
  }
- if(!process.argv.includes('--table-only')){
+ if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--wizard-only')){
  for(const regular of[false,true]){
   const page=await browser.newPage();const audit=await install(page);
   await page.route('**/api/solicitacoes/90',r=>r.fulfill({json:{id:90,codigo:'SOL-QA90',obra_id:7,obra:{id:7,nome:'Obra QA'},tipo:{id:5,nome:'DESPESA EVENTUAL'},valor:1000,status_global:'PENDENTE',area_responsavel:'COMPRAS',anexos:[],historicos:[],contexto_interacao:{pode_interagir:false},createdAt:'2026-10-01T12:00:00Z'}}));
@@ -769,6 +785,206 @@ try{
    if(access.canAccessAutorizacoesPagamento({...user,autorizacao_pagamentos:{enabled:false}}))throw Error('Modo OFF nao deve ser ativado por bypass');
    return count;
   });assert(count>=166);console.log('OK '+count+' predicados centrais frontend e negativas; modo OFF preservado.');await page.close();
+ }
+ }
+ // E3b: paginas reais de criacao/revisao, memoria da sessao e storage legado.
+ if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--compras-only')){
+ for(const width of[1366,390])for(const direta of[false,true])for(const quota of[false,true]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  const prefix=direta?'/solicitacoes-compra-direta':'/solicitacoes-compra';
+  const key='fluxy_compras_draft_v2:1:'+(direta?'compra-direta':'solicitacao');
+  const item={manual:true,nome_manual:'Material QA',insumo_nome:'Material QA',unidade_sigla_manual:'un',
+   quantidade:1,valor_unitario:10,apropriacao_id:9,apropriacoes:[{apropriacao_id:9,quantidade_apropriada:1}],necessario_para:'2099-12-01'};
+  const draft={payload:{obra_id:7,titulo:'Compra inicial',necessario_para:'2099-12-01',itens:[item],
+   ...(direta?{parceiro_id:8,origem:'COMPRA_DIRETA',forma_pagamento_ids:[4],formas_pagamento:[{id:4,valor:10}],
+    anexos_cabecalho:[{tipo_documento:'BOLETO',arquivo_url:'/uploads/qa.pdf',arquivo_nome_original:'qa.pdf'}]}:{})},
+   resumo:{obra_nome:'Obra QA',credor_nome:'Fornecedor QA',itens:[item]}};
+  await page.addInitScript(({key,draft,quota})=>{
+   localStorage.setItem(key,JSON.stringify(draft));
+   if(quota){const original=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){
+    if(k.startsWith('fluxy_compras_draft'))throw new DOMException('Quota','QuotaExceededError');
+    return original.call(this,k,v);
+   }}
+  },{key,draft,quota});
+  await page.goto(base+prefix+'/nova?comprasqa');
+  const title=page.getByLabel('Título da solicitação',{exact:true});
+  await title.waitFor();await page.waitForFunction(()=>document.querySelector('input[maxlength="255"]')?.value==='Compra inicial');
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  await page.getByRole('button',{name:/^(Apropriar|Editar apropriação)/}).first().click();
+  const modal=page.getByRole('dialog',{name:'Apropriar item'});
+  assert.equal(await modal.getByRole('textbox',{name:'Quantidade apropriada do rateio 1'}).inputValue(),'1');
+  await modal.getByRole('textbox',{name:'Quantidade apropriada do rateio 1'}).fill('0,5');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  assert.equal(await page.getByRole('dialog').count(),0,'Modal da pagina anterior nao vaza');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  await modal.waitFor();assert.equal(await modal.getByRole('textbox',{name:'Quantidade apropriada do rateio 1'}).inputValue(),'0,5');
+  await modal.getByRole('button',{name:'Cancelar',exact:true}).click();
+  await title.fill('Ultimo caractere '+width+'!');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  assert.equal(await title.inputValue(),'Ultimo caractere '+width+'!');
+  // Outra aba do mesmo tipo nao pode substituir o payload desta revisao.
+  await page.evaluate(route=>window.qa.openTab(route),prefix+'/nova?comprasqa&segundo');
+  await title.waitFor();await title.fill('Outra aba');
+  const segundo=await page.evaluate(()=>window.qa.activeId);
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  await page.waitForURL('**'+prefix+'/nova?comprasqa');
+  assert.equal(await title.inputValue(),'Ultimo caractere '+width+'!');
+  await page.getByRole('button',{name:'Revisar solicitação',exact:true}).click();
+  await page.waitForURL('**'+prefix+'/revisar');
+  await page.getByRole('button',{name:'Visualizar PDF antes de criar',exact:true}).click();
+  await page.locator('iframe').waitFor();await page.keyboard.press('Escape');
+  await page.getByRole('checkbox',{name:/Confirmo que revisei/}).check();
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  assert.equal(await page.getByRole('checkbox',{name:/Confirmo que revisei/}).isChecked(),true);
+  await page.getByRole('button',{name:'Voltar e editar',exact:true}).click();
+  await title.fill('Revisao alterada!');
+  await page.getByRole('button',{name:'Revisar solicitação',exact:true}).click();
+  await page.waitForURL('**'+prefix+'/revisar');
+  assert.equal(await page.getByRole('checkbox',{name:/Confirmo que revisei/}).isChecked(),false,'Nao reaplica aprovacao de outro conteudo');
+  assert.deepEqual(audit.writes,[],'Alternancia/revisao nao cria registro');
+  let creates=0,denied=true;
+  await page.route('**/api/compras/solicitacoes'+(direta?'-diretas':''),async r=>{
+   if(r.request().method()!=='POST')return r.fallback();creates++;
+   assert.equal(r.request().postDataJSON().titulo,'Revisao alterada!');
+   await new Promise(resolve=>setTimeout(resolve,200));
+   return r.fulfill(denied?{status:403,json:{error:'Compra QA negada'}}:{status:201,json:{id:200}});
+  });
+  const confirmar=async()=>{
+   await page.getByRole('button',{name:'Visualizar PDF antes de criar',exact:true}).click();
+   await page.locator('iframe').waitFor();await page.keyboard.press('Escape');
+   await page.getByRole('checkbox',{name:/Confirmo que revisei/}).check();
+  };
+  await confirmar();
+  await page.getByRole('button',{name:'Criar solicitacao',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Compra QA negada',{exact:true}).waitFor();assert.equal(creates,1);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  await page.getByText('Revisao alterada!',{exact:true}).waitFor();assert.equal(creates,1);
+  denied=false;
+  await page.getByRole('button',{name:'Criar solicitacao',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Compra QA criada',{exact:true}).waitFor();assert.equal(creates,2);
+  await page.evaluate(id=>window.qa.activateTab(id),segundo);
+  await page.waitForURL('**'+prefix+'/nova?comprasqa&segundo');
+  assert.equal(await title.inputValue(),'Outra aba','Sucesso de uma aba nao apaga o trabalho de outra');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  await page.getByText('Compra QA criada',{exact:true}).waitFor();
+  await page.evaluate(route=>window.qa.openTab(route),prefix+'/nova?comprasqa');
+  await title.waitFor();assert.equal(await title.inputValue(),'','Nao ressuscita formulario criado');
+  assert.deepEqual(audit.errors,[]);await page.close();
+  console.log('OK E3b wizard '+width+'px '+(direta?'direta':'normal')+' storage '+(quota?'quota':'disponivel')+': campos/modal, revisao, 403, duplo envio e sucesso sem replay.');
+ }
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  await page.addInitScript(()=>localStorage.setItem('fluxy_compras_draft_v2:1:solicitacao',JSON.stringify({
+   payload:{obra_id:7,titulo:'Upload pendente',necessario_para:'2099-12-01',itens:[{manual:true,nome_manual:'Material upload',insumo_nome:'Material upload',
+    unidade_sigla_manual:'un',quantidade:1,apropriacao_id:9,apropriacoes:[{apropriacao_id:9,quantidade_apropriada:1}]}]},resumo:{}})));
+  let release,uploads=0;
+  await page.route('**/api/compras/anexos-temporarios',r=>new Promise(resolve=>{
+   uploads++;release=()=>r.fulfill({json:{arquivo_url:'/uploads/qa-upload.pdf',arquivo_nome_original:'qa-upload.pdf'}}).then(resolve);
+  }));
+  await page.goto(base+'/solicitacoes-compra/nova?comprasqa');
+  const file=page.locator('.app-table-shell input[type="file"], .app-tabela-cards input[type="file"]').first();await file.waitFor({state:'attached'});
+  const selected={name:'qa-upload.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nQA local')};
+  const request=page.waitForRequest(r=>r.url().endsWith('/compras/anexos-temporarios'));await file.setInputFiles(selected);await request;
+  await file.setInputFiles(selected);assert.equal(uploads,1,'Mesmo upload pendente nao dispara novamente');
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await page.evaluate(()=>window.qa.activeId),initial,'Aba ocupada nao navega');
+  assert(await page.getByRole('button',{name:'Revisar solicitação',exact:true}).isDisabled());
+  assert(await page.getByRole('button',{name:'Limpar rascunho',exact:true}).isDisabled());
+  release();await page.getByText('qa-upload.pdf',{exact:true}).waitFor();
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByText('qa-upload.pdf',{exact:true}).waitFor();assert.equal(uploads,1);
+  await page.evaluate(()=>window.qaAuth.switch());const title=page.getByLabel('Título da solicitação',{exact:true});
+  await page.waitForFunction(()=>document.querySelector('input[maxlength="255"]')?.value==='');assert.equal(await title.inputValue(),'');
+  const lifecycle=await page.evaluate(async()=>{
+   const {createWorkspaceMemory}=await import('/src/navigation/WorkspaceContext.jsx');const memory=createWorkspaceMemory();
+   const {referenciaParceiroCompra}=await import('/src/modules/solicitacao-compra/utils/useComprasDraft.js');
+   if(Object.keys(referenciaParceiroCompra({id:1,nome:'QA',cpf_cnpj:'',saldo:100,contas:['privado'],permissoes:['admin']})).join(',')!=='id,nome,cpf_cnpj')throw Error('Snapshot de DTO indevido');
+   for(let i=0;i<40;i++){const tab='t'+i,prefix=tab+'|/nova';memory.set(prefix+'|flow',tab+'|draft');
+    memory.setFlow(tab+'|draft',{titulo:'teste'},tab);memory.dirty.add(prefix+'|work');memory.deleteTab(tab);}
+   return memory.stats();
+  });assert.deepEqual(lifecycle,{slots:0,dirty:0,busy:0,flows:0});
+  assert.deepEqual(audit.errors,[]);await page.close();
+  console.log('OK E3b upload '+width+'px: operacao protegida, um envio, retorno sem replay, identidade e 40 limpezas de flow.');
+ }
+ }
+ if(!['--table-only','--correcoes-only','--compras-only','--wizard-only'].some(flag=>process.argv.includes(flag))){
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  let price=10,deniedRead=false,deniedWrite=true,updates=0;
+  const response=()=>({resposta_item_id:101,fornecedor_id:77,cotacao_fornecedor_id:77,fornecedor_nome:'Fornecedor QA',
+   disponivel:true,preco:price,valor_total_cotado:150,quantidade_disponivel:50,saldo_disponivel_fornecedor:40});
+  const workspace=()=>({solicitacao:{id:8,status:'PENDENTE',obra:{id:7,nome:'Obra QA'},
+   fornecedores:[{id:77,status:'RESPONDIDO',token:'nao-persistir',fornecedor_compra_id:77,fornecedor:{id:77,nome:'Fornecedor QA'},
+    condicao_pagamento:'Boleto',prazo_entrega_dias:5,respostas:[{id:101,item_tipo:'CADASTRADO',solicitacao_compra_item_id:5,
+     preco:price,disponivel:true,quantidade_disponivel:50}]}],
+   itens:[{id:5,insumo:{nome:'Areia QA'},quantidade:15,status_aprovacao:'APROVADO'}],itensManuais:[]},
+   comparativo:{itens:[{id:5,item_tipo:'CADASTRADO',item_referencia_id:5,nome:'Areia QA',unidade:'m3',
+    quantidade:15,saldo_disponivel:15,respostas:[response()]}]}});
+  await page.route('**/api/compras/solicitacoes/8/workspace-cotacao',r=>r.fulfill(deniedRead
+   ?{status:403,json:{error:'Cotacao QA indisponivel'}}:{json:workspace()}));
+  await page.route('**/api/compras/solicitacoes/8/cotacoes/77/resposta-interna',async r=>{
+   updates++;await new Promise(resolve=>setTimeout(resolve,200));
+   return r.fulfill(deniedWrite?{status:403,json:{error:'Resposta QA negada'}}:{json:{ok:true}});
+  });
+  await page.goto(base+'/solicitacoes-compra/8/cotacao?comprasqa');
+  const comment=page.getByRole('textbox',{name:'Comentário da cotação',exact:true});await comment.fill('Conferencia pendente!');
+  const supplier=page.locator('.cotacao-fornecedor-rapido');await supplier.getByLabel('Nome do fornecedor',{exact:true}).fill('Rascunho fornecedor');
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  const panel=page.locator('.cotacao-comparativo-panel');
+  await panel.locator('.resizable-table-scroll').evaluateAll(els=>els.forEach(el=>{el.scrollLeft=el.scrollWidth}));
+  await panel.getByRole('checkbox',{name:'Comprar de Fornecedor QA',exact:true}).check();
+  await panel.getByRole('textbox',{name:/Quantidade comprada de Fornecedor QA/}).fill('0,5');
+  await panel.getByRole('button',{name:'Mapa',exact:true}).click();
+  await page.getByRole('button',{name:'Editar resposta internamente',exact:true}).first().click();
+  const modal=page.getByRole('dialog',{name:'Editar resposta da cotacao'});
+  const observation=modal.getByLabel('Observação geral',{exact:true});await observation.fill('Último caractere!');
+  await modal.getByRole('textbox',{name:'Preço unitário de Areia QA',exact:true}).fill('12,00');
+  const edited=await modal.getByRole('textbox',{name:'Preço unitário de Areia QA',exact:true}).inputValue();
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  assert.equal(await page.getByRole('dialog').count(),0);
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await modal.waitFor();
+  assert.equal(await observation.inputValue(),'Último caractere!');
+  assert.equal(await modal.getByRole('textbox',{name:'Preço unitário de Areia QA',exact:true}).inputValue(),edited);
+  await modal.getByRole('button',{name:'Salvar rascunho',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Resposta QA negada',{exact:true}).waitFor();assert.equal(updates,1);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await modal.waitFor();assert.equal(updates,1);
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  assert.equal(await comment.inputValue(),'Conferencia pendente!');
+  assert.equal(await supplier.getByLabel('Nome do fornecedor',{exact:true}).inputValue(),'Rascunho fornecedor');
+  await panel.getByText('Mapa de comparação',{exact:true}).waitFor();
+  assert.equal(await panel.getByRole('textbox',{name:/Quantidade comprada de Fornecedor QA/}).inputValue(),'0,5');
+  await page.getByRole('button',{name:'Editar resposta internamente',exact:true}).first().click();await observation.fill('Rascunho conflitante');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');price=20;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  await page.getByText(/A resposta mudou desde a edição/).waitFor();assert.equal(await modal.count(),0);
+  await page.getByRole('button',{name:'Consultar rascunho',exact:true}).click();
+  const recovery=page.getByRole('dialog',{name:'Rascunho não enviado da resposta'});
+  assert((await recovery.getByRole('textbox',{name:'Campos do rascunho não enviado'}).inputValue()).includes('Rascunho conflitante'));
+  assert(await recovery.getByRole('textbox').getAttribute('readonly')!==null);
+  await page.keyboard.press('Escape');await recovery.waitFor({state:'hidden'});
+  assert.equal(await panel.getByRole('textbox',{name:/Quantidade comprada de Fornecedor QA/}).inputValue(),'','Preco mudou: exige nova selecao');
+  assert.equal(updates,1,'Conflito nao envia nem reaplica mutacao');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');deniedRead=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByText('Cotacao QA indisponivel',{exact:true}).first().waitFor();
+  assert.equal(await modal.count(),0);assert.equal(await comment.count(),0,'Negativa nao exibe dados anteriores');
+  deniedRead=false;await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByText(/A resposta mudou desde a edição/).waitFor();
+  await page.getByRole('button',{name:'Descartar rascunho',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Descartar',exact:true}).click();
+  await page.getByRole('button',{name:'Editar resposta internamente',exact:true}).first().click();
+  deniedWrite=false;await modal.getByRole('button',{name:'Salvar rascunho',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Rascunho salvo e registrado na auditoria.',{exact:true}).waitFor();assert.equal(updates,2);
+  await page.evaluate(()=>window.qaAuth.switch());await comment.waitFor();
+  assert.equal(await comment.inputValue(),'','Troca de identidade nao restaura comentario');
+  assert.equal(await supplier.getByLabel('Nome do fornecedor',{exact:true}).inputValue(),'');
+  assert.equal(await modal.count(),0);assert.deepEqual(audit.errors,[]);await page.close();
+  console.log('OK E3c cotacao '+width+'px: rascunho/modal/selecoes, consulta fresca, conflito, 403, envio unico e identidade.');
  }
  }
  // Comparacao controlada do mesmo formulario e DOM. Nao benchmark de producao.

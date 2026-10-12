@@ -33,8 +33,12 @@ import {
 } from '../../../services/compras';
 import { buscarParceiros, listarCategoriasParceiro } from '../../../services/parceiros';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import { camposRespostaDraft, revisaoRespostaDraft, restaurarRespostaDraft, revisaoComparativoDraft } from '../utils/cotacaoWorkspaceDraft';
 import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatters';
 import ModalPortal from '../../../components/ui/ModalPortal';
+import OverlayModal from '../../../components/ui/OverlayModal';
 import {
   canEncerrarComprasCotacoes,
   canEncerrarSemPedidoComprasCotacoes,
@@ -590,7 +594,7 @@ function ModalRespostaInternaCotacao({
 
           <FormSecao colunas={2}>
             <CampoForm label="Observação geral" tipo="observacao">
-              <textarea className="input" rows={3} value={form.observacao_resposta} onChange={(e) => onChange('observacao_resposta', e.target.value)} />
+              <textarea aria-label="Observação geral" className="input" rows={3} value={form.observacao_resposta} onChange={(e) => onChange('observacao_resposta', e.target.value)} />
             </CampoForm>
           </FormSecao>
 
@@ -2241,9 +2245,9 @@ function SecaoComparativo({
   encerrando,
   encerrandoSemPedido
 }) {
-  const [modoVisualizacao, setModoVisualizacao] = useState('cards');
-  const [painelFornecedoresAberto, setPainelFornecedoresAberto] = useState(false);
-  const [fornecedoresVisiveis, setFornecedoresVisiveis] = useState({});
+  const [modoVisualizacao, setModoVisualizacao] = useWorkspaceState(`cotacao:${solicitacao.id}:modo`, 'cards');
+  const [painelFornecedoresAberto, setPainelFornecedoresAberto] = useWorkspaceState(`cotacao:${solicitacao.id}:painel`, false);
+  const [fornecedoresVisiveis, setFornecedoresVisiveis] = useWorkspaceState(`cotacao:${solicitacao.id}:visiveis`, {});
 
   function getQuantidadeAlocada(respostaItemId) {
     const registro = vencedoresSelecionados[String(respostaItemId)];
@@ -2846,6 +2850,8 @@ function SecaoComparativo({
 export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false, somenteLeitura = false, onAtualizado = null }) {
   const { id: routeId } = useParams();
   const id = solicitacaoCompraId || routeId;
+  const scope = `cotacao:${id}:`;
+  const consulta = useQueryRevision(id);
   const Container = embedded ? 'div' : Pagina;
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -2856,8 +2862,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [erroCarregamento, setErroCarregamento] = useState('');
   const [fornecedores, setFornecedores] = useState([]);
   const [categoriasFornecedor, setCategoriasFornecedor] = useState([]);
-  const [categoriaFornecedorId, setCategoriaFornecedorId] = useState('');
-  const [fornecedorBusca, setFornecedorBusca] = useState('');
+  const [categoriaFornecedorId, setCategoriaFornecedorId] = useWorkspaceState(scope + 'categoria', '');
+  const [fornecedorBusca, setFornecedorBusca] = useWorkspaceState(scope + 'busca', '');
   const [buscandoFornecedores, setBuscandoFornecedores] = useState(false);
   const [comparativo, setComparativo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -2868,8 +2874,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [cancelandoCotacao, setCancelandoCotacao] = useState(false);
   const [modalCancelamentoCotacao, setModalCancelamentoCotacao] = useState(false);
   const [motivoCancelamentoCotacao, setMotivoCancelamentoCotacao] = useState('');
-  const [cotacaoRespostaInterna, setCotacaoRespostaInterna] = useState(null);
-  const [formRespostaInterna, setFormRespostaInterna] = useState(null);
+  const [respostaDraft, setRespostaDraft] = useWorkspaceState(scope + 'resposta', null);
+  const [consultandoRespostaDraft, setConsultandoRespostaDraft] = useState(false);
   const [salvandoRespostaInterna, setSalvandoRespostaInterna] = useState(false);
   const [enviandoArquivosRespostaInterna, setEnviandoArquivosRespostaInterna] = useState(false);
   const [encerrando, setEncerrando] = useState(false);
@@ -2877,20 +2883,29 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [justificativaEncerrarSemPedido, setJustificativaEncerrarSemPedido] = useState('');
   const [confirmadoEncerrarSemPedido, setConfirmadoEncerrarSemPedido] = useState(false);
   const [encerrandoSemPedido, setEncerrandoSemPedido] = useState(false);
-  const [comentarioCotacao, setComentarioCotacao] = useState('');
+  const [comentarioCotacao, setComentarioCotacao] = useWorkspaceState(scope + 'comentario', '');
   const [registrandoComentario, setRegistrandoComentario] = useState(false);
   const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState([]);
   const [fornecedoresSelecionadosDados, setFornecedoresSelecionadosDados] = useState({});
   const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useState({});
-  const [novoFornecedor, setNovoFornecedor] = useState({ nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+  const [novoFornecedor, setNovoFornecedor] = useWorkspaceState(scope + 'novoFornecedor', { nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
   const cadastroFornecedorEmCursoRef = useRef(false);
   const [salvandoFornecedor, setSalvandoFornecedor] = useState(false);
-  const [vencedoresSelecionados, setVencedoresSelecionados] = useState({});
+  const [vencedoresSelecionados, setVencedoresSelecionados] = useWorkspaceState(scope + 'vencedores', {});
+  const [revisaoComparativo, setRevisaoComparativo] = useWorkspaceState(scope + 'revisaoComparativo', null);
+  const respostaOperacaoRef = useRef(false);
+  const enviosEmCursoRef = useRef(new Set());
   const { confirmarEntregas, elementoEntregas } = useConfirmarEntregasPedidos();
   const encerramentoEmCursoRef = useRef(false);
   const encerramentoIdempotencyRef = useRef(null);
   const encerramentoSemPedidoIdempotencyRef = useRef(null);
   const fornecedorRequestRef = useRef({ sequencia: 0, controller: null });
+  useWorkspaceWork(Boolean(respostaDraft || Object.keys(vencedoresSelecionados).length
+    || comentarioCotacao.trim() || Object.values(novoFornecedor).some(Boolean)),
+    baixando || enviandoFornecedores || reabrindoCotacaoId || cancelandoCotacao
+    || salvandoRespostaInterna || enviandoArquivosRespostaInterna || encerrando
+    || encerrandoSemPedido || registrandoComentario || salvandoFornecedor,
+    scope + 'work');
 
   const podeComprar = !somenteLeitura && canOperateComprasCotacoes(user);
   const podeFecharParcialCotacao = !somenteLeitura && canFecharParcialComprasCotacoes(user);
@@ -2994,7 +3009,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
     }
   }
 
-  async function carregarTudo() {
+  async function carregarTudo({ preservarSelecoes = false } = {}) {
+    const token = consulta.begin();
     try {
       setLoading(true);
       setErroCarregamento('');
@@ -3002,17 +3018,27 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         obterWorkspaceCotacaoSolicitacaoCompra(id),
         listarCategoriasParceiro()
       ]);
+      if (!consulta.isCurrent(token)) return;
       const dataSolicitacao = workspace?.solicitacao || null;
 
       setSolicitacao(dataSolicitacao);
       setCategoriasFornecedor(Array.isArray(dataCategorias) ? dataCategorias : []);
       await carregarFornecedores();
+      if (!consulta.isCurrent(token)) return;
       setComparativo(workspace?.comparativo || null);
-      setVencedoresSelecionados({});
+      const novaRevisao = revisaoComparativoDraft(dataSolicitacao, workspace?.comparativo);
+      if (!preservarSelecoes || revisaoComparativo !== novaRevisao) {
+        if (preservarSelecoes && Object.keys(vencedoresSelecionados).length) {
+          avisar.alerta('O comparativo mudou. Confira preços e saldos antes de selecionar novamente.');
+        }
+        setVencedoresSelecionados({});
+      }
+      setRevisaoComparativo(novaRevisao);
       if (onAtualizado) void Promise.resolve().then(() => onAtualizado()).catch((error) => {
         avisar.erro(error.message || 'Não foi possível atualizar os itens em cotação.');
       });
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
       console.error(error);
       const mensagem = error.message || 'Erro ao carregar solicitacao de compra';
       setSolicitacao(null);
@@ -3023,11 +3049,11 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       );
       avisar.erro(mensagem);
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) setLoading(false);
     }
   }
 
-  useEffect(() => { carregarTudo(); }, [id]);
+  useEffect(() => { carregarTudo({ preservarSelecoes: true }); }, [id]);
   useEffect(() => {
     if (loading) return undefined;
     const timer = window.setTimeout(() => {
@@ -3070,6 +3096,33 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
     }));
     return [...itens, ...manuais];
   }, [solicitacao]);
+
+  const respostaAlvo = (solicitacao?.fornecedores || []).find(item => Number(item.id) === Number(respostaDraft?.id));
+  const baseResposta = useMemo(() => respostaAlvo ? montarFormularioRespostaInterna(respostaAlvo, itensCombinados, {
+    novaOfertaSaldo: respostaDraft?.form?.nova_oferta_saldo === true,
+    comparativo, alocacoes: solicitacao?.alocacoes || []
+  }) : null, [respostaAlvo, itensCombinados, comparativo, solicitacao?.alocacoes, respostaDraft?.form?.nova_oferta_saldo]);
+  const respostaPermitida = podeComprar && respostaAlvo
+    && !['cancelada', 'cancelado', 'inativa', 'recusado'].includes(normalizeText(solicitacao?.status))
+    && !['cancelada', 'cancelado'].includes(normalizeText(respostaAlvo.status));
+  const revisaoBaseResposta = useMemo(() => respostaAlvo && baseResposta
+    ? revisaoRespostaDraft(respostaAlvo, baseResposta) : null, [respostaAlvo, baseResposta]);
+  const respostaConflitante = Boolean(revisaoBaseResposta && respostaDraft?.revisao !== revisaoBaseResposta);
+  const cotacaoRespostaInterna = respostaPermitida && !respostaConflitante ? respostaAlvo : null;
+  const formRespostaInterna = useMemo(() => cotacaoRespostaInterna
+    ? restaurarRespostaDraft(baseResposta, respostaDraft.form) : null,
+  [cotacaoRespostaInterna, baseResposta, respostaDraft]);
+  const setCotacaoRespostaInterna = value => { if (value === null) setRespostaDraft(null); };
+  const setFormRespostaInterna = update => {
+    if (update === null) { setRespostaDraft(null); return; }
+    if (!formRespostaInterna) return;
+    setRespostaDraft(atual => {
+      if (!atual) return atual;
+      const form = typeof update === 'function'
+        ? update(restaurarRespostaDraft(baseResposta, atual.form)) : update;
+      return { ...atual, form: camposRespostaDraft(form) };
+    });
+  };
 
   const criarMapaTodosItensEnvio = () => itensCombinados.reduce((acc, item) => {
     acc[buildItemKey(item)] = true;
@@ -3162,7 +3215,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleEnviarFornecedores() {
-    if (cadastroFornecedorEmCursoRef.current) return;
+    if (cadastroFornecedorEmCursoRef.current || enviosEmCursoRef.current.has('fornecedores')) return;
+    enviosEmCursoRef.current.add('fornecedores');
     try {
       const payload = [];
       const fornecedoresParaEnvio = fornecedoresSelecionados
@@ -3228,6 +3282,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao enviar para fornecedores');
     } finally {
+      enviosEmCursoRef.current.delete('fornecedores');
       setEnviandoFornecedores(false);
     }
   }
@@ -3266,12 +3321,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleCancelarCotacao() {
+    if (enviosEmCursoRef.current.has('cancelamento')) return;
     const motivo = motivoCancelamentoCotacao.trim();
     if (!motivo) {
       avisar.alerta('Informe o motivo do cancelamento da cotação.');
       return;
     }
 
+    enviosEmCursoRef.current.add('cancelamento');
     try {
       setCancelandoCotacao(true);
       await cancelarCotacaoSolicitacaoCompra(id, { motivo });
@@ -3283,25 +3340,36 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao cancelar cotacao');
     } finally {
+      enviosEmCursoRef.current.delete('cancelamento');
       setCancelandoCotacao(false);
     }
   }
 
-  function abrirRespostaInterna(cotacaoFornecedor) {
-    setCotacaoRespostaInterna(cotacaoFornecedor);
-    setFormRespostaInterna(montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
-      comparativo,
-      alocacoes: solicitacao?.alocacoes || []
-    }));
+  async function confirmarTrocaRespostaDraft() {
+    if (!respostaDraft) return true;
+    const { ok } = await confirmar({ titulo: 'Substituir rascunho da resposta',
+      mensagem: 'Descartar os campos não enviados e abrir uma nova edição com os dados atuais?',
+      rotuloConfirmar: 'Substituir', destrutiva: true });
+    return ok;
   }
 
-  function abrirNovaOfertaSaldo(cotacaoFornecedor) {
-    setCotacaoRespostaInterna(cotacaoFornecedor);
-    setFormRespostaInterna(montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
+  async function abrirRespostaInterna(cotacaoFornecedor) {
+    if (!(await confirmarTrocaRespostaDraft())) return;
+    const base = montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
+      comparativo,
+      alocacoes: solicitacao?.alocacoes || []
+    });
+    setRespostaDraft({ id: cotacaoFornecedor.id, revisao: revisaoRespostaDraft(cotacaoFornecedor, base), form: camposRespostaDraft(base) });
+  }
+
+  async function abrirNovaOfertaSaldo(cotacaoFornecedor) {
+    if (!(await confirmarTrocaRespostaDraft())) return;
+    const base = montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
       novaOfertaSaldo: true,
       comparativo,
       alocacoes: solicitacao?.alocacoes || []
-    }));
+    });
+    setRespostaDraft({ id: cotacaoFornecedor.id, revisao: revisaoRespostaDraft(cotacaoFornecedor, base), form: camposRespostaDraft(base) });
   }
 
   function abrirRespostaInternaPorId(cotacaoFornecedorId) {
@@ -3327,6 +3395,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleUploadArquivosRespostaInterna(files) {
+    if (respostaOperacaoRef.current) return;
     const selecionados = Array.from(files || []);
     if (!selecionados.length || !cotacaoRespostaInterna) return;
     if (selecionados.length > 10) {
@@ -3334,16 +3403,17 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       return;
     }
 
+    respostaOperacaoRef.current = true;
     try {
       setEnviandoArquivosRespostaInterna(true);
-      const resposta = await uploadArquivosRespostaInternaCotacao(id, cotacaoRespostaInterna.id, selecionados);
-      setCotacaoRespostaInterna((atual) => ({ ...atual, ...(resposta?.cotacao || {}) }));
+      await uploadArquivosRespostaInternaCotacao(id, cotacaoRespostaInterna.id, selecionados);
       await carregarTudo();
       avisar.sucesso(`${selecionados.length} arquivo(s) anexado(s) e registrado(s) na auditoria.`);
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao anexar arquivos na resposta da cotacao');
     } finally {
+      respostaOperacaoRef.current = false;
       setEnviandoArquivosRespostaInterna(false);
     }
   }
@@ -3370,6 +3440,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleSalvarRespostaInterna(finalizar) {
+    if (respostaOperacaoRef.current) return;
     if (!formRespostaInterna || !cotacaoRespostaInterna) return;
     if (finalizar && (
       !formRespostaInterna.condicao_pagamento.trim()
@@ -3409,6 +3480,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       return;
     }
 
+    respostaOperacaoRef.current = true;
     try {
       setSalvandoRespostaInterna(true);
       const itensComQuantidadeAlterada = formRespostaInterna.itens.filter((item) => {
@@ -3472,6 +3544,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao editar resposta da cotacao');
     } finally {
+      respostaOperacaoRef.current = false;
       setSalvandoRespostaInterna(false);
     }
   }
@@ -3847,12 +3920,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleRegistrarComentarioCotacao() {
+    if (enviosEmCursoRef.current.has('comentario')) return;
     const comentario = comentarioCotacao.trim();
     if (!comentario) {
       avisar.alerta('Digite o comentário da cotação.');
       return;
     }
 
+    enviosEmCursoRef.current.add('comentario');
     try {
       setRegistrandoComentario(true);
       await comentarSolicitacaoCompra(id, { comentario });
@@ -3863,6 +3938,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao registrar comentario da cotacao');
     } finally {
+      enviosEmCursoRef.current.delete('comentario');
       setRegistrandoComentario(false);
     }
   }
@@ -3912,6 +3988,19 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   return (
     <Container className={embedded ? 'cotacao-gestao-embutida' : 'page-compra-nova cotacao-gestao-page'}>
       {!cotacaoRespostaInterna && faixaAvisos}
+      {respostaDraft && !cotacaoRespostaInterna && !loading && (
+        <div className="app-empty-card" role="alert">
+          {respostaConflitante ? 'A resposta mudou desde a edição. O rascunho foi preservado, mas não será enviado sobre os dados atuais.'
+            : 'A resposta deste rascunho não está disponível para edição.'}
+          {respostaPermitida && respostaConflitante && <button type="button" className="btn btn-outline btn-sm"
+            onClick={() => setConsultandoRespostaDraft(true)}>Consultar rascunho</button>}
+          <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+            const { ok } = await confirmar({ titulo: 'Descartar rascunho da resposta',
+              mensagem: 'Descartar os campos não enviados desta resposta?', rotuloConfirmar: 'Descartar', destrutiva: true });
+            if (ok) setRespostaDraft(null);
+          }}>Descartar rascunho</button>
+        </div>
+      )}
       {/*
         R13/C4: cabeçalho FIXO, com o NOME do registro em destaque e o código
         como apoio. R11: a seta de voltar é a affordance primária de retorno
@@ -4360,6 +4449,13 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
 
       {/* CompraPreviewModal e de outro agente: a chamada fica intacta. */}
       {elementoEntregas}
+      {consultandoRespostaDraft && respostaPermitida && respostaConflitante && (
+        <OverlayModal rotulo="Rascunho não enviado da resposta" onFechar={() => setConsultandoRespostaDraft(false)}>
+          <p className="text-sm text-[var(--c-muted)]">Campos digitados, somente para consulta e cópia. Não substituem os dados atuais da cotação.</p>
+          <textarea className="input font-mono" aria-label="Campos do rascunho não enviado" rows={16} readOnly
+            value={JSON.stringify(respostaDraft.form, null, 2)} />
+        </OverlayModal>
+      )}
       <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
       <ModalEncerrarSemPedido
         aberto={modalEncerrarSemPedido}

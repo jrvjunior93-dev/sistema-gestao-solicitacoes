@@ -15,16 +15,41 @@ export function createWorkspaceMemory() {
   const values = new Map();
   const dirty = new Set();
   const busy = new Set();
+  const flows = new Map();
   return {
     get: key => values.get(key),
     delete: key => values.delete(key),
     has: key => values.has(key),
     set: (key, value) => values.set(key, value),
     dirty, busy,
+    hasFlow: key => flows.has(key),
+    getFlow(key, tabId) {
+      const flow = flows.get(key);
+      if (flow && tabId) flow.tabs.add(tabId);
+      return flow?.value;
+    },
+    setFlow(key, value, tabId) {
+      const tabs = flows.get(key)?.tabs || new Set();
+      if (tabId) tabs.add(tabId);
+      flows.set(key, { value, tabs });
+    },
+    clearFlow(key) {
+      flows.delete(key);
+      // Limpar somente paginas que registraram este fluxo, nao outras abas.
+      for (const [slot, value] of values) {
+        if (slot.endsWith('|flow') && value === key) {
+          this.clearPage(slot.slice(0, -5));
+        }
+      }
+    },
     deleteTab(tabId) {
       for (const key of values.keys()) if (key.startsWith(tabId + '|')) values.delete(key);
       for (const key of dirty) if (key.startsWith(tabId + '|')) dirty.delete(key);
       for (const key of busy) if (key.startsWith(tabId + '|')) busy.delete(key);
+      for (const [key, flow] of flows) {
+        flow.tabs.delete(tabId);
+        if (!flow.tabs.size) flows.delete(key);
+      }
     },
     clearPage(prefix) {
       for (const key of values.keys()) if (key.startsWith(prefix + '|')) values.delete(key);
@@ -41,7 +66,7 @@ export function createWorkspaceMemory() {
         if (!prefixes.has(page) && !protectedPages.has(page)) values.delete(key);
       }
     },
-    stats: () => ({ slots: values.size, dirty: dirty.size, busy: busy.size })
+    stats: () => ({ slots: values.size, dirty: dirty.size, busy: busy.size, flows: flows.size })
   };
 }
 
