@@ -1726,6 +1726,14 @@ const allowIntegracaoSiengeConfigManage = permit({
 // SOLICITAÇÕES
 // -------------------------------------------------------------------
 
+router.use([
+  '/solicitacoes/:solicitacaoOperacionalId',
+  '/recargas-cartao/solicitacoes/:solicitacaoOperacionalId',
+  '/adiantamentos/solicitacoes/:solicitacaoOperacionalId',
+  '/compras/solicitacoes/por-solicitacao/:solicitacaoOperacionalId',
+  '/compras/solicitacoes-diretas/por-solicitacao/:solicitacaoOperacionalId'
+], require('./middlewares/solicitacaoDisponivel'));
+
 router.post('/solicitacoes', validateRequest({ body: validateSolicitacaoCreateBody }), SolicitacaoController.create);
 router.get('/solicitacoes/centros-custo/:id/obras-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.obrasElegiveis);
 router.get('/solicitacoes/centros-custo/:id/configuracao-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.configuracao);

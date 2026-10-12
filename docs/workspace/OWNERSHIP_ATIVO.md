@@ -1,5 +1,29 @@
 # Ownership Ativo
 
+## Seguranca de acesso direto e exclusao - 2026-10-12
+
+- Sessao codex-seguranca-acesso-direto-20261012, sem delegacao.
+- Publicacao autorizada pelo usuario na refactor/frontend; reserva documental
+  encerrada apos revalidacao e separacao do pacote proprio para commit/push.
+  Sem main/deploy EC2; auditoria financeira alheia fora do stage.
+- Implementacao/QA local das etapas 1/2 concluida e etapa 3 iniciada;
+  reserva liberada ao entregar. Handoff:
+  docs/handoffs/2026-10-12-seguranca-acesso-direto.md.
+- Autorizado: corrigir acesso operacional a solicitacao excluida e revisar
+  seguranca por etapas com testes, preservando visibilidade existente.
+- Reserva: SolicitacaoController.js, solicitacaoRetornoService.js,
+  fileAccessService.js, AnexoController.js, routes.js; novo helper/middleware
+  de disponibilidade; scripts isolados de seguranca, teste hardening,
+  documentacao de auditoria e handoff desta tarefa.
+- Reserva adicional: validarDevolucaoRetornoSolicitacao.js (carregar o novo
+  helper puro na fixture VM, sem retirar cenarios anteriores).
+- Reserva adicional: mapearRotasSeguranca.js, inventario estatico AST local
+  das declaracoes e mounts; nao executa API nem certifica permissoes.
+- Reserva adicional: frontend/scripts/validarWorkspacePiloto.mjs, somente
+  repetir a negativa de seguranca com 404 alem de 403; sem mudar UI/runtime.
+- Sem banco/rede de negocio, migrations, main ou deploy.
+  Alteracoes/documentacao alheias e outputs preexistentes preservados.
+
 ## Correcoes superadmin e comparativo - 2026-10-12
 
 - Sessao codex-superadmin-comparativo-20261012, sem delegacao.

@@ -561,6 +561,9 @@ async function buscarResumoListaSolicitacaoPorId(id) {
 }
 
 async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLeituraGlobal = false } = {}) {
+  if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
+    return { allowed: false, status: 404, error: 'Solicitacao nao encontrada' };
+  }
   const areaUsuario = await obterAreaUsuario(req);
   const tokensSetorUsuario = expandirTokensComAliasesGeo(
     await obterTokensSetorPrincipalUsuario(req, areaUsuario)
@@ -888,6 +891,9 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLei
 }
 
 async function avaliarContextoInteracaoSolicitacao(req, solicitacao, acessoExistente = null) {
+  if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
+    return { allowed: false, status: 404, error: 'Solicitacao nao encontrada' };
+  }
   const acesso = acessoExistente || await verificarAcessoDetalheSolicitacao(req, solicitacao);
   if (!acesso.allowed) return acesso;
 
@@ -921,6 +927,9 @@ async function enviarSolicitacaoParaSetorInterno({
   destacarAtencao = false,
   ignorarPermissaoEnvioManual = false
 }) {
+  if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
+    return { ok: false, status: 404, error: 'Solicitacao nao encontrada' };
+  }
   const acessoObra = await validarAcessoObra(req, solicitacao);
   if (!acessoObra) {
     return { ok: false, status: 403, error: 'Acesso negado. Vincule o usuario a obra para continuar.' };
@@ -4442,7 +4451,8 @@ module.exports = {
           'criado_por',
           'obra_id',
           'tipo_solicitacao_id',
-          'area_responsavel'
+          'area_responsavel',
+          'cancelada'
         ]
       });
 
@@ -6886,7 +6896,7 @@ module.exports = {
 
       for (const id of idsUnicos) {
         const solicitacao = map.get(Number(id));
-        if (!solicitacao) {
+        if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
           resultado.erros.push({ id, error: 'Solicitacao nao encontrada' });
           continue;
         }

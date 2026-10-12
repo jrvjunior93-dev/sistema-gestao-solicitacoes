@@ -197,9 +197,9 @@ try{
   await page.close();
  }
  // Acesso negado nao pode restaurar um formulario antigo sobre o registro.
- {
+ for(const deniedStatus of[403,404]){
   const page=await browser.newPage();const audit=await install(page);let denied=false,changed=false;
-  await page.route('**/api/solicitacoes/90',r=>r.fulfill(denied?{status:403,json:{error:'Acesso negado.'}}:
+  await page.route('**/api/solicitacoes/90',r=>r.fulfill(denied?{status:deniedStatus,json:{error:deniedStatus===404?'Solicitacao nao encontrada.':'Acesso negado.'}}:
     {json:{id:90,codigo:'SOL-QA90',valor:changed?2000:1000,descricao:'QA',status_global:'PENDENTE',area_responsavel:'GEO',anexos:[],historicos:[],contexto_interacao:{pode_interagir:true}}}));
   await page.goto(base+'/solicitacoes/90');
   await page.getByRole('button',{name:'Editar valor',exact:true}).click();
@@ -213,7 +213,7 @@ try{
   assert.equal(await page.getByRole('dialog').count(),0);
   assert.equal(await page.getByRole('button',{name:'Salvar alteração',exact:true}).count(),0);
   assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
-  console.log('OK seguranca UI: 403 nao restaura modal/dados antigos; revisao alterada bloqueia sobregravacao.');
+  console.log('OK seguranca UI: '+deniedStatus+' nao restaura modal/dados antigos; revisao alterada bloqueia sobregravacao.');
  }
  // Um modal da lista nao pode usar o DTO salvo antes do GET autorizado.
  {

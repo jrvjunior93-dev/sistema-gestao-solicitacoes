@@ -66,7 +66,7 @@ async function obterCaminhoArquivoHistorico(historico) {
 }
 
 async function validarAcessoSolicitacao(req, solicitacao) {
-  if (!solicitacao) {
+  if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
     return {
       permitido: false,
       status: 404,
@@ -128,7 +128,7 @@ class AnexoController {
       }
 
       const solicitacao = await Solicitacao.findByPk(solicitacao_id, {
-        attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global']
+        attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada']
       });
       const acessoSolicitacao = await validarAcessoSolicitacao(req, solicitacao);
 
@@ -274,7 +274,7 @@ class AnexoController {
       const { tipo } = req.query;
 
       const solicitacao = await Solicitacao.findByPk(id, {
-        attributes: ['id', 'obra_id']
+        attributes: ['id', 'obra_id', 'cancelada']
       });
       const acessoSolicitacao = await validarAcessoSolicitacao(req, solicitacao);
 
@@ -391,7 +391,7 @@ class AnexoController {
       }
 
       const solicitacao = await Solicitacao.findByPk(historico.solicitacao_id, {
-        attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global']
+        attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada']
       });
       const acessoSolicitacao = await validarAcessoSolicitacao(req, solicitacao);
 
