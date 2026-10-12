@@ -13,6 +13,13 @@ VITE_WORKSPACE_PILOT=off. Sem migration ou restart para este pacote.
 Contrato, cobertura, limites e homologacao:
 [piloto de navegacao](../../arquitetura/2026-10-11-piloto-navegacao-solicitacoes.md).
 
+Correcao de homologacao em 12/10: identidade das abas sincronizada tambem
+com BrowserRouter/startTransition e paginas lazy. Abrir/trocar aba registra
+historico para Voltar do navegador; fechamento/retorno interno substituem
+a entrada. Login substitui a entrada apos sucesso e nao reapresenta o
+formulario com sessao ativa. Restauracao, logout e MFA continuam sob as
+validacoes existentes; nenhuma mudanca em AuthProvider ou ACL backend.
+
 ## Interacoes pendentes por usuario - 2026-10-11
 
 - Na lista (tabela/cards/celular), o balao junto ao codigo agrupa as

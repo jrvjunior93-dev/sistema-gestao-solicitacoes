@@ -1,5 +1,16 @@
 # Modulo COMPRAS
 
+## Delegacao: abrir em outra aba - 2026-10-12
+
+Abrir preserva a Delegacao e abre uma aba interna para a solicitacao
+principal; sem principal, abre o detalhe da compra. Filtro e edicoes nao
+salvas ficam em memoria, isolados por usuario/escopo/aba, sem cache de DTO.
+Ao retornar, o mesmo GET com contexto/visao delegacao atualiza a lista;
+403 limpa registros, usuarios e alvos antigos. Salvamento continua usando
+o endpoint e permissoes existentes, bloqueando saida enquanto em andamento.
+Limite de 12 abas nao substitui a tela de origem. Sem provider/piloto,
+o Abrir conserva o comportamento legado. Sem banco ou migration.
+
 ## Titulo e data da necessidade - 2026-10-11
 
 Solicitacao de Compra e Compra Direta possuem titulo opcional no cabecalho,

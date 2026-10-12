@@ -5,6 +5,7 @@ import { recordIdentity } from './workspaceModel';
 import { workspaceRouteFromLocation } from './useWorkspaceTabs';
 
 export const isWorkspacePilot = pathname => pathname === '/nova-solicitacao'
+  || pathname === '/compras/delegacao'
   || pathname === '/solicitacoes' || pathname === '/solicitacoes-arquivadas'
   || /^\/solicitacoes\/\d+\/?$/.test(pathname);
 

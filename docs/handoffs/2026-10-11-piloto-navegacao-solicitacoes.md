@@ -79,3 +79,43 @@ Ensaio ABBA p95: baseline 31,40 ms e piloto 31,75 ms; heap delta piloto
 ~0,34 MiB. Build de producao aprovado (569 modulos; inicial gzip 149,64 kB).
 Runtime backend, migrations, App.jsx e transporte API continuam sem diff.
 Auditoria financeira e outputs permanecem fora do commit do piloto.
+
+## Homologacao DEV: nomes, Delegacao e login - 2026-10-12
+
+Relato do usuario apos publicar 0fb4822d: aba conserva nome/identidade
+anterior, Abrir na Delegacao substitui origem e Voltar chega ao login.
+Mapeados: useWorkspaceController/WorkspaceView, Abrir/GET/delegar em
+ComprasDelegacao e Login/PrivateRoute/AuthProvider. Nenhum endpoint/ACL novo.
+
+Correcao local: estado de transicao isolado e refs confirmadas no commit,
+PUSH ao abrir/ativar aba, Delegacao com snapshots apenas de filtro/entrada,
+GET autorizado ao retornar e limpeza no 403; login com replace e guarda
+de sessao ativa/restauracao/MFA. Backend, AuthProvider, PrivateRoute,
+App.jsx e transporte API inalterados. Sem commit/push/deploy nesta etapa.
+
+Testes ampliados para flags reais do BrowserRouter, rota lazy/Suspense,
+nomes/aba ativa, Delegacao principal/fallback/limite/filtro/edicao, 403,
+login antigo/sessao ativa/logout/restauracao/anonimo/MFA e POST simulado
+de login em localhost. Baseline opcional --baseline-controller carrega
+somente o controlador de 0fb4822d via git show (sem alterar arquivos):
+reprovado na sincronizacao da aba da consulta lazy, como esperado.
+Revalidacao ampliada aprovada em 1366/390 px, incluindo botao +/busca
+reais, reutilizacao de detalhe ja aberto e campos da Delegacao preservados.
+P95 baseline 31,75 ms / piloto 31,50 ms; heap delta ~0,34 MiB. Build
+aprovado (569 modulos, inicial gzip 149,82 kB, contra 149,64 kB no piloto
+publicado). Navegacao/abas/tela inicial, ACL GEO/Compras, troca DEV,
+acesso a anexos, documentacao e diff aprovados. Nenhum dado real acessado.
+Pendencias anteriores de validarLayout/SecurityHardening seguem documentadas;
+nao declarar toda a suite global verde. Ownership desta correcao liberado.
+Publicacao desta correcao autorizada pelo usuario na refactor/frontend em
+2026-10-12. Revalidar e publicar somente o pacote proprio, preservando a
+auditoria financeira alheia. Proximo gate: homologacao DEV apos o deploy
+frontend da Vercel; sem main, migrations ou restart de backend neste pacote.
+
+Revalidacao para esta publicacao: QA ampliada integral aprovada em 1366/390
+px; p95 baseline 32,10 ms / piloto 32,05 ms; heap delta ~0,34 MiB.
+Build, tela inicial, navegacao, abas, documentacao e testes isolados de
+ACL GEO/Compras, troca DEV e acesso a anexos aprovados. Runtime backend,
+migrations, AuthProvider, PrivateRoute, App.jsx e API continuam sem diff.
+Reserva documental encerrada. Arquivos da auditoria financeira nao fazem
+parte deste pacote. Push deve ser confirmado no remoto antes da entrega.

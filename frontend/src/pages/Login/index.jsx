@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import cscLogo from '../../assets/CSC_logo_lockup_padded.png';
 import fluxyLogo from '../../assets/fluxy_mark_cropped.png';
 import CityBackground from '../../components/CityBackground';
 import { Avisos, useAvisos } from '../../components/padrao';
 import Alert from '../../components/ui/Alert';
 import Spinner from '../../components/ui/Spinner';
+import AppRouteFallback from '../../components/AppRouteFallback';
 import { useAuth } from '../../contexts/AuthContext';
 import { loginMfaRequest, loginRequest } from '../../services/auth';
 import { resolverRotaInicial } from '../../navigation/telaInicialRoute';
@@ -45,7 +46,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { avisos, avisar, fechar, limpar } = useAvisos();
 
-  const { login } = useAuth();
+  const { login, user, isAuthenticated, authReady } = useAuth();
   const navigate = useNavigate();
   const isMfaStep = Boolean(mfaChallenge);
   const introKicker = isMfaStep ? 'Segurança em duas etapas' : '';
@@ -145,13 +146,13 @@ export default function Login() {
 
   function navigateAfterLogin(data) {
     if (data?.user?.mfa_setup_pending) {
-      navigate('/perfil');
+      navigate('/perfil', { replace: true });
       return;
     }
 
     // O login e o botão Início usam a mesma preferência individual.
     // Sem escolha ou sem acesso, o destino continua sendo o menu.
-    navigate(resolverRotaInicial(data?.user));
+    navigate(resolverRotaInicial(data?.user), { replace: true });
   }
 
   async function handleSubmit(e) {
@@ -218,6 +219,14 @@ export default function Login() {
     setMfaChallenge(null);
     setMfaCode('');
     limpar();
+  }
+
+  // Retornar a uma entrada antiga de /login nao encerra uma sessao ativa.
+  // O servidor/AuthProvider continuam decidindo se ela e valida; nao usamos
+  // token/localStorage para inferir autenticacao nem modificamos os guards.
+  if (!authReady) return <AppRouteFallback fullScreen />;
+  if (isAuthenticated && user) {
+    return <Navigate to={user.mfa_setup_pending ? '/perfil' : resolverRotaInicial(user)} replace />;
   }
 
   return (

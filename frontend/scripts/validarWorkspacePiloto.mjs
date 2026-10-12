@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { createServer, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import { chromium } from 'playwright';
@@ -29,6 +30,8 @@ import{BrowserRouter,Routes,Route,useParams,useNavigate}from'react-router-dom';
 import Layout from '/src/layout/Layout.jsx';import Nova from '/src/pages/NovaSolicitacao.jsx';
 import Lista from '/src/pages/Solicitacoes/index.jsx';import Detalhe from '/src/pages/SolicitacaoDetalhe/index.jsx';
 import CompraEtapas from '/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx';
+import Delegacao from '/src/modules/solicitacao-compra/pages/ComprasDelegacao.jsx';
+import Login from '/src/pages/Login/index.jsx';import PrivateRoute from '/src/components/PrivateRoute.jsx';
 import tabs,{useLegacyWorkspaceTabs}from'/src/navigation/useWorkspaceTabs';
 import WorkspaceView from'/src/navigation/WorkspaceView.jsx';
 import{WorkspaceContext,createWorkspaceMemory,useWorkspace,useWorkspaceState,useWorkspaceWork,useWorkspaceTitle}from'/src/navigation/WorkspaceContext.jsx';
@@ -37,14 +40,20 @@ import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styl
 import '/src/components/lista-avancada/lista-avancada.css';
 const params=new URLSearchParams(location.search);const core=params.has('core');const legacy=params.has('legacy');
 const user={id:1,perfil:'SUPERADMIN',nome:'QA',area:'GEO',setor:{codigo:'GEO'},modulos_habilitados:[{key:'COMPRAS',enabled:false},{key:'CONTRATOS',enabled:false},{key:'FINANCEIRO',enabled:false}]};
-function TestAuth({children}){const[effective,set]=useState(user);useEffect(()=>{window.qaAuth={switch:()=>set({...user,id:2,nome:'Outro usuario'}),restrict:()=>set(current=>({...current,areas_permissoes_configuradas:true,areas_permissoes:[]}))}},[]);return <AuthContext.Provider value={{user:effective,logout:()=>{}}}>{children}</AuthContext.Provider>}
+function TestAuth({children}){const[effective,set]=useState(params.has('anon')?null:params.has('mfa')?{...user,mfa_setup_pending:true}:user);const[ready,R]=useState(!params.has('restoring'));useEffect(()=>{window.qaAuth={ready:()=>R(true),logout:()=>set(null),switch:()=>set({...user,id:2,nome:'Outro usuario'}),restrict:()=>set(current=>({...current,areas_permissoes_configuradas:true,areas_permissoes:[]}))}},[]);return <AuthContext.Provider value={{user:effective,authReady:ready,isAuthenticated:!!effective,login:async data=>set(data.user),logout:()=>set(null)}}>{children}</AuthContext.Provider>}
 function ItemsFixture(){return <><Toolbar/><CompraEtapas solicitacaoId={useParams().id} user={user} podeDecidir podeReceber={false} podeProgramarEntrega={false} podeAnexar={false} mostrarCotacao={false}/></>}
-function Toolbar(){const w=useWorkspace();useEffect(()=>{window.qa={...w}},[w]);return <div style={{position:'sticky',top:0,zIndex:90,background:'#fff'}}><button onClick={()=>w.openTab('/consulta/1')}>QA consulta</button><button onClick={()=>w.back('/solicitacoes')}>QA voltar</button></div>}
+function Toolbar(){const w=useWorkspace();const nav=useNavigate();useEffect(()=>{window.qa={...w}},[w]);return <div style={{position:'sticky',top:0,zIndex:90,background:'#fff'}}><button onClick={()=>w.openTab('/consulta/1')}>QA consulta</button><button onClick={()=>w.back('/solicitacoes')}>QA voltar</button><button onClick={()=>nav('/compras/delegacao')}>QA delegacao</button><button onClick={()=>w.openTab('/consulta-lenta')}>QA aba lenta</button></div>}
+const ConsultaLenta=React.lazy(()=>new Promise(resolve=>setTimeout(()=>resolve({default:()=> <><Toolbar/><p>Consulta lenta pronta</p></>}),400)));
 function CoreForm(){const[text,set]=useWorkspaceState('texto','');const[busy,B]=useState(false);useWorkspaceWork(!!text,busy);useWorkspaceTitle('SOL-CORE-'+(useParams().id||'NOVA'));return <><input aria-label="Rascunho" value={text} onChange={e=>set(e.target.value)}/><button onClick={()=>{B(true);setTimeout(()=>B(false),700)}}>QA ocupado</button><div style={{height:2500}}>Formulario</div></>}
 function CoreShell(){const[owner,setOwner]=useState(user);const w=(legacy?useLegacyWorkspaceTabs:tabs)(owner);const memory=useMemo(()=>createWorkspaceMemory(),[owner.id]);useEffect(()=>{window.qa={...w,store:memory,owner:()=>setOwner({...user,id:2}),nav:navigate,close:id=>{w.closeTab(id);memory.deleteTab(id)}}},[w,memory]);const navigate=useNavigate();return <WorkspaceContext.Provider value={w}><div id="tabs">{w.tabs.map(t=><button key={t.id} data-route={t.route} onClick={()=>w.activateTab(t.id)}>{t.title}</button>)}</div><WorkspaceView key={owner.id} workspace={w} memory={memory} enabled={!legacy}/></WorkspaceContext.Provider>}
 const withToolbar=Component=><><Toolbar/><Component/></>;
-createRoot(document.getElementById('root')).render(<BrowserRouter><TestAuth><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><Routes>
-<Route element={core?<CoreShell/>:<Layout/>}><Route path="/nova-solicitacao" element={core?<CoreForm/>:withToolbar(Nova)}/>
+createRoot(document.getElementById('root')).render(<BrowserRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}}><TestAuth><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><Routes>
+<Route path="/login" element={<Login/>}/>
+<Route element={<PrivateRoute>{core?<CoreShell/>:<Layout/>}</PrivateRoute>}><Route path="/nova-solicitacao" element={core?<CoreForm/>:withToolbar(Nova)}/>
+<Route path="/compras/delegacao" element={withToolbar(Delegacao)}/>
+<Route path="/solicitacoes-compra/:id" element={<><Toolbar/><p>Solicitacao de compra sem principal</p></>}/>
+<Route path="/perfil" element={<><Toolbar/><p>Perfil MFA</p></>}/>
+<Route path="/consulta-lenta" element={<ConsultaLenta/>}/>
 <Route path="/solicitacoes" element={core?<CoreForm/>:withToolbar(Lista)}/><Route path="/solicitacoes/:id" element={core?<CoreForm/>:params.has('itens')?<ItemsFixture/>:withToolbar(Detalhe)}/>
 <Route path="/consulta/:id" element={core?<CoreForm/>:<><Toolbar/><p>Consulta auxiliar</p></>}/><Route path="/" element={<Toolbar/>}/></Route>
 </Routes></ThemeContext.Provider></TestAuth></BrowserRouter>);`;
@@ -56,11 +65,12 @@ const server = await createServer({ root, configFile:false,logLevel:'error',
     resolveId(id){if(id==='/qa.jsx')return '\0workspace-qa.jsx'},
     async load(id){if(id==='\0workspace-qa.jsx')return transformWithEsbuild(fixture,'qa.jsx',{loader:'jsx',jsx:'transform'})},
     transform(code,id){
+      if(process.argv.includes('--baseline-controller')&&id.endsWith('/src/navigation/useWorkspaceController.js')) return execFileSync('git',['show','0fb4822d:frontend/src/navigation/useWorkspaceController.js'],{cwd:root,encoding:'utf8'});
       if(id.endsWith('/src/contexts/AuthContext.jsx')) return `import{createContext,useContext}from'react';export const AuthContext=createContext({});export const useAuth=()=>useContext(AuthContext);`;
       if(id.endsWith('/src/contexts/LiveUpdatesContext.jsx')) return `export function useLiveUpdateSubscription(){};`;
     },
     configureServer(s){s.middlewares.use(async(req,res,next)=>{
-      if(!/^\/(nova-solicitacao|solicitacoes|consulta|$)/.test(req.url))return next();
+      if(!/^\/(nova-solicitacao|solicitacoes|consulta|compras|login|perfil|$)/.test(req.url))return next();
       res.setHeader('Content-Type','text/html');res.end(await s.transformIndexHtml(req.url,'<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>.la-tabela{min-width:2600px!important}</style></head><body><div id="root"></div><script type="module" src="/qa.jsx"></script></body></html>'));
     })}
   },react()],optimizeDeps:{include:['react','react-dom/client','react-router-dom']}});
@@ -70,9 +80,15 @@ const results=[];
 try{
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH,channel:process.env.PLAYWRIGHT_EXECUTABLE_PATH?undefined:'chrome'});
  const install=async page=>{
+   const waitForURL = page.waitForURL.bind(page);
+   page.waitForURL = async (...args) => {
+     await waitForURL(...args);
+     // history muda antes do commit do Router em startTransition.
+     await page.waitForFunction(()=>location.pathname==='/login'||window.qa?.tabs.find(t=>t.id===window.qa.activeId)?.route===location.pathname+location.search+location.hash);
+   };
    // O formulario retido fica hidden/inert; interagir apenas com a pagina ativa.
    page.getByLabel = (text, opts) => page.locator('[data-workspace-page]:not([hidden])').getByLabel(text, opts);
-   const errors=[],writes=[],reads=[],navigationAudit=[];page.setDefaultTimeout(12000);
+   const errors=[],writes=[],reads=[],navigationAudit=[];page.setDefaultTimeout(12000);page.setDefaultNavigationTimeout(30000);
    page.on('pageerror',e=>{errors.push(e.message);console.error('QA pageerror:',e.message)});
    const obra={id:7,codigo:'07',nome:'Obra QA',tipo_centro_custo:'OBRA',ativo:true};
    const tipo={id:5,nome:'DESPESA EVENTUAL',ativo:true};
@@ -86,6 +102,8 @@ try{
     else if(req.method()!=='GET')writes.push({p,method:req.method()});else reads.push(p);
     let data=[];
     if(p==='/obras/minhas')data=[obra];
+    else if(p==='/compras/solicitacoes')data=[{id:8,solicitacao_principal_id:90,status:'PENDENTE',obra,solicitante:{nome:'QA'}},{id:9,status:'PENDENTE',obra,solicitante:{nome:'QA'}},{id:10,solicitacao_principal_id:91,status:'PENDENTE',obra,solicitante:{nome:'QA'}}];
+    else if(p==='/compras/delegacao/usuarios')data=[{id:1,nome:'Comprador QA',setor:'COMPRAS'}];
     else if(p==='/tipos-solicitacao')data=[tipo];
     else if(p==='/tipos-solicitacao/disponiveis')data={tipos:[tipo],destino_inicial:{codigo:'GEO',nome:'GEO'},tipo_automatico:false};
     else if(p==='/solicitacoes')data={items:[record(90),record(91)],meta:{page:Number(u.searchParams.get('page'))||1,total:50,total_pages:2,limit:25}};
@@ -110,6 +128,7 @@ try{
   await page.waitForFunction(()=>window.qa.store.stats().busy===0);
   await page.evaluate(()=>{const t=window.qa.tabs.find(t=>t.route==='/consulta/ocupado');window.qa.close(t.id)});
   await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.waitForFunction(()=>window.qa.tabs.find(t=>t.id===window.qa.activeId)?.route===location.pathname+location.search);
   await page.getByLabel('Rascunho').fill('outro registro');
   await page.evaluate(id=>window.qa.activateTab(id),initial);
   assert.equal(await page.getByLabel('Rascunho').inputValue(),'ultimo caractere!');
@@ -331,6 +350,99 @@ try{
   assert.equal(await page.getByRole('textbox',{name:'Comentário',exact:true}).inputValue(),'Rascunho item 90');
   assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
   console.log('OK comentarios em itens '+width+'px: rascunho isolado por solicitacao/item, sem dados ou permissoes cacheados.');
+ }
+ // Regressao DEV: nomes/aba ativa apos navegação comum e Suspense real.
+ for(const width of[1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  await page.goto(base+'/solicitacoes/90');
+  await page.getByRole('tab',{name:/SOL-QA90/}).waitFor();
+  await page.getByRole('button',{name:'Abrir nova aba interna',exact:true}).click();
+  await page.getByRole('combobox',{name:'Buscar tela para abrir em nova aba',exact:true}).fill('Nova Solicitação');
+  await page.locator('.fx-cmdk-item-main').filter({hasText:'Nova Solicitação'}).first().click();
+  await page.waitForURL('**/nova-solicitacao');
+  assert.equal(await page.getByRole('tablist',{name:'Telas abertas',exact:true}).getByRole('tab',{selected:true}).innerText(),'Nova Solicitação');
+  await page.getByRole('button',{name:'QA delegacao',exact:true}).click();
+  await page.waitForURL('**/compras/delegacao');
+  assert.equal(await page.getByRole('tablist',{name:'Telas abertas',exact:true}).getByRole('tab',{selected:true}).innerText(),'Delegação de Compras');
+  await page.getByRole('button',{name:'QA aba lenta',exact:true}).click();
+  await page.getByText('Consulta lenta pronta',{exact:true}).waitFor();
+  await page.waitForURL('**/consulta-lenta');
+  assert.equal(await page.getByRole('tablist',{name:'Telas abertas',exact:true}).getByRole('tab',{selected:true}).innerText(),'consulta lenta');
+  await page.goBack();await page.waitForURL('**/compras/delegacao');
+  assert.equal(await page.getByRole('tablist',{name:'Telas abertas',exact:true}).getByRole('tab',{selected:true}).innerText(),'Delegação de Compras');
+  const source=await page.evaluate(()=>window.qa.activeId);
+  const filter=page.getByPlaceholder('Solicitação, obra, responsável, solicitante ou status');
+  await filter.fill('SC-00008');
+  await page.locator('[data-workspace-page]:not([hidden]) select').selectOption('1');
+  const before=await page.evaluate(()=>window.qa.tabs.length);
+  await page.getByRole('button',{name:'Abrir',exact:true}).click();await page.waitForURL('**/solicitacoes/90');
+  await page.getByRole('tab',{name:/SOL-QA90/,selected:true}).waitFor();
+  assert.equal(await page.getByRole('tablist',{name:'Telas abertas',exact:true}).getByRole('tab',{selected:true}).innerText(),'SOL-QA90');
+  assert.equal(await page.evaluate(()=>window.qa.tabs.length),before,'Solicitacao ja aberta reutiliza sua aba, sem substituir Delegacao');
+  assert.equal(await page.evaluate(id=>window.qa.tabs.find(t=>t.id===id).route,source),'/compras/delegacao');
+  await page.goBack();await page.waitForURL('**/compras/delegacao');
+  assert.equal(await filter.inputValue(),'SC-00008');
+  assert.equal(await page.locator('[data-workspace-page]:not([hidden]) select').inputValue(),'1');
+  await filter.fill('SC-00009');await page.getByRole('button',{name:'Abrir',exact:true}).click();
+  await page.waitForURL('**/solicitacoes-compra/9');
+  await page.getByRole('button',{name:'QA voltar',exact:true}).click();await page.waitForURL('**/compras/delegacao');
+  assert.equal(await filter.inputValue(),'SC-00009');
+  for(let i=0;await page.evaluate(()=>window.qa.tabs.length)<12;i++){
+    await page.evaluate(i=>window.qa.openTab('/consulta/limite'+i),i);await page.waitForURL('**/consulta/limite'+i);
+  }
+  await page.evaluate(id=>window.qa.activateTab(id),source);await page.waitForURL('**/compras/delegacao');
+  await filter.fill('SC-00010');await page.getByRole('button',{name:'Abrir',exact:true}).click();
+  await page.getByText('Limite de 12 abas atingido. Feche uma aba para abrir outra.',{exact:true}).waitFor();
+  assert.equal(new URL(page.url()).pathname,'/compras/delegacao');
+  assert.equal(await page.evaluate(()=>window.qa.tabs.length),12);
+  assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
+  console.log('OK homologacao '+width+'px: nomes imediatos, Suspense/POP, Delegacao nova aba, filtro/edicao/origem e limite sem substituir trabalho.');
+ }
+ {
+  const page=await browser.newPage();const audit=await install(page);let denied=false;
+  await page.route('**/api/compras/solicitacoes?*',r=>denied?r.fulfill({status:403,json:{error:'Acesso negado.'}}):r.fallback());
+  await page.goto(base+'/compras/delegacao');await page.getByRole('button',{name:'Abrir',exact:true}).first().waitFor();
+  await page.locator('[data-workspace-page]:not([hidden]) select').first().selectOption('1');
+  denied=true;await page.getByRole('button',{name:'Atualizar',exact:true}).click();
+  await page.getByText('Acesso negado.',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Abrir',exact:true}).count(),0);
+  assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
+  console.log('OK Delegacao: 403 elimina lista, usuarios e alvos antigos; sem novas permissoes ou escritas.');
+ }
+ {
+  const page=await browser.newPage();const audit=await install(page);
+  await page.goto(base+'/login');await page.waitForURL(base+'/');
+  assert.equal(await page.locator('#root').getByRole('textbox',{name:/e-mail/i}).count(),0);
+  await page.evaluate(()=>window.qaAuth.logout());await page.waitForURL('**/login');
+  await page.locator('#root').getByRole('textbox',{name:/e-mail/i}).waitFor();
+  assert.deepEqual(audit.writes,[]);assert.deepEqual(audit.errors,[]);await page.close();
+  console.log('OK sessao: login antigo redireciona apenas sessao ativa; logout real continua exigindo login.');
+ }
+ {
+  const page=await browser.newPage();const audit=await install(page);
+  await page.goto(base+'/login?restoring');await page.getByText('Carregando tela',{exact:true}).waitFor();
+  assert.equal(await page.locator('#root').getByRole('textbox',{name:/e-mail/i}).count(),0);
+  await page.evaluate(()=>window.qaAuth.ready());await page.waitForURL(base+'/');
+  assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
+  const mfa=await browser.newPage();const check=await install(mfa);await mfa.goto(base+'/login?mfa');await mfa.waitForURL('**/perfil');
+  assert.deepEqual(check.errors,[]);assert.deepEqual(check.writes,[]);await mfa.close();
+  const anon=await browser.newPage();const negative=await install(anon);await anon.goto(base+'/solicitacoes/90?anon');await anon.waitForURL('**/login');
+  await anon.locator('#root').getByRole('textbox',{name:/e-mail/i}).waitFor();
+  assert(!negative.reads.some(p=>p.startsWith('/solicitacoes')));assert.deepEqual(negative.writes,[]);await anon.close();
+  console.log('OK restauracao/MFA/anonimo: sem flash de login, perfil obrigatorio e guarda privado preservado.');
+ }
+ {
+  const page=await browser.newPage();const audit=await install(page);
+  await page.route('**/api/login',r=>r.fulfill({json:{user:{id:1,perfil:'SUPERADMIN',nome:'QA',area:'GEO'}}}));
+  await page.goto(base+'/login?anon&anterior');
+  await page.locator('#root').getByRole('textbox',{name:/e-mail/i}).fill('qa@example.test');
+  await page.locator('#root').getByLabel(/^senha$/i).fill('senha-apenas-fixture');
+  await page.evaluate(()=>history.pushState({},'','/login?anon'));
+  await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.waitForURL(base+'/');
+  await page.goBack();await page.waitForURL(base+'/');
+  assert.equal(await page.locator('#root').getByRole('textbox',{name:/e-mail/i}).count(),0);
+  assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
+  console.log('OK login/POP antigo: entrada de login substituida; retorno nao pede autenticacao novamente. POST somente simulado em localhost.');
  }
  // Comparacao controlada do mesmo formulario e DOM. Nao benchmark de producao.
  for(const legacy of[true,false,false,true]){

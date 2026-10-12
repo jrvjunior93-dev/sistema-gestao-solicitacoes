@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { MAX_WORKSPACE_TABS, normalizeWorkspaceRoute, resolveWorkspaceTitle, workspaceRouteFromLocation } from './useWorkspaceTabs';
 import { completedNewKey, makeEntry, makeTab, markerKey, moveTab, positionTab, recordIdentity, workspaceAccessIdentity } from './workspaceModel';
@@ -58,10 +58,13 @@ export default function useWorkspaceController(user) {
   const route = workspaceRouteFromLocation(location);
   const [state, setState] = useState(() => load(user, route));
   const ref = useRef(state);
+  const rendered = useRef(state);
+  const pending = useRef(null);
+  const locationRef = useRef(location);
   const userRef = useRef(user); userRef.current = user;
   // Mudanca de usuario efetivo nao deixa uma renderizacao usar o workspace antigo.
   if (state.scope !== workspaceAccessIdentity(user)) {
-    const next = load(user, route); ref.current = next; setState(next);
+    const next = load(user, route); setState(next);
   }
   const update = useCallback(fn => {
     const next = fn(ref.current);
@@ -69,13 +72,20 @@ export default function useWorkspaceController(user) {
     return next;
   }, []);
   const go = useCallback((tab, replace = true) => {
+    // BrowserRouter usa startTransition: o update local pode chegar antes
+    // da URL. Nao reconciliar a URL antiga sobre a aba recem-aberta, nem
+    // montar um Outlet antigo no namespace do destino durante esse intervalo.
+    pending.current = { fromKey: locationRef.current.key, previous: rendered.current };
     navigate(tab.route, { replace, state: { [markerKey]: { owner: userRef.current?.id, tabId: tab.id, entryId: tab.entries[tab.cursor].id } } });
   }, [navigate]);
 
+  const waitingForRoute = state.scope === workspaceAccessIdentity(user)
+    && pending.current?.fromKey === location.key;
+
   // Resolver identidade ANTES de montar o Outlet. Um efeito tardio montaria
   // a pagina nova por um frame no namespace da aba/registro anterior.
-  {
-    const current = ref.current;
+  if (!waitingForRoute) {
+    const current = state;
     const mark = location.state?.[markerKey];
     const marked = mark?.owner === user?.id && current.tabs.find(t => t.id === mark.tabId);
     const cursor = marked ? marked.entries.findIndex(e => e.id === mark.entryId && e.route === route) : -1;
@@ -96,10 +106,12 @@ export default function useWorkspaceController(user) {
         next = { ...current, tabs: current.tabs.map(t => t.id === active.id ? changed : t) };
       }
     }
-    if (next !== current) { ref.current = next; setState(next); }
+    if (next !== current) setState(next);
   }
 
   useEffect(() => {
+    // Um efeito de um commit anterior tambem pode executar depois do clique.
+    if (locationRef.current.key !== location.key || pending.current?.fromKey === location.key) return;
     const mark = location.state?.[markerKey];
     const current = ref.current;
     let next = current;
@@ -139,7 +151,8 @@ export default function useWorkspaceController(user) {
   const activateTab = useCallback(id => {
     const tab = ref.current.tabs.find(t => t.id === id);
     if (!tab) return false;
-    update(s => ({ ...s, activeId: id })); go(tab); return true;
+    if (ref.current.activeId === id && workspaceRouteFromLocation(locationRef.current) === tab.route) return true;
+    update(s => ({ ...s, activeId: id })); go(tab, false); return true;
   }, [go, update]);
   const openTab = useCallback((value, title = '') => {
     const route = normalizeWorkspaceRoute(value);
@@ -148,21 +161,21 @@ export default function useWorkspaceController(user) {
     const restoredNew = findNewRequest(current.tabs, route);
     if (restoredNew) {
       update(s => ({ ...s, activeId: restoredNew.id, tabs: s.tabs.map(t => t.id === restoredNew.id ? restoredNew : t) }));
-      go(restoredNew); return true;
+      go(restoredNew, false); return true;
     }
     const existing = current.tabs.find(t => recordIdentity(t.route) === recordIdentity(route));
     if (existing) {
       if (existing.route === route) return activateTab(existing.id);
       const changed = moveTab(existing, { ...existing.entries[existing.cursor], route }, true);
       update(s => ({ ...s, activeId: existing.id, tabs: s.tabs.map(t => t.id === existing.id ? changed : t) }));
-      go(changed); return true;
+      go(changed, false); return true;
     }
     if (current.tabs.length >= MAX_WORKSPACE_TABS) return false;
     const active = current.tabs.find(t => t.id === current.activeId);
     const tab = makeTab(makeEntry(route, resolveWorkspaceTitle(userRef.current, route, title), Boolean(title)),
       { tabId: active.id, entryId: active.entries[active.cursor].id });
     update(s => ({ ...s, tabs: [...s.tabs, tab], activeId: tab.id }));
-    go(tab); return true;
+    go(tab, false); return true;
   }, [activateTab, go, update]);
   const closeTab = useCallback(id => {
     const current = ref.current;
@@ -198,6 +211,14 @@ export default function useWorkspaceController(user) {
     const entries = tab.entries.map((e, i) => i === tab.cursor ? { ...e, title: clean, preferredTitle: true } : e);
     update(s => ({ ...s, tabs: s.tabs.map(t => t.id === id ? positionTab({ ...t, entries }, tab.cursor) : t) }));
   }, [update]);
-  return useMemo(() => ({ tabs: state.tabs, activeId: state.activeId, canOpen: state.tabs.length < MAX_WORKSPACE_TABS,
-    activateTab, openTab, closeTab, back, renameTab }), [state, activateTab, openTab, closeTab, back, renameTab]);
+  const visibleState = waitingForRoute ? pending.current.previous : state;
+  // Refs de navegacao so recebem renders confirmados. Uma tentativa de
+  // render concorrente/suspensa nao pode modificar o workspace do usuario.
+  useLayoutEffect(() => {
+    ref.current = state;
+    locationRef.current = location;
+    if (!waitingForRoute) { rendered.current = state; pending.current = null; }
+  }, [state, location, waitingForRoute]);
+  return useMemo(() => ({ tabs: visibleState.tabs, activeId: visibleState.activeId, canOpen: visibleState.tabs.length < MAX_WORKSPACE_TABS,
+    activateTab, openTab, closeTab, back, renameTab }), [visibleState, activateTab, openTab, closeTab, back, renameTab]);
 }

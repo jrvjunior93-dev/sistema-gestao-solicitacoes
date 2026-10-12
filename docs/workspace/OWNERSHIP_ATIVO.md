@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## Correcao do piloto apos homologacao DEV - 2026-10-12
+
+- Publicacao autorizada pelo usuario na refactor/frontend em 2026-10-12.
+  Reserva documental para revalidacao e preparacao do commit desta correcao;
+  sem main, deploy EC2 ou inclusao da auditoria financeira alheia.
+  Revalidacao para publicacao concluida; pacote proprio separado e reserva
+  documental liberada. Homologacao DEV permanece como proximo gate.
+- Sessao codex-workspace-retorno-20261012, sem delegacao.
+- Reserva: navigation/useWorkspaceController.js, workspaceModel.js,
+  WorkspaceContext/View e validarWorkspacePiloto.mjs; ComprasDelegacao.jsx
+  e testes relacionados. Login/index.jsx e guard especifico de entrada
+  somente se confirmada rota publica acessivel com sessao ativa.
+- Escopo: titulo/aba ativa sincronizados, Delegacao abre nova aba e
+  retorno nao exibe login a usuario ainda autenticado. Sem ampliar ACL,
+  alterar AuthProvider/transporte API, backend, banco ou migrations.
+- Documentacao: README Solicitacoes e handoff do piloto; auditoria
+  financeira alheia preservada. Sem commit/push/deploy nesta etapa.
+- Reserva adicional: validarTelaInicial.mjs para exigir replace no login
+  normal/MFA; README Compras e contrato do piloto para registrar Delegacao.
+- Revalidacao ampliada desktop/mobile, negativas, desempenho/build,
+  tela inicial/navegacao/abas e testes backend isolados aprovados. Estado:
+  finalizado local, ownership liberado. Sem commit/push/deploy; proximo
+  gate e autorizacao de publicacao e homologacao DEV. Handoff do piloto
+  atualizado; nenhuma alteracao da auditoria financeira nesta sessao.
+
 ## Publicacao do piloto de navegacao - 2026-10-12
 
 - Commit/push autorizado pelo usuario exclusivamente na refactor/frontend.

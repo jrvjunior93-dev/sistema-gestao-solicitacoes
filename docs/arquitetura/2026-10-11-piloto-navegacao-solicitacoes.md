@@ -139,9 +139,37 @@ locais. Nao precisa migration, reconciliacao ou mudanca de permissao.
 Ainda nao e adesao completa de todos os modais da Solicitacao: criar titulo,
 medicao, adiantamento/prestacao, mudanca de setor/status e cadastros internos
 mantem seu comportamento anterior e precisam de adapters/testes por fluxo.
-Delegacao em nova aba e adesao Compras/Financeiro/DP continuam etapas futuras.
+Delegacao recebeu adesao restrita em 12/10: abrir em nova aba e restaurar
+filtro/edicoes nao salvas com nova consulta autorizada. Demais telas de
+Compras/Financeiro/DP continuam etapas futuras.
 
 Proximo gate: homologar em dev com rede/dados reais, perfis GEO/Obra/DP,
 rascunhos longos, anexos/PDFs e aparelhos mobile, incluindo conflito/403 e
 duplo envio. Publicacao/deploy e ampliacao exigem pedido separado. A ausencia
 de regressao nos ensaios locais nao garante latencia/memoria de producao.
+
+## Correcao apos homologacao DEV - 12/10/2026
+
+O app usa BrowserRouter com v7_startTransition; a fixture anterior nao
+ativava esse contrato. Atualizado o ensaio e adicionada rota lazy/Suspense:
+o controlador do commit 0fb4822d falha na sincronizacao URL/aba ativa nesse
+cenario. A correcao separa transicao pendente do ultimo render confirmado,
+e somente confirma refs em layout effect, nao em render interrompido.
+Nao reaproveitar o namespace antigo para o Outlet novo durante a transicao.
+
+Abrir/trocar aba usa PUSH; back interno/fechamento conservam REPLACE. O
+login apos sucesso tambem usa REPLACE, normal ou MFA. Entrada antiga de
+login com sessao ativa redireciona ao destino inicial autorizado/perfil
+MFA; restauracao pendente mostra loading. Nao inferir sessao de token em
+disco, nem alterar AuthProvider/PrivateRoute/ACL para evitar tela de login.
+
+Rascunhos continuam apenas em memoria: navegar realmente para fora do
+shell (logout/entrada publica) pode desmonta-los; nao prometer recuperacao
+apos F5/logout ou retorno a paginas publicas anteriores ao login.
+
+Revalidacao ampliada aprovada em 1366/390 px (inclui +/busca reais,
+principal/fallback da Delegacao, reaproveitamento de aba aberta, filtro,
+edicao, 12 abas, 403 e casos de login). P95 baseline 31,75 ms / piloto
+31,50 ms; heap delta ~0,34 MiB. Build 569 modulos, inicial gzip 149,82 kB
+versus 149,64 kB no piloto publicado (+0,12%). Ensaios isolados nao
+substituem homologacao na rede/aparelhos reais do DEV.
