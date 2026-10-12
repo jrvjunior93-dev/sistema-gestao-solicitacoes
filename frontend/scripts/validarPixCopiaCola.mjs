@@ -4,9 +4,10 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
-import { createServer } from 'vite';
+import { createServer, transformWithEsbuild } from 'vite';
+import { parse } from '@babel/parser';
 import { chromium } from 'playwright';
-import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../src/utils/pix.js';
+import { PIX_TIPOS_CHAVE, PIX_TEXTO_MAX, pixTipoLabel } from '../src/utils/pix.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = 5307, saida = path.resolve(root, '../outputs/qa-pix-copia-cola');
 await mkdir(saida, { recursive: true });
@@ -24,7 +25,46 @@ const freteFonte = await readFile(path.join(root, 'src/modules/solicitacao-compr
 const maskFonte = freteFonte.match(/function maskPixKey\(value, type\) \{[\s\S]*?\n\}/)[0];
 const maskPixKey = vm.runInNewContext(`(${maskFonte})`);
 assert.equal(maskPixKey('ABC:def@EMAIL.com\n+ /' + 'xY'.repeat(200), 'COPIA_COLA'), 'ABC:def@EMAIL.com\n+ /' + 'xY'.repeat(200));
-const server = await createServer({ root, server: { host: '127.0.0.1', port, strictPort: true, proxy: {} } });
+assert.equal(PIX_TEXTO_MAX, 8192);
+// Renderiza os tres inputs extraidos das telas reais, com os mesmos bindings,
+// handlers e limite. Nao e uma copia de markup mantida separadamente.
+const campos = [];
+for (const [arquivo, valores] of [
+  ['modules/solicitacao-compra/components/PedidoCompraFinanceiro.jsx', ['config.chave_pix']],
+  ['modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx', ['detalhe.chave_pix', 'freteChavePix']]
+]) {
+  const fonte = await readFile(path.join(root, 'src', arquivo), 'utf8');
+  function visitar(node) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'JSXElement' && node.openingElement.name.name === 'input') {
+      const valor = node.openingElement.attributes.find(a => a.name?.name === 'value')?.value?.expression;
+      if (valor && valores.includes(fonte.slice(valor.start, valor.end))) {
+        const limite = node.openingElement.attributes.find(a => a.name?.name === 'maxLength')?.value?.expression;
+        assert.equal(fonte.slice(limite.start, limite.end), 'PIX_TEXTO_MAX');
+        campos.push(fonte.slice(node.start, node.end));
+      }
+    }
+    for (const v of Object.values(node)) if (Array.isArray(v)) v.forEach(visitar); else if (v && typeof v === 'object') visitar(v);
+  }
+  visitar(parse(fonte, { sourceType: 'module', plugins: ['jsx'] }));
+}
+assert.equal(campos.length, 3);
+const capacidadeId = '\0qa-pix-capacidade.jsx';
+const capacidadeFonte = `import React,{useState} from 'react';import{createRoot}from'react-dom/client';import{PIX_TEXTO_MAX}from'/src/utils/pix.js';
+function QA(){const[config,onChange]=useState({chave_pix:''}),[detalhe,setDetalhe]=useState({chave_pix:''}),[freteChavePix,setFreteChavePix]=useState('');
+const formaId=1,limparErroCampo=()=>{},atualizarDetalheFormaPagamento=(_id,patch)=>setDetalhe({...detalhe,...patch});
+return <div>${campos.map((campo, i) => `<label>Campo Pix ${i + 1}${campo}</label>`).join('')}<output>{JSON.stringify([config.chave_pix,detalhe.chave_pix,freteChavePix])}</output></div>;}
+createRoot(document.getElementById('root')).render(<QA/>);`;
+const capacidadePlugin = { name: 'qa-pix-capacidade',
+  resolveId(id) { if (id === '/qa-pix-capacidade.jsx') return capacidadeId; },
+  async load(id) { if (id === capacidadeId) return (await transformWithEsbuild(capacidadeFonte, 'qa-pix-capacidade.jsx', { loader: 'jsx' })).code; },
+  configureServer(server) { server.middlewares.use(async (req, res, next) => {
+    if (req.url.split('?')[0] !== '/qa-pix-capacidade') return next();
+    res.setHeader('Content-Type', 'text/html');
+    res.end(await server.transformIndexHtml('/qa-pix-capacidade', '<html><body><div id="root"></div><script type="module" src="/qa-pix-capacidade.jsx"></script></body></html>'));
+  }); }
+};
+const server = await createServer({ root, plugins: [capacidadePlugin], server: { host: '127.0.0.1', port, strictPort: true, proxy: {} } });
 await server.listen();
 let browser, page;
 const erros = [], inesperadas = [], favorecidos = [], titulos = [];
@@ -51,6 +91,16 @@ try {
     if (url.origin === `http://127.0.0.1:${port}` && !url.pathname.startsWith('/api') && !url.pathname.startsWith('/solicitacoes/')) return route.continue();
     inesperadas.push(url.pathname); return route.abort('blockedbyclient');
   });
+  await page.goto(`http://127.0.0.1:${port}/qa-pix-capacidade`);
+  const codigoLongo = '000201' + 'Ab:09/='.repeat(1169) + 'XYZ';
+  assert.equal(codigoLongo.length, PIX_TEXTO_MAX);
+  for (let i = 1; i <= 3; i++) {
+    const campo = page.getByLabel(`Campo Pix ${i}`, { exact: true });
+    await campo.fill(codigoLongo);
+    assert.equal(await campo.getAttribute('maxlength'), String(PIX_TEXTO_MAX));
+    assert.equal(await campo.inputValue(), codigoLongo);
+  }
+  assert.deepEqual(JSON.parse(await page.locator('output').textContent()), [codigoLongo, codigoLongo, codigoLongo]);
   for (const [largura, texto] of [[1366, 'Texto Livre ABC:def/XYZ + ?= @ $'], [375, '000201ABC:Pix/' + 'aB:0123456789/'.repeat(80)]]) {
     await page.setViewportSize({ width: largura, height: 900 });
     await page.goto(`http://127.0.0.1:${port}/scripts/fixtures/pixCopiaCola.html`);
@@ -96,7 +146,7 @@ try {
   assert.deepEqual(favorecidos.slice(-2).map(f => f.pix_chave), chaves);
   assert.notEqual(titulos.at(-1).pagamentos[0].payment_beneficiary_id, titulos.at(-1).pagamentos[1].payment_beneficiary_id);
   assert.deepEqual(erros, []); assert.deepEqual(inesperadas, []);
-  console.log('OK: 8 telas com catalogo Pix; preparar Pix real, Copia e Cola livre/longos, payload integro e titulo vinculado em desktop/mobile. Sem API externa.');
+  console.log('OK: 8 telas com catalogo Pix, 3 inputs reais de Compras preservam 8192 caracteres; preparar Pix real, Copia e Cola livre/longos, payload integro e titulo vinculado em desktop/mobile. Sem API externa.');
 } catch (error) {
   if (page) { console.error(await page.locator('body').innerText()); await page.screenshot({ path: path.join(saida, 'falha.png'), fullPage: true }); }
   throw error;

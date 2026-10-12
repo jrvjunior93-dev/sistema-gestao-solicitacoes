@@ -554,7 +554,7 @@ export function construirColunas({
               Retorno solicitado
             </span>
           )}
-          <AtencaoPendente atencao={item.atencao_pendente} />
+          <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
           <ContadorPrazo prazo={item.prazo_operacional} />
           {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
             Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}

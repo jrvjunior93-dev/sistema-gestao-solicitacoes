@@ -1,5 +1,10 @@
 # Quadro de Agentes
 
+## Interacoes de solicitacoes - 2026-10-11
+- Sessao codex-interacoes-solicitacoes-20261011: finalizado, ownership liberado, sem delegacao.
+- Plano: armazenamento idempotente por evento/usuario, balão agrupado,
+  leitura na visualizacao real, atalhos e testes isolados. Sem banco/EC2.
+
 ## Fila e publicacao dev 08/10/2026
 
 - codex-fila-comprovante-pendente-2026-10-08: finalizado, sem delegacao;

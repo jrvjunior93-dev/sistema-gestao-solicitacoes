@@ -22,7 +22,7 @@ import {
 } from '../services/pagamentoAutorizacao';
 import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../utils/webauthn';
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
-import { codigoLoteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
+import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import { isAutorizadorPwa } from '../utils/autorizacaoPagamentoPwa';
 import OverlayModal from '../components/ui/OverlayModal';
 import '../styles/financeiro-autorizacoes-pagamento.css';
@@ -67,13 +67,32 @@ export default function FinanceiroAutorizacoesPagamento() {
   const loteJustificativa = lots.find(lot => (lot.itens || []).some(item => String(item.id) === justificativaId));
   const itemJustificativa = loteJustificativa?.itens.find(item => String(item.id) === justificativaId);
   const textoJustificativa = itemJustificativa?.titulo?.solicitacao?.justificativa;
+  const motivoId = searchParams.get('motivo');
+  const loteMotivo = lots.find(lot => (lot.itens || []).some(item => String(item.id) === motivoId));
+  const itemMotivo = loteMotivo?.itens.find(item => String(item.id) === motivoId);
 
   useEffect(() => {
     if (loteJustificativa) setSelectedId(loteJustificativa.id);
   }, [loteJustificativa?.id]);
+  useEffect(() => { if (loteMotivo) setSelectedId(loteMotivo.id); }, [loteMotivo?.id]);
+
+  function abrirMotivo(itemId) {
+    const next = new URLSearchParams(searchParams);
+    next.delete('justificativa');
+    next.set('motivo', String(itemId));
+    setSearchParams(next, { state: { ...location.state, modalMotivo: true } });
+  }
+
+  function fecharMotivo() {
+    if (location.state?.modalMotivo && Number(window.history.state?.idx) > 0) return navigate(-1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('motivo');
+    setSearchParams(next, { replace: true, state: { ...location.state, modalMotivo: false } });
+  }
 
   function abrirJustificativa(itemId) {
     const next = new URLSearchParams(searchParams);
+    next.delete('motivo');
     next.set('justificativa', String(itemId));
     // Uma entrada na mesma rota permite que voltar/gesto do aparelho feche
     // apenas o modal, preservando lote, selecao e lista montados.
@@ -313,6 +332,9 @@ export default function FinanceiroAutorizacoesPagamento() {
               <span><strong title={lot.codigo}>{codigoLoteAutorizacao(lot)}</strong><Status value={lot.status} /></span>
               <span>{money(lot.valor_total)} · {lot.quantidade_itens} título(s)</span>
               <small>Criado em {date(lot.createdAt)}</small>
+              {motivosAjusteAutorizacao(lot).map(ajuste => <small key={ajuste.id} className="pa-lot-reason">
+                <strong>{ajuste.referencia}</strong> · Motivo do ajuste: {ajuste.motivo}
+              </small>)}
             </button>
           ))}
         </aside>
@@ -352,7 +374,11 @@ export default function FinanceiroAutorizacoesPagamento() {
                         aria-label={`Ler justificativa de ${snapshot.solicitacao?.codigo || snapshot.codigo || `título ${snapshot.titulo_id}`}`}>
                         {item.titulo.solicitacao.justificativa}
                       </button> : '-'}</td>
-                    <td className="pa-reason-column">{item.motivo_decisao || '-'}</td>
+                    <td className="pa-reason-column">{String(item.motivo_decisao || '').trim() ?
+                      <button type="button" className="pa-justification-preview" onClick={() => abrirMotivo(item.id)}
+                        aria-label={`Ler motivo do ajuste de ${snapshot.solicitacao?.codigo || snapshot.codigo || `título ${snapshot.titulo_id}`}`}>
+                        {item.motivo_decisao}
+                      </button> : '-'}</td>
                   </tr>;
                 })}</tbody>
               </table>
@@ -374,13 +400,22 @@ export default function FinanceiroAutorizacoesPagamento() {
         </section>
       </div>
 
-      {String(textoJustificativa || '').trim() && <OverlayModal rotulo="Justificativa da solicitação"
+      {!motivoId && String(textoJustificativa || '').trim() && <OverlayModal rotulo="Justificativa da solicitação"
         largura="680px" onFechar={fecharJustificativa} fecharAoClicarFora>
         <header data-modal="cabecalho" className="pa-justification-head">
           <strong>Justificativa da solicitação</strong>
           <button type="button" className="btn btn-secondary btn-sm" onClick={fecharJustificativa}>Fechar</button>
         </header>
         <p className="pa-justification-text">{textoJustificativa}</p>
+      </OverlayModal>}
+
+      {String(itemMotivo?.motivo_decisao || '').trim() && <OverlayModal rotulo="Motivo do ajuste"
+        largura="680px" onFechar={fecharMotivo} fecharAoClicarFora>
+        <header data-modal="cabecalho" className="pa-justification-head">
+          <strong>Motivo do ajuste · {itemMotivo.snapshot_json?.solicitacao?.codigo || itemMotivo.snapshot_json?.codigo || `#${itemMotivo.id}`}</strong>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={fecharMotivo}>Fechar</button>
+        </header>
+        <p className="pa-justification-text">{itemMotivo.motivo_decisao}</p>
       </OverlayModal>}
 
       {caps.can_decide && (compactPwa || passkeys.length > 0) && <details id="pa-dispositivos" className="pa-device-disclosure" open={compactPwa ? undefined : true}>

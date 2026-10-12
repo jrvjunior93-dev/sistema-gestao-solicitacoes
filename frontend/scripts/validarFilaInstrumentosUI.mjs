@@ -9,6 +9,7 @@ import autoprefixer from 'autoprefixer';
 import tailwindConfig from '../tailwind.config.js';
 import { validarColunasFila } from './filaColunasQA.mjs';
 import { validarArquivosPreviewFila } from './filaArquivosPreviewQA.mjs';
+import { validarDadosPagamentoFila } from './filaDadosPagamentoQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -39,6 +40,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
+        if(new URLSearchParams(location.search).has('dados')) row.titulo.observacoes=window.__paymentText || ('PIX: 000201ABC/Pix@EXEMPLO.COM +'+'aB:0123456789/'.repeat(500));
         if(new URLSearchParams(location.search).has('massa')) {
           const items=Array.from({length:32},(_,i)=>({...row,id:i+1,juros:10,multa:3,
             status:i===30?'BAIXADO':i===31?'EM_EDICAO':'PENDENTE',
@@ -309,6 +311,7 @@ try {
   assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0,'Sem permissao nao ha baixa em massa');
   await validarColunasFila(browser);
   await validarArquivosPreviewFila(browser);
+  await validarDadosPagamentoFila(browser);
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real, local, selecao parcial/todos elegiveis, baixa em massa com juros/multa e duplo clique, rolagem vertical/horizontal no fechamento/Esc desktop/mobile, instrumentos e baixa sem PDF. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

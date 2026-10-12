@@ -96,6 +96,7 @@ db.SolicitacaoVisibilidadeUsuario =
   require('./SolicitacaoVisibilidadeUsuario')(sequelize, Sequelize);
 db.SolicitacaoPedidoRetorno = require('./SolicitacaoPedidoRetorno')(sequelize, Sequelize);
 db.SolicitacaoAtencaoUsuario = require('./SolicitacaoAtencaoUsuario')(sequelize, Sequelize);
+db.SolicitacaoInteracaoUsuario = require('./SolicitacaoInteracaoUsuario')(sequelize, Sequelize);
 db.PedidoCompraItemRecebimento = require('./PedidoCompraItemRecebimento')(sequelize, Sequelize);
 db.PedidoCompraEntrega = require('./PedidoCompraEntrega')(sequelize, Sequelize);
 db.PedidoCompraEntregaOperacao = require('./PedidoCompraEntregaOperacao')(sequelize, Sequelize);

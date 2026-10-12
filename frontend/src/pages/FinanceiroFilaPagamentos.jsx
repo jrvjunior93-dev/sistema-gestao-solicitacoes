@@ -35,6 +35,7 @@ import DateInputBR from '../components/DateInputBR';
 import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
+import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
 import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
@@ -1134,7 +1135,7 @@ export default function FinanceiroFilaPagamentos() {
                       <div className="text-xs text-[var(--c-muted)]">{beneficiary.documento || 'Documento não informado'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-64 break-all text-xs" title={beneficiary.pagamento}>{beneficiary.pagamento}</div>
+                      <DadosPagamentoFila texto={beneficiary.pagamento} titulo={title.codigo || `#${row.id}`} favorecido={beneficiary.nome} />
                       {title.observacoes?.includes('\nReembolsos de vale:\n') && <details className="mt-2 max-w-64 text-xs">
                         <summary className="cursor-pointer">Ver colaboradores do reembolso</summary>
                         <div className="mt-1 whitespace-pre-wrap">{title.observacoes.split('\nReembolsos de vale:\n')[1]}</div>

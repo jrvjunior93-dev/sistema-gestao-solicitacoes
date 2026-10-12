@@ -1,5 +1,7 @@
 // Catalogo comum aos cadastros e ao preparo financeiro. Copia e Cola nao e UUID.
 export const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA', 'COPIA_COLA'];
+// Mesmo limite operacional do backend; nao truncar codigos de pagamento.
+export const PIX_TEXTO_MAX = 8192;
 export const PIX_OPCOES_CHAVE = PIX_TIPOS_CHAVE.map((value) => ({
   value,
   label: value === 'COPIA_COLA' ? 'Copia e Cola' : value

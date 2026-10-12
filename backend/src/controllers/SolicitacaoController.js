@@ -418,6 +418,8 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
   ]);
 
   const atencaoPorSolicitacao = new Map(atencoesPendentes.map((linha) => [Number(linha.solicitacao_id), linha]));
+  const interacoesPorSolicitacao = await require('../services/solicitacaoInteracoesService')
+    .listarInteracoes(idsSolicitacoes, usuarioId);
   const entregaService = require('../services/pedidoEntregaService');
   const entregasPendentes = (await Promise.all(['OBRA', 'COMPRAS'].map((setor) =>
     entregaService.pendenciasEntrega({ solicitacaoIds: idsSolicitacoes, setor })
@@ -501,6 +503,7 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
       solicitacao.atencao_pendente = atencao
         ? { tipo: atencao.tipo, resumo: atencao.resumo, evento_em: atencao.evento_em }
         : null;
+      solicitacao.interacoes_pendentes = interacoesPorSolicitacao.get(Number(item.id)) || [];
       return solicitacao;
     })
     .sort((a, b) => (ordemIds.get(Number(a.id)) || 0) - (ordemIds.get(Number(b.id)) || 0));
@@ -994,6 +997,7 @@ async function enviarSolicitacaoParaSetorInterno({
     usuario_responsavel_id: usuarioId,
     setor: setorDestino,
     acao: 'ENVIADA_SETOR',
+    metadata: JSON.stringify({ envio_manual: destacarAtencao }),
     observacao: `De ${setorOrigem} para ${setorDestino}`
   });
 
@@ -2498,13 +2502,13 @@ module.exports = {
           WHERE sau.solicitacao_id = Solicitacao.id
             AND sau.usuario_id = ${Number(usuarioId) || -1}
             AND sau.lido_em IS NULL
-        ) THEN 0 ELSE 1 END`), 'ASC'],
-        [Sequelize.literal(`(
+        ) OR ${require('../services/solicitacaoInteracoesService').sqlExistePendente(usuarioId)} THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(`GREATEST(COALESCE((
           SELECT sau.evento_em FROM solicitacao_atencoes_usuario sau
           WHERE sau.solicitacao_id = Solicitacao.id
             AND sau.usuario_id = ${Number(usuarioId) || -1}
             AND sau.lido_em IS NULL
-        )`), 'DESC'],
+        ), '1970-01-01'), COALESCE(${require('../services/solicitacaoInteracoesService').sqlUltimoPendente(usuarioId)}, '1970-01-01'))`), 'DESC'],
         [Sequelize.literal(`CASE WHEN EXISTS (
           SELECT 1
           FROM solicitacao_pedidos_retorno spr
@@ -4752,6 +4756,10 @@ module.exports = {
         contextoInteracaoBase
       );
 
+      payload.interacoes_pendentes = (await require('../services/solicitacaoInteracoesService')
+        .listarInteracoes([solicitacao.id], req.user.id)).get(Number(solicitacao.id)) || [];
+      // Apenas o aviso legado e consumido ao abrir. Eventos independentes
+      // permanecem ate o conteudo correspondente ser realmente visualizado.
       await marcarAtencaoLida(solicitacao.id, req.user.id);
 
       return res.json(payload);
@@ -6653,6 +6661,18 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao adicionar comentario' });
+    }
+  },
+
+  async marcarInteracoesLidas(req, res) {
+    try {
+      await require('../services/solicitacaoRetornoService').assertPodeVisualizarSolicitacao(req, req.params.id);
+      const grupos = await require('../services/solicitacaoInteracoesService').marcarInteracoesLidas({
+        solicitacaoId: req.params.id, usuarioId: req.user.id, historicoIds: req.body?.historico_ids
+      });
+      return res.json({ interacoes_pendentes: grupos, usuario_id: Number(req.user.id) });
+    } catch (error) {
+      return res.status(Number(error.statusCode) || 500).json({ error: error.message || 'Erro ao registrar leitura.' });
     }
   },
 

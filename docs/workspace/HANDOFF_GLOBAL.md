@@ -1,5 +1,12 @@
 # Handoff Global
 
+## Interacoes de solicitacoes - 2026-10-11
+- Sessao codex-interacoes-solicitacoes-20261011: finalizado, ownership liberado.
+- Balao por usuario/evento, atalhos, leitura efetiva, realtime/prioridade,
+  anexos e retorno preservando escopo/status/financeiro. Tests/build/docs/diff
+  aprovados. Migration estrutural preparada; sem banco real, EC2 ou publicacao.
+- Handoff: docs/handoffs/2026-10-11-interacoes-solicitacoes.md.
+
 ## Fila sem PDF e publicacao dev 08/10/2026
 
 - Sessao codex-fila-comprovante-pendente-2026-10-08 finalizada; ownership liberado.

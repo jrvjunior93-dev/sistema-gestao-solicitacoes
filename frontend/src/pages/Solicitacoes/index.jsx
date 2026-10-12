@@ -173,6 +173,7 @@ function compararFaixaValor(a, b) {
 export default function Solicitacoes({ arquivadas = false }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   // R19: nada de caixa do navegador. Faixa de aviso dentro da página e
   // modal de confirmação do sistema — os dois vindos dos padrões.
   const { avisos, avisar, fechar } = useAvisos();
@@ -215,8 +216,29 @@ export default function Solicitacoes({ arquivadas = false }) {
     total_pages: 0
   });
   const solicitacoesRef = useRef([]);
+  const versaoLeituraInteracoesRef = useRef(0);
+  const refreshInteracoesTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(refreshInteracoesTimerRef.current), []);
   const atualizarEntregaRef = useRef(null);
   atualizarEntregaRef.current = () => carregarEmSegundoPlano();
+  useEffect(() => {
+    const leitura = (event) => {
+      const id = Number(event.detail?.id);
+      if (!id) return;
+      if (event.detail.usuario_id && Number(event.detail.usuario_id) !== Number(user?.id)) return;
+      versaoLeituraInteracoesRef.current++;
+      registrarMutacaoLocal(id);
+      setSolicitacoes((atuais) => {
+        const proximas = atuais.map((item) => Number(item.id) === id
+          ? { ...item, interacoes_pendentes: event.detail.interacoes_pendentes, atencao_pendente: null } : item);
+        solicitacoesRef.current = proximas;
+        return proximas;
+      });
+      void atualizarEntregaRef.current?.();
+    };
+    window.addEventListener('fluxy:interacoes-lidas', leitura);
+    return () => window.removeEventListener('fluxy:interacoes-lidas', leitura);
+  }, [user?.id]);
   useEffect(() => {
     let dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
     const verificar = () => {
@@ -229,7 +251,6 @@ export default function Solicitacoes({ arquivadas = false }) {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', verificar); };
   }, []);
   const localMutationsRef = useRef(new Map());
-  const { user } = useAuth();
   const [edicaoDados, setEdicaoDados] = useState(null);
   const permissoesEdicao = permissoesEdicaoSolicitacao(user);
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
@@ -784,11 +805,12 @@ export default function Solicitacoes({ arquivadas = false }) {
   }
 
   function abrirSolicitacao(item) {
-    marcarAtencaoComoLidaNaLista(item?.id);
+    if (!item?.interacoes_pendentes?.length) marcarAtencaoComoLidaNaLista(item?.id);
     navigate(`/solicitacoes/${item.id}`);
   }
 
   async function atualizarSolicitacaoDaLista(id, { permitirInsercao = false } = {}) {
+    const versaoLeitura = versaoLeituraInteracoesRef.current;
     const idNumerico = Number(id);
     if (!Number.isInteger(idNumerico) || idNumerico <= 0) {
       return;
@@ -799,6 +821,7 @@ export default function Solicitacoes({ arquivadas = false }) {
 
     try {
       const resumo = await getSolicitacaoResumoLista(idNumerico);
+      if (versaoLeitura !== versaoLeituraInteracoesRef.current) return;
       const atendeFiltros = solicitacaoAtendeFiltros(resumo);
 
       if (indiceAtual >= 0) {
@@ -956,6 +979,7 @@ export default function Solicitacoes({ arquivadas = false }) {
 
       const params = new URLSearchParams(paramsObj).toString();
 
+      const versaoLeitura = versaoLeituraInteracoesRef.current;
       const res = await fetch(`${API_URL}/solicitacoes?${params}`, {
         headers: authHeaders()
       });
@@ -965,6 +989,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       }
 
       const data = await res.json();
+      if (versaoLeitura !== versaoLeituraInteracoesRef.current) return;
       const lista = Array.isArray(data)
         ? data
         : Array.isArray(data?.items)
@@ -1031,6 +1056,7 @@ export default function Solicitacoes({ arquivadas = false }) {
         : String(limitePorPagina);
 
       const params = new URLSearchParams(paramsObj).toString();
+      const versaoLeitura = versaoLeituraInteracoesRef.current;
       const res = await fetch(`${API_URL}/solicitacoes?${params}`, {
         headers: authHeaders()
       });
@@ -1040,6 +1066,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       }
 
       const data = await res.json();
+      if (versaoLeitura !== versaoLeituraInteracoesRef.current) return;
       const lista = Array.isArray(data)
         ? data
         : Array.isArray(data?.items)
@@ -1588,7 +1615,14 @@ export default function Solicitacoes({ arquivadas = false }) {
         return;
       }
 
-      if (action.startsWith('RETORNO_') || action === 'PURCHASE_DELIVERY_UPDATED') {
+      if (action.startsWith('INTERACTION') || ['COMMENT_ADDED', 'ATTACHMENT_ADDED'].includes(action)) {
+        // Agrupa o evento central e o evento especifico do mesmo ato,
+        // preservando a prioridade antes da paginacao sem dois reloads.
+        clearTimeout(refreshInteracoesTimerRef.current);
+        refreshInteracoesTimerRef.current = setTimeout(() => { void atualizarEntregaRef.current?.(); }, 150);
+        return;
+      }
+      if (action.startsWith('RETORNO_') || action === 'PURCHASE_DELIVERY_UPDATED' || action === 'SENT_TO_SECTOR') {
         // O pedido pendente altera a prioridade global da fila. Rebuscar a janela garante
         // que uma solicitacao que estava em outra pagina apareca imediatamente no topo e
         // que o destaque suma assim que o pedido for decidido ou cancelado.
@@ -1835,6 +1869,7 @@ export default function Solicitacoes({ arquivadas = false }) {
         larguraPadrao: 130,
         render: (item) => <span className="flex min-w-0 flex-col gap-1">
           <span>{formatarMaiusculas(item.codigo || `#${item.id}`)}</span>
+          <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
           <ContadorPrazo prazo={item.prazo_operacional} />
         </span>
       },
@@ -1959,7 +1994,7 @@ export default function Solicitacoes({ arquivadas = false }) {
               Retorno solicitado
             </span>
           )}
-          <AtencaoPendente atencao={item.atencao_pendente} />
+          <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
           <ContadorPrazo prazo={item.prazo_operacional} />
           {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
             Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
@@ -2173,7 +2208,7 @@ export default function Solicitacoes({ arquivadas = false }) {
           ]}
           renderCard={renderCardSolicitacao}
           urgencia={(item) => (
-            item.entrega_pendente ? (item.entrega_pendente.vencida ? 'retorno' : 'entrega') : item.retorno_solicitado_pendente || item.atencao_pendente
+            item.entrega_pendente ? (item.entrega_pendente.vencida ? 'retorno' : 'entrega') : item.retorno_solicitado_pendente || item.atencao_pendente || item.interacoes_pendentes?.length
               ? 'retorno'
               : urgenciaVencimento(item.data_vencimento)
           )}

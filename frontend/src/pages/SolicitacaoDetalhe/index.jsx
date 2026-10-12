@@ -1,6 +1,7 @@
 import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import AtencaoPendente, { gruposInteracoes } from '../Solicitacoes/AtencaoPendente';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLiveUpdateSubscription } from '../../contexts/LiveUpdatesContext';
 
@@ -356,6 +357,25 @@ export default function SolicitacaoDetalhe() {
   const podeCatalogarItensManuaisCompra = moduloComprasHabilitado && canCatalogarItensManuaisCompras(user);
 
   const [solicitacao, setSolicitacao] = useState(null);
+  const versaoLeituraInteracoesRef = useRef(0);
+  const locationInteracao = useLocation();
+  const queryInteracao = new URLSearchParams(locationInteracao.search);
+  const tipoInteracaoFoco = queryInteracao.get('interacao');
+  const eventoInteracaoFoco = Number(queryInteracao.get('evento')) || null;
+  useEffect(() => {
+    if (tipoInteracaoFoco) setAbaMobile(['COMENTARIO_ITEM', 'RETORNO_PENDENTE', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco) ? 'detalhes' : 'historico');
+  }, [tipoInteracaoFoco, eventoInteracaoFoco]);
+  useEffect(() => {
+    const leitura = (event) => {
+      if (Number(event.detail?.id) !== Number(id)) return;
+      if (event.detail.usuario_id && Number(event.detail.usuario_id) !== Number(user?.id)) return;
+      versaoLeituraInteracoesRef.current++;
+      setSolicitacao((atual) => atual && Number(atual.id) === Number(id)
+        ? { ...atual, interacoes_pendentes: event.detail.interacoes_pendentes } : atual);
+    };
+    window.addEventListener('fluxy:interacoes-lidas', leitura);
+    return () => window.removeEventListener('fluxy:interacoes-lidas', leitura);
+  }, [id, user?.id]);
   const [edicaoDados, setEdicaoDados] = useState(null);
   const permissoesEdicao = permissoesEdicaoSolicitacao(user);
   // PI-16: o contrato do fluxo novo vive DENTRO desta solicitacao. O estado dele decide o que a
@@ -364,6 +384,12 @@ export default function SolicitacaoDetalhe() {
   // Por que o contrato nao carregou. Vazio quando carregou ou quando a solicitacao nem tem contrato.
   const [falhaContrato, setFalhaContrato] = useState('');
   const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (loading || !['RETORNO_PENDENTE', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco)) return;
+    const timer = setTimeout(() => document.getElementById(tipoInteracaoFoco === 'RETORNO_PENDENTE'
+      ? 'sol-detail-retorno' : 'sol-detail-itens')?.scrollIntoView({ block: 'start' }), 100);
+    return () => clearTimeout(timer);
+  }, [loading, tipoInteracaoFoco, id]);
   const [modalStatus, setModalStatus] = useState(false);
   const [modalCadastroObraAberto, setModalCadastroObraAberto] = useState(false);
   const [statusDependenciasVersao, setStatusDependenciasVersao] = useState(0);
@@ -485,7 +511,7 @@ export default function SolicitacaoDetalhe() {
 
   useEffect(() => {
     carregar();
-  }, [id]);
+  }, [id, user?.id]);
 
   useEffect(() => {
     if (!isCompraDiretaSolicitacao || !solicitacao?.id) {
@@ -592,13 +618,16 @@ export default function SolicitacaoDetalhe() {
   }
 
   async function carregar({ silent = false } = {}) {
+    const versaoLeitura = versaoLeituraInteracoesRef.current;
     try {
       if (!silent) {
         setLoading(true);
       }
 
       const data = await getSolicitacaoById(id);
-      setSolicitacao(data);
+      setSolicitacao((atual) => versaoLeitura !== versaoLeituraInteracoesRef.current
+        && Number(atual?.id) === Number(data?.id)
+        ? { ...data, interacoes_pendentes: atual.interacoes_pendentes } : data);
 
       // PI-16: carrega o contrato quando esta solicitacao E a solicitacao DELE.
       //
@@ -1588,6 +1617,11 @@ export default function SolicitacaoDetalhe() {
 
     historico: (
       <Timeline
+        key={`timeline-${solicitacao.id}-${user?.id}`}
+        solicitacaoId={solicitacao.id}
+        interacoesPendentes={solicitacao.interacoes_pendentes}
+        abrirPorInteracao={Boolean(tipoInteracaoFoco && !['COMENTARIO_ITEM', 'RETORNO_PENDENTE', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco))}
+        eventoFoco={tipoInteracaoFoco !== 'COMENTARIO_ITEM' && tipoInteracaoFoco ? eventoInteracaoFoco : null}
         ordem={historicoOrdem}
         aoMudarOrdem={definirOrdemHistorico}
         historicos={montarHistoricosComJustificativa(solicitacao)}
@@ -1715,7 +1749,7 @@ export default function SolicitacaoDetalhe() {
   };
 
   const blocosVisiveis = ordemBlocos
-    .filter((blocoId) => !blocosOcultos.has(blocoId))
+    .filter((blocoId) => !blocosOcultos.has(blocoId) || (tipoInteracaoFoco && blocoId === (['COMENTARIO_ITEM', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco) ? 'itens_compra_direta' : 'historico')))
     .map((blocoId) => ({ id: blocoId, conteudo: conteudoBlocos[blocoId] }))
     .filter((bloco) => bloco.conteudo);
 
@@ -1752,7 +1786,7 @@ export default function SolicitacaoDetalhe() {
   }));
   const arranjoBlocos = {
     ordem: ordemBlocos,
-    ocultos: blocosOcultos,
+    ocultos: tipoInteracaoFoco ? new Set([...blocosOcultos].filter((bloco) => bloco !== (['COMENTARIO_ITEM', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco) ? 'itens_compra_direta' : 'historico'))) : blocosOcultos,
     recolhidos: blocosRecolhidos,
     larguras: largurasBlocos
   };
@@ -1815,10 +1849,13 @@ export default function SolicitacaoDetalhe() {
 
       {/* O que TRAVA a decisão vem antes de qualquer dado: pedido de
           retorno da Obra e falha de acesso ao contrato. */}
-      <RetornoSolicitacaoBar
+      {gruposInteracoes(solicitacao).length > 0 && <div id="sol-detail-interacoes" className="flex items-center gap-2 text-sm">
+        <AtencaoPendente solicitacao={solicitacao} />
+      </div>}
+      {contextoInteracao && (!contextoInteracao.pode_interagir || contextoInteracao.pedidos_retorno_para_decisao?.length || contextoInteracao.retorno_aprovado || contextoInteracao.devolucao_retorno) && <div id="sol-detail-retorno"><RetornoSolicitacaoBar
         solicitacao={solicitacao}
         onMudou={() => carregar({ silent: true })}
-      />
+      /></div>}
 
       {/* A resposta imediata: em que pé está, com quem, para quando.
           Os três ladrilhos vinham do cabeçalho antigo (Status, Setor,

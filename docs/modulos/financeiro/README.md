@@ -1,5 +1,39 @@
 # Modulo FINANCEIRO
 
+## Motivo de ajuste nas autorizacoes - 2026-10-11
+
+- Historico do detalhe mostra observacao de STATUS_ALTERADO (incluindo motivos
+  digitais ja gravados), sem repetir descricao identica ou alterar o registro.
+- A lista de lotes identifica SOL/TIT e resume motivos dos itens REJEITADO ou
+  INVALIDADO. Coluna Motivo abre texto completo; fechar/Escape/fundo/voltar do
+  navegador retorna ao lote, como a justificativa. Consulta nao decide pagamentos.
+- Cada nova recusa grava seu motivo mesmo se outro titulo ja mudou o status
+  da mesma solicitacao. Sem nova troca global registra evento proprio; motivos
+  de medicao antiga nao sobrescrevem o fluxo da medicao mais recente.
+- Sem migration/backfill: textos salvos passam a aparecer; motivos antigos
+  ausentes do historico nao sao inventados nem regravados nesta alteracao.
+  [Handoff](../../handoffs/2026-10-11-motivo-ajuste-autorizacao.md).
+
+## Pix longo e dados da fila - 2026-10-11
+
+- Copia e Cola aceita texto livre com limite operacional de 8192 caracteres.
+  Campos sem seletor preservam o codigo; cadastros que inferem tipo reconhecem
+  o prefixo 000201. CPF/CNPJ/telefone conservam suas validacoes especificas.
+- Tres inputs de Compras (pedido, solicitacao e frete) ainda limitavam a chave
+  a 255 no navegador; agora usam PIX_TEXTO_MAX = 8192, ja aceito pelo backend.
+  Demais inputs Pix auditados nao tinham corte de 180/255; o RH ja usa 8192.
+- Persistencia usa TEXT nas 12 colunas da migration existente
+  202610090001_pix_copia_cola_texto.js. Conferir sua aplicacao em cada ambiente;
+  a revisao local nao confirma schema/deploy de producao. Nenhuma nova migration.
+- Na fila, dados acima de 120 caracteres ou com mais de duas linhas ganham
+  Ver dados completos. Modal somente leitura, texto selecionavel, Copiar dados,
+  fechamento por botao/Escape/fundo e preservacao de foco, rolagem, selecao e
+  rascunho. Copiar dados copia a instrucao inteira exibida, nao extrai uma chave.
+- Usa OverlayModal/useRolagemModal; sem endpoint, permissao de baixa nova,
+  alteracao financeira ou consulta bancaria. Testes isolados Pix/backend/UI,
+  fila/colunas/preview/baixa em massa e build. Handoff:
+  [Pix e dados completos da fila](../../handoffs/2026-10-11-pix-dados-pagamento-fila.md).
+
 ## Adiantamento e forma de pagamento - 2026-10-11
 
 O detalhe da solicitacao lista a forma de pagamento do proprio titulo,

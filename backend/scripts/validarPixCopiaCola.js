@@ -70,6 +70,17 @@ async function run() {
   const frete = operational.validateCompraPedidoFreteBody({ tipo: 'TERCEIRO', valor_total: 10,
     dados_pagamento: { tipo_chave_pix: 'COPIA_COLA', pix: texto } });
   assert.equal(frete.dados_pagamento.pix, texto);
+  const longo = '000201' + 'x'.repeat(pix.PIX_TEXTO_MAX - 6);
+  const compraPix = { categoria_financeira_id: 1, forma_pagamento_id: 1, favorecido_pagamento_id: 1,
+    chave_pix: longo, parcelas: [{ valor: 10, data_vencimento: '2099-01-01' }],
+    fretes: [{ frete_id: 1, forma_pagamento_id: 1, favorecido_pagamento_id: 1,
+      chave_pix: longo, parcelas: [{ valor: 10, data_vencimento: '2099-01-01' }] }] };
+  const pedidoPix = operational.validateCompraPedidoPrevisoesBody(compraPix);
+  assert.equal(pedidoPix.chave_pix, longo);
+  assert.equal(pedidoPix.fretes[0].chave_pix, longo);
+  assert.equal(operational.validateCompraPedidoFreteBody({ tipo: 'TERCEIRO', valor_total: 10,
+    dados_pagamento: { pix: longo } }).dados_pagamento.pix, longo, 'Sem seletor aceita Copia e Cola de 8192 caracteres');
+  assert.throws(() => operational.validateCompraPedidoPrevisoesBody({ ...compraPix, chave_pix: longo + 'x' }), /tamanho/);
   const rh = require('../src/validators/rhValidators').validateRhColaboradorCreateBody({
     empresa_grupo_id: 1, nome: 'QA', cpf: '52998224725', cargo: 'QA', tipo_vinculo: 'CLT',
     data_admissao: '2026-01-01', pagamento: { chave_pix: texto } });

@@ -3,6 +3,7 @@ const {
   Historico,
   Setor,
   SolicitacaoAtencaoUsuario,
+  SolicitacaoInteracaoUsuario,
   User,
   UsuarioSetor
 } = require('../models');
@@ -38,7 +39,7 @@ async function destinatariosSetoresEnvolvidos(solicitacao) {
   return [...usuariosPrincipais.map((row) => row.id), ...vinculos.map((row) => row.user_id)];
 }
 
-async function registrarAtencaoSolicitacao({ solicitacao, atorId, tipo, resumo, mencoes = [] }) {
+async function destinatariosAtencao({ solicitacao, atorId, mencoes = [] }) {
   if (!solicitacao?.id) return [];
   const [participantes, destinatariosSetores] = await Promise.all([
     Historico.findAll({
@@ -61,8 +62,29 @@ async function registrarAtencaoSolicitacao({ solicitacao, atorId, tipo, resumo, 
     where: { id: { [Op.in]: ids }, ativo: true },
     attributes: ['id'], raw: true
   });
+  return ativos.map(({ id }) => Number(id));
+}
+
+async function registrarAtencaoSolicitacao({ solicitacao, atorId, tipo, resumo, mencoes = [] }) {
+  const ids = await destinatariosAtencao({ solicitacao, atorId, mencoes });
+  if (!ids.length) return ids;
+  const acao = {
+    COMENTARIO: 'COMENTARIO', COMENTARIO_ITEM: 'COMENTARIO_ETAPA_COMPRA',
+    COMENTARIO_COTACAO: 'COTACAO_COMPRA_COMENTARIO', COMENTARIO_PEDIDO: 'PEDIDO_COMPRA_COMENTARIO',
+    ENVIO_MANUAL: 'ENVIADA_SETOR', RETORNO_DEVOLVIDO: 'RETORNO_DEVOLVIDO'
+  }[tipo];
+  if (acao) {
+    const historico = await Historico.findOne({ where: {
+      solicitacao_id: solicitacao.id, usuario_responsavel_id: atorId, acao
+    }, attributes: ['id'], order: [['id', 'DESC']] });
+    // O hook ja registrou este evento: nao criar um segundo aviso legado
+    // que sobreviveria a leitura/remocao da interacao independente.
+    if (historico && await SolicitacaoInteracaoUsuario.count({ where: {
+      solicitacao_id: solicitacao.id, historico_id: historico.id, usuario_id: { [Op.in]: ids }
+    } })) return ids;
+  }
   const agora = new Date();
-  await SolicitacaoAtencaoUsuario.bulkCreate(ativos.map(({ id }) => ({
+  await SolicitacaoAtencaoUsuario.bulkCreate(ids.map((id) => ({
     solicitacao_id: solicitacao.id,
     usuario_id: id,
     tipo: String(tipo || 'COMENTARIO').slice(0, 40),
@@ -72,7 +94,7 @@ async function registrarAtencaoSolicitacao({ solicitacao, atorId, tipo, resumo, 
   })), {
     updateOnDuplicate: ['tipo', 'resumo', 'evento_em', 'lido_em', 'updatedAt']
   });
-  return ativos.map(({ id }) => Number(id));
+  return ids;
 }
 
 async function marcarAtencaoLida(solicitacaoId, usuarioId) {
@@ -83,4 +105,4 @@ async function marcarAtencaoLida(solicitacaoId, usuarioId) {
   );
 }
 
-module.exports = { registrarAtencaoSolicitacao, marcarAtencaoLida };
+module.exports = { registrarAtencaoSolicitacao, marcarAtencaoLida, destinatariosAtencao };

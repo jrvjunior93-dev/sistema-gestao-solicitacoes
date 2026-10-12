@@ -20,6 +20,7 @@ import {
   canViewPedidoCompraFinanceiro
 } from '../../../utils/acessoProduto';
 import { formaPagamentoEhBoleto, formaPagamentoEhPix, tokensFormaPagamento } from '../../../utils/formaPagamento';
+import { PIX_TEXTO_MAX } from '../../../utils/pix';
 
 const STATUS_LABEL = {
   NAO_INICIADO: 'Não iniciado', AGUARDANDO_GEO: 'Legado aguardando revisão',
@@ -125,7 +126,7 @@ function PagamentoTituloFields({ titulo, descricao, valorTotal, config, onChange
           <div style={{ gridColumn: '1 / -1' }}>
             <ParceiroBuscaRemota label="Favorecido" selecionado={config.favorecido} obrigatorio onSelecionar={(favorecido) => onChange({ ...config, favorecido })} />
           </div>
-          {pix ? <CampoForm label="Chave PIX" obrigatorio><input className="input w-full" maxLength={255} value={config.chave_pix} onChange={(event) => onChange({ ...config, chave_pix: event.target.value })} placeholder="Informe a chave PIX negociada" /></CampoForm> : null}
+          {pix ? <CampoForm label="Chave PIX" obrigatorio><input className="input w-full" maxLength={PIX_TEXTO_MAX} value={config.chave_pix} onChange={(event) => onChange({ ...config, chave_pix: event.target.value })} placeholder="Informe a chave PIX negociada" /></CampoForm> : null}
           {forma && !pix && !boleto ? <div style={{ gridColumn: '1 / -1' }}><CampoForm label="Dados para pagamento" obrigatorio><textarea className="input min-h-20 w-full" value={config.dados_pagamento} onChange={(event) => onChange({ ...config, dados_pagamento: event.target.value })} placeholder="Informe banco, agência, conta ou demais orientações para pagamento." /></CampoForm></div> : null}
           {boleto ? <div style={{ gridColumn: '1 / -1' }}>
             <CampoForm label="Boletos" obrigatorio hint="É possível selecionar mais de um arquivo.">

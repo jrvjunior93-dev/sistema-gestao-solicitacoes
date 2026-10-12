@@ -79,7 +79,7 @@ assert(compraEtapasSource.includes('async comentar(req, res) {\n    try {\n     
 
 const solicitacoesFrontendSource = read('../frontend/src/pages/Solicitacoes/index.jsx');
 assert(
-  solicitacoesFrontendSource.includes("item.retorno_solicitado_pendente || item.atencao_pendente\n              ? 'retorno'"),
+  solicitacoesFrontendSource.includes("item.retorno_solicitado_pendente || item.atencao_pendente || item.interacoes_pendentes?.length\n              ? 'retorno'"),
   'lista de solicitacoes nao aplica o estado visual de retorno pendente'
 );
 assert(

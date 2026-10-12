@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+Sessao codex-interacoes-solicitacoes-20261011: finalizado, ownership liberado no checkout
+C:/Fluxy-refactor-frontend. Ownership registrado; sem delegacao, banco real,
+EC2 ou publicacao. Preservar pendencias anteriores e auditoria financeira.
+
 Sessao codex-fila-comprovante-pendente-2026-10-08 finalizada no checkout
 C:/Fluxy-refactor-frontend. Ownership liberado; validacoes backend/UI,
 PWA, navegacao, build e docs aprovadas. Commit/push autorizado nesta branch,

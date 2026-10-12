@@ -3,6 +3,7 @@ import PreviewAnexoModal from './PreviewAnexoModal';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../components/padrao';
 import { anexoHistoricoRemovido, metadataAnexoHistorico } from './anexosHistorico';
+import useInteracoesVisiveis from '../../hooks/useInteracoesVisiveis';
 
 /**
  * HISTORICO DA SOLICITACAO — a linha do tempo de tudo o que aconteceu.
@@ -43,6 +44,10 @@ import { anexoHistoricoRemovido, metadataAnexoHistorico } from './anexosHistoric
 
 export default function Timeline({
   historicos,
+  solicitacaoId,
+  interacoesPendentes = [],
+  abrirPorInteracao = false,
+  eventoFoco = null,
   canRemoveAnexo = false,
   canRemoveComentario = false,
   onAnexoRemovido,
@@ -59,6 +64,19 @@ export default function Timeline({
   const [removendo, setRemovendo] = useState(new Set());
   const remocoesEmCurso = useRef(new Set());
   const listaRef = useRef(null);
+  const [recolhido, setRecolhido] = useState(true);
+  const idsPendentes = interacoesPendentes.filter((grupo) => grupo.tipo !== 'COMENTARIO_ITEM')
+    .flatMap((grupo) => grupo.historico_ids || []);
+  useInteracoesVisiveis(listaRef, solicitacaoId, idsPendentes, !recolhido);
+  useEffect(() => { if (eventoFoco || abrirPorInteracao) setRecolhido(false); }, [eventoFoco, abrirPorInteracao]);
+  useEffect(() => {
+    if (!eventoFoco || recolhido) return;
+    const timer = setTimeout(() => {
+      listaRef.current?.querySelector(`[data-interacao-id="${Number(eventoFoco)}"]`)
+        ?.scrollIntoView({ block: 'center' });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [eventoFoco, recolhido, historicos?.length]);
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const acoesOcultas = new Set([
@@ -295,10 +313,13 @@ export default function Timeline({
 
   return (
     <BlocoConteudo
+      id="sol-detail-historico"
       titulo="Histórico"
       contagem={`${totalVisiveis} evento(s)`}
       recolhivel
       recolhidoPadrao
+      recolhido={recolhido}
+      aoAlternarRecolhido={setRecolhido}
       alternarAoClicar
       controles={typeof aoMudarOrdem === 'function' ? (
         <label className="sol-detail-historico-ordem">
@@ -334,7 +355,8 @@ export default function Timeline({
             PEDIDO_COMPRA_STATUS_ALTERADO: 'Status do pedido de compra alterado',
             PEDIDO_COMPRA_ENCERRADO: 'Pedido de compra encerrado/cancelado',
             RESPONSAVEL_REMOVIDO: 'Responsavel removido',
-            DATA_VENCIMENTO_ATUALIZADA: 'Data Resposta/Pagamento atualizada'
+            DATA_VENCIMENTO_ATUALIZADA: 'Data Resposta/Pagamento atualizada',
+            AUTORIZACAO_PAGAMENTO_REJEITADA: 'Pagamento aguardando ajuste'
           }[h.acao] || h.acao;
           const atorNome = meta?.ator_nome || null;
           const responsavelNome = meta?.responsavel_nome || h.usuario?.nome || null;
@@ -346,7 +368,8 @@ export default function Timeline({
           const solicitacaoHistoricoId = h?.solicitacao_id || meta?.solicitacao_id || null;
 
           return (
-            <div key={h.id} className="sol-detail-timeline-item">
+            <div key={h.id} data-interacao-id={h.id} className="sol-detail-timeline-item"
+              style={Number(eventoFoco) === Number(h.id) ? { outline: '2px solid var(--ui-accent)', outlineOffset: '4px' } : undefined}>
               <p className="text-sm font-semibold">{acaoLabel}</p>
 
               {(h.status_anterior || h.status_novo) && (
@@ -368,7 +391,8 @@ export default function Timeline({
                 </p>
               )}
 
-              {h.acao === 'ENVIADA_SETOR' && h.observacao && (
+              {['ENVIADA_SETOR', 'STATUS_ALTERADO', 'AUTORIZACAO_PAGAMENTO_REJEITADA'].includes(h.acao) && h.observacao
+                && String(h.observacao).trim() !== String(h.descricao || '').trim() && (
                 <p className="sol-detail-timeline-text text-sm">{h.observacao}</p>
               )}
 

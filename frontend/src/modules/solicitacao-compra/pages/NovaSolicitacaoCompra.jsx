@@ -1,4 +1,5 @@
 import DateInputBR from '../../../components/DateInputBR';
+import { PIX_TEXTO_MAX } from '../../../utils/pix';
 import QuantidadeInputBR from '../../../components/QuantidadeInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -2299,7 +2300,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                                 <input
                                   className="input"
                                   value={detalhe.chave_pix}
-                                  maxLength={255}
+                                  maxLength={PIX_TEXTO_MAX}
                                   autoComplete="off"
                                   required
                                   onChange={(event) => atualizarDetalheFormaPagamento(formaId, { chave_pix: event.target.value })}
@@ -2549,7 +2550,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
                 {freteExigeChavePix && (
                   <CampoForm label="Chave PIX do frete" obrigatorio erro={errosCampo.frete_favorecido_chave_pix}>
-                    <input className="input" value={freteChavePix} maxLength={255} autoComplete="off" required
+                    <input className="input" value={freteChavePix} maxLength={PIX_TEXTO_MAX} autoComplete="off" required
                       onChange={(event) => { setFreteChavePix(event.target.value); limparErroCampo('frete_favorecido_chave_pix'); }} />
                   </CampoForm>
                 )}

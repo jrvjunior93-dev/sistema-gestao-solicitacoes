@@ -1,5 +1,62 @@
 # Ownership Ativo
 
+## Publicacao das pendencias desta conversa - 2026-10-11
+
+- Commit/push autorizado exclusivamente na refactor/frontend: Pix e dados
+  da fila, motivos de ajuste e interacoes das solicitacoes.
+- Reserva temporaria: tres handoffs correspondentes e acrescimos proprios
+  neste painel. Auditoria financeira e outputs de outras conversas excluidos.
+- Revisao de escopo e validacoes locais antes da publicacao; sem banco,
+  migration executada, EC2, restart ou promocao para main.
+- Revalidacao backend/UI desktop-mobile/build/docs/diff aprovada. Reserva
+  documental liberada; publicacao Git preparada somente com arquivos proprios.
+
+## Interacoes pendentes na lista de solicitacoes - 2026-10-11
+
+- Sessao: codex-interacoes-solicitacoes-20261011; finalizado, ownership liberado, sem delegacao.
+- Reserva: Historico.js, models/index.js, novo modelo/migration/service de
+  interacoes; solicitacaoAtencaoService, SolicitacaoController, routes.js;
+  AtencaoPendente, Solicitacoes/index/LinhaSolicitacao; detalhe/index,
+  Timeline, CompraEtapas, novo hook/componentes de leitura, testes e README
+  Solicitacoes/handoff. Painel documental somente por acrescimo.
+- Escopo: eventos agrupados por usuario, leitura efetiva, atalhos, anexos,
+  prioridade antes da paginacao; preservar visibilidade/status/financeiro.
+- Sem banco real, migration executada, EC2, commit/push ou main. Preservar
+  Pix/motivos e auditoria financeira pendentes de outras etapas/conversas.
+- Reserva adicional: validarBloqueioRetornoObra.js e
+  validarCompraDetalheCards.mjs, somente adaptacao das fixtures a leitura
+  independente e ao predicado de destaque ampliado, mantendo negativas.
+- Backend/UI real/paginas/realtime, compras/financeiro por pedido, retorno,
+  anexos/edicao, build/sintaxe/docs/diff aprovados. Migration preparada,
+  nao executada. Handoff: docs/handoffs/2026-10-11-interacoes-solicitacoes.md.
+
+## Motivo de ajuste pelo proprietario - 2026-10-11
+
+- Responsavel: agente desta conversa; concluido, ownership liberado, sem delegacao.
+- Reserva: Timeline.jsx, FinanceiroAutorizacoesPagamento.jsx, CSS/util de
+  autorizacoes, analiseProprietarioService e testes isolados correspondentes,
+  README Financeiro e handoff novo.
+- Escopo: exibir observacao das trocas no historico e motivos dos lotes;
+  registrar cada recusa mesmo se outro titulo ja mudou o status global,
+  preservando fluxo da medicao mais recente, permissoes e idempotencia.
+- Preservar Pix/modal da fila e auditoria financeira da outra conversa.
+  Sem commit/push, main, migration, banco real ou EC2.
+- Backend/Timeline/autorizacoes isolados, rollback/replay/permissoes,
+  build/sintaxe/docs/diff aprovados. Handoff:
+  docs/handoffs/2026-10-11-motivo-ajuste-autorizacao.md.
+
+## Pix sem seletor e leitura de dados da fila - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; concluido, reserva liberada.
+- Escopo: conferir capacidade Pix, ampliar tres inputs de Compras ainda em
+  255 caracteres, modal de consulta dos dados completos na fila, testes e docs.
+- Reserva: frontend/utils/pix, PedidoCompraFinanceiro, NovaSolicitacaoCompra,
+  FinanceiroFilaPagamentos, novo DadosPagamentoFila, validadores Pix/fila,
+  README Financeiro e handoff correspondente. Preservar auditoria externa.
+- Sem commit/push, main, migrations executadas, banco real ou EC2.
+- Pix backend/UI, fila/colunas/preview/baixas, build, docs e diff aprovados.
+  Handoff: docs/handoffs/2026-10-11-pix-dados-pagamento-fila.md.
+
 ## Adiantamento sem distribuicao na abertura - 2026-10-11
 
 - Publicacao autorizada: commit/push desta pendencia na refactor/frontend.

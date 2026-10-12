@@ -1,5 +1,47 @@
 # Modulo SOLICITACOES
 
+## Interacoes pendentes por usuario - 2026-10-11
+
+- Na lista (tabela/cards/celular), o balao junto ao codigo agrupa as
+  interacoes pendentes e informa a quantidade por motivo. Inclui comentarios
+  gerais, de itens/etapas, pedidos/cotacoes, arquivos/comprovantes, envio manual
+  e devolucao apos retorno. Entrega e aprovacao de retorno pendentes continuam
+  sendo condicoes operacionais, nao avisos consumidos por leitura.
+- Os atalhos abrem o evento no Historico, a conversa compartilhada do item
+  ou a area de retorno/pedidos. No celular selecionam a aba correspondente;
+  bloco oculto por preferencia fica temporariamente acessivel pelo atalho,
+  sem gravar alteracao de layout. O atalho de item e somente consulta; as
+  acoes existentes permanecem na etapa atual, com suas permissoes.
+- Abrir o detalhe nao reconhece as novas interacoes. Historico reconhece
+  apenas eventos realmente visiveis com janela ativa, sem modal cobrindo a
+  leitura. Comentarios de itens sao reconhecidos ao abrir sua conversa,
+  mantendo o cursor de leitura ja existente nos cards. Um mesmo historico
+  compartilhado entre etapas conta uma unica vez por usuario.
+- O autor nao recebe o proprio destaque. Destinatarios seguem criador,
+  participantes, setores envolvidos e mencoes ativos; isso nao amplia o
+  escopo de leitura/listagem. O POST de leitura valida o mesmo acesso dos
+  detalhes, usa apenas o usuario autenticado e reconhece IDs concretos.
+- A prioridade e calculada no SQL antes da paginacao: entrega operacional,
+  atencao/interacoes, retorno pendente e ordenacao existente. Ler uma parte
+  preserva as demais e uma tela antiga nao reconhece eventos novos. Retorno
+  e entrega permanecem ate tratamento. Filtros/arquivamento sao preservados.
+- Novos eventos avisam os destinatarios pelo canal realtime existente, sem
+  texto/URL de arquivo no payload. A lista rebusca a janela para incluir
+  solicitacao antes fora da pagina; avisos central/especifico sao agrupados
+  por 150 ms. Leituras notificam somente o proprio usuario (outras sessoes).
+- Historico registra o fan-out depois do commit, com chave usuario/historico
+  idempotente; rollback nao envia, replay nao apaga leitura. Falha desse
+  fan-out e logada sem transformar uma operacao de negocio ja concluida em
+  erro de gravacao. Remocao de comentario/anexo elimina a pendencia respectiva.
+- Migration estrutural `202610110002_solicitacao_interacoes_usuario.js`
+  deve preceder o restart. Nao foi aplicada em banco real. Nao faz seed ou
+  reabre todo o acervo como nao lido: registros anteriores mantem o aviso
+  legado; contagem independente inicia nos eventos apos a implantacao.
+- Validacao: `node backend/scripts/validarInteracoesSolicitacao.js` e,
+  em frontend, `node scripts/validarInteracoesSolicitacao.mjs` (transporte
+  isolado, paginas/componentes reais em desktop/celular). Sem EC2 ou banco.
+- Detalhes e limites: [handoff das interacoes](../../handoffs/2026-10-11-interacoes-solicitacoes.md).
+
 ## Adiantamento e obras para rateio - 2026-10-11
 
 ADIANTAMENTO e subtipo de DESPESA ADMINISTRATIVA, DESPESA COMERCIAL e DESPESA
