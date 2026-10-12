@@ -1289,6 +1289,9 @@ export default function NovaSolicitacao() {
   );
   const pagamentoViaPix = formaPagamentoEhPix(formaPagamentoSelecionada);
   const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
+  // O bloco da medicao nova possui forma propria: nao depende da forma
+  // generica oculta. Ambos precisam enviar todos os arquivos como BOLETO.
+  const possuiPagamentoBoleto = pagamentoViaBoleto || Boolean(usaMedicaoFluxoNovo && medicaoContratoDados?.pagamento?.via_boleto);
   const pagamentoViaOutraForma = Boolean(formaPagamentoSelecionada) && !pagamentoViaPix && !pagamentoViaBoleto;
   // Regra unica para todo tipo que exibe Forma de pagamento, inclusive quando o campo foi
   // habilitado pela configuracao: o anexo geral ja nasce obrigatorio com o tipo. Selecionar
@@ -1668,10 +1671,10 @@ export default function NovaSolicitacao() {
     limparErroCampo('anexos');
   }
 
-  // Mesma classe de ação (remover item já anexado), mesmo cuidado da R26:
-  // o boleto é UM só, mas a referência é fixada antes da pergunta.
-  async function removerArquivoBoleto() {
-    const boletoAlvo = boletoArquivos[0];
+  // Fixar a referencia antes da confirmacao evita remover outro boleto
+  // caso a lista seja alterada enquanto a pergunta estiver aberta.
+  async function removerArquivoBoleto(index = 0) {
+    const boletoAlvo = boletoArquivos[index];
     if (!boletoAlvo) return;
     const { ok } = await confirmar({
       titulo: 'Remover boleto',
@@ -1785,13 +1788,15 @@ export default function NovaSolicitacao() {
 
   function selecionarArquivoBoleto(files) {
     const lista = Array.from(files || []).filter(Boolean);
-    const { arquivos: aceitos, rejeitados } = concatenarAnexosPendentes([], lista.slice(0, 1), {
+    const permitidos = lista.filter(file => /\.(pdf|png|jpe?g)$/i.test(file.name) && arquivoDocumentoPermitido(file));
+    const { arquivos: aceitos, rejeitados } = concatenarAnexosPendentes(boletoArquivos, permitidos, {
       maxFileSizeMb: UPLOAD_MAX_FILE_SIZE_MB_PADRAO
     });
     setBoletoArquivos(aceitos);
-    if (lista.length > 1) {
-      avisar.alerta('Selecione somente um arquivo de boleto.');
+    if (permitidos.length !== lista.length) {
+      avisar.alerta('Para boletos, selecione arquivos PDF ou imagens PNG/JPG.');
     }
+    if (aceitos.length) limparErroCampo('boleto');
     if (rejeitados.length > 0) {
       avisar.alerta(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
     }
@@ -2478,7 +2483,7 @@ export default function NovaSolicitacao() {
       dados_pagamento: pagamentoViaOutraForma
         ? String(form.dados_pagamento || '').trim()
         : null,
-      boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null,
+      boleto_anexo_nome: possuiPagamentoBoleto ? (boletoArquivos[0]?.nome || null) : null,
       despesa_eventual_declaracoes: usaFluxoDespesaEventual ? despesaEventualDeclaracoes : undefined,
       cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartaoRecargaId) : undefined,
       recargas_cartoes: usaFluxoRecargaCartao ? recargasCartoes.map((linha) => ({ cartao_recarga_id: Number(linha.cartao_recarga_id), valor: numeroDoCampo(linha.valor) })) : undefined,
@@ -2550,7 +2555,7 @@ export default function NovaSolicitacao() {
       }
       const medicaoIdCriada = Number(solicitacao?.medicao?.id || 0) || null;
 
-      if (pagamentoViaBoleto && boletoArquivos.length > 0) {
+      if (possuiPagamentoBoleto && boletoArquivos.length > 0) {
         try {
           await uploadArquivos({
             files: extrairFilesAnexosPendentes(boletoArquivos),
@@ -3418,14 +3423,16 @@ export default function NovaSolicitacao() {
                   rótulo, obrigatoriedade e linha de erro idênticos. */}
               {exibirFormaPagamento && pagamentoViaBoleto && (
                 <div className="form-group">
-                  <span className="form-label form-label--required">Boleto</span>
+                  <span className="form-label form-label--required">Boletos</span>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">
                       <HiPaperClip className="h-4 w-4" />
-                      <span>Selecionar boleto</span>
+                      <span>Selecionar boletos</span>
                       <input
                         ref={boletoRef}
                         type="file"
+                        multiple
+                        aria-label="Anexar boletos"
                         className="hidden"
                         accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
                         onChange={(event) => {
@@ -3434,19 +3441,9 @@ export default function NovaSolicitacao() {
                         }}
                       />
                     </label>
-                    <span className="text-xs text-[var(--c-muted)]">
-                      {boletoArquivos[0]?.nome || 'Nenhum boleto selecionado'}
-                    </span>
-                    {boletoArquivos.length > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={removerArquivoBoleto}
-                      >
-                        Remover
-                      </button>
-                    )}
+                    {boletoArquivos.length === 0 && <span className="text-xs text-[var(--c-muted)]">Nenhum boleto selecionado</span>}
                   </div>
+                  <PendingAttachmentsList items={boletoArquivos} onRemove={removerArquivoBoleto} />
                   {errosCampo.boleto ? <span className="form-error">{errosCampo.boleto}</span> : null}
                 </div>
               )}
@@ -3697,12 +3694,15 @@ export default function NovaSolicitacao() {
             periodoObrigatorio={medicaoObrigatoria}
             onPeriodoChange={handleChange}
             boletoArquivo={boletoArquivos[0] || null}
+            boletoArquivos={boletoArquivos}
             onSelecionarBoleto={selecionarArquivoBoleto}
             /* Este `onRemoverBoleto` tambem e disparado AUTOMATICAMENTE pelo bloco
                quando a forma de pagamento deixa de ser boleto — por isso ele nao
                pergunta nada: confirmacao aqui perguntaria por uma limpeza que a
                pessoa nao pediu. A remocao pelo botao da tela (acima) confirma. */
-            onRemoverBoleto={() => setBoletoArquivos([])}
+            onRemoverBoleto={(index) => Number.isInteger(index)
+              ? removerArquivoBoleto(index)
+              : setBoletoArquivos([])}
           />
         )}
 

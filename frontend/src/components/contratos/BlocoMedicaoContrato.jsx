@@ -8,6 +8,7 @@ import { chavePixPreferencial, formaPagamentoEhBoleto, formaPagamentoEhPix } fro
 import DateInputBR from '../DateInputBR';
 import CadastroRapidoFavorecidoButton from '../solicitacoes/CadastroRapidoFavorecidoButton';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
+import PendingAttachmentsList from '../attachments/PendingAttachmentsList';
 
 /**
  * Bloco de MEDICAO (wireframe 2), montado dentro da Nova Solicitacao quando o contrato
@@ -88,6 +89,7 @@ export default function BlocoMedicaoContrato({
   periodoObrigatorio = false,
   onPeriodoChange = null,
   boletoArquivo = null,
+  boletoArquivos = null,
   onSelecionarBoleto = null,
   onRemoverBoleto = null
 }) {
@@ -117,6 +119,8 @@ export default function BlocoMedicaoContrato({
   const [formaPagamentoId, setFormaPagamentoId] = useState('');
   const [formas, setFormas] = useState([]);
   const [confirmado, setConfirmado] = useState(false);
+  const boletos = useMemo(() => Array.isArray(boletoArquivos)
+    ? boletoArquivos : (boletoArquivo ? [boletoArquivo] : []), [boletoArquivos, boletoArquivo]);
 
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(false);
@@ -218,14 +222,14 @@ export default function BlocoMedicaoContrato({
         // ou a instrucao que o Financeiro usara para pagar.
         favorecido_contato: contato || null,
         forma_pagamento_id: formaPagamentoId ? Number(formaPagamentoId) : null,
-        boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivo?.nome || null) : null,
+        boleto_anexo_nome: pagamentoViaBoleto ? (boletos[0]?.nome || null) : null,
         via_pix: pagamentoViaPix,
         via_boleto: pagamentoViaBoleto,
         dados_confirmados: confirmado
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itens, excedeSaldo, usarCredor, favorecido, chavePix, contato, formaPagamentoId, confirmado, credorDoContrato, pagamentoViaPix, pagamentoViaBoleto, boletoArquivo]);
+  }, [itens, excedeSaldo, usarCredor, favorecido, chavePix, contato, formaPagamentoId, confirmado, credorDoContrato, pagamentoViaPix, pagamentoViaBoleto, boletos]);
 
   // Autocomplete sem quantidade minima de caracteres. O pequeno debounce evita uma requisicao por
   // tecla sem obrigar o usuario a interromper a digitacao para clicar em "Buscar".
@@ -620,13 +624,15 @@ export default function BlocoMedicaoContrato({
 
         {pagamentoViaBoleto && (
           <div className="grid max-w-xl gap-1 text-sm" data-testid="pagamento-medicao-boleto">
-            <span>Boleto *</span>
+            <span>Boletos *</span>
             <div className="flex flex-wrap items-center gap-2">
               <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">
                 <HiPaperClip className="h-4 w-4" />
-                <span>Selecionar boleto</span>
+                <span>Selecionar boletos</span>
                 <input
                   type="file"
+                  multiple
+                  aria-label="Anexar boletos da medição"
                   className="hidden"
                   accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
                   onChange={(e) => {
@@ -636,15 +642,9 @@ export default function BlocoMedicaoContrato({
                   }}
                 />
               </label>
-              <span className="text-xs text-[var(--c-muted)]">
-                {boletoArquivo?.nome || 'Nenhum boleto selecionado'}
-              </span>
-              {boletoArquivo && (
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => { onRemoverBoleto?.(); setConfirmado(false); }}>
-                  Remover
-                </button>
-              )}
+              {boletos.length === 0 && <span className="text-xs text-[var(--c-muted)]">Nenhum boleto selecionado</span>}
             </div>
+            <PendingAttachmentsList items={boletos} onRemove={(index) => { onRemoverBoleto?.(index); setConfirmado(false); }} />
           </div>
         )}
 
