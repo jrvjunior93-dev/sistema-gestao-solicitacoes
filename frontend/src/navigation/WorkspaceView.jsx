@@ -7,9 +7,23 @@ import { workspaceRouteFromLocation } from './useWorkspaceTabs';
 export const isWorkspacePilot = pathname => pathname === '/nova-solicitacao'
   || pathname === '/compras/delegacao'
   || ['/solicitacoes-compra', '/pedidos-compra', '/cotacoes'].includes(pathname)
+  || ['/gestao-categorias', '/gestao-unidades', '/gestao-fornecedores', '/gestao-insumos'].includes(pathname)
   || ['/solicitacoes-compra/nova', '/solicitacoes-compra/revisar',
     '/solicitacoes-compra-direta/nova', '/solicitacoes-compra-direta/revisar'].includes(pathname)
   || /^\/solicitacoes-compra\/\d+\/cotacao\/?$/.test(pathname)
+  || /^\/pedidos-compra\/\d+\/?$/.test(pathname)
+  || pathname === '/financeiro/fila-pagamentos'
+  || ['/provisoes-financeiras', '/provisoes-financeiras/nova',
+    '/provisoes-financeiras/categorias', '/provisoes-financeiras/dashboard',
+    '/provisoes-financeiras/relatorios', '/provisoes-financeiras/relatorios/operacional'].includes(pathname)
+  || /^\/provisoes-financeiras\/\d+\/?$/.test(pathname)
+  || /^\/financeiro\/faturas-cartao(?:\/\d+)?\/?$/.test(pathname)
+  || ['/financeiro/titulos', '/financeiro/contas-a-pagar', '/financeiro/contas-a-receber',
+    '/financeiro/titulos/novo', '/financeiro/autorizacoes-pagamento',
+    '/rh-dp/pessoal', '/rh-dp/colaboradores', '/rh-dp/documentos',
+    '/rh-dp/relatorios/operacional', '/rh-dp/importacoes'].includes(pathname)
+  || /^\/financeiro\/titulos\/\d+\/editar\/?$/.test(pathname)
+  || /^\/financeiro\/titulos\/\d+\/?$/.test(pathname)
   || pathname === '/solicitacoes' || pathname === '/solicitacoes-arquivadas'
   || /^\/solicitacoes\/\d+\/?$/.test(pathname);
 

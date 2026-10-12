@@ -18,6 +18,13 @@ export const entryId = () => globalThis.crypto?.randomUUID?.()
   || `ws-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export function recordIdentity(route) {
   if (/^\/nova-solicitacao(?:[?#]|$)/.test(route)) return '/nova-solicitacao';
+  if (/^\/financeiro\/titulos\/novo(?:[?#]|$)/.test(route)) {
+    const url = new URL(route, 'http://workspace.local');
+    // Tipo e campo do mesmo formulario; origem_frete_id continua separando
+    // origens distintas para nao aplicar o rascunho em outro frete.
+    url.searchParams.delete('tipo');
+    return url.pathname + url.search + url.hash;
+  }
   return /^\/solicitacoes\/\d+(?:[?#]|$)/.test(route) ? route.split(/[?#]/)[0] : route;
 }
 export function makeEntry(route, title, preferredTitle = false) {

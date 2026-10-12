@@ -26,6 +26,9 @@ import { canManageComprasFornecedores } from '../../../utils/acessoProduto';
 import { getCpfCnpjError, maskCep, maskCpfCnpj, maskPhone, onlyDigits } from '../../../utils/formatters';
 import DadosEmpresaParceiro from '../../../components/parceiros/DadosEmpresaParceiro';
 import { getDadosEmpresaParceiroError } from '../../../utils/dadosEmpresaParceiro';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useComprasCadastroWorkspace from '../utils/useComprasCadastroWorkspace';
 
 const ESTADOS_BR = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
@@ -102,6 +105,8 @@ function formDoRegistro(fornecedor) {
   };
 }
 
+const FORM_INITIAL = formVazio();
+
 /*
   QUAIS FILTROS APARECEM (N53) — a declaração desta tela para o painel
   único de `PainelFiltrosVisiveis`, no molde do painel "Colunas" da
@@ -138,8 +143,12 @@ export default function GestaoFornecedores() {
 
   // O formulário é INLINE (R9), então o estado dele mora na tela — como na
   // ComercialUnidades. `form.id` preenchido = edição; vazio = cadastro novo.
-  const [form, setForm] = useState(formVazio());
-  const [novaCategoria, setNovaCategoria] = useState('');
+  const [ready, setReady] = useState(false);
+  const editor = useComprasCadastroWorkspace('fornecedor', fornecedores, ready, FORM_INITIAL, formDoRegistro);
+  const form = editor.value || FORM_INITIAL;
+  const setForm = editor.setValue;
+  const [novaCategoria, setNovaCategoria] = useWorkspaceState('fornecedor:novaCategoria', '');
+  useWorkspaceWork(editor.dirty || Boolean(novaCategoria), salvando);
 
   /*
     R12 — os filtros eram um <select> de UF, um campo de texto de categoria,
@@ -154,7 +163,7 @@ export default function GestaoFornecedores() {
     Marcação múltipla aqui deixaria o usuário ver duas etiquetas e a lista
     não estreitar — capacidade aparente sem efeito (a família da R15).
   */
-  const [filtros, setFiltros] = useState({
+  const [filtros, setFiltros] = useWorkspaceState('fornecedor:filtros', {
     q: '',
     estado: new Set(),
     categoria: new Set(),
@@ -211,18 +220,23 @@ export default function GestaoFornecedores() {
   const estadoSelecionado = [...filtros.estado][0] || '';
   const categoriaSelecionada = [...filtros.categoria][0] || '';
   const incluirInativos = filtros.situacao.has('inativos');
+  const query = useQueryRevision(JSON.stringify([filtros.q, estadoSelecionado, categoriaSelecionada, incluirInativos]));
 
   async function carregar() {
+    const token = query.begin();
     try {
       setLoading(true);
+      setReady(false);
       const params = {};
       if (filtros.q.trim()) params.q = filtros.q.trim();
       if (estadoSelecionado) params.estado = estadoSelecionado;
       if (categoriaSelecionada) params.categoria = categoriaSelecionada;
       if (incluirInativos) params.incluir_inativos = 1;
       const data = await listarFornecedoresCompra(params);
+      if (!query.isCurrent(token)) return;
       const lista = Array.isArray(data) ? data : [];
       setFornecedores(lista);
+      setReady(true);
       setCategoriasConhecidas((atual) => {
         const proximo = new Set(atual);
         lista.forEach((item) => {
@@ -232,9 +246,12 @@ export default function GestaoFornecedores() {
         return proximo;
       });
     } catch (error) {
+      if (!query.isCurrent(token)) return;
+      setFornecedores([]); setReady(false); editor.conceal(FORM_INITIAL);
+      setCategoriasConhecidas(new Set(CATEGORIAS_SUGERIDAS));
       avisar.erro(error?.message || 'Erro ao carregar fornecedores');
     } finally {
-      setLoading(false);
+      if (query.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -278,14 +295,15 @@ export default function GestaoFornecedores() {
 
   function novoFornecedor() {
     if (salvandoRef.current) return;
-    setForm(formVazio());
+    editor.clear();
     setNovaCategoria('');
     focarFormulario();
   }
 
   function editarFornecedor(fornecedor) {
     if (salvandoRef.current) return;
-    setForm(formDoRegistro(fornecedor));
+    if (!ready || !canManage) return;
+    editor.open(fornecedor);
     setNovaCategoria('');
     focarFormulario();
   }
@@ -318,7 +336,7 @@ export default function GestaoFornecedores() {
 
   async function handleSalvar(event) {
     event.preventDefault();
-    if (!canManage || salvandoRef.current) return;
+    if (!canManage || salvandoRef.current || !editor.available || editor.conflict) return;
 
     const documentoErro = getCpfCnpjError(form.cnpj, { label: 'CPF/CNPJ do fornecedor' });
     if (documentoErro) {
@@ -349,7 +367,7 @@ export default function GestaoFornecedores() {
         await criarFornecedorCompra(payload);
       }
       avisar.sucesso(id ? 'Fornecedor atualizado.' : 'Fornecedor cadastrado.');
-      setForm(formVazio());
+      editor.clear();
       setNovaCategoria('');
       await carregar();
     } catch (error) {
@@ -361,6 +379,9 @@ export default function GestaoFornecedores() {
   }
 
   async function handleDesativar(fornecedor) {
+    if (!canManage || salvandoRef.current || !ready) return;
+    salvandoRef.current = true; setSalvando(true);
+    try {
     /*
       R26 — o alvo é fixado numa `const` ANTES do `await`. O `confirm()` do
       navegador congelava a página; o modal do sistema não congela: a lista e
@@ -380,12 +401,13 @@ export default function GestaoFornecedores() {
     });
     if (!ok) return;
 
-    try {
       await desativarFornecedorCompra(alvo.id);
       avisar.sucesso('Fornecedor desativado.');
       await carregar();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao desativar fornecedor');
+    } finally {
+      salvandoRef.current = false; setSalvando(false);
     }
   }
 
@@ -525,7 +547,16 @@ export default function GestaoFornecedores() {
       */}
       {canManage && (
         <BlocoConteudo titulo={form.id ? 'Editar fornecedor' : 'Novo fornecedor'}>
+          {editor.conflict && <div role="alert" className="mb-3 text-sm text-[var(--sem-warning)]">
+            O cadastro foi alterado. Os campos digitados foram preservados; use os dados atuais antes de salvar.
+            <button type="button" className="btn btn-outline btn-sm ml-2" disabled={salvando} onClick={async () => {
+              const { ok } = await confirmar({ titulo: 'Usar dados atuais', mensagem: 'Descartar os campos pendentes deste fornecedor?', rotuloConfirmar: 'Usar dados atuais', destrutiva: true });
+              if (ok) editor.discard();
+            }}>Usar dados atuais</button>
+          </div>}
+          {ready && !editor.available && <p role="alert">Fornecedor não disponível para edição nesta consulta.</p>}
           <form className="space-y-4" onSubmit={handleSalvar}>
+            <fieldset disabled={salvando || !editor.available || editor.conflict} className="space-y-4">
             <FormSecao legenda="Identificação" colunas={2}>
               <CampoForm label="Nome / Razão social" obrigatorio>
                 <input
@@ -698,12 +729,13 @@ export default function GestaoFornecedores() {
               <button
                 type="button"
                 className="btn btn-outline"
-                onClick={() => { setForm(formVazio()); setNovaCategoria(''); }}
+                onClick={() => { editor.clear(); setNovaCategoria(''); }}
                 disabled={salvando}
               >
                 Limpar
               </button>
             </div>
+            </fieldset>
           </form>
         </BlocoConteudo>
       )}
@@ -768,6 +800,8 @@ export default function GestaoFornecedores() {
           getId={(f) => f.id}
           vazio="Nenhum fornecedor encontrado. Ajuste os filtros ou cadastre um novo."
           storageKey="tabela:gestao-fornecedores"
+          chaveWorkspace="fornecedores:tabela"
+          consultaWorkspace={JSON.stringify([filtros.q, estadoSelecionado, categoriaSelecionada, incluirInativos])}
           rotuloRolagem="Fornecedores"
           colunasConfiguraveis
           aoClicarLinha={canManage ? editarFornecedor : undefined}
@@ -776,6 +810,7 @@ export default function GestaoFornecedores() {
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
+                disabled={salvando || !ready}
                 onClick={() => editarFornecedor(f)}
               >
                 Editar
@@ -784,6 +819,7 @@ export default function GestaoFornecedores() {
                 <button
                   type="button"
                   className="btn btn-outline btn-sm btn-perigo-suave"
+                  disabled={salvando || !ready}
                   onClick={() => handleDesativar(f)}
                 >
                   Desativar

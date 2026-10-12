@@ -17,7 +17,7 @@ const cadastro = { id: 91, nome: 'Contato QA', cpf: '52998224725', empresa_grupo
   telefone_secundario: '27988884321', endereco: 'Rua A', numero: '10', municipio: 'Vitória', estado: 'ES',
   endereco_secundario: 'Rua B', numero_secundario: '20', municipio_secundario: 'Serra', estado_secundario: 'ES' };
 const overrides = {
-  getRhColaboradores: 'async()=>[window.cadastro]', getRhColaborador: 'async()=>window.cadastro',
+  getRhColaboradores: 'async()=>[window.cadastro]', getRhColaborador: 'async()=>{if(window.negado)throw new Error("Cadastro QA negado");return window.cadastro}',
   getRhEmpresasGrupo: `async()=>[{id:1,nome:'Empresa QA'}]`,
   criarRhColaborador: 'async p=>{window.salvos.push(structuredClone(p));Object.assign(window.cadastro,p);return window.cadastro}',
   atualizarRhColaborador: 'async(id,p)=>{window.salvos.push(structuredClone(p));Object.assign(window.cadastro,p);return window.cadastro}',
@@ -25,7 +25,8 @@ const overrides = {
   getRhChecklistDoTipo: 'async()=>({itens:[]})',
   rhTransferencias: 'async()=>({obras:window.locais,obras_responsavel_ids:[7],itens:[]})'
 };
-const entry = `import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';
+const entry = `import React,{useState,useMemo} from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';
+import{WorkspacePageContext,createWorkspaceMemory}from'/src/navigation/WorkspaceContext.jsx';
 import Cadastro from '/src/pages/RhDpColaboradores.jsx';import Pessoal from '/src/pages/RhDpPessoal.jsx';
 import{ThemeContext,TEMA_PADRAO}from'/src/contexts/ThemeContext.jsx';
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';
@@ -33,8 +34,11 @@ import '/src/styles/escala.css';import '/src/styles/responsive-system.css';
 window.cadastro=${JSON.stringify(cadastro)};window.salvos=[];window.admissoes=[];
 window.locais=[{id:7,nome:'Obra QA',codigo:'OB-7',tipo_centro_custo:'OBRA'}];
 const Page=new URLSearchParams(location.search).has('admissao')?Pessoal:Cadastro;
+function Host(){const[active,A]=useState(true);const memory=useMemo(()=>createWorkspaceMemory(),[]);window.qaTab=A;window.qaMemory=memory;
+return <WorkspacePageContext.Provider value={{key:'contatos-qa',memory,snapshot:new URLSearchParams(location.search).has('workspace'),active:true}}>
+{active?<Page/>:<p>Consulta auxiliar</p>}</WorkspacePageContext.Provider>}
 createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}>
-<main className="layout-main"><Page/></main></ThemeContext.Provider></BrowserRouter>);`;
+<main className="layout-main"><Host/></main></ThemeContext.Provider></BrowserRouter>);`;
 const server = await createServer({ root, configFile: false, logLevel: 'error', cacheDir: path.join(output, 'vite-cache'),
   css: { postcss: { plugins: [tailwindcss({ ...tailwindConfig,
     content: [path.join(root, 'src/**/*.{js,jsx,ts,tsx}')] }), autoprefixer()] } },
@@ -61,6 +65,7 @@ try {
   await server.listen(); browser = await chromium.launch({ channel: 'chrome', headless: true });
   page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   page.setDefaultTimeout(10000);
+  page.setDefaultNavigationTimeout(30000); // Compilacao fria da fixture Vite, nao limite de latencia do produto.
   page.on('pageerror', e => errors.push(e.message));
   await page.route('**/*', route => {
     if (new URL(route.request().url()).hostname === '127.0.0.1') return route.continue();
@@ -183,6 +188,29 @@ try {
   await page.getByRole('button', { name: 'Ver colaborador Contato QA', exact: true }).click();
   assert.equal(await modal.getByLabel('Segundo telefone', { exact: true }).isDisabled(), true);
   assert.equal(await segundo.getByLabel('Logradouro', { exact: true }).isDisabled(), true);
+  for (const width of [1366,390]) {
+    await page.setViewportSize({width,height:900});await page.goto(base+'?workspace=1');
+    await page.getByRole('button',{name:'Editar colaborador Contato QA',exact:true}).click();
+    const cargo=modal.getByLabel('Cargo',{exact:true});await cargo.fill('Cargo digitado');
+    await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+    await page.evaluate(()=>window.qaTab(true));await cargo.waitFor();assert.equal(await cargo.inputValue(),'Cargo digitado');
+    assert.equal(await page.evaluate(()=>window.salvos.length),0);
+    await page.evaluate(()=>{window.cadastro.cargo='Cargo alterado no servidor';window.qaTab(false)});
+    await page.getByText('Consulta auxiliar',{exact:true}).waitFor();await page.evaluate(()=>window.qaTab(true));
+    await modal.getByRole('alert').waitFor();assert.equal(await cargo.inputValue(),'Cargo digitado');
+    assert.ok(await modal.getByRole('button',{name:'Salvar alteracoes',exact:true}).isDisabled());
+    await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+    await page.evaluate(()=>{window.negado=true;window.qaTab(true)});await page.getByText('Cadastro QA negado',{exact:true}).waitFor();
+    assert.equal(await modal.count(),0);
+    await page.goto(base+'?workspace=1&admissao=1&dp=1&local_id=7&aba=colaboradores');
+    await page.getByRole('button',{name:'Pedir admissao',exact:true}).click();
+    const nome=adm.getByLabel('Nome completo',{exact:true});await nome.fill('Admissão em preenchimento');
+    await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+    await page.evaluate(()=>window.qaTab(true));await nome.waitFor();assert.equal(await nome.inputValue(),'Admissão em preenchimento');
+    assert.equal(await adm.locator('select').filter({has:page.locator('option[value="7"]')}).first().inputValue(),'7');
+    assert.equal(await page.evaluate(()=>window.admissoes.length),0);
+    console.log('Workspace cadastro/admissao '+width+'px: preenchimento, revisao atual, 403 e sem gravacao no retorno OK.');
+  }
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   console.log('OK UI contatos RH: editar/reabrir/limpar, admissao/copiar sincronizado, telefones distintos, payload, consulta, desktop/mobile. Sem banco/rede externa.');
 } catch (error) {

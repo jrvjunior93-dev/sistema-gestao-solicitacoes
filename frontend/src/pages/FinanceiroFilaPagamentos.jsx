@@ -11,6 +11,9 @@ import {
   HiOutlineMagnifyingGlass
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useQueryRevision from '../navigation/useQueryRevision';
+import { camposFila, revisaoFila } from '../navigation/filaWorkspaceDraft';
 import {
   anexarComprovanteFilaPagamento,
   aprovarDivergenciasFilaPagamentos,
@@ -316,14 +319,28 @@ function bancoLabel(value) {
 }
 
 function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
-  const [files, setFiles] = useState([]);
+  // Somente arquivos locais e escolhas manuais sobrevivem a troca de aba.
+  // A previa autorizada nunca e restaurada nem relida automaticamente.
+  const [files, setFiles] = useWorkspaceState('fila:pdfFiles', []);
+  const [manualLinks, setManualLinks] = useWorkspaceState('fila:pdfLinks', {});
   const [preview, setPreview] = useState(null);
   const [links, setLinks] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useWorkspaceWork(files.length > 0, busy, 'fila:pdfWork');
+
+  function cancelar() {
+    if (lock.current) return;
+    setFiles([]); setManualLinks({});
+    onFechar();
+  }
 
   async function readFiles() {
+    if (lock.current) return;
     if (!files.length) {
       setError('Selecione ao menos um comprovante PDF.');
       return;
@@ -342,6 +359,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
       setError(`O arquivo ${oversizedFile.name} excede o limite de 12 MB.`);
       return;
     }
+    lock.current = true;
     setBusy(true);
     setError('');
     setPreview(null);
@@ -354,6 +372,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
         const batch = batches[batchIndex];
         setProgress(`Lendo lote ${batchIndex + 1} de ${batches.length} · ${Math.min(fileOffset + batch.length, files.length)} de ${files.length} arquivos`);
         const result = await previewComprovantesFilaPagamentos(batch);
+        if (!mounted.current) return;
         (result?.arquivos || []).forEach((item, itemIndex) => allFiles.push({
           ...item,
           _file_index: fileOffset + itemIndex
@@ -370,24 +389,39 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
       if (repeated) throw new Error(`O arquivo ${repeated.arquivo_nome} está repetido na seleção.`);
 
       const initialLinks = {};
+      const validManualLinks = {};
+      let invalidated = 0;
       allFiles.forEach((item) => {
         const suggestedId = Number(item.fila_sugerida_id);
-        const canUseSuggestion = !item.duplicado && suggestedId > 0;
-        initialLinks[item.arquivo_hash] = canUseSuggestion ? suggestedId : '';
+        const eligible = (id) => titleOptions.has(Number(id)) && !item.duplicado;
+        if (Object.prototype.hasOwnProperty.call(manualLinks, item.arquivo_hash)) {
+          const ownId = manualLinks[item.arquivo_hash];
+          const value = eligible(ownId) ? ownId : '';
+          if (Number(ownId) && !value) invalidated += 1;
+          initialLinks[item.arquivo_hash] = value;
+          validManualLinks[item.arquivo_hash] = value;
+        } else {
+          initialLinks[item.arquivo_hash] = eligible(suggestedId) ? suggestedId : '';
+        }
       });
       setPreview({ arquivos: allFiles, titulos_pendentes: [...titleOptions.values()] });
       setLinks(initialLinks);
+      setManualLinks(validManualLinks);
+      if (invalidated) setError(`${invalidated} vínculo(s) não estão mais disponíveis. Confira os títulos atuais antes de vincular.`);
     } catch (readError) {
+      if (!mounted.current) return;
       setError(readError?.message || 'Não foi possível ler os comprovantes.');
     } finally {
-      setProgress('');
-      setBusy(false);
+      lock.current = false;
+      if (mounted.current) { setProgress(''); setBusy(false); }
     }
   }
 
   async function linkFiles() {
+    if (lock.current || !preview) return;
+    const eligible = new Set(preview.titulos_pendentes.map((item) => Number(item.fila_id)));
     const selectedItems = (preview?.arquivos || [])
-      .filter((item) => !item.duplicado && Number(links[item.arquivo_hash]))
+      .filter((item) => !item.duplicado && eligible.has(Number(links[item.arquivo_hash])))
       .map((item) => ({
         file: files[item._file_index],
         mapping: { arquivo_hash: item.arquivo_hash, fila_id: Number(links[item.arquivo_hash]) }
@@ -400,6 +434,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
       setError('A seleção de arquivos mudou. Leia os comprovantes novamente.');
       return;
     }
+    lock.current = true;
     setBusy(true);
     setError('');
     let linkedCount = 0;
@@ -412,10 +447,21 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
           batch.map((item) => item.file),
           batch.map((item) => item.mapping)
         );
+        if (!mounted.current) return;
         linkedCount += Number(result?.quantidade || batch.length);
+        // Retirar lotes concluidos evita reenviar comprovantes apos falha parcial.
+        const completedFiles = new Set(batch.map((item) => item.file));
+        const completedHashes = new Set(batch.map((item) => item.mapping.arquivo_hash));
+        setFiles((current) => current.filter((file) => !completedFiles.has(file)));
+        setManualLinks((current) => Object.fromEntries(Object.entries(current)
+          .filter(([hash]) => !completedHashes.has(hash))));
       }
+      setPreview(null); setLinks({});
       await onVinculados(linkedCount);
     } catch (linkError) {
+      if (!mounted.current) return;
+      // Resultado incerto ou parcial exige nova consulta explicita de duplicidade.
+      setPreview(null); setLinks({});
       if (linkedCount > 0) {
         await onParcial?.(linkedCount);
         setError(`${linkedCount} comprovante(s) foram vinculados antes da falha. Atualize e reabra a importação para continuar. ${linkError?.message || ''}`.trim());
@@ -423,16 +469,17 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
         setError(linkError?.message || 'Não foi possível vincular os comprovantes.');
       }
     } finally {
-      setProgress('');
-      setBusy(false);
+      lock.current = false;
+      if (mounted.current) { setProgress(''); setBusy(false); }
     }
   }
 
   const options = preview?.titulos_pendentes || [];
-  const selectedCount = Object.values(links).filter((value) => Number(value)).length;
+  const selectedCount = (preview?.arquivos || []).filter((item) => !item.duplicado
+    && options.some((option) => Number(option.fila_id) === Number(links[item.arquivo_hash]))).length;
 
   return (
-    <OverlayModal rotulo="Importar comprovantes PDF" largura="var(--modal-max-w-xl, 1420px)" onFechar={busy ? undefined : onFechar}>
+    <OverlayModal rotulo="Importar comprovantes PDF" largura="var(--modal-max-w-xl, 1420px)" onFechar={busy ? undefined : cancelar}>
       <div className="flex max-h-[calc(100dvh-8rem)] min-h-96 flex-col">
         <div className="border-b border-[var(--c-border)] p-4">
           <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar comprovantes para a fila</h2>
@@ -456,16 +503,20 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                 setFiles(nextFiles);
                 setPreview(null);
                 setLinks({});
+                setManualLinks({});
                 setError('');
               }}
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs text-[var(--c-muted)]">Selecione até 500 PDFs. O sistema processa blocos seguros de 10 arquivos automaticamente; limite de 12 MB por PDF. Use um pagamento por arquivo.</span>
               <button className="btn btn-outline" type="button" onClick={readFiles} disabled={busy || !files.length}>
-                {busy && !preview ? (progress || 'Lendo PDFs...') : 'Ler comprovantes'}
+                {busy && !preview ? (progress || 'Lendo PDFs...') : Object.keys(manualLinks).length ? 'Revalidar comprovantes' : 'Ler comprovantes'}
               </button>
             </div>
-            {files.length ? <div className="mt-2 text-xs font-medium text-[var(--c-text)]">{files.length} arquivo(s) selecionado(s)</div> : null}
+            {files.length ? <div className="mt-2 text-xs font-medium text-[var(--c-text)]">
+              {files.length} arquivo(s) selecionado(s)
+              <ul className="mt-1 max-h-24 overflow-auto">{files.map((file, index) => <li key={index}>{file.name}</li>)}</ul>
+            </div> : null}
           </div>
 
           {error ? (
@@ -514,7 +565,11 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                             <select
                               className="input input-sm min-w-0 w-full"
                               value={links[item.arquivo_hash] || ''}
-                              onChange={(event) => setLinks((current) => ({ ...current, [item.arquivo_hash]: event.target.value }))}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setLinks((current) => ({ ...current, [item.arquivo_hash]: value }));
+                                setManualLinks((current) => ({ ...current, [item.arquivo_hash]: value }));
+                              }}
                               disabled={busy}
                               aria-label={`Título para ${item.arquivo_nome}`}
                             >
@@ -554,7 +609,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] p-4">
           <span className="text-xs text-[var(--c-muted)]">{preview ? `${selectedCount} comprovante(s) pronto(s) para vincular` : 'Nenhum comprovante lido'}</span>
           <div className="flex gap-2">
-            <button className="btn btn-outline" type="button" onClick={onFechar} disabled={busy}>Cancelar</button>
+            <button className="btn btn-outline" type="button" onClick={cancelar} disabled={busy}>Cancelar</button>
             <button className="btn btn-primary" type="button" onClick={linkFiles} disabled={busy || !preview || selectedCount === 0}>
               {busy && preview ? (progress || 'Vinculando...') : 'Vincular comprovantes'}
             </button>
@@ -575,24 +630,32 @@ export default function FinanceiroFilaPagamentos() {
     ? String(searchParams.get('status')).toUpperCase()
     : 'PENDENTE';
   const initialSearch = String(searchParams.get('q') || '');
-  const [status, setStatus] = useState(initialStatus);
-  const [search, setSearch] = useState(initialSearch);
-  const [appliedSearch, setAppliedSearch] = useState(initialSearch);
+  const [status, setStatus] = useWorkspaceState('fila:status', initialStatus);
+  const [search, setSearch] = useWorkspaceState('fila:busca', initialSearch);
+  const [appliedSearch, setAppliedSearch] = useWorkspaceState('fila:buscaAplicada', initialSearch);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
   const [accounts, setAccounts] = useState([]);
   const [instrumentos, setInstrumentos] = useState({ formas: [], cartoes: [], cheques: [] });
   const settleLockRef = useRef(false);
   const [drafts, setDrafts] = useState({});
-  const [selected, setSelected] = useState([]);
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  const [edicoesFila, setEdicoesFila] = useWorkspaceState('fila:edicoes', {});
+  const edicoesFilaRef = useRef(edicoesFila);
+  edicoesFilaRef.current = edicoesFila;
+  const consultaFila = useQueryRevision(`${status}|${appliedSearch}`);
+  const [selected, setSelected] = useWorkspaceState('fila:selecionados', []);
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState('');
-  const [reasonOpenId, setReasonOpenId] = useState(null);
+  const [reasonOpenId, setReasonOpenId] = useWorkspaceState('fila:motivoId', null);
   const [erroBaixa, setErroBaixa] = useState(null);
-  const [comprovantesOpen, setComprovantesOpen] = useState(false);
+  const [comprovantesOpen, setComprovantesOpen] = useWorkspaceState('fila:pdfOpen', false);
+  const [filaAutorizada, setFilaAutorizada] = useState(false);
   const [solicitacaoArquivos, setSolicitacaoArquivos] = useState(null);
   const guardarRolagemArquivos = useRolagemModal(Boolean(solicitacaoArquivos));
   const colunasConfiguradas = useColunasOperacionais(PAYMENT_QUEUE_COLUMNS, 'financeiro-fila-pagamentos');
+  useWorkspaceWork(Boolean(Object.keys(edicoesFila).length || selected.length), Boolean(actionKey));
 
   const canSettle = canBaixarFilaPagamentos(user);
   const canOpenTitle = hasPermissao(user, 'financeiro.titulos.visualizar');
@@ -611,6 +674,7 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   const load = useCallback(async () => {
+    const token = consultaFila.begin();
     setLoading(true);
     try {
       const [queueResult, accountResult, instrumentResult] = await Promise.all([
@@ -618,12 +682,15 @@ export default function FinanceiroFilaPagamentos() {
         getContasFilaPagamentos(),
         canSettle ? getInstrumentosFilaPagamentos() : Promise.resolve({ formas: [], cartoes: [], cheques: [] })
       ]);
+      if (!consultaFila.isCurrent(token)) return;
+      setFilaAutorizada(true);
       const nextRows = queueResult?.data || [];
       setRows(nextRows);
       setSummary(queueResult?.resumo || {});
       setAccounts(Array.isArray(accountResult) ? accountResult : accountResult?.data || []);
       setInstrumentos(instrumentResult);
-      setSelected((current) => current.filter((id) => nextRows.some((row) => Number(row.id) === Number(id))));
+      setSelected((current) => current.filter((id) => nextRows.some((row) => Number(row.id) === Number(id)
+        && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE'))));
       setDrafts((current) => {
         const next = { ...current };
         nextRows.forEach((row) => {
@@ -657,29 +724,51 @@ export default function FinanceiroFilaPagamentos() {
               valor_pago: row.status === 'PENDENTE' && valorEmCentavos(draft.valor_pago) === valorEmCentavos(anterior)
                 ? valorParaInput(totalPrevistoFila(row, atualizado)) : draft.valor_pago };
           }
+          const propria = edicoesFilaRef.current[row.id];
+          if (propria) next[row.id] = { ...next[row.id], ...propria.campos };
         });
         return next;
       });
     } catch (error) {
+      if (!consultaFila.isCurrent(token)) return;
+      setFilaAutorizada(false);
+      setRows([]); setAccounts([]); setSummary({}); setSelected([]);
+      setInstrumentos({ formas: [], cartoes: [], cheques: [] }); setDrafts({});
       avisar.erro(error?.message || 'Erro ao carregar a fila de pagamentos.');
     } finally {
-      setLoading(false);
+      if (consultaFila.isCurrent(token)) setLoading(false);
     }
   }, [status, appliedSearch, avisar, canSettle]);
 
   useEffect(() => { load(); }, [load]);
 
   function updateDraft(id, patch) {
-    setDrafts((current) => {
-      const previous = current[id] || {};
+      const previous = draftsRef.current[id] || {};
       const next = { ...previous, ...patch };
+      const ownFields = camposFila(patch);
       const row = rows.find(item => Number(item.id) === Number(id));
       if (row && ('juros' in patch || 'multa' in patch)
         && valorEmCentavos(previous.valor_pago) === valorEmCentavos(totalPrevistoFila(row, previous))) {
         next.valor_pago = valorParaInput(totalPrevistoFila(row, next));
+        ownFields.valor_pago = next.valor_pago;
       }
-      return { ...current, [id]: next };
-    });
+      if (!row) return;
+      draftsRef.current = { ...draftsRef.current, [id]: next };
+      setDrafts(current => ({ ...current, [id]: next }));
+      setEdicoesFila(current => ({ ...current, [id]: {
+        revisao: current[id]?.revisao || revisaoFila(row),
+        campos: { ...current[id]?.campos, ...ownFields }
+      } }));
+  }
+
+  function limparEdicoes(ids) {
+    const removidos = new Set(ids.map(String));
+    edicoesFilaRef.current = Object.fromEntries(Object.entries(edicoesFilaRef.current)
+      .filter(([id]) => !removidos.has(id)));
+    setEdicoesFila(edicoesFilaRef.current);
+    draftsRef.current = Object.fromEntries(Object.entries(draftsRef.current)
+      .filter(([id]) => !removidos.has(id)));
+    setDrafts(draftsRef.current);
   }
 
   function compatibleAccounts(row) {
@@ -695,6 +784,10 @@ export default function FinanceiroFilaPagamentos() {
 
   function validateRows(targetRows) {
     for (const row of targetRows) {
+      if (edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)) {
+        return { mensagem: 'O saldo ou status mudou desde a edição.',
+          correcao: 'Descarte o rascunho conflitante e confira os dados atuais antes de baixar.', filaId: row.id };
+      }
       const draft = drafts[row.id] || {};
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
       if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
@@ -723,6 +816,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function anexarComprovante(row, arquivos) {
+    if (!canSettle || !arquivos?.length) return;
+    return executarOperacao(() => performAnexarComprovante(row, arquivos));
+  }
+
+  async function performAnexarComprovante(row, arquivos) {
     if (!arquivos?.length || actionKey) return;
     setActionKey(`comprovante-${row.id}`);
     let enviados = 0;
@@ -762,11 +860,17 @@ export default function FinanceiroFilaPagamentos() {
       document.querySelector(`[data-fila-linha="${filaId}"] [data-coluna="${colunaErro}"] select`))?.focus());
   }
 
-  async function settle(targetRows) {
-    if (settleLockRef.current || !targetRows.length || !canSettle) return;
+  async function executarOperacao(callback) {
+    if (settleLockRef.current || actionKey) return;
     settleLockRef.current = true;
-    try { await performSettle(targetRows); }
-    finally { settleLockRef.current = false; }
+    setActionKey('conferencia');
+    try { await callback(); }
+    finally { settleLockRef.current = false; setActionKey(''); }
+  }
+
+  async function settle(targetRows) {
+    if (!targetRows.length || !canSettle) return;
+    return executarOperacao(() => performSettle(targetRows));
   }
 
   async function performSettle(targetRows) {
@@ -800,6 +904,7 @@ export default function FinanceiroFilaPagamentos() {
       avisar.sucesso(`${result?.baixados || 0} baixa(s) registrada(s). ${result?.divergentes || 0} divergência(s) sinalizada(s).`);
       if (result?.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante. Anexe os PDFs pelo card Pendentes de comprovante.`);
       setSelected([]);
+      limparEdicoes(targetRows.map(row => row.id));
       await load();
     } catch (error) {
       const detalhe = orientarErroRegistroBaixa(error);
@@ -814,6 +919,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function approveDivergences(targetRows) {
+    if (!canResolve || !targetRows.length) return;
+    return executarOperacao(() => performApproveDivergences(targetRows));
+  }
+
+  async function performApproveDivergences(targetRows) {
     if (targetRows.length === 0) return;
     const total = targetRows.reduce((sum, row) => sum + Number(row.valor_informado || 0), 0);
     const { ok, texto } = await confirmar({
@@ -835,6 +945,7 @@ export default function FinanceiroFilaPagamentos() {
       );
       avisar.sucesso(`${result?.quantidade || 0} divergência(s) aprovada(s). ${result?.baixas_registradas || 0} baixa(s) registrada(s) agora.`);
       setSelected([]);
+      limparEdicoes(targetRows.map(row => row.id));
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao aprovar as divergências. Nenhum item do lote foi alterado.');
@@ -844,6 +955,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function reportNotPaid(row) {
+    if (!canReport) return;
+    return executarOperacao(() => performReportNotPaid(row));
+  }
+
+  async function performReportNotPaid(row) {
     const reason = String(drafts[row.id]?.motivo || '').trim();
     if (!reason) {
       avisar.alerta(`Informe o motivo de não pagamento do título ${row.titulo?.codigo || row.id}.`);
@@ -855,6 +971,7 @@ export default function FinanceiroFilaPagamentos() {
       await informarNaoPagamentoFila(row.id, reason);
       avisar.sucesso('Título mantido em aberto e sinalizado como não pago.');
       setReasonOpenId(null);
+      limparEdicoes([row.id]);
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao informar o não pagamento.');
@@ -864,6 +981,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function resolve(row, action) {
+    if (!canResolve) return;
+    return executarOperacao(() => performResolve(row, action));
+  }
+
+  async function performResolve(row, action) {
     const reabrir = action === 'REABRIR';
     const { ok, texto } = await confirmar({
       titulo: reabrir ? 'Devolver título para pagamento?' : 'Encerrar esta pendência?',
@@ -878,6 +1000,7 @@ export default function FinanceiroFilaPagamentos() {
     try {
       await resolverFilaPagamento(row.id, action, reabrir ? '' : String(texto || '').trim());
       avisar.sucesso(reabrir ? 'Título devolvido para pagamento.' : 'Pendência encerrada.');
+      limparEdicoes([row.id]);
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao resolver a pendência.');
@@ -905,6 +1028,18 @@ export default function FinanceiroFilaPagamentos() {
 
   return (
     <Pagina>
+      {rows.some(row => edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)) &&
+        <div className="app-empty-card" role="alert">
+          Saldo ou status alterado. Os campos digitados foram preservados; confira os dados atuais antes da baixa.
+          <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(actionKey)} onClick={async () => {
+            const { ok } = await confirmar({ titulo: 'Descartar rascunhos conflitantes',
+              mensagem: 'Descartar somente os campos dos títulos que mudaram?', rotuloConfirmar: 'Descartar', destrutiva: true });
+            if (!ok) return;
+            const ids = rows.filter(row => edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)).map(row => String(row.id));
+            limparEdicoes(ids);
+            await load();
+          }}>Descartar rascunhos conflitantes</button>
+        </div>}
       <PageHeader
         titulo="Fila de Pagamentos"
         contagem={`${rows.length} título(s) à vista`}
@@ -1280,7 +1415,7 @@ export default function FinanceiroFilaPagamentos() {
         </p>
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
-      {comprovantesOpen ? (
+      {comprovantesOpen && canImportReceipts && filaAutorizada ? (
         <ComprovantesPdfModal
           onFechar={() => setComprovantesOpen(false)}
           onVinculados={async (quantidade) => {

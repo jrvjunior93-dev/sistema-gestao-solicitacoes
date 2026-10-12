@@ -12,6 +12,7 @@ import {
   HiOutlineXMark
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import {
   Avisos,
   BarraFiltros,
@@ -223,12 +224,14 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
     suspensa. Ambos com `unico`, porque `listarRhSolicitacoes` recebe UM valor por recorte: com
     marcacao multipla, marcar dois mandaria `undefined` e a lista nao estreitaria.
   */
-  const [ativos, setAtivos] = useState(() => ({ situacao: new Set(), tipo: new Set() }));
+  const [ativos, setAtivos] = useWorkspaceState('rhSolicitacoes:filtros', () => ({ situacao: new Set(), tipo: new Set() }));
   const filtroSituacao = useMemo(() => primeiroValor(ativos.situacao), [ativos]);
   const filtroTipo = useMemo(() => primeiroValor(ativos.tipo), [ativos]);
 
   const [aberta, setAberta] = useState(null);
-  const [comentario, setComentario] = useState('');
+  const [comentarios, setComentarios] = useWorkspaceState('rhSolicitacoes:comentarios', {});
+  const comentario = comentarios[aberta?.id] || '';
+  function setComentario(value) { if (aberta?.id) setComentarios(atuais => ({ ...atuais, [aberta.id]: value })); }
   const [comentando, setComentando] = useState(false);
   const travaComentario = useRef(false);
   const detalheAtual = useRef(null);
@@ -237,6 +240,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   const [conferencia, setConferencia] = useState(null);
   const [tiposDocumento, setTiposDocumento] = useState([]);
   const [envio, setEnvio] = useState({ tipo: '', arquivo: null, enviando: false });
+  useWorkspaceWork(Object.values(comentarios).some(Boolean), comentando || envio.enviando, 'rhSolicitacoes:work');
   // Evita que uma resposta de listagem iniciada antes da abertura do modal
   // recoloque o destaque já lido. Se surgir um histórico mais novo, o id será
   // maior e a solicitação volta corretamente a aparecer como não visualizada.
@@ -321,7 +325,6 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
     conferenciaOcupada.current = false;
     limpar();
     detalheAtual.current = solicitacao.id;
-    setComentario('');
     setAberta(solicitacao);
     setAnexos([]);
     setConferencia(null);

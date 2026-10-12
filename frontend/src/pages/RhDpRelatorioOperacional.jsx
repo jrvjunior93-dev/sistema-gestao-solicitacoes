@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useWorkspaceState } from '../navigation/WorkspaceContext';
 import {
   BarraFiltros,
   BlocoConteudo,
@@ -121,8 +122,8 @@ const FILTROS_DA_TELA = [
 export default function RhDpRelatorioOperacional({ obraId, comoAba = false } = {}) {
   const Moldura = comoAba ? 'section' : Pagina;
   const { isVisible } = useUiVisibility();
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useWorkspaceState('rh-relatorio:filters', DEFAULT_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useWorkspaceState('rh-relatorio:appliedFilters', DEFAULT_FILTERS);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -187,7 +188,7 @@ export default function RhDpRelatorioOperacional({ obraId, comoAba = false } = {
         if (active) setRelatorio(data);
       })
       .catch((err) => {
-        if (active) setError(err.message || 'Erro ao carregar relatório RH/DP');
+        if (active) { setRelatorio(null); setError(err.message || 'Erro ao carregar relatório RH/DP'); }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -409,6 +410,8 @@ export default function RhDpRelatorioOperacional({ obraId, comoAba = false } = {
                 ]}
                 itens={colaboradores.analitico || []}
                 storageKey="tabela:rh-dp-relatorio-operacional:colaboradores"
+                chaveWorkspace="rh-relatorio:colaboradores"
+                consultaWorkspace={JSON.stringify(appliedFilters)}
                 rotuloRolagem="Colaboradores"
                 vazio="Nenhum colaborador encontrado."
               />
@@ -460,6 +463,8 @@ export default function RhDpRelatorioOperacional({ obraId, comoAba = false } = {
                 ]}
                 itens={docCriticos}
                 storageKey="tabela:rh-dp-relatorio-operacional:documentos"
+                chaveWorkspace="rh-relatorio:documentos"
+                consultaWorkspace={JSON.stringify(appliedFilters)}
                 rotuloRolagem="Documentos críticos"
                 vazio="Nenhum documento crítico no recorte."
               />

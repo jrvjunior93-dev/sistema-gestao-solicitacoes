@@ -124,7 +124,10 @@ try {
   payload = await page.evaluate(() => window.__settles[2].itens[0]);
   assert.equal(payload.usar_cheque_terceiro, true); assert.equal(payload.cheque_terceiro_id, 77);
   assert.equal(payload.cheque_numero, undefined); assert.equal(payload.cartao_id, undefined);
-  await forma.waitFor(); await page.getByLabel('Origem do cheque de TIT-QA', { exact: true }).selectOption('PROPRIO');
+  // A fixture continua PENDENTE apos a baixa simulada, mas o draft concluido
+  // e descartado. Configurar outra operacao, nao reaplicar a selecao anterior.
+  await forma.waitFor(); await forma.selectOption('4');
+  await page.getByLabel('Origem do cheque de TIT-QA', { exact: true }).selectOption('PROPRIO');
   await chequeModal.waitFor();
   assert.equal(await page.getByLabel('Numero do cheque *',{exact:true}).inputValue(), '');
   await page.getByLabel('Numero do cheque *', { exact: true }).fill('123');
@@ -141,6 +144,7 @@ try {
   assert(await page.getByRole('button',{name:'Confirmar dados do cheque',exact:true}).isVisible());
   await page.getByRole('button',{name:'Confirmar dados do cheque',exact:true}).click();
   await page.setViewportSize({width:1366,height:900});
+  await conta.selectOption('5');
   await page.getByRole('button', { name: 'Registrar baixa', exact: true }).click();
   await page.waitForFunction(() => window.__settles.length === 4);
   payload = await page.evaluate(() => window.__settles[3].itens[0]);
@@ -195,6 +199,8 @@ try {
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('[data-fila-campo="valor_pago"]').value === '207.00');
   assert.equal(Number(await juros.inputValue()), 5); assert.equal(Number(await multa.inputValue()), 2);
+  await page.getByRole('button',{name:'Descartar rascunhos conflitantes',exact:true}).click();
+  await forma.selectOption('3'); await conta.selectOption('5');
   await juros.fill('10'); await multa.fill('3'); assert.equal(await pago.inputValue(), '213.00');
   for (const input of [juros, multa, pago]) {
     assert(await input.evaluate(node => node.getBoundingClientRect().width <= node.closest('td').getBoundingClientRect().width),
@@ -202,12 +208,19 @@ try {
   }
   await page.evaluate(() => { window.__saldo=250; });
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('[data-fila-campo="valor_pago"]').value === '263.00');
+  await page.getByText(/Saldo.*250/).waitFor();
+  assert.equal(await pago.inputValue(), '213.00', 'Mudanca de saldo nao sobregrava trabalho monetario pendente');
   await pago.fill('200');
   await page.evaluate(() => { window.__saldo=275; });
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
   await page.getByText(/Saldo.*275/).waitFor();
   assert.equal(await pago.inputValue(), '200', 'Atualizar preserva valor pago divergente informado manualmente');
+  await page.getByRole('button', { name: 'Registrar baixa', exact: true }).click();
+  await page.getByRole('dialog',{name:'Não foi possível registrar a baixa',exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.__settles.length),0,'Conflito nao pode baixar');
+  await page.getByRole('button',{name:'Voltar e corrigir',exact:true}).click();
+  await page.getByRole('button',{name:'Descartar rascunhos conflitantes',exact:true}).click();
+  await forma.selectOption('3'); await conta.selectOption('5'); await juros.fill('10'); await multa.fill('3');
   await pago.fill('288');
   await page.getByRole('button', { name: 'Registrar baixa', exact: true }).click();
   await page.waitForFunction(() => window.__settles.length === 1);

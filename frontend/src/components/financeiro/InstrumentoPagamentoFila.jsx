@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import ChequePagamentoFields from './ChequePagamentoFields';
 import OverlayModal from '../ui/OverlayModal';
+import { useWorkspaceState, useWorkspaceWork } from '../../navigation/WorkspaceContext';
+import { revisaoFila } from '../../navigation/filaWorkspaceDraft';
 
 const CHEQUE_FIELDS = ['cheque_numero', 'cheque_emitente', 'titular_documento',
   'cheque_banco', 'cheque_agencia', 'cheque_conta', 'data_emissao', 'data_vencimento'];
@@ -29,22 +31,32 @@ export function payloadInstrumentoFila(draft, formas) {
 }
 
 export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos, conta, disabled, onChange }) {
-  const [chequeDraft, setChequeDraft] = useState(null);
+  const [edicaoCheque, setEdicaoCheque] = useWorkspaceState(`fila:chequeEditor:${row.id}`, null);
+  const chequeDraft = edicaoCheque?.campos || null;
+  const conflitoCheque = Boolean(edicaoCheque && edicaoCheque.revisao !== revisaoFila(row));
+  function setChequeDraft(update) {
+    setEdicaoCheque(current => {
+      const campos = typeof update === 'function' ? update(current?.campos) : update;
+      return campos ? { revisao: current?.revisao || revisaoFila(row), campos } : null;
+    });
+  }
   const [chequeError, setChequeError] = useState('');
   const chequeFormRef = useRef(null);
   const chequeOpen = Boolean(chequeDraft);
   useEffect(() => { if (chequeOpen) chequeFormRef.current?.querySelector('input')?.focus(); }, [chequeOpen]);
-  useEffect(() => { if (disabled) setChequeDraft(null); }, [disabled]);
+  useWorkspaceWork(Boolean(chequeDraft), false, `fila:chequeWork:${row.id}`);
   const { formas = [], cartoes = [], cheques = [] } = instrumentos;
   const forma = formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
   const tipo = tipoInstrumentoFila(forma);
   const label = row.titulo?.codigo || row.id;
   function abrirCheque(value = draft) {
     setChequeError('');
-    setChequeDraft(Object.fromEntries(CHEQUE_FIELDS.map(key => [key, value[key] || ''])));
+    setEdicaoCheque({ revisao: revisaoFila(row),
+      campos: Object.fromEntries(CHEQUE_FIELDS.map(key => [key, value[key] || ''])) });
   }
   function confirmarCheque(event) {
     event.preventDefault();
+    if (disabled || conflitoCheque || !chequeDraft) return;
     if (!chequeDraft.cheque_numero.trim() || !chequeDraft.cheque_emitente.trim()) {
       setChequeError('Informe o número e o emitente do cheque.'); return;
     }
@@ -114,13 +126,19 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
         <button type="button" className="btn btn-outline btn-sm" onClick={() => setChequeDraft(null)}>Cancelar</button>
       </header>
       <form ref={chequeFormRef} id={`cheque-fila-${row.id}`} className="p-4" onSubmit={confirmarCheque}>
-        <ChequePagamentoFields compact className="[&_.grid]:!grid-cols-1 sm:[&_.grid]:!grid-cols-2" value={chequeDraft}
-          onChange={(key, value) => setChequeDraft(current => ({ ...current, [key]: value }))} />
+        {conflitoCheque && <div role="alert" className="mb-3 text-sm text-[var(--sem-warning)]">
+          O saldo, status ou instrumento mudou. Os dados digitados foram preservados, mas não podem ser confirmados.
+          <button type="button" className="btn btn-outline btn-sm ml-2" onClick={() => abrirCheque()}>Descartar edição do cheque</button>
+        </div>}
+        <fieldset disabled={conflitoCheque}>
+          <ChequePagamentoFields compact className="[&_.grid]:!grid-cols-1 sm:[&_.grid]:!grid-cols-2" value={chequeDraft}
+            onChange={(key, value) => setChequeDraft(current => ({ ...current, [key]: value }))} />
+        </fieldset>
         {chequeError && <p role="alert" className="mt-2 text-sm text-[var(--sem-danger)]">{chequeError}</p>}
       </form>
       <footer data-modal="rodape" className="flex justify-end gap-2 border-t border-[var(--c-border)] p-4">
         <button type="button" className="btn btn-outline btn-sm" onClick={() => setChequeDraft(null)}>Cancelar</button>
-        <button type="submit" form={`cheque-fila-${row.id}`} className="btn btn-primary btn-sm">Confirmar dados do cheque</button>
+        <button type="submit" form={`cheque-fila-${row.id}`} className="btn btn-primary btn-sm" disabled={conflitoCheque}>Confirmar dados do cheque</button>
       </footer>
     </OverlayModal>}
   </div>;

@@ -17,27 +17,32 @@ const linha = { colaborador_id: 11, nome: 'Ana QA', salario_base: 3000, valor_di
 const seed = { id: 55, codigo: 'RH-000055', obra_id: 7, situacao: 'RASCUNHO', dados_json: {
   fluxo_pagamento: 'PAGAMENTO_POR_SOLICITACAO', revisao: 0, competencia: '2026-10', data_vencimento: '2026-10-15',
   linhas: [linha, { ...linha, colaborador_id: 12, nome: 'Bruno QA', forma_calculo_gerencial: 'DIARIA', valor_diaria: 100, dias: 5 }] } };
-const fixture = `import React,{useState}from'react';import{createRoot}from'react-dom/client';
+const fixture = `import React,{useState,useMemo}from'react';import{createRoot}from'react-dom/client';
+import{WorkspacePageContext,createWorkspaceMemory}from'/src/navigation/WorkspaceContext.jsx';
 import Modal from'/src/components/rh/RhDpPagamentoModal.jsx';import{ThemeContext,TEMA_PADRAO}from'/src/contexts/ThemeContext.jsx';
 import'/src/index.css';import'/src/styles/design-tokens.css';import'/src/styles/componentes-padrao.css';import'/src/styles/escala.css';import'/src/styles/responsive-system.css';import'/src/styles/rh-pessoal-locais.css';
 window.pedido=${JSON.stringify(seed)};window.chamadas=[];window.envios=[];window.dp=false;
 window.putsAtivos=0;window.maxPuts=0;
-window.api=async(path,options={})=>{window.chamadas.push([path,structuredClone(options)]);if(options.method==='PUT'){window.putsAtivos++;window.maxPuts=Math.max(window.maxPuts,window.putsAtivos);}
+window.api=async(path,options={})=>{window.chamadas.push([path,structuredClone(options)]);if(window.negado)throw new Error('Acesso negado');if(options.method==='PUT'){window.putsAtivos++;window.maxPuts=Math.max(window.maxPuts,window.putsAtivos);}
 await new Promise(ok=>setTimeout(ok,options.method==='PUT'?(window.atrasoPut||100):100));if(options.method==='PUT')window.putsAtivos--;
  if(options.method==='PUT'){if(window.falhar){window.falhar=false;throw new Error('Falha simulada ao salvar');}if(options.data.revisao!==window.pedido.dados_json.revisao)throw new Error('Conflito');window.pedido.dados_json={...structuredClone(options.data),revisao:options.data.revisao+1};if(window.ignorarValor)window.pedido.dados_json.linhas.forEach(l=>{if(l.reembolso)delete l.reembolso.valor;});}
  if(path.endsWith('/enviar')){window.envios.push(options.data);window.pedido.situacao=window.dp?'APROVADA':'ABERTA';if(window.dp){const origens=window.pedido.dados_json.linhas.filter(l=>l.selecionado&&l.reembolso).map(l=>({colaborador_id:l.colaborador_id,nome:l.nome,valor:l.reembolso.valor??Number(l.descontos)}));window.pedido.dados_json.titulos=[{id:701,codigo:'TIT-QA-701',tipo:'SALARIO',valor:1100},{id:702,codigo:'TIT-QA-702',tipo:'REEMBOLSO',valor:origens.reduce((s,o)=>s+o.valor,0),origens}];}}
  return structuredClone({solicitacao:window.pedido,pode_conferir:window.dp,pode_enviar_fila:window.dp&&!window.semPermissao,
  responsaveis:[{id:77,nome:'Responsavel QA'}],avisos:[{id:900,codigo:'TIT-ANTERIOR',status:'BAIXADO',valor_original:3000}]});};
-function App(){const[aberto,setAberto]=useState(true);const[modo,setModo]=useState(false);return <main className="layout-main">
+function App(){const[aberto,setAberto]=useState(true);const[modo,setModo]=useState(false);const[active,A]=useState(true);const[owner,O]=useState(1);const[requestId,R]=useState(null);
+const workspace=new URLSearchParams(location.search).has('workspace');const memory=useMemo(()=>createWorkspaceMemory(),[owner]);
+window.qaTab=A;window.qaOwner=()=>{R(null);O(v=>v+1)};window.qaMemory=memory;
+return <WorkspacePageContext.Provider value={{key:'pagamento-'+owner,memory,snapshot:workspace,active:true}}><main className="layout-main">
 <button onClick={()=>setAberto(true)}>Abrir pagamento</button><button onClick={()=>{window.dp=true;setModo(true);setAberto(true);}}>Conferir como DP</button>
-{aberto&&<Modal key={modo?'dp':'obra'} local={{id:7,nome:'Obra QA'}} solicitacaoId={modo?55:undefined} onFechar={()=>setAberto(false)}/>}
-</main>};createRoot(document.getElementById('root')).render(<ThemeContext.Provider value={{tema:TEMA_PADRAO}}><App/></ThemeContext.Provider>);`;
+{aberto&&active&&<Modal key={owner+':'+modo} local={{id:7,nome:'Obra QA'}} solicitacaoId={modo?55:workspace?requestId:undefined} onIniciada={workspace?R:undefined} onFechar={()=>setAberto(false)}/>}
+{!active&&<p>Consulta auxiliar</p>}
+</main></WorkspacePageContext.Provider>};createRoot(document.getElementById('root')).render(<ThemeContext.Provider value={{tema:TEMA_PADRAO}}><App/></ThemeContext.Provider>);`;
 const server = await createServer({ root, configFile: false, logLevel: 'error', cacheDir: path.join(output, 'vite-cache'),
   server: { host: '127.0.0.1', port: 0 }, plugins: [{ name: 'qa-pagamento-solicitacao', enforce: 'pre',
     resolveId(id) { if (id === '/fixture.jsx') return '\0qa-pagamento.jsx'; },
     async load(id) { if (id === '\0qa-pagamento.jsx') return transformWithEsbuild(fixture, 'fixture.jsx', { loader: 'jsx', jsx: 'transform' }); },
     transform(code, id) { if (id.endsWith('/src/services/rhDp.js')) return 'export const pagamentoRhSolicitacao=(...args)=>window.api(...args);'; },
-    configureServer(s) { s.middlewares.use(async (req, res, next) => { if(req.url === '/') {
+    configureServer(s) { s.middlewares.use(async (req, res, next) => { if(new URL(req.url,'http://localhost').pathname === '/') {
       res.setHeader('Content-Type','text/html');res.end(await s.transformIndexHtml('/', '<html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/fixture.jsx"></script></body></html>'));
     } else next(); }); }
   }, react()] });
@@ -51,6 +56,7 @@ try {
   await page.route('**/*',route=>route.request().url().startsWith(base)?route.continue():route.abort());
   await page.goto(base);
   const modal=page.getByRole('dialog',{name:'Solicitar pagamento',exact:true});
+  if (!process.argv.includes('--workspace-only')) {
   // Mascara existente BRL: digitos sao centavos; limpar envia zero, nunca texto formatado.
   const acrescimoMoeda=modal.getByLabel('Acréscimos: Ana QA',{exact:true});
   const descontoMoeda=modal.getByLabel('Descontos: Ana QA',{exact:true});
@@ -498,6 +504,35 @@ try {
   assert.equal(await ana.getByRole('button',{name:'Cancelar pagamento',exact:true}).count(),0);
   assert.equal(await ana.getByRole('button',{name:'Editar e reenviar',exact:true}).count(),0);
   console.log('UI envio parcial, selecao somente restantes, motivo, bloqueio persistente, reenvio mesmos IDs, cancelamento e baixa parcial/mobile OK.');
+  }
+  for (const width of [1366,390]) {
+    await page.setViewportSize({width,height:900});await page.goto(base+'?workspace=1');
+    const obs=modal.getByLabel('Observações: Ana QA',{exact:true});await obs.waitFor();
+    await obs.fill('Última edição antes da troca');await page.evaluate(()=>window.qaTab(false));
+    await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+    await page.evaluate(()=>window.qaTab(true));await obs.waitFor();
+    assert.equal(await obs.inputValue(),'Última edição antes da troca');
+    await page.waitForTimeout(1200);
+    assert.equal(await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='POST').length),1,'Nao recriar solicitacao');
+    assert.equal(await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='PUT').length),0,'Nao salvar por restauracao');
+    await modal.locator('tbody tr').first().getByRole('button',{name:'Pix',exact:true}).click();
+    const conta=page.getByRole('dialog',{name:'Dados de recebimento',exact:true});
+    await conta.getByLabel('Chave Pix / Copia e Cola',{exact:true}).fill('PIX livre incompleto');
+    await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+    await page.evaluate(()=>window.qaTab(true));await conta.waitFor();
+    assert.equal(await conta.getByLabel('Chave Pix / Copia e Cola',{exact:true}).inputValue(),'PIX livre incompleto');
+    await conta.getByRole('button',{name:'Cancelar',exact:true}).click();
+    await page.evaluate(()=>{window.pedido.dados_json.revisao++;window.pedido.dados_json.linhas[0].salario_base=3500;window.qaTab(false)});
+    await page.getByText('Consulta auxiliar',{exact:true}).waitFor();await page.evaluate(()=>window.qaTab(true));
+    await modal.getByRole('alert').getByText(/O pagamento mudou/).waitFor();
+    assert.equal(await obs.inputValue(),'Última edição antes da troca');assert.ok(await obs.isDisabled());
+    assert.ok((await modal.locator('tbody tr').first().innerText()).includes('3.500,00'),'Salario nao restaurado do snapshot');
+    assert.equal(await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='PUT').length),0);
+    await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+    await page.evaluate(()=>{window.negado=true;window.qaTab(true)});
+    await page.getByText('Acesso negado',{exact:true}).waitFor();assert.equal(await obs.count(),0);
+    console.log('Workspace pagamento '+width+'px: GET do ID existente, ultima edicao/editor, sem POST/PUT por retorno, revisao/salario atual e negativa OK.');
+  }
   assert.deepEqual(errors,[]);
   console.log('Modal real: moeda durante digitacao, limpar/legado vazio como zero, numeros no payload, persistencia/foco/mobile; reembolso somente no clique, desconto comum, dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia e Obra/DP OK.');
 } catch (error) {

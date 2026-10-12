@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useComprasCadastroWorkspace from '../utils/useComprasCadastroWorkspace';
 import {
   Pagina,
   PageHeader,
@@ -16,6 +19,9 @@ import {
   deletarUnidade,
   listarUnidades
 } from '../../../services/compras';
+
+const INITIAL = { nome: '', sigla: '' };
+const project = item => ({ nome: item.nome || '', sigla: item.sigla || '' });
 
 /*
   A linha ORIGINAL viaja junto do registro normalizado: quando a gravação de
@@ -43,13 +49,17 @@ export default function GestaoUnidades() {
   const [unidades, setUnidades] = useState([]);
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  const [editandoId, setEditandoId] = useState(null);
-  const [nome, setNome] = useState('');
-  const [sigla, setSigla] = useState('');
-  const [textoMassa, setTextoMassa] = useState('');
+  const [autorizado, setAutorizado] = useState(false);
+  const draft = useComprasCadastroWorkspace('unidades', unidades, autorizado, INITIAL, project);
+  const editandoId = draft.editingId;
+  const nome = draft.value?.nome || '';
+  const sigla = draft.value?.sigla || '';
+  const setNome = value => draft.setValue(atual => ({ ...atual, nome: value }));
+  const setSigla = value => draft.setValue(atual => ({ ...atual, sigla: value }));
+  const [textoMassa, setTextoMassa] = useWorkspaceState('unidades:massa', '');
   // Set em vez de array: é o que a `selecao` da TabelaPadrao consome e o que
   // torna barato tirar da marcação SÓ o que realmente foi excluído.
-  const [selecionados, setSelecionados] = useState(() => new Set());
+  const [selecionados, setSelecionados] = useWorkspaceState('unidades:selecao', () => new Set());
   // R19/R21: as 10 caixas do navegador deste arquivo (alert/confirm) viram
   // faixa de aviso do sistema + modal de confirmação.
   const { avisos, avisar, fechar } = useAvisos();
@@ -57,17 +67,27 @@ export default function GestaoUnidades() {
   // R22: hook usado é hook importado. O ref leva o foco ao formulário, que
   // fica ACIMA da lista (R15).
   const campoNomeRef = useRef(null);
+  const trava = useRef(false);
+  const query = useQueryRevision();
+  useWorkspaceWork(draft.dirty || Boolean(textoMassa), salvando);
 
   async function carregar() {
+    const token = query.begin();
     try {
       setLoading(true);
       const data = await listarUnidades();
-      setUnidades(Array.isArray(data) ? data : []);
+      if (!query.isCurrent(token)) return;
+      const lista = Array.isArray(data) ? data : [];
+      setUnidades(lista); setAutorizado(true);
+      const ids = new Set(lista.map(item => item.id));
+      setSelecionados(atual => new Set([...atual].filter(id => ids.has(id))));
     } catch (error) {
+      if (!query.isCurrent(token)) return;
+      setUnidades([]); setAutorizado(false); draft.conceal(INITIAL);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar unidades');
     } finally {
-      setLoading(false);
+      if (query.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -78,9 +98,8 @@ export default function GestaoUnidades() {
   const idsSelecionados = useMemo(() => [...selecionados], [selecionados]);
 
   function limparFormulario() {
-    setEditandoId(null);
-    setNome('');
-    setSigla('');
+    if (trava.current) return;
+    draft.clear();
   }
 
   function focarFormulario() {
@@ -90,12 +109,14 @@ export default function GestaoUnidades() {
 
   async function handleSalvar(event) {
     event.preventDefault();
+    if (trava.current || loading || !draft.available || draft.conflict) return;
 
     if (!nome.trim() || !sigla.trim()) {
       avisar.alerta('Informe nome e sigla.');
       return;
     }
 
+    trava.current = true;
     try {
       setSalvando(true);
 
@@ -105,21 +126,21 @@ export default function GestaoUnidades() {
         await criarUnidade({ nome, sigla });
       }
 
-      limparFormulario();
+      draft.clear();
       avisar.sucesso(editandoId ? 'Unidade atualizada.' : 'Unidade criada.');
       await carregar();
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar unidade');
     } finally {
+      trava.current = false;
       setSalvando(false);
     }
   }
 
   function iniciarEdicao(unidade) {
-    setEditandoId(unidade.id);
-    setNome(unidade.nome || '');
-    setSigla(unidade.sigla || '');
+    if (trava.current || loading || !autorizado) return;
+    draft.open(unidade);
     focarFormulario();
   }
 
@@ -161,13 +182,16 @@ export default function GestaoUnidades() {
     R26: `alvos` fixa o lote numa const ANTES do await da confirmação.
   */
   async function excluirLote(ids) {
-    const alvos = [...ids];
+    if (trava.current || loading || !autorizado) return;
+    const alvos = [...ids].filter(id => unidades.some(item => item.id === id));
 
     if (!alvos.length) {
       avisar.alerta('Selecione ao menos uma unidade.');
       return;
     }
 
+    trava.current = true; setSalvando(true);
+    try {
     const { ok } = await confirmar({
       titulo: 'Excluir unidades',
       mensagem: `Excluir ${alvos.length} unidade(s)? Esta acao nao pode ser desfeita. Se o lote parar no meio, o que ja foi excluido continua excluido.`,
@@ -204,6 +228,7 @@ export default function GestaoUnidades() {
         `Nenhuma das ${alvos.length} unidade(s) foi excluida. Primeira falha: ${falhas[0]}`
       );
     }
+    } finally { trava.current = false; setSalvando(false); }
   }
 
   /*
@@ -213,6 +238,7 @@ export default function GestaoUnidades() {
     devolve à caixa as linhas que não entraram.
   */
   async function importarMassa() {
+    if (trava.current || loading || !autorizado) return;
     const brutas = String(textoMassa || '')
       .split(/\r?\n/)
       .filter((linha) => String(linha || '').trim());
@@ -224,6 +250,7 @@ export default function GestaoUnidades() {
       return;
     }
 
+    trava.current = true;
     try {
       setSalvando(true);
       let gravadas = 0;
@@ -260,6 +287,7 @@ export default function GestaoUnidades() {
         );
       }
     } finally {
+      trava.current = false;
       setSalvando(false);
     }
   }
@@ -295,6 +323,8 @@ export default function GestaoUnidades() {
 
       {/* R16: UM dono para a faixa de avisos, logo abaixo do cabeçalho. */}
       <Avisos avisos={avisos} aoFechar={fechar} />
+      {draft.conflict && <div role="alert" className="app-note">O cadastro foi alterado. Confira os dados atuais antes de salvar. <button type="button" className="btn btn-outline btn-sm" disabled={salvando} onClick={async () => { const { ok } = await confirmar({ titulo: 'Descartar edição', mensagem: 'Descartar os campos digitados e usar o cadastro atual?', rotuloConfirmar: 'Usar dados atuais' }); if (ok) draft.discard(); }}>Usar dados atuais</button></div>}
+      {!loading && autorizado && editandoId != null && !draft.item && <p role="alert" className="app-note">Unidade não disponível para edição. Inicie um novo cadastro ou selecione outro registro.</p>}
 
       {/*
         R9 (revista em 04/09): esta tela EXISTE para cadastrar unidade de
@@ -303,6 +333,7 @@ export default function GestaoUnidades() {
       */}
       <BlocoConteudo titulo={editandoId ? 'Editar unidade' : 'Nova unidade'}>
         <form onSubmit={handleSalvar}>
+          <fieldset disabled={salvando || loading || !draft.available || draft.conflict}>
           <FormSecao colunas={2}>
             <CampoForm label="Nome da unidade" obrigatorio>
               <input
@@ -334,6 +365,7 @@ export default function GestaoUnidades() {
               </button>
             )}
           </div>
+          </fieldset>
         </form>
       </BlocoConteudo>
 
@@ -347,13 +379,15 @@ export default function GestaoUnidades() {
         {/* R10: a altura do textarea vem da folha do sistema (textarea.input);
             o `min-h-[140px]` que estava aqui era medida à mão. */}
         <textarea
+          aria-label="Unidades para importar"
+          disabled={salvando || loading || !autorizado}
           className="input w-full"
           placeholder={'Formato: Nome|Sigla\nExemplo:\nMetro|m\nQuilograma|kg'}
           value={textoMassa}
           onChange={(event) => setTextoMassa(event.target.value)}
         />
         <div className="app-actionbar">
-          <button type="button" className="btn btn-primary" onClick={importarMassa} disabled={salvando}>
+          <button type="button" className="btn btn-primary" onClick={importarMassa} disabled={salvando || loading || !autorizado}>
             Importar
           </button>
         </div>
@@ -370,7 +404,7 @@ export default function GestaoUnidades() {
             type="button"
             className="btn btn-outline btn-perigo-suave"
             onClick={() => excluirLote(idsSelecionados)}
-            disabled={!idsSelecionados.length}
+            disabled={salvando || loading || !idsSelecionados.length}
           >
             Excluir selecionadas
           </button>
@@ -382,6 +416,7 @@ export default function GestaoUnidades() {
           lugar e passou a marcar o que está EXIBIDO.
         */}
         <TabelaPadrao
+          chaveWorkspace="unidades:tabela"
           colunas={colunas}
           itens={unidades}
           carregando={loading}

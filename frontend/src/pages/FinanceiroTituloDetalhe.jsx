@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork, useWorkspaceTitle } from '../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
+import useQueryRevision from '../navigation/useQueryRevision';
+import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -342,18 +346,30 @@ export default function FinanceiroTituloDetalhe() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [auditoria, setAuditoria] = useState([]);
-  const [modalBaixaOpen, setModalBaixaOpen] = useState(false);
-  const [baixaForm, setBaixaForm] = useState(() => buildBaixaForm(null, []));
-  const [cobrancaForm, setCobrancaForm] = useState(() => buildCobrancaForm(null));
+  const [modalBaixaOpen, setModalBaixaOpen] = useWorkspaceState('titulo-detalhe:baixaModal', false);
+  const baixaDraft = useWorkspaceRecordDraft('titulo-detalhe:baixaInputs', buildBaixaForm(null, []));
+  const cobrancaDraft = useWorkspaceRecordDraft('titulo-detalhe:cobrancaInputs', buildCobrancaForm(null));
+  const baixaForm = baixaDraft.value, setBaixaForm = baixaDraft.setValue;
+  const cobrancaForm = cobrancaDraft.value, setCobrancaForm = cobrancaDraft.setValue;
   const [savingCobranca, setSavingCobranca] = useState(false);
   const [savingBaixa, setSavingBaixa] = useState(false);
   const [estornandoId, setEstornandoId] = useState(null);
-  const [corrigindoMovimentoId, setCorrigindoMovimentoId] = useState(null);
+  const [corrigindoMovimentoId, setCorrigindoMovimentoId] = useWorkspaceState('titulo-detalhe:correcaoId', null);
+  const query = useQueryRevision(id);
+  const trava = useRef(false);
+  useWorkspaceWork(baixaDraft.dirty || cobrancaDraft.dirty || modalBaixaOpen,
+    savingCobranca || savingBaixa || estornandoId !== null, 'titulo-detalhe:work');
+  useWorkspaceTitle(titulo?.codigo || 'Título');
   // R3: aviso e confirmação do sistema no lugar das caixas do navegador. A
   // faixa `error` desta tela continua como está (erro de fluxo); o
   // useAvisos cobre só o que era caixa do navegador.
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const openRecord = useWorkspaceOpenRecord(message => avisar.erro(message));
+  const abrirSolicitacao = event => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    event.preventDefault(); openRecord(`/solicitacoes/${titulo.solicitacao.id}`, titulo.solicitacao.codigo || 'Solicitação');
+  };
   const podeVerPagamentosBancarios = hasPermissao(user, 'financeiro.titulos.pagamentos_bancarios.visualizar');
   const podeVerMovimentosFinanceiros = hasPermissao(user, 'financeiro.titulos.movimentos.visualizar');
   const podeVerAuditoriaFinanceira = hasPermissao(user, 'financeiro.titulos.auditoria.visualizar');
@@ -361,8 +377,12 @@ export default function FinanceiroTituloDetalhe() {
   const podeEditarDadosTitulo = hasPermissao(user, 'financeiro.titulos.editar');
   const podeEditarCobranca = hasPermissao(user, 'financeiro.titulos.cobranca');
   const podeEstornarTitulo = hasPermissao(user, 'financeiro.titulos.estornar');
+  const revisaoBaixa = item => JSON.stringify([item.id, item.status, item.valor_saldo, item.valor_baixado,
+    item.updatedAt, item.updated_at, item.bloqueado_por_retorno_obra, item.bloqueio_retorno_motivo,
+    (item.movimentos || []).map(m => [m.id, m.status, m.valor, m.data_movimento]), item.renegociado_por_id]);
 
   async function carregar() {
+    const token = query.begin();
     try {
       setLoading(true);
       setError('');
@@ -372,21 +392,22 @@ export default function FinanceiroTituloDetalhe() {
         podeBaixarTitulo ? getCartoesFinanceiros() : Promise.resolve([]),
         podeVerAuditoriaFinanceira ? getTituloFinanceiroAuditoria(id) : Promise.resolve([])
       ]);
+      if (!query.isCurrent(token)) return;
       setTitulo(tituloData);
       setContasBancarias(Array.isArray(contasData) ? contasData : []);
       setCartoes(Array.isArray(cartoesData) ? cartoesData : []);
       setAuditoria(Array.isArray(auditoriaData) ? auditoriaData : []);
-      setCobrancaForm(buildCobrancaForm(tituloData));
-      setBaixaForm((current) => ({
-        ...buildBaixaForm(tituloData, Array.isArray(contasData) ? contasData : []),
-        conta_bancaria_id: current.conta_bancaria_id || '',
-        cartao_id: current.cartao_id || '',
-        cheque_terceiro_id: current.cheque_terceiro_id || ''
-      }));
+      const inputsCobranca = buildCobrancaForm(tituloData);
+      cobrancaDraft.hydrate(inputsCobranca, JSON.stringify([tituloData.id, tituloData.status, inputsCobranca]));
+      const movimento = corrigindoMovimentoId ? (tituloData.movimentos || []).find(m => String(m.id) === String(corrigindoMovimentoId)) : null;
+      baixaDraft.hydrate(buildBaixaForm(tituloData, Array.isArray(contasData) ? contasData : [], movimento), revisaoBaixa(tituloData));
     } catch (err) {
+      if (!query.isCurrent(token)) return;
+      setTitulo(null); setContasBancarias([]); setCartoes([]); setAuditoria([]);
+      baixaDraft.conceal(buildBaixaForm(null, [])); cobrancaDraft.conceal(buildCobrancaForm(null));
       setError(err?.message || 'Erro ao carregar titulo financeiro');
     } finally {
-      setLoading(false);
+      if (query.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -560,6 +581,8 @@ export default function FinanceiroTituloDetalhe() {
 
   async function handleSalvarCobranca(event) {
     event.preventDefault();
+    if (trava.current || loading || !titulo || !podeEditarCobranca || cobrancaDraft.conflict) return;
+    trava.current = true;
     try {
       setSavingCobranca(true);
       setError('');
@@ -574,6 +597,7 @@ export default function FinanceiroTituloDetalhe() {
         boleto_emitido_em: cobrancaForm.boleto_emitido_em || null
       };
       await atualizarCobrancaTituloFinanceiro(id, payload);
+      cobrancaDraft.discard();
       // Recarrega primeiro e avisa depois: `carregar()` limpa o estado de
       // erro da tela, e avisar antes apagaria a confirmação recém-pintada.
       await carregar();
@@ -581,12 +605,15 @@ export default function FinanceiroTituloDetalhe() {
     } catch (err) {
       setError(err?.message || 'Erro ao atualizar cobranca do titulo');
     } finally {
+      trava.current = false;
       setSavingCobranca(false);
     }
   }
 
   async function handleBaixaSubmit(event) {
     event.preventDefault();
+    if (trava.current || loading || !titulo || !podeBaixarTitulo || baixaDraft.conflict
+      || !['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase())) return;
     if (bloqueadoPorRetornoObra) {
       setError(titulo?.bloqueio_retorno_motivo || 'Baixa bloqueada por pedido de retorno da Obra.');
       return;
@@ -631,24 +658,29 @@ export default function FinanceiroTituloDetalhe() {
       setError('Informe numero e emitente do cheque usado na baixa.');
       return;
     }
+    trava.current = true;
     try {
       setSavingBaixa(true);
       setError('');
       await baixarTituloFinanceiro(id, baixaForm);
       setModalBaixaOpen(false);
       setCorrigindoMovimentoId(null);
-      setBaixaForm(buildBaixaForm(titulo, contasBancarias));
+      baixaDraft.discard();
       // Recarrega primeiro e avisa depois (mesma razão do salvar cobranca).
       await carregar();
       avisar.sucesso(corrigindoMovimentoId ? 'Baixa corrigida com sucesso.' : 'Baixa registrada com sucesso.');
     } catch (err) {
       setError(err?.message || 'Erro ao registrar baixa');
     } finally {
+      trava.current = false;
       setSavingBaixa(false);
     }
   }
 
   async function handleEstornar(movimentoId) {
+    if (trava.current || loading || !titulo || !podeEstornarTitulo || titulo.renegociado_por_id) return;
+    trava.current = true; setEstornandoId(movimentoId);
+    try {
     // confirmar() devolve { ok, texto } — objeto é sempre truthy, então o
     // retorno TEM de ser desestruturado (R21), senão "Cancelar" estornaria.
     const { ok } = await confirmar({
@@ -659,8 +691,6 @@ export default function FinanceiroTituloDetalhe() {
     });
     if (!ok) return;
 
-    try {
-      setEstornandoId(movimentoId);
       setError('');
       await estornarMovimentoFinanceiro(id, movimentoId, {});
       // Recarrega primeiro e avisa depois (mesma razão do salvar cobranca).
@@ -669,11 +699,15 @@ export default function FinanceiroTituloDetalhe() {
     } catch (err) {
       setError(err?.message || 'Erro ao estornar baixa');
     } finally {
+      trava.current = false;
       setEstornandoId(null);
     }
   }
 
   async function handleCorrigirBaixa(movimento) {
+    if (trava.current || loading || !titulo || !podeEstornarTitulo || !podeBaixarTitulo || titulo.renegociado_por_id) return;
+    trava.current = true; setEstornandoId(movimento.id);
+    try {
     const { ok } = await confirmar({
       titulo: 'Corrigir baixa',
       mensagem: 'Confirmar estorno desta baixa e abrir a correção para alterar conta bancária e data?',
@@ -682,7 +716,6 @@ export default function FinanceiroTituloDetalhe() {
     });
     if (!ok) return;
 
-    try {
       setCorrigindoMovimentoId(movimento.id);
       setEstornandoId(movimento.id);
       setError('');
@@ -690,7 +723,7 @@ export default function FinanceiroTituloDetalhe() {
         observacoes: 'Baixa estornada para correcao de conta bancaria/data.'
       });
       setTitulo(tituloAtualizado);
-      setBaixaForm(buildBaixaForm(tituloAtualizado, contasBancarias, movimento));
+      baixaDraft.hydrate(buildBaixaForm(tituloAtualizado, contasBancarias, movimento), revisaoBaixa(tituloAtualizado), { discard: true });
       setModalBaixaOpen(true);
       const auditoriaData = await getTituloFinanceiroAuditoria(id);
       setAuditoria(Array.isArray(auditoriaData) ? auditoriaData : []);
@@ -698,6 +731,7 @@ export default function FinanceiroTituloDetalhe() {
       setCorrigindoMovimentoId(null);
       setError(err?.message || 'Erro ao preparar correcao da baixa');
     } finally {
+      trava.current = false;
       setEstornandoId(null);
     }
   }
@@ -730,7 +764,7 @@ export default function FinanceiroTituloDetalhe() {
             onClick: () => {
               setError('');
               setCorrigindoMovimentoId(null);
-              setBaixaForm(buildBaixaForm(titulo, contasBancarias));
+              baixaDraft.hydrate(buildBaixaForm(titulo, contasBancarias), revisaoBaixa(titulo), { discard: true });
               setModalBaixaOpen(true);
             }
           } : undefined}
@@ -762,6 +796,12 @@ export default function FinanceiroTituloDetalhe() {
         />
 
         <Avisos avisos={avisos} aoFechar={fechar} />
+        {cobrancaDraft.conflict && <div role="alert" className="app-note">Os dados de cobrança mudaram. Seu preenchimento foi preservado; confira os dados atuais antes de salvar.
+          <button type="button" className="btn btn-outline btn-sm" disabled={savingCobranca} onClick={async () => {
+            const { ok } = await confirmar({ titulo: 'Descartar cobrança digitada?', mensagem: 'Usar os dados de cobrança atuais do título.' });
+            if (ok) cobrancaDraft.discard();
+          }}>Usar cobrança atual</button>
+        </div>}
         <TituloNegociacaoHistorico titulo={titulo} />
 
         {error && (
@@ -816,7 +856,7 @@ export default function FinanceiroTituloDetalhe() {
               {
                 label: 'Solicitação',
                 valor: titulo.solicitacao?.id ? (
-                  <Link className="text-[var(--c-primary)] hover:underline" to={`/solicitacoes/${titulo.solicitacao.id}`}>
+                  <Link className="text-[var(--c-primary)] hover:underline" onClick={abrirSolicitacao} to={`/solicitacoes/${titulo.solicitacao.id}`}>
                     {titulo.solicitacao.codigo || `#${titulo.solicitacao.id}`}
                   </Link>
                 ) : null
@@ -976,7 +1016,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <div className="md:col-span-4 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={savingCobranca}>
+                <button type="submit" className="btn btn-primary" disabled={savingCobranca || cobrancaDraft.conflict}>
                   {savingCobranca ? 'Salvando...' : 'Salvar dados de cobranca'}
                 </button>
               </div>
@@ -1033,7 +1073,7 @@ export default function FinanceiroTituloDetalhe() {
               </label>
 
               <div className="md:col-span-4 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={savingCobranca}>
+                <button type="submit" className="btn btn-primary" disabled={savingCobranca || cobrancaDraft.conflict}>
                   {savingCobranca ? 'Salvando...' : 'Salvar dados do boleto'}
                 </button>
               </div>
@@ -1298,8 +1338,8 @@ export default function FinanceiroTituloDetalhe() {
         )}
       </Pagina>
 
-      {modalBaixaOpen && (
-        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-4">
+      {modalBaixaOpen && podeBaixarTitulo && (
+        <div role="dialog" aria-modal="true" aria-label="Registrar baixa" className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-4">
           <div className="card flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden p-0">
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--c-border)] px-6 py-4">
               <div>
@@ -1315,10 +1355,11 @@ export default function FinanceiroTituloDetalhe() {
               <button
                 type="button"
                 className="btn btn-outline"
+                disabled={savingBaixa}
                 onClick={() => {
                   setModalBaixaOpen(false);
                   setCorrigindoMovimentoId(null);
-                  setBaixaForm(buildBaixaForm(titulo, contasBancarias));
+                  baixaDraft.discard();
                 }}
               >
                 Fechar
@@ -1327,12 +1368,19 @@ export default function FinanceiroTituloDetalhe() {
 
             <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleBaixaSubmit}>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+              {baixaDraft.conflict && <div role="alert" className="app-note">Saldo ou situação do título mudou. O preenchimento foi preservado; a baixa está bloqueada.
+                <button type="button" className="btn btn-outline btn-sm" disabled={savingBaixa} onClick={async () => {
+                  const { ok } = await confirmar({ titulo: 'Descartar baixa digitada?', mensagem: 'Usar os dados atuais do título.' });
+                  if (ok) baixaDraft.discard();
+                }}>Usar saldo atual</button>
+              </div>}
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="text-sm">
                   <span className="mb-1 block text-muted">{baixaFormaLabel}</span>
                   <select
                     className="input w-full"
                     value={baixaForm.forma_recebimento}
+                    aria-label={baixaFormaLabel}
                     onChange={(event) => setBaixaForm((current) => ({
                       ...current,
                       forma_recebimento: event.target.value,
@@ -1536,6 +1584,7 @@ export default function FinanceiroTituloDetalhe() {
                   <select
                     className="input w-full"
                     value={baixaForm.conta_bancaria_id}
+                    aria-label="Conta bancaria"
                     onChange={(event) => selecionarContaBaixa(event.target.value)}
                     required={(contaBancariaObrigatoria(baixaForm.forma_recebimento) && !baixaPagaComChequeTerceiro) || baixaCartaoDebito}
                     disabled={baixaUsaCartao}
@@ -1759,10 +1808,11 @@ export default function FinanceiroTituloDetalhe() {
                 <button
                   type="button"
                   className="btn btn-outline"
+                  disabled={savingBaixa}
                   onClick={() => {
                     setModalBaixaOpen(false);
                     setCorrigindoMovimentoId(null);
-                    setBaixaForm(buildBaixaForm(titulo, contasBancarias));
+                    baixaDraft.discard();
                   }}
                 >
                   Cancelar
@@ -1772,6 +1822,8 @@ export default function FinanceiroTituloDetalhe() {
                   className="btn btn-primary"
                   disabled={
                     savingBaixa ||
+                    baixaDraft.conflict ||
+                    !podeBaixarTitulo || !['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()) ||
                     bloqueadoPorRetornoObra ||
                     !baixaForm.forma_recebimento ||
                     (baixaUsaCartao && !baixaForm.cartao_id) ||

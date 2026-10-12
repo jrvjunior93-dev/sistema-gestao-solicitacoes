@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useWorkspaceState } from '../navigation/WorkspaceContext';
+import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import { HiOutlineArrowPath, HiOutlineEye } from 'react-icons/hi2';
 import {
   getCartoesFinanceiros,
@@ -109,8 +111,8 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function FinanceiroFaturasCartao() {
-  const [filtrosAtivos, setFiltrosAtivos] = useState(FILTROS_INICIAIS);
-  const [busca, setBusca] = useState('');
+  const [filtrosAtivos, setFiltrosAtivos] = useWorkspaceState('faturas:filtros', FILTROS_INICIAIS);
+  const [busca, setBusca] = useWorkspaceState('faturas:busca', '');
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -147,6 +149,7 @@ export default function FinanceiroFaturasCartao() {
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [recarga, setRecarga] = useState(0);
   const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
+  const abrirRegistro = useWorkspaceOpenRecord(avisar.alerta);
 
   useEffect(() => {
     let active = true;
@@ -347,6 +350,8 @@ export default function FinanceiroFaturasCartao() {
           carregando={loading}
           vazio="Nenhuma fatura encontrada."
           storageKey="tabela:faturas-cartao"
+          chaveWorkspace="faturas:tabela"
+          consultaWorkspace={JSON.stringify([busca, status, cartaoId])}
           rotuloRolagem="Faturas de cartao encontradas"
           larguraAcoes={120}
           acoesLinha={(fatura) => (
@@ -355,6 +360,10 @@ export default function FinanceiroFaturasCartao() {
               to={`/financeiro/faturas-cartao/${fatura.id}`}
               title="Abrir detalhes"
               aria-label={`Abrir detalhes da fatura ${fatura.competencia || fatura.id}`}
+              onClick={event => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault(); abrirRegistro(`/financeiro/faturas-cartao/${fatura.id}`, `Fatura ${fatura.competencia || fatura.id}`);
+              }}
             >
               <HiOutlineEye aria-hidden="true" />
             </Link>

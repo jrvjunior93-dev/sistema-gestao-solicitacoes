@@ -1,7 +1,10 @@
 import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import DateInputBR from '../../../components/DateInputBR';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useWorkspaceState, useWorkspaceWork, useWorkspaceTitle } from '../../../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../../../navigation/useWorkspaceRecordDraft';
+import useQueryRevision from '../../../navigation/useQueryRevision';
 import {
   Avisos,
   BlocoConteudo,
@@ -27,7 +30,6 @@ import {
 } from '../../../services/provisoesFinanceiras';
 import {
   formatarMoedaBRL,
-  inicializarEntradaMoeda,
   normalizarEntradaMoeda
 } from '../utils/moeda';
 
@@ -100,9 +102,31 @@ function formatarObraOuNulo(obra) {
   return `${obra.codigo ? `${obra.codigo} - ` : ''}${obra.nome}`;
 }
 
+// Projecao explicita: historico, anexos, ACL e DTO nao entram no rascunho.
+function inputsDaProvisao(provisao) {
+  return {
+    item_macro: provisao?.categoriaMacro?.nome || '',
+    data_prevista_desembolso: String(provisao?.data_prevista_desembolso || ''),
+    descricao: provisao?.descricao || '',
+    valor_previsto: String(provisao?.valor_previsto || ''),
+    fornecedor_texto: provisao?.fornecedor_texto || '',
+    prioridade: provisao?.prioridade || ''
+  };
+}
+
+function revisaoDaProvisao(provisao) {
+  // Comentarios/anexos nao alteram os campos editados. Mudanca desses campos,
+  // da obra ou do estado de negocio impede sobrepor um rascunho antigo.
+  return JSON.stringify([provisao.id, provisao.obra_id ?? provisao.obra?.id,
+    provisao.status, inputsDaProvisao(provisao)]);
+}
+
 export default function ProvisionamentoFinanceiroDetalhe() {
   const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { id } = useParams();
+  const consulta = useQueryRevision(id);
+  const ciclo = useQueryRevision(id);
+  const mutex = useRef(false);
   const { avisos, avisar, fechar } = useAvisos();
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
@@ -111,44 +135,51 @@ export default function ProvisionamentoFinanceiroDetalhe() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [comentando, setComentando] = useState(false);
-  const [editando, setEditando] = useState(false);
-  const [comentario, setComentario] = useState('');
-  const [form, setForm] = useState(null);
-  const [valorPrevistoTexto, setValorPrevistoTexto] = useState('');
+  const [editando, setEditando] = useWorkspaceState('provisao:editar', false);
+  const [comentario, setComentario] = useWorkspaceState('provisao:comentario', '');
+  const [revisaoData, setRevisaoData] = useWorkspaceState('provisao:data:reset', 0);
+  const [erroCarregamento, setErroCarregamento] = useState('');
+  const draft = useWorkspaceRecordDraft('provisao:inputs');
+  const { value: form, setValue: setForm, hydrate, conceal } = draft;
+  const valorPrevistoTexto = form?.valor_previsto === '' ? '' : formatarMoedaBRL(form?.valor_previsto);
+  const ocupado = saving || uploading || comentando;
+  useWorkspaceWork(draft.dirty || Boolean(comentario.trim()), ocupado, 'provisao:work');
+  useWorkspaceTitle(provisao?.codigo || 'Provisão');
 
-  async function carregar() {
+  const carregar = useCallback(async (discard = false) => {
+    const token = consulta.begin();
     try {
       setLoading(true);
+      setErroCarregamento('');
       const [contextoData, categoriasData, provisaoData] = await Promise.all([
         getProvisionamentoFinanceiroContexto(),
         listarCategoriasMacroProvisionamento(),
         getProvisaoFinanceira(id)
       ]);
 
+      if (!consulta.isCurrent(token)) return;
       setContexto(contextoData);
       setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       setProvisao(provisaoData);
-      setForm({
-        item_macro: provisaoData?.categoriaMacro?.nome || '',
-        data_prevista_desembolso: String(provisaoData?.data_prevista_desembolso || ''),
-        descricao: provisaoData?.descricao || '',
-        valor_previsto: String(provisaoData?.valor_previsto || ''),
-        fornecedor_texto: provisaoData?.fornecedor_texto || '',
-        prioridade: provisaoData?.prioridade || ''
-      });
-      setValorPrevistoTexto(inicializarEntradaMoeda(provisaoData?.valor_previsto).textoFormatado);
+      if (provisaoData && contextoData?.permissoes?.pode_editar
+        && !['cancelado', 'realizado'].includes(String(provisaoData.status || '').toLowerCase())) {
+        hydrate(inputsDaProvisao(provisaoData), revisaoDaProvisao(provisaoData), { discard });
+      } else conceal();
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
       console.error(error);
+      setContexto(null); setCategorias([]); setProvisao(null); conceal();
+      setErroCarregamento(error?.message || 'Erro ao carregar detalhe da provisao.');
       avisar.erro(error?.message || 'Erro ao carregar detalhe da provisao.');
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) setLoading(false);
     }
-  }
+  }, [id, consulta.begin, consulta.isCurrent, hydrate, conceal, avisar.erro]);
 
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [carregar]);
 
   const podeEditar = useMemo(() => {
     if (!contexto?.permissoes?.pode_editar || !provisao) return false;
@@ -156,8 +187,8 @@ export default function ProvisionamentoFinanceiroDetalhe() {
   }, [contexto, provisao]);
 
   function atualizarValorPrevisto(raw) {
-    const { textoFormatado, valorNumerico } = normalizarEntradaMoeda(raw);
-    setValorPrevistoTexto(textoFormatado);
+    if (!podeEditar || ocupado || draft.conflict) return;
+    const { valorNumerico } = normalizarEntradaMoeda(raw);
     setForm((atual) => ({
       ...atual,
       valor_previsto: valorNumerico
@@ -166,73 +197,85 @@ export default function ProvisionamentoFinanceiroDetalhe() {
 
   async function salvarEdicao(event) {
     event.preventDefault();
-    if (!form || saving) return;
+    if (!form || loading || !podeEditar || draft.conflict || mutex.current) return;
 
     if (!form.item_macro.trim() || !form.data_prevista_desembolso || !form.descricao.trim() || !form.valor_previsto) {
       avisar.erro('Preencha item macro, data prevista, descrição e valor previsto.');
       return;
     }
 
+    const payload = { ...form };
+    const token = ciclo.capture();
+    mutex.current = true;
     try {
       setSaving(true);
-      await atualizarProvisaoFinanceira(id, {
-        item_macro: form.item_macro,
-        data_prevista_desembolso: form.data_prevista_desembolso,
-        descricao: form.descricao,
-        valor_previsto: form.valor_previsto,
-        fornecedor_texto: form.fornecedor_texto,
-        prioridade: form.prioridade
-      });
+      await atualizarProvisaoFinanceira(id, payload);
+      if (!ciclo.isCurrent(token)) return;
+      draft.discard();
+      setRevisaoData(n => n + 1);
       setEditando(false);
       avisar.sucesso('Alterações da provisão salvas.');
-      await carregar();
+      await carregar(true);
     } catch (error) {
+      if (!ciclo.isCurrent(token)) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar alteracoes.');
     } finally {
-      setSaving(false);
+      mutex.current = false;
+      if (ciclo.isCurrent(token)) setSaving(false);
     }
   }
 
   async function enviarComentario(event) {
     event.preventDefault();
-    if (comentando) return;
+    if (loading || !podeEditar || mutex.current) return;
     if (!comentario.trim()) {
       avisar.erro('Informe um comentário.');
       return;
     }
 
+    const payload = { comentario };
+    const token = ciclo.capture();
+    mutex.current = true;
     try {
       setComentando(true);
-      await adicionarComentarioProvisaoFinanceira(id, { comentario });
+      await adicionarComentarioProvisaoFinanceira(id, payload);
+      if (!ciclo.isCurrent(token)) return;
       setComentario('');
       avisar.sucesso('Comentário registrado.');
       await carregar();
     } catch (error) {
+      if (!ciclo.isCurrent(token)) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao registrar comentario.');
     } finally {
-      setComentando(false);
+      mutex.current = false;
+      if (ciclo.isCurrent(token)) setComentando(false);
     }
   }
 
   async function enviarAnexos(files) {
-    if (!files?.length || uploading) return;
+    if (!files?.length || loading || !podeEditar || mutex.current) return;
 
     // A quantidade é fixada ANTES do await: a mensagem de sucesso tem de
     // citar o que FOI enviado, não o que o input contém depois.
     const quantidade = files.length;
+    const token = ciclo.capture();
+    mutex.current = true;
 
     try {
       setUploading(true);
       await uploadAnexosProvisaoFinanceira(id, files);
+      if (!ciclo.isCurrent(token)) return;
       avisar.sucesso(`${quantidade} anexo(s) enviado(s).`);
       await carregar();
     } catch (error) {
+      if (!ciclo.isCurrent(token)) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao enviar anexos.');
     } finally {
-      setUploading(false);
+      mutex.current = false;
+      if (ciclo.isCurrent(token)) setUploading(false);
     }
   }
 
@@ -241,12 +284,12 @@ export default function ProvisionamentoFinanceiroDetalhe() {
     catch (error) { avisar.erro(error?.message || 'Erro ao abrir anexo.'); }
   }
 
-  if (loading || !provisao || !form) {
+  if (loading || !provisao) {
     return (
       <Pagina>
         <PageHeader titulo="Provisão" voltar={{ to: '/provisoes-financeiras' }} />
         <Avisos avisos={avisos} aoFechar={fechar} />
-        <BlocoConteudo>Carregando provisão...</BlocoConteudo>
+        <BlocoConteudo>{loading ? 'Carregando provisão...' : erroCarregamento || 'Provisão indisponível.'}</BlocoConteudo>
       </Pagina>
     );
   }
@@ -274,7 +317,8 @@ export default function ProvisionamentoFinanceiroDetalhe() {
         acaoPrincipal={podeEditar
           ? {
             rotulo: editando ? 'Fechar edicao' : 'Editar registro',
-            onClick: () => setEditando((valor) => !valor)
+            desabilitada: ocupado,
+            onClick: () => { if (!mutex.current) setEditando((valor) => !valor); }
           }
           : undefined}
       />
@@ -336,18 +380,24 @@ export default function ProvisionamentoFinanceiroDetalhe() {
         />
       </BlocoConteudo>
 
-      {editando && podeEditar && (
+      {editando && podeEditar && form && (
         /*
           R9 — o formulário de edição é INLINE, num painel ACIMA do apoio
           (padrão de tela mista): a pessoa está no registro para mexer nele,
           e o modal a obrigaria a abrir e fechar para ver o que edita.
         */
         <BlocoConteudo titulo="Editar provisão">
+          {draft.conflict && <div role="alert" className="app-alert app-alert-warning">
+            A provisão mudou desde esta edição. Confira os dados atuais antes de salvar.
+            <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={() => { draft.discard(); setRevisaoData(n => n + 1); }}>Usar dados atuais</button>
+          </div>}
           <form className="space-y-4" onSubmit={salvarEdicao}>
+            <fieldset disabled={ocupado || draft.conflict}>
             <FormSecao legenda="Compromisso" colunas={2}>
               <CampoForm label="Item macro" obrigatorio>
                 <input
                   type="text"
+                  aria-label="Item macro"
                   className="input w-full"
                   list="provisao-item-macro-opcoes-edicao"
                   value={form.item_macro}
@@ -362,6 +412,9 @@ export default function ProvisionamentoFinanceiroDetalhe() {
 
               <CampoForm label="Data prevista" obrigatorio>
                 <DateInputBR
+                  chaveWorkspace="provisao:desembolso"
+                  revisaoWorkspace={revisaoData}
+                  aria-label="Data prevista"
                   className="input w-full"
                   value={form.data_prevista_desembolso}
                   onChange={(event) => setForm((atual) => ({ ...atual, data_prevista_desembolso: event.target.value }))}
@@ -373,6 +426,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
               <CampoForm label="Valor previsto" obrigatorio>
                 <input
                   type="text"
+                  aria-label="Valor previsto"
                   inputMode="numeric"
                   className="input input-moeda w-full"
                   value={valorPrevistoTexto}
@@ -383,6 +437,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
 
               <CampoForm label="Prioridade">
                 <select
+                  aria-label="Prioridade"
                   className="input w-full"
                   value={form.prioridade}
                   onChange={(event) => setForm((atual) => ({ ...atual, prioridade: event.target.value }))}
@@ -397,6 +452,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
 
               <CampoForm label="Credor" span={2}>
                 <input
+                  aria-label="Credor"
                   className="input w-full"
                   value={form.fornecedor_texto}
                   onChange={(event) => setForm((atual) => ({ ...atual, fornecedor_texto: event.target.value }))}
@@ -407,16 +463,18 @@ export default function ProvisionamentoFinanceiroDetalhe() {
                 {/* R10: altura do textarea vem da folha do sistema, não do
                     `min-h-[110px]` que estava aqui. */}
                 <textarea
+                  aria-label="Descrição"
                   className="input w-full"
                   value={form.descricao}
                   onChange={(event) => setForm((atual) => ({ ...atual, descricao: event.target.value }))}
                 />
               </CampoForm>
             </FormSecao>
+            </fieldset>
 
             <div className="app-actionbar">
-              <button type="button" className="btn btn-outline" onClick={() => setEditando(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={saving}>
+              <button type="button" className="btn btn-outline" disabled={ocupado} onClick={() => setEditando(false)}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={ocupado || draft.conflict}>
                 {saving ? 'Salvando...' : 'Salvar alteracoes'}
               </button>
             </div>
@@ -429,10 +487,12 @@ export default function ProvisionamentoFinanceiroDetalhe() {
         variante="secundario"
         descricao="Observação complementar fica registrada no histórico da provisão."
       >
-        <form className="space-y-4" onSubmit={enviarComentario}>
+        {podeEditar && <form className="space-y-4" onSubmit={enviarComentario}>
           <FormSecao colunas={2}>
             <CampoForm label="Novo comentário" tipo="texto-longo" span={2}>
               <textarea
+                aria-label="Novo comentário"
+                disabled={ocupado}
                 className="input w-full"
                 value={comentario}
                 onChange={(event) => setComentario(event.target.value)}
@@ -441,11 +501,11 @@ export default function ProvisionamentoFinanceiroDetalhe() {
             </CampoForm>
           </FormSecao>
           <div className="app-actionbar">
-            <button type="submit" className="btn btn-primary" disabled={comentando || !podeEditar}>
+            <button type="submit" className="btn btn-primary" disabled={ocupado}>
               {comentando ? 'Salvando...' : 'Adicionar comentario'}
             </button>
           </div>
-        </form>
+        </form>}
       </BlocoConteudo>
 
       <BlocoConteudo
@@ -453,9 +513,10 @@ export default function ProvisionamentoFinanceiroDetalhe() {
         variante="secundario"
         contagem={`${anexos.length} anexo(s)`}
         acoes={podeEditar ? (
-          <label className={`btn btn-outline btn-sm${uploading ? ' pointer-events-none opacity-60' : ''}`}>
+          <label className={`btn btn-outline btn-sm${ocupado ? ' pointer-events-none opacity-60' : ''}`}>
             <input
               type="file"
+              disabled={ocupado}
               className="hidden"
               multiple
               onChange={(event) => {
@@ -498,6 +559,7 @@ export default function ProvisionamentoFinanceiroDetalhe() {
           getId={(anexo) => anexo.id}
           semIdentidade
           storageKey="tabela:provisionamento-detalhe:anexos"
+          chaveWorkspace="provisao:anexos"
           rotuloRolagem="Anexos da provisao"
           vazio="Nenhum anexo registrado."
           larguraAcoes={110}

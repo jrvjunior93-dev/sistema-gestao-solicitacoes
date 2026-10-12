@@ -21,6 +21,9 @@ import {
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
 import { useAuth } from '../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
+import useQueryRevision from '../navigation/useQueryRevision';
 import { getObras } from '../services/obras';
 import {
   criarRhColaborador,
@@ -340,18 +343,21 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
     const competencia = new Date().toISOString().slice(0, 7);
     return { competencia, parceiro: null, categoria_financeira_id: '', data_vencimento: vencimentoTicket(competencia), boleto: null, idempotency_key: crypto.randomUUID() };
   });
-  const [form, setForm] = useState(emptyForm());
+  const cadastroDraft = useWorkspaceRecordDraft('cadastro:inputs', emptyForm());
+  const { value: form, setValue: setForm } = cadastroDraft;
+  const consultaCadastro = useQueryRevision(comoEditor ? editorId : searchParams.get('colaborador_id'));
+  const [consultandoCadastro, setConsultandoCadastro] = useState(false);
   // R1 da DoD: o cadastro abre em MODAL — antes o formulário nascia abaixo
   // de uma tabela de centenas de linhas e clicar em "editar" não parecia
   // fazer nada.
-  const [formAberto, setFormAberto] = useState(false);
+  const [formAberto, setFormAberto] = useWorkspaceState('cadastro:aberto', false);
   const [tiposDocumento, setTiposDocumento] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [arquivosDossie, setArquivosDossie] = useState([]);
   const [resumoDocumentos, setResumoDocumentos] = useState(null);
   // ?q= da busca universal abre a lista já filtrada pelo nome/CPF.
-  const [busca, setBusca] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
-  const [marcados, setMarcados] = useState(FILTROS_MARCADOS_INICIAIS);
+  const [busca, setBusca] = useWorkspaceState('cadastro:busca', () => new URLSearchParams(window.location.search).get('q') || '');
+  const [marcados, setMarcados] = useWorkspaceState('cadastro:filtros', FILTROS_MARCADOS_INICIAIS);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -379,8 +385,8 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
     */
     aoEsconder: (id) => setMarcados((atual) => ({ ...atual, [id]: new Set() }))
   });
-  const [buscaDocumentos, setBuscaDocumentos] = useState('');
-  const [marcadosDocumentos, setMarcadosDocumentos] = useState(FILTROS_DOCUMENTOS_INICIAIS);
+  const [buscaDocumentos, setBuscaDocumentos] = useWorkspaceState('cadastro:buscaDocumentos', '');
+  const [marcadosDocumentos, setMarcadosDocumentos] = useWorkspaceState('cadastro:filtrosDocumentos', FILTROS_DOCUMENTOS_INICIAIS);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -415,6 +421,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
     observacoes: ''
   });
   const inputImportacaoRef = useRef(null);
+  useWorkspaceWork(cadastroDraft.dirty, salvando || importando || gerandoTicket || salvandoDocumento || consultandoCadastro, 'cadastro:work');
 
   const filtroTipoDocumento = valorUnico(marcadosDocumentos.tipo_documento_id);
   const filtroStatusDocumento = valorUnico(marcadosDocumentos.status);
@@ -491,7 +498,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
       const colaboradorId = Number(comoEditor ? editorId : searchParams.get('colaborador_id'));
       if (Number.isInteger(colaboradorId) && colaboradorId > 0) {
         await abrirColaborador(colaboradorId, { syncQuery: false });
-      }
+      } else if (formAberto) cadastroDraft.hydrate(emptyForm(), 'novo');
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar base RH/DP');
@@ -605,7 +612,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   }
 
   function limparFormulario() {
-    setForm(emptyForm());
+    cadastroDraft.hydrate(emptyForm(), 'novo', { discard: true });
     setNovoDocumento({
       tipo_documento_id: '',
       validade: '',
@@ -630,24 +637,30 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   }
 
   async function abrirColaborador(id, { syncQuery = true } = {}) {
+    const token = consultaCadastro.begin(); setConsultandoCadastro(true);
     try {
       const data = await getRhColaborador(id);
-      setForm(toFormData(data));
+      if (!consultaCadastro.isCurrent(token)) return;
+      const inputs = toFormData(data);
+      cadastroDraft.hydrate(inputs, JSON.stringify([data.id, data.updatedAt, data.updated_at, inputs]));
       setFormAberto(true);
       if (syncQuery) {
         syncColaboradorNaQuery(id);
       }
     } catch (error) {
+      if (!consultaCadastro.isCurrent(token)) return;
+      setFormAberto(false); cadastroDraft.conceal(emptyForm());
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar colaborador');
-    }
+    } finally { if (consultaCadastro.isCurrent(token)) setConsultandoCadastro(false); }
   }
 
   async function salvar(e) {
     e.preventDefault();
-    if (!podeEditar || salvarRef.current) {
+    if (!podeEditar || salvarRef.current || consultandoCadastro) {
       return;
     }
+    if (cadastroDraft.conflict) { avisar.erro('O cadastro mudou. Confira os dados atuais antes de salvar.'); return; }
     const telefoneErro = erroTelefoneSecundario(form);
     if (telefoneErro) {
       avisar.erro(telefoneErro);
@@ -679,7 +692,8 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
         salvo = await criarRhColaborador(payload);
       }
 
-      setForm(toFormData(salvo));
+      const inputs = toFormData(salvo);
+      cadastroDraft.hydrate(inputs, JSON.stringify([salvo.id, salvo.updatedAt, salvo.updated_at, inputs]), { discard: true });
       syncColaboradorNaQuery(salvo.id);
       if (!comoEditor) await recarregarColaboradores();
       await onSalvo?.();
@@ -1156,7 +1170,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
       </>}
       {/* R1 da DoD / R9: cadastro abre em MODAL. Mesmos campos, mesma
           validação, mesmo salvar, mesmo limpar — só a moldura mudou. */}
-      {formAberto && (
+      {formAberto && !carregando && !consultandoCadastro && (
         <OverlayModal
           aberto
           largura="var(--modal-max-w-xl, 1120px)"
@@ -1179,6 +1193,11 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
 
           <div className="overflow-y-auto px-4 py-3">
             {faixaAvisos}
+            {cadastroDraft.conflict && <div role="alert" className="app-note">O cadastro mudou. Seu preenchimento foi mantido para conferência.
+              <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+                const { ok } = await confirmar({ titulo: 'Descartar preenchimento', mensagem: 'Descartar as alterações locais e usar o cadastro atual?', destrutiva: true });
+                if (ok) cadastroDraft.discard();
+              }}>Usar dados atuais</button></div>}
 
             <form id="rh-colaborador-form" className="space-y-4" onSubmit={salvar}>
               <FormSecao legenda="Dados do colaborador" colunas={3}>
@@ -1824,7 +1843,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
 
           {podeEditar && (
             <div className="app-actionbar border-t px-4 py-3" style={{ borderColor: 'var(--ui-border)' }}>
-              <button type="submit" form="rh-colaborador-form" className="btn btn-primary" disabled={salvando}>
+              <button type="submit" form="rh-colaborador-form" className="btn btn-primary" disabled={salvando || cadastroDraft.conflict}>
                 {form.id ? 'Salvar alteracoes' : 'Criar colaborador'}
               </button>
               <button

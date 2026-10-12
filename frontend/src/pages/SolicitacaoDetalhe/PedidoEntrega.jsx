@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import useWorkspaceRecordDraft from '../../navigation/useWorkspaceRecordDraft';
+import { useWorkspaceState, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { registrarEntregaPedido } from '../../services/compras';
 import { useConfirmacao } from '../../components/padrao';
 import DateInputBR from '../../components/DateInputBR';
@@ -6,23 +8,41 @@ import DateInputBR from '../../components/DateInputBR';
 const rotulos = { NAO_ENTREGUE: 'Não entregue', PARCIAL: 'Parcialmente entregue', ENTREGUE: 'Entregue', DIVERGENCIA: 'Entregue com divergência', CANCELADO: 'Cancelado' };
 const numero = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 const data = (v) => v ? v.split('-').reverse().join('/') : 'Não confirmada';
+const INITIAL = { selecionados: [], quantidades: {}, datas: {}, dataLote: '', motivo: '', acaoCompras: 'PREVISAO' };
+const revisaoEntrega = pedido => JSON.stringify([pedido.id, pedido.status, pedido.itens.map(item =>
+  [item.id, item.removido, item.entrega?.versao, item.entrega?.restante,
+    item.entrega?.previsto, item.entrega?.recebido, item.entrega?.previsao, item.entrega?.saldo_cancelado])]);
 
 export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, podeProgramar, renderComentarios, onUpdated }) {
-  const [selecionados, setSelecionados] = useState([]);
-  const [quantidades, setQuantidades] = useState({});
-  const [datas, setDatas] = useState({});
-  const [dataLote, setDataLote] = useState('');
-  const [motivo, setMotivo] = useState('');
-  const [acaoCompras, setAcaoCompras] = useState('PREVISAO');
+  const draft = useWorkspaceRecordDraft('entrega:' + pedido.id + ':inputs', INITIAL);
+  const { quantidades, datas, dataLote, motivo, acaoCompras } = draft.value || INITIAL;
+  const change = key => update => draft.setValue(atual => ({ ...atual,
+    [key]: typeof update === 'function' ? update(atual[key]) : update }));
+  const setSelecionados = change('selecionados');
+  const setQuantidades = change('quantidades');
+  const setDatas = change('datas');
+  const setDataLote = change('dataLote');
+  const setMotivo = change('motivo');
+  const setAcaoCompras = change('acaoCompras');
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
   const enviando = useRef(false);
-  const operacao = useRef(null);
+  // Preservar apenas a chave da tentativa cujo resultado pode ser incerto.
+  // O retorno nao reexecuta; eventual retry explicito reutiliza a mesma chave.
+  const [tentativa, setTentativa] = useWorkspaceState('entrega:' + pedido.id + ':tentativa', null);
+  const operacao = useRef(tentativa);
+  const guardarTentativa = value => { operacao.current = value; setTentativa(value); };
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const ativos = pedido.itens.filter((i) => !i.removido);
+  const selecionados = (draft.value?.selecionados || []).filter(id => ativos.some(item => item.id === id));
   const cancelado = pedido.status === 'CANCELADO';
   const interagir = (podeReceber || podeProgramar) && !cancelado;
+  useEffect(() => {
+    if (!interagir) { draft.conceal(INITIAL); return; }
+    draft.hydrate(INITIAL, revisaoEntrega(pedido));
+  }, [pedido, interagir, draft.hydrate, draft.conceal]);
+  useWorkspaceWork(draft.dirty, ocupado, 'entrega:' + pedido.id + ':work');
   const quantidadePadrao = (item) => podeProgramar && acaoCompras === 'CORRIGIR_RECEBIDO' ? item.entrega?.recebido || 0
     : podeProgramar && acaoCompras === 'DEVOLVER_EXCESSO' ? Math.max(0, Number(item.entrega?.recebido || 0) - Number(item.entrega?.previsto || 0))
       : item.entrega?.restante || 0;
@@ -35,7 +55,8 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
   }
 
   async function enviar(acao, ids) {
-    if (enviando.current || !ids.length) return;
+    if (enviando.current || !ids.length || !interagir || draft.conflict) return;
+    if (['RECEBER', 'NAO_ENTREGUE'].includes(acao) ? !podeReceber : !podeProgramar) return;
     enviando.current = true;
     setOcupado(true); setErro(''); setSucesso('');
     try {
@@ -58,10 +79,10 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
         if (!ok) return;
       }
       const assinatura = JSON.stringify(payload);
-      if (operacao.current?.assinatura !== assinatura) operacao.current = { assinatura, chave: crypto.randomUUID() };
+      if (operacao.current?.assinatura !== assinatura) guardarTentativa({ assinatura, chave: crypto.randomUUID() });
       await registrarEntregaPedido(solicitacaoId, pedido.id, { ...payload, idempotency_key: operacao.current.chave });
-      operacao.current = null;
-      setSelecionados([]); setQuantidades({}); setDatas({}); setDataLote(''); setMotivo('');
+      guardarTentativa(null);
+      draft.discard();
       setSucesso('Entrega atualizada. O histórico e os comentários foram preservados.');
       await onUpdated();
     } catch (error) { setErro(error.message || 'Não foi possível salvar.'); }
@@ -72,13 +93,14 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
     {elementoConfirmacao}
     {erro && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">{erro}</p>}
     {sucesso && <p role="status" className="text-sm text-green-700">{sucesso}</p>}
+    {interagir && draft.conflict && <p role="alert" className="app-note">A entrega foi alterada. Confira o saldo atual antes de registrar. <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={async () => { const { ok } = await confirmar({ titulo: 'Descartar edição da entrega', mensagem: 'Descartar os campos digitados e usar a entrega atual?', rotuloConfirmar: 'Usar entrega atual' }); if (ok) { draft.discard(); guardarTentativa(null); } }}>Usar entrega atual</button></p>}
     {ativos.some((i) => i.entrega?.informar_obrigatorio) && <p className="text-sm text-[var(--sem-warning)]">
       A previsão destes itens já passou. Informe o recebimento total, parcial ou não entrega. Consulte o prazo e os avisos na lista de solicitações.
     </p>}
     {ativos.some((i) => !i.entrega?.previsao && i.entrega?.restante > 0) && <p className="text-xs text-[var(--c-muted)]">
       Compras deve confirmar a previsão para iniciar o acompanhamento. Pedidos antigos não geram bloqueios retroativos sem essa confirmação.
     </p>}
-    {interagir && <fieldset disabled={ocupado} className="min-w-0 space-y-2 border-b border-[var(--c-border)] pb-2 text-sm">
+    {interagir && <fieldset disabled={ocupado || draft.conflict} className="min-w-0 space-y-2 border-b border-[var(--c-border)] pb-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2"><input type="checkbox" checked={ativos.length > 0 && selecionados.length === ativos.length}
           onChange={(e) => { setSelecionados(e.target.checked ? ativos.map((i) => i.id) : []); }} />Selecionar todos</label>
@@ -103,7 +125,7 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
       const entrega = item.entrega || {};
       return <div key={item.id} className="min-w-0 py-2 text-sm">
         <div className="flex flex-wrap items-center gap-2">
-          {interagir && !item.removido && <input type="checkbox" disabled={ocupado} checked={selecionados.includes(item.id)}
+          {interagir && !item.removido && <input type="checkbox" disabled={ocupado || draft.conflict} checked={selecionados.includes(item.id)}
             aria-label={`Selecionar ${item.descricao}`} onChange={(e) => selecionar(item, e.target.checked)} />}
           <span className="min-w-0 flex-1 break-words font-medium">{item.descricao}</span>
           <span>{numero(entrega.recebido)} / {numero(entrega.previsto)} entregue(s)</span>
@@ -115,7 +137,7 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
         {entrega.pendencia_compras && <p className={entrega.reprogramacao_vencida ? 'text-xs text-red-700' : 'text-xs text-amber-700'}>
           {entrega.situacao === 'DIVERGENCIA' ? 'Compras: tratar excesso recebido sem alterar automaticamente o financeiro.' : entrega.reprogramacao_vencida ? 'Reprogramação vencida — Compras está impedido de gerar novos pedidos.' : 'Compras: informe nova data para o saldo pendente.'}
         </p>}
-        {interagir && !item.removido && <fieldset disabled={ocupado} className="mt-2 flex min-w-0 flex-wrap items-end gap-2">
+        {interagir && !item.removido && <fieldset disabled={ocupado || draft.conflict} className="mt-2 flex min-w-0 flex-wrap items-end gap-2">
           {(receberVisivel || (podeProgramar && ['CORRIGIR_RECEBIDO', 'DEVOLVER_EXCESSO'].includes(acaoCompras))) && <label>{podeProgramar && acaoCompras === 'CORRIGIR_RECEBIDO' ? 'Total acumulado correto' : podeProgramar && acaoCompras === 'DEVOLVER_EXCESSO' ? 'Quantidade devolvida' : 'Quantidade'}
             <input className="input block w-28" inputMode="decimal" aria-label={`Quantidade de ${item.descricao}`} value={qtd(item)}
               onChange={(e) => setQuantidades((q) => ({ ...q, [item.id]: e.target.value }))} /></label>}

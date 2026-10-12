@@ -22,6 +22,7 @@ import {
   encerrarSolicitacaoCompraSemPedido,
   enviarSolicitacaoCompraParaFornecedores,
   listarFornecedoresCompra,
+  obterFornecedorCompra,
   obterWorkspaceCotacaoSolicitacaoCompra,
   obterUrlAssinadaCompra,
   obterUrlPdfCotacaoPublica,
@@ -31,7 +32,7 @@ import {
   salvarRespostaInternaCotacao,
   uploadArquivosRespostaInternaCotacao
 } from '../../../services/compras';
-import { buscarParceiros, listarCategoriasParceiro } from '../../../services/parceiros';
+import { buscarParceiros, buscarParceiroPorId, listarCategoriasParceiro } from '../../../services/parceiros';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
 import useQueryRevision from '../../../navigation/useQueryRevision';
@@ -2872,22 +2873,22 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [enviandoFornecedores, setEnviandoFornecedores] = useState(false);
   const [reabrindoCotacaoId, setReabrindoCotacaoId] = useState(null);
   const [cancelandoCotacao, setCancelandoCotacao] = useState(false);
-  const [modalCancelamentoCotacao, setModalCancelamentoCotacao] = useState(false);
-  const [motivoCancelamentoCotacao, setMotivoCancelamentoCotacao] = useState('');
+  const [modalCancelamentoCotacao, setModalCancelamentoCotacao] = useWorkspaceState(scope + 'cancelarModal', false);
+  const [motivoCancelamentoCotacao, setMotivoCancelamentoCotacao] = useWorkspaceState(scope + 'cancelarMotivo', '');
   const [respostaDraft, setRespostaDraft] = useWorkspaceState(scope + 'resposta', null);
   const [consultandoRespostaDraft, setConsultandoRespostaDraft] = useState(false);
   const [salvandoRespostaInterna, setSalvandoRespostaInterna] = useState(false);
   const [enviandoArquivosRespostaInterna, setEnviandoArquivosRespostaInterna] = useState(false);
   const [encerrando, setEncerrando] = useState(false);
-  const [modalEncerrarSemPedido, setModalEncerrarSemPedido] = useState(false);
-  const [justificativaEncerrarSemPedido, setJustificativaEncerrarSemPedido] = useState('');
+  const [modalEncerrarSemPedido, setModalEncerrarSemPedido] = useWorkspaceState(scope + 'encerrarModal', false);
+  const [justificativaEncerrarSemPedido, setJustificativaEncerrarSemPedido] = useWorkspaceState(scope + 'encerrarJustificativa', '');
   const [confirmadoEncerrarSemPedido, setConfirmadoEncerrarSemPedido] = useState(false);
   const [encerrandoSemPedido, setEncerrandoSemPedido] = useState(false);
   const [comentarioCotacao, setComentarioCotacao] = useWorkspaceState(scope + 'comentario', '');
   const [registrandoComentario, setRegistrandoComentario] = useState(false);
-  const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState([]);
+  const [fornecedoresSelecionados, setFornecedoresSelecionados] = useWorkspaceState(scope + 'fornecedorIds', []);
   const [fornecedoresSelecionadosDados, setFornecedoresSelecionadosDados] = useState({});
-  const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useState({});
+  const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useWorkspaceState(scope + 'envioItemIds', {});
   const [novoFornecedor, setNovoFornecedor] = useWorkspaceState(scope + 'novoFornecedor', { nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
   const cadastroFornecedorEmCursoRef = useRef(false);
   const [salvandoFornecedor, setSalvandoFornecedor] = useState(false);
@@ -2901,7 +2902,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const encerramentoSemPedidoIdempotencyRef = useRef(null);
   const fornecedorRequestRef = useRef({ sequencia: 0, controller: null });
   useWorkspaceWork(Boolean(respostaDraft || Object.keys(vencedoresSelecionados).length
-    || comentarioCotacao.trim() || Object.values(novoFornecedor).some(Boolean)),
+    || comentarioCotacao.trim() || Object.values(novoFornecedor).some(Boolean)
+    || fornecedoresSelecionados.length || motivoCancelamentoCotacao || justificativaEncerrarSemPedido),
     baixando || enviandoFornecedores || reabrindoCotacaoId || cancelandoCotacao
     || salvandoRespostaInterna || enviandoArquivosRespostaInterna || encerrando
     || encerrandoSemPedido || registrandoComentario || salvandoFornecedor,
@@ -3025,6 +3027,30 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       setCategoriasFornecedor(Array.isArray(dataCategorias) ? dataCategorias : []);
       await carregarFornecedores();
       if (!consulta.isCurrent(token)) return;
+      // So IDs sobrevivem a troca de aba. Rotulos/contatos e elegibilidade
+      // dos escolhidos sao consultados novamente, inclusive fora do filtro.
+      if (preservarSelecoes && fornecedoresSelecionados.length) {
+        const resultados = await Promise.all(fornecedoresSelecionados.map(async key => {
+          const [tipo, codigo] = String(key).split(':');
+          if (!['fornecedor', 'parceiro'].includes(tipo) || !/^\d+$/.test(codigo)) return null;
+          try {
+            const atual = tipo === 'parceiro' ? await buscarParceiroPorId(codigo) : await obterFornecedorCompra(codigo);
+            if (!atual || atual.ativo === false || atual.ativo === 0) return null;
+            return [key, tipo === 'parceiro'
+              ? { id: key, parceiro_id: atual.id, selection_key: key, origem_cadastro: 'PARCEIRO', nome: atual.nome,
+                documento: atual.cpf_cnpj, cnpj: atual.cpf_cnpj, email: atual.email, whatsapp: atual.telefone }
+              : { ...atual, fornecedor_compra_id: atual.id, selection_key: key, origem_cadastro: 'FORNECEDOR_COMPRA' }];
+          } catch { return null; }
+        }));
+        if (!consulta.isCurrent(token)) return;
+        const dadosAtuais = Object.fromEntries(resultados.filter(Boolean));
+        setFornecedoresSelecionadosDados(dadosAtuais);
+        setFornecedoresSelecionados(atuais => atuais.filter(key => dadosAtuais[key]));
+        setItensSelecionadosEnvio(atuais => Object.fromEntries(Object.entries(atuais)
+          .filter(([key]) => dadosAtuais[key]).map(([key, itens]) => [key, Object.fromEntries(Object.entries(itens)
+            .filter(([itemKey]) => [...(dataSolicitacao?.itens || []).map(item => `CADASTRADO:${item.id}`),
+              ...(dataSolicitacao?.itensManuais || []).map(item => `MANUAL:${item.id}`)].includes(itemKey)))])));
+      }
       setComparativo(workspace?.comparativo || null);
       const novaRevisao = revisaoComparativoDraft(dataSolicitacao, workspace?.comparativo);
       if (!preservarSelecoes || revisaoComparativo !== novaRevisao) {
@@ -3042,6 +3068,9 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       const mensagem = error.message || 'Erro ao carregar solicitacao de compra';
       setSolicitacao(null);
+      setFornecedores([]);
+      setFornecedoresSelecionadosDados({});
+      setComparativo(null);
       setErroCarregamento(
         /nao encontrada|não encontrada/i.test(mensagem)
           ? 'Solicitacao de compra cancelada ou indisponivel para cotacao.'
@@ -3676,6 +3705,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function confirmarEncerramentoSemPedido() {
+    if (encerramentoEmCursoRef.current || !podeEncerrarSemPedidoCotacao) return;
     const justificativa = justificativaEncerrarSemPedido.trim();
     if (justificativa.length < MINIMO_JUSTIFICATIVA) {
       avisar.alerta(`Informe uma justificativa com pelo menos ${MINIMO_JUSTIFICATIVA} caracteres.`);
@@ -3686,6 +3716,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       return;
     }
 
+    encerramentoEmCursoRef.current = true;
     try {
       setEncerrandoSemPedido(true);
       if (!encerramentoSemPedidoIdempotencyRef.current) {
@@ -3708,6 +3739,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao encerrar cotacao sem gerar pedido');
     } finally {
+      encerramentoEmCursoRef.current = false;
       setEncerrandoSemPedido(false);
     }
   }
@@ -4458,7 +4490,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       )}
       <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
       <ModalEncerrarSemPedido
-        aberto={modalEncerrarSemPedido}
+        aberto={modalEncerrarSemPedido && podeEncerrarSemPedidoCotacao && !fluxoTerminal}
         resumo={resumoEncerramentoSemPedido}
         justificativa={justificativaEncerrarSemPedido}
         confirmado={confirmadoEncerrarSemPedido}
@@ -4487,7 +4519,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
           setFormRespostaInterna(null);
         }}
       />
-      {modalCancelamentoCotacao && (
+      {modalCancelamentoCotacao && podeExibirCancelamentoCotacao && (
         <ModalPortal onClose={() => setModalCancelamentoCotacao(false)} closeOnEscape={!cancelandoCotacao}>
           <div className="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cancelar-cotacao-titulo">
             <div className="app-modal-surface app-modal-surface--compact p-4">

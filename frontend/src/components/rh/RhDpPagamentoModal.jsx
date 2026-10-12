@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import OverlayModal from '../ui/OverlayModal';
 import { Avisos, useAvisos, useConfirmacao } from '../padrao';
 import { pagamentoRhSolicitacao } from '../../services/rhDp';
+import { useWorkspaceState, useWorkspaceWork } from '../../navigation/WorkspaceContext';
+import { contaPagamentoInputs, pagamentoInputs, restaurarPagamentoInputs } from '../../navigation/rhPagamentoWorkspaceDraft';
 import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../../utils/formatters';
 import '../../styles/rh-pagamento-solicitacao.css';
 
@@ -38,7 +40,7 @@ function DadosRecebimento({ dados, alterar, reembolso = false }) {
   </div>;
 }
 
-export default function RhDpPagamentoModal({ local, locais = [], colaborador, colaboradorIds, solicitacaoId, onFechar, aoEnviar }) {
+export default function RhDpPagamentoModal({ local, locais = [], colaborador, colaboradorIds, solicitacaoId, onIniciada, onFechar, aoEnviar }) {
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [resposta, setResposta] = useState(null);
@@ -48,8 +50,13 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [sujo, setSujo] = useState(false);
-  const [editor, setEditor] = useState(null);
-  const [busca, setBusca] = useState('');
+  const [editores, setEditores] = useWorkspaceState('pagamento:editores', {});
+  const [busca, setBusca] = useWorkspaceState('pagamento:busca', '');
+  const [drafts, setDrafts] = useWorkspaceState('pagamento:inputs', {});
+  const draftsRef = useRef(drafts); draftsRef.current = drafts;
+  const [conflito, setConflito] = useState(false);
+  const restauradoSemSalvar = useRef(false);
+  const recebidoInicial = useRef(null);
   const trava = useRef(false);
   const atual = useRef(null);
   const sujoRef = useRef(false);
@@ -61,13 +68,42 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   atual.current = form; sujoRef.current = sujo;
   const dp = Boolean(resposta?.pode_conferir);
   const concluido = resposta?.solicitacao?.situacao === 'APROVADA';
-  const editavel = resposta && (resposta.solicitacao.situacao === 'RASCUNHO'
+  const editavel = !conflito && resposta && (resposta.solicitacao.situacao === 'RASCUNHO'
     || (dp && ['ABERTA', 'APROVADA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(resposta.solicitacao.situacao)));
   const estadoLinha = l => l.pagamento_estado || (concluido ? 'ENVIADO' : 'PENDENTE');
   const linhaEditavel = l => editavel && ['PENDENTE', 'EM_EDICAO'].includes(estadoLinha(l));
-  function receber(result) {
-    respostaRef.current = result; atual.current = result.solicitacao.dados_json; sujoRef.current = false;
-    setResposta(result); setForm(atual.current); setSujo(false);
+  const editorSalvo = editores[resposta?.solicitacao?.id];
+  const editor = editorSalvo && resposta?.solicitacao?.dados_json?.linhas?.some(l =>
+    Number(l.colaborador_id) === Number(editorSalvo.id) && linhaEditavel(l)) ? editorSalvo : null;
+  function setEditor(update) {
+    const id = respostaRef.current?.solicitacao?.id;
+    if (!id) return;
+    setEditores(values => {
+      const next = typeof update === 'function' ? update(values[id] || null) : update;
+      if (!next) return Object.fromEntries(Object.entries(values).filter(([key]) => String(key) !== String(id)));
+      return { ...values, [id]: next };
+    });
+  }
+  useWorkspaceWork(sujo || Boolean(editor), ocupado || salvando || carregando, 'pagamento:work');
+  function guardar(formulario, revisao = respostaRef.current?.solicitacao?.dados_json?.revisao) {
+    const id = respostaRef.current?.solicitacao?.id;
+    if (!id) return;
+    setDrafts(values => ({ ...values, [id]: { revisao, inputs: pagamentoInputs(formulario) } }));
+  }
+  function limparDraft(id) {
+    setDrafts(values => Object.fromEntries(Object.entries(values).filter(([key]) => String(key) !== String(id))));
+  }
+  function receber(result, restaurar = false) {
+    respostaRef.current = result;
+    setLocalId(result.solicitacao.obra_id || local?.id || '');
+    const fresh = result.solicitacao.dados_json;
+    const saved = restaurar ? draftsRef.current[result.solicitacao.id] : null;
+    atual.current = restaurarPagamentoInputs(fresh, saved?.inputs, result.pode_conferir, result.solicitacao.situacao);
+    const mudou = JSON.stringify(pagamentoInputs(atual.current)) !== JSON.stringify(pagamentoInputs(fresh));
+    sujoRef.current = mudou; restauradoSemSalvar.current = mudou;
+    setConflito(Boolean(saved && saved.revisao !== fresh.revisao));
+    if (!restaurar) { limparDraft(result.solicitacao.id); setEditor(null); }
+    setResposta(result); setForm(atual.current); setSujo(mudou);
   }
   useEffect(() => {
     montado.current = true;
@@ -81,14 +117,19 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
       : pagamentoRhSolicitacao('', { method: 'POST', data: {
         obra_id: Number(localId), colaborador_id: colaborador?.id, colaborador_ids: colaboradorIds
       } });
-    iniciarPromise.current.then(result => { if (ativo) receber(result); })
-      .catch(e => { if (ativo) avisar.erro(e.message); iniciarPromise.current = null; })
+    iniciarPromise.current.then(result => { if (ativo && recebidoInicial.current !== result) {
+      recebidoInicial.current = result; receber(result, true); onIniciada?.(result.solicitacao.id);
+    } })
+      .catch(e => { if (ativo) { setResposta(null); setForm(null); avisar.erro(e.message); } iniciarPromise.current = null; })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
   }, [solicitacaoId, localId, colaborador?.id, colaboradorIds]); // eslint-disable-line react-hooks/exhaustive-deps
   function alterar(patch) {
+    if (!editavel) return;
     falhaAutomatica.current = false;
+    restauradoSemSalvar.current = false;
     atual.current = { ...atual.current, ...patch }; sujoRef.current = true;
+    guardar(atual.current);
     setForm(atual.current); setSujo(true);
   }
   function linhaAlterar(id, patch, conferindo = false) {
@@ -96,6 +137,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
       ? { ...l, ...(!conferindo ? { [dp ? 'conferido_dp' : 'conferido_obra']: false } : {}), ...patch } : l) });
   }
   async function salvar(completo = false) {
+    if (conflito) throw new Error('O pagamento mudou. Confira os dados atuais antes de salvar ou enviar.');
     // Somente uma gravacao em voo; fechar/enviar aguardam e salvam tambem edicoes posteriores.
     if (salvamentoPromise.current) await salvamentoPromise.current;
     do {
@@ -123,6 +165,9 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
           atual.current = { ...atual.current, revisao: result.solicitacao.dados_json.revisao,
             salvo_por: result.solicitacao.dados_json.salvo_por, salvo_em: result.solicitacao.dados_json.salvo_em };
           sujoRef.current = editadoDuranteGravacao;
+          if (editadoDuranteGravacao) guardar(atual.current, result.solicitacao.dados_json.revisao);
+          else limparDraft(result.solicitacao.id);
+          restauradoSemSalvar.current = false;
           setForm(atual.current); setSujo(editadoDuranteGravacao);
           return result;
         } finally { if (montado.current) setSalvando(false); }
@@ -139,7 +184,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     finally { trava.current = false; setOcupado(false); }
   }
   useEffect(() => {
-    if (!sujo || !resposta || !editavel || ocupado || salvando || editor || falhaAutomatica.current) return undefined;
+    if (!sujo || !resposta || !editavel || ocupado || salvando || editor || falhaAutomatica.current || restauradoSemSalvar.current) return undefined;
     const timer = setTimeout(() => salvar().catch(e => {
       if (montado.current) { falhaAutomatica.current = true; avisar.erro(e.message); }
     }), 900);
@@ -147,6 +192,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   }, [sujo, form, ocupado, salvando, editor]); // eslint-disable-line react-hooks/exhaustive-deps
   async function fechar() {
     if (trava.current || carregando) return;
+    if (conflito) { onFechar(); return; }
     await operacao(async () => { await salvar(true); onFechar(); });
   }
   async function enviar() {
@@ -227,6 +273,11 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
       {!localId && !solicitacaoId && <label>Obra / Centro de custo<select aria-label="Obra / Centro de custo" className="form-control" value={localId} onChange={e => setLocalId(e.target.value)}>
         <option value="">Selecione</option>{locais.map(o => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}</select></label>}
       {carregando && <p role="status">Carregando pagamento…</p>}
+      {conflito && <div role="alert" className="app-note">O pagamento mudou. Seu preenchimento foi mantido para conferência; o envio está bloqueado.
+        <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+          const { ok } = await confirmar({ titulo: 'Descartar preenchimento', mensagem: 'Descartar as alterações locais e usar o pagamento atual?', destrutiva: true });
+          if (ok) receber(respostaRef.current);
+        }}>Usar dados atuais</button></div>}
       {form && <>
         <div className="rh-pagamento-toolbar">
           <label>Competência<input disabled={ocupado || !editavel || Boolean(form.titulos?.length)} className="form-control" type="month" value={form.competencia} onChange={e => alterar({ competencia: e.target.value, linhas: linhas.map(l => ({ ...l, conferido_dp: false, conferido_obra: false })) })} /></label>
@@ -279,7 +330,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
                 valor: Number(l.reembolso?.valor ?? l.descontos)
               } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
               <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{moeda(calculo.liquido)}</strong></td><td>{numero('dias', 'Dias', 31)}</td><td>{numero('faltas', 'Faltas', 31)}</td>
-              <td><button disabled={bloqueada} type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: { ...l } })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button><small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small></td>
+              <td><button disabled={bloqueada} type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: contaPagamentoInputs(l) })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button><small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small></td>
               <td><input disabled={bloqueada} className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
             </tr>;
           })}</tbody></table>
@@ -315,7 +366,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
           }}><option value="">Selecione</option>{resposta.responsaveis.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select></label>
         </div>
       </>}
-        <DadosRecebimento dados={editor.dados} reembolso={editor.tipo === 'reembolso'} alterar={patch => setEditor(v => ({ ...v, dados: { ...v.dados, ...patch } }))} />
+        <DadosRecebimento dados={{ ...editor.dados, conta_salario: linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.conta_salario }} reembolso={editor.tipo === 'reembolso'} alterar={patch => setEditor(v => ({ ...v, dados: { ...v.dados, ...patch } }))} />
         <div className="rh-pagamento-rodape"><button className="btn btn-outline btn-sm" onClick={() => setEditor(null)}>Cancelar</button>
           <button className="btn btn-primary btn-sm" onClick={() => {
             if (editor.tipo === 'reembolso' && !editor.dados.responsavel_id) { avisar.erro('Selecione o responsável pelo reembolso.'); return; }

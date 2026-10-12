@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
+import useQueryRevision from '../navigation/useQueryRevision';
 import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -33,6 +36,7 @@ import {
   cancelarRhSolicitacao,
   conferirDocumentacaoRhSolicitacao,
   getRhColaboradores,
+  getRhColaborador,
   getRhEmpresasGrupo,
   listarRhSolicitacoes,
   reenviarRhSolicitacao,
@@ -417,7 +421,7 @@ export default function RhDpPessoal() {
   */
   const [parametros, setParametros] = useSearchParams();
   const navigate = useNavigate();
-  const [editarColaboradorId, setEditarColaboradorId] = useState(null);
+  const [editarColaboradorId, setEditarColaboradorId] = useWorkspaceState('pessoal:editarId', null);
   const podeEditarCadastro = canManageRhDpColaboradores(user) && canAccessRhDpCadastroColaboradores(user);
   const podeVerDocumentos = canViewRhDpDocumentos(user);
   const podeVerRelatorios = canAccessRhDpDashboard(user);
@@ -433,8 +437,16 @@ export default function RhDpPessoal() {
   const colaboradores = useMemo(() => localId
     ? colaboradoresCarregados.filter(item => String(item.obra_id) === localId && item.status === 'ATIVO')
     : colaboradoresCarregados, [colaboradoresCarregados, localId]);
-  const [pagamento, setPagamento] = useState(null);
+  const [pagamentoAlvo, setPagamentoAlvo] = useWorkspaceState('pessoal:pagamentoAlvo', null);
+  const pagamento = pagamentoAlvo && (!pagamentoAlvo.localId || obras.some(o => Number(o.id) === Number(pagamentoAlvo.localId)))
+    ? { ...pagamentoAlvo, local: obras.find(o => Number(o.id) === Number(pagamentoAlvo.localId)),
+      colaborador: pagamentoAlvo.colaboradorId ? { id: pagamentoAlvo.colaboradorId } : null } : null;
+  const setPagamento = data => setPagamentoAlvo(data ? { localId: data.local?.id || '',
+    colaboradorId: data.colaborador?.id || '', colaboradorIds: data.colaboradorIds,
+    solicitacaoId: data.solicitacaoId } : null);
   const [colaboradoresMarcados, setColaboradoresMarcados] = useState(new Map());
+  const [selecaoMemoria, setSelecaoMemoria] = useWorkspaceState('pessoal:selecionados', []);
+  const restaurandoSelecao = useRef(true);
   /*
     Uma fonte só para rótulo, apoio do cabeçalho e ordem. O `apoio` existe
     porque o cabeçalho é ÚNICO para as quatro abas: o texto fixo antigo
@@ -577,17 +589,33 @@ export default function RhDpPessoal() {
    * etiquetas visiveis e a lista sem estreitar. Daqui sai exatamente o mesmo
    * parametro de antes; conjunto vazio = todas as obras que a pessoa enxerga.
    */
-  const [marcados, setMarcados] = useState({ obra_id: new Set() });
+  const [marcados, setMarcados] = useWorkspaceState('pessoal:filtros', { obra_id: new Set() });
   const filtroObra = localSelecionado ? String(localSelecionado.id) : marcados.obra_id.size === 1
     ? marcados.obra_id.values().next().value
     : '';
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = useWorkspaceState('pessoal:busca', '');
 
+  const filtroSelecao = `${user?.id}|${localId}|${[...marcados.obra_id].join(',')}`;
+  const filtroSelecaoAnterior = useRef(filtroSelecao);
   useEffect(() => {
-    setColaboradoresMarcados(new Map());
-  }, [user?.id, localId, filtroObra]);
+    if (filtroSelecaoAnterior.current !== filtroSelecao) setColaboradoresMarcados(new Map());
+    filtroSelecaoAnterior.current = filtroSelecao;
+  }, [filtroSelecao]);
+  useEffect(() => {
+    if (!restaurandoSelecao.current) setSelecaoMemoria([...colaboradoresMarcados.keys()]);
+  }, [colaboradoresMarcados]);
 
-  const [formulario, setFormulario] = useState(null);
+  const [formularioAlvo, setFormularioAlvo] = useWorkspaceState('pessoal:pedidoAlvo', null);
+  const rascunhoFormulario = useWorkspaceRecordDraft('pessoal:pedidoCampos');
+  const formulario = rascunhoFormulario.value;
+  const consultaFormulario = useQueryRevision(JSON.stringify(formularioAlvo));
+  const [consultandoFormulario, setConsultandoFormulario] = useState(false);
+  function setFormulario(update) {
+    if (update === null) {
+      rascunhoFormulario.discard(); rascunhoFormulario.setValue(null); setFormularioAlvo(null); return;
+    }
+    rascunhoFormulario.setValue(update);
+  }
   const [criandoRascunho, setCriandoRascunho] = useState(false);
   const criacaoRascunhoEmAndamento = useRef(false);
   const [conferencia, setConferencia] = useState(null);
@@ -596,7 +624,10 @@ export default function RhDpPessoal() {
   // A troca de usuario de teste preserva o componente montado. Sem limpar estas colecoes, a tela
   // podia exibir por alguns instantes colaboradores e obras do usuario anterior; ao agir sobre uma
   // dessas linhas, o backend aplicava o novo escopo e respondia "Acesso negado a este colaborador".
+  const donoAnterior = useRef(user?.id);
   useEffect(() => {
+    if (donoAnterior.current === user?.id) return;
+    donoAnterior.current = user?.id;
     setColaboradores([]);
     setObras([]);
     setObrasDestino([]);
@@ -636,6 +667,30 @@ export default function RhDpPessoal() {
   const podeAbrir = hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.abrir']);
   const podeDecidir = hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.decidir']);
   const podeAprovarSalario = hasAnyExplicitPermissao(user, ['rh_dp.salario.aprovar']);
+  useWorkspaceWork(rascunhoFormulario.dirty || Boolean(colaboradoresMarcados.size),
+    criandoRascunho || consultandoFormulario);
+  useEffect(() => {
+    if (!formularioAlvo || !podeAbrir) return;
+    const token = consultaFormulario.begin(); setConsultandoFormulario(true);
+    (async () => {
+      const colaborador = formularioAlvo.colaboradorId ? await getRhColaborador(formularioAlvo.colaboradorId) : null;
+      if (!consultaFormulario.isCurrent(token)) return;
+      const tipo = formularioAlvo.tipo;
+      const base = { ...formularioVazio(tipo), colaborador_id: colaborador?.id || '',
+        obra_id: colaborador?.obra_id || formularioAlvo.obraId || filtroObra || localId || '', primeiraLotacao: !colaborador?.obra_id,
+        obra_id_colaborador: colaborador?.obra_id || null, nomeDoColaborador: colaborador?.nome || '',
+        data_vigencia: tipo === 'MOVIMENTACAO' ? sugestaoDeVigencia(colaborador) : '',
+        admissaoFutura: tipo === 'MOVIMENTACAO' && ehFutura(colaborador?.data_admissao) };
+      const restaurado = rascunhoFormulario.hydrate(base, JSON.stringify([tipo, colaborador?.id, colaborador?.updatedAt,
+        colaborador?.obra_id, colaborador?.status, colaborador?.salario_base]));
+      if (tipo === 'ADMISSAO') carregarEmpresasSePreciso();
+      if (tipo === 'TROCA_OBRA' || restaurado.subtipo === 'TRANSFERENCIA_OBRA') carregarObrasDestinoSePreciso();
+      carregarApoioDoModal(tipo, colaborador);
+      carregarChecklist(tipo, restaurado.subtipo || undefined);
+    })().catch(error => { if (consultaFormulario.isCurrent(token)) {
+      rascunhoFormulario.setValue(null); avisar.erro(error.message || 'Não foi possível reabrir o pedido.');
+    } }).finally(() => { if (consultaFormulario.isCurrent(token)) setConsultandoFormulario(false); });
+  }, [formularioAlvo, podeAbrir]);
 
   /**
    * `carregar` NAO limpa os avisos.
@@ -669,11 +724,14 @@ export default function RhDpPessoal() {
       setColaboradores(listaConfirmada);
       const porId = new Map(listaConfirmada.map(c => [Number(c.id), c]));
       // Busca pode ocultar uma linha marcada; atualizar tambem a lotacao das linhas relidas.
-      setColaboradoresMarcados(atuais => new Map([...atuais].flatMap(([id, anterior]) => {
+      setColaboradoresMarcados(atuais => new Map([
+        ...(restaurandoSelecao.current ? selecaoMemoria.map(id => [Number(id), null]) : []), ...atuais
+      ].flatMap(([id, anterior]) => {
         const vigente = porId.get(id);
-        if (!vigente) return busca ? [[id, anterior]] : [];
+        if (!vigente) return busca && anterior ? [[id, anterior]] : [];
         return vigente.status === 'ATIVO' && vigente.obra_id ? [[id, vigente]] : [];
       })));
+      restaurandoSelecao.current = false;
       setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : 0);
       if (!obras.length) setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
@@ -717,7 +775,8 @@ export default function RhDpPessoal() {
 
   async function abrirPedido(evento) {
     evento.preventDefault();
-    if (criacaoRascunhoEmAndamento.current) return;
+    if (criacaoRascunhoEmAndamento.current || !podeAbrir || !formulario || consultandoFormulario) return;
+    if (rascunhoFormulario.conflict) { avisar.erro('O cadastro mudou. Confira os dados atuais antes de criar o pedido.'); return; }
     limpar();
 
     const f = formulario;
@@ -1129,31 +1188,8 @@ export default function RhDpPessoal() {
 
   function novoPedido(tipo, colaborador = null) {
     setConferencia(null);
-    if (tipo === 'ADMISSAO') carregarEmpresasSePreciso();
-    if (tipo === 'TROCA_OBRA') carregarObrasDestinoSePreciso();
-    carregarApoioDoModal(tipo, colaborador);
-    carregarChecklist(tipo, null);
-    setFormulario({
-      ...formularioVazio(tipo),
-      colaborador_id: colaborador?.id || '',
-      obra_id: colaborador?.obra_id || filtroObra || '',
-      // O modal fala a mesma lingua do icone: "Vincular" para quem nunca teve obra, "Trocar" para
-      // quem tem. Sem isto o usuario clica em "Vincular a uma obra" e abre "Troca de obra".
-      // Continua valendo, agora dentro de MOVIMENTACAO: quem nunca teve obra ve "Vincular".
-      primeiraLotacao: !colaborador?.obra_id,
-      obra_id_colaborador: colaborador?.obra_id || null,
-      nomeDoColaborador: colaborador?.nome || '',
-      /**
-       * ADMISSAO PROGRAMADA: a vigencia sugerida e a data de ADMISSAO, nao hoje.
-       *
-       * 19 dos 137 colaboradores tem admissao marcada para o futuro. Sugerir hoje para eles diria
-       * que estao na obra desde hoje — quando nem foram admitidos ainda. O backend corrige isso
-       * sozinho (preenche a obra no vinculo existente, mantendo a vigencia), mas o campo mostrar a
-       * data certa evita a pessoa achar que errou.
-       */
-      data_vigencia: tipo === 'MOVIMENTACAO' ? sugestaoDeVigencia(colaborador) : '',
-      admissaoFutura: tipo === 'MOVIMENTACAO' && ehFutura(colaborador?.data_admissao)
-    });
+    rascunhoFormulario.discard(); rascunhoFormulario.setValue(null);
+    setFormularioAlvo({ tipo, colaboradorId: colaborador?.id || null, obraId: colaborador?.obra_id || filtroObra || localId || '' });
   }
 
   /**
@@ -1612,7 +1648,7 @@ export default function RhDpPessoal() {
         </OverlayModal>
       ) : null}
 
-      {formulario ? (
+      {formulario && podeAbrir && !consultandoFormulario ? (
         <OverlayModal
           rotulo={tituloDoFormulario(formulario)}
           largura="880px"
@@ -1620,6 +1656,11 @@ export default function RhDpPessoal() {
         >
           <div className="rh-modal-conteudo space-y-3">
             {faixaAvisos}
+            {rascunhoFormulario.conflict && <div role="alert" className="app-note">O cadastro mudou enquanto a aba estava aberta. Seu preenchimento foi mantido para conferência.
+              <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+                const { ok } = await confirmar({ titulo: 'Descartar preenchimento', mensagem: 'Usar o cadastro atual e descartar as alterações deste pedido?', destrutiva: true });
+                if (ok) rascunhoFormulario.discard();
+              }}>Usar dados atuais</button></div>}
             <div className="app-page-header-row">
               <div>
                 <h2 className="text-lg font-semibold">{tituloDoFormulario(formulario)}</h2>
@@ -2343,7 +2384,7 @@ export default function RhDpPessoal() {
               <span className="text-sm opacity-80">
                 A solicitacao sera criada como rascunho. Depois, envie-a ao DP pela aba Solicitacoes.
               </span>
-              <button type="submit" className="btn btn-primary" disabled={criandoRascunho}>
+              <button type="submit" className="btn btn-primary" disabled={criandoRascunho || rascunhoFormulario.conflict}>
                 {criandoRascunho ? 'Criando...' : 'Criar rascunho'}
               </button>
               <button type="button" className="btn btn-outline" disabled={criandoRascunho}
@@ -2365,6 +2406,8 @@ export default function RhDpPessoal() {
         key={`${user?.id}:${(pagamento.local || localSelecionado)?.id || 'selecionar'}:${pagamento.colaborador?.id || 'todos'}`}
         local={pagamento.local || localSelecionado} locais={obras} colaborador={pagamento.colaborador}
         colaboradorIds={pagamento.colaboradorIds}
+        solicitacaoId={pagamento.solicitacaoId}
+        onIniciada={id => setPagamentoAlvo(current => current ? { ...current, solicitacaoId: id } : current)}
         onFechar={() => setPagamento(null)} aoEnviar={() => { carregar(); }} /> : null}
     </Pagina>
   );

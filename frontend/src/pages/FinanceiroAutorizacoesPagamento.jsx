@@ -1,5 +1,6 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,11 +47,8 @@ export default function FinanceiroAutorizacoesPagamento() {
   const compactPwa = isAutorizadorPwa(user);
   const { avisos, avisar, fechar } = useAvisos();
   const [lots, setLots] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [rejectReason, setRejectReason] = useState('');
-  const [revokeItems, setRevokeItems] = useState([]);
-  const [revokeReason, setRevokeReason] = useState('');
+  const [selectedId, setSelectedId] = useWorkspaceState('autorizacoes:lote', null);
+  const [trabalhoPorLote, setTrabalhoPorLote] = useWorkspaceState('autorizacoes:trabalho', {});
   const mutationRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [users, setUsers] = useState([]);
@@ -62,6 +60,27 @@ export default function FinanceiroAutorizacoesPagamento() {
 
   const selected = useMemo(() => lots.find((lot) => Number(lot.id) === Number(selectedId)) || lots[0] || null, [lots, selectedId]);
   const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE'), [selected]);
+  const trabalho = trabalhoPorLote[selected?.id] || {};
+  const selectedItems = (trabalho.selectedItems || pendingItems.map(item => Number(item.id)))
+    .filter(id => pendingItems.some(item => Number(item.id) === id));
+  const revokeItems = (trabalho.revokeItems || []).filter(id => (selected?.itens || [])
+    .some(item => Number(item.id) === id && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)));
+  const rejectReason = trabalho.rejectReason || '';
+  const revokeReason = trabalho.revokeReason || '';
+  const alterarTrabalho = (key, update) => {
+    if (!selected) return;
+    setTrabalhoPorLote(current => {
+      const anterior = current[selected.id] || {};
+      const initial = key === 'selectedItems' ? selectedItems : key === 'revokeItems' ? revokeItems : '';
+      return { ...current, [selected.id]: { ...anterior,
+        [key]: typeof update === 'function' ? update(anterior[key] || initial) : update } };
+    });
+  };
+  const setSelectedItems = update => alterarTrabalho('selectedItems', update);
+  const setRevokeItems = update => alterarTrabalho('revokeItems', update);
+  const setRejectReason = update => alterarTrabalho('rejectReason', update);
+  const setRevokeReason = update => alterarTrabalho('revokeReason', update);
+  useWorkspaceWork(Boolean(Object.keys(trabalhoPorLote).length), busy);
   const selectedTotal = useMemo(() => pendingItems.filter((item) => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.valor_snapshot || 0), 0), [pendingItems, selectedItems]);
   const justificativaId = searchParams.get('justificativa');
   const loteJustificativa = lots.find(lot => (lot.itens || []).some(item => String(item.id) === justificativaId));
@@ -112,11 +131,16 @@ export default function FinanceiroAutorizacoesPagamento() {
 
   async function carregarLotes() {
     const requestId = ++listaRequestRef.current;
-    const response = await listarAutorizacoesPagamento();
-    if (requestId !== listaRequestRef.current) return;
-    const rows = response?.data || [];
-    setLots(rows);
-    setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
+    try {
+      const response = await listarAutorizacoesPagamento();
+      if (requestId !== listaRequestRef.current) return;
+      const rows = response?.data || [];
+      setLots(rows);
+      setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
+    } catch (error) {
+      if (requestId === listaRequestRef.current) setLots([]);
+      throw error;
+    }
   }
 
   async function load() {
@@ -137,14 +161,6 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   useEffect(() => { load(); }, []);
-  useEffect(() => { setSelectedItems(pendingItems.map((item) => Number(item.id))); }, [selected?.id]);
-  useEffect(() => { setRevokeItems([]); setRevokeReason(''); }, [selected?.id]);
-  useEffect(() => {
-    setSelectedItems(current => {
-      const validos = current.filter(id => pendingItems.some(item => Number(item.id) === id));
-      return validos.length === current.length ? current : validos;
-    });
-  }, [pendingItems]);
   useEffect(() => {
     if (busy) return undefined;
     let ativo = true, pendente = false;

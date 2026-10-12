@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useWorkspaceState } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
 import {
   Avisos,
   BarraFiltros,
@@ -115,7 +118,7 @@ function percentual(valor, total) {
   semana. A coluna de VALOR é `tipo: 'valor'` (190px, à direita,
   tabular-nums) — módulo de dinheiro, valor nunca trunca (T7).
 */
-function BlocoAgrupado({ titulo, descricao, linhas, total, storageKey, rotulo }) {
+function BlocoAgrupado({ titulo, descricao, linhas, total, storageKey, consultaWorkspace, rotulo }) {
   return (
     <BlocoConteudo
       titulo={titulo}
@@ -158,6 +161,8 @@ function BlocoAgrupado({ titulo, descricao, linhas, total, storageKey, rotulo })
         itens={linhas}
         getId={(linha) => rotulo(linha)}
         storageKey={storageKey}
+        chaveWorkspace={storageKey}
+        consultaWorkspace={consultaWorkspace}
         rotuloRolagem={titulo}
         vazio="Sem dados para os filtros."
       />
@@ -187,12 +192,23 @@ const FILTROS_DA_TELA = [
 
 export default function ProvisionamentoRelatorioOperacional() {
   const { avisos, avisar, fechar } = useAvisos();
+  const abrirRegistro = useWorkspaceOpenRecord(avisar.erro);
+  const base = useQueryRevision();
+  const camposRef = useRef(null);
+  const pendente = useRef(false);
+  const [erroBase, setErroBase] = useState('');
+  const [loadingBase, setLoadingBase] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [lista, setLista] = useState([]);
-  const [filtros, setFiltros] = useState(DEFAULT_FILTERS);
-  const [filtrosAplicados, setFiltrosAplicados] = useState(DEFAULT_FILTERS);
+  const [filtros, setFiltros] = useWorkspaceState('provisoes:relatorio:filtros', DEFAULT_FILTERS);
+  const [filtrosAplicados, setFiltrosAplicados] = useWorkspaceState('provisoes:relatorio:aplicados', DEFAULT_FILTERS);
+  const [revisoesData, setRevisoesData] = useWorkspaceState('provisoes:relatorio:datas-reset', {});
+  const consulta = useQueryRevision(JSON.stringify([contexto, filtrosAplicados, refreshKey]));
+  const consultaWorkspace = JSON.stringify(filtrosAplicados);
+  const permitido = Boolean(contexto?.permissoes?.superadmin || contexto?.permissoes?.pode_dashboard);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -222,6 +238,7 @@ export default function ProvisionamentoRelatorioOperacional() {
          e um filtro escondido não pode seguir recortando a lista. */
       setFiltros((atual) => ({ ...atual, [id]: DEFAULT_FILTERS[id] ?? '' }));
       setFiltrosAplicados((atual) => ({ ...atual, [id]: DEFAULT_FILTERS[id] ?? '' }));
+      setRevisoesData(r => ({ ...r, [id]: (r[id] || 0) + 1 }));
     }
   });
   const [loading, setLoading] = useState(true);
@@ -231,8 +248,11 @@ export default function ProvisionamentoRelatorioOperacional() {
   ), [contexto]);
 
   async function carregar(params) {
+    const token = consulta.begin();
+    pendente.current = true;
     try {
       setLoading(true);
+      setDashboard(null); setLista([]);
       const [dashboardData, listaData] = await Promise.all([
         getDashboardProvisionamentoFinanceiro(params),
         listarProvisoesFinanceiras({
@@ -243,30 +263,40 @@ export default function ProvisionamentoRelatorioOperacional() {
           limit: LIMITE_ANALITICO
         })
       ]);
+      if (!consulta.isCurrent(token)) return;
       setDashboard(dashboardData);
       setLista(Array.isArray(listaData?.items) ? listaData.items : []);
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
       console.error(error);
+      setDashboard(null); setLista([]);
       avisar.erro(error?.message || 'Erro ao carregar relatorio de provisionamento.');
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) { pendente.current = false; setLoading(false); }
     }
   }
 
   useEffect(() => {
     async function carregarBase() {
+      const token = base.begin();
       try {
         setLoading(true);
         const [contextoData, categoriasData] = await Promise.all([
           getProvisionamentoFinanceiroContexto(),
           listarCategoriasMacroProvisionamento()
         ]);
+        if (!base.isCurrent(token)) return;
         setContexto(contextoData);
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       } catch (error) {
+        if (!base.isCurrent(token)) return;
         console.error(error);
+        setContexto(null); setCategorias([]); setDashboard(null); setLista([]);
+        setErroBase(error?.message || 'Erro ao carregar contexto do provisionamento.');
         avisar.erro(error?.message || 'Erro ao carregar contexto do provisionamento.');
         setLoading(false);
+      } finally {
+        if (base.isCurrent(token)) setLoadingBase(false);
       }
     }
 
@@ -275,10 +305,10 @@ export default function ProvisionamentoRelatorioOperacional() {
   }, []);
 
   useEffect(() => {
-    if (!contexto) return;
+    if (!contexto || !permitido) return;
     carregar(filtrosAplicados);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contexto, filtrosAplicados]);
+  }, [contexto, permitido, filtrosAplicados, refreshKey]);
 
   const totalPeriodo = Number(dashboard?.cards?.total_periodo || 0);
   const abertas = Number(dashboard?.cards?.quantidade_abertas || 0);
@@ -331,16 +361,28 @@ export default function ProvisionamentoRelatorioOperacional() {
   }
 
   function aplicarFiltros() {
+    if (loading || pendente.current || !permitido) return;
+    if ([...(camposRef.current?.querySelectorAll('input') || [])].some(input => !input.reportValidity())) return;
     // R26/consentimento: o recorte que vai para o servidor é o que está na
     // tela NO MOMENTO DO CLIQUE, fixado numa const antes de qualquer await.
-    const recorte = filtros;
+    const recorte = { ...filtros };
+    pendente.current = true;
     setFiltrosAplicados(recorte);
+    setRefreshKey(n => n + 1);
   }
 
   function limparFiltros() {
+    if (loading || pendente.current || !permitido) return;
     setFiltros(DEFAULT_FILTERS);
     setFiltrosAplicados(DEFAULT_FILTERS);
+    setRevisoesData(r => ({ data_inicial: (r.data_inicial || 0) + 1, data_final: (r.data_final || 0) + 1 }));
   }
+
+  if (loadingBase || erroBase || !permitido) return <Pagina>
+    <PageHeader titulo="Painel operacional de provisionamento" />
+    <Avisos avisos={avisos} aoFechar={fechar} />
+    <BlocoConteudo>{loadingBase ? 'Carregando contexto...' : erroBase || 'Relatório indisponível para este usuário.'}</BlocoConteudo>
+  </Pagina>;
 
   return (
     <Pagina>
@@ -379,12 +421,14 @@ export default function ProvisionamentoRelatorioOperacional() {
       <BlocoConteudo variante="secundario">
         {/* R12/R16b: recorte enumerável em marcação; data inicial/final são
             contínuas e não têm lista fechada — vão em `campos`. */}
-        <BarraFiltros
+        <div ref={camposRef}><BarraFiltros
           campos={[
             {
               id: 'data_inicial',
               rotulo: 'Data inicial',
               tipo: 'date',
+              chaveWorkspace: 'provisoes:relatorio:inicial',
+              revisaoWorkspace: revisoesData.data_inicial || 0,
               valor: filtros.data_inicial,
               aoMudar: (valor) => atualizarCampo('data_inicial', valor)
             },
@@ -392,6 +436,8 @@ export default function ProvisionamentoRelatorioOperacional() {
               id: 'data_final',
               rotulo: 'Data final',
               tipo: 'date',
+              chaveWorkspace: 'provisoes:relatorio:final',
+              revisaoWorkspace: revisoesData.data_final || 0,
               valor: filtros.data_final,
               aoMudar: (valor) => atualizarCampo('data_final', valor)
             }
@@ -401,7 +447,7 @@ export default function ProvisionamentoRelatorioOperacional() {
           aoAlternar={alternarFiltro}
           aoLimpar={limparFiltros}
           visibilidade={visibilidadeFiltros}
-        />
+        /></div>
       </BlocoConteudo>
 
       {/*
@@ -509,6 +555,7 @@ export default function ProvisionamentoRelatorioOperacional() {
           linhas={dashboard?.graficos?.por_obra || []}
           total={totalPeriodo}
           storageKey="tabela:provisionamento-relatorio-operacional:por-obra"
+          consultaWorkspace={consultaWorkspace}
           rotulo={(linha) => formatarObra(linha.obra)}
         />
 
@@ -518,6 +565,7 @@ export default function ProvisionamentoRelatorioOperacional() {
           linhas={dashboard?.graficos?.por_categoria || []}
           total={totalPeriodo}
           storageKey="tabela:provisionamento-relatorio-operacional:por-categoria"
+          consultaWorkspace={consultaWorkspace}
           rotulo={(linha) => linha.categoria?.nome || 'Sem categoria'}
         />
 
@@ -527,6 +575,7 @@ export default function ProvisionamentoRelatorioOperacional() {
           linhas={dashboard?.graficos?.pipeline_status || []}
           total={totalPeriodo}
           storageKey="tabela:provisionamento-relatorio-operacional:pipeline-status"
+          consultaWorkspace={consultaWorkspace}
           rotulo={(linha) => formatarStatus(linha.status)}
         />
 
@@ -536,6 +585,7 @@ export default function ProvisionamentoRelatorioOperacional() {
           linhas={dashboard?.graficos?.curva_semanal || []}
           total={totalPeriodo}
           storageKey="tabela:provisionamento-relatorio-operacional:curva-semanal"
+          consultaWorkspace={consultaWorkspace}
           rotulo={(linha) => linha.semana_label || linha.semana_inicio}
         />
 
@@ -556,7 +606,8 @@ export default function ProvisionamentoRelatorioOperacional() {
                    relacionado fica no corpo, junto do dado que o origina —
                    nunca na barra de ações. A cor vem de token (R25). */
                 render: (item) => (
-                  <Link className="font-semibold text-[var(--c-primary)]" to={`/provisoes-financeiras/${item.id}`}>
+                  <Link className="font-semibold text-[var(--c-primary)]" to={`/provisoes-financeiras/${item.id}`}
+                    onClick={event => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); abrirRegistro(`/provisoes-financeiras/${item.id}`, item.codigo); } }}>
                     {item.codigo}
                   </Link>
                 )
@@ -597,6 +648,8 @@ export default function ProvisionamentoRelatorioOperacional() {
             getId={(item) => item.id}
             carregando={loading}
             storageKey="tabela:provisionamento-relatorio-operacional:analitico"
+            chaveWorkspace="provisoes:relatorio:analitico"
+            consultaWorkspace={consultaWorkspace}
             rotuloRolagem="Analitico do recorte"
             colunasConfiguraveis
             vazio="Nenhum provisionamento encontrado."

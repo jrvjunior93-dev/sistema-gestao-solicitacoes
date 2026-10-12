@@ -13,6 +13,10 @@ import { chromium } from 'playwright';
 import { makeTab, makeEntry, moveTab, recordIdentity } from '../src/navigation/workspaceModel.js';
 import { consultarJanela } from '../src/pages/Solicitacoes/consultarJanela.js';
 import { camposRespostaDraft, restaurarRespostaDraft, revisaoRespostaDraft } from '../src/modules/solicitacao-compra/utils/cotacaoWorkspaceDraft.js';
+import { camposFila, revisaoFila } from '../src/navigation/filaWorkspaceDraft.js';
+assert.deepEqual(camposFila({ motivo: 'Digitado', comprovante_url: 'privado', _saldo_referencia: 9, titular_documento: '123', data_emissao: '2026-01-01' }),
+  { motivo: 'Digitado', titular_documento: '123', data_emissao: '2026-01-01' });
+assert.notEqual(revisaoFila({id:1,titulo:{valor_saldo:100}}),revisaoFila({id:1,titulo:{valor_saldo:90}}));
 const formQA = { preco: 'nao pertence ao cabecalho', condicao_pagamento: 'Boleto', token: 'SECRETO',
  itens: [{ item_tipo: 'CADASTRADO', item_referencia_id: 5, preco: '12', saldo_solicitacao: 4, arquivo_url: 'privado' }] };
 const projected = camposRespostaDraft(formQA);
@@ -20,6 +24,11 @@ assert(!('token' in projected));assert(!('saldo_solicitacao' in projected.itens[
 assert.equal(restaurarRespostaDraft(formQA, projected).itens[0].saldo_solicitacao,4);
 assert.notEqual(revisaoRespostaDraft({id:77,status:'RESPONDIDO'},formQA),revisaoRespostaDraft({id:77,status:'CANCELADO'},formQA));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const financeiroOnly = process.argv.includes('--financeiro-only');
+const pedidoOnly = process.argv.includes('--pedido-only');
+const provisaoOnly = process.argv.includes('--provisao-only');
+if (provisaoOnly) process.argv.push('--table-only'); // O modo integral continua incluindo o contrato real de provisao.
+if (pedidoOnly) process.argv.push('--table-only'); // Base leve + contrato do pedido, sem ocultar casos no modo integral.
 let tab = makeTab(makeEntry('/a', 'A'));
 for (let i = 0; i < 100; i++) tab = moveTab(tab, makeEntry('/b/'+i, 'B'));
 assert.equal(tab.entries.length, 64);
@@ -43,8 +52,19 @@ import CompraEtapas from '/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx';
 import Delegacao from '/src/modules/solicitacao-compra/pages/ComprasDelegacao.jsx';
 import ListaCompras from '/src/modules/solicitacao-compra/pages/SolicitacoesCompra.jsx';
 import Pedidos from '/src/modules/solicitacao-compra/pages/PedidosCompra.jsx';
+import PedidoDetalhe from '/src/modules/solicitacao-compra/pages/PedidoCompraDetalhe.jsx';
+import FilaPagamentos from '/src/pages/FinanceiroFilaPagamentos.jsx';
+import TituloNovo from '/src/pages/FinanceiroTituloNovo.jsx';
+import Titulos from '/src/pages/FinanceiroTitulos.jsx';
+import Autorizacoes from '/src/pages/FinanceiroAutorizacoesPagamento.jsx';
 import Cotacoes from '/src/modules/solicitacao-compra/pages/ListaCotacoes.jsx';
 import GerenciarCotacao from '/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx';
+import NovaProvisao from '/src/modules/provisionamento-financeiro/pages/NovaProvisaoFinanceira.jsx';
+import ListaProvisoes from '/src/modules/provisionamento-financeiro/pages/ProvisionamentosFinanceiros.jsx';
+import DetalheProvisao from '/src/modules/provisionamento-financeiro/pages/ProvisionamentoFinanceiroDetalhe.jsx';
+import CategoriasProvisao from '/src/modules/provisionamento-financeiro/pages/GestaoCategoriasMacro.jsx';
+import DashboardProvisao from '/src/modules/provisionamento-financeiro/pages/DashboardProvisionamentoFinanceiro.jsx';
+import RelatorioProvisao from '/src/modules/provisionamento-financeiro/pages/ProvisionamentoRelatorioOperacional.jsx';
 import NovaCompra from '/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx';
 import RevisarCompra from '/src/modules/solicitacao-compra/pages/RevisarSolicitacaoCompra.jsx';
 import Tabela from '/src/components/padrao/TabelaPadrao.jsx';
@@ -62,6 +82,8 @@ const user={id:1,perfil:'SUPERADMIN',nome:'QA',area:'GEO',setor:{codigo:'GEO'},m
 if(params.has('obraadminqa'))Object.assign(user,{area:'OBRA',setor:{codigo:'OBRA'}});
 if(params.has('regularqa'))Object.assign(user,{perfil:'USUARIO',area:'OBRA',setor:{codigo:'OBRA'},areas_permissoes_configuradas:true,areas_permissoes:[]});
 if(params.has('comprasqa'))user.modulos_habilitados=[{key:'COMPRAS',enabled:true},{key:'COTACOES',enabled:true},{key:'FINANCEIRO',enabled:false}];
+if(params.has('financeiroqa')){user.modulos_habilitados=[{key:'FINANCEIRO',enabled:true}];user.autorizacao_pagamentos={can_decide:true,passkey_count:1};}
+if(params.has('provisaoqa')||params.has('provisaolistqa')||params.has('provisaoconsultasqa'))user.modulos_habilitados=[{key:'PROVISOES',enabled:true}];
 function TestAuth({children}){const[effective,set]=useState(params.has('anon')?null:params.has('mfa')?{...user,mfa_setup_pending:true}:user);const[ready,R]=useState(!params.has('restoring'));useEffect(()=>{window.qaAuth={ready:()=>R(true),logout:()=>set(null),switch:()=>set({...user,id:2,nome:'Outro usuario'}),restrict:()=>set(current=>({...current,areas_permissoes_configuradas:true,areas_permissoes:[]}))}},[]);return <AuthContext.Provider value={{user:effective,authReady:ready,isAuthenticated:!!effective,login:async data=>set(data.user),logout:()=>set(null)}}>{children}</AuthContext.Provider>}
 function ItemsFixture(){return <><Toolbar/><CompraEtapas solicitacaoId={useParams().id} user={user} podeDecidir podeReceber={false} podeProgramarEntrega={false} podeAnexar={false} mostrarCotacao={params.has('cotacoesqa')} podeGerenciarCotacao={!params.has('readonlyqa')}/></>}
 function Toolbar(){const w=useWorkspace();const nav=useNavigate();useEffect(()=>{window.qa={...w}},[w]);return <div style={{position:'sticky',top:0,zIndex:90,background:'#fff'}}><button onClick={()=>w.openTab('/consulta/1')}>QA consulta</button><button onClick={()=>w.back('/solicitacoes')}>QA voltar</button><button onClick={()=>nav('/compras/delegacao')}>QA delegacao</button><button onClick={()=>w.openTab('/consulta-lenta')}>QA aba lenta</button></div>}
@@ -82,7 +104,17 @@ createRoot(document.getElementById('root')).render(<BrowserRouter future={{v7_st
 <Route path="/solicitacoes-compra/finalizada/:id" element={<><Toolbar/><p>Compra QA criada</p></>}/>
 <Route path="/pedidos-compra" element={withToolbar(Pedidos)}/>
 <Route path="/cotacoes" element={withToolbar(Cotacoes)}/>
-<Route path="/pedidos-compra/:id" element={<><Toolbar/><p>Detalhe do pedido QA</p></>}/>
+<Route path="/pedidos-compra/:id" element={params.has('pedidoqa')?withToolbar(PedidoDetalhe):<><Toolbar/><p>Detalhe do pedido QA</p></>}/>
+<Route path="/financeiro/fila-pagamentos" element={withToolbar(FilaPagamentos)}/>
+<Route path="/financeiro/titulos/novo" element={withToolbar(TituloNovo)}/>
+<Route path="/financeiro/contas-a-pagar" element={<><Toolbar/><Titulos tipoFixo="PAGAR"/></>}/>
+<Route path="/financeiro/autorizacoes-pagamento" element={withToolbar(Autorizacoes)}/>
+<Route path="/provisoes-financeiras/nova" element={withToolbar(NovaProvisao)}/>
+<Route path="/provisoes-financeiras" element={withToolbar(ListaProvisoes)}/>
+<Route path="/provisoes-financeiras/categorias" element={withToolbar(CategoriasProvisao)}/>
+<Route path="/provisoes-financeiras/dashboard" element={withToolbar(DashboardProvisao)}/>
+<Route path="/provisoes-financeiras/relatorios/operacional" element={withToolbar(RelatorioProvisao)}/>
+<Route path="/provisoes-financeiras/:id" element={params.has('provisaolistqa')||params.has('provisaoconsultasqa')?withToolbar(DetalheProvisao):<><Toolbar/><p>Provisão criada QA</p></>}/>
 <Route path="/solicitacoes-compra/:id/cotacao" element={<><Toolbar/><GerenciarCotacao embedded={params.has('embeddedqa')}/></>}/>
 <Route path="/solicitacoes-compra/:id" element={<><Toolbar/><p>Solicitacao de compra sem principal</p></>}/>
 <Route path="/perfil" element={<><Toolbar/><p>Perfil MFA</p></>}/>
@@ -104,7 +136,7 @@ const server = await createServer({ root, configFile:false,logLevel:'error',
       if(id.endsWith('/src/contexts/LiveUpdatesContext.jsx')) return `export function useLiveUpdateSubscription(){};`;
     },
     configureServer(s){s.middlewares.use(async(req,res,next)=>{
-      if(!/^\/(nova-solicitacao|solicitacoes|pedidos-compra|cotacoes|consulta|compras|login|perfil|$)/.test(req.url))return next();
+      if(!/^\/(nova-solicitacao|solicitacoes|pedidos-compra|cotacoes|financeiro|provisoes-financeiras|consulta|compras|login|perfil|$)/.test(req.url))return next();
       res.setHeader('Content-Type','text/html');res.end(await s.transformIndexHtml(req.url,'<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>.la-tabela{min-width:2600px!important}</style></head><body><div id="root"></div><script type="module" src="/qa.jsx"></script></body></html>'));
     })}
   },react()],optimizeDeps:{include:['react','react-dom/client','react-router-dom']}});
@@ -156,7 +188,7 @@ try{
     return route.fulfill({json:data});
    });return{errors,writes,reads,queries,navigationAudit};
  };
- if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--compras-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
+ if(!financeiroOnly&&!process.argv.includes('--cotacao-only')&&!process.argv.includes('--compras-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
  for(const width of[1366,390]){
   const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
   await page.goto(base+'/nova-solicitacao?core');await page.getByLabel('Rascunho').fill('ultimo caractere!');
@@ -486,7 +518,7 @@ try{
  }
  }
  // E3a: listas reais de Compras, sem mudancas de endpoints/ACL/escritas.
- if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
+ if(!financeiroOnly&&!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
  for(const width of[1366,390]){
   for(const kind of ['solicitacoes-compra','pedidos-compra','cotacoes']){
    const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
@@ -614,7 +646,7 @@ try{
   assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
   console.log('OK tabela '+(optin?'opt-in: ordenacao, expansao, janela e scroll; novo recorte reinicia janela.':'legada: comportamento anterior preservado.'));
  }
- if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
+ if(!financeiroOnly&&!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
  {
   const page=await browser.newPage();const audit=await install(page);let omit=false;
   await page.route('**/api/compras/solicitacoes?*',async r=>omit?r.fulfill({json:[{id:9,status:'PENDENTE',obra:{id:7,nome:'Obra QA'}}]}):r.fallback());
@@ -696,7 +728,7 @@ try{
   console.log('OK card embutido: novo fornecedor junto com links envia fantasia e item, sem representante.');
  }
  }
- if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--wizard-only')){
+ if(!financeiroOnly&&!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--wizard-only')){
  for(const regular of[false,true]){
   const page=await browser.newPage();const audit=await install(page);
   await page.route('**/api/solicitacoes/90',r=>r.fulfill({json:{id:90,codigo:'SOL-QA90',obra_id:7,obra:{id:7,nome:'Obra QA'},tipo:{id:5,nome:'DESPESA EVENTUAL'},valor:1000,status_global:'PENDENTE',area_responsavel:'COMPRAS',anexos:[],historicos:[],contexto_interacao:{pode_interagir:false},createdAt:'2026-10-01T12:00:00Z'}}));
@@ -788,7 +820,7 @@ try{
  }
  }
  // E3b: paginas reais de criacao/revisao, memoria da sessao e storage legado.
- if(!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--compras-only')){
+ if(!financeiroOnly&&!process.argv.includes('--cotacao-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--compras-only')){
  for(const width of[1366,390])for(const direta of[false,true])for(const quota of[false,true]){
   const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
   const prefix=direta?'/solicitacoes-compra-direta':'/solicitacoes-compra';
@@ -912,7 +944,7 @@ try{
   console.log('OK E3b upload '+width+'px: operacao protegida, um envio, retorno sem replay, identidade e 40 limpezas de flow.');
  }
  }
- if(!['--table-only','--correcoes-only','--compras-only','--wizard-only'].some(flag=>process.argv.includes(flag))){
+ if(!financeiroOnly&&!['--table-only','--correcoes-only','--compras-only','--wizard-only'].some(flag=>process.argv.includes(flag))){
  for(const width of [1366,390]){
   const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
   let price=10,deniedRead=false,deniedWrite=true,updates=0;
@@ -986,6 +1018,408 @@ try{
   assert.equal(await modal.count(),0);assert.deepEqual(audit.errors,[]);await page.close();
   console.log('OK E3c cotacao '+width+'px: rascunho/modal/selecoes, consulta fresca, conflito, 403, envio unico e identidade.');
  }
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  let changed=false,inactive=false,deniedPartner=false,deniedWorkspace=false,removedItem=false;
+  const directReads=[];
+  const supplier=()=>({id:77,nome:changed?'Fornecedor atual':'Fornecedor inicial',whatsapp:changed?'27999990002':'27999990001',ativo:!inactive});
+  const partner=()=>({id:88,nome:changed?'Parceiro atual':'Parceiro inicial',telefone:changed?'27999990004':'27999990003',ativo:true});
+  await page.route('**/api/compras/solicitacoes/8/workspace-cotacao',r=>r.fulfill(deniedWorkspace
+   ?{status:403,json:{error:'Selecao QA indisponivel'}}:{json:{solicitacao:{id:8,status:'PENDENTE',fornecedores:[],
+    itens:[{id:5,insumo:{nome:'Areia QA'},quantidade:15,status_aprovacao:'APROVADO'},
+     ...(!removedItem?[{id:6,insumo:{nome:'Brita QA'},quantidade:10,status_aprovacao:'APROVADO'}]:[])],itensManuais:[]},comparativo:{itens:[]}}}));
+  await page.route('**/api/compras/fornecedores?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.get('q')==='Sem resultado'?[]:[supplier()]}));
+  await page.route('**/api/parceiros?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.get('q')==='Sem resultado'?[]:[partner()]}));
+  await page.route('**/api/compras/fornecedores/77',r=>{directReads.push('fornecedor');return r.fulfill({json:supplier()})});
+  await page.route('**/api/parceiros/88',r=>{directReads.push('parceiro');return r.fulfill(deniedPartner?{status:403,json:{error:'Parceiro sem acesso'}}:{json:partner()})});
+  await page.goto(base+'/solicitacoes-compra/8/cotacao?comprasqa');
+  const search=page.getByPlaceholder('Digite nome, CNPJ, email ou contato');await search.fill('inicial');
+  const autocomplete=page.locator('.cotacao-fornecedores-autocomplete');
+  await autocomplete.getByRole('button',{name:/Fornecedor inicial/}).click();
+  await autocomplete.getByRole('button',{name:/Parceiro inicial/}).click();
+  const selected=page.locator('.cotacao-fornecedores-selecionados');
+  await selected.getByText('Parceiro inicial',{exact:true}).waitFor();
+  await page.getByRole('checkbox',{name:'Enviar Brita QA para Fornecedor inicial',exact:true}).uncheck();
+  await search.fill('Sem resultado');await autocomplete.getByText('Nenhum fornecedor encontrado para essa busca.',{exact:true}).waitFor();
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');changed=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  await selected.getByText('Fornecedor atual',{exact:true}).waitFor();await selected.getByText('Parceiro atual',{exact:true}).waitFor();
+  assert.equal(await search.inputValue(),'Sem resultado');
+  await selected.getByText('27999990002',{exact:true}).waitFor();await selected.getByText('27999990004',{exact:true}).waitFor();
+  assert.equal(await selected.getByText('Fornecedor inicial',{exact:true}).count(),0,'Nao restaurar rotulo antigo');
+  assert.deepEqual(directReads.sort(),['fornecedor','parceiro']);
+  assert.equal(await page.getByRole('checkbox',{name:'Enviar Brita QA para Fornecedor atual',exact:true}).isChecked(),false);
+  assert.equal(await page.getByRole('checkbox',{name:'Enviar Areia QA para Fornecedor atual',exact:true}).isChecked(),true);
+  assert.equal(await page.getByRole('checkbox',{name:'Enviar Brita QA para Parceiro atual',exact:true}).isChecked(),true);
+  assert.deepEqual(audit.writes,[],'Reativacao nao gera links nem envia cotacao');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');removedItem=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await selected.getByText('Fornecedor atual',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('checkbox',{name:/Enviar Brita QA/}).count(),0,'Item removido nao e restaurado');
+  assert.equal(await page.getByRole('checkbox',{name:'Enviar Areia QA para Fornecedor atual',exact:true}).isChecked(),true);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');inactive=true;deniedPartner=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);
+  await selected.getByText('Nenhum fornecedor selecionado.',{exact:true}).waitFor();
+  assert.equal(await selected.getByRole('button',{name:'Remover',exact:true}).count(),0,'Inativo/403 nao reapresentam cadastro escolhido');
+  assert.deepEqual(audit.writes,[]);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');deniedWorkspace=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByText('Selecao QA indisponivel',{exact:true}).first().waitFor();
+  assert.equal(await search.count(),0);assert.equal(await selected.count(),0);assert.deepEqual(audit.writes,[]);assert.deepEqual(audit.errors,[]);
+  await page.close();console.log('OK E3c fornecedores '+width+'px: IDs fora do filtro, contatos atuais, itens parciais/removidos, inativo/403 e nenhum envio no retorno.');
+ }
+ }
+ if(pedidoOnly || (!financeiroOnly&&!['--table-only','--correcoes-only','--compras-only','--wizard-only'].some(flag=>process.argv.includes(flag)))){
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  let price=10,deniedRead=false,deniedWrite=true,updates=0,targetSaldo=20,remanejos=0,fretes=0;
+  const data=()=>({id:8,status:'ABERTO',obra:{id:7,nome:'Obra QA'},fornecedor:{id:77,nome:'Fornecedor QA'},
+    solicitacao_compra_id:8,itens:[{id:5,descricao:'Areia QA',quantidade_pedido:10,preco_unitario:price,
+      quantidade_solicitada:10,quantidade_minima_item:1,unidade:'m3',observacoes:''}],fretes:[],
+      candidatos_remanejamento:[{resposta_item_id:99,fornecedor_id:78,fornecedor_nome:'Destino QA',saldo_disponivel_fornecedor:targetSaldo,preco_unitario:5,unidade:'m3'}]});
+  await page.route('**/api/compras/pedidos/8',r=>r.fulfill(deniedRead
+    ?{status:403,json:{error:'Pedido QA indisponivel'}}:{json:data()}));
+  await page.route('**/api/compras/pedidos/8/itens/5',async r=>{
+    updates++;await new Promise(resolve=>setTimeout(resolve,150));
+    return r.fulfill(deniedWrite?{status:403,json:{error:'Item QA negado'}}:{json:data()});
+  });
+  await page.route('**/api/compras/pedidos/8/itens/5/remanejar',async r=>{remanejos++;await new Promise(resolve=>setTimeout(resolve,150));return r.fulfill({json:data()})});
+  await page.route('**/api/compras/pedidos/8/fretes',async r=>{fretes++;assert.equal(r.request().postDataJSON().valor_total,20);await new Promise(resolve=>setTimeout(resolve,150));return r.fulfill({json:data()})});
+  await page.goto(base+'/pedidos-compra/8?comprasqa&pedidoqa');
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  await page.getByRole('button',{name:'Editar',exact:true}).first().click();
+  const modal=page.getByRole('dialog',{name:'Editar item do pedido'});
+  await modal.getByLabel('Observações do item',{exact:true}).fill('Última tecla!');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await modal.waitFor();
+  assert.equal(await modal.getByLabel('Observações do item',{exact:true}).inputValue(),'Última tecla!');
+  await modal.getByRole('button',{name:'Salvar ajustes',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Item QA negado',{exact:true}).waitFor();assert.equal(updates,1);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');price=20;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await modal.waitFor();
+  assert.equal(await modal.getByLabel('Observações do item',{exact:true}).inputValue(),'Última tecla!');
+  assert(await modal.getByRole('button',{name:'Salvar ajustes',exact:true}).isDisabled());assert.equal(updates,1);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');deniedRead=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByText('Pedido de compra não encontrado.',{exact:true}).waitFor();
+  assert.equal(await modal.count(),0);deniedRead=false;
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await modal.waitFor();
+  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+  await page.getByRole('button',{name:'Descartar rascunhos conflitantes',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Descartar',exact:true}).click();
+  await page.getByRole('button',{name:'Editar',exact:true}).first().click();await modal.waitFor();
+  assert.equal(await modal.getByLabel('Observações do item',{exact:true}).inputValue(),'');
+  await modal.getByLabel('Observações do item',{exact:true}).fill('Conferido');deniedWrite=false;
+  await modal.getByRole('button',{name:'Salvar ajustes',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Item atualizado com auditoria registrada.',{exact:true}).waitFor();assert.equal(updates,2);
+  await page.getByRole('button',{name:'Editar',exact:true}).first().click();await modal.waitFor();
+  const destino=modal.getByLabel('Resposta de destino do remanejamento',{exact:true});
+  const remanejo=modal.getByLabel('Quantidade a remanejar',{exact:true});
+  await destino.selectOption('99');await remanejo.fill('3');await remanejo.blur();
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await modal.waitFor();
+  assert.equal(await destino.inputValue(),'99');assert.equal(await remanejo.inputValue(),'3');assert.equal(remanejos,0);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');targetSaldo=4;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await modal.waitFor();
+  await modal.getByRole('alert').filter({hasText:'O saldo ou a resposta de destino mudou'}).waitFor();
+  assert.ok(await modal.getByRole('button',{name:'Remanejar',exact:true}).isDisabled());assert.equal(remanejos,0);
+  await modal.getByRole('button',{name:'Usar saldos atuais',exact:true}).click();
+  await page.getByRole('dialog',{name:'Descartar remanejamento'}).getByRole('button',{name:'Usar saldos atuais',exact:true}).click();
+  await destino.selectOption('99');await remanejo.fill('2');await remanejo.blur();
+  await modal.getByRole('button',{name:'Remanejar',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Item remanejado para o fornecedor selecionado.',{exact:true}).waitFor();assert.equal(remanejos,1);
+  await page.getByRole('button',{name:'Registrar frete',exact:true}).click();
+  const freight=page.getByRole('dialog',{name:'Registrar frete do pedido'});
+  const freteValor=freight.getByLabel('Valor total do frete',{exact:true});await freteValor.fill('20,00');
+  const obsFrete=freight.getByPlaceholder('Ex.: frete embutido na negociação ou frete pago diretamente a transportador.');await obsFrete.fill('Frete final Z');
+  const valorFreteDigitado=await freteValor.inputValue();
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await freight.waitFor();
+  assert.equal(await freteValor.inputValue(),valorFreteDigitado);assert.equal(await obsFrete.inputValue(),'Frete final Z');assert.equal(fretes,0);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');price=30;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await freight.getByRole('alert').waitFor();
+  assert.ok(await freight.getByRole('button',{name:'Registrar frete',exact:true}).isDisabled());assert.equal(fretes,0);
+  await freight.getByRole('button',{name:'Cancelar',exact:true}).click();
+  await page.getByRole('button',{name:'Registrar frete',exact:true}).click();await freteValor.fill('20,00');
+  await freight.getByRole('button',{name:'Registrar frete',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Frete embutido registrado para rateio de custo.',{exact:true}).waitFor();assert.equal(fretes,1);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByRole('button',{name:'Registrar frete',exact:true}).waitFor();
+  assert.equal(fretes,1);assert.equal(remanejos,1,'Retorno nao repete remanejamento ou frete');
+  assert.deepEqual(audit.errors,[]);await page.close();console.log('OK pedido '+width+'px: campos/modal, consulta atual, conflito, 403 e envio unico.');
+ }
+ }
+ if(!['--table-only','--correcoes-only','--compras-only','--wizard-only'].some(flag=>process.argv.includes(flag))){
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  let saldo=100,deniedRead=false,deniedWrite=true,updates=0;
+  const row=()=>({id:1,status:'PENDENTE',juros:5,multa:2,titulo:{id:4,codigo:'TIT-QA',status:'ABERTO',valor_saldo:saldo,forma_pagamento_id:4},conta_bancaria_id:7});
+  await page.route('**/api/financeiro/fila-pagamentos?*',r=>r.fulfill(deniedRead?{status:403,json:{error:'Fila QA negada'}}:{json:{data:[row()],resumo:{PENDENTE:1}}}));
+  await page.route('**/api/financeiro/fila-pagamentos/contas',r=>r.fulfill({json:[{id:7,nome:'Conta QA',ativo:true,empresa_id:1,empresa:{nome:'Empresa QA'}}]}));
+  await page.route('**/api/financeiro/fila-pagamentos/instrumentos',r=>r.fulfill({json:{formas:[{id:4,nome:'Pix',ativo:true,codigo:'PIX'}],cartoes:[],cheques:[]}}));
+  await page.route('**/api/financeiro/fila-pagamentos/baixar',async r=>{
+    updates++;await new Promise(resolve=>setTimeout(resolve,150));
+    assert.equal(r.request().postDataJSON().itens[0].juros,5);assert.equal(r.request().postDataJSON().itens[0].multa,2);
+    return r.fulfill(deniedWrite?{status:403,json:{error:'Baixa QA negada'}}:{json:{baixados:1}});
+  });
+  await page.goto(base+'/financeiro/fila-pagamentos?financeiroqa&q=TIT-QA');
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  const valor=page.getByLabel('Valor pago de TIT-QA',{exact:true});await valor.waitFor();
+  await valor.fill('110');await page.getByLabel('Selecionar TIT-QA',{exact:true}).check();
+  // Total divergente precisa de justificativa; o campo tambem pertence ao rascunho.
+  await page.locator('[data-fila-id="1"][data-fila-campo="motivo"]').fill('Última tecla!');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await valor.waitFor();
+  assert.equal(await valor.inputValue(),'110');assert(await page.getByLabel('Selecionar TIT-QA',{exact:true}).isChecked());
+  assert.equal(await page.locator('[data-fila-id="1"][data-fila-campo="motivo"]').inputValue(),'Última tecla!');
+  assert.equal(updates,0,'Restauracao financeira nao envia baixa');
+  await page.getByRole('button',{name:'Registrar baixa',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByRole('dialog').getByRole('button',{name:'Registrar baixa',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText('Baixa QA negada',{exact:true}).waitFor();assert.equal(updates,1);
+  await page.getByRole('dialog').getByRole('button',{name:'Voltar e corrigir',exact:true}).click();
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');saldo=90;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await valor.waitFor();
+  assert.equal(await valor.inputValue(),'110');await page.getByText(/Saldo ou status alterado/).waitFor();
+  await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
+  await page.getByText('O saldo ou status mudou desde a edição.',{exact:true}).waitFor();assert.equal(updates,1);
+  await page.getByRole('dialog').getByRole('button',{name:'Voltar e corrigir',exact:true}).click();
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');deniedRead=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByText('Fila QA negada',{exact:true}).waitFor();
+  assert.equal(await valor.count(),0,'403 nao restaura dados de titulo');deniedRead=false;
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await valor.waitFor();
+  await page.getByRole('button',{name:'Descartar rascunhos conflitantes',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Descartar',exact:true}).click();
+  await page.waitForFunction(()=>Number(document.querySelector('[data-fila-id="1"][data-fila-campo="valor_pago"]')?.value)===97);
+  deniedWrite=false;await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Registrar baixa',exact:true}).evaluate(el=>{el.click();el.click()});
+  await page.getByText(/1 baixa\(s\) registrada\(s\)/).waitFor();assert.equal(updates,2);
+  assert.deepEqual(audit.errors,[]);await page.close();console.log('OK fila '+width+'px: rascunho/selecoes, 403, conflito, juros/multa, envio unico e sem replay.');
+ }
+ }
+ if(!['--table-only','--correcoes-only','--compras-only','--wizard-only'].some(flag=>process.argv.includes(flag))){
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  await page.goto(base+'/financeiro/titulos/novo?financeiroqa&tipo=PAGAR');
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  const descricao=page.getByLabel('Descrição',{exact:true});await descricao.waitFor();
+  await descricao.fill('Título digitado até a última tecla');
+  await page.getByLabel('Número do documento',{exact:true}).fill('NF-QA-123');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await descricao.waitFor();
+  assert.equal(await descricao.inputValue(),'Título digitado até a última tecla');
+  assert.equal(await page.getByLabel('Número do documento',{exact:true}).inputValue(),'NF-QA-123');
+  await page.locator('select').filter({has:page.locator('option[value="RECEBER"]')}).first().selectOption('RECEBER');
+  assert.equal(await descricao.inputValue(),'Título digitado até a última tecla');
+  assert.equal(audit.writes.length,0,'Voltar nao cria titulo nem favorecido');
+  await page.evaluate(()=>window.qaAuth.switch());await descricao.waitFor();
+  assert.equal(await descricao.inputValue(),'','Identidade diferente nao herda formulario');
+  assert.deepEqual(audit.errors,[]);await page.close();console.log('OK titulo novo '+width+'px: campos, tipo, retorno sem escrita e identidade.');
+
+  const listPage=await browser.newPage({viewport:{width,height:900}});const listAudit=await install(listPage);
+  let titleSaldo=100,listDenied=false;
+  await listPage.route('**/api/financeiro/titulos?*',r=>r.fulfill(listDenied?{status:403,json:{error:'Títulos QA negados'}}:{json:{data:[{
+    id:4,codigo:'TIT-QA-LISTA',tipo:'PAGAR',status:'ABERTO',valor_original:100,valor_saldo:titleSaldo,juros:0,multa:0,empresa_id:1,parceiro_id:7,
+    descricao:'Título da lista QA',data_vencimento:'2026-10-20',parceiro:{nome:'Credor QA'},obra:{id:7,nome:'Obra QA'}
+  }],pagination:{page:1,limit:25,total:1,total_pages:1}}}));
+  await listPage.goto(base+'/financeiro/contas-a-pagar?financeiroqa');
+  const query=listPage.getByLabel('Busca rápida',{exact:true});await query.fill('NF-QA');
+  await listPage.getByRole('button',{name:'Consultar',exact:true}).click();
+  await listPage.getByText('TIT-QA-LISTA',{exact:true}).first().waitFor();
+  await listPage.getByLabel(width < 600 ? 'Selecionar' : 'Selecionar todos',{exact:true}).last().check();
+  await listPage.getByRole('button',{name:/^Baixar selecionados/}).click();
+  const baixa=listPage.getByRole('dialog',{name:'Baixa em massa',exact:true});
+  const obs=baixa.getByPlaceholder('Ex.: Baixa em massa conforme extrato bancário.',{exact:true});await obs.fill('Pagamento em conferência');
+  const listTab=await listPage.evaluate(()=>window.qa.activeId);
+  await listPage.evaluate(()=>window.qa.openTab('/consulta/1'));await listPage.waitForURL('**/consulta/1');
+  await listPage.evaluate(id=>window.qa.activateTab(id),listTab);await obs.waitFor();
+  assert.equal(await query.inputValue(),'NF-QA');assert.equal(await obs.inputValue(),'Pagamento em conferência');
+  assert.equal(listAudit.writes.filter(w=>w.p.startsWith('/financeiro/')).length,0,'Nenhuma operacao financeira no retorno; salvar preferencia de consulta conserva fluxo original');
+  await listPage.evaluate(()=>window.qa.openTab('/consulta/1'));await listPage.waitForURL('**/consulta/1');titleSaldo=95;
+  await listPage.evaluate(id=>window.qa.activateTab(id),listTab);await baixa.getByRole('alert').waitFor();
+  assert.equal(await obs.inputValue(),'Pagamento em conferência');
+  assert.ok(await baixa.getByRole('button',{name:'Registrar baixa',exact:true}).isDisabled());
+  await listPage.evaluate(()=>window.qa.openTab('/consulta/1'));await listPage.waitForURL('**/consulta/1');listDenied=true;
+  await listPage.evaluate(id=>window.qa.activateTab(id),listTab);await listPage.getByText('Títulos QA negados',{exact:true}).waitFor();
+  assert.equal(await baixa.count(),0);assert.equal(await listPage.getByText('TIT-QA-LISTA',{exact:true}).count(),0);
+  assert.deepEqual(listAudit.errors,[]);await listPage.close();console.log('OK titulos '+width+'px: filtros/selecoes/baixa em massa, saldo atual, conflito e 403 sem replay.');
+
+  const negoPage=await browser.newPage({viewport:{width,height:900}});const negoAudit=await install(negoPage);
+  let negoSaldo=100,negoDenied=false;
+  await negoPage.route('**/api/financeiro/titulos?*',r=>r.fulfill(negoDenied?{status:403,json:{error:'Negociação QA negada'}}:{json:{data:[{
+    id:4,codigo:'TIT-QA-NEGOCIACAO',tipo:'PAGAR',status:'ABERTO',valor_original:100,valor_saldo:negoSaldo,valor_baixado:0,empresa_id:1,parceiro_id:7,
+    descricao:'Título negociável QA',data_vencimento:'2026-10-20',parceiro:{nome:'Credor QA'},obra:{id:7,nome:'Obra QA'}
+  }],pagination:{page:1,limit:25,total:1,total_pages:1}}}));
+  await negoPage.goto(base+'/financeiro/contas-a-pagar?financeiroqa');await negoPage.getByRole('button',{name:'Consultar',exact:true}).click();
+  await negoPage.getByText('TIT-QA-NEGOCIACAO',{exact:true}).first().waitFor();await negoPage.getByRole('button',{name:'Parcelar',exact:true}).first().click();
+  const negoModal=negoPage.getByRole('dialog',{name:'Parcelar título',exact:true}), negoInput=negoModal.getByLabel('Motivo da negociação',{exact:true});
+  await negoInput.fill('Negociação preservada Z');const negoTab=await negoPage.evaluate(()=>window.qa.activeId);
+  await negoPage.evaluate(()=>window.qa.openTab('/consulta/1'));await negoPage.waitForURL('**/consulta/1');await negoPage.evaluate(id=>window.qa.activateTab(id),negoTab);
+  await negoInput.waitFor();assert.equal(await negoInput.inputValue(),'Negociação preservada Z');assert.equal(negoAudit.writes.filter(w=>w.p.startsWith('/financeiro/')).length,0);
+  await negoPage.evaluate(()=>window.qa.openTab('/consulta/1'));await negoPage.waitForURL('**/consulta/1');negoSaldo=95;await negoPage.evaluate(id=>window.qa.activateTab(id),negoTab);
+  await negoModal.getByRole('alert').filter({hasText:'Os saldos ou dados'}).waitFor();assert.ok(await negoInput.isDisabled());
+  await negoPage.evaluate(()=>window.qa.openTab('/consulta/1'));await negoPage.waitForURL('**/consulta/1');negoDenied=true;await negoPage.evaluate(id=>window.qa.activateTab(id),negoTab);
+  await negoPage.getByText('Negociação QA negada',{exact:true}).waitFor();assert.equal(await negoModal.count(),0);assert.equal(await negoPage.getByText('TIT-QA-NEGOCIACAO',{exact:true}).count(),0);
+  assert.deepEqual(negoAudit.errors,[]);await negoPage.close();console.log('OK negociação lista real '+width+'px: IDs/GET atuais, modal/campos, conflito e 403 sem replay.');
+
+  const fontesPage=await browser.newPage({viewport:{width,height:900}});const fontesAudit=await install(fontesPage);
+  let fontesSaldo=100,fontesDenied=false,fontesStatus='ABERTO';
+  await fontesPage.route('**/api/financeiro/titulos?*',r=>r.fulfill(fontesDenied?{status:403,json:{error:'Fontes QA negadas'}}:{json:{data:[{
+    id:4,codigo:'TIT-QA-FONTES',tipo:'PAGAR',status:fontesStatus,valor_original:100,valor_saldo:fontesSaldo,valor_baixado:0,empresa_id:1,parceiro_id:7,
+    descricao:'Título de múltiplas fontes QA',data_vencimento:'2026-10-20',parceiro:{nome:'Credor QA'},obra:{id:7,nome:'Obra QA'}
+  }],pagination:{page:1,limit:25,total:1,total_pages:1}}}));
+  await fontesPage.goto(base+'/financeiro/contas-a-pagar?financeiroqa');await fontesPage.getByRole('button',{name:'Consultar',exact:true}).click();
+  await fontesPage.getByText('TIT-QA-FONTES',{exact:true}).first().waitFor();await fontesPage.getByLabel(width<600?'Selecionar':'Selecionar todos',{exact:true}).last().check();
+  await fontesPage.getByRole('button',{name:/^Baixa com múltiplas fontes/}).click();
+  const fontesModal=fontesPage.getByRole('dialog',{name:'Baixa com múltiplas fontes',exact:true}), fontesObs=fontesModal.getByLabel('Observações do grupo',{exact:true});
+  await fontesObs.fill('Fontes digitadas Z');await fontesModal.getByLabel('Valor da fonte *',{exact:true}).fill('100');const fontesTab=await fontesPage.evaluate(()=>window.qa.activeId);
+  await fontesPage.evaluate(()=>window.qa.openTab('/consulta/1'));await fontesPage.waitForURL('**/consulta/1');await fontesPage.evaluate(id=>window.qa.activateTab(id),fontesTab);
+  await fontesObs.waitFor();assert.equal(await fontesObs.inputValue(),'Fontes digitadas Z');assert.equal(await fontesModal.getByLabel('Valor da fonte *',{exact:true}).inputValue(),'100');
+  assert.equal(fontesAudit.writes.filter(w=>w.p.startsWith('/financeiro/')).length,0);
+  await fontesPage.evaluate(()=>window.qa.openTab('/consulta/1'));await fontesPage.waitForURL('**/consulta/1');fontesSaldo=95;await fontesPage.evaluate(id=>window.qa.activateTab(id),fontesTab);
+  await fontesModal.getByRole('alert').filter({hasText:'Os saldos ou instrumentos mudaram'}).waitFor();assert.ok(await fontesModal.getByRole('button',{name:'Validar e revisar',exact:true}).isDisabled());
+  await fontesPage.evaluate(()=>window.qa.openTab('/consulta/1'));await fontesPage.waitForURL('**/consulta/1');fontesStatus='QUITADO';fontesSaldo=0;await fontesPage.evaluate(id=>window.qa.activateTab(id),fontesTab);
+  await fontesModal.getByRole('alert').filter({hasText:'não estão disponíveis para baixa'}).waitFor();assert.ok(await fontesModal.getByRole('button',{name:'Validar e revisar',exact:true}).isDisabled());
+  await fontesPage.evaluate(()=>window.qa.openTab('/consulta/1'));await fontesPage.waitForURL('**/consulta/1');fontesDenied=true;await fontesPage.evaluate(id=>window.qa.activateTab(id),fontesTab);
+  await fontesPage.getByText('Fontes QA negadas',{exact:true}).waitFor();assert.equal(await fontesModal.count(),0);assert.equal(await fontesPage.getByText('TIT-QA-FONTES',{exact:true}).count(),0);
+  assert.deepEqual(fontesAudit.errors,[]);await fontesPage.close();console.log('OK fontes lista real '+width+'px: IDs/GET atuais, modal/inputs, saldo/status e 403 sem replay.');
+
+  const authPage=await browser.newPage({viewport:{width,height:900}});const authAudit=await install(authPage);
+  let denied=false,processed=false;
+  const lot=id=>({id,codigo:'LOT-QA-'+id,status:'PENDENTE',valor_total:100,quantidade_itens:1,dossie_hash:'QA',itens:[{
+    id:id*10,status:processed&&id===2?'ENFILEIRADO':'PENDENTE',valor_snapshot:100,snapshot_json:{codigo:'TIT-QA-'+id},documentos:[],titulo:{status:'ABERTO',valor_baixado:0}
+  }]});
+  await authPage.route('**/api/financeiro/autorizacoes-pagamento',r=>r.fulfill(denied?{status:403,json:{error:'Lotes QA negados'}}:{json:{data:[lot(1),lot(2)]}}));
+  await authPage.goto(base+'/financeiro/autorizacoes-pagamento?financeiroqa');
+  await authPage.locator('.pa-lot').nth(1).click();
+  const reason=authPage.getByLabel('Motivo para rejeição',{exact:true});await reason.fill('Conferir lote dois');
+  await authPage.locator('.pa-lot').first().click();assert.equal(await reason.inputValue(),'');
+  await reason.fill('Conferir lote um');await authPage.locator('.pa-lot').nth(1).click();assert.equal(await reason.inputValue(),'Conferir lote dois');
+  const authTab=await authPage.evaluate(()=>window.qa.activeId);
+  await authPage.evaluate(()=>window.qa.openTab('/consulta/1'));await authPage.waitForURL('**/consulta/1');
+  await authPage.evaluate(id=>window.qa.activateTab(id),authTab);await reason.waitFor();
+  assert.equal(await reason.inputValue(),'Conferir lote dois');assert.equal(authAudit.writes.length,0);
+  await authPage.evaluate(()=>window.qa.openTab('/consulta/1'));await authPage.waitForURL('**/consulta/1');processed=true;
+  await authPage.evaluate(id=>window.qa.activateTab(id),authTab);await authPage.locator('.pa-lot').nth(1).waitFor();
+  assert.equal(await authPage.getByRole('button',{name:'Rejeitar',exact:true}).count(),0,'Item processado nao recupera decisao pendente');
+  await authPage.evaluate(()=>window.qa.openTab('/consulta/1'));await authPage.waitForURL('**/consulta/1');denied=true;
+  await authPage.evaluate(id=>window.qa.activateTab(id),authTab);await authPage.getByText('Lotes QA negados',{exact:true}).waitFor();
+  assert.equal(await authPage.locator('.pa-lot').count(),0);assert.deepEqual(authAudit.errors,[]);await authPage.close();
+  console.log('OK autorizacoes '+width+'px: motivo por lote, consulta atual, processados e 403, sem decisao automatica.');
+ }
+ }
+ if(provisaoOnly || (!financeiroOnly&&!['--table-only','--correcoes-only','--compras-only','--wizard-only','--cotacao-only','--pedido-only'].some(flag=>process.argv.includes(flag)))){
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  let denied=false,posts=0,release;
+  await page.route('**/api/provisoes-financeiras/contexto',r=>r.fulfill(denied?{status:403,json:{error:'Provisao QA sem acesso'}}:
+   {json:{permissoes:{pode_criar:true},obras_criacao:[{id:7,codigo:'07',nome:'Obra QA'}]}}));
+  await page.route('**/api/provisoes-financeiras',r=>new Promise(resolve=>{
+   posts++;assert.equal(r.request().postDataJSON().descricao,'Provisão última Z');
+   release=()=>r.fulfill({json:{id:8}}).then(resolve);
+  }));
+  await page.goto(base+'/provisoes-financeiras/nova?provisaoqa');
+  const initial=await page.evaluate(()=>window.qa.activeId);
+  const description=page.getByLabel('Descrição',{exact:true});await description.fill('Provisão última Z');
+  await page.getByLabel('Obra',{exact:true}).selectOption('7');
+  await page.getByLabel('Data prevista de desembolso',{exact:true}).fill('12/1');
+  await page.getByLabel('Item macro',{exact:true}).fill('Categoria livre');
+  await page.getByLabel('Valor previsto',{exact:true}).fill('12345');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await description.waitFor();assert.equal(await description.inputValue(),'Provisão última Z');assert.equal(posts,0);
+  assert.equal(await page.getByLabel('Data prevista de desembolso',{exact:true}).inputValue(),'12/1');
+  await page.locator('form').evaluate(f=>f.requestSubmit());assert.equal(posts,0);
+  await page.getByLabel('Data prevista de desembolso',{exact:true}).fill('31/12/2026');
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');denied=true;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.getByText('Provisao QA sem acesso',{exact:true}).waitFor();assert.equal(await description.count(),0);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));await page.waitForURL('**/consulta/1');denied=false;
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await description.waitFor();assert.equal(await description.inputValue(),'Provisão última Z');
+  const request=page.waitForRequest(r=>new URL(r.url()).pathname==='/api/provisoes-financeiras'&&r.method()==='POST');
+  await page.locator('form').evaluate(el=>{el.requestSubmit();el.requestSubmit()});await request;assert.equal(posts,1);
+  await page.evaluate(()=>window.qa.openTab('/consulta/1'));
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await page.evaluate(()=>window.qa.activeId),initial,'Provisao ocupada nao troca de aba');
+  assert.ok(await page.getByRole('button',{name:'Cancelar',exact:true}).isDisabled());
+  release();await page.getByText('Provisão criada QA',{exact:true}).waitFor();
+  await page.evaluate(()=>window.qa.back('/provisoes-financeiras/nova?provisaoqa'));await description.waitFor();
+  assert.equal(await description.inputValue(),'');assert.equal(posts,1);assert.deepEqual(audit.errors,[]);await page.close();
+  console.log('OK provisao Layout real '+width+'px: opt-in, ultima tecla, 403, mutex, bloqueio de aba ocupada e sucesso limpo sem replay.');
+ }
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  let denied=false,posts=0,release;const reads=[];
+  let record={id:17,codigo:'PROV-LAYOUT-QA',obra_id:7,obra:{id:7,nome:'Obra QA'},categoriaMacro:{id:1,nome:'Estrutura'},data_prevista_desembolso:'2026-12-31',valor_previsto:'150.00',descricao:'Provisão atual QA',fornecedor_texto:'Credor QA',prioridade:'alta',status:'previsto',anexos:[],historicos:[]};
+  await page.route('**/api/provisoes-financeiras/contexto',r=>r.fulfill(denied?{status:403,json:{error:'Contexto da provisao negado QA'}}:
+   {json:{permissoes:{pode_criar:true,pode_editar:true},obras_acesso:[record.obra],obras_criacao:[record.obra]}}));
+  await page.route('**/api/provisoes-financeiras?*',r=>{
+   const params=Object.fromEntries(new URL(r.request().url()).searchParams);reads.push(params);
+   return r.fulfill({json:{items:[record],meta:{page:Number(params.page),limit:25,total:50,pages:2},resumo:{total_registros_filtrados:50,valor_total_filtrado:7500}}});
+  });
+  await page.route('**/api/provisoes-financeiras/17',r=>{
+   if(r.request().method()==='GET')return r.fulfill({json:record});
+   assert.equal(r.request().method(),'PUT');posts++;const payload=r.request().postDataJSON();assert.equal(payload.descricao,'Edição integrada última Z');
+   return new Promise(resolve=>{release=()=>{record={...record,...payload};return r.fulfill({json:record}).then(resolve)}});
+  });
+  await page.goto(base+'/provisoes-financeiras?provisaolistqa');const initial=await page.evaluate(()=>window.qa.activeId);
+  const search=page.getByPlaceholder('Buscar código, descrição ou credor',{exact:true});await search.fill('Filtro final Z');
+  await page.getByRole('button',{name:'Próxima',exact:true}).click();await page.getByRole('navigation',{name:'Paginação',exact:true}).getByText('Página 2 de 2',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Detalhes',exact:true}).click();await page.waitForURL('**/provisoes-financeiras/17');await page.getByRole('heading',{name:'PROV-LAYOUT-QA',exact:true}).waitFor();
+  const detail=await page.evaluate(()=>window.qa.activeId);assert.notEqual(detail,initial);assert.equal(await page.evaluate(()=>window.qa.tabs.find(t=>t.id===window.qa.activeId).title),'PROV-LAYOUT-QA');
+  await page.getByRole('button',{name:'Editar registro',exact:true}).click();const description=page.getByLabel('Descrição',{exact:true});await description.fill('Edição integrada última Z');
+  const comment=page.getByLabel('Novo comentário',{exact:true});await comment.fill('Comentário ainda em trabalho Z');
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await search.waitFor();assert.equal(await search.inputValue(),'Filtro final Z');
+  await page.getByRole('navigation',{name:'Paginação',exact:true}).getByText('Página 2 de 2',{exact:true}).waitFor();assert.equal(reads.at(-1).page,'2');
+  await page.evaluate(id=>window.qa.activateTab(id),detail);await description.waitFor();assert.equal(await description.inputValue(),'Edição integrada última Z');assert.equal(await comment.inputValue(),'Comentário ainda em trabalho Z');assert.equal(posts,0);
+  assert.ok(await page.getByRole('button',{name:'Salvar alteracoes',exact:true}).isEnabled(),await page.locator('body').innerText());
+  assert.equal(await page.getByLabel('Item macro',{exact:true}).inputValue(),'Estrutura');
+  assert.match(await page.getByLabel('Valor previsto',{exact:true}).inputValue(),/150,00/);
+  assert.equal(await page.getByLabel('Data prevista',{exact:true}).inputValue(),'31/12/2026');
+  const editForm=page.locator('[data-workspace-page]:not([hidden]) form').filter({has:page.locator('textarea[aria-label="Descrição"]')});
+  assert.deepEqual(await editForm.evaluate(el=>Array.from(el.elements).filter(x=>x.willValidate&&!x.validity.valid).map(x=>({name:x.name,type:x.type,message:x.validationMessage}))),[]);
+  const request=page.waitForRequest(r=>new URL(r.url()).pathname==='/api/provisoes-financeiras/17'&&r.method()==='PUT');
+  const submitted=editForm.evaluate(el=>{el.requestSubmit();el.requestSubmit()});
+  await Promise.all([submitted,request]).catch(async error=>{console.error(await page.locator('body').innerText());console.error(audit.errors);throw error});assert.equal(posts,1);
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.equal(await page.evaluate(()=>window.qa.activeId),detail);
+  assert.ok(await page.getByRole('button',{name:'Fechar edicao',exact:true}).isDisabled());release();await page.getByRole('button',{name:'Editar registro',exact:true}).waitFor();
+  await page.evaluate(id=>window.qa.activateTab(id),initial);await search.waitFor();denied=true;
+  await page.evaluate(id=>window.qa.activateTab(id),detail);await page.getByText('Contexto da provisao negado QA',{exact:true}).first().waitFor();assert.equal(await description.count(),0);assert.equal(await comment.count(),0);assert.equal(await page.getByRole('heading',{name:'PROV-LAYOUT-QA',exact:true}).count(),0);
+  await page.waitForFunction(()=>window.qa.tabs.find(t=>t.id===window.qa.activeId).title==='Provisão');
+  assert.equal(posts,1);assert.deepEqual(audit.errors,[]);await page.close();
+  console.log('OK lista/detalhe provisao Layout real '+width+'px: abas independentes, filtro/pagina, inputs, GET atual, mutex/busy e negativa.');
+ }
+ }
+ if(provisaoOnly || (!financeiroOnly&&!['--table-only','--correcoes-only','--compras-only','--wizard-only','--cotacao-only','--pedido-only'].some(flag=>process.argv.includes(flag)))){
+ for(const width of [1366,390]){
+  const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+  const queries=[];let denied=false;
+  const record={id:17,codigo:'PROV-CONSULTAS-QA',obra_id:7,obra:{id:7,codigo:'07',nome:'Obra QA'},data_prevista_desembolso:'2026-12-31',valor_previsto:'150.00',descricao:'Provisao consulta QA',prioridade:'alta',status:'previsto',anexos:[],historicos:[]};
+  await page.route('**/api/provisoes-financeiras/contexto',r=>r.fulfill(denied?{status:403,json:{error:'Contexto consultas negado QA'}}:{json:{permissoes:{pode_editar:true,pode_dashboard:true},obras_acesso:[record.obra]}}));
+  await page.route('**/api/provisoes-financeiras/categorias*',r=>{assert.equal(r.request().method(),'GET');return r.fulfill(denied?{status:403,json:{error:'Categorias consultas negadas QA'}}:{json:[{id:1,nome:'Categoria consultas QA',descricao:'Base atual',ativo:true,ordem_exibicao:1}]})});
+  await page.route('**/api/provisoes-financeiras/dashboard/resumo*',r=>{queries.push(Object.fromEntries(new URL(r.request().url()).searchParams));return r.fulfill({json:{cards:{total_periodo:150,quantidade_abertas:1},alertas:{vencidas_nao_tratadas:{itens:[record],quantidade:1},itens_criticos_proximos:{itens:[]},obras_concentracao_alta:[]},graficos:{por_mes:[],por_obra:[],por_categoria:[],curva_semanal:[],pipeline_status:[]}}})});
+  await page.route('**/api/provisoes-financeiras?*',r=>r.fulfill({json:{items:[record],meta:{page:1,total:1,pages:1}}}));
+  await page.route('**/api/provisoes-financeiras/17',r=>r.fulfill({json:record}));
+  await page.goto(base+'/provisoes-financeiras/categorias?provisaoconsultasqa');
+  const catTab=await page.evaluate(()=>window.qa.activeId);const newName=page.getByLabel('Nome da nova categoria macro',{exact:true});
+  await newName.fill('Nova categoria em trabalho Z');await page.getByRole('button',{name:'Editar',exact:true}).first().click();await page.getByLabel('Nome da categoria macro',{exact:true}).fill('Edicao categoria Z');
+  await page.evaluate(()=>window.qa.openTab('/provisoes-financeiras/dashboard'));await page.getByRole('button',{name:'Detalhes',exact:true}).waitFor();
+  const dashTab=await page.evaluate(()=>window.qa.activeId);const initial=()=>page.getByLabel('Data inicial',{exact:true});
+  await initial().fill('12/1');await page.getByLabel('Data final',{exact:true}).fill('31/12/2026');
+  await page.getByRole('button',{name:'Detalhes',exact:true}).waitFor();
+  await page.evaluate(()=>window.qa.openTab('/provisoes-financeiras/relatorios/operacional'));await page.getByRole('link',{name:'PROV-CONSULTAS-QA',exact:true}).waitFor();
+  const reportTab=await page.evaluate(()=>window.qa.activeId);await initial().fill('15/1');await page.getByLabel('Data final',{exact:true}).fill('30/12/2026');const appliedCount=queries.length;
+  await page.evaluate(id=>window.qa.activateTab(id),catTab);await newName.waitFor();assert.equal(await newName.inputValue(),'Nova categoria em trabalho Z');assert.equal(await page.getByLabel('Nome da categoria macro',{exact:true}).inputValue(),'Edicao categoria Z');
+  await page.evaluate(id=>window.qa.activateTab(id),dashTab);await page.getByRole('button',{name:'Detalhes',exact:true}).waitFor();assert.equal(await initial().inputValue(),'12/1');assert.equal(await page.getByLabel('Data final',{exact:true}).inputValue(),'31/12/2026');assert.equal(queries.at(-1).data_final,'2026-12-31');
+  await page.evaluate(id=>window.qa.activateTab(id),reportTab);await page.getByRole('link',{name:'PROV-CONSULTAS-QA',exact:true}).waitFor();assert.equal(await initial().inputValue(),'15/1');assert.equal(await page.getByLabel('Data final',{exact:true}).inputValue(),'30/12/2026');assert.equal(queries.at(-1).data_final,undefined,'Retorno nao aplica filtro pesado ainda digitado');assert.equal(queries.length,appliedCount+2);
+  const count=queries.length;await page.getByRole('button',{name:'Atualizar relatorio',exact:true}).click();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));assert.equal(queries.length,count,'Data parcial bloqueia aplicar');
+  await initial().fill('01/01/2026');await page.getByRole('button',{name:'Atualizar relatorio',exact:true}).evaluate(b=>{b.click();b.click()});await page.getByRole('link',{name:'PROV-CONSULTAS-QA',exact:true}).waitFor();assert.equal(queries.length,count+1);assert.equal(queries.at(-1).data_final,'2026-12-30');
+  await page.getByRole('link',{name:'PROV-CONSULTAS-QA',exact:true}).click();await page.getByRole('heading',{name:'PROV-CONSULTAS-QA',exact:true}).waitFor();assert.notEqual(await page.evaluate(()=>window.qa.activeId),reportTab);await page.waitForFunction(()=>window.qa.tabs.find(t=>t.id===window.qa.activeId).title==='PROV-CONSULTAS-QA');
+  await page.evaluate(id=>window.qa.activateTab(id),reportTab);await initial().waitFor();assert.equal(await initial().inputValue(),'01/01/2026');
+  denied=true;await page.evaluate(id=>window.qa.activateTab(id),catTab);await page.getByText('Categorias consultas negadas QA',{exact:true}).first().waitFor();assert.equal(await newName.count(),0);
+  await page.evaluate(id=>window.qa.activateTab(id),dashTab);await page.getByText('Contexto consultas negado QA',{exact:true}).first().waitFor();assert.equal(await initial().count(),0);assert.equal(await page.locator('[data-workspace-page]:not([hidden])').getByText('PROV-CONSULTAS-QA',{exact:true}).count(),0);
+  await page.evaluate(id=>window.qa.activateTab(id),reportTab);await page.getByText('Contexto consultas negado QA',{exact:true}).first().waitFor();assert.equal(await initial().count(),0);
+  assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);
+  assert.equal(await page.evaluate(()=>JSON.stringify([...Object.entries(sessionStorage),...Object.entries(localStorage)]).includes('Nova categoria em trabalho Z')),false);
+  await page.close();console.log('OK categorias/dashboard/relatorio Layout real '+width+'px: opt-ins, drafts/data parcial, filtro aplicado separado, nova aba/codigo e negativa; sem escrita/storage de rascunho.');
+ }
  }
  // Comparacao controlada do mesmo formulario e DOM. Nao benchmark de producao.
  for(const legacy of[true,false,false,true]){
@@ -994,12 +1428,23 @@ try{
   await page.getByLabel('Rascunho').fill('valor');
   const initial=await page.evaluate(()=>window.qa.tabs[0].id);
   await page.evaluate(()=>window.qa.openTab('/consulta/1'));
+  await page.waitForURL('**/consulta/1');
   const aux=await page.evaluate(()=>window.qa.activeId);
   const times=[];
   for(let i=0;i<40;i++) times.push(await page.evaluate(id=>new Promise(resolve=>{const t=performance.now();window.qa.activateTab(id);requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(performance.now()-t)))}),i%2?aux:initial));
   const cdp=await page.context().newCDPSession(page);await cdp.send('HeapProfiler.collectGarbage');
   const baseline=(await cdp.send('Runtime.getHeapUsage')).usedSize;
-  for(let i=0;i<30;i++){const id=await page.evaluate(i=>{window.qa.openTab('/consulta/c'+i);return window.qa.activeId},i);await page.evaluate(id=>window.qa.close(id),id)}
+  for(let i=0;i<30;i++){
+    const previous=await page.evaluate(()=>({id:window.qa.activeId,route:location.pathname+location.search+location.hash}));
+    await page.evaluate(i=>window.qa.openTab('/consulta/c'+i),i);
+    // O controlador legado publica activeId no effect, nao no mesmo tick.
+    // Aguardar a rota evita fechar a aba anterior por engano no ensaio.
+    await page.waitForURL('**/consulta/c'+i);
+    const id=await page.evaluate(()=>window.qa.activeId);assert.notEqual(id,previous.id);
+    await page.evaluate(id=>window.qa.close(id),id);
+    await page.waitForFunction(id=>!window.qa.tabs.some(t=>t.id===id),id);
+    await page.waitForURL(base+previous.route);
+  }
   await cdp.send('HeapProfiler.collectGarbage');const after=(await cdp.send('Runtime.getHeapUsage')).usedSize;
   assert(after-baseline<8*1024*1024,'Memoria cresceu acima do orcamento apos 30 ciclos');
   times.sort((a,b)=>a-b);results.push({legacy,p50:times[20],p95:times[38],heapDelta:after-baseline});
