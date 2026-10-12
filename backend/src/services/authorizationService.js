@@ -1579,6 +1579,7 @@ async function canResolverFilaPagamentos(user) {
 }
 
 async function canPreparePagamentos(user) {
+  if (isSuperadmin(user)) return true;
   if (await userHasConfiguredAreaPermissions(user)) {
     return (
       userHasAreaPermission(user, ['financeiro.pagamentos.preparar'])
@@ -1590,6 +1591,7 @@ async function canPreparePagamentos(user) {
 }
 
 async function canApprovePagamentos(user) {
+  if (isSuperadmin(user)) return true;
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, ['financeiro.pagamentos.aprovar']);
   }
@@ -1607,6 +1609,7 @@ async function canRejectPagamentos(user) {
 }
 
 async function canSendPagamentosBanco(user) {
+  if (isSuperadmin(user)) return true;
   if (await userHasConfiguredAreaPermissions(user)) {
     return (
       userHasAreaPermission(user, ['financeiro.pagamentos.enviar_banco'])

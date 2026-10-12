@@ -205,6 +205,21 @@ Reabrir um pedido libera ajustes operacionais, mas preserva as alocacoes ja comp
 
 ## Mudanca segura
 
+### Comparativo e superadmin (12/10/2026)
+
+Cards/Mapa sao controles de leitura, separados do bloqueio de gravacao da
+cotacao embutida. Em acompanhamento, visualizar nao habilita criar fornecedor,
+responder, comentar, encerrar, cancelar ou gerar pedido. SUPERADMIN efetivo
+na sessao nao depende do setor principal para operar a solicitacao autorizada.
+
+Quantidade comprada seleciona o texto ao receber foco. Apagar/zerar durante
+a digitacao mantem checkbox, campo e foco; somente desmarcar explicitamente
+remove a alocacao. Encerramento rejeita selecao com quantidade vazia/zero,
+mantendo as validacoes existentes de saldo, disponibilidade e idempotencia.
+No mapa mobile, as colunas de referencia rolam para nao cobrir os controles;
+em desktop continuam fixas. Testes reais de UI em 1366/390px:
+`node frontend/scripts/validarWorkspacePiloto.mjs --correcoes-only`.
+
 ### Navegacao incremental E3a (12/10/2026)
 
 Listas de Solicitacoes de Compra, Pedidos e Cotacoes preservam busca e

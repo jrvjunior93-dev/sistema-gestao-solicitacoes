@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createServer, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from 'tailwindcss';
+import autoprefixer from 'autoprefixer';
+import tailwindConfig from '../tailwind.config.js';
 import { chromium } from 'playwright';
 import { makeTab, makeEntry, moveTab, recordIdentity } from '../src/navigation/workspaceModel.js';
 import { consultarJanela } from '../src/pages/Solicitacoes/consultarJanela.js';
@@ -44,11 +47,14 @@ import{AuthContext}from'/src/contexts/AuthContext.jsx';import{ThemeContext,TEMA_
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';
 import '/src/components/lista-avancada/lista-avancada.css';
 import '/src/styles/responsive-system.css';
+import '/src/modules/solicitacao-compra/compras-responsive.css';
 const params=new URLSearchParams(location.search);const core=params.has('core');const legacy=params.has('legacy');
 const user={id:1,perfil:'SUPERADMIN',nome:'QA',area:'GEO',setor:{codigo:'GEO'},modulos_habilitados:[{key:'COMPRAS',enabled:false},{key:'CONTRATOS',enabled:false},{key:'FINANCEIRO',enabled:false}]};
+if(params.has('obraadminqa'))Object.assign(user,{area:'OBRA',setor:{codigo:'OBRA'}});
+if(params.has('regularqa'))Object.assign(user,{perfil:'USUARIO',area:'OBRA',setor:{codigo:'OBRA'},areas_permissoes_configuradas:true,areas_permissoes:[]});
 if(params.has('comprasqa'))user.modulos_habilitados=[{key:'COMPRAS',enabled:true},{key:'COTACOES',enabled:true},{key:'FINANCEIRO',enabled:false}];
 function TestAuth({children}){const[effective,set]=useState(params.has('anon')?null:params.has('mfa')?{...user,mfa_setup_pending:true}:user);const[ready,R]=useState(!params.has('restoring'));useEffect(()=>{window.qaAuth={ready:()=>R(true),logout:()=>set(null),switch:()=>set({...user,id:2,nome:'Outro usuario'}),restrict:()=>set(current=>({...current,areas_permissoes_configuradas:true,areas_permissoes:[]}))}},[]);return <AuthContext.Provider value={{user:effective,authReady:ready,isAuthenticated:!!effective,login:async data=>set(data.user),logout:()=>set(null)}}>{children}</AuthContext.Provider>}
-function ItemsFixture(){return <><Toolbar/><CompraEtapas solicitacaoId={useParams().id} user={user} podeDecidir podeReceber={false} podeProgramarEntrega={false} podeAnexar={false} mostrarCotacao={false}/></>}
+function ItemsFixture(){return <><Toolbar/><CompraEtapas solicitacaoId={useParams().id} user={user} podeDecidir podeReceber={false} podeProgramarEntrega={false} podeAnexar={false} mostrarCotacao={params.has('cotacoesqa')} podeGerenciarCotacao={!params.has('readonlyqa')}/></>}
 function Toolbar(){const w=useWorkspace();const nav=useNavigate();useEffect(()=>{window.qa={...w}},[w]);return <div style={{position:'sticky',top:0,zIndex:90,background:'#fff'}}><button onClick={()=>w.openTab('/consulta/1')}>QA consulta</button><button onClick={()=>w.back('/solicitacoes')}>QA voltar</button><button onClick={()=>nav('/compras/delegacao')}>QA delegacao</button><button onClick={()=>w.openTab('/consulta-lenta')}>QA aba lenta</button></div>}
 const ConsultaLenta=React.lazy(()=>new Promise(resolve=>setTimeout(()=>resolve({default:()=> <><Toolbar/><p>Consulta lenta pronta</p></>}),400)));
 function CoreForm(){const[text,set]=useWorkspaceState('texto','');const[busy,B]=useState(false);useWorkspaceWork(!!text,busy);useWorkspaceTitle('SOL-CORE-'+(useParams().id||'NOVA'));return <><input aria-label="Rascunho" value={text} onChange={e=>set(e.target.value)}/><button onClick={()=>{B(true);setTimeout(()=>B(false),700)}}>QA ocupado</button><div style={{height:2500}}>Formulario</div></>}
@@ -72,6 +78,7 @@ createRoot(document.getElementById('root')).render(<BrowserRouter future={{v7_st
 </Routes></ThemeContext.Provider></TestAuth></BrowserRouter>);`;
 
 const server = await createServer({ root, configFile:false,logLevel:'error',
+  css:{postcss:{plugins:[tailwindcss({...tailwindConfig,content:tailwindConfig.content.map(p=>path.resolve(root,p).replaceAll('\\','/'))}),autoprefixer()]}},
   define:{'import.meta.env.VITE_API_URL':JSON.stringify('/api')},
   server:{host:'127.0.0.1',port:0},plugins:[{
     name:'workspace-qa',enforce:'pre',
@@ -133,7 +140,7 @@ try{
     return route.fulfill({json:data});
    });return{errors,writes,reads,queries,navigationAudit};
  };
- if(!process.argv.includes('--compras-only')&&!process.argv.includes('--table-only')){
+ if(!process.argv.includes('--compras-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')){
  for(const width of[1366,390]){
   const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
   await page.goto(base+'/nova-solicitacao?core');await page.getByLabel('Rascunho').fill('ultimo caractere!');
@@ -463,7 +470,7 @@ try{
  }
  }
  // E3a: listas reais de Compras, sem mudancas de endpoints/ACL/escritas.
- if(!process.argv.includes('--table-only')){
+ if(!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')){
  for(const width of[1366,390]){
   for(const kind of ['solicitacoes-compra','pedidos-compra','cotacoes']){
    const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
@@ -547,7 +554,7 @@ try{
  }
  }
  // Tabela compartilhada opt-in e legado, com carga assincrona e janela local.
- for(const optin of[true,false]){
+ for(const optin of(process.argv.includes('--correcoes-only')?[]:[true,false])){
   const page=await browser.newPage({viewport:{width:1366,height:900}});const audit=await install(page);
   const origin='/solicitacoes-compra?comprasqa&tableqa'+(optin?'':'&notableoptin');
   await page.goto(base+origin);
@@ -591,7 +598,7 @@ try{
   assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
   console.log('OK tabela '+(optin?'opt-in: ordenacao, expansao, janela e scroll; novo recorte reinicia janela.':'legada: comportamento anterior preservado.'));
  }
- if(!process.argv.includes('--table-only')){
+ if(!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')){
  {
   const page=await browser.newPage();const audit=await install(page);let omit=false;
   await page.route('**/api/compras/solicitacoes?*',async r=>omit?r.fulfill({json:[{id:9,status:'PENDENTE',obra:{id:7,nome:'Obra QA'}}]}):r.fallback());
@@ -671,6 +678,97 @@ try{
   assert(!('representante_nome' in sent.fornecedores[0]));assert(!('representante_cpf' in sent.fornecedores[0]));
   assert.deepEqual(audit.errors,[]);await page.close();
   console.log('OK card embutido: novo fornecedor junto com links envia fantasia e item, sem representante.');
+ }
+ }
+ if(!process.argv.includes('--table-only')){
+ for(const regular of[false,true]){
+  const page=await browser.newPage();const audit=await install(page);
+  await page.route('**/api/solicitacoes/90',r=>r.fulfill({json:{id:90,codigo:'SOL-QA90',obra_id:7,obra:{id:7,nome:'Obra QA'},tipo:{id:5,nome:'DESPESA EVENTUAL'},valor:1000,status_global:'PENDENTE',area_responsavel:'COMPRAS',anexos:[],historicos:[],contexto_interacao:{pode_interagir:false},createdAt:'2026-10-01T12:00:00Z'}}));
+  await page.goto(base+'/solicitacoes/90?obraadminqa'+(regular?'&regularqa':''));
+  await page.locator('[data-workspace-page]:not([hidden]) .sol-detail-page')
+   .getByRole('heading',{name:/SOL-QA90/}).waitFor({timeout:30000});
+  assert.equal(await page.getByRole('button',{name:'Alterar status',exact:true}).count(),regular?0:1);
+  assert.equal(await page.getByRole('button',{name:'Enviar para outro setor',exact:true}).count(),regular?0:1);
+  assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
+  console.log('OK detalhe real fora de setor: '+(regular?'usuario OBRA sem escrita.':'SUPERADMIN OBRA pode alterar status/enviar; contexto antigo nao bloqueia.'));
+ }
+ // Controles reais do comparativo dentro de CompraEtapas, sem fieldset global.
+ for(const width of[1366,390]){
+  for(const readonly of[false,true]){
+   const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);
+   const response={resposta_item_id:101,fornecedor_id:77,cotacao_fornecedor_id:77,fornecedor_nome:'Fornecedor QA',disponivel:true,preco:10,valor_total_cotado:150,quantidade_disponivel:50,saldo_disponivel_fornecedor:40};
+   await page.route('**/api/compras/solicitacoes/8/workspace-cotacao',r=>r.fulfill({json:{
+    solicitacao:{id:8,status:'PENDENTE',obra:{id:7,nome:'Obra QA'},fornecedores:[{id:77,fornecedor_id:77,nome:'Fornecedor QA',status:'RESPONDIDO'}],itens:[],itensManuais:[]},
+    comparativo:{itens:[{id:5,item_tipo:'CADASTRADO',item_referencia_id:5,nome:'Areia QA',unidade:'m3',quantidade:15,saldo_disponivel:15,respostas:[response]}]}
+   }}));
+   await page.goto(base+'/solicitacoes/90?itens&cotacoesqa&comprasqa'+(readonly?'&readonlyqa':''));
+   await page.getByRole('button',{name:'Cotação',exact:true}).click();
+   const panel=page.locator('.cotacao-comparativo-panel');
+   await panel.getByRole('button',{name:'Mapa',exact:true}).click();
+   await panel.getByText('Mapa de comparação',{exact:true}).waitFor();
+   assert.equal(await panel.getByRole('button',{name:'Mapa',exact:true}).evaluate(el=>!!el.parentElement.closest('button')),false,'Nao aninhar botoes no cabecalho');
+   if(readonly){
+    const inputs=panel.locator('input[placeholder="Qtd."]');assert(await inputs.first().isDisabled());
+    await panel.getByRole('button',{name:'Cards',exact:true}).click();
+    assert(await panel.getByRole('checkbox',{name:'Comprar de Fornecedor QA',exact:true}).isDisabled());
+   }else{
+    for(const mode of['Cards','Mapa']){
+     await panel.getByRole('button',{name:mode,exact:true}).click();
+     const check=mode==='Cards'?panel.getByRole('checkbox',{name:'Comprar de Fornecedor QA',exact:true}):panel.locator('input[type="checkbox"]').last();
+     if(mode==='Cards')await panel.locator('.resizable-table-scroll').evaluateAll(els=>els.forEach(el=>{el.scrollLeft=el.scrollWidth}));
+     if(!await check.isChecked())await check.check();
+     const input=panel.getByRole('textbox',{name:/Quantidade comprada de Fornecedor QA/});
+     await input.click();await input.pressSequentially('7');assert.equal(await input.inputValue(),'7','Foco seleciona valor inicial para substituir');
+     await input.fill('');assert(await check.isChecked());assert(await input.isEnabled());
+     assert(await input.evaluate(el=>el===document.activeElement),'Limpar mantem foco');
+     await input.pressSequentially('0,5');assert(await check.isChecked());assert.equal(await input.inputValue(),'0,5');
+     await input.fill('');await panel.getByRole('button',{name:'Gerar pedidos selecionados',exact:true}).click();
+     await page.getByText('Informe uma quantidade maior que zero para cada fornecedor selecionado.',{exact:true}).waitFor();
+     assert.deepEqual(audit.writes,[],'Quantidade vazia nunca fecha pedido');
+     await input.fill('5');await check.uncheck();assert(await input.isDisabled());
+    }
+   }
+   assert.deepEqual(audit.errors,[]);assert.deepEqual(audit.writes,[]);await page.close();
+   console.log('OK comparativo '+width+'px '+(readonly?'leitura: Cards/Mapa ativos, gravacoes bloqueadas.':'edicao: substituir/limpar/decimal/foco sem desmarcar; vazio nao envia.'));
+  }
+ }
+ // Lista real: cancelamento, negativa da API, duplo clique e alvo unico.
+ for(const regular of[false,true]){
+  const page=await browser.newPage();const audit=await install(page);let calls=0,denied=true;
+  await page.route('**/api/solicitacoes/90',async r=>{
+   if(r.request().method()!=='DELETE')return r.fallback();calls++;
+   await new Promise(resolve=>setTimeout(resolve,150));
+   return denied?r.fulfill({status:403,json:{error:'Sem permissao de excluir QA'}}):r.fulfill({status:204});
+  });
+  await page.goto(base+'/solicitacoes'+(regular?'?regularqa':''));
+  await page.getByRole('checkbox').nth(1).check();
+  const del=page.getByRole('button',{name:'Excluir',exact:true});
+  if(regular){assert.equal(await del.count(),0);}
+  else{
+   await del.click();await page.getByRole('dialog').getByRole('button',{name:'Cancelar',exact:true}).click();assert.equal(calls,0);
+   await del.click();await page.getByRole('dialog').getByRole('button',{name:'Excluir',exact:true}).click();
+   await page.getByText('Sem permissao de excluir QA',{exact:true}).waitFor();assert.equal(calls,1);
+   denied=false;await del.click();
+   await page.getByRole('dialog').getByRole('button',{name:'Excluir',exact:true}).evaluate(el=>{el.click();el.click()});
+   await page.getByText('Solicitação SOL-QA90 excluída.',{exact:true}).waitFor();assert.equal(calls,2);
+   assert.equal(await page.getByText('SOL-QA90',{exact:true}).count(),0);
+  }
+  assert.deepEqual(audit.errors,[]);await page.close();console.log('OK exclusao UI '+(regular?'negativa OBRA.':'cancelar/403/duplo clique/alvo unico.'));
+ }
+ {
+  const page=await browser.newPage();await install(page);await page.goto(base+'/solicitacoes');
+  const count=await page.evaluate(async()=>{
+   const access=await import('/src/utils/acessoProduto.js');
+   const user={id:1,perfil:'SUPERADMIN',area:'OBRA',setor:{codigo:'OBRA'},areas_permissoes_configuradas:true,areas_permissoes:[],
+    modulos_habilitados:[{key:'COMPRAS',enabled:false},{key:'FINANCEIRO',enabled:false},{key:'RH_DP',enabled:false}],autorizacao_pagamentos:{enabled:true,can_configure:true}};
+   let count=0;for(const[name,fn]of Object.entries(access))if(/^can[A-Z]/.test(name)&&typeof fn==='function'){
+    if(fn(user)!==true)throw Error(name+' bloqueou superadmin');count++;
+   }
+   const regular={...user,perfil:'USUARIO',modulos_habilitados:[],autorizacao_pagamentos:null};
+   for(const name of['canPreparePagamentos','canApprovePagamentos','canSendPagamentosBanco','canOperateComprasCotacoes'])if(access[name](regular))throw Error(name+' liberou usuario comum');
+   if(access.canAccessAutorizacoesPagamento({...user,autorizacao_pagamentos:{enabled:false}}))throw Error('Modo OFF nao deve ser ativado por bypass');
+   return count;
+  });assert(count>=166);console.log('OK '+count+' predicados centrais frontend e negativas; modo OFF preservado.');await page.close();
  }
  }
  // Comparacao controlada do mesmo formulario e DOM. Nao benchmark de producao.

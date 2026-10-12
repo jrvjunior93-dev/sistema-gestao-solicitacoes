@@ -546,9 +546,10 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
         {!podeGerenciarCotacao && <p className="mb-2 text-xs text-[var(--c-muted)]">
           Para executar ações na cotação, solicite o retorno da solicitação ao setor de Compras.
         </p>}
-        <fieldset className="min-w-0 max-w-full" disabled={!podeGerenciarCotacao}>
-          <GerenciarCotacaoSolicitacao solicitacaoCompraId={dados.solicitacao_compra_id} embedded onAtualizado={carregar} />
-        </fieldset>
+        <div className="min-w-0 max-w-full">
+          <GerenciarCotacaoSolicitacao solicitacaoCompraId={dados.solicitacao_compra_id} embedded
+            somenteLeitura={!podeGerenciarCotacao} onAtualizado={carregar} />
+        </div>
       </div>}
     </BlocoConteudo>
     <BlocoConteudo titulo="Pedidos de compra" contagem={`${dados.pedidos.length} pedido(s)`} recolhivel recolhidoPadrao alternarAoClicar

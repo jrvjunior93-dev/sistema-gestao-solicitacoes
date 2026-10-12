@@ -478,9 +478,9 @@ export default function SolicitacaoDetalhe() {
   // ninguem consome — deixa-lo aberto convidava a criar uma segunda verdade sobre o mesmo contrato.
   const solicitacaoEhContrato = Boolean(contratoDoFluxo);
   const contextoInteracao = solicitacao?.contexto_interacao || null;
-  const podeInteragirSolicitacao = contextoInteracao
+  const podeInteragirSolicitacao = isSuperadmin || (contextoInteracao
     ? contextoInteracao.pode_interagir === true
-    : Boolean(solicitacao?.area_responsavel && solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user));
+    : Boolean(solicitacao?.area_responsavel && solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user)));
   const podeEditarApropriacoesSolicitacaoNormal = podeEditarApropriacoes
     && podeInteragirSolicitacao
     && !isSolicitacaoCompra
@@ -1214,7 +1214,7 @@ export default function SolicitacaoDetalhe() {
   const podeEnviarSetor =
     podeInteragirSolicitacao &&
     !usaFluxoAprovacaoDiretoria &&
-    !isSetorObra &&
+    (isSuperadmin || !isSetorObra) &&
     (
       isSuperadmin ||
       podeEnviarQualquerSetor ||
@@ -1653,7 +1653,7 @@ export default function SolicitacaoDetalhe() {
           podeAcessarModuloFinanceiro={podeAcessarModuloFinanceiro}
           podeOperarAbaFinanceiro={podeOperarAbaFinanceiro}
           podeVisualizarTitulos={isFinanceiro}
-          somenteLeitura={isSetorObra}
+          somenteLeitura={isSetorObra && !isSuperadmin}
           onSolicitacaoAtualizada={() => {
             registrarMutacaoLocal(id);
             return carregar({ silent: true });

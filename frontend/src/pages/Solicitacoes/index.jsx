@@ -42,6 +42,7 @@ import {
 import {
   arquivarSolicitacoesEmMassa,
   desarquivarSolicitacao,
+  deleteSolicitacao,
   enviarSolicitacoesParaSetorEmMassa,
   getSolicitacaoResumoLista,
   getContadoresSolicitacoes,
@@ -207,6 +208,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [usuarioAtribuicaoMassa, setUsuarioAtribuicaoMassa] = useState('');
   const [setorEnvioMassa, setSetorEnvioMassa] = useState('');
   const [processandoMassa, setProcessandoMassa] = useState(false);
+  const exclusaoEmCursoRef = useRef(false);
   useWorkspaceWork(false, processandoMassa || exportando, 'lista:operacao');
   const [modalPrioridadeTitulos, setModalPrioridadeTitulos] = useState(false);
   const [titulosPrioridade, setTitulosPrioridade] = useState([]);
@@ -1131,6 +1133,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   const podeSolicitarPrioridadeFinanceiro = !arquivadas && (isDiretoriaObrasPublicas || isDiretoriaObrasPrivadas);
   const classificacaoPrioridadeDiretoria = isDiretoriaObrasPublicas ? 'PUBLICA' : 'PRIVADA';
   const isSuperadmin = perfilUpper === 'SUPERADMIN';
+  const podeExcluirSolicitacao = isSuperadmin || (perfilUpper.startsWith('ADMIN') && userHasSetorCapability(user, 'eh_setor_geo'));
   const podeEnviarQualquerSetor = Boolean(user?.pode_enviar_qualquer_setor);
 
   // Alvos de uma ação em lote: SEMPRE os itens que a barra de lote contou
@@ -1143,6 +1146,34 @@ export default function Solicitacoes({ arquivadas = false }) {
         .filter((id) => Number.isInteger(id) && id > 0);
     }
     return selecionadasIds.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  async function excluirSelecionada(itensAlvo) {
+    if (!podeExcluirSolicitacao || processandoMassa || exclusaoEmCursoRef.current || loading) return;
+    const ids = idsDosAlvos(itensAlvo);
+    const alvo = ids.length === 1 ? solicitacoesRef.current.find(item => Number(item.id) === ids[0]) : null;
+    if (!alvo) return;
+    const revisao = versaoCargaRef.current;
+    exclusaoEmCursoRef.current = true;
+    try {
+      const { ok } = await confirmar({
+        titulo: 'Excluir solicitação',
+        mensagem: `Excluir ${alvo.codigo || alvo.id} da lista operacional? Os títulos, pagamentos e a auditoria serão preservados.`,
+        rotuloConfirmar: 'Excluir', destrutiva: true
+      });
+      if (!ok || !paginaMontadaRef.current || revisao !== versaoCargaRef.current) return;
+      setProcessandoMassa(true);
+      await deleteSolicitacao(alvo.id);
+      removerSolicitacaoDaLista(alvo.id, { decrementarTotal: true });
+      setSelecionadasIds([]);
+      listaRef.current?.clearSelecao?.();
+      avisar.sucesso(`Solicitação ${alvo.codigo || alvo.id} excluída.`);
+    } catch (error) {
+      avisar.erro(error?.message || 'Erro ao excluir solicitação.');
+    } finally {
+      exclusaoEmCursoRef.current = false;
+      if (paginaMontadaRef.current) setProcessandoMassa(false);
+    }
   }
 
   async function arquivarEmMassa(itensAlvo) {
@@ -1558,6 +1589,7 @@ export default function Solicitacoes({ arquivadas = false }) {
 
   const podeAssumirUnica = useMemo(() => {
     if (!selecionadaUnica) return false;
+    if (isSuperadmin) return true;
     if (isSetorObra) return false;
     if (!isSuperadmin && !solicitacaoEstaNoSetorDoUsuario(selecionadaUnica.area_responsavel, user)) return false;
     const modo = String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase();
@@ -1568,16 +1600,19 @@ export default function Solicitacoes({ arquivadas = false }) {
 
   const podeAtribuirMassa = useMemo(() => {
     if (selecionadasIds.length === 0) return false;
+    if (isSuperadmin) return true;
     if (isSetorObra) return false;
     const modo = String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase();
     if (modo !== 'TODOS_VISIVEIS') return false;
     const isUsuario = user?.perfil === 'USUARIO';
     return isUsuario ? (!!permissaoUsuario?.usuario_pode_atribuir || isSetorFinanceiro) : true;
-  }, [selecionadasIds.length, isSetorObra, permissaoUsuario, user?.perfil, isSetorFinanceiro]);
+  }, [selecionadasIds.length, isSuperadmin, isSetorObra, permissaoUsuario, user?.perfil, isSetorFinanceiro]);
 
   const podeEnviarMassa = useMemo(() => {
-    if (selecionadasIds.length === 0 || isSetorObra) return false;
-    if (isSuperadmin || podeEnviarQualquerSetor) return true;
+    if (selecionadasIds.length === 0) return false;
+    if (isSuperadmin) return true;
+    if (isSetorObra) return false;
+    if (podeEnviarQualquerSetor) return true;
     return selecionadasIds.every(idSelecionado => {
       const solicitacao = solicitacoes.find(item => Number(item.id) === Number(idSelecionado));
       return solicitacao && solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user);
@@ -2061,6 +2096,12 @@ export default function Solicitacoes({ arquivadas = false }) {
         rotulo: (n) => (n === 1 ? 'Exportar' : `Exportar ${n}`),
         desabilitada: () => processandoMassa || exportando || !filtrosDataValidos,
         executar: (itens) => exportarSolicitacoesExcel(itens)
+      },
+      {
+        id: 'excluir', rotulo: () => 'Excluir', tom: 'danger',
+        visivel: (itens) => podeExcluirSolicitacao && itens.length === 1,
+        desabilitada: () => processandoMassa || loading,
+        executar: excluirSelecionada
       }
     ]
     : [
@@ -2089,6 +2130,12 @@ export default function Solicitacoes({ arquivadas = false }) {
         rotulo: (n) => (n === 1 ? 'Arquivar' : `Arquivar ${n}`),
         desabilitada: () => processandoMassa,
         executar: (itens) => arquivarEmMassa(itens)
+      },
+      {
+        id: 'excluir', rotulo: () => 'Excluir', tom: 'danger',
+        visivel: (itens) => podeExcluirSolicitacao && itens.length === 1,
+        desabilitada: () => processandoMassa || loading,
+        executar: excluirSelecionada
       },
       {
         id: 'atribuir',

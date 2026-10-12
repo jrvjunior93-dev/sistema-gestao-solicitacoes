@@ -891,6 +891,7 @@ export function canAccessFinanceiroDda(user) {
 }
 
 export function canPreparePagamentos(user) {
+  if (isSuperadmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
     return hasPermissao(user, 'financeiro.pagamentos.preparar')
       && !hasPermissao(user, 'financeiro.pagamentos.aprovar');
@@ -902,6 +903,7 @@ export function canPreparePagamentos(user) {
 }
 
 export function canApprovePagamentos(user) {
+  if (isSuperadmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) return hasPermissao(user, 'financeiro.pagamentos.aprovar');
   return userHasPaymentApprovalDirectorate(user);
 }
@@ -913,6 +915,7 @@ export function canRejectPagamentos(user) {
 }
 
 export function canSendPagamentosBanco(user) {
+  if (isSuperadmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
     return hasPermissao(user, 'financeiro.pagamentos.enviar_banco')
       && !hasPermissao(user, 'financeiro.pagamentos.aprovar');

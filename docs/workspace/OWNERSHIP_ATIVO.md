@@ -1,5 +1,27 @@
 # Ownership Ativo
 
+## Correcoes superadmin e comparativo - 2026-10-12
+
+- Sessao codex-superadmin-comparativo-20261012, sem delegacao.
+- Implementacao/QA local concluida; reserva liberada. Handoff:
+  docs/handoffs/2026-10-12-superadmin-comparativo-exclusao.md.
+- Publicacao autorizada pelo usuario na refactor/frontend; reserva
+  documental para revalidacao/commit/push desta etapa. Sem main ou deploy EC2.
+- Revalidacao de publicacao aprovada; pacote proprio separado, reserva
+  encerrada. Auditoria financeira alheia fora do stage/commit.
+- Reserva: GerenciarCotacaoSolicitacao.jsx, CompraEtapas.jsx,
+  SolicitacaoDetalhe/index.jsx, Solicitacoes/index.jsx, SolicitacaoController.js;
+  testes novos isolados frontend/backend, README Compras/Solicitacoes e handoff.
+- Reserva adicional: acessoProduto.js e authorizationService.js, apenas
+  bypass de SUPERADMIN em preparar/aprovar/enviar pagamentos; nao muda
+  aprovador nominal, MFA/passkey, modo OFF ou segregacao dos demais perfis.
+- Escopo: leitura Cards/Mapa, digitacao de quantidade sem desmarcar,
+  bypass administrativo de setor e exclusao logica auditada acessivel.
+  Mapear regras centrais de autorizacao sem relaxar ACL dos demais usuarios,
+  integridade financeira, autenticacao/MFA ou endpoints publicos por token.
+- Sem banco real, exclusao real, migration, main ou execucao na EC2.
+  Auditoria financeira alheia preservada.
+
 ## Navegacao E3a Compras - 2026-10-12
 
 - Publicacao autorizada pelo usuario na refactor/frontend. Reserva

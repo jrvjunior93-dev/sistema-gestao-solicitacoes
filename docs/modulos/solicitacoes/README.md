@@ -344,4 +344,28 @@ Visibilidade combina perfil, setores, obra, autoria, atribuicao, historico e con
 
 ## Mudanca segura
 
+### Excecao funcional e exclusao (12/10/2026)
+
+SUPERADMIN efetivo pode interagir fora de seu setor principal, inclusive
+com setor OBRA. Acompanhamento dos demais perfis continua somente leitura;
+vinculos secundarios nao concedem escrita. Testar usuario na sessao de
+impersonacao usa suas proprias permissoes, nao as do superadmin original.
+
+Na lista ativa/arquivada, selecionar exatamente uma solicitacao mostra
+Excluir para SUPERADMIN ou ADMIN GEO, conforme a regra existente da API.
+Confirmacao fixa o alvo, impede cliques simultaneos e aborta se o recorte
+mudar. DELETE faz exclusao logica auditada em transacao com lock; repetir
+o pedido nao duplica auditoria. Titulos, movimentos e historico financeiro
+permanecem preservados, sem cascade. Nenhuma exclusao real foi executada
+na validacao: `node backend/scripts/validarSuperadminInteracaoExclusao.js`.
+
+A revisao central validou 173 predicados can* backend e 166 frontend.
+Preparar/aprovar/enviar pagamentos agora incluem a excecao SUPERADMIN;
+segregacao dos demais perfis nao foi ampliada. Nao confundir permissao com
+autenticacao, MFA/passkey, autorizador nominal, integracao em OFF, recurso
+inexistente ou integridade financeira: esses requisitos permanecem.
+Essa cobertura nao representa homologacao de todos os fluxos/endpoints
+do sistema; bloqueios especificos de dominio devem ser revisados antes
+de qualquer flexibilizacao adicional.
+
 Alteracoes em status, area, tipo, obra, parceiro ou apropriacao exigem testes do catalogo comum de Obras, catalogo explicito de Centro de Custo, Cadastro de Obra sem origem, criacao inicial em GEO/PENDENTE, rejeicao de payload com tipo nao permitido, compatibilidade de registros antigos de diretoria, detalhe, listagem, filtros, exportacao, prioridades, automacao, compras, contratos, financeiro, notificacoes e usuarios multissetor.

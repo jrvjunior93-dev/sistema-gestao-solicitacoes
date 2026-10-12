@@ -892,7 +892,8 @@ async function avaliarContextoInteracaoSolicitacao(req, solicitacao, acessoExist
   if (!acesso.allowed) return acesso;
 
   // Qualquer vinculo adicional serve apenas para VISUALIZAR. Para escrever, anexar, medir ou
-  // pedir aditivo vale exclusivamente o SETOR PRINCIPAL do usuario. Antes, `obterTokensSetorUsuario`
+  // pedir aditivo vale o SETOR PRINCIPAL do usuario, com excecao funcional de SUPERADMIN.
+  // Antes, `obterTokensSetorUsuario`
   // acrescentava `usuario_setores`; assim, Joao (setor principal OBRA) conseguia comentar uma
   // solicitacao em GEO apenas por possuir um vinculo secundario historico com GEO. Esse mesmo
   // falso positivo escondia o botao Solicitar retorno.
@@ -902,7 +903,10 @@ async function avaliarContextoInteracaoSolicitacao(req, solicitacao, acessoExist
 
   return {
     ...acesso,
-    estaNoSetorUsuario: setorPertenceAoUsuario(tokensOperacionais, solicitacao.area_responsavel),
+    // O bypass e de autorizacao funcional; nao altera o setor persistido,
+    // a sessao efetiva ou as validacoes de integridade nos services.
+    estaNoSetorUsuario: String(req.user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN'
+      || setorPertenceAoUsuario(tokensOperacionais, solicitacao.area_responsavel),
     setorUsuario: acesso.areaUsuario || null,
     tokensOperacionais
   };
@@ -7041,14 +7045,22 @@ module.exports = {
         });
       }
 
-      const titulosVinculados = await TituloFinanceiro.count({
-        where: {
-          solicitacao_id: id
-        }
-      });
-
       const transaction = await Solicitacao.sequelize.transaction();
       try {
+        const registroBloqueado = await Solicitacao.findByPk(id, {
+          transaction, lock: transaction.LOCK.UPDATE
+        });
+        if (!registroBloqueado) {
+          await transaction.rollback();
+          return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+        }
+        if (registroBloqueado.cancelada === true) {
+          await transaction.commit();
+          return res.sendStatus(204);
+        }
+        const titulosVinculados = await TituloFinanceiro.count({
+          where: { solicitacao_id: id }, transaction
+        });
         await LogExclusao.create({
           entidade: 'SOLICITACAO',
           entidade_id: Number(id),
@@ -7058,17 +7070,17 @@ module.exports = {
           setor: req.user.area || null,
           motivo: isSuperadmin ? 'Exclusao realizada por SUPERADMIN' : 'Exclusao realizada por ADMIN GEO',
           payload_json: JSON.stringify({
-            codigo: solicitacao.codigo,
-            obra_id: solicitacao.obra_id,
-            area_responsavel: solicitacao.area_responsavel,
-            valor: solicitacao.valor,
-            status_global: solicitacao.status_global,
+            codigo: registroBloqueado.codigo,
+            obra_id: registroBloqueado.obra_id,
+            area_responsavel: registroBloqueado.area_responsavel,
+            valor: registroBloqueado.valor,
+            status_global: registroBloqueado.status_global,
             titulos_vinculados: titulosVinculados,
             exclusao_logica: true
           })
         }, { transaction });
 
-        await solicitacao.update({ cancelada: true }, { transaction });
+        await registroBloqueado.update({ cancelada: true }, { transaction });
         await transaction.commit();
       } catch (error) {
         await transaction.rollback();

@@ -2353,8 +2353,7 @@ function SecaoComparativo({
       );
     }
 
-    const quantidadeAlocada = getQuantidadeAlocada(resposta.resposta_item_id);
-    const isVencedor = quantidadeAlocada > 0;
+    const isVencedor = Boolean(vencedoresSelecionados[String(resposta.resposta_item_id)]);
     const saldoDisponivel = getSaldoDisponivelItem(item);
     const saldoDisponivelFornecedor = getSaldoDisponivelFornecedor(resposta);
     const podeSelecionar = podeEncerrar && saldoDisponivelFornecedor > 0 && resposta.resposta_item_id && resposta.disponivel && resposta.preco;
@@ -2436,6 +2435,8 @@ function SecaoComparativo({
             placeholder="Qtd."
             aria-label={`Quantidade comprada de ${resposta.fornecedor_nome || fornecedor.nome || 'fornecedor'} para ${item.nome}`}
             disabled={!podeEncerrar || !isVencedor}
+            inputMode="decimal"
+            onFocus={(event) => event.target.select()}
             onChange={(event) => onVencedorChange({
               item,
               resposta,
@@ -2478,7 +2479,7 @@ function SecaoComparativo({
         cor="var(--sem-info)"
         contagem={`${comparativo.itens.length} item(ns)`}
         descricao="Compare respostas, selecione vencedores e encerre a cotação quando estiver pronta."
-        acoes={(
+        controles={(
           <span
             className="inline-flex rounded-lg border p-1 text-xs"
             style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)' }}
@@ -2557,7 +2558,8 @@ function SecaoComparativo({
               esquerda (Item e Qtd.), e a `TabelaPadrao` gruda apenas a
               primeira. Aqui a coluna de quantidade é o que dá sentido a cada
               número lido nas colunas de fornecedor; perdê-la na rolagem
-              horizontal é perder a referência da linha.
+              horizontal é perder a referência da linha. Em telas menores
+              que md, as duas colunas rolam: fixar 370px cobriria os controles.
 
               O `.compras-responsive-table` rola na horizontal com
               `overflow-x: auto` — pela R18 esse é o arranjo CORRETO: é o
@@ -2568,8 +2570,8 @@ function SecaoComparativo({
                 <table className="table min-w-[1420px] text-xs">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-celula-cabecalho min-w-[260px]" style={{ background: 'var(--ui-surface-2)' }}>Item</th>
-                      <th className="sticky left-[260px] z-celula-cabecalho min-w-[110px] text-right" style={{ background: 'var(--ui-surface-2)' }}>Qtd.</th>
+                      <th className="md:sticky left-0 z-celula-cabecalho min-w-[260px]" style={{ background: 'var(--ui-surface-2)' }}>Item</th>
+                      <th className="md:sticky left-[260px] z-celula-cabecalho min-w-[110px] text-right" style={{ background: 'var(--ui-surface-2)' }}>Qtd.</th>
                       {fornecedoresMapaVisiveis.map((fornecedor) => (
                         <th
                           key={fornecedor.fornecedor_id}
@@ -2611,7 +2613,7 @@ function SecaoComparativo({
                       const excedeu = totalAlocadoItem > saldoDisponivel + 0.0001;
                       return (
                         <tr key={buildItemKey(item)}>
-                          <td className="sticky left-0 z-celula min-w-[260px] px-3 py-2 align-top" style={{ background: 'var(--c-surface)' }}>
+                          <td className="md:sticky left-0 z-celula min-w-[260px] px-3 py-2 align-top" style={{ background: 'var(--c-surface)' }}>
                             <div className="font-semibold" style={{ color: 'var(--c-text)' }}>{item.nome}</div>
                             <div className="text-xs" style={{ color: 'var(--c-muted)' }}>
                               {item.item_tipo === 'MANUAL' ? 'Manual' : 'Cadastrado'}
@@ -2626,7 +2628,7 @@ function SecaoComparativo({
                               </div>
                             ) : null}
                           </td>
-                          <td className="sticky left-[260px] z-celula min-w-[110px] px-3 py-2 text-right align-top font-semibold" style={{ background: 'var(--c-surface)' }}>
+                          <td className="md:sticky left-[260px] z-celula min-w-[110px] px-3 py-2 text-right align-top font-semibold" style={{ background: 'var(--c-surface)' }}>
                             {formatNumeroCompra(quantidadeItem)} {item.unidade || ''}
                           </td>
                           {fornecedoresMapaVisiveis.map((fornecedor) => renderCelulaFornecedorMapa(item, fornecedor))}
@@ -2752,12 +2754,11 @@ function SecaoComparativo({
                   vazio="Nenhuma resposta para este item."
                   // Linha vencedora (quantidade alocada > 0) fica realcada; o
                   // aviso de rodada acima do saldo vira tarja de atencao.
-                  linhaSelecionada={(resp) => getQuantidadeAlocada(resp.resposta_item_id) > 0}
+                  linhaSelecionada={(resp) => Boolean(vencedoresSelecionados[String(resp.resposta_item_id)])}
                   urgencia={() => (getTotalAlocadoItem(item) > getSaldoDisponivelItem(item) + 0.0001 ? 'warning' : null)}
                   larguraAcoes={260}
                   acoesLinha={(resp) => {
-                    const quantidadeAlocada = getQuantidadeAlocada(resp.resposta_item_id);
-                    const isVencedor = quantidadeAlocada > 0;
+                    const isVencedor = Boolean(vencedoresSelecionados[String(resp.resposta_item_id)]);
                     const excedeu = getTotalAlocadoItem(item) > getSaldoDisponivelItem(item) + 0.0001;
                     if (!resp.resposta_item_id) return '-';
                     return (
@@ -2782,6 +2783,8 @@ function SecaoComparativo({
                           placeholder="Qtd."
                           aria-label={`Quantidade comprada de ${resp.fornecedor_nome}`}
                           disabled={!podeEncerrar || !isVencedor}
+                          inputMode="decimal"
+                          onFocus={(event) => event.target.select()}
                           onChange={(event) => onVencedorChange({
                             item,
                             resposta: resp,
@@ -2840,7 +2843,7 @@ function SecaoComparativo({
 
 // Componente principal
 
-export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false, onAtualizado = null }) {
+export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false, somenteLeitura = false, onAtualizado = null }) {
   const { id: routeId } = useParams();
   const id = solicitacaoCompraId || routeId;
   const Container = embedded ? 'div' : Pagina;
@@ -2889,12 +2892,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const encerramentoSemPedidoIdempotencyRef = useRef(null);
   const fornecedorRequestRef = useRef({ sequencia: 0, controller: null });
 
-  const podeComprar = canOperateComprasCotacoes(user);
-  const podeFecharParcialCotacao = canFecharParcialComprasCotacoes(user);
-  const podeEncerrarCotacao = canEncerrarComprasCotacoes(user);
-  const podeEncerrarSemPedidoCotacao = canEncerrarSemPedidoComprasCotacoes(user);
-  const podeReabrirCotacaoFornecedor = canReabrirComprasCotacoes(user);
-  const podeCancelarCotacao = canCancelarComprasCotacoes(user);
+  const podeComprar = !somenteLeitura && canOperateComprasCotacoes(user);
+  const podeFecharParcialCotacao = !somenteLeitura && canFecharParcialComprasCotacoes(user);
+  const podeEncerrarCotacao = !somenteLeitura && canEncerrarComprasCotacoes(user);
+  const podeEncerrarSemPedidoCotacao = !somenteLeitura && canEncerrarSemPedidoComprasCotacoes(user);
+  const podeReabrirCotacaoFornecedor = !somenteLeitura && canReabrirComprasCotacoes(user);
+  const podeCancelarCotacao = !somenteLeitura && canCancelarComprasCotacoes(user);
   const resumoEncerramentoSemPedido = useMemo(() => {
     const itens = (comparativo?.itens || [])
       .map((item) => ({
@@ -3527,7 +3530,9 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
 
     setVencedoresSelecionados((prev) => {
       const next = { ...prev };
-      if (!quantidadeNumero || quantidadeNumero <= 0) {
+      // Desmarcar e uma intencao explicita do checkbox (numero zero).
+      // Esvaziar/zerar durante a digitacao conserva selecao e foco.
+      if (typeof quantidade !== 'string' && (!quantidadeNumero || quantidadeNumero <= 0)) {
         delete next[respostaId];
         return next;
       }
@@ -3665,6 +3670,10 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
     setEncerrando(true);
     try {
       const itens = comparativo?.itens || [];
+      if (Object.values(vencedoresSelecionados).some((entry) => !(parseNumeroCompra(entry?.quantidade_alocada) > 0))) {
+        avisar.alerta('Informe uma quantidade maior que zero para cada fornecedor selecionado.');
+        return;
+      }
       const alocacoes = Object.values(vencedoresSelecionados)
         .filter((entry) => Number(entry?.resposta_item_id) > 0 && parseNumeroCompra(entry?.quantidade_alocada) > 0)
         .map((entry) => ({
