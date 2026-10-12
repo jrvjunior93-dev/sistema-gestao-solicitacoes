@@ -9,7 +9,7 @@ import DateInputBR from '../DateInputBR';
 import CadastroRapidoFavorecidoButton from '../solicitacoes/CadastroRapidoFavorecidoButton';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import PendingAttachmentsList from '../attachments/PendingAttachmentsList';
-import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos } from '../solicitacoes/PagamentosFavorecidos';
+import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos, somarValoresFavorecidos } from '../solicitacoes/PagamentosFavorecidos';
 import { formatCurrencyInput } from '../../utils/formatters';
 
 /**
@@ -78,6 +78,8 @@ export function projetarValoresRedistribuidos(parcelas, selecao) {
 }
 
 export default function BlocoMedicaoContrato({
+  semCard = false,
+  campoCredor = null,
   contratoId,
   tipoSolicitacaoId,
   tipoSubId,
@@ -243,6 +245,18 @@ export default function BlocoMedicaoContrato({
 
   function alterarDivisao(linhas) {
     setDivisao(linhas); setConfirmado(false);
+    setSelecao(atual => {
+      let mudou = false;
+      const proxima = { ...atual };
+      for (const item of itens) {
+        const valor = somarValoresFavorecidos(linhas, item.contrato_parcela_id);
+        if (Number(atual[item.contrato_parcela_id]?.valor) !== valor) {
+          proxima[item.contrato_parcela_id] = { ...atual[item.contrato_parcela_id], valor };
+          mudou = true;
+        }
+      }
+      return mudou ? proxima : atual;
+    });
     const primeiro = linhas[0];
     setUsarCredor(false); setFavorecido(primeiro.parceiro); setFormaPagamentoId(primeiro.forma_pagamento_id);
     setChavePix(primeiro.favorecido_chave_pix); setContato(primeiro.dados_pagamento);
@@ -310,7 +324,7 @@ export default function BlocoMedicaoContrato({
   if (!contratoId) return null;
 
   return (
-    <div className="card mt-3 min-w-0 space-y-4 overflow-hidden">
+    <div className={semCard ? 'min-w-0 space-y-4 overflow-hidden' : 'card mt-3 min-w-0 space-y-4 overflow-hidden'}>
       <div className="text-sm font-bold">Medição — títulos do contrato</div>
 
       {periodo && onPeriodoChange && (
@@ -388,7 +402,7 @@ export default function BlocoMedicaoContrato({
                   checked={Boolean(selecao[p.id]?.marcada)}
                   // Quitado e parcialmente pago ficam fechados: o saldo ja foi
                   // redistribuido no pagamento (PI-7).
-                  disabled={!p.editavel || p.medivel === false || (!selecao[p.id]?.marcada && !liberadaParaMarcar(p.id))}
+                  disabled={Boolean(divisao) || !p.editavel || p.medivel === false || (!selecao[p.id]?.marcada && !liberadaParaMarcar(p.id))}
                   title={p.medivel === false
                     ? `Já medida${p.medicao ? ` na medição ${p.medicao.numero}` : ''}: para corrigir o valor, altere aquela medição`
                     : (!p.editavel
@@ -422,6 +436,7 @@ export default function BlocoMedicaoContrato({
                     <input
                       className="input input-sm w-full min-w-0" type="number" step="0.01"
                       value={sel.valor ?? valorProjetado}
+                      readOnly={Boolean(divisao)}
                       disabled={!p.editavel || p.medivel === false || !sel.marcada}
                       onChange={(e) => alterar(p.id, 'valor', e.target.value)}
                     />
@@ -500,6 +515,7 @@ export default function BlocoMedicaoContrato({
         <div className="text-xs" style={{ fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--c-muted)' }}>
           Pagamento desta medição
         </div>
+        {campoCredor}
 
         {!divisao && <>
         <label className="grid min-w-0 max-w-md gap-1 text-sm">

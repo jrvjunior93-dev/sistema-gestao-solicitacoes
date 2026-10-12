@@ -13,6 +13,13 @@ export const novaParteFavorecido = (dados = {}) => ({
   chave: `favorecido-${++sequencia}`, parceiro: null, valor: '', forma_pagamento_id: '',
   favorecido_chave_pix: '', dados_pagamento: '', boletos: [], ...dados
 });
+export function somarValoresFavorecidos(linhas, parcelaId = null) {
+  return linhas.reduce((total, linha) => {
+    if (parcelaId !== null && Number(linha.contrato_parcela_id) !== Number(parcelaId)) return total;
+    const centavos = Math.round(parseCurrencyInput(linha.valor) * 100);
+    return total + (Number.isSafeInteger(centavos) && centavos >= 0 ? centavos : 0);
+  }, 0) / 100;
+}
 export function payloadFavorecidos(linhas) {
   return linhas.map(l => ({
     ...(l.contrato_parcela_id ? { contrato_parcela_id: Number(l.contrato_parcela_id) } : {}),

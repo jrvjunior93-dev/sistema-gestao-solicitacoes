@@ -8,6 +8,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = await createServer({ root, configFile: false, logLevel: 'error', server: { middlewareMode: true } });
 
 try {
+  const { somarValoresFavorecidos } = await server.ssrLoadModule('/src/components/solicitacoes/PagamentosFavorecidos.jsx');
+  const valoresSomados = [{ valor: '1,01', contrato_parcela_id: 1 }, { valor: '2,02', contrato_parcela_id: 1 }, { valor: '30,00', contrato_parcela_id: 2 }, { valor: '' }];
+  assert.equal(somarValoresFavorecidos(valoresSomados), 33.03);
+  assert.equal(somarValoresFavorecidos(valoresSomados, 1), 3.03);
+  assert.equal(somarValoresFavorecidos(valoresSomados, 2), 30);
+  assert.equal(somarValoresFavorecidos(valoresSomados, 3), 0);
   const { buildDefaultForm, prepararPagamentoParaForma, calcularValorPagamento } = await server.ssrLoadModule('/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx');
   const solicitacao = { valor: 1234.56, forma_pagamento_id: 1, data_vencimento: '2026-09-30' };
   const pagamentoInicial = buildDefaultForm(solicitacao).pagamentos[0];

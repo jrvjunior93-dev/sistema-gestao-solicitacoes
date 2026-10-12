@@ -44,7 +44,7 @@ import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import OverlayModal from '../components/ui/OverlayModal';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
 import CadastroRapidoFavorecidoButton from '../components/solicitacoes/CadastroRapidoFavorecidoButton';
-import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos } from '../components/solicitacoes/PagamentosFavorecidos';
+import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos, somarValoresFavorecidos } from '../components/solicitacoes/PagamentosFavorecidos';
 import DadosEmpresaParceiro from '../components/parceiros/DadosEmpresaParceiro';
 import { getDadosEmpresaParceiroError } from '../utils/dadosEmpresaParceiro';
 import RateioApropriacoesContrato, { numeroDoCampo } from '../components/contratos/RateioApropriacoesContrato';
@@ -1380,10 +1380,12 @@ export default function NovaSolicitacao() {
 
   function alterarPagamentosFavorecidos(linhas) {
     setPagamentosFavorecidos(linhas);
+    const total = somarValoresFavorecidos(linhas);
+    setValorTexto(formatCurrencyInput(total));
     const primeiro = linhas[0];
     setUsarCredorComoFavorecido(false);
     setFavorecidoSelecionado(primeiro.parceiro);
-    setForm(prev => ({ ...prev, favorecido_id: primeiro.parceiro?.id ? String(primeiro.parceiro.id) : '',
+    setForm(prev => ({ ...prev, valor: total, favorecido_id: primeiro.parceiro?.id ? String(primeiro.parceiro.id) : '',
       forma_pagamento_id: primeiro.forma_pagamento_id, favorecido_chave_pix: primeiro.favorecido_chave_pix,
       dados_pagamento: primeiro.dados_pagamento }));
     setBoletoArquivos(linhas.flatMap(l => l.boletos || []));
@@ -3072,16 +3074,13 @@ export default function NovaSolicitacao() {
 
       <form onSubmit={handleSubmit} className="nova-solicitacao-form-padrao space-y-4">
         {/*
-          R9 (revista em 04/09) — FORMULÁRIO INLINE. Esta tela EXISTE para
-          abrir a solicitação: tirando o formulário não sobra tela nenhuma.
-          Modal aqui seria atrito puro. Os blocos abaixo são os MESMOS grupos
-          que a tela já tinha, na MESMA ordem — cada um ganhou superfície
-          própria (B5) em vez de viver dentro de um card único; nada foi
-          reagrupado, nada nasce recolhido.
+          Formulário inline: identificação e vínculo primeiro; valor e pagamento
+          depois. Os campos preservam os mesmos handlers e regras por tipo.
         */}
 
         <BlocoConteudo
           titulo="Dados da solicitação"
+          data-testid="nova-solicitacao-dados"
           variante="primario"
           cor="var(--sem-info)"
           descricao={usaFluxoCadastroObra
@@ -3208,23 +3207,7 @@ export default function NovaSolicitacao() {
           </FormSecao>
           )}
 
-          {/* Campos da recarga de cartão: componente próprio, largura inteira. */}
-          <RecargasCartoesFields
-            ativo={usaFluxoRecargaCartao}
-            obraId={form.obra_id}
-            value={recargasCartoes}
-            totalSolicitado={form.valor}
-            onChange={atualizarRecargasCartoes}
-            onContextChange={setRecargaCartaoContexto}
-            onSolicitacaoAnteriorEnviada={limparCamposNovaRecargaAposReenvio}
-          />
-
-          {/* Medicao legada usa os campos configurados de pagamento. Contrato e credor
-              ja aparecem no bloco Contrato; o fluxo novo tem pagamento proprio. */}
-          {(!tipoEhDeMedicao || exibirFormaPagamento || exibirFavorecidoPagamento)
-            && (exibirCamposContrato || exibirCampoSubtipo || exibirCampoCredor
-              || exibirFormaPagamento || exibirFavorecidoPagamento) && (
-            <FormSecao legenda={tipoEhDeMedicao ? 'Pagamento da medição' : 'Vínculo e pagamento'} colunas={2}>
+          {!tipoEhDeMedicao && (exibirCampoSubtipo || exibirCamposContrato) && <FormSecao legenda="Vínculo" colunas={2}>
               {!tipoEhDeMedicao && exibirCamposContrato && (
                 <CampoForm
                   label={rotuloContratoVinculado}
@@ -3265,9 +3248,6 @@ export default function NovaSolicitacao() {
                   )}
                 </CampoForm>
               )}
-
-              {/* Ordem pedida pelo cliente (19/08): Subtipo e Credor lado a lado; a Apropriacao
-                  desce para a faixa inteira, porque agora ela rateia o contrato entre varias. */}
               {!tipoEhDeMedicao && exibirCampoSubtipo && (
                 <CampoForm
                   label="Subtipo"
@@ -3290,210 +3270,8 @@ export default function NovaSolicitacao() {
                   </select>
                 </CampoForm>
               )}
-
-              {!tipoEhDeMedicao && exibirCampoCredor && renderCampoCredor()}
-
-              {/* Padrao dos fluxos de pagamento: primeiro a forma; somente depois aparecem os dados
-                  que ela realmente exige. Assim boleto nunca pede PIX e PIX nunca pede boleto. */}
-              {exibirFormaPagamento && !pagamentosFavorecidos && (
-                <CampoForm
-                  label="Forma de pagamento"
-                  obrigatorio={formaPagamentoObrigatoria}
-                  erro={errosCampo.forma_pagamento_id || erroFormasPagamento || undefined}
-                  hint={!erroFormasPagamento && formasPagamentoDisponiveis.length === 0
-                    ? 'Nenhuma forma de pagamento compatível está ativa e liberada.'
-                    : undefined}
-                >
-                  <select
-                    className="input input-sm"
-                    name="forma_pagamento_id"
-                    value={form.forma_pagamento_id}
-                    required={formaPagamentoObrigatoria}
-                    onChange={(event) => {
-                      const formaId = event.target.value;
-                      const forma = formasPagamentoDisponiveis
-                        .find((item) => String(item.id) === String(formaId)) || null;
-                      limparErroCampo('forma_pagamento_id');
-                      setForm((prev) => ({
-                        ...prev,
-                        forma_pagamento_id: formaId,
-                        favorecido_chave_pix: formaPagamentoEhPix(forma)
-                          ? chavePixPreferencial(favorecidoSelecionado)
-                          : '',
-                        dados_pagamento: forma && !formaPagamentoEhPix(forma) && !formaPagamentoEhBoleto(forma)
-                          ? prev.dados_pagamento
-                          : ''
-                      }));
-                    }}
-                  >
-                    <option value="">Selecione</option>
-                    {formasPagamentoDisponiveis.map((forma) => (
-                      <option key={forma.id} value={forma.id}>{forma.nome}</option>
-                    ))}
-                  </select>
-                </CampoForm>
-              )}
-
-              {exibirFavorecidoPagamento && exibirCampoCredor && !pagamentosFavorecidos && (
-                <label className="form-campo--linha flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={usarCredorComoFavorecido}
-                    disabled={!parceiroSelecionado}
-                    onChange={(event) => {
-                      const marcado = event.target.checked;
-                      setUsarCredorComoFavorecido(marcado);
-                      limparErroCampo('favorecido');
-                      if (marcado) {
-                        setFavorecidoSelecionado(parceiroSelecionado);
-                        setForm((prev) => ({
-                          ...prev,
-                          favorecido_id: parceiroSelecionado?.id ? String(parceiroSelecionado.id) : '',
-                          favorecido_chave_pix: pagamentoViaPix ? chavePixPreferencial(parceiroSelecionado) : ''
-                        }));
-                      } else {
-                        setFavorecidoSelecionado(null);
-                        setForm((prev) => ({ ...prev, favorecido_id: '', favorecido_chave_pix: '' }));
-                      }
-                    }}
-                  />
-                  <span>Usar o credor como favorecido do pagamento</span>
-                </label>
-              )}
-
-              {exibirFavorecidoPagamento && !usarCredorComoFavorecido && !pagamentosFavorecidos && (
-                /* O ParceiroBuscaRemota traz o próprio rótulo e o próprio
-                   input; envolvê-lo num CampoForm criaria um <label> dentro
-                   de outro. Fica a casca `.form-group` do sistema, com a
-                   mesma linha de erro (.form-error) dos demais campos. */
-                <div className="form-group">
-                  <ParceiroBuscaRemota
-                    label="Favorecido do pagamento"
-                    selecionado={favorecidoSelecionado}
-                    obrigatorio={favorecidoObrigatorio}
-                    placeholder="Buscar por nome, telefone, CPF/CNPJ ou PIX"
-                    acaoFinal={(
-                      <CadastroRapidoFavorecidoButton
-                        tipoSolicitacaoId={form.tipo_solicitacao_id}
-                        tipoSubId={form.tipo_sub_id}
-                        areaResponsavel={form.area_responsavel}
-                        obraId={form.obra_id}
-                        onCadastrado={(parceiro) => {
-                          limparErroCampo('favorecido');
-                          setFavorecidoSelecionado(parceiro);
-                          setForm((prev) => ({
-                            ...prev,
-                            favorecido_id: String(parceiro.id),
-                            favorecido_chave_pix: pagamentoViaPix
-                              ? (parceiro.chave_pix_selecionada || chavePixPreferencial(parceiro))
-                              : ''
-                          }));
-                        }}
-                      />
-                    )}
-                    onSelecionar={(parceiro) => {
-                      limparErroCampo('favorecido');
-                      setFavorecidoSelecionado(parceiro);
-                      setForm((prev) => ({
-                        ...prev,
-                        favorecido_id: parceiro ? String(parceiro.id) : '',
-                        favorecido_chave_pix: pagamentoViaPix ? chavePixPreferencial(parceiro) : ''
-                      }));
-                    }}
-                  />
-                  {errosCampo.favorecido ? <span className="form-error">{errosCampo.favorecido}</span> : null}
-                </div>
-              )}
-
-              {exibirFormaPagamento && pagamentoViaPix && !pagamentosFavorecidos && (
-                <CampoForm
-                  label="Chave PIX do favorecido"
-                  obrigatorio
-                  erro={errosCampo.favorecido_chave_pix}
-                  hint="Sugerida pelas chaves 1, 2 e 3 do cadastro, nesta ordem. O valor pode ser alterado."
-                >
-                  <input
-                    className="input input-sm"
-                    name="favorecido_chave_pix"
-                    value={form.favorecido_chave_pix}
-                    required
-                    onChange={handleChange}
-                    placeholder="Informe ou altere a chave PIX"
-                  />
-                </CampoForm>
-              )}
-
-              {exibirFormaPagamento && pagamentoViaOutraForma && !pagamentosFavorecidos && (
-                <CampoForm
-                  label="Dados para pagamento"
-                  obrigatorio
-                  linha
-                  erro={errosCampo.dados_pagamento}
-                  hint="Informe os dados necessários para o Financeiro realizar o pagamento por esta forma."
-                >
-                  <textarea
-                    className="input w-full"
-                    name="dados_pagamento"
-                    value={form.dados_pagamento}
-                    required
-                    onChange={(event) => {
-                      limparErroCampo('dados_pagamento');
-                      handleChange(event);
-                    }}
-                    placeholder="Ex.: banco, agência, conta, instruções ou referência do pagamento"
-                  />
-                </CampoForm>
-              )}
-
-              {/* Campo de ARQUIVO não usa `CampoForm`: o gatilho do seletor já é
-                  um <label>, e label dentro de label é HTML inválido (o clique
-                  dispara duas vezes). Mesmas classes `.form-*` do sistema —
-                  rótulo, obrigatoriedade e linha de erro idênticos. */}
-              {exibirFormaPagamento && pagamentoViaBoleto && !pagamentosFavorecidos && (
-                <div className="form-group">
-                  <span className="form-label form-label--required">Boletos</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">
-                      <HiPaperClip className="h-4 w-4" />
-                      <span>Selecionar boletos</span>
-                      <input
-                        ref={boletoRef}
-                        type="file"
-                        multiple
-                        aria-label="Anexar boletos"
-                        className="hidden"
-                        accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                        onChange={(event) => {
-                          selecionarArquivoBoleto(event.target.files);
-                          event.target.value = '';
-                        }}
-                      />
-                    </label>
-                    {boletoArquivos.length === 0 && <span className="text-xs text-[var(--c-muted)]">Nenhum boleto selecionado</span>}
-                  </div>
-                  <PendingAttachmentsList items={boletoArquivos} onRemove={removerArquivoBoleto} />
-                  {errosCampo.boleto ? <span className="form-error">{errosCampo.boleto}</span> : null}
-                </div>
-              )}
-              {exibirFormaPagamento && !usaFluxoRecargaCartao && !pagamentosFavorecidos && <div className="form-campo--linha">
-                <button type="button" className="btn btn-outline btn-sm" aria-label="Adicionar novo favorecido" onClick={iniciarDivisaoFavorecidos}>+ Favorecido</button>
-              </div>}
-              {exibirFormaPagamento && pagamentosFavorecidos && <div className="form-campo--linha">
-                <PagamentosFavorecidos linhas={pagamentosFavorecidos} onChange={alterarPagamentosFavorecidos} formas={formasPagamentoDisponiveis}
-                  cadastro={{ tipoSolicitacaoId: form.tipo_solicitacao_id, tipoSubId: form.tipo_sub_id, areaResponsavel: form.area_responsavel, obraId: form.obra_id }}
-                  disabled={criandoSolicitacao} onCancelar={cancelarDivisaoFavorecidos} />
-              </div>}
-            </FormSecao>
-          )}
-        </BlocoConteudo>
-
-        {exibirCamposContrato && (
-          <BlocoConteudo
-            titulo="Contrato"
-            descricao={tipoEhDeMedicao
-              ? 'Contrato e credor vinculados à medição, com a divisão entre as apropriações contratuais.'
-              : 'Contrato ao qual esta solicitação se vincula e a divisão dela entre as apropriações do contrato.'}
-          >
+          </FormSecao>}
+          {exibirCamposContrato && (<>
             <FormSecao colunas={2}>
               <CampoForm
                 label="Contrato"
@@ -3524,7 +3302,7 @@ export default function NovaSolicitacao() {
                 />
               </CampoForm>
 
-              {tipoEhDeMedicao && exibirCampoCredor && renderCampoCredor()}
+
             </FormSecao>
 
             {tipoEhDeMedicao && contratoSelecionadoMedicaoBloqueada && (
@@ -3630,415 +3408,11 @@ export default function NovaSolicitacao() {
               </section>
             )}
 
-            {/* O rateio de apropriacao tambem nao e da MEDICAO do fluxo novo.
-                Ela nao cria solicitacao (PI-16): o que o backend recebe aqui e descartado junto com
-                valor, descricao e vencimento. E os titulos ja nasceram com o rateio do CONTRATO, na
-                aprovacao — este bloco pediria de novo, com base num Valor que nao existe mais, uma
-                divisao que ja esta feita. Ele so ficou de pe ate agora porque o campo Valor
-                existia. */}
-            {form.contrato_id && !usaMedicaoFluxoNovo && (
-              <div className="mt-4 space-y-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--c-text)]">
-                      Apropriações do contrato
-                      {apropriacoesContratoObrigatorias ? <span className="text-[var(--c-danger)]"> *</span> : null}
-                    </p>
-                    <p className="text-xs text-[var(--c-muted)]">
-                      {apropriacoesContratoObrigatorias
-                        ? 'Obrigatorio para este tipo. Marque os itens que receberao esta solicitacao e informe o rateio por percentual ou valor em R$.'
-                        : 'Marque os itens que receberao esta solicitacao e informe o rateio por percentual ou valor em R$.'}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-[var(--ui-surface-2)] px-2 py-1 text-xs font-semibold text-[var(--c-muted)]">
-                    {apropriacoesRateioSelecionadas.length}/{apropriacoesContratoRateio.length} selecionada(s)
-                  </span>
-                </div>
-
-                {apropriacoesContratoRateio.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-[var(--c-border)] px-3 py-2 text-xs text-[var(--c-muted)]">
-                    Este contrato ainda não possui apropriações estruturadas cadastradas.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {apropriacoesContratoRateio.map((item, index) => (
-                      <div
-                        key={`${item.apropriacao_id}-${index}`}
-                        className="grid gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-2 md:grid-cols-3"
-                      >
-                        <label className="flex items-start gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(item.selecionado)}
-                            onChange={e => {
-                              limparErroCampo('apropriacoes_contrato');
-                              alternarApropriacaoContratoRateio(index, e.target.checked);
-                            }}
-                          />
-                          <span>
-                            <span className="font-semibold text-[var(--c-text)]">
-                              {item.codigo || item.apropriacao_id}
-                            </span>
-                            {item.descricao && (
-                              <span className="text-[var(--c-muted)]"> - {item.descricao}</span>
-                            )}
-                          </span>
-                        </label>
-                        <input
-                          className="input input-sm"
-                          value={item.percentual}
-                          onChange={e => {
-                            limparErroCampo('apropriacoes_contrato');
-                            alterarApropriacaoContratoRateio(index, 'percentual', e.target.value);
-                          }}
-                          placeholder="%"
-                          aria-label={`Percentual da apropriação ${item.codigo || item.apropriacao_id}`}
-                          disabled={!item.selecionado}
-                        />
-                        <input
-                          className="input input-sm"
-                          value={item.valor_rateio}
-                          onChange={e => {
-                            limparErroCampo('apropriacoes_contrato');
-                            atualizarValorRateioContrato(index, e.target.value);
-                          }}
-                          placeholder="Valor R$"
-                          aria-label={`Valor em reais da apropriação ${item.codigo || item.apropriacao_id}`}
-                          disabled={!item.selecionado}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {errosCampo.apropriacoes_contrato ? (
-                  <p className="form-error" role="alert">{errosCampo.apropriacoes_contrato}</p>
-                ) : null}
-              </div>
-            )}
-          </BlocoConteudo>
-        )}
-
-        {usaMedicaoFluxoNovo && !contratoSelecionadoMedicaoBloqueada && (
-          <BlocoMedicaoContrato
-            contratoId={Number(form.contrato_id)}
-            tipoSolicitacaoId={form.tipo_solicitacao_id}
-            tipoSubId={form.tipo_sub_id}
-            areaResponsavel={form.area_responsavel}
-            onChange={(dados) => {
-              setMedicaoContratoDados(dados);
-              if (dados.boletosDivididos) setBoletoArquivos(dados.boletosDivididos);
-            }}
-            periodo={{ inicio: form.data_inicio_medicao, fim: form.data_fim_medicao }}
-            periodoObrigatorio={medicaoObrigatoria}
-            onPeriodoChange={handleChange}
-            boletoArquivo={boletoArquivos[0] || null}
-            boletoArquivos={boletoArquivos}
-            onSelecionarBoleto={selecionarArquivoBoleto}
-            onRestaurarBoletos={setBoletoArquivos}
-            /* Este `onRemoverBoleto` tambem e disparado AUTOMATICAMENTE pelo bloco
-               quando a forma de pagamento deixa de ser boleto — por isso ele nao
-               pergunta nada: confirmacao aqui perguntaria por uma limpeza que a
-               pessoa nao pediu. A remocao pelo botao da tela (acima) confirma. */
-            onRemoverBoleto={(index) => Number.isInteger(index)
-              ? removerArquivoBoleto(index)
-              : setBoletoArquivos([])}
-          />
-        )}
-
-        {/* PI-15: acao separada da medicao. Nao envia nem valida o formulario em curso — o modal
-            fecha e a medicao continua exatamente como estava. Serve contrato legado e do fluxo
-            novo, por isso nao ha condicao de `fluxo_novo` aqui. */}
-        {podeSolicitarAditivo && (
-          <BlocoConteudo
-            titulo="Termo aditivo"
-            descricao="Acrescenta valor ao contrato selecionado, com limite de 25% do valor original. Entra como pendente e não interfere nesta medição."
-          >
-            <div className="app-actionbar">
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                data-testid="botao-solicitar-aditivo"
-                onClick={() => setModalAditivoAberto(true)}
-              >
-                Solicitar termo aditivo
-              </button>
-            </div>
-          </BlocoConteudo>
-        )}
-
-        {/* O valor permanece antes da apropriacao para preservar a sequencia do preenchimento e
-            permitir que o rateio use um total ja informado. */}
-        {!usaFluxoRecargaCartao && (exibirValor || usaFluxoDespesaEventual || exibirCampoApropriacao) && (
-          <BlocoConteudo titulo="Valor">
-            <FormSecao colunas={2}>
-              {exibirValor && (
-                <CampoForm
-                  label="Valor"
-                  obrigatorio={valorObrigatorio && campoObrigatorio('valor')}
-                  erro={errosCampo.valor}
-                >
-                  {/* R6: campo de dinheiro dimensionado pelo pior caso —
-                      `.input-moeda` garante 180px, alinhamento à direita e
-                      tabular-nums. */}
-                  <input
-                    name="valor"
-                    type="text"
-                    className="input input-sm input-moeda"
-                    value={valorTexto}
-                    readOnly={usaFluxoRecargaCartao}
-                    onChange={e => { limparErroCampo('valor'); atualizarValor(e.target.value); }}
-                    placeholder="R$ 0,00"
-                    required={valorObrigatorio && campoObrigatorio('valor')}
-                  />
-                </CampoForm>
-              )}
-
-              {usaFluxoDespesaEventual && (
-                <div
-                  className="form-campo--linha rounded-lg border px-3 py-2 text-sm"
-                  style={despesaExcedeLimite
-                    ? {
-                      borderColor: 'var(--sem-danger-border)',
-                      background: 'var(--sem-danger-bg)',
-                      color: 'var(--sem-danger)'
-                    }
-                    : {
-                      borderColor: 'var(--c-border)',
-                      background: 'var(--c-bg)',
-                      color: 'var(--c-text)'
-                    }}
-                  aria-live="polite"
-                >
-                  {despesaEventualSaldo.status === 'loading' && 'Calculando o saldo da obra...'}
-                  {despesaEventualSaldo.status === 'error' && despesaEventualSaldo.erro}
-                  {despesaEventualSaldo.status === 'success' && saldoDespesaDados && (
-                    <div className="flex flex-wrap gap-x-6 gap-y-1">
-                      <span><strong>Limite por solicitação:</strong> {formatarMoeda(Number(saldoDespesaDados.limite_solicitacao || 0))}</span>
-                      <span><strong>Comprometido na obra:</strong> {formatarMoeda(Number(saldoDespesaDados.comprometido_obra || 0))}</span>
-                      <span><strong>Saldo disponível na obra:</strong> {formatarMoeda(Number(saldoDespesaDados.saldo_obra || 0))}</span>
-                      <span><strong>Saldo após esta solicitação:</strong> {formatarMoeda(saldoDespesaAposSolicitacao)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {exibirCampoApropriacao && (
-                <div className="form-group form-campo--linha" role="group" aria-labelledby="apropriacao-solicitacao-label">
-                  <span
-                    id="apropriacao-solicitacao-label"
-                    className={`form-label${exigeApropriacaoPrincipal ? ' form-label--required' : ''}`}
-                  >Apropriação da Solicitação na Obra</span>
-                  {/* O fluxo novo de contrato ja usa rateio; os demais preservam a selecao unica
-                      como padrao e oferecem a divisao apenas quando houver obra. */}
-                  {usaFluxoContratoNovo ? (
-                    <RateioApropriacoesContrato
-                      linhas={rateioContrato}
-                      apropriacoes={apropriacoes}
-                      valorTotal={form.valor}
-                      onChange={(linhas) => { limparErroCampo('apropriacao'); setRateioContrato(linhas); }}
-                      desabilitado={!form.obra_id}
-                    />
-                  ) : (
-                    <div className="space-y-2">
-                      {permitirRateioSolicitacao && (
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={dividirApropriacaoSolicitacao}
-                            onChange={(event) => {
-                              const dividir = event.target.checked;
-                              limparErroCampo('apropriacao');
-                              if (dividir) {
-                                setRateioSolicitacao([
-                                  { apropriacao_id: form.apropriacao_id || '', percentual: '100', valor: '' },
-                                  { apropriacao_id: '', percentual: '', valor: '' }
-                                ]);
-                              } else {
-                                setForm((atual) => ({ ...atual, apropriacao_id: rateioSolicitacao[0]?.apropriacao_id || '' }));
-                              }
-                              setDividirApropriacaoSolicitacao(dividir);
-                            }}
-                          />
-                          Dividir entre apropriações da obra
-                        </label>
-                      )}
-                      {permitirRateioSolicitacao && dividirApropriacaoSolicitacao ? (
-                        <RateioApropriacoesContrato
-                          linhas={rateioSolicitacao}
-                          apropriacoes={apropriacoes}
-                          valorTotal={form.valor}
-                          onChange={(linhas) => { limparErroCampo('apropriacao'); setRateioSolicitacao(linhas); }}
-                          desabilitado={!form.obra_id}
-                          rotuloValor="da solicitação"
-                          storageKey="tabela:solicitacao-rateio-apropriacoes"
-                        />
-                      ) : (
-                        <ApropriacaoAutocomplete
-                          value={form.apropriacao_id}
-                          options={apropriacoes}
-                          onChange={(id) => { limparErroCampo('apropriacao'); setForm({ ...form, apropriacao_id: id }); }}
-                          disabled={!form.obra_id}
-                          required={exigeApropriacaoPrincipal}
-                          ariaLabel="Apropriação da Solicitação na Obra"
-                          inputClassName="input input-sm w-full"
-                          disabledPlaceholder="Selecione a obra primeiro"
-                        />
-                      )}
-                    </div>
-                  )}
-                  {form.obra_id && apropriacoes.length === 0 && (
-                    <span className="form-hint">Nenhuma apropriação ativa encontrada para esta obra.</span>
-                  )}
-                  {!errosCampo.apropriacao && (
-                    <span className="form-hint">
-                      {exigeApropriacaoPrincipal
-                        ? 'Campo obrigatório conforme configuração da nova solicitação.'
-                        : 'Campo opcional. Use quando a solicitação precisar nascer vinculada a uma apropriação da obra.'}
-                    </span>
-                  )}
-                  {errosCampo.apropriacao ? <span className="form-error" role="alert">{errosCampo.apropriacao}</span> : null}
-                </div>
-              )}
-            </FormSecao>
-          </BlocoConteudo>
-        )}
-
-        {!obraSelecionadaEhObra && form.obra_id && !subtipoAdiantamento && (
-          <BlocoConteudo
-            titulo="Distribuição gerencial por obra"
-            descricao="Classificação exclusiva do relatório do centro de custo. Estes valores não compõem o custo real das obras."
-          >
-            {distribuicaoCentroCusto.status === 'loading' ? (
-              <p className="text-sm text-[var(--c-muted)]">Carregando obras disponíveis...</p>
-            ) : distribuicaoCentroCusto.status === 'error' ? (
-              <p className="form-error" role="alert">{distribuicaoCentroCusto.erro}</p>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="inline-flex rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-1">
-                    {['PERCENTUAL', 'VALOR'].map((criterio) => (
-                      <button
-                        key={criterio}
-                        type="button"
-                        className={`btn btn-sm ${distribuicaoCentroCusto.criterio === criterio ? 'btn-primary' : 'btn-ghost'}`}
-                        onClick={() => alterarCriterioDistribuicao(criterio)}
-                        disabled={distribuicaoCentroCusto.todas}
-                      >
-                        {criterio === 'PERCENTUAL' ? 'Percentual' : 'Valor em R$'}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="text-xs text-[var(--c-muted)]">
-                    {distribuicaoCentroCusto.regra === 'CONFIGURADAS_CENTRO_CUSTO'
-                      ? 'Obras configuradas para este centro de custo.'
-                      : distribuicaoCentroCusto.regra === 'TODAS_PRIVADAS'
-                      ? 'Marketing/Comercial: obras privadas disponíveis.'
-                      : distribuicaoCentroCusto.regra === 'VINCULADAS_USUARIO'
-                        ? 'Somente obras vinculadas ao seu usuário.'
-                        : 'Obras ativas disponíveis.'}
-                  </span>
-                </div>
-
-                <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
-                  <label className="flex cursor-pointer items-start gap-3 border-b border-[var(--c-border)] px-3 py-3">
-                    <input
-                      type="radio"
-                      name="abrangencia_distribuicao_centro_custo"
-                      checked={distribuicaoCentroCusto.todas}
-                      onChange={selecionarTodasComoClassificacao}
-                    />
-                    <span>
-                      <strong className="block text-sm text-[var(--c-text)]">TODAS</strong>
-                      <span className="text-xs text-[var(--c-muted)]">
-                        Mantém o valor integral na classificação TODAS, sem distribuí-lo entre obras.
-                      </span>
-                    </span>
-                  </label>
-
-                  <label className="flex cursor-pointer items-start gap-3 border-b border-[var(--c-border)] px-3 py-3">
-                    <input
-                      type="radio"
-                      name="abrangencia_distribuicao_centro_custo"
-                      checked={!distribuicaoCentroCusto.todas}
-                      onChange={() => setDistribuicaoCentroCusto((atual) => ({ ...atual, todas: false }))}
-                    />
-                    <span>
-                      <strong className="block text-sm text-[var(--c-text)]">Obras selecionadas</strong>
-                      <span className="text-xs text-[var(--c-muted)]">
-                        Registra quanto do custo do centro foi destinado gerencialmente a cada obra, sem lançar custo nelas.
-                      </span>
-                    </span>
-                  </label>
-
-                  <div className="max-h-72 overflow-auto p-2">
-                    {distribuicaoCentroCusto.obras.length === 0 ? (
-                      <p className="px-2 py-3 text-sm text-[var(--c-muted)]">Nenhuma obra individual disponível para este usuário.</p>
-                    ) : distribuicaoCentroCusto.obras.map((obra) => {
-                      const linhaSelecionada = distribuicaoCentroCusto.linhas.find(
-                        (linha) => Number(linha.obra_id) === Number(obra.id)
-                      );
-                      const selecionada = Boolean(linhaSelecionada);
-                      const campo = distribuicaoCentroCusto.criterio === 'PERCENTUAL' ? 'percentual' : 'valor';
-                      return (
-                        <div
-                          key={obra.id}
-                          className={`flex min-h-11 flex-wrap items-center gap-3 rounded-md px-2 py-2 ${selecionada ? 'bg-[var(--ui-surface-soft)]' : 'hover:bg-[var(--ui-surface-soft)]'}`}
-                        >
-                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={selecionada}
-                              onChange={() => alternarObraDistribuicao(obra.id)}
-                            />
-                            <span className="min-w-0 flex-1 text-sm">
-                              <strong>{obra.codigo || 'Sem código'}</strong> · {obra.nome}
-                            </span>
-                          </label>
-                          <span className="text-xs text-[var(--c-muted)]">{obra.classificacao || 'Sem classificação'}</span>
-                          {selecionada && !distribuicaoCentroCusto.todas ? (
-                            <label className="flex w-full items-center gap-2 pl-7 sm:w-auto sm:pl-0">
-                              <span className="sr-only">
-                                {campo === 'percentual' ? 'Percentual' : 'Valor'} destinado para {obra.nome}
-                              </span>
-                              <input
-                                className="input input-sm input-moeda w-full sm:w-32"
-                                inputMode="decimal"
-                                aria-label={`${campo === 'percentual' ? 'Percentual' : 'Valor'} destinado para ${obra.nome}`}
-                                value={linhaSelecionada?.[campo] || ''}
-                                onChange={(event) => alterarValorDistribuicao(obra.id, campo, event.target.value)}
-                              />
-                              <span className="w-5 text-xs font-semibold text-[var(--c-muted)]">
-                                {campo === 'percentual' ? '%' : 'R$'}
-                              </span>
-                            </label>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {errosCampo.distribuicao_centro_custo ? (
-                  <p className="form-error" role="alert">{errosCampo.distribuicao_centro_custo}</p>
-                ) : null}
-              </div>
-            )}
-          </BlocoConteudo>
-        )}
-
+          </>)}
         {(exibirCampoDescricao || exibirJustificativa || usaFluxoDespesaEventual
           || exibirCampoDataVencimento || exibirDataDemissao) && (
-          <BlocoConteudo
-            titulo={usaFluxoCadastroObra ? 'Dados para cadastro da obra' : 'Identificação e prazos'}
-            descricao={usaFluxoCadastroObra
-              ? 'Todos os campos abaixo serão reaproveitados no cadastro definitivo da obra.'
-              : 'O que a solicitação diz de si e as datas que ela precisa cumprir.'}
-          >
             <FormSecao colunas={2}>
-              {/* Titulo do contrato ABAIXO do Valor (ordem pedida em 19/08), e nao ao lado: ocupa a
-                  faixa inteira para cair na linha de baixo. Antes ele ficava depois do bloco do
-                  contrato, longe do valor que ele identifica. */}
+              {/* Identificação e prazos pertencem aos dados, separados da instrução financeira. */}
               {exibirCampoDescricao && (
                 <CampoForm
                   label={usaFluxoCadastroObra
@@ -4306,29 +3680,11 @@ export default function NovaSolicitacao() {
                 </CampoForm>
               )}
             </FormSecao>
-          </BlocoConteudo>
         )}
 
-        {/* Blocos de contrato ficam FORA do grid de duas colunas: dentro dele o bloco ocupava
-            uma coluna so, espremido, com metade da tela vazia ao lado. */}
-        {usaFluxoContratoNovo && (
-          <BlocoContratoFluxoNovo
-            obraId={form.obra_id}
-            valorTotal={form.valor}
-            contratadoPrincipal={parceiroSelecionado}
-            limiteJuridico={limiteJuridico}
-            camposConfigurados={camposNovaSolicitacao}
-            onChange={setContratoNovoDados}
-          />
-        )}
-
-        {(exibirPeriodoMedicaoSolto || exibirRefContratoAbertura || exibirItensApropriacao) && (
-          <BlocoConteudo
-            titulo="Medição e apropriação do contrato"
-            descricao="Período medido, referência do contrato de abertura e os itens que serão apropriados."
-          >
+        {(exibirPeriodoMedicaoSolto || exibirRefContratoAbertura || exibirItensApropriacao || (usaMedicaoFluxoNovo && !contratoSelecionadoMedicaoBloqueada)) && (
             <FormSecao colunas={2}>
-              {exibirPeriodoMedicaoSolto && (
+              {(exibirPeriodoMedicaoSolto || (usaMedicaoFluxoNovo && !contratoSelecionadoMedicaoBloqueada)) && (
                 <>
                   <CampoForm
                     label="Data inicial (Medição)"
@@ -4390,7 +3746,628 @@ export default function NovaSolicitacao() {
                 </CampoForm>
               )}
             </FormSecao>
+        )}
+
+
+        </BlocoConteudo>
+
+        {(exibirValor || usaFluxoDespesaEventual || exibirCampoApropriacao || permitirVinculoCredor || exibirFormaPagamento || exibirFavorecidoPagamento || usaFluxoRecargaCartao || (usaMedicaoFluxoNovo && !contratoSelecionadoMedicaoBloqueada)) && (
+          <BlocoConteudo titulo="Informações para pagamento" data-testid="nova-solicitacao-pagamento">
+            {(exibirValor || usaFluxoRecargaCartao || usaFluxoDespesaEventual) && <FormSecao colunas={2}>
+              {(exibirValor || usaFluxoRecargaCartao) && (
+                <CampoForm
+                  label={pagamentosFavorecidos || usaFluxoRecargaCartao ? 'Valor total' : 'Valor'}
+                  obrigatorio={valorObrigatorio && campoObrigatorio('valor')}
+                  erro={errosCampo.valor}
+                >
+                  {/* R6: campo de dinheiro dimensionado pelo pior caso —
+                      `.input-moeda` garante 180px, alinhamento à direita e
+                      tabular-nums. */}
+                  <input
+                    name="valor"
+                    type="text"
+                    className="input input-sm input-moeda"
+                    value={valorTexto}
+                    readOnly={usaFluxoRecargaCartao || Boolean(pagamentosFavorecidos)}
+                    onChange={e => { limparErroCampo('valor'); atualizarValor(e.target.value); }}
+                    placeholder="R$ 0,00"
+                    required={valorObrigatorio && campoObrigatorio('valor')}
+                  />
+                </CampoForm>
+              )}
+
+              {usaFluxoDespesaEventual && (
+                <div
+                  className="form-campo--linha rounded-lg border px-3 py-2 text-sm"
+                  style={despesaExcedeLimite
+                    ? {
+                      borderColor: 'var(--sem-danger-border)',
+                      background: 'var(--sem-danger-bg)',
+                      color: 'var(--sem-danger)'
+                    }
+                    : {
+                      borderColor: 'var(--c-border)',
+                      background: 'var(--c-bg)',
+                      color: 'var(--c-text)'
+                    }}
+                  aria-live="polite"
+                >
+                  {despesaEventualSaldo.status === 'loading' && 'Calculando o saldo da obra...'}
+                  {despesaEventualSaldo.status === 'error' && despesaEventualSaldo.erro}
+                  {despesaEventualSaldo.status === 'success' && saldoDespesaDados && (
+                    <div className="flex flex-wrap gap-x-6 gap-y-1">
+                      <span><strong>Limite por solicitação:</strong> {formatarMoeda(Number(saldoDespesaDados.limite_solicitacao || 0))}</span>
+                      <span><strong>Comprometido na obra:</strong> {formatarMoeda(Number(saldoDespesaDados.comprometido_obra || 0))}</span>
+                      <span><strong>Saldo disponível na obra:</strong> {formatarMoeda(Number(saldoDespesaDados.saldo_obra || 0))}</span>
+                      <span><strong>Saldo após esta solicitação:</strong> {formatarMoeda(saldoDespesaAposSolicitacao)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </FormSecao>}
+          <RecargasCartoesFields
+            mostrarTotal={false}
+            ativo={usaFluxoRecargaCartao}
+            obraId={form.obra_id}
+            value={recargasCartoes}
+            totalSolicitado={form.valor}
+            onChange={atualizarRecargasCartoes}
+            onContextChange={setRecargaCartaoContexto}
+            onSolicitacaoAnteriorEnviada={limparCamposNovaRecargaAposReenvio}
+          />
+          {/* Pagamento legado/configurado e pagamento da medição mantêm seus fluxos próprios. */}
+          {!usaMedicaoFluxoNovo && (permitirVinculoCredor || exibirFormaPagamento || exibirFavorecidoPagamento) && (
+            <FormSecao legenda="Pagamento" colunas={2}>
+
+
+              {renderCampoCredor()}
+
+              {/* Padrao dos fluxos de pagamento: primeiro a forma; somente depois aparecem os dados
+                  que ela realmente exige. Assim boleto nunca pede PIX e PIX nunca pede boleto. */}
+              {exibirFormaPagamento && !pagamentosFavorecidos && (
+                <CampoForm
+                  label="Forma de pagamento"
+                  obrigatorio={formaPagamentoObrigatoria}
+                  erro={errosCampo.forma_pagamento_id || erroFormasPagamento || undefined}
+                  hint={!erroFormasPagamento && formasPagamentoDisponiveis.length === 0
+                    ? 'Nenhuma forma de pagamento compatível está ativa e liberada.'
+                    : undefined}
+                >
+                  <select
+                    className="input input-sm"
+                    name="forma_pagamento_id"
+                    value={form.forma_pagamento_id}
+                    required={formaPagamentoObrigatoria}
+                    onChange={(event) => {
+                      const formaId = event.target.value;
+                      const forma = formasPagamentoDisponiveis
+                        .find((item) => String(item.id) === String(formaId)) || null;
+                      limparErroCampo('forma_pagamento_id');
+                      setForm((prev) => ({
+                        ...prev,
+                        forma_pagamento_id: formaId,
+                        favorecido_chave_pix: formaPagamentoEhPix(forma)
+                          ? chavePixPreferencial(favorecidoSelecionado)
+                          : '',
+                        dados_pagamento: forma && !formaPagamentoEhPix(forma) && !formaPagamentoEhBoleto(forma)
+                          ? prev.dados_pagamento
+                          : ''
+                      }));
+                    }}
+                  >
+                    <option value="">Selecione</option>
+                    {formasPagamentoDisponiveis.map((forma) => (
+                      <option key={forma.id} value={forma.id}>{forma.nome}</option>
+                    ))}
+                  </select>
+                </CampoForm>
+              )}
+
+              {exibirFavorecidoPagamento && exibirCampoCredor && !pagamentosFavorecidos && (
+                <label className="form-campo--linha flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={usarCredorComoFavorecido}
+                    disabled={!parceiroSelecionado}
+                    onChange={(event) => {
+                      const marcado = event.target.checked;
+                      setUsarCredorComoFavorecido(marcado);
+                      limparErroCampo('favorecido');
+                      if (marcado) {
+                        setFavorecidoSelecionado(parceiroSelecionado);
+                        setForm((prev) => ({
+                          ...prev,
+                          favorecido_id: parceiroSelecionado?.id ? String(parceiroSelecionado.id) : '',
+                          favorecido_chave_pix: pagamentoViaPix ? chavePixPreferencial(parceiroSelecionado) : ''
+                        }));
+                      } else {
+                        setFavorecidoSelecionado(null);
+                        setForm((prev) => ({ ...prev, favorecido_id: '', favorecido_chave_pix: '' }));
+                      }
+                    }}
+                  />
+                  <span>Usar o credor como favorecido do pagamento</span>
+                </label>
+              )}
+
+              {exibirFavorecidoPagamento && !usarCredorComoFavorecido && !pagamentosFavorecidos && (
+                /* O ParceiroBuscaRemota traz o próprio rótulo e o próprio
+                   input; envolvê-lo num CampoForm criaria um <label> dentro
+                   de outro. Fica a casca `.form-group` do sistema, com a
+                   mesma linha de erro (.form-error) dos demais campos. */
+                <div className="form-group">
+                  <ParceiroBuscaRemota
+                    label="Favorecido do pagamento"
+                    selecionado={favorecidoSelecionado}
+                    obrigatorio={favorecidoObrigatorio}
+                    placeholder="Buscar por nome, telefone, CPF/CNPJ ou PIX"
+                    acaoFinal={(
+                      <CadastroRapidoFavorecidoButton
+                        tipoSolicitacaoId={form.tipo_solicitacao_id}
+                        tipoSubId={form.tipo_sub_id}
+                        areaResponsavel={form.area_responsavel}
+                        obraId={form.obra_id}
+                        onCadastrado={(parceiro) => {
+                          limparErroCampo('favorecido');
+                          setFavorecidoSelecionado(parceiro);
+                          setForm((prev) => ({
+                            ...prev,
+                            favorecido_id: String(parceiro.id),
+                            favorecido_chave_pix: pagamentoViaPix
+                              ? (parceiro.chave_pix_selecionada || chavePixPreferencial(parceiro))
+                              : ''
+                          }));
+                        }}
+                      />
+                    )}
+                    onSelecionar={(parceiro) => {
+                      limparErroCampo('favorecido');
+                      setFavorecidoSelecionado(parceiro);
+                      setForm((prev) => ({
+                        ...prev,
+                        favorecido_id: parceiro ? String(parceiro.id) : '',
+                        favorecido_chave_pix: pagamentoViaPix ? chavePixPreferencial(parceiro) : ''
+                      }));
+                    }}
+                  />
+                  {errosCampo.favorecido ? <span className="form-error">{errosCampo.favorecido}</span> : null}
+                </div>
+              )}
+
+              {exibirFormaPagamento && pagamentoViaPix && !pagamentosFavorecidos && (
+                <CampoForm
+                  label="Chave PIX do favorecido"
+                  obrigatorio
+                  erro={errosCampo.favorecido_chave_pix}
+                  hint="Sugerida pelas chaves 1, 2 e 3 do cadastro, nesta ordem. O valor pode ser alterado."
+                >
+                  <input
+                    className="input input-sm"
+                    name="favorecido_chave_pix"
+                    value={form.favorecido_chave_pix}
+                    required
+                    onChange={handleChange}
+                    placeholder="Informe ou altere a chave PIX"
+                  />
+                </CampoForm>
+              )}
+
+              {exibirFormaPagamento && pagamentoViaOutraForma && !pagamentosFavorecidos && (
+                <CampoForm
+                  label="Dados para pagamento"
+                  obrigatorio
+                  linha
+                  erro={errosCampo.dados_pagamento}
+                  hint="Informe os dados necessários para o Financeiro realizar o pagamento por esta forma."
+                >
+                  <textarea
+                    className="input w-full"
+                    name="dados_pagamento"
+                    value={form.dados_pagamento}
+                    required
+                    onChange={(event) => {
+                      limparErroCampo('dados_pagamento');
+                      handleChange(event);
+                    }}
+                    placeholder="Ex.: banco, agência, conta, instruções ou referência do pagamento"
+                  />
+                </CampoForm>
+              )}
+
+              {/* Campo de ARQUIVO não usa `CampoForm`: o gatilho do seletor já é
+                  um <label>, e label dentro de label é HTML inválido (o clique
+                  dispara duas vezes). Mesmas classes `.form-*` do sistema —
+                  rótulo, obrigatoriedade e linha de erro idênticos. */}
+              {exibirFormaPagamento && pagamentoViaBoleto && !pagamentosFavorecidos && (
+                <div className="form-group">
+                  <span className="form-label form-label--required">Boletos</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">
+                      <HiPaperClip className="h-4 w-4" />
+                      <span>Selecionar boletos</span>
+                      <input
+                        ref={boletoRef}
+                        type="file"
+                        multiple
+                        aria-label="Anexar boletos"
+                        className="hidden"
+                        accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                        onChange={(event) => {
+                          selecionarArquivoBoleto(event.target.files);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                    {boletoArquivos.length === 0 && <span className="text-xs text-[var(--c-muted)]">Nenhum boleto selecionado</span>}
+                  </div>
+                  <PendingAttachmentsList items={boletoArquivos} onRemove={removerArquivoBoleto} />
+                  {errosCampo.boleto ? <span className="form-error">{errosCampo.boleto}</span> : null}
+                </div>
+              )}
+              {exibirFormaPagamento && !usaFluxoRecargaCartao && !pagamentosFavorecidos && <div className="form-campo--linha">
+                <button type="button" className="btn btn-outline btn-sm" aria-label="Adicionar novo favorecido" onClick={iniciarDivisaoFavorecidos}>+ Favorecido</button>
+              </div>}
+              {exibirFormaPagamento && pagamentosFavorecidos && <div className="form-campo--linha">
+                <PagamentosFavorecidos linhas={pagamentosFavorecidos} onChange={alterarPagamentosFavorecidos} formas={formasPagamentoDisponiveis}
+                  cadastro={{ tipoSolicitacaoId: form.tipo_solicitacao_id, tipoSubId: form.tipo_sub_id, areaResponsavel: form.area_responsavel, obraId: form.obra_id }}
+                  disabled={criandoSolicitacao} onCancelar={cancelarDivisaoFavorecidos} />
+              </div>}
+            </FormSecao>
+          )}
+        {usaMedicaoFluxoNovo && !contratoSelecionadoMedicaoBloqueada && (
+          <BlocoMedicaoContrato
+            semCard
+            contratoId={Number(form.contrato_id)}
+            tipoSolicitacaoId={form.tipo_solicitacao_id}
+            tipoSubId={form.tipo_sub_id}
+            areaResponsavel={form.area_responsavel}
+            onChange={(dados) => {
+              setMedicaoContratoDados(dados);
+              if (dados.boletosDivididos) setBoletoArquivos(dados.boletosDivididos);
+            }}
+            campoCredor={exibirCampoCredor ? renderCampoCredor() : null}
+            boletoArquivo={boletoArquivos[0] || null}
+            boletoArquivos={boletoArquivos}
+            onSelecionarBoleto={selecionarArquivoBoleto}
+            onRestaurarBoletos={setBoletoArquivos}
+            /* Este `onRemoverBoleto` tambem e disparado AUTOMATICAMENTE pelo bloco
+               quando a forma de pagamento deixa de ser boleto — por isso ele nao
+               pergunta nada: confirmacao aqui perguntaria por uma limpeza que a
+               pessoa nao pediu. A remocao pelo botao da tela (acima) confirma. */
+            onRemoverBoleto={(index) => Number.isInteger(index)
+              ? removerArquivoBoleto(index)
+              : setBoletoArquivos([])}
+          />
+        )}
+        {exibirCampoApropriacao && <FormSecao colunas={2}>
+              {exibirCampoApropriacao && (
+                <div className="form-group form-campo--linha" role="group" aria-labelledby="apropriacao-solicitacao-label">
+                  <span
+                    id="apropriacao-solicitacao-label"
+                    className={`form-label${exigeApropriacaoPrincipal ? ' form-label--required' : ''}`}
+                  >Apropriação da Solicitação na Obra</span>
+                  {/* O fluxo novo de contrato ja usa rateio; os demais preservam a selecao unica
+                      como padrao e oferecem a divisao apenas quando houver obra. */}
+                  {usaFluxoContratoNovo ? (
+                    <RateioApropriacoesContrato
+                      linhas={rateioContrato}
+                      apropriacoes={apropriacoes}
+                      valorTotal={form.valor}
+                      onChange={(linhas) => { limparErroCampo('apropriacao'); setRateioContrato(linhas); }}
+                      desabilitado={!form.obra_id}
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {permitirRateioSolicitacao && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={dividirApropriacaoSolicitacao}
+                            onChange={(event) => {
+                              const dividir = event.target.checked;
+                              limparErroCampo('apropriacao');
+                              if (dividir) {
+                                setRateioSolicitacao([
+                                  { apropriacao_id: form.apropriacao_id || '', percentual: '100', valor: '' },
+                                  { apropriacao_id: '', percentual: '', valor: '' }
+                                ]);
+                              } else {
+                                setForm((atual) => ({ ...atual, apropriacao_id: rateioSolicitacao[0]?.apropriacao_id || '' }));
+                              }
+                              setDividirApropriacaoSolicitacao(dividir);
+                            }}
+                          />
+                          Dividir entre apropriações da obra
+                        </label>
+                      )}
+                      {permitirRateioSolicitacao && dividirApropriacaoSolicitacao ? (
+                        <RateioApropriacoesContrato
+                          linhas={rateioSolicitacao}
+                          apropriacoes={apropriacoes}
+                          valorTotal={form.valor}
+                          onChange={(linhas) => { limparErroCampo('apropriacao'); setRateioSolicitacao(linhas); }}
+                          desabilitado={!form.obra_id}
+                          rotuloValor="da solicitação"
+                          storageKey="tabela:solicitacao-rateio-apropriacoes"
+                        />
+                      ) : (
+                        <ApropriacaoAutocomplete
+                          value={form.apropriacao_id}
+                          options={apropriacoes}
+                          onChange={(id) => { limparErroCampo('apropriacao'); setForm({ ...form, apropriacao_id: id }); }}
+                          disabled={!form.obra_id}
+                          required={exigeApropriacaoPrincipal}
+                          ariaLabel="Apropriação da Solicitação na Obra"
+                          inputClassName="input input-sm w-full"
+                          disabledPlaceholder="Selecione a obra primeiro"
+                        />
+                      )}
+                    </div>
+                  )}
+                  {form.obra_id && apropriacoes.length === 0 && (
+                    <span className="form-hint">Nenhuma apropriação ativa encontrada para esta obra.</span>
+                  )}
+                  {!errosCampo.apropriacao && (
+                    <span className="form-hint">
+                      {exigeApropriacaoPrincipal
+                        ? 'Campo obrigatório conforme configuração da nova solicitação.'
+                        : 'Campo opcional. Use quando a solicitação precisar nascer vinculada a uma apropriação da obra.'}
+                    </span>
+                  )}
+                  {errosCampo.apropriacao ? <span className="form-error" role="alert">{errosCampo.apropriacao}</span> : null}
+                </div>
+              )}
+            </FormSecao>}
+            {exibirCamposContrato && (<>
+            {/* O rateio de apropriacao tambem nao e da MEDICAO do fluxo novo.
+                Ela nao cria solicitacao (PI-16): o que o backend recebe aqui e descartado junto com
+                valor, descricao e vencimento. E os titulos ja nasceram com o rateio do CONTRATO, na
+                aprovacao — este bloco pediria de novo, com base num Valor que nao existe mais, uma
+                divisao que ja esta feita. Ele so ficou de pe ate agora porque o campo Valor
+                existia. */}
+            {form.contrato_id && !usaMedicaoFluxoNovo && (
+              <div className="mt-4 space-y-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--c-text)]">
+                      Apropriações do contrato
+                      {apropriacoesContratoObrigatorias ? <span className="text-[var(--c-danger)]"> *</span> : null}
+                    </p>
+                    <p className="text-xs text-[var(--c-muted)]">
+                      {apropriacoesContratoObrigatorias
+                        ? 'Obrigatorio para este tipo. Marque os itens que receberao esta solicitacao e informe o rateio por percentual ou valor em R$.'
+                        : 'Marque os itens que receberao esta solicitacao e informe o rateio por percentual ou valor em R$.'}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[var(--ui-surface-2)] px-2 py-1 text-xs font-semibold text-[var(--c-muted)]">
+                    {apropriacoesRateioSelecionadas.length}/{apropriacoesContratoRateio.length} selecionada(s)
+                  </span>
+                </div>
+
+                {apropriacoesContratoRateio.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-[var(--c-border)] px-3 py-2 text-xs text-[var(--c-muted)]">
+                    Este contrato ainda não possui apropriações estruturadas cadastradas.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {apropriacoesContratoRateio.map((item, index) => (
+                      <div
+                        key={`${item.apropriacao_id}-${index}`}
+                        className="grid gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] p-2 md:grid-cols-3"
+                      >
+                        <label className="flex items-start gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(item.selecionado)}
+                            onChange={e => {
+                              limparErroCampo('apropriacoes_contrato');
+                              alternarApropriacaoContratoRateio(index, e.target.checked);
+                            }}
+                          />
+                          <span>
+                            <span className="font-semibold text-[var(--c-text)]">
+                              {item.codigo || item.apropriacao_id}
+                            </span>
+                            {item.descricao && (
+                              <span className="text-[var(--c-muted)]"> - {item.descricao}</span>
+                            )}
+                          </span>
+                        </label>
+                        <input
+                          className="input input-sm"
+                          value={item.percentual}
+                          onChange={e => {
+                            limparErroCampo('apropriacoes_contrato');
+                            alterarApropriacaoContratoRateio(index, 'percentual', e.target.value);
+                          }}
+                          placeholder="%"
+                          aria-label={`Percentual da apropriação ${item.codigo || item.apropriacao_id}`}
+                          disabled={!item.selecionado}
+                        />
+                        <input
+                          className="input input-sm"
+                          value={item.valor_rateio}
+                          onChange={e => {
+                            limparErroCampo('apropriacoes_contrato');
+                            atualizarValorRateioContrato(index, e.target.value);
+                          }}
+                          placeholder="Valor R$"
+                          aria-label={`Valor em reais da apropriação ${item.codigo || item.apropriacao_id}`}
+                          disabled={!item.selecionado}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {errosCampo.apropriacoes_contrato ? (
+                  <p className="form-error" role="alert">{errosCampo.apropriacoes_contrato}</p>
+                ) : null}
+              </div>
+            )}            </>)}
           </BlocoConteudo>
+        )}
+
+        {/* PI-15: acao separada da medicao. Nao envia nem valida o formulario em curso — o modal
+            fecha e a medicao continua exatamente como estava. Serve contrato legado e do fluxo
+            novo, por isso nao ha condicao de `fluxo_novo` aqui. */}
+        {podeSolicitarAditivo && (
+          <BlocoConteudo
+            titulo="Termo aditivo"
+            descricao="Acrescenta valor ao contrato selecionado, com limite de 25% do valor original. Entra como pendente e não interfere nesta medição."
+          >
+            <div className="app-actionbar">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                data-testid="botao-solicitar-aditivo"
+                onClick={() => setModalAditivoAberto(true)}
+              >
+                Solicitar termo aditivo
+              </button>
+            </div>
+          </BlocoConteudo>
+        )}
+
+        {/* Valor e pagamento agrupados no bloco financeiro acima. */}
+
+        {!obraSelecionadaEhObra && form.obra_id && !subtipoAdiantamento && (
+          <BlocoConteudo
+            titulo="Distribuição gerencial por obra"
+            descricao="Classificação exclusiva do relatório do centro de custo. Estes valores não compõem o custo real das obras."
+          >
+            {distribuicaoCentroCusto.status === 'loading' ? (
+              <p className="text-sm text-[var(--c-muted)]">Carregando obras disponíveis...</p>
+            ) : distribuicaoCentroCusto.status === 'error' ? (
+              <p className="form-error" role="alert">{distribuicaoCentroCusto.erro}</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="inline-flex rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-1">
+                    {['PERCENTUAL', 'VALOR'].map((criterio) => (
+                      <button
+                        key={criterio}
+                        type="button"
+                        className={`btn btn-sm ${distribuicaoCentroCusto.criterio === criterio ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => alterarCriterioDistribuicao(criterio)}
+                        disabled={distribuicaoCentroCusto.todas}
+                      >
+                        {criterio === 'PERCENTUAL' ? 'Percentual' : 'Valor em R$'}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-[var(--c-muted)]">
+                    {distribuicaoCentroCusto.regra === 'CONFIGURADAS_CENTRO_CUSTO'
+                      ? 'Obras configuradas para este centro de custo.'
+                      : distribuicaoCentroCusto.regra === 'TODAS_PRIVADAS'
+                      ? 'Marketing/Comercial: obras privadas disponíveis.'
+                      : distribuicaoCentroCusto.regra === 'VINCULADAS_USUARIO'
+                        ? 'Somente obras vinculadas ao seu usuário.'
+                        : 'Obras ativas disponíveis.'}
+                  </span>
+                </div>
+
+                <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+                  <label className="flex cursor-pointer items-start gap-3 border-b border-[var(--c-border)] px-3 py-3">
+                    <input
+                      type="radio"
+                      name="abrangencia_distribuicao_centro_custo"
+                      checked={distribuicaoCentroCusto.todas}
+                      onChange={selecionarTodasComoClassificacao}
+                    />
+                    <span>
+                      <strong className="block text-sm text-[var(--c-text)]">TODAS</strong>
+                      <span className="text-xs text-[var(--c-muted)]">
+                        Mantém o valor integral na classificação TODAS, sem distribuí-lo entre obras.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label className="flex cursor-pointer items-start gap-3 border-b border-[var(--c-border)] px-3 py-3">
+                    <input
+                      type="radio"
+                      name="abrangencia_distribuicao_centro_custo"
+                      checked={!distribuicaoCentroCusto.todas}
+                      onChange={() => setDistribuicaoCentroCusto((atual) => ({ ...atual, todas: false }))}
+                    />
+                    <span>
+                      <strong className="block text-sm text-[var(--c-text)]">Obras selecionadas</strong>
+                      <span className="text-xs text-[var(--c-muted)]">
+                        Registra quanto do custo do centro foi destinado gerencialmente a cada obra, sem lançar custo nelas.
+                      </span>
+                    </span>
+                  </label>
+
+                  <div className="max-h-72 overflow-auto p-2">
+                    {distribuicaoCentroCusto.obras.length === 0 ? (
+                      <p className="px-2 py-3 text-sm text-[var(--c-muted)]">Nenhuma obra individual disponível para este usuário.</p>
+                    ) : distribuicaoCentroCusto.obras.map((obra) => {
+                      const linhaSelecionada = distribuicaoCentroCusto.linhas.find(
+                        (linha) => Number(linha.obra_id) === Number(obra.id)
+                      );
+                      const selecionada = Boolean(linhaSelecionada);
+                      const campo = distribuicaoCentroCusto.criterio === 'PERCENTUAL' ? 'percentual' : 'valor';
+                      return (
+                        <div
+                          key={obra.id}
+                          className={`flex min-h-11 flex-wrap items-center gap-3 rounded-md px-2 py-2 ${selecionada ? 'bg-[var(--ui-surface-soft)]' : 'hover:bg-[var(--ui-surface-soft)]'}`}
+                        >
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selecionada}
+                              onChange={() => alternarObraDistribuicao(obra.id)}
+                            />
+                            <span className="min-w-0 flex-1 text-sm">
+                              <strong>{obra.codigo || 'Sem código'}</strong> · {obra.nome}
+                            </span>
+                          </label>
+                          <span className="text-xs text-[var(--c-muted)]">{obra.classificacao || 'Sem classificação'}</span>
+                          {selecionada && !distribuicaoCentroCusto.todas ? (
+                            <label className="flex w-full items-center gap-2 pl-7 sm:w-auto sm:pl-0">
+                              <span className="sr-only">
+                                {campo === 'percentual' ? 'Percentual' : 'Valor'} destinado para {obra.nome}
+                              </span>
+                              <input
+                                className="input input-sm input-moeda w-full sm:w-32"
+                                inputMode="decimal"
+                                aria-label={`${campo === 'percentual' ? 'Percentual' : 'Valor'} destinado para ${obra.nome}`}
+                                value={linhaSelecionada?.[campo] || ''}
+                                onChange={(event) => alterarValorDistribuicao(obra.id, campo, event.target.value)}
+                              />
+                              <span className="w-5 text-xs font-semibold text-[var(--c-muted)]">
+                                {campo === 'percentual' ? '%' : 'R$'}
+                              </span>
+                            </label>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {errosCampo.distribuicao_centro_custo ? (
+                  <p className="form-error" role="alert">{errosCampo.distribuicao_centro_custo}</p>
+                ) : null}
+              </div>
+            )}
+          </BlocoConteudo>
+        )}
+
+        {/* Identificação e prazos ficam nos dados da solicitação acima. */}
+
+        {/* Blocos de contrato ficam FORA do grid de duas colunas: dentro dele o bloco ocupava
+            uma coluna so, espremido, com metade da tela vazia ao lado. */}
+        {usaFluxoContratoNovo && (
+          <BlocoContratoFluxoNovo
+            obraId={form.obra_id}
+            valorTotal={form.valor}
+            contratadoPrincipal={parceiroSelecionado}
+            limiteJuridico={limiteJuridico}
+            camposConfigurados={camposNovaSolicitacao}
+            onChange={setContratoNovoDados}
+          />
         )}
 
         {tipoSolicitacaoEscolhido && (

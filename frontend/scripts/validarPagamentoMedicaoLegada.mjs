@@ -97,7 +97,7 @@ const modules = {
     export { default as TabelaPadrao } from '/src/components/padrao/TabelaPadrao.jsx';
     export function Pagina({ children }) { return React.createElement('main', null, children); }
     export function PageHeader({ titulo, acoes }) { return React.createElement('header', null, titulo, acoes); }
-    export function BlocoConteudo({ titulo, children }) { return React.createElement('section', null, React.createElement('h2', null, titulo), children); }
+    export function BlocoConteudo({ titulo, children, 'data-testid': testId }) { return React.createElement('section', { 'data-testid': testId }, React.createElement('h2', null, titulo), children); }
     export function CampoForm({ label, children, erro }) { return React.createElement('label', null, label, children, erro); }
     export function FormSecao({ legenda, children }) { return React.createElement('fieldset', null, React.createElement('legend', null, legenda), children); }
     export function Avisos() { return null; }
@@ -179,7 +179,7 @@ try {
       await page.locator('input[name="data_inicio_medicao"]').fill('01/10/2026');
       await page.locator('input[name="data_fim_medicao"]').fill('05/10/2026');
       // Boleto conta como documento da medicao; upload e API sao simulados, sem escrita externa.
-      const blocoPagamento = page.getByRole('group', { name: 'Pagamento da medição' });
+      const blocoPagamento = page.getByTestId('nova-solicitacao-pagamento').getByRole('group', { name: 'Pagamento', exact: true });
       const seletor = blocoPagamento.locator('input[type="file"]');
       assert.equal(await seletor.evaluate(el => el.multiple), true);
       const pdf = name => ({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\nteste') });
@@ -268,16 +268,23 @@ try {
     await multi.getByPlaceholder('Digite o código ou nome da obra/centro de custo').fill('Obra teste');
     await multi.getByRole('button', { name: /Obra teste/ }).click();
     await multi.locator('[name="tipo_solicitacao_id"]').selectOption(novo ? '7' : '9');
+    const dados = multi.getByTestId('nova-solicitacao-dados');
+    const pagamento = multi.getByTestId('nova-solicitacao-pagamento');
+    assert.equal(await dados.locator('[name="forma_pagamento_id"]').count(), 0, 'Pagamento nao fica nos dados da solicitacao');
     if (novo) {
       await multi.getByPlaceholder('Digite o código ou o título do contrato').fill('CT-NOV');
       await multi.getByPlaceholder('Digite o código ou o título do contrato').press('Enter');
+      assert.equal(await dados.getByPlaceholder('Digite o código ou o título do contrato').count(), 1, 'Contrato pertence aos dados');
       await multi.locator('.app-tabela input[type="checkbox"], .app-tabela-cards input[type="checkbox"]').first().check();
       await multi.locator('[name="forma_pagamento_medicao"]').selectOption('1');
       await multi.locator('[name="data_inicio_medicao"]').fill('01/10/2026');
       await multi.locator('[name="data_fim_medicao"]').fill('05/10/2026');
+      assert.equal(await dados.locator('[name="data_inicio_medicao"]').count(), 1, 'Periodo pertence aos dados');
+      assert.equal(await pagamento.locator('[name="data_inicio_medicao"]').count(), 0);
     } else {
       await multi.locator('[name="forma_pagamento_id"]').selectOption('2');
       await multi.locator('[name="valor"]').fill('500,00');
+      assert.equal(await pagamento.locator('[name="valor"]').evaluate(el => Boolean(el.compareDocumentPosition(document.querySelector('[name="forma_pagamento_id"]')) & Node.DOCUMENT_POSITION_FOLLOWING)), true, 'Valor vem antes da forma');
     }
     await multi.getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).click();
     const partes = multi.getByTestId('parte-favorecido');
@@ -292,8 +299,28 @@ try {
     await partes.nth(1).getByRole('button', { name: 'Favorecido QA', exact: true }).click();
     await partes.nth(1).getByRole('combobox', { name: /^Forma de pagamento do favorecido 2/ }).selectOption(novo ? '2' : '1');
     await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('199,99');
+    if (!novo) {
+      assert.equal((await pagamento.locator('[name="valor"]').inputValue()).replace(/[^\d,]/g, ''), '499,99', 'Total soma os centavos');
+      assert.equal(await pagamento.locator('[name="valor"]').evaluate(el => el.readOnly), true);
+    } else {
+      await multi.waitForFunction(() => document.body.textContent.includes('R$ 499,99'));
+    }
     if (novo) await multi.getByLabel('Boletos do favorecido 2', { exact: true }).setInputFiles([pdf('segundo-1.pdf'), pdf('segundo-2.pdf')]);
     else await multi.getByLabel('Chave PIX / Copia e Cola do favorecido 2 *', { exact: true }).fill('000201' + 'X'.repeat(1000));
+    if (!novo) {
+      await multi.getByRole('button', { name: 'Usar apenas o primeiro favorecido', exact: true }).click();
+      assert.equal((await pagamento.locator('[name="valor"]').inputValue()).replace(/[^\d,]/g, ''), '300,00');
+      assert.equal(await pagamento.locator('[name="valor"]').evaluate(el => el.readOnly), false);
+      await multi.getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).click();
+      // No boleto simples o favorecido separado nao faz parte do cadastro legado.
+      await partes.nth(0).getByRole('combobox', { name: 'Favorecido 1 *', exact: true }).fill('Credor');
+      await partes.nth(0).getByRole('button', { name: 'Credor QA', exact: true }).click();
+      await partes.nth(1).getByRole('combobox', { name: 'Favorecido 2 *', exact: true }).fill('Favorecido');
+      await partes.nth(1).getByRole('button', { name: 'Favorecido QA', exact: true }).click();
+      await partes.nth(1).getByRole('combobox', { name: /^Forma de pagamento do favorecido 2/ }).selectOption('1');
+      await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('199,99');
+      await multi.getByLabel('Chave PIX / Copia e Cola do favorecido 2 *', { exact: true }).fill('000201' + 'X'.repeat(1000));
+    }
     // Cancelar a divisao restaura somente os dados/arquivos da primeira parte.
     if (novo) {
       await multi.getByRole('button', { name: 'Usar apenas o primeiro favorecido', exact: true }).click();
@@ -308,12 +335,20 @@ try {
       await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('199,99');
       await multi.getByLabel('Boletos do favorecido 2', { exact: true }).setInputFiles([pdf('segundo-1.pdf'), pdf('segundo-2.pdf')]);
     }
+    await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('0,00');
     if (novo) await multi.locator('[name="dados_pagamento_confirmados"]').check();
     await multi.getByRole('button', { name: 'Criar Solicitação', exact: true }).click();
     await multi.waitForFunction(() => !window.payloadEnviado);
-    assert.ok(avisos.some(a => a.includes('soma dos favorecidos')), JSON.stringify({ novo, avisos,
+    assert.ok(avisos.some(a => a.includes('informe pessoa, valor e forma de pagamento')), JSON.stringify({ novo, avisos,
       invalidos: await multi.locator(':invalid').evaluateAll(els => els.map(e => ({ tag: e.tagName, nome: e.name, valor: e.value }))) }));
     await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('200,00');
+    await multi.getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).click();
+    await partes.nth(2).getByLabel('Valor do favorecido 3 *', { exact: true }).fill('25,00');
+    if (novo) await multi.getByText('O total selecionado passa do saldo do contrato.', { exact: true }).waitFor();
+    else assert.equal((await pagamento.locator('[name="valor"]').inputValue()).replace(/[^\d,]/g, ''), '525,00');
+    await multi.getByRole('button', { name: 'Remover favorecido 3', exact: true }).click();
+    assert.equal(await partes.count(), 2);
+    if (!novo) assert.equal((await pagamento.locator('[name="valor"]').inputValue()).replace(/[^\d,]/g, ''), '500,00');
     if (novo) await multi.locator('[name="dados_pagamento_confirmados"]').check();
     await multi.getByRole('button', { name: 'Criar Solicitação', exact: true }).click();
     await multi.waitForFunction(() => Boolean(window.payloadEnviado));

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { mkdir } from 'node:fs/promises';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = 5398;
 const server = await createServer({ root, server: { host: '127.0.0.1', port, strictPort: true, proxy: {} } });
@@ -16,6 +17,7 @@ try {
   const centro = { id: 30, codigo: 'ADM', nome: 'Administrativo', tipo_centro_custo: 'CENTRO_CUSTO', ativo: true };
   const tipo = { id: 5, nome: 'DESPESA ADMINISTRATIVA', ativo: true, comportamento: { mostrar_valor: false, mostrar_favorecido: false, mostrar_forma_pagamento: false, mostrar_descricao: false, mostrar_subtipo: false } };
   const favorecido = { id: 6, nome: 'Favorecido QA', ativo: true, cpf_cnpj: '52998224725', pix_chave_fixa_1: 'favorecido@pix', pix_tipo_chave_fixa_1: 'EMAIL' };
+  const favorecidoSegundo = { ...favorecido, id: 7, nome: 'Segundo QA', pix_chave_fixa_1: 'segundo@pix' };
   await page.route('**/*', async route => {
     const req = route.request(), url = new URL(req.url());
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -26,7 +28,7 @@ try {
     if (url.pathname.endsWith('/configuracoes/nova-solicitacao-campos')) return json({ regras: {} });
     if (url.pathname.endsWith('/configuracoes/nova-solicitacao-automacao-destino')) return json({ destinos_disponiveis: [], regras: {} });
     if (url.pathname.endsWith('/contratos/medicoes/formas-pagamento')) return json({ formas: [{ id: 1, nome: 'Pix', tipo: 'PIX', ativo: true }] });
-    if (url.pathname.endsWith('/parceiros')) return json([favorecido]);
+    if (url.pathname.endsWith('/parceiros')) return json([favorecido, favorecidoSegundo].filter(p => p.nome.toLowerCase().includes((url.searchParams.get('q') || '').toLowerCase())));
     if (url.pathname.endsWith('/apropriacoes')) return json([]);
     if (url.pathname.endsWith('/centros-custo/30/obras-distribuicao')) return json({ regra: 'TODAS', obras: [{ id: 2, codigo: '02', nome: 'Obra privada' }] });
     if (url.pathname.endsWith('/solicitacoes') && req.method() === 'POST') { enviados.push(req.postDataJSON()); return json({ id: 101, codigo: 'SOL-QA' }, 201); }
@@ -51,6 +53,38 @@ try {
   await page.locator('[name="valor"]').fill('1.000,00');
   await page.locator('[name="descricao"]').fill('Adiantamento para despesas administrativas');
   await page.locator('[name="data_vencimento"]').fill('01/12/2099');
+  const dados = page.getByTestId('nova-solicitacao-dados');
+  const pagamento = page.getByTestId('nova-solicitacao-pagamento');
+  assert.equal(await dados.locator('[name="tipo_sub_id"]').count(), 1);
+  assert.equal(await dados.locator('[name="data_vencimento"]').count(), 1);
+  assert.equal(await dados.locator('[name="forma_pagamento_id"]').count(), 0);
+  assert.equal(await pagamento.locator('[name="valor"]').count(), 1);
+  assert.equal(await pagamento.locator('[name="forma_pagamento_id"]').count(), 1);
+  if (!comDistribuicaoResidual) {
+    const saida = path.resolve(root, '../outputs/qa-nova-solicitacao-dados-pagamento-20261012');
+    await mkdir(saida, { recursive: true });
+    await page.screenshot({ path: path.join(saida, 'adiantamento-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Sem rolagem horizontal no mobile');
+    await page.screenshot({ path: path.join(saida, 'adiantamento-mobile.png'), fullPage: true });
+    await page.setViewportSize({ width: 1366, height: 900 });
+  }
+  if (comDistribuicaoResidual) {
+    await page.getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).click();
+    const partes = page.getByTestId('parte-favorecido');
+    assert.equal(await partes.nth(0).getByLabel('Valor do favorecido 1 *', { exact: true }).inputValue().then(v => v.replace(/[^\d,]/g, '')), '1000,00', 'Valor informado antes do + e preservado');
+    await partes.nth(1).getByRole('combobox', { name: 'Favorecido 2 *', exact: true }).fill('Segundo');
+    await partes.nth(1).getByRole('button', { name: /^Segundo QA/ }).click();
+    await partes.nth(1).getByRole('combobox', { name: /^Forma de pagamento do favorecido 2/ }).selectOption('1');
+    await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('200,00');
+    assert.equal((await pagamento.locator('[name="valor"]').inputValue()).replace(/[^\d,]/g, ''), '1200,00');
+    const saida = path.resolve(root, '../outputs/qa-nova-solicitacao-dados-pagamento-20261012');
+    await page.screenshot({ path: path.join(saida, 'favorecidos-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({ path: path.join(saida, 'favorecidos-mobile.png'), fullPage: true });
+    await page.setViewportSize({ width: 1366, height: 900 });
+  }
   assert.equal(await page.getByText('Categoria financeira', { exact: true }).count(), 0, 'Categoria pertence ao GEO, nao ao solicitante');
   await page.getByRole('button', { name: /criar solicitação|enviar solicitação|salvar solicitação/i }).click();
   await page.waitForURL('**/solicitacoes/101').catch(async error => {
@@ -58,7 +92,8 @@ try {
   });
   const enviado = enviados.at(-1);
   assert.equal(enviados.length, comDistribuicaoResidual ? 2 : 1); assert.equal(enviado.tipo_sub_id, '7'); assert.equal(enviado.favorecido_id, '6');
-  assert.equal(Number(enviado.valor), 1000); assert.equal(enviado.forma_pagamento_id, '1');
+  assert.equal(Number(enviado.valor), comDistribuicaoResidual ? 1200 : 1000); assert.equal(enviado.forma_pagamento_id, '1');
+  if (comDistribuicaoResidual) assert.deepEqual(enviado.pagamentos_favorecidos.map(p => [p.favorecido_id, p.valor]), [[6, 1000], [7, 200]]);
   assert(!('distribuicao_centro_custo' in enviado), 'Adiantamento nao envia distribuicao residual do tipo pai'); assert(!enviado.recargas_cartoes);
   }
   assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
