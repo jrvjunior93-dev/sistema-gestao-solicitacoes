@@ -10,6 +10,7 @@ const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'curr
 const novaLinha = obra => ({ obra_id: obra || '', apropriacao_id: '', descricao: '', valor: '' });
 export default function AdiantamentoDetalhe({ solicitacaoId, podeInteragir, onAtualizado }) {
   const [contexto, setContexto] = useState(null);
+  const [cicloId, setCicloId] = useState('');
   const [itens, setItens] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [observacoes, setObservacoes] = useState('');
@@ -18,25 +19,28 @@ export default function AdiantamentoDetalhe({ solicitacaoId, podeInteragir, onAt
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const emVoo = useRef(false);
+  const rascunhos = useRef(new Map());
   const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const base = `${API_URL}/adiantamentos/solicitacoes/${solicitacaoId}`;
   async function consultar(signal) {
-    const response = await fetch(base, { headers: authHeaders(), signal });
+    const response = await fetch(cicloId ? `${base}?ciclo_id=${encodeURIComponent(cicloId)}` : base, { headers: authHeaders(), signal });
     const data = await response.json();
     if (!response.ok) throw Error(data.error || 'Erro ao carregar adiantamento.');
     return data;
   }
   function aplicar(data) {
+    const rascunho = rascunhos.current.get(`${solicitacaoId}:${data.ciclo?.id}`);
     setContexto(data);
-    setItens(data.ciclo?.prestacao?.itens || [novaLinha(data.obras?.[0]?.id)]);
-    setObservacoes(data.ciclo?.prestacao?.observacoes || '');
-    setDocumentos(data.ciclo?.prestacao?.anexo_ids || []);
+    setItens(rascunho?.itens || data.ciclo?.prestacao?.itens || [novaLinha(data.obras?.[0]?.id)]);
+    setObservacoes(rascunho?.observacoes ?? data.ciclo?.prestacao?.observacoes ?? '');
+    setDocumentos(rascunho?.documentos || data.ciclo?.prestacao?.anexo_ids || []);
+    setMotivo(rascunho?.motivo || ''); setDataDevolucao(rascunho?.dataDevolucao || '');
   }
   useEffect(() => {
     const controller = new AbortController();
     consultar(controller.signal).then(aplicar).catch(error => { if (error.name !== 'AbortError') setErro(error.message); });
     return () => controller.abort();
-  }, [base]);
+  }, [base, cicloId]);
   const ciclo = contexto?.ciclo;
   const editar = podeInteragir && ['PRESTACAO_PENDENTE', 'REJEITADA'].includes(ciclo?.status);
   const conferir = podeInteragir && contexto?.pode_conferir && ciclo?.status === 'PRESTACAO_ENVIADA';
@@ -48,9 +52,10 @@ export default function AdiantamentoDetalhe({ solicitacaoId, podeInteragir, onAt
     if (emVoo.current) return;
     emVoo.current = true; setOcupado(true); setErro('');
     try {
-      const response = await fetch(`${base}/${acao}`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
+      const response = await fetch(`${base}/${acao}`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ ...body, ciclo_id: ciclo.id }) });
       const data = await response.json();
       if (!response.ok) throw Error(data.error || 'Não foi possível concluir.');
+      rascunhos.current.delete(`${solicitacaoId}:${ciclo.id}`);
       aplicar(await consultar()); onAtualizado?.();
     } catch (error) { setErro(error.message); }
     finally { emVoo.current = false; setOcupado(false); }
@@ -70,6 +75,14 @@ export default function AdiantamentoDetalhe({ solicitacaoId, podeInteragir, onAt
   return <BlocoConteudo titulo="Adiantamento" acoes={ciclo ? <StatusBadge status={ciclo.status.replaceAll('_', ' ')} /> : null}>
     {erro && <p role="alert" className="app-alert app-alert--error">{erro}</p>}
     {!contexto ? <p>Carregando…</p> : !ciclo ? <p className="text-sm text-[var(--c-muted)]">Aguardando classificação e título do GEO.</p> : <div className="space-y-3">
+      {contexto.ciclos?.length > 1 && <label className="grid gap-1 text-sm max-w-xl">Favorecido / Prestação
+        <select className="input input-sm" value={contexto.ciclo.id} disabled={ocupado} onChange={e => {
+          rascunhos.current.set(`${solicitacaoId}:${ciclo.id}`, { itens, documentos, observacoes, motivo, dataDevolucao });
+          setContexto(null); setErro(''); setCicloId(e.target.value);
+        }}>
+          {contexto.ciclos.map(c => <option key={c.id} value={c.id}>{c.nome_favorecido} · {moeda(c.valor_solicitado)} · {c.status.replaceAll('_', ' ')}</option>)}
+        </select>
+      </label>}
       <p className="text-sm">{contexto.titulo?.codigo} · Pago: {moeda(contexto.titulo?.valor_baixado)} · Despesas: {moeda(total)} · Saldo a devolver: {moeda(saldo)}</p>
       {ciclo.motivo_rejeicao && <p className="app-alert app-alert--warning">{ciclo.motivo_rejeicao}</p>}
       {ciclo.status !== 'AGUARDANDO_PAGAMENTO' && <>

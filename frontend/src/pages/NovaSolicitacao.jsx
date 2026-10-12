@@ -44,6 +44,7 @@ import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import OverlayModal from '../components/ui/OverlayModal';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
 import CadastroRapidoFavorecidoButton from '../components/solicitacoes/CadastroRapidoFavorecidoButton';
+import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos } from '../components/solicitacoes/PagamentosFavorecidos';
 import DadosEmpresaParceiro from '../components/parceiros/DadosEmpresaParceiro';
 import { getDadosEmpresaParceiroError } from '../utils/dadosEmpresaParceiro';
 import RateioApropriacoesContrato, { numeroDoCampo } from '../components/contratos/RateioApropriacoesContrato';
@@ -274,6 +275,7 @@ export default function NovaSolicitacao() {
   });
   const [documentosCadastroObra, setDocumentosCadastroObra] = useState([]);
   const [boletoArquivos, setBoletoArquivos] = useState([]);
+  const [pagamentosFavorecidos, setPagamentosFavorecidos] = useState(null);
   const [despesaEventualSaldo, setDespesaEventualSaldo] = useState({ status: 'idle', dados: null, erro: '' });
   const [despesaEventualDeclaracoes, setDespesaEventualDeclaracoes] = useState({
     despesa_pontual_nao_recorrente: false,
@@ -377,6 +379,7 @@ export default function NovaSolicitacao() {
     data_inicio_medicao: '',
     data_fim_medicao: ''
   });
+  useEffect(() => { setPagamentosFavorecidos(null); }, [form.obra_id, form.tipo_solicitacao_id, form.tipo_sub_id]);
   useWorkspaceWork(Object.values(form).some(Boolean) || arquivos.length > 0
     || documentosCadastroObra.length > 0 || boletoArquivos.length > 0
     || Boolean(contratoNovoDados), criandoSolicitacao || salvandoNovoParceiro, 'nova');
@@ -1291,7 +1294,7 @@ export default function NovaSolicitacao() {
   const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
   // O bloco da medicao nova possui forma propria: nao depende da forma
   // generica oculta. Ambos precisam enviar todos os arquivos como BOLETO.
-  const possuiPagamentoBoleto = pagamentoViaBoleto || Boolean(usaMedicaoFluxoNovo && medicaoContratoDados?.pagamento?.via_boleto);
+  const possuiPagamentoBoleto = pagamentoViaBoleto || Boolean(pagamentosFavorecidos?.some(l => formaPagamentoEhBoleto(formasPagamentoDisponiveis.find(f => String(f.id) === String(l.forma_pagamento_id))))) || Boolean(usaMedicaoFluxoNovo && (medicaoContratoDados?.possuiBoleto || medicaoContratoDados?.pagamento?.via_boleto));
   const pagamentoViaOutraForma = Boolean(formaPagamentoSelecionada) && !pagamentoViaPix && !pagamentoViaBoleto;
   // Regra unica para todo tipo que exibe Forma de pagamento, inclusive quando o campo foi
   // habilitado pela configuracao: o anexo geral ja nasce obrigatorio com o tipo. Selecionar
@@ -1304,7 +1307,7 @@ export default function NovaSolicitacao() {
   const anexosObrigatorios = usaRegraAnexoPorFormaPagamento
     ? exigirAnexoPagamento
     : (tipoEhDeMedicao || campoObrigatorio('anexos'));
-  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada) && (!pagamentoViaBoleto || subtipoAdiantamento);
+  const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada) && (!pagamentoViaBoleto || subtipoAdiantamento || Boolean(pagamentosFavorecidos));
   // Para PIX e as demais formas nao-Boleto, o favorecido continua obrigatorio.
   const favorecidoObrigatorio = exibirFavorecidoPagamento;
 
@@ -1370,10 +1373,31 @@ export default function NovaSolicitacao() {
   }, [exibirFavorecidoPagamento, pagamentoViaPix, parceiroSelecionado, usarCredorComoFavorecido]);
 
   useEffect(() => {
-    if (pagamentoViaBoleto) return;
+    if (pagamentoViaBoleto || pagamentosFavorecidos) return;
     setBoletoArquivos([]);
     if (boletoRef.current) boletoRef.current.value = '';
-  }, [pagamentoViaBoleto]);
+  }, [pagamentoViaBoleto, pagamentosFavorecidos]);
+
+  function alterarPagamentosFavorecidos(linhas) {
+    setPagamentosFavorecidos(linhas);
+    const primeiro = linhas[0];
+    setUsarCredorComoFavorecido(false);
+    setFavorecidoSelecionado(primeiro.parceiro);
+    setForm(prev => ({ ...prev, favorecido_id: primeiro.parceiro?.id ? String(primeiro.parceiro.id) : '',
+      forma_pagamento_id: primeiro.forma_pagamento_id, favorecido_chave_pix: primeiro.favorecido_chave_pix,
+      dados_pagamento: primeiro.dados_pagamento }));
+    setBoletoArquivos(linhas.flatMap(l => l.boletos || []));
+  }
+  function iniciarDivisaoFavorecidos() {
+    alterarPagamentosFavorecidos([novaParteFavorecido({ parceiro: favorecidoSelecionado || parceiroSelecionado,
+      valor: formatCurrencyInput(form.valor), forma_pagamento_id: form.forma_pagamento_id,
+      favorecido_chave_pix: form.favorecido_chave_pix, dados_pagamento: form.dados_pagamento, boletos: boletoArquivos }), novaParteFavorecido()]);
+  }
+  function cancelarDivisaoFavorecidos() {
+    const primeiro = pagamentosFavorecidos?.[0];
+    if (primeiro) { alterarPagamentosFavorecidos([primeiro]); setBoletoArquivos(primeiro.boletos || []); }
+    setPagamentosFavorecidos(null);
+  }
 
   useEffect(() => {
     if (pagamentoViaOutraForma) return;
@@ -2037,6 +2061,8 @@ export default function NovaSolicitacao() {
       reprovarCampo('credor', 'Selecione o credor da solicitação.');
       return;
     }
+    const erroFavorecidos = erroDivisaoFavorecidos(pagamentosFavorecidos, formasPagamentoDisponiveis, [{ valor: numeroDoCampo(form.valor) }]);
+    if (erroFavorecidos) { avisar.alerta(erroFavorecidos); return; }
     if (formaPagamentoObrigatoria && !form.forma_pagamento_id) {
       reprovarCampo('forma_pagamento_id', 'Selecione a forma de pagamento.');
       return;
@@ -2083,6 +2109,7 @@ export default function NovaSolicitacao() {
       // Os dados de pagamento sao cobrados aqui tambem para a pessoa nao descobrir depois de montar
       // a medicao inteira. Quem recusa de verdade e o servidor.
       const pgto = medicaoContratoDados?.pagamento || {};
+      if (medicaoContratoDados?.erroFavorecidos) { avisar.alerta(medicaoContratoDados.erroFavorecidos); return; }
       if (!pgto.forma_pagamento_id) { avisar.alerta('Informe a forma de pagamento da medição.'); return; }
       if (!pgto.favorecido_id) { avisar.alerta('Informe o favorecido desta medição.'); return; }
       if (pgto.via_pix && !String(pgto.favorecido_chave_pix || '').trim()) {
@@ -2472,6 +2499,7 @@ export default function NovaSolicitacao() {
 
     const payload = {
       ...form,
+      pagamentos_favorecidos: pagamentosFavorecidos ? payloadFavorecidos(pagamentosFavorecidos) : undefined,
       // O destino inicial e uma regra do backend (GEO/PENDENTE), nunca um dado controlado pela tela.
       area_responsavel: undefined,
       parceiro_id: permitirVinculoCredor ? (form.parceiro_id || null) : null,
@@ -2517,12 +2545,12 @@ export default function NovaSolicitacao() {
       medicao_parcelas: usaMedicaoFluxoNovo ? (medicaoContratoDados?.itens || []) : undefined,
       // Dados de pagamento DA MEDICAO (itens 5 e 9, 23/08): favorecido, chave PIX, forma, contato e
       // o aceite. O backend recusa a medicao sem eles.
-      medicao_pagamento: usaMedicaoFluxoNovo ? (medicaoContratoDados?.pagamento || {}) : undefined,
+      medicao_pagamento: usaMedicaoFluxoNovo ? { ...medicaoContratoDados?.pagamento, anexos_pendentes_nomes: anexosPendentesMedicao.map(a => a.nome) } : undefined,
       // O endpoint historico recebe JSON e o upload ocorre logo depois. A API valida que havia
       // arquivo selecionado; na aprovacao, o backend confere o anexo efetivamente gravado.
       anexos_pendentes_nomes: tipoEhDeMedicao
         ? anexosPendentesMedicao.map((arquivo) => arquivo.nome).filter(Boolean)
-        : (arquivos.length > 0 ? arquivos.map((arquivo) => arquivo.nome).filter(Boolean) : undefined),
+        : ([...arquivos, ...boletoArquivos].length > 0 ? [...arquivos, ...boletoArquivos].map((arquivo) => arquivo.nome).filter(Boolean) : undefined),
       apropriacoes_rateio: permitirRateioSolicitacao && dividirApropriacaoSolicitacao
         ? rateioSolicitacao.map((linha) => ({
             apropriacao_id: Number(linha.apropriacao_id),
@@ -3267,7 +3295,7 @@ export default function NovaSolicitacao() {
 
               {/* Padrao dos fluxos de pagamento: primeiro a forma; somente depois aparecem os dados
                   que ela realmente exige. Assim boleto nunca pede PIX e PIX nunca pede boleto. */}
-              {exibirFormaPagamento && (
+              {exibirFormaPagamento && !pagamentosFavorecidos && (
                 <CampoForm
                   label="Forma de pagamento"
                   obrigatorio={formaPagamentoObrigatoria}
@@ -3306,7 +3334,7 @@ export default function NovaSolicitacao() {
                 </CampoForm>
               )}
 
-              {exibirFavorecidoPagamento && exibirCampoCredor && (
+              {exibirFavorecidoPagamento && exibirCampoCredor && !pagamentosFavorecidos && (
                 <label className="form-campo--linha flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -3333,7 +3361,7 @@ export default function NovaSolicitacao() {
                 </label>
               )}
 
-              {exibirFavorecidoPagamento && !usarCredorComoFavorecido && (
+              {exibirFavorecidoPagamento && !usarCredorComoFavorecido && !pagamentosFavorecidos && (
                 /* O ParceiroBuscaRemota traz o próprio rótulo e o próprio
                    input; envolvê-lo num CampoForm criaria um <label> dentro
                    de outro. Fica a casca `.form-group` do sistema, com a
@@ -3377,7 +3405,7 @@ export default function NovaSolicitacao() {
                 </div>
               )}
 
-              {exibirFormaPagamento && pagamentoViaPix && (
+              {exibirFormaPagamento && pagamentoViaPix && !pagamentosFavorecidos && (
                 <CampoForm
                   label="Chave PIX do favorecido"
                   obrigatorio
@@ -3395,7 +3423,7 @@ export default function NovaSolicitacao() {
                 </CampoForm>
               )}
 
-              {exibirFormaPagamento && pagamentoViaOutraForma && (
+              {exibirFormaPagamento && pagamentoViaOutraForma && !pagamentosFavorecidos && (
                 <CampoForm
                   label="Dados para pagamento"
                   obrigatorio
@@ -3421,7 +3449,7 @@ export default function NovaSolicitacao() {
                   um <label>, e label dentro de label é HTML inválido (o clique
                   dispara duas vezes). Mesmas classes `.form-*` do sistema —
                   rótulo, obrigatoriedade e linha de erro idênticos. */}
-              {exibirFormaPagamento && pagamentoViaBoleto && (
+              {exibirFormaPagamento && pagamentoViaBoleto && !pagamentosFavorecidos && (
                 <div className="form-group">
                   <span className="form-label form-label--required">Boletos</span>
                   <div className="flex flex-wrap items-center gap-2">
@@ -3447,6 +3475,14 @@ export default function NovaSolicitacao() {
                   {errosCampo.boleto ? <span className="form-error">{errosCampo.boleto}</span> : null}
                 </div>
               )}
+              {exibirFormaPagamento && !usaFluxoRecargaCartao && !pagamentosFavorecidos && <div className="form-campo--linha">
+                <button type="button" className="btn btn-outline btn-sm" aria-label="Adicionar novo favorecido" onClick={iniciarDivisaoFavorecidos}>+ Favorecido</button>
+              </div>}
+              {exibirFormaPagamento && pagamentosFavorecidos && <div className="form-campo--linha">
+                <PagamentosFavorecidos linhas={pagamentosFavorecidos} onChange={alterarPagamentosFavorecidos} formas={formasPagamentoDisponiveis}
+                  cadastro={{ tipoSolicitacaoId: form.tipo_solicitacao_id, tipoSubId: form.tipo_sub_id, areaResponsavel: form.area_responsavel, obraId: form.obra_id }}
+                  disabled={criandoSolicitacao} onCancelar={cancelarDivisaoFavorecidos} />
+              </div>}
             </FormSecao>
           )}
         </BlocoConteudo>
@@ -3689,13 +3725,17 @@ export default function NovaSolicitacao() {
             tipoSolicitacaoId={form.tipo_solicitacao_id}
             tipoSubId={form.tipo_sub_id}
             areaResponsavel={form.area_responsavel}
-            onChange={setMedicaoContratoDados}
+            onChange={(dados) => {
+              setMedicaoContratoDados(dados);
+              if (dados.boletosDivididos) setBoletoArquivos(dados.boletosDivididos);
+            }}
             periodo={{ inicio: form.data_inicio_medicao, fim: form.data_fim_medicao }}
             periodoObrigatorio={medicaoObrigatoria}
             onPeriodoChange={handleChange}
             boletoArquivo={boletoArquivos[0] || null}
             boletoArquivos={boletoArquivos}
             onSelecionarBoleto={selecionarArquivoBoleto}
+            onRestaurarBoletos={setBoletoArquivos}
             /* Este `onRemoverBoleto` tambem e disparado AUTOMATICAMENTE pelo bloco
                quando a forma de pagamento deixa de ser boleto — por isso ele nao
                pergunta nada: confirmacao aqui perguntaria por uma limpeza que a

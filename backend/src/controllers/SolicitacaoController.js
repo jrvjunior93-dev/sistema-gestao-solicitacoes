@@ -3174,6 +3174,7 @@ module.exports = {
         favorecido_chave_pix,
         dados_pagamento,
         boleto_anexo_nome,
+        pagamentos_favorecidos,
         despesa_eventual_declaracoes,
         cartao_recarga_id,
         recargas_cartoes,
@@ -4054,6 +4055,22 @@ module.exports = {
         ? null
         : (valor === '' || valor === undefined ? null : valor);
 
+      let pagamentosFavorecidosValidados = [];
+      if (pagamentos_favorecidos !== undefined) {
+        if (usaFluxoRecargaCartao || usaFluxoCadastroObra || !campoVisivel('forma_pagamento')) {
+          return res.status(400).json({ error: 'Divisao por favorecido nao disponivel neste fluxo.' });
+        }
+        pagamentosFavorecidosValidados = await require('../services/solicitacaoFavorecidosService').validarFavorecidos(
+          pagamentos_favorecidos, { valorTotal: valorPersistido,
+            formas: (await listarFormasDosFluxos()).formas, anexosPendentes: nomesAnexosPendentes }
+        );
+        const primeiro = pagamentosFavorecidosValidados[0];
+        if (Number(primeiro?.forma_pagamento_id) !== Number(formaPagamentoIdPersistida)
+          || Number(primeiro?.favorecido_id) !== Number(favorecido_id)) {
+          return res.status(400).json({ error: 'O primeiro favorecido deve corresponder aos dados principais de pagamento.' });
+        }
+      }
+
       let distribuicaoCentroCustoValidada = null;
       if (!usaFluxoCadastroObra && !registroSelecionadoEhObra && !usaFluxoAdiantamento) {
         distribuicaoCentroCustoValidada = await validarDistribuicaoCentroCusto({
@@ -4152,12 +4169,12 @@ module.exports = {
       };
 
       const criarSolicitacaoComRateio = async () => {
-        if (rateioApropriacoesDetalhado.length === 0) {
+        if (rateioApropriacoesDetalhado.length === 0 && pagamentosFavorecidosValidados.length === 0) {
           return Solicitacao.create(dadosSolicitacao);
         }
         return sequelize.transaction(async (transaction) => {
           const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
-          await SolicitacaoApropriacao.bulkCreate(
+          if (rateioApropriacoesDetalhado.length > 0) await SolicitacaoApropriacao.bulkCreate(
             rateioApropriacoesDetalhado.map((item) => ({
               solicitacao_id: resultado.id,
               contrato_id: item.contrato_id || null,
@@ -4169,12 +4186,18 @@ module.exports = {
             })),
             { transaction }
           );
+          if (pagamentosFavorecidosValidados.length) await require('../services/solicitacaoFavorecidosService').registrarFavorecidos(
+            pagamentosFavorecidosValidados, { solicitacaoId: resultado.id, usuarioId, transaction }
+          );
           return resultado;
         });
       };
 
       const criarSolicitacaoComDistribuicao = async () => sequelize.transaction(async (transaction) => {
         const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
+        if (pagamentosFavorecidosValidados.length) await require('../services/solicitacaoFavorecidosService').registrarFavorecidos(
+          pagamentosFavorecidosValidados, { solicitacaoId: resultado.id, usuarioId, transaction }
+        );
         await SolicitacaoCentroCustoDistribuicao.bulkCreate(
           distribuicaoCentroCustoValidada.linhas.map((item) => ({
             solicitacao_id: resultado.id,
@@ -4776,6 +4799,7 @@ module.exports = {
       // permanecem ate o conteudo correspondente ser realmente visualizado.
       await marcarAtencaoLida(solicitacao.id, req.user.id);
 
+      payload.pagamentos_favorecidos = await require('../services/solicitacaoFavorecidosService').listarFavorecidos(solicitacao.id);
       return res.json(payload);
 
     } catch (error) {

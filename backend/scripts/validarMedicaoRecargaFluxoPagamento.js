@@ -41,7 +41,7 @@ function matches(row, where = {}) {
 let state, grants = true, hasAnexo = true, failHistory = false;
 const tx = { LOCK: { UPDATE: 'UPDATE' } };
 const names = ['Contrato', 'ContratoMedicao', 'ContratoParcela', 'MedicaoParcela',
-  'TituloFinanceiro', 'TituloFinanceiroRateio', 'Solicitacao', 'Historico', 'PagamentoManualFilaItem'];
+  'TituloFinanceiro', 'TituloFinanceiroRateio', 'Solicitacao', 'Historico', 'PagamentoManualFilaItem', 'SolicitacaoFavorecido'];
 const models = {};
 function reset() {
   state = Object.fromEntries(names.map((name) => [name, []]));
@@ -84,19 +84,145 @@ models.FormaPagamentoFinanceira = { findByPk: async () => ({ id: 1, tipo: 'PIX' 
 const analise = { STATUS_ANALISE_PROPRIETARIO: 'EM ANÁLISE DO PROPRIETÁRIO',
   emAnaliseProprietario: (value) => value === 'EM ANÁLISE DO PROPRIETÁRIO' };
 const medicaoAtual = load('medicaoAtualContratoService.js', { sequelize: { Op }, '../models': models });
+const favorecidos = load('solicitacaoFavorecidosService.js', { sequelize: { Op }, '../models': models,
+  './solicitacaoFavorecidosDomain': require('../src/services/solicitacaoFavorecidosDomain'),
+  './formasPagamentoMedicaoService': { formaPagamentoEhBoleto: () => false, formaPagamentoEhPix: () => true },
+  './tituloRenegociacaoVinculos': { projetarOrigens: async titulos => titulos }
+});
 const service = load('medicaoContratoService.js', {
   sequelize: { Op }, '../models': models,
   '../utils/codigoDoSetor': { codigoDoSetor: () => 'GEO', setorParaHistorico: (value) => value },
-  './contratoParcelasService': { paraCentavos: (value) => Math.round(Number(value) * 100) },
+  './contratoParcelasService': require('../src/services/contratoParcelasService'),
   './formasPagamentoMedicaoService': { formaPagamentoEhBoleto: () => false, formaPagamentoEhPix: () => true },
   './authorizationService': { userHasStrictAreaPermission: async () => grants },
   './setorCapabilityService': { findSetorByCapability: async (cap, options) => {
     assert.equal(cap, 'eh_setor_obra'); assert.equal(options.transaction, tx); return { codigo: 'OBRA' };
   }, resolveSetorPersistenciaValue: (setor) => setor.codigo },
   './tituloRenegociacaoVinculos': { projetarAssociacoes: async () => {} },
+  './solicitacaoFavorecidosService': favorecidos,
+  './medicaoFavorecidosService': { dividirTitulosDaMedicao: async () => null },
   './analiseProprietarioService': analise,
   './medicaoAtualContratoService': medicaoAtual
 });
+function prepararDivisao({ gerada = false } = {}) {
+  reset();
+  Object.assign(state.Contrato[0], { valor_total: 300, valor_aditivos: 0 });
+  Object.assign(state.ContratoMedicao[0], { solicitacao_id: 50 });
+  Object.assign(state.Solicitacao[0], { contrato_id: 1 });
+  state.ContratoParcela.forEach(p => { p.data_vencimento = '2026-10-20'; });
+  Object.assign(state.MedicaoParcela[0], { solicitacao_id: 50, valor_medido: 100 });
+  state.SolicitacaoFavorecido = [60, 40].map((valor, i) => ({ id: 20 + i, solicitacao_id: 50, medicao_id: 1,
+    contrato_parcela_id: 1, favorecido_id: 10 + i, nome_favorecido: `Favorecido ${i + 1}`, valor,
+    titulo_financeiro_id: gerada ? i === 0 ? 1 : 3 : null }));
+  if (gerada) {
+    state.ContratoMedicao[0].aprovada_em = '2026-10-01';
+    state.ContratoParcela[0].status = 'APROVADA';
+    Object.assign(state.TituloFinanceiro[0], { tipo: 'PAGAR', status: 'ABERTO', valor_original: 60, valor_saldo: 60 });
+    state.TituloFinanceiro.push({ id: 3, tipo: 'PAGAR', status: 'ABERTO', valor_original: 40, valor_saldo: 40, valor_baixado: 0 });
+  }
+}
+async function edicaoEReconciliacaoDividida() {
+  const usuario = { id: 2 };
+  const itens = [{ contrato_parcela_id: 1, valor_medido: 120, vencimento: '2026-11-20' }];
+  const valores = [{ id: 20, valor: 70 }, { id: 21, valor: 50 }];
+  for (const invalido of [undefined, [{ id: 20, valor: 70 }, { id: 21, valor: 49.99 }],
+    [{ id: 20, valor: 70 }, { id: 99, valor: 50 }], [{ id: 20, valor: 70 }, { id: 20, valor: 50 }],
+    [{ id: true, valor: 70 }, { id: 21, valor: 50 }], [{ id: 20, valor: null }, { id: 21, valor: 50 }]]) {
+    prepararDivisao();
+    const before = structuredClone(state);
+    await assert.rejects(() => service.atualizarMedicaoDoContrato(1, { itens, favorecidos_valores: invalido, usuario }));
+    assert.deepEqual(state, before, 'Erro de soma/ID nao deixa alteracao parcial.');
+  }
+  prepararDivisao(); grants = false;
+  await assert.rejects(() => service.atualizarMedicaoDoContrato(1, { itens, favorecidos_valores: valores, usuario }), e => e.statusCode === 403);
+  grants = true; failHistory = true;
+  await assert.rejects(() => service.atualizarMedicaoDoContrato(1, { itens, favorecidos_valores: valores, usuario }), /Auditoria QA/);
+  assert.deepEqual(state.SolicitacaoFavorecido.map(p => p.valor), [60, 40]);
+  assert.equal(state.ContratoParcela[0].valor, 100);
+  failHistory = false;
+  await service.atualizarMedicaoDoContrato(1, { itens, favorecidos_valores: valores, usuario });
+  assert.deepEqual(state.SolicitacaoFavorecido.map(p => p.valor), [70, 50]);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [120, 180]);
+  assert.deepEqual(state.TituloFinanceiro.map(t => t.valor_original), [120, 180]);
+  assert.equal(state.MedicaoParcela[0].valor_medido, 120);
+  assert.equal(state.ContratoMedicao[0].valor_total, 120);
+  assert.equal(state.Historico.filter(h => h.acao === 'DADOS_PAGAMENTO_ALTERADOS').length, 2);
+  const count = state.Historico.length;
+  await service.atualizarMedicaoDoContrato(1, { itens, favorecidos_valores: valores, usuario });
+  assert.equal(state.Historico.filter(h => h.acao === 'DADOS_PAGAMENTO_ALTERADOS').length, 2, 'Retry nao repete auditoria financeira nem redistribuicao.');
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [120, 180]);
+  assert.ok(state.Historico.length >= count);
+  state.ContratoMedicao[0].aprovada_em = '2026-10-01';
+  await assert.rejects(() => service.atualizarMedicaoDoContrato(1, { itens, favorecidos_valores: valores, usuario }), e => e.statusCode === 409);
+
+  prepararDivisao({ gerada: true });
+  Object.assign(state.TituloFinanceiro[0], { status: 'PARCIAL', valor_baixado: 50, valor_saldo: 10 });
+  await service.reconciliarParcelasComOPago(1, { usuarioId: 2 }, tx);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [90, 210]);
+  assert.equal(state.TituloFinanceiro[0].valor_saldo, 0, 'Somente a parte paga a menor fecha.');
+  assert.equal(state.TituloFinanceiro[2].valor_saldo, 40, 'Outra parte continua exigivel.');
+  assert.equal(state.TituloFinanceiro[2].valor_original, 40);
+  assert.equal(state.MedicaoParcela[0].valor_medido, 90);
+  assert.equal((await service.calcularSaldoDoContrato(1, tx)).comprometido, 90);
+  await service.reconciliarParcelasComOPago(1, {}, tx);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [90, 210], 'Recomputacao idempotente.');
+  Object.assign(state.TituloFinanceiro[0], { status: 'ABERTO', valor_baixado: 0, valor_saldo: 60 });
+  await service.reconciliarParcelasComOPago(1, {}, tx);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [100, 200], 'Estorno restaura somente principal da parte.');
+
+  // Complemento sozinho governa fila/analise e ainda nao pode encerrar toda a medicao.
+  state.TituloFinanceiro[2].status_interno_pagar = analise.STATUS_ANALISE_PROPRIETARIO;
+  await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
+  assert.equal(state.Solicitacao[0].status_global, analise.STATUS_ANALISE_PROPRIETARIO);
+  state.PagamentoManualFilaItem.push({ id: 1, titulo_financeiro_id: 3, status: 'PENDENTE' });
+  await service.sincronizarStatusDaSolicitacaoDoContrato(1, {}, tx);
+  assert.equal(state.Solicitacao[0].status_global, 'ENVIADO PARA PAGAMENTO');
+
+  prepararDivisao({ gerada: true });
+  state.TituloFinanceiro[2].status = 'EXCLUIDO';
+  await service.devolverSaldoDeTitulosExcluidos([3], { usuarioId: 2 }, tx);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [60, 240]);
+  assert.equal(state.TituloFinanceiro[0].valor_original, 60, 'Cancelamento de complemento nao duplica o primeiro.');
+  assert.equal(state.TituloFinanceiro[0].valor_saldo, 60);
+  assert.equal(state.MedicaoParcela[0].devolvido_em, null, 'Uma parte cancelada nao devolve toda a medicao.');
+  await service.devolverSaldoDeTitulosExcluidos([3], {}, tx);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [60, 240]);
+  state.TituloFinanceiro[0].status = 'EXCLUIDO';
+  await service.devolverSaldoDeTitulosExcluidos([1], { usuarioId: 2 }, tx);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [0, 300]);
+  assert.ok(state.MedicaoParcela[0].devolvido_em);
+  assert.equal((await service.calcularSaldoDoContrato(1, tx)).comprometido, 0);
+}
+async function rescisaoDividida() {
+  prepararDivisao({ gerada: true });
+  models.TituloFinanceiro.unscoped = () => models.TituloFinanceiro;
+  models.ContratoParcela.unscoped = () => models.ContratoParcela;
+  state.ContratoParcela[0].medicoes = [{ id: 1, devolvido_em: null }];
+  const source = fs.readFileSync(path.join(root, 'contratoFluxoNovoService.js'), 'utf8');
+  const start = source.indexOf('async function encerrarContrato(');
+  const end = source.indexOf('\nmodule.exports', start);
+  const contexto = { module: { exports: {} }, ...models, Date,
+    paraCentavos: require('../src/services/contratoParcelasService').paraCentavos,
+    STATUS_CONTRATO: { RESCINDIDO: 'RESCINDIDO' }, STATUS_PARCELA: { REJEITADA: 'REJEITADA' },
+    contratoFoiRescindido: c => c.status_contrato === 'RESCINDIDO',
+    calcularResumoOperacional: async () => ({ saldo_contratual: 200 }), espelharERegistrar: async () => {},
+    require: id => {
+      if (id === './authorizationService') return { userHasStrictAreaPermission: async () => grants };
+      if (id === './solicitacaoFavorecidosService') return favorecidos;
+      throw Error(id);
+    }
+  };
+  vm.runInNewContext(`${source.slice(start, end)}\nmodule.exports=encerrarContrato;`, contexto);
+  grants = false;
+  await assert.rejects(() => contexto.module.exports(1, { usuario: { id: 2 }, motivo: 'QA' }), e => e.statusCode === 403);
+  grants = true;
+  const dto = await contexto.module.exports(1, { usuario: { id: 2 }, motivo: 'QA' });
+  assert.deepEqual(Array.from(dto.titulos_preservados), [1, 3], 'Rescisao registra todas as obrigacoes medidas sem cancelar complementos.');
+  assert.deepEqual(Array.from(dto.titulos_excluidos), [2], 'So cancela previsao ainda nao medida.');
+  assert.deepEqual(state.TituloFinanceiro.map(t => t.status), ['ABERTO', 'EXCLUIDO', 'ABERTO']);
+  assert.deepEqual(state.ContratoParcela.map(p => p.valor), [100, 0]);
+  await assert.rejects(() => contexto.module.exports(1, { usuario: { id: 2 }, motivo: 'QA' }), e => e.statusCode === 409);
+}
 async function medicao() {
   reset(); grants = false;
   await assert.rejects(() => service.aprovarMedicaoDoContrato(1, { usuario: { id: 2 } }), (e) => e.statusCode === 403);
@@ -263,6 +389,7 @@ async function leituraParcelasEnvio() {
   let tituloAtual = { ...tituloResumo };
   let filas = [];
   let consultasFila = 0;
+  let divisoesLeitura = new Map();
   const parcela = { id: 10, numero: 10, valor: 1000, valor_previsto: 1000,
     titulo_financeiro_id: 9, status: 'APROVADA', data_vencimento: '2026-10-20' };
   const vazio = { findAll: async () => [], findOne: async () => null };
@@ -291,6 +418,7 @@ async function leituraParcelasEnvio() {
     './medicaoContratoService': { calcularSaldoDoContrato: async () => ({ saldo_cent: 0, total_cent: 100000 }),
       statusEfetivo: p => ({ status: p.titulo?.status || p.status, origem: 'TITULO', editavel: false }) },
     './tituloRenegociacaoVinculos': { projetarAssociacoes: async () => {} },
+    './solicitacaoFavorecidosService': { projetarDivisoesNasParcelas: async () => divisoesLeitura },
     './tituloMedicaoEnvioDomain': { resumoTituloEnvioMedicao },
     './alertaSaldoContratoService': { classificarSaldo: async () => null }
   };
@@ -307,6 +435,9 @@ async function leituraParcelasEnvio() {
   assert.deepEqual(JSON.parse(JSON.stringify(dto.parcelas[0].titulo_pagamento)), resumoTituloEnvioMedicao(tituloAtual));
   assert.equal(dto.parcelas[0].medicao.id, 1);
   assert.equal(consultasFila, 1, 'Fila consultada em lote, sem consulta por parcela.');
+  divisoesLeitura = new Map([[10, { pagamentos: [{ id: 81, medicao_id: 1 }, { id: 82, medicao_id: 1 }, { id: 71, medicao_id: 2 }] }]]);
+  dto = await read(1);
+  assert.deepEqual(Array.from(dto.contrato.pagamentos_medicao_atual, p => p.id), [81, 82], 'Resumo da medicao corrente nao mistura instrucoes de outros eventos.');
   filas = [{ id: 7, titulo_financeiro_id: 9, status: 'PENDENTE' }];
   dto = await read(1);
   assert.equal(dto.parcelas[0].titulo_pagamento.filaPagamentosManuais[0].status, 'PENDENTE');
@@ -315,6 +446,6 @@ async function leituraParcelasEnvio() {
   tituloAtual = null;
   assert.equal((await read(1)).parcelas[0].titulo_pagamento, null);
 }
-(async () => { await leituraParcelasEnvio(); await medicao(); await medicaoMaisRecente(); await relatorio(); filtroFinanceiroObras();
+(async () => { await leituraParcelasEnvio(); await medicao(); await medicaoMaisRecente(); await edicaoEReconciliacaoDividida(); await rescisaoDividida(); await relatorio(); filtroFinanceiroObras();
   console.log('OK: medicao mais recente governa registro/aprovacao/analise/fila; aprovar ou baixar a anterior preserva status/setor atuais e quitacao integral. Permissoes, anexos, rollback, replay e custo de recarga preservados. Sem banco/rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

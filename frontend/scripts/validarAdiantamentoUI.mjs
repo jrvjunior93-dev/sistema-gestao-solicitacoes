@@ -16,6 +16,7 @@ try {
   const arquivos = [{ id: 1, nome_original: 'nota.pdf', caminho_arquivo: '/uploads/nota.pdf' }];
   const pedidos = [];
   let falhar = true, configuracao = null;
+  let ciclosMultiplos = null;
   const obras = [{ id: 30, codigo: 'ADM', nome: 'Administrativo' }, { id: 2, codigo: '02', nome: 'Obra Privada' }];
   const contexto = () => ({ ciclo, titulo: { id: 100, codigo: 'TIT-TESTE', status: 'QUITADO', valor_baixado: 1000 }, devolucao, obras, apropriacoes: [{ id: 8, obra_id: 2, codigo: '8', descricao: 'Materiais' }], anexos: arquivos, pode_conferir: true });
   await page.route('**/*', async route => {
@@ -25,7 +26,12 @@ try {
       if (req.method() === 'PUT') { configuracao = req.postDataJSON(); return json(configuracao); }
       return json({ obras_ids: null, obras: [obras[1]] });
     }
-    if (url.pathname.endsWith('/adiantamentos/solicitacoes/10')) return json(contexto());
+    if (url.pathname.endsWith('/adiantamentos/solicitacoes/10')) {
+      if (!ciclosMultiplos) return json(contexto());
+      const selecionado = ciclosMultiplos.find(c => String(c.id) === (url.searchParams.get('ciclo_id') || '1'));
+      return json({ ...contexto(), ciclos: ciclosMultiplos, ciclo: selecionado,
+        titulo: { id: 100 + selecionado.id, codigo: `TIT-PARTE-${selecionado.id}`, status: 'QUITADO', valor_baixado: selecionado.valor_solicitado } });
+    }
     if (url.pathname.endsWith('/adiantamentos/solicitacoes/10/prestacao')) {
       const body = req.postDataJSON(); pedidos.push(body);
       if (falhar) { falhar = false; return json({ error: 'Conferência indisponível para teste; tente novamente.' }, 409); }
@@ -86,6 +92,26 @@ try {
   await page.getByText(/TIT-DEV/).waitFor();
   assert(await page.getByLabel('Despesa 1', { exact: true }).isDisabled());
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Tabela nao provoca overflow da pagina');
+  ciclosMultiplos = [{ id: 1, nome_favorecido: 'Pessoa A', status: 'PRESTACAO_PENDENTE', valor_solicitado: 600 },
+    { id: 2, nome_favorecido: 'Pessoa B', status: 'PRESTACAO_PENDENTE', valor_solicitado: 400 }];
+  await page.goto('http://127.0.0.1:5397/scripts/fixtures/adiantamento.html');
+  await page.getByText(/TIT-PARTE-1/).waitFor();
+  await page.getByLabel('Despesa 1', { exact: true }).fill('Rascunho A');
+  await page.getByLabel('Valor 1', { exact: true }).fill('300');
+  await page.getByRole('combobox', { name: /^Favorecido \/ Prestação/ }).selectOption('2');
+  await page.getByText(/TIT-PARTE-2/).waitFor();
+  await page.getByLabel('Despesa 1', { exact: true }).fill('Rascunho B');
+  await page.getByLabel('Valor 1', { exact: true }).fill('200');
+  await page.getByRole('combobox', { name: /^Favorecido \/ Prestação/ }).selectOption('1');
+  await page.getByText(/TIT-PARTE-1/).waitFor();
+  assert.equal(await page.getByLabel('Despesa 1', { exact: true }).inputValue(), 'Rascunho A');
+  assert.equal(await page.getByLabel('Valor 1', { exact: true }).inputValue(), '300');
+  await page.getByRole('combobox', { name: /^Favorecido \/ Prestação/ }).selectOption('2');
+  await page.getByText(/TIT-PARTE-2/).waitFor();
+  assert.equal(await page.getByLabel('Despesa 1', { exact: true }).inputValue(), 'Rascunho B');
+  await page.getByRole('button', { name: 'Enviar prestação', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('button')?.disabled);
+  assert.equal(pedidos.at(-1).ciclo_id, 2, 'Escrita envia apenas o ciclo selecionado');
   assert.deepEqual(erros, []);
   console.log('OK UI real: rateio/configuracao, despesas, comprovantes, upload sem apagar campos, retry, saldo/devolucao, negativas de leitura e mobile. Sem APIs reais.');
 } finally { await browser?.close(); await server.close(); }

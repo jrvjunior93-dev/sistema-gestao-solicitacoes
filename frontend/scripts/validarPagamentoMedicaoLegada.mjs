@@ -79,7 +79,9 @@ const modules = {
     export const uploadContratoAnexos = async () => null;
     export const uploadNegociacaoContrato = async () => null;
     export const uploadDocumentacaoJuridicaContrato = async () => null;`,
-  parceiros: 'export const buscarParceiros = async () => []; export const criarCredorNovaSolicitacao = async () => null;',
+  parceiros: `export const buscarParceiros = async ({ q }) => [
+    { id: 71, nome: 'Credor QA', chave_pix: 'credor@pix' }, { id: 72, nome: 'Favorecido QA', chave_pix: 'segundo@pix' }
+  ].filter(p => p.nome.toLowerCase().includes(q.toLowerCase())); export const criarCredorNovaSolicitacao = async () => null;`,
   apropriacoes: 'export const listarApropriacoes = async () => [];',
   configuracoesSistema: `export const getAutomacaoDestinoNovaSolicitacao = async () => ({ regras: {}, destinos_disponiveis: [] });
     export const getCamposNovaSolicitacao = async () => ({ regras: { GEO: { tipos: {
@@ -255,6 +257,78 @@ try {
   assert.deepEqual(enviadoComum.uploads.filter(u => u.tipo === 'BOLETO').map(u => u.files), [['comum-1.pdf', 'comum-2.pdf']]);
   assert.deepEqual(errosComum, []);
   await comum.close();
+  for (const novo of [false, true]) {
+    const multi = await browser.newPage({ viewport: { width, height: 900 } });
+    multi.setDefaultTimeout(10000);
+    const erros = [], avisos = [];
+    multi.on('pageerror', e => erros.push(e.message));
+    multi.on('console', e => { if (e.type() === 'error') avisos.push(e.text()); });
+    await multi.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:') ? route.continue() : route.abort());
+    await multi.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture${novo ? '?real-novo' : ''}`);
+    await multi.getByPlaceholder('Digite o código ou nome da obra/centro de custo').fill('Obra teste');
+    await multi.getByRole('button', { name: /Obra teste/ }).click();
+    await multi.locator('[name="tipo_solicitacao_id"]').selectOption(novo ? '7' : '9');
+    if (novo) {
+      await multi.getByPlaceholder('Digite o código ou o título do contrato').fill('CT-NOV');
+      await multi.getByPlaceholder('Digite o código ou o título do contrato').press('Enter');
+      await multi.locator('.app-tabela input[type="checkbox"], .app-tabela-cards input[type="checkbox"]').first().check();
+      await multi.locator('[name="forma_pagamento_medicao"]').selectOption('1');
+      await multi.locator('[name="data_inicio_medicao"]').fill('01/10/2026');
+      await multi.locator('[name="data_fim_medicao"]').fill('05/10/2026');
+    } else {
+      await multi.locator('[name="forma_pagamento_id"]').selectOption('2');
+      await multi.locator('[name="valor"]').fill('500,00');
+    }
+    await multi.getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).click();
+    const partes = multi.getByTestId('parte-favorecido');
+    await partes.nth(0).getByLabel('Valor do favorecido 1 *', { exact: true }).fill('300,00');
+    if (novo) await multi.getByLabel('Chave PIX / Copia e Cola do favorecido 1 *', { exact: true }).fill('credor@pix');
+    if (!novo) {
+      await partes.nth(0).getByRole('combobox', { name: 'Favorecido 1 *', exact: true }).fill('Credor');
+      await partes.nth(0).getByRole('button', { name: 'Credor QA', exact: true }).click();
+      await multi.getByLabel('Boletos do favorecido 1', { exact: true }).setInputFiles([pdf('primeiro-1.pdf'), pdf('primeiro-2.pdf')]);
+    }
+    await partes.nth(1).getByRole('combobox', { name: 'Favorecido 2 *', exact: true }).fill('Favorecido');
+    await partes.nth(1).getByRole('button', { name: 'Favorecido QA', exact: true }).click();
+    await partes.nth(1).getByRole('combobox', { name: /^Forma de pagamento do favorecido 2/ }).selectOption(novo ? '2' : '1');
+    await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('199,99');
+    if (novo) await multi.getByLabel('Boletos do favorecido 2', { exact: true }).setInputFiles([pdf('segundo-1.pdf'), pdf('segundo-2.pdf')]);
+    else await multi.getByLabel('Chave PIX / Copia e Cola do favorecido 2 *', { exact: true }).fill('000201' + 'X'.repeat(1000));
+    // Cancelar a divisao restaura somente os dados/arquivos da primeira parte.
+    if (novo) {
+      await multi.getByRole('button', { name: 'Usar apenas o primeiro favorecido', exact: true }).click();
+      assert.equal(await multi.getByTestId('parte-favorecido').count(), 0);
+      assert.equal(await multi.locator('[name="forma_pagamento_medicao"]').inputValue(), '1');
+      assert.equal(await multi.getByText('segundo-1.pdf', { exact: true }).count(), 0);
+      await multi.getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).click();
+      await partes.nth(0).getByLabel('Valor do favorecido 1 *', { exact: true }).fill('300,00');
+      await partes.nth(1).getByRole('combobox', { name: 'Favorecido 2 *', exact: true }).fill('Favorecido');
+      await partes.nth(1).getByRole('button', { name: 'Favorecido QA', exact: true }).click();
+      await partes.nth(1).getByRole('combobox', { name: /^Forma de pagamento do favorecido 2/ }).selectOption('2');
+      await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('199,99');
+      await multi.getByLabel('Boletos do favorecido 2', { exact: true }).setInputFiles([pdf('segundo-1.pdf'), pdf('segundo-2.pdf')]);
+    }
+    if (novo) await multi.locator('[name="dados_pagamento_confirmados"]').check();
+    await multi.getByRole('button', { name: 'Criar Solicitação', exact: true }).click();
+    await multi.waitForFunction(() => !window.payloadEnviado);
+    assert.ok(avisos.some(a => a.includes('soma dos favorecidos')), JSON.stringify({ novo, avisos,
+      invalidos: await multi.locator(':invalid').evaluateAll(els => els.map(e => ({ tag: e.tagName, nome: e.name, valor: e.value }))) }));
+    await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('200,00');
+    if (novo) await multi.locator('[name="dados_pagamento_confirmados"]').check();
+    await multi.getByRole('button', { name: 'Criar Solicitação', exact: true }).click();
+    await multi.waitForFunction(() => Boolean(window.payloadEnviado));
+    const resultado = await multi.evaluate(() => ({ payload: window.payloadEnviado, uploads: window.uploadsEnviados }));
+    const pagos = novo ? resultado.payload.medicao_pagamento.pagamentos_favorecidos : resultado.payload.pagamentos_favorecidos;
+    assert.equal(pagos.length, 2); assert.deepEqual(pagos.map(p => p.valor), [300, 200]);
+    assert.deepEqual(pagos.map(p => p.favorecido_id), [71, 72]);
+    assert.deepEqual(pagos.map(p => p.forma_pagamento_id), novo ? [1, 2] : [2, 1]);
+    if (novo) assert.deepEqual(pagos.map(p => p.contrato_parcela_id), [51, 51]);
+    else assert.equal(pagos[1].favorecido_chave_pix.length, 1006, 'Copia e Cola nao truncado');
+    assert.deepEqual(resultado.uploads.filter(u => u.tipo === 'BOLETO').flatMap(u => u.files), novo
+      ? ['segundo-1.pdf', 'segundo-2.pdf'] : ['primeiro-1.pdf', 'primeiro-2.pdf']);
+    assert.deepEqual(erros, []);
+    await multi.close();
+  }
   console.log('OK boletos multiplos '+width+'px: selecao cumulativa, remocao individual e envio de todos no legado/fluxo novo.');
   }
   console.log('OK: medicao legada configuravel, PIX/transferencia/boleto, payload de envio e pagamento separado do fluxo novo; controller preserva as exigencias corretas.');

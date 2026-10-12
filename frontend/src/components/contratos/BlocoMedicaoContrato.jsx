@@ -9,6 +9,8 @@ import DateInputBR from '../DateInputBR';
 import CadastroRapidoFavorecidoButton from '../solicitacoes/CadastroRapidoFavorecidoButton';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import PendingAttachmentsList from '../attachments/PendingAttachmentsList';
+import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos } from '../solicitacoes/PagamentosFavorecidos';
+import { formatCurrencyInput } from '../../utils/formatters';
 
 /**
  * Bloco de MEDICAO (wireframe 2), montado dentro da Nova Solicitacao quando o contrato
@@ -91,7 +93,8 @@ export default function BlocoMedicaoContrato({
   boletoArquivo = null,
   boletoArquivos = null,
   onSelecionarBoleto = null,
-  onRemoverBoleto = null
+  onRemoverBoleto = null,
+  onRestaurarBoletos = null
 }) {
   // DADOS DE PAGAMENTO DA MEDICAO (itens 5 e 9 do lote de 23/08).
   //
@@ -119,8 +122,10 @@ export default function BlocoMedicaoContrato({
   const [formaPagamentoId, setFormaPagamentoId] = useState('');
   const [formas, setFormas] = useState([]);
   const [confirmado, setConfirmado] = useState(false);
+  const [divisao, setDivisao] = useState(null);
   const boletos = useMemo(() => Array.isArray(boletoArquivos)
     ? boletoArquivos : (boletoArquivo ? [boletoArquivo] : []), [boletoArquivos, boletoArquivo]);
+  const boletosDivididos = useMemo(() => divisao ? divisao.flatMap(l => l.boletos || []) : null, [divisao]);
 
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(false);
@@ -131,6 +136,7 @@ export default function BlocoMedicaoContrato({
   useEffect(() => {
     let cancelado = false;
     setSelecao({});
+    setDivisao(null);
     setErro('');
     if (!contratoId) { setDados(null); return undefined; }
 
@@ -212,8 +218,12 @@ export default function BlocoMedicaoContrato({
       itens,
       excedeSaldo,
       saldo,
+      boletosDivididos,
+      possuiBoleto: pagamentoViaBoleto || Boolean(divisao?.some(l => formaPagamentoEhBoleto(formas.find(f => String(f.id) === String(l.forma_pagamento_id))))),
+      erroFavorecidos: erroDivisaoFavorecidos(divisao, formas, itens.map(i => ({ id: i.contrato_parcela_id, valor: paraCentavosContrato(i.valor_medido) / 100 }))),
       // O aceite e os dados de pagamento sobem junto: o backend recusa a medicao sem eles.
       pagamento: {
+        pagamentos_favorecidos: divisao ? payloadFavorecidos(divisao) : undefined,
         // Favorecido pertence a instrucao de pagamento inteira, nao apenas ao PIX. Boleto e
         // transferencia tambem precisam dizer a quem o Financeiro deve pagar.
         favorecido_id: favorecidoEfetivo?.id || null,
@@ -222,14 +232,28 @@ export default function BlocoMedicaoContrato({
         // ou a instrucao que o Financeiro usara para pagar.
         favorecido_contato: contato || null,
         forma_pagamento_id: formaPagamentoId ? Number(formaPagamentoId) : null,
-        boleto_anexo_nome: pagamentoViaBoleto ? (boletos[0]?.nome || null) : null,
+        boleto_anexo_nome: pagamentoViaBoleto ? ((divisao?.[0]?.boletos || boletos)[0]?.nome || null) : null,
         via_pix: pagamentoViaPix,
         via_boleto: pagamentoViaBoleto,
         dados_confirmados: confirmado
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itens, excedeSaldo, usarCredor, favorecido, chavePix, contato, formaPagamentoId, confirmado, credorDoContrato, pagamentoViaPix, pagamentoViaBoleto, boletos]);
+  }, [itens, excedeSaldo, usarCredor, favorecido, chavePix, contato, formaPagamentoId, confirmado, credorDoContrato, pagamentoViaPix, pagamentoViaBoleto, boletos, divisao, formas]);
+
+  function alterarDivisao(linhas) {
+    setDivisao(linhas); setConfirmado(false);
+    const primeiro = linhas[0];
+    setUsarCredor(false); setFavorecido(primeiro.parceiro); setFormaPagamentoId(primeiro.forma_pagamento_id);
+    setChavePix(primeiro.favorecido_chave_pix); setContato(primeiro.dados_pagamento);
+  }
+  function iniciarDivisao() {
+    const linhas = itens.map((i, index) => novaParteFavorecido({ contrato_parcela_id: i.contrato_parcela_id,
+      valor: formatCurrencyInput(paraCentavosContrato(i.valor_medido) / 100), parceiro: favorecidoEfetivo,
+      forma_pagamento_id: formaPagamentoId, favorecido_chave_pix: chavePix, dados_pagamento: contato,
+      boletos: index === 0 ? boletos : [] }));
+    alterarDivisao([...linhas, novaParteFavorecido({ contrato_parcela_id: itens[0].contrato_parcela_id })]);
+  }
 
   // Autocomplete sem quantidade minima de caracteres. O pequeno debounce evita uma requisicao por
   // tecla sem obrigar o usuario a interromper a digitacao para clicar em "Buscar".
@@ -477,6 +501,7 @@ export default function BlocoMedicaoContrato({
           Pagamento desta medição
         </div>
 
+        {!divisao && <>
         <label className="grid min-w-0 max-w-md gap-1 text-sm">
           Forma de pagamento *
           <select
@@ -648,6 +673,13 @@ export default function BlocoMedicaoContrato({
           </div>
         )}
 
+        </>}
+        {!divisao && <button type="button" className="btn btn-outline btn-sm" aria-label="Adicionar novo favorecido" disabled={!itens.length} onClick={iniciarDivisao}>+ Favorecido</button>}
+        {divisao && <PagamentosFavorecidos linhas={divisao} onChange={alterarDivisao} formas={formas}
+          parcelas={itens.map(i => ({ id: i.contrato_parcela_id, numero: parcelas.find(p => p.id === i.contrato_parcela_id)?.numero }))}
+          cadastro={{ tipoSolicitacaoId, tipoSubId, areaResponsavel }} onCancelar={() => {
+            onRestaurarBoletos?.(divisao[0]?.boletos || []); setDivisao(null); setConfirmado(false);
+          }} />}
         {/* O aceite e uma DECLARACAO: o sistema guarda quem confirmou e quando. Por isso ele cai
             sozinho sempre que um dos dados de pagamento muda — confirmar e depois alterar deixaria
             uma confirmacao que nao se refere ao que sera pago. */}

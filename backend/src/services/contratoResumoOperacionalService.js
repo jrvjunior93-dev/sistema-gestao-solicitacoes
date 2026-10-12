@@ -226,6 +226,7 @@ async function carregarDadosOperacionais(contratoIds, { transaction } = {}) {
     if (!parcela.titulo) continue;
     parcela.setDataValue('titulo', projecaoPorId.get(Number(parcela.titulo.id)) || parcela.titulo);
   }
+  await require('./solicitacaoFavorecidosService').projetarDivisoesNasParcelas(parcelas, transaction);
 
   return {
     solicitacoesPorContrato: agruparPor(solicitacoes, 'contrato_id'),
@@ -359,7 +360,7 @@ function resumirNovo(contrato, parcelas) {
       item.valor = dinheiro(item.valor + numero(vinculo.valor_medido));
     }
 
-    const titulo = parcela.titulo;
+    for (const titulo of parcela.divisao_favorecidos?.titulos_leitura || [parcela.titulo]) {
     if (titulo) {
       const cancelado = Boolean(titulo.deleted_at) || STATUS_TITULO_IGNORADO.has(status(titulo.status));
       // Um titulo pode existir desde a aprovacao do contrato. So a parcela efetivamente medida
@@ -379,6 +380,7 @@ function resumirNovo(contrato, parcelas) {
         medido: valorMedidoParcela,
         cancelado
       });
+    }
     }
   }
 

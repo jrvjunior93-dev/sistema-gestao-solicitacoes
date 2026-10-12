@@ -1778,6 +1778,7 @@ function validateSolicitacaoCreateBody(body = {}) {
       'favorecido_chave_pix',
       'dados_pagamento',
       'boleto_anexo_nome',
+      'pagamentos_favorecidos',
       'despesa_eventual_declaracoes',
       'cartao_recarga_id',
       'recargas_cartoes',
@@ -1827,6 +1828,11 @@ function validateSolicitacaoCreateBody(body = {}) {
     favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', PIX_TEXTO_MAX),
     dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
     boleto_anexo_nome: parseOptionalText(body.boleto_anexo_nome, 'Arquivo do boleto', 255),
+    pagamentos_favorecidos: (() => {
+      if (body.pagamentos_favorecidos === undefined) return undefined;
+      try { return require('../services/solicitacaoFavorecidosDomain').normalizarFavorecidos(body.pagamentos_favorecidos, { valorTotal: body.valor }); }
+      catch (error) { throw new ValidationError(error.message); }
+    })(),
     despesa_eventual_declaracoes: body.despesa_eventual_declaracoes && typeof body.despesa_eventual_declaracoes === 'object'
       ? {
           despesa_pontual_nao_recorrente: body.despesa_eventual_declaracoes.despesa_pontual_nao_recorrente === true,

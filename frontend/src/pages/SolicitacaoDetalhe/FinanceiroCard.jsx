@@ -469,7 +469,7 @@ function getFormasCompraDireta(solicitacao) {
 }
 
 function exigeTitulosSeparadosCompraDireta(solicitacao) {
-  return Boolean(getFreteTerceiroCompraDireta(solicitacao) || getFormasCompraDireta(solicitacao).length > 1);
+  return Boolean(solicitacao?.pagamentos_favorecidos?.length || getFreteTerceiroCompraDireta(solicitacao) || getFormasCompraDireta(solicitacao).length > 1);
 }
 
 function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', options = {}) {
@@ -481,6 +481,7 @@ function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', op
     : null;
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    instrucao_favorecido: options.instrucao_favorecido || null,
     origem_frete: Boolean(options.origem_frete),
     parceiro_id: parceiro?.id ? String(parceiro.id) : '',
     parceiro_nome: parceiro?.nome || '',
@@ -520,7 +521,13 @@ export function buildDefaultForm(solicitacao) {
     : valorSolicitacao;
   const formasCompraDireta = getFormasCompraDireta(solicitacao);
   const valoresSugeridos = distribuirParcelasFormatadas(valorItens, formasCompraDireta.length || 1);
-  const pagamentosCompra = formasCompraDireta.length
+  const partes = solicitacao?.pagamentos_favorecidos || [];
+  const pagamentosCompra = partes.length ? partes.map(parte => createPagamento(solicitacao, formatCurrencyInput(parte.valor), '', {
+    parceiro: solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true || !solicitacao?.parceiro
+      ? { id: parte.favorecido_id, nome: parte.nome_favorecido } : solicitacao.parceiro,
+    favorecido_pagamento_id: parte.favorecido_id, forma_pagamento_id: String(parte.forma_pagamento_id),
+    instrucao_favorecido: parte, observacoes: parte.favorecido_chave_pix ? `PIX: ${parte.favorecido_chave_pix}` : parte.dados_pagamento || ''
+  })) : formasCompraDireta.length
     ? formasCompraDireta.map((forma, index) => createPagamento(
         solicitacao,
         forma.valor != null ? formatCurrencyInput(forma.valor) : valoresSugeridos[index],
@@ -1410,6 +1417,8 @@ export default function FinanceiroCard({
     ));
 
     Promise.all(pagamentosAtuais.map(async (pagamento) => {
+      if (pagamento.instrucao_favorecido) return { pagamentoId: pagamento.id, parceiroId: String(pagamento.parceiro_id),
+        parceiro: { id: pagamento.parceiro_id, nome: pagamento.parceiro_nome }, beneficiaries: [] };
       const parceiroId = pagamento.parceiro_id || null;
       if (!parceiroId) {
         return { pagamentoId: pagamento.id, parceiroId: '', parceiro: null, beneficiaries: [] };
@@ -1424,10 +1433,11 @@ export default function FinanceiroCard({
           || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)))
         : (getFormasCompraDireta(solicitacao).find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id))
           || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)));
-      const favorecidoDaLinhaId = ehFrete
+      const instrucao = pagamento.instrucao_favorecido;
+      const favorecidoDaLinhaId = instrucao ? instrucao.favorecido_id : ehFrete
         ? solicitacao?.compra_direta?.frete_favorecido_id
         : formaDaLinha?.favorecido_id || favorecidoId;
-      const favorecidoDaLinha = ehFrete
+      const favorecidoDaLinha = instrucao ? { id: instrucao.favorecido_id, nome: instrucao.nome_favorecido, cpf_cnpj: instrucao.cpf_cnpj } : ehFrete
         ? solicitacao?.compra_direta?.freteFavorecido
         : formaDaLinha?.favorecido_id
           ? {
@@ -1436,13 +1446,13 @@ export default function FinanceiroCard({
               cpf_cnpj: formaDaLinha.favorecido_cpf_cnpj || ''
             }
           : solicitacao?.favorecido;
-      const chavePixDaLinha = ehFrete
+      const chavePixDaLinha = instrucao ? instrucao.favorecido_chave_pix : ehFrete
         ? solicitacao?.compra_direta?.frete_favorecido_chave_pix
         : formaDaLinha?.chave_pix || solicitacao?.favorecido_chave_pix;
-      const usarChaveSolicitacao = (ehFrete || Boolean(
+      const usarChaveSolicitacao = (Boolean(instrucao) || ehFrete || Boolean(
         credorOriginalId && String(credorOriginalId) === String(parceiroId)
       )) && (!compraDiretaSolicitacao || isFormaPix(formaDaLinha));
-      const usarFavorecidoSolicitacao = Boolean(favorecidoDaLinhaId) && (ehFrete || Boolean(
+      const usarFavorecidoSolicitacao = Boolean(favorecidoDaLinhaId) && (Boolean(instrucao) || ehFrete || Boolean(
         credorOriginalId && String(credorOriginalId) === String(parceiroId)
       ));
       const precisaCarregarFavorecido = usarFavorecidoSolicitacao
@@ -1482,6 +1492,7 @@ export default function FinanceiroCard({
         setForm((current) => ({
           ...current,
           pagamentos: (current.pagamentos || []).map((pagamento) => {
+            if (pagamento.instrucao_favorecido) return pagamento;
             const resultado = resultados.find((item) => item.pagamentoId === pagamento.id);
             if (!resultado || pagamento.dados_pagamento_parceiro_id === resultado.parceiroId) {
               return pagamento;
@@ -3485,11 +3496,13 @@ export default function FinanceiroCard({
                     </label>
                     {freteTerceiroObrigatorio ? (
                       <div className="mt-1 text-xs" style={{ color: 'var(--sem-warning)' }}>
-                        Obrigatório para manter formas de pagamento e frete em títulos separados.
+                        {solicitacao?.pagamentos_favorecidos?.length
+                          ? 'Um título para cada favorecido informado na solicitação.'
+                          : 'Obrigatório para manter formas de pagamento e frete em títulos separados.'}
                       </div>
                     ) : null}
                   </div>
-                  <button type="button" className="btn btn-outline shrink-0" onClick={adicionarPagamento}>
+                  <button type="button" className="btn btn-outline shrink-0" disabled={Boolean(solicitacao?.pagamentos_favorecidos?.length)} onClick={adicionarPagamento}>
                     Adicionar forma de pagamento
                   </button>
                 </div>
@@ -3518,14 +3531,18 @@ export default function FinanceiroCard({
                         {/* R2 — era um <button> sem classe .btn: alvo de clique abaixo do
                             minimo de 32px. Agora e botao de verdade, em vermelho suave
                             (destrutivo visivel). */}
-                        {geracaoMultiplaTitulos && (form.pagamentos || []).length > 1 && (
+                        {geracaoMultiplaTitulos && !pagamento.instrucao_favorecido && (form.pagamentos || []).length > 1 && (
                           <button type="button" className="btn btn-outline btn-perigo-suave" onClick={() => removerPagamento(pagamentoIndex)}>
                             Remover
                           </button>
                         )}
                       </div>
 
-                      {geracaoMultiplaTitulos && (
+                      {pagamento.instrucao_favorecido && <div className="text-sm whitespace-pre-wrap break-all">
+                        <span className="font-semibold">{pagamento.instrucao_favorecido.nome_favorecido}</span> · {pagamento.instrucao_favorecido.forma_pagamento_nome}
+                        <p>{pagamento.instrucao_favorecido.favorecido_chave_pix || pagamento.instrucao_favorecido.dados_pagamento || (pagamento.instrucao_favorecido.boleto_nomes || []).join(', ')}</p>
+                      </div>}
+                      {geracaoMultiplaTitulos && !pagamento.instrucao_favorecido && (
                         <ParceiroPagamentoField
                           pagamento={pagamento}
                           pagamentoIndex={pagamentoIndex}
@@ -3534,7 +3551,7 @@ export default function FinanceiroCard({
                         />
                       )}
 
-                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento
+                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && !pagamento.instrucao_favorecido
                         && (!compraDiretaSolicitacao || isFormaPix(forma)) && (
                         <DadosPagamentoTitulo
                           pagamento={pagamento}
@@ -3563,7 +3580,7 @@ export default function FinanceiroCard({
                             className="input w-full"
                             value={pagamento.forma_pagamento_id}
                             onChange={(event) => updateFormaPagamento(pagamentoIndex, event.target.value)}
-                            disabled={loadingPagamento}
+                            disabled={loadingPagamento || Boolean(pagamento.instrucao_favorecido)}
                           >
                             <option value="">{loadingPagamento ? 'Carregando...' : 'Nao informar'}</option>
                             {formasPagamento.filter((item) => item.ativo !== false).map((item) => (
@@ -3585,6 +3602,7 @@ export default function FinanceiroCard({
                               inputMode="decimal"
                               placeholder="R$ 0,00"
                               value={pagamento.valor}
+                              disabled={Boolean(pagamento.instrucao_favorecido)}
                               onChange={(event) => updateValorPagamento(pagamentoIndex, normalizeCurrencyTyping(event.target.value))}
                               onBlur={(event) => updateValorPagamento(pagamentoIndex, formatCurrencyInput(event.target.value))}
                             />
@@ -3601,6 +3619,7 @@ export default function FinanceiroCard({
                               type="number"
                               min="1"
                               max="120"
+                              disabled={Boolean(pagamento.instrucao_favorecido)}
                               value={pagamento.quantidade_parcelas}
                               onChange={(event) => updateQuantidadeParcelas(pagamentoIndex, event.target.value)}
                             />
@@ -3700,6 +3719,7 @@ export default function FinanceiroCard({
                                     type="text"
                                     inputMode="decimal"
                                     value={parcela.valor || ''}
+                                    readOnly={Boolean(pagamento.instrucao_favorecido)}
                                     onChange={(event) => updateParcela(pagamentoIndex, parcelaIndex, 'valor', normalizeCurrencyTyping(event.target.value))}
                                     onBlur={(event) => updateParcela(pagamentoIndex, parcelaIndex, 'valor', formatCurrencyInput(event.target.value))}
                                     required

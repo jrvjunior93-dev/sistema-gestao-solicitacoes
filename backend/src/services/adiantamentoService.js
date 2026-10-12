@@ -43,7 +43,48 @@ async function destinos(solicitacao, usuario, transaction) {
     : [];
   return [origem, ...obras];
 }
-async function validarPrestacao(req, solicitacao, payload, titulo, transaction) {
+async function listarCiclos(solicitacaoId, options = {}) {
+  // A alternativa findOne mantem fixtures legadas; o model real sempre tem findAll.
+  const where = { solicitacao_id: solicitacaoId };
+  if (SolicitacaoAdiantamento.findAll) return SolicitacaoAdiantamento.findAll({ where, order: [['id', 'ASC']], ...options });
+  const unico = await SolicitacaoAdiantamento.findOne({ where, ...options });
+  return unico ? [unico] : [];
+}
+function escolherCiclo(ciclos, id) {
+  if (!ciclos.length) return null;
+  if (id == null || id === '') {
+    if (ciclos.length === 1) return ciclos[0];
+    throw erro('Selecione o favorecido da prestacao.');
+  }
+  if (!['number', 'string'].includes(typeof id) || !/^\d+$/.test(String(id)) || !Number.isSafeInteger(Number(id)) || Number(id) <= 0) throw erro('Ciclo invalido.');
+  const ciclo = ciclos.find(c => Number(c.id) === Number(id));
+  if (!ciclo) throw erro('Prestacao nao pertence a esta solicitacao.', 404);
+  return ciclo;
+}
+async function registrarCiclo(solicitacao, ciclo, statusLegado, destinoLegado, req, transaction, descricao) {
+  const ciclos = await listarCiclos(solicitacao.id, { transaction });
+  if (ciclos.length <= 1) return registrar(solicitacao, statusLegado, destinoLegado, req, transaction, descricao);
+  const statuses = new Set(ciclos.map(c => c.status));
+  let status, destino;
+  // Mantem a origem enquanto houver prestacoes pagas ainda em preenchimento.
+  // Encaminhar a primeira ao GEO bloquearia o envio das demais pela ACL existente.
+  if (statuses.has('PRESTACAO_PENDENTE') || statuses.has('REJEITADA')) {
+    status = 'PRESTACAO PENDENTE'; destino = await resolverDestinoPrestacaoAposBaixa(solicitacao, transaction)
+      || resolveSetorPersistenciaValue(await findSetorByCapability('eh_setor_obra', { transaction }), 'OBRA');
+  } else if (statuses.has('PRESTACAO_ENVIADA')) { status = 'PRESTACAO ENVIADA'; destino = await setorGeo(transaction); }
+  else if (statuses.has('DEVOLUCAO_PENDENTE')) {
+    status = 'DEVOLUCAO PENDENTE'; destino = resolveSetorPersistenciaValue(await findSetorByCapability('eh_setor_financeiro', { transaction }), 'FINANCEIRO');
+  } else if (ciclos.every(c => c.status === 'VALIDADA')) { status = 'PAGA'; destino = solicitacao.area_responsavel; }
+  else { status = 'TITULO_CADASTRADO'; destino = solicitacao.area_responsavel; }
+  const texto = `Prestacao #${ciclo.id}: ${descricao}`;
+  if (status !== solicitacao.status_global || destino !== solicitacao.area_responsavel) {
+    return registrar(solicitacao, status, destino, req, transaction, texto);
+  }
+  await Historico.create({ solicitacao_id: solicitacao.id, usuario_responsavel_id: req.user?.id || null,
+    setor: solicitacao.area_responsavel, acao: 'PRESTACAO_ADIANTAMENTO_ATUALIZADA', descricao: texto,
+    metadata: JSON.stringify({ adiantamento_id: ciclo.id, titulo_financeiro_id: ciclo.titulo_financeiro_id }) }, { transaction });
+}
+async function validarPrestacao(req, solicitacao, payload, titulo, transaction, ciclo) {
   const prestacao = normalizarPrestacao(payload);
   saldoAdiantamento(titulo.valor_baixado, prestacao.valor);
   const permitidas = new Set((await destinos(solicitacao, req.user, transaction)).map(o => Number(o.id)));
@@ -58,6 +99,11 @@ async function validarPrestacao(req, solicitacao, payload, titulo, transaction) 
   if (!Array.isArray(ids) || ids.length > 100 || ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) throw erro('Comprovantes invalidos.');
   if (prestacao.valor > 0 && !ids.length) throw erro('Anexe os comprovantes das despesas.');
   if (ids.length && await Anexo.count({ where: { id: { [Op.in]: ids }, solicitacao_id: solicitacao.id, deleted_at: null, tipo: 'PRESTACAO_ADIANTAMENTO' }, transaction }) !== ids.length) throw erro('Comprovante nao pertence a esta prestacao.', 403);
+  if (ciclo) {
+    const outros = (await listarCiclos(solicitacao.id, { transaction })).filter(c => Number(c.id) !== Number(ciclo.id));
+    const usados = new Set(outros.flatMap(c => c.prestacao?.anexo_ids || []).map(Number));
+    if (ids.some(id => usados.has(id))) throw erro('Comprovante ja usado na prestacao de outro favorecido.', 409);
+  }
   return { ...prestacao, anexo_ids: ids };
 }
 async function carregarLock(req, transaction) {
@@ -65,7 +111,7 @@ async function carregarLock(req, transaction) {
   const solicitacao = await Solicitacao.findByPk(Number(req.params.id), { transaction, lock: transaction.LOCK.UPDATE });
   if (!solicitacao) throw erro('Solicitacao nao encontrada.', 404);
   await assertPodeInteragirSolicitacao(req, solicitacao);
-  const ciclo = await SolicitacaoAdiantamento.findOne({ where: { solicitacao_id: solicitacao.id }, transaction, lock: transaction.LOCK.UPDATE });
+  const ciclo = escolherCiclo(await listarCiclos(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE }), req.body?.ciclo_id);
   if (!ciclo) throw erro('O GEO ainda nao gerou o titulo do adiantamento.', 409);
   const titulo = await TituloFinanceiro.findByPk(ciclo.titulo_financeiro_id, { transaction, lock: transaction.LOCK.UPDATE });
   if (!titulo || titulo.status !== 'QUITADO' || Number(titulo.valor_saldo) > 0) throw erro('Conclua o pagamento antes de prestar contas.', 409);
@@ -75,7 +121,8 @@ async function contexto(req) {
   const solicitacao = await assertPodeVisualizarSolicitacao(req, Number(req.params.id));
   const principal = solicitacao?.id ? solicitacao : await Solicitacao.findByPk(Number(req.params.id));
   if (!await ehAdiantamento(principal)) throw erro('Solicitacao nao e adiantamento.', 404);
-  const ciclo = await SolicitacaoAdiantamento.findOne({ where: { solicitacao_id: principal.id } });
+  const ciclos = await listarCiclos(principal.id);
+  const ciclo = escolherCiclo(ciclos, req.query?.ciclo_id || ciclos[0]?.id);
   if (!ciclo) return { ciclo: null };
   const [titulo, devolucao, obras, anexos] = await Promise.all([
     TituloFinanceiro.findByPk(ciclo.titulo_financeiro_id, { attributes: ['id', 'codigo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo'] }),
@@ -85,16 +132,21 @@ async function contexto(req) {
   ]);
   // Catalogo limitado aos destinos desta prestacao; nao concede acesso geral a obras/solicitacoes.
   const apropriacoes = await Apropriacao.findAll({ where: { obra_id: { [Op.in]: obras.map(o => o.id) }, ativo: true }, attributes: ['id', 'obra_id', 'codigo', 'descricao', 'somadora', 'macro_formulario', 'ativo'] });
-  return { ciclo, titulo, devolucao, obras: obras.map(o => ({ id: o.id, codigo: o.codigo, nome: o.nome })), apropriacoes: apropriacoes.filter(apropriacaoPodeReceberLancamento), anexos,
+  const partes = await require('./solicitacaoFavorecidosService').listarFavorecidos(principal.id);
+  const nomes = new Map(partes.map(p => [Number(p.id), p.nome_favorecido]));
+  const usados = new Set(ciclos.filter(c => Number(c.id) !== Number(ciclo.id)).flatMap(c => c.prestacao?.anexo_ids || []).map(Number));
+  return { ciclos: ciclos.map(c => ({ id: c.id, status: c.status, valor_solicitado: c.valor_solicitado,
+      nome_favorecido: nomes.get(Number(c.solicitacao_favorecido_id)) || principal.favorecido?.nome || `Adiantamento #${c.id}` })),
+    ciclo, titulo, devolucao, obras: obras.map(o => ({ id: o.id, codigo: o.codigo, nome: o.nome })), apropriacoes: apropriacoes.filter(apropriacaoPodeReceberLancamento), anexos: anexos.filter(a => !usados.has(Number(a.id))),
     pode_conferir: isGerenciaProcessos(req.user) };
 }
 async function enviar(req) {
   return sequelize.transaction(async transaction => {
     const { solicitacao, ciclo, titulo } = await carregarLock(req, transaction);
     if (!['PRESTACAO_PENDENTE', 'REJEITADA'].includes(ciclo.status)) throw erro('Prestacao ja enviada ou encerrada.', 409);
-    const prestacao = await validarPrestacao(req, solicitacao, req.body, titulo, transaction);
+    const prestacao = await validarPrestacao(req, solicitacao, req.body, titulo, transaction, ciclo);
     await ciclo.update({ prestacao, status: 'PRESTACAO_ENVIADA', enviado_por: req.user.id, enviado_em: new Date(), motivo_rejeicao: null }, { transaction });
-    await registrar(solicitacao, 'PRESTACAO ENVIADA', await setorGeo(transaction), req, transaction, 'Prestacao de contas do adiantamento enviada para conferencia.');
+    await registrarCiclo(solicitacao, ciclo, 'PRESTACAO ENVIADA', await setorGeo(transaction), req, transaction, 'Prestacao de contas do adiantamento enviada para conferencia.');
     return ciclo;
   });
 }
@@ -110,11 +162,11 @@ async function decidir(req) {
       await ciclo.update({ status: 'REJEITADA', motivo_rejeicao: motivo }, { transaction });
       const destino = await resolverDestinoPrestacaoAposBaixa(solicitacao, transaction)
         || resolveSetorPersistenciaValue(await findSetorByCapability('eh_setor_obra', { transaction }), 'OBRA');
-      await registrar(solicitacao, 'PRESTACAO PENDENTE', destino, req, transaction, `Prestacao devolvida para correcao: ${motivo}`);
+      await registrarCiclo(solicitacao, ciclo, 'PRESTACAO PENDENTE', destino, req, transaction, `Prestacao devolvida para correcao: ${motivo}`);
       return ciclo;
     }
     // Revalida comprovantes/destinos no momento da decisao, inclusive arquivos excluidos.
-    const prestacao = await validarPrestacao(req, solicitacao, req.body.prestacao || ciclo.prestacao, titulo, transaction);
+    const prestacao = await validarPrestacao(req, solicitacao, req.body.prestacao || ciclo.prestacao, titulo, transaction, ciclo);
     const saldo = saldoAdiantamento(titulo.valor_baixado, prestacao.valor);
     const categoria = await CategoriaFinanceira.findByPk(titulo.categoria_financeira_id, { transaction });
     if (!categoria || categoria.ativo === false) throw erro('A categoria definida pelo GEO esta inativa. Regularize o cadastro antes da conferencia.', 409);
@@ -137,13 +189,38 @@ async function decidir(req) {
       valor_despesa_prestacao: prestacao.valor, possui_rateio: prestacao.itens.length > 0 }, { transaction });
     await ciclo.update({ prestacao, valor_prestado: prestacao.valor, titulo_devolucao_id: devolucao?.id || null,
       status: saldo > 0 ? 'DEVOLUCAO_PENDENTE' : 'VALIDADA', validado_por: req.user.id, validado_em: new Date() }, { transaction });
-    await registrar(solicitacao, saldo > 0 ? 'DEVOLUCAO PENDENTE' : 'PAGA', saldo > 0
+    await registrarCiclo(solicitacao, ciclo, saldo > 0 ? 'DEVOLUCAO PENDENTE' : 'PAGA', saldo > 0
       ? resolveSetorPersistenciaValue(await findSetorByCapability('eh_setor_financeiro', { transaction }), 'FINANCEIRO') : solicitacao.area_responsavel,
       req, transaction, saldo > 0 ? 'Prestacao aprovada; saldo pendente de devolucao ao Financeiro.' : 'Prestacao do adiantamento aprovada e encerrada.');
     return ciclo;
   });
 }
 async function sincronizarBaixa({ solicitacao, titulos, usuarioId, transaction }) {
+  const ciclos = await listarCiclos(solicitacao.id, { transaction, lock: transaction?.LOCK?.UPDATE });
+  if (ciclos.length > 1) {
+    // Titulos recebidos podem ser apenas o lote baixado. Rele TODOS os ciclos
+    // autorizados da principal para nao interpretar um titulo ausente como estorno.
+    const atuais = await TituloFinanceiro.findAll({ where: { id: { [Op.in]: ciclos.flatMap(c => [c.titulo_financeiro_id, c.titulo_devolucao_id].filter(Boolean)) } }, transaction });
+    const porId = new Map(atuais.map(t => [Number(t.id), t]));
+    const quitado = id => { const t = porId.get(Number(id)); return t?.status === 'QUITADO' && Number(t.valor_saldo) <= 0; };
+    const alterados = [];
+    for (const ciclo of ciclos) {
+      const pago = quitado(ciclo.titulo_financeiro_id), devolvido = quitado(ciclo.titulo_devolucao_id);
+      if (!pago && ['PRESTACAO_ENVIADA', 'VALIDADA', 'DEVOLUCAO_PENDENTE'].includes(ciclo.status)) throw erro('Adiantamento com prestacao enviada/validada nao permite estorno.', 409);
+      let status = ciclo.status;
+      if (status === 'AGUARDANDO_PAGAMENTO' && pago) status = 'PRESTACAO_PENDENTE';
+      else if (status === 'DEVOLUCAO_PENDENTE' && devolvido) status = 'VALIDADA';
+      else if (status === 'VALIDADA' && ciclo.titulo_devolucao_id && !devolvido) status = 'DEVOLUCAO_PENDENTE';
+      else if (['PRESTACAO_PENDENTE', 'REJEITADA'].includes(status) && !pago) status = 'AGUARDANDO_PAGAMENTO';
+      if (status !== ciclo.status) {
+        await ciclo.update({ status }, { transaction });
+        alterados.push(ciclo);
+      }
+    }
+    if (alterados.length) await registrarCiclo(solicitacao, alterados[0], '', solicitacao.area_responsavel,
+      { user: { id: usuarioId } }, transaction, `Situacao financeira: ${alterados.map(c => `#${c.id} ${c.status}`).join('; ')}.`);
+    return solicitacao.status_global;
+  }
   const ciclo = await SolicitacaoAdiantamento.findOne({ where: { solicitacao_id: solicitacao.id }, transaction, lock: transaction?.LOCK?.UPDATE });
   if (!ciclo) return null;
   const pago = titulos.find(t => Number(t.id) === Number(ciclo.titulo_financeiro_id));
@@ -170,10 +247,10 @@ async function sincronizarBaixa({ solicitacao, titulos, usuarioId, transaction }
 async function protegerAlteracaoPrincipal(solicitacao, { status, valor } = {}, transaction) {
   if (!await ehAdiantamento(solicitacao, transaction)) return;
   if (valor !== undefined && centavos(valor) <= 0) throw erro('Informe um valor de adiantamento maior que zero.');
-  const ciclo = await SolicitacaoAdiantamento.findOne({ where: { solicitacao_id: solicitacao.id }, transaction });
-  if (!ciclo) return;
+  const ciclos = await listarCiclos(solicitacao.id, { transaction });
+  if (!ciclos.length) return;
   // O ciclo financeiro e a prestacao sao a fonte dos status apos a criacao do titulo.
-  if (status !== undefined || (valor !== undefined && Number(valor) !== Number(ciclo.valor_solicitado))) throw erro('O adiantamento ja possui titulo. Siga o fluxo de pagamento/prestacao; nao altere manualmente seu status ou valor.', 409);
+  if (status !== undefined || (valor !== undefined && centavos(valor) !== ciclos.reduce((soma, c) => soma + centavos(c.valor_solicitado), 0))) throw erro('O adiantamento ja possui titulo. Siga o fluxo de pagamento/prestacao; nao altere manualmente seu status ou valor.', 409);
 }
 async function atualizarPrincipalComProtecao(solicitacao, patch) {
   if (!await ehAdiantamento(solicitacao)) return solicitacao.update(patch);

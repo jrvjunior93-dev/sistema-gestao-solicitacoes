@@ -41,6 +41,15 @@ async function titulosQueAtualizamMedicaoAtual({ solicitacaoId, titulos, transac
     attributes: ['titulo_financeiro_id'], transaction, lock: transaction?.LOCK?.UPDATE
   });
   const ids = new Set(parcelas.map(p => Number(p.titulo_financeiro_id)));
+  const { SolicitacaoFavorecido } = require('../models');
+  if (SolicitacaoFavorecido) {
+    const partes = await SolicitacaoFavorecido.findAll({
+      where: { solicitacao_id: Number(solicitacaoId), medicao_id: medicao.id,
+        contrato_parcela_id: { [Op.in]: [...parcelaIds] } },
+      attributes: ['titulo_financeiro_id'], transaction, lock: transaction?.LOCK?.UPDATE
+    });
+    partes.forEach(p => { if (p.titulo_financeiro_id) ids.add(Number(p.titulo_financeiro_id)); });
+  }
   const naoDiretos = titulos.filter(t => !ids.has(Number(t.id)));
   // A renegociacao preserva a parcela apontando ao titulo original.
   const alocacoes = naoDiretos.length ? await TituloRenegociacaoAlocacao.findAll({

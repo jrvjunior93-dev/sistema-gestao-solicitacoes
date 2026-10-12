@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const sequelizeLib = require('sequelize');
 const { Op } = sequelizeLib;
 const read = arquivo => fs.readFileSync(path.resolve(__dirname, '..', arquivo), 'utf8');
-const row = data => ({ ...data, toJSON() { return { ...this }; } });
+const row = data => ({ ...data, toJSON() { return { ...this }; }, setDataValue(k, v) { this[k] = v; }, async update(v) { Object.assign(this, v); return this; } });
 const noop = async () => {};
 const error = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 function load(arquivo, deps, env = {}) {
@@ -23,7 +23,7 @@ async function criacao() {
   const source = read('src/services/tituloFinanceiroService.js');
   const start = source.indexOf('async function criarTituloPorSolicitacao(');
   const end = source.indexOf('\nasync function ', start + 1);
-  let principal, criados, ciclos, commits, rollbacks, adianta = true, geo = true, negar = false, falharCiclo = false;
+  let principal, criados, ciclos, commits, rollbacks, partes = [], rateios = [], complementos = [], adianta = true, geo = true, negar = false, falharCiclo = false;
   const reset = () => { principal = { id: 10, valor: 1000, favorecido_id: 5, parceiro_id: 5, obra_id: 30,
     apropriacao_id: 8, obra: { id: 30 }, data_vencimento: '2099-12-01', dados_pagamento: 'PIX favorecido' };
     criados = []; ciclos = []; commits = 0; rollbacks = 0; falharCiclo = false; };
@@ -39,21 +39,26 @@ async function criacao() {
     validarCategoriaDreTitulo: noop, categoriaClassificadaParaDre: c => c?.considera_dre === true,
     validarIntercompanyTitulo: async () => ({}), validarParceiro: async id => ({ id }), validarCompatibilidadeParceiroTitulo: noop,
     Parceiro: { findOne: async ({ where }) => ({ id: where.id }) }, validarFormaPagamentoFinanceira: async id => ({ id }),
+    Anexo: { findAll: async () => [] },
     resolverIntercompanyPagamento: async () => ({}), getHoje: () => '2026-10-11',
     getValoresParcelas: ({ valorTotal }) => [valorTotal], somarValores: vs => vs.reduce((s, v) => s + v, 0),
     assertValoresIguais: ({ atual, esperado, mensagem }) => { if (atual !== esperado) throw error(400, mensagem); },
-    normalizarImpostosTitulo: () => ({ impostos: [] }), normalizarRateiosTitulo: async () => { throw Error('Rateio antecipado indevido'); },
+    normalizarImpostosTitulo: () => ({ impostos: [] }), normalizarRateiosTitulo: async () => { if (adianta) throw Error('Rateio antecipado indevido'); return rateios; },
     descricaoPadraoTitulo: () => 'Adiantamento QA', sequelize: { transaction: async () => tx },
-    TituloFinanceiro: { count: async () => criados.length, create: async (data, opts) => { assert.equal(opts.transaction, tx); const t = row({ id: 100, ...data }); criados.push(t); return t; } },
-    getParcelaPayload: () => ({}), resolveVencimentoParcela: ({ dataVencimentoBase }) => dataVencimentoBase,
+    TituloFinanceiro: { count: async () => criados.length, create: async (data, opts) => { assert.equal(opts.transaction, tx); const t = row({ id: 100 + criados.length, ...data }); criados.push(t); return t; } },
+    getParcelaPayload: (parcelas, index) => parcelas?.[index] || {}, resolveVencimentoParcela: ({ parcela, dataVencimentoBase }) => parcela?.data_vencimento || dataVencimentoBase,
     calcularValoresParcelaComImpostos: (_imp, valor) => ({ valorLiquido: valor, valorBruto: valor, valorImpostos: 0 }),
-    buildChequeFields: () => ({}), buildCobrancaFields: () => ({}), gravarComplementosTitulo: async args => { assert.equal(args.rateios.length, 0); },
+    buildChequeFields: () => ({}), buildCobrancaFields: dados => ({ linha_digitavel: dados.linha_digitavel || null }), gravarComplementosTitulo: async args => { complementos.push(args); if (adianta) assert.equal(args.rateios.length, 0); },
     baixarTituloCartaoNoAto: async () => null, Historico: { create: noop }, getSetorUsuario: () => 'GEO', formatCurrency: String,
     marcarSolicitacaoComTituloCadastrado: noop, carregarTituloPorId: async () => criados[0], registrarEventoSeguranca: noop,
     require: nome => {
       if (nome === './adiantamentoService') return { ehAdiantamento: async () => adianta };
+      if (nome === './solicitacaoFavorecidosService') return { listarFavorecidos: async () => partes,
+        validarFavorecidos: async (dados, opts) => require('../src/services/solicitacaoFavorecidosDomain').normalizarFavorecidos(dados, opts) };
+      if (nome === './formasPagamentoMedicaoService') return { listarFormasDosFluxos: async () => ({ formas: [{ id: 1 }, { id: 2 }] }) };
+      if (nome === './solicitacaoFavorecidosDomain') return require('../src/services/solicitacaoFavorecidosDomain');
       if (nome === './recargaCartaoService') return { isGerenciaProcessos: () => geo };
-      if (nome === './solicitacaoRetornoService') return { assertPodeInteragirSolicitacao: async () => { if (negar) throw error(403, 'Acesso negado'); } };
+      if (nome === './solicitacaoRetornoService') return { assertPodeVisualizarSolicitacao: async () => { if (negar) throw error(403, 'Acesso negado'); }, assertPodeInteragirSolicitacao: async () => { if (negar) throw error(403, 'Acesso negado'); } };
       if (nome === '../models') return { SolicitacaoAdiantamento: { create: async (data, opts) => { assert.equal(opts.transaction, tx); if (falharCiclo) throw Error('Falha simulada'); ciclos.push(data); } } };
       throw Error(`Dependencia nao isolada: ${nome}`);
     }
@@ -82,6 +87,48 @@ async function criacao() {
   reset(); tx.rollback = async () => { rollbacks++; criados = []; ciclos = []; }; falharCiclo = true;
   await assert.rejects(context.criarTituloPorSolicitacao(req, 10, payload), /Falha simulada/);
   assert.equal(commits, 0); assert.equal(rollbacks, 1); assert.equal(criados.length, 0);
+  reset();
+  partes = [row({ id: 1, favorecido_id: 5, forma_pagamento_id: 1, valor: 600.01, favorecido_chave_pix: 'pix-1', boleto_nomes: [] }),
+    row({ id: 2, favorecido_id: 6, forma_pagamento_id: 2, valor: 399.99, dados_pagamento: 'Conta favorecido 2', boleto_nomes: [] })];
+  for (const pagamentos of [[{ ...payload, quantidade_parcelas: 2 }], [{ ...payload, impostos: [{}] }],
+    [{ ...payload, intercompany: true }], [{ ...payload, desconto: 1 }], [{ ...payload }, { ...payload }, { ...payload }]]) {
+    await assert.rejects(context.criarTituloPorSolicitacao(req, 10, { ...payload, pagamentos }));
+    assert.equal(criados.length, 0);
+  }
+  await context.criarTituloPorSolicitacao(req, 10, { ...payload, pagamentos: [
+    { ...payload, favorecido_pagamento_id: 999, valor: 1 }, { ...payload, favorecido_pagamento_id: 999, valor: 999, categoria_financeira_id: 4 }
+  ] });
+  assert.equal(commits, 1); assert.equal(ciclos.length, 2); assert.equal(criados.length, 2);
+  assert.deepEqual(criados.map(t => t.valor_original), [600.01, 399.99]);
+  assert.deepEqual(criados.map(t => t.favorecido_pagamento_id), [5, 6], 'Snapshot servidor prevalece sobre favorecido adulterado');
+  assert.deepEqual(criados.map(t => t.observacoes), ['PIX: pix-1', 'Conta favorecido 2']);
+  assert.deepEqual(criados.map(t => t.categoria_financeira_id), [3, 4], 'GEO classifica cada titulo');
+  assert.deepEqual(ciclos.map(c => c.solicitacao_favorecido_id), [1, 2]);
+  assert.deepEqual(partes.map(p => p.titulo_financeiro_id), [100, 101]);
+  assert.ok(criados.every(t => !t.considera_dre && t.valor_saldo === t.valor_original));
+  const anteriores = [...criados]; tx.rollback = async () => { rollbacks++; criados = anteriores; };
+  await assert.rejects(context.criarTituloPorSolicitacao(req, 10, payload), /ja gerados/);
+  assert.equal(criados.length, 2, 'Replay nao duplica titulos/ciclos');
+  // Pagamento comum usa o mesmo criador e preserva cada coluna do rateio.
+  reset(); adianta = false; partes.forEach(p => { p.titulo_financeiro_id = null; }); complementos = [];
+  tx.rollback = async () => { rollbacks++; criados = []; ciclos = []; };
+  rateios = [{ obra_id: 30, valor_rateio: 333.33 }, { obra_id: 31, valor_rateio: 666.67 }];
+  await context.criarTituloPorSolicitacao(req, 10, payload);
+  assert.equal(commits, 1); assert.equal(ciclos.length, 0);
+  assert.deepEqual(criados.map(t => t.parceiro_id), [5, 5], 'Credor principal nao se confunde com favorecido');
+  assert.deepEqual(criados.map(t => t.favorecido_pagamento_id), [5, 6]);
+  for (let i = 0; i < 2; i++) assert.equal(Math.round(complementos[i].rateios.reduce((s, r) => s + r.valor_rateio, 0) * 100), Math.round(criados[i].valor_original * 100));
+  for (let j = 0; j < 2; j++) assert.equal(Math.round(complementos.reduce((s, c) => s + c.rateios[j].valor_rateio, 0) * 100), Math.round(rateios[j].valor_rateio * 100));
+  reset(); partes.forEach(p => { p.titulo_financeiro_id = null; });
+  await context.criarTituloPorSolicitacao(req, 10, { ...payload, linha_digitavel: 'NAO COPIAR ENTRE FAVORECIDOS', pagamentos: [
+    { ...payload, parcelas: [{ valor: 1, data_vencimento: '2099-10-01', numero_documento: 'DOC-1', observacoes: 'PIX: adulterado', linha_digitavel: 'linha-propria' }] },
+    { ...payload, parcelas: [{ valor: 999, data_vencimento: '2099-11-01', numero_documento: 'DOC-2' }] }
+  ] });
+  assert.deepEqual(criados.map(t => t.valor_original), [600.01, 399.99]);
+  assert.deepEqual(criados.map(t => t.data_vencimento), ['2099-10-01', '2099-11-01']);
+  assert.deepEqual(criados.map(t => t.numero_documento), ['DOC-1', 'DOC-2']);
+  assert.deepEqual(criados.map(t => t.linha_digitavel), ['linha-propria', null]);
+  assert.deepEqual(criados.map(t => t.observacoes), ['PIX: pix-1', 'Conta favorecido 2'], 'Parcela nao substitui destino do pagamento.');
 }
 async function relatorios() {
   let queryRateios, scope = [2];

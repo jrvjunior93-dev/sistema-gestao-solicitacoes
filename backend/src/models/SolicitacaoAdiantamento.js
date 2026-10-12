@@ -1,6 +1,7 @@
 module.exports = (sequelize, DataTypes) => sequelize.define('SolicitacaoAdiantamento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  solicitacao_id: { type: DataTypes.INTEGER, allowNull: false, unique: true },
+  solicitacao_id: { type: DataTypes.INTEGER, allowNull: false },
+  solicitacao_favorecido_id: { type: DataTypes.INTEGER, allowNull: true, unique: true },
   titulo_financeiro_id: { type: DataTypes.INTEGER, allowNull: false, unique: true },
   titulo_devolucao_id: { type: DataTypes.INTEGER, allowNull: true },
   valor_solicitado: { type: DataTypes.DECIMAL(15, 2), allowNull: false },

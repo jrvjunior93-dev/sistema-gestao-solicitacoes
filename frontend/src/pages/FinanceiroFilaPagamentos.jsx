@@ -165,7 +165,11 @@ function statusKind(status) {
 
 function beneficiaryData(titulo) {
   const beneficiary = titulo?.paymentBeneficiary;
-  const solicitacao = titulo?.solicitacao || {};
+  const instrucao = titulo?.instrucao_favorecido;
+  const solicitacao = instrucao ? { ...titulo?.solicitacao,
+    favorecido: { nome: instrucao.nome_favorecido, cpf_cnpj: instrucao.cpf_cnpj },
+    favorecido_chave_pix: instrucao.favorecido_chave_pix, dados_pagamento: instrucao.dados_pagamento,
+    boletos: (instrucao.boleto_nomes || []).map(nome => ({ nome })) } : titulo?.solicitacao || {};
   const formaPagamento = titulo?.formaPagamento || solicitacao?.formaPagamento;
   const form = [formaPagamento?.tipo, formaPagamento?.codigo, formaPagamento?.nome]
     .filter(Boolean).join(' ').toUpperCase();

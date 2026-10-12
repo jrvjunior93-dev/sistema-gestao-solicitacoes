@@ -209,6 +209,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     if (!solicitacao) return;
     solicitacao.boletos = boletosPorSolicitacao.get(Number(solicitacao.id)) || [];
   });
+  await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes(data.map(item => item.titulo).filter(Boolean));
   const counts = await PagamentoManualFilaItem.findAll({
     attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'total']],
     group: ['status'],

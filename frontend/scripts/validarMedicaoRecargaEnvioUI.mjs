@@ -24,7 +24,8 @@ const server = await createServer({ root, server: { host: '127.0.0.1', port, str
 const saida = path.join(root, '../outputs/qa-medicao-recarga-envio');
 await mkdir(saida, { recursive: true });
 await server.listen();
-let browser, page, approved, queued, failSend, recarga, listaLegada;
+let browser, page, approved, queued, failSend, recarga, listaLegada, dividida;
+const edicoes = [];
 const sends = [], approvals = [], unexpected = [], errors = [];
 const delay = () => new Promise((resolve) => setTimeout(resolve, 150));
 try {
@@ -36,10 +37,10 @@ try {
     favorecido: { nome: 'Credor QA' }, forma_pagamento: { nome: 'PIX', tipo: 'PIX' },
     aprovada_em: approved ? '2026-10-08T15:00:00Z' : null,
     anexos: [{ id: 1, nome_original: 'Medicao QA.pdf', tipo: 'ANEXO' }] });
-  const titles = () => [1, 2].map((id) => ({ id, codigo: `TIT-QA-${id}`, tipo: 'PAGAR',
-    status: id === 1 && (approved || recarga) ? 'ABERTO' : 'PREVISAO', valor_original: 100, valor_saldo: 100, valor_baixado: 0,
+  const titles = () => (dividida ? [1, 2, 3] : [1, 2]).map((id) => ({ id, codigo: `TIT-QA-${id}`, tipo: 'PAGAR',
+    status: (id === 1 || dividida && id === 3) && (approved || recarga) ? 'ABERTO' : 'PREVISAO', valor_original: dividida && id !== 2 ? id === 1 ? 60 : 40 : 100, valor_saldo: dividida && id !== 2 ? id === 1 ? 60 : 40 : 100, valor_baixado: 0,
     parceiro: { nome: 'Credor QA' }, formaPagamento: id === 1 ? { id: 4, nome: 'Pix QA', tipo: 'PIX' } : null,
-    filaPagamentosManuais: id === 1 && queued ? [{ id: 1, status: 'PENDENTE' }] : [] }));
+    filaPagamentosManuais: (id === 1 || dividida && id === 3) && queued ? [{ id, status: 'PENDENTE' }] : [] }));
   await page.route('**/*', async (route) => {
     const request = route.request(), url = new URL(request.url());
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
@@ -49,8 +50,15 @@ try {
       saldo: { saldo: 100, comprometido: 100 }, totais: { quantidade: 2 },
       parcelas: [1, 2].map((id) => ({ id, numero: id, valor: 100, valor_previsto: 100, vencimento: '2026-10-20',
         titulo_financeiro_id: id, titulo_pagamento: titles().find(titulo => titulo.id === id),
+        ...(dividida && id === 1 ? { pagamentos_favorecidos: [
+          { id: 20, nome_favorecido: 'Primeiro favorecido', valor: 60, forma_pagamento_nome: 'PIX', favorecido_chave_pix: 'pix-do-primeiro' },
+          { id: 21, nome_favorecido: 'Segundo favorecido', valor: 40, forma_pagamento_nome: 'Boleto', boleto_nomes: ['segundo.pdf'] }
+        ], titulos_pagamento: approved ? titles().filter(t => t.id !== 2) : [] } : {}),
         situacao: id === 1 && approved ? 'ABERTO' : 'PREVISAO', medicao: id === 1 ? medicao() : null }))
     });
+    if (request.method() === 'PUT' && url.pathname.endsWith('/contratos/medicoes/1')) {
+      edicoes.push(request.postDataJSON()); return json({ ok: true });
+    }
     if (url.pathname.endsWith('/contratos/medicoes/1/aprovar')) {
       approvals.push(1); await delay(); approved = true; return json({ medicao: medicao(), enviada_para: 'OBRA' });
     }
@@ -69,6 +77,7 @@ try {
   async function open(options = '') {
     approved = false; queued = false; failSend = false; recarga = options.includes('recarga');
     listaLegada = options.includes('listaLegada');
+    dividida = options.includes('dividida');
     await page.goto(`http://127.0.0.1:${port}/scripts/fixtures/medicaoRecargaEnvio.html?${options}`);
     await page.getByRole('heading', { name: 'Financeiro', exact: true }).click();
     if (!recarga) {
@@ -134,6 +143,24 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes('Títulos enviados para a Fila de Pagamentos'));
   assert.deepEqual(sends.at(-1).titulo_ids, [1]);
   assert(await filaLegada.isDisabled(), 'Resumo da parcela impede reenvio apos entrar na fila.');
+  await open('dividida=1');
+  await modal().getByText('pix-do-primeiro', { exact: true }).waitFor();
+  await modal().getByText('segundo.pdf', { exact: true }).waitFor();
+  const totalDividido = modal().getByTestId('medicao-valor-1');
+  assert.equal(await totalDividido.evaluate(el => el.readOnly), true, 'Total deriva das partes, nao pode divergir.');
+  await modal().getByRole('spinbutton', { name: 'Valor para Primeiro favorecido, parcela 1' }).fill('70');
+  assert.equal(await totalDividido.inputValue(), '110.00');
+  await modal().getByTestId('salvar-medicao').click();
+  await page.getByRole('button', { name: 'Salvar alteracoes', exact: true }).last().click();
+  await page.waitForFunction(() => window.__atualizacoes > 0);
+  assert.deepEqual(edicoes.at(-1).favorecidos_valores, [{ id: 20, valor: '70' }, { id: 21, valor: '40.00' }]);
+  assert.equal(Number(edicoes.at(-1).itens[0].valor_medido), 110);
+  await open('dividida=1'); await approve();
+  const filaDividida = modal().getByRole('button', { name: 'Enviar para fila de pagamentos', exact: true });
+  await filaDividida.click(); await page.getByRole('button', { name: 'Enviar para pagamento', exact: true }).click();
+  await page.waitForFunction(() => document.body.innerText.includes('Títulos enviados para a Fila de Pagamentos'));
+  assert.deepEqual(sends.at(-1).titulo_ids, [1, 3], 'Envia ambas as partes, nao o titulo previsto de outra parcela.');
+  assert(await filaDividida.isDisabled());
   await open('recarga=1');
   await page.locator('thead th').filter({ hasText: /^Forma de pagamento$/i }).waitFor();
   const formaTitulo = page.locator('tbody tr').filter({ has: page.getByTestId('situacao-titulo-1') });

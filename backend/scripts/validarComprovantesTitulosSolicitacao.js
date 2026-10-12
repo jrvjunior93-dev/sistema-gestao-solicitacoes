@@ -36,6 +36,7 @@ const context = vm.createContext({
   require: id => {
     if (id === '../models') return models;
     if (id === './tituloRenegociacaoVinculos') return { projetarOrigens: async titles => titles };
+    if (id === './instrucaoFinanceiraFavorecidoService') return { anexarInstrucoes: async titles => titles };
     throw Error(`Dependencia nao isolada: ${id}`);
   }
 });
