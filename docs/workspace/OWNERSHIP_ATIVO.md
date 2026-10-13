@@ -1,5 +1,27 @@
 # Ownership Ativo
 
+## Promocao completa incluindo DP — 2026-10-12
+
+- Agente desta conversa, sem delegacao, em checkout isolado; integra todos os
+  commits publicados de refactor/frontend, preservando hotfixes da main.
+- Main congelada: 528e8c838a383c71be76f00b21fa8fe54d6c4e8d. Alvo:
+  1d7951b9da9abf41c0b7dfab0b685ae55b76b53c.
+- Reserva: arquivos com conflitos backend/frontend/testes/documentacao deste
+  merge, e docs/handoffs/2026-10-12-promocao-completa-main.md.
+- Backup no Drive/timer confirmado pelo usuario. Consulta na producao valida:
+  inicialmente 264 migrations no alvo, 259 registradas, cinco novas pendentes;
+  usuario aplicou as cinco, preflight zero e health OK em 29ba2031 na EC2.
+- Sem executar migration, restart ou deploy EC2; publicar main somente apos
+  schema/backend compativeis e testes. Arquivos de auditoria/outputs preservados.
+- Integracao resolvida/validada; ownership funcional liberado no commit.
+  Reserva documental deste handoff e do registro continua para evidencias da
+  janela. Dois testes isolados atualizados para novas dependencias; sem mudar
+  runtime do alvo. Staging confirmado pelo usuario: UUID distinto de producao,
+  264 migrations registradas/zero pendentes e backend identico ao alvo.
+- Evidencia EC2 registrada; reservas de arquivos encerradas no commit.
+  Publicacao main por PR liberada, preservando historias; smoke autenticado
+  apos Vercel continua pendente. Agente nao executou DDL/restart na EC2.
+
 ## Promocao isolada aviso de entregas - 2026-10-09
 
 - Responsavel: agente desta conversa, sem delegacao; estado: integracao validada,
@@ -45,6 +67,796 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Seguranca de acesso direto e exclusao - 2026-10-12
+
+- Sessao codex-seguranca-acesso-direto-20261012, sem delegacao.
+- Publicacao autorizada pelo usuario na refactor/frontend; reserva documental
+  encerrada apos revalidacao e separacao do pacote proprio para commit/push.
+  Sem main/deploy EC2; auditoria financeira alheia fora do stage.
+- Implementacao/QA local das etapas 1/2 concluida e etapa 3 iniciada;
+  reserva liberada ao entregar. Handoff:
+  docs/handoffs/2026-10-12-seguranca-acesso-direto.md.
+- Autorizado: corrigir acesso operacional a solicitacao excluida e revisar
+  seguranca por etapas com testes, preservando visibilidade existente.
+- Reserva: SolicitacaoController.js, solicitacaoRetornoService.js,
+  fileAccessService.js, AnexoController.js, routes.js; novo helper/middleware
+  de disponibilidade; scripts isolados de seguranca, teste hardening,
+  documentacao de auditoria e handoff desta tarefa.
+- Reserva adicional: validarDevolucaoRetornoSolicitacao.js (carregar o novo
+  helper puro na fixture VM, sem retirar cenarios anteriores).
+- Reserva adicional: mapearRotasSeguranca.js, inventario estatico AST local
+  das declaracoes e mounts; nao executa API nem certifica permissoes.
+- Reserva adicional: frontend/scripts/validarWorkspacePiloto.mjs, somente
+  repetir a negativa de seguranca com 404 alem de 403; sem mudar UI/runtime.
+- Sem banco/rede de negocio, migrations, main ou deploy.
+  Alteracoes/documentacao alheias e outputs preexistentes preservados.
+
+## Correcoes superadmin e comparativo - 2026-10-12
+
+- Sessao codex-superadmin-comparativo-20261012, sem delegacao.
+- Implementacao/QA local concluida; reserva liberada. Handoff:
+  docs/handoffs/2026-10-12-superadmin-comparativo-exclusao.md.
+- Publicacao autorizada pelo usuario na refactor/frontend; reserva
+  documental para revalidacao/commit/push desta etapa. Sem main ou deploy EC2.
+- Revalidacao de publicacao aprovada; pacote proprio separado, reserva
+  encerrada. Auditoria financeira alheia fora do stage/commit.
+- Reserva: GerenciarCotacaoSolicitacao.jsx, CompraEtapas.jsx,
+  SolicitacaoDetalhe/index.jsx, Solicitacoes/index.jsx, SolicitacaoController.js;
+  testes novos isolados frontend/backend, README Compras/Solicitacoes e handoff.
+- Reserva adicional: acessoProduto.js e authorizationService.js, apenas
+  bypass de SUPERADMIN em preparar/aprovar/enviar pagamentos; nao muda
+  aprovador nominal, MFA/passkey, modo OFF ou segregacao dos demais perfis.
+- Escopo: leitura Cards/Mapa, digitacao de quantidade sem desmarcar,
+  bypass administrativo de setor e exclusao logica auditada acessivel.
+  Mapear regras centrais de autorizacao sem relaxar ACL dos demais usuarios,
+  integridade financeira, autenticacao/MFA ou endpoints publicos por token.
+- Sem banco real, exclusao real, migration, main ou execucao na EC2.
+  Auditoria financeira alheia preservada.
+
+## Navegacao E3a Compras - 2026-10-12
+
+- Publicacao autorizada pelo usuario na refactor/frontend. Reserva
+  documental liberada apos revalidacao e preparacao do commit proprio;
+  sem main, EC2, banco ou inclusao da auditoria financeira alheia.
+- Sessao codex-navegacao-compras-20261012, sem delegacao; finalizada local,
+  ownership liberado apos QA/build. Sem commit/push/deploy.
+- Autorizacao: piloto corrigido aprovado em DEV; usuario autorizou a
+  proxima etapa com preenchimentos/filtros preservados e testes, sem ACL.
+- Reserva: SolicitacoesCompra.jsx, PedidosCompra.jsx e ListaCotacoes.jsx
+  em frontend/src/modules/solicitacao-compra/pages; WorkspaceView.jsx,
+  TabelaPadrao.jsx e novo hook de consultas em navigation; testes isolados
+  de Compras e validarWorkspacePiloto.mjs se necessario.
+- Reserva adicional da base: useWorkspaceController.js e workspaceModel.js
+  para capturar scroll antes da troca de aba, inclusive navegacao imediata
+  antes do evento assincrono de scroll; sem alterar rotas/ACL/DTOs.
+- Documentacao: plano/contrato/handoff da navegacao e README de Compras.
+- Pedido adicional do usuario: GerenciarCotacaoSolicitacao.jsx e testes
+  do cadastro rapido; incluir nome fantasia para PJ, representante legal
+  oculto/opcional, sem mudar servicos, ACL ou cadastro geral.
+- Escopo deste lote: listas, filtros, selecao autorizada, tabela/scroll e
+  detalhes em nova aba. Formularios/wizards e financeiro seguem futuros.
+- Sem backend, migrations, banco real, EC2 ou main. Auditoria
+  financeira e outros arquivos locais preservados.
+- Suite ampliada do piloto e Compras, negativas, tabela/scroll imediato,
+  fornecedor rapido embedded/standalone, regressoes e build aprovados.
+  Handoff atualizado; proximo gate e publicacao solicitada e aceite DEV.
+
+## Correcao do piloto apos homologacao DEV - 2026-10-12
+
+- Publicacao autorizada pelo usuario na refactor/frontend em 2026-10-12.
+  Reserva documental para revalidacao e preparacao do commit desta correcao;
+  sem main, deploy EC2 ou inclusao da auditoria financeira alheia.
+  Revalidacao para publicacao concluida; pacote proprio separado e reserva
+  documental liberada. Homologacao DEV permanece como proximo gate.
+- Sessao codex-workspace-retorno-20261012, sem delegacao.
+- Reserva: navigation/useWorkspaceController.js, workspaceModel.js,
+  WorkspaceContext/View e validarWorkspacePiloto.mjs; ComprasDelegacao.jsx
+  e testes relacionados. Login/index.jsx e guard especifico de entrada
+  somente se confirmada rota publica acessivel com sessao ativa.
+- Escopo: titulo/aba ativa sincronizados, Delegacao abre nova aba e
+  retorno nao exibe login a usuario ainda autenticado. Sem ampliar ACL,
+  alterar AuthProvider/transporte API, backend, banco ou migrations.
+- Documentacao: README Solicitacoes e handoff do piloto; auditoria
+  financeira alheia preservada. Sem commit/push/deploy nesta etapa.
+- Reserva adicional: validarTelaInicial.mjs para exigir replace no login
+  normal/MFA; README Compras e contrato do piloto para registrar Delegacao.
+- Revalidacao ampliada desktop/mobile, negativas, desempenho/build,
+  tela inicial/navegacao/abas e testes backend isolados aprovados. Estado:
+  finalizado local, ownership liberado. Sem commit/push/deploy; proximo
+  gate e autorizacao de publicacao e homologacao DEV. Handoff do piloto
+  atualizado; nenhuma alteracao da auditoria financeira nesta sessao.
+
+## Publicacao do piloto de navegacao - 2026-10-12
+
+- Commit/push autorizado pelo usuario exclusivamente na refactor/frontend.
+- Reserva temporaria: arquivos proprios do mapa/piloto, handoff e README
+  Solicitacoes; paineis compartilhados somente nos acrescimos desta tarefa.
+- Auditoria financeira, seus scripts e outputs ficam fora da publicacao.
+- Sem main, acesso EC2, restart, banco ou migration real. Comandos DEV
+  devem interromper se o checkout tiver pendencias de backend anteriores.
+- Revalidacao piloto/build aprovada; reserva documental liberada apos
+  preparacao do commit isolado. Homologacao operacional em DEV pendente.
+
+## Base e piloto de navegacao em Solicitacoes 2026-10-11
+
+- Sessao: codex-workspace-piloto-20261011; finalizado local, ownership liberado, sem delegacao.
+- Autorizacao: base e piloto Solicitacoes, com testes por etapa e desempenho.
+- Reserva: navigation/useWorkspaceTabs.js e novos WorkspaceContext/View/model;
+  layout/Layout.jsx, utils/navigation.js, componentes de modal/lista e adapters
+  de NovaSolicitacao, Solicitacoes, SolicitacaoDetalhe/Conversa/Timeline/edicao;
+  inclui CompraEtapas somente para rascunhos de comentarios/motivos e estados
+  de UI, sem mudar aprovacoes, cotacao, encaminhamento ou suas permissoes;
+  scripts/fixtures de QA novos, contrato/handoff e acrescimos proprios no painel.
+- Sem banco, migration, commit/push, main ou EC2. Auditoria financeira preservada.
+- Revisao adicional de seguranca solicitada: reservar apenas o teste
+  backend/scripts/validarEdicaoDadosSolicitacao.js para atualizar seu mock da
+  dependencia de adiantamentos ja existente; nenhum runtime/ACL backend muda.
+- Retencao limitada ao formulario novo; listas/detalhes com snapshots leves,
+  sem duplicar polling, SSE, permissoes ou operacoes de negocio.
+- Handoff: docs/handoffs/2026-10-11-piloto-navegacao-solicitacoes.md;
+  contrato em docs/arquitetura/2026-10-11-piloto-navegacao-solicitacoes.md.
+
+## Mapa e plano de navegacao e estado das abas 2026-10-11
+
+- Sessao: codex-mapa-navegacao-estado-20261011; finalizado, ownership liberado, sem delegacao.
+- Reserva: novo frontend/scripts/mapearNavegacaoEstado.mjs, inventario e plano
+  novos em docs/arquitetura/2026-10-11-*, handoff correspondente e
+  outputs/mapa-navegacao-estado-20261011/. Painel somente por acrescimo.
+- Inclui diagnosticarAbasEstado.mjs: fixture local do hook/Outlet real para
+  reproduzir desmontagem e perda de estado, sem endpoints ou dados reais.
+- Escopo exclusivamente diagnostico/documental: todas as rotas, componentes,
+  navegacoes, estados e dependencias de API. Nenhuma mudanca de runtime,
+  regra, endpoint, migration, banco, commit/push, main ou EC2.
+- Preservar integralmente a auditoria financeira da outra conversa.
+- Inventario 221/221, diagnostico isolado desktop/mobile e validadores
+  aprovados. Plano inclui desempenho/limites de memoria e contratos por
+  fluxo; implementacao depende de autorizacao. Handoff correspondente criado.
+
+## Publicacao das pendencias desta conversa - 2026-10-11
+
+- Commit/push autorizado exclusivamente na refactor/frontend: Pix e dados
+  da fila, motivos de ajuste e interacoes das solicitacoes.
+- Reserva temporaria: tres handoffs correspondentes e acrescimos proprios
+  neste painel. Auditoria financeira e outputs de outras conversas excluidos.
+- Revisao de escopo e validacoes locais antes da publicacao; sem banco,
+  migration executada, EC2, restart ou promocao para main.
+- Revalidacao backend/UI desktop-mobile/build/docs/diff aprovada. Reserva
+  documental liberada; publicacao Git preparada somente com arquivos proprios.
+
+## Interacoes pendentes na lista de solicitacoes - 2026-10-11
+
+- Sessao: codex-interacoes-solicitacoes-20261011; finalizado, ownership liberado, sem delegacao.
+- Reserva: Historico.js, models/index.js, novo modelo/migration/service de
+  interacoes; solicitacaoAtencaoService, SolicitacaoController, routes.js;
+  AtencaoPendente, Solicitacoes/index/LinhaSolicitacao; detalhe/index,
+  Timeline, CompraEtapas, novo hook/componentes de leitura, testes e README
+  Solicitacoes/handoff. Painel documental somente por acrescimo.
+- Escopo: eventos agrupados por usuario, leitura efetiva, atalhos, anexos,
+  prioridade antes da paginacao; preservar visibilidade/status/financeiro.
+- Sem banco real, migration executada, EC2, commit/push ou main. Preservar
+  Pix/motivos e auditoria financeira pendentes de outras etapas/conversas.
+- Reserva adicional: validarBloqueioRetornoObra.js e
+  validarCompraDetalheCards.mjs, somente adaptacao das fixtures a leitura
+  independente e ao predicado de destaque ampliado, mantendo negativas.
+- Backend/UI real/paginas/realtime, compras/financeiro por pedido, retorno,
+  anexos/edicao, build/sintaxe/docs/diff aprovados. Migration preparada,
+  nao executada. Handoff: docs/handoffs/2026-10-11-interacoes-solicitacoes.md.
+
+## Motivo de ajuste pelo proprietario - 2026-10-11
+
+- Responsavel: agente desta conversa; concluido, ownership liberado, sem delegacao.
+- Reserva: Timeline.jsx, FinanceiroAutorizacoesPagamento.jsx, CSS/util de
+  autorizacoes, analiseProprietarioService e testes isolados correspondentes,
+  README Financeiro e handoff novo.
+- Escopo: exibir observacao das trocas no historico e motivos dos lotes;
+  registrar cada recusa mesmo se outro titulo ja mudou o status global,
+  preservando fluxo da medicao mais recente, permissoes e idempotencia.
+- Preservar Pix/modal da fila e auditoria financeira da outra conversa.
+  Sem commit/push, main, migration, banco real ou EC2.
+- Backend/Timeline/autorizacoes isolados, rollback/replay/permissoes,
+  build/sintaxe/docs/diff aprovados. Handoff:
+  docs/handoffs/2026-10-11-motivo-ajuste-autorizacao.md.
+
+## Pix sem seletor e leitura de dados da fila - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; concluido, reserva liberada.
+- Escopo: conferir capacidade Pix, ampliar tres inputs de Compras ainda em
+  255 caracteres, modal de consulta dos dados completos na fila, testes e docs.
+- Reserva: frontend/utils/pix, PedidoCompraFinanceiro, NovaSolicitacaoCompra,
+  FinanceiroFilaPagamentos, novo DadosPagamentoFila, validadores Pix/fila,
+  README Financeiro e handoff correspondente. Preservar auditoria externa.
+- Sem commit/push, main, migrations executadas, banco real ou EC2.
+- Pix backend/UI, fila/colunas/preview/baixas, build, docs e diff aprovados.
+  Handoff: docs/handoffs/2026-10-11-pix-dados-pagamento-fila.md.
+
+## Adiantamento sem distribuicao na abertura - 2026-10-11
+
+- Publicacao autorizada: commit/push desta pendencia na refactor/frontend.
+  Reserva documental temporaria do handoff e deste registro, encerrada apos
+  conferencia. Auditoria da outra conversa fora do commit; sem main/deploy.
+- Usuario autorizou ocultar e dispensar a distribuicao gerencial somente
+  no subtipo Adiantamento; obras/despesas ficam para a prestacao de contas.
+- Reserva: NovaSolicitacao.jsx, SolicitacaoController.js, validadores isolados
+  validarNovaSolicitacaoAdiantamento.mjs e validarAdiantamentoCentroCusto.js,
+  README de Solicitacoes e novo handoff. Preservar auditoria da outra conversa.
+- Sem commit/push, migrations, EC2 ou banco real nesta etapa.
+- Implementacao e testes concluidos; ownership liberado. Testes de abertura,
+  prestacao, financeiro/executor, medicao/recarga, build, sintaxe, docs e diff
+  aprovados. Handoff: docs/handoffs/2026-10-11-adiantamento-sem-distribuicao-abertura.md.
+
+## Correcao da migration de adiantamento - 2026-10-11
+
+- Usuario autorizou remover o seed, testar a protecao do executor e publicar
+  na refactor/frontend. Sem enfraquecer o runner, main, EC2 ou banco real.
+- Reserva temporaria: migration 202610110001_adiantamento_prestacao.js,
+  validarAdiantamentoFinanceiro.js, handoff de adiantamento e README de
+  Solicitacoes. Auditoria de outra conversa e outputs/ preservados.
+- Correcao e testes locais concluidos; ownership liberado para commit/push
+  autorizado. Runner real isolado/idempotencia/negativas, adiantamento,
+  medicao/recarga, sintaxe e documentacao aprovados. Sem banco real.
+
+## Publicacao das pendencias desta conversa - 2026-10-11
+
+- Usuario autorizou commit e push somente na refactor/frontend: titulo de
+  compras, forma de pagamento/data da necessidade e adiantamento/rateio.
+- Reserva documental temporaria dos tres handoffs e READMEs canonicos para
+  registrar a publicacao. Sem nova alteracao funcional, main, banco ou EC2.
+- Auditoria do plano financeiro de outra conversa e outputs/ fora do commit.
+- Reserva encerrada apos conferencia local; ownership liberado para commit.
+
+## Adiantamento e obras de distribuicao por centro - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado. Homologacao MySQL real em dev pendente.
+- Autorizado: subtipo ADIANTAMENTO nas tres despesas, favorecido/titulo aberto,
+  prestacao posterior e saldo pendente ate devolucao; configuracao das obras
+  por centro. Administrativo/DP sem vinculo usuario-obra; Comercial/Marketing
+  somente privadas. Nao ampliar visibilidade de solicitacoes.
+- Reserva: centroCustoDistribuicaoService/controller, routes.js, Obras.jsx e
+  componente de configuracao; modelos/migrations/servico/controller de
+  adiantamento, TipoSubContrato/controller/tela, NovaSolicitacao, detalhe e
+  FinanceiroCard, sincronizacao financeira, relatorios afetados, testes e docs.
+- Inclui AnexoController (tipo de documento de prestacao) e servicos de
+  financeiro/custos para proteger o reconhecimento somente apos conferencia.
+- Preservar pendencias anteriores. Sem banco real, migrations executadas,
+  commit/push, main ou EC2. Etapas validadas com transporte/modelos isolados.
+- Handoff: docs/handoffs/2026-10-11-adiantamento-centros-custo.md.
+
+## Forma de pagamento e data da necessidade - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  concluidas, ownership liberado.
+- Reserva: FinanceiroCard.jsx, leitura resumida de titulos em
+  tituloFinanceiroService.js, NovaSolicitacaoCompra/RevisarSolicitacaoCompra,
+  operationalValidators, testes isolados correspondentes e novo handoff.
+- Escopo: coluna da forma do titulo na aba Financeiro; conferir a coluna
+  existente da fila sem duplicar; exigir data da necessidade na criacao de
+  Solicitacao de Compra, preservando vencimento da Compra Direta e rascunhos.
+- Preservar alteracoes pendentes do titulo da compra, permissoes, status,
+  anexos, rateios e baixas. Sem banco real, migration, commit/push ou deploy.
+- Handoff: docs/handoffs/2026-10-11-forma-pagamento-data-necessidade.md.
+- Testes reais de UI com transporte isolado, leitura/permissoes backend,
+  compras, fila/colunas/baixa em massa, build e diff aprovados.
+
+## Titulo na criacao de compras - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  concluidas, ownership liberado. Arquivos do escopo:
+  NovaSolicitacaoCompra, RevisarSolicitacaoCompra, payloadSolicitacaoCompra,
+  operationalValidators, SolicitacaoCompraController, testes correspondentes
+  e handoff desta tarefa.
+- Escopo autorizado: titulo opcional no cabecalho de Compra Direta e
+  Solicitacao de Compra, rascunho/revisao, persistencia e pesquisa na lista
+  geral pela descricao existente. Sem migration, banco real ou publicacao.
+- Preservar permissoes, formas de pagamento, itens, aprovacao e envio unico.
+- Handoff: docs/handoffs/2026-10-11-titulo-solicitacoes-compra.md; testes com
+  APIs/modelos isolados e build aprovados. Pendencias preexistentes de teste
+  de frete e hidratacao de rateios registradas separadamente, sem alteracao.
+
+## Padronizacao dos visualizadores de arquivos - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao local e
+  validacoes concluidas, ownership liberado para publicacao autorizada.
+- Usuario autorizou aplicar o mapa, testar cada etapa e, na sequencia,
+  commitar e fazer push das pendencias somente na refactor/frontend.
+- Publicacao inclui frontend, preview nativo mobile, testes e documentacao.
+  outputs/ preservado fora do Git. Sem main, EC2, deploy ou banco real.
+- Reserva: visualizador compartilhado, hook/contexto e integracao App;
+  chamadores de preview de Solicitacoes/Financeiro, Compras/Contratos,
+  RH/DP, Fiscal/SST, Biblioteca/Comunicacao/Obras/Provisionamento mapeados;
+  preview nativo mobile, testes e documentacao/handoff correspondentes.
+- Etapas: base + Solicitacoes/Financeiro; Compras/Contratos; RH/DP;
+  demais modulos; mobile. Transporte de testes isolado, sem banco real.
+- Preservar autorizacao de links/endpoints, downloads, geracao de documentos,
+  HTML de previa interna e regras de negocios. Nenhuma migration.
+- Handoff: docs/handoffs/2026-10-11-padrao-visualizadores-arquivos.md.
+- Aprovados: build, 27 handlers/endpoints e relatorios com APIs isoladas,
+  fila/preview/colunas reais, contraste, selecao de relatorio, medicao/recarga,
+  RH/DP gerencial, contratos e acesso backend sem banco, mobile por adaptadores.
+- Limites: sem clipboard nativo, Expo typecheck completo ou dispositivo fisico.
+
+## Publicacao Preview de arquivos da fila - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao concluida,
+  ownership liberado para publicacao autorizada.
+- Reserva: modais ArquivosSolicitacaoFilaModal e PreviewAnexoModal, scripts
+  validarFilaInstrumentosUI e filaArquivosPreviewQA, README financeiro,
+  handoff do preview e este registro de ownership.
+- outputs/ preservado fora do Git. Sem main, EC2, migrations ou banco real.
+- Revalidados: UI real da fila/preview/colunas com APIs isoladas, acesso a
+  arquivos/anexos sem banco, sintaxe, diff e build. Copia nativa nao automatizada.
+
+## Fila - visualizacao interna de arquivos - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado.
+- Reserva: ArquivosSolicitacaoFilaModal.jsx, props opcionais de dimensao em
+  SolicitacaoDetalhe/PreviewAnexoModal.jsx, teste isolado de fila/preview e
+  documentacao financeira/handoff correspondentes.
+- Escopo: PDFs/imagens em preview amplo na mesma tela, acesso seguro existente,
+  downloads e formatos restantes preservados, fechamento/pilha/rolagem.
+- Sem backend, migration, banco real, commit/push, main ou deploy.
+- Validacoes: fila real, preview/presign frontend reais com transporte isolado,
+  PDF nativo e imagens, pilha/Escape/foco/rolagem, download, 403 e fechamento
+  em voo, regressao de fila/colunas, acesso backend sem banco e build.
+- Handoff: docs/handoffs/2026-10-11-fila-preview-arquivos.md.
+
+## Publicacao Fila de Pagamentos - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; conferencia local concluida,
+  ownership liberado para publicacao autorizada.
+- Reserva: pendencias de fila/local/massa/comprovantes, colunas por usuario,
+  testes e documentacao associados. outputs/ preservado fora do Git.
+- Sem main, EC2, reinicio, migrations aplicadas ou acesso a banco real.
+- Revalidados: preferencias por usuario, encargos, anexos, query/ORM e permissao,
+  UI da fila/colunas/baixa em massa/rolagem, renderer de comprovantes, sintaxe,
+  diff e build. Origem do arquivo SOL-6278.pdf em producao ainda nao conferida.
+
+## Fila - colunas por usuario - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado.
+- Reserva: FinanceiroFilaPagamentos.jsx, export nomeado de PainelColunas em
+  TabelaPadrao.jsx, novo hook/componente de colunas para tabelas operacionais,
+  testes de fila/preferencias e documentacao financeira/handoff desta tarefa.
+- Reutiliza PreferenciasContext/endpoints existentes; sem novas regras de baixa,
+  banco real, migration, commit/push, main ou deploy. Preserva pendencias anteriores.
+- Validacoes: fila/painel/contexto reais em browser com APIs em memoria,
+  preferencias/seguranca por usuario no backend sem banco, build e diff.
+- Handoff: docs/handoffs/2026-10-11-fila-colunas-usuario.md.
+
+## Fila - selecao, local, rolagem e comprovantes - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e validacoes
+  locais concluidas, ownership liberado. Origem do arquivo em producao ainda
+  depende da conferencia somente leitura no ambiente real.
+- Reserva: FinanceiroFilaPagamentos.jsx, SolicitacaoDetalhe/FinanceiroCard.jsx,
+  componente financeiro ComprovantesTituloSolicitacao.jsx,
+  novo hook useRolagemModal.js, pagamentoManualFilaService.js,
+  tituloFinanceiroService.js, testes isolados e diagnostico somente leitura
+  correspondentes, documentacao/handoff desta tarefa.
+- Escopo: baixa em massa explicita somente de pendentes elegiveis, coluna local,
+  preservacao de rolagem no modal, encargos atuais e comprovantes de fila/solicitacao.
+- Sem commit, push, main, deploy, migration ou dados reais. outputs/ preservado.
+- Testes de query/ORM, encargos/lote atomico/replay, anexos/acesso/remocao,
+  UI da fila/coluna em 1366px e 390px, build, sintaxe e diff aprovados.
+- Handoff: docs/handoffs/2026-10-11-fila-local-massa-comprovantes.md.
+
+## Publicacao Admissao - contatos visiveis - 2026-10-11
+
+- Usuario autorizou commit e push somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; conferencia da publicacao
+  concluida, ownership liberado. Sem nova mudanca funcional.
+- Escopo: organizacao da admissao, contatos secundarios visiveis, copia DP/admin
+  e validacao de enderecos distintos para Obra, testes e documentacao associados.
+- Contatos, importacao legada, pessoal por solicitacao, documentacao e diff
+  revalidados antes do commit. Build e UI aprovados na implementacao.
+- outputs/ preservado fora do Git. Sem main, EC2, migration, banco real ou deploy.
+
+## Admissao - organizacao e contatos visiveis - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao/revisao
+  concluidas, ownership liberado. Handoff: 2026-10-11-admissao-organizacao-contatos.md.
+- Reserva: RhDpPessoal.jsx, RhDpColaboradores.jsx, RhColaboradorEnderecos.jsx,
+  helpers de contatos frontend/backend, rhSolicitacaoService.js, validadores
+  de contatos, validarRhColaboradorCentroCusto.mjs (diagnostico de regressao),
+  README RH/DP e handoff deste ajuste.
+- Escopo: organizar admissao com FormSecao; contatos secundarios sempre visiveis;
+  copia de endereco para DP/admin e enderecos distintos para Obra operacional.
+- Plano: mapear abertura/reenvio e permissao, manter campos opcionais/legado,
+  validar API em memoria e UI local desktop/mobile. Sem commit/push/deploy,
+  migration, banco real ou alteracao de permissao.
+
+## Publicacao Colaboradores - contatos - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao da publicacao
+  concluida, ownership liberado. Sem nova mudanca funcional.
+- Escopo: cadastro/admissao com dois enderecos e telefones, componentes comuns,
+  validadores e documentacao relacionados; outputs/ preservado fora do Git.
+- Contatos, planilha legada, documentacao e diff revalidados antes do commit;
+  build e testes de UI aprovados durante a implementacao.
+- Sem main, EC2, migration aplicada, escrita em banco real ou deploy pelo agente.
+
+## Colaboradores - dois enderecos e telefones - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao/revisao
+  concluidas, ownership liberado. Handoff: 2026-10-11-colaboradores-contatos.md.
+- Reserva: RhDpColaboradores.jsx, RhDpPessoal.jsx, componente/helper reutilizavel
+  de contatos; rhValidators.js, rhService.js, rhSolicitacaoService.js e helper
+  de contatos; validadores direcionados, README RH/DP, este registro e handoff.
+- Escopo: expor campos existentes no cadastro; copiar endereco na admissao;
+  impedir segundo telefone igual ao primeiro no frontend e no backend,
+  preservando edicao parcial, permissoes e dados legados. Sem migration nova.
+- Plano: mapear persistencia/aprovacao, implementar e validar cadastro,
+  admissao, reabertura/limpeza e negativas com modelos/APIs em memoria e UI.
+- Sem commit/push, main, EC2 ou operacoes em banco real nesta tarefa.
+
+## Publicacao DP - envio parcial e revisao - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias somente na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao. Handoff:
+  2026-10-11-dp-envio-parcial-revisao.md.
+- Escopo: implementacao descrita abaixo, validadores e documentacao associados;
+  outputs/ preservado fora do Git. Sem alteracoes funcionais adicionais.
+- Dominio, envio parcial/revisao, filtros legados e fila financeira revalidados
+  em memoria antes do commit; build e UI aprovados durante implementacao.
+- Sem main, EC2, migration, escrita em banco real ou deploy pelo agente.
+
+## DP - envio parcial e revisao de pagamentos - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao e revisao
+  concluidas, ownership liberado. Handoff: 2026-10-11-dp-envio-parcial-revisao.md.
+- Pedido: rotulo Envio parcial para pagamento; enviar restantes; revisar e
+  reenviar sem duplicar; cancelar sem baixa, preservando historico e reembolsos.
+- Reserva: rhPagamentoSolicitacaoService/Domain e novo servico de revisao;
+  RhPagamentoSolicitacaoController, routes.js, pagamentoManualFilaService,
+  tituloFinanceiroService e guardas financeiras necessarias; RhDpPagamentoModal,
+  RhDpPessoalSolicitacoes, fila manual e estilos; testes e docs RH/DP/handoff.
+- Plano: mapear bloqueios/escopo, estado por linha e legado; transacoes em ordem
+  de lock financeira, bloqueio persistente de baixa/enqueue; UI compacta e
+  testes positivos/negativos/concorrencia em memoria e navegador.
+- Sem banco real, migration aplicada, commit/push/main/EC2 ou integracoes.
+
+## Publicacao Colaboradores e seletores - 2026-10-11
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao.
+- Escopo: implementacao descrita abaixo, catalogo gerado, testes e documentos;
+  outputs/ preservado fora do Git. Nenhuma alteracao funcional adicional.
+- Build, UI desktop/mobile e regressoes aprovados na implementacao;
+  dominio/escopos em memoria, documentacao e diff revalidados antes do commit.
+- Sem main, EC2, migration, escrita em banco real ou deploy pelo agente.
+
+## Colaboradores e seletores Obra/Centro - 2026-10-11
+
+- Responsavel: agente desta conversa, sem delegacao; implementacao concluida,
+  ownership liberado. Publicacao autorizada conforme registro acima.
+- Usuario autorizou estrutura local/global de Colaboradores, edicao pelo DP e
+  alinhamento dos seletores conforme mapa funcional, com estabilizacao.
+- Reserva: frontend/src/navigation/navigationConfig.jsx e catalogo gerado;
+  frontend/src/pages/RhDp*.jsx, frontend/src/styles/rh-pessoal-locais.css;
+  seletores nas paginas FinanceiroPagamentos, FinanceiroConciliacao,
+  GestaoContratos, ContratosRelatorioOperacional, SolicitacaoDetalhe/FinanceiroCard;
+  frontend/src/pages/ComercialEmpreendimentos.jsx (exibir vinculo legado);
+  frontend/src/modules/solicitacao-compra/pages/{PedidosCompra,ListaCotacoes}.jsx;
+  frontend/src/modules/sst/pages/{SstCrudPage,SstRelatorioOperacional}.jsx;
+  backend/src/services/{rhEventoRecorrenteService,rhTransferenciaService,
+  comercialService,provisaoFinanceiraService}.js e validadores/testes associados;
+  backend/src/controllers/RhTransferenciaController.js (recorte da leitura);
+  rotulos de origem nos filtros/relatorios mistos mapeados, scripts de validacao,
+  docs/modulos/rh-dp/README.md, este registro e handoff correspondente.
+- Preservar permissoes/escopo, rotas legadas, transferencias somente entre obras,
+  cadastro unico e consulta /obras padrao, apropriacoes/planejamento/VGV exclusivos
+  de obra; nenhuma ampliacao de acesso, migration ou operacao em banco real.
+- Implementacao sem main, EC2 ou integracoes externas. outputs/ fora do Git.
+- Plano/validacoes: docs/handoffs/2026-10-11-colaboradores-locais-escopos.md.
+
+## Publicacao DP - remover Sem reembolso - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao.
+- Escopo: cinco arquivos do ajuste; outputs/ preservado fora do Git.
+- UI desktop/mobile e build aprovados na implementacao sem alteracoes
+  funcionais posteriores. Sem backend, migration, banco real, main ou deploy.
+- Documentacao e diff revalidados antes do commit.
+
+## DP - remover botao Sem reembolso - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/components/rh/RhDpPagamentoModal.jsx,
+  frontend/scripts/validarRhPagamentoSolicitacaoUI.mjs, este registro,
+  README RH/DP e docs/handoffs/2026-10-10-dp-remover-sem-reembolso.md.
+- Escopo: remover apenas o botao Sem reembolso; Cancelar/Voltar/Escape
+  conservam o reembolso salvo sem aplicar os dados editados.
+- Sem backend, migration, banco real, commit/push, main ou deploy.
+- UI real desktop/mobile, cancelamento com/sem reembolso salvo, build,
+  documentacao e diff aprovados; ownership liberado.
+
+## Publicacao DP - reembolso parcial - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao. Sem alteracoes funcionais novas.
+- Escopo: somente os oito arquivos do ajuste; outputs/ preservado fora do Git.
+- Dominio/servico em memoria e diff revalidados; UI desktop/mobile, build e
+  demais regressoes aprovados na implementacao.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## DP - valor parcial de reembolso - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: RhDpPagamentoModal.jsx, rhPagamentoSolicitacaoDomain.js,
+  rhPagamentoSolicitacaoService.js, validarRhPagamentoSolicitacao.js,
+  validarRhPagamentoSolicitacaoUI.mjs, README RH/DP, este registro e
+  docs/handoffs/2026-10-10-dp-reembolso-parcial.md.
+- Escopo: valor de reembolso editavel em moeda, positivo e limitado ao
+  desconto; soma/geracao por responsavel usam apenas este valor.
+- Preservar desconto/liquido salarial, dados bancarios, agrupamento por empresa,
+  conferencia, permissoes, transacao e idempotencia. Legado sem valor conserva
+  reembolso integral. Sem commit/push/main/migration/banco real/deploy.
+- Ownership liberado. Dominio/servico, UI desktop/mobile e protecao contra
+  backend antigo, Pessoal, conferencia/regras, build, sintaxe e docs aprovados.
+- Handoff: docs/handoffs/2026-10-10-dp-reembolso-parcial.md.
+
+## Publicacao DP - selecao para pagamento - 2026-10-10
+
+- Usuario autorizou commit e push das alteracoes pendentes na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; revisao documental
+  concluida, ownership liberado para publicacao. Sem mudancas funcionais adicionais.
+- Somente os oito arquivos deste ajuste; outputs/ preservado fora do Git.
+- Servico/dominio em memoria, documentacao e diff revalidados antes do commit;
+  testes UI nos tres modos, desktop/celular e build aprovados na implementacao.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## DP - selecao de colaboradores para pagamento - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/pages/RhDpPessoal.jsx,
+  frontend/src/components/rh/RhDpPagamentoModal.jsx,
+  backend/src/services/rhPagamentoSolicitacaoService.js,
+  frontend/scripts/validarRhPessoalPorLocal.mjs,
+  backend/scripts/validarRhPagamentoSolicitacao.js, README RH/DP,
+  docs/handoffs/2026-10-10-dp-selecao-pagamento.md e este registro.
+- Escopo: botao individual abre somente o colaborador; selecao reutilizavel
+  na tabela abre somente os marcados; sem selecao conserva todos do local.
+- Preservar permissao, local/ativos, rascunhos existentes, conferencia,
+  calculos, reembolso e idempotencia. Sem banco real, migration, commit,
+  push, main ou deploy. outputs/ permanece fora do Git.
+- Ownership liberado. Servico/dominio em memoria, UI real nos tres modos,
+  desktop/celular, regressao de conferencia/pagamento, build e docs aprovados.
+- Handoff: docs/handoffs/2026-10-10-dp-selecao-pagamento.md.
+
+## Publicacao menu Colaboradores OBRA - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao. Revisao documental
+  concluida; ownership liberado para publicacao dos seis arquivos do ajuste.
+- Somente os seis arquivos do ajuste; outputs/ preservado fora do Git.
+- Rotulos/guards e navegacao revalidados antes do commit; build e paridade
+  do catalogo gerado aprovados na implementacao sem mudancas posteriores.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## Menu Colaboradores para OBRA - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/navigation/navigationConfig.jsx,
+  frontend/scripts/validarAcessoPedidos.mjs, docs/modulos/rh-dp/README.md,
+  docs/handoffs/2026-10-10-menu-colaboradores-obra.md e este registro.
+- Escopo: rotulo/descricao RH/DP para usuarios do setor OBRA como
+  Colaboradores / Solicitacoes e Pagamentos, no catalogo central.
+- Preservar id rhdp, destinos, permissoes, atalhos, personalizacao e regras
+  de selecao de setor. Sem commit/push/main/banco/migration/deploy.
+- Reserva derivada: backend/src/generated/navegacaoFonteUnica.cjs,
+  recompilado automaticamente pelo prebuild; sem mudanca de regra backend.
+- Ownership liberado; rotulos/card real, guards, destinos, breadcrumb,
+  Ctrl+K/atalhos, navegacao completa, paridade do gerado, build e diff aprovados.
+- Handoff: docs/handoffs/2026-10-10-menu-colaboradores-obra.md.
+
+## Publicacao DP - moeda nos ajustes - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao. Revisao documental
+  concluida, ownership liberado para publicacao dos seis arquivos do ajuste.
+- Somente os seis arquivos do ajuste; outputs/ preservado fora do Git.
+- UI real desktop/mobile, regressao RH/DP, dominio e build ja aprovados.
+- Dominio/servico em memoria e diff revalidados antes do commit.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+
+## DP - moeda nos acrescimos e descontos - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: frontend/src/components/rh/RhDpPagamentoModal.jsx,
+  frontend/src/styles/rh-pagamento-solicitacao.css,
+  frontend/scripts/validarRhPagamentoSolicitacaoUI.mjs, README RH/DP,
+  docs/handoffs/2026-10-10-dp-moeda-ajustes.md e este registro.
+- Escopo: mascara BRL durante digitacao usando formatters existentes,
+  campos apagados viram zero numerico; preservar liquido, conferencia,
+  reembolso manual e autosave sem interrupcao. Sem mudanca nos endpoints,
+  permissoes, regras de dias/faltas, titulos existentes ou backend.
+- Sem commit, push, main, migration, banco real ou deploy nesta tarefa.
+- Ownership liberado. UI real desktop/mobile (moeda, vazios, payload,
+  persistencia, rede lenta e regressao Obra/DP), dominio/servico em memoria,
+  regras RH/conferencia, build e diff aprovados. Capturas inspecionadas.
+- Handoff: docs/handoffs/2026-10-10-dp-moeda-ajustes.md.
+
+## Publicacao DP - reembolso manual - 2026-10-10
+
+- Usuario autorizou commit e push na refactor/frontend e comandos da EC2 dev.
+- Responsavel: agente desta conversa, sem delegacao. Ownership documental
+  liberado apos revisao; publicacao restrita aos arquivos descritos abaixo.
+- Somente os nove arquivos do ajuste; outputs/ preservado fora do Git.
+- Sem main, banco real, migration ou deploy executado pelo agente.
+- Revalidacoes de pagamento por solicitacao, Pessoal/conferencia, regras RH/DP
+  e fila aprovadas antes da publicacao; UI/build ja aprovados na implementacao.
+
+## DP - reembolso manual e voltar para obras - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; concluido localmente.
+- Reserva: RhDpPagamentoModal.jsx, RhDpPessoal.jsx,
+  rhPagamentoSolicitacaoService.js, validarRhPagamentoSolicitacaoUI.mjs,
+  validarRhPagamentoSolicitacao.js, validarRhPessoalPorLocal.mjs, README RH/DP
+  e handoff 2026-10-10-dp-reembolso-manual.md; este registro.
+- Escopo: remover abertura automatica e no blur do desconto, solicitar
+  reembolso somente por clique; desconto comum nao exige confirmacao extra.
+  Renomear Voltar aos locais para Voltar para Obras sem mudar navegacao.
+- Preservar calculos, autosave, responsaveis, agrupamento, conferencia,
+  permissoes, fila e titulos existentes. Sem banco real, migration, commit,
+  push, main ou deploy. outputs/ preservado fora do Git.
+- Ownership liberado. Servico/dominio em memoria, UI do modal desktop/mobile,
+  Pessoal nos tres modos, regressao RH/fila, build, sintaxe e diff aprovados.
+  Handoff: docs/handoffs/2026-10-10-dp-reembolso-manual.md.
+
+## Publicacao DP - dias e salvamento - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa; reserva documental deste registro e do
+  handoff 2026-10-10-dp-dias-salvamento.md para registrar esta publicacao.
+- Base local/remota bea8b8e2 sem divergencia. Preservar outputs/ fora do Git.
+  Sem main, EC2, migration, reinicio ou escrita em banco real.
+- Revisao e revalidacoes locais concluidas; reserva documental encerrada,
+  ownership liberado para o commit/push autorizado.
+
+## DP - dias informativos e salvamento discreto - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; em andamento.
+- Reserva: RhDpPagamentoModal.jsx, rhPagamentoSolicitacaoDomain.js, testes
+  validarRhPagamentoSolicitacao.js/validarRhPagamentoSolicitacaoUI.mjs e handoff
+  2026-10-10-dp-dias-salvamento.md; este registro.
+- Reserva documental ampliada: docs/modulos/rh-dp/README.md para distinguir a
+  regra do modal independente dos calculos dos fluxos legados.
+- Escopo: passo de um dia, faltas informativas para todos, dias informativos
+  para mensalistas; apenas dias de diaristas alteram o bruto. Autosave sem
+  bloquear campos, com gravacoes serializadas e preservacao de edicoes em voo.
+- Preservar conferencias, descontos/vales, permissoes, titulos existentes e
+  outputs/. Sem banco real, migration, main, commit, push ou deploy.
+- Concluido localmente; ownership liberado. Dominio/servico em memoria, UI real
+  com rede lenta/falha/gravacoes serializadas, snapshot aprovado, regressao RH,
+  fila, build, sintaxe e diff aprovados. Handoff documenta homologacao pendente.
+
+## Publicacao DP - 100%, dados e vales - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; reserva documental deste
+  registro e do handoff 2026-10-10-dp-percentual-dados-vales.md.
+- Base local/remota 5453352d sem divergencia. Preservar outputs/ fora do commit.
+  Sem main, deploy, migrations, reinicio ou banco real.
+- Revisao concluida; revalidacao dominio/servico, conferencia e UI modal
+  aprovada. Build e fila UI aprovados na implementacao sem mudanca funcional
+  posterior. Reserva documental encerrada, ownership liberado para publicacao.
+
+## DP - percentuais, dados para pagamento e vales agrupados - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao. Ajustes autorizados pelo
+  usuario: coluna 100%, dados para pagamento na fila, pergunta de vale ao editar
+  desconto e reembolso unico por responsavel com discriminacao dos colaboradores.
+- Reserva: rhPagamentoSolicitacaoDomain/Service.js, RhDpPagamentoModal.jsx,
+  rh-pagamento-solicitacao.css, testes backend/UI do modal, handoff correspondente.
+- Reserva ampliada: FinanceiroFilaPagamentos.jsx (conta bancaria nao pode ser
+  exibida como chave Pix; discriminacao do titulo de reembolso), teste UI da fila.
+- Fila e helpers canonicos inspecionados: beneficiario ja vinculado aos titulos;
+  preservados os endpoints, permissoes e transacao canonica de envio.
+- Preservar titulos ja gerados, fluxo legado, outputs/ e permissoes. Sem commit,
+  push, main, deploy, migration ou banco real neste pedido.
+- Concluido localmente, ownership liberado. Handoff:
+  docs/handoffs/2026-10-10-dp-percentual-dados-vales.md.
+- Validacoes aprovadas: dominio/servico em memoria, UI modal desktop/mobile
+  (incluindo Escape e envio com classificacao pendente), fila UI, regressao
+  pessoal/conferencia/fila/governanca, build, sintaxe e diff.
+
+## Publicacao do pagamento DP por solicitacao - 2026-10-10
+
+- Usuario autorizou commit e push das pendencias na refactor/frontend.
+- Responsavel: agente desta conversa, sem delegacao; reserva documental deste
+  registro e do handoff do modal de pagamento para registrar a publicacao.
+- Base: 34fa7c5b. Preservar outputs/ fora do commit. Sem main, deploy,
+  migration, reinicio ou escrita em banco real.
+- Revalidacao aprovada: dominio/servico em memoria, UI desktop/mobile, Pessoal
+  nos tres modos, conferencia por solicitacao, fila/instrumentos/governanca,
+  regras RH/DP, build, sintaxe e diff. Sem banco/rede externa.
+- Revisao final concluida; reserva documental encerrada para commit/push
+  autorizado, ownership liberado. Handoff do modal registra escopo e limites.
+
+## Pagamento DP por solicitacao - 2026-10-10 (concluido localmente)
+
+- Responsavel: agente desta conversa, sem delegacao. Implementacao autorizada
+  apos confirmacao das regras de descontos, reembolso e pagamentos independentes.
+- Reserva: novos rhPagamentoSolicitacaoDomain/Service/Controller, routes.js,
+  rhFechamentoService.js (helpers), pagamentoManualFilaService.js (transacao),
+  RhDpPagamentoModal.jsx, RhDpPessoal.jsx, RhDpPessoalSolicitacoes.jsx,
+  services/rhDp.js, styles/rh-pagamento-solicitacao.css, scripts de validacao
+  novos e handoff correspondente.
+- Reserva ampliada: frontend/scripts/validarRhPessoalPorLocal.mjs (expectativas
+  do novo modal), RhSolicitacaoController.js (privacidade do rascunho).
+- Preservar jornada/apuracao legada, pagamentos existentes e outputs/.
+  Sem banco real, migration aplicada, commit, push, main ou deploy.
+- Ownership liberado; handoff em
+  docs/handoffs/2026-10-10-dp-pagamento-modal-solicitacao.md.
+- Validacoes em memoria, UI real desktop/mobile, regressao Pessoal nos tres
+  modos, fila/permissoes/governanca, build, sintaxe e diff aprovados.
+
+## Publicacao das pendencias DEV - 2026-10-10
+
+- Autorizada pelo usuario nesta conversa: commit e push na refactor/frontend
+  dos ajustes Pix Copia e Cola, resumo compacto da fila e colaboradores ativos
+  do local aberto no Pessoal. Responsavel: agente desta conversa, sem delegacao.
+- Reserva documental temporaria deste registro e dos tres handoffs associados.
+- Base local/remota abcfe89b conferida sem divergencia. Preservar outputs/ fora
+  do commit; nao publicar main, executar migration, alterar banco ou reiniciar EC2.
+- Revalidacao aprovada: Pix backend/UI, fila UI, cadastro/planilha RH,
+  conferencia por solicitacao e sintaxe/diff. UI Pessoal nos tres modos e build
+  aprovados na implementacao anterior, sem alteracao funcional posterior.
+- Reserva documental encerrada; ownership liberado para commit/push autorizado.
+
+## Pessoal - colaboradores ativos do local aberto - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-10-pessoal-colaboradores-ativos-local.md.
+- Reserva: backend/src/services/rhService.js,
+  frontend/src/pages/RhDpPessoal.jsx,
+  backend/scripts/validarRhColaboradoresPlanilha.js,
+  frontend/scripts/validarRhPessoalPorLocal.mjs e handoff desta tarefa.
+- Escopo: respeitar o local solicitado dentro do escopo autorizado e listar
+  apenas colaboradores ATIVO no card aberto. Preservar historico, transferencias,
+  pagamentos, cadastro global e exportacoes do RH/DP.
+- Preservar Pix e resumo compacto da fila pendentes. Sem banco real, migration,
+  commit, push, main ou deploy.
+- Validacoes: consulta em memoria, escopo/primeira lotacao, conferencia por
+  solicitacao, UI desktop/mobile nos modos legado/etapas/gerencial, build e
+  diff aprovados. Teste auxiliar antigo de transferencia com mock ausente
+  documentado no handoff, sem alterar o fluxo de transferencias.
+
+## Fila - remover resumo de documento e forma sob o titulo - 2026-10-10
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-10-fila-titulo-resumo-compacto.md.
+- Reserva: frontend/src/pages/FinanceiroFilaPagamentos.jsx,
+  frontend/scripts/validarFilaInstrumentosUI.mjs e handoff desta tarefa.
+- Escopo: remover apenas a linha documento/forma da celula do titulo;
+  preservar seletores, acoes, permissoes, comprovantes e regras de baixa.
+- Preservar ajustes Pix pendentes e outputs/. Sem backend, banco, commit,
+  push, main ou deploy.
+- Validacoes: teste UI real com APIs isoladas, desktop/mobile com e sem documento,
+  navegacao/arquivos/upload/instrumentos/baixas; build e diff aprovados.
+
+## Pix Copia e Cola - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido localmente,
+  ownership liberado. Handoff: docs/handoffs/2026-10-09-pix-copia-cola.md.
+- Reserva: seletores Pix em FinanceiroCard, FinanceiroTituloNovo/Editar,
+  FinanceiroCadastros, Parceiros, NovaSolicitacao, RhDpPessoal e PedidoCompraDetalhe;
+  cadastro rapido de favorecido (remover corte de chave longa), utilitarios Pix
+  novos; validadores payment/operational/RH; servicos parceiro,
+  favorecido, medicao e RH; modelos com chave Pix; migration expansiva de texto;
+  testes Pix e handoff desta tarefa. Preservar outputs/ e trabalhos anteriores.
+- Escopo: texto livre Copia e Cola sem mascara, alteracao de caixa ou truncamento.
+  Preservar permissoes, idempotencia e fluxos; nao ampliar a API bancaria por chave.
+  Sem banco real, execucao de migration, commit/push, main ou deploy.
 
 Publicacao do aviso de entregas pendentes autorizada pelo usuario em 09/10/2026:
 reserva documental temporaria deste registro e do handoff correspondente.
@@ -276,6 +1088,30 @@ documental encerrada; ownership liberado para commit/push autorizado.
 - Integracao e conflitos documentais conciliados; codigo igual a origem e
   contratos iguais a main anterior. Backend, UI, PWA, navegacao, build e
   documentacao aprovados novamente. Handoff de promocao atualizado.
+## Pessoal por obra e conferencia por solicitacao - 2026-10-08
+
+- Responsavel: agente desta conversa, sem delegacao; estado: implementacao
+  concluida, reserva liberada. Alteracoes locais aguardam homologacao.
+- Reserva: RhDpPessoal.jsx, RhDpPessoalSolicitacoes.jsx, RhDpJornada.jsx,
+  RhDpJornadaGerencial.jsx, RhDpApuracao.jsx, componentes/estilos RH novos,
+  rhApuracaoService.js, testes isolados deste fluxo, documentacao RH e handoff.
+- Escopo autorizado: entrada por obras/centros vinculados, tres abas e modal
+  individual/coletivo de pagamento; DP confere/ajusta/fecha por solicitacao
+  no mesmo modal. Preservar calculos, escopos, multiobra e idempotencia.
+- Sem banco real, migration, commit, push, EC2 ou deploy nesta tarefa.
+- Reserva adicional: RhSolicitacaoController.js (filtro local dentro do
+  escopo autorizado, sem ampliar visibilidade), testes de escopo existentes.
+- Reserva adicional: rhJornadaFormularioService.js, RhDpJornadaGerencial.css
+  e testes isolados de envio. Novos modais devem criar pedidos independentes
+  tambem com etapas desligadas, sem substituir o pedido de outro colaborador.
+- Reserva adicional: backend/package.json e frontend/package.json apenas para
+  expor os testes isolados do novo fluxo.
+- Validacao adicional: validarRhConferenciaGuiada.mjs com cache exclusivo e
+  espera de montagem, sem alterar as assercoes funcionais do teste.
+- Handoff: docs/handoffs/2026-10-08-pessoal-locais-conferencia-solicitacao.md.
+- Publicacao autorizada pelo usuario nesta conversa: commit e push somente
+  na refactor/frontend. Reserva temporaria deste registro, handoff e index;
+  preservar outputs/ fora do commit. Sem main, banco, migration ou EC2.
 
 ## Publicacao dev de usuarios, justificativa e retorno 08/10/2026
 

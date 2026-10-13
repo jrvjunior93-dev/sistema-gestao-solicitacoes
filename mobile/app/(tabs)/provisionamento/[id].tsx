@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActionCommentModal } from '../../../src/components/common/ActionCommentModal';
 import { Button } from '../../../src/components/common/Button';
@@ -110,6 +110,12 @@ export default function ProvisionamentoDetalhePage() {
     canApproveProvisionamento,
     provisionamentoContexto
   } = useModules();
+  const abrindoAnexo = useRef(false);
+  const previewAtivo = useRef(true);
+  useEffect(() => {
+    previewAtivo.current = true;
+    return () => { previewAtivo.current = false; };
+  }, []);
   const [activeTab, setActiveTab] = useState<DetailTab>('resumo');
   const [commentText, setCommentText] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
@@ -327,8 +333,11 @@ export default function ProvisionamentoDetalhePage() {
   };
 
   const openAttachment = async (path: string, title?: string) => {
+    if (abrindoAnexo.current) return;
+    abrindoAnexo.current = true;
     try {
       const signedUrl = await obterUrlAssinadaAnexoProvisaoFinanceira(path);
+      if (!previewAtivo.current) return;
       router.push({
         pathname: '/anexo',
         params: {
@@ -338,7 +347,9 @@ export default function ProvisionamentoDetalhePage() {
         }
       });
     } catch (error) {
-      Alert.alert('Erro ao abrir anexo', error instanceof Error ? error.message : 'Falha inesperada.');
+      if (previewAtivo.current) Alert.alert('Erro ao abrir anexo', error instanceof Error ? error.message : 'Falha inesperada.');
+    } finally {
+      abrindoAnexo.current = false;
     }
   };
 

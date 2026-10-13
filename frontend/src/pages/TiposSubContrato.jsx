@@ -35,6 +35,8 @@ export default function TiposSubContrato() {
   const [editMacroIds, setEditMacroIds] = useState([]);
   const [recarga, setRecarga] = useState(false);
   const [editRecarga, setEditRecarga] = useState(false);
+  const [adiantamento, setAdiantamento] = useState(false);
+  const [editAdiantamento, setEditAdiantamento] = useState(false);
   const [saving, setSaving] = useState(false);
   // R3: aviso e confirmação do sistema no lugar das caixas do navegador.
   const { avisos, avisar, fechar } = useAvisos();
@@ -66,10 +68,12 @@ export default function TiposSubContrato() {
       await criarTipoSubContrato({
         nome,
         usa_fluxo_recarga_cartao: recarga,
+        usa_fluxo_adiantamento: adiantamento,
         tipo_solicitacao_ids: tipoMacroIds
       });
       setNome('');
       setRecarga(false);
+      setAdiantamento(false);
       setTipoMacroIds([]);
       setFormAberto(false);
       await carregar();
@@ -117,6 +121,7 @@ export default function TiposSubContrato() {
 
   function iniciarEdicao(item) {
     setEditRecarga(item.usa_fluxo_recarga_cartao === true);
+    setEditAdiantamento(item.usa_fluxo_adiantamento === true);
     setEditId(item.id);
     setEditNome(item.nome);
     setEditMacroIds(idsDoSubtipo(item).map(String));
@@ -134,6 +139,7 @@ export default function TiposSubContrato() {
       await atualizarTipoSubContrato(id, {
         nome: editNome,
         usa_fluxo_recarga_cartao: editRecarga,
+        usa_fluxo_adiantamento: editAdiantamento,
         tipo_solicitacao_ids: editMacroIds
       });
       cancelarEdicao();
@@ -255,8 +261,8 @@ export default function TiposSubContrato() {
     {
       id: 'fluxo_recarga', titulo: 'Fluxo', tipo: 'texto', sempreVisivel: true,
       render: (item) => editId === item.id
-        ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editRecarga} onChange={(event) => setEditRecarga(event.target.checked)} />Recarga de cartão</label>
-        : item.usa_fluxo_recarga_cartao ? 'Recarga de cartão' : 'Padrão do tipo'
+        ? <select aria-label="Fluxo operacional" className="input" value={editAdiantamento ? 'ADIANTAMENTO' : editRecarga ? 'RECARGA' : 'PADRAO'} onChange={event => { setEditAdiantamento(event.target.value === 'ADIANTAMENTO'); setEditRecarga(event.target.value === 'RECARGA'); }}><option value="PADRAO">Padrão do tipo</option><option value="RECARGA">Recarga de cartão</option><option value="ADIANTAMENTO">Adiantamento</option></select>
+        : item.usa_fluxo_adiantamento ? 'Adiantamento' : item.usa_fluxo_recarga_cartao ? 'Recarga de cartão' : 'Padrão do tipo'
     },
     {
       id: 'status',
@@ -333,7 +339,7 @@ export default function TiposSubContrato() {
                   />
                 </CampoForm>
                 <CampoForm label="Fluxo operacional" hint="Use em tipos comuns, inclusive os predefinidos dos centros de custo. Não combinar com contrato, medição ou cadastro de obra.">
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={recarga} onChange={(event) => setRecarga(event.target.checked)} />Recarga de cartão</label>
+                  <select aria-label="Fluxo operacional" className="input" value={adiantamento ? 'ADIANTAMENTO' : recarga ? 'RECARGA' : 'PADRAO'} onChange={event => { setAdiantamento(event.target.value === 'ADIANTAMENTO'); setRecarga(event.target.value === 'RECARGA'); }}><option value="PADRAO">Padrão do tipo</option><option value="RECARGA">Recarga de cartão</option><option value="ADIANTAMENTO">Adiantamento</option></select>
                 </CampoForm>
 
                 <div className="flex items-end">

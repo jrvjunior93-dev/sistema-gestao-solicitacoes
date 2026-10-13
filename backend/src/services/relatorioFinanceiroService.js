@@ -17,6 +17,7 @@ const {
   User,
   TituloFinanceiro
 } = require('../models');
+const { TituloFinanceiroRateio } = require('../models');
 const {
   canAccessFinanceiro,
   getFinanceiroObraScopeIds
@@ -1490,7 +1491,7 @@ function buildFinanceiroObrasTituloWhere(filters, obraWhere, periodo, analise) {
     // Neste relatorio de obras a recarga e custo somente apos classificacao
     // da prestacao. Nao aplicar esta guarda ao contas a pagar ou fluxo de caixa.
     [Op.and]: [...(obraWhere[Op.and] || []), { [Op.or]: [
-      { origem_titulo: { [Op.ne]: 'RECARGA_CARTAO' } },
+      { origem_titulo: { [Op.notIn]: ['RECARGA_CARTAO', 'ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'] } },
       { origem_titulo: null },
       { origem_titulo: 'RECARGA_CARTAO', possui_rateio: true, considera_dre: true }
     ] }]
@@ -2117,6 +2118,39 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
     if (limit) linhas = linhas.slice(0, limit);
   }
 
+  if (analise !== 'A_REALIZAR') {
+    // O pagamento do adiantamento e caixa, nao custo da origem. Aqui aparecem
+    // somente as despesas efetivas por destino da prestacao validada.
+    const filtroAdiantamento = buildFinanceiroObrasTituloWhere(filters, {}, periodo, analise);
+    filtroAdiantamento[Op.and] = (filtroAdiantamento[Op.and] || []).filter(condicao => !condicao[Op.or]?.some(item => item.origem_titulo !== undefined));
+    filtroAdiantamento.origem_titulo = 'ADIANTAMENTO';
+    filtroAdiantamento.valor_despesa_prestacao = { [Op.gt]: 0 };
+    const rateios = await TituloFinanceiroRateio.findAll({
+      where: obraWhere,
+      include: [{ model: Obra, as: 'obra', attributes: ['id', 'codigo', 'nome'] }, {
+        model: TituloFinanceiro, as: 'tituloFinanceiro', required: true, where: filtroAdiantamento,
+        include: [...getFinanceiroObrasTituloIncludes(), ...(analise === 'REALIZADO' ? [{ model: MovimentoFinanceiro, as: 'movimentos', required: true,
+          where: { status: 'ATIVO', data_movimento: { [Op.between]: [periodo.data_inicial, periodo.data_final] } } }] : [])]
+      }], order: [['id', 'ASC']]
+    });
+    for (const instance of rateios) {
+      const rateio = instance.toJSON();
+      const titulo = rateio.tituloFinanceiro;
+      const projetado = { ...titulo, obra_id: rateio.obra_id, obra: rateio.obra, valor_original: Number(rateio.valor_rateio), valor_baixado: Number(rateio.valor_rateio), valor_saldo: 0 };
+      if (analise === 'REALIZADO') {
+        for (const movimento of titulo.movimentos || []) {
+          const valor = Number(movimento.valor || 0) / Number(titulo.valor_original) * Number(rateio.valor_rateio);
+          const linha = buildFinanceiroObrasLinhaMovimento({ ...movimento, valor, valor_quitacao: valor, titulo: projetado });
+          linhas.push({ ...linha, id: `${linha.id}-prestacao-${rateio.id}` });
+        }
+      } else {
+        const linha = buildFinanceiroObrasLinhaTitulo(projetado, analise);
+        linhas.push({ ...linha, id: `${linha.id}-prestacao-${rateio.id}` });
+      }
+    }
+    linhas.sort((a, b) => String(a.data_baixa || a.data_vencimento).localeCompare(String(b.data_baixa || b.data_vencimento)) || String(a.id).localeCompare(String(b.id)));
+    if (limit) linhas = linhas.slice(0, limit);
+  }
   const linhasComSaldo = applyFinanceiroObrasSaldo(linhas);
 
   return {
@@ -2508,7 +2542,7 @@ function summarizeDreRows(titulos = [], empresas = [], movimentosAvulsos = []) {
     const tipo = String(titulo.tipo || '').toUpperCase();
     const rawValue = titulo.renegociacao_id
       ? Number(titulo.juros_renegociacao || 0) + Number(titulo.multa_renegociacao || 0)
-      : Number(titulo.valor_original || 0);
+      : Number(titulo.origem_titulo === 'ADIANTAMENTO' ? titulo.valor_despesa_prestacao || 0 : titulo.valor_original || 0);
     const baseSignedValue = tipo === 'RECEBER' ? rawValue : -rawValue;
     const signedValue = isCategoriaRedutora(titulo.categoriaFinanceira)
       ? baseSignedValue * -1

@@ -214,6 +214,8 @@ export default function BarraFiltros({
                 </select>
               ) : campo.tipo === 'date' ? (
                 <DateInputBR
+                  chaveWorkspace={campo.chaveWorkspace}
+                  revisaoWorkspace={campo.revisaoWorkspace}
                   name={campo.id}
                   value={campo.valor ?? ''}
                   min={campo.min}

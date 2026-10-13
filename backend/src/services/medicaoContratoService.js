@@ -50,7 +50,7 @@ function statusEfetivo(parcela) {
   return {
     status: statusTitulo || parcela.status,
     origem: statusTitulo ? 'TITULO' : 'PARCELA',
-    editavel: parcela.titulo?.renegociado_por_id ? false : statusTitulo
+    editavel: parcela.divisao_favorecidos ? false : parcela.titulo?.renegociado_por_id ? false : statusTitulo
       ? STATUS_TITULO_EDITAVEL.has(statusTitulo)
       : STATUS_PARCELA_EDITAVEL.has(parcela.status)
   };
@@ -571,11 +571,32 @@ async function devolverSaldoDeTitulosExcluidos(tituloIds, { usuarioId, motivo } 
     where: { titulo_financeiro_id: { [Op.in]: ids } },
     transaction
   });
+  const { SolicitacaoFavorecido } = require('../models');
+  if (SolicitacaoFavorecido) {
+    const partes = await SolicitacaoFavorecido.findAll({ where: { titulo_financeiro_id: { [Op.in]: ids } }, attributes: ['contrato_parcela_id'], transaction });
+    const faltantes = [...new Set(partes.map(p => Number(p.contrato_parcela_id)).filter(id => id && !parcelas.some(p => Number(p.id) === id)))];
+    if (faltantes.length) parcelas.push(...await ContratoParcela.findAll({ where: { id: { [Op.in]: faltantes } }, transaction }));
+  }
   if (parcelas.length === 0) return { parcelas_afetadas: 0 };
 
   let afetadas = 0;
+  const reconciliados = new Set();
+  const divisoes = await require('./solicitacaoFavorecidosService').carregarDivisoesDasParcelas(parcelas, transaction, { lock: true });
 
   for (const parcela of parcelas) {
+    const divisao = divisoes.get(Number(parcela.id));
+    if (divisao?.titulos.length) {
+      if (!reconciliados.has(Number(parcela.contrato_id))) {
+        await reconciliarParcelasComOPago(parcela.contrato_id, { usuarioId }, transaction);
+        reconciliados.add(Number(parcela.contrato_id));
+      }
+      // Cancelar uma parte nao cancela as instrucoes nem a medicao das outras.
+      if (divisao.titulos.every(t => t.status === 'EXCLUIDO')) await MedicaoParcela.update({
+        devolvido_em: new Date(), devolvido_motivo: String(motivo || 'Titulos da divisao excluidos').slice(0, 255)
+      }, { where: { contrato_parcela_id: parcela.id, devolvido_em: null }, transaction });
+      afetadas += 1;
+      continue;
+    }
     // eslint-disable-next-line no-await-in-loop
     const doContrato = await ContratoParcela.findAll({
       where: { contrato_id: parcela.contrato_id },
@@ -584,6 +605,7 @@ async function devolverSaldoDeTitulosExcluidos(tituloIds, { usuarioId, motivo } 
       transaction,
       lock: transaction ? transaction.LOCK.UPDATE : undefined
     });
+    await require('./solicitacaoFavorecidosService').projetarDivisoesNasParcelas(doContrato, transaction);
 
     const valorCent = paraCentavos(parcela.valor);
     if (valorCent > 0) {
@@ -714,7 +736,7 @@ async function validarDadosDePagamento(pagamento = {}, { transaction = null } = 
 
   return {
     favorecido_id: favorecidoId,
-    favorecido_chave_pix: chave ? chave.slice(0, 180) : null,
+    favorecido_chave_pix: chave || null,
     favorecido_contato: dadosParaPagamento.slice(0, 180) || null,
     forma_pagamento_id: formaPagamentoId
   };
@@ -741,6 +763,14 @@ async function registrarMedicaoDoContrato({ contratoId, itens, periodoInicio, pe
     const numero = Number.isFinite(Number(ultimo)) ? Number(ultimo) + 1 : 1;
 
     const dadosPagamento = await validarDadosDePagamento(pagamento, { transaction });
+    const pagamentosDivididos = pagamento?.pagamentos_favorecidos === undefined ? [] : await require('./solicitacaoFavorecidosService').validarFavorecidos(
+      pagamento?.pagamentos_favorecidos, { parcelas: itens, formas: (await listarFormasDaMedicao()).formas,
+        anexosPendentes: pagamento?.anexos_pendentes_nomes || [], transaction }
+    );
+    if (pagamentosDivididos.length && (pagamentosDivididos[0].favorecido_id !== dadosPagamento.favorecido_id
+      || pagamentosDivididos[0].forma_pagamento_id !== dadosPagamento.forma_pagamento_id)) {
+      throw erro('O primeiro favorecido deve corresponder aos dados principais da medicao.');
+    }
 
     const medicao = await ContratoMedicao.create(
       {
@@ -772,6 +802,9 @@ async function registrarMedicaoDoContrato({ contratoId, itens, periodoInicio, pe
     // O total medido so e conhecido depois de aplicar; gravado aqui para a tela nao ter que
     // somar `medicao_parcelas` a cada listagem.
     await medicao.update({ valor_total: resultado.total_medido }, { transaction });
+    if (pagamentosDivididos.length) await require('./solicitacaoFavorecidosService').registrarFavorecidos(pagamentosDivididos, {
+      solicitacaoId: contrato.solicitacao_id, medicaoId: medicao.id, usuarioId, transaction
+    });
 
     // A medicao nasce para conferencia da Gerencia de Processos. Alterar apenas o status deixava
     // a solicitacao na caixa anterior (normalmente OBRA), embora o botao de aprovacao pertenca ao
@@ -861,6 +894,7 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
   });
   if (parcelas.length === 0) return null;
   await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelas, 'titulo', { transaction });
+  await require('./solicitacaoFavorecidosService').projetarDivisoesNasParcelas(parcelas, transaction);
 
   const medidas = new Set(
     (await MedicaoParcela.findAll({
@@ -897,8 +931,9 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
   // pagamento. Sem `aprovada_em`, o calculo nao teria como distinguir as duas situacoes.
   if (medidasEmAberto.length > 0) {
     // Somente os titulos da medicao mais recente governam o ciclo da solicitacao.
-    const idsOperacionais = medidasEmAberto.flatMap(p => [Number(p.titulo.id),
-      ...(p.titulo.renegociacao_titulos || []).filter(t => paraCentavos(t.valor_saldo) > 0).map(t => Number(t.id))]);
+    const operacionais = medidasEmAberto.flatMap(p => p.divisao_favorecidos?.titulos_leitura || [p.titulo]);
+    const idsOperacionais = operacionais.flatMap(t => [Number(t.id),
+      ...(t.renegociacao_titulos || []).filter(t => paraCentavos(t.valor_saldo) > 0).map(t => Number(t.id))]);
     const emFila = await PagamentoManualFilaItem.findAll({
       where: { titulo_financeiro_id: { [Op.in]: idsOperacionais },
         status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } }, attributes: ['id'],
@@ -906,10 +941,10 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
     });
     if (emFila.length > 0) return 'ENVIADO PARA PAGAMENTO';
     const { emAnaliseProprietario, STATUS_ANALISE_PROPRIETARIO } = require('./analiseProprietarioService');
-    if (medidasEmAberto.some((p) => emAnaliseProprietario(p.titulo.status_interno_pagar))) {
+    if (operacionais.some((t) => emAnaliseProprietario(t.status_interno_pagar))) {
       return STATUS_ANALISE_PROPRIETARIO;
     }
-    if (medidasEmAberto.some((p) => p.titulo.status_interno_pagar === 'AGUARDANDO AJUSTE DE PAGAMENTO')) {
+    if (operacionais.some((t) => t.status_interno_pagar === 'AGUARDANDO AJUSTE DE PAGAMENTO')) {
       return 'AGUARDANDO AJUSTE';
     }
     const idsEmAberto = medidasEmAberto.map((p) => p.id);
@@ -1004,6 +1039,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
   });
   const jaMedidas = new Set(vinculos.map((m) => m.contrato_parcela_id));
   const vinculoPorParcela = new Map(vinculos.map((m) => [Number(m.contrato_parcela_id), m]));
+  await require('./solicitacaoFavorecidosService').projetarDivisoesNasParcelas(parcelas, transaction, { lock: true });
 
   const trabalho = parcelas.map((p) => ({
     parcela: p,
@@ -1031,7 +1067,9 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
       if (!titulo || titulo.status === 'RENEGOCIADO') return null;
       const baixadoCent = paraCentavos(titulo.valor_baixado || 0);
       // Sem baixa, o alvo e o que foi cobrado. E o que faz o estorno se desfazer sozinho.
-      const alvoCent = baixadoCent > 0 ? baixadoCent : paraCentavos(titulo.valor_original || 0);
+      const alvoCent = t.parcela.divisao_favorecidos
+        ? paraCentavos(t.parcela.divisao_favorecidos.resumo.valor_parcela_reconciliado)
+        : baixadoCent > 0 ? baixadoCent : paraCentavos(titulo.valor_original || 0);
       return alvoCent === t.cent ? null : { t, alvoCent };
     })
     .filter(Boolean);
@@ -1053,6 +1091,16 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
     });
   }
 
+  // Mesmo quando diferencas de duas partes se compensam, a parte paga a menor
+  // deve fechar. Nunca fecha a parte ainda sem baixa.
+  for (const t of trabalho) {
+    for (const titulo of t.parcela.divisao_favorecidos?.titulos || []) {
+      if (titulo.renegociado_por_id || ['RENEGOCIADO', 'EXCLUIDO'].includes(titulo.status)) continue;
+      if (paraCentavos(titulo.valor_baixado || 0) > 0 && paraCentavos(titulo.valor_saldo || 0) > 0) {
+        await titulo.update({ valor_saldo: 0, atualizado_por: usuarioId || null }, { transaction });
+      }
+    }
+  }
   if (ajustes.length === 0) return null;
 
   const totalAntesCent = [...centAntes.values()].reduce((acc, c) => acc + c, 0);
@@ -1091,7 +1139,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
     // O titulo do DESTINO acompanha o novo valor da parcela — parcela e financeiro divergindo e o
     // pior erro deste modulo. O titulo da parcela PAGA nao: `valor_original` e o que foi cobrado.
     const foiPago = paraCentavos(t.parcela.titulo?.valor_baixado || 0) > 0;
-    if (t.parcela.titulo_financeiro_id && !foiPago) {
+    if (t.parcela.titulo_financeiro_id && !foiPago && !t.parcela.divisao_favorecidos) {
       // eslint-disable-next-line no-await-in-loop
       await sincronizarTituloDaParcela({
         parcela: t.parcela,
@@ -1105,12 +1153,13 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
   // Fecha o titulo pago a menor: o saldo deixa de ser cobravel porque a diferenca ja virou saldo da
   // ultima parcela. Sem isto o mesmo dinheiro apareceria nos dois lugares.
   for (const t of trabalho) {
-    const titulo = t.parcela.titulo;
-    if (!titulo) continue;
-    const baixadoCent = paraCentavos(titulo.valor_baixado || 0);
-    if (baixadoCent > 0 && paraCentavos(titulo.valor_saldo || 0) > 0) {
-      // eslint-disable-next-line no-await-in-loop
-      await titulo.update({ valor_saldo: 0, atualizado_por: usuarioId || null }, { transaction });
+    const titulos = t.parcela.divisao_favorecidos?.titulos || [t.parcela.titulo];
+    for (const titulo of titulos) {
+      if (!titulo || titulo.renegociado_por_id || titulo.status === 'RENEGOCIADO') continue;
+      const baixadoCent = paraCentavos(titulo.valor_baixado || 0);
+      if (baixadoCent > 0 && paraCentavos(titulo.valor_saldo || 0) > 0) {
+        await titulo.update({ valor_saldo: 0, atualizado_por: usuarioId || null }, { transaction });
+      }
     }
   }
 
@@ -1146,11 +1195,18 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
  * trava de pagar a mais valendo para todo o resto do Financeiro, que e o que o cliente decidiu.
  */
 async function absorcaoDisponivelParaBaixa(tituloId, transaction) {
-  const parcela = await ContratoParcela.findOne({
+  let parcela = await ContratoParcela.findOne({
     where: { titulo_financeiro_id: Number(tituloId) },
     attributes: ['id', 'contrato_id'],
     transaction
   });
+  if (!parcela) {
+    const { SolicitacaoFavorecido } = require('../models');
+    const parte = SolicitacaoFavorecido && await SolicitacaoFavorecido.findOne({
+      where: { titulo_financeiro_id: Number(tituloId) }, transaction
+    });
+    if (parte?.contrato_parcela_id) parcela = await ContratoParcela.findByPk(parte.contrato_parcela_id, { transaction });
+  }
   if (!parcela) return null;
 
   const contrato = await Contrato.findByPk(parcela.contrato_id, {
@@ -1272,7 +1328,7 @@ async function sincronizarStatusDaSolicitacaoDoContrato(
  *   o valor de uma linha que ninguem pediu para mudar;
  * - titulo com baixa nao se edita. O valor de um titulo ja pago e passado do financeiro.
  */
-async function atualizarMedicaoDoContrato(medicaoId, { itens, usuario } = {}) {
+async function atualizarMedicaoDoContrato(medicaoId, { itens, favorecidos_valores, usuario } = {}) {
   const { userHasStrictAreaPermission } = require('./authorizationService');
   if (!await userHasStrictAreaPermission(usuario, ['contratos.medicao.editar_valor'])) {
     throw erro('Acesso negado: alterar o valor de uma medicao ja criada exige permissao especifica.', 403);
@@ -1303,6 +1359,31 @@ async function atualizarMedicaoDoContrato(medicaoId, { itens, usuario } = {}) {
 
     const porParcela = new Map(vinculos.map((v) => [Number(v.contrato_parcela_id), v]));
     const idsDaMedicao = new Set(porParcela.keys());
+    const partes = await require('./solicitacaoFavorecidosService').listarFavorecidos(medicao.solicitacao_id, {
+      medicaoId: medicao.id, transaction, lock: true
+    });
+    const novosValores = new Map();
+    if (partes.length) {
+      if (partes.some(p => p.titulo_financeiro_id)) throw erro('Medicao com titulos divididos ja gerados nao pode ser alterada.', 409);
+      if (favorecidos_valores !== undefined) {
+        if (!Array.isArray(favorecidos_valores) || favorecidos_valores.length !== partes.length) throw erro('Informe os valores de todos os favorecidos.');
+        for (const linha of favorecidos_valores) {
+          if (!linha || Array.isArray(linha) || Object.keys(linha).some(k => !['id', 'valor'].includes(k))
+            || !['number', 'string'].includes(typeof linha.id) || !/^\d+$/.test(String(linha.id))
+            || !['number', 'string'].includes(typeof linha.valor)) throw erro('Valor ou favorecido invalido nesta medicao.');
+          const id = Number(linha.id), cent = paraCentavos(linha.valor);
+          if (!Number.isSafeInteger(id) || id <= 0 || novosValores.has(id) || !partes.some(p => Number(p.id) === id)
+            || !Number.isSafeInteger(cent) || cent <= 0 || cent > 99999999999999) throw erro('Valor ou favorecido invalido nesta medicao.');
+          novosValores.set(id, cent);
+        }
+      }
+      for (const id of idsDaMedicao) {
+        const valorParcela = lista.find(i => Number(i.contrato_parcela_id) === id)?.valor_medido ?? porParcela.get(id).valor_medido;
+        const soma = partes.filter(p => Number(p.contrato_parcela_id) === id)
+          .reduce((acc, p) => acc + (novosValores.get(Number(p.id)) ?? paraCentavos(p.valor)), 0);
+        if (soma !== paraCentavos(valorParcela)) throw erro('A soma dos favorecidos deve ser igual ao valor medido de cada parcela.');
+      }
+    } else if (favorecidos_valores?.length) throw erro('Esta medicao nao possui divisao entre favorecidos.');
 
     // TODAS as parcelas ja medidas do contrato, nao so as desta medicao.
     //
@@ -1473,6 +1554,17 @@ async function atualizarMedicaoDoContrato(medicaoId, { itens, usuario } = {}) {
     });
 
     if (contrato?.solicitacao_id) {
+      for (const parte of partes) {
+        const novoCent = novosValores.get(Number(parte.id));
+        if (novoCent === undefined || novoCent === paraCentavos(parte.valor)) continue;
+        const anterior = parte.valor;
+        await parte.update({ valor: novoCent / 100 }, { transaction });
+        await Historico.create({ solicitacao_id: contrato.solicitacao_id, medicao_id: medicao.id,
+          usuario_responsavel_id: usuario?.id || null, setor: codigoDoSetor(usuario) || '-', acao: 'DADOS_PAGAMENTO_ALTERADOS',
+          descricao: `${parte.nome_favorecido}: R$ ${Number(anterior).toFixed(2)} -> R$ ${(novoCent / 100).toFixed(2)}.`,
+          metadata: JSON.stringify({ solicitacao_favorecido_id: parte.id, valor_anterior: anterior, valor: novoCent / 100 })
+        }, { transaction });
+      }
       await Historico.create({
         solicitacao_id: contrato.solicitacao_id,
         medicao_id: medicao.id,
@@ -1599,7 +1691,7 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
 
     const parcelasMedidas = await ContratoParcela.findAll({
       where: { id: { [Op.in]: parcelaIds }, contrato_id: medicao.contrato_id },
-      attributes: ['id', 'titulo_financeiro_id'],
+      attributes: ['id', 'titulo_financeiro_id', 'valor'],
       transaction,
       lock: transaction.LOCK.UPDATE
     });
@@ -1608,7 +1700,10 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
       throw erro(`Uma ou mais parcelas da medicao ${medicao.numero} nao possuem titulo financeiro.`, 409);
     }
 
-    await TituloFinanceiro.update(
+    const titulosDivididos = await require('./medicaoFavorecidosService').dividirTitulosDaMedicao({
+      medicao, parcelas: parcelasMedidas, usuarioId: usuario?.id, req, transaction
+    });
+    if (!titulosDivididos) await TituloFinanceiro.update(
       {
         status: 'ABERTO',
         // A previsao nasceu com a contraparte contratual. A medicao e a solicitacao de pagamento

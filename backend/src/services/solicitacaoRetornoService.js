@@ -1,5 +1,7 @@
 'use strict';
 
+const { solicitacaoIndisponivel } = require('./solicitacaoDisponibilidade');
+
 const { Op } = require('sequelize');
 const {
   sequelize,
@@ -86,9 +88,11 @@ async function assertPodeInteragirSolicitacao(req, solicitacaoOuId) {
   const solicitacao = typeof solicitacaoOuId === 'object' && solicitacaoOuId
     ? solicitacaoOuId
     : await Solicitacao.findByPk(Number(solicitacaoOuId), {
-      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global']
+      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada']
     });
-  if (!solicitacao) throw erro('Solicitacao nao encontrada.', 404);
+  const estado = solicitacao && solicitacao.cancelada === undefined
+    ? await Solicitacao.findByPk(Number(solicitacao.id), { attributes: ['id', 'cancelada'] }) : solicitacao;
+  if (solicitacaoIndisponivel(estado)) throw erro('Solicitacao nao encontrada.', 404);
 
   const contexto = await avaliarInteracao(req, solicitacao);
   if (!contexto.allowed) {
@@ -108,9 +112,11 @@ async function assertPodeVisualizarSolicitacao(req, solicitacaoOuId) {
   const solicitacao = typeof solicitacaoOuId === 'object' && solicitacaoOuId
     ? solicitacaoOuId
     : await Solicitacao.findByPk(Number(solicitacaoOuId), {
-      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global']
+      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada']
     });
-  if (!solicitacao) throw erro('Solicitacao nao encontrada.', 404);
+  const estado = solicitacao && solicitacao.cancelada === undefined
+    ? await Solicitacao.findByPk(Number(solicitacao.id), { attributes: ['id', 'cancelada'] }) : solicitacao;
+  if (solicitacaoIndisponivel(estado)) throw erro('Solicitacao nao encontrada.', 404);
 
   // Require tardio pelo mesmo motivo de `avaliarInteracao`: o controller importa este servico
   // para compor o payload do detalhe.
@@ -213,6 +219,9 @@ function usuarioPodeConcluirRetorno(user, pedido) {
 }
 
 async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
+  if (solicitacaoIndisponivel(solicitacao)) {
+    return { allowed: false, status: 404, error: 'Solicitacao nao encontrada' };
+  }
   const contexto = contextoBase || await avaliarInteracao(req, solicitacao);
   if (!contexto.allowed) return contexto;
 
@@ -350,11 +359,11 @@ async function solicitarRetorno(req, solicitacaoId, motivo) {
 
   const resultado = await sequelize.transaction(async (transaction) => {
     const solicitacao = await Solicitacao.findByPk(Number(solicitacaoId), {
-      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global'],
+      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada'],
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    if (!solicitacao) throw erro('Solicitacao nao encontrada.', 404);
+    if (solicitacaoIndisponivel(solicitacao)) throw erro('Solicitacao nao encontrada.', 404);
 
     const contexto = await avaliarInteracao(req, solicitacao);
     if (!contexto.allowed) throw erro(contexto.error || 'Acesso negado.', contexto.status || 403);
@@ -473,11 +482,11 @@ async function decidirRetorno(req, pedidoId, { aprovar, motivoDecisao }) {
     if (pedido.status !== STATUS.PENDENTE) throw erro('Este pedido de retorno ja foi decidido.', 409);
 
     const solicitacao = await Solicitacao.findByPk(pedido.solicitacao_id, {
-      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global'],
+      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global', 'cancelada'],
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    if (!solicitacao) throw erro('Solicitacao nao encontrada.', 404);
+    if (solicitacaoIndisponivel(solicitacao)) throw erro('Solicitacao nao encontrada.', 404);
 
     const contexto = await avaliarInteracao(req, solicitacao);
     if (!contexto.allowed) throw erro(contexto.error || 'Acesso negado.', contexto.status || 403);
@@ -577,7 +586,7 @@ async function devolverAoSetorAnterior(req, solicitacaoId, pedidoEsperadoId = nu
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    if (!solicitacao) throw erro('Solicitacao nao encontrada.', 404);
+    if (solicitacaoIndisponivel(solicitacao)) throw erro('Solicitacao nao encontrada.', 404);
 
     const contexto = await avaliarInteracao(req, solicitacao);
     if (!contexto.allowed) throw erro(contexto.error || 'Acesso negado.', contexto.status || 403);
@@ -674,10 +683,11 @@ async function cancelarRetorno(req, pedidoId) {
     if (pedido.status !== STATUS.PENDENTE) throw erro('Este pedido de retorno ja foi decidido.', 409);
 
     const solicitacao = await Solicitacao.findByPk(pedido.solicitacao_id, {
-      attributes: ['id', 'codigo', 'area_responsavel'],
+      attributes: ['id', 'codigo', 'area_responsavel', 'cancelada'],
       transaction,
       lock: transaction.LOCK.UPDATE
     });
+    if (solicitacaoIndisponivel(solicitacao)) throw erro('Solicitacao nao encontrada.', 404);
     await pedido.update({
       status: STATUS.CANCELADO,
       decidido_por: req.user.id,

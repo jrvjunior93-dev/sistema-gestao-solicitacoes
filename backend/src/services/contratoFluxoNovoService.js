@@ -2283,9 +2283,10 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
   });
 
   await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelas, 'titulo');
+  const divisoesFavorecidos = await require('./solicitacaoFavorecidosService').projetarDivisoesNasParcelas(parcelas);
   // Uma leitura operacional para parcela, modal e envio. A consulta generica
   // da solicitacao pode nao conter titulos de vinculos legados do contrato.
-  const tituloIdsEnvio = parcelas.map(p => Number(p.titulo?.id)).filter(Boolean);
+  const tituloIdsEnvio = parcelas.flatMap(p => p.divisao_favorecidos?.titulos_leitura || [p.titulo]).map(t => Number(t?.id)).filter(Boolean);
   const filasEnvio = tituloIdsEnvio.length ? await require('../models').PagamentoManualFilaItem.findAll({
     where: { titulo_financeiro_id: { [Op.in]: tituloIdsEnvio } },
     attributes: ['id', 'titulo_financeiro_id', 'status'],
@@ -2486,6 +2487,13 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     });
   });
 
+  // Reaproveita exclusivamente as parcelas/medicoes ja autorizadas acima.
+  // Nao mistura instrucoes antigas com a medicao ativa mais recente.
+  const medicaoAtualPagamento = [...medicaoPorParcela.values()].sort((a, b) =>
+    Number(b.numero) - Number(a.numero) || Number(b.id) - Number(a.id))[0];
+  const pagamentosMedicaoAtual = [...divisoesFavorecidos.values()].flatMap(g => g.pagamentos)
+    .filter(p => Number(p.medicao_id) === Number(medicaoAtualPagamento?.id));
+
   return {
     contrato: {
       id: contrato.id,
@@ -2509,6 +2517,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         }
         : null,
       objeto: contrato.objeto || null,
+      pagamentos_medicao_atual: pagamentosMedicaoAtual,
       // Fotografia informada na abertura, sem buscar dados atuais do parceiro. A rota de
       // parcelas ja exige acesso ao contrato; o detalhe usa estes dados somente no contrato dono.
       representante_legal_qualificacao: contrato.representante_legal_qualificacao || null,
@@ -2595,6 +2604,9 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         status_parcela: p.status,
         travada: Boolean(p.travada),
         titulo_financeiro_id: p.titulo_financeiro_id,
+        pagamentos_favorecidos: divisoesFavorecidos.get(Number(p.id))?.pagamentos || [],
+        titulos_pagamento: (p.divisao_favorecidos?.titulos_leitura || []).map(t =>
+          resumoTituloEnvioMedicao(t, filasPorTituloEnvio.get(Number(t.id)) || [])),
         titulo_pagamento: resumoTituloEnvioMedicao(p.titulo, filasPorTituloEnvio.get(Number(p.titulo?.id)) || []),
         titulo_valor_baixado: p.titulo ? Number(p.titulo.valor_baixado || 0) : null,
         titulo_valor_saldo: p.titulo ? Number(p.titulo.valor_saldo || 0) : null,
@@ -2841,13 +2853,15 @@ async function encerrarContrato(contratoId, { usuario, motivo } = {}) {
         transaction
       });
 
+      const divisoes = await require('./solicitacaoFavorecidosService').carregarDivisoesDasParcelas(parcelas, transaction, { lock: true });
       for (const parcela of parcelas) {
         const possuiMedicaoAtiva = (parcela.medicoes || []).some(item => !item.devolvido_em);
         const titulo = parcela.titulo;
         const decisaoTitulo = decidirTituloNaRescisao({ titulo, possuiMedicaoAtiva });
 
         if (decisaoTitulo.preservar) {
-          if (titulo?.id) titulosPreservados.push(titulo.id);
+          const preservados = divisoes.get(Number(parcela.id))?.titulos || [titulo];
+          for (const parte of preservados) if (parte?.id && parte.status !== 'EXCLUIDO') titulosPreservados.push(parte.id);
           // Medicao aprovada e qualquer pagamento real sao fatos historicos: a rescisao nao
           // apaga nem reduz o titulo que os representa.
           // eslint-disable-next-line no-await-in-loop

@@ -1,35 +1,23 @@
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Screen } from '../src/components/common/Screen';
-import { colors, radii, shadows, spacing } from '../src/theme';
-
-type PreviewKind = 'image' | 'pdf' | 'document';
-
-function inferPreviewKind(source?: string | null, title?: string | null): PreviewKind {
-  const referencia = String(source || title || '').toLowerCase();
-
-  if (/\.(png|jpg|jpeg|gif|webp|bmp|heic)(\?|$)/i.test(referencia)) {
-    return 'image';
-  }
-
-  if (/\.pdf(\?|$)/i.test(referencia)) {
-    return 'pdf';
-  }
-
-  return 'document';
-}
+import { colors, radii, spacing } from '../src/theme';
+import { inferPreviewKind, isPreviewUrlSafe } from '../src/utils/arquivoPreview';
 
 export default function AnexoPreviewPage() {
   const params = useLocalSearchParams<{ url?: string; title?: string; source?: string }>();
   const url = String(params.url || '').trim();
   const title = String(params.title || 'Anexo').trim();
   const kind = useMemo(() => inferPreviewKind(params.source, params.title), [params.source, params.title]);
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => { setFalhou(false); }, [url]);
+  const fechar = () => router.canGoBack() ? router.back() : router.replace('/(tabs)');
 
   const handleAbrirNavegador = async () => {
-    if (!url) return;
+    if (!isPreviewUrlSafe(url)) return;
 
     try {
       await Linking.openURL(url);
@@ -38,7 +26,7 @@ export default function AnexoPreviewPage() {
     }
   };
 
-  if (!url) {
+  if (!isPreviewUrlSafe(url)) {
     return (
       <Screen>
         <View style={styles.emptyState}>
@@ -46,27 +34,30 @@ export default function AnexoPreviewPage() {
           <Text style={styles.emptyDescription}>
             Nao foi possivel identificar a URL assinada deste arquivo.
           </Text>
+          <Pressable style={styles.browserButton} onPress={fechar} accessibilityRole="button">
+            <Text style={styles.browserButtonLabel}>Fechar</Text>
+          </Pressable>
         </View>
       </Screen>
     );
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} contentContainerStyle={{ flex: 1, paddingBottom: spacing.lg }}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>Visualizacao interna</Text>
           <Text style={styles.title}>{title}</Text>
         </View>
-        <Pressable style={styles.browserButton} onPress={() => void handleAbrirNavegador()}>
-          <Feather name="external-link" size={16} color={colors.primaryStrong} />
-          <Text style={styles.browserButtonLabel}>Abrir no navegador</Text>
+        <Pressable style={styles.browserButton} onPress={fechar} accessibilityRole="button">
+          <Text style={styles.browserButtonLabel}>Fechar</Text>
         </Pressable>
       </View>
 
       <View style={styles.viewerShell}>
-        {kind === 'image' ? (
-          <Image source={{ uri: url }} style={styles.image} resizeMode="contain" />
+        {falhou || kind === 'document' ? (
+          <Text style={styles.emptyDescription}>Visualização indisponível. Use a opção de abrir no navegador.</Text>
+        ) : kind === 'image' ? (
+          <Image source={{ uri: url }} style={styles.image} resizeMode="contain" onError={() => setFalhou(true)} />
         ) : (
           <WebView
             source={{ uri: url }}
@@ -74,31 +65,38 @@ export default function AnexoPreviewPage() {
             startInLoadingState
             allowsBackForwardNavigationGestures
             setSupportMultipleWindows={false}
+            onError={() => setFalhou(true)}
+            onHttpError={() => setFalhou(true)}
+            onShouldStartLoadWithRequest={request => isPreviewUrlSafe(request.url) || request.url === 'about:blank'}
           />
         )}
       </View>
+      <View>
+        <Pressable style={styles.browserButton} onPress={() => void handleAbrirNavegador()} accessibilityRole="button">
+          <Feather name="external-link" size={16} color={colors.primaryStrong} />
+          <Text style={styles.browserButtonLabel}>Abrir no navegador</Text>
+        </Pressable>
+      </View>
+
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: 24,
+    padding: spacing.md,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.panelBorderStrong,
-    backgroundColor: colors.surfaceGlass,
-    ...shadows.card
+    backgroundColor: colors.surfaceGlass
   },
   headerText: {
+    flex: 1,
     gap: spacing.xs
-  },
-  eyebrow: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase'
   },
   title: {
     color: colors.text,
@@ -124,13 +122,12 @@ const styles = StyleSheet.create({
   },
   viewerShell: {
     flex: 1,
-    minHeight: 520,
+    minHeight: 0,
     overflow: 'hidden',
-    borderRadius: 24,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.panelBorderStrong,
-    backgroundColor: colors.surfaceGlass,
-    ...shadows.card
+    backgroundColor: colors.surfaceGlass
   },
   image: {
     width: '100%',

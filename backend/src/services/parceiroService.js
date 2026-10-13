@@ -2,7 +2,7 @@ const { Op, col, fn, where: sequelizeWhere } = require('sequelize');
 const { Parceiro, ParceiroCategoria, FornecedorCompra } = require('../models');
 const { isValidCpf: isValidCpfCentral } = require('../utils/cpfCnpj');
 
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
+const { PIX_TIPOS_CHAVE, PIX_TEXTO_MAX, chavePixCanonica, parecePixCopiaCola } = require('../utils/pix');
 
 function normalizarCpfCnpj(value) {
   return String(value || '').replace(/\D/g, '');
@@ -86,7 +86,8 @@ function sanitizePixTipo(value, fieldName) {
 
 function sanitizePixChave(value) {
   const text = String(value || '').trim();
-  return text ? text.slice(0, 255) : null;
+  if (text.length > PIX_TEXTO_MAX) throw new Error('Chave PIX excede o tamanho permitido.');
+  return text || null;
 }
 
 function normalizarTelefone(value) {
@@ -101,6 +102,7 @@ function colunaSomenteDigitos(nomeColuna) {
 }
 
 function inferirTipoChavePix(chave, telefone = '') {
+  if (parecePixCopiaCola(chave)) return 'COPIA_COLA';
   const texto = String(chave || '').trim();
   const minusculo = texto.toLowerCase();
   const digitos = normalizarCpfCnpj(texto);
@@ -127,6 +129,7 @@ function normalizarChavePix(tipo, chave) {
   if (['CPF', 'CNPJ', 'TELEFONE'].includes(tipoNormalizado)) {
     return normalizarCpfCnpj(texto);
   }
+  if (tipoNormalizado === 'COPIA_COLA') return texto;
   if (tipoNormalizado === 'EMAIL') return texto.toLowerCase();
   return texto.toLowerCase();
 }
@@ -148,7 +151,7 @@ function normalizarFavorecidoSimplificado(payload = {}) {
 
   const chavePix = normalizarChavePix(tipoPix, chaveInformada);
   if (!chavePix) throw new Error('Informe a chave PIX do favorecido.');
-  if (chavePix.length > 255) throw new Error('A chave PIX deve ter no maximo 255 caracteres.');
+  if (chavePix.length > (tipoPix === 'COPIA_COLA' ? PIX_TEXTO_MAX : 255)) throw new Error('Chave PIX excede o tamanho permitido.');
   if (tipoPix === 'CPF' && !isValidCpf(chavePix)) throw new Error('Informe uma chave PIX CPF valida.');
   if (tipoPix === 'CNPJ' && !isValidCnpj(chavePix)) throw new Error('Informe uma chave PIX CNPJ valida.');
 
@@ -157,7 +160,7 @@ function normalizarFavorecidoSimplificado(payload = {}) {
     telefone,
     tipoPix,
     chavePix,
-    chaveCanonica: `${tipoPix}:${chavePix}`
+    chaveCanonica: chavePixCanonica(tipoPix, chavePix)
   };
 }
 
@@ -533,9 +536,17 @@ async function criarFavorecidoSimplificado(payload = {}, options = {}) {
       ...(['CPF', 'CNPJ'].includes(dados.tipoPix)
         ? [{ cpf_cnpj: { [Op.in]: valoresChave } }]
         : []),
-      { pix_chave_fixa_1: { [Op.in]: valoresChave } },
-      { pix_chave_fixa_2: { [Op.in]: valoresChave } },
-      { pix_chave_variavel: { [Op.in]: valoresChave } }
+      ...(dados.tipoPix === 'COPIA_COLA'
+        // SHA2 preserva caixa/simbolos, mesmo em banco com collation insensitive.
+        ? ['pix_chave_fixa_1', 'pix_chave_fixa_2', 'pix_chave_variavel'].map((campo) => ({
+            [`${campo}_tipo`]: 'COPIA_COLA',
+            [Op.and]: [sequelizeWhere(fn('SHA2', col(campo), 256), dados.chaveCanonica.split(':')[1])]
+          }))
+        : [
+            { pix_chave_fixa_1: { [Op.in]: valoresChave } },
+            { pix_chave_fixa_2: { [Op.in]: valoresChave } },
+            { pix_chave_variavel: { [Op.in]: valoresChave } }
+          ])
     ]
   };
 
@@ -554,11 +565,12 @@ async function criarFavorecidoSimplificado(payload = {}, options = {}) {
     return { parceiro: existente, reutilizado: true, chavePix: dados.chavePix };
   }
 
-  const chaveFixa = dados.tipoPix === 'ALEATORIA' ? {} : {
+  const chaveVariavelTipo = ['ALEATORIA', 'COPIA_COLA'].includes(dados.tipoPix);
+  const chaveFixa = chaveVariavelTipo ? {} : {
     pix_chave_fixa_1_tipo: dados.tipoPix,
     pix_chave_fixa_1: dados.chavePix
   };
-  const chaveVariavel = dados.tipoPix === 'ALEATORIA' ? {
+  const chaveVariavel = chaveVariavelTipo ? {
     pix_chave_variavel_tipo: dados.tipoPix,
     pix_chave_variavel: dados.chavePix
   } : {};

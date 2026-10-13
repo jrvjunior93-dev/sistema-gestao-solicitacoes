@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useComprasCadastroWorkspace from '../utils/useComprasCadastroWorkspace';
 import {
   Pagina,
   PageHeader,
@@ -17,16 +20,22 @@ import {
   listarCategorias
 } from '../../../services/compras';
 
+const INITIAL = { nome: '' };
+const project = item => ({ nome: item.nome || '' });
+
 export default function GestaoCategorias() {
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  const [editandoId, setEditandoId] = useState(null);
-  const [nome, setNome] = useState('');
-  const [textoMassa, setTextoMassa] = useState('');
+  const [autorizado, setAutorizado] = useState(false);
+  const draft = useComprasCadastroWorkspace('categorias', categorias, autorizado, INITIAL, project);
+  const editandoId = draft.editingId;
+  const nome = draft.value?.nome || '';
+  const setNome = value => draft.setValue(atual => ({ ...atual, nome: value }));
+  const [textoMassa, setTextoMassa] = useWorkspaceState('categorias:massa', '');
   // Set em vez de array: é o que a `selecao` da TabelaPadrao consome e o que
   // torna barato tirar da marcação SÓ o que realmente foi excluído.
-  const [selecionados, setSelecionados] = useState(() => new Set());
+  const [selecionados, setSelecionados] = useWorkspaceState('categorias:selecao', () => new Set());
   // R19/R21: as 10 caixas do navegador deste arquivo (alert/confirm) viram
   // faixa de aviso do sistema + modal de confirmação.
   const { avisos, avisar, fechar } = useAvisos();
@@ -35,17 +44,27 @@ export default function GestaoCategorias() {
   // fica ACIMA da lista — sem isso, "Editar" no fim de uma lista longa não
   // muda nada no que a pessoa está vendo (R15).
   const campoNomeRef = useRef(null);
+  const trava = useRef(false);
+  const query = useQueryRevision();
+  useWorkspaceWork(draft.dirty || Boolean(textoMassa), salvando);
 
   async function carregar() {
+    const token = query.begin();
     try {
       setLoading(true);
       const data = await listarCategorias();
-      setCategorias(Array.isArray(data) ? data : []);
+      if (!query.isCurrent(token)) return;
+      const lista = Array.isArray(data) ? data : [];
+      setCategorias(lista); setAutorizado(true);
+      const ids = new Set(lista.map(item => item.id));
+      setSelecionados(atual => new Set([...atual].filter(id => ids.has(id))));
     } catch (error) {
+      if (!query.isCurrent(token)) return;
+      setCategorias([]); setAutorizado(false); draft.conceal(INITIAL);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar categorias');
     } finally {
-      setLoading(false);
+      if (query.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -56,8 +75,8 @@ export default function GestaoCategorias() {
   const idsSelecionados = useMemo(() => [...selecionados], [selecionados]);
 
   function limparFormulario() {
-    setEditandoId(null);
-    setNome('');
+    if (trava.current) return;
+    draft.clear();
   }
 
   function focarFormulario() {
@@ -67,12 +86,14 @@ export default function GestaoCategorias() {
 
   async function handleSalvar(event) {
     event.preventDefault();
+    if (trava.current || loading || !draft.available || draft.conflict) return;
 
     if (!nome.trim()) {
       avisar.alerta('Informe o nome da categoria.');
       return;
     }
 
+    trava.current = true;
     try {
       setSalvando(true);
       if (editandoId) {
@@ -80,20 +101,21 @@ export default function GestaoCategorias() {
       } else {
         await criarCategoria({ nome });
       }
-      limparFormulario();
+      draft.clear();
       avisar.sucesso(editandoId ? 'Categoria atualizada.' : 'Categoria criada.');
       await carregar();
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar categoria');
     } finally {
+      trava.current = false;
       setSalvando(false);
     }
   }
 
   function iniciarEdicao(item) {
-    setEditandoId(item.id);
-    setNome(item.nome || '');
+    if (trava.current || loading || !autorizado) return;
+    draft.open(item);
     focarFormulario();
   }
 
@@ -139,13 +161,16 @@ export default function GestaoCategorias() {
     do await perguntaria sobre um conjunto e apagaria outro.
   */
   async function excluirLote(ids) {
-    const alvos = [...ids];
+    if (trava.current || loading || !autorizado) return;
+    const alvos = [...ids].filter(id => categorias.some(item => item.id === id));
 
     if (!alvos.length) {
       avisar.alerta('Selecione ao menos uma categoria.');
       return;
     }
 
+    trava.current = true; setSalvando(true);
+    try {
     const { ok } = await confirmar({
       titulo: 'Excluir categorias',
       mensagem: `Excluir ${alvos.length} categoria(s)? Esta acao nao pode ser desfeita. Se o lote parar no meio, o que ja foi excluido continua excluido.`,
@@ -183,6 +208,7 @@ export default function GestaoCategorias() {
         `Nenhuma das ${alvos.length} categoria(s) foi excluida. Primeira falha: ${falhas[0]}`
       );
     }
+    } finally { trava.current = false; setSalvando(false); }
   }
 
   /*
@@ -194,6 +220,7 @@ export default function GestaoCategorias() {
     apagado inteiro e o que falhou se perdia.
   */
   async function importarMassa() {
+    if (trava.current || loading || !autorizado) return;
     const linhas = String(textoMassa || '')
       .split(/\r?\n/)
       .map((item) => String(item || '').trim())
@@ -204,6 +231,7 @@ export default function GestaoCategorias() {
       return;
     }
 
+    trava.current = true;
     try {
       setSalvando(true);
       let gravadas = 0;
@@ -236,6 +264,7 @@ export default function GestaoCategorias() {
         );
       }
     } finally {
+      trava.current = false;
       setSalvando(false);
     }
   }
@@ -266,6 +295,8 @@ export default function GestaoCategorias() {
 
       {/* R16: UM dono para a faixa de avisos, logo abaixo do cabeçalho. */}
       <Avisos avisos={avisos} aoFechar={fechar} />
+      {draft.conflict && <div role="alert" className="app-note">O cadastro foi alterado. Confira os dados atuais antes de salvar. <button type="button" className="btn btn-outline btn-sm" disabled={salvando} onClick={async () => { const { ok } = await confirmar({ titulo: 'Descartar edição', mensagem: 'Descartar os campos digitados e usar o cadastro atual?', rotuloConfirmar: 'Usar dados atuais' }); if (ok) draft.discard(); }}>Usar dados atuais</button></div>}
+      {!loading && autorizado && editandoId != null && !draft.item && <p role="alert" className="app-note">Categoria não disponível para edição. Inicie um novo cadastro ou selecione outro registro.</p>}
 
       {/*
         R9 (revista em 04/09): esta tela EXISTE para cadastrar categoria —
@@ -275,6 +306,7 @@ export default function GestaoCategorias() {
       */}
       <BlocoConteudo titulo={editandoId ? 'Editar categoria' : 'Nova categoria'}>
         <form onSubmit={handleSalvar}>
+          <fieldset disabled={salvando || loading || !draft.available || draft.conflict}>
           <FormSecao colunas={2}>
             <CampoForm label="Nome da categoria" obrigatorio span={2}>
               <input
@@ -297,6 +329,7 @@ export default function GestaoCategorias() {
               </button>
             )}
           </div>
+          </fieldset>
         </form>
       </BlocoConteudo>
 
@@ -310,13 +343,15 @@ export default function GestaoCategorias() {
         {/* R10: a altura do textarea vem da folha do sistema (textarea.input);
             o `min-h-[140px]` que estava aqui era medida à mão. */}
         <textarea
+          aria-label="Categorias para importar"
+          disabled={salvando || loading || !autorizado}
           className="input w-full"
           placeholder={'Uma categoria por linha\nExemplo:\nMaterial de Construcao\nFerramentas'}
           value={textoMassa}
           onChange={(event) => setTextoMassa(event.target.value)}
         />
         <div className="app-actionbar">
-          <button type="button" className="btn btn-primary" onClick={importarMassa} disabled={salvando}>
+          <button type="button" className="btn btn-primary" onClick={importarMassa} disabled={salvando || loading || !autorizado}>
             Importar
           </button>
         </div>
@@ -333,7 +368,7 @@ export default function GestaoCategorias() {
             type="button"
             className="btn btn-outline btn-perigo-suave"
             onClick={() => excluirLote(idsSelecionados)}
-            disabled={!idsSelecionados.length}
+            disabled={salvando || loading || !idsSelecionados.length}
           >
             Excluir selecionadas
           </button>
@@ -347,6 +382,7 @@ export default function GestaoCategorias() {
           que está EXIBIDO em vez da lista inteira carregada.
         */}
         <TabelaPadrao
+          chaveWorkspace="categorias:tabela"
           colunas={colunas}
           itens={categorias}
           carregando={loading}

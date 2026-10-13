@@ -21,6 +21,7 @@ const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
+const { normalizarContatos, enderecosIguais } = require('./rhColaboradorContatosDomain');
 
 /**
  * O PEDIDO DE PESSOAL: a Obra pede, o DP decide (Fase 2 do modulo DP, 25/08).
@@ -212,20 +213,7 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
     if (!String(dados.nome || '').trim()) throw new ValidationError('Informe o nome do colaborador a admitir.');
     if (!String(dados.cpf || '').trim()) throw new ValidationError('Informe o CPF do colaborador a admitir.');
     if (!dados.obra_id) throw new ValidationError('Informe a obra da admissao.');
-    if (dados.telefone_secundario) {
-      const telefone = String(dados.telefone_secundario).replace(/\D/g, '');
-      if (telefone.length < 10 || telefone.length > 11) {
-        throw new ValidationError('Informe um segundo telefone valido, com DDD.');
-      }
-    }
-    const camposEnderecoSecundario = [
-      'endereco_secundario', 'numero_secundario', 'complemento_secundario',
-      'bairro_secundario', 'municipio_secundario', 'estado_secundario', 'cep_secundario'
-    ];
-    if (camposEnderecoSecundario.some((campo) => String(dados[campo] || '').trim())
-      && (!String(dados.endereco_secundario || '').trim() || !String(dados.municipio_secundario || '').trim())) {
-      throw new ValidationError('Informe o logradouro e o municipio do segundo endereco.');
-    }
+    normalizarContatos(dados);
 
     /**
      * OS CAMPOS OBRIGATORIOS DO ITEM 8, cobrados aqui e nao no schema.
@@ -430,6 +418,22 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
   }
 }
 
+// Usa o usuario autenticado, nunca uma flag enviada no payload. Aplicada somente
+// na abertura/reenvio: nao impede o DP de aprovar pedidos legados ja registrados.
+async function validarEnderecosDaAdmissao(tipo, dados, contexto) {
+  if (tipo !== 'ADMISSAO' || !enderecosIguais(dados)) return;
+  let usuarioObra = String(setorParaHistorico(contexto.setor)).trim().toUpperCase() === 'OBRA';
+  if (contexto.usuario) {
+    const { isRhDpUsuarioObra } = require('./authorizationService');
+    const { userBelongsToDpSetor } = require('./setorCapabilityService');
+    usuarioObra = await isRhDpUsuarioObra(contexto.usuario)
+      && !(await userBelongsToDpSetor(contexto.usuario));
+  }
+  if (usuarioObra) {
+    throw new ValidationError('O segundo endereço deve ser diferente do primeiro para usuários de Obra.');
+  }
+}
+
 /** Abre o pedido. Nasce ABERTA e com o setor de quem criou gravado — e para la que a devolucao volta. */
 async function abrirSolicitacao(payload = {}, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
@@ -439,6 +443,7 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
     const dados = payload.dados || {};
 
     validarPedido(tipo, dados, colaboradorId, subtipo);
+    await validarEnderecosDaAdmissao(tipo, dados, contexto);
 
     if (colaboradorId) {
       const colaborador = await RhColaborador.findByPk(colaboradorId, { transaction });
@@ -762,6 +767,7 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
   const dados = dadosDo(solicitacao);
 
   if (efeito === 'ADMISSAO') {
+    const contatos = normalizarContatos(dados);
     const colaborador = await RhColaborador.create(
       {
         empresa_grupo_id: dados.empresa_grupo_id || null,
@@ -812,6 +818,7 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
         estado_secundario: dados.estado_secundario || null,
         cep: dados.cep || null,
         cep_secundario: dados.cep_secundario || null,
+        ...contatos,
         banco: dados.banco || null,
         agencia: dados.agencia || null,
         conta: dados.conta || null,
@@ -1227,6 +1234,7 @@ async function reenviarSolicitacao(id, payload = {}, contexto = {}) {
     // O subtipo entra aqui tambem: sem ele, o reenvio viraria a porta para gravar um pedido que a
     // abertura recusaria — que e exatamente o que `validarPedido` existe para impedir.
     validarPedido(solicitacao.tipo, dados, solicitacao.colaborador_id, solicitacao.subtipo);
+    await validarEnderecosDaAdmissao(solicitacao.tipo, dados, contexto);
 
     await solicitacao.update(
       {

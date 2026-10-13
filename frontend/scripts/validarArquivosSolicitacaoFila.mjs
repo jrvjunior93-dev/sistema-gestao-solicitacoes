@@ -69,6 +69,7 @@ try {
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  await page.route('https://seguro.test/**', route => route.fulfill({ contentType: 'application/pdf', body: '%PDF-QA' }));
   await page.addInitScript(() => {
     HTMLAnchorElement.prototype.click = function captureClick() {
       window.abertos = [...(window.abertos || []), { href: this.href, download: this.download, target: this.target }];
@@ -83,12 +84,15 @@ try {
   assert.deepEqual(await page.evaluate(() => window.consultas), [42]);
   assert.equal(await page.evaluate(() => (window.links || []).length), 0, 'Link seguro so deve ser solicitado ao abrir');
   await modal.getByRole('button', { name: 'Visualizar' }).first().click();
-  await page.waitForFunction(() => (window.abertos || []).length === 1);
+  const preview = page.getByRole('dialog', { name: 'nota.pdf', exact: true });
+  await preview.locator('iframe').waitFor();
   assert.deepEqual(await page.evaluate(() => window.links), ['https://s3.test/nota.pdf']);
-  assert.deepEqual(await page.evaluate(() => window.abertos[0]), { href: 'https://seguro.test/arquivo', download: '', target: '_blank' });
+  assert.equal(await preview.locator('iframe').getAttribute('src'), 'https://seguro.test/arquivo');
+  assert.equal(await page.evaluate(() => (window.abertos || []).length), 0, 'Visualizar PDF nao aciona ancora externa');
+  await preview.getByRole('button', { name: 'Fechar', exact: true }).click();
   await modal.getByRole('button', { name: 'Baixar' }).first().click();
-  await page.waitForFunction(() => (window.abertos || []).length === 2);
-  assert.equal(await page.evaluate(() => window.abertos[1].download), 'nota.pdf');
+  await page.waitForFunction(() => (window.abertos || []).length === 1);
+  assert.equal(await page.evaluate(() => window.abertos[0].download), 'nota.pdf');
   await page.goto(`${base}/fixture?empty=1`);
   await page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-43' }).getByText('Nenhum arquivo anexado a esta solicitação.').waitFor();
   assert.deepEqual(errors, []);

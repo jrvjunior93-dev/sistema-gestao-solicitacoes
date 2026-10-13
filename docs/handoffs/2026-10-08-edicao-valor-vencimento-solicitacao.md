@@ -76,3 +76,8 @@ de Solicitacoes identico ao commit de origem; arquivos funcionais RH_DP e
 backend/package.json identicos a main base. Usuario confirmou backup
 conferido no Drive cifrado e timer ativo nesta publicacao. Publicar a main
 por fast-forward, sem merge integral da refactor. Deploy EC2 nao foi pedido.
+Publicar este commit na refactor/frontend e integrar por cherry-pick isolado
+em branch baseada na main (base remota conferida: 119e426e). Resolver somente
+contextos de documentacao/package.json, preservando as implantacoes DP fora
+da main. Validar testes e build no resultado integrado antes da publicacao,
+com confirmacao de backup conferido e timer ativo. Deploy EC2 nao foi pedido.

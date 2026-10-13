@@ -87,6 +87,9 @@ function mapPixKeyFields(intent) {
     return { formaIdentificacao: 3, ...mapCpfCnpj(digitsOnly(pixChave) || cpfCnpj, true) };
   }
 
+  if (pixTipo === 'COPIA_COLA') {
+    throw createBancoDoBrasilError(400, 'Pix Copia e Cola nao pode ser enviado como chave Pix. Utilize a fila manual.', 'BB_PIX_COPY_PASTE_UNSUPPORTED');
+  }
   throw createBancoDoBrasilError(400, `Tipo de chave PIX nao suportado: ${pixTipo}`, 'BB_PIX_KEY_TYPE_UNSUPPORTED');
 }
 

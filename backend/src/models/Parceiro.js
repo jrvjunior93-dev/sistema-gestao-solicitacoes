@@ -142,7 +142,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       pix_chave_fixa_1: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true
       },
       pix_chave_fixa_2_tipo: {
@@ -150,7 +150,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       pix_chave_fixa_2: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true
       },
       pix_chave_variavel_tipo: {
@@ -158,7 +158,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       pix_chave_variavel: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true
       },
       cadastro_simplificado_favorecido: {

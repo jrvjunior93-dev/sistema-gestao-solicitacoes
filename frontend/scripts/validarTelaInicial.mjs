@@ -56,8 +56,8 @@ try {
 
   assert.match(app, /<Route index element={<HomeEntry \/>} \/>/);
   assert.match(app, /<Route path="modulos" element={<HomeHub \/>} \/>/);
-  assert.match(login, /navigate\(resolverRotaInicial\(data\?\.user\)\)/);
-  assert.match(login, /if \(data\?\.user\?\.mfa_setup_pending\)\s*{\s*navigate\('\/perfil'\);\s*return;/, 'MFA continua antes do destino inicial');
+  assert.match(login, /navigate\(resolverRotaInicial\(data\?\.user\), \{ replace: true \}\)/);
+  assert.match(login, /if \(data\?\.user\?\.mfa_setup_pending\)\s*{\s*navigate\('\/perfil', \{ replace: true \}\);\s*return;/, 'MFA continua antes do destino inicial');
   assert.match(fonte('src/components/PrivateRoute.jsx'), /user\?\.mfa_setup_pending[\s\S]*?<Navigate to="\/perfil" replace \/>/);
   assert.match(layout, /<Link to="\/modulos" className="fx-brand"/);
   assert.match(layout, /<Link to="\/" className="fx-home-btn"/);

@@ -30,6 +30,9 @@ export function titulosParaEnvioComContrato(titulos, dadosContrato, solicitacaoI
       if (titulo?.id && Number(titulo.id) === Number(parcela.titulo_financeiro_id)) {
         porId.set(Number(titulo.id), { ...porId.get(Number(titulo.id)), ...titulo });
       }
+      for (const parte of parcela.titulos_pagamento || []) {
+        if (parte?.id) porId.set(Number(parte.id), { ...porId.get(Number(parte.id)), ...parte });
+      }
     }
   }
   return [...porId.values()];

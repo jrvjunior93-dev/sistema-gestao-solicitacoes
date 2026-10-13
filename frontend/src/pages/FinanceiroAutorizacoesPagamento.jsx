@@ -1,4 +1,6 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,7 +23,7 @@ import {
 } from '../services/pagamentoAutorizacao';
 import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../utils/webauthn';
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
-import { codigoLoteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
+import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import { isAutorizadorPwa } from '../utils/autorizacaoPagamentoPwa';
 import OverlayModal from '../components/ui/OverlayModal';
 import '../styles/financeiro-autorizacoes-pagamento.css';
@@ -36,6 +38,7 @@ function Status({ value }) {
 }
 
 export default function FinanceiroAutorizacoesPagamento() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,11 +47,8 @@ export default function FinanceiroAutorizacoesPagamento() {
   const compactPwa = isAutorizadorPwa(user);
   const { avisos, avisar, fechar } = useAvisos();
   const [lots, setLots] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [rejectReason, setRejectReason] = useState('');
-  const [revokeItems, setRevokeItems] = useState([]);
-  const [revokeReason, setRevokeReason] = useState('');
+  const [selectedId, setSelectedId] = useWorkspaceState('autorizacoes:lote', null);
+  const [trabalhoPorLote, setTrabalhoPorLote] = useWorkspaceState('autorizacoes:trabalho', {});
   const mutationRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [users, setUsers] = useState([]);
@@ -60,18 +60,58 @@ export default function FinanceiroAutorizacoesPagamento() {
 
   const selected = useMemo(() => lots.find((lot) => Number(lot.id) === Number(selectedId)) || lots[0] || null, [lots, selectedId]);
   const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE'), [selected]);
+  const trabalho = trabalhoPorLote[selected?.id] || {};
+  const selectedItems = (trabalho.selectedItems || pendingItems.map(item => Number(item.id)))
+    .filter(id => pendingItems.some(item => Number(item.id) === id));
+  const revokeItems = (trabalho.revokeItems || []).filter(id => (selected?.itens || [])
+    .some(item => Number(item.id) === id && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)));
+  const rejectReason = trabalho.rejectReason || '';
+  const revokeReason = trabalho.revokeReason || '';
+  const alterarTrabalho = (key, update) => {
+    if (!selected) return;
+    setTrabalhoPorLote(current => {
+      const anterior = current[selected.id] || {};
+      const initial = key === 'selectedItems' ? selectedItems : key === 'revokeItems' ? revokeItems : '';
+      return { ...current, [selected.id]: { ...anterior,
+        [key]: typeof update === 'function' ? update(anterior[key] || initial) : update } };
+    });
+  };
+  const setSelectedItems = update => alterarTrabalho('selectedItems', update);
+  const setRevokeItems = update => alterarTrabalho('revokeItems', update);
+  const setRejectReason = update => alterarTrabalho('rejectReason', update);
+  const setRevokeReason = update => alterarTrabalho('revokeReason', update);
+  useWorkspaceWork(Boolean(Object.keys(trabalhoPorLote).length), busy);
   const selectedTotal = useMemo(() => pendingItems.filter((item) => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.valor_snapshot || 0), 0), [pendingItems, selectedItems]);
   const justificativaId = searchParams.get('justificativa');
   const loteJustificativa = lots.find(lot => (lot.itens || []).some(item => String(item.id) === justificativaId));
   const itemJustificativa = loteJustificativa?.itens.find(item => String(item.id) === justificativaId);
   const textoJustificativa = itemJustificativa?.titulo?.solicitacao?.justificativa;
+  const motivoId = searchParams.get('motivo');
+  const loteMotivo = lots.find(lot => (lot.itens || []).some(item => String(item.id) === motivoId));
+  const itemMotivo = loteMotivo?.itens.find(item => String(item.id) === motivoId);
 
   useEffect(() => {
     if (loteJustificativa) setSelectedId(loteJustificativa.id);
   }, [loteJustificativa?.id]);
+  useEffect(() => { if (loteMotivo) setSelectedId(loteMotivo.id); }, [loteMotivo?.id]);
+
+  function abrirMotivo(itemId) {
+    const next = new URLSearchParams(searchParams);
+    next.delete('justificativa');
+    next.set('motivo', String(itemId));
+    setSearchParams(next, { state: { ...location.state, modalMotivo: true } });
+  }
+
+  function fecharMotivo() {
+    if (location.state?.modalMotivo && Number(window.history.state?.idx) > 0) return navigate(-1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('motivo');
+    setSearchParams(next, { replace: true, state: { ...location.state, modalMotivo: false } });
+  }
 
   function abrirJustificativa(itemId) {
     const next = new URLSearchParams(searchParams);
+    next.delete('motivo');
     next.set('justificativa', String(itemId));
     // Uma entrada na mesma rota permite que voltar/gesto do aparelho feche
     // apenas o modal, preservando lote, selecao e lista montados.
@@ -91,11 +131,16 @@ export default function FinanceiroAutorizacoesPagamento() {
 
   async function carregarLotes() {
     const requestId = ++listaRequestRef.current;
-    const response = await listarAutorizacoesPagamento();
-    if (requestId !== listaRequestRef.current) return;
-    const rows = response?.data || [];
-    setLots(rows);
-    setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
+    try {
+      const response = await listarAutorizacoesPagamento();
+      if (requestId !== listaRequestRef.current) return;
+      const rows = response?.data || [];
+      setLots(rows);
+      setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
+    } catch (error) {
+      if (requestId === listaRequestRef.current) setLots([]);
+      throw error;
+    }
   }
 
   async function load() {
@@ -116,14 +161,6 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   useEffect(() => { load(); }, []);
-  useEffect(() => { setSelectedItems(pendingItems.map((item) => Number(item.id))); }, [selected?.id]);
-  useEffect(() => { setRevokeItems([]); setRevokeReason(''); }, [selected?.id]);
-  useEffect(() => {
-    setSelectedItems(current => {
-      const validos = current.filter(id => pendingItems.some(item => Number(item.id) === id));
-      return validos.length === current.length ? current : validos;
-    });
-  }, [pendingItems]);
   useEffect(() => {
     if (busy) return undefined;
     let ativo = true, pendente = false;
@@ -237,10 +274,9 @@ export default function FinanceiroAutorizacoesPagamento() {
     finally { mutationRef.current = false; setBusy(false); }
   }
 
-  async function openDocument(documentId) {
+  async function openDocument(doc) {
     try {
-      const response = await obterDocumentoAutorizacao(documentId);
-      window.open(response.url, '_blank', 'noopener,noreferrer');
+      await abrirPreview(() => obterDocumentoAutorizacao(doc.id), { nome: doc.nome, mime: doc.mime_type });
     } catch (error) { avisar.erro(error?.message || 'Não foi possível abrir o documento.'); }
   }
 
@@ -312,6 +348,9 @@ export default function FinanceiroAutorizacoesPagamento() {
               <span><strong title={lot.codigo}>{codigoLoteAutorizacao(lot)}</strong><Status value={lot.status} /></span>
               <span>{money(lot.valor_total)} · {lot.quantidade_itens} título(s)</span>
               <small>Criado em {date(lot.createdAt)}</small>
+              {motivosAjusteAutorizacao(lot).map(ajuste => <small key={ajuste.id} className="pa-lot-reason">
+                <strong>{ajuste.referencia}</strong> · Motivo do ajuste: {ajuste.motivo}
+              </small>)}
             </button>
           ))}
         </aside>
@@ -340,7 +379,7 @@ export default function FinanceiroAutorizacoesPagamento() {
                       <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
                     <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
-                    <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc.id)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
+                    <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
                     <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
                       {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
                         Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
@@ -351,7 +390,11 @@ export default function FinanceiroAutorizacoesPagamento() {
                         aria-label={`Ler justificativa de ${snapshot.solicitacao?.codigo || snapshot.codigo || `título ${snapshot.titulo_id}`}`}>
                         {item.titulo.solicitacao.justificativa}
                       </button> : '-'}</td>
-                    <td className="pa-reason-column">{item.motivo_decisao || '-'}</td>
+                    <td className="pa-reason-column">{String(item.motivo_decisao || '').trim() ?
+                      <button type="button" className="pa-justification-preview" onClick={() => abrirMotivo(item.id)}
+                        aria-label={`Ler motivo do ajuste de ${snapshot.solicitacao?.codigo || snapshot.codigo || `título ${snapshot.titulo_id}`}`}>
+                        {item.motivo_decisao}
+                      </button> : '-'}</td>
                   </tr>;
                 })}</tbody>
               </table>
@@ -373,13 +416,22 @@ export default function FinanceiroAutorizacoesPagamento() {
         </section>
       </div>
 
-      {String(textoJustificativa || '').trim() && <OverlayModal rotulo="Justificativa da solicitação"
+      {!motivoId && String(textoJustificativa || '').trim() && <OverlayModal rotulo="Justificativa da solicitação"
         largura="680px" onFechar={fecharJustificativa} fecharAoClicarFora>
         <header data-modal="cabecalho" className="pa-justification-head">
           <strong>Justificativa da solicitação</strong>
           <button type="button" className="btn btn-secondary btn-sm" onClick={fecharJustificativa}>Fechar</button>
         </header>
         <p className="pa-justification-text">{textoJustificativa}</p>
+      </OverlayModal>}
+
+      {String(itemMotivo?.motivo_decisao || '').trim() && <OverlayModal rotulo="Motivo do ajuste"
+        largura="680px" onFechar={fecharMotivo} fecharAoClicarFora>
+        <header data-modal="cabecalho" className="pa-justification-head">
+          <strong>Motivo do ajuste · {itemMotivo.snapshot_json?.solicitacao?.codigo || itemMotivo.snapshot_json?.codigo || `#${itemMotivo.id}`}</strong>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={fecharMotivo}>Fechar</button>
+        </header>
+        <p className="pa-justification-text">{itemMotivo.motivo_decisao}</p>
       </OverlayModal>}
 
       {caps.can_decide && (compactPwa || passkeys.length > 0) && <details id="pa-dispositivos" className="pa-device-disclosure" open={compactPwa ? undefined : true}>
@@ -396,6 +448,7 @@ export default function FinanceiroAutorizacoesPagamento() {
         <div className="pa-config__form"><select value={authorizerUserId} onChange={(event) => setAuthorizerUserId(event.target.value)}><option value="">Selecione um usuário ativo</option>{users.map((item) => <option key={item.id} value={item.id}>{item.nome} · {item.email}</option>)}</select><button type="button" className="btn btn-secondary btn-sm" onClick={addAuthorizer} disabled={!authorizerUserId || busy}>Adicionar</button></div>
         <div className="pa-config__chips">{authorizers.map((item) => <span key={item.id}><span>{item.usuario?.nome} · {item.ativo ? 'ativo' : 'inativo'}</span><button type="button" onClick={() => toggleAuthorizer(item)} disabled={busy}>{item.ativo ? 'Desativar' : 'Reativar'}</button></span>)}</div>
       </section>}
+      {modalPreview}
     </Pagina>
   );
 }

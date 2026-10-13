@@ -1,3 +1,4 @@
+import VisualizadorArquivoModal from '../components/ui/VisualizadorArquivoModal';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HiOutlineArrowPath, HiOutlineEye } from 'react-icons/hi2';
@@ -22,7 +23,6 @@ import { buscarParceiros } from '../services/parceiros';
 import { useAuth } from '../contexts/AuthContext';
 import { hasEnabledModule, hasPermissao } from '../utils/acessoProduto';
 import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
-import OverlayModal from '../components/ui/OverlayModal';
 import {
   Pagina,
   PageHeader,
@@ -1432,37 +1432,15 @@ export default function FinanceiroBoletos() {
       {/* R18: a casca do sistema no lugar do overlay à mão. O painel recorta
           com `clip`, nunca `hidden` — o `overflow-hidden` que estava aqui
           era ancestral do conteúdo rolável da pré-visualização. */}
-      {previewOpen && (
-        <OverlayModal
-          rotulo="Pre-visualização do boleto"
-          largura="var(--modal-max-w-xl, 1080px)"
-          onFechar={() => setPreviewOpen(false)}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
-            <div>
-              <p className="app-confirmacao-titulo">Pre-visualização do boleto</p>
-              <p className="text-xs text-[var(--c-muted)]">A amostra deve ser homologada pela Caixa antes do uso em massa.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-outline btn-sm" disabled={!detalhe?.boleto?.codigo_barras} onClick={() => window.print()}>
-                Imprimir
-              </button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setPreviewOpen(false)}>
-                Fechar
-              </button>
-            </div>
-          </div>
-          {/* O painel recorta com `clip` (R18): quem rola é o corpo — e a
-              ficha inteira precisa caber na leitura antes de imprimir. */}
-          <div className="boleto-preview-fundo min-h-0 overflow-y-auto p-4">
-            {detalhe ? (
-              <BoletoPrintView detalhe={detalhe} />
-            ) : (
-              <div className="app-empty-card">Selecione ou gere um boleto para visualizar.</div>
-            )}
-          </div>
-        </OverlayModal>
-      )}
+      {previewOpen && <VisualizadorArquivoModal
+        arquivo={{ nome: 'Boleto', titulo: 'Pre-visualização do boleto' }}
+        onClose={() => setPreviewOpen(false)}
+        acoes={<button type="button" className="btn btn-outline btn-sm" disabled={!detalhe?.boleto?.codigo_barras} onClick={() => window.print()}>Imprimir</button>}
+      >
+        <div className="boleto-preview-fundo min-h-0 overflow-y-auto p-4">
+          {detalhe ? <BoletoPrintView detalhe={detalhe} /> : <div className="app-empty-card">Selecione ou gere um boleto para visualizar.</div>}
+        </div>
+      </VisualizadorArquivoModal>}
     </Pagina>
   );
 }

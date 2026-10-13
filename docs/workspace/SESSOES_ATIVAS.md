@@ -6,6 +6,21 @@ Integracao autorizada de refactor/frontend na main, preservando contratos e
 registros de ambos os agentes. Ownership documental liberado, integracao
 validada e publicacao Git autorizada; sem banco, EC2, aplicacao de migration
 ou reinicio. Backup confirmado pelo usuario.
+Sessao codex-workspace-piloto-20261011: finalizado local, ownership liberado
+na refactor/frontend, sem delegacao. Handoff:
+docs/handoffs/2026-10-11-piloto-navegacao-solicitacoes.md.
+Commit/push autorizado em 12/10 somente na refactor/frontend; sem banco,
+main ou deploy executado. Homologacao DEV e etapas seguintes separadas.
+
+Sessao codex-mapa-navegacao-estado-20261011: finalizado, ownership liberado no checkout
+C:/Fluxy-refactor-frontend. Mapa e plano somente; reserva de script de
+inventario/documentos novos. Sem delegacao, runtime, banco ou publicacao.
+Handoff: docs/handoffs/2026-10-11-mapa-navegacao-estado.md. Implementacao
+do piloto depende de autorizacao; desempenho e isolamento sao gates.
+
+Sessao codex-interacoes-solicitacoes-20261011: finalizado, ownership liberado no checkout
+C:/Fluxy-refactor-frontend. Ownership registrado; sem delegacao, banco real,
+EC2 ou publicacao. Preservar pendencias anteriores e auditoria financeira.
 
 Sessao codex-fila-comprovante-pendente-2026-10-08 finalizada no checkout
 C:/Fluxy-refactor-frontend. Ownership liberado; validacoes backend/UI,

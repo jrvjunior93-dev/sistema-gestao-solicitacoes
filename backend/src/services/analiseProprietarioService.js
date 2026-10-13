@@ -24,12 +24,13 @@ function incluirStatusOperacionais(status = []) {
 // Nao altera saldo, status financeiro, setor ou autorizacao nominal/passkey.
 async function marcarAnaliseProprietario({ titulos, usuarioId, transaction, origem = 'PAPEL', loteId = null }) {
   for (const titulo of titulos) {
+    require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
     if (titulo.tipo !== 'PAGAR' || !['ABERTO', 'PARCIAL'].includes(titulo.status) || !Number.isFinite(Number(titulo.valor_saldo)) || Number(titulo.valor_saldo) <= 0) {
       throw Object.assign(new Error(`O titulo ${titulo.codigo || titulo.id} nao possui saldo em aberto para analise.`), { statusCode: 409 });
     }
   }
   const emFila = await PagamentoManualFilaItem.findAll({
-    where: { titulo_financeiro_id: { [Op.in]: titulos.map((titulo) => titulo.id) }, status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } },
+    where: { titulo_financeiro_id: { [Op.in]: titulos.map((titulo) => titulo.id) }, status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'] } },
     attributes: ['id'], transaction
   });
   if (emFila.length) throw Object.assign(new Error('Um ou mais titulos ja estao na fila de pagamentos.'), { statusCode: 409 });
@@ -85,16 +86,19 @@ async function registrarAnaliseRecusada({ tituloId, usuarioId, motivo, resultado
   const solicitacaoId = vinculos.get(Number(titulo.id))?.solicitacao_id;
   if (!solicitacaoId) return;
   const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
-  if (!solicitacao || !emAnaliseProprietario(solicitacao.status_global)) return;
+  if (!solicitacao) return;
   const atuais = await titulosQueAtualizamMedicaoAtual({ solicitacaoId, titulos: [titulo], transaction });
-  if (atuais && !atuais.length) return;
+  // Toda recusa tem motivo no historico. Apenas o fluxo atual pode mudar o
+  // status global; rejeitar outro titulo nao pode apagar/rivalizar sua trilha.
+  const mudaStatus = emAnaliseProprietario(solicitacao.status_global) && (!atuais || atuais.length > 0);
   const anterior = solicitacao.status_global;
-  await solicitacao.update({ status_global: 'AGUARDANDO AJUSTE' }, { transaction });
+  if (mudaStatus) await solicitacao.update({ status_global: 'AGUARDANDO AJUSTE' }, { transaction });
   const observacao = `Analise digital de pagamento ${resultado === 'INVALIDADO' ? 'invalidada' : 'rejeitada'}: ${motivo}`;
   await Historico.create({ solicitacao_id: solicitacao.id, usuario_responsavel_id: usuarioId, setor: solicitacao.area_responsavel,
-    acao: 'STATUS_ALTERADO', status_anterior: anterior, status_novo: 'AGUARDANDO AJUSTE', observacao,
+    acao: mudaStatus ? 'STATUS_ALTERADO' : 'AUTORIZACAO_PAGAMENTO_REJEITADA',
+    status_anterior: mudaStatus ? anterior : null, status_novo: mudaStatus ? 'AGUARDANDO AJUSTE' : null, observacao,
     metadata: JSON.stringify({ origem: 'AUTORIZACAO_DIGITAL', titulo_id: Number(tituloId), resultado }) }, { transaction });
-  await StatusArea.create({ solicitacao_id: solicitacao.id, setor: solicitacao.area_responsavel,
+  if (mudaStatus) await StatusArea.create({ solicitacao_id: solicitacao.id, setor: solicitacao.area_responsavel,
     status: 'AGUARDANDO AJUSTE', observacao }, { transaction });
 }
 

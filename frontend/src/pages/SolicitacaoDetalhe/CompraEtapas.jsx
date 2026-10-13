@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useWorkspaceState, useWorkspaceRestored, useWorkspaceWork } from '../../navigation/WorkspaceContext';
+import { marcarInteracoesLidas } from '../../services/solicitacaoInteracoes';
 import { HiChatBubbleLeftRight, HiPencilSquare, HiCheck, HiXMark, HiArrowTopRightOnSquare, HiPaperClip, HiAdjustmentsHorizontal } from 'react-icons/hi2';
 import OverlayModal from '../../components/ui/OverlayModal';
 import AcaoIconeCompra from './AcaoIconeCompra';
@@ -68,6 +70,10 @@ function Comentarios({ lista }) {
 
 export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDecidir, podeReceber, podeProgramarEntrega, podeAnexar, mostrarCotacao, podeGerenciarCotacao, podeCriarNovaSolicitacao, onGerenciarItens, onUpdated }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const focoConsumido = useRef('');
+  const interacoesLidasRef = useRef(new Set());
+  const usuarioDosDadosRef = useRef(Number(user?.id || 0));
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [dados, setDados] = useState(null);
@@ -75,12 +81,23 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   const [processando, setProcessando] = useState('');
   const executandoRef = useRef(false);
   const [comentando, setComentando] = useState(null);
+  const [pedidosRecolhidos, setPedidosRecolhidos] = useWorkspaceState('compra:pedidos-recolhidos', true);
+  const [itensRecolhidos, setItensRecolhidos] = useWorkspaceState('compra:itens-recolhidos', true);
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('interacao') === 'ENTREGA_PENDENTE') setPedidosRecolhidos(false);
+    const query = new URLSearchParams(location.search);
+    if (query.get('interacao') === 'COMENTARIO_ITEM' && !Number(query.get('evento'))) setItensRecolhidos(false);
+  }, [location.search]);
   const [texto, setTexto] = useState('');
   const [usuarios, setUsuarios] = useState([]);
   const [mencoes, setMencoes] = useState([]);
   const [buscaMencao, setBuscaMencao] = useState('');
-  const [motivos, setMotivos] = useState({});
-  const [selecionados, setSelecionados] = useState([]);
+  const [motivos, setMotivos] = useWorkspaceState('compra:motivos', {});
+  const selecaoRestaurada = useWorkspaceRestored('compra:selecao');
+  const [selecionados, setSelecionados] = useWorkspaceState('compra:selecao', []);
+  const [rascunhos, setRascunhos] = useWorkspaceState('compra:comentarios-rascunhos', {});
+  useWorkspaceWork(Object.values(rascunhos).some(d => d.texto?.trim() || d.mencoes?.length)
+    || Object.values(motivos).some(Boolean), Boolean(processando), 'compra:trabalho');
   const [leiturasComentarios, setLeiturasComentarios] = useState({});
   const consultaEntregaRef = useRef(0);
 
@@ -101,6 +118,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     const consulta = ++consultaEntregaRef.current;
     const retorno = await obterEtapasCompraSolicitacao(solicitacaoId);
     if (consulta === consultaEntregaRef.current) {
+      usuarioDosDadosRef.current = Number(user?.id || 0);
       setDados(retorno);
       incorporarLeituras(retorno);
     }
@@ -112,20 +130,38 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   useEffect(() => {
     setLeiturasComentarios({});
     setComentando(null);
-  }, [solicitacaoId]);
+    interacoesLidasRef.current = new Set();
+    focoConsumido.current = '';
+  }, [solicitacaoId, user?.id]);
+  useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    if (query.get('interacao') !== 'COMENTARIO_ITEM' || !dados || usuarioDosDadosRef.current !== Number(user?.id || 0)) return;
+    const eventoId = Number(query.get('evento'));
+    const chave = `${solicitacaoId}:${eventoId}`;
+    if (!eventoId || focoConsumido.current === chave) return;
+    const comentario = dados.comentarios?.find((linha) => Number(linha.id) === eventoId);
+    if (!comentario) return;
+    const { escopo, referencia_id: referenciaId, item_tipo: itemTipo } = comentario;
+    const item = ['ITEM', 'ITEM_APROVADO'].includes(escopo)
+      ? dados.itens.find((linha) => Number(linha.id) === Number(referenciaId) && linha.item_tipo === itemTipo)
+      : dados.pedidos.flatMap((pedido) => pedido.itens || []).find((linha) => Number(linha.id) === Number(referenciaId));
+    focoConsumido.current = chave;
+    abrirComentario(escopo, referenciaId, itemTipo, item?.descricao || item?.nome || `Item / etapa #${referenciaId}`, item, false);
+  }, [dados, location.search, solicitacaoId, user?.id]);
   useEffect(() => {
     const timer = setInterval(() => { if (document.visibilityState === 'visible') void carregar().catch(() => {}); }, 60000);
     return () => clearInterval(timer);
-  }, [solicitacaoId]);
+  }, [solicitacaoId, user?.id]);
 
   useEffect(() => {
     let ativo = true;
     const consulta = ++consultaEntregaRef.current;
-    setSelecionados([]);
+    if (!selecaoRestaurada) setSelecionados([]);
     setCarregando(true);
     obterEtapasCompraSolicitacao(solicitacaoId)
       .then((retorno) => {
         if (ativo && consulta === consultaEntregaRef.current) {
+          usuarioDosDadosRef.current = Number(user?.id || 0);
           setDados(retorno);
           incorporarLeituras(retorno);
         }
@@ -133,7 +169,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       .catch((error) => { if (ativo) avisar.erro(error.message || 'Erro ao carregar itens da compra.'); })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; consultaEntregaRef.current += 1; };
-  }, [solicitacaoId]);
+  }, [solicitacaoId, user?.id]);
 
   useEffect(() => {
     // Atualiza os itens editados sem desmontar cards ou descartar rascunhos da cotação.
@@ -188,7 +224,16 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   }
 
   function marcarComentariosVisualizados(alvo) {
+    if (usuarioDosDadosRef.current !== Number(user?.id || 0)) return;
     const lista = listaComentarios(alvo);
+    const ids = lista.map((comentario) => Number(comentario.id)).filter((id) => id > 0 && !interacoesLidasRef.current.has(id));
+    if (ids.length) {
+      ids.forEach((id) => interacoesLidasRef.current.add(id));
+      void marcarInteracoesLidas(solicitacaoId, ids).catch((error) => {
+        ids.forEach((id) => interacoesLidasRef.current.delete(id));
+        console.error('Destaque do item preservado; leitura nao registrada:', error);
+      });
+    }
     const historicoId = lista.reduce((maior, comentario) => Math.max(maior, Number(comentario.id || 0)), 0);
     if (!historicoId) return;
     const alvoChave = chaveLeituraComentario(alvo.escopo, alvo.referencia_id, alvo.item_tipo, alvo.item);
@@ -207,16 +252,23 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   function abrirComentario(escopo, referenciaId, itemTipo, titulo, item, podeComentar) {
     const alvo = { escopo, referencia_id: referenciaId, item_tipo: itemTipo, titulo, item, podeComentar };
     setComentando(alvo);
-    setTexto('');
-    setMencoes([]);
+    const draft = rascunhos[chaveLeituraComentario(escopo, referenciaId, itemTipo, item)];
+    setTexto(draft?.texto || '');
+    setMencoes(draft?.mencoes || []);
     setBuscaMencao('');
-    marcarComentariosVisualizados(alvo);
+    // A leitura ocorre no efeito, depois de o modal ter sido montado.
+  }
+
+  function editarComentario(value, mentions = mencoes) {
+    const key = chaveLeituraComentario(comentando.escopo, comentando.referencia_id, comentando.item_tipo, comentando.item);
+    setTexto(value); setMencoes(mentions);
+    setRascunhos(old => ({ ...old, [key]: { texto: value, mencoes: mentions } }));
   }
 
   function listaComentarios(alvo) {
     if (!alvo) return [];
-    if (['ITEM', 'ITEM_APROVADO'].includes(alvo.escopo)) return comentariosDoItem(dados.comentarios, alvo.item, dados.pedidos);
-    if (['PEDIDO_ITEM', 'ENTREGA'].includes(alvo.escopo)) return comentariosDoItemPedido(dados.comentarios, alvo.item, dados.pedidos);
+    if (alvo.item && ['ITEM', 'ITEM_APROVADO'].includes(alvo.escopo)) return comentariosDoItem(dados.comentarios, alvo.item, dados.pedidos);
+    if (alvo.item && ['PEDIDO_ITEM', 'ENTREGA'].includes(alvo.escopo)) return comentariosDoItemPedido(dados.comentarios, alvo.item, dados.pedidos);
     return comentariosDaEtapa(dados.comentarios, alvo.escopo, alvo.referencia_id);
   }
 
@@ -242,18 +294,18 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       <label className="min-w-0 w-full text-sm">
         Comentário
         <textarea className="input mt-1 w-full" rows={2} value={texto} maxLength={5000}
-          onChange={(event) => setTexto(event.target.value)} />
+          onChange={(event) => editarComentario(event.target.value)} />
       </label>
       <div className="w-full text-xs">
         {mencoes.length > 0 && <div className="mb-1 flex flex-wrap gap-1">{mencoes.map((usuario) => <button
           key={usuario.id} type="button" className="rounded border border-[var(--c-border)] px-2 py-1"
-          onClick={() => setMencoes((lista) => lista.filter((item) => item.id !== usuario.id))}
+          onClick={() => editarComentario(texto, mencoes.filter((item) => item.id !== usuario.id))}
           title="Remover menção">@{usuario.nome} ×</button>)}</div>}
         <input className="input w-full max-w-xs" value={buscaMencao} onChange={(event) => setBuscaMencao(event.target.value)}
           placeholder="Mencionar usuário (opcional)" aria-label="Buscar usuário para mencionar" />
         {buscaMencao.trim() && <div className="mt-1 flex flex-wrap gap-1">{usuariosFiltrados.map((usuario) => <button
           key={usuario.id} type="button" className="btn btn-outline btn-sm"
-          onClick={() => { setMencoes((lista) => [...lista, usuario]); setBuscaMencao(''); }}>{usuario.nome}</button>)}</div>}
+          onClick={() => { editarComentario(texto, [...mencoes, usuario]); setBuscaMencao(''); }}>{usuario.nome}</button>)}</div>}
       </div>
       <button type="button" className="btn btn-primary btn-sm" disabled={!texto.trim() || !!processando}
         onClick={() => executar('comentar', async () => {
@@ -264,8 +316,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
             descricao: texto,
             mencoes: mencoes.map((usuario) => usuario.id)
           });
-          setTexto('');
-          setMencoes([]);
+          editarComentario('', []);
         }, 'Comentário registrado e destacado para os envolvidos.')}>Enviar</button>
     </fieldset>;
   }
@@ -415,7 +466,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     </div>;
   };
 
-  return <div className="space-y-3">
+  return <div className="space-y-3" id="sol-detail-itens">
     <Avisos avisos={avisos} aoFechar={fechar} />
     {elementoConfirmacao}
     {comentando && <OverlayModal rotulo={`Comentários: ${comentando.titulo}`} largura="720px"
@@ -429,6 +480,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       <div data-modal="rodape" className="border-t border-[var(--c-border)] p-4">{formularioComentario()}</div>
     </OverlayModal>}
     <BlocoConteudo titulo="Itens da solicitação" contagem={`${dados.itens.length} item(ns) · ${pendentes.length} pendente(s)`} recolhivel recolhidoPadrao alternarAoClicar
+      recolhido={itensRecolhidos} aoAlternarRecolhido={setItensRecolhidos}
       acoes={onGerenciarItens ? <AcaoIconeCompra rotulo="Gerenciar todos os itens" icone={HiAdjustmentsHorizontal} onClick={() => onGerenciarItens()} /> : null}>
       <div className="space-y-2">
         {podeDecidir && pendentes.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-border)] px-3 py-2 text-sm">
@@ -494,13 +546,16 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
         {!podeGerenciarCotacao && <p className="mb-2 text-xs text-[var(--c-muted)]">
           Para executar ações na cotação, solicite o retorno da solicitação ao setor de Compras.
         </p>}
-        <fieldset className="min-w-0 max-w-full" disabled={!podeGerenciarCotacao}>
-          <GerenciarCotacaoSolicitacao solicitacaoCompraId={dados.solicitacao_compra_id} embedded onAtualizado={carregar} />
-        </fieldset>
+        <div className="min-w-0 max-w-full">
+          <GerenciarCotacaoSolicitacao solicitacaoCompraId={dados.solicitacao_compra_id} embedded
+            somenteLeitura={!podeGerenciarCotacao} onAtualizado={carregar} />
+        </div>
       </div>}
     </BlocoConteudo>
-    <BlocoConteudo titulo="Pedidos de compra" contagem={`${dados.pedidos.length} pedido(s)`} recolhivel recolhidoPadrao alternarAoClicar>
+    <BlocoConteudo titulo="Pedidos de compra" contagem={`${dados.pedidos.length} pedido(s)`} recolhivel recolhidoPadrao alternarAoClicar
+      recolhido={pedidosRecolhidos} aoAlternarRecolhido={setPedidosRecolhidos}>
       {dados.pedidos.length ? <div className="space-y-2">{dados.pedidos.map((pedido) => <details key={pedido.id}
+        open={new URLSearchParams(location.search).get('interacao') === 'ENTREGA_PENDENTE' ? true : undefined}
         className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
         <summary className="cursor-pointer text-sm font-semibold">Pedido #{pedido.id} · {pedido.status}</summary>
         <PedidoResumo pedido={pedido} user={user}

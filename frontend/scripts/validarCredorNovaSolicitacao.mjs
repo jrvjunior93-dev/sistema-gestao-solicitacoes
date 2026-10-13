@@ -143,7 +143,8 @@ const cadastro = moduloIsolado('../../backend/src/services/credorContratoService
   '../models': {}, './securityLogService': {}
 });
 const servicoParceiro = moduloIsolado('../../backend/src/services/parceiroService.js', {
-  sequelize: {}, '../models': {}, '../utils/cpfCnpj': require('../../backend/src/utils/cpfCnpj.js')
+  sequelize: {}, '../models': {}, '../utils/cpfCnpj': require('../../backend/src/utils/cpfCnpj.js'),
+  '../utils/pix': require('../../backend/src/utils/pix.js')
 }, '\nmodule.exports.normalizarPayloadTeste = normalizeParceiroPayload;');
 const controller = readFileSync(new URL('../../backend/src/controllers/ParceiroController.js', import.meta.url), 'utf8');
 const metodo = controller.slice(controller.indexOf('async createCredorNovaSolicitacao('), controller.indexOf('async createCredorCompraDireta(')).trim().replace(/,$/, '');
@@ -151,6 +152,8 @@ async function testarApi(dados = {}, habilitado = true) {
   const criados = [];
   const handler = vm.runInNewContext(`({${metodo}}).createCredorNovaSolicitacao`, {
     obterAreasConfiguracaoCampos: async () => ['GEO'],
+    TipoSolicitacao: { findOne: async () => ({ id: 33, nome: 'CADASTRO QA', comportamento: {} }) },
+    normalizeTipoSolicitacaoBehavior: require('../../backend/src/services/tipoSolicitacaoBehaviorService.js').normalizeTipoSolicitacaoBehavior,
     Contrato: { findByPk: async () => null },
     obterConfigCamposNovaSolicitacao: async () => ({}),
     resolverCamposNovaSolicitacao: () => ({ cadastro_credor: { visivel: habilitado } }),
@@ -165,7 +168,7 @@ async function testarApi(dados = {}, habilitado = true) {
   return { res, criados };
 }
 const apiOk = await testarApi();
-assert.equal(apiOk.res.codigo, 201);
+assert.equal(apiOk.res.codigo, 201, JSON.stringify(apiOk.res.body));
 assert.equal(apiOk.criados[0].pix_chave_fixa_2, null);
 assert.equal(apiOk.criados[0].pix_chave_variavel, null);
 const apiSemPix = await testarApi({ pix_chave_fixa_1: ' ' });

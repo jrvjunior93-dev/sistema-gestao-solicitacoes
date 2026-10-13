@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -233,6 +234,7 @@ function AvatarConversa({ conv }) {
 }
 
 export default function ComunicacaoInterna() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const userId = user?.id;
   const podeEnviarComunicacao = canSendComunicacao(user);
@@ -362,16 +364,12 @@ export default function ComunicacaoInterna() {
 
   const abrirAnexoConversa = useCallback(async (anexo) => {
     try {
-      const urlArquivo = await obterUrlAssinadaAnexo(anexo?.caminho);
-      if (!urlArquivo) {
-        throw new Error('Link seguro indisponivel');
-      }
-      window.open(urlArquivo, '_blank', 'noopener,noreferrer');
+      await abrirPreview(() => obterUrlAssinadaAnexo(anexo?.caminho), { nome: anexo?.nome_original || anexo?.nome, caminho: anexo?.caminho });
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao abrir arquivo');
     }
-  }, [obterUrlAssinadaAnexo, avisar]);
+  }, [obterUrlAssinadaAnexo, avisar, abrirPreview]);
 
   const adicionarArquivosConversa = useCallback((files) => {
     const { arquivos: proximoEstado, rejeitados } = concatenarAnexosPendentes(arquivos, files, {
@@ -1680,6 +1678,7 @@ export default function ComunicacaoInterna() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

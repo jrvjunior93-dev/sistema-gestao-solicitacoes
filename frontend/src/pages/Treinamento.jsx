@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineArchiveBox,
@@ -194,6 +195,7 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function Treinamento() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const podeGerenciar = canManageTreinamento(user);
   const podePublicar = canPublishTreinamento(user);
@@ -464,13 +466,15 @@ export default function Treinamento() {
   async function abrirArquivo(item, tipoArquivo) {
     const alvo = item;
     try {
-      await marcarTreinamentoLeitura(alvo.id, false);
-      const data = await getTreinamentoArquivoUrl(alvo.id, tipoArquivo);
-      if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error.message || 'Arquivo nao encontrado.');
-    }
+      if (tipoArquivo === 'VIDEO') {
+        await marcarTreinamentoLeitura(alvo.id, false);
+        const data = await getTreinamentoArquivoUrl(alvo.id, tipoArquivo);
+        if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
+      } else await abrirPreview(async () => {
+        await marcarTreinamentoLeitura(alvo.id, false);
+        return getTreinamentoArquivoUrl(alvo.id, tipoArquivo);
+      }, { nome: alvo.documento_nome_original || alvo.titulo, caminho: alvo.documento_s3_key || alvo.documento_url });
+    } catch (error) { avisar.erro(error.message || 'Arquivo nao encontrado.'); }
   }
 
   async function concluirConteudo(item) {
@@ -846,6 +850,7 @@ export default function Treinamento() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

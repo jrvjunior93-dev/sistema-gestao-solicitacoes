@@ -7,7 +7,11 @@ import { HiPaperClip } from 'react-icons/hi2';
 import { chavePixPreferencial, formaPagamentoEhBoleto, formaPagamentoEhPix } from '../../utils/formaPagamento';
 import DateInputBR from '../DateInputBR';
 import CadastroRapidoFavorecidoButton from '../solicitacoes/CadastroRapidoFavorecidoButton';
+import AdicionarFavorecidoButton from '../solicitacoes/AdicionarFavorecidoButton';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
+import PendingAttachmentsList from '../attachments/PendingAttachmentsList';
+import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos, somarValoresFavorecidos } from '../solicitacoes/PagamentosFavorecidos';
+import { formatCurrencyInput } from '../../utils/formatters';
 
 /**
  * Bloco de MEDICAO (wireframe 2), montado dentro da Nova Solicitacao quando o contrato
@@ -75,6 +79,8 @@ export function projetarValoresRedistribuidos(parcelas, selecao) {
 }
 
 export default function BlocoMedicaoContrato({
+  semCard = false,
+  campoCredor = null,
   contratoId,
   tipoSolicitacaoId,
   tipoSubId,
@@ -88,8 +94,10 @@ export default function BlocoMedicaoContrato({
   periodoObrigatorio = false,
   onPeriodoChange = null,
   boletoArquivo = null,
+  boletoArquivos = null,
   onSelecionarBoleto = null,
-  onRemoverBoleto = null
+  onRemoverBoleto = null,
+  onRestaurarBoletos = null
 }) {
   // DADOS DE PAGAMENTO DA MEDICAO (itens 5 e 9 do lote de 23/08).
   //
@@ -117,6 +125,10 @@ export default function BlocoMedicaoContrato({
   const [formaPagamentoId, setFormaPagamentoId] = useState('');
   const [formas, setFormas] = useState([]);
   const [confirmado, setConfirmado] = useState(false);
+  const [divisao, setDivisao] = useState(null);
+  const boletos = useMemo(() => Array.isArray(boletoArquivos)
+    ? boletoArquivos : (boletoArquivo ? [boletoArquivo] : []), [boletoArquivos, boletoArquivo]);
+  const boletosDivididos = useMemo(() => divisao ? divisao.flatMap(l => l.boletos || []) : null, [divisao]);
 
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(false);
@@ -127,6 +139,7 @@ export default function BlocoMedicaoContrato({
   useEffect(() => {
     let cancelado = false;
     setSelecao({});
+    setDivisao(null);
     setErro('');
     if (!contratoId) { setDados(null); return undefined; }
 
@@ -208,8 +221,12 @@ export default function BlocoMedicaoContrato({
       itens,
       excedeSaldo,
       saldo,
+      boletosDivididos,
+      possuiBoleto: pagamentoViaBoleto || Boolean(divisao?.some(l => formaPagamentoEhBoleto(formas.find(f => String(f.id) === String(l.forma_pagamento_id))))),
+      erroFavorecidos: erroDivisaoFavorecidos(divisao, formas, itens.map(i => ({ id: i.contrato_parcela_id, valor: paraCentavosContrato(i.valor_medido) / 100 }))),
       // O aceite e os dados de pagamento sobem junto: o backend recusa a medicao sem eles.
       pagamento: {
+        pagamentos_favorecidos: divisao ? payloadFavorecidos(divisao) : undefined,
         // Favorecido pertence a instrucao de pagamento inteira, nao apenas ao PIX. Boleto e
         // transferencia tambem precisam dizer a quem o Financeiro deve pagar.
         favorecido_id: favorecidoEfetivo?.id || null,
@@ -218,14 +235,40 @@ export default function BlocoMedicaoContrato({
         // ou a instrucao que o Financeiro usara para pagar.
         favorecido_contato: contato || null,
         forma_pagamento_id: formaPagamentoId ? Number(formaPagamentoId) : null,
-        boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivo?.nome || null) : null,
+        boleto_anexo_nome: pagamentoViaBoleto ? ((divisao?.[0]?.boletos || boletos)[0]?.nome || null) : null,
         via_pix: pagamentoViaPix,
         via_boleto: pagamentoViaBoleto,
         dados_confirmados: confirmado
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itens, excedeSaldo, usarCredor, favorecido, chavePix, contato, formaPagamentoId, confirmado, credorDoContrato, pagamentoViaPix, pagamentoViaBoleto, boletoArquivo]);
+  }, [itens, excedeSaldo, usarCredor, favorecido, chavePix, contato, formaPagamentoId, confirmado, credorDoContrato, pagamentoViaPix, pagamentoViaBoleto, boletos, divisao, formas]);
+
+  function alterarDivisao(linhas) {
+    setDivisao(linhas); setConfirmado(false);
+    setSelecao(atual => {
+      let mudou = false;
+      const proxima = { ...atual };
+      for (const item of itens) {
+        const valor = somarValoresFavorecidos(linhas, item.contrato_parcela_id);
+        if (Number(atual[item.contrato_parcela_id]?.valor) !== valor) {
+          proxima[item.contrato_parcela_id] = { ...atual[item.contrato_parcela_id], valor };
+          mudou = true;
+        }
+      }
+      return mudou ? proxima : atual;
+    });
+    const primeiro = linhas[0];
+    setUsarCredor(false); setFavorecido(primeiro.parceiro); setFormaPagamentoId(primeiro.forma_pagamento_id);
+    setChavePix(primeiro.favorecido_chave_pix); setContato(primeiro.dados_pagamento);
+  }
+  function iniciarDivisao() {
+    const linhas = itens.map((i, index) => novaParteFavorecido({ contrato_parcela_id: i.contrato_parcela_id,
+      valor: formatCurrencyInput(paraCentavosContrato(i.valor_medido) / 100), parceiro: favorecidoEfetivo,
+      forma_pagamento_id: formaPagamentoId, favorecido_chave_pix: chavePix, dados_pagamento: contato,
+      boletos: index === 0 ? boletos : [] }));
+    alterarDivisao([...linhas, novaParteFavorecido({ contrato_parcela_id: itens[0].contrato_parcela_id })]);
+  }
 
   // Autocomplete sem quantidade minima de caracteres. O pequeno debounce evita uma requisicao por
   // tecla sem obrigar o usuario a interromper a digitacao para clicar em "Buscar".
@@ -282,7 +325,7 @@ export default function BlocoMedicaoContrato({
   if (!contratoId) return null;
 
   return (
-    <div className="card mt-3 min-w-0 space-y-4 overflow-hidden">
+    <div className={semCard ? 'min-w-0 space-y-4 overflow-hidden' : 'card mt-3 min-w-0 space-y-4 overflow-hidden'}>
       <div className="text-sm font-bold">Medição — títulos do contrato</div>
 
       {periodo && onPeriodoChange && (
@@ -360,7 +403,7 @@ export default function BlocoMedicaoContrato({
                   checked={Boolean(selecao[p.id]?.marcada)}
                   // Quitado e parcialmente pago ficam fechados: o saldo ja foi
                   // redistribuido no pagamento (PI-7).
-                  disabled={!p.editavel || p.medivel === false || (!selecao[p.id]?.marcada && !liberadaParaMarcar(p.id))}
+                  disabled={Boolean(divisao) || !p.editavel || p.medivel === false || (!selecao[p.id]?.marcada && !liberadaParaMarcar(p.id))}
                   title={p.medivel === false
                     ? `Já medida${p.medicao ? ` na medição ${p.medicao.numero}` : ''}: para corrigir o valor, altere aquela medição`
                     : (!p.editavel
@@ -394,6 +437,7 @@ export default function BlocoMedicaoContrato({
                     <input
                       className="input input-sm w-full min-w-0" type="number" step="0.01"
                       value={sel.valor ?? valorProjetado}
+                      readOnly={Boolean(divisao)}
                       disabled={!p.editavel || p.medivel === false || !sel.marcada}
                       onChange={(e) => alterar(p.id, 'valor', e.target.value)}
                     />
@@ -472,7 +516,9 @@ export default function BlocoMedicaoContrato({
         <div className="text-xs" style={{ fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--c-muted)' }}>
           Pagamento desta medição
         </div>
+        {campoCredor}
 
+        {!divisao && <>
         <label className="grid min-w-0 max-w-md gap-1 text-sm">
           Forma de pagamento *
           <select
@@ -498,6 +544,7 @@ export default function BlocoMedicaoContrato({
 
         {formaPagamentoId && (
           <div className="space-y-2" data-testid="pagamento-medicao-favorecido">
+            <div className="flex min-w-0 items-center gap-2">
             <label className="flex min-w-0 items-start gap-2 text-sm">
               <input
                 type="checkbox"
@@ -518,6 +565,8 @@ export default function BlocoMedicaoContrato({
               />
               <span className="min-w-0 break-words">O favorecido e o proprio credor do contrato{credorDoContrato ? ` (${credorDoContrato.nome})` : ''}</span>
             </label>
+            {usarCredor && credorDoContrato && !pagamentoViaBoleto && <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />}
+            </div>
 
             {(!usarCredor || !credorDoContrato) && (
               <div className="space-y-2">
@@ -546,6 +595,7 @@ export default function BlocoMedicaoContrato({
                     areaResponsavel={areaResponsavel}
                     onCadastrado={escolherFavorecido}
                   />
+                  {!pagamentoViaBoleto && <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />}
                 </div>
                 {carregandoFavorecido && (
                   <p className="text-xs" style={{ color: 'var(--c-muted)' }}>Buscando favorecidos...</p>
@@ -620,13 +670,15 @@ export default function BlocoMedicaoContrato({
 
         {pagamentoViaBoleto && (
           <div className="grid max-w-xl gap-1 text-sm" data-testid="pagamento-medicao-boleto">
-            <span>Boleto *</span>
+            <span>Boletos *</span>
             <div className="flex flex-wrap items-center gap-2">
               <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">
                 <HiPaperClip className="h-4 w-4" />
-                <span>Selecionar boleto</span>
+                <span>Selecionar boletos</span>
                 <input
                   type="file"
+                  multiple
+                  aria-label="Anexar boletos da medição"
                   className="hidden"
                   accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
                   onChange={(e) => {
@@ -636,18 +688,20 @@ export default function BlocoMedicaoContrato({
                   }}
                 />
               </label>
-              <span className="text-xs text-[var(--c-muted)]">
-                {boletoArquivo?.nome || 'Nenhum boleto selecionado'}
-              </span>
-              {boletoArquivo && (
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => { onRemoverBoleto?.(); setConfirmado(false); }}>
-                  Remover
-                </button>
-              )}
+              <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />
+              {boletos.length === 0 && <span className="text-xs text-[var(--c-muted)]">Nenhum boleto selecionado</span>}
             </div>
+            <PendingAttachmentsList items={boletos} onRemove={(index) => { onRemoverBoleto?.(index); setConfirmado(false); }} />
           </div>
         )}
 
+        </>}
+        {!divisao && !formaPagamentoId && <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />}
+        {divisao && <PagamentosFavorecidos linhas={divisao} onChange={alterarDivisao} formas={formas}
+          parcelas={itens.map(i => ({ id: i.contrato_parcela_id, numero: parcelas.find(p => p.id === i.contrato_parcela_id)?.numero }))}
+          cadastro={{ tipoSolicitacaoId, tipoSubId, areaResponsavel }} onCancelar={() => {
+            onRestaurarBoletos?.(divisao[0]?.boletos || []); setDivisao(null); setConfirmado(false);
+          }} />}
         {/* O aceite e uma DECLARACAO: o sistema guarda quem confirmou e quando. Por isso ele cai
             sozinho sempre que um dos dados de pagamento muda — confirmar e depois alterar deixaria
             uma confirmacao que nao se refere ao que sera pago. */}

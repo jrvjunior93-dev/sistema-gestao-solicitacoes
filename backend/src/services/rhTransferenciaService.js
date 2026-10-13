@@ -21,6 +21,13 @@ const SITUACOES_RESOLVIDAS = ['APROVADA', 'REJEITADA', 'CANCELADA'];
 const TIPO_NOTIFICACAO_TRANSFERENCIA = 'RH_TRANSFERENCIA_ATUALIZADA';
 const dadosDe = s => typeof s.dados_json === 'string' ? JSON.parse(s.dados_json) : (s.dados_json || {});
 
+function localDoFiltro(filtros = {}) {
+  if (filtros.obra_id === undefined || filtros.obra_id === null || filtros.obra_id === '') return null;
+  const id = Number(filtros.obra_id);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new ValidationError('Obra/Centro de Custo invalido.');
+  return id;
+}
+
 async function responsaveis(usuarioId, transaction) {
   const hoje = hojeLocal();
   return CrResponsavelObra.findAll({
@@ -79,6 +86,8 @@ async function diretorio(user, filtros = {}) {
   const busca = String(filtros.busca || '').trim().slice(0, 100);
   const pagina = Math.max(1, Math.min(100000, Number.parseInt(filtros.pagina, 10) || 1));
   const where = { status: 'ATIVO' };
+  const localId = localDoFiltro(filtros);
+  if (localId) where.obra_id = localId;
   if (busca) where[Op.or] = ['nome', 'matricula', 'cargo'].map(campo => ({ [campo]: { [Op.like]: `%${busca}%` } }));
   const { count, rows } = await RhColaborador.findAndCountAll({ where,
     attributes: camposColaborador,
@@ -157,7 +166,7 @@ const includes = [
   { model: Obra, as: 'obra', attributes: camposObra, required: false }
 ];
 
-function montarEscopoTransferencias(acessoGlobal, ids, grupo = '') {
+function montarEscopoTransferencias(acessoGlobal, ids, grupo = '', localId = null) {
   const filtros = [tiposTransferencia];
   if (grupo === 'PENDENTES') filtros.push({ situacao: { [Op.in]: SITUACOES_PENDENTES } });
   if (grupo === 'RESOLVIDAS') filtros.push({ situacao: { [Op.in]: SITUACOES_RESOLVIDAS } });
@@ -167,10 +176,16 @@ function montarEscopoTransferencias(acessoGlobal, ids, grupo = '') {
         sequelize.cast(sequelize.json('dados_json.obra_destino_id'), 'UNSIGNED'), id))]
     });
   }
+  // O recorte local restringe, nunca substitui a regra de leitura existente.
+  if (localId) filtros.push({ [Op.or]: [
+    { obra_id: localId },
+    sequelize.where(sequelize.cast(sequelize.json('dados_json.obra_destino_id'), 'UNSIGNED'), localId)
+  ] });
   return { [Op.and]: filtros };
 }
 
 async function listar(user, filtros = {}) {
+  const localId = localDoFiltro(filtros);
   const acessoGlobal = await podeLerGlobalmente(user);
   const ids = await obrasResponsavel(user);
   const grupo = String(filtros.grupo || 'PENDENTES').trim().toUpperCase();
@@ -183,7 +198,7 @@ async function listar(user, filtros = {}) {
     return { itens: [], total: 0, pagina, limite, total_paginas: 1, nao_lidas: 0 };
   }
   // JSON é parametrizado pelo Sequelize. A busca global e exclusiva do SUPERADMIN.
-  const where = montarEscopoTransferencias(acessoGlobal, ids, grupo);
+  const where = montarEscopoTransferencias(acessoGlobal, ids, grupo, localId);
   const { count, rows: solicitacoes } = await RhSolicitacao.findAndCountAll({
     where,
     include: includes,
@@ -384,13 +399,14 @@ async function agir(user, id, acao, texto) {
   });
 }
 
-async function marcarListaLida(user) {
+async function marcarListaLida(user, filtros = {}) {
+  const localId = localDoFiltro(filtros);
   const acessoGlobal = await podeLerGlobalmente(user);
   const ids = await obrasResponsavel(user);
   if (!acessoGlobal && !ids.length) return { marcadas: 0 };
 
   const acessiveis = await RhSolicitacao.findAll({
-    where: montarEscopoTransferencias(acessoGlobal, ids, 'TODAS'),
+    where: montarEscopoTransferencias(acessoGlobal, ids, 'TODAS', localId),
     attributes: ['id'],
     raw: true
   });
@@ -398,10 +414,17 @@ async function marcarListaLida(user) {
 
   const notificacoes = await Notificacao.findAll({
     where: { tipo: TIPO_NOTIFICACAO_TRANSFERENCIA },
-    attributes: ['id'],
+    attributes: ['id', 'metadata'],
     raw: true
   });
-  const notificacaoIds = notificacoes.map(item => Number(item.id));
+  const solicitacaoIds = new Set(acessiveis.map(item => Number(item.id)));
+  const notificacaoIds = notificacoes.filter(item => {
+    if (!localId) return true;
+    try {
+      const metadata = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+      return solicitacaoIds.has(Number(metadata?.rh_transferencia_id));
+    } catch { return false; }
+  }).map(item => Number(item.id));
   let marcadas = 0;
   if (notificacaoIds.length) {
     [marcadas] = await NotificacaoDestinatario.update(

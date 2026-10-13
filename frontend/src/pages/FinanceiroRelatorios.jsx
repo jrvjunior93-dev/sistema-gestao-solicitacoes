@@ -763,11 +763,11 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
               onChange={(e) => setFilters((c) => ({ ...c, data_final: e.target.value }))} />
           </label>
           <label className="app-filter-field flex-1 min-w-40">
-            <span className="app-filter-label">Obra</span>
+            <span className="app-filter-label">Obra / Centro de Custo</span>
             <select className="input w-full input-sm" value={filters.obra_id}
               onChange={(e) => setFilters((c) => ({ ...c, obra_id: e.target.value }))}
               disabled={loadingObras}>
-              <option value="">Todas as obras</option>
+              <option value="">Todas as obras / centros de custo</option>
               {obras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
             </select>
           </label>
@@ -1324,7 +1324,7 @@ function ContaReportShell({ title, subtitle, type }) {
                   noCard: 'titulo',
                   render: (item) => item.parceiro || '-'
                 },
-                { id: 'obra', titulo: 'Obra', tipo: 'texto', render: (item) => item.obra || '-' },
+                { id: 'obra', titulo: 'Obra / Centro de Custo', tipo: 'texto', render: (item) => item.obra || '-' },
                 { id: 'documento', titulo: 'Documento', tipo: 'codigo', render: (item) => item.documento || item.ofx_uid || '-' },
                 {
                   id: 'valor',

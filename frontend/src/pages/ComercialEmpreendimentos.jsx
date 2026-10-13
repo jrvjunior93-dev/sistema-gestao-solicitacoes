@@ -67,6 +67,13 @@ export default function ComercialEmpreendimentos() {
   const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // A lista de novas escolhas é apenas de obras. Não apagar um vínculo legado
+  // ou inativo ao abrir/editar outro campo do empreendimento.
+  const empreendimentoEmEdicao = empreendimentos.find(item => Number(item.id) === Number(form.id));
+  const vinculoLegado = form.id && form.obra_id
+    && !obras.some(obra => Number(obra.id) === Number(form.obra_id))
+    && Number(empreendimentoEmEdicao?.obra_id) === Number(form.obra_id)
+    ? empreendimentoEmEdicao : null;
   // R22: hook usado é hook importado — o useRef está no import acima. A
   // referência serve à ação da faixa fixa e ao "Editar" da linha (levar o
   // foco ao formulário, que fica ACIMA da lista), não a medida nenhuma.
@@ -278,6 +285,7 @@ export default function ComercialEmpreendimentos() {
                 onChange={(event) => setForm((current) => ({ ...current, obra_id: event.target.value }))}
               >
                 <option value="">Sem vínculo operacional</option>
+                {vinculoLegado ? <option value={form.obra_id}>{vinculoLegado.obra?.nome || `Vínculo atual #${form.obra_id}`} (vínculo atual)</option> : null}
                 {obras.map((obra) => (
                   <option key={obra.id} value={obra.id}>
                     {obra.codigo ? `${obra.codigo} - ${obra.nome}` : obra.nome}

@@ -57,5 +57,20 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true
   });
 
+  async function registrarInteracaoAposCommit(linha, options = {}) {
+    const service = require('../services/solicitacaoInteracoesService');
+    if (!service.tipoInteracao(linha) && linha.acao !== 'ANEXO_REMOVIDO') return;
+    const registrar = async () => {
+      try { await service.registrarInteracao(linha); }
+      catch (error) { console.error('Historico salvo; falha ao registrar interacao pendente:', error); }
+    };
+    if (options.transaction) options.transaction.afterCommit(registrar);
+    else await registrar();
+  }
+  Historico.addHook('afterCreate', 'interacoesPendentes', registrarInteracaoAposCommit);
+  Historico.addHook('afterBulkCreate', 'interacoesPendentes', async (linhas, options) => {
+    // individualHooks ja acionou afterCreate: nao duplicar fan-out.
+    if (!options.individualHooks) for (const linha of linhas) await registrarInteracaoAposCommit(linha, options);
+  });
   return Historico;
 };

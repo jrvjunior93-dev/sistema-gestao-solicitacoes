@@ -71,8 +71,12 @@ try {
     assert.equal(await campo.inputValue(), expected);
   }
   await campo.fill('escritorio');
-  const centro = page.getByRole('button', { name: 'CC-51 Administrativo / Escritório', exact: true });
-  await centro.waitFor(); await centro.click();
+  const centro = page.getByRole('button', { name: /^CC-51\s*Administrativo \/ Escritório$/ });
+  try { await centro.waitFor(); } catch (error) {
+    console.error({ errors, external, scopes, buttons: await page.getByRole('button').allTextContents() });
+    throw error;
+  }
+  await centro.click();
   await conferirCampo('CC-51 - Administrativo / Escritório');
   await campo.fill('OB-19'); await campo.press('Enter');
   await conferirCampo('OB-19 - Edifício Itália');

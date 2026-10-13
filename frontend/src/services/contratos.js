@@ -311,11 +311,11 @@ export async function aprovarMedicaoContrato(medicaoId) {
 
 // Editar uma medicao ja criada (20/08): valor e vencimento das parcelas que ela consumiu. O valor
 // alterado redistribui a diferenca nas ultimas parcelas — a regra inteira mora no backend.
-export async function atualizarMedicaoContrato(medicaoId, itens) {
+export async function atualizarMedicaoContrato(medicaoId, itens, favorecidosValores) {
   const res = await fetch(`${API_URL}/contratos/medicoes/${medicaoId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ itens })
+    body: JSON.stringify({ itens, favorecidos_valores: favorecidosValores })
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || 'Erro ao alterar a medicao');

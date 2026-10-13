@@ -22,6 +22,7 @@ import {
   encerrarSolicitacaoCompraSemPedido,
   enviarSolicitacaoCompraParaFornecedores,
   listarFornecedoresCompra,
+  obterFornecedorCompra,
   obterWorkspaceCotacaoSolicitacaoCompra,
   obterUrlAssinadaCompra,
   obterUrlPdfCotacaoPublica,
@@ -31,10 +32,14 @@ import {
   salvarRespostaInternaCotacao,
   uploadArquivosRespostaInternaCotacao
 } from '../../../services/compras';
-import { buscarParceiros, listarCategoriasParceiro } from '../../../services/parceiros';
+import { buscarParceiros, buscarParceiroPorId, listarCategoriasParceiro } from '../../../services/parceiros';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import { camposRespostaDraft, revisaoRespostaDraft, restaurarRespostaDraft, revisaoComparativoDraft } from '../utils/cotacaoWorkspaceDraft';
 import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatters';
 import ModalPortal from '../../../components/ui/ModalPortal';
+import OverlayModal from '../../../components/ui/OverlayModal';
 import {
   canEncerrarComprasCotacoes,
   canEncerrarSemPedidoComprasCotacoes,
@@ -590,7 +595,7 @@ function ModalRespostaInternaCotacao({
 
           <FormSecao colunas={2}>
             <CampoForm label="Observação geral" tipo="observacao">
-              <textarea className="input" rows={3} value={form.observacao_resposta} onChange={(e) => onChange('observacao_resposta', e.target.value)} />
+              <textarea aria-label="Observação geral" className="input" rows={3} value={form.observacao_resposta} onChange={(e) => onChange('observacao_resposta', e.target.value)} />
             </CampoForm>
           </FormSecao>
 
@@ -1613,6 +1618,7 @@ function SecaoEnvioFornecedores({
   categoriaFornecedorId,
   fornecedorBusca,
   enviandoFornecedores,
+  salvandoFornecedor,
   itensSelecionadosEnvio,
   onChangeFornecedorBusca,
   onChangeCategoriaFornecedorId,
@@ -2051,6 +2057,11 @@ function SecaoEnvioFornecedores({
                 <CampoForm label="Nome do fornecedor" span={2}>
                   <input className="input" placeholder="Ex.: Fornecedor ABC" value={novoFornecedor.nome} onChange={(e) => onChangeNovoFornecedor('nome', e.target.value)} />
                 </CampoForm>
+                {onlyDigits(novoFornecedor.cnpj).length === 14 && (
+                  <CampoForm label="Nome fantasia" obrigatorio span={2}>
+                    <input className="input" aria-label="Nome fantasia" value={novoFornecedor.nome_fantasia || ''} onChange={(e) => onChangeNovoFornecedor('nome_fantasia', e.target.value)} />
+                  </CampoForm>
+                )}
                 <CampoForm label="CPF/CNPJ">
                   <input className="input" placeholder="CPF ou CNPJ do fornecedor" value={maskCpfCnpj(novoFornecedor.cnpj)} onChange={(e) => onChangeNovoFornecedor('cnpj', maskCpfCnpj(e.target.value))} inputMode="numeric" maxLength={18} />
                 </CampoForm>
@@ -2065,8 +2076,8 @@ function SecaoEnvioFornecedores({
                 </CampoForm>
               </FormSecao>
               <div className="grid gap-2 pt-1">
-                <button type="button" className="btn btn-outline w-full" onClick={onCriarFornecedorRapido}>Cadastrar e selecionar</button>
-                <button type="button" className="btn btn-primary w-full" onClick={onEnviarFornecedores} disabled={enviandoFornecedores}>
+                <button type="button" className="btn btn-outline w-full" onClick={onCriarFornecedorRapido} disabled={enviandoFornecedores || salvandoFornecedor}>{salvandoFornecedor ? 'Cadastrando...' : 'Cadastrar e selecionar'}</button>
+                <button type="button" className="btn btn-primary w-full" onClick={onEnviarFornecedores} disabled={enviandoFornecedores || salvandoFornecedor}>
                   {enviandoFornecedores ? 'Gerando links...' : 'Gerar links de cotacao'}
                 </button>
               </div>
@@ -2235,9 +2246,9 @@ function SecaoComparativo({
   encerrando,
   encerrandoSemPedido
 }) {
-  const [modoVisualizacao, setModoVisualizacao] = useState('cards');
-  const [painelFornecedoresAberto, setPainelFornecedoresAberto] = useState(false);
-  const [fornecedoresVisiveis, setFornecedoresVisiveis] = useState({});
+  const [modoVisualizacao, setModoVisualizacao] = useWorkspaceState(`cotacao:${solicitacao.id}:modo`, 'cards');
+  const [painelFornecedoresAberto, setPainelFornecedoresAberto] = useWorkspaceState(`cotacao:${solicitacao.id}:painel`, false);
+  const [fornecedoresVisiveis, setFornecedoresVisiveis] = useWorkspaceState(`cotacao:${solicitacao.id}:visiveis`, {});
 
   function getQuantidadeAlocada(respostaItemId) {
     const registro = vencedoresSelecionados[String(respostaItemId)];
@@ -2347,8 +2358,7 @@ function SecaoComparativo({
       );
     }
 
-    const quantidadeAlocada = getQuantidadeAlocada(resposta.resposta_item_id);
-    const isVencedor = quantidadeAlocada > 0;
+    const isVencedor = Boolean(vencedoresSelecionados[String(resposta.resposta_item_id)]);
     const saldoDisponivel = getSaldoDisponivelItem(item);
     const saldoDisponivelFornecedor = getSaldoDisponivelFornecedor(resposta);
     const podeSelecionar = podeEncerrar && saldoDisponivelFornecedor > 0 && resposta.resposta_item_id && resposta.disponivel && resposta.preco;
@@ -2430,6 +2440,8 @@ function SecaoComparativo({
             placeholder="Qtd."
             aria-label={`Quantidade comprada de ${resposta.fornecedor_nome || fornecedor.nome || 'fornecedor'} para ${item.nome}`}
             disabled={!podeEncerrar || !isVencedor}
+            inputMode="decimal"
+            onFocus={(event) => event.target.select()}
             onChange={(event) => onVencedorChange({
               item,
               resposta,
@@ -2472,7 +2484,7 @@ function SecaoComparativo({
         cor="var(--sem-info)"
         contagem={`${comparativo.itens.length} item(ns)`}
         descricao="Compare respostas, selecione vencedores e encerre a cotação quando estiver pronta."
-        acoes={(
+        controles={(
           <span
             className="inline-flex rounded-lg border p-1 text-xs"
             style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)' }}
@@ -2551,7 +2563,8 @@ function SecaoComparativo({
               esquerda (Item e Qtd.), e a `TabelaPadrao` gruda apenas a
               primeira. Aqui a coluna de quantidade é o que dá sentido a cada
               número lido nas colunas de fornecedor; perdê-la na rolagem
-              horizontal é perder a referência da linha.
+              horizontal é perder a referência da linha. Em telas menores
+              que md, as duas colunas rolam: fixar 370px cobriria os controles.
 
               O `.compras-responsive-table` rola na horizontal com
               `overflow-x: auto` — pela R18 esse é o arranjo CORRETO: é o
@@ -2562,8 +2575,8 @@ function SecaoComparativo({
                 <table className="table min-w-[1420px] text-xs">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-celula-cabecalho min-w-[260px]" style={{ background: 'var(--ui-surface-2)' }}>Item</th>
-                      <th className="sticky left-[260px] z-celula-cabecalho min-w-[110px] text-right" style={{ background: 'var(--ui-surface-2)' }}>Qtd.</th>
+                      <th className="md:sticky left-0 z-celula-cabecalho min-w-[260px]" style={{ background: 'var(--ui-surface-2)' }}>Item</th>
+                      <th className="md:sticky left-[260px] z-celula-cabecalho min-w-[110px] text-right" style={{ background: 'var(--ui-surface-2)' }}>Qtd.</th>
                       {fornecedoresMapaVisiveis.map((fornecedor) => (
                         <th
                           key={fornecedor.fornecedor_id}
@@ -2605,7 +2618,7 @@ function SecaoComparativo({
                       const excedeu = totalAlocadoItem > saldoDisponivel + 0.0001;
                       return (
                         <tr key={buildItemKey(item)}>
-                          <td className="sticky left-0 z-celula min-w-[260px] px-3 py-2 align-top" style={{ background: 'var(--c-surface)' }}>
+                          <td className="md:sticky left-0 z-celula min-w-[260px] px-3 py-2 align-top" style={{ background: 'var(--c-surface)' }}>
                             <div className="font-semibold" style={{ color: 'var(--c-text)' }}>{item.nome}</div>
                             <div className="text-xs" style={{ color: 'var(--c-muted)' }}>
                               {item.item_tipo === 'MANUAL' ? 'Manual' : 'Cadastrado'}
@@ -2620,7 +2633,7 @@ function SecaoComparativo({
                               </div>
                             ) : null}
                           </td>
-                          <td className="sticky left-[260px] z-celula min-w-[110px] px-3 py-2 text-right align-top font-semibold" style={{ background: 'var(--c-surface)' }}>
+                          <td className="md:sticky left-[260px] z-celula min-w-[110px] px-3 py-2 text-right align-top font-semibold" style={{ background: 'var(--c-surface)' }}>
                             {formatNumeroCompra(quantidadeItem)} {item.unidade || ''}
                           </td>
                           {fornecedoresMapaVisiveis.map((fornecedor) => renderCelulaFornecedorMapa(item, fornecedor))}
@@ -2746,12 +2759,11 @@ function SecaoComparativo({
                   vazio="Nenhuma resposta para este item."
                   // Linha vencedora (quantidade alocada > 0) fica realcada; o
                   // aviso de rodada acima do saldo vira tarja de atencao.
-                  linhaSelecionada={(resp) => getQuantidadeAlocada(resp.resposta_item_id) > 0}
+                  linhaSelecionada={(resp) => Boolean(vencedoresSelecionados[String(resp.resposta_item_id)])}
                   urgencia={() => (getTotalAlocadoItem(item) > getSaldoDisponivelItem(item) + 0.0001 ? 'warning' : null)}
                   larguraAcoes={260}
                   acoesLinha={(resp) => {
-                    const quantidadeAlocada = getQuantidadeAlocada(resp.resposta_item_id);
-                    const isVencedor = quantidadeAlocada > 0;
+                    const isVencedor = Boolean(vencedoresSelecionados[String(resp.resposta_item_id)]);
                     const excedeu = getTotalAlocadoItem(item) > getSaldoDisponivelItem(item) + 0.0001;
                     if (!resp.resposta_item_id) return '-';
                     return (
@@ -2776,6 +2788,8 @@ function SecaoComparativo({
                           placeholder="Qtd."
                           aria-label={`Quantidade comprada de ${resp.fornecedor_nome}`}
                           disabled={!podeEncerrar || !isVencedor}
+                          inputMode="decimal"
+                          onFocus={(event) => event.target.select()}
                           onChange={(event) => onVencedorChange({
                             item,
                             resposta: resp,
@@ -2834,9 +2848,11 @@ function SecaoComparativo({
 
 // Componente principal
 
-export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false, onAtualizado = null }) {
+export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false, somenteLeitura = false, onAtualizado = null }) {
   const { id: routeId } = useParams();
   const id = solicitacaoCompraId || routeId;
+  const scope = `cotacao:${id}:`;
+  const consulta = useQueryRevision(id);
   const Container = embedded ? 'div' : Pagina;
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -2847,8 +2863,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [erroCarregamento, setErroCarregamento] = useState('');
   const [fornecedores, setFornecedores] = useState([]);
   const [categoriasFornecedor, setCategoriasFornecedor] = useState([]);
-  const [categoriaFornecedorId, setCategoriaFornecedorId] = useState('');
-  const [fornecedorBusca, setFornecedorBusca] = useState('');
+  const [categoriaFornecedorId, setCategoriaFornecedorId] = useWorkspaceState(scope + 'categoria', '');
+  const [fornecedorBusca, setFornecedorBusca] = useWorkspaceState(scope + 'busca', '');
   const [buscandoFornecedores, setBuscandoFornecedores] = useState(false);
   const [comparativo, setComparativo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -2857,36 +2873,48 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [enviandoFornecedores, setEnviandoFornecedores] = useState(false);
   const [reabrindoCotacaoId, setReabrindoCotacaoId] = useState(null);
   const [cancelandoCotacao, setCancelandoCotacao] = useState(false);
-  const [modalCancelamentoCotacao, setModalCancelamentoCotacao] = useState(false);
-  const [motivoCancelamentoCotacao, setMotivoCancelamentoCotacao] = useState('');
-  const [cotacaoRespostaInterna, setCotacaoRespostaInterna] = useState(null);
-  const [formRespostaInterna, setFormRespostaInterna] = useState(null);
+  const [modalCancelamentoCotacao, setModalCancelamentoCotacao] = useWorkspaceState(scope + 'cancelarModal', false);
+  const [motivoCancelamentoCotacao, setMotivoCancelamentoCotacao] = useWorkspaceState(scope + 'cancelarMotivo', '');
+  const [respostaDraft, setRespostaDraft] = useWorkspaceState(scope + 'resposta', null);
+  const [consultandoRespostaDraft, setConsultandoRespostaDraft] = useState(false);
   const [salvandoRespostaInterna, setSalvandoRespostaInterna] = useState(false);
   const [enviandoArquivosRespostaInterna, setEnviandoArquivosRespostaInterna] = useState(false);
   const [encerrando, setEncerrando] = useState(false);
-  const [modalEncerrarSemPedido, setModalEncerrarSemPedido] = useState(false);
-  const [justificativaEncerrarSemPedido, setJustificativaEncerrarSemPedido] = useState('');
+  const [modalEncerrarSemPedido, setModalEncerrarSemPedido] = useWorkspaceState(scope + 'encerrarModal', false);
+  const [justificativaEncerrarSemPedido, setJustificativaEncerrarSemPedido] = useWorkspaceState(scope + 'encerrarJustificativa', '');
   const [confirmadoEncerrarSemPedido, setConfirmadoEncerrarSemPedido] = useState(false);
   const [encerrandoSemPedido, setEncerrandoSemPedido] = useState(false);
-  const [comentarioCotacao, setComentarioCotacao] = useState('');
+  const [comentarioCotacao, setComentarioCotacao] = useWorkspaceState(scope + 'comentario', '');
   const [registrandoComentario, setRegistrandoComentario] = useState(false);
-  const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState([]);
+  const [fornecedoresSelecionados, setFornecedoresSelecionados] = useWorkspaceState(scope + 'fornecedorIds', []);
   const [fornecedoresSelecionadosDados, setFornecedoresSelecionadosDados] = useState({});
-  const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useState({});
-  const [novoFornecedor, setNovoFornecedor] = useState({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
-  const [vencedoresSelecionados, setVencedoresSelecionados] = useState({});
+  const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useWorkspaceState(scope + 'envioItemIds', {});
+  const [novoFornecedor, setNovoFornecedor] = useWorkspaceState(scope + 'novoFornecedor', { nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+  const cadastroFornecedorEmCursoRef = useRef(false);
+  const [salvandoFornecedor, setSalvandoFornecedor] = useState(false);
+  const [vencedoresSelecionados, setVencedoresSelecionados] = useWorkspaceState(scope + 'vencedores', {});
+  const [revisaoComparativo, setRevisaoComparativo] = useWorkspaceState(scope + 'revisaoComparativo', null);
+  const respostaOperacaoRef = useRef(false);
+  const enviosEmCursoRef = useRef(new Set());
   const { confirmarEntregas, elementoEntregas } = useConfirmarEntregasPedidos();
   const encerramentoEmCursoRef = useRef(false);
   const encerramentoIdempotencyRef = useRef(null);
   const encerramentoSemPedidoIdempotencyRef = useRef(null);
   const fornecedorRequestRef = useRef({ sequencia: 0, controller: null });
+  useWorkspaceWork(Boolean(respostaDraft || Object.keys(vencedoresSelecionados).length
+    || comentarioCotacao.trim() || Object.values(novoFornecedor).some(Boolean)
+    || fornecedoresSelecionados.length || motivoCancelamentoCotacao || justificativaEncerrarSemPedido),
+    baixando || enviandoFornecedores || reabrindoCotacaoId || cancelandoCotacao
+    || salvandoRespostaInterna || enviandoArquivosRespostaInterna || encerrando
+    || encerrandoSemPedido || registrandoComentario || salvandoFornecedor,
+    scope + 'work');
 
-  const podeComprar = canOperateComprasCotacoes(user);
-  const podeFecharParcialCotacao = canFecharParcialComprasCotacoes(user);
-  const podeEncerrarCotacao = canEncerrarComprasCotacoes(user);
-  const podeEncerrarSemPedidoCotacao = canEncerrarSemPedidoComprasCotacoes(user);
-  const podeReabrirCotacaoFornecedor = canReabrirComprasCotacoes(user);
-  const podeCancelarCotacao = canCancelarComprasCotacoes(user);
+  const podeComprar = !somenteLeitura && canOperateComprasCotacoes(user);
+  const podeFecharParcialCotacao = !somenteLeitura && canFecharParcialComprasCotacoes(user);
+  const podeEncerrarCotacao = !somenteLeitura && canEncerrarComprasCotacoes(user);
+  const podeEncerrarSemPedidoCotacao = !somenteLeitura && canEncerrarSemPedidoComprasCotacoes(user);
+  const podeReabrirCotacaoFornecedor = !somenteLeitura && canReabrirComprasCotacoes(user);
+  const podeCancelarCotacao = !somenteLeitura && canCancelarComprasCotacoes(user);
   const resumoEncerramentoSemPedido = useMemo(() => {
     const itens = (comparativo?.itens || [])
       .map((item) => ({
@@ -2983,7 +3011,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
     }
   }
 
-  async function carregarTudo() {
+  async function carregarTudo({ preservarSelecoes = false } = {}) {
+    const token = consulta.begin();
     try {
       setLoading(true);
       setErroCarregamento('');
@@ -2991,20 +3020,57 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         obterWorkspaceCotacaoSolicitacaoCompra(id),
         listarCategoriasParceiro()
       ]);
+      if (!consulta.isCurrent(token)) return;
       const dataSolicitacao = workspace?.solicitacao || null;
 
       setSolicitacao(dataSolicitacao);
       setCategoriasFornecedor(Array.isArray(dataCategorias) ? dataCategorias : []);
       await carregarFornecedores();
+      if (!consulta.isCurrent(token)) return;
+      // So IDs sobrevivem a troca de aba. Rotulos/contatos e elegibilidade
+      // dos escolhidos sao consultados novamente, inclusive fora do filtro.
+      if (preservarSelecoes && fornecedoresSelecionados.length) {
+        const resultados = await Promise.all(fornecedoresSelecionados.map(async key => {
+          const [tipo, codigo] = String(key).split(':');
+          if (!['fornecedor', 'parceiro'].includes(tipo) || !/^\d+$/.test(codigo)) return null;
+          try {
+            const atual = tipo === 'parceiro' ? await buscarParceiroPorId(codigo) : await obterFornecedorCompra(codigo);
+            if (!atual || atual.ativo === false || atual.ativo === 0) return null;
+            return [key, tipo === 'parceiro'
+              ? { id: key, parceiro_id: atual.id, selection_key: key, origem_cadastro: 'PARCEIRO', nome: atual.nome,
+                documento: atual.cpf_cnpj, cnpj: atual.cpf_cnpj, email: atual.email, whatsapp: atual.telefone }
+              : { ...atual, fornecedor_compra_id: atual.id, selection_key: key, origem_cadastro: 'FORNECEDOR_COMPRA' }];
+          } catch { return null; }
+        }));
+        if (!consulta.isCurrent(token)) return;
+        const dadosAtuais = Object.fromEntries(resultados.filter(Boolean));
+        setFornecedoresSelecionadosDados(dadosAtuais);
+        setFornecedoresSelecionados(atuais => atuais.filter(key => dadosAtuais[key]));
+        setItensSelecionadosEnvio(atuais => Object.fromEntries(Object.entries(atuais)
+          .filter(([key]) => dadosAtuais[key]).map(([key, itens]) => [key, Object.fromEntries(Object.entries(itens)
+            .filter(([itemKey]) => [...(dataSolicitacao?.itens || []).map(item => `CADASTRADO:${item.id}`),
+              ...(dataSolicitacao?.itensManuais || []).map(item => `MANUAL:${item.id}`)].includes(itemKey)))])));
+      }
       setComparativo(workspace?.comparativo || null);
-      setVencedoresSelecionados({});
+      const novaRevisao = revisaoComparativoDraft(dataSolicitacao, workspace?.comparativo);
+      if (!preservarSelecoes || revisaoComparativo !== novaRevisao) {
+        if (preservarSelecoes && Object.keys(vencedoresSelecionados).length) {
+          avisar.alerta('O comparativo mudou. Confira preços e saldos antes de selecionar novamente.');
+        }
+        setVencedoresSelecionados({});
+      }
+      setRevisaoComparativo(novaRevisao);
       if (onAtualizado) void Promise.resolve().then(() => onAtualizado()).catch((error) => {
         avisar.erro(error.message || 'Não foi possível atualizar os itens em cotação.');
       });
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
       console.error(error);
       const mensagem = error.message || 'Erro ao carregar solicitacao de compra';
       setSolicitacao(null);
+      setFornecedores([]);
+      setFornecedoresSelecionadosDados({});
+      setComparativo(null);
       setErroCarregamento(
         /nao encontrada|não encontrada/i.test(mensagem)
           ? 'Solicitacao de compra cancelada ou indisponivel para cotacao.'
@@ -3012,11 +3078,11 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       );
       avisar.erro(mensagem);
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) setLoading(false);
     }
   }
 
-  useEffect(() => { carregarTudo(); }, [id]);
+  useEffect(() => { carregarTudo({ preservarSelecoes: true }); }, [id]);
   useEffect(() => {
     if (loading) return undefined;
     const timer = window.setTimeout(() => {
@@ -3059,6 +3125,33 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
     }));
     return [...itens, ...manuais];
   }, [solicitacao]);
+
+  const respostaAlvo = (solicitacao?.fornecedores || []).find(item => Number(item.id) === Number(respostaDraft?.id));
+  const baseResposta = useMemo(() => respostaAlvo ? montarFormularioRespostaInterna(respostaAlvo, itensCombinados, {
+    novaOfertaSaldo: respostaDraft?.form?.nova_oferta_saldo === true,
+    comparativo, alocacoes: solicitacao?.alocacoes || []
+  }) : null, [respostaAlvo, itensCombinados, comparativo, solicitacao?.alocacoes, respostaDraft?.form?.nova_oferta_saldo]);
+  const respostaPermitida = podeComprar && respostaAlvo
+    && !['cancelada', 'cancelado', 'inativa', 'recusado'].includes(normalizeText(solicitacao?.status))
+    && !['cancelada', 'cancelado'].includes(normalizeText(respostaAlvo.status));
+  const revisaoBaseResposta = useMemo(() => respostaAlvo && baseResposta
+    ? revisaoRespostaDraft(respostaAlvo, baseResposta) : null, [respostaAlvo, baseResposta]);
+  const respostaConflitante = Boolean(revisaoBaseResposta && respostaDraft?.revisao !== revisaoBaseResposta);
+  const cotacaoRespostaInterna = respostaPermitida && !respostaConflitante ? respostaAlvo : null;
+  const formRespostaInterna = useMemo(() => cotacaoRespostaInterna
+    ? restaurarRespostaDraft(baseResposta, respostaDraft.form) : null,
+  [cotacaoRespostaInterna, baseResposta, respostaDraft]);
+  const setCotacaoRespostaInterna = value => { if (value === null) setRespostaDraft(null); };
+  const setFormRespostaInterna = update => {
+    if (update === null) { setRespostaDraft(null); return; }
+    if (!formRespostaInterna) return;
+    setRespostaDraft(atual => {
+      if (!atual) return atual;
+      const form = typeof update === 'function'
+        ? update(restaurarRespostaDraft(baseResposta, atual.form)) : update;
+      return { ...atual, form: camposRespostaDraft(form) };
+    });
+  };
 
   const criarMapaTodosItensEnvio = () => itensCombinados.reduce((acc, item) => {
     acc[buildItemKey(item)] = true;
@@ -3151,6 +3244,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleEnviarFornecedores() {
+    if (cadastroFornecedorEmCursoRef.current || enviosEmCursoRef.current.has('fornecedores')) return;
+    enviosEmCursoRef.current.add('fornecedores');
     try {
       const payload = [];
       const fornecedoresParaEnvio = fornecedoresSelecionados
@@ -3176,8 +3271,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         }
       });
       if (String(novoFornecedor.nome || '').trim()) {
+        if (onlyDigits(novoFornecedor.cnpj).length === 14 && !String(novoFornecedor.nome_fantasia || '').trim()) {
+          avisar.alerta('Informe o nome fantasia da empresa.'); return;
+        }
         payload.push({
           nome: novoFornecedor.nome,
+          nome_fantasia: novoFornecedor.nome_fantasia,
           cnpj: novoFornecedor.cnpj,
           email: novoFornecedor.email,
           whatsapp: novoFornecedor.whatsapp,
@@ -3205,13 +3304,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       setFornecedoresSelecionados([]);
       setFornecedoresSelecionadosDados({});
       setItensSelecionadosEnvio({});
-      setNovoFornecedor({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+      setNovoFornecedor({ nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
       await carregarTudo();
       avisar.sucesso('Links de cotação gerados. Use os botoes de WhatsApp para enviar a mensagem a cada fornecedor.');
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao enviar para fornecedores');
     } finally {
+      enviosEmCursoRef.current.delete('fornecedores');
       setEnviandoFornecedores(false);
     }
   }
@@ -3250,12 +3350,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleCancelarCotacao() {
+    if (enviosEmCursoRef.current.has('cancelamento')) return;
     const motivo = motivoCancelamentoCotacao.trim();
     if (!motivo) {
       avisar.alerta('Informe o motivo do cancelamento da cotação.');
       return;
     }
 
+    enviosEmCursoRef.current.add('cancelamento');
     try {
       setCancelandoCotacao(true);
       await cancelarCotacaoSolicitacaoCompra(id, { motivo });
@@ -3267,25 +3369,36 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao cancelar cotacao');
     } finally {
+      enviosEmCursoRef.current.delete('cancelamento');
       setCancelandoCotacao(false);
     }
   }
 
-  function abrirRespostaInterna(cotacaoFornecedor) {
-    setCotacaoRespostaInterna(cotacaoFornecedor);
-    setFormRespostaInterna(montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
-      comparativo,
-      alocacoes: solicitacao?.alocacoes || []
-    }));
+  async function confirmarTrocaRespostaDraft() {
+    if (!respostaDraft) return true;
+    const { ok } = await confirmar({ titulo: 'Substituir rascunho da resposta',
+      mensagem: 'Descartar os campos não enviados e abrir uma nova edição com os dados atuais?',
+      rotuloConfirmar: 'Substituir', destrutiva: true });
+    return ok;
   }
 
-  function abrirNovaOfertaSaldo(cotacaoFornecedor) {
-    setCotacaoRespostaInterna(cotacaoFornecedor);
-    setFormRespostaInterna(montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
+  async function abrirRespostaInterna(cotacaoFornecedor) {
+    if (!(await confirmarTrocaRespostaDraft())) return;
+    const base = montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
+      comparativo,
+      alocacoes: solicitacao?.alocacoes || []
+    });
+    setRespostaDraft({ id: cotacaoFornecedor.id, revisao: revisaoRespostaDraft(cotacaoFornecedor, base), form: camposRespostaDraft(base) });
+  }
+
+  async function abrirNovaOfertaSaldo(cotacaoFornecedor) {
+    if (!(await confirmarTrocaRespostaDraft())) return;
+    const base = montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, {
       novaOfertaSaldo: true,
       comparativo,
       alocacoes: solicitacao?.alocacoes || []
-    }));
+    });
+    setRespostaDraft({ id: cotacaoFornecedor.id, revisao: revisaoRespostaDraft(cotacaoFornecedor, base), form: camposRespostaDraft(base) });
   }
 
   function abrirRespostaInternaPorId(cotacaoFornecedorId) {
@@ -3311,6 +3424,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleUploadArquivosRespostaInterna(files) {
+    if (respostaOperacaoRef.current) return;
     const selecionados = Array.from(files || []);
     if (!selecionados.length || !cotacaoRespostaInterna) return;
     if (selecionados.length > 10) {
@@ -3318,16 +3432,17 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       return;
     }
 
+    respostaOperacaoRef.current = true;
     try {
       setEnviandoArquivosRespostaInterna(true);
-      const resposta = await uploadArquivosRespostaInternaCotacao(id, cotacaoRespostaInterna.id, selecionados);
-      setCotacaoRespostaInterna((atual) => ({ ...atual, ...(resposta?.cotacao || {}) }));
+      await uploadArquivosRespostaInternaCotacao(id, cotacaoRespostaInterna.id, selecionados);
       await carregarTudo();
       avisar.sucesso(`${selecionados.length} arquivo(s) anexado(s) e registrado(s) na auditoria.`);
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao anexar arquivos na resposta da cotacao');
     } finally {
+      respostaOperacaoRef.current = false;
       setEnviandoArquivosRespostaInterna(false);
     }
   }
@@ -3354,6 +3469,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleSalvarRespostaInterna(finalizar) {
+    if (respostaOperacaoRef.current) return;
     if (!formRespostaInterna || !cotacaoRespostaInterna) return;
     if (finalizar && (
       !formRespostaInterna.condicao_pagamento.trim()
@@ -3393,6 +3509,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       return;
     }
 
+    respostaOperacaoRef.current = true;
     try {
       setSalvandoRespostaInterna(true);
       const itensComQuantidadeAlterada = formRespostaInterna.itens.filter((item) => {
@@ -3456,11 +3573,13 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao editar resposta da cotacao');
     } finally {
+      respostaOperacaoRef.current = false;
       setSalvandoRespostaInterna(false);
     }
   }
 
   async function handleCriarFornecedorRapido() {
+    if (cadastroFornecedorEmCursoRef.current || enviandoFornecedores) return;
     try {
       if (!String(novoFornecedor.nome || '').trim()) { avisar.alerta('Informe o nome do fornecedor.'); return; }
       if (!String(novoFornecedor.cnpj || '').trim()) { avisar.alerta('Informe o CPF/CNPJ do fornecedor.'); return; }
@@ -3469,7 +3588,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         label: 'CPF/CNPJ do fornecedor'
       });
       if (documentoErro) { avisar.alerta(documentoErro); return; }
+      if (onlyDigits(novoFornecedor.cnpj).length === 14 && !String(novoFornecedor.nome_fantasia || '').trim()) {
+        avisar.alerta('Informe o nome fantasia da empresa.'); return;
+      }
       if (!String(novoFornecedor.whatsapp || '').trim()) { avisar.alerta('Informe o WhatsApp/telefone do fornecedor.'); return; }
+      cadastroFornecedorEmCursoRef.current = true;
+      setSalvandoFornecedor(true);
       const fornecedor = await criarFornecedorCompra({ ...novoFornecedor, cnpj: onlyDigits(novoFornecedor.cnpj) });
       const fornecedorFormatado = {
         ...fornecedor,
@@ -3484,11 +3608,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         [fornecedorSelectionKey(fornecedorFormatado)]: fornecedorFormatado
       }));
       garantirItensEnvioSelecionados(fornecedorSelectionKey(fornecedorFormatado));
-      setNovoFornecedor({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
+      setNovoFornecedor({ nome: '', nome_fantasia: '', cnpj: '', email: '', whatsapp: '', contato: '' });
       avisar.sucesso('Fornecedor criado e selecionado.');
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao criar fornecedor');
+    } finally {
+      cadastroFornecedorEmCursoRef.current = false;
+      setSalvandoFornecedor(false);
     }
   }
 
@@ -3505,7 +3632,9 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
 
     setVencedoresSelecionados((prev) => {
       const next = { ...prev };
-      if (!quantidadeNumero || quantidadeNumero <= 0) {
+      // Desmarcar e uma intencao explicita do checkbox (numero zero).
+      // Esvaziar/zerar durante a digitacao conserva selecao e foco.
+      if (typeof quantidade !== 'string' && (!quantidadeNumero || quantidadeNumero <= 0)) {
         delete next[respostaId];
         return next;
       }
@@ -3576,6 +3705,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function confirmarEncerramentoSemPedido() {
+    if (encerramentoEmCursoRef.current || !podeEncerrarSemPedidoCotacao) return;
     const justificativa = justificativaEncerrarSemPedido.trim();
     if (justificativa.length < MINIMO_JUSTIFICATIVA) {
       avisar.alerta(`Informe uma justificativa com pelo menos ${MINIMO_JUSTIFICATIVA} caracteres.`);
@@ -3586,6 +3716,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       return;
     }
 
+    encerramentoEmCursoRef.current = true;
     try {
       setEncerrandoSemPedido(true);
       if (!encerramentoSemPedidoIdempotencyRef.current) {
@@ -3608,6 +3739,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao encerrar cotacao sem gerar pedido');
     } finally {
+      encerramentoEmCursoRef.current = false;
       setEncerrandoSemPedido(false);
     }
   }
@@ -3643,6 +3775,10 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
     setEncerrando(true);
     try {
       const itens = comparativo?.itens || [];
+      if (Object.values(vencedoresSelecionados).some((entry) => !(parseNumeroCompra(entry?.quantidade_alocada) > 0))) {
+        avisar.alerta('Informe uma quantidade maior que zero para cada fornecedor selecionado.');
+        return;
+      }
       const alocacoes = Object.values(vencedoresSelecionados)
         .filter((entry) => Number(entry?.resposta_item_id) > 0 && parseNumeroCompra(entry?.quantidade_alocada) > 0)
         .map((entry) => ({
@@ -3816,12 +3952,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   }
 
   async function handleRegistrarComentarioCotacao() {
+    if (enviosEmCursoRef.current.has('comentario')) return;
     const comentario = comentarioCotacao.trim();
     if (!comentario) {
       avisar.alerta('Digite o comentário da cotação.');
       return;
     }
 
+    enviosEmCursoRef.current.add('comentario');
     try {
       setRegistrandoComentario(true);
       await comentarSolicitacaoCompra(id, { comentario });
@@ -3832,6 +3970,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao registrar comentario da cotacao');
     } finally {
+      enviosEmCursoRef.current.delete('comentario');
       setRegistrandoComentario(false);
     }
   }
@@ -3881,6 +4020,19 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   return (
     <Container className={embedded ? 'cotacao-gestao-embutida' : 'page-compra-nova cotacao-gestao-page'}>
       {!cotacaoRespostaInterna && faixaAvisos}
+      {respostaDraft && !cotacaoRespostaInterna && !loading && (
+        <div className="app-empty-card" role="alert">
+          {respostaConflitante ? 'A resposta mudou desde a edição. O rascunho foi preservado, mas não será enviado sobre os dados atuais.'
+            : 'A resposta deste rascunho não está disponível para edição.'}
+          {respostaPermitida && respostaConflitante && <button type="button" className="btn btn-outline btn-sm"
+            onClick={() => setConsultandoRespostaDraft(true)}>Consultar rascunho</button>}
+          <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+            const { ok } = await confirmar({ titulo: 'Descartar rascunho da resposta',
+              mensagem: 'Descartar os campos não enviados desta resposta?', rotuloConfirmar: 'Descartar', destrutiva: true });
+            if (ok) setRespostaDraft(null);
+          }}>Descartar rascunho</button>
+        </div>
+      )}
       {/*
         R13/C4: cabeçalho FIXO, com o NOME do registro em destaque e o código
         como apoio. R11: a seta de voltar é a affordance primária de retorno
@@ -4008,6 +4160,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
               categoriaFornecedorId={categoriaFornecedorId}
               fornecedorBusca={fornecedorBusca}
               enviandoFornecedores={enviandoFornecedores}
+              salvandoFornecedor={salvandoFornecedor}
               itensSelecionadosEnvio={itensSelecionadosEnvio}
               onChangeFornecedorBusca={setFornecedorBusca}
               onChangeCategoriaFornecedorId={setCategoriaFornecedorId}
@@ -4328,9 +4481,16 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
 
       {/* CompraPreviewModal e de outro agente: a chamada fica intacta. */}
       {elementoEntregas}
+      {consultandoRespostaDraft && respostaPermitida && respostaConflitante && (
+        <OverlayModal rotulo="Rascunho não enviado da resposta" onFechar={() => setConsultandoRespostaDraft(false)}>
+          <p className="text-sm text-[var(--c-muted)]">Campos digitados, somente para consulta e cópia. Não substituem os dados atuais da cotação.</p>
+          <textarea className="input font-mono" aria-label="Campos do rascunho não enviado" rows={16} readOnly
+            value={JSON.stringify(respostaDraft.form, null, 2)} />
+        </OverlayModal>
+      )}
       <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
       <ModalEncerrarSemPedido
-        aberto={modalEncerrarSemPedido}
+        aberto={modalEncerrarSemPedido && podeEncerrarSemPedidoCotacao && !fluxoTerminal}
         resumo={resumoEncerramentoSemPedido}
         justificativa={justificativaEncerrarSemPedido}
         confirmado={confirmadoEncerrarSemPedido}
@@ -4359,7 +4519,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
           setFormRespostaInterna(null);
         }}
       />
-      {modalCancelamentoCotacao && (
+      {modalCancelamentoCotacao && podeExibirCancelamentoCotacao && (
         <ModalPortal onClose={() => setModalCancelamentoCotacao(false)} closeOnEscape={!cancelandoCotacao}>
           <div className="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cancelar-cotacao-titulo">
             <div className="app-modal-surface app-modal-surface--compact p-4">

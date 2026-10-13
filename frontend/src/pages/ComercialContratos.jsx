@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineEye, HiOutlinePencilSquare, HiPlus, HiXMark } from 'react-icons/hi2';
@@ -782,6 +783,7 @@ function gerarParcelasDoBloco(plano = {}, planoId = '', periodicidades = PERIODI
 }
 
 export default function ComercialContratos() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const [draftLoaded] = useState(() => getStoredContratoDraft());
   const [form, setForm] = useState(() => {
@@ -1618,11 +1620,12 @@ export default function ComercialContratos() {
   async function abrirDocumentoContrato(documentoId, tipo = 'pdf') {
     try {
       limparAvisos();
-      const data = await getLinkDocumentoContratoComercial(documentoId, tipo);
-      if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      avisar.erro(err?.message || 'Erro ao abrir documento');
-    }
+      if (tipo === 'pdf') await abrirPreview(() => getLinkDocumentoContratoComercial(documentoId, tipo), { nome: 'Contrato ' + documentoId + '.pdf', mime: 'application/pdf' });
+      else {
+        const data = await getLinkDocumentoContratoComercial(documentoId, tipo);
+        if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) { avisar.erro(err?.message || 'Erro ao abrir documento'); }
   }
 
   async function handleExcluirDocumentoContrato(documento) {
@@ -4078,6 +4081,7 @@ export default function ComercialContratos() {
       {/* R19/R21/R26: o modal de confirmacao do sistema, no lugar das tres
           caixas `window.confirm`. */}
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

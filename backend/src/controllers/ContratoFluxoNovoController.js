@@ -75,6 +75,7 @@ module.exports = {
     try {
       const resultado = await atualizarMedicaoDoContrato(Number(req.params.id), {
         itens: req.body?.itens,
+        favorecidos_valores: req.body?.favorecidos_valores,
         usuario: req.user
       });
       return res.json(resultado);

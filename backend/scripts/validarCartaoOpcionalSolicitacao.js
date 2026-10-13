@@ -85,12 +85,26 @@ const dependencies = {
   './tituloIntercompanyCartaoHelper': require('../src/services/tituloIntercompanyCartaoHelper'),
   './solicitacaoFinanceiroStatusService': { sincronizarStatusSolicitacaoPorBaixaTitulos: async () => {} },
   './conciliacaoEstornoService': {},
-  './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa: () => {} },
+  './tituloBloqueioRetornoObraService': require('../src/services/tituloBloqueioRetornoObraPolicy'),
+  './rhPagamentoRevisaoPolicy': require('../src/services/rhPagamentoRevisaoPolicy'),
+  // Este teste cobre pagamentos antigos sem divisao nem adiantamento.
+  // Os fluxos novos possuem suites proprias; impedir acesso a models reais.
+  './solicitacaoFavorecidosService': { listarFavorecidos: async (id) => {
+    assert.equal(Number(id), 100); return [];
+  } },
+  './adiantamentoService': { ehAdiantamento: async (registro) => {
+    assert.equal(Number(registro.id), 100); return false;
+  } },
   '../utils/tituloFinanceiroStatusFilter': {},
   './comercialService': { sincronizarContratoComercialPorTituloFinanceiro: async () => {} }
 };
 dependencies['./comercialService'].sincronizarContratoComercialPorTituloEditado = async () => {};
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
+const instrucaoModule = { exports: {} };
+vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/instrucaoFinanceiraFavorecidoService.js'), 'utf8'), {
+  module: instrucaoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia de instrucao nao isolada: ${id}`); return dependencies[id]; }
+});
+dependencies['./instrucaoFinanceiraFavorecidoService'] = instrucaoModule.exports;
 const saldoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/pagamentoFilaSaldoService.js'), 'utf8'), {
   module: saldoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia nao isolada: ${id}`); return dependencies[id]; }
@@ -326,6 +340,17 @@ async function main() {
   assert.equal(fila.juros, 10); assert.equal(fila.multa, 3); assert.equal(fila.valor_previsto, 250);
   await registrarBaixasFila(req, { itens: [itemFila(fila, { valor_pago: 263 })] });
   assert.equal(fila.status, 'BAIXADO', 'Cliente sem novos campos usa encargos persistidos');
+
+  reset(); titulo = await gerar([pagamento(3)]); fila = colocarNaFila(titulo);
+  titulo.origem_titulo = 'RH_DP'; titulo.status_interno_pagar = 'EM EDICAO DP';
+  fila.status = 'EM_EDICAO';
+  await assert.rejects(registrarBaixasFila(req, { itens: [itemFila(fila)] }), /pendente/i);
+  fila = state.fila.find(f => f.id === fila.id) || fila;
+  titulo = state.titulos.find(t => t.id === titulo.id) || titulo;
+  fila.status = 'PENDENTE';
+  await assert.rejects(registrarBaixasFila(req, { itens: [itemFila(fila)] }), /em edi.*DP/i);
+  await assert.rejects(atualizarTitulo(req, titulo.id, editar), /em edi.*DP/i);
+  assert.equal(state.movimentos.length, 0, 'Fila e edicao generica nao contornam trava DP');
 
   console.log('Cartao opcional na solicitacao: aberto sem cartao, quitacao com cartao, parcelas e baixa obrigatoria validados sem banco real.');
   console.log('Fila + baixa reais: juros/multa separados, edicao e aprovacao de divergencia, credito/fatura, debito, PIX, cheques, replay e rollback. Banco simulado.');

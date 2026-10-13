@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 
 export function formatarDigitosDataBR(valor) {
   const digitos = String(valor || '').replace(/\D/g, '').slice(0, 8);
@@ -60,10 +61,18 @@ export function dataISOParaBR(valor) {
  * impede digitar. Sem isso, as 5 telas que declaravam limite de data
  * perderiam a trava em silencio ao migrar.
  */
-export default function DateInputBR({ name, value, onChange, className = '', min, max, ...props }) {
-  const [texto, setTexto] = useState(() => dataISOParaBR(value));
+export default function DateInputBR({ name, value, onChange, className = '', min, max,
+  chaveWorkspace, revisaoWorkspace = 0, ...props }) {
+  // Opt-in: somente texto digitado + ISO correspondente, nunca DTO/data do
+  // servidor como autoridade. Revisao permite limpar inclusive um parcial
+  // cujo ISO externo ja era vazio (sucesso/descarte explicito).
+  const [rascunho, guardar] = useWorkspaceState(chaveWorkspace ? `data:${chaveWorkspace}` : null, null);
+  const compativel = rascunho && rascunho.iso === String(value || '') && rascunho.revisao === revisaoWorkspace;
+  const [texto, setTexto] = useState(() => chaveWorkspace && compativel ? rascunho.texto : dataISOParaBR(value));
+  const revisaoRef = useRef(revisaoWorkspace);
   const inputRef = useRef(null);
   const focadoRef = useRef(false);
+  useWorkspaceWork(Boolean(chaveWorkspace && texto !== dataISOParaBR(value)), false, `data:${chaveWorkspace}:work`);
 
   function problemaDoTexto(atual) {
     if (!atual) return '';
@@ -78,8 +87,20 @@ export default function DateInputBR({ name, value, onChange, className = '', min
   useEffect(() => {
     // Enquanto a pessoa digita, o estado externo pode ficar vazio por a data ainda estar
     // incompleta. Nao devemos apagar o texto parcial nesse intervalo.
-    if (!focadoRef.current) setTexto(dataISOParaBR(value));
-  }, [value]);
+    const reset = revisaoRef.current !== revisaoWorkspace;
+    revisaoRef.current = revisaoWorkspace;
+    if (reset || !focadoRef.current || (chaveWorkspace && !compativel)) {
+      const proximo = chaveWorkspace && compativel && !reset ? rascunho.texto : dataISOParaBR(value);
+      setTexto(proximo);
+      if (chaveWorkspace && (!compativel || reset)) guardar(null);
+    }
+  }, [value, revisaoWorkspace]);
+
+  useEffect(() => {
+    // Parcial restaurado tambem precisa impedir submit nativo. Mantemos a
+    // validacao DD/MM/AAAA e limites existentes, sem emitir onChange no retorno.
+    if (chaveWorkspace) inputRef.current?.setCustomValidity(problemaDoTexto(texto));
+  }, [texto, min, max, chaveWorkspace]);
 
   function emitir(valorISO) {
     onChange?.({ target: { name, value: valorISO } });
@@ -91,6 +112,7 @@ export default function DateInputBR({ name, value, onChange, className = '', min
     const valorISO = completa ? dataBRParaISO(proximoTexto) : null;
 
     setTexto(proximoTexto);
+    if (chaveWorkspace) guardar({ texto: proximoTexto, iso: valorISO || '', revisao: revisaoWorkspace });
     inputRef.current?.setCustomValidity(completa ? problemaDoTexto(proximoTexto) : '');
 
     // A API recebe apenas ISO valido. Texto parcial ou invalido limpa imediatamente o valor

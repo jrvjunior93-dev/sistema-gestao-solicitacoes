@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   delegarSolicitacaoCompra,
@@ -24,6 +24,7 @@ import StatusBadge from '../../../components/StatusBadge';
 import { chaveStatusCompra } from '../utils/statusCompras';
 import useComprasRealtimeRefresh from '../hooks/useComprasRealtimeRefresh';
 import DateInputBR from '../../../components/DateInputBR';
+import { useWorkspace, useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
 
 function formatDate(value) {
   return formatarDataLocalPtBr(value);
@@ -104,23 +105,29 @@ function MotivoRegistrado({ label, motivo }) {
 
 export default function ComprasDelegacao() {
   const navigate = useNavigate();
+  const workspace = useWorkspace();
   const { user } = useAuth();
   const { avisos, avisar, fechar } = useAvisos();
   const podeGerenciarDelegacao = canManageComprasDelegacao(user);
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filtro, setFiltro] = useState('');
-  const [edicoes, setEdicoes] = useState({});
+  const [filtro, setFiltro] = useWorkspaceState('delegacao:filtro', '');
+  const [edicoes, setEdicoes] = useWorkspaceState('delegacao:edicoes', {});
   const [salvandoId, setSalvandoId] = useState(null);
+  const revisaoCarga = useRef(0);
+  useWorkspaceWork(Object.keys(edicoes).length > 0, salvandoId != null);
+  useEffect(() => () => { revisaoCarga.current += 1; }, []);
 
   async function carregar() {
+    const revisao = ++revisaoCarga.current;
     try {
       setLoading(true);
       const [dataSolicitacoes, dataUsuarios] = await Promise.all([
         listarSolicitacoesCompra({ contexto: 'delegacao', visao: 'delegacao' }),
         podeGerenciarDelegacao ? listarUsuariosDelegacaoCompras() : Promise.resolve([])
       ]);
+      if (revisao !== revisaoCarga.current) return;
       const listaSolicitacoes = Array.isArray(dataSolicitacoes) ? dataSolicitacoes : [];
       setSolicitacoes(
         podeGerenciarDelegacao
@@ -131,10 +138,14 @@ export default function ComprasDelegacao() {
       );
       setUsuarios(Array.isArray(dataUsuarios) ? dataUsuarios : []);
     } catch (error) {
+      if (revisao !== revisaoCarga.current) return;
+      if ([401, 403].includes(Number(error?.status))) {
+        setSolicitacoes([]); setUsuarios([]); setEdicoes({});
+      }
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar painel de delegacao de compras');
     } finally {
-      setLoading(false);
+      if (revisao === revisaoCarga.current) setLoading(false);
     }
   }
 
@@ -201,9 +212,13 @@ export default function ComprasDelegacao() {
       return;
     }
 
-    navigate(Number(solicitacao.solicitacao_principal_id) > 0
+    const destino = Number(solicitacao.solicitacao_principal_id) > 0
       ? `/solicitacoes/${solicitacao.solicitacao_principal_id}`
-      : `/solicitacoes-compra/${solicitacao.id}`);
+      : `/solicitacoes-compra/${solicitacao.id}`;
+    if (!workspace) { navigate(destino); return; }
+    if (!workspace.openTab(destino) && !workspace.canOpen) {
+      avisar.alerta('Limite de 12 abas atingido. Feche uma aba para abrir outra.');
+    }
   }
 
   async function salvarDelegacao(event, solicitacao) {
@@ -248,6 +263,9 @@ export default function ComprasDelegacao() {
           }
           : { motivo_atraso: payload.motivo_atraso }
       );
+      setEdicoes(atuais => {
+        const proximo = { ...atuais }; delete proximo[solicitacao.id]; return proximo;
+      });
       await carregar();
       avisar.sucesso(podeGerenciarDelegacao ? 'Delegacao atualizada.' : 'Motivo do atraso registrado.');
     } catch (error) {

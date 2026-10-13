@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState } from 'react';
+import { useWorkspaceState } from '../../navigation/WorkspaceContext';
 import { TIPO_BLOCOS, usePreferenciaDeLista } from '../../contexts/PreferenciasContext';
 
 function Seta() {
@@ -209,7 +210,8 @@ export default function BlocoConteudo({
     vira enfeite. O portão acusa a montagem meia-boca (regra R34), para que
     isso seja escolha e não descuido.
   */
-  const [recolhidoInterno, setRecolhidoInterno] = useState(recolhivel && recolhidoPadrao);
+  const chaveWorkspace = props.id || props['data-testid'] || chavePreferencia || (typeof titulo === 'string' ? titulo : null);
+  const [recolhidoInterno, setRecolhidoInterno] = useWorkspaceState(chaveWorkspace ? 'bloco:' + chaveWorkspace : null, recolhivel && recolhidoPadrao);
   const temParceiro = typeof aoAlternarRecolhido === 'function';
   const pedeControle = typeof recolhido === 'boolean';
   const controlado = pedeControle && temParceiro;

@@ -1,6 +1,9 @@
 import DateInputBR from '../components/DateInputBR';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useWorkspaceState, useWorkspaceWork, useWorkspaceTitle, useWorkspaceClearPage } from '../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import { getMinhasObras } from '../services/obras';
 import { buscarParceiros } from '../services/parceiros';
@@ -32,7 +35,6 @@ import {
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
 const TIPOS_INTERCOMPANY = [
   ['APORTE', 'Aporte'],
   ['EMPRESTIMO', 'Emprestimo'],
@@ -262,8 +264,8 @@ function buildFormFromTitulo(titulo) {
     elimina_consolidado: titulo?.elimina_consolidado !== false,
     transferencia_interna: titulo?.transferencia_interna !== false,
     rateios: Array.isArray(titulo?.rateios)
-      ? titulo.rateios.map((rateio) => ({
-        id: rateio.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      ? titulo.rateios.map((rateio, index) => ({
+        id: rateio.id || `rateio-${index}`,
         obra_id: String(rateio.obra_id || ''),
         tipo_rateio: rateio.tipo_rateio || 'PERCENTUAL',
         percentual: rateio.percentual != null ? String(rateio.percentual).replace('.', ',') : '',
@@ -273,8 +275,8 @@ function buildFormFromTitulo(titulo) {
       : [],
     impostos: impostosTitulo
       .filter((imposto) => !isDescontoImposto(imposto))
-      .map((imposto) => ({
-        id: imposto.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      .map((imposto, index) => ({
+        id: imposto.id || `imposto-${index}`,
         tipo_imposto: imposto.tipo_imposto || '',
         descricao: imposto.descricao || '',
         natureza: imposto.natureza || 'RETENCAO',
@@ -290,7 +292,9 @@ export default function FinanceiroTituloEditar() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [titulo, setTitulo] = useState(null);
-  const [form, setForm] = useState(null);
+  const draft = useWorkspaceRecordDraft('editarTitulo:campos');
+  const clearWorkspace = useWorkspaceClearPage();
+  const { value: form, setValue: setForm } = draft;
   const [obras, setObras] = useState([]);
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -303,17 +307,17 @@ export default function FinanceiroTituloEditar() {
   // (`bloqueio`) NÃO passa por aqui — ela fica fixa no fluxo, porque fechar
   // a faixa não faz a condição sumir.
   const { avisos, avisar, fechar, limpar } = useAvisos();
-  const [parceiroBusca, setParceiroBusca] = useState('');
-  const [categoriaBusca, setCategoriaBusca] = useState('');
-  const [categoriaModalOpen, setCategoriaModalOpen] = useState(false);
-  const [categoriaModalBusca, setCategoriaModalBusca] = useState('');
-  const [parceiroModalOpen, setParceiroModalOpen] = useState(false);
-  const [parceiroModalNomeBusca, setParceiroModalNomeBusca] = useState('');
-  const [parceiroModalDocumentoBusca, setParceiroModalDocumentoBusca] = useState('');
+  const [parceiroBusca, setParceiroBusca] = useWorkspaceState('editarTitulo:parceiroBusca', '');
+  const [categoriaBusca, setCategoriaBusca] = useWorkspaceState('editarTitulo:categoriaBusca', '');
+  const [categoriaModalOpen, setCategoriaModalOpen] = useWorkspaceState('editarTitulo:categoriaModal', false);
+  const [categoriaModalBusca, setCategoriaModalBusca] = useWorkspaceState('editarTitulo:categoriaModalBusca', '');
+  const [parceiroModalOpen, setParceiroModalOpen] = useWorkspaceState('editarTitulo:parceiroModal', false);
+  const [parceiroModalNomeBusca, setParceiroModalNomeBusca] = useWorkspaceState('editarTitulo:parceiroModalNome', '');
+  const [parceiroModalDocumentoBusca, setParceiroModalDocumentoBusca] = useWorkspaceState('editarTitulo:parceiroModalDocumento', '');
   const [parceiroModalResultados, setParceiroModalResultados] = useState([]);
   const [loadingParceiroModal, setLoadingParceiroModal] = useState(false);
   const [beneficiaries, setBeneficiaries] = useState([]);
-  const [paymentDraft, setPaymentDraft] = useState({
+  const [paymentDraft, setPaymentDraft] = useWorkspaceState('editarTitulo:pix', {
     preparar_pagamento_pix: false,
     usar_credor_como_favorecido: false,
     payment_beneficiary_id: '',
@@ -322,6 +326,8 @@ export default function FinanceiroTituloEditar() {
     pix_tipo_chave: 'CNPJ',
     pix_chave: ''
   });
+  useWorkspaceWork(draft.dirty || Boolean(paymentDraft.pix_chave), saving);
+  useWorkspaceTitle(titulo?.codigo || 'Editar título');
 
   useEffect(() => {
     let active = true;
@@ -341,16 +347,17 @@ export default function FinanceiroTituloEditar() {
 
         const formBase = buildFormFromTitulo(tituloData);
         setTitulo(tituloData);
-        setForm(formBase);
+        draft.hydrate(formBase, JSON.stringify([tituloData.id, tituloData.status, tituloData.valor_saldo,
+          tituloData.updatedAt, formBase]));
         setObras(Array.isArray(obrasData) ? obrasData : []);
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
         setEmpresasGrupo(Array.isArray(empresasData) ? empresasData : []);
-        setParceiroBusca(tituloData?.parceiro?.nome || '');
-        setCategoriaBusca(tituloData?.categoriaFinanceira?.nome || '');
+        setParceiroBusca(current => current || tituloData?.parceiro?.nome || '');
+        setCategoriaBusca(current => current || tituloData?.categoriaFinanceira?.nome || '');
       } catch (err) {
         // Antes esta mensagem morria: o retorno de "não encontrado" trocava
         // a tela inteira e a faixa de erro nunca chegava a renderizar.
-        if (active) avisar.erro(err?.message || 'Erro ao carregar titulo financeiro');
+        if (active) { setTitulo(null); avisar.erro(err?.message || 'Erro ao carregar titulo financeiro'); }
       } finally {
         if (active) setLoading(false);
       }
@@ -517,6 +524,7 @@ export default function FinanceiroTituloEditar() {
   }, [valorTitulo, descontoFinanceiro, totalImpostosRetencao, totalImpostosAcrescimo]);
 
   useEffect(() => {
+    if (loading) return undefined;
     if (!form || form.tipo !== 'PAGAR' || !form.parceiro_id) {
       setBeneficiaries([]);
       setPaymentDraft((current) => ({
@@ -537,7 +545,7 @@ export default function FinanceiroTituloEditar() {
         const lista = Array.isArray(data) ? data : [];
         setBeneficiaries(lista);
         const beneficiary = lista.find((item) => item.ativo !== false) || lista[0];
-        if (beneficiary) {
+        if (beneficiary && !paymentDraft.nome && !paymentDraft.pix_chave) {
           setPaymentDraft((current) => ({
             ...current,
             preparar_pagamento_pix: true,
@@ -556,7 +564,7 @@ export default function FinanceiroTituloEditar() {
     return () => {
       active = false;
     };
-  }, [form?.tipo, form?.parceiro_id]);
+  }, [form?.tipo, form?.parceiro_id, loading]);
 
   useEffect(() => {
     if (!form || !empresaDaObraId || String(form.empresa_id || '') === String(empresaDaObraId)) {
@@ -794,7 +802,7 @@ export default function FinanceiroTituloEditar() {
   const submitLockRef = useRef(false);
   async function handleSubmit(event) {
     event.preventDefault();
-    if (submitLockRef.current) return;
+    if (submitLockRef.current || draft.conflict) return;
     const erroValidacao = validar();
     if (erroValidacao) {
       avisar.erro(erroValidacao);
@@ -883,6 +891,8 @@ export default function FinanceiroTituloEditar() {
       }
 
       const atualizado = await atualizarTituloFinanceiro(id, payload);
+      draft.discard();
+      clearWorkspace();
       navigate(`/financeiro/titulos/${atualizado.id}`);
     } catch (err) {
       avisar.erro(err?.message || 'Erro ao salvar edicao do titulo');
@@ -945,6 +955,10 @@ export default function FinanceiroTituloEditar() {
       <Avisos avisos={avisos} aoFechar={fechar} />
 
       <form onSubmit={handleSubmit} className="space-y-3">
+        {draft.conflict && <div className="app-empty-card" role="alert">
+          O título mudou durante a edição. Seu rascunho foi preservado; confira o registro atual antes de salvar.
+          <button type="button" className="btn btn-outline btn-sm" onClick={draft.discard}>Descartar rascunho conflitante</button>
+        </div>}
         <BlocoConteudo variante="primario" cor="var(--sem-info)">
           <div className="space-y-4">
             <FormSecao legenda="Classificação do título" colunas={2}>
@@ -1668,7 +1682,7 @@ export default function FinanceiroTituloEditar() {
                       onChange={(event) => setPaymentDraft((current) => ({ ...current, pix_tipo_chave: event.target.value }))}
                       disabled={Boolean(bloqueio)}
                     >
-                      {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+                      {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                     </select>
                   </CampoForm>
 
@@ -1781,7 +1795,7 @@ export default function FinanceiroTituloEditar() {
 
         {/* C5: um primário sólido, secundário em contorno. */}
         <div className="app-actionbar">
-          <button type="submit" className="btn btn-primary" disabled={Boolean(bloqueio) || saving}>
+          <button type="submit" className="btn btn-primary" disabled={Boolean(bloqueio) || saving || draft.conflict}>
             {saving ? 'Salvando...' : 'Salvar alteracoes'}
           </button>
           {/*

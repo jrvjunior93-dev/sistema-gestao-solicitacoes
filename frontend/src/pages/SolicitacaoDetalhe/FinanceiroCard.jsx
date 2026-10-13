@@ -1,4 +1,6 @@
+import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import DateInputBR from '../../components/DateInputBR';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import OverlayModal from '../../components/ui/OverlayModal';
 import StatusBadge from '../../components/StatusBadge';
@@ -20,7 +22,7 @@ import useEnvioTitulosPagamento from '../../hooks/useEnvioTitulosPagamento';
 import { tituloElegivelParaEnvioPagamento as elegivelParaFila, titulosParaEnvioComContrato } from '../../utils/envioTitulosPagamento';
 import { Link } from 'react-router-dom';
 import { buscarParceiroPorId, buscarParceiros } from '../../services/parceiros';
-import { cadastrarCredorSolicitacao, updateCredorSolicitacao } from '../../services/solicitacoes';
+import { cadastrarCredorSolicitacao, updateCredorSolicitacao, getLinkSeguroAnexoSolicitacao } from '../../services/solicitacoes';
 import { getEmpresasGrupo } from '../../services/empresasGrupo';
 import { getObras } from '../../services/obras';
 import {
@@ -40,7 +42,7 @@ import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanc
 import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, hasPermissao } from '../../utils/acessoProduto';
-import { listarComprovantesFila } from '../../utils/comprovantesFila';
+import ComprovantesTituloSolicitacao from '../../components/financeiro/ComprovantesTituloSolicitacao';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -53,7 +55,6 @@ import {
   getComprovanteFilaPagamento
 } from '../../services/financeiro';
 
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
 
 const TIPOS_INTERCOMPANY = [
   ['APORTE', 'Aporte'],
@@ -168,9 +169,10 @@ function getParceiroPixPrincipal(parceiro) {
   return getParceiroPixOptions(parceiro)[0] || null;
 }
 
-function normalizePixKey(value) {
+function normalizePixKey(value, tipo = '') {
   const texto = String(value || '').trim();
   if (!texto) return '';
+  if (tipo === 'COPIA_COLA' || texto.startsWith('000201')) return texto;
   if (texto.includes('@')) return texto.toLowerCase();
   const somenteDigitos = texto.replace(/\D/g, '');
   return somenteDigitos.length >= 10 ? somenteDigitos : texto.toLowerCase();
@@ -178,6 +180,7 @@ function normalizePixKey(value) {
 
 function inferPixKeyType(value, telefone = '') {
   const texto = String(value || '').trim();
+  if (texto.startsWith('000201')) return 'COPIA_COLA';
   const digitos = texto.replace(/\D/g, '');
   const telefoneDigitos = String(telefone || '').replace(/\D/g, '');
   const telefoneSemPais = telefoneDigitos.startsWith('55') && telefoneDigitos.length > 11
@@ -199,7 +202,7 @@ function inferPixKeyType(value, telefone = '') {
 function findPartnerPixOption(partner, pixKey) {
   const normalized = normalizePixKey(pixKey);
   if (!normalized) return null;
-  return getParceiroPixOptions(partner).find((item) => normalizePixKey(item.chave) === normalized) || null;
+  return getParceiroPixOptions(partner).find((item) => normalizePixKey(item.chave, item.tipo) === normalizePixKey(pixKey, item.tipo)) || null;
 }
 
 function createPaymentDraft() {
@@ -466,17 +469,19 @@ function getFormasCompraDireta(solicitacao) {
 }
 
 function exigeTitulosSeparadosCompraDireta(solicitacao) {
-  return Boolean(getFreteTerceiroCompraDireta(solicitacao) || getFormasCompraDireta(solicitacao).length > 1);
+  return Boolean(solicitacao?.pagamentos_favorecidos?.length || getFreteTerceiroCompraDireta(solicitacao) || getFormasCompraDireta(solicitacao).length > 1);
 }
 
 function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', options = {}) {
-  const parceiro = options.parceiro || solicitacao?.parceiro || null;
+  const adiantamento = solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true;
+  const parceiro = options.parceiro || solicitacao?.parceiro || (adiantamento ? solicitacao?.favorecido : null) || null;
   const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
-  const favorecidoPadraoId = credorOriginalId && String(parceiro?.id) === String(credorOriginalId)
+  const favorecidoPadraoId = adiantamento || (credorOriginalId && String(parceiro?.id) === String(credorOriginalId))
     ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
     : null;
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    instrucao_favorecido: options.instrucao_favorecido || null,
     origem_frete: Boolean(options.origem_frete),
     parceiro_id: parceiro?.id ? String(parceiro.id) : '',
     parceiro_nome: parceiro?.nome || '',
@@ -516,7 +521,13 @@ export function buildDefaultForm(solicitacao) {
     : valorSolicitacao;
   const formasCompraDireta = getFormasCompraDireta(solicitacao);
   const valoresSugeridos = distribuirParcelasFormatadas(valorItens, formasCompraDireta.length || 1);
-  const pagamentosCompra = formasCompraDireta.length
+  const partes = solicitacao?.pagamentos_favorecidos || [];
+  const pagamentosCompra = partes.length ? partes.map(parte => createPagamento(solicitacao, formatCurrencyInput(parte.valor), '', {
+    parceiro: solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true || !solicitacao?.parceiro
+      ? { id: parte.favorecido_id, nome: parte.nome_favorecido } : solicitacao.parceiro,
+    favorecido_pagamento_id: parte.favorecido_id, forma_pagamento_id: String(parte.forma_pagamento_id),
+    instrucao_favorecido: parte, observacoes: parte.favorecido_chave_pix ? `PIX: ${parte.favorecido_chave_pix}` : parte.dados_pagamento || ''
+  })) : formasCompraDireta.length
     ? formasCompraDireta.map((forma, index) => createPagamento(
         solicitacao,
         forma.valor != null ? formatCurrencyInput(forma.valor) : valoresSugeridos[index],
@@ -561,7 +572,7 @@ export function buildDefaultForm(solicitacao) {
     tipo: 'PAGAR',
     status: 'ABERTO',
     empresa_id: solicitacao?.obra?.empresa_grupo_id ? String(solicitacao.obra.empresa_grupo_id) : '',
-    parceiro_id: solicitacao?.parceiro?.id ? String(solicitacao.parceiro.id) : '',
+    parceiro_id: solicitacao?.parceiro?.id ? String(solicitacao.parceiro.id) : solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && solicitacao?.favorecido?.id ? String(solicitacao.favorecido.id) : '',
     categoria_financeira_id: '',
     valor: valorSolicitacao,
     data_vencimento: solicitacao?.data_vencimento || today(),
@@ -935,7 +946,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
               value={draft.pix_tipo_chave || 'CNPJ'}
               onChange={(event) => onChange(pagamentoIndex, { pix_tipo_chave: event.target.value })}
             >
-              {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+              {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
             </select>
           </CampoForm>
           <CampoForm
@@ -1071,6 +1082,7 @@ export default function FinanceiroCard({
   podeVisualizarTitulos = false,
   somenteLeitura = false
 }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const podeExecutarAcoesFinanceiras = podeOperarAbaFinanceiro && !somenteLeitura;
   const podeConsultarTitulo = podeAcessarModuloFinanceiro && hasPermissao(user, 'financeiro.titulos.visualizar');
@@ -1188,10 +1200,12 @@ export default function FinanceiroCard({
   );
   const compraDiretaSolicitacao = tipoSolicitacao.includes('compra direta');
   const usaTituloAutomaticoRecarga = tipoSolicitacao.includes('recarga de cartao');
+  const adiantamentoComTitulo = solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && titulos.length > 0;
   const geracaoManualDesabilitada = usaTabelaParcelasFluxoNovo
     || usaTituloAutomaticoRecarga
+    || adiantamentoComTitulo
     || classificandoContrato;
-  const motivoGeracaoManualDesabilitada = usaTituloAutomaticoRecarga
+  const motivoGeracaoManualDesabilitada = adiantamentoComTitulo ? 'O adiantamento ja possui titulo financeiro.' : usaTituloAutomaticoRecarga
     ? 'A conta da Recarga de Cartao e criada automaticamente pela solicitacao.'
     : 'Os titulos do contrato do fluxo novo sao criados automaticamente pelo cronograma.';
 
@@ -1286,16 +1300,12 @@ export default function FinanceiroCard({
     autorizacaoDisponivel, confirmar, avisar, aoAtualizar: atualizarAposMedicaoOuEnvio
   });
 
-  async function abrirComprovante(filaId, comprovanteId) {
+  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao, nome) {
     try {
-      const resposta = await getComprovanteFilaPagamento(filaId, comprovanteId);
-      const link = document.createElement('a');
-      link.href = resposta.url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await abrirPreview(() => caminhoSolicitacao
+        ? getLinkSeguroAnexoSolicitacao(caminhoSolicitacao)
+        : getComprovanteFilaPagamento(filaId, comprovanteId),
+        { nome: nome || 'Comprovante', caminho: caminhoSolicitacao, mime: caminhoSolicitacao ? undefined : 'application/pdf' });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
     }
@@ -1407,6 +1417,8 @@ export default function FinanceiroCard({
     ));
 
     Promise.all(pagamentosAtuais.map(async (pagamento) => {
+      if (pagamento.instrucao_favorecido) return { pagamentoId: pagamento.id, parceiroId: String(pagamento.parceiro_id),
+        parceiro: { id: pagamento.parceiro_id, nome: pagamento.parceiro_nome }, beneficiaries: [] };
       const parceiroId = pagamento.parceiro_id || null;
       if (!parceiroId) {
         return { pagamentoId: pagamento.id, parceiroId: '', parceiro: null, beneficiaries: [] };
@@ -1421,10 +1433,11 @@ export default function FinanceiroCard({
           || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)))
         : (getFormasCompraDireta(solicitacao).find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id))
           || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)));
-      const favorecidoDaLinhaId = ehFrete
+      const instrucao = pagamento.instrucao_favorecido;
+      const favorecidoDaLinhaId = instrucao ? instrucao.favorecido_id : ehFrete
         ? solicitacao?.compra_direta?.frete_favorecido_id
         : formaDaLinha?.favorecido_id || favorecidoId;
-      const favorecidoDaLinha = ehFrete
+      const favorecidoDaLinha = instrucao ? { id: instrucao.favorecido_id, nome: instrucao.nome_favorecido, cpf_cnpj: instrucao.cpf_cnpj } : ehFrete
         ? solicitacao?.compra_direta?.freteFavorecido
         : formaDaLinha?.favorecido_id
           ? {
@@ -1433,13 +1446,13 @@ export default function FinanceiroCard({
               cpf_cnpj: formaDaLinha.favorecido_cpf_cnpj || ''
             }
           : solicitacao?.favorecido;
-      const chavePixDaLinha = ehFrete
+      const chavePixDaLinha = instrucao ? instrucao.favorecido_chave_pix : ehFrete
         ? solicitacao?.compra_direta?.frete_favorecido_chave_pix
         : formaDaLinha?.chave_pix || solicitacao?.favorecido_chave_pix;
-      const usarChaveSolicitacao = (ehFrete || Boolean(
+      const usarChaveSolicitacao = (Boolean(instrucao) || ehFrete || Boolean(
         credorOriginalId && String(credorOriginalId) === String(parceiroId)
       )) && (!compraDiretaSolicitacao || isFormaPix(formaDaLinha));
-      const usarFavorecidoSolicitacao = Boolean(favorecidoDaLinhaId) && (ehFrete || Boolean(
+      const usarFavorecidoSolicitacao = Boolean(favorecidoDaLinhaId) && (Boolean(instrucao) || ehFrete || Boolean(
         credorOriginalId && String(credorOriginalId) === String(parceiroId)
       ));
       const precisaCarregarFavorecido = usarFavorecidoSolicitacao
@@ -1479,6 +1492,7 @@ export default function FinanceiroCard({
         setForm((current) => ({
           ...current,
           pagamentos: (current.pagamentos || []).map((pagamento) => {
+            if (pagamento.instrucao_favorecido) return pagamento;
             const resultado = resultados.find((item) => item.pagamentoId === pagamento.id);
             if (!resultado || pagamento.dados_pagamento_parceiro_id === resultado.parceiroId) {
               return pagamento;
@@ -1564,7 +1578,7 @@ export default function FinanceiroCard({
 
     let active = true;
     setLoadingObras(true);
-    getObras()
+    getObras({ escopo: 'TODOS' })
       .then((data) => {
         if (active) setObras(Array.isArray(data) ? data : []);
       })
@@ -2160,7 +2174,7 @@ export default function FinanceiroCard({
         pix_chave: draft.pix_chave,
         ativo: true
       };
-      const chaveDoCredor = `${beneficiaryPayload.parceiro_id}:${normalizePixKey(beneficiaryPayload.pix_chave)}`;
+      const chaveDoCredor = `${beneficiaryPayload.parceiro_id}:${beneficiaryPayload.pix_tipo_chave}:${normalizePixKey(beneficiaryPayload.pix_chave, beneficiaryPayload.pix_tipo_chave)}`;
       const beneficiaryIdJaSalvo = beneficiaryIdsPorChave.get(chaveDoCredor);
       if (!draft.payment_beneficiary_id && beneficiaryIdJaSalvo) {
         idsPorPagamento.set(pagamento.id, beneficiaryIdJaSalvo);
@@ -2402,6 +2416,12 @@ export default function FinanceiroCard({
       render: (titulo) => titulo.parceiro?.nome || '-'
     },
     {
+      id: 'forma_pagamento',
+      titulo: 'Forma de pagamento',
+      tipo: 'texto',
+      render: (titulo) => titulo.formaPagamento?.nome || getFormaPagamento(titulo.forma_pagamento_id)?.nome || '—'
+    },
+    {
       id: 'vencimento',
       titulo: 'Vencimento',
       tipo: 'data',
@@ -2430,21 +2450,7 @@ export default function FinanceiroCard({
       id: 'comprovante',
       titulo: 'Comprovante',
       tipo: 'acao',
-      render: (titulo) => {
-        const comprovantes = (titulo.filaPagamentosManuais || []).flatMap(listarComprovantesFila);
-        return comprovantes.length ? (
-          <div className="flex max-w-60 flex-col items-start gap-1">
-            {comprovantes.map((comprovante) => (
-              <button key={`${comprovante.filaId}-${comprovante.id || 'legado'}`}
-                type="button" className="btn btn-outline btn-sm max-w-full truncate"
-                title={comprovante.nome}
-                onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
-                {comprovante.nome}
-              </button>
-            ))}
-          </div>
-        ) : <span className="text-[var(--c-muted)]">Pendente</span>;
-      }
+      render: (titulo) => <ComprovantesTituloSolicitacao titulo={titulo} onAbrir={abrirComprovante} />
     },
     {
       id: 'saldo',
@@ -3281,7 +3287,7 @@ export default function FinanceiroCard({
                           value={paymentDraft.pix_tipo_chave}
                           onChange={(event) => setPaymentDraft((current) => ({ ...current, pix_tipo_chave: event.target.value }))}
                         >
-                          {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+                          {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                         </select>
                       </CampoForm>
                       <CampoForm label="Chave PIX" obrigatorio>
@@ -3490,11 +3496,13 @@ export default function FinanceiroCard({
                     </label>
                     {freteTerceiroObrigatorio ? (
                       <div className="mt-1 text-xs" style={{ color: 'var(--sem-warning)' }}>
-                        Obrigatório para manter formas de pagamento e frete em títulos separados.
+                        {solicitacao?.pagamentos_favorecidos?.length
+                          ? 'Um título para cada favorecido informado na solicitação.'
+                          : 'Obrigatório para manter formas de pagamento e frete em títulos separados.'}
                       </div>
                     ) : null}
                   </div>
-                  <button type="button" className="btn btn-outline shrink-0" onClick={adicionarPagamento}>
+                  <button type="button" className="btn btn-outline shrink-0" disabled={Boolean(solicitacao?.pagamentos_favorecidos?.length)} onClick={adicionarPagamento}>
                     Adicionar forma de pagamento
                   </button>
                 </div>
@@ -3523,14 +3531,18 @@ export default function FinanceiroCard({
                         {/* R2 — era um <button> sem classe .btn: alvo de clique abaixo do
                             minimo de 32px. Agora e botao de verdade, em vermelho suave
                             (destrutivo visivel). */}
-                        {geracaoMultiplaTitulos && (form.pagamentos || []).length > 1 && (
+                        {geracaoMultiplaTitulos && !pagamento.instrucao_favorecido && (form.pagamentos || []).length > 1 && (
                           <button type="button" className="btn btn-outline btn-perigo-suave" onClick={() => removerPagamento(pagamentoIndex)}>
                             Remover
                           </button>
                         )}
                       </div>
 
-                      {geracaoMultiplaTitulos && (
+                      {pagamento.instrucao_favorecido && <div className="text-sm whitespace-pre-wrap break-all">
+                        <span className="font-semibold">{pagamento.instrucao_favorecido.nome_favorecido}</span> · {pagamento.instrucao_favorecido.forma_pagamento_nome}
+                        <p>{pagamento.instrucao_favorecido.favorecido_chave_pix || pagamento.instrucao_favorecido.dados_pagamento || (pagamento.instrucao_favorecido.boleto_nomes || []).join(', ')}</p>
+                      </div>}
+                      {geracaoMultiplaTitulos && !pagamento.instrucao_favorecido && (
                         <ParceiroPagamentoField
                           pagamento={pagamento}
                           pagamentoIndex={pagamentoIndex}
@@ -3539,7 +3551,7 @@ export default function FinanceiroCard({
                         />
                       )}
 
-                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento
+                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && !pagamento.instrucao_favorecido
                         && (!compraDiretaSolicitacao || isFormaPix(forma)) && (
                         <DadosPagamentoTitulo
                           pagamento={pagamento}
@@ -3568,7 +3580,7 @@ export default function FinanceiroCard({
                             className="input w-full"
                             value={pagamento.forma_pagamento_id}
                             onChange={(event) => updateFormaPagamento(pagamentoIndex, event.target.value)}
-                            disabled={loadingPagamento}
+                            disabled={loadingPagamento || Boolean(pagamento.instrucao_favorecido)}
                           >
                             <option value="">{loadingPagamento ? 'Carregando...' : 'Nao informar'}</option>
                             {formasPagamento.filter((item) => item.ativo !== false).map((item) => (
@@ -3590,6 +3602,7 @@ export default function FinanceiroCard({
                               inputMode="decimal"
                               placeholder="R$ 0,00"
                               value={pagamento.valor}
+                              disabled={Boolean(pagamento.instrucao_favorecido)}
                               onChange={(event) => updateValorPagamento(pagamentoIndex, normalizeCurrencyTyping(event.target.value))}
                               onBlur={(event) => updateValorPagamento(pagamentoIndex, formatCurrencyInput(event.target.value))}
                             />
@@ -3606,6 +3619,7 @@ export default function FinanceiroCard({
                               type="number"
                               min="1"
                               max="120"
+                              disabled={Boolean(pagamento.instrucao_favorecido)}
                               value={pagamento.quantidade_parcelas}
                               onChange={(event) => updateQuantidadeParcelas(pagamentoIndex, event.target.value)}
                             />
@@ -3705,6 +3719,7 @@ export default function FinanceiroCard({
                                     type="text"
                                     inputMode="decimal"
                                     value={parcela.valor || ''}
+                                    readOnly={Boolean(pagamento.instrucao_favorecido)}
                                     onChange={(event) => updateParcela(pagamentoIndex, parcelaIndex, 'valor', normalizeCurrencyTyping(event.target.value))}
                                     onBlur={(event) => updateParcela(pagamentoIndex, parcelaIndex, 'valor', formatCurrencyInput(event.target.value))}
                                     required
@@ -3896,6 +3911,7 @@ export default function FinanceiroCard({
           </div>
         </OverlayModal>
       )}
+      {modalPreview}
     </>
   );
 }

@@ -6,7 +6,7 @@ const {
 } = require('../models');
 const { registrarEventoSeguranca } = require('./securityLogService');
 
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
+const { PIX_TIPOS_CHAVE, PIX_TEXTO_MAX } = require('../utils/pix');
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -77,6 +77,9 @@ function validateBeneficiaryPayload(payload = {}, { partial = false } = {}) {
     const tipoChave = data.pix_tipo_chave || normalizeToken(payload.pix_tipo_chave);
     const chave = normalizePixKey(tipoChave, payload.pix_chave);
     if (!chave) throw createHttpError(400, 'Chave PIX do favorecido e obrigatoria.');
+    if (chave.length > (tipoChave === 'COPIA_COLA' ? PIX_TEXTO_MAX : 255)) {
+      throw createHttpError(400, 'Chave PIX excede o tamanho permitido.');
+    }
     data.pix_chave = chave;
   }
 

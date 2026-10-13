@@ -335,7 +335,7 @@ async function canAccessConversa(req, conversaId) {
 
 async function canAccessSolicitacaoFile(req, solicitacaoId) {
   const solicitacao = await Solicitacao.findByPk(solicitacaoId, {
-    attributes: ['id', 'obra_id', 'criado_por', 'area_responsavel']
+    attributes: ['id', 'obra_id', 'criado_por', 'area_responsavel', 'cancelada']
   });
 
   if (!solicitacao) {
@@ -344,6 +344,16 @@ async function canAccessSolicitacaoFile(req, solicitacaoId) {
       status: 404,
       error: 'Solicitacao nao encontrada'
     };
+  }
+
+  // A consulta financeira existente e somente leitura, condicionada a um
+  // titulo realmente na fila e a permissao da fila. Nao reabre o detalhe
+  // operacional nem permite upload/remocao em uma solicitacao excluida.
+  if (solicitacao.cancelada === true || solicitacao.cancelada === 1) {
+    if (await podeVisualizarSolicitacaoPelaFila(req.user, solicitacao.id)) {
+      return { allowed: true, consultaFinanceira: true };
+    }
+    return { allowed: false, status: 404, error: 'Solicitacao nao encontrada' };
   }
 
   if (isBusinessAdmin(req.user)) {

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineArrowTopRightOnSquare, HiOutlinePencilSquare } from 'react-icons/hi2';
-import { useNavigate } from 'react-router-dom';
+import { useWorkspaceState } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
 import {
   Avisos,
   BarraFiltros,
@@ -74,16 +76,16 @@ function formatMoney(value) {
 const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
   { id: 'status', rotulo: 'Status' },
-  { id: 'obra_id', rotulo: 'Obra' }
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' }
 ];
 
 export default function ListaCotacoes() {
-  const navigate = useNavigate();
   const { avisos, avisar, fechar } = useAvisos();
+  const abrirRegistro = useWorkspaceOpenRecord(avisar.alerta);
   const [cotacoes, setCotacoes] = useState([]);
   const [obras, setObras] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [busca, setBusca] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busca, setBusca] = useWorkspaceState('cotacoes:busca', '');
 
   /*
     `unico: true` nas duas dimensões, verificado NO SERVIÇO: o
@@ -93,7 +95,7 @@ export default function ListaCotacoes() {
     não estreitaria (o `URLSearchParams` mandaria um valor só). Marca
     redonda: a forma diz que só cabe uma.
   */
-  const [ativos, setAtivos] = useState({ status: new Set(), obra_id: new Set() });
+  const [ativos, setAtivos] = useWorkspaceState('cotacoes:filtros', { status: new Set(), obra_id: new Set() });
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -129,8 +131,12 @@ export default function ListaCotacoes() {
   // "Atualizar") reconsultarem o MESMO recorte que está na tela.
   const recorteRef = useRef({ q: '', status: '', obra_id: '' });
   recorteRef.current = { q: busca, status, obra_id: obraId };
+  const consultaWorkspace = JSON.stringify([busca, status, obraId]);
+  const consulta = useQueryRevision(consultaWorkspace);
+  useLayoutEffect(() => { setCotacoes([]); setLoading(true); }, [consultaWorkspace]);
 
   async function carregar() {
+    const token = consulta.begin();
     const recorte = recorteRef.current;
     try {
       setLoading(true);
@@ -140,15 +146,18 @@ export default function ListaCotacoes() {
           status: recorte.status || undefined,
           obra_id: recorte.obra_id || undefined,
         }),
-        getObras(),
+        getObras({ escopo: 'TODOS' }),
       ]);
+      if (!consulta.isCurrent(token)) return;
       setCotacoes(Array.isArray(dataCotacoes) ? dataCotacoes : []);
       setObras(Array.isArray(dataObras) ? dataObras : []);
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
+      if ([401, 403].includes(Number(error?.status))) { setCotacoes([]); setObras([]); }
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar cotacoes');
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -178,7 +187,7 @@ export default function ListaCotacoes() {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
     }
@@ -220,7 +229,7 @@ export default function ListaCotacoes() {
     },
     {
       id: 'obra',
-      titulo: 'Obra',
+      titulo: 'Obra / Centro de Custo',
       tipo: 'texto',
       render: (cotacao) => cotacao.solicitacao?.obra?.nome || '-'
     },
@@ -332,6 +341,8 @@ export default function ListaCotacoes() {
           carregando={loading}
           vazio="Nenhuma cotação encontrada. Envie uma solicitação de compra para fornecedores."
           storageKey="tabela:lista-cotacoes"
+          chaveWorkspace="compras:cotacoes"
+          consultaWorkspace={consultaWorkspace}
           rotuloRolagem="Lista de cotacoes"
           acoesLinha={(cotacao) => (
             <>
@@ -339,7 +350,7 @@ export default function ListaCotacoes() {
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
-                  onClick={() => navigate(`/solicitacoes-compra/${cotacao.solicitacao.id}/cotacao`)}
+                  onClick={() => abrirRegistro(`/solicitacoes-compra/${cotacao.solicitacao.id}/cotacao`)}
                   title="Editar cotação"
                   aria-label={`Editar cotação ${String(cotacao.id).padStart(5, '0')}`}
                 >

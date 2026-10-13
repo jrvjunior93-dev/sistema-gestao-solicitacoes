@@ -76,7 +76,7 @@ export default function SstRelatorioOperacional() {
     let active = true;
     Promise.allSettled([
       getRhEmpresasGrupo({ ativo: true }),
-      getObras({ ativo: true })
+      getObras({ ativo: true, escopo: 'TODOS' })
     ]).then(([empresasResult, obrasResult]) => {
       if (!active) return;
       setRefs({

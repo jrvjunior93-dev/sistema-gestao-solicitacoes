@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -11,6 +12,7 @@ import {
   HiOutlineXMark
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import {
   Avisos,
   BarraFiltros,
@@ -21,6 +23,8 @@ import {
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
 import Button from '../components/ui/Button';
+import RhDpApuracao from './RhDpApuracao';
+import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
 import { competenciaISOParaBR } from '../components/CompetenciaInputBR';
 import '../styles/rh-pessoal-atividade.css';
 import {
@@ -69,6 +73,8 @@ const ROTULO_SITUACAO = {
   RASCUNHO: 'Rascunho',
   ABERTA: 'Aguardando decisao',
   APROVADA: 'Aprovada',
+  ENVIO_PARCIAL: 'Envio parcial para pagamento',
+  EM_REVISAO: 'Em edição pelo DP',
   REJEITADA: 'Devolvida para correcao',
   CANCELADA: 'Cancelada'
 };
@@ -88,10 +94,13 @@ const OPCOES_SITUACAO = [
   { valor: 'ABERTA', rotulo: 'Aguardando decisão' },
   { valor: 'REJEITADA', rotulo: 'Devolvidas para correção' },
   { valor: 'APROVADA', rotulo: 'Aprovadas' },
+  { valor: 'ENVIO_PARCIAL', rotulo: 'Envio parcial para pagamento' },
+  { valor: 'EM_REVISAO', rotulo: 'Em edição pelo DP' },
   { valor: 'CANCELADA', rotulo: 'Canceladas' }
 ];
 
 const SEM_FILTRO = { situacao: new Set(), tipo: new Set() };
+const ehPagamentoPorSolicitacao = s => s.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO';
 
 /** Dimensao de valor UNICO: o `ativos` guarda um conjunto, o servico recebe um valor. */
 function primeiroValor(conjunto) {
@@ -107,7 +116,7 @@ function chipDoTipo(tipo) {
 
 function chipDaSituacao(situacao) {
   if (situacao === 'RASCUNHO') return 'rh-chip rh-chip--rascunho';
-  if (situacao === 'ABERTA') return 'rh-chip rh-chip--aberta';
+  if (['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(situacao)) return 'rh-chip rh-chip--aberta';
   if (situacao === 'REJEITADA') return 'rh-chip rh-chip--devolvida';
   if (situacao === 'APROVADA') return 'rh-chip rh-chip--evento';
   return 'rh-chip';
@@ -200,7 +209,8 @@ function AcaoIconePessoal({ rotulo, icone: Icone, solicitacaoId, variant = 'outl
   );
 }
 
-export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, onAbrirApuracao, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
+export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, onAbrirApuracao, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -214,19 +224,23 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
     suspensa. Ambos com `unico`, porque `listarRhSolicitacoes` recebe UM valor por recorte: com
     marcacao multipla, marcar dois mandaria `undefined` e a lista nao estreitaria.
   */
-  const [ativos, setAtivos] = useState(() => ({ situacao: new Set(), tipo: new Set() }));
+  const [ativos, setAtivos] = useWorkspaceState('rhSolicitacoes:filtros', () => ({ situacao: new Set(), tipo: new Set() }));
   const filtroSituacao = useMemo(() => primeiroValor(ativos.situacao), [ativos]);
   const filtroTipo = useMemo(() => primeiroValor(ativos.tipo), [ativos]);
 
   const [aberta, setAberta] = useState(null);
-  const [comentario, setComentario] = useState('');
+  const [comentarios, setComentarios] = useWorkspaceState('rhSolicitacoes:comentarios', {});
+  const comentario = comentarios[aberta?.id] || '';
+  function setComentario(value) { if (aberta?.id) setComentarios(atuais => ({ ...atuais, [aberta.id]: value })); }
   const [comentando, setComentando] = useState(false);
   const travaComentario = useRef(false);
   const detalheAtual = useRef(null);
+  const conferenciaOcupada = useRef(false);
   const [anexos, setAnexos] = useState([]);
   const [conferencia, setConferencia] = useState(null);
   const [tiposDocumento, setTiposDocumento] = useState([]);
   const [envio, setEnvio] = useState({ tipo: '', arquivo: null, enviando: false });
+  useWorkspaceWork(Object.values(comentarios).some(Boolean), comentando || envio.enviando, 'rhSolicitacoes:work');
   // Evita que uma resposta de listagem iniciada antes da abertura do modal
   // recoloque o destaque já lido. Se surgir um histórico mais novo, o id será
   // maior e a solicitação volta corretamente a aparecer como não visualizada.
@@ -247,33 +261,34 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
     try {
       const lista = await listarRhSolicitacoes({
         situacao: filtroSituacao || undefined,
-        tipo: filtroTipo || undefined
+        tipo: filtroTipo || undefined,
+        obra_id: obraId || undefined
       });
-      setSolicitacoes(normalizarLeiturasLocais(lista));
+      setSolicitacoes(normalizarLeiturasLocais(lista).filter((item) => !obraId || Number(item.obra_id) === Number(obraId)));
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel carregar as solicitacoes.');
     } finally {
       setCarregando(false);
     }
-  }, [filtroSituacao, filtroTipo, avisar, limpar, normalizarLeiturasLocais]);
+  }, [obraId, filtroSituacao, filtroTipo, avisar, limpar, normalizarLeiturasLocais]);
 
   useEffect(() => { carregar(); }, [carregar]);
   useEffect(() => {
     const atualizar = async () => {
       if (document.hidden) return;
       try {
-        const lista = await listarRhSolicitacoes({ situacao: filtroSituacao || undefined, tipo: filtroTipo || undefined });
-        setSolicitacoes(normalizarLeiturasLocais(lista));
+        const lista = await listarRhSolicitacoes({ obra_id: obraId || undefined, situacao: filtroSituacao || undefined, tipo: filtroTipo || undefined });
+        setSolicitacoes(normalizarLeiturasLocais(lista).filter((item) => !obraId || Number(item.obra_id) === Number(obraId)));
       } catch { /* A atualização manual mantém o tratamento visível de erros. */ }
     };
     const timer = setInterval(atualizar, 30000);
     window.addEventListener('focus', atualizar);
     return () => { clearInterval(timer); window.removeEventListener('focus', atualizar); };
-  }, [filtroSituacao, filtroTipo, normalizarLeiturasLocais]);
+  }, [obraId, filtroSituacao, filtroTipo, normalizarLeiturasLocais]);
 
   useEffect(() => {
     if (filtroTipo || (filtroSituacao && filtroSituacao !== 'ABERTA')) return;
-    const abertas = solicitacoes.filter((solicitacao) => solicitacao.situacao === 'ABERTA');
+    const abertas = solicitacoes.filter((solicitacao) => ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(solicitacao.situacao));
     aoContarAbertas?.(abertas.length);
     aoContarNaoLidas?.(abertas.filter((solicitacao) => solicitacao.nao_lida).length);
   }, [solicitacoes, filtroSituacao, filtroTipo, aoContarAbertas, aoContarNaoLidas]);
@@ -307,17 +322,25 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
   }, [filtroSituacao]);
 
   async function abrirDetalhe(solicitacao) {
+    conferenciaOcupada.current = false;
     limpar();
     detalheAtual.current = solicitacao.id;
-    setComentario('');
     setAberta(solicitacao);
     setAnexos([]);
     setConferencia(null);
     try {
+      const pagamento = await getRhSolicitacao(solicitacao.id);
+      if (pagamento.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO') {
+        if (detalheAtual.current !== solicitacao.id) return;
+        setAberta(pagamento);
+        setSolicitacoes(lista => lista.map(s => s.id === solicitacao.id ? { ...s, nao_lida: false } : s));
+        if (solicitacao.nao_lida) aoMarcarVisualizada?.();
+        return;
+      }
       const [listaAnexos, conferido, detalhe] = await Promise.all([
         listarAnexosRhSolicitacao(solicitacao.id),
         conferirDocumentacaoRhSolicitacao(solicitacao.id),
-        getRhSolicitacao(solicitacao.id)
+        Promise.resolve(pagamento)
       ]);
       if (detalheAtual.current !== solicitacao.id) return;
       const ultimoHistorico = (detalhe.historicos || []).reduce(
@@ -364,6 +387,9 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
   }
 
   function fecharDetalhe() {
+    if (conferenciaOcupada.current) {
+      avisar.alerta('Salve os ajustes pendentes ou aguarde a gravação antes de fechar.'); return;
+    }
     detalheAtual.current = null;
     setAberta(null);
     setParametros((atuais) => {
@@ -383,13 +409,10 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
   }, [parametros]);
 
   async function abrirAnexo(anexo) {
+    const solicitacaoId = aberta.id;
     limpar();
-    try {
-      const url = await getRhSolicitacaoAnexoLink(aberta.id, anexo.id);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      avisar.erro(error.message || 'Nao foi possivel abrir o documento.');
-    }
+    try { await abrirPreview(() => getRhSolicitacaoAnexoLink(solicitacaoId, anexo.id), { nome: anexo.nome_original, caminho: anexo.caminho_arquivo, mime: anexo.mimetype || anexo.mime_type }); }
+    catch (error) { avisar.erro(error.message || 'Nao foi possivel abrir o documento.'); }
   }
 
   /*
@@ -670,7 +693,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
                   */}
                   {(s.tipo === 'TROCA_OBRA' || s.subtipo === 'TRANSFERENCIA_OBRA') && !s.colaborador?.obra_id
                     ? 'Vincular a obra'
-                    : ROTULO_TIPO[s.tipo] || s.tipo}
+                    : ehPagamentoPorSolicitacao(s) ? 'Pagamento' : ROTULO_TIPO[s.tipo] || s.tipo}
                 </span>
               )
             },
@@ -682,12 +705,12 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
               noCard: 'titulo',
               /* Na admissao o colaborador ainda nao existe: o nome vive no pedido. */
               render: (s) => s.tipo === 'JORNADA'
-                ? `${s.dados_json?.total_colaboradores || 0} colaborador(es)`
+                ? `${s.dados_json?.total_colaboradores ?? s.dados_json?.linhas?.filter(l => l.selecionado).length ?? 0} colaborador(es)`
                 : s.colaborador?.nome || s.dados_json?.nome || <span className="opacity-60">a admitir</span>
             },
             {
               id: 'obra',
-              titulo: 'Obra',
+              titulo: 'Obra / Centro de Custo',
               tipo: 'texto',
               /*
                 Na TROCA DE OBRA a linha mostra ORIGEM e DESTINO. Sem isso, quem decide ve so
@@ -714,7 +737,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
               tipo: 'status',
               render: (s) => (
                 <>
-                  <span className={chipDaSituacao(s.situacao)}>{ROTULO_SITUACAO[s.situacao] || s.situacao}</span>
+                  <span className={chipDaSituacao(s.situacao)}>{ehPagamentoPorSolicitacao(s) && s.situacao === 'APROVADA' ? 'Enviado para a fila' : ROTULO_SITUACAO[s.situacao] || s.situacao}</span>
                   {s.motivo_rejeicao ? (
                     <div className="text-xs rh-pessoal-devolucao">{s.motivo_rejeicao}</div>
                   ) : null}
@@ -741,7 +764,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
               <AcaoIconePessoal rotulo="Abrir" icone={HiOutlineEye} solicitacaoId={s.id}
                 onClick={() => selecionarDetalhe(s)} />
               {s.tipo === 'JORNADA' && ['ABERTA', 'APROVADA'].includes(s.situacao) && onAbrirApuracao ? (
-                <AcaoIconePessoal rotulo="Conferir jornada" icone={HiOutlineClipboardDocumentCheck}
+                <AcaoIconePessoal rotulo={ehPagamentoPorSolicitacao(s) ? 'Conferir pagamento' : 'Conferir jornada'} icone={HiOutlineClipboardDocumentCheck}
                   solicitacaoId={s.id} onClick={() => onAbrirApuracao(s)} />
               ) : null}
               {podeDecidir
@@ -790,13 +813,16 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
         tela, e concluia que o sistema tinha ignorado o clique. Mesmo defeito que ja tinha sido
         corrigido na aba de colaboradores; este aqui passou batido.
       */}
-      {aberta ? (
+      {aberta?.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO' ? (
+        <RhDpPagamentoModal key={aberta.id} solicitacaoId={aberta.id} local={aberta.obra}
+          onFechar={fecharDetalhe} aoEnviar={() => { carregar(); aoMudar?.(); }} />
+      ) : aberta ? (
         <OverlayModal
           rotulo={`${ROTULO_TIPO[aberta.tipo] || aberta.tipo} ${aberta.codigo || `#${aberta.id}`}`}
-          largura="1120px"
+          largura={aberta.tipo === 'JORNADA' && onAbrirApuracao ? '1440px' : '1120px'}
           onFechar={fecharDetalhe}
         >
-        <div className="rh-modal-conteudo space-y-4">
+        <div data-modal="cabecalho" className="rh-local-modal-cabecalho">
           {faixaAvisos}
           <div className="app-page-header-row">
             <div>
@@ -821,11 +847,20 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
             </div>
             <button type="button" className="btn btn-outline btn-sm" onClick={fecharDetalhe}>Fechar</button>
           </div>
+        </div>
+        <div className="rh-modal-conteudo space-y-4">
+          {aberta.tipo === 'JORNADA' && onAbrirApuracao && ['ABERTA', 'APROVADA'].includes(aberta.situacao) ? (
+            <RhDpApuracao key={aberta.id} solicitacaoId={aberta.id} comoModal
+              aoOcupado={(valor) => { conferenciaOcupada.current = valor; }}
+              aoFechar={fecharDetalhe} aoConcluir={() => { carregar(); aoMudar?.(); }} />
+          ) : null}
 
+          <details open={aberta.tipo !== 'JORNADA'}>
+          <summary>Dados da solicitação</summary>
           <section className="rh-solicitacao-resumo" aria-label="Dados da solicitacao de pessoal">
             <div><span>Situacao</span><strong>{ROTULO_SITUACAO[aberta.situacao] || aberta.situacao}</strong></div>
             <div><span>Colaborador</span><strong>{aberta.tipo === 'JORNADA' ? 'Equipe da obra' : aberta.colaborador?.nome || aberta.dados_json?.nome || 'A admitir'}</strong></div>
-            <div><span>Obra</span><strong>{aberta.obra?.nome || aberta.colaborador?.obra?.nome || '—'}</strong></div>
+            <div><span>Obra / Centro de Custo</span><strong>{aberta.obra?.nome || aberta.colaborador?.obra?.nome || '—'}</strong></div>
             <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
             <div><span>Aberta em</span><strong>{aberta.createdAt ? new Date(aberta.createdAt).toLocaleString('pt-BR') : '—'}</strong></div>
             <div><span>Ultima atualizacao</span><strong>{aberta.updatedAt ? new Date(aberta.updatedAt).toLocaleString('pt-BR') : '—'}</strong></div>
@@ -836,16 +871,13 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
               <div className="rh-solicitacao-resumo--largo"><span>Justificativa</span><strong>{aberta.justificativa}</strong></div>
             ) : null}
           </section>
-
-          {aberta.tipo === 'JORNADA' && onAbrirListaJornadas ? (
+          </details>
+          {aberta.tipo === 'JORNADA' && !onAbrirApuracao && onAbrirListaJornadas ? (
             <div className="app-actionbar">
               <div>
                 <strong>Consultar jornada</strong>
                 <p className="app-bloco-lead">A jornada já foi registrada. Abra a lista de jornadas enviadas para acompanhar este envio.</p>
               </div>
-              {onAbrirApuracao && ['ABERTA', 'APROVADA'].includes(aberta.situacao) ? (
-                <button type="button" className="btn btn-primary" onClick={() => onAbrirApuracao(aberta)}>Conferir jornada</button>
-              ) : null}
               <button type="button" className="btn btn-outline" onClick={onAbrirListaJornadas}>
                 Ir para Jornadas enviadas
               </button>
@@ -1000,6 +1032,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDe
       ) : null}
 
       {elementoConfirmacao}
+      {modalPreview}
     </div>
   );
 }

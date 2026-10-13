@@ -1,4 +1,5 @@
 import DateInputBR from '../../../components/DateInputBR';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../../../utils/pix';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
@@ -25,6 +26,10 @@ import {
 import { getStatusPedidosCompra } from '../../../services/configuracoesSistema';
 import { buscarParceiros } from '../../../services/parceiros';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork, useWorkspaceTitle } from '../../../navigation/WorkspaceContext';
+import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import { revisaoItemPedido, revisaoFretesPedido, revisaoRemanejoPedido } from '../utils/pedidoWorkspaceDraft';
 import {
   canAlterarStatusComprasPedidos,
   canAnexarEspelhoComprasPedidos,
@@ -138,6 +143,7 @@ function maskCnpj(value) {
 
 function maskPixKey(value, type) {
   const kind = String(type || '').toUpperCase();
+  if (kind === 'COPIA_COLA') return String(value || '');
   if (kind === 'CPF') return maskCpf(value);
   if (kind === 'CNPJ') return maskCnpj(value);
   if (kind === 'TELEFONE') return maskPhone(value);
@@ -504,33 +510,38 @@ export default function PedidoCompraDetalhe() {
   const [visualizandoPdf, setVisualizandoPdf] = useState(false);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
   const [previewPedido, setPreviewPedido] = useState(null);
-  const [edicoes, setEdicoes] = useState({});
-  const [buscaItens, setBuscaItens] = useState('');
-  const [filtrosItens, setFiltrosItens] = useState(() => ({ situacao: new Set(['ATIVOS']) }));
-  const [modalEdicaoAberto, setModalEdicaoAberto] = useState(false);
-  const [itemEditandoId, setItemEditandoId] = useState(null);
-  const [comentarioPedido, setComentarioPedido] = useState('');
+  const scope = `pedido:${id}:`;
+  const consultaPedido = useQueryRevision(id);
+  const abrirRegistro = useWorkspaceOpenRecord();
+  const [rascunhosItens, setRascunhosItens] = useWorkspaceState(scope + 'itensDraft', {});
+  const [buscaItens, setBuscaItens] = useWorkspaceState(scope + 'busca', '');
+  const [filtrosItens, setFiltrosItens] = useWorkspaceState(scope + 'filtros', () => ({ situacao: new Set(['ATIVOS']) }));
+  const [modalEdicaoAberto, setModalEdicaoAberto] = useWorkspaceState(scope + 'editarModal', false);
+  const [itemEditandoId, setItemEditandoId] = useWorkspaceState(scope + 'editarId', null);
+  const [comentarioPedido, setComentarioPedido] = useWorkspaceState(scope + 'comentario', '');
   const [salvandoComentario, setSalvandoComentario] = useState(false);
   const [anexandoEspelho, setAnexandoEspelho] = useState(false);
   const [cancelandoPedido, setCancelandoPedido] = useState(false);
-  const [modalCancelamentoAberto, setModalCancelamentoAberto] = useState(false);
-  const [cancelamentoPedidoForm, setCancelamentoPedidoForm] = useState({
+  const [modalCancelamentoAberto, setModalCancelamentoAberto] = useWorkspaceState(scope + 'cancelarModal', false);
+  const [cancelamentoPedidoForm, setCancelamentoPedidoForm] = useWorkspaceState(scope + 'cancelarForm', {
     motivo: '',
     cancelar_cotacao: true,
     cancelar_solicitacao_compra: true,
     cancelar_solicitacao_principal: false
   });
   const [reabrindoCotacao, setReabrindoCotacao] = useState(false);
-  const [itensSelecionadosCancelamento, setItensSelecionadosCancelamento] = useState([]);
+  const [itensSelecionadosCancelamento, setItensSelecionadosCancelamento] = useWorkspaceState(scope + 'cancelarIds', []);
   const [cancelandoItens, setCancelandoItens] = useState(false);
-  const [remanejoSelecionado, setRemanejoSelecionado] = useState('');
-  const [remanejoQuantidade, setRemanejoQuantidade] = useState('');
+  const [remanejoSelecionado, setRemanejoSelecionado] = useWorkspaceState(scope + 'remanejoId', '');
+  const [remanejoQuantidade, setRemanejoQuantidade] = useWorkspaceState(scope + 'remanejoQuantidade', '');
+  const [remanejoRevisao, setRemanejoRevisao] = useWorkspaceState(scope + 'remanejoRevisao', null);
   const [remanejandoItem, setRemanejandoItem] = useState(false);
-  const [modalFreteAberto, setModalFreteAberto] = useState(false);
+  const [modalFreteAberto, setModalFreteAberto] = useWorkspaceState(scope + 'freteModal', false);
   const [salvandoFrete, setSalvandoFrete] = useState(false);
-  const [freteEditandoId, setFreteEditandoId] = useState(null);
-  const [freteForm, setFreteForm] = useState(FRETE_FORM_INICIAL);
-  const [buscaFornecedorFrete, setBuscaFornecedorFrete] = useState('');
+  const [freteEditandoId, setFreteEditandoId] = useWorkspaceState(scope + 'freteId', null);
+  const [freteForm, setFreteForm] = useWorkspaceState(scope + 'freteForm', FRETE_FORM_INICIAL);
+  const [freteRevisao, setFreteRevisao] = useWorkspaceState(scope + 'freteRevisao', null);
+  const [buscaFornecedorFrete, setBuscaFornecedorFrete] = useWorkspaceState(scope + 'freteBusca', '');
   const [fornecedoresFrete, setFornecedoresFrete] = useState([]);
   const [credorFreteSelecionado, setCredorFreteSelecionado] = useState(null);
   /*
@@ -560,34 +571,45 @@ export default function PedidoCompraDetalhe() {
   useFecharAoSair(credorFreteRef, listaCredorFreteAberta, () => setListaCredorFreteAberta(false));
   const [buscandoFornecedoresFrete, setBuscandoFornecedoresFrete] = useState(false);
   const buscaItensDeferred = useDeferredValue(buscaItens);
+  const operacaoEmCurso = useRef(new Set());
+  const itensConflitantes = (pedido?.itens || []).filter(item => rascunhosItens[item.id]
+    && rascunhosItens[item.id].revisao !== revisaoItemPedido(pedido, item));
+  const conflitoFrete = modalFreteAberto && freteRevisao !== revisaoFretesPedido(pedido);
+  const edicoes = Object.fromEntries((pedido?.itens || []).map(item => [item.id,
+    rascunhosItens[item.id]?.campos || { quantidade_pedido: formatBrazilianQuantity(item.quantidade_pedido),
+      preco_unitario: formatMoneyInput(item.preco_unitario), observacoes: item.observacoes || '' }]));
+  useWorkspaceWork(Boolean(Object.keys(rascunhosItens).length || comentarioPedido || modalFreteAberto
+    || modalCancelamentoAberto || itensSelecionadosCancelamento.length || remanejoSelecionado || remanejoQuantidade),
+    savingStatus || savingItemId || addingRespostaId || removingItemId || baixandoPdf
+    || visualizandoPdf || enviandoPedido || salvandoComentario || anexandoEspelho
+    || cancelandoPedido || reabrindoCotacao || cancelandoItens || remanejandoItem || salvandoFrete);
+  useWorkspaceTitle(pedido ? `PC-${String(pedido.id).padStart(5, '0')}` : 'Pedido de compra');
 
   async function carregar() {
+    const token = consultaPedido.begin();
     try {
       setLoading(true);
       const [data, dataStatus] = await Promise.all([
         obterPedidoCompra(id),
         carregarStatusPedidosComFallback()
       ]);
+      if (!consultaPedido.isCurrent(token)) return;
       setPedido(data || null);
       setStatusOptions(Array.isArray(dataStatus) ? dataStatus : []);
       if (String(data?.status || '').toUpperCase() === 'CANCELADO') {
         setFiltrosItens({ situacao: new Set() });
       }
 
-      const proximasEdicoes = {};
-      (data?.itens || []).forEach((item) => {
-        proximasEdicoes[item.id] = {
-          quantidade_pedido: formatBrazilianQuantity(item.quantidade_pedido),
-          preco_unitario: formatMoneyInput(item.preco_unitario),
-          observacoes: item.observacoes || ''
-        };
-      });
-      setEdicoes(proximasEdicoes);
+      setItensSelecionadosCancelamento(atuais => atuais.filter(codigo =>
+        (data?.itens || []).some(item => item.id === codigo && !item.removido)));
     } catch (error) {
+      if (!consultaPedido.isCurrent(token)) return;
+      setPedido(null);
+      setStatusOptions([]);
       console.error(error);
       avisar.erro(error.message || 'Erro ao carregar pedido de compra');
     } finally {
-      setLoading(false);
+      if (consultaPedido.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -695,7 +717,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   useEffect(() => {
-    if (!itemEditandoId) {
+    if (!itemEditandoId || !pedido) {
       return;
     }
 
@@ -716,19 +738,23 @@ export default function PedidoCompraDetalhe() {
   }
 
   function atualizarEdicaoItem(itemId, changes) {
-    setEdicoes((current) => ({
+    const item = (pedido?.itens || []).find(linha => linha.id === itemId);
+    if (!item) return;
+    setRascunhosItens((current) => ({
       ...current,
       [itemId]: {
-        ...current[itemId],
-        ...changes
+        revisao: current[itemId]?.revisao || revisaoItemPedido(pedido, item),
+        campos: { ...edicoes[itemId], ...current[itemId]?.campos, ...changes }
       }
     }));
   }
 
   function abrirModalEdicao(itemId) {
+    if (operacaoEmCurso.current.size) return;
     setItemEditandoId(itemId);
     setRemanejoSelecionado('');
     setRemanejoQuantidade('');
+    setRemanejoRevisao(revisaoRemanejoPedido(pedido, (pedido.itens || []).find(item => item.id === itemId)));
     setModalEdicaoAberto(true);
   }
 
@@ -750,10 +776,11 @@ export default function PedidoCompraDetalhe() {
     // /relatorios/administrativos nao tinha porta no menu e so era alcancada
     // por este botao. Ficou a que tem porta — o card "Auditoria de compras"
     // do hub de Relatorios de Compras.
-    navigate(`/compras/relatorios/auditoria?${params.toString()}`);
+    abrirRegistro(`/compras/relatorios/auditoria?${params.toString()}`);
   }
 
   function abrirModalFrete(momento = 'FECHAMENTO') {
+    setFreteRevisao(revisaoFretesPedido(pedido));
     const tipoInicial = permiteFreteEmbutido ? 'EMBUTIDO' : 'TERCEIRO';
     setFreteEditandoId(null);
     setFreteForm({
@@ -773,6 +800,7 @@ export default function PedidoCompraDetalhe() {
       return;
     }
 
+    setFreteRevisao(revisaoFretesPedido(pedido));
     const credor = frete.fornecedor
       ? {
           ...frete.fornecedor,
@@ -951,6 +979,7 @@ export default function PedidoCompraDetalhe() {
   }, [buscaFornecedorFrete, credorFreteSelecionado, freteForm.tipo, modalFreteAberto]);
 
   async function handleRegistrarFrete() {
+    if (operacaoEmCurso.current.has('frete') || conflitoFrete || !podeRegistrarFretePedido) return;
     const valorTotal = parseBrazilianMoney(freteForm.valor_total);
     if (!valorTotal || valorTotal <= 0) {
       avisar.alerta('Informe o valor do frete.');
@@ -1051,6 +1080,7 @@ export default function PedidoCompraDetalhe() {
       payload.data_vencimento = freteForm.data_vencimento;
     }
 
+    operacaoEmCurso.current.add('frete');
     try {
       setSalvandoFrete(true);
       const data = freteEditandoId
@@ -1068,6 +1098,7 @@ export default function PedidoCompraDetalhe() {
       console.error(error);
       avisar.erro(error.message || 'Erro ao registrar frete do pedido');
     } finally {
+      operacaoEmCurso.current.delete('frete');
       setSalvandoFrete(false);
     }
   }
@@ -1084,6 +1115,7 @@ export default function PedidoCompraDetalhe() {
     fixação a tela poderia perguntar sobre um frete e cancelar outro.
   */
   async function handleCancelarFrete(frete) {
+    if (operacaoEmCurso.current.has('frete')) return;
     const freteAlvo = frete;
     const freteId = freteAlvo?.id;
 
@@ -1092,6 +1124,8 @@ export default function PedidoCompraDetalhe() {
       return;
     }
 
+    operacaoEmCurso.current.add('frete'); setSalvandoFrete(true);
+    try {
     const { ok, texto } = await confirmar({
       titulo: 'Cancelar frete do pedido',
       mensagem: `Cancelar o frete de ${formatMoney(freteAlvo.valor_total)} deste pedido? Esta acao nao pode ser desfeita e fica registrada na auditoria.`,
@@ -1118,9 +1152,13 @@ export default function PedidoCompraDetalhe() {
     } finally {
       setSalvandoFrete(false);
     }
+    } finally { operacaoEmCurso.current.delete('frete'); setSalvandoFrete(false); }
   }
 
   async function handleSalvarItem(itemId) {
+    if (operacaoEmCurso.current.has('item') || pedidoBloqueado
+      || itensConflitantes.some(item => item.id === itemId)) return;
+    operacaoEmCurso.current.add('item');
     try {
       const edicao = edicoes[itemId] || {};
       const payload = {
@@ -1131,12 +1169,14 @@ export default function PedidoCompraDetalhe() {
       setSavingItemId(itemId);
       const data = await atualizarItemPedidoCompra(id, itemId, payload);
       setPedido(data || null);
+      setRascunhosItens(atuais => { const next = { ...atuais }; delete next[itemId]; return next; });
       fecharModalEdicao();
       avisar.sucesso('Item atualizado com auditoria registrada.');
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao atualizar item do pedido');
     } finally {
+      operacaoEmCurso.current.delete('item');
       setSavingItemId(null);
     }
   }
@@ -1359,6 +1399,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function confirmarCancelamentoPedido() {
+    if (operacaoEmCurso.current.has('cancelar') || !podeCancelarPedido || pedidoCancelado) return;
     // R26: o formulário inteiro é fixado antes da chamada — o modal não
     // congela a tela e os checkboxes seguem clicáveis enquanto ela corre.
     const formCancelamento = cancelamentoPedidoForm;
@@ -1368,6 +1409,7 @@ export default function PedidoCompraDetalhe() {
       return;
     }
 
+    operacaoEmCurso.current.add('cancelar');
     try {
       setCancelandoPedido(true);
       const data = await cancelarPedidoCompra(id, {
@@ -1383,6 +1425,7 @@ export default function PedidoCompraDetalhe() {
       console.error(error);
       avisar.erro(error.message || 'Erro ao cancelar pedido');
     } finally {
+      operacaoEmCurso.current.delete('cancelar');
       setCancelandoPedido(false);
     }
   }
@@ -1446,12 +1489,14 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleSalvarComentarioPedido() {
+    if (operacaoEmCurso.current.has('comentario')) return;
     const textoComentario = comentarioPedido;
     if (!textoComentario.trim()) {
       avisar.alerta('Digite o comentário do pedido.');
       return;
     }
 
+    operacaoEmCurso.current.add('comentario');
     try {
       setSalvandoComentario(true);
       await comentarPedidoCompra(id, { comentario: textoComentario });
@@ -1461,6 +1506,7 @@ export default function PedidoCompraDetalhe() {
       console.error(error);
       avisar.erro(error.message || 'Erro ao registrar comentario');
     } finally {
+      operacaoEmCurso.current.delete('comentario');
       setSalvandoComentario(false);
     }
   }
@@ -1488,7 +1534,8 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleRemanejarItemAtual() {
-    if (!itemEditando) return;
+    if (operacaoEmCurso.current.has('remanejo') || !itemEditando || (itemEditando.removido && !pedidoCancelado) || remanejamentoBloqueado
+      || conflitoRemanejo) return;
     if (!remanejoSelecionado) {
       avisar.alerta('Selecione o fornecedor/resposta de destino.');
       return;
@@ -1516,6 +1563,7 @@ export default function PedidoCompraDetalhe() {
       return;
     }
 
+    operacaoEmCurso.current.add('remanejo');
     try {
       setRemanejandoItem(true);
       const data = await remanejarItemPedidoCompra(id, itemEditando.id, {
@@ -1532,9 +1580,13 @@ export default function PedidoCompraDetalhe() {
       console.error(error);
       avisar.erro(error.message || 'Erro ao remanejar item');
     } finally {
+      operacaoEmCurso.current.delete('remanejo');
       setRemanejandoItem(false);
     }
   }
+
+  const conflitoRemanejo = Boolean(itemEditando && (remanejoSelecionado || remanejoQuantidade)
+    && remanejoRevisao !== revisaoRemanejoPedido(pedido, itemEditando));
 
   if (loading) {
     return (
@@ -1565,7 +1617,7 @@ export default function PedidoCompraDetalhe() {
   const itemEditandoValorTotalAtual = itemEditando
     ? parseBrazilianQuantity(edicaoItemAtual.quantidade_pedido ?? itemEditando.quantidade_pedido) * (itemEditandoPrecoContext?.precoAtual ?? 0)
     : 0;
-  const modalProcessando = itemEditando ? savingItemId === itemEditando.id || removingItemId === itemEditando.id : false;
+  const modalProcessando = itemEditando ? savingItemId === itemEditando.id || removingItemId === itemEditando.id || remanejandoItem : false;
   const candidatosRemanejamentoItem = itemEditando
     ? (pedido.candidatos_remanejamento || []).filter((candidato) => {
         const candidatoKey = candidato.item_key || `${normalizeItemType(candidato.item_tipo)}:${
@@ -1697,6 +1749,17 @@ export default function PedidoCompraDetalhe() {
   */
   return (
     <Pagina className="apoio-linha-unica">
+      {(itensConflitantes.length > 0 || conflitoFrete) && <div className="app-empty-card" role="alert">
+        O pedido mudou desde a edição. Os campos foram preservados para consulta; descarte o rascunho e confira os dados atuais antes de salvar.
+        <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+          const { ok } = await confirmar({ titulo: 'Descartar rascunhos conflitantes',
+            mensagem: 'Descartar somente as edições conflitantes deste pedido?', rotuloConfirmar: 'Descartar', destrutiva: true });
+          if (!ok) return;
+          setRascunhosItens(atuais => Object.fromEntries(Object.entries(atuais)
+            .filter(([codigo]) => !itensConflitantes.some(item => String(item.id) === codigo))));
+          if (conflitoFrete) fecharModalFrete();
+        }}>Descartar rascunhos conflitantes</button>
+      </div>}
       <PageHeader
         titulo={pedido.fornecedor?.nome ? `${pedido.fornecedor.nome} — ${codigoPedido}` : codigoPedido}
         contagem={`${resumoItens.total} item(ns)`}
@@ -1754,7 +1817,7 @@ export default function PedidoCompraDetalhe() {
           do CampoForm.
         */}
         {pedido.solicitacao?.solicitacao_principal_id && <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-          <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/solicitacoes/${pedido.solicitacao.solicitacao_principal_id}`)}>Acompanhar entregas na solicitação</button>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirRegistro(`/solicitacoes/${pedido.solicitacao.solicitacao_principal_id}`)}>Acompanhar entregas na solicitação</button>
           <span className="text-[var(--c-muted)]">Confirme a previsão, registre recebimentos e trate o saldo por item.</span>
         </div>}
         <FormSecao colunas={2}>
@@ -1937,6 +2000,8 @@ export default function PedidoCompraDetalhe() {
             itens={itensFiltrados}
             vazio="Nenhum item encontrado com os filtros atuais."
             storageKey="tabela:pedido-compra-detalhe:itens"
+            chaveWorkspace="pedido:itens"
+            consultaWorkspace={buscaItens}
             rotuloRolagem="Itens do pedido"
             /*
               R16b (capacidade 3): a marcação em lote é do componente. A coluna
@@ -2262,6 +2327,7 @@ export default function PedidoCompraDetalhe() {
 
                     <CampoForm label="Observações do item" tipo="texto-longo">
                       <textarea
+                        aria-label="Observações do item"
                         className="input w-full"
                         rows={3}
                         value={edicaoItemAtual.observacoes ?? ''}
@@ -2361,13 +2427,14 @@ export default function PedidoCompraDetalhe() {
                   vai), não recorta lista nenhuma. A própria R12 declara esse
                   caso como select legítimo.
                 */}
+                {conflitoRemanejo && <p role="alert" className="app-note">O saldo ou a resposta de destino mudou. Confira os dados atuais antes de remanejar. <button type="button" className="btn btn-outline btn-sm" disabled={remanejandoItem} onClick={async () => { const { ok } = await confirmar({ titulo: 'Descartar remanejamento', mensagem: 'Descartar destino e quantidade digitados e usar os saldos atuais?', rotuloConfirmar: 'Usar saldos atuais' }); if (ok) { setRemanejoSelecionado(''); setRemanejoQuantidade(''); setRemanejoRevisao(revisaoRemanejoPedido(pedido, itemEditando)); } }}>Usar saldos atuais</button></p>}
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
                   <select
                     className="input w-full"
                     aria-label="Resposta de destino do remanejamento"
                     value={remanejoSelecionado}
                     onChange={(event) => setRemanejoSelecionado(event.target.value)}
-                    disabled={remanejamentoBloqueado || remanejandoItem || candidatosRemanejamentoItem.length === 0}
+                    disabled={remanejamentoBloqueado || remanejandoItem || conflitoRemanejo || candidatosRemanejamentoItem.length === 0}
                   >
                     <option value="">
                       {candidatosRemanejamentoItem.length ? 'Selecione a resposta de destino' : 'Sem fornecedor alternativo respondido'}
@@ -2387,13 +2454,13 @@ export default function PedidoCompraDetalhe() {
                     onChange={(event) => setRemanejoQuantidade(maskBrazilianQuantityInput(event.target.value))}
                     onBlur={(event) => setRemanejoQuantidade(normalizeBrazilianQuantityOnBlur(event.target.value))}
                     placeholder={formatBrazilianQuantity(quantidadeMaximaRemanejamento)}
-                    disabled={remanejamentoBloqueado || remanejandoItem}
+                    disabled={remanejamentoBloqueado || remanejandoItem || conflitoRemanejo}
                   />
                   <button
                     type="button"
                     className="btn btn-outline"
                     onClick={handleRemanejarItemAtual}
-                    disabled={remanejamentoBloqueado || remanejandoItem || !remanejoSelecionado || quantidadeMaximaRemanejamento <= 0}
+                    disabled={remanejamentoBloqueado || remanejandoItem || conflitoRemanejo || !remanejoSelecionado || quantidadeMaximaRemanejamento <= 0}
                   >
                     {remanejandoItem ? 'Remanejando...' : 'Remanejar'}
                   </button>
@@ -2415,7 +2482,7 @@ export default function PedidoCompraDetalhe() {
                   type="button"
                   className="btn btn-primary"
                   onClick={() => handleSalvarItem(itemEditando.id)}
-                  disabled={pedidoBloqueado || savingItemId === itemEditando.id}
+                  disabled={pedidoBloqueado || savingItemId === itemEditando.id || itensConflitantes.some(item => item.id === itemEditando.id)}
                 >
                   {savingItemId === itemEditando.id ? 'Salvando...' : 'Salvar ajustes'}
                 </button>
@@ -2437,7 +2504,7 @@ export default function PedidoCompraDetalhe() {
         </OverlayModal>
       ) : null}
 
-      {modalCancelamentoAberto ? (
+      {modalCancelamentoAberto && podeCancelarPedido && !pedidoCancelado ? (
         <OverlayModal
           largura="var(--modal-max-w-md, 640px)"
           rotulo="Cancelar pedido"
@@ -2565,7 +2632,7 @@ export default function PedidoCompraDetalhe() {
         </OverlayModal>
       ) : null}
 
-      {modalFreteAberto ? (
+      {modalFreteAberto && podeRegistrarFretePedido ? (
         <OverlayModal
           largura="var(--modal-max-w-lg, 860px)"
           rotulo={freteEditandoId ? 'Editar frete do pedido' : 'Registrar frete do pedido'}
@@ -2588,6 +2655,7 @@ export default function PedidoCompraDetalhe() {
           </div>
 
           <div className="px-4 py-4">
+            {conflitoFrete && <p role="alert" className="app-note">O pedido ou os fretes foram alterados. Os campos digitados foram preservados; cancele esta edição e confira os dados atuais antes de registrar o frete.</p>}
             {/* Campos de FORMULÁRIO — escrevem o registro do frete (R12). */}
             <FormSecao colunas={3}>
               <CampoForm
@@ -2841,11 +2909,7 @@ export default function PedidoCompraDetalhe() {
                         })}
                         disabled={salvandoFrete}
                       >
-                        <option value="CPF">Chave CPF</option>
-                        <option value="CNPJ">Chave CNPJ</option>
-                        <option value="TELEFONE">Chave telefone</option>
-                        <option value="EMAIL">Chave e-mail</option>
-                        <option value="ALEATORIA">Chave aleatoria</option>
+                        {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                       </select>
                     </CampoForm>
                     <CampoForm label="Chave PIX">
@@ -2944,7 +3008,7 @@ export default function PedidoCompraDetalhe() {
             <button type="button" className="btn btn-outline" onClick={() => fecharModalFrete()} disabled={salvandoFrete}>
               Cancelar
             </button>
-            <button type="button" className="btn btn-primary" onClick={handleRegistrarFrete} disabled={salvandoFrete}>
+            <button type="button" className="btn btn-primary" onClick={handleRegistrarFrete} disabled={salvandoFrete || conflitoFrete}>
               {salvandoFrete ? 'Salvando...' : freteEditandoId ? 'Salvar correcao' : 'Registrar frete'}
             </button>
           </div>

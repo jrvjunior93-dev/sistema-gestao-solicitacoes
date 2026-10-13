@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../../contexts/AuthContext';
+import { canManageProvisionamentoCategorias } from '../../../utils/acessoProduto';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../../../navigation/useWorkspaceRecordDraft';
+import useQueryRevision from '../../../navigation/useQueryRevision';
 import {
   Avisos,
   BlocoConteudo,
@@ -20,33 +25,56 @@ import {
 
 const FORM_VAZIO = { nome: '', descricao: '', ordem_exibicao: '' };
 const EDICAO_VAZIA = { nome: '', descricao: '', ordem_exibicao: '', ativo: true };
+const inputsCategoria = c => ({ nome: c.nome || '', descricao: c.descricao || '',
+  ordem_exibicao: c.ordem_exibicao ?? '', ativo: c.ativo !== false });
+const revisaoCategoria = c => JSON.stringify([c.id, c.updatedAt, c.updated_at, inputsCategoria(c)]);
 
 export default function GestaoCategoriasMacro() {
+  const { user } = useAuth();
+  const permitido = canManageProvisionamentoCategorias(user);
+  const consulta = useQueryRevision(permitido);
+  const ciclo = useQueryRevision(permitido);
+  const mutex = useRef(false);
   const { avisos, avisar, fechar } = useAvisos();
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(FORM_VAZIO);
-  const [editId, setEditId] = useState(null);
-  const [editForm, setEditForm] = useState(EDICAO_VAZIA);
+  const [erro, setErro] = useState('');
+  const [form, setForm] = useWorkspaceState('provisoes:categoria:nova', FORM_VAZIO);
+  const [editId, setEditId] = useWorkspaceState('provisoes:categoria:id', null);
+  const draft = useWorkspaceRecordDraft('provisoes:categoria:inputs', EDICAO_VAZIA);
+  const { value: editForm, setValue: setEditForm } = draft;
+  const alvoAtual = categorias.find(c => String(c.id) === String(editId));
+  const disponivel = permitido && !loading && !erro;
+  useWorkspaceWork(draft.dirty || Object.values(form).some(v => v !== ''), saving, 'provisoes:categorias:work');
+  useEffect(() => {
+    if (!disponivel || (editId != null && !alvoAtual)) { draft.conceal(EDICAO_VAZIA); return; }
+    if (alvoAtual) draft.hydrate(inputsCategoria(alvoAtual), revisaoCategoria(alvoAtual));
+  }, [disponivel, editId, alvoAtual, draft.hydrate, draft.conceal]);
 
   async function carregar() {
+    const token = consulta.begin();
     try {
       setLoading(true);
+      setErro(''); setCategorias([]);
+      if (!permitido) return;
       const data = await listarCategoriasMacroProvisionamento({ incluir_inativas: 1 });
+      if (!consulta.isCurrent(token)) return;
       setCategorias(Array.isArray(data) ? data : []);
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
       console.error(error);
+      setCategorias([]); setErro(error?.message || 'Erro ao carregar categorias macro.');
       avisar.erro(error?.message || 'Erro ao carregar categorias macro.');
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) setLoading(false);
     }
   }
 
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [permitido]);
 
   // C2 × B3 (critério de 05/09): a FAIXA fica com o TOTAL; os blocos, com os
   // RECORTES. Ativas/inativas é o recorte que só a lista sabe e vai no bloco.
@@ -58,60 +86,67 @@ export default function GestaoCategoriasMacro() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (saving) return;
+    if (mutex.current || !disponivel) return;
 
     if (!form.nome.trim()) {
       avisar.erro('Informe o nome da categoria macro.');
       return;
     }
 
+    const payload = { ...form };
+    const token = ciclo.capture(); mutex.current = true;
     try {
       setSaving(true);
-      await criarCategoriaMacroProvisionamento(form);
+      await criarCategoriaMacroProvisionamento(payload);
+      if (!ciclo.isCurrent(token)) return;
       setForm(FORM_VAZIO);
       avisar.sucesso(`Categoria macro "${form.nome.trim()}" criada.`);
       await carregar();
     } catch (error) {
+      if (!ciclo.isCurrent(token)) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao criar categoria macro.');
     } finally {
-      setSaving(false);
+      mutex.current = false;
+      if (ciclo.isCurrent(token)) setSaving(false);
     }
   }
 
   function iniciarEdicao(categoria) {
+    if (!disponivel || mutex.current) return;
+    draft.hydrate(inputsCategoria(categoria), revisaoCategoria(categoria), { discard: true });
     setEditId(categoria.id);
-    setEditForm({
-      nome: categoria.nome || '',
-      descricao: categoria.descricao || '',
-      ordem_exibicao: categoria.ordem_exibicao ?? '',
-      ativo: categoria.ativo !== false
-    });
   }
 
   function cancelarEdicao() {
+    draft.discard();
+    draft.conceal(EDICAO_VAZIA);
     setEditId(null);
-    setEditForm(EDICAO_VAZIA);
   }
 
   async function salvarEdicao() {
     // R26: o alvo é fixado ANTES de qualquer await — `editId` é estado da
     // tela e a linha em edição pode mudar enquanto a requisição corre.
     const alvoId = editId;
-    const alvoDados = editForm;
-    if (!alvoId) return;
+    const alvoDados = { ...editForm };
+    if (!disponivel || mutex.current || draft.conflict || !alvoAtual || !alvoId) return;
+    if (!alvoDados.nome.trim()) { avisar.erro('Informe o nome da categoria macro.'); return; }
 
+    const token = ciclo.capture(); mutex.current = true;
     try {
       setSaving(true);
       await atualizarCategoriaMacroProvisionamento(alvoId, alvoDados);
+      if (!ciclo.isCurrent(token)) return;
       cancelarEdicao();
       avisar.sucesso(`Categoria macro "${String(alvoDados.nome || '').trim()}" atualizada.`);
       await carregar();
     } catch (error) {
+      if (!ciclo.isCurrent(token)) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao atualizar categoria macro.');
     } finally {
-      setSaving(false);
+      mutex.current = false;
+      if (ciclo.isCurrent(token)) setSaving(false);
     }
   }
 
@@ -122,17 +157,25 @@ export default function GestaoCategoriasMacro() {
     const alvo = categoria;
     const vaiAtivar = alvo.ativo === false;
 
+    if (!disponivel || mutex.current || !categorias.includes(alvo)) return;
+    const token = ciclo.capture(); mutex.current = true;
     try {
+      setSaving(true);
       if (vaiAtivar) {
         await ativarCategoriaMacroProvisionamento(alvo.id);
       } else {
         await desativarCategoriaMacroProvisionamento(alvo.id);
       }
+      if (!ciclo.isCurrent(token)) return;
       avisar.sucesso(`Categoria macro "${alvo.nome}" ${vaiAtivar ? 'ativada' : 'desativada'}.`);
       await carregar();
     } catch (error) {
+      if (!ciclo.isCurrent(token)) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao alterar status da categoria.');
+    } finally {
+      mutex.current = false;
+      if (ciclo.isCurrent(token)) setSaving(false);
     }
   }
 
@@ -156,6 +199,8 @@ export default function GestaoCategoriasMacro() {
 
       <Avisos avisos={avisos} aoFechar={fechar} />
 
+      {!permitido || erro ? <p role="alert">{erro || 'Gestão de categorias indisponível para este usuário.'}</p> : null}
+
       {/*
         R9 (revista em 04/09) — FORMULÁRIO INLINE, NÃO EM MODAL.
         Esta tela EXISTE para cadastrar categoria macro: pelo teste da regra,
@@ -163,12 +208,14 @@ export default function GestaoCategoriasMacro() {
         Modal aqui obrigaria a abrir e fechar para fazer exatamente aquilo
         que a pessoa veio fazer. Não mover para OverlayModal.
       */}
-      <BlocoConteudo titulo="Nova categoria macro">
+      {disponivel && <BlocoConteudo titulo="Nova categoria macro">
         <form className="space-y-4" onSubmit={handleSubmit}>
+          <fieldset disabled={saving}>
           <FormSecao legenda="Identificação" colunas={2}>
             <CampoForm label="Nome" obrigatorio>
               <input
                 className="input w-full"
+                aria-label="Nome da nova categoria macro"
                 value={form.nome}
                 onChange={(event) => setForm((atual) => ({ ...atual, nome: event.target.value }))}
                 required
@@ -178,6 +225,7 @@ export default function GestaoCategoriasMacro() {
             <CampoForm label="Ordem de exibição" hint="Define a posicao da categoria nas listas do modulo.">
               <input
                 className="input w-full"
+                aria-label="Ordem da nova categoria macro"
                 type="number"
                 value={form.ordem_exibicao}
                 onChange={(event) => setForm((atual) => ({ ...atual, ordem_exibicao: event.target.value }))}
@@ -189,6 +237,7 @@ export default function GestaoCategoriasMacro() {
                   (textarea.input), não do `min-h-[96px]` que estava aqui. */}
               <textarea
                 className="input w-full"
+                aria-label="Descrição da nova categoria macro"
                 value={form.descricao}
                 onChange={(event) => setForm((atual) => ({ ...atual, descricao: event.target.value }))}
               />
@@ -203,8 +252,14 @@ export default function GestaoCategoriasMacro() {
               Limpar
             </button>
           </div>
+          </fieldset>
         </form>
-      </BlocoConteudo>
+      </BlocoConteudo>}
+
+      {disponivel && editId != null && !alvoAtual ? <p role="alert">A categoria em edição não está disponível na lista atual.</p> : null}
+      {disponivel && draft.conflict ? <div role="alert">A categoria mudou desde o início da edição.
+        <button type="button" className="btn btn-outline btn-sm" disabled={saving} onClick={() => draft.discard()}>Usar dados atuais</button>
+      </div> : null}
 
       <BlocoConteudo
         titulo="Categorias cadastradas"
@@ -216,6 +271,7 @@ export default function GestaoCategoriasMacro() {
         cor="var(--c-primary)"
       >
         <TabelaPadrao
+          chaveWorkspace="provisoes:categorias:tabela"
           colunas={[
             {
               id: 'nome',
@@ -228,6 +284,7 @@ export default function GestaoCategoriasMacro() {
                   className="input w-full"
                   value={editForm.nome}
                   aria-label="Nome da categoria macro"
+                  disabled={saving || draft.conflict}
                   onChange={(event) => setEditForm((atual) => ({ ...atual, nome: event.target.value }))}
                 />
               ) : categoria.nome)
@@ -244,6 +301,7 @@ export default function GestaoCategoriasMacro() {
                   className="input w-full"
                   value={editForm.descricao}
                   aria-label="Descrição da categoria macro"
+                  disabled={saving || draft.conflict}
                   onChange={(event) => setEditForm((atual) => ({ ...atual, descricao: event.target.value }))}
                 />
               ) : (
@@ -262,6 +320,7 @@ export default function GestaoCategoriasMacro() {
                   type="number"
                   value={editForm.ordem_exibicao}
                   aria-label="Ordem de exibição"
+                  disabled={saving || draft.conflict}
                   onChange={(event) => setEditForm((atual) => ({ ...atual, ordem_exibicao: event.target.value }))}
                 />
               ) : (categoria.ordem_exibicao ?? '-'))
@@ -287,15 +346,15 @@ export default function GestaoCategoriasMacro() {
           vazio="Nenhuma categoria macro cadastrada."
           acoesLinha={(categoria) => (editId === categoria.id ? (
             <>
-              <button type="button" className="btn btn-primary btn-sm" onClick={salvarEdicao} disabled={saving}>Salvar</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={salvarEdicao} disabled={saving || draft.conflict}>Salvar</button>
               <button type="button" className="btn btn-outline btn-sm" onClick={cancelarEdicao} disabled={saving}>Cancelar</button>
             </>
           ) : (
             <>
               {/* A1: a linha é alcançável por teclado pelos próprios botões
                   focáveis da ação. */}
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => iniciarEdicao(categoria)}>Editar</button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => alternarStatus(categoria)}>
+              <button type="button" className="btn btn-outline btn-sm" disabled={saving || !disponivel} onClick={() => iniciarEdicao(categoria)}>Editar</button>
+              <button type="button" className="btn btn-outline btn-sm" disabled={saving || !disponivel} onClick={() => alternarStatus(categoria)}>
                 {categoria.ativo === false ? 'Ativar' : 'Desativar'}
               </button>
             </>

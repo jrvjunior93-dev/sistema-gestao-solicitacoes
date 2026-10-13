@@ -97,6 +97,7 @@ export default function ModalMedicao({
     .filter((p) => p?.medicao && String(p.medicao.id) === String(medicao?.id || ''));
 
   const [edicao, setEdicao] = useState({});
+  const [valoresFavorecidos, setValoresFavorecidos] = useState({});
   // Erro POR PARCELA: `{ [parcelaId]: { valor?: string, vencimento?: string } }`. A mensagem mora
   // ao lado do campo que a causou — "informe valor e vencimento de todas as parcelas" numa faixa
   // no topo obriga a pessoa a caçar qual das seis linhas esta incompleta.
@@ -120,6 +121,8 @@ export default function ModalMedicao({
       inicial[p.id] = { valor: String(Number(p.valor).toFixed(2)), vencimento: soData(p.vencimento) };
     });
     setEdicao(inicial);
+    setValoresFavorecidos(Object.fromEntries(daMedicao.flatMap(p => (p.pagamentos_favorecidos || [])
+      .map(f => [f.id, String(Number(f.valor).toFixed(2))]))));
     setErroPorParcela({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [medicao?.id, parcelas]);
@@ -147,7 +150,7 @@ export default function ModalMedicao({
   const ehPix = /PIX/i.test(`${medicao.forma_pagamento?.nome || ''} ${medicao.forma_pagamento?.tipo || ''}`);
   const aprovadaEm = medicao.aprovada_em || (Number(aprovacaoLocal?.id) === Number(medicao.id) ? aprovacaoLocal.aprovada_em : null);
   const medicaoAprovada = Boolean(aprovadaEm);
-  const idsDaMedicao = new Set(daMedicao.map((parcela) => Number(parcela.titulo_financeiro_id)));
+  const idsDaMedicao = new Set(daMedicao.flatMap(parcela => [Number(parcela.titulo_financeiro_id), ...(parcela.titulos_pagamento || []).map(t => Number(t.id))]));
   const idsParaEnviar = titulos.filter((titulo) => idsDaMedicao.has(Number(titulo.id))
     && tituloElegivelParaEnvioPagamento(titulo)).map((titulo) => Number(titulo.id));
   const podeEnviarTitulos = medicaoAprovada && (podeEnviarParaAutorizacao || podeEnviarParaFila);
@@ -190,6 +193,11 @@ export default function ModalMedicao({
       valor_medido: valores[p.id]?.valor,
       vencimento: valores[p.id]?.vencimento
     }));
+    const partes = linhas.flatMap(p => p.pagamentos_favorecidos || []);
+    const favorecidosValores = partes.length ? partes.map(f => ({ id: f.id, valor: valoresFavorecidos[f.id] })) : undefined;
+    if (favorecidosValores?.some(f => !Number.isFinite(Number(f.valor)) || Number(f.valor) <= 0)) {
+      avisar.erro('Informe um valor maior que zero para cada favorecido.'); return;
+    }
     const totalNovo = itens.reduce((acc, i) => acc + Number(i.valor_medido || 0), 0);
 
     const { ok } = await confirmar({
@@ -201,7 +209,7 @@ export default function ModalMedicao({
 
     setSalvando(true);
     try {
-      await atualizarMedicaoContrato(alvo.id, itens);
+      await atualizarMedicaoContrato(alvo.id, itens, favorecidosValores);
       onSalvo?.();
       onFechar?.();
     } catch (e) {
@@ -216,7 +224,9 @@ export default function ModalMedicao({
     // R26: alvo fixado ANTES do await. Aprovar a medicao errada libera pagamento errado, e a
     // trilha registra um consentimento valido para a acao que ninguem autorizou.
     const alvo = medicao;
-    const quantasParcelas = daMedicao.length;
+    const quantasParcelas = daMedicao.reduce((n, p) => n + (p.pagamentos_favorecidos?.length || 1), 0);
+    const destinoPagamento = daMedicao.some(p => p.pagamentos_favorecidos?.length)
+      ? 'os favorecidos e formas de pagamento listados' : `${favorecido} por ${formaPagamento}`;
     const total = totalDaMedicao;
     const quantosAnexos = anexos.length;
     limpar();
@@ -230,7 +240,7 @@ export default function ModalMedicao({
     try {
       const { ok } = await confirmar({
         titulo: `Aprovar a medicao ${alvo.numero}`,
-        mensagem: `Aprovar a medicao ${alvo.numero} (${periodo(alvo)}) abre ${quantasParcelas} titulo(s), no total de ${moeda(total)}, para ${favorecido} por ${formaPagamento}. Conferido em ${quantosAnexos} arquivo(s) anexado(s). A solicitacao volta a Obra apenas se esta for a medicao mais recente; GEO pode enviar os titulos a autorizacao ou a fila. Depois de aprovada, valor e vencimento ficam somente para consulta.`,
+        mensagem: `Aprovar a medicao ${alvo.numero} (${periodo(alvo)}) abre ${quantasParcelas} titulo(s), no total de ${moeda(total)}, para ${destinoPagamento}. Conferido em ${quantosAnexos} arquivo(s) anexado(s). A solicitacao volta a Obra apenas se esta for a medicao mais recente; GEO pode enviar os titulos a autorizacao ou a fila. Depois de aprovada, valor e vencimento ficam somente para consulta.`,
         rotuloConfirmar: 'Aprovar medição'
       });
       if (!ok) return;
@@ -390,6 +400,22 @@ export default function ModalMedicao({
               )}
             </StatGrid>
 
+            {daMedicao.some(p => p.pagamentos_favorecidos?.length) && <div className="mt-3 divide-y divide-[var(--c-border)]" aria-label="Favorecidos desta medição">
+              {daMedicao.flatMap(p => (p.pagamentos_favorecidos || []).map(f => <div key={f.id} className="py-2 text-sm">
+                <span className="font-semibold">{f.nome_favorecido}</span> · Parcela {p.numero} · {moeda(f.valor)} · {f.forma_pagamento_nome}
+                {podeSalvar && !temBaixa(p) && <label className="flex items-center gap-2 mt-1">Valor
+                  <input className="input input-sm w-36" aria-label={`Valor para ${f.nome_favorecido}, parcela ${p.numero}`} type="number" min="0.01" step="0.01"
+                    disabled={salvando || aprovando} value={valoresFavorecidos[f.id] ?? ''} onChange={e => {
+                      const novos = { ...valoresFavorecidos, [f.id]: e.target.value };
+                      setValoresFavorecidos(novos);
+                      const soma = (p.pagamentos_favorecidos || []).reduce((n, parte) => n + Math.round(Number(novos[parte.id] || 0) * 100), 0) / 100;
+                      setEdicao(prev => ({ ...prev, [p.id]: { ...prev[p.id], valor: String(soma.toFixed(2)) } }));
+                    }} />
+                </label>}
+                <p className="whitespace-pre-wrap break-all">{f.favorecido_chave_pix || f.dados_pagamento || (f.boleto_nomes || []).join(', ')}</p>
+              </div>))}
+            </div>}
+
             <div className="mt-3 border-t border-[var(--c-border)] pt-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">
@@ -490,6 +516,7 @@ export default function ModalMedicao({
                             type="text"
                             inputMode="decimal"
                             data-testid={`medicao-valor-${p.numero}`}
+                            readOnly={Boolean(p.pagamentos_favorecidos?.length)}
                             value={edicao[p.id]?.valor ?? ''}
                             onChange={(e) => {
                               const valor = e.target.value;

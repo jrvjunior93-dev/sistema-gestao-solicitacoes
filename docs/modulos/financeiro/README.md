@@ -1,10 +1,133 @@
 # Modulo FINANCEIRO
 
+## Motivo de ajuste nas autorizacoes - 2026-10-11
+
+- Historico do detalhe mostra observacao de STATUS_ALTERADO (incluindo motivos
+  digitais ja gravados), sem repetir descricao identica ou alterar o registro.
+- A lista de lotes identifica SOL/TIT e resume motivos dos itens REJEITADO ou
+  INVALIDADO. Coluna Motivo abre texto completo; fechar/Escape/fundo/voltar do
+  navegador retorna ao lote, como a justificativa. Consulta nao decide pagamentos.
+- Cada nova recusa grava seu motivo mesmo se outro titulo ja mudou o status
+  da mesma solicitacao. Sem nova troca global registra evento proprio; motivos
+  de medicao antiga nao sobrescrevem o fluxo da medicao mais recente.
+- Sem migration/backfill: textos salvos passam a aparecer; motivos antigos
+  ausentes do historico nao sao inventados nem regravados nesta alteracao.
+  [Handoff](../../handoffs/2026-10-11-motivo-ajuste-autorizacao.md).
+
+## Pix longo e dados da fila - 2026-10-11
+
+- Copia e Cola aceita texto livre com limite operacional de 8192 caracteres.
+  Campos sem seletor preservam o codigo; cadastros que inferem tipo reconhecem
+  o prefixo 000201. CPF/CNPJ/telefone conservam suas validacoes especificas.
+- Tres inputs de Compras (pedido, solicitacao e frete) ainda limitavam a chave
+  a 255 no navegador; agora usam PIX_TEXTO_MAX = 8192, ja aceito pelo backend.
+  Demais inputs Pix auditados nao tinham corte de 180/255; o RH ja usa 8192.
+- Persistencia usa TEXT nas 12 colunas da migration existente
+  202610090001_pix_copia_cola_texto.js. Conferir sua aplicacao em cada ambiente;
+  a revisao local nao confirma schema/deploy de producao. Nenhuma nova migration.
+- Na fila, dados acima de 120 caracteres ou com mais de duas linhas ganham
+  Ver dados completos. Modal somente leitura, texto selecionavel, Copiar dados,
+  fechamento por botao/Escape/fundo e preservacao de foco, rolagem, selecao e
+  rascunho. Copiar dados copia a instrucao inteira exibida, nao extrai uma chave.
+- Usa OverlayModal/useRolagemModal; sem endpoint, permissao de baixa nova,
+  alteracao financeira ou consulta bancaria. Testes isolados Pix/backend/UI,
+  fila/colunas/preview/baixa em massa e build. Handoff:
+  [Pix e dados completos da fila](../../handoffs/2026-10-11-pix-dados-pagamento-fila.md).
+
+## Adiantamento e forma de pagamento - 2026-10-11
+
+O detalhe da solicitacao lista a forma de pagamento do proprio titulo,
+inclusive na leitura resumida autorizada, sem ampliar dados bancarios.
+A fila conserva a coluna Forma / instrumento existente.
+
+ADIANTAMENTO nasce PAGAR/ABERTO com categoria definida pelo GEO antes do
+pagamento, sem reconhecimento de custo antecipado. A conferencia aprovada
+preenche valor_despesa_prestacao e rateios efetivos no titulo pago; nao gera
+outro titulo de despesa. Sobra gera RECEBER/DEVOLUCAO_ADIANTAMENTO, nao DRE.
+Caixa mantem o principal; DRE/obras/custos usam somente a despesa aprovada.
+Pagamento 1000, despesa 800 e devolucao 200 resultam em custo 800.
+
+Unicidade e decisoes usam transacao/bloqueios. Edicao de valor/status da
+principal apos titulo, renegociacao, exclusao em massa e estorno original
+apos envio da prestacao sao bloqueados. Homologacao MySQL real ainda pendente.
+Detalhes: [handoff de adiantamento](../../handoffs/2026-10-11-adiantamento-centros-custo.md).
+
+## Preview interno de arquivos da fila - 2026-10-11
+
+- Visualizar PDFs e imagens (JPG/JPEG/PNG/GIF/WebP) na lista de arquivos abre
+  um segundo modal, amplo e responsivo (ate 1200px). Reutiliza PreviewAnexoModal
+  com dimensoes opcionais; os demais chamadores mantem dimensoes anteriores.
+- Presign/acesso seguro e download existentes preservados; nao cria vinculos,
+  nao altera pagamento e nao amplia permissoes. Formatos sem preview seguem
+  abertura externa. SVG nao e embutido.
+- Fechar/Escape retorna a lista de arquivos, com foco no botao e sem perder a
+  rolagem da fila. Abertura concorrente e resposta atrasada apos fechar bloqueadas.
+- PDF usa viewer nativo com selecao/copia de texto quando o documento permite.
+  Nao ha OCR de imagem/PDF escaneado; suporte nativo pode variar por navegador.
+- Teste: test:fila-instrumentos-ui inclui filaArquivosPreviewQA.mjs, com
+  APIs/arquivos simulados e viewport desktop/mobile, sem banco real.
+  Handoff: docs/handoffs/2026-10-11-fila-preview-arquivos.md.
+
+## Colunas da fila por usuario - 2026-10-11
+
+- O botao Colunas permite escolher as colunas visiveis e reordenar por arrasto
+  no painel/cabecalho. Setas no painel atendem teclado e celular.
+- Reutiliza preferencias do usuario no servidor, com espelho local e chave
+  `financeiro-fila-pagamentos`, tipo `colunas`. Ordem/visibilidade sao recuperadas
+  na sessao; Restaurar padrao nao apaga larguras ou filtros.
+- Selecao, titulo e status/acoes permanecem visiveis. Ocultar/mover nao apaga
+  valores digitados, nao altera permissoes e nao muda a elegibilidade de baixa.
+  Erros de validacao revelam a coluna necessaria ao voltar para corrigir.
+- Sem migration/backend novo. Teste: `test:fila-instrumentos-ui` e
+  `backend/scripts/validarListaPreferencias.js` (APIs/banco reais nao utilizados).
+  Handoff: `docs/handoffs/2026-10-11-fila-colunas-usuario.md`.
+
+## Fila e comprovantes - 2026-10-11
+
+- Coluna Obra/Centro de Custo usa o local do titulo (catalogo compartilhado),
+  sem mudar rateios, empresa pagadora ou permissoes.
+- Baixa em massa: selecao individual ou todos os pendentes da lista carregada,
+  inclusive no filtro Todos. Limite existente da consulta: 500 entradas; nao
+  inclui registros fora dos filtros, baixados, somente consulta ou em edicao DP.
+  Divergencias continuam na autorizacao separada. Mesma validacao, transacao e
+  idempotencia da baixa individual, comprovante opcional e encargos separados.
+- Encargos atuais do titulo sao projetados para filas antigas pendentes sem baixa;
+  pagamentos ja executados preservam snapshots. Encargos nao sao repetidos
+  no saldo restante apos pagamento parcial. Edicoes manuais na fila continuam
+  sendo enviadas explicitamente no payload e valores divergentes exigem motivo.
+  Divergencias preservam os encargos informados na tentativa de baixa; edicao
+  posterior do titulo usa a sincronizacao transacional ja existente.
+- Modal de arquivos guarda a rolagem vertical/horizontal da pagina/tabela ao
+  abrir e fechar (botao/Esc), sem alterar o comportamento global dos modais.
+- Financeiro da solicitacao usa apenas um include da fila, sem filtro de ativos:
+  alias duplicado no ORM preservava filtro que podia esconder filas baixadas.
+  Principal e adicionais sao deduplicados por hash na apresentacao existente.
+- Importacao pelo nome SOL-xxxx fica vinculada a solicitacao: arquivos ativos
+  tambem aparecem na coluna, com prefixo Solicitação. Nao presume um vinculo
+  individual ao titulo, nao registra nova baixa e nao muda conciliacao/historico.
+- Diagnostico opt-in: `conferirComprovantesSolicitacao.js --somente-leitura`.
+  Handoff: `docs/handoffs/2026-10-11-fila-local-massa-comprovantes.md`.
+
 ## Papel e propriedade
 
 Financeiro e dono de titulos a pagar/receber, parcelas financeiras, movimentos, baixas, estornos, contas bancarias, categorias, conciliacao e calculos de previsto/realizado. Modulos de origem nao podem criar movimentos diretamente.
 
 ## Titulos
+
+Tipos Pix incluem `COPIA_COLA` (rotulo **Copia e Cola**) nos cadastros,
+criacao/edicao de titulo, preparar Pix da solicitacao, RH/DP e fretes. Aceita
+texto livre ate 8192 caracteres, preservando caixa, simbolos e espacos internos;
+apenas espacos nas extremidades sao removidos como nos campos existentes.
+Nao validar esse texto como CPF/CNPJ/email/UUID nem corta-lo. Os tipos antigos
+mantem as validacoes existentes. A fila manual usa o dado cadastrado; o lote
+automatico BB atual por chave Pix rejeita Copia e Cola antes de gerar intents.
+
+Migration `202610090001_pix_copia_cola_texto.js`: expansao de 12 colunas para
+TEXT, preservando nulabilidade, dados e indice Pix com prefixo MySQL; nenhum
+backfill ou mudanca de status. Aplicar antes de usar codigos longos. Cadastro
+simplificado usa SHA-256 do texto em `pix_chave_canonica` apenas para este novo
+tipo, preservando unicidade sem reduzir ou alterar o codigo armazenado.
+Validacoes locais: `npm run test:pix-copia-cola` em backend e frontend.
 
 - tipo obrigatorio `PAGAR` ou `RECEBER`;
 - origem pode ser solicitacao, compra, comercial, RH/DP ou lancamento manual;

@@ -19,11 +19,10 @@ import { prepararPayloadSolicitacaoCompra } from '../utils/payloadSolicitacaoCom
 import { montarLinhasResumoApropriacao, montarTextoResumoApropriacao } from '../utils/apropriacoes';
 import { useAuth } from '../../../contexts/AuthContext';
 import { opcoesAvisoPendenciasEntrega } from '../../../utils/avisoPendenciasEntrega';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useComprasDraft from '../utils/useComprasDraft';
 import {
-  buildComprasDraftKey,
-  readComprasDraft,
-  removeComprasDraft,
-  writeComprasDraft
+  buildComprasDraftKey
 } from '../utils/comprasDraftStorage';
 
 function formatarData(data) {
@@ -78,15 +77,26 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
   const draftKey = buildComprasDraftKey(user?.id, reaproveitarSolicitacaoId > 0
     ? `reaproveitar-${reaproveitarSolicitacaoId}`
     : modoCompraDireta ? 'compra-direta' : 'solicitacao');
+  const draftStorage = useComprasDraft(draftKey, user?.id);
   const rotaEdicao = modoCompraDireta ? '/solicitacoes-compra-direta/nova'
     : reaproveitarSolicitacaoId > 0
       ? `/solicitacoes-compra/nova?reaproveitar_solicitacao=${reaproveitarSolicitacaoId}`
       : '/solicitacoes-compra/nova';
   const [draft, setDraft] = useState(null);
-  const [confirmado, setConfirmado] = useState(false);
+  const [conferencia, setConferencia] = useWorkspaceState('revisaoCompra:conferencia', null);
   const [loading, setLoading] = useState(false);
   const criacaoEmAndamentoRef = useRef(false);
-  const [previewVisualizado, setPreviewVisualizado] = useState(false);
+  // Conferencia pertence ao conteudo exato revisado, nao ao catalogo antigo.
+  const assinatura = draft ? JSON.stringify(draft.payload) : '';
+  const confirmado = conferencia?.assinatura === assinatura && Boolean(conferencia?.confirmado);
+  const previewVisualizado = conferencia?.assinatura === assinatura && Boolean(conferencia?.previewVisualizado);
+  const setConfirmado = value => setConferencia(atual => ({
+    ...(atual?.assinatura === assinatura ? atual : {}), assinatura, confirmado: value
+  }));
+  const setPreviewVisualizado = value => setConferencia(atual => ({
+    ...(atual?.assinatura === assinatura ? atual : {}), assinatura, previewVisualizado: value
+  }));
+  useWorkspaceWork(Boolean(draft), loading);
   /*
     UM ÚNICO VISUALIZADOR NA TELA (R16, 05/09).
 
@@ -107,13 +117,13 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
 
   useEffect(() => {
     try {
-      const dados = readComprasDraft(draftKey);
+      const dados = draftStorage.read();
       if (!dados) {
         navigate(rotaEdicao, { replace: true });
         return;
       }
       if (!dados?.payload?.obra_id || !Array.isArray(dados?.payload?.itens) || !dados.payload.itens.length) {
-        removeComprasDraft(draftKey);
+        draftStorage.remove();
         navigate(rotaEdicao, { replace: true });
         return;
       }
@@ -121,7 +131,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       setDraft(dados);
     } catch (error) {
       console.error(error);
-      removeComprasDraft(draftKey);
+      draftStorage.remove();
       navigate(rotaEdicao, { replace: true });
     }
   }, [draftKey, navigate, rotaEdicao]);
@@ -242,6 +252,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
         </head>
         <body>
           <h1>${modoCompraDireta ? 'Compra Direta' : 'Solicitacao de Compra'}</h1>
+          ${draft.payload?.titulo ? `<div class="meta"><strong>Título da solicitação:</strong> ${escapeHtml(draft.payload.titulo)}</div>` : ''}
           <div class="meta"><strong>Obra:</strong> ${escapeHtml(draft.resumo?.obra_nome || '-')}</div>
           <div class="meta"><strong>Solicitante:</strong> ${escapeHtml(draft.resumo?.solicitante_nome || '-')}</div>
           ${temDescontoCompraDireta ? `<div class="meta"><strong>Valor bruto:</strong> ${escapeHtml(formatarMoeda(valorBrutoCompraDireta))}</div>` : ''}
@@ -348,6 +359,13 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
+    if (!draft.payload?.necessario_para) {
+      avisar.alerta(modoCompraDireta
+        ? 'Informe a data de vencimento. Volte e edite a solicitação.'
+        : 'Informe a data da necessidade. Volte e edite a solicitação.');
+      return;
+    }
+
     if (!confirmado) {
       avisar.alerta('Confirme que revisou os dados antes de criar a solicitação.');
       return;
@@ -364,7 +382,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       const resposta = modoCompraDireta
         ? await criarSolicitacaoCompraDireta(draft.payload)
         : await criarSolicitacaoCompra(prepararPayloadSolicitacaoCompra(draft.payload));
-      removeComprasDraft(draftKey);
+      draftStorage.remove();
       navigate(`/solicitacoes-compra/finalizada/${resposta.id}`, {
         replace: true,
         state: {
@@ -383,7 +401,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
 
   function handleVoltarEditar() {
     if (draft) {
-      writeComprasDraft(draftKey, draft, user?.id);
+      draftStorage.write(draft);
     }
     navigate(rotaEdicao, {
       state: { preservarRascunhoCompra: true }
@@ -401,6 +419,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     existem na solicitação comum, então não podem contar como "vazios".
   */
   const camposDaCompra = [
+    { label: 'Título da solicitação', valor: draft.payload?.titulo, span: 3 },
     { label: 'Obra', valor: draft.resumo?.obra_nome },
     { label: 'Solicitante', valor: draft.resumo?.solicitante_nome },
     { label: 'Credor', valor: draft.resumo?.credor_nome, contexto: modoCompraDireta },

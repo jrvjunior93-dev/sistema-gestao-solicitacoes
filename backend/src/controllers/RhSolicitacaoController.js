@@ -94,6 +94,10 @@ async function exigirColaboradorNoEscopoDoUsuario(req, colaboradorId, { permitir
 async function exigirSolicitacaoNoEscopoDoUsuario(req, solicitacaoId) {
   const pedido = await RhSolicitacao.findByPk(solicitacaoId);
   if (!pedido) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+  if (pedido.subtipo === 'PAGAMENTO_POR_SOLICITACAO' && pedido.situacao === 'RASCUNHO'
+    && Number(pedido.criada_por) !== Number(req.user.id)) {
+    throw new ValidationError('Este rascunho pertence a outro usuario.', 403);
+  }
   if (ehTransferencia(pedido)) throw new ValidationError('Use a aba Transferencias entre obras. A decisao cabe aos responsaveis das obras.', 403);
   const visiveis = await obrasVisiveis(req);
   if (Array.isArray(visiveis) && (!visiveis.length || (pedido.obra_id && !visiveis.includes(Number(pedido.obra_id))))) {
@@ -114,7 +118,11 @@ module.exports = {
   async index(req, res) {
     try {
       const where = {};
-      if (req.query.situacao) where.situacao = String(req.query.situacao).toUpperCase();
+      const filtroSituacao = String(req.query.situacao || '').toUpperCase();
+      const emAndamento = ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'];
+      if (filtroSituacao) where.situacao = filtroSituacao === 'EM_ANDAMENTO'
+        ? { [Op.in]: [...emAndamento, 'APROVADA'] }
+        : ['ENVIO_PARCIAL', 'EM_REVISAO'].includes(filtroSituacao) ? { [Op.in]: [filtroSituacao, 'APROVADA'] } : filtroSituacao;
       if (req.query.tipo) where.tipo = String(req.query.tipo).toUpperCase();
       if (req.query.colaborador_id) where.colaborador_id = Number(req.query.colaborador_id);
 
@@ -141,6 +149,14 @@ module.exports = {
         }
       }
 
+      if (req.query.obra_id !== undefined && req.query.obra_id !== '') {
+        const localId = Number(req.query.obra_id);
+        if (!Number.isInteger(localId) || localId <= 0) throw new ValidationError('Obra/centro de custo invalido.');
+        if (Array.isArray(obraIds) && !obraIds.includes(localId)) return res.json([]);
+        // Estreita o escopo existente; nunca substitui a autorizacao acima.
+        where.obra_id = localId;
+      }
+
       const dados = await RhSolicitacao.findAll({
         where,
         order: [['situacao', 'ASC'], ['createdAt', 'DESC']],
@@ -159,7 +175,19 @@ module.exports = {
        *
        * Uma consulta para todos os destinos da pagina, e nao uma por linha.
        */
-      const planos = dados.filter(linha => !ehTransferencia(linha)).map((linha) => linha.get({ plain: true }));
+      const planos = dados.filter(linha => !ehTransferencia(linha)
+        && !(linha.subtipo === 'PAGAMENTO_POR_SOLICITACAO' && linha.situacao === 'RASCUNHO'
+          && Number(linha.criada_por) !== Number(req.user.id)))
+        .map((linha) => {
+          const plano = linha.get({ plain: true });
+          if (plano.subtipo === 'PAGAMENTO_POR_SOLICITACAO') {
+            const { normalizarAndamento, situacaoPagamento } = require('../services/rhPagamentoSolicitacaoDomain');
+            plano.dados_json = normalizarAndamento(typeof plano.dados_json === 'string' ? JSON.parse(plano.dados_json) : plano.dados_json || {});
+            plano.situacao = situacaoPagamento(plano.dados_json, plano.situacao);
+          }
+          return plano;
+        }).filter(linha => !filtroSituacao || (filtroSituacao === 'EM_ANDAMENTO'
+          ? emAndamento.includes(linha.situacao) : linha.situacao === filtroSituacao));
       const idsDestino = Array.from(new Set(
         planos
           .map((linha) => Number(linha.dados_json?.obra_destino_id))

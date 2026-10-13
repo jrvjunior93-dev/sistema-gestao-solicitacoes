@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -333,43 +334,13 @@ function Condicao({ tom = 'warning', children }) {
   );
 }
 
-function AttachmentPreview({ item }) {
-  if (!item?.arquivo_url) {
-    return null;
-  }
-
+function AttachmentPreview({ item, onAbrir }) {
+  if (!item?.arquivo_url) return null;
   const label = item.arquivo_nome_original || 'Abrir anexo';
-
-  if (item.arquivo_is_image) {
-    return (
-      <a
-        href={item.arquivo_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block shrink-0"
-        title={label}
-      >
-        <img
-          src={item.arquivo_url}
-          alt={label}
-          className="h-12 w-12 rounded-lg border object-cover"
-          style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)' }}
-        />
-      </a>
-    );
-  }
-
-  return (
-    <a
-      href={item.arquivo_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="btn btn-outline btn-sm shrink-0"
-      title={label}
-    >
-      Ver anexo
-    </a>
-  );
+  return <button type="button" onClick={() => onAbrir({ url: item.arquivo_url, nome: item.arquivo_nome_original, caminho: item.arquivo_url })}
+    className={item.arquivo_is_image ? 'block shrink-0' : 'btn btn-outline btn-sm shrink-0'} title={label}>
+    {item.arquivo_is_image ? <img src={item.arquivo_url} alt={label} className="h-12 w-12 rounded-lg border object-cover" style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)' }} /> : 'Ver anexo'}
+  </button>;
 }
 
 /**
@@ -403,6 +374,7 @@ function MolduraPublica({ avisos, aoFecharAviso, children }) {
 }
 
 export default function CotacaoFornecedorPublica() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { token } = useParams();
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -881,16 +853,12 @@ export default function CotacaoFornecedorPublica() {
         {arquivosResposta.length > 0 ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {arquivosResposta.map((arquivo, index) => (
-              <a
+              <button type="button"
                 key={arquivo.chave || `${arquivo.url}-${index}`}
-                href={arquivo.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-outline justify-start truncate"
-                title={arquivo.nome_original || `Arquivo ${index + 1}`}
-              >
+                onClick={() => abrirPreview({ url: arquivo.url, nome: arquivo.nome_original, caminho: arquivo.url })}
+                className="btn btn-outline justify-start truncate" title={arquivo.nome_original || `Arquivo ${index + 1}`}>
                 {arquivo.nome_original || `Arquivo ${index + 1}`} ({arquivo.tipo || 'ARQUIVO'})
-              </a>
+              </button>
             ))}
           </div>
         ) : null}
@@ -1283,7 +1251,7 @@ export default function CotacaoFornecedorPublica() {
               tipo: 'texto',
               render: (item) => (
                 <div className="flex min-w-0 items-start gap-2">
-                  <AttachmentPreview item={item} />
+                  <AttachmentPreview item={item} onAbrir={abrirPreview} />
                   <div className="min-w-0 flex-1">
                     {item.link_produto ? (
                       <a
@@ -1343,6 +1311,7 @@ export default function CotacaoFornecedorPublica() {
       </BlocoConteudo>
 
       {elementoConfirmacao}
+      {modalPreview}
     </MolduraPublica>
   );
 }

@@ -169,6 +169,8 @@ async function testarMedicoesIndependentes() {
     usuarioId: 31, motivo: 'Corrigir M1.', resultado: 'REJEITADO', transaction }));
   assert.equal(state.TituloFinanceiro[0].status_interno_pagar, 'AGUARDANDO AJUSTE DE PAGAMENTO');
   assert.equal(state.Solicitacao[0].status_global, analysisStatus, 'Rejeicao antiga nao recusa M2.');
+  assert(state.Historico.some(h => h.acao === 'AUTORIZACAO_PAGAMENTO_REJEITADA' && h.observacao.includes('Corrigir M1.')),
+    'Motivo da medicao antiga nao se perde mesmo sem mudar o fluxo atual');
   await models.sequelize.transaction(transaction => analysis.registrarAnaliseRecusada({ tituloId: 2,
     usuarioId: 31, motivo: 'Corrigir M2.', resultado: 'REJEITADO', transaction }));
   assert.equal(state.Solicitacao[0].status_global, 'AGUARDANDO AJUSTE');
@@ -300,6 +302,35 @@ async function testarMedicoesIndependentes() {
       motivo: 'Documento precisa ser corrigido.', resultado, transaction }));
     assert.equal(state.Historico.length, count);
   }
+
+  // Dois titulos da mesma solicitacao: cada recusa tem motivo proprio.
+  reset();
+  await internal.atribuirStatusInternoPagar(user, [1, 2], analysisStatus);
+  for (const tituloId of [1, 2]) await models.sequelize.transaction(transaction => analysis.registrarAnaliseRecusada({
+    tituloId, usuarioId: 31, motivo: `Corrigir titulo ${tituloId}.`, resultado: 'REJEITADO', transaction }));
+  const motivosHistorico = state.Historico.filter(h => JSON.parse(h.metadata || '{}').origem === 'AUTORIZACAO_DIGITAL');
+  assert.equal(motivosHistorico.length, 2);
+  assert.deepEqual(motivosHistorico.map(h => h.observacao), ['Analise digital de pagamento rejeitada: Corrigir titulo 1.',
+    'Analise digital de pagamento rejeitada: Corrigir titulo 2.']);
+  assert.equal(motivosHistorico[0].acao, 'STATUS_ALTERADO');
+  assert.equal(motivosHistorico[1].acao, 'AUTORIZACAO_PAGAMENTO_REJEITADA');
+  assert.equal(state.Solicitacao[0].status_global, 'AGUARDANDO AJUSTE');
+  const antesReplay = state.Historico.length;
+  await models.sequelize.transaction(transaction => analysis.registrarAnaliseRecusada({ tituloId: 2,
+    usuarioId: 31, motivo: 'Replay', resultado: 'REJEITADO', transaction }));
+  assert.equal(state.Historico.length, antesReplay, 'Retry nao duplica o motivo');
+
+  reset(); await internal.atribuirStatusInternoPagar(user, [1], analysisStatus);
+  const criarHistorico = models.Historico.create;
+  const historicoAntesFalha = state.Historico.length;
+  models.Historico.create = async () => { throw new Error('Historico indisponivel'); };
+  try {
+    await assert.rejects(models.sequelize.transaction(transaction => analysis.registrarAnaliseRecusada({
+      tituloId: 1, usuarioId: 31, motivo: 'Nao perder motivo', resultado: 'REJEITADO', transaction })), /Historico indisponivel/);
+    assert.equal(state.TituloFinanceiro[0].status_interno_pagar, analysisStatus);
+    assert.equal(state.Solicitacao[0].status_global, analysisStatus);
+    assert.equal(state.Historico.length, historicoAntesFalha, 'Falha no registro reverte a recusa inteira');
+  } finally { models.Historico.create = criarHistorico; }
 
   for (const mode of ['OFF', 'PILOT', 'ENFORCED', 'PAUSED']) {
     reset(); env.paymentOwnerApprovalMode = mode;

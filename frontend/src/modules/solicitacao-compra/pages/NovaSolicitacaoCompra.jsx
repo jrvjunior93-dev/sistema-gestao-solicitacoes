@@ -1,4 +1,5 @@
 import DateInputBR from '../../../components/DateInputBR';
+import { PIX_TEXTO_MAX } from '../../../utils/pix';
 import QuantidadeInputBR from '../../../components/QuantidadeInputBR';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -51,13 +52,12 @@ import {
   validarRateiosItem
 } from '../utils/apropriacoes';
 import {
-  buildComprasDraftKey,
-  readComprasDraft,
-  removeComprasDraft,
-  writeComprasDraft
+  buildComprasDraftKey
 } from '../utils/comprasDraftStorage';
 import { prepararItensReaproveitados } from '../utils/reaproveitamentoItensCompra';
 import { prepararPayloadSolicitacaoCompra } from '../utils/payloadSolicitacaoCompra';
+import { useWorkspaceRestored, useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useComprasDraft, { referenciaParceiroCompra, useComprasPartnerChoice } from '../utils/useComprasDraft';
 const ITEM_ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.html,.rar';
 const HEADER_ATTACHMENT_ACCEPT = '.pdf,.png,.jpg,.jpeg,.xml';
 
@@ -144,7 +144,7 @@ function criarDetalheFormaPagamento(detalhe = {}) {
       : null;
   return {
     usar_credor_como_favorecido: Boolean(detalhe?.usar_credor_como_favorecido),
-    favorecido,
+    favorecido: referenciaParceiroCompra(favorecido),
     chave_pix: String(detalhe?.chave_pix || detalhe?.favorecido_chave_pix || ''),
     dados_pagamento: String(detalhe?.dados_pagamento || '')
   };
@@ -246,8 +246,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const draftKey = buildComprasDraftKey(user?.id, reaproveitarSolicitacaoId > 0
     ? `reaproveitar-${reaproveitarSolicitacaoId}`
     : modoCompraDireta ? 'compra-direta' : 'solicitacao');
-  const hidratandoDraftRef = useRef(false);
-  const draftCarregadoRef = useRef(false);
+  const draftStorage = useComprasDraft(draftKey, user?.id);
+  const restaurado = useWorkspaceRestored('novaCompra:itens');
+  const hidratandoDraftRef = useRef(restaurado);
+  const draftCarregadoRef = useRef(restaurado);
   const suspenderAutosaveAteRef = useRef(0);
   const importacaoItensInputRef = useRef(null);
   const importacaoEmAndamentoRef = useRef(false);
@@ -260,45 +262,46 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [insumos, setInsumos] = useState([]);
   const [unidades, setUnidades] = useState([]);
   const [apropriacoes, setApropriacoes] = useState([]);
-  const [obraId, setObraId] = useState('');
-  const [tipoSolicitacaoIdContexto, setTipoSolicitacaoIdContexto] = useState(tipoSolicitacaoIdInicial);
-  const [areaResponsavelContexto, setAreaResponsavelContexto] = useState(areaResponsavelInicial);
-  const [necessarioPara, setNecessarioPara] = useState('');
-  const [observacoes, setObservacoes] = useState('');
-  const [dadosPagamento, setDadosPagamento] = useState('');
-  const [descontoTotal, setDescontoTotal] = useState('');
-  const [freteTipo, setFreteTipo] = useState('SEM_FRETE');
-  const [freteModo, setFreteModo] = useState('GLOBAL');
-  const [freteValor, setFreteValor] = useState('');
-  const [freteDataVencimento, setFreteDataVencimento] = useState('');
-  const [freteParceiroId, setFreteParceiroId] = useState('');
-  const [freteParceiroBusca, setFreteParceiroBusca] = useState('');
-  const [freteDadosPagamento, setFreteDadosPagamento] = useState('');
-  const [freteFormaPagamentoId, setFreteFormaPagamentoId] = useState('');
-  const [freteFavorecidoSelecionado, setFreteFavorecidoSelecionado] = useState(null);
-  const [freteUsarCredorComoFavorecido, setFreteUsarCredorComoFavorecido] = useState(false);
-  const [freteChavePix, setFreteChavePix] = useState('');
+  const [obraId, setObraId] = useWorkspaceState('novaCompra:obraId', '');
+  const [tipoSolicitacaoIdContexto, setTipoSolicitacaoIdContexto] = useWorkspaceState('novaCompra:tipoSolicitacaoIdContexto', tipoSolicitacaoIdInicial);
+  const [areaResponsavelContexto, setAreaResponsavelContexto] = useWorkspaceState('novaCompra:areaResponsavelContexto', areaResponsavelInicial);
+  const [necessarioPara, setNecessarioPara] = useWorkspaceState('novaCompra:necessarioPara', '');
+  const [tituloSolicitacao, setTituloSolicitacao] = useWorkspaceState('novaCompra:tituloSolicitacao', '');
+  const [observacoes, setObservacoes] = useWorkspaceState('novaCompra:observacoes', '');
+  const [dadosPagamento, setDadosPagamento] = useWorkspaceState('novaCompra:dadosPagamento', '');
+  const [descontoTotal, setDescontoTotal] = useWorkspaceState('novaCompra:descontoTotal', '');
+  const [freteTipo, setFreteTipo] = useWorkspaceState('novaCompra:freteTipo', 'SEM_FRETE');
+  const [freteModo, setFreteModo] = useWorkspaceState('novaCompra:freteModo', 'GLOBAL');
+  const [freteValor, setFreteValor] = useWorkspaceState('novaCompra:freteValor', '');
+  const [freteDataVencimento, setFreteDataVencimento] = useWorkspaceState('novaCompra:freteDataVencimento', '');
+  const [freteParceiroId, setFreteParceiroId] = useWorkspaceState('novaCompra:freteParceiroId', '');
+  const [freteParceiroBusca, setFreteParceiroBusca] = useWorkspaceState('novaCompra:freteParceiroBusca', '');
+  const [freteDadosPagamento, setFreteDadosPagamento] = useWorkspaceState('novaCompra:freteDadosPagamento', '');
+  const [freteFormaPagamentoId, setFreteFormaPagamentoId] = useWorkspaceState('novaCompra:freteFormaPagamentoId', '');
+  const [freteFavorecidoSelecionado, setFreteFavorecidoSelecionado] = useComprasPartnerChoice('novaCompra:freteFavorecidoSelecionado');
+  const [freteUsarCredorComoFavorecido, setFreteUsarCredorComoFavorecido] = useWorkspaceState('novaCompra:freteUsarCredorComoFavorecido', false);
+  const [freteChavePix, setFreteChavePix] = useWorkspaceState('novaCompra:freteChavePix', '');
   const [freteParceiros, setFreteParceiros] = useState([]);
   const [buscandoCredoresFrete, setBuscandoCredoresFrete] = useState(false);
   const [autocompleteFreteAberto, setAutocompleteFreteAberto] = useState(false);
   const [erroBuscaCredorFrete, setErroBuscaCredorFrete] = useState('');
   const [freteCredorAtivoIndex, setFreteCredorAtivoIndex] = useState(0);
-  const [anexosCabecalho, setAnexosCabecalho] = useState([]);
+  const [anexosCabecalho, setAnexosCabecalho] = useWorkspaceState('novaCompra:anexosCabecalho', []);
   const [formasPagamento, setFormasPagamento] = useState([]);
-  const [formaPagamentoIds, setFormaPagamentoIds] = useState([]);
-  const [valoresFormaPagamento, setValoresFormaPagamento] = useState({});
-  const [detalhesFormaPagamento, setDetalhesFormaPagamento] = useState({});
-  const [parceiroId, setParceiroId] = useState('');
-  const [parceiroBusca, setParceiroBusca] = useState('');
-  const [favorecidoSelecionado, setFavorecidoSelecionado] = useState(null);
-  const [usarCredorComoFavorecido, setUsarCredorComoFavorecido] = useState(false);
-  const [favorecidoChavePix, setFavorecidoChavePix] = useState('');
+  const [formaPagamentoIds, setFormaPagamentoIds] = useWorkspaceState('novaCompra:formaPagamentoIds', []);
+  const [valoresFormaPagamento, setValoresFormaPagamento] = useWorkspaceState('novaCompra:valoresFormaPagamento', {});
+  const [detalhesFormaPagamento, setDetalhesFormaPagamento] = useWorkspaceState('novaCompra:detalhesFormaPagamento', {});
+  const [parceiroId, setParceiroId] = useWorkspaceState('novaCompra:parceiroId', '');
+  const [parceiroBusca, setParceiroBusca] = useWorkspaceState('novaCompra:parceiroBusca', '');
+  const [favorecidoSelecionado, setFavorecidoSelecionado] = useComprasPartnerChoice('novaCompra:favorecidoSelecionado');
+  const [usarCredorComoFavorecido, setUsarCredorComoFavorecido] = useWorkspaceState('novaCompra:usarCredorComoFavorecido', false);
+  const [favorecidoChavePix, setFavorecidoChavePix] = useWorkspaceState('novaCompra:favorecidoChavePix', '');
   const [parceiros, setParceiros] = useState([]);
   const [buscandoParceiros, setBuscandoParceiros] = useState(false);
   const [autocompleteCredorAberto, setAutocompleteCredorAberto] = useState(false);
   const [credorAtivoIndex, setCredorAtivoIndex] = useState(0);
   const [erroBuscaCredor, setErroBuscaCredor] = useState('');
-  const [modalCredorAberto, setModalCredorAberto] = useState(false);
+  const [modalCredorAberto, setModalCredorAberto] = useWorkspaceState('novaCompra:modalCredorAberto', false);
   /*
     "FORMAS DE PAGAMENTO" SÓ FECHAVA CLICANDO DE NOVO NO PRÓPRIO BOTÃO
     (05/09) — mesmo defeito das "Competências dos cards" do custosRecebiveis,
@@ -364,18 +367,25 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [errosCampo, setErrosCampo] = useState({});
   const [errosItem, setErrosItem] = useState({});
   const [erroRateiosModal, setErroRateiosModal] = useState('');
-  const [novoCredor, setNovoCredor] = useState(criarNovoCredorPadrao);
+  const [novoCredor, setNovoCredor] = useWorkspaceState('novaCompra:novoCredor', criarNovoCredorPadrao);
   const [salvandoCredor, setSalvandoCredor] = useState(false);
   const salvandoCredorRef = useRef(false);
-  const [buscaInsumo, setBuscaInsumo] = useState('');
-  const [itens, setItens] = useState([]);
+  const [buscaInsumo, setBuscaInsumo] = useWorkspaceState('novaCompra:buscaInsumo', '');
+  const [itens, setItens] = useWorkspaceState('novaCompra:itens', []);
   const [uploadingArquivos, setUploadingArquivos] = useState({});
   const [uploadingAnexoCabecalho, setUploadingAnexoCabecalho] = useState(false);
   const [importandoItens, setImportandoItens] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [modalApropriacaoIndex, setModalApropriacaoIndex] = useState(null);
-  const [rateiosModal, setRateiosModal] = useState([]);
+  const [modalApropriacaoIndex, setModalApropriacaoIndex] = useWorkspaceState('novaCompra:modalApropriacaoIndex', null);
+  const [rateiosModal, setRateiosModal] = useWorkspaceState('novaCompra:rateiosModal', []);
   const [previewArquivo, setPreviewArquivo] = useState(null);
+  const obraHidratadaRef = useRef(restaurado ? obraId : null);
+  const apropriacaoConsultaRef = useRef(0);
+  const uploadsEmCursoRef = useRef(new Set());
+  const operacaoOcupada = loading || salvandoCredor || importandoItens
+    || uploadingAnexoCabecalho || Object.values(uploadingArquivos).some(Boolean);
+  useWorkspaceWork(Boolean(tituloSolicitacao || observacoes || obraId || itens.length
+    || parceiroBusca || modalCredorAberto || anexosCabecalho.length), operacaoOcupada);
 
   // O erro do campo sai assim que a pessoa mexe nele — mensagem de validação
   // que sobrevive à correção vira ruído e ensina a ignorar a próxima.
@@ -452,6 +462,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   async function carregarApropriacoes(obraSelecionada) {
+    const consulta = ++apropriacaoConsultaRef.current;
+    setApropriacoes([]);
     try {
       if (!obraSelecionada) {
         setApropriacoes([]);
@@ -459,8 +471,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       }
 
       const data = await listarApropriacoes({ obra_id: obraSelecionada });
+      if (consulta !== apropriacaoConsultaRef.current) return;
       setApropriacoes(Array.isArray(data) ? data : []);
     } catch (error) {
+      if (consulta !== apropriacaoConsultaRef.current) return;
       console.error(error);
       avisar.erro(error.message || 'Erro ao carregar apropriações');
     }
@@ -480,7 +494,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     contagem de itens que a pessoa leu são as que a ação usa.
   */
   async function limparRascunho() {
-    const chaveAlvo = draftKey;
+    if (operacaoOcupada) return;
     const totalItensAlvo = itens.length;
     const { ok } = await confirmar({
       titulo: 'Limpar rascunho',
@@ -490,10 +504,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     });
     if (!ok) return;
     suspenderAutosaveAteRef.current = Date.now() + 1500;
-    removeComprasDraft(chaveAlvo);
+    draftStorage.remove();
     setObraId(obraIdInicial || '');
     setNecessarioPara('');
     setObservacoes('');
+    setTituloSolicitacao('');
     setDadosPagamento('');
     setDescontoTotal('');
     setFreteTipo('SEM_FRETE');
@@ -531,6 +546,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       carregarFormasPagamento();
     }
   }, []);
+  useEffect(() => () => { apropriacaoConsultaRef.current += 1; }, []);
 
   const itemModalAtual = modalApropriacaoIndex !== null ? itens[modalApropriacaoIndex] || null : null;
   // Obra travada em Custos e Recebiveis: GET /obras/minhas?modo=CRIACAO marca
@@ -583,7 +599,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
     let aguardaReaproveitamento = false;
     try {
-      const dados = readComprasDraft(draftKey);
+      const dados = draftStorage.read();
       if (!dados) {
         if (reaproveitarSolicitacaoId > 0) {
           aguardaReaproveitamento = true;
@@ -593,6 +609,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               if (!ativo) return;
               const naoAprovados = prepararItensReaproveitados(origem.itens);
               hidratandoDraftRef.current = true;
+              obraHidratadaRef.current = String(origem.obra_id || obraIdInicial || '');
               setObraId(String(origem.obra_id || obraIdInicial || ''));
               setObservacoes(`Itens reaproveitados da solicitação #${reaproveitarSolicitacaoId}. Revise quantidades, apropriações e datas antes de enviar.`);
               setItens(naoAprovados);
@@ -608,7 +625,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         return;
       }
       const payload = dados?.payload;
-      if (!payload || !payload.obra_id) {
+      if (!payload || (!payload.obra_id && !payload.titulo)) {
         if (obraIdInicial) setObraId(obraIdInicial);
         draftCarregadoRef.current = true;
         return;
@@ -620,6 +637,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       }
 
       hidratandoDraftRef.current = true;
+      obraHidratadaRef.current = String(payload.obra_id || '');
       setObraId(String(payload.obra_id || ''));
       setTipoSolicitacaoIdContexto(
         String(dados?.contexto?.tipo_solicitacao_id || payload.tipo_solicitacao_id || tipoSolicitacaoIdInicial || '').trim()
@@ -629,6 +647,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       );
       setNecessarioPara(payload.necessario_para || '');
       setObservacoes(payload.observacoes || '');
+      setTituloSolicitacao(payload.titulo || '');
       setDadosPagamento(payload.dados_pagamento || '');
       setDescontoTotal(payload.desconto_total ? String(payload.desconto_total) : '');
       setFreteTipo(String(payload.frete_tipo || 'SEM_FRETE').toUpperCase());
@@ -743,15 +762,15 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       || suspenderAutosaveAteRef.current > Date.now()
     ) return undefined;
     const possuiConteudo = Boolean(
-      obraId || necessarioPara || observacoes || dadosPagamento || parceiroId || freteTipo !== 'SEM_FRETE' || itens.length
+      obraId || tituloSolicitacao || necessarioPara || observacoes || dadosPagamento || parceiroId || freteTipo !== 'SEM_FRETE' || itens.length
       || favorecidoSelecionado || favorecidoChavePix
     );
     if (!possuiConteudo) return undefined;
 
-    const timer = window.setTimeout(() => {
-      writeComprasDraft(draftKey, {
+    const draftAtual = {
         payload: {
           obra_id: obraId || null,
+          titulo: tituloSolicitacao,
           tipo_solicitacao_id: tipoSolicitacaoIdContexto || null,
           necessario_para: necessarioPara || null,
           observacoes: observacoes || '',
@@ -797,8 +816,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           tipo_solicitacao_id: tipoSolicitacaoIdContexto || null,
           area_responsavel: areaResponsavelContexto || ''
         }
-      }, user?.id);
-    }, 800);
+    };
+    draftStorage.stage(draftAtual);
+    const timer = window.setTimeout(() => draftStorage.write(draftAtual), 800);
 
     return () => window.clearTimeout(timer);
   }, [
@@ -823,6 +843,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     itens,
     necessarioPara,
     obraId,
+    tituloSolicitacao,
     observacoes,
     parceiroBusca,
     parceiroId,
@@ -837,7 +858,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   useEffect(() => {
     carregarApropriacoes(obraId);
     if (hidratandoDraftRef.current) {
-      hidratandoDraftRef.current = false;
+      // O primeiro efeito ainda pode ver obraId vazio antes do set de
+      // hidratacao. Consumir a flag so na obra do draft evita apagar rateios.
+      if (obraId === obraHidratadaRef.current) hidratandoDraftRef.current = false;
       return;
     }
 
@@ -1030,7 +1053,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       Object.entries(atual).map(([formaId, detalhe]) => [
         formaId,
         detalhe?.usar_credor_como_favorecido
-          ? { ...criarDetalheFormaPagamento(detalhe), favorecido: parceiro, chave_pix: '' }
+          ? { ...criarDetalheFormaPagamento(detalhe), favorecido: referenciaParceiroCompra(parceiro), chave_pix: '' }
           : detalhe
       ])
     ));
@@ -1457,6 +1480,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   function removerItem(index) {
+    // Uploads ainda usam posicao da linha: nao deslocar o alvo pendente.
+    if ([...uploadsEmCursoRef.current].some(key => key.startsWith('item:'))) return;
     setItens((atual) => atual.filter((_, itemIndex) => itemIndex !== index));
     setErrosItem({});
     setUploadingArquivos((atual) => {
@@ -1506,10 +1531,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   async function handleSelecionarArquivo(index, file) {
-    if (!file) {
+    const chave = `item:${index}`;
+    if (!file || uploadsEmCursoRef.current.has(chave)) {
       return;
     }
-
+    uploadsEmCursoRef.current.add(chave);
     setUploadingArquivos((atual) => ({ ...atual, [index]: true }));
 
     try {
@@ -1522,6 +1548,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao enviar arquivo do item');
     } finally {
+      uploadsEmCursoRef.current.delete(chave);
       setUploadingArquivos((atual) => {
         const proximo = { ...atual };
         delete proximo[index];
@@ -1550,19 +1577,16 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     const id = String(formaId);
     setDetalhesFormaPagamento((atual) => ({
       ...atual,
-      [id]: {
-        ...criarDetalheFormaPagamento(atual[id]),
-        ...alteracoes
-      }
+      [id]: criarDetalheFormaPagamento({ ...atual[id], ...alteracoes })
     }));
     limparErroCampo(`pagamento_forma_${id}`);
   }
 
   async function handleSelecionarAnexoCabecalho(file, tipoDocumento = 'NOTA_FISCAL_GUIA') {
-    if (!file) {
+    if (!file || uploadsEmCursoRef.current.has('cabecalho')) {
       return;
     }
-
+    uploadsEmCursoRef.current.add('cabecalho');
     setUploadingAnexoCabecalho(true);
     try {
       const data = await uploadAnexoTemporarioCompra(file);
@@ -1580,6 +1604,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao enviar anexo da compra direta');
     } finally {
+      uploadsEmCursoRef.current.delete('cabecalho');
       setUploadingAnexoCabecalho(false);
     }
   }
@@ -1589,6 +1614,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   function removerArquivoItem(index) {
+    if (uploadsEmCursoRef.current.has(`item:${index}`)) return;
     atualizarCamposItem(index, {
       arquivo_url: '',
       arquivo_nome_original: ''
@@ -1615,8 +1641,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   async function handleSalvar() {
+    if (operacaoOcupada) return;
     if (!obraId) {
       reprovarCampo('obra_id', 'Selecione a obra.');
+      return;
+    }
+    if (!obras.some(obra => Number(obra.id) === Number(obraId))) {
+      reprovarCampo('obra_id', 'Aguarde a consulta e selecione uma obra disponível.');
       return;
     }
     // Obra travada em Custos e Recebiveis nao recebe solicitacao nova (29/09/2026).
@@ -1625,8 +1656,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
-    if (modoCompraDireta && !necessarioPara) {
-      reprovarCampo('necessario_para', 'Informe a data de vencimento.');
+    if (!necessarioPara) {
+      reprovarCampo('necessario_para', modoCompraDireta ? 'Informe a data de vencimento.' : 'Informe a data da necessidade.');
       return;
     }
 
@@ -1808,6 +1839,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
       const payload = {
         obra_id: obraId,
+        titulo: tituloSolicitacao.trim() || undefined,
         tipo_solicitacao_id: modoCompraDireta ? tipoSolicitacaoIdContexto || null : undefined,
         origem: modoCompraDireta ? 'COMPRA_DIRETA' : undefined,
         parceiro_id: modoCompraDireta ? parceiroId || null : undefined,
@@ -1912,11 +1944,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           }
         : undefined;
 
-      writeComprasDraft(draftKey, {
+      const protegido = draftStorage.write({
         payload: modoCompraDireta ? payload : prepararPayloadSolicitacaoCompra(payload),
         resumo,
         contexto
-      }, user?.id);
+      });
+      if (!protegido) throw new Error('Não foi possível guardar o rascunho. Mantenha esta tela aberta e tente novamente.');
       navigate(modoCompraDireta ? '/solicitacoes-compra-direta/revisar'
         : reaproveitarSolicitacaoId > 0
           ? `/solicitacoes-compra/revisar?reaproveitar_solicitacao=${reaproveitarSolicitacaoId}`
@@ -1992,6 +2025,15 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       */}
       <BlocoConteudo titulo="Dados gerais" variante="primario" cor="var(--sem-info)">
         <FormSecao colunas={2}>
+          <CampoForm label="Título da solicitação" linha>
+            <input
+              className="input w-full"
+              value={tituloSolicitacao}
+              onChange={(event) => setTituloSolicitacao(event.target.value)}
+              maxLength={255}
+              placeholder="Informe um título para identificar a solicitação"
+            />
+          </CampoForm>
           <CampoForm label="Obra" obrigatorio linha erro={errosCampo.obra_id || obraTravadaMotivo}>
             <ApropriacaoAutocomplete
               value={obraId}
@@ -2009,14 +2051,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
           <CampoForm
             label={modoCompraDireta ? 'Data de vencimento' : 'Necessário para'}
-            obrigatorio={modoCompraDireta}
+            obrigatorio
             erro={errosCampo.necessario_para}
           >
             <DateInputBR
               className="input"
               value={necessarioPara}
               onChange={(event) => { limparErroCampo('necessario_para'); setNecessarioPara(event.target.value); }}
-              required={modoCompraDireta}
+              required
             />
           </CampoForm>
 
@@ -2284,7 +2326,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                                 <input
                                   className="input"
                                   value={detalhe.chave_pix}
-                                  maxLength={255}
+                                  maxLength={PIX_TEXTO_MAX}
                                   autoComplete="off"
                                   required
                                   onChange={(event) => atualizarDetalheFormaPagamento(formaId, { chave_pix: event.target.value })}
@@ -2534,7 +2576,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
                 {freteExigeChavePix && (
                   <CampoForm label="Chave PIX do frete" obrigatorio erro={errosCampo.frete_favorecido_chave_pix}>
-                    <input className="input" value={freteChavePix} maxLength={255} autoComplete="off" required
+                    <input className="input" value={freteChavePix} maxLength={PIX_TEXTO_MAX} autoComplete="off" required
                       onChange={(event) => { setFreteChavePix(event.target.value); limparErroCampo('frete_favorecido_chave_pix'); }} />
                   </CampoForm>
                 )}
@@ -2989,7 +3031,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               vazio="Adicione itens a partir da lista de insumos ou crie item manual."
               urgencia={(item) => (calcularResumoRateios(item).fechado ? null : 'warning')}
               acoesLinha={(item) => (
-                <button type="button" className="btn btn-outline btn-sm btn-perigo-suave" onClick={() => removerItem(item.__indice)}>
+                <button type="button" className="btn btn-outline btn-sm btn-perigo-suave" disabled={Object.values(uploadingArquivos).some(Boolean)} onClick={() => removerItem(item.__indice)}>
                   Remover
                 </button>
               )}
@@ -3010,12 +3052,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
           {/* C5: UM primário sólido, secundário em contorno, destrutiva apartada. */}
           <div className="app-actionbar mt-6">
-            <button type="button" className="btn btn-outline btn-perigo-suave" onClick={limparRascunho}>
+            <button type="button" className="btn btn-outline btn-perigo-suave" disabled={operacaoOcupada} onClick={limparRascunho}>
               Limpar rascunho
             </button>
             <span className="app-actionbar-apartada">
               <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes-compra')}>Cancelar</button>
-              <button type="button" className="btn btn-primary" onClick={handleSalvar} disabled={loading || Boolean(obraTravadaMotivo)}>{loading ? 'Preparando...' : 'Revisar solicitação'}</button>
+              <button type="button" className="btn btn-primary" onClick={handleSalvar} disabled={operacaoOcupada || Boolean(obraTravadaMotivo)}>{loading ? 'Preparando...' : 'Revisar solicitação'}</button>
             </span>
           </div>
         </BlocoConteudo>

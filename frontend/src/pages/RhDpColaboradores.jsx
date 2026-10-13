@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import { Fragment, useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { HiOutlineEye, HiOutlinePencilSquare, HiOutlineTicket } from 'react-icons/hi2';
 import {
@@ -20,6 +21,9 @@ import {
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
 import { useAuth } from '../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
+import useQueryRevision from '../navigation/useQueryRevision';
 import { getObras } from '../services/obras';
 import {
   criarRhColaborador,
@@ -45,13 +49,18 @@ import {
   canManageRhDpColaboradores,
   canViewRhDpColaboradores,
   canManageRhDpDocumentos,
-  canGenerateRhDpTicket
+  canGenerateRhDpTicket,
+  isBusinessAdmin
 } from '../utils/acessoProduto';
+import { userBelongsToDpSetor } from '../utils/setor';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
 import CategoriaFinanceiraAutocomplete from '../components/ui/CategoriaFinanceiraAutocomplete';
 import ObraAutocomplete from '../components/ui/ObraAutocomplete';
 import { formatCurrencyInput, getCpfCnpjError, maskCpfCnpj, maskPhone, normalizeCurrencyTyping, onlyDigits } from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
+import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
+import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
+import { CAMPOS_ENDERECO, erroTelefoneSecundario, telefoneComparavel } from '../utils/rhColaboradorContatos';
 
 function emptyForm() {
   return {
@@ -64,6 +73,9 @@ function emptyForm() {
     matricula: '',
     rg: '',
     telefone: '',
+    telefone_secundario: '',
+    ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) => [[campo, ''], [`${campo}_secundario`, '']])),
+    mesmo_endereco: false,
     email: '',
     cargo: '',
     tipo_vinculo: 'CLT',
@@ -163,7 +175,11 @@ function toFormData(data) {
     cpf: maskCpfCnpj(data?.cpf),
     matricula: data?.matricula || '',
     rg: data?.rg || '',
-    telefone: maskPhone(data?.telefone),
+    telefone: maskPhone(telefoneComparavel(data?.telefone)),
+    telefone_secundario: maskPhone(telefoneComparavel(data?.telefone_secundario)),
+    ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) =>
+      [[campo, data?.[campo] || ''], [`${campo}_secundario`, data?.[`${campo}_secundario`] || '']])),
+    mesmo_endereco: false,
     email: data?.email || '',
     cargo: data?.cargo || '',
     tipo_vinculo: data?.tipo_vinculo || 'CLT',
@@ -205,6 +221,9 @@ function buildPayload(form) {
     matricula: form.matricula || undefined,
     rg: form.rg || undefined,
     telefone: onlyDigits(form.telefone) || undefined,
+    telefone_secundario: onlyDigits(form.telefone_secundario) || null,
+    ...Object.fromEntries(CAMPOS_ENDERECO.flatMap(({ campo }) =>
+      [[campo, form[campo] || null], [`${campo}_secundario`, form[`${campo}_secundario`] || null]])),
     email: form.email || undefined,
     cargo: form.cargo || undefined,
     tipo_vinculo: form.tipo_vinculo,
@@ -288,7 +307,10 @@ const FILTROS_DOCUMENTOS_DA_TELA = [
   { id: 'incluir_historico', rotulo: 'Histórico' }
 ];
 
-export default function RhDpColaboradores() {
+export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor = false, onFecharEditor, onSalvo } = {}) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
+  const Moldura = comoEditor ? Fragment : Pagina;
+  const salvarRef = useRef(false);
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const podeEditar = canManageRhDpColaboradores(user);
@@ -321,18 +343,21 @@ export default function RhDpColaboradores() {
     const competencia = new Date().toISOString().slice(0, 7);
     return { competencia, parceiro: null, categoria_financeira_id: '', data_vencimento: vencimentoTicket(competencia), boleto: null, idempotency_key: crypto.randomUUID() };
   });
-  const [form, setForm] = useState(emptyForm());
+  const cadastroDraft = useWorkspaceRecordDraft('cadastro:inputs', emptyForm());
+  const { value: form, setValue: setForm } = cadastroDraft;
+  const consultaCadastro = useQueryRevision(comoEditor ? editorId : searchParams.get('colaborador_id'));
+  const [consultandoCadastro, setConsultandoCadastro] = useState(false);
   // R1 da DoD: o cadastro abre em MODAL — antes o formulário nascia abaixo
   // de uma tabela de centenas de linhas e clicar em "editar" não parecia
   // fazer nada.
-  const [formAberto, setFormAberto] = useState(false);
+  const [formAberto, setFormAberto] = useWorkspaceState('cadastro:aberto', false);
   const [tiposDocumento, setTiposDocumento] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [arquivosDossie, setArquivosDossie] = useState([]);
   const [resumoDocumentos, setResumoDocumentos] = useState(null);
   // ?q= da busca universal abre a lista já filtrada pelo nome/CPF.
-  const [busca, setBusca] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
-  const [marcados, setMarcados] = useState(FILTROS_MARCADOS_INICIAIS);
+  const [busca, setBusca] = useWorkspaceState('cadastro:busca', () => new URLSearchParams(window.location.search).get('q') || '');
+  const [marcados, setMarcados] = useWorkspaceState('cadastro:filtros', FILTROS_MARCADOS_INICIAIS);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -360,8 +385,8 @@ export default function RhDpColaboradores() {
     */
     aoEsconder: (id) => setMarcados((atual) => ({ ...atual, [id]: new Set() }))
   });
-  const [buscaDocumentos, setBuscaDocumentos] = useState('');
-  const [marcadosDocumentos, setMarcadosDocumentos] = useState(FILTROS_DOCUMENTOS_INICIAIS);
+  const [buscaDocumentos, setBuscaDocumentos] = useWorkspaceState('cadastro:buscaDocumentos', '');
+  const [marcadosDocumentos, setMarcadosDocumentos] = useWorkspaceState('cadastro:filtrosDocumentos', FILTROS_DOCUMENTOS_INICIAIS);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -396,6 +421,7 @@ export default function RhDpColaboradores() {
     observacoes: ''
   });
   const inputImportacaoRef = useRef(null);
+  useWorkspaceWork(cadastroDraft.dirty, salvando || importando || gerandoTicket || salvandoDocumento || consultandoCadastro, 'cadastro:work');
 
   const filtroTipoDocumento = valorUnico(marcadosDocumentos.tipo_documento_id);
   const filtroStatusDocumento = valorUnico(marcadosDocumentos.status);
@@ -403,6 +429,7 @@ export default function RhDpColaboradores() {
   const incluirHistoricoDocumentos = marcadosDocumentos.incluir_historico.has('sim');
 
   function syncColaboradorNaQuery(colaboradorId) {
+    if (comoEditor) return;
     const next = new URLSearchParams(searchParams);
     if (colaboradorId) {
       next.set('colaborador_id', String(colaboradorId));
@@ -420,6 +447,7 @@ export default function RhDpColaboradores() {
   // digitada espera 350ms para não martelar a API a cada tecla. Os
   // parâmetros enviados são exatamente os de antes.
   useEffect(() => {
+    if (comoEditor) return;
     const atraso = setTimeout(() => { recarregarColaboradores(); }, 350);
     return () => clearTimeout(atraso);
   }, [busca, marcados]);
@@ -467,10 +495,10 @@ export default function RhDpColaboradores() {
       setObras(Array.isArray(listaObras) ? listaObras : []);
       setSetores(Array.isArray(listaSetores) ? listaSetores : []);
 
-      const colaboradorId = Number(searchParams.get('colaborador_id'));
+      const colaboradorId = Number(comoEditor ? editorId : searchParams.get('colaborador_id'));
       if (Number.isInteger(colaboradorId) && colaboradorId > 0) {
         await abrirColaborador(colaboradorId, { syncQuery: false });
-      }
+      } else if (formAberto) cadastroDraft.hydrate(emptyForm(), 'novo');
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar base RH/DP');
@@ -584,7 +612,7 @@ export default function RhDpColaboradores() {
   }
 
   function limparFormulario() {
-    setForm(emptyForm());
+    cadastroDraft.hydrate(emptyForm(), 'novo', { discard: true });
     setNovoDocumento({
       tipo_documento_id: '',
       validade: '',
@@ -602,27 +630,40 @@ export default function RhDpColaboradores() {
   }
 
   function fecharFormulario() {
+    if (salvando) return;
     limparFormulario();
     setFormAberto(false);
+    if (comoEditor) onFecharEditor?.();
   }
 
   async function abrirColaborador(id, { syncQuery = true } = {}) {
+    const token = consultaCadastro.begin(); setConsultandoCadastro(true);
     try {
       const data = await getRhColaborador(id);
-      setForm(toFormData(data));
+      if (!consultaCadastro.isCurrent(token)) return;
+      const inputs = toFormData(data);
+      cadastroDraft.hydrate(inputs, JSON.stringify([data.id, data.updatedAt, data.updated_at, inputs]));
       setFormAberto(true);
       if (syncQuery) {
         syncColaboradorNaQuery(id);
       }
     } catch (error) {
+      if (!consultaCadastro.isCurrent(token)) return;
+      setFormAberto(false); cadastroDraft.conceal(emptyForm());
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar colaborador');
-    }
+    } finally { if (consultaCadastro.isCurrent(token)) setConsultandoCadastro(false); }
   }
 
   async function salvar(e) {
     e.preventDefault();
-    if (!podeEditar) {
+    if (!podeEditar || salvarRef.current || consultandoCadastro) {
+      return;
+    }
+    if (cadastroDraft.conflict) { avisar.erro('O cadastro mudou. Confira os dados atuais antes de salvar.'); return; }
+    const telefoneErro = erroTelefoneSecundario(form);
+    if (telefoneErro) {
+      avisar.erro(telefoneErro);
       return;
     }
     const cpfErro = getCpfCnpjError(form.cpf, { required: true, type: 'cpf' });
@@ -640,6 +681,7 @@ export default function RhDpColaboradores() {
     }
 
     try {
+      salvarRef.current = true;
       setSalvando(true);
       const payload = buildPayload(form);
       let salvo;
@@ -650,14 +692,17 @@ export default function RhDpColaboradores() {
         salvo = await criarRhColaborador(payload);
       }
 
-      setForm(toFormData(salvo));
+      const inputs = toFormData(salvo);
+      cadastroDraft.hydrate(inputs, JSON.stringify([salvo.id, salvo.updatedAt, salvo.updated_at, inputs]), { discard: true });
       syncColaboradorNaQuery(salvo.id);
-      await recarregarColaboradores();
+      if (!comoEditor) await recarregarColaboradores();
+      await onSalvo?.();
       avisar.sucesso('Colaborador salvo.');
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar colaborador');
     } finally {
+      salvarRef.current = false;
       setSalvando(false);
     }
   }
@@ -761,26 +806,15 @@ export default function RhDpColaboradores() {
     }
   }
 
-  async function abrirDocumento(id) {
-    try {
-      const url = await getRhDocumentoLink(id);
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao abrir documento RH/DP');
-    }
+  async function abrirDocumento(item) {
+    try { await abrirPreview(() => getRhDocumentoLink(item.id), { nome: item.nome_original, caminho: item.caminho_arquivo, mime: item.mimetype || item.mime_type }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao abrir documento RH/DP'); }
   }
 
   async function abrirArquivoDossie(item) {
-    try {
-      const url = await getRhDossieArquivoLink(form.id, item);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao abrir arquivo do dossie');
-    }
+    const colaboradorId = form.id;
+    try { await abrirPreview(() => getRhDossieArquivoLink(colaboradorId, item), { nome: item.nome, caminho: item.caminho_arquivo, mime: item.mime_type }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao abrir arquivo do dossie'); }
   }
 
   async function onSelecionarNovoDocumento(event) {
@@ -863,7 +897,13 @@ export default function RhDpColaboradores() {
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
 
   return (
-    <Pagina className="rhdp-page rh-colaboradores-page">
+    <Moldura {...(!comoEditor ? { className: 'rhdp-page rh-colaboradores-page' } : {})}>
+      {comoEditor && !formAberto ? <OverlayModal rotulo="Editar colaborador" onFechar={onFecharEditor}>
+        {faixaAvisos}
+        <p role="status">{carregando ? 'Carregando cadastro...' : 'Não foi possível abrir o cadastro.'}</p>
+        <button type="button" className="btn btn-outline btn-sm" onClick={onFecharEditor}>Fechar</button>
+      </OverlayModal> : null}
+      {!comoEditor && <>
       <PageHeader
         titulo="Colaboradores"
         contagem={carregando ? null : `${colaboradores.length} colaborador(es)`}
@@ -1017,7 +1057,7 @@ export default function RhDpColaboradores() {
             },
             {
               id: 'obra',
-              titulo: 'Obra',
+              titulo: 'Obra / Centro de Custo',
               tipo: 'texto',
               render: (item) => item.obra?.nome || '-'
             },
@@ -1127,9 +1167,10 @@ export default function RhDpColaboradores() {
         </OverlayModal>
       )}
 
+      </>}
       {/* R1 da DoD / R9: cadastro abre em MODAL. Mesmos campos, mesma
           validação, mesmo salvar, mesmo limpar — só a moldura mudou. */}
-      {formAberto && (
+      {formAberto && !carregando && !consultandoCadastro && (
         <OverlayModal
           aberto
           largura="var(--modal-max-w-xl, 1120px)"
@@ -1152,6 +1193,11 @@ export default function RhDpColaboradores() {
 
           <div className="overflow-y-auto px-4 py-3">
             {faixaAvisos}
+            {cadastroDraft.conflict && <div role="alert" className="app-note">O cadastro mudou. Seu preenchimento foi mantido para conferência.
+              <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+                const { ok } = await confirmar({ titulo: 'Descartar preenchimento', mensagem: 'Descartar as alterações locais e usar o cadastro atual?', destrutiva: true });
+                if (ok) cadastroDraft.discard();
+              }}>Usar dados atuais</button></div>}
 
             <form id="rh-colaborador-form" className="space-y-4" onSubmit={salvar}>
               <FormSecao legenda="Dados do colaborador" colunas={3}>
@@ -1300,14 +1346,8 @@ export default function RhDpColaboradores() {
               </FormSecao>
 
               <FormSecao legenda="Contato, contrato e calculo gerencial" colunas={2}>
-                <CampoForm label="Telefone">
-                  <input
-                    className="form-control"
-                    value={form.telefone}
-                    onChange={(e) => setForm((prev) => ({ ...prev, telefone: maskPhone(e.target.value) }))}
-                    disabled={!podeEditar}
-                  />
-                </CampoForm>
+                <RhColaboradorTelefone form={form} setForm={setForm} mascarar disabled={!podeEditar} />
+                <RhColaboradorTelefone form={form} setForm={setForm} mascarar secundario disabled={!podeEditar} />
                 <CampoForm label="Email">
                   <input
                     type="email"
@@ -1404,6 +1444,9 @@ export default function RhDpColaboradores() {
                   />
                 </CampoForm>
               </FormSecao>
+
+              <RhColaboradorEnderecos form={form} setForm={setForm} disabled={!podeEditar || salvando}
+                permitirMesmoEndereco={isBusinessAdmin(user) || userBelongsToDpSetor(user)} />
 
               <FormSecao legenda="Dados de pagamento" colunas={2}>
                 <CampoForm label="Favorecido">
@@ -1687,7 +1730,7 @@ export default function RhDpColaboradores() {
                         vazio="Nenhum documento localizado para este colaborador"
                         acoesLinha={(item) => (
                           <>
-                            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirDocumento(item.id)}>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirDocumento(item)}>
                               Abrir
                             </button>
                             {podeGerirDocumentos && item.ativo && (
@@ -1800,7 +1843,7 @@ export default function RhDpColaboradores() {
 
           {podeEditar && (
             <div className="app-actionbar border-t px-4 py-3" style={{ borderColor: 'var(--ui-border)' }}>
-              <button type="submit" form="rh-colaborador-form" className="btn btn-primary" disabled={salvando}>
+              <button type="submit" form="rh-colaborador-form" className="btn btn-primary" disabled={salvando || cadastroDraft.conflict}>
                 {form.id ? 'Salvar alteracoes' : 'Criar colaborador'}
               </button>
               <button
@@ -1817,6 +1860,7 @@ export default function RhDpColaboradores() {
       )}
 
       {elementoConfirmacao}
-    </Pagina>
+      {modalPreview}
+    </Moldura>
   );
 }

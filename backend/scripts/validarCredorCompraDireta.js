@@ -26,6 +26,7 @@ vm.runInNewContext(read('backend/src/services/parceiroService.js'), {
     if (name === '../models') return models;
     if (name === 'sequelize') return { Op: { ne: Symbol('ne') } };
     if (name === '../utils/cpfCnpj') return require('../src/utils/cpfCnpj');
+    if (name === '../utils/pix') return require('../src/utils/pix');
     throw new Error(`Dependencia inesperada: ${name}`);
   }
 });

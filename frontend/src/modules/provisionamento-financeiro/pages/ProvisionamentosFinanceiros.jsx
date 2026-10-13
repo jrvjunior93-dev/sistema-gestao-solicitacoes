@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useWorkspaceState } from '../../../navigation/WorkspaceContext';
+import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
+import useQueryRevision from '../../../navigation/useQueryRevision';
 import {
   Avisos,
   BarraFiltros,
@@ -181,8 +183,9 @@ function familiaStatus(valor) {
 }
 
 export default function ProvisionamentosFinanceiros() {
-  const navigate = useNavigate();
   const { avisos, avisar, fechar } = useAvisos();
+  const abrirRegistro = useWorkspaceOpenRecord(avisar.alerta);
+  const consultaBase = useQueryRevision();
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [lista, setLista] = useState([]);
@@ -190,8 +193,12 @@ export default function ProvisionamentosFinanceiros() {
   const [resumo, setResumo] = useState({ total_registros_filtrados: 0, valor_total_filtrado: 0 });
   const [loadingBase, setLoadingBase] = useState(true);
   const [loadingLista, setLoadingLista] = useState(false);
-  const [filtros, setFiltros] = useState(DEFAULT_FILTERS);
-  const [ordenacao, setOrdenacao] = useState(ORDENACAO_PADRAO);
+  const [filtros, setFiltros] = useWorkspaceState('provisoes:filtros', DEFAULT_FILTERS);
+  const [revisoesData, setRevisoesData] = useWorkspaceState('provisoes:datas-reset', {});
+  const [ordenacao, setOrdenacao] = useWorkspaceState('provisoes:ordenacao', ORDENACAO_PADRAO);
+  const [pagina, setPagina] = useWorkspaceState('provisoes:pagina', 1);
+  const [erroBase, setErroBase] = useState('');
+  const consultaLista = useQueryRevision(JSON.stringify([filtros, ordenacao, pagina, contexto]));
 
   /*
     Filtro com valor é filtro VISÍVEL — o outro lado de "esconder limpa".
@@ -220,33 +227,40 @@ export default function ProvisionamentosFinanceiros() {
     // lista sem campo e sem etiqueta — o defeito que a propria migracao
     // apontou. Limpar dispara a consulta de novo (o efeito de busca depende
     // de `filtros`): a lista alarga junto com a faixa.
-    aoEsconder: (id) => atualizarFiltro(id, DEFAULT_FILTERS[id] ?? '')
+    aoEsconder: (id) => { atualizarFiltro(id, DEFAULT_FILTERS[id] ?? ''); setRevisoesData(r => ({ ...r, [id]: (r[id] || 0) + 1 })); }
   });
 
   useEffect(() => {
+    const token = consultaBase.begin();
     async function carregarBase() {
       try {
         setLoadingBase(true);
+        setErroBase('');
         const [contextoData, categoriasData] = await Promise.all([
           getProvisionamentoFinanceiroContexto(),
           listarCategoriasMacroProvisionamento()
         ]);
+        if (!consultaBase.isCurrent(token)) return;
         setContexto(contextoData);
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       } catch (error) {
+        if (!consultaBase.isCurrent(token)) return;
         console.error(error);
+        setContexto(null); setCategorias([]); setLista([]);
+        setErroBase(error?.message || 'Erro ao carregar o modulo de provisoes.');
         avisar.erro(error?.message || 'Erro ao carregar o modulo de provisoes.');
       } finally {
-        setLoadingBase(false);
+        if (consultaBase.isCurrent(token)) setLoadingBase(false);
       }
     }
 
     carregarBase();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [consultaBase.begin, consultaBase.isCurrent]);
 
   useEffect(() => {
     if (!contexto) return;
+    const token = consultaLista.begin();
 
     async function carregarLista() {
       try {
@@ -254,10 +268,11 @@ export default function ProvisionamentosFinanceiros() {
         const data = await listarProvisoesFinanceiras({
           ...filtros,
           ...ordenacao,
-          page: meta.page,
+          page: pagina,
           limit: meta.limit
         });
 
+        if (!consultaLista.isCurrent(token)) return;
         setLista(Array.isArray(data?.items) ? data.items : []);
         setMeta((atual) => ({
           ...atual,
@@ -271,16 +286,19 @@ export default function ProvisionamentosFinanceiros() {
           valor_total_filtrado: Number(data?.resumo?.valor_total_filtrado || 0)
         });
       } catch (error) {
+        if (!consultaLista.isCurrent(token)) return;
         console.error(error);
+        setLista([]); setMeta(atual => ({ ...atual, total: 0, pages: 0 }));
+        setResumo({ total_registros_filtrados: 0, valor_total_filtrado: 0 });
         avisar.erro(error?.message || 'Erro ao listar provisoes.');
       } finally {
-        setLoadingLista(false);
+        if (consultaLista.isCurrent(token)) setLoadingLista(false);
       }
     }
 
     carregarLista();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contexto, filtros, ordenacao, meta.page, meta.limit]);
+  }, [contexto, filtros, ordenacao, pagina, meta.limit, consultaLista.begin, consultaLista.isCurrent]);
 
   const obrasAcesso = useMemo(() => (
     Array.isArray(contexto?.obras_acesso) ? contexto.obras_acesso : []
@@ -343,12 +361,13 @@ export default function ProvisionamentosFinanceiros() {
   ], [obrasAcesso, categorias, criadoresFiltro]);
 
   function atualizarFiltro(campo, valor) {
-    setMeta((atual) => ({ ...atual, page: 1 }));
+    if (filtros[campo] === (valor ?? '')) return;
+    setPagina(1);
     setFiltros((atual) => ({ ...atual, [campo]: valor ?? '' }));
   }
 
   function alternarFiltro(dimensao, valor) {
-    setMeta((atual) => ({ ...atual, page: 1 }));
+    setPagina(1);
     setFiltros((atual) => ({
       ...atual,
       [dimensao]: String(atual[dimensao]) === String(valor) ? '' : String(valor)
@@ -356,16 +375,17 @@ export default function ProvisionamentosFinanceiros() {
   }
 
   function limparFiltros() {
-    setMeta((atual) => ({ ...atual, page: 1 }));
+    setPagina(1);
     setFiltros(DEFAULT_FILTERS);
+    setRevisoesData(r => ({ data_inicial: (r.data_inicial || 0) + 1, data_final: (r.data_final || 0) + 1 }));
   }
 
-  if (loadingBase) {
+  if (loadingBase || !contexto) {
     return (
       <Pagina>
         <PageHeader titulo="Provisionamentos" />
         <Avisos avisos={avisos} aoFechar={fechar} />
-        <BlocoConteudo>Carregando módulo...</BlocoConteudo>
+        <BlocoConteudo>{loadingBase ? 'Carregando módulo...' : erroBase || 'Módulo de provisões indisponível.'}</BlocoConteudo>
       </Pagina>
     );
   }
@@ -454,6 +474,8 @@ export default function ProvisionamentosFinanceiros() {
             },
             {
               id: 'data_inicial',
+              chaveWorkspace: 'provisoes:lista:inicial',
+              revisaoWorkspace: revisoesData.data_inicial || 0,
               rotulo: 'Data inicial',
               tipo: 'date',
               valor: filtros.data_inicial,
@@ -461,6 +483,8 @@ export default function ProvisionamentosFinanceiros() {
             },
             {
               id: 'data_final',
+              chaveWorkspace: 'provisoes:lista:final',
+              revisaoWorkspace: revisoesData.data_final || 0,
               rotulo: 'Data final',
               tipo: 'date',
               valor: filtros.data_final,
@@ -574,22 +598,28 @@ export default function ProvisionamentosFinanceiros() {
           // mostraria um recorte sem sentido.
           aoOrdenar={(coluna, direcao) => {
             const campo = coluna ? CAMPO_ORDENACAO_POR_COLUNA[coluna] : null;
-            setOrdenacao(campo
+            const proxima = campo
               ? { sort_by: campo, sort_dir: direcao === 'desc' ? 'DESC' : 'ASC' }
-              : ORDENACAO_PADRAO);
-            setMeta((atual) => ({ ...atual, page: 1 }));
+              : ORDENACAO_PADRAO;
+            // A tabela notifica tambem ao remontar o indicador restaurado.
+            // So uma mudanca de ordem deve reiniciar a pagina do servidor.
+            if (ordenacao.sort_by === proxima.sort_by && ordenacao.sort_dir === proxima.sort_dir) return;
+            setOrdenacao(proxima);
+            setPagina(1);
           }}
           storageKey={STORAGE_KEY}
+          chaveWorkspace="provisoes:tabela"
+          consultaWorkspace={JSON.stringify([filtros, ordenacao])}
           rotuloRolagem="Provisionamentos financeiros"
           larguraAcoes={140}
           // A1: além do botão focável, a linha inteira responde a Enter/Espaço
           // (o TabelaPadrao dá o tabIndex quando recebe `aoClicarLinha`).
-          aoClicarLinha={(item) => navigate(`/provisoes-financeiras/${item.id}`)}
+          aoClicarLinha={(item) => abrirRegistro(`/provisoes-financeiras/${item.id}`, item.codigo || 'Provisão')}
           acoesLinha={(item) => (
             <button
               type="button"
               className="btn btn-outline btn-sm"
-              onClick={() => navigate(`/provisoes-financeiras/${item.id}`)}
+              onClick={() => abrirRegistro(`/provisoes-financeiras/${item.id}`, item.codigo || 'Provisão')}
             >
               Detalhes
             </button>
@@ -604,7 +634,7 @@ export default function ProvisionamentosFinanceiros() {
           totalPaginas={meta.pages || 1}
           carregando={loadingLista}
           rotuloRegistro="provisao"
-          aoMudarPagina={(pagina) => setMeta((atual) => ({ ...atual, page: pagina }))}
+          aoMudarPagina={setPagina}
         />
       </BlocoConteudo>
     </Pagina>

@@ -130,7 +130,7 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
         // A obra da recarga identifica a origem, nao uma despesa. Custos entram somente
         // pelos rateios validados abaixo, evitando antecipacao e dupla contagem.
         [Op.and]: [{ [Op.or]: [
-          { origem_titulo: { [Op.ne]: 'RECARGA_CARTAO' } },
+          { origem_titulo: { [Op.notIn]: ['RECARGA_CARTAO', 'ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'] } },
           { origem_titulo: null }
         ] }],
         ...excluirRhRateadoDoDireto
@@ -147,14 +147,14 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
         where: {
           ...(ratearRhPorObra
             ? { [Op.or]: [
-                { origem_titulo: 'RECARGA_CARTAO' },
+                { origem_titulo: { [Op.in]: ['RECARGA_CARTAO', 'ADIANTAMENTO'] } },
                 { origem_titulo: 'RH_DP', possui_rateio: true }
               ] }
-            : { origem_titulo: 'RECARGA_CARTAO' }),
+            : { origem_titulo: { [Op.in]: ['RECARGA_CARTAO', 'ADIANTAMENTO'] } }),
           considera_dre: true,
           status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] }
         },
-        attributes: ['id', 'tipo', 'valor_original', 'valor_baixado', 'valor_saldo'],
+        attributes: ['id', 'tipo', 'origem_titulo', 'valor_original', 'valor_baixado', 'valor_saldo'],
         include: filters.comPeriodo ? [{
           model: MovimentoFinanceiro,
           as: 'movimentos',
@@ -224,7 +224,7 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
 
     if (filters.comPeriodo && valorOriginalTitulo > 0) {
       (titulo.movimentos || []).forEach((movimento) => {
-        const movimentoValor = Math.abs(Number(movimento.valor_quitacao || movimento.valor || 0));
+        const movimentoValor = Math.abs(Number(titulo.origem_titulo === 'ADIANTAMENTO' ? movimento.valor || 0 : movimento.valor_quitacao || movimento.valor || 0));
         const parcelaRateio = movimentoValor * (valorRateio / valorOriginalTitulo);
         addValue(movimentosAcumulados, obraId, tipo, parcelaRateio);
         if (movimento.data_movimento >= filters.dataInicial) {
@@ -289,7 +289,7 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
         required: true,
         where: {
           obra_id: { [Op.in]: obraIds },
-          origem_titulo: { [Op.ne]: 'RECARGA_CARTAO' },
+          origem_titulo: { [Op.notIn]: ['RECARGA_CARTAO', 'ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'] },
           status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] },
           ...excluirRhRateadoDoDireto
         },

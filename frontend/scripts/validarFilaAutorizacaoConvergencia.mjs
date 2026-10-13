@@ -6,11 +6,14 @@ import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { createServer } from 'vite';
 import { mensagemEnvioFila } from '../src/utils/filaPagamentoMensagem.js';
-import { codigoLoteAutorizacao, resumoSolicitacaoAutorizacao } from '../src/utils/autorizacaoPagamentoResumo.js';
+import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../src/utils/autorizacaoPagamentoResumo.js';
 
 const legacyLot = Object.freeze({ id: 42, codigo: 'AUT-20261008-ABCDEF' });
 assert.equal(codigoLoteAutorizacao(legacyLot), 'LOTE-42');
 assert.equal(legacyLot.codigo, 'AUT-20261008-ABCDEF');
+assert.deepEqual(motivosAjusteAutorizacao({ itens: [{ id: 1, status: 'REJEITADO', motivo_decisao: 'Corrigir',
+  snapshot_json: { codigo: 'TIT-1', solicitacao: { codigo: 'SOL-1' } } }, { id: 2, status: 'AUTORIZADO', motivo_decisao: 'Antigo' }] }),
+  [{ id: 1, motivo: 'Corrigir', referencia: 'SOL-1 · TIT-1' }]);
 assert.equal(codigoLoteAutorizacao({ id: 3, codigo: 'LOTE-3' }), 'LOTE-3');
 assert.equal(codigoLoteAutorizacao({ codigo: 'LEGADO' }), 'LEGADO');
 
@@ -165,6 +168,35 @@ try {
   const reasonRow = page.locator('.pa-table tbody tr').nth(1);
   assert.equal(await reasonRow.locator('td').last().textContent(), rows[0].itens[1].motivo_decisao);
   assert.equal(await reasonRow.locator('td').nth(7).getByText(rows[0].itens[1].motivo_decisao).count(), 0);
+  assert((await page.locator('.pa-lot-reason').textContent()).includes('SOL-1994 · TIT-2'));
+  assert((await page.locator('.pa-lot-reason').textContent()).includes(rows[0].itens[1].motivo_decisao));
+  // Texto longo seguro e modal com a mesma navegacao da justificativa.
+  const motivoCompleto = 'Conferir favorecido e valor.\n' + '<script>Texto informado, nao HTML</script>. '.repeat(10);
+  rows[0].itens[1].motivo_decisao = motivoCompleto;
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  const lerMotivo = page.getByRole('button', { name: 'Ler motivo do ajuste de SOL-1994', exact: true });
+  await lerMotivo.waitFor();
+  const modalMotivo = page.getByRole('dialog', { name: 'Motivo do ajuste', exact: true });
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const fechar of ['Escape', 'Voltar', 'Fora', 'Fechar']) {
+      await lerMotivo.click(); await modalMotivo.waitFor();
+      assert.equal(await modalMotivo.locator('.pa-justification-text').textContent(), motivoCompleto);
+      assert.equal(await modalMotivo.locator('script').count(), 0);
+      assert.equal(await page.getByRole('dialog', { name: 'Justificativa da solicitação', exact: true }).count(), 0);
+      if (fechar === 'Fechar') await page.screenshot({ path: path.resolve(root, `../outputs/motivo-ajuste-${width}.png`) });
+      if (fechar === 'Escape') await page.keyboard.press('Escape');
+      else if (fechar === 'Voltar') await page.goBack();
+      else if (fechar === 'Fora') await modalMotivo.click({ position: { x: 2, y: 2 } });
+      else await modalMotivo.getByRole('button', { name: 'Fechar', exact: true }).click();
+      await modalMotivo.waitFor({ state: 'hidden' });
+      assert.equal(page.url(), baseUrl);
+    }
+  }
+  assert.equal(decisions.length, 0, 'Consultar motivo nao envia decisao');
+  await page.goto('http://127.0.0.1:5307/qa-autorizacao?motivo=2'); await modalMotivo.waitFor();
+  await modalMotivo.getByRole('button', { name: 'Fechar', exact: true }).click(); await modalMotivo.waitFor({ state: 'hidden' });
+  assert.equal(new URL(page.url()).search, '');
   const output = path.resolve(root, '../outputs/autorizacao-resumo-20261008');
   await mkdir(output, { recursive: true });
   for (const width of [1440, 390]) {
@@ -186,7 +218,7 @@ try {
   const origem = rows[0].itens[1].snapshot_json;
   rows[0].itens[1].snapshot_json = { codigo: 'TIT-AVULSO', descricao: 'Pagamento avulso' };
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
-  await page.getByText('TIT-AVULSO', { exact: true }).waitFor();
+  await page.locator('.pa-table').getByText('TIT-AVULSO', { exact: true }).waitFor();
   rows[0].itens[1].snapshot_json = origem;
 
   // Autorizacao ja gravada: somente o preparo pode reprocessar, sem nova decisao.

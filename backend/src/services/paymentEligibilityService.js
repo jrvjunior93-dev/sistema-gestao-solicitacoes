@@ -53,6 +53,9 @@ async function validateBeneficiaryComplete(beneficiary) {
   if (!beneficiary.nome || !beneficiary.cpf_cnpj || !beneficiary.pix_tipo_chave || !beneficiary.pix_chave) {
     throw createHttpError(400, 'Favorecido bancario com dados PIX incompletos.');
   }
+  if (String(beneficiary.pix_tipo_chave).toUpperCase() === 'COPIA_COLA') {
+    throw createHttpError(400, 'Pix Copia e Cola deve ser pago pela fila manual. O lote bancario automatico atual aceita apenas pagamento por chave Pix.');
+  }
   return true;
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useWorkspaceState } from '../navigation/WorkspaceContext';
 import {
   BarraFiltros,
   BlocoConteudo,
@@ -118,10 +119,11 @@ const FILTROS_DA_TELA = [
   { id: 'status', rotulo: 'Status' }
 ];
 
-export default function RhDpRelatorioOperacional() {
+export default function RhDpRelatorioOperacional({ obraId, comoAba = false } = {}) {
+  const Moldura = comoAba ? 'section' : Pagina;
   const { isVisible } = useUiVisibility();
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useWorkspaceState('rh-relatorio:filters', DEFAULT_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useWorkspaceState('rh-relatorio:appliedFilters', DEFAULT_FILTERS);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -143,7 +145,7 @@ export default function RhDpRelatorioOperacional() {
     TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
     então não há chave antiga de onde migrar.
   */
-  const visibilidadeFiltros = useFiltrosVisiveis('tabela:rh-dp-relatorio-operacional', FILTROS_DA_TELA, {
+  const visibilidadeFiltros = useFiltrosVisiveis(obraId ? 'tabela:rh-dp-relatorio-operacional:local' : 'tabela:rh-dp-relatorio-operacional', FILTROS_DA_TELA.filter(filtro => !obraId || filtro.id !== 'obra_id'), {
     preenchidos: filtrosPreenchidos,
     /*
       Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
@@ -166,7 +168,7 @@ export default function RhDpRelatorioOperacional() {
     let active = true;
     Promise.allSettled([
       getRhEmpresasGrupo({ ativo: true }),
-      getObras({ ativo: true })
+      getObras({ ativo: true, escopo: 'TODOS' })
     ]).then(([empresasResult, obrasResult]) => {
       if (!active) return;
       setEmpresas(empresasResult.status === 'fulfilled' && Array.isArray(empresasResult.value) ? empresasResult.value : []);
@@ -181,12 +183,12 @@ export default function RhDpRelatorioOperacional() {
     let active = true;
     setLoading(true);
     setError('');
-    getRhRelatorioOperacional(appliedFilters)
+    getRhRelatorioOperacional({ ...appliedFilters, obra_id: obraId || appliedFilters.obra_id })
       .then((data) => {
         if (active) setRelatorio(data);
       })
       .catch((err) => {
-        if (active) setError(err.message || 'Erro ao carregar relatório RH/DP');
+        if (active) { setRelatorio(null); setError(err.message || 'Erro ao carregar relatório RH/DP'); }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -194,7 +196,7 @@ export default function RhDpRelatorioOperacional() {
     return () => {
       active = false;
     };
-  }, [appliedFilters]);
+  }, [appliedFilters, obraId]);
 
   const resumo = relatorio?.resumo || {};
   const colaboradores = relatorio?.colaboradores || {};
@@ -261,11 +263,15 @@ export default function RhDpRelatorioOperacional() {
   }
 
   return (
-    <Pagina className="rhdp-page">
+    <Moldura className={comoAba ? 'rhdp-local-conteudo' : 'rhdp-page'}>
       {/* D6/R11: os links "Colaboradores", "Documentos" e "Apuração" saíram —
           eram navegação disfarçada de ação; menu e breadcrumb resolvem.
           Sobram as duas AÇÕES da tela: atualizar o recorte e limpar. */}
-      <PageHeader
+      {comoAba ? <div className="app-page-actions">
+        <h2 className="app-bloco-titulo">Relatório do local</h2>
+        <button type="button" className="btn btn-outline btn-sm" onClick={aplicarFiltros} disabled={loading}>Atualizar relatório</button>
+        <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros} disabled={loading}>Limpar</button>
+      </div> : <PageHeader
         titulo="Relatório Operacional"
         contagem={periodoTexto ? `Período ${periodoTexto}` : null}
         /* R23: esta tela é a EXCEÇÃO declarada (6 dimensões, agregação
@@ -275,7 +281,7 @@ export default function RhDpRelatorioOperacional() {
         descricao="Marque o recorte e clique em Atualizar relatório: com seis filtros, a consulta só roda no clique."
         acaoPrincipal={{ rotulo: 'Atualizar relatório', onClick: aplicarFiltros }}
         secundarias={[{ rotulo: 'Limpar', onClick: limparFiltros }]}
-      />
+      />}
 
       <BlocoConteudo variante="secundario">
         {/* R12/R16b: recorte enumerável (período, empresa, obra, status) em
@@ -297,7 +303,7 @@ export default function RhDpRelatorioOperacional() {
               aoMudar: (valor) => updateFilter('data_final', valor)
             }
           ].filter((campo) => visibilidadeFiltros.ehVisivel(campo.id))}
-          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          filtros={dimensoes.filter((dim) => (!obraId || dim.id !== 'obra_id') && visibilidadeFiltros.ehVisivel(dim.id))}
           ativos={ativos}
           aoAlternar={alternarFiltro}
           visibilidade={visibilidadeFiltros}
@@ -404,6 +410,8 @@ export default function RhDpRelatorioOperacional() {
                 ]}
                 itens={colaboradores.analitico || []}
                 storageKey="tabela:rh-dp-relatorio-operacional:colaboradores"
+                chaveWorkspace="rh-relatorio:colaboradores"
+                consultaWorkspace={JSON.stringify(appliedFilters)}
                 rotuloRolagem="Colaboradores"
                 vazio="Nenhum colaborador encontrado."
               />
@@ -455,6 +463,8 @@ export default function RhDpRelatorioOperacional() {
                 ]}
                 itens={docCriticos}
                 storageKey="tabela:rh-dp-relatorio-operacional:documentos"
+                chaveWorkspace="rh-relatorio:documentos"
+                consultaWorkspace={JSON.stringify(appliedFilters)}
                 rotuloRolagem="Documentos críticos"
                 vazio="Nenhum documento crítico no recorte."
               />
@@ -463,6 +473,6 @@ export default function RhDpRelatorioOperacional() {
           </BlocosPersonalizaveis>
         </>
       )}
-    </Pagina>
+    </Moldura>
   );
 }

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useWorkspace, useWorkspaceState, useWorkspaceRestored, useWorkspaceEdicaoSolicitacao, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import Filtros from './Filtros';
+import { consultarJanela } from './consultarJanela';
 import { API_URL, authHeaders } from '../../services/api';
 import { getSetores } from '../../services/setores';
 import { getTiposSolicitacao } from '../../services/tiposSolicitacao';
@@ -40,6 +42,7 @@ import {
 import {
   arquivarSolicitacoesEmMassa,
   desarquivarSolicitacao,
+  deleteSolicitacao,
   enviarSolicitacoesParaSetorEmMassa,
   getSolicitacaoResumoLista,
   getContadoresSolicitacoes,
@@ -171,13 +174,19 @@ function compararFaixaValor(a, b) {
 }
 
 export default function Solicitacoes({ arquivadas = false }) {
+  const workspace = useWorkspace();
+  const restored = useWorkspaceRestored('lista:consulta');
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   // R19: nada de caixa do navegador. Faixa de aviso dentro da página e
   // modal de confirmação do sistema — os dois vindos dos padrões.
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [solicitacoes, setSolicitacoes] = useState([]);
+  const paginaMontadaRef = useRef(true);
+  const versaoCargaRef = useRef(0);
+  useEffect(() => { paginaMontadaRef.current = true; return () => { paginaMontadaRef.current = false; }; }, []);
   const [loading, setLoading] = useState(true);
   const [exportando, setExportando] = useState(false);
   const [setoresMap, setSetoresMap] = useState({});
@@ -187,7 +196,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [obrasOptions, setObrasOptions] = useState([]);
   const [responsaveisOptions, setResponsaveisOptions] = useState([]);
   const [permissaoUsuario, setPermissaoUsuario] = useState(null);
-  const [selecionadasIds, setSelecionadasIds] = useState([]);
+  const [selecionadasIds, setSelecionadasIds] = useWorkspaceState('lista:selecao', []);
   // R26 — CONSENTIMENTO. O modal do sistema NÃO congela a lista atrás dele:
   // a seleção pode mudar entre abrir o modal e clicar em "Enviar". Estes são
   // os ALVOS FIXADOS no instante em que a ação foi acionada (exatamente os
@@ -199,6 +208,8 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [usuarioAtribuicaoMassa, setUsuarioAtribuicaoMassa] = useState('');
   const [setorEnvioMassa, setSetorEnvioMassa] = useState('');
   const [processandoMassa, setProcessandoMassa] = useState(false);
+  const exclusaoEmCursoRef = useRef(false);
+  useWorkspaceWork(false, processandoMassa || exportando, 'lista:operacao');
   const [modalPrioridadeTitulos, setModalPrioridadeTitulos] = useState(false);
   const [titulosPrioridade, setTitulosPrioridade] = useState([]);
   const [solicitacoesPrioridadeSemTitulos, setSolicitacoesPrioridadeSemTitulos] = useState([]);
@@ -206,8 +217,10 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [lotePrioridadeDestino, setLotePrioridadeDestino] = useState('');
   const [titulosPrioridadeSelecionados, setTitulosPrioridadeSelecionados] = useState(new Set());
   const [filtrosStoragePronto, setFiltrosStoragePronto] = useState(false);
-  const [paginaAtual, setPaginaAtual] = useState(1);
-  const [limitePorPagina, setLimitePorPagina] = useState(25);
+  const [paginaAtual, setPaginaAtual] = useWorkspaceState('lista:pagina', 1);
+  const [limitePorPagina, setLimitePorPagina] = useWorkspaceState('lista:limite', 25);
+  const [janelaAcumulada, setJanelaAcumulada] = useWorkspaceState('lista:acumulada', false);
+  const reconstituirJanelaRef = useRef(restored && janelaAcumulada && paginaAtual > 1);
   const [metaPaginacao, setMetaPaginacao] = useState({
     page: 1,
     limit: 25,
@@ -215,8 +228,29 @@ export default function Solicitacoes({ arquivadas = false }) {
     total_pages: 0
   });
   const solicitacoesRef = useRef([]);
+  const versaoLeituraInteracoesRef = useRef(0);
+  const refreshInteracoesTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(refreshInteracoesTimerRef.current), []);
   const atualizarEntregaRef = useRef(null);
   atualizarEntregaRef.current = () => carregarEmSegundoPlano();
+  useEffect(() => {
+    const leitura = (event) => {
+      const id = Number(event.detail?.id);
+      if (!id) return;
+      if (event.detail.usuario_id && Number(event.detail.usuario_id) !== Number(user?.id)) return;
+      versaoLeituraInteracoesRef.current++;
+      registrarMutacaoLocal(id);
+      setSolicitacoes((atuais) => {
+        const proximas = atuais.map((item) => Number(item.id) === id
+          ? { ...item, interacoes_pendentes: event.detail.interacoes_pendentes, atencao_pendente: null } : item);
+        solicitacoesRef.current = proximas;
+        return proximas;
+      });
+      void atualizarEntregaRef.current?.();
+    };
+    window.addEventListener('fluxy:interacoes-lidas', leitura);
+    return () => window.removeEventListener('fluxy:interacoes-lidas', leitura);
+  }, [user?.id]);
   useEffect(() => {
     let dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
     const verificar = () => {
@@ -229,8 +263,7 @@ export default function Solicitacoes({ arquivadas = false }) {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', verificar); };
   }, []);
   const localMutationsRef = useRef(new Map());
-  const { user } = useAuth();
-  const [edicaoDados, setEdicaoDados] = useState(null);
+  const [edicaoDados, setEdicaoDados] = useWorkspaceEdicaoSolicitacao();
   const permissoesEdicao = permissoesEdicaoSolicitacao(user);
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
 
@@ -252,7 +285,8 @@ export default function Solicitacoes({ arquivadas = false }) {
   // janela carregada, e só as visões cujos parâmetros o controller atual
   // entende ficam visíveis. Religar trocando a constante.
   const B3_DISPONIVEL = true;
-  const consultaListaRef = useRef({ visao: null, filtros: {}, busca: '', ordenacao: { campo: 'createdAt', direcao: 'desc' } });
+  const [consultaWorkspace, setConsultaWorkspace] = useWorkspaceState('lista:consulta', { visao: null, filtros: {}, busca: '', ordenacao: { campo: 'createdAt', direcao: 'desc' } });
+  const consultaListaRef = useRef(consultaWorkspace);
   const [versaoConsulta, setVersaoConsulta] = useState(0);
   const acumularProximaRef = useRef(false);
   // ?q= e ?obra_ids= chegam da busca universal (Ctrl+K) e das ações
@@ -267,7 +301,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   });
   const pularDebounceRef = useRef(false);
 
-  const [filtros, setFiltros] = useState({
+  const [filtros, setFiltros] = useWorkspaceState('lista:filtros', {
     codigo: '',
     descricao: '',
     numero_sienge: '',
@@ -292,8 +326,10 @@ export default function Solicitacoes({ arquivadas = false }) {
   const errosFiltrosData = useMemo(() => obterErrosFiltrosData(filtros), [filtros]);
   const filtrosDataValidos = Object.keys(errosFiltrosData).length === 0;
 
+  const filtrosPrimeiroEfeito = useRef(true);
   useEffect(() => {
-    setPaginaAtual(1);
+    if (!filtrosPrimeiroEfeito.current || !restored) setPaginaAtual(1);
+    filtrosPrimeiroEfeito.current = false;
   }, [filtros, arquivadas, limitePorPagina]);
 
   useEffect(() => {
@@ -318,6 +354,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   }, [filtros, arquivadas, paginaAtual, limitePorPagina, filtrosDataValidos, filtroIdsUrl, filtroVisaoUrl, versaoConsulta]);
 
   useEffect(() => {
+    if (restored) { setFiltrosStoragePronto(true); return; }
     try {
       const salvo = localStorage.getItem(filtrosStorageKey);
       if (salvo) {
@@ -343,6 +380,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   // ?data_vencimento_inicio=, ?data_vencimento_fim= e ?ids=1,2,3.
   useEffect(() => {
     if (!filtrosStoragePronto) return;
+    if (restored) return;
     const params = new URLSearchParams(location.search);
     if ([...params.keys()].length === 0) return;
 
@@ -784,11 +822,16 @@ export default function Solicitacoes({ arquivadas = false }) {
   }
 
   function abrirSolicitacao(item) {
-    marcarAtencaoComoLidaNaLista(item?.id);
-    navigate(`/solicitacoes/${item.id}`);
+    if (!item?.interacoes_pendentes?.length) marcarAtencaoComoLidaNaLista(item?.id);
+    if (workspace) {
+      if (!workspace.openTab(`/solicitacoes/${item.id}`, item.codigo || 'Solicitação')) {
+        avisar.erro('Limite de 12 abas atingido. Feche uma aba para abrir a solicitação.');
+      }
+    } else navigate(`/solicitacoes/${item.id}`);
   }
 
   async function atualizarSolicitacaoDaLista(id, { permitirInsercao = false } = {}) {
+    const versaoLeitura = versaoLeituraInteracoesRef.current;
     const idNumerico = Number(id);
     if (!Number.isInteger(idNumerico) || idNumerico <= 0) {
       return;
@@ -799,6 +842,7 @@ export default function Solicitacoes({ arquivadas = false }) {
 
     try {
       const resumo = await getSolicitacaoResumoLista(idNumerico);
+      if (versaoLeitura !== versaoLeituraInteracoesRef.current) return;
       const atendeFiltros = solicitacaoAtendeFiltros(resumo);
 
       if (indiceAtual >= 0) {
@@ -920,6 +964,8 @@ export default function Solicitacoes({ arquivadas = false }) {
       return;
     }
 
+    const carga = ++versaoCargaRef.current;
+    const aindaAtual = () => paginaMontadaRef.current && carga === versaoCargaRef.current;
     try {
       if (!silent) {
         setLoading(true);
@@ -946,25 +992,17 @@ export default function Solicitacoes({ arquivadas = false }) {
       aplicarConsultaListaNosParams(paramsObj);
 
       // Recarga silenciosa com rolagem infinita em andamento: rebusca a
-      // janela inteira já carregada (páginas 1..atual) numa consulta só,
-      // para não truncar a lista acumulada.
-      const janelaCompleta = silent && !acumular && paginaAtual > 1;
-      paramsObj.page = janelaCompleta ? '1' : String(paginaAtual);
-      paramsObj.limit = janelaCompleta
-        ? String(paginaAtual * Number(limitePorPagina || 25))
-        : String(limitePorPagina);
-
-      const params = new URLSearchParams(paramsObj).toString();
-
-      const res = await fetch(`${API_URL}/solicitacoes?${params}`, {
-        headers: authHeaders()
+      // janela já carregada (páginas 1..atual), em blocos aceitos pelo
+      // backend, sem truncar a lista acumulada nem aumentar o escopo.
+      const janelaCompleta = ((silent && janelaAcumulada) || reconstituirJanelaRef.current) && !acumular && paginaAtual > 1;
+      const versaoLeitura = versaoLeituraInteracoesRef.current;
+      const data = await consultarJanela(paramsObj, paginaAtual, limitePorPagina, janelaCompleta, async query => {
+        const res = await fetch(`${API_URL}/solicitacoes?${new URLSearchParams(query)}`, { headers: authHeaders() });
+        if (!res.ok) throw Object.assign(new Error('Erro ao buscar solicitações'), { status: res.status });
+        return res.json();
       });
-
-      if (!res.ok) {
-        throw new Error('Erro ao buscar solicitações');
-      }
-
-      const data = await res.json();
+      if (!aindaAtual() || versaoLeitura !== versaoLeituraInteracoesRef.current) return;
+      reconstituirJanelaRef.current = false;
       const lista = Array.isArray(data)
         ? data
         : Array.isArray(data?.items)
@@ -994,15 +1032,29 @@ export default function Solicitacoes({ arquivadas = false }) {
         listaRef.current?.refreshContadores?.();
       }
     } catch (error) {
+      if (!aindaAtual()) return;
+      limparListaSemAcesso(error);
       console.error(error);
       if (!silent) avisar.erro('Erro ao carregar solicitações.');
     } finally {
-      setLoading(false);
+      if (aindaAtual()) setLoading(false);
     }
+  }
+
+  function limparListaSemAcesso(error) {
+    if (![401, 403].includes(Number(error?.status))) return;
+    setSolicitacoes([]); solicitacoesRef.current = [];
+    setSelecionadasIds([]); setEdicaoDados(null);
+    setModalEnvioMassa(false); setModalAtribuirMassa(false); setModalPrioridadeTitulos(false);
+    setAlvosLote([]); setTitulosPrioridade([]); setTitulosPrioridadeSelecionados(new Set());
+    setMetaPaginacao(atual => ({ ...atual, total: 0, total_pages: 0 }));
   }
 
   async function carregarEmSegundoPlano() {
     if (!filtrosDataValidos) return;
+
+    const carga = ++versaoCargaRef.current;
+    const aindaAtual = () => paginaMontadaRef.current && carga === versaoCargaRef.current;
 
     try {
       const paramsObj = {};
@@ -1024,22 +1076,14 @@ export default function Solicitacoes({ arquivadas = false }) {
 
       // Janela completa: com rolagem infinita, o refresh de fundo rebusca
       // tudo que está carregado (páginas 1..atual) para não truncar.
-      const janelaCompleta = paginaAtual > 1;
-      paramsObj.page = janelaCompleta ? '1' : String(paginaAtual);
-      paramsObj.limit = janelaCompleta
-        ? String(paginaAtual * Number(limitePorPagina || 25))
-        : String(limitePorPagina);
-
-      const params = new URLSearchParams(paramsObj).toString();
-      const res = await fetch(`${API_URL}/solicitacoes?${params}`, {
-        headers: authHeaders()
+      const janelaCompleta = janelaAcumulada && paginaAtual > 1;
+      const versaoLeitura = versaoLeituraInteracoesRef.current;
+      const data = await consultarJanela(paramsObj, paginaAtual, limitePorPagina, janelaCompleta, async query => {
+        const res = await fetch(`${API_URL}/solicitacoes?${new URLSearchParams(query)}`, { headers: authHeaders() });
+        if (!res.ok) throw Object.assign(new Error('Erro ao buscar solicitacoes'), { status: res.status });
+        return res.json();
       });
-
-      if (!res.ok) {
-        throw new Error('Erro ao buscar solicitacoes');
-      }
-
-      const data = await res.json();
+      if (!aindaAtual() || versaoLeitura !== versaoLeituraInteracoesRef.current) return;
       const lista = Array.isArray(data)
         ? data
         : Array.isArray(data?.items)
@@ -1060,7 +1104,11 @@ export default function Solicitacoes({ arquivadas = false }) {
         total_pages: Math.max(Math.ceil(totalRegistros / limiteBase), lista.length > 0 ? 1 : 0)
       });
     } catch (error) {
+      if (!aindaAtual()) return;
+      limparListaSemAcesso(error);
       console.error(error);
+    } finally {
+      if (aindaAtual()) setLoading(false);
     }
   }
 
@@ -1085,6 +1133,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   const podeSolicitarPrioridadeFinanceiro = !arquivadas && (isDiretoriaObrasPublicas || isDiretoriaObrasPrivadas);
   const classificacaoPrioridadeDiretoria = isDiretoriaObrasPublicas ? 'PUBLICA' : 'PRIVADA';
   const isSuperadmin = perfilUpper === 'SUPERADMIN';
+  const podeExcluirSolicitacao = isSuperadmin || (perfilUpper.startsWith('ADMIN') && userHasSetorCapability(user, 'eh_setor_geo'));
   const podeEnviarQualquerSetor = Boolean(user?.pode_enviar_qualquer_setor);
 
   // Alvos de uma ação em lote: SEMPRE os itens que a barra de lote contou
@@ -1097,6 +1146,34 @@ export default function Solicitacoes({ arquivadas = false }) {
         .filter((id) => Number.isInteger(id) && id > 0);
     }
     return selecionadasIds.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  async function excluirSelecionada(itensAlvo) {
+    if (!podeExcluirSolicitacao || processandoMassa || exclusaoEmCursoRef.current || loading) return;
+    const ids = idsDosAlvos(itensAlvo);
+    const alvo = ids.length === 1 ? solicitacoesRef.current.find(item => Number(item.id) === ids[0]) : null;
+    if (!alvo) return;
+    const revisao = versaoCargaRef.current;
+    exclusaoEmCursoRef.current = true;
+    try {
+      const { ok } = await confirmar({
+        titulo: 'Excluir solicitação',
+        mensagem: `Excluir ${alvo.codigo || alvo.id} da lista operacional? Os títulos, pagamentos e a auditoria serão preservados.`,
+        rotuloConfirmar: 'Excluir', destrutiva: true
+      });
+      if (!ok || !paginaMontadaRef.current || revisao !== versaoCargaRef.current) return;
+      setProcessandoMassa(true);
+      await deleteSolicitacao(alvo.id);
+      removerSolicitacaoDaLista(alvo.id, { decrementarTotal: true });
+      setSelecionadasIds([]);
+      listaRef.current?.clearSelecao?.();
+      avisar.sucesso(`Solicitação ${alvo.codigo || alvo.id} excluída.`);
+    } catch (error) {
+      avisar.erro(error?.message || 'Erro ao excluir solicitação.');
+    } finally {
+      exclusaoEmCursoRef.current = false;
+      if (paginaMontadaRef.current) setProcessandoMassa(false);
+    }
   }
 
   async function arquivarEmMassa(itensAlvo) {
@@ -1512,6 +1589,7 @@ export default function Solicitacoes({ arquivadas = false }) {
 
   const podeAssumirUnica = useMemo(() => {
     if (!selecionadaUnica) return false;
+    if (isSuperadmin) return true;
     if (isSetorObra) return false;
     if (!isSuperadmin && !solicitacaoEstaNoSetorDoUsuario(selecionadaUnica.area_responsavel, user)) return false;
     const modo = String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase();
@@ -1522,16 +1600,19 @@ export default function Solicitacoes({ arquivadas = false }) {
 
   const podeAtribuirMassa = useMemo(() => {
     if (selecionadasIds.length === 0) return false;
+    if (isSuperadmin) return true;
     if (isSetorObra) return false;
     const modo = String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase();
     if (modo !== 'TODOS_VISIVEIS') return false;
     const isUsuario = user?.perfil === 'USUARIO';
     return isUsuario ? (!!permissaoUsuario?.usuario_pode_atribuir || isSetorFinanceiro) : true;
-  }, [selecionadasIds.length, isSetorObra, permissaoUsuario, user?.perfil, isSetorFinanceiro]);
+  }, [selecionadasIds.length, isSuperadmin, isSetorObra, permissaoUsuario, user?.perfil, isSetorFinanceiro]);
 
   const podeEnviarMassa = useMemo(() => {
-    if (selecionadasIds.length === 0 || isSetorObra) return false;
-    if (isSuperadmin || podeEnviarQualquerSetor) return true;
+    if (selecionadasIds.length === 0) return false;
+    if (isSuperadmin) return true;
+    if (isSetorObra) return false;
+    if (podeEnviarQualquerSetor) return true;
     return selecionadasIds.every(idSelecionado => {
       const solicitacao = solicitacoes.find(item => Number(item.id) === Number(idSelecionado));
       return solicitacao && solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user);
@@ -1588,7 +1669,14 @@ export default function Solicitacoes({ arquivadas = false }) {
         return;
       }
 
-      if (action.startsWith('RETORNO_') || action === 'PURCHASE_DELIVERY_UPDATED') {
+      if (action.startsWith('INTERACTION') || ['COMMENT_ADDED', 'ATTACHMENT_ADDED'].includes(action)) {
+        // Agrupa o evento central e o evento especifico do mesmo ato,
+        // preservando a prioridade antes da paginacao sem dois reloads.
+        clearTimeout(refreshInteracoesTimerRef.current);
+        refreshInteracoesTimerRef.current = setTimeout(() => { void atualizarEntregaRef.current?.(); }, 150);
+        return;
+      }
+      if (action.startsWith('RETORNO_') || action === 'PURCHASE_DELIVERY_UPDATED' || action === 'SENT_TO_SECTOR') {
         // O pedido pendente altera a prioridade global da fila. Rebuscar a janela garante
         // que uma solicitacao que estava em outra pagina apareca imediatamente no topo e
         // que o destaque suma assim que o pedido for decidido ou cancelado.
@@ -1711,12 +1799,14 @@ export default function Solicitacoes({ arquivadas = false }) {
   // ==================================================================
   function handleQueryChangeLista(consulta) {
     consultaListaRef.current = consulta;
+    setConsultaWorkspace(consulta);
     acumularProximaRef.current = false;
-    if (paginaAtual !== 1) setPaginaAtual(1);
+    if (!(restored && consulta.primeira) && paginaAtual !== 1) setPaginaAtual(1);
     setVersaoConsulta((v) => v + 1);
   }
 
   function handlePageRequestLista(novaPagina, { acumular = false } = {}) {
+    setJanelaAcumulada(acumular);
     acumularProximaRef.current = acumular;
     pularDebounceRef.current = true;
     setPaginaAtual(novaPagina);
@@ -1820,7 +1910,7 @@ export default function Solicitacoes({ arquivadas = false }) {
     },
     {
       id: 'obra',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       opcoes: obrasOptions.map((opcao) => ({ valor: String(opcao.value), rotulo: opcao.label }))
     }
   ]), [statusOptions, tiposSolicitacao, obrasOptions]);
@@ -1835,12 +1925,13 @@ export default function Solicitacoes({ arquivadas = false }) {
         larguraPadrao: 130,
         render: (item) => <span className="flex min-w-0 flex-col gap-1">
           <span>{formatarMaiusculas(item.codigo || `#${item.id}`)}</span>
+          <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
           <ContadorPrazo prazo={item.prazo_operacional} />
         </span>
       },
       {
         id: 'obra',
-        titulo: 'Obra',
+        titulo: 'Obra / Centro de Custo',
         larguraPadrao: 180,
         render: (item) => formatarMaiusculas(item.obra?.nome || '-')
       },
@@ -1959,7 +2050,7 @@ export default function Solicitacoes({ arquivadas = false }) {
               Retorno solicitado
             </span>
           )}
-          <AtencaoPendente atencao={item.atencao_pendente} />
+          <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
           <ContadorPrazo prazo={item.prazo_operacional} />
           {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
             Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
@@ -2005,6 +2096,12 @@ export default function Solicitacoes({ arquivadas = false }) {
         rotulo: (n) => (n === 1 ? 'Exportar' : `Exportar ${n}`),
         desabilitada: () => processandoMassa || exportando || !filtrosDataValidos,
         executar: (itens) => exportarSolicitacoesExcel(itens)
+      },
+      {
+        id: 'excluir', rotulo: () => 'Excluir', tom: 'danger',
+        visivel: (itens) => podeExcluirSolicitacao && itens.length === 1,
+        desabilitada: () => processandoMassa || loading,
+        executar: excluirSelecionada
       }
     ]
     : [
@@ -2033,6 +2130,12 @@ export default function Solicitacoes({ arquivadas = false }) {
         rotulo: (n) => (n === 1 ? 'Arquivar' : `Arquivar ${n}`),
         desabilitada: () => processandoMassa,
         executar: (itens) => arquivarEmMassa(itens)
+      },
+      {
+        id: 'excluir', rotulo: () => 'Excluir', tom: 'danger',
+        visivel: (itens) => podeExcluirSolicitacao && itens.length === 1,
+        desabilitada: () => processandoMassa || loading,
+        executar: excluirSelecionada
       },
       {
         id: 'atribuir',
@@ -2173,7 +2276,7 @@ export default function Solicitacoes({ arquivadas = false }) {
           ]}
           renderCard={renderCardSolicitacao}
           urgencia={(item) => (
-            item.entrega_pendente ? (item.entrega_pendente.vencida ? 'retorno' : 'entrega') : item.retorno_solicitado_pendente || item.atencao_pendente
+            item.entrega_pendente ? (item.entrega_pendente.vencida ? 'retorno' : 'entrega') : item.retorno_solicitado_pendente || item.atencao_pendente || item.interacoes_pendentes?.length
               ? 'retorno'
               : urgenciaVencimento(item.data_vencimento)
           )}
@@ -2183,9 +2286,10 @@ export default function Solicitacoes({ arquivadas = false }) {
         />
       </BlocoConteudo>
 
-      {edicaoDados ? <ModalEditarDadosSolicitacao
+      {edicaoDados && solicitacoes.some(s => Number(s.id) === Number(edicaoDados.solicitacao.id)) ? <ModalEditarDadosSolicitacao
         key={`${user?.id}:${edicaoDados.solicitacao.id}:${edicaoDados.campo}`}
-        {...edicaoDados} onFechar={() => setEdicaoDados(null)}
+        {...edicaoDados} solicitacao={solicitacoes.find(s => Number(s.id) === Number(edicaoDados.solicitacao.id))}
+        onFechar={() => setEdicaoDados(null)}
         onSalvo={async ({ id: alvoId, campo, codigo }) => {
           avisar.sucesso(`${campo === 'valor' ? 'Valor' : 'Vencimento'} de ${codigo} atualizado.`);
           await handleAtualizarLista({ type: 'refresh_item', id: alvoId });
@@ -2399,7 +2503,7 @@ export default function Solicitacoes({ arquivadas = false }) {
                 },
                 {
                   id: 'obra',
-                  titulo: 'Obra',
+                  titulo: 'Obra / Centro de Custo',
                   tipo: 'texto',
                   render: (titulo) => titulo.obra?.nome || '-'
                 },

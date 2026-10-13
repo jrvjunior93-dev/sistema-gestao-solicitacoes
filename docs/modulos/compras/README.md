@@ -1,5 +1,27 @@
 # Modulo COMPRAS
 
+## Delegacao: abrir em outra aba - 2026-10-12
+
+Abrir preserva a Delegacao e abre uma aba interna para a solicitacao
+principal; sem principal, abre o detalhe da compra. Filtro e edicoes nao
+salvas ficam em memoria, isolados por usuario/escopo/aba, sem cache de DTO.
+Ao retornar, o mesmo GET com contexto/visao delegacao atualiza a lista;
+403 limpa registros, usuarios e alvos antigos. Salvamento continua usando
+o endpoint e permissoes existentes, bloqueando saida enquanto em andamento.
+Limite de 12 abas nao substitui a tela de origem. Sem provider/piloto,
+o Abrir conserva o comportamento legado. Sem banco ou migration.
+
+## Titulo e data da necessidade - 2026-10-11
+
+Solicitacao de Compra e Compra Direta possuem titulo opcional no cabecalho,
+ate 255 caracteres. Rascunho e revisao preservam o campo; a descricao da
+solicitacao principal o inclui para a pesquisa existente, sem ampliar acesso.
+
+Compra comum exige Necessario para no cabecalho e no POST de criacao,
+independentemente das datas dos itens. Rascunho incompleto pode ser salvo,
+mas precisa da data para criar. Compra Direta conserva Data de vencimento.
+Nenhum registro existente e reescrito, sem migration para esses campos.
+
 ## Papel e fronteira
 
 Compras e dono da solicitacao de compra, origem normal/direta, itens, quantidades e rateios de apropriacao. Cotacoes, respostas e pedidos pertencem ao modulo COTACOES. Obras e dono das apropriacoes e Parceiros e dono dos credores/fornecedores referenciados.
@@ -182,5 +204,38 @@ Reabrir um pedido libera ajustes operacionais, mas preserva as alocacoes ja comp
 - a rotina de regularizacao de pedidos cancelados existe para corrigir registros historicos em que o status do pedido foi cancelado, mas itens ou alocacoes permaneceram ativos; ela deve ser executada primeiro em simulacao e somente no banco explicitamente confirmado.
 
 ## Mudanca segura
+
+### Comparativo e superadmin (12/10/2026)
+
+Cards/Mapa sao controles de leitura, separados do bloqueio de gravacao da
+cotacao embutida. Em acompanhamento, visualizar nao habilita criar fornecedor,
+responder, comentar, encerrar, cancelar ou gerar pedido. SUPERADMIN efetivo
+na sessao nao depende do setor principal para operar a solicitacao autorizada.
+
+Quantidade comprada seleciona o texto ao receber foco. Apagar/zerar durante
+a digitacao mantem checkbox, campo e foco; somente desmarcar explicitamente
+remove a alocacao. Encerramento rejeita selecao com quantidade vazia/zero,
+mantendo as validacoes existentes de saldo, disponibilidade e idempotencia.
+No mapa mobile, as colunas de referencia rolam para nao cobrir os controles;
+em desktop continuam fixas. Testes reais de UI em 1366/390px:
+`node frontend/scripts/validarWorkspacePiloto.mjs --correcoes-only`.
+
+### Navegacao incremental E3a (12/10/2026)
+
+Listas de Solicitacoes de Compra, Pedidos e Cotacoes preservam busca e
+filtros em memoria por usuario/aba; selecao de solicitacoes e revalidada no
+GET de retorno. Tabela preserva janela e rolagem; nao guarda os registros
+consultados. Detalhes abrem em outra aba interna, mantendo origem e
+reutilizando o registro ja aberto. Portais publicos continuam externos.
+401/403 limpam resultados e respostas atrasadas nao restauram acesso.
+Parametros das consultas, permissoes, visibilidade e endpoints de negocio
+continuam iguais. Nao prometer rascunho de wizard/editor de cotacao/pedido
+neste lote nem recuperacao apos F5/logout.
+
+No cadastro rapido da cotacao, CNPJ mostra Nome fantasia (exigencia do
+servico central ja existente); CPF dispensa esse campo. Nome e CPF do
+representante legal nao sao exibidos nem exigidos nesse card. O cadastro
+geral de Pessoas permanece completo. Criar fornecedor e gerar links sao
+bloqueados durante a gravacao do cadastro rapido, evitando concorrencia.
 
 Testar compra normal e direta, destinos iniciais, compatibilidade de registros antigos, credor, itens cadastrados/manuais, importacao, rateio, edicao de apropriacoes, permissoes, cancelamento, cotacao, pedido, relatorios de compras e registros de origem.

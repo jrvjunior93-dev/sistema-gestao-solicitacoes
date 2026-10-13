@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useWorkspaceState } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
 import {
   HiOutlineArrowPath,
   HiOutlineBanknotes,
@@ -129,7 +132,7 @@ function BlocoBarras({ titulo, descricao, itens, variante = 'secundario' }) {
   ganha `tipo: 'valor'` (190px, à direita, tabular-nums, nunca trunca) e a
   linha ganha caminho por teclado do próprio componente (A1).
 */
-function BlocoAlerta({ titulo, descricao, itens, storageKey, aoAbrir, vazio }) {
+function BlocoAlerta({ titulo, descricao, itens, storageKey, consultaWorkspace, aoAbrir, vazio }) {
   return (
     <BlocoConteudo
       titulo={titulo}
@@ -178,6 +181,8 @@ function BlocoAlerta({ titulo, descricao, itens, storageKey, aoAbrir, vazio }) {
         itens={itens}
         getId={(item) => item.id}
         storageKey={storageKey}
+        chaveWorkspace={storageKey}
+        consultaWorkspace={consultaWorkspace}
         rotuloRolagem={titulo}
         vazio={vazio}
         larguraAcoes={140}
@@ -216,13 +221,20 @@ const FILTROS_DA_TELA = [
 export default function DashboardProvisionamentoFinanceiro() {
   const navigate = useNavigate();
   const { avisos, avisar, fechar } = useAvisos();
+  const abrirRegistro = useWorkspaceOpenRecord(avisar.erro);
+  const base = useQueryRevision();
+  const camposRef = useRef(null);
+  const [erroBase, setErroBase] = useState('');
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [loadingBase, setLoadingBase] = useState(true);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
+  const [filtros, setFiltros] = useWorkspaceState('provisoes:dashboard:filtros', FILTROS_VAZIOS);
+  const [revisoesData, setRevisoesData] = useWorkspaceState('provisoes:dashboard:datas-reset', {});
+  const consulta = useQueryRevision(JSON.stringify([contexto, filtros, refreshKey]));
+  const consultaWorkspace = JSON.stringify(filtros);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -246,24 +258,29 @@ export default function DashboardProvisionamentoFinanceiro() {
       continuasse recortando a lista seria critério invisível — a pessoa lê a
       contagem e conclui que é o conjunto inteiro.
     */
-    aoEsconder: (id) => atualizarCampo(id, FILTROS_VAZIOS[id] ?? '')
+    aoEsconder: (id) => { atualizarCampo(id, FILTROS_VAZIOS[id] ?? ''); setRevisoesData(r => ({ ...r, [id]: (r[id] || 0) + 1 })); }
   });
 
   useEffect(() => {
     async function carregarBase() {
+      const token = base.begin();
       try {
         setLoadingBase(true);
         const [contextoData, categoriasData] = await Promise.all([
           getProvisionamentoFinanceiroContexto(),
           listarCategoriasMacroProvisionamento()
         ]);
+        if (!base.isCurrent(token)) return;
         setContexto(contextoData);
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       } catch (error) {
+        if (!base.isCurrent(token)) return;
         console.error(error);
+        setContexto(null); setCategorias([]); setDashboard(null);
+        setErroBase(error?.message || 'Erro ao carregar base do dashboard.');
         avisar.erro(error?.message || 'Erro ao carregar base do dashboard.');
       } finally {
-        setLoadingBase(false);
+        if (base.isCurrent(token)) setLoadingBase(false);
       }
     }
 
@@ -285,15 +302,20 @@ export default function DashboardProvisionamentoFinanceiro() {
     if (!contexto || !podeVerDashboard) return;
 
     async function carregarDashboard() {
+      const token = consulta.begin();
       try {
         setLoadingDashboard(true);
+        setDashboard(null);
         const data = await getDashboardProvisionamentoFinanceiro(filtros);
+        if (!consulta.isCurrent(token)) return;
         setDashboard(data);
       } catch (error) {
+        if (!consulta.isCurrent(token)) return;
         console.error(error);
+        setDashboard(null);
         avisar.erro(error?.message || 'Erro ao carregar dashboard.');
       } finally {
-        setLoadingDashboard(false);
+        if (consulta.isCurrent(token)) setLoadingDashboard(false);
       }
     }
 
@@ -361,11 +383,22 @@ export default function DashboardProvisionamentoFinanceiro() {
   }
 
   function atualizarCampo(campo, valor) {
-    setFiltros((atual) => ({ ...atual, [campo]: valor }));
+    setFiltros((atual) => atual[campo] === valor ? atual : ({ ...atual, [campo]: valor }));
+  }
+
+  function limparFiltros() {
+    setFiltros(FILTROS_VAZIOS);
+    setRevisoesData(r => ({ data_inicial: (r.data_inicial || 0) + 1, data_final: (r.data_final || 0) + 1 }));
+  }
+
+  function atualizarDashboard() {
+    if (loadingDashboard || !podeVerDashboard) return;
+    if ([...(camposRef.current?.querySelectorAll('input') || [])].some(input => !input.reportValidity())) return;
+    setRefreshKey(n => n + 1);
   }
 
   function abrirProvisao(item) {
-    navigate(`/provisoes-financeiras/${item.id}`);
+    abrirRegistro(`/provisoes-financeiras/${item.id}`, item.codigo);
   }
 
   if (loadingBase) {
@@ -377,11 +410,12 @@ export default function DashboardProvisionamentoFinanceiro() {
     );
   }
 
-  if (!podeVerDashboard) {
+  if (erroBase || !podeVerDashboard) {
     return (
       <Pagina>
         <PageHeader titulo="Dashboard de Previsão" />
-        <BlocoConteudo>Redirecionando...</BlocoConteudo>
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        <BlocoConteudo>{erroBase || 'Redirecionando...'}</BlocoConteudo>
       </Pagina>
     );
   }
@@ -407,13 +441,13 @@ export default function DashboardProvisionamentoFinanceiro() {
         descricao="Leitura gerencial do desembolso previsto por obra, categoria e janela de tempo."
         acaoPrincipal={{
           rotulo: loadingDashboard ? 'Atualizando...' : 'Atualizar',
-          onClick: () => setRefreshKey((valor) => valor + 1),
+          onClick: atualizarDashboard,
           desabilitada: loadingDashboard,
           icone: <HiOutlineArrowPath aria-hidden="true" />
         }}
         secundarias={[{
           rotulo: 'Limpar filtros',
-          onClick: () => setFiltros(FILTROS_VAZIOS),
+          onClick: limparFiltros,
           desabilitada: loadingDashboard
         }]}
       />
@@ -424,12 +458,14 @@ export default function DashboardProvisionamentoFinanceiro() {
         {/* R12/R16b: recorte enumerável em marcação; o período é contínuo e
             vai em `campos`. R23: aplica ao marcar (três dimensões, uma
             consulta) — sem botão "aplicar". */}
-        <BarraFiltros
+        <div ref={camposRef}><BarraFiltros
           campos={[
             {
               id: 'data_inicial',
               rotulo: 'Data inicial',
               tipo: 'date',
+              chaveWorkspace: 'provisoes:dashboard:inicial',
+              revisaoWorkspace: revisoesData.data_inicial || 0,
               valor: filtros.data_inicial,
               aoMudar: (valor) => atualizarCampo('data_inicial', valor)
             },
@@ -437,6 +473,8 @@ export default function DashboardProvisionamentoFinanceiro() {
               id: 'data_final',
               rotulo: 'Data final',
               tipo: 'date',
+              chaveWorkspace: 'provisoes:dashboard:final',
+              revisaoWorkspace: revisoesData.data_final || 0,
               valor: filtros.data_final,
               aoMudar: (valor) => atualizarCampo('data_final', valor)
             }
@@ -444,9 +482,9 @@ export default function DashboardProvisionamentoFinanceiro() {
           filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
           ativos={ativos}
           aoAlternar={alternarFiltro}
-          aoLimpar={() => setFiltros(FILTROS_VAZIOS)}
+          aoLimpar={limparFiltros}
           visibilidade={visibilidadeFiltros}
-        />
+        /></div>
       </BlocoConteudo>
 
       {/*
@@ -568,6 +606,7 @@ export default function DashboardProvisionamentoFinanceiro() {
               descricao="Itens que precisam de regularizacao."
               itens={vencidasNaoTratadas}
               storageKey="tabela:provisionamento-dashboard:vencidas"
+              consultaWorkspace={consultaWorkspace}
               aoAbrir={abrirProvisao}
               vazio="Nenhum item neste alerta."
             />
@@ -577,6 +616,7 @@ export default function DashboardProvisionamentoFinanceiro() {
               descricao="Itens de prioridade critica no horizonte imediato."
               itens={criticasProximas}
               storageKey="tabela:provisionamento-dashboard:criticas"
+              consultaWorkspace={consultaWorkspace}
               aoAbrir={abrirProvisao}
               vazio="Nenhum item neste alerta."
             />
@@ -613,6 +653,8 @@ export default function DashboardProvisionamentoFinanceiro() {
                 itens={obrasConcentracaoAlta}
                 getId={(item) => item.obra_id}
                 storageKey="tabela:provisionamento-dashboard:concentracao"
+                chaveWorkspace="provisoes:dashboard:concentracao"
+                consultaWorkspace={consultaWorkspace}
                 rotuloRolagem="Concentracao por obra"
                 vazio="Nenhuma obra acima do limiar de concentração."
               />

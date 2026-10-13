@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
+import useQueryRevision from '../navigation/useQueryRevision';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
   HiOutlineArrowsRightLeft,
+  HiOutlineBanknotes,
   HiOutlineEye,
+  HiOutlinePencilSquare,
   HiOutlineUserMinus
 } from 'react-icons/hi2';
 import OverlayModal from '../components/ui/OverlayModal';
@@ -11,6 +17,7 @@ import {
   Avisos,
   BarraFiltros,
   CelulaDupla,
+  FormSecao,
   Pagina,
   PageHeader,
   StatGrid,
@@ -29,6 +36,7 @@ import {
   cancelarRhSolicitacao,
   conferirDocumentacaoRhSolicitacao,
   getRhColaboradores,
+  getRhColaborador,
   getRhEmpresasGrupo,
   listarRhSolicitacoes,
   reenviarRhSolicitacao,
@@ -44,8 +52,20 @@ import RhDpJornada from './RhDpJornada';
 import RhDpApuracao from './RhDpApuracao';
 import RhDpFechamentos from './RhDpFechamentos';
 import RhDpEventosRecorrentes from './RhDpEventosRecorrentes';
+import RhDpDocumentos from './RhDpDocumentos';
+import RhDpRelatorioOperacional from './RhDpRelatorioOperacional';
+import RhDpColaboradores from './RhDpColaboradores';
+import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
+import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
+import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
+import { erroTelefoneSecundario, erroEnderecoSecundario } from '../utils/rhColaboradorContatos';
+import '../styles/rh-pessoal-locais.css';
 import {
   canViewRhDpApuracao,
+  canViewRhDpDocumentos,
+  canAccessRhDpDashboard,
+  canManageRhDpColaboradores,
+  canAccessRhDpCadastroColaboradores,
   canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   hasAnyExplicitPermissao,
@@ -258,12 +278,12 @@ function formularioVazio(tipo) {
     // Item 8 do escopo: cargo pelo catalogo e carga horaria.
     cargo_id: '',
     carga_horaria_semanal: '',
-    telefone: '', telefone_secundario: '', mostrarTelefoneSecundario: false,
+    telefone: '', telefone_secundario: '',
     email: '', nome_pai: '', nome_mae: '',
     endereco: '', numero: '', complemento: '', bairro: '', municipio: '', estado: '', cep: '',
     endereco_secundario: '', numero_secundario: '', complemento_secundario: '',
     bairro_secundario: '', municipio_secundario: '', estado_secundario: '', cep_secundario: '',
-    mostrarEnderecoSecundario: false,
+    mesmo_endereco: false,
     banco: '', agencia: '', conta: '', conta_tipo: '', pix_chave_tipo: '', pix_chave: '',
     // ADMISSAO
     nome: '',
@@ -309,8 +329,9 @@ export default function RhDpPessoal() {
   const { user } = useAuth();
   const usuarioOperacionalDaObra = !isBusinessAdmin(user)
     && userHasSetorCapability(user, 'eh_setor_obra');
+  const permitirMesmoEndereco = isBusinessAdmin(user) || userBelongsToDpSetor(user);
 
-  const [colaboradores, setColaboradores] = useState([]);
+  const [colaboradoresCarregados, setColaboradores] = useState([]);
   // A busca e disparada a cada alteracao depois do debounce. Uma resposta antiga pode chegar
   // depois da consulta mais especifica (por exemplo, `QA-RHDP-0` depois de `QA-RHDP-001`) e nao
   // pode substituir o resultado atual da tela.
@@ -399,10 +420,33 @@ export default function RhDpPessoal() {
     com valor inválido, corrigir a URL não é um passo que mereça histórico).
   */
   const [parametros, setParametros] = useSearchParams();
+  const navigate = useNavigate();
+  const [editarColaboradorId, setEditarColaboradorId] = useWorkspaceState('pessoal:editarId', null);
+  const podeEditarCadastro = canManageRhDpColaboradores(user) && canAccessRhDpCadastroColaboradores(user);
+  const podeVerDocumentos = canViewRhDpDocumentos(user);
+  const podeVerRelatorios = canAccessRhDpDashboard(user);
   const podeVerApuracao = canViewRhDpApuracao(user);
   const podeVerEventosRecorrentes = canViewRhDpEventosRecorrentes(user);
   const podeVerFechamentos = canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO');
   const usuarioDoDp = userBelongsToDpSetor(user);
+  const porLocal = !usuarioDoDp && !isBusinessAdmin(user);
+  const localId = parametros.get('local_id') || '';
+  const localSelecionado = obras.find((item) => String(item.id) === localId);
+  // Não mostrar por um frame o recorte global/da obra anterior enquanto a
+  // consulta local aguarda o debounce. O servidor continua filtrando também.
+  const colaboradores = useMemo(() => localId
+    ? colaboradoresCarregados.filter(item => String(item.obra_id) === localId && item.status === 'ATIVO')
+    : colaboradoresCarregados, [colaboradoresCarregados, localId]);
+  const [pagamentoAlvo, setPagamentoAlvo] = useWorkspaceState('pessoal:pagamentoAlvo', null);
+  const pagamento = pagamentoAlvo && (!pagamentoAlvo.localId || obras.some(o => Number(o.id) === Number(pagamentoAlvo.localId)))
+    ? { ...pagamentoAlvo, local: obras.find(o => Number(o.id) === Number(pagamentoAlvo.localId)),
+      colaborador: pagamentoAlvo.colaboradorId ? { id: pagamentoAlvo.colaboradorId } : null } : null;
+  const setPagamento = data => setPagamentoAlvo(data ? { localId: data.local?.id || '',
+    colaboradorId: data.colaborador?.id || '', colaboradorIds: data.colaboradorIds,
+    solicitacaoId: data.solicitacaoId } : null);
+  const [colaboradoresMarcados, setColaboradoresMarcados] = useState(new Map());
+  const [selecaoMemoria, setSelecaoMemoria] = useWorkspaceState('pessoal:selecionados', []);
+  const restaurandoSelecao = useRef(true);
   /*
     Uma fonte só para rótulo, apoio do cabeçalho e ordem. O `apoio` existe
     porque o cabeçalho é ÚNICO para as quatro abas: o texto fixo antigo
@@ -430,10 +474,12 @@ export default function RhDpPessoal() {
         ? 'Acompanhe parcelas futuras, ajuste valores ainda não aplicados e encerre recorrências.'
         : 'Acompanhe os eventos aprovados dos colaboradores vinculados às suas obras.'
     }] : []),
+    ...(localId && podeVerDocumentos ? [{ id: 'documentos', rotulo: 'Documentos', apoio: 'Documentos dos colaboradores deste local.' }] : []),
+    ...(localId && podeVerRelatorios ? [{ id: 'relatorios', rotulo: 'Relatórios', apoio: 'Indicadores dos colaboradores deste local.' }] : []),
     {
       id: 'jornada',
       rotulo: 'Pagamento de Mão de Obra',
-      apoio: 'A obra informa dias trabalhados, faltas, ajustes, 13º e empreitadas; o DP confere e gera a apuração.'
+      apoio: 'Informe dias, faltas e ajustes. O DP confere a solicitação e gera os títulos.'
     },
     ...(podeVerApuracao ? [{
       id: 'apuracao',
@@ -445,8 +491,8 @@ export default function RhDpPessoal() {
       rotulo: 'Fechamentos',
       apoio: 'Competências encerradas e títulos financeiros gerados a partir das apurações.'
     }] : [])
-  ], [podeVerApuracao, podeVerEventosRecorrentes, podeVerFechamentos, usuarioDoDp]);
-  const abasDisponiveis = useMemo(() => ABAS.map((aba) => aba.id), [ABAS]);
+  ], [podeVerApuracao, podeVerEventosRecorrentes, podeVerFechamentos, podeVerDocumentos, podeVerRelatorios, usuarioDoDp, localId]);
+  const abasDisponiveis = useMemo(() => ABAS.filter(aba => !localId || !['jornada', 'apuracao', 'fechamentos'].includes(aba.id)).map((aba) => aba.id), [ABAS, localId]);
   const abaDaUrl = parametros.get('aba');
   const abaAtiva = abasDisponiveis.includes(abaDaUrl) ? abaDaUrl : 'solicitacoes';
 
@@ -473,11 +519,11 @@ export default function RhDpPessoal() {
     if (!podeVerApuracao) return;
     setParametros((atuais) => {
       const proximos = new URLSearchParams(atuais);
-      proximos.set('aba', 'apuracao');
-      proximos.delete('solicitacao');
+      proximos.set('aba', 'solicitacoes');
+      proximos.set('solicitacao', String(solicitacao.id));
       proximos.delete('jornada_secao');
       proximos.delete('apuracao_id');
-      if (solicitacao?.id) proximos.set('jornada_id', String(solicitacao.id));
+      proximos.delete('jornada_id');
       if (solicitacao?.dados_json?.competencia) {
         proximos.set('competencia', String(solicitacao.dados_json.competencia));
       }
@@ -543,13 +589,33 @@ export default function RhDpPessoal() {
    * etiquetas visiveis e a lista sem estreitar. Daqui sai exatamente o mesmo
    * parametro de antes; conjunto vazio = todas as obras que a pessoa enxerga.
    */
-  const [marcados, setMarcados] = useState({ obra_id: new Set() });
-  const filtroObra = marcados.obra_id.size === 1
+  const [marcados, setMarcados] = useWorkspaceState('pessoal:filtros', { obra_id: new Set() });
+  const filtroObra = localSelecionado ? String(localSelecionado.id) : marcados.obra_id.size === 1
     ? marcados.obra_id.values().next().value
     : '';
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = useWorkspaceState('pessoal:busca', '');
 
-  const [formulario, setFormulario] = useState(null);
+  const filtroSelecao = `${user?.id}|${localId}|${[...marcados.obra_id].join(',')}`;
+  const filtroSelecaoAnterior = useRef(filtroSelecao);
+  useEffect(() => {
+    if (filtroSelecaoAnterior.current !== filtroSelecao) setColaboradoresMarcados(new Map());
+    filtroSelecaoAnterior.current = filtroSelecao;
+  }, [filtroSelecao]);
+  useEffect(() => {
+    if (!restaurandoSelecao.current) setSelecaoMemoria([...colaboradoresMarcados.keys()]);
+  }, [colaboradoresMarcados]);
+
+  const [formularioAlvo, setFormularioAlvo] = useWorkspaceState('pessoal:pedidoAlvo', null);
+  const rascunhoFormulario = useWorkspaceRecordDraft('pessoal:pedidoCampos');
+  const formulario = rascunhoFormulario.value;
+  const consultaFormulario = useQueryRevision(JSON.stringify(formularioAlvo));
+  const [consultandoFormulario, setConsultandoFormulario] = useState(false);
+  function setFormulario(update) {
+    if (update === null) {
+      rascunhoFormulario.discard(); rascunhoFormulario.setValue(null); setFormularioAlvo(null); return;
+    }
+    rascunhoFormulario.setValue(update);
+  }
   const [criandoRascunho, setCriandoRascunho] = useState(false);
   const criacaoRascunhoEmAndamento = useRef(false);
   const [conferencia, setConferencia] = useState(null);
@@ -558,7 +624,10 @@ export default function RhDpPessoal() {
   // A troca de usuario de teste preserva o componente montado. Sem limpar estas colecoes, a tela
   // podia exibir por alguns instantes colaboradores e obras do usuario anterior; ao agir sobre uma
   // dessas linhas, o backend aplicava o novo escopo e respondia "Acesso negado a este colaborador".
+  const donoAnterior = useRef(user?.id);
   useEffect(() => {
+    if (donoAnterior.current === user?.id) return;
+    donoAnterior.current = user?.id;
     setColaboradores([]);
     setObras([]);
     setObrasDestino([]);
@@ -566,6 +635,7 @@ export default function RhDpPessoal() {
     setMarcados({ obra_id: new Set() });
     setBusca('');
     setFormulario(null);
+    setPagamento(null);
     setPedidosDoColaborador({ id: null, lista: [] });
     setTotalSolicitacoesAbertas(0);
     setTotalSolicitacoesNaoLidas(0);
@@ -597,6 +667,30 @@ export default function RhDpPessoal() {
   const podeAbrir = hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.abrir']);
   const podeDecidir = hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.decidir']);
   const podeAprovarSalario = hasAnyExplicitPermissao(user, ['rh_dp.salario.aprovar']);
+  useWorkspaceWork(rascunhoFormulario.dirty || Boolean(colaboradoresMarcados.size),
+    criandoRascunho || consultandoFormulario);
+  useEffect(() => {
+    if (!formularioAlvo || !podeAbrir) return;
+    const token = consultaFormulario.begin(); setConsultandoFormulario(true);
+    (async () => {
+      const colaborador = formularioAlvo.colaboradorId ? await getRhColaborador(formularioAlvo.colaboradorId) : null;
+      if (!consultaFormulario.isCurrent(token)) return;
+      const tipo = formularioAlvo.tipo;
+      const base = { ...formularioVazio(tipo), colaborador_id: colaborador?.id || '',
+        obra_id: colaborador?.obra_id || formularioAlvo.obraId || filtroObra || localId || '', primeiraLotacao: !colaborador?.obra_id,
+        obra_id_colaborador: colaborador?.obra_id || null, nomeDoColaborador: colaborador?.nome || '',
+        data_vigencia: tipo === 'MOVIMENTACAO' ? sugestaoDeVigencia(colaborador) : '',
+        admissaoFutura: tipo === 'MOVIMENTACAO' && ehFutura(colaborador?.data_admissao) };
+      const restaurado = rascunhoFormulario.hydrate(base, JSON.stringify([tipo, colaborador?.id, colaborador?.updatedAt,
+        colaborador?.obra_id, colaborador?.status, colaborador?.salario_base]));
+      if (tipo === 'ADMISSAO') carregarEmpresasSePreciso();
+      if (tipo === 'TROCA_OBRA' || restaurado.subtipo === 'TRANSFERENCIA_OBRA') carregarObrasDestinoSePreciso();
+      carregarApoioDoModal(tipo, colaborador);
+      carregarChecklist(tipo, restaurado.subtipo || undefined);
+    })().catch(error => { if (consultaFormulario.isCurrent(token)) {
+      rascunhoFormulario.setValue(null); avisar.erro(error.message || 'Não foi possível reabrir o pedido.');
+    } }).finally(() => { if (consultaFormulario.isCurrent(token)) setConsultandoFormulario(false); });
+  }, [formularioAlvo, podeAbrir]);
 
   /**
    * `carregar` NAO limpa os avisos.
@@ -612,15 +706,32 @@ export default function RhDpPessoal() {
     ultimaConsultaColaboradoresRef.current = consultaId;
     setCarregando(true);
     try {
-      const [lista, listaObras, solicitacoesAbertas] = await Promise.all([
-        getRhColaboradores({ obra_id: filtroObra || undefined, q: busca || undefined }),
-        obras.length
-          ? Promise.resolve(obras)
-          : (usuarioOperacionalDaObra ? getMinhasObras({ escopo: 'OBRAS' }) : getObras()),
-        listarRhSolicitacoes({ situacao: 'ABERTA' })
+      const listaObras = obras.length ? obras : await (porLocal
+        ? getMinhasObras({ escopo: 'TODOS' }) : getObras({ escopo: 'TODOS' }));
+      if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
+      const localValido = (Array.isArray(listaObras) ? listaObras : []).find((item) => String(item.id) === localId);
+      const [lista, solicitacoesAbertas] = await Promise.all([
+        porLocal && !localValido ? Promise.resolve([])
+          : getRhColaboradores({
+            obra_id: localValido?.id || filtroObra || undefined,
+            status: localValido ? 'ATIVO' : undefined,
+            q: busca || undefined
+          }),
+        listarRhSolicitacoes({ situacao: 'EM_ANDAMENTO', obra_id: localValido?.id || undefined })
       ]);
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
-      setColaboradores(Array.isArray(lista) ? lista : []);
+      const listaConfirmada = Array.isArray(lista) ? lista : [];
+      setColaboradores(listaConfirmada);
+      const porId = new Map(listaConfirmada.map(c => [Number(c.id), c]));
+      // Busca pode ocultar uma linha marcada; atualizar tambem a lotacao das linhas relidas.
+      setColaboradoresMarcados(atuais => new Map([
+        ...(restaurandoSelecao.current ? selecaoMemoria.map(id => [Number(id), null]) : []), ...atuais
+      ].flatMap(([id, anterior]) => {
+        const vigente = porId.get(id);
+        if (!vigente) return busca && anterior ? [[id, anterior]] : [];
+        return vigente.status === 'ATIVO' && vigente.obra_id ? [[id, vigente]] : [];
+      })));
+      restaurandoSelecao.current = false;
       setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : 0);
       if (!obras.length) setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
@@ -630,7 +741,7 @@ export default function RhDpPessoal() {
       if (consultaId === ultimaConsultaColaboradoresRef.current) setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroObra, busca, obras, empresas, usuarioOperacionalDaObra, user?.id]);
+  }, [filtroObra, localId, busca, obras, empresas, porLocal, user?.id]);
 
   /**
    * A marcacao aplica sozinha; a busca digitada espera 350ms para nao martelar
@@ -645,7 +756,7 @@ export default function RhDpPessoal() {
     const atraso = setTimeout(() => { carregar(); }, 350);
     return () => clearTimeout(atraso);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroObra, busca]);
+  }, [filtroObra, localId, busca, user?.id]);
 
   const pendentes = useMemo(
     () => colaboradores.filter((c) => c.tem_solicitacao_aberta),
@@ -664,7 +775,8 @@ export default function RhDpPessoal() {
 
   async function abrirPedido(evento) {
     evento.preventDefault();
-    if (criacaoRascunhoEmAndamento.current) return;
+    if (criacaoRascunhoEmAndamento.current || !podeAbrir || !formulario || consultandoFormulario) return;
+    if (rascunhoFormulario.conflict) { avisar.erro('O cadastro mudou. Confira os dados atuais antes de criar o pedido.'); return; }
     limpar();
 
     const f = formulario;
@@ -675,14 +787,20 @@ export default function RhDpPessoal() {
       return;
     }
     if (f.tipo === 'ADMISSAO') {
+      const telefoneErro = erroTelefoneSecundario(f)
+        || erroEnderecoSecundario(f, usuarioOperacionalDaObra && !permitirMesmoEndereco);
+      if (telefoneErro) {
+        avisar.erro(telefoneErro);
+        return;
+      }
       const cpfErro = getCpfCnpjError(f.cpf, { required: true, type: 'cpf' });
       if (cpfErro) {
-        setRetorno({ tipo: 'erro', texto: cpfErro });
+        avisar.erro(cpfErro);
         return;
       }
       const pixErro = getPixDocumentError(f.pix_chave, f.pix_chave_tipo);
       if (pixErro) {
-        setRetorno({ tipo: 'erro', texto: pixErro });
+        avisar.erro(pixErro);
         return;
       }
     }
@@ -1070,31 +1188,8 @@ export default function RhDpPessoal() {
 
   function novoPedido(tipo, colaborador = null) {
     setConferencia(null);
-    if (tipo === 'ADMISSAO') carregarEmpresasSePreciso();
-    if (tipo === 'TROCA_OBRA') carregarObrasDestinoSePreciso();
-    carregarApoioDoModal(tipo, colaborador);
-    carregarChecklist(tipo, null);
-    setFormulario({
-      ...formularioVazio(tipo),
-      colaborador_id: colaborador?.id || '',
-      obra_id: colaborador?.obra_id || filtroObra || '',
-      // O modal fala a mesma lingua do icone: "Vincular" para quem nunca teve obra, "Trocar" para
-      // quem tem. Sem isto o usuario clica em "Vincular a uma obra" e abre "Troca de obra".
-      // Continua valendo, agora dentro de MOVIMENTACAO: quem nunca teve obra ve "Vincular".
-      primeiraLotacao: !colaborador?.obra_id,
-      obra_id_colaborador: colaborador?.obra_id || null,
-      nomeDoColaborador: colaborador?.nome || '',
-      /**
-       * ADMISSAO PROGRAMADA: a vigencia sugerida e a data de ADMISSAO, nao hoje.
-       *
-       * 19 dos 137 colaboradores tem admissao marcada para o futuro. Sugerir hoje para eles diria
-       * que estao na obra desde hoje — quando nem foram admitidos ainda. O backend corrige isso
-       * sozinho (preenche a obra no vinculo existente, mantendo a vigencia), mas o campo mostrar a
-       * data certa evita a pessoa achar que errou.
-       */
-      data_vigencia: tipo === 'MOVIMENTACAO' ? sugestaoDeVigencia(colaborador) : '',
-      admissaoFutura: tipo === 'MOVIMENTACAO' && ehFutura(colaborador?.data_admissao)
-    });
+    rascunhoFormulario.discard(); rascunhoFormulario.setValue(null);
+    setFormularioAlvo({ tipo, colaboradorId: colaborador?.id || null, obraId: colaborador?.obra_id || filtroObra || localId || '' });
   }
 
   /**
@@ -1106,7 +1201,7 @@ export default function RhDpPessoal() {
    * vive dentro dele; modal fechado, logo abaixo do PageHeader.
    */
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
-  const algumModalAberto = Boolean(formulario || pedidosDoColaborador.id);
+  const algumModalAberto = Boolean(formulario || pedidosDoColaborador.id || pagamento || editarColaboradorId);
 
   /**
    * AS ACOES DO CABECALHO SAO AS DA ABA QUE ESTA ABERTA.
@@ -1134,7 +1229,7 @@ export default function RhDpPessoal() {
 
   const acoesDaAba = abaAtiva === 'colaboradores'
     ? [
-      podeAbrir ? { rotulo: 'Enviar jornada', onClick: () => setAbaAtiva('jornada') } : null,
+      podeAbrir ? { rotulo: 'Solicitar pagamento', onClick: abrirPagamentoSelecionados, desabilitada: carregando } : null,
       {
         rotulo: carregando ? 'Carregando...' : 'Atualizar',
         onClick: carregar,
@@ -1143,16 +1238,64 @@ export default function RhDpPessoal() {
     ].filter(Boolean)
     : [];
 
+  const abasLocais = localSelecionado
+    ? ['colaboradores', 'solicitacoes', 'transferencias', 'eventos-recorrentes', 'documentos', 'relatorios'].map((id) => ABAS.find((aba) => aba.id === id)).filter(Boolean)
+    : ABAS;
+  function abrirPagamentoSelecionados() {
+    const marcados = [...colaboradoresMarcados.values()];
+    if (!marcados.length) {
+      setPagamento({ colaborador: null });
+      return;
+    }
+    const locaisIds = new Set(marcados.map(c => Number(c.obra_id)));
+    const local = localSelecionado || obras.find(item => Number(item.id) === Number(marcados[0].obra_id));
+    if (locaisIds.size !== 1 || !local) {
+      avisar.alerta('Selecione colaboradores da mesma obra ou centro de custo para solicitar pagamento.');
+      return;
+    }
+    setPagamento({ local, colaboradorIds: marcados.map(c => Number(c.id)) });
+  }
+
+  function abrirLocal(item) {
+    setBusca(''); setMarcados({ obra_id: new Set() });
+    setParametros({ local_id: String(item.id), aba: 'colaboradores' });
+  }
+  function voltarAosLocais() {
+    setBusca(''); setColaboradores([]); setMarcados({ obra_id: new Set() });
+    setParametros({});
+  }
+  if (!parametros.get('solicitacao') && !localSelecionado
+    && (!parametros.get('aba') || localId)) {
+    return <Pagina className="rhdp-page rh-pessoal-page">
+      <PageHeader titulo="Pessoal" descricao="Obras / Centros de Custo" secundarias={[
+        { rotulo: 'Atualizar', onClick: carregar, desabilitada: carregando },
+        ...(canAccessRhDpCadastroColaboradores(user) ? [{ rotulo: 'Cadastro de colaboradores', onClick: () => navigate('/rh-dp/colaboradores') }] : []),
+        ...(podeVerFechamentos ? [{ rotulo: 'Fechamentos', onClick: () => navigate('/rh-dp/fechamentos') }] : [])
+      ]} />
+      {faixaAvisos}
+      {carregando ? <p role="status">Carregando locais vinculados...</p> : <>
+        {localId ? <p role="alert">Este local não está disponível para seu usuário.</p> : null}
+        {!obras.length ? <p>Nenhuma obra ou centro de custo disponível. Solicite a conferência do seu vínculo.</p> : null}
+        <div className="rh-pessoal-locais">{obras.map((item) => <section key={item.id} className="rh-pessoal-local">
+          <div><p className="app-note">{item.codigo} · {item.tipo_centro_custo === 'CENTRO_CUSTO' ? 'Centro de custo' : 'Obra'}</p>
+            <h2>{item.nome}</h2></div>
+          <button type="button" className="btn btn-outline btn-sm" aria-label={`Abrir ${item.nome}`} onClick={() => abrirLocal(item)}>Abrir</button>
+        </section>)}</div>
+      </>}
+    </Pagina>;
+  }
+
   return (
     <Pagina className="rhdp-page rh-pessoal-page">
       <PageHeader
-        titulo="Pessoal"
+        titulo={localSelecionado ? 'Gestão de Colaboradores' : 'Pessoal'}
         contagem={contagemDaAba}
-        descricao={ABAS.find((aba) => aba.id === abaAtiva)?.apoio}
+        descricao={localSelecionado ? `${localSelecionado.codigo} · ${localSelecionado.nome}`
+          : ABAS.find((aba) => aba.id === abaAtiva)?.apoio}
         acaoPrincipal={abaAtiva === 'colaboradores' && podeAbrir
           ? { rotulo: 'Pedir admissao', onClick: () => novoPedido('ADMISSAO') }
           : undefined}
-        secundarias={acoesDaAba}
+        secundarias={[...(localSelecionado ? [{ rotulo: 'Voltar para Obras', onClick: voltarAosLocais }] : []), ...acoesDaAba]}
       />
 
       {!algumModalAberto && faixaAvisos}
@@ -1173,7 +1316,7 @@ export default function RhDpPessoal() {
         página.
       */}
       <div className="rh-pessoal-abas" role="tablist" aria-label="Áreas do Pessoal">
-        {ABAS.map((aba) => (
+        {abasLocais.map((aba) => (
           <button
             key={aba.id}
             type="button"
@@ -1203,11 +1346,13 @@ export default function RhDpPessoal() {
 
       {abaAtiva === 'solicitacoes' ? (
         <RhDpPessoalSolicitacoes
+          key={`${user?.id}:${localSelecionado?.id || 'global'}`}
           podeAbrir={podeAbrir}
           podeDecidir={podeDecidir}
           podeDecidirEventoRecorrente={usuarioDoDp}
           podeAprovarSalario={podeAprovarSalario}
           aoMudar={carregar}
+          obraId={localSelecionado?.id}
           onAbrirListaJornadas={abrirListaDeJornadas}
           onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined}
           aoContarAbertas={setTotalSolicitacoesAbertas}
@@ -1248,10 +1393,10 @@ export default function RhDpPessoal() {
       */}
       <BarraFiltros
         busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Nome, CPF ou matricula' }}
-        filtros={[
+        filtros={localSelecionado ? [] : [
           {
             id: 'obra_id',
-            rotulo: 'Obra',
+            rotulo: 'Obra / Centro de Custo',
             // O servico aceita UMA obra: marcar outra substitui (marca redonda).
             unico: true,
             opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
@@ -1279,7 +1424,7 @@ export default function RhDpPessoal() {
             },
             {
               id: 'obra',
-              titulo: 'Obra',
+              titulo: 'Obra / Centro de Custo',
               tipo: 'texto',
               render: (colaborador) => colaborador.obra?.nome || '—'
             },
@@ -1326,6 +1471,24 @@ export default function RhDpPessoal() {
             }
           ]}
           itens={colaboradores}
+          selecao={podeAbrir ? {
+            selecionados: new Set(colaboradoresMarcados.keys()),
+            elegivel: c => !carregando && c.status === 'ATIVO' && Boolean(c.obra_id),
+            aoAlternar: (id, c) => setColaboradoresMarcados(atuais => {
+              const proximos = new Map(atuais);
+              if (proximos.has(Number(id))) proximos.delete(Number(id));
+              else proximos.set(Number(id), c);
+              return proximos;
+            }),
+            aoAlternarTodos: (marcar, ids) => setColaboradoresMarcados(atuais => {
+              const proximos = new Map(atuais);
+              ids.forEach(id => {
+                if (marcar) proximos.set(Number(id), colaboradores.find(c => Number(c.id) === Number(id)));
+                else proximos.delete(Number(id));
+              });
+              return proximos;
+            })
+          } : undefined}
           storageKey="tabela:rh-dp-pessoal:colaboradores"
           rotuloRolagem="Colaboradores da obra"
           carregando={carregando}
@@ -1334,6 +1497,16 @@ export default function RhDpPessoal() {
           urgencia={(colaborador) => (colaborador.tem_solicitacao_aberta ? 'warning' : null)}
           acoesLinha={(colaborador) => (
             <div className="rh-acoes-icones">
+              {podeAbrir ? <button type="button" className="rh-acao-icone" title="Solicitar pagamento"
+                aria-label={`Solicitar pagamento: ${colaborador.nome}`} onClick={() => {
+                  const local = localSelecionado || obras.find((item) => Number(item.id) === Number(colaborador.obra_id));
+                  if (local) setPagamento({ local, colaborador });
+                  else avisar.alerta('Selecione a obra ou centro de custo do colaborador antes de solicitar pagamento.');
+                }}><HiOutlineBanknotes aria-hidden="true" /></button> : null}
+              {podeEditarCadastro ? <button type="button" className="rh-acao-icone" title="Editar cadastro"
+                aria-label={`Editar cadastro: ${colaborador.nome}`} onClick={() => setEditarColaboradorId(colaborador.id)}>
+                <HiOutlinePencilSquare aria-hidden="true" />
+              </button> : null}
               <button
                 type="button"
                 className="rh-acao-icone"
@@ -1357,7 +1530,7 @@ export default function RhDpPessoal() {
               )) : null}
             </div>
           )}
-          larguraAcoes={215}
+          larguraAcoes={250}
         />
       </div>
 
@@ -1374,15 +1547,23 @@ export default function RhDpPessoal() {
         Montadas so quando a aba esta ativa: cada uma carrega obras, empresas e a propria lista, e
         deixa-las montadas em segundo plano faria tres telas buscarem dados a cada visita.
       */}
-      {abaAtiva === 'transferencias' ? <RhDpTransferencias
+      {abaAtiva === 'transferencias' && localSelecionado?.tipo_centro_custo === 'CENTRO_CUSTO'
+        ? <p className="app-note">Transferências disponíveis somente entre obras.</p>
+        : abaAtiva === 'transferencias' ? <RhDpTransferencias key={`transfer-${localId}`} obraId={localSelecionado?.id}
         onNotificacoesLidas={limparNotificacoesTransferencia}
       /> : null}
       {abaAtiva === 'eventos-recorrentes' && podeVerEventosRecorrentes ? (
         <RhDpEventosRecorrentes
+          key={`eventos-${localId}`}
+          obraId={localSelecionado?.id}
           podeDecidir={usuarioDoDp && podeDecidir}
           somenteLeitura={!usuarioDoDp}
         />
       ) : null}
+      {abaAtiva === 'documentos' && podeVerDocumentos && localSelecionado ? <RhDpDocumentos key={`docs-${localId}`} obraId={localSelecionado.id} comoAba /> : null}
+      {abaAtiva === 'relatorios' && podeVerRelatorios && localSelecionado ? <RhDpRelatorioOperacional key={`rel-${localId}`} obraId={localSelecionado.id} comoAba /> : null}
+      {editarColaboradorId && podeEditarCadastro ? <RhDpColaboradores key={editarColaboradorId} colaboradorId={editarColaboradorId}
+        comoEditor onFecharEditor={() => setEditarColaboradorId(null)} onSalvo={carregar} /> : null}
       {abaAtiva === 'jornada' ? (
         <RhDpJornada onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined} />
       ) : null}
@@ -1467,7 +1648,7 @@ export default function RhDpPessoal() {
         </OverlayModal>
       ) : null}
 
-      {formulario ? (
+      {formulario && podeAbrir && !consultandoFormulario ? (
         <OverlayModal
           rotulo={tituloDoFormulario(formulario)}
           largura="880px"
@@ -1475,6 +1656,11 @@ export default function RhDpPessoal() {
         >
           <div className="rh-modal-conteudo space-y-3">
             {faixaAvisos}
+            {rascunhoFormulario.conflict && <div role="alert" className="app-note">O cadastro mudou enquanto a aba estava aberta. Seu preenchimento foi mantido para conferência.
+              <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+                const { ok } = await confirmar({ titulo: 'Descartar preenchimento', mensagem: 'Usar o cadastro atual e descartar as alterações deste pedido?', destrutiva: true });
+                if (ok) rascunhoFormulario.discard();
+              }}>Usar dados atuais</button></div>}
             <div className="app-page-header-row">
               <div>
                 <h2 className="text-lg font-semibold">{tituloDoFormulario(formulario)}</h2>
@@ -1496,7 +1682,7 @@ export default function RhDpPessoal() {
                 ninguem enxerga o que ainda falta preencher. */}
             {formulario.tipo === 'ADMISSAO' ? (
               <div className="space-y-3">
-              <div className="rh-colaboradores-filter-grid">
+              <FormSecao legenda="Identificação e lotação" colunas={2}>
                 <label className="form-field">
                   <span className="form-label form-label--required">Nome completo</span>
                   <input className="form-control" value={formulario.nome}
@@ -1528,7 +1714,7 @@ export default function RhDpPessoal() {
                 </label>
 
                 <label className="form-field">
-                  <span className="form-label form-label--required">Obra</span>
+                  <span className="form-label form-label--required">Obra / Centro de Custo</span>
                   <select className="form-control" value={formulario.obra_id}
                     onChange={(e) => setFormulario({ ...formulario, obra_id: e.target.value })} required>
                     <option value="">Selecione</option>
@@ -1536,6 +1722,8 @@ export default function RhDpPessoal() {
                   </select>
                 </label>
 
+              </FormSecao>
+              <FormSecao legenda="Contrato e cálculo gerencial" colunas={3}>
                 {/*
                   O CARGO VEM DO CATALOGO (Fase 7), e nao mais de texto livre.
                   O escopo pede "Cargo (lista do banco de dados)". Enquanto os cargos nao carregam,
@@ -1613,27 +1801,16 @@ export default function RhDpPessoal() {
                       onBlur={(e) => setFormulario({ ...formulario, valor_diaria: formatCurrencyInput(e.target.value) })} />
                   </label>
                 ) : (
-                  <label className="flex items-center gap-2">
+                  <label className="form-campo--linha flex items-center gap-2">
                     <input type="checkbox" checked={formulario.pagamento_automatico_40_60}
                       onChange={(e) => setFormulario({ ...formulario, pagamento_automatico_40_60: e.target.checked })} />
                     Gerar automaticamente 40% no dia 15 e 60% no fim do mes
                   </label>
                 )}
-              </div>
-              <div className="rh-colaboradores-filter-grid">
-                <label className="form-field">
-                  <span className="form-label form-label--required">Telefone</span>
-                  <input className="form-control" type="tel" value={formulario.telefone || ''}
-                    onChange={(e) => setFormulario({ ...formulario, telefone: e.target.value })} required />
-                </label>
-
-                {formulario.mostrarTelefoneSecundario ? (
-                  <label className="form-field">
-                    <span className="form-label">Segundo telefone</span>
-                    <input className="form-control" type="tel" maxLength={30} value={formulario.telefone_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, telefone_secundario: e.target.value })} />
-                  </label>
-                ) : null}
+              </FormSecao>
+              <FormSecao legenda="Contato" colunas={3}>
+                <RhColaboradorTelefone form={formulario} setForm={setFormulario} required mascarar />
+                <RhColaboradorTelefone form={formulario} setForm={setFormulario} secundario mascarar />
 
                 <label className="form-field">
                   <span className="form-label form-label--required">E-mail</span>
@@ -1641,18 +1818,11 @@ export default function RhDpPessoal() {
                     onChange={(e) => setFormulario({ ...formulario, email: e.target.value })} required />
                 </label>
 
-              </div>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormulario((atual) => ({
-                ...atual,
-                mostrarTelefoneSecundario: !atual.mostrarTelefoneSecundario,
-                telefone_secundario: atual.mostrarTelefoneSecundario ? '' : atual.telefone_secundario
-              }))}>
-                {formulario.mostrarTelefoneSecundario ? 'Remover segundo telefone' : 'Adicionar segundo telefone'}
-              </button>
+              </FormSecao>
 
               {/* O escopo pede "nome dos pais". Dois campos, e nao um: a certidao de
                   nascimento e o eSocial tratam pai e mae separadamente. */}
-              <div className="rh-colaboradores-filter-grid">
+              <FormSecao legenda="Filiação" colunas={2}>
                 <label className="form-field">
                   <span className="form-label">Nome do pai</span>
                   <input className="form-control" value={formulario.nome_pai || ''}
@@ -1665,106 +1835,14 @@ export default function RhDpPessoal() {
                     onChange={(e) => setFormulario({ ...formulario, nome_mae: e.target.value })} required />
                 </label>
 
-              </div>
+              </FormSecao>
 
-              <div className="rh-colaboradores-filter-grid">
-                <label className="form-field">
-                  <span className="form-label form-label--required">Endereco</span>
-                  <input className="form-control" value={formulario.endereco || ''}
-                    onChange={(e) => setFormulario({ ...formulario, endereco: e.target.value })} required />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">Numero</span>
-                  <input className="form-control" value={formulario.numero || ''}
-                    onChange={(e) => setFormulario({ ...formulario, numero: e.target.value })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">Complemento</span>
-                  <input className="form-control" value={formulario.complemento || ''}
-                    onChange={(e) => setFormulario({ ...formulario, complemento: e.target.value })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">Bairro</span>
-                  <input className="form-control" value={formulario.bairro || ''}
-                    onChange={(e) => setFormulario({ ...formulario, bairro: e.target.value })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label form-label--required">Municipio</span>
-                  <input className="form-control" value={formulario.municipio || ''}
-                    onChange={(e) => setFormulario({ ...formulario, municipio: e.target.value })} required />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">UF</span>
-                  <input className="form-control" maxLength={2} value={formulario.estado || ''}
-                    onChange={(e) => setFormulario({ ...formulario, estado: e.target.value.toUpperCase() })} />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label">CEP</span>
-                  <input className="form-control" value={formulario.cep || ''}
-                    onChange={(e) => setFormulario({ ...formulario, cep: e.target.value })} />
-                </label>
-
-              </div>
-
-              {formulario.mostrarEnderecoSecundario ? (
-                <div className="rh-colaboradores-filter-grid">
-                  <label className="form-field">
-                    <span className="form-label form-label--required">Segundo endereço</span>
-                    <input className="form-control" maxLength={255} value={formulario.endereco_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, endereco_secundario: e.target.value })} required />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">Número</span>
-                    <input className="form-control" maxLength={50} value={formulario.numero_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, numero_secundario: e.target.value })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">Complemento</span>
-                    <input className="form-control" maxLength={120} value={formulario.complemento_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, complemento_secundario: e.target.value })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">Bairro</span>
-                    <input className="form-control" maxLength={120} value={formulario.bairro_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, bairro_secundario: e.target.value })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label form-label--required">Município</span>
-                    <input className="form-control" maxLength={120} value={formulario.municipio_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, municipio_secundario: e.target.value })} required />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">UF</span>
-                    <input className="form-control" maxLength={2} value={formulario.estado_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, estado_secundario: e.target.value.toUpperCase() })} />
-                  </label>
-                  <label className="form-field">
-                    <span className="form-label">CEP</span>
-                    <input className="form-control" maxLength={20} value={formulario.cep_secundario || ''}
-                      onChange={(e) => setFormulario({ ...formulario, cep_secundario: e.target.value })} />
-                  </label>
-                </div>
-              ) : null}
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormulario((atual) => ({
-                ...atual,
-                mostrarEnderecoSecundario: !atual.mostrarEnderecoSecundario,
-                ...(!atual.mostrarEnderecoSecundario ? {} : {
-                  endereco_secundario: '', numero_secundario: '', complemento_secundario: '',
-                  bairro_secundario: '', municipio_secundario: '', estado_secundario: '', cep_secundario: ''
-                })
-              }))}>
-                {formulario.mostrarEnderecoSecundario ? 'Remover segundo endereço' : 'Adicionar segundo endereço'}
-              </button>
+              <RhColaboradorEnderecos form={formulario} setForm={setFormulario} admissao
+                permitirMesmoEndereco={permitirMesmoEndereco} />
 
               {/* Dados bancarios E chave PIX: o escopo pede os dois, e eles nao sao
                   alternativos — a conta recebe a folha, o PIX resolve pagamento avulso. */}
-              <div className="rh-colaboradores-filter-grid">
+              <FormSecao legenda="Dados de pagamento" colunas={3}>
                 <label className="form-field">
                   <span className="form-label">Banco</span>
                   <input className="form-control" value={formulario.banco || ''}
@@ -1799,10 +1877,7 @@ export default function RhDpPessoal() {
                   <select className="form-control" value={formulario.pix_chave_tipo || ''}
                     onChange={(e) => setFormulario({ ...formulario, pix_chave_tipo: e.target.value })}>
                     <option value="">Selecione</option>
-                    <option value="CPF">CPF</option>
-                    <option value="EMAIL">E-mail</option>
-                    <option value="TELEFONE">Telefone</option>
-                    <option value="ALEATORIA">Aleatoria</option>
+                    {PIX_TIPOS_CHAVE.filter((tipo) => tipo !== 'CNPJ').map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                   </select>
                 </label>
 
@@ -1811,7 +1886,7 @@ export default function RhDpPessoal() {
                   <input className="form-control" value={formulario.pix_chave || ''}
                     onChange={(e) => setFormulario({ ...formulario, pix_chave: e.target.value })} />
                 </label>
-              </div>
+              </FormSecao>
             </div>
             ) : null}
 
@@ -2309,7 +2384,7 @@ export default function RhDpPessoal() {
               <span className="text-sm opacity-80">
                 A solicitacao sera criada como rascunho. Depois, envie-a ao DP pela aba Solicitacoes.
               </span>
-              <button type="submit" className="btn btn-primary" disabled={criandoRascunho}>
+              <button type="submit" className="btn btn-primary" disabled={criandoRascunho || rascunhoFormulario.conflict}>
                 {criandoRascunho ? 'Criando...' : 'Criar rascunho'}
               </button>
               <button type="button" className="btn btn-outline" disabled={criandoRascunho}
@@ -2327,6 +2402,13 @@ export default function RhDpPessoal() {
       ) : null}
 
       {elementoConfirmacao}
+      {pagamento ? <RhDpPagamentoModal
+        key={`${user?.id}:${(pagamento.local || localSelecionado)?.id || 'selecionar'}:${pagamento.colaborador?.id || 'todos'}`}
+        local={pagamento.local || localSelecionado} locais={obras} colaborador={pagamento.colaborador}
+        colaboradorIds={pagamento.colaboradorIds}
+        solicitacaoId={pagamento.solicitacaoId}
+        onIniciada={id => setPagamentoAlvo(current => current ? { ...current, solicitacaoId: id } : current)}
+        onFechar={() => setPagamento(null)} aoEnviar={() => { carregar(); }} /> : null}
     </Pagina>
   );
 }

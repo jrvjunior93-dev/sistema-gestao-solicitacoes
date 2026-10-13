@@ -368,7 +368,7 @@ export default function FinanceiroBaixas() {
               <DateInputBR className="input w-full input-sm" value={filters.data_final} onChange={(event) => setFilter('data_final', event.target.value)} />
             </label>
             <label className="app-filter-field xl:col-span-3">
-              <span className="app-filter-label">Obra</span>
+              <span className="app-filter-label">Obra / Centro de Custo</span>
               <select className="input w-full input-sm" value={filters.obra_id} onChange={(event) => setFilter('obra_id', event.target.value)} disabled={loadingOptions}>
                 <option value="">Todas</option>
                 {obras.map((obra) => <option key={obra.id} value={obra.id}>{obra.nome}</option>)}
@@ -473,7 +473,7 @@ export default function FinanceiroBaixas() {
                 </div>
               )
             },
-            { id: 'obra', titulo: 'Obra', tipo: 'texto', render: (baixa) => baixa.titulo?.obra?.nome || '-' },
+            { id: 'obra', titulo: 'Obra / Centro de Custo', tipo: 'texto', render: (baixa) => baixa.titulo?.obra?.nome || '-' },
             { id: 'conta', titulo: 'Conta', tipo: 'texto', render: (baixa) => baixa.contaBancaria?.nome || '-' },
             { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (baixa) => formatCurrency(baixa.valor) },
             { id: 'quitacao', titulo: 'Quitacao', tipo: 'valor', render: (baixa) => formatCurrency(baixa.valor_quitacao) },

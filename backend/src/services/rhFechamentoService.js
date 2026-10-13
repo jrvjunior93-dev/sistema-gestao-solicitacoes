@@ -26,6 +26,7 @@ const {
 } = require('../models');
 const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
+const { parecePixCopiaCola } = require('../utils/pix');
 const { getPresignedUrl } = require('./s3');
 const { canAccessFinanceiro, getUsuariosAcessoFinanceiro } = require('./authorizationService');
 const { notificacaoEventoAtivo } = require('./notificacaoConfigService');
@@ -167,6 +168,7 @@ function inferTipoPessoa(documento) {
 function inferPixTipoChave(chavePix, documentoFallback) {
   const raw = String(chavePix || '').trim();
   if (!raw) return '';
+  if (parecePixCopiaCola(raw)) return 'COPIA_COLA';
   if (raw.includes('@')) return 'EMAIL';
 
   const digits = normalizeDigits(raw);
@@ -468,7 +470,8 @@ async function syncFavorecidoBancarioRh({
   agencia,
   conta,
   tipoConta,
-  usuarioId
+  usuarioId,
+  isolado = false
 }, transaction) {
   const possuiPix = Boolean(String(chavePix || '').trim());
   const pixTipoChave = possuiPix ? inferPixTipoChave(chavePix, favorecidoDocumento) : 'DADOS_BANCARIOS';
@@ -504,7 +507,7 @@ async function syncFavorecidoBancarioRh({
     updated_by: usuarioId || null
   };
 
-  if (existing) {
+  if (existing && !isolado) {
     await existing.update(payload, { transaction });
     return existing;
   }
@@ -1784,6 +1787,11 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
 }
 
 module.exports = {
+  // Primitivas compartilhadas. O novo fluxo NAO usa acumulo mensal nem reconcilia 40/60 antigos.
+  ensureCategoriaFinanceiraPagar,
+  syncParceiroFavorecido,
+  syncFavorecidoBancarioRh,
+  buildTituloRhPayload,
   detalharFechamentoRh,
   fecharApuracaoRh,
   listarFechamentosRh,
