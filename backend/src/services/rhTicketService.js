@@ -125,11 +125,13 @@ async function criarLoteTicket(dados, arquivo, usuario) {
   if (!/^[A-Za-z0-9._:-]{12,80}$/.test(idempotencyKey)) throw new ValidationError('Chave de idempotencia do lote invalida.');
   if (!colaboradorIds.length) throw new ValidationError('Selecione ao menos um colaborador para o lote de ticket.');
   const formaPagamento = String(dados.forma_pagamento || 'BOLETO').trim().toUpperCase();
-  if (!['BOLETO', 'PIX'].includes(formaPagamento)) throw new ValidationError('Selecione Boleto ou Pix para o lote.');
+  if (!['BOLETO', 'PIX', 'TRANSFERENCIA'].includes(formaPagamento)) throw new ValidationError('Selecione Boleto, Pix ou Conta bancaria para o lote.');
   const pix = formaPagamento === 'PIX';
-  const parceiroId = pix ? null : Number(dados.parceiro_id);
+  const conta = formaPagamento === 'TRANSFERENCIA';
+  const individual = pix || conta;
+  const parceiroId = individual ? null : Number(dados.parceiro_id);
   const categoriaId = Number(dados.categoria_financeira_id);
-  if (!Number.isSafeInteger(categoriaId) || categoriaId <= 0 || (!pix && (!Number.isSafeInteger(parceiroId) || parceiroId <= 0))) throw new ValidationError('Informe a categoria financeira e, para boleto, o fornecedor do ticket.');
+  if (!Number.isSafeInteger(categoriaId) || categoriaId <= 0 || (!individual && (!Number.isSafeInteger(parceiroId) || parceiroId <= 0))) throw new ValidationError('Informe a categoria financeira e, para boleto, o fornecedor do ticket.');
   const vencimentoAutomatico = vencimentoPadrao(competencia);
   const dataVencimento = String(dados.data_vencimento || vencimentoAutomatico);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dataVencimento) || dataVencimento > `${competencia}-10`
@@ -139,6 +141,7 @@ async function criarLoteTicket(dados, arquivo, usuario) {
   }
   const pagamentosPix = pix ? dados.pagamentos_pix : [];
   const chaves = new Map();
+  const contas = new Map();
   if (pix) {
     if (dados.pix_revisado !== true || !Array.isArray(pagamentosPix) || pagamentosPix.length !== colaboradorIds.length) {
       throw new ValidationError('Revise e confirme a chave Pix de todos os colaboradores do lote.');
@@ -153,9 +156,36 @@ async function criarLoteTicket(dados, arquivo, usuario) {
     }
     if (arquivo) throw new ValidationError('O lote Pix nao utiliza boleto. Remova o arquivo ou escolha Boleto.');
   }
+  if (conta) {
+    if (dados.contas_revisadas !== true || !Array.isArray(dados.pagamentos_conta) || dados.pagamentos_conta.length !== colaboradorIds.length) {
+      throw new ValidationError('Revise e confirme a conta bancaria de todos os colaboradores do lote.');
+    }
+    for (const pagamento of dados.pagamentos_conta) {
+      const id = Number(pagamento?.colaborador_id);
+      if (!colaboradorIds.includes(id) || contas.has(id) || !pagamento || Array.isArray(pagamento)
+        || Object.keys(pagamento).some(campo => !['colaborador_id', 'banco', 'agencia', 'conta', 'tipo_conta'].includes(campo))) {
+        throw new ValidationError('Informe uma conta por colaborador selecionado, sem repetir colaboradores ou campos nao permitidos.');
+      }
+      const dadosConta = {};
+      for (const [campo, limite] of [['banco', 10], ['agencia', 20], ['conta', 30]]) {
+        const valor = typeof pagamento[campo] === 'string' ? pagamento[campo].trim() : '';
+        // Limites do beneficiario financeiro: nunca truncar destino bancario.
+        if (!valor || valor.length > limite || /[\x00-\x1f\x7f]/.test(valor)) {
+          throw new ValidationError(`Conta do colaborador ${id}: informe ${campo === 'banco' ? 'o codigo do banco' : campo} com ate ${limite} caracteres, sem abreviar a conta.`);
+        }
+        dadosConta[campo] = valor;
+      }
+      const tipoConta = typeof pagamento.tipo_conta === 'string' ? pagamento.tipo_conta.trim().toUpperCase() : '';
+      if (!['CORRENTE', 'POUPANCA', 'SALARIO'].includes(tipoConta)) throw new ValidationError(`Informe o tipo de conta do colaborador ${id}.`);
+      contas.set(id, { ...dadosConta, tipo_conta: tipoConta });
+    }
+    if (arquivo) throw new ValidationError('O lote por conta bancaria nao utiliza boleto. Remova o arquivo ou escolha Boleto.');
+  }
+  // Manter exatamente o hash anterior de Boleto/Pix para replays ja registrados.
   const requestHash = createHash('sha256').update(JSON.stringify({ competencia, colaboradorIds,
     formaPagamento, parceiroId, categoriaId, dataVencimento,
-    pix: colaboradorIds.map(id => chaves.get(id) || null) })).digest('hex');
+    pix: colaboradorIds.map(id => chaves.get(id) || null),
+    ...(conta ? { contas: colaboradorIds.map(id => contas.get(id)) } : {}) })).digest('hex');
   const scopeIds = await getRhDpObraScopeIds(usuario);
   const carregarReplay = async (transaction) => {
     const existente = await RhTicketLote.findOne({ where: { idempotency_key: idempotencyKey }, transaction });
@@ -175,7 +205,7 @@ async function criarLoteTicket(dados, arquivo, usuario) {
   const replay = await carregarReplay();
   if (replay) return replay;
 
-  if (!pix && !arquivo) throw new ValidationError('Anexe o boleto do lote de ticket.');
+  if (!individual && !arquivo) throw new ValidationError('Anexe o boleto do lote de ticket.');
   // Nao enviar arquivo ao S3 de uma selecao fora do escopo. A transacao abaixo
   // repete a conferencia sob lock, pois a lotacao pode mudar entre as consultas.
   if (arquivo && Array.isArray(scopeIds)) {
@@ -198,14 +228,14 @@ async function criarLoteTicket(dados, arquivo, usuario) {
         transaction,
         lock: transaction.LOCK.UPDATE
       }),
-      pix ? null : Parceiro.findByPk(parceiroId, { transaction }),
+      individual ? null : Parceiro.findByPk(parceiroId, { transaction }),
       CategoriaFinanceira.findByPk(categoriaId, { transaction }),
       FormaPagamentoFinanceira.findOne({ where: { tipo: formaPagamento, ativo: true }, transaction })
     ]);
     if (colaboradores.length !== colaboradorIds.length) throw new ValidationError('Um ou mais colaboradores nao estao ativos ou nao foram encontrados.');
-    if (!pix && !parceiro) throw new ValidationError('Fornecedor do ticket nao encontrado.');
+    if (!individual && !parceiro) throw new ValidationError('Fornecedor do ticket nao encontrado.');
     if (!categoria) throw new ValidationError('Categoria financeira nao encontrada.');
-    if (!forma) throw new ValidationError(`Cadastre a forma ${pix ? 'Pix' : 'Boleto'} ativa antes de gerar o ticket.`, 409);
+    if (!forma) throw new ValidationError(`Cadastre a forma ${pix ? 'Pix' : conta ? 'Transferencia bancaria' : 'Boleto'} ativa antes de gerar o ticket.`, 409);
     if (Array.isArray(scopeIds) && colaboradores.some(c => !scopeIds.includes(Number(c.obra_id)))) throw new ValidationError('Acesso negado a um colaborador fora das obras/centros de custo permitidos.', 403);
     const replayTravado = await carregarReplay(transaction);
     if (replayTravado) return replayTravado;
@@ -225,14 +255,21 @@ async function criarLoteTicket(dados, arquivo, usuario) {
 
     const total = moeda(colaboradores.reduce((soma, c) => soma + moeda(c.valor_ticket), 0));
     const destinos = [];
-    if (pix) {
+    if (individual) {
       for (const c of colaboradores) {
-        const pagamento = c.pagamento || {};
+        // Conta do cadastro de pagamento tem prioridade; fallback integral para
+        // conta do colaborador somente quando nao ha dados bancarios nela.
+        const possuiContaPagamento = ['banco', 'agencia', 'conta', 'tipo_conta'].some(campo => String(c.pagamento?.[campo] || '').trim());
+        const pagamento = pix || possuiContaPagamento ? c.pagamento || {} : {};
+        const dadosConta = conta ? contas.get(Number(c.id)) : null;
         const favorecido = { colaborador: c, favorecidoNome: pagamento.favorecido_nome || c.nome,
-          favorecidoDocumento: pagamento.favorecido_documento || c.cpf, chavePix: chaves.get(Number(c.id)), usuarioId: usuario.id };
+          favorecidoDocumento: pagamento.favorecido_documento || c.cpf, chavePix: chaves.get(Number(c.id)), usuarioId: usuario.id,
+          ...(conta ? { banco: dadosConta.banco, agencia: dadosConta.agencia, conta: dadosConta.conta, tipoConta: dadosConta.tipo_conta } : {}) };
         const parceiroColaborador = await syncParceiroFavorecido(favorecido, transaction);
         const beneficiario = await syncFavorecidoBancarioRh({ ...favorecido, parceiro: parceiroColaborador, isolado: true }, transaction);
-        destinos.push({ colaborador: c, parceiro: parceiroColaborador, beneficiario, chave: favorecido.chavePix, valor: moeda(c.valor_ticket) });
+        const instrucao = conta ? `Titular: ${favorecido.favorecidoNome}; CPF/CNPJ: ${favorecido.favorecidoDocumento}; Banco: ${dadosConta.banco}; Agencia: ${dadosConta.agencia}; Conta: ${dadosConta.conta}; Tipo: ${dadosConta.tipo_conta}` : null;
+        destinos.push({ colaborador: c, parceiro: parceiroColaborador, beneficiario, chave: favorecido.chavePix,
+          dadosConta, instrucao, valor: moeda(c.valor_ticket) });
       }
     } else destinos.push({ parceiro, valor: total });
     const codigo = await gerarCodigoSolicitacao();
@@ -242,7 +279,8 @@ async function criarLoteTicket(dados, arquivo, usuario) {
       obra_id: obraRepresentante,
       parceiro_id: destinos[0].parceiro.id,
       forma_pagamento_id: forma.id,
-      ...(pix && destinos.length === 1 ? { favorecido_id: destinos[0].parceiro.id, favorecido_chave_pix: destinos[0].chave } : {}),
+      ...(individual && destinos.length === 1 ? { favorecido_id: destinos[0].parceiro.id, favorecido_chave_pix: destinos[0].chave || null,
+        ...(conta ? { dados_pagamento: destinos[0].instrucao } : {}) } : {}),
       tipo_solicitacao_id: tipo.id,
       descricao: `Ticket de colaboradores ${competencia} - ${colaboradores.length} colaborador(es)`,
       justificativa: 'Lote de beneficio gerado pelo Departamento Pessoal.',
@@ -256,7 +294,8 @@ async function criarLoteTicket(dados, arquivo, usuario) {
       StatusArea.create({ solicitacao_id: solicitacao.id, setor: 'GEO', status: 'PENDENTE', observacao: 'Ticket aguardando conferencia do GEO.' }, { transaction }),
       Historico.create({ solicitacao_id: solicitacao.id, usuario_responsavel_id: usuario.id, setor: 'GEO', acao: 'SOLICITACAO_CRIADA', status_novo: 'PENDENTE',
         observacao: `Lote de ticket criado pelo DP. Pagamento: ${formaPagamento}. ${destinos.length} titulo(s) em previsao.`,
-        metadata: JSON.stringify({ forma_pagamento: formaPagamento, colaboradores: colaboradores.map(c => ({ colaborador_id: c.id, nome: c.nome, valor: moeda(c.valor_ticket) })) }) }, { transaction }),
+        metadata: JSON.stringify({ forma_pagamento: formaPagamento, colaboradores: colaboradores.map(c => ({ colaborador_id: c.id, nome: c.nome, valor: moeda(c.valor_ticket) })),
+          ...(conta ? { contas: destinos.map(d => ({ colaborador_id: d.colaborador.id, dados_pagamento: d.instrucao })) } : {}) }) }, { transaction }),
       ...(arquivo ? [Anexo.create({ solicitacao_id: solicitacao.id, tipo: 'BOLETO', nome_original: arquivo.originalname, caminho_arquivo: arquivoUrl, area_origem: 'DP', uploaded_by: usuario.id }, { transaction })] : [])
     ]);
 
@@ -268,16 +307,17 @@ async function criarLoteTicket(dados, arquivo, usuario) {
       empresa_id: empresaIds[0],
       parceiro_id: destino.parceiro.id,
       payment_beneficiary_id: destino.beneficiario?.id || null,
-      favorecido_pagamento_id: pix ? destino.parceiro.id : null,
+      favorecido_pagamento_id: individual ? destino.parceiro.id : null,
       forma_pagamento_id: forma.id,
       categoria_financeira_id: categoriaId,
       competencia_data: `${competencia}-01`,
       considera_dre: true,
-      possui_rateio: !pix,
+      possui_rateio: !individual,
       origem_titulo: 'RH_DP_TICKET',
       tipo: 'PAGAR',
       status: 'PREVISAO',
       descricao: (destino.colaborador ? `Ticket ${competencia} - ${destino.colaborador.nome}` : `Ticket colaboradores ${competencia}`).slice(0, 255),
+      ...(conta ? { observacoes: destino.instrucao } : {}),
       numero_documento: codigo,
       valor_original: destino.valor,
       valor_bruto: destino.valor,
@@ -292,11 +332,12 @@ async function criarLoteTicket(dados, arquivo, usuario) {
     }, { transaction });
     titulos.push(titulo);
     destino.titulo = titulo;
-    if (pix) await SolicitacaoFavorecido.create({ solicitacao_id: solicitacao.id, ordem: titulos.length,
+    if (individual) await SolicitacaoFavorecido.create({ solicitacao_id: solicitacao.id, ordem: titulos.length,
       favorecido_id: destino.parceiro.id, nome_favorecido: destino.beneficiario.nome,
       cpf_cnpj: destino.beneficiario.cpf_cnpj, forma_pagamento_id: forma.id,
-      forma_pagamento_nome: forma.nome, forma_pagamento_tipo: 'PIX', valor: destino.valor,
-      favorecido_chave_pix: destino.chave, titulo_financeiro_id: titulo.id, criado_por: usuario.id }, { transaction });
+      forma_pagamento_nome: forma.nome, forma_pagamento_tipo: formaPagamento, valor: destino.valor,
+      favorecido_chave_pix: destino.chave || null, ...(conta ? { dados_pagamento: destino.instrucao } : {}),
+      titulo_financeiro_id: titulo.id, criado_por: usuario.id }, { transaction });
     }
     // Campo historico do lote continua apontando para o primeiro titulo.
     // Nos lotes novos, cada item referencia seu titulo; nos antigos usa-se o lote.
@@ -322,12 +363,12 @@ async function criarLoteTicket(dados, arquivo, usuario) {
     await RhTicketLoteItem.bulkCreate(colaboradores.map((c) => ({
       lote_id: lote.id,
       colaborador_id: c.id,
-      titulo_financeiro_id: pix ? titulosPorColaborador.get(Number(c.id)) : titulo.id,
+      titulo_financeiro_id: individual ? titulosPorColaborador.get(Number(c.id)) : titulo.id,
       obra_id: c.obra_id,
       valor_ticket: moeda(c.valor_ticket)
     })), { transaction });
 
-    if (!pix) {
+    if (!individual) {
     const porObra = new Map();
     colaboradores.forEach((c) => porObra.set(Number(c.obra_id), moeda((porObra.get(Number(c.obra_id)) || 0) + Number(c.valor_ticket))));
     await TituloFinanceiroRateio.bulkCreate([...porObra.entries()].map(([obraId, valor]) => ({
