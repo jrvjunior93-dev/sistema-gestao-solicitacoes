@@ -3725,3 +3725,47 @@ do comando de push atomico no terminal autenticado do usuario; sem deploy.
 - Testes do modal/formas/negociacao, seguranca de acesso direto e build aprovados.
   Falha anterior da tabela de rotas financeiras registrada no handoff
   docs/handoffs/2026-10-13-promocao-modal-titulo-main.md. Publicacao seletiva via PR.
+
+## Promocao troca de usuario homologada - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva documental ativa.
+- Usuario homologou d17c3aa7 em dev e autorizou promover esta correcao para main
+  e comandos para habilitar somente SUPERADMIN em producao. Backup recente no
+  Drive cifrado conferido e timer ativo confirmados nesta janela.
+- Base main 50e08848. Integracao seletiva dos 15 arquivos da troca de usuario,
+  testes e handoff; nao incluir Ticket/estorno independentes da branch dev.
+- Reservados: arquivos da troca ja homologados, OWNERSHIP_ATIVO.md e handoff.
+- Sem EC2, banco real, migration, seeds ou reinicio pelo agente. Publicacao
+  com snapshot de codigo, testes repetidos e verificacao dos deploys Vercel.
+
+## Troca de usuario em producao exclusiva do SUPERADMIN - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva concluida e liberada.
+- Base: origin/main 50e08848. Usuario autorizou recurso em producao e acoes reais
+  com permissoes do usuario assumido. Sem permissao administrativa herdada.
+- Reservados: env.js/.env.example, devUserSwitchService/Controller, auth.js,
+  validarDevUserSwitch.js e novo teste HTTP isolado, DevUserSwitcher,
+  ConfiguracaoUsuariosTesteRapido, navigationConfig, LiveUpdatesContext,
+  teste frontend de isolamento e handoff desta tarefa.
+- Catalogo backend gerado pela compilacao tambem reservado: somente descricao
+  do destino de configuracao, sem mudanca de regra/menu/permissao.
+- Produção requer flag propria, desligada por padrao. Nao disfarcar producao
+  como dev. Validar token de MFA, SUPERADMIN real/ativo, CSRF, revogacao,
+  restauracao, auditoria e reconexao SSE ao trocar identidade.
+- Sem EC2, banco real, migration ou reinicio; outputs/ preservado e fora do Git.
+- Implementacao/testes locais concluidos; reserva liberada. Publicacao/ativacao
+  pendentes. Proximo passo em docs/handoffs/2026-10-13-troca-usuario-producao-segura.md.
+
+Publicacao dev autorizada em 13/10/2026: reserva documental temporaria para
+commit, integracao seletiva, repeticao dos testes e push na refactor/frontend.
+Main e producao nao serao alteradas; sem EC2, banco ou reinicio pelo agente.
+
+Integracao seletiva em e5dd4c9f e testes repetidos aprovados; apenas conflito
+documental resolvido preservando Ticket/estorno. Reserva documental encerrada
+e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
+
+Promocao main: integracao seletiva e testes de seguranca/UI/navegacao/build
+aprovados; reserva documental encerrada e ownership liberado para publicacao.
+Snapshot tag/bundle de 50e08848 verificado. Usuario homologou dev e confirmou
+backup/timer nesta janela. Sem EC2, banco ou reinicio pelo agente; ativacao
+real ainda depende do deploy pelo usuario e smoke de producao.

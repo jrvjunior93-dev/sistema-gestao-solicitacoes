@@ -7,12 +7,15 @@ const MAX_CONFIGURED_USERS = 20;
 const DEVELOPMENT_ENVIRONMENTS = new Set(['dev', 'development']);
 
 function isDevUserSwitchRuntimeEnabled(runtime = env) {
+  if (String(runtime?.deploymentEnvironment || '').trim().toLowerCase() === 'production') {
+    return runtime?.productionUserSwitchEnabled === true;
+  }
   return runtime?.devUserSwitchEnabled === true
     && DEVELOPMENT_ENVIRONMENTS.has(String(runtime?.deploymentEnvironment || '').trim().toLowerCase());
 }
 
 function createUnavailableError() {
-  const error = new Error('Recurso disponivel somente no ambiente de desenvolvimento.');
+  const error = new Error('Troca de usuario indisponivel neste ambiente.');
   error.statusCode = 404;
   error.code = 'DEV_USER_SWITCH_UNAVAILABLE';
   return error;
@@ -173,8 +176,10 @@ async function buildDevUserSwitchSessionState({ currentUser, auth, actor } = {})
   if (!impersonation && !isSuperadmin(currentUser)) return { enabled: false };
 
   const resolvedActor = actor || (!impersonation && isSuperadmin(currentUser) ? currentUser : null);
+  if (!isSuperadmin(resolvedActor)) return { enabled: false };
   return {
     enabled: true,
+    production: env.deploymentEnvironment === 'production',
     impersonating: Boolean(impersonation),
     actor: toUserSummary(resolvedActor),
     current_user_id: Number(currentUser?.id || 0) || null,

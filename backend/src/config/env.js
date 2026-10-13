@@ -100,6 +100,7 @@ const env = {
   nodeEnv: String(process.env.NODE_ENV || 'development').trim(),
   deploymentEnvironment: String(process.env.DEPLOYMENT_ENV || '').trim().toLowerCase(),
   devUserSwitchEnabled: parseBoolean(process.env.DEV_USER_SWITCH_ENABLED, false),
+  productionUserSwitchEnabled: parseBoolean(process.env.PRODUCTION_USER_SWITCH_ENABLED, false),
   port: Number(process.env.PORT || 8000),
   trustProxy: Number(process.env.TRUST_PROXY || 1),
   dbHost: String(process.env.DB_HOST || '127.0.0.1').trim(),
