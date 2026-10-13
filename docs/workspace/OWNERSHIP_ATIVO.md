@@ -3632,3 +3632,29 @@ handoff RH desta tarefa. Sem deploy ou acesso ao banco real.
   deploy/EC2 ou escrita em banco pelo agente. outputs/ fora do commit.
 - Validacoes locais repetidas para publicacao; reserva documental encerrada,
   ownership liberado. Atualizacao da EC2 sera executada pelo usuario.
+
+## Troca de usuario em producao exclusiva do SUPERADMIN - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva concluida e liberada.
+- Base: origin/main 50e08848. Usuario autorizou recurso em producao e acoes reais
+  com permissoes do usuario assumido. Sem permissao administrativa herdada.
+- Reservados: env.js/.env.example, devUserSwitchService/Controller, auth.js,
+  validarDevUserSwitch.js e novo teste HTTP isolado, DevUserSwitcher,
+  ConfiguracaoUsuariosTesteRapido, navigationConfig, LiveUpdatesContext,
+  teste frontend de isolamento e handoff desta tarefa.
+- Catalogo backend gerado pela compilacao tambem reservado: somente descricao
+  do destino de configuracao, sem mudanca de regra/menu/permissao.
+- Produção requer flag propria, desligada por padrao. Nao disfarcar producao
+  como dev. Validar token de MFA, SUPERADMIN real/ativo, CSRF, revogacao,
+  restauracao, auditoria e reconexao SSE ao trocar identidade.
+- Sem EC2, banco real, migration ou reinicio; outputs/ preservado e fora do Git.
+- Implementacao/testes locais concluidos; reserva liberada. Publicacao/ativacao
+  pendentes. Proximo passo em docs/handoffs/2026-10-13-troca-usuario-producao-segura.md.
+
+Publicacao dev autorizada em 13/10/2026: reserva documental temporaria para
+commit, integracao seletiva, repeticao dos testes e push na refactor/frontend.
+Main e producao nao serao alteradas; sem EC2, banco ou reinicio pelo agente.
+
+Integracao seletiva em e5dd4c9f e testes repetidos aprovados; apenas conflito
+documental resolvido preservando Ticket/estorno. Reserva documental encerrada
+e ownership liberado para publicacao dev. outputs/ permanece fora do commit.

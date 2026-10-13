@@ -75,7 +75,7 @@ export default function ConfiguracaoUsuariosTesteRapido() {
       <PageHeader
         titulo="Usuários para teste rápido"
         contagem={`${selectedIds.length} selecionado(s)`}
-        descricao="Disponível apenas no ambiente de desenvolvimento para o SUPERADMIN validar fluxos e permissões."
+        descricao="Exclusivo do SUPERADMIN. A sessão assume as permissões do usuário escolhido; as ações são reais e auditadas."
         acaoPrincipal={{
           rotulo: saving ? 'Salvando...' : 'Salvar configuração',
           onClick: save,

@@ -78,7 +78,7 @@ export default function DevUserSwitcher() {
   ));
   const label = devUserSwitch.impersonating
     ? `Testando: ${nomeProprio(current?.nome || 'usuario')}`
-    : 'Testar usuário';
+    : devUserSwitch.production ? 'Trocar usuário' : 'Testar usuário';
 
   return (
     <div className="dev-user-switcher" ref={containerRef}>
@@ -89,7 +89,7 @@ export default function DevUserSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={busy}
-        title="Troca rápida exclusiva do ambiente de desenvolvimento"
+        title="Troca de usuário exclusiva do SUPERADMIN"
       >
         <HiOutlineArrowsRightLeft size={18} aria-hidden="true" />
         <span className="dev-user-switcher-label">{label}</span>
@@ -99,8 +99,8 @@ export default function DevUserSwitcher() {
       {open && (
         <div className="dev-user-switcher-menu" role="menu" aria-label="Usuários configurados para teste">
           <div className="dev-user-switcher-head">
-            <strong>Ambiente de desenvolvimento</strong>
-            <span>Visualize o sistema com as permissões reais de outro usuário.</span>
+            <strong>{devUserSwitch.production ? 'Produção · ações reais' : 'Ambiente de desenvolvimento'}</strong>
+            <span>Use as permissões do usuário escolhido. As ações são reais e identificadas na auditoria.</span>
           </div>
 
           {error && <p className="dev-user-switcher-error" role="alert">{error}</p>}

@@ -12,7 +12,10 @@ function buildStreamUrl() {
 }
 
 export function LiveUpdatesProvider({ children }) {
-  const { authReady, isAuthenticated } = useAuth();
+  const { authReady, isAuthenticated, user } = useAuth();
+  const sessionIdentity = String(user?.id || '') + ':' + String(user?.token_version || 0);
+  const sessionIdentityRef = useRef(sessionIdentity);
+  sessionIdentityRef.current = sessionIdentity;
   const listenersRef = useRef(new Set());
   const sourceRef = useRef(null);
   const [connectionState, setConnectionState] = useState('idle');
@@ -55,10 +58,12 @@ export function LiveUpdatesProvider({ children }) {
     sourceRef.current = source;
 
     const handleConnected = () => {
+      if (sessionIdentityRef.current !== sessionIdentity) return;
       setConnectionState('open');
     };
 
     const handleRealtime = (event) => {
+      if (sessionIdentityRef.current !== sessionIdentity) return;
       try {
         const payload = JSON.parse(event.data);
         listenersRef.current.forEach((listener) => {
@@ -74,6 +79,7 @@ export function LiveUpdatesProvider({ children }) {
     };
 
     const handleError = () => {
+      if (sessionIdentityRef.current !== sessionIdentity) return;
       setConnectionState('error');
     };
 
@@ -90,7 +96,7 @@ export function LiveUpdatesProvider({ children }) {
         sourceRef.current = null;
       }
     };
-  }, [authReady, isAuthenticated]);
+  }, [authReady, isAuthenticated, sessionIdentity]);
 
   return (
     <LiveUpdatesContext.Provider

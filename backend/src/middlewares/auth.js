@@ -70,6 +70,11 @@ module.exports = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, env.jwtSecret);
+    // Tokens de desafio MFA sao assinados, mas nao comprovam login concluido.
+    // Sessoes autenticadas nao possuem purpose; recusar antes de consultar usuario.
+    if (decoded.purpose !== undefined) {
+      return res.status(401).json({ error: 'Token nao corresponde a uma sessao autenticada.' });
+    }
     const user = await User.findByPk(decoded.id, {
       attributes: {
         exclude: ['senha', 'mfa_totp_secret', 'mfa_totp_temp_secret']
@@ -111,7 +116,7 @@ module.exports = async (req, res, next) => {
     if (decoded.dev_user_switch) {
       const actorId = Number(decoded.dev_user_switch.actor_id);
       const targetId = Number(decoded.dev_user_switch.target_id);
-      if (!isDevUserSwitchRuntimeEnabled() || !Number.isInteger(actorId) || targetId !== Number(user.id)) {
+      if (!isDevUserSwitchRuntimeEnabled() || !Number.isInteger(actorId) || targetId !== Number(user.id) || isSuperadmin(user)) {
         return res.status(401).json({ error: 'Sessao de teste invalida ou indisponivel.' });
       }
 
