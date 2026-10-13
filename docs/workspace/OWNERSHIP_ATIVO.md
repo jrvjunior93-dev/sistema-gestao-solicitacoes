@@ -11,6 +11,10 @@
 - Nenhuma EC2/banco/reinicio sera executado pelo agente. Publicar candidato
   primeiro; promover main/frontend somente apos schema/backend/health de
   producao conferidos pelo usuario. Sem copiar flags/configuracoes de dev.
+- Integracao resolvida; runtime igual ao alvo aprovado. Testes focados,
+  runner restrito, UI desktop/mobile e build aprovados; ownership local
+  liberado ao publicar candidato, sem mover main. Handoff de continuidade:
+  docs/handoffs/2026-10-13-promocao-incremental-main.md.
 
 ## Promocao completa incluindo DP — 2026-10-12
 
