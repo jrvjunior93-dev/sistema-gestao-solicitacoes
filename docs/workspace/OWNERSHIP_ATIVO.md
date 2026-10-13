@@ -9,7 +9,8 @@
 - Reserva: arquivos com conflitos backend/frontend/testes/documentacao deste
   merge, e docs/handoffs/2026-10-12-promocao-completa-main.md.
 - Backup no Drive/timer confirmado pelo usuario. Consulta na producao valida:
-  264 migrations no alvo, 259 registradas, cinco novas pendentes.
+  inicialmente 264 migrations no alvo, 259 registradas, cinco novas pendentes;
+  usuario aplicou as cinco, preflight zero e health OK em 29ba2031 na EC2.
 - Sem executar migration, restart ou deploy EC2; publicar main somente apos
   schema/backend compativeis e testes. Arquivos de auditoria/outputs preservados.
 - Integracao resolvida/validada; ownership funcional liberado no commit.
@@ -17,6 +18,9 @@
   janela. Dois testes isolados atualizados para novas dependencias; sem mudar
   runtime do alvo. Staging confirmado pelo usuario: UUID distinto de producao,
   264 migrations registradas/zero pendentes e backend identico ao alvo.
+- Evidencia EC2 registrada; reservas de arquivos encerradas no commit.
+  Publicacao main por PR liberada, preservando historias; smoke autenticado
+  apos Vercel continua pendente. Agente nao executou DDL/restart na EC2.
 
 ## Promocao isolada aviso de entregas - 2026-10-09
 

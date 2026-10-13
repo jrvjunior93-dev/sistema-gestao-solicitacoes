@@ -23,7 +23,7 @@ O primeiro comando de preflight fornecido tinha path Git relativo incorreto e
 produziu lista vazia. Resultado descartado; comando corrigido exige 264 arquivos.
 Nao confundir o falso zero com aprovacao do schema.
 
-Main nao publicada nesta preparacao. Ordem: validar integracao local; testar
+Main nao publicada durante a preparacao inicial. Ordem: validar integracao local; testar
 migrations em copia isolada; aplicar expansoes compativeis com backup/janela;
 backend integrado e health; somente entao publicar main/frontend e smoke real.
 Nao copiar .env entre ambientes nem executar down destrutivo.
@@ -103,20 +103,31 @@ Documento consultado com trechos sensiveis omitidos; nao copiado ao Git.
 Integracao commitada como 918b3b2b0b424af6083642aca2c85e7af4807f07 e publicada
 na branch codex/promocao-completa-main-20261012, junto da tag de backup, em push
 atomico. Ambas as historias sao ancestrais do merge. Main remota continua no
-SHA congelado 528e8c838a383c71be76f00b21fa8fe54d6c4e8d.
-Nao mover main antes de schema/backend compativeis. Conferencia de staging
-concluida pelo usuario: identidade, SHA/backend compativel e zero pendentes.
-Preparar comandos guardados de producao na janela aprovada, sem executa-los
-daqui. Confirmar processo PM2/cwd/watch/env efetivo, identidade e cinco
-pendentes imediatamente antes de qualquer aplicacao.
+SHA congelado 528e8c838a383c71be76f00b21fa8fe54d6c4e8d antes da publicacao final.
+Conferencia de staging concluida pelo usuario: identidade, SHA/backend
+compativel e zero pendentes. Bloco guardado de producao executado pelo usuario
+na janela aprovada: atualizou main LOCAL da EC2 para
+29ba20318569b9464fb4a207a5ddee350a78a7f6, aplicou exatamente as cinco migrations,
+preflight zero e restart somente backend-solicitacoes. Health local terminou
+OK apos recusas de conexao iniciais durante subida; outros processos online.
 
-Depois: conferir backup recente/restauravel, identidade prod UUID
-5ed4b970-009f-11f1-809c-0ad0e0c90c53/banco gestao_solicitacoes, SHA/processo e
-lista exata de cinco pendentes. Aplicar expansoes e exigir preflight zero;
-atualizar/reiniciar somente backend-solicitacoes, health e smoke; somente entao
-publicar main/frontend. Nao ativar PAYMENT_OWNER_APPROVAL_MODE no deploy.
-Falha estrutural interrompe fluxo, sem marcar migrations manualmente nem down.
+Agente confirmou, por HTTP publico somente leitura em api.jrfluxy.com.br:
+health {ok:true} em duas consultas e /api/solicitacoes, /api/usuarios,
+/api/financeiro/titulos retornando 401 sem sessao. Nao e smoke autenticado nem
+validacao completa de estabilidade/permissoes em producao. Sondagem inicial
+sem prefixo /api retornou 404 e foi descartada como URL de teste incorreta.
 
-Nenhuma migration/banco, restart, main remota ou Vercel de producao alterados
-por esta etapa. Bundle local precisa de copia externa; backup Drive recente
-foi confirmado pelo usuario, nao testado novamente pelo agente.
+Proximo passo: publicar integracao por PR para main preservando ambos os
+historicos, apos registro documental desta evidencia. Commits documentais
+posteriores a 29ba2031 nao alteram o backend em execucao. Acompanhar deploy
+Vercel do SHA publicado; depois smoke autenticado pelo usuario em Solicitacoes,
+Compras, Fila/Financeiro e Colaboradores/DP, incluindo filtros/abas/favorecidos,
+sem escrita financeira de teste em producao. Nao ativar
+PAYMENT_OWNER_APPROVAL_MODE no deploy. Se houver incidente, rollback de codigo
+compativel, sem down destrutivo nem marcar migrations manualmente.
+
+Nenhuma migration/banco ou restart executados pelo agente: operacao na EC2
+foi do usuario. Publicacao main/frontend e autorizada pelo pedido de promocao
+completa e condicionada ao backend/schema, agora conferidos. Bundle local
+precisa de copia externa; backup Drive recente foi confirmado pelo usuario,
+nao testado novamente pelo agente. Outputs/auditorias preservados.
