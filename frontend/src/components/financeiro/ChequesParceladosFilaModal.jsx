@@ -7,7 +7,7 @@ const origemCheque = item => item.origem_cheque ||
   (item.usar_cheque_terceiro || item.cheque_terceiro_id ? 'CARTEIRA' : item.cheque_numero ? 'PROPRIO' : '');
 
 export default function ChequesParceladosFilaModal({ label, parcelas, onChange, onFechar, onConfirmar,
-  total, conta, cheques, conflito, podeCadastrar }) {
+  total, conta, cheques, conflito, podeCadastrar, accounts, onContaChange }) {
   const [erro, setErro] = useState('');
   const [quantidade, setQuantidade] = useState(String(parcelas.length));
   // Digitar "12" pode passar por "1". Guardar as linhas ocultadas evita perder
@@ -31,6 +31,7 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
     event.preventDefault();
     event.stopPropagation();
     if (conflito) return;
+    if (accounts && !conta?.empresa_id) { setErro('Selecione a conta pagadora dos cheques do lote.'); return; }
     if (Number(quantidade) !== parcelas.length || !Number.isInteger(Number(quantidade)) || Number(quantidade) < 1 || Number(quantidade) > 60) {
       setErro('Informe de 1 a 60 cheques por pagamento.'); return;
     }
@@ -50,6 +51,18 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
       <p className="text-sm">Valor pago: {money(total)} · Soma dos cheques: {money(soma / 100)}</p>
       {conflito && <p role="alert">O título mudou. Feche este modal e confira os dados atuais antes de confirmar.</p>}
       <fieldset disabled={conflito} className="space-y-4">
+        {accounts && <label className="block text-sm">Conta pagadora dos cheques
+          <select aria-label="Conta pagadora dos cheques" required className="input w-full" value={conta?.id || ''}
+            onChange={event => { onContaChange(event.target.value); setErro('');
+              parcelas.forEach((item, index) => { reservaParcelas.current[index] = item; });
+              const limparCarteira = item => item.usar_cheque_terceiro
+                ? { valor_pago: '', origem_cheque: 'CARTEIRA', usar_cheque_terceiro: true } : item;
+              reservaParcelas.current = reservaParcelas.current.map(limparCarteira);
+              onChange(parcelas.map(limparCarteira)); }}>
+            <option value="">Selecione a conta</option>{accounts.filter(item => item.ativo !== false && item.empresa_id).map(item =>
+              <option key={item.id} value={item.id}>{item.nome} · {item.empresa?.nome || `Empresa #${item.empresa_id}`}</option>)}
+          </select>
+        </label>}
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm">Quantidade de cheques
             <input aria-label="Quantidade de cheques" aria-describedby={`quantidade-cheques-ajuda-${label}`} required className="input w-28 block" type="number" min="1" max="60" step="1"

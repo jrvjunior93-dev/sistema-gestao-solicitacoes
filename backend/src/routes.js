@@ -271,6 +271,7 @@ const {
   canAlterarQuantidadeSolicitacaoCompra,
   canAlterarStatusComprasPedidos,
   canAnexarDocumentoPedidoCompraFinanceiro,
+  canDeleteSolicitacaoAnexo,
   canAprovarReaberturaPedidoCompraFinanceiro,
   canApprovePagamentos,
   canRejectPagamentos,
@@ -1103,6 +1104,11 @@ const allowComprasPedidosFinanceiroComprovacaoOpcional = permit({
       : 'Acesso negado para anexar a comprovacao da compra';
   }
 });
+const allowComprasPedidosFinanceiroRemoverArquivo = allowPaymentAction(
+  'COMPRAS_PEDIDOS_FINANCEIRO_REMOVER_ARQUIVO',
+  async user => await canAnexarDocumentoPedidoCompraFinanceiro(user) && await canDeleteSolicitacaoAnexo(user),
+  'Acesso negado para remover anexos do pedido'
+);
 const allowComprasPedidosFinanceiroLiberar = allowPaymentAction(
   'COMPRAS_PEDIDOS_FINANCEIRO_LIBERAR',
   canLiberarPedidoCompraFinanceiro,
@@ -2523,6 +2529,7 @@ router.post('/compras/pedidos/:id/financeiro/adotar-legado', allowComprasPedidos
 router.post('/compras/pedidos/:id/financeiro/previsoes', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), allowComprasPedidosFinanceiroComprovacaoOpcional, requirePedidoCompraAccess, PedidoCompraFinanceiroController.criarPrevisoes);
 router.post('/compras/pedidos/:id/financeiro/previsoes/reparcelar', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), allowComprasPedidosFinanceiroComprovacaoOpcional, requirePedidoCompraAccess, PedidoCompraFinanceiroController.reparcelarPrevisoes);
 router.post('/compras/pedidos/:id/financeiro/documentos', allowComprasPedidosFinanceiroDocumento, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoDocumentoFinanceiroBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.registrarDocumento);
+router.delete('/compras/pedidos/:id/financeiro/documentos/:documentoId/arquivo', allowComprasPedidosFinanceiroRemoverArquivo, criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'documentoId'], 'Pedido/documento') }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.removerArquivo);
 router.patch('/compras/pedidos/:id/financeiro/liberar', allowComprasPedidosFinanceiroLiberar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoLiberarTitulosBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.liberarTitulos);
 router.post('/compras/pedidos/:id/reaberturas', allowComprasPedidosReabrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoReabrirBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.solicitarReabertura);
 router.patch('/compras/pedidos/:id/reaberturas/:reaberturaId/decisao', allowComprasPedidosFinanceiroReabertura, criticalRateLimit, validateRequest({ params: validateCompraPedidoReaberturaParams, body: validateCompraPedidoDecisaoReaberturaBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.decidirReabertura);

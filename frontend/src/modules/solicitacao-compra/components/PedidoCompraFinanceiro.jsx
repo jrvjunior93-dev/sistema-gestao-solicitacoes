@@ -10,17 +10,20 @@ import {
   decidirReaberturaPedidoCompra,
   obterUrlAssinadaCompra,
   reparcelarPrevisoesPedidoCompra,
+  removerArquivoDocumentoPedidoCompra,
   uploadAnexoTemporarioCompra
 } from '../../../services/compras';
 import {
   canAccessFinanceiro,
   canAnexarDocumentoPedidoCompraFinanceiro,
+  canDeleteSolicitacaoAnexo,
   canAprovarReaberturaPedidoCompraFinanceiro,
   canGerarPrevisaoPedidoCompraFinanceiro,
   canViewPedidoCompraFinanceiro
 } from '../../../utils/acessoProduto';
 import { formaPagamentoEhBoleto, formaPagamentoEhPix, tokensFormaPagamento } from '../../../utils/formaPagamento';
 import { PIX_TEXTO_MAX } from '../../../utils/pix';
+import OverlayModal from '../../../components/ui/OverlayModal';
 
 const STATUS_LABEL = {
   NAO_INICIADO: 'Não iniciado', AGUARDANDO_GEO: 'Legado aguardando revisão',
@@ -187,11 +190,15 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const podeVer = canViewPedidoCompraFinanceiro(user);
   const podePrever = canGerarPrevisaoPedidoCompraFinanceiro(user);
   const podeAnexar = canAnexarDocumentoPedidoCompraFinanceiro(user);
+  const podeRemoverArquivo = podeAnexar && canDeleteSolicitacaoAnexo(user);
   const podeDecidirReabertura = canAprovarReaberturaPedidoCompraFinanceiro(user);
   const podeAbrirTituloFinanceiro = canAccessFinanceiro(user);
   const totalPedido = Number(pedido?.valor_total_fornecedor ?? pedido?.valor_total ?? 0);
   const credorPedido = pedido?.fornecedor?.parceiro_id ? { id: pedido.fornecedor.parceiro_id, nome: pedido.fornecedor.nome } : null;
   const fretesPendentes = useMemo(() => (pedido?.fretes || []).filter((frete) => String(frete.tipo || '').toUpperCase() === 'TERCEIRO' && String(frete.status_financeiro || '').toUpperCase() === 'PENDENTE_TITULO'), [pedido?.fretes]);
+  // Atualizar somente documentos nao deve apagar o pagamento em preenchimento.
+  const fretesPagamentoKey = JSON.stringify(fretesPendentes.map(frete => [frete.id, frete.parceiro_id,
+    frete.parceiro?.nome, frete.fornecedor?.nome, frete.valor_total, frete.data_vencimento]));
   const [processando, setProcessando] = useState('');
   const processandoRef = useRef(false);
   const arquivoInputRef = useRef(null);
@@ -203,6 +210,9 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const [documento, setDocumento] = useState({ tipo: 'NOTA_FISCAL', numero_documento: '', observacoes: '' });
   const [arquivo, setArquivo] = useState(null);
   const [motivoDecisao, setMotivoDecisao] = useState('');
+  const [remocao, setRemocao] = useState(null);
+
+  useEffect(() => { setRemocao(null); }, [pedido?.id]);
 
   useEffect(() => {
     setPagamento(criarConfigPagamento(totalPedido, credorPedido));
@@ -212,7 +222,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     })));
     setDescricao(`Pedido PC-${String(pedido?.id || '').padStart(5, '0')} - ${pedido?.fornecedor?.nome || 'Fornecedor'}`);
     setEditandoParcelas(false);
-  }, [pedido?.id, pedido?.fornecedor?.nome, pedido?.fornecedor?.parceiro_id, totalPedido, fretesPendentes]);
+  }, [pedido?.id, pedido?.fornecedor?.nome, pedido?.fornecedor?.parceiro_id, totalPedido, fretesPagamentoKey]);
 
   useEffect(() => {
     if (financeiro?.opcoes?.categoria_padrao_id) setCategoriaId(String(financeiro.opcoes.categoria_padrao_id));
@@ -236,6 +246,15 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     try { setProcessando(chave); await acao(); avisar.sucesso(sucesso); await onAtualizar?.(); }
     catch (error) { console.error(error); avisar.erro(error.message || 'Não foi possível concluir a operação financeira do pedido.'); }
     finally { processandoRef.current = false; onProcessando?.(false); setProcessando(''); }
+  }
+
+  async function removerArquivo() {
+    if (!remocao || !podeRemoverArquivo) return;
+    const alvo = remocao;
+    await executar(`remover-${alvo.id}`, async () => {
+      await removerArquivoDocumentoPedidoCompra(pedido.id, alvo.id);
+      setRemocao(null);
+    }, 'Anexo removido do pedido. Títulos e pagamentos preservados.');
   }
 
   function validarConfiguracao(config, valorTotal, contexto) {
@@ -349,11 +368,38 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
 
         {titulosAtivos.length ? <div className="mt-4 border-t border-[var(--c-border)] pt-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-[var(--c-text)]">Títulos vinculados</h3>{podeReparcelarPrevisao && !editandoParcelas ? <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando)} onClick={iniciarEdicaoParcelas}>Editar parcelas</button> : null}</div><div className="mt-3 overflow-x-auto rounded-lg border border-[var(--c-border)]"><table className="w-full min-w-[720px] text-sm"><thead className="bg-[var(--c-surface-2)] text-left"><tr><th className="p-3">Título</th><th className="p-3">Vencimento</th><th className="p-3">Valor</th><th className="p-3">Status</th><th className="p-3">Origem</th></tr></thead><tbody>{titulosAtivos.map((item) => <tr key={`${item.origem}-${item.titulo?.id}`} className="border-t border-[var(--c-border)]"><td className="p-3">{podeAbrirTituloFinanceiro ? <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/financeiro/titulos/${item.titulo?.id}`}>{item.titulo?.codigo || `#${item.titulo?.id}`}</Link> : <span className="font-semibold">{item.titulo?.codigo || `#${item.titulo?.id}`}</span>}</td><td className="p-3">{formatarData(item.titulo?.data_vencimento)}</td><td className="p-3 font-semibold">{moeda(item.titulo?.valor_original)}</td><td className="p-3">{String(item.titulo?.status || '-').replace(/_/g, ' ')}</td><td className="p-3">{item.origem === 'FRETE_TERCEIRO' ? 'Frete a terceiro' : item.origem === 'LEGADO_DETECTADO' ? 'Legado detectado' : item.origem === 'LEGADO_CONFIRMADO' ? 'Legado confirmado' : 'Compra'}</td></tr>)}</tbody></table></div></div> : null}
 
-        {(financeiro.documentos || []).length ? <div className="mt-4 border-t border-[var(--c-border)] pt-4"><h3 className="font-semibold text-[var(--c-text)]">Documentos financeiros do pedido</h3><div className="mt-3 grid gap-2">{financeiro.documentos.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] p-3 text-sm"><span><strong>{TIPO_DOCUMENTO_LABEL[item.tipo] || String(item.tipo || '').replace(/_/g, ' ')}</strong>{item.numero_documento ? ` · ${item.numero_documento}` : ''}{item.criadoPor?.nome ? ` · ${item.criadoPor.nome}` : ''}</span>{item.arquivo_url ? <button type="button" className="btn btn-outline" onClick={() => abrirDocumento(item)}>Abrir arquivo</button> : null}</div>)}</div></div> : null}
+        {(financeiro.documentos || []).length ? <div className="mt-4 border-t border-[var(--c-border)] pt-4">
+          <h3 className="font-semibold text-[var(--c-text)]">Documentos financeiros do pedido</h3>
+          <div className="mt-3 grid gap-2">{financeiro.documentos.map(item => <div key={item.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] p-3 text-sm">
+            <span><strong>{TIPO_DOCUMENTO_LABEL[item.tipo] || String(item.tipo || '').replace(/_/g, ' ')}</strong>
+              {item.numero_documento ? ` · ${item.numero_documento}` : ''}{item.criadoPor?.nome ? ` · ${item.criadoPor.nome}` : ''}
+              {item.arquivo_nome && <span className="block text-xs text-[var(--c-muted)] break-all">{item.arquivo_nome}</span>}
+            </span>
+            {item.arquivo_url && <div className="flex gap-2">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirDocumento(item)}>Abrir arquivo</button>
+              {podeRemoverArquivo && <button type="button" className="btn btn-outline btn-sm btn-perigo-suave"
+                aria-label={`Remover anexo ${item.arquivo_nome || item.id}`} onClick={() => setRemocao(item)}>Remover anexo</button>}
+            </div>}
+          </div>)}</div>
+        </div> : null}
 
         {podeDecidirReabertura && reabertura?.status === 'PENDENTE' ? <div className="app-alert mt-4"><p className="font-semibold">Compras solicitou a reabertura deste pedido</p><p className="mt-1">{reabertura.motivo}</p><div className="mt-3"><label className="block text-sm font-semibold">Motivo da decisão</label><textarea className="input mt-1 min-h-20 w-full" value={motivoDecisao} onChange={(event) => setMotivoDecisao(event.target.value)} /></div><div className="mt-3 flex flex-wrap justify-end gap-2"><button type="button" className="btn btn-outline btn-perigo-suave" disabled={Boolean(processando)} onClick={() => decidir('REJEITAR')}>Rejeitar</button><button type="button" className="btn btn-primary" disabled={Boolean(processando)} onClick={() => decidir('APROVAR')}>Aprovar reabertura</button></div></div> : null}
       </fieldset>
       {modalPreview}
+      {remocao && <OverlayModal rotulo="Remover anexo do pedido" largura="560px" onFechar={processando ? undefined : () => setRemocao(null)}>
+        <header data-modal="cabecalho" className="p-4 border-b border-[var(--c-border)] font-semibold">Remover anexo do pedido</header>
+        <div className="p-4 space-y-3 text-sm">
+          <p className="break-all">{remocao.arquivo_nome || TIPO_DOCUMENTO_LABEL[remocao.tipo] || 'Arquivo do documento'}</p>
+          <p>O arquivo será desvinculado somente deste pedido, com registro no histórico. Títulos, pagamentos e vínculos em outras áreas não serão removidos.</p>
+        </div>
+        <footer data-modal="rodape" className="p-4 border-t border-[var(--c-border)] flex justify-end gap-2">
+          <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando)} onClick={() => setRemocao(null)}>Cancelar</button>
+          <button type="button" className="btn btn-outline btn-sm btn-perigo-suave" disabled={Boolean(processando)} onClick={removerArquivo}>
+            {processando ? 'Removendo...' : 'Confirmar remoção'}
+          </button>
+        </footer>
+      </OverlayModal>}
     </BlocoConteudo>
   );
 }

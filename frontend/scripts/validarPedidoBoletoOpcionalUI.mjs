@@ -17,6 +17,8 @@ const fixture = { id: 10, status: 'FECHADO_FORNECEDOR', valor_total_fornecedor: 
   fretes: [{ id: 8, tipo: 'TERCEIRO', status_financeiro: 'PENDENTE_TITULO', parceiro_id: 21,
     valor_total: 25, parceiro: { nome: 'Transportadora teste' } }],
   financeiro: { status: 'AGUARDANDO_PREVISAO', legado: false, titulos: [],
+    documentos: [{id:91,tipo:'BOLETO_COMPRA',arquivo_url:'https://arquivos.test/boleto.pdf',arquivo_nome:'boleto.pdf'},
+      {id:92,tipo:'NOTA_FISCAL',numero_documento:'123',arquivo_url:'https://arquivos.test/nota.pdf',arquivo_nome:'nota.pdf'}],
     opcoes: { categoria_padrao_id: 1, categorias: [{ id: 1, nome: 'Material' }],
       formas_pagamento: [{ id: 1, nome: 'Boleto', gera_boleto: true }, { id: 2, nome: 'Pix' },
         { id: 4, nome: 'Cartão de crédito', tipo: 'CARTAO_CREDITO', exige_cartao: true, gera_fatura: true, permite_parcelamento: true },
@@ -26,19 +28,29 @@ const fixture = { id: 10, status: 'FECHADO_FORNECEDOR', valor_total_fornecedor: 
 const js = `import React from 'react';import{createRoot}from'react-dom/client';
 import Pedido from '/src/modules/solicitacao-compra/components/PedidoCompraFinanceiro.jsx';
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import '/src/styles/responsive-system.css';
-window.envios=[];window.uploads=[];window.avisos=[];
+window.envios=[];window.uploads=[];window.avisos=[];window.removidos=[];window.semArquivo=[];
 const avisar=Object.fromEntries(['alerta','erro','sucesso'].map(k=>[k,msg=>window.avisos.push({k,msg})]));
-createRoot(document.getElementById('root')).render(React.createElement(Pedido,{pedido:${JSON.stringify(fixture)},
-user:{id:4},avisar,onAtualizar:async()=>{}}));`;
+const base=${JSON.stringify(fixture)};
+function App(){const[pedido,setPedido]=React.useState(base);
+return React.createElement(Pedido,{pedido,user:{id:4},avisar,onAtualizar:async()=>{
+setPedido(atual=>({...atual,fretes:atual.fretes.map(f=>({...f})),financeiro:{...atual.financeiro,documentos:base.financeiro.documentos
+ .filter(d=>d.tipo!=='BOLETO_COMPRA'||!window.semArquivo.includes(d.id))
+ .map(d=>window.semArquivo.includes(d.id)?{...d,arquivo_url:null,arquivo_nome:null}:d)}}));}});}
+createRoot(document.getElementById('root')).render(React.createElement(App));`;
 const api = `export async function criarPrevisoesPedidoCompra(id,data){window.envios.push({id,data});
 await new Promise(r=>setTimeout(r,150));return {};}
 export async function uploadAnexoTemporarioCompra(file){window.uploads.push(file.name);
 return {arquivo_url:'https://arquivos.test/'+file.name,arquivo_nome_original:file.name};}
 export async function adotarFinanceiroPedidoCompra(){};export async function decidirReaberturaPedidoCompra(){};
 export async function obterUrlAssinadaCompra(){};export async function reparcelarPrevisoesPedidoCompra(){};`;
+const remocaoApi=`export async function removerArquivoDocumentoPedidoCompra(id,documentoId){
+window.removidos.push({id,documentoId});await new Promise(r=>setTimeout(r,150));
+if(window.negada)throw new Error('Sem permissao para remover anexos do pedido.');
+window.semArquivo.push(documentoId);return {ok:true};}`;
 const acesso = `export const canViewPedidoCompraFinanceiro=()=>true;
 export const canGerarPrevisaoPedidoCompraFinanceiro=()=>!window.somenteLeitura;
-export const canAnexarDocumentoPedidoCompraFinanceiro=()=>false;
+export const canAnexarDocumentoPedidoCompraFinanceiro=()=>!window.somenteLeitura;
+export const canDeleteSolicitacaoAnexo=()=>!window.semExclusao&&!window.somenteLeitura;
 export const canAprovarReaberturaPedidoCompraFinanceiro=()=>false;
 export const canAccessFinanceiro=()=>false;`;
 const server = await createServer({ root, configFile: false, logLevel: 'error',
@@ -54,7 +66,7 @@ const server = await createServer({ root, configFile: false, logLevel: 'error',
     },
     load(id) {
       if (id === '\0boleto-fixture.jsx') return js;
-      if (id === '\0boleto-api') return api;
+      if (id === '\0boleto-api') return api+remocaoApi;
       if (id === '\0boleto-acesso') return acesso;
       if (id === '\0boleto-preview') return 'export default()=>({abrirPreview:async()=>{},modalPreview:null});';
       if (id === '\0boleto-parceiro.jsx') return `import React from 'react';export default function Busca({selecionado}){
@@ -140,12 +152,45 @@ try {
   await compra.locator('select').first().selectOption('5');
   assert.equal(await cartaoCompra.inputValue(),'','Trocar forma limpa cartao incompatível');
   assert.equal(await compra.getByLabel('Quantidade de parcelas', { exact: true }).inputValue(),'1');
+  for(const width of [1366,390]){
+    await page.setViewportSize({width,height:900});await page.reload();
+    const remover=page.getByRole('button',{name:'Remover anexo boleto.pdf',exact:true});
+    await compra.locator('select').first().selectOption('4');
+    await cartaoCompra.selectOption('10');
+    await remover.click();
+    const modal=page.getByRole('dialog',{name:'Remover anexo do pedido'});
+    await modal.getByRole('button',{name:'Cancelar',exact:true}).click();
+    assert.equal(await page.evaluate(()=>window.removidos.length),0,'Cancelar nao remove');
+    await remover.click();await page.evaluate(()=>{window.negada=true;});
+    await modal.getByRole('button',{name:'Confirmar remoção',exact:true}).click();
+    await page.waitForFunction(()=>window.avisos.some(a=>a.k==='erro'));
+    assert(await remover.isVisible(),'403 preserva documento');assert(await modal.isVisible());
+    await page.evaluate(()=>{window.negada=false;});
+    await page.screenshot({path:path.join(output,`pedido-remover-${width}.png`),fullPage:true});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+    await modal.getByRole('button',{name:'Confirmar remoção',exact:true}).evaluate(b=>{b.click();b.click();});
+    await page.waitForFunction(()=>window.semArquivo.includes(91));
+    await remover.waitFor({state:'detached'});
+    assert.equal(await page.evaluate(()=>window.removidos.length),2,'Um erro e uma remocao; clique repetido nao duplica');
+    assert.deepEqual(await page.evaluate(()=>window.removidos[1]),{id:10,documentoId:91});
+    assert(await page.getByRole('button',{name:'Remover anexo nota.pdf'}).isVisible(),'Outro arquivo preservado');
+    assert.equal(await page.evaluate(()=>window.envios.length),0,'Remocao nao cria/baixa/exclui titulos');
+    assert.equal(await cartaoCompra.inputValue(),'10','Refresh dos anexos preserva preenchimento financeiro');
+    await page.getByRole('button',{name:'Remover anexo nota.pdf'}).click();
+    await modal.getByRole('button',{name:'Confirmar remoção',exact:true}).click();
+    await page.getByRole('button',{name:'Remover anexo nota.pdf'}).waitFor({state:'detached'});
+    assert(await page.getByText('Nota fiscal',{exact:false}).count()>0,'Metadados da nota preservados');
+  }
+  await page.addInitScript(()=>{window.semExclusao=true;});await page.reload();
+  await page.getByText('Gestão financeira do pedido',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:/^Remover anexo /}).count(),0,'Sem permissao de exclusao');
+  assert.equal(await page.getByRole('button',{name:'Abrir arquivo',exact:true}).count(),2,'Visualizacao preservada');
   await page.addInitScript(() => { window.somenteLeitura = true; });
   await page.reload();
   await page.getByText('Gestão financeira do pedido', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Criar títulos', exact: true }).count(), 0);
   assert.deepEqual(erros, []);
-  console.log('Tela real: boleto opcional/multiplo, PIX, credito parcelado, debito/frete, tipos ativos e leitura sem acao validados.');
+  console.log('Tela real desktop/mobile: boleto opcional/multiplo, PIX, cartoes/frete e remocao isolada (cancelar/403/mutex/permissoes/metadados) validados.');
 } finally {
   await browser?.close();
   await server.close();

@@ -1,15 +1,36 @@
 # Modulo FINANCEIRO
 
+## Fila: cabecalho unico da baixa em massa - 2026-10-13
+
+- Forma de pagamento do lote vale para todos os titulos; nao existe mais
+  Aplicar forma nem edicao individual de forma/instrumento dentro deste modal.
+  As linhas sao somente conferencia de titulo, descricao e valor pago.
+  Edicao individual continua na tabela da fila, fora da baixa em massa.
+- Selecionar Cheque abre o editor do conjunto unico imediatamente, mesmo
+  antes de selecionar conta. O editor permite escolher conta pagadora,
+  quantidade e origem explicita de cada cheque (proprio/carteira).
+  Trocar conta invalida carteira inclusive em linhas temporariamente ocultadas;
+  o conjunto confirmado tambem precisa ser reconferido apos trocar conta.
+- Um cartao usa automaticamente sua conta vinculada; varios cartoes usam
+  suas respectivas contas. Forma/instrumentos so alteram os rascunhos da fila
+  na confirmacao da baixa. Cancelar nao aplica alteracoes nem registra pagamento.
+- Preservados valores/encargos, ACL por titulo, soma em centavos, conjunto
+  compartilhado sem duplicar documentos e estorno do grupo completo.
+  Esta correcao nao cria migration nem modifica o motor financeiro.
+- Testes locais de fila desktop/mobile, rateio/estorno, navegacao de pedido
+  e build aprovados, sem banco/rede externos. Homologacao real continua separada.
+  [Handoff](../../handoffs/2026-10-13-pedido-anexos-fila-cabecalho.md).
+
 ## Fila: origem explicita, instrumentos compartilhados e multicartao - 2026-10-13
 
 - Escolher forma Cheque nao presume cheque proprio nem abre seu editor.
   Origem inicia vazia; escolher Proprio abre dados, Carteira mostra somente
   cheques disponiveis da empresa. Novas linhas de cheques tambem exigem origem.
   Dados de cheques ja confirmados continuam reconhecidos por compatibilidade.
-- Modal em massa permite selecionar um cartao junto de Aplicar forma aos
-  selecionados. Exige conta vinculada ao aplicar um cartao; tipos credito/debito
-  filtrados pelo mesmo helper das linhas. Edicao por titulo continua disponivel.
-- Aplicar Cheque aos selecionados abre o editor para um conjunto unico que
+- Modal em massa define forma/cartao no cabecalho para todos os selecionados.
+  Tipos credito/debito filtrados pelo mesmo helper das linhas. Edicao por titulo
+  continua disponivel somente fora do modal em massa.
+- Selecionar Cheque no cabecalho abre o editor para um conjunto unico que
   paga o total do lote. Quantidade gera campos automaticamente; origem deve
   ser escolhida em cada linha. Terceiro precisa existir na carteira e seu
   valor integral e utilizado uma unica vez, mesmo pagando varios titulos.
@@ -55,8 +76,8 @@
 
 - Baixa em massa abre modal de conta pagadora e data efetiva. Aplica esses
   dados aos selecionados (maximo 200), preservando valor/encargos por
-  titulo. A forma efetivamente paga pode ser ajustada por titulo dentro do
-  modal ou aplicada a todos; trocar forma limpa instrumentos anteriores.
+  titulo. A forma efetivamente paga e unica no cabecalho do modal; trocar forma
+  limpa instrumentos anteriores. A tabela da fila permite baixa individual.
   Cheques proprios/da carteira e seu parcelamento sao editaveis no mesmo
   fluxo, com quantidade de 1 a 60 e dados por cheque. A quantidade valida gera
   os campos automaticamente, sem aplicar/adicionar um a um; reducoes mantem

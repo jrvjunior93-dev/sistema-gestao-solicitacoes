@@ -762,6 +762,13 @@ export async function liberarTitulosPedidoCompra(id, data) {
   return handleJsonResponse(response, 'Erro ao liberar os titulos do pedido');
 }
 
+export async function removerArquivoDocumentoPedidoCompra(id, documentoId) {
+  const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/documentos/${documentoId}/arquivo`, {
+    method: 'DELETE', headers: authHeaders()
+  });
+  return handleJsonResponse(response, 'Erro ao remover o anexo do pedido');
+}
+
 export async function solicitarReaberturaPedidoCompra(id, data) {
   const response = await fetch(`${API_URL}/compras/pedidos/${id}/reaberturas`, {
     method: 'POST',

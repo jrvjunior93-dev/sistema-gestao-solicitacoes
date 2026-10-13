@@ -54,6 +54,10 @@ const sandbox = { module: { exports: {} }, require(id) {
     return { titulos: [{ id: tituloPayloads.length, valor_original: data.valor, data_vencimento: data.data_vencimento }] };
   } };
   if (id === './notificacoes') return {};
+  if (id === './authorizationService') return {
+    canAnexarDocumentoPedidoCompraFinanceiro: async () => true,
+    canDeleteSolicitacaoAnexo: async () => true
+  };
   if (id === './pedidoCompraTituloConfigService') return { validarCategoriaTituloPedido: async (id) => id,
     obterConfiguracaoCategoriasTituloPedido:async()=>({categorias:[],configurada:true}) };
   if (id === './formasPagamentoMedicaoService') return { listarFormasDosFluxos: async () => ({ formas }) };

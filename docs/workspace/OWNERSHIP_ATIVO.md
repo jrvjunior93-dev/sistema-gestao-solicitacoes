@@ -1,5 +1,28 @@
 # Ownership Ativo
 
+## Publicacao: pedido anexos e cabecalho da baixa - 2026-10-13
+
+- Usuario autorizou commit e push das alteracoes pendentes em refactor/frontend.
+- Agente desta conversa, sem delegacao; staging limitado aos arquivos da correcao,
+  testes e documentacao, liberado apos conferencia. outputs/ nao sera versionado.
+- Comandos EC2 fornecidos com identidade UUID dev e preflight somente leitura;
+  nenhuma operacao de banco/EC2 nem reinicio executado pelo agente.
+- Sem migration nova. Se houver schema anterior pendente, parar antes do restart.
+  Nao tocar main nem backend-solicitacoes; push pode iniciar frontend dev na Vercel.
+
+## Correcao do cabecalho de baixa e remocao isolada de anexos do pedido - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Reserva: BaixaMassaFilaModal, ChequesParceladosFilaModal, testes UI da fila;
+  PedidoCompraFinanceiro, services/compras, routes, PedidoCompraFinanceiroController,
+  pedidoCompraFinanceiroService, testes de documentos e UI do pedido, docs/handoff.
+- Escopo: pagamento definido somente no cabecalho da massa; remover vinculo de
+  arquivo do pedido com auditoria, sem titulo/baixa/exclusao fisica do objeto.
+- Preservar ACL de pedido e exigir permissoes existentes de anexar documento
+  financeiro e excluir anexo. Sem banco real, migration, commit/push ou EC2.
+- Testes backend, UI desktop/mobile, navegacao, build e documentacao aprovados.
+  Handoff: docs/handoffs/2026-10-13-pedido-anexos-fila-cabecalho.md.
+
 ## Publicacao dos instrumentos compartilhados da fila - 2026-10-13
 
 - Usuario autorizou commit e push das alteracoes pendentes em refactor/frontend.

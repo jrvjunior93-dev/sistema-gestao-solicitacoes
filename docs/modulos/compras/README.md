@@ -1,5 +1,26 @@
 # Modulo COMPRAS
 
+## Remocao isolada de arquivo financeiro do pedido - 2026-10-13
+
+Documentos financeiros possuem vinculo proprio; excluir titulos nao remove
+boletos do pedido. Remover anexo agora abre confirmacao e desvincula somente
+arquivo_url/arquivo_nome do documento, com auditoria no historico da solicitacao.
+Preserva metadados, titulos, baixas, anexos da solicitacao e objeto armazenado.
+Boleto sem arquivo sai da lista; notas/comprovacoes sem arquivo podem continuar
+como registro de numero/documento. Nao e exclusao global do arquivo.
+
+DELETE `/compras/pedidos/:id/financeiro/documentos/:documentoId/arquivo` exige
+as permissoes existentes de anexar documento financeiro do pedido E excluir
+anexo de solicitacao, alem do mesmo escopo/ACL do pedido. O documento deve
+pertencer ao pedido da URL. Transacao e locks tornam repeticao idempotente;
+falha de auditoria reverte a desvinculacao. Confirmacao tem mutex/botao bloqueado.
+Atualizar documentos preserva pagamentos em preenchimento se seus dados-base
+nao mudaram. Sem nova permissao, migration, consulta real ou exclusao fisica.
+
+Testes: `validarPedidoDocumentoRemocao.js`, `validarPedidoBoletoOpcional.js`,
+`validarPedidoBoletoOpcionalUI.mjs` e `validarWorkspacePiloto.mjs --pedido-only`.
+[Handoff](../../handoffs/2026-10-13-pedido-anexos-fila-cabecalho.md).
+
 ## Boleto opcional na criacao de titulos do pedido - 2026-10-13
 
 Compras pode criar titulos do pedido com forma Boleto sem anexar o arquivo,

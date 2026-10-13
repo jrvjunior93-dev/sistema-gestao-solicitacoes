@@ -24,6 +24,7 @@ const {
   validarCategoriaTituloPedido
 } = require('./pedidoCompraTituloConfigService');
 const { listarFormasDosFluxos } = require('./formasPagamentoMedicaoService');
+const { canAnexarDocumentoPedidoCompraFinanceiro, canDeleteSolicitacaoAnexo } = require('./authorizationService');
 
 const STATUS_FLUXO = Object.freeze({
   AGUARDANDO_GEO: 'AGUARDANDO_GEO',
@@ -279,7 +280,8 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
   return {
     ...resumo,
     titulos,
-    documentos: documentos.map((documento) => documento.toJSON()),
+    documentos: documentos.filter(documento => !['BOLETO_COMPRA', 'BOLETO_FRETE'].includes(documento.tipo) || documento.arquivo_url)
+      .map((documento) => documento.toJSON()),
     opcoes: {
       categorias: categoriasConfig.categorias,
       categoria_padrao_id: categoriasConfig.categoria_padrao_id,
@@ -1001,6 +1003,31 @@ async function registrarDocumentoFinanceiro({ pedidoId, payload, usuarioId, idem
   }, { transaction });
 }
 
+async function removerArquivoDocumentoFinanceiro({ req, pedidoId, documentoId, transaction }) {
+  if (!(await canAnexarDocumentoPedidoCompraFinanceiro(req.user)) || !(await canDeleteSolicitacaoAnexo(req.user))) {
+    throw httpError(403, 'Sem permissao para remover anexos do pedido.');
+  }
+  const pedido = await PedidoCompra.findByPk(Number(pedidoId), {
+    include: [{ model: SolicitacaoCompra, as: 'solicitacao', attributes: ['id', 'solicitacao_principal_id'] }],
+    transaction, lock: transaction.LOCK.UPDATE
+  });
+  if (!pedido) throw httpError(404, 'Pedido de compra nao encontrado.');
+  const documento = await PedidoCompraDocumentoFinanceiro.findOne({
+    where: { id: Number(documentoId), pedido_compra_id: pedido.id }, transaction, lock: transaction.LOCK.UPDATE
+  });
+  if (!documento) throw httpError(404, 'Documento nao encontrado neste pedido.');
+  if (!documento.arquivo_url) return { ok: true, ja_removido: true };
+  // Desvincular somente do pedido; nao destruir o objeto S3, Anexo da solicitacao,
+  // titulos, movimentos ou vinculos externos que possam usar o mesmo arquivo.
+  const anterior = { arquivo_url: documento.arquivo_url, arquivo_nome: documento.arquivo_nome };
+  await documento.update({ arquivo_url: null, arquivo_nome: null }, { transaction });
+  await registrarHistorico({ pedido, solicitacao: pedido.solicitacao, usuarioId: req.user.id,
+    acao: 'PEDIDO_COMPRA_ARQUIVO_DESVINCULADO',
+    descricao: `Arquivo ${anterior.arquivo_nome || 'do documento'} removido de ${buildPedidoCodigo(pedido.id)}. Titulos e pagamentos preservados.`,
+    metadata: { documento_id: documento.id, tipo_documento: documento.tipo, arquivo_desvinculado: anterior }, transaction });
+  return { ok: true, ja_removido: false };
+}
+
 async function liberarTitulosPedido({ pedidoId, tituloIds, formaPagamentoId, usuarioId, transaction }) {
   const pedido = await PedidoCompra.findByPk(Number(pedidoId), {
     include: [{ model: SolicitacaoCompra, as: 'solicitacao', attributes: ['id', 'solicitacao_principal_id'] }],
@@ -1241,6 +1268,7 @@ module.exports = {
   liberarTitulosPedido,
   obterResumoFinanceiroPedido,
   registrarDocumentoFinanceiro,
+  removerArquivoDocumentoFinanceiro,
   sincronizarStatusFinanceiroPedidos,
   sincronizarPedidoFinanceiroAoFechar,
   solicitarReaberturaGeo
