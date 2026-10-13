@@ -218,6 +218,16 @@ Reabrir um pedido libera ajustes operacionais, mas preserva as alocacoes ja comp
 
 ## Mudanca segura
 
+### Acoes granulares e cartoes do pedido (13/10/2026)
+
+- O rodape do comparativo tambem aparece quando nao ha respostas comparaveis. Cada acao e exibida pela sua permissao granular; `encerrar_sem_pedido` nao concede geracao de pedidos.
+- Bloqueios de contexto, setor, status ou saldo mantem a acao desabilitada com explicacao. As regras de escrita do backend e a visibilidade da solicitacao nao foram ampliadas.
+- O formulario financeiro do pedido autorizado recebe somente identificacao minima dos cartoes ativos (id, nome, tipo e ultimos digitos). Resumos leves nao consultam cartoes.
+- Credito/debito permitem escolher o cartao compativel e informar a data da compra, inclusive no frete de terceiro. O backend revalida os instrumentos e usa a criacao financeira canonica: credito vincula parcelas as faturas, debito usa a conta cadastrada no cartao.
+- A curadoria existente das formas de pagamento permanece igual; apenas a propriedade `gera_fatura` foi incluida na resposta para descrever corretamente o fluxo de credito.
+- Os testes simulam usuario comum de Compras com permissoes explicitas, sem acesso ao cadastro real de Luiz Afonso Pirovani Barradas. Homologar esse usuario em dev antes da publicacao.
+- Validacoes: `validarPedidoBoletoOpcional.js`, `validarCartaoOpcionalSolicitacao.js`, `validarPedidoBoletoOpcionalUI.mjs` e `validarWorkspacePiloto.mjs --correcoes-only`, com regressoes de escopo/seguranca e build. Sem migration de Compras. Handoff: `docs/handoffs/2026-10-13-compras-acoes-granulares-cartoes.md`.
+
 ### Comparativo e superadmin (12/10/2026)
 
 Cards/Mapa sao controles de leitura, separados do bloqueio de gravacao da

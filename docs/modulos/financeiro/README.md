@@ -16,8 +16,12 @@
 ## Fila: baixa em massa, desconto, cheques e estorno - 2026-10-13
 
 - Baixa em massa abre modal de conta pagadora e data efetiva. Aplica esses
-  dados aos selecionados (maximo 200), preservando valor/forma/encargos por
-  titulo. Exige conferencia final; cancelar nao registra baixa. Cartao deve
+  dados aos selecionados (maximo 200), preservando valor/encargos por
+  titulo. A forma efetivamente paga pode ser ajustada por titulo dentro do
+  modal ou aplicada a todos; trocar forma limpa instrumentos anteriores.
+  Cheques proprios/da carteira e seu parcelamento sao editaveis no mesmo
+  fluxo, com quantidade de 1 a 60 e dados por cheque. Exige conferencia final;
+  cancelar o modal descarta suas alteracoes, sem registrar baixa. Cartao deve
   continuar compativel com a conta. Falha em uma linha reverte o lote inteiro.
 - Coluna Desconto, inicialmente antes de Juros, aceita valor nao negativo.
   Total esperado = saldo + juros + multa - desconto. Principal liquidado =
@@ -49,6 +53,7 @@
   celular, build e negativos de escopo aprovados; homologacao MySQL/EC2 e
   concorrencia entre processos ainda precisam de janela de staging.
   [Handoff](../../handoffs/2026-10-13-fila-baixa-cheques-estorno-desconto.md).
+  Complemento de UI: [formas e cheques no modal](../../handoffs/2026-10-13-fila-massa-formas-cheques-modal.md).
 
 ## Motivo de ajuste nas autorizacoes - 2026-10-11
 

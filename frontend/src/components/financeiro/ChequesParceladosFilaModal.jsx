@@ -6,11 +6,19 @@ import { useState } from 'react';
 export default function ChequesParceladosFilaModal({ label, parcelas, onChange, onFechar, onConfirmar,
   total, conta, cheques, conflito, podeCadastrar }) {
   const [erro, setErro] = useState('');
+  const [quantidade, setQuantidade] = useState(String(parcelas.length));
   const soma = parcelas.reduce((sum, item) => sum + Math.round(Number(item.valor_pago || 0) * 100), 0);
   const money = valor => Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   function alterar(index, patch) { onChange(parcelas.map((item, i) => i === index ? { ...item, ...patch } : item)); }
+  function definirQuantidade() {
+    const count = Number(quantidade);
+    if (!Number.isInteger(count) || count < 1 || count > 60) { setErro('Informe de 1 a 60 cheques por título.'); return; }
+    onChange(Array.from({ length: count }, (_, index) => parcelas[index] || { valor_pago: '', usar_cheque_terceiro: false }));
+    setErro('');
+  }
   function confirmar(event) {
     event.preventDefault();
+    event.stopPropagation();
     if (conflito) return;
     if (soma !== Math.round(Number(total) * 100) || parcelas.some(item => !(Number(item.valor_pago) > 0))) {
       setErro('A soma dos cheques deve ser igual ao valor pago do título.'); return;
@@ -27,10 +35,18 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
       <p className="text-sm">Valor pago: {money(total)} · Soma dos cheques: {money(soma / 100)}</p>
       {conflito && <p role="alert">O título mudou. Feche este modal e confira os dados atuais antes de confirmar.</p>}
       <fieldset disabled={conflito} className="space-y-4">
-        {parcelas.map((item, index) => <section key={index} className="border-b border-[var(--c-border)] pb-4 space-y-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm">Quantidade de cheques
+            <input aria-label="Quantidade de cheques" className="input w-28 block" type="number" min="1" max="60" step="1"
+              value={quantidade} onChange={event => setQuantidade(event.target.value)} />
+          </label>
+          <button type="button" className="btn btn-outline btn-sm" onClick={definirQuantidade}>Aplicar quantidade</button>
+        </div>
+        {Number(quantidade) < parcelas.length && <p className="text-xs text-[var(--sem-warning)]">Aplicar essa quantidade removerá os últimos {parcelas.length - Number(quantidade)} cheque(s) deste preenchimento.</p>}
+        {parcelas.map((item, index) => <section key={index} aria-label={`Dados do cheque ${index + 1}`} className="border-b border-[var(--c-border)] pb-4 space-y-3">
           <div className="flex justify-between items-center"><strong className="text-sm">Cheque {index + 1}</strong>
             <button type="button" className="btn btn-outline btn-sm" disabled={parcelas.length === 1}
-              onClick={() => onChange(parcelas.filter((_, i) => i !== index))}>Remover cheque {index + 1}</button>
+              onClick={() => { setQuantidade(String(parcelas.length - 1)); onChange(parcelas.filter((_, i) => i !== index)); }}>Remover cheque {index + 1}</button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="text-sm">Valor do cheque {index + 1} (R$)
@@ -49,14 +65,14 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
             <select aria-label={`Cheque da carteira ${index + 1}`} required className="input w-full" disabled={!conta?.empresa_id} value={item.cheque_terceiro_id || ''}
               onChange={event => { const cheque = cheques.find(row => Number(row.id) === Number(event.target.value));
                 alterar(index, { cheque_terceiro_id: event.target.value, valor_pago: cheque?.valor || '', data_vencimento: cheque?.data_vencimento || '' }); }}>
-              <option value="">{conta?.empresa_id ? 'Selecione um cheque já cadastrado' : 'Selecione a conta pagadora na fila primeiro'}</option>
+              <option value="">{conta?.empresa_id ? 'Selecione um cheque já cadastrado' : 'Selecione a conta pagadora primeiro'}</option>
               {cheques.filter(row => !row.empresa_id || Number(row.empresa_id) === Number(conta?.empresa_id)).map(row =>
                 <option key={row.id} value={row.id}>{row.codigo} · {row.numero_cheque} · {row.titular_nome} · {money(row.valor)}</option>)}
             </select>
           </label> : <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
         </section>)}
         <button type="button" className="btn btn-outline btn-sm" disabled={parcelas.length >= 60}
-          onClick={() => onChange([...parcelas, { valor_pago: '', usar_cheque_terceiro: false }])}>Adicionar cheque / parcela</button>
+          onClick={() => { setQuantidade(String(parcelas.length + 1)); onChange([...parcelas, { valor_pago: '', usar_cheque_terceiro: false }]); }}>Adicionar cheque / parcela</button>
       </fieldset>
       <p className="text-xs text-[var(--c-muted)]">Cheques de terceiros precisam estar cadastrados e disponíveis na carteira. O valor de cada um deve ser usado integralmente.
         {podeCadastrar && <> <Link className="underline" to="/financeiro/cheques-terceiros" target="_blank" rel="noopener noreferrer">Abrir carteira para cadastrar</Link>.</>}

@@ -37,7 +37,7 @@ const models = new Proxy({
   Obra: { findByPk: async () => ({ id: 1, nome: 'Obra QA', empresa_grupo_id: 1, ativo: true }) },
   TituloFinanceiroImposto: { destroy: async () => {} },
   Parceiro: { findByPk: async () => ({ id: 1, ativo: true, fornecedor: true, cliente: true }) },
-  CategoriaFinanceira: { findByPk: async () => ({ id: 1, ativo: true, natureza: 'DESPESA', classificacao_dre: 'CUSTO' }) },
+  CategoriaFinanceira: { findByPk: async () => ({ id: 1, ativo: true, natureza: 'DESPESA', classificacao_dre: 'CUSTO', dre_grupo: 'CUSTOS' }) },
   Solicitacao: { findByPk: async () => solicitacao },
   Historico: { create: async (data) => { state.historico.push(data); return data; } },
   ChequeTerceiro: { findOne: async ({ where }) => state.cheques.find(row => row.id === where.id && row.status === where.status) },
@@ -105,7 +105,7 @@ vm.runInNewContext(fs.readFileSync(file, 'utf8') + '\nmodule.exports.test = { va
   module: isolated, console, Date, Intl,
   require(id) { if (!(id in dependencies)) throw new Error(`Dependencia nao isolada: ${id}`); return dependencies[id]; }
 }, { filename: file });
-const { criarTituloPorSolicitacao, atualizarTitulo, baixarTitulo, test } = isolated.exports;
+const { criarTituloPorSolicitacao, criarTituloManual, atualizarTitulo, baixarTitulo, test } = isolated.exports;
 const queueFile = path.resolve(__dirname, '../src/services/pagamentoManualFilaService.js');
 const queueModule = { exports: {} };
 const vinculoModule = { exports: {} };
@@ -145,6 +145,24 @@ const itemFila = (fila, instrumento = {}) => ({ fila_id: fila.id, conta_bancaria
   data_baixa: '2026-10-08', valor_pago: 200, ...instrumento });
 
 async function main() {
+  // Mesmo servico canonico usado pelo pedido de Compras; sem banco/fatura real.
+  for (const [formaId, cartaoId, quantidade] of [[1,10,2],[2,20,1]]) {
+    reset();
+    const transaction={LOCK:{UPDATE:'UPDATE'}};
+    const result=await criarTituloManual(req,{tipo:'PAGAR',status:'ABERTO',obra_id:1,parceiro_id:1,descricao:'Pedido QA com cartao',
+      categoria_financeira_id:1,forma_pagamento_id:formaId,cartao_id:cartaoId,data_compra:'2026-10-12',
+      valor:200,data_emissao:'2026-10-12',data_vencimento:'2026-10-20',quantidade_parcelas:quantidade,
+      parcelas:Array.from({length:quantidade},(_,i)=>({valor:200/quantidade,data_vencimento:i?'2026-11-20':'2026-10-20'}))},
+      {transaction,origemTitulo:'PEDIDO_COMPRA',pularAcessoFinanceiro:true,registrarSeguranca:false,retornarTitulosCriados:true});
+    assert.equal(result.titulos.length,quantidade);
+    assert.equal(state.movimentos.length,quantidade);
+    assert.equal(state.faturas.length,formaId===1?quantidade:0);
+    assert.ok(state.titulos.every(t=>t.cartao_id===cartaoId&&t.status==='QUITADO'&&t.data_compra==='2026-10-12'));
+    assert.ok(state.movimentos.every(m=>m.valor===200/quantidade&&m.data_movimento==='2026-10-12'));
+    if(formaId===1){assert.deepEqual(state.faturas.map(f=>f.parcelaOffset),[0,1]);assert(state.titulos.every(t=>t.fatura_cartao_id));}
+    assert.equal(state.commits,0,'Transacao do pedido permanece atomica sob seu chamador');
+  }
+  reset();
   const validado = validateFinanceTituloCreateFromSolicitacaoBody({ categoria_financeira_id: 1, pagamentos: [pagamento(1)] });
   assert.equal(validado.pagamentos[0].cartao_id, undefined);
   assert.throws(() => validateFinanceTituloCreateFromSolicitacaoBody({ categoria_financeira_id: 1, permitirCartaoPendente: true }), /campos nao permitidos/);

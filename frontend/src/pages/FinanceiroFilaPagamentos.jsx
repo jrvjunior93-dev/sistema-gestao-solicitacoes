@@ -1456,14 +1456,21 @@ export default function FinanceiroFilaPagamentos() {
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
       {baixaMassa && <BaixaMassaFilaModal rows={rows.filter(row => baixaMassa.ids.includes(row.id))}
-        accounts={accounts} busy={Boolean(actionKey)} onFechar={() => setBaixaMassa(null)}
+        accounts={accounts} drafts={drafts} instrumentos={instrumentos}
+        podeCadastrarCheque={hasPermissao(user, 'financeiro.cheques.cadastrar') && hasPermissao(user, 'financeiro.cheques.visualizar')}
+        busy={Boolean(actionKey)} onFechar={() => setBaixaMassa(null)}
         onConfirmar={async patch => {
           const atuais = baixaMassa.ids.map(id => rows.find(row => row.id === id));
           if (!canSettle || !filaAutorizada || atuais.some((row, i) => !row || row.status !== 'PENDENTE'
             || row.somente_consulta || revisaoFila(row) !== baixaMassa.revisoes[i])) return 'A seleção mudou. Feche o modal, atualize e confira a fila.';
-          if (atuais.some(row => { const card = instrumentos.cartoes.find(item => Number(item.id) === Number(draftsRef.current[row.id]?.cartao_id));
+          const dados = Object.fromEntries(atuais.map(row => [row.id, { ...draftsRef.current[row.id],
+            ...patch.pagamentos[row.id], conta_bancaria_id: patch.conta_bancaria_id, data_baixa: patch.data_baixa }]));
+          if (atuais.some(row => { const card = instrumentos.cartoes.find(item => Number(item.id) === Number(dados[row.id]?.cartao_id));
             return card && Number(card.conta_bancaria_id) !== patch.conta_bancaria_id; })) return 'Há cartão vinculado a outra conta. Separe os títulos por conta pagadora.';
-          atuais.forEach(row => updateDraft(row.id, patch));
+          const problema = validateRows(atuais, dados);
+          if (problema) return `${atuais.find(row => row.id === problema.filaId)?.titulo?.codigo || ''}: ${problema.mensagem} ${problema.correcao}`;
+          atuais.forEach(row => updateDraft(row.id, { ...patch.pagamentos[row.id],
+            conta_bancaria_id: patch.conta_bancaria_id, data_baixa: patch.data_baixa }));
           await executarOperacao(() => performSettle(atuais, draftsRef.current));
           return null;
         }} />}

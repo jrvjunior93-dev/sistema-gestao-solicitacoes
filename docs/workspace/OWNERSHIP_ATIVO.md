@@ -1,5 +1,59 @@
 # Ownership Ativo
 
+## Publicacao Ticket, Compras e modal de baixa - 2026-10-13
+
+- Pedido explicito nesta conversa: commitar todas as alteracoes pendentes e
+  publicar em refactor/frontend. Agente desta conversa, sem delegacao;
+  ownership da conferencia de staging liberado apos verificacao.
+- Inclui Ticket Boleto/Pix, acoes granulares e cartoes no pedido, formas/cheques
+  no modal de baixa em massa, testes e documentacao correspondentes.
+- Testes focados backend/ACL reexecutados; UI desktop/mobile e build aprovados
+  nas etapas locais. Evidencias outputs/ ficam fora do commit.
+- Migration 202610130001_rh_ticket_pix_colaboradores.js apenas publicada como
+  codigo, nao aplicada. Precisa preceder a inicializacao do backend atualizado.
+- Push pode iniciar deploy automatico do frontend de dev; sem promover main,
+  aplicar migration/banco, reiniciar processos ou operar EC2 nesta tarefa.
+
+## Baixa em massa - formas e cheques no modal - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: BaixaMassaFilaModal.jsx, InstrumentoPagamentoFila.jsx,
+  ChequesParceladosFilaModal.jsx, FinanceiroFilaPagamentos.jsx (integracao
+  do modal), validarFilaInstrumentosUI.mjs, README financeiro e handoff.
+- Escopo: forma efetivamente paga por titulo ou aplicada aos selecionados,
+  cheques proprios/terceiros em carteira, quantidade e dados no fluxo do modal.
+- Reutilizar payload/validacoes, ACL, transacao e mutex existentes. Preservar
+  alteracoes pendentes de Ticket/Compras. Sem banco, EC2, commit ou deploy.
+- Handoff: docs/handoffs/2026-10-13-fila-massa-formas-cheques-modal.md.
+
+## Compras - acoes granulares e cartoes do pedido - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: GerenciarCotacaoSolicitacao.jsx (rodape do comparativo),
+  PedidoCompraFinanceiro.jsx, pedidoCompraFinanceiroService.js,
+  operationalValidators.js (payload do pedido), formasPagamentoMedicaoService.js
+  (projecao aditiva de gera_fatura), testes focados e handoff.
+- Mapear permissoes individuais, contexto de interacao e status; nao conceder
+  gerar pedidos a quem possui somente encerrar sem pedido.
+- Cartoes ativos em projecao minima do pedido autorizado; envio ao servico
+  financeiro canonico para fatura/baixa, sem novas permissoes de cadastro.
+- Sem banco real, migrations aplicadas, publicacao ou deploy.
+- Handoff: docs/handoffs/2026-10-13-compras-acoes-granulares-cartoes.md.
+
+## Ticket Boleto/Pix por colaborador - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: rhTicketService.js, RhTicketController.js, RhTicketLote.js,
+  RhTicketLoteItem.js, models/index.js (associacao ticket), nova migration
+  estrutural e testes ticket; RhDpColaboradores.jsx, services/rhDp.js,
+  novo componente do modal, validarRhColaboradorContatos.mjs (sincronizacao
+  da abertura do modal no teste), README RH/DP e handoff.
+- Autorizado: boleto obrigatorio somente ao escolher Boleto, escolha Boleto/Pix, revisao das chaves,
+  titulo por colaborador no Pix e estrutura compativel com lotes existentes.
+- Preservar ACL, conferencia GEO, valores/empresa/lotacao e idempotencia.
+- Sem banco real, aplicacao de migration, commit/push, EC2 ou deploy.
+- Handoff: docs/handoffs/2026-10-13-ticket-boleto-pix-colaboradores.md.
+
 ## Publicacao das alteracoes pendentes - 2026-10-13
 
 - Pedido explicito: commitar e publicar em refactor/frontend.

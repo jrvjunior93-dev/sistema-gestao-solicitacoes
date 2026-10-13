@@ -1783,6 +1783,7 @@ db.RhTicketLote.hasMany(db.RhTicketLoteItem, {
   onDelete: 'CASCADE'
 });
 db.RhTicketLoteItem.belongsTo(db.RhTicketLote, { foreignKey: 'lote_id', as: 'lote' });
+db.RhTicketLoteItem.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
 db.RhTicketLoteItem.belongsTo(db.RhColaborador, { foreignKey: 'colaborador_id', as: 'colaborador' });
 db.RhTicketLoteItem.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra', constraints: false });
 db.RhTicketLote.belongsTo(db.RhEmpresaGrupo, { foreignKey: 'empresa_grupo_id', as: 'empresaGrupo' });

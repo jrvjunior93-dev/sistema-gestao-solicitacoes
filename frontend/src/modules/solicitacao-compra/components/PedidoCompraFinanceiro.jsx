@@ -72,6 +72,7 @@ function criarConfigPagamento(valorTotal, credor, primeiroVencimento = hojeLocal
   const vencimento = primeiroVencimento || hojeLocal();
   return {
     forma_pagamento_id: '', favorecido: credor || null, chave_pix: '', dados_pagamento: '', boletos: [],
+    cartao_id: '', data_compra: hojeLocal(),
     quantidade_parcelas: 1, primeiro_vencimento: vencimento, parcelas: gerarParcelas(valorTotal, 1, vencimento)
   };
 }
@@ -79,10 +80,23 @@ function somaParcelas(config) {
   return (config?.parcelas || []).reduce((total, parcela) => total + numeroMoeda(parcela.valor), 0);
 }
 
-function PagamentoTituloFields({ titulo, descricao, valorTotal, config, onChange, formas, avisar }) {
+function formaEhCartao(forma) {
+  return Boolean(forma?.exige_cartao || forma?.gera_fatura || tokensFormaPagamento(forma).includes('CARTAO'));
+}
+function cartoesDaForma(forma, cartoes) {
+  const tokens = tokensFormaPagamento(forma);
+  const tipo = tokens.includes('DEBITO') ? 'DEBITO'
+    : tokens.includes('CREDITO') || forma?.gera_fatura ? 'CREDITO' : null;
+  return (cartoes || []).filter(cartao => cartao.ativo !== false
+    && (!tipo || String(cartao.tipo || 'CREDITO').toUpperCase() === tipo));
+}
+
+function PagamentoTituloFields({ titulo, descricao, valorTotal, config, onChange, formas, cartoes, avisar }) {
   const forma = formas.find((item) => String(item.id) === String(config.forma_pagamento_id)) || null;
   const pix = formaPagamentoEhPix(forma);
   const boleto = formaPagamentoEhBoleto(forma);
+  const cartao = formaEhCartao(forma);
+  const cartoesDisponiveis = cartoesDaForma(forma, cartoes);
   const outros = tokensFormaPagamento(forma).includes('OUTROS');
   const soma = somaParcelas(config);
 
@@ -111,7 +125,7 @@ function PagamentoTituloFields({ titulo, descricao, valorTotal, config, onChange
         <FormSecao colunas={3}>
           <CampoForm label="Forma de pagamento negociada" obrigatorio>
             <select className="input w-full" value={config.forma_pagamento_id} onChange={(event) => onChange({
-              ...config, forma_pagamento_id: event.target.value, chave_pix: '', dados_pagamento: '', boletos: [],
+              ...config, forma_pagamento_id: event.target.value, chave_pix: '', dados_pagamento: '', boletos: [], cartao_id: '',
               quantidade_parcelas: 1, parcelas: gerarParcelas(valorTotal, 1, config.primeiro_vencimento)
             })}>
               <option value="">Selecione</option>{formas.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
@@ -127,7 +141,17 @@ function PagamentoTituloFields({ titulo, descricao, valorTotal, config, onChange
             <ParceiroBuscaRemota label="Favorecido" selecionado={config.favorecido} obrigatorio onSelecionar={(favorecido) => onChange({ ...config, favorecido })} />
           </div>
           {pix ? <CampoForm label="Chave PIX" obrigatorio><input className="input w-full" maxLength={PIX_TEXTO_MAX} value={config.chave_pix} onChange={(event) => onChange({ ...config, chave_pix: event.target.value })} placeholder="Informe a chave PIX negociada" /></CampoForm> : null}
-          {forma && !pix && !boleto ? <div style={{ gridColumn: '1 / -1' }}><CampoForm label="Dados para pagamento" obrigatorio><textarea className="input min-h-20 w-full" value={config.dados_pagamento} onChange={(event) => onChange({ ...config, dados_pagamento: event.target.value })} placeholder="Informe banco, agência, conta ou demais orientações para pagamento." /></CampoForm></div> : null}
+          {cartao ? <>
+            <CampoForm label="Cartão utilizado" obrigatorio hint={!cartoesDisponiveis.length ? 'Nenhum cartão ativo compatível. Confira o cadastro no Financeiro.' : undefined}>
+              <select className="input w-full" aria-label="Cartão utilizado" value={config.cartao_id} onChange={event => onChange({ ...config, cartao_id: event.target.value })}>
+                <option value="">Selecione</option>{cartoesDisponiveis.map(item => <option key={item.id} value={item.id}>{item.nome}{item.ultimos_digitos ? ` · final ${item.ultimos_digitos}` : ''}</option>)}
+              </select>
+            </CampoForm>
+            <CampoForm label="Data da compra" obrigatorio hint={forma.gera_fatura ? 'A compra será registrada como paga pelo cartão; as parcelas e vencimentos finais seguem as faturas calculadas pelo fechamento do cartão.' : 'O débito será registrado na conta vinculada ao cartão.'}>
+              <DateInputBR className="input w-full" aria-label="Data da compra" value={config.data_compra} onChange={event => onChange({ ...config, data_compra: event.target.value })} />
+            </CampoForm>
+          </> : null}
+          {forma && !pix && !boleto && !cartao ? <div style={{ gridColumn: '1 / -1' }}><CampoForm label="Dados para pagamento" obrigatorio><textarea className="input min-h-20 w-full" value={config.dados_pagamento} onChange={(event) => onChange({ ...config, dados_pagamento: event.target.value })} placeholder="Informe banco, agência, conta ou demais orientações para pagamento." /></CampoForm></div> : null}
           {boleto ? <div style={{ gridColumn: '1 / -1' }}>
             <CampoForm label="Boletos" hint="Opcional na criação dos títulos. É possível selecionar mais de um arquivo.">
               <input className="input w-full" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={(event) => onChange({ ...config, boletos: [...config.boletos, ...Array.from(event.target.files || [])] })} />
@@ -203,6 +227,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const exibirFormularioParcelas = podeCriarPrevisao || (podeReparcelarPrevisao && editandoParcelas);
   const reabertura = financeiro?.reabertura;
   const formasPagamento = financeiro?.opcoes?.formas_pagamento || [];
+  const cartoesPagamento = financeiro?.opcoes?.cartoes || [];
   if (!podeVer || !financeiro) return null;
 
   async function executar(chave, acao, sucesso) {
@@ -220,7 +245,10 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     if (!config.parcelas.length || config.parcelas.some((parcela) => numeroMoeda(parcela.valor) <= 0 || !parcela.data_vencimento)) return `Informe valor e vencimento válidos em todas as parcelas de ${contexto}.`;
     if (Math.abs(somaParcelas(config) - valorTotal) >= 0.01) return `A soma das parcelas de ${contexto} precisa ser igual a ${moeda(valorTotal)}.`;
     if (formaPagamentoEhPix(forma) && !config.chave_pix.trim()) return `Informe a chave PIX de ${contexto}.`;
-    if (!formaPagamentoEhPix(forma) && !formaPagamentoEhBoleto(forma) && !config.dados_pagamento.trim()) return `Informe os dados para pagamento de ${contexto}.`;
+    if (formaEhCartao(forma)) {
+      if (!cartoesDaForma(forma, cartoesPagamento).some(item => String(item.id) === String(config.cartao_id))) return `Selecione um cartão ativo compatível para ${contexto}.`;
+      if (!config.data_compra) return `Informe a data da compra de ${contexto}.`;
+    } else if (!formaPagamentoEhPix(forma) && !formaPagamentoEhBoleto(forma) && !config.dados_pagamento.trim()) return `Informe os dados para pagamento de ${contexto}.`;
     return '';
   }
   async function enviarBoletos(arquivos) {
@@ -257,6 +285,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
           frete_id: frete.id,
           descricao: `Frete PC-${String(pedido.id).padStart(5, '0')} - ${frete.parceiro?.nome || frete.fornecedor?.nome || 'Terceiro'}`,
           forma_pagamento_id: Number(config.forma_pagamento_id), favorecido_pagamento_id: Number(config.favorecido.id),
+          cartao_id: config.cartao_id ? Number(config.cartao_id) : undefined, data_compra: config.cartao_id ? config.data_compra : undefined,
           chave_pix: config.chave_pix.trim() || undefined, dados_pagamento: config.dados_pagamento.trim() || undefined,
           boletos: await enviarBoletos(config.boletos),
           parcelas: config.parcelas.map((parcela) => ({ valor: numeroMoeda(parcela.valor), data_vencimento: parcela.data_vencimento }))
@@ -265,6 +294,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
       const payload = {
         categoria_financeira_id: Number(categoriaId), descricao: descricao.trim() || undefined,
         forma_pagamento_id: Number(pagamento.forma_pagamento_id), favorecido_pagamento_id: Number(pagamento.favorecido.id),
+        cartao_id: pagamento.cartao_id ? Number(pagamento.cartao_id) : undefined, data_compra: pagamento.cartao_id ? pagamento.data_compra : undefined,
         chave_pix: pagamento.chave_pix.trim() || undefined, dados_pagamento: pagamento.dados_pagamento.trim() || undefined,
         boletos, parcelas: pagamento.parcelas.map((parcela) => ({ valor: numeroMoeda(parcela.valor), data_vencimento: parcela.data_vencimento })), fretes
       };
@@ -305,8 +335,8 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
             <CampoForm label="Categoria financeira" obrigatorio><select className="input w-full" value={categoriaId} onChange={(event) => setCategoriaId(event.target.value)}><option value="">Selecione</option>{(financeiro.opcoes?.categorias || []).map((categoria) => <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>)}</select></CampoForm>
             <CampoForm label="Descrição dos títulos"><input className="input w-full" value={descricao} maxLength={255} onChange={(event) => setDescricao(event.target.value)} placeholder="Pedido e fornecedor" /></CampoForm>
           </FormSecao></div>
-          <PagamentoTituloFields titulo="Pagamento ao fornecedor" descricao="Condição negociada para os itens deste pedido." valorTotal={totalPedido} config={pagamento} onChange={setPagamento} formas={formasPagamento} avisar={avisar} />
-          {fretesPendentes.map((frete) => pagamentosFrete[frete.id] ? <PagamentoTituloFields key={frete.id} titulo={`Pagamento do frete #${frete.id}`} descricao={`Título separado para ${frete.parceiro?.nome || frete.fornecedor?.nome || 'credor do frete'}.`} valorTotal={Number(frete.valor_total)} config={pagamentosFrete[frete.id]} onChange={(config) => setPagamentosFrete((atuais) => ({ ...atuais, [frete.id]: config }))} formas={formasPagamento} avisar={avisar} /> : null)}
+          <PagamentoTituloFields titulo="Pagamento ao fornecedor" descricao="Condição negociada para os itens deste pedido." valorTotal={totalPedido} config={pagamento} onChange={setPagamento} formas={formasPagamento} cartoes={cartoesPagamento} avisar={avisar} />
+          {fretesPendentes.map((frete) => pagamentosFrete[frete.id] ? <PagamentoTituloFields key={frete.id} titulo={`Pagamento do frete #${frete.id}`} descricao={`Título separado para ${frete.parceiro?.nome || frete.fornecedor?.nome || 'credor do frete'}.`} valorTotal={Number(frete.valor_total)} config={pagamentosFrete[frete.id]} onChange={(config) => setPagamentosFrete((atuais) => ({ ...atuais, [frete.id]: config }))} formas={formasPagamento} cartoes={cartoesPagamento} avisar={avisar} /> : null)}
 
           {!editandoParcelas && podeAnexar ? <div className="mt-4 border-t border-[var(--c-border)] pt-4"><h3 className="font-semibold text-[var(--c-text)]">Forma de comprovação da compra</h3><p className="mt-1 text-sm text-[var(--c-muted)]">Opcional. Se houver, informe a nota fiscal, o comprovante de compra ou outra evidência recebida.</p><div className="mt-3"><FormSecao colunas={3}>
             <CampoForm label="Tipo de comprovante"><select className="input w-full" value={documento.tipo} onChange={(event) => setDocumento((atual) => ({ ...atual, tipo: event.target.value }))}><option value="NOTA_FISCAL">Nota fiscal</option><option value="COMPROVANTE_COMPRA">Comprovante de compra</option><option value="OUTRA_CONFIRMACAO">Outra comprovação</option></select></CampoForm>

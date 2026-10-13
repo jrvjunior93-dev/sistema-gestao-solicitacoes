@@ -327,6 +327,84 @@ try {
     await page.screenshot({path:path.join(root,`../outputs/fila-massa-${width}.png`)});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   }
+  // Instrumentos efetivos editados dentro do modal, sem alterar a fila ao cancelar.
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&parcelas=1&status=TODOS');
+    await page.getByLabel('Selecionar TIT-MASSA-1', { exact: true }).check();
+    await page.getByLabel('Selecionar TIT-MASSA-2', { exact: true }).check();
+    const abrirMassa = () => page.getByRole('button', { name: 'Baixa em massa (2)', exact: true }).click();
+    await abrirMassa();
+    const bulk = page.getByRole('dialog', { name: 'Baixa em massa', exact: true });
+    await bulk.getByLabel('Aplicar forma aos selecionados', { exact: true }).selectOption('4');
+    await bulk.getByRole('button', { name: 'Aplicar forma', exact: true }).click();
+    assert.equal(await bulk.getByLabel('Forma de pagamento de TIT-MASSA-1', { exact: true }).inputValue(), '4');
+    await bulk.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+    await bulk.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByLabel('Forma de pagamento de TIT-MASSA-1', { exact: true }).inputValue(), '3', 'Cancelar nao altera a forma da fila');
+    assert.equal(await page.evaluate(() => window.__settles.length), 0);
+
+    await abrirMassa();
+    await bulk.getByLabel('Conta pagadora', { exact: true }).selectOption('6');
+    await bulk.getByLabel('Aplicar forma aos selecionados', { exact: true }).selectOption('1');
+    await bulk.getByRole('button', { name: 'Aplicar forma', exact: true }).click();
+    await bulk.getByLabel('Cartão de TIT-MASSA-1', { exact: true }).selectOption('10');
+    await bulk.getByLabel('Cartão de TIT-MASSA-2', { exact: true }).selectOption('10');
+    await bulk.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).click();
+    assert((await bulk.getByRole('alert').textContent()).includes('outra conta'), 'Cartao incompatível com a conta bloqueia o lote');
+    assert.equal(await page.evaluate(() => window.__settles.length), 0);
+    await bulk.getByLabel('Conta pagadora', { exact: true }).selectOption('5');
+    await bulk.getByLabel('Data do pagamento', { exact: true }).fill('13/10/2026');
+    await bulk.getByLabel('Aplicar forma aos selecionados', { exact: true }).selectOption('4');
+    await bulk.getByRole('button', { name: 'Aplicar forma', exact: true }).click();
+    await bulk.getByLabel('Forma de pagamento de TIT-MASSA-2', { exact: true }).selectOption('3');
+    await bulk.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).click();
+    assert((await bulk.getByRole('alert').textContent()).includes('TIT-MASSA-1'), 'Falta de cheque explicada no proprio modal');
+    assert.equal(await page.evaluate(() => window.__settles.length), 0);
+    await bulk.getByRole('region', { name: 'Pagamento de TIT-MASSA-1', exact: true })
+      .getByRole('button', { name: 'Mais de um cheque / parcelar', exact: true }).click();
+    const chequesMassa = page.getByRole('dialog', { name: 'Cheques do pagamento de TIT-MASSA-1', exact: true });
+    await chequesMassa.waitFor();
+    assert.equal(await page.getByRole('dialog', { name: 'Cheques do pagamento de TIT-MASSA-1', exact: true }).count(), 1, 'Editor do modal nao replica editor da tabela');
+    await chequesMassa.getByLabel('Quantidade de cheques', { exact: true }).fill('61');
+    await chequesMassa.getByRole('button', { name: 'Aplicar quantidade', exact: true }).click();
+    assert((await chequesMassa.getByRole('alert').textContent()).includes('1 a 60'));
+    await chequesMassa.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
+    await chequesMassa.getByRole('button', { name: 'Aplicar quantidade', exact: true }).click();
+    const proprio = chequesMassa.getByRole('region', { name: 'Dados do cheque 1', exact: true });
+    await proprio.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('113');
+    await proprio.getByLabel('Numero do cheque *', { exact: true }).fill('BULK-101');
+    await proprio.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
+    await proprio.getByLabel('Banco', { exact: true }).fill('001');
+    await proprio.getByLabel('Agencia', { exact: true }).fill('1234');
+    await proprio.getByLabel('Conta', { exact: true }).fill('5678');
+    await chequesMassa.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
+    const carteira = chequesMassa.getByLabel('Cheque da carteira 2', { exact: true });
+    assert.equal(await carteira.locator('option[value="88"]').count(), 0, 'Carteira respeita a empresa da conta');
+    await carteira.selectOption('77');
+    assert.equal(await chequesMassa.getByLabel('Valor do cheque 2 (R$)', { exact: true }).inputValue(), '100');
+    assert(await chequesMassa.getByRole('link', { name: 'Abrir carteira para cadastrar', exact: true }).isVisible());
+    await page.screenshot({ path: path.join(root, `../outputs/fila-massa-instrumentos-cheques-${width}.png`) });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await chequesMassa.getByRole('button', { name: 'Confirmar cheques', exact: true }).click();
+    await chequesMassa.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => window.__settles.length), 0, 'Confirmar editor dos cheques nao submete a baixa em massa');
+    assert.equal(await bulk.getByRole('alert').count(), 0, 'Correcao limpa o aviso anterior');
+    await page.screenshot({ path: path.join(root, `../outputs/fila-massa-instrumentos-${width}.png`) });
+    await bulk.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).evaluate(button => { button.click(); button.click(); });
+    await page.waitForFunction(() => window.__settles.length === 1);
+    const envio = await page.evaluate(() => window.__settles[0]);
+    assert.equal(envio.itens.length, 2); assert(envio.key);
+    assert(envio.itens.every(item => item.valor_pago === 213 && item.juros === 10 && item.multa === 3 && item.conta_bancaria_id === 5 && item.data_baixa === '2026-10-13'));
+    assert.equal(envio.itens[0].forma_pagamento_id, 4);
+    assert.equal(envio.itens[0].parcelas_cheque.length, 2);
+    assert.equal(envio.itens[0].parcelas_cheque[0].cheque_numero, 'BULK-101');
+    assert.equal(envio.itens[0].parcelas_cheque[0].cheque_banco, '001');
+    assert.equal(envio.itens[0].parcelas_cheque[1].cheque_terceiro_id, 77);
+    assert.equal(envio.itens[0].cartao_id, undefined, 'Trocar forma limpa o cartao anterior');
+    assert.equal(envio.itens[1].forma_pagamento_id, 3);
+    assert.equal(envio.itens[1].parcelas_cheque, undefined);
+  }
   await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&readonly=1&status=TODOS');
   await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).waitFor();
   assert(await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).isDisabled());
@@ -389,5 +467,5 @@ try {
   await page.waitForFunction(() => window.__returned);
   assert.deepEqual(await page.evaluate(() => window.__returned), { id: 1, action: 'REABRIR', motivo: '' });
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('OK: fila real desktop/mobile, modal massa conta/data, desconto, multiplos cheques, estorno com motivo/permissao/mutex, devolver nao pago, selecao/colunas e rolagem. APIs isoladas.');
+  console.log('OK: fila real desktop/mobile, modal massa conta/data/formas por titulo, quantidade/proprio/carteira, cancelamento/mutex, desconto, cheques, estorno, devolver nao pago, selecao/colunas e rolagem. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

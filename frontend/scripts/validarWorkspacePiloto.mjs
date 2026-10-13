@@ -101,6 +101,10 @@ const user={id:1,perfil:'SUPERADMIN',nome:'QA',area:'GEO',setor:{codigo:'GEO'},m
 if(params.has('obraadminqa'))Object.assign(user,{area:'OBRA',setor:{codigo:'OBRA'}});
 if(params.has('regularqa'))Object.assign(user,{perfil:'USUARIO',area:'OBRA',setor:{codigo:'OBRA'},areas_permissoes_configuradas:true,areas_permissoes:[]});
 if(params.has('comprasqa'))user.modulos_habilitados=[{key:'COMPRAS',enabled:true},{key:'COTACOES',enabled:true},{key:'FINANCEIRO',enabled:false}];
+if(params.has('granularqa'))Object.assign(user,{perfil:'USUARIO',area:'COMPRAS',setor:{codigo:'COMPRAS',eh_setor_compras:true},
+ areas_permissoes_configuradas:true,areas_permissoes:params.has('negadoqa')?[]:[
+ 'compras.cotacoes.visualizar','compras.cotacoes.encerrar_sem_pedido',
+ ...(params.has('gerarpedidosqa')?['compras.solicitacoes.gerar_pedidos']:[])]});
 if(params.has('financeiroqa')){user.modulos_habilitados=[{key:'FINANCEIRO',enabled:true}];user.autorizacao_pagamentos={can_decide:true,passkey_count:1};}
 if(params.has('provisaoqa')||params.has('provisaolistqa')||params.has('provisaoconsultasqa'))user.modulos_habilitados=[{key:'PROVISOES',enabled:true}];
 function TestAuth({children}){const[effective,set]=useState(params.has('anon')?null:params.has('mfa')?{...user,mfa_setup_pending:true}:user);const[ready,R]=useState(!params.has('restoring'));useEffect(()=>{window.qaAuth={ready:()=>R(true),logout:()=>set(null),switch:()=>set({...user,id:2,nome:'Outro usuario'}),restrict:()=>set(current=>({...current,areas_permissoes_configuradas:true,areas_permissoes:[]}))}},[]);return <AuthContext.Provider value={{user:effective,authReady:ready,isAuthenticated:!!effective,login:async data=>set(data.user),logout:()=>set(null)}}>{children}</AuthContext.Provider>}
@@ -865,6 +869,29 @@ try{
   console.log('OK detalhe real fora de setor: '+(regular?'usuario OBRA sem escrita.':'SUPERADMIN OBRA pode alterar status/enviar; contexto antigo nao bloqueia.'));
  }
  // Controles reais do comparativo dentro de CompraEtapas, sem fieldset global.
+ for(const caso of['somente-encerrar','gerar-pedidos','leitura','vazio','terminal','negado']){
+  const page=await browser.newPage();const audit=await install(page);
+  await page.route('**/api/compras/solicitacoes/8/workspace-cotacao',r=>r.fulfill({json:{
+   solicitacao:{id:8,status:caso==='terminal'?'ENCERRADO':'PENDENTE',obra:{id:7,nome:'Obra QA'},
+    fornecedores:[{id:77,fornecedor_id:77,nome:'Fornecedor QA',status:'RESPONDIDO'}],itens:[],itensManuais:[]},
+   comparativo:{itens:caso==='vazio'?[]:[{id:5,item_tipo:'CADASTRADO',item_referencia_id:5,nome:'Areia QA',unidade:'m3',
+    quantidade:15,saldo_disponivel:15,respostas:[]}]}
+  }}));
+  await page.goto(base+'/solicitacoes/90?itens&cotacoesqa&comprasqa&granularqa'
+   +(caso==='gerar-pedidos'?'&gerarpedidosqa':'')+(caso==='leitura'?'&readonlyqa':'')+(caso==='negado'?'&negadoqa':''));
+  await page.getByRole('button',{name:'Cotação',exact:true}).click();
+  const panel=page.locator('.cotacao-comparativo-panel');await panel.waitFor();
+  const encerrar=panel.getByRole('button',{name:'Encerrar sem pedido',exact:true});
+  const gerar=panel.getByRole('button',{name:'Gerar pedidos selecionados',exact:true});
+  assert.equal(await encerrar.count(),caso==='negado'?0:1);
+  assert.equal(await gerar.count(),caso==='gerar-pedidos'?1:0,'Encerrar sem pedido nao concede gerar pedidos');
+  if(caso!=='negado'){
+   if(['leitura','vazio','terminal'].includes(caso)){assert(await encerrar.isDisabled());}
+   else{assert(await encerrar.isEnabled());await encerrar.click();await page.getByRole('dialog').waitFor();}
+  }
+  assert.deepEqual(audit.writes,[]);assert.deepEqual(audit.errors,[]);await page.close();
+  console.log('OK comparativo usuario Compras granular: '+caso+'; sem ampliacao de escrita.');
+ }
  for(const width of[1366,390]){
   for(const readonly of[false,true]){
    const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);

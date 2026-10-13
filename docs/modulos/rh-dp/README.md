@@ -289,10 +289,13 @@ apuracao gerencial legada. Nao altera flags de etapas nem titulos de outros flux
 ## Ticket de beneficio
 
 - o DP seleciona colaboradores ativos com valor de ticket configurado e ainda sem lote na competencia;
-- o lote calcula o total, recebe fornecedor, categoria, vencimento e boleto e cria a solicitacao normal para o fluxo do GEO;
-- o custo permanece associado a lotacao de cada colaborador para rateio gerencial;
+- o lote calcula o total e permite escolher Boleto ou Pix, mantendo categoria, vencimento e conferencia normal pelo GEO;
+- Boleto exige fornecedor e arquivo: gera um titulo para o fornecedor com rateio gerencial pelas lotacoes e anexo `BOLETO`, disponivel no modal de documentos da fila;
+- Pix exige revisao explicita das chaves dos colaboradores selecionados e gera um titulo e snapshot de favorecido por colaborador, com sua empresa e lotacao. A chave revisada nao altera o cadastro nem pagamentos anteriores;
 - a operacao exige `rh_dp.ticket.gerar`, chave de idempotencia e protecao contra multiplos envios;
-- o status do ticket e derivado do titulo financeiro: pendente, pago ou cancelado conforme o estado efetivo da obrigacao.
+- o status individual usa o titulo vinculado ao item; lotes antigos continuam consultando o titulo do lote. A liberacao GEO abrange todos os titulos; cancelar/rejeitar nao cancela o lote quando algum titulo ja recebeu baixa;
+- a migration `202610130001_rh_ticket_pix_colaboradores.js` acrescenta apenas colunas anulaveis e indice, sem backfill de registros. Deve preceder a atualizacao do backend; nesta entrega foi somente preparada e testada com adaptadores isolados;
+- testes locais: `backend/scripts/validarRhTicketPix.js` e `frontend/scripts/validarRhTicketPix.mjs`, alem das regressoes de pagamento, escopo RH/DP, Pix, fila e contatos. Handoff: `docs/handoffs/2026-10-13-ticket-boleto-pix-colaboradores.md`.
 
 ## Eventos recorrentes
 

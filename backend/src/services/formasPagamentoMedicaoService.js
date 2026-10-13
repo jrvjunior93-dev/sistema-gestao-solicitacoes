@@ -80,7 +80,7 @@ async function listarFormasDosFluxos({ transaction } = {}) {
       where: { ativo: true },
       attributes: [
         'id', 'nome', 'codigo', 'tipo', 'gera_boleto',
-        'permite_parcelamento', 'exige_cartao'
+        'permite_parcelamento', 'exige_cartao', 'gera_fatura'
       ],
       order: [['nome', 'ASC']],
       transaction
@@ -99,7 +99,8 @@ async function listarFormasDosFluxos({ transaction } = {}) {
       tipo: f.tipo,
       gera_boleto: Boolean(f.gera_boleto),
       permite_parcelamento: f.permite_parcelamento !== false,
-      exige_cartao: Boolean(f.exige_cartao)
+      exige_cartao: Boolean(f.exige_cartao),
+      gera_fatura: Boolean(f.gera_fatura)
     })),
     liberados,
     // `todas: true` diz a tela de configuracao que nada foi escolhido ainda — diferente de

@@ -34,10 +34,11 @@ export function payloadInstrumentoFila(draft, formas) {
   return result;
 }
 
-export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos, conta, disabled, onChange, podeCadastrarCheque = false }) {
-  const [edicaoParcelas, setEdicaoParcelas] = useWorkspaceState(`fila:parcelasCheque:${row.id}`, null);
-  useWorkspaceWork(Boolean(edicaoParcelas), false, `fila:parcelasChequeWork:${row.id}`);
-  const [edicaoCheque, setEdicaoCheque] = useWorkspaceState(`fila:chequeEditor:${row.id}`, null);
+export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos, conta, disabled, onChange, podeCadastrarCheque = false,
+  editorKey = row.id, autoAbrirCheque = true }) {
+  const [edicaoParcelas, setEdicaoParcelas] = useWorkspaceState(`fila:parcelasCheque:${editorKey}`, null);
+  useWorkspaceWork(Boolean(edicaoParcelas), false, `fila:parcelasChequeWork:${editorKey}`);
+  const [edicaoCheque, setEdicaoCheque] = useWorkspaceState(`fila:chequeEditor:${editorKey}`, null);
   const chequeDraft = edicaoCheque?.campos || null;
   const conflitoCheque = Boolean(edicaoCheque && edicaoCheque.revisao !== revisaoFila(row));
   function setChequeDraft(update) {
@@ -50,7 +51,7 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
   const chequeFormRef = useRef(null);
   const chequeOpen = Boolean(chequeDraft);
   useEffect(() => { if (chequeOpen) chequeFormRef.current?.querySelector('input')?.focus(); }, [chequeOpen]);
-  useWorkspaceWork(Boolean(chequeDraft), false, `fila:chequeWork:${row.id}`);
+  useWorkspaceWork(Boolean(chequeDraft), false, `fila:chequeWork:${editorKey}`);
   const { formas = [], cartoes = [], cheques = [] } = instrumentos;
   const forma = formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
   const tipo = tipoInstrumentoFila(forma);
@@ -62,6 +63,7 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
   }
   function confirmarCheque(event) {
     event.preventDefault();
+    event.stopPropagation();
     if (disabled || conflitoCheque || !chequeDraft) return;
     if (!chequeDraft.cheque_numero.trim() || !chequeDraft.cheque_emitente.trim()) {
       setChequeError('Informe o número e o emitente do cheque.'); return;
@@ -84,7 +86,7 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
           onChange({ forma_pagamento_id: event.target.value, conta_bancaria_id: '',
           parcelas_cheque: [], cartao_id: '', usar_cheque_terceiro: false, cheque_terceiro_id: '', cheque_numero: '', cheque_emitente: '',
           titular_documento: '', cheque_banco: '', cheque_agencia: '', cheque_conta: '', data_emissao: '', data_vencimento: '' });
-          if (tipoInstrumentoFila(formas.find(item => Number(item.id) === Number(event.target.value))) === 'CHEQUE') abrirCheque({});
+          if (autoAbrirCheque && tipoInstrumentoFila(formas.find(item => Number(item.id) === Number(event.target.value))) === 'CHEQUE') abrirCheque({});
           else setChequeDraft(null);
         }}>
         <option value="">Selecione</option>{formas.map(item => <option key={item.id} value={item.id}>{item.nome}</option>)}
@@ -150,7 +152,7 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
         <strong>Cheque próprio · {label}</strong>
         <button type="button" className="btn btn-outline btn-sm" onClick={() => setChequeDraft(null)}>Cancelar</button>
       </header>
-      <form ref={chequeFormRef} id={`cheque-fila-${row.id}`} className="p-4" onSubmit={confirmarCheque}>
+      <form ref={chequeFormRef} id={`cheque-fila-${editorKey}`} className="p-4" onSubmit={confirmarCheque}>
         {conflitoCheque && <div role="alert" className="mb-3 text-sm text-[var(--sem-warning)]">
           O saldo, status ou instrumento mudou. Os dados digitados foram preservados, mas não podem ser confirmados.
           <button type="button" className="btn btn-outline btn-sm ml-2" onClick={() => abrirCheque()}>Descartar edição do cheque</button>
@@ -163,7 +165,7 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
       </form>
       <footer data-modal="rodape" className="flex justify-end gap-2 border-t border-[var(--c-border)] p-4">
         <button type="button" className="btn btn-outline btn-sm" onClick={() => setChequeDraft(null)}>Cancelar</button>
-        <button type="submit" form={`cheque-fila-${row.id}`} className="btn btn-primary btn-sm" disabled={conflitoCheque}>Confirmar dados do cheque</button>
+        <button type="submit" form={`cheque-fila-${editorKey}`} className="btn btn-primary btn-sm" disabled={conflitoCheque}>Confirmar dados do cheque</button>
       </footer>
     </OverlayModal>}
   </div>;
