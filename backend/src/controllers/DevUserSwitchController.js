@@ -1,4 +1,5 @@
 const { Setor, User } = require('../models');
+const { env } = require('../config/env');
 const AuthController = require('./AuthController');
 const {
   buildAuthToken,
@@ -117,7 +118,7 @@ module.exports = {
         target_id: Number(target.id),
         started_at: startedAt
       };
-      await registrarEventoSeguranca({
+      const event = await registrarEventoSeguranca({
         req,
         usuarioId: actor.id,
         tipoEvento: 'DEV_USER_SWITCH_STARTED',
@@ -127,6 +128,9 @@ module.exports = {
         descricao: 'SUPERADMIN iniciou sessao de teste como outro usuario',
         metadata: { actor_id: actor.id, target_id: target.id }
       });
+      if (env.deploymentEnvironment === 'production' && !event) {
+        return res.status(503).json({ error: 'Nao foi possivel auditar a troca de usuario. Nenhuma sessao assumida foi emitida.' });
+      }
 
       return issueSession(res, target, {
         id: target.id,

@@ -27,6 +27,24 @@ for (const deploymentEnvironment of ['', 'production', 'main', 'homologacao', 's
 }
 
 assert.strictEqual(isDevUserSwitchRuntimeEnabled({
+  deploymentEnvironment: 'production', productionUserSwitchEnabled: true,
+  devUserSwitchEnabled: false
+}), true, 'production requer flag propria explicita');
+for (const deploymentEnvironment of ['', 'main', 'homologacao', 'staging', 'development']) {
+  assert.strictEqual(isDevUserSwitchRuntimeEnabled({
+    deploymentEnvironment, productionUserSwitchEnabled: true, devUserSwitchEnabled: false
+  }), false, 'flag de producao nao habilita ambientes diferentes');
+}
+assert.strictEqual(isDevUserSwitchRuntimeEnabled({
+  deploymentEnvironment: 'production', productionUserSwitchEnabled: false, devUserSwitchEnabled: true
+}), false, 'flag dev nao contorna kill switch de producao');
+for (const productionUserSwitchEnabled of [undefined, null, 'true', 1]) {
+  assert.strictEqual(isDevUserSwitchRuntimeEnabled({
+    deploymentEnvironment: 'production', productionUserSwitchEnabled
+  }), false, 'runtime requer booleano explicitamente habilitado');
+}
+
+assert.strictEqual(isDevUserSwitchRuntimeEnabled({
   deploymentEnvironment: 'development',
   devUserSwitchEnabled: false
 }), false, 'ambiente development sem flag deve permanecer bloqueado');
@@ -47,4 +65,4 @@ const routes = fs.readFileSync(path.resolve(__dirname, '../src/routes.js'), 'utf
 assert.match(routes, /auth\/dev-user-switch\/assume', requireMfaCompletion, requireCustosRecebiveisCompletion/);
 assert.match(routes, /configuracoes\/dev-user-switch', permit\(\['SUPERADMIN'\]\)/);
 
-console.log('Troca rapida de usuarios exclusiva de desenvolvimento validada com sucesso.');
+console.log('Troca de usuarios: flags dev/producao independentes e guardas validadas.');
