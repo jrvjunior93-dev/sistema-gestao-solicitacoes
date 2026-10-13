@@ -130,6 +130,7 @@ db.FormaPagamentoFinanceira = require('./FormaPagamentoFinanceira')(sequelize, S
 db.CartaoFinanceiro = require('./CartaoFinanceiro')(sequelize, Sequelize);
 db.FaturaCartaoFinanceiro = require('./FaturaCartaoFinanceiro')(sequelize, Sequelize);
 db.FaturaCartaoTitulo = require('./FaturaCartaoTitulo')(sequelize, Sequelize);
+  db.PagamentoFilaLiquidacao = require('./PagamentoFilaLiquidacao')(sequelize, Sequelize);
 db.TituloFinanceiro = require('./TituloFinanceiro')(sequelize, Sequelize);
 db.TituloRenegociacao = require('./TituloRenegociacao')(sequelize, Sequelize);
 db.TituloRenegociacaoAlocacao = require('./TituloRenegociacaoAlocacao')(sequelize, Sequelize);

@@ -791,7 +791,10 @@ export default function FinanceiroFilaPagamentos() {
     return accounts.find((account) => Number(account.id) === id) || null;
   }
 
-  function validateRows(targetRows, dados = drafts) {
+  function validateRows(targetRows, dados = drafts, instrumentosLote = null) {
+    if (instrumentosLote && instrumentosLote.componentes.reduce((sum, item) => sum + valorEmCentavos(item.valor_pago), 0)
+      !== targetRows.reduce((sum, row) => sum + valorEmCentavos(dados[row.id]?.valor_pago), 0)) return {
+        mensagem: 'O total do lote mudou.', correcao: 'Confira novamente os instrumentos compartilhados e seus valores.', filaId: targetRows[0]?.id };
     for (const row of targetRows) {
       if (edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)) {
         return { mensagem: 'O saldo ou status mudou desde a edição.',
@@ -801,11 +804,15 @@ export default function FinanceiroFilaPagamentos() {
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
       if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
       const tipo = tipoInstrumentoFila(forma);
-      if (tipo === 'CARTAO' && !draft.cartao_id) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id, campo: 'forma_pagamento_id' };
-      if (tipo === 'CHEQUE' && !draft.parcelas_cheque?.length && (draft.usar_cheque_terceiro ? !draft.cheque_terceiro_id : (!draft.cheque_numero || !draft.cheque_emitente))) {
+      if (!instrumentosLote && tipo === 'CARTAO' && !draft.cartao_id && !draft.parcelas_cartao?.length) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id, campo: 'forma_pagamento_id' };
+      if (!instrumentosLote && tipo === 'CARTAO' && draft.parcelas_cartao?.length && (draft.parcelas_cartao.some(item =>
+        !(Number(item.valor_pago) > 0) || !instrumentos.cartoes.some(card => Number(card.id) === Number(item.cartao_id)))
+        || draft.parcelas_cartao.reduce((sum, item) => sum + valorEmCentavos(item.valor_pago), 0) !== valorEmCentavos(draft.valor_pago))) return {
+        mensagem: 'Confira os cartões e seus valores.', correcao: 'A soma das partes deve ser igual ao valor pago do título.', filaId: row.id, campo: 'forma_pagamento_id' };
+      if (!instrumentosLote && tipo === 'CHEQUE' && !draft.parcelas_cheque?.length && (draft.usar_cheque_terceiro ? !draft.cheque_terceiro_id : (!draft.cheque_numero || !draft.cheque_emitente))) {
         return { mensagem: 'Informe o cheque usado no pagamento.', correcao: 'Selecione um cheque da carteira ou preencha número e emitente do cheque próprio.', filaId: row.id, campo: 'forma_pagamento_id' };
       }
-      if (tipo === 'CHEQUE' && draft.parcelas_cheque?.length && (draft.parcelas_cheque.some(item =>
+      if (!instrumentosLote && tipo === 'CHEQUE' && draft.parcelas_cheque?.length && (draft.parcelas_cheque.some(item =>
         !(Number(item.valor_pago) > 0) || (item.usar_cheque_terceiro ? !item.cheque_terceiro_id : !item.cheque_numero || !item.cheque_emitente))
         || draft.parcelas_cheque.reduce((sum, item) => sum + valorEmCentavos(item.valor_pago), 0) !== valorEmCentavos(draft.valor_pago))) {
         return { mensagem: 'Confira os cheques e seus valores.', correcao: 'A soma dos cheques deve ser igual ao valor pago do título.', filaId: row.id, campo: 'forma_pagamento_id' };
@@ -822,6 +829,8 @@ export default function FinanceiroFilaPagamentos() {
         return { mensagem: 'O valor pago mais o desconto deve superar juros e multa.', correcao: 'Confira o total pago, o desconto e os encargos em reais.', filaId: row.id, campo: 'valor_pago' };
       }
       const tipoDivergencia = tipoDivergenciaPagamento(row, draft);
+      if (instrumentosLote && tipoDivergencia === 'ACIMA_SALDO') return {
+        mensagem: 'Um pagamento compartilhado está acima do saldo.', correcao: 'Ajuste o título antes de usar instrumentos compartilhados.', filaId: row.id, campo: 'valor_pago' };
       if (tipoDivergencia && !String(draft.motivo || '').trim()) {
         return { mensagem: `O valor do título ${row.titulo?.codigo || row.id} é divergente e está sem justificativa.`, correcao: mensagemJustificativaDivergencia(tipoDivergencia), filaId: row.id, campo: 'motivo' };
       }
@@ -887,8 +896,8 @@ export default function FinanceiroFilaPagamentos() {
     return executarOperacao(() => performSettle(targetRows));
   }
 
-  async function performSettle(targetRows, dados = draftsRef.current) {
-    const problem = validateRows(targetRows, dados);
+  async function performSettle(targetRows, dados = draftsRef.current, instrumentosLote = null) {
+    const problem = validateRows(targetRows, dados, instrumentosLote);
     if (problem) {
       setBaixaMassa(null);
       setErroBaixa({ ...problem, lote: targetRows.length > 1 });
@@ -897,7 +906,7 @@ export default function FinanceiroFilaPagamentos() {
     const total = targetRows.reduce((sum, row) => sum + Number(dados[row.id]?.valor_pago || 0), 0);
     const { ok } = await confirmar({
       titulo: targetRows.length === 1 ? 'Registrar baixa deste título?' : 'Registrar baixas selecionadas?',
-      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. O comprovante pode ser anexado depois; a baixa sem PDF será listada em Pendentes de comprovante. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
+      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. ${instrumentosLote ? 'Conjunto único de instrumentos rateado entre os títulos; o estorno será do grupo completo. ' : ''}O comprovante pode ser anexado depois; a baixa sem PDF será listada em Pendentes de comprovante. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
       rotuloConfirmar: targetRows.length === 1 ? 'Registrar baixa' : 'Registrar baixas',
       destrutiva: false
     });
@@ -908,7 +917,7 @@ export default function FinanceiroFilaPagamentos() {
     try {
       const result = await registrarBaixasFilaPagamentos(targetRows.map((row) => ({
         fila_id: row.id,
-        ...payloadInstrumentoFila(dados[row.id], instrumentos.formas),
+        ...(instrumentosLote ? { forma_pagamento_id: instrumentosLote.forma_pagamento_id } : payloadInstrumentoFila(dados[row.id], instrumentos.formas)),
         data_baixa: dados[row.id].data_baixa,
         conta_bancaria_id: Number(dados[row.id].conta_bancaria_id),
         valor_pago: Number(dados[row.id].valor_pago),
@@ -916,7 +925,7 @@ export default function FinanceiroFilaPagamentos() {
         juros: Number(dados[row.id].juros || 0),
         multa: Number(dados[row.id].multa || 0),
         motivo: String(dados[row.id].motivo || '').trim() || undefined
-      })), key);
+      })), key, instrumentosLote);
       avisar.sucesso(`${result?.baixados || 0} baixa(s) registrada(s). ${result?.divergentes || 0} divergência(s) sinalizada(s).`);
       if (result?.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante. Anexe os PDFs pelo card Pendentes de comprovante.`);
       setSelected([]);
@@ -1006,14 +1015,15 @@ export default function FinanceiroFilaPagamentos() {
   async function estornar(row) {
     if (!canResolve || !hasPermissao(user, 'financeiro.titulos.estornar') || row.somente_consulta) return;
     await executarOperacao(async () => {
-      const { ok, texto } = await confirmar({ titulo: `Estornar baixa de ${row.titulo?.codigo || row.id}?`,
-        mensagem: 'Os movimentos deste pagamento serão estornados, cheques de terceiros voltarão à carteira e o saldo retornará à fila. O histórico e os comprovantes anteriores serão preservados.',
+      const grupo = row.instrumento_pagamento_json?.liquidacao_id;
+      const { ok, texto } = await confirmar({ titulo: grupo ? 'Estornar o grupo completo de pagamento?' : `Estornar baixa de ${row.titulo?.codigo || row.id}?`,
+        mensagem: `${grupo ? 'Este pagamento compartilha instrumentos: TODOS os títulos do grupo serão estornados juntos, não apenas esta linha. ' : ''}Os movimentos serão estornados, cheques de terceiros voltarão à carteira e os saldos retornarão à fila. O histórico e os comprovantes anteriores serão preservados. Faturas já processadas impedem o estorno.`,
         rotuloConfirmar: 'Estornar e devolver para fila', destrutiva: true,
         campo: { rotulo: 'Motivo do estorno', obrigatorio: true, multilinha: true } });
       if (!ok) return;
       try {
         await estornarBaixaFilaPagamento(row.id, String(texto || '').trim(), idempotencyKey('fila-estorno'));
-        avisar.sucesso('Baixa estornada. Saldo devolvido para a fila de pagamentos.');
+        avisar.sucesso(grupo ? 'Grupo completo estornado. Saldos devolvidos para a fila de pagamentos.' : 'Baixa estornada. Saldo devolvido para a fila de pagamentos.');
         limparEdicoes([row.id]); setSelected([]); await load();
       } catch (error) { avisar.erro(error?.message || 'Não foi possível estornar a baixa. Nenhum movimento foi alterado.'); }
     });
@@ -1467,11 +1477,11 @@ export default function FinanceiroFilaPagamentos() {
             ...patch.pagamentos[row.id], conta_bancaria_id: patch.conta_bancaria_id, data_baixa: patch.data_baixa }]));
           if (atuais.some(row => { const card = instrumentos.cartoes.find(item => Number(item.id) === Number(dados[row.id]?.cartao_id));
             return card && Number(card.conta_bancaria_id) !== patch.conta_bancaria_id; })) return 'Há cartão vinculado a outra conta. Separe os títulos por conta pagadora.';
-          const problema = validateRows(atuais, dados);
+          const problema = validateRows(atuais, dados, patch.instrumentos_lote);
           if (problema) return `${atuais.find(row => row.id === problema.filaId)?.titulo?.codigo || ''}: ${problema.mensagem} ${problema.correcao}`;
           atuais.forEach(row => updateDraft(row.id, { ...patch.pagamentos[row.id],
             conta_bancaria_id: patch.conta_bancaria_id, data_baixa: patch.data_baixa }));
-          await executarOperacao(() => performSettle(atuais, draftsRef.current));
+          await executarOperacao(() => performSettle(atuais, dados, patch.instrumentos_lote));
           return null;
         }} />}
       {comprovantesOpen && canImportReceipts && filaAutorizada ? (

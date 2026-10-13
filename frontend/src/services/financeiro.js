@@ -155,11 +155,11 @@ export async function enviarTitulosFilaPagamentos(tituloIds, idempotencyKey) {
   return parseJson(response, 'Erro ao enviar os titulos para pagamento');
 }
 
-export async function registrarBaixasFilaPagamentos(itens, idempotencyKey) {
+export async function registrarBaixasFilaPagamentos(itens, idempotencyKey, instrumentosLote) {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/baixar`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ itens, idempotency_key: idempotencyKey })
+    body: JSON.stringify({ itens, idempotency_key: idempotencyKey, instrumentos_lote: instrumentosLote || undefined })
   });
   return parseJson(response, 'Erro ao registrar as baixas da fila');
 }

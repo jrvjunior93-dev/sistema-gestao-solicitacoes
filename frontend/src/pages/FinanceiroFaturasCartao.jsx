@@ -76,6 +76,7 @@ function contaLabel(conta) {
 }
 
 function getValorAberto(fatura) {
+  if (fatura?.compras_rateadas?.length) return String(fatura.status).toUpperCase() === 'PAGA' ? 0 : Number(fatura.valor_total || 0);
   return (fatura?.titulos || []).reduce((total, titulo) => {
     if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase())) return total;
     return total + Number(titulo.valor_saldo || titulo.valor_original || 0);
@@ -344,7 +345,8 @@ export default function FinanceiroFaturasCartao() {
               render: (fatura) => <span className={statusBadgeClasse(fatura.status)}>{fatura.status || 'ABERTA'}</span>
             },
             { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (fatura) => <span className="font-semibold">{formatCurrency(fatura.valor_total)}</span> },
-            { id: 'titulos', titulo: 'Títulos', tipo: 'numero', render: (fatura) => (fatura.titulos || []).length }
+            { id: 'titulos', titulo: 'Títulos', tipo: 'numero', render: (fatura) => new Set([
+              ...(fatura.titulos || []).map(item => item.id), ...(fatura.compras_rateadas || []).map(item => item.titulo_financeiro_id)]).size }
           ]}
           itens={faturasVisiveis}
           carregando={loading}

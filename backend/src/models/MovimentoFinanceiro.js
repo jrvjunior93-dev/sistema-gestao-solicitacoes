@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       primaryKey: true,
       autoIncrement: true
     },
+    fila_liquidacao_id: { type: DataTypes.INTEGER, allowNull: true },
     titulo_financeiro_id: {
       type: DataTypes.INTEGER,
       allowNull: true

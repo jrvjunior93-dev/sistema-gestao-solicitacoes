@@ -1,5 +1,43 @@
 # Modulo FINANCEIRO
 
+## Fila: origem explicita, instrumentos compartilhados e multicartao - 2026-10-13
+
+- Escolher forma Cheque nao presume cheque proprio nem abre seu editor.
+  Origem inicia vazia; escolher Proprio abre dados, Carteira mostra somente
+  cheques disponiveis da empresa. Novas linhas de cheques tambem exigem origem.
+  Dados de cheques ja confirmados continuam reconhecidos por compatibilidade.
+- Modal em massa permite selecionar um cartao junto de Aplicar forma aos
+  selecionados. Exige conta vinculada ao aplicar um cartao; tipos credito/debito
+  filtrados pelo mesmo helper das linhas. Edicao por titulo continua disponivel.
+- Aplicar Cheque aos selecionados abre o editor para um conjunto unico que
+  paga o total do lote. Quantidade gera campos automaticamente; origem deve
+  ser escolhida em cada linha. Terceiro precisa existir na carteira e seu
+  valor integral e utilizado uma unica vez, mesmo pagando varios titulos.
+- Mais de um cartao permite informar cartao e valor por parte, por titulo
+  ou pelo total do lote. A soma deve fechar exatamente em centavos. Cada
+  cartao usa sua conta vinculada; credito entra apenas com sua parte na
+  fatura e debito registra a saida na respectiva conta. O titulo conserva
+  seus vinculos anteriores, sem multiplicar a compra nas faturas.
+- Backend aceita instrumentos_lote no endpoint existente de baixa em massa
+  ou parcelas_cartao por item. Grupo exige chave de idempotencia, transacao,
+  locks e validacao dos instrumentos; falha reverte todas as partes. Limites:
+  200 titulos, 60 cheques, 20 cartoes e 1000 movimentos por grupo. Pagamento
+  compartilhado acima do saldo ou parte sem principal positivo e recusado.
+- Estornar uma linha de grupo estorna o conjunto inteiro, com aviso previo.
+  Exige as permissoes/escopos existentes para todos os titulos; reabre a fila
+  preservando historico/autorizacao valida e devolve terceiros uma unica vez.
+  Fatura nao aberta ou cheque com processamento posterior bloqueia o grupo.
+  Estorno individual de movimento pertencente ao grupo e bloqueado.
+- Migration aditiva 202610130002_fila_liquidacao_rateada.js cria o grupo e
+  referencia nullable no movimento, sem DML/backfill de registros de negocio.
+  Foi preparada/testada em simulacao, NAO aplicada. Schema deve preceder o
+  backend atualizado; frontend somente apos backend compativel. Nenhuma
+  operacao na EC2, commit/push ou mudanca de visibilidade nesta tarefa.
+- Testes isolados de rateio, servicos, faturas, estorno/ACL e UI desktop/mobile
+  aprovados, incluindo navegacao e build. MySQL real, concorrencia entre
+  processos e homologacao financeira em dev continuam como gate de deploy.
+  [Handoff](../../handoffs/2026-10-13-fila-origem-instrumentos-massa.md).
+
 ## Fila: modal somente boletos da solicitacao - 2026-10-13
 
 - Modal de arquivos da solicitacao lista apenas anexos ativos classificados

@@ -3,6 +3,9 @@ import ChequePagamentoFields from './ChequePagamentoFields';
 import { Link } from 'react-router-dom';
 import { useRef, useState } from 'react';
 
+const origemCheque = item => item.origem_cheque ||
+  (item.usar_cheque_terceiro || item.cheque_terceiro_id ? 'CARTEIRA' : item.cheque_numero ? 'PROPRIO' : '');
+
 export default function ChequesParceladosFilaModal({ label, parcelas, onChange, onFechar, onConfirmar,
   total, conta, cheques, conflito, podeCadastrar }) {
   const [erro, setErro] = useState('');
@@ -17,9 +20,9 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
     setQuantidade(value);
     if (value === '') { setErro(''); return; }
     const count = Number(value);
-    if (!Number.isInteger(count) || count < 1 || count > 60) { setErro('Informe de 1 a 60 cheques por título.'); return; }
+    if (!Number.isInteger(count) || count < 1 || count > 60) { setErro('Informe de 1 a 60 cheques por pagamento.'); return; }
     parcelas.forEach((item, index) => { reservaParcelas.current[index] = item; });
-    const next = Array.from({ length: count }, (_, index) => reservaParcelas.current[index] || { valor_pago: '', usar_cheque_terceiro: false });
+    const next = Array.from({ length: count }, (_, index) => reservaParcelas.current[index] || { valor_pago: '', origem_cheque: '', usar_cheque_terceiro: false });
     next.forEach((item, index) => { reservaParcelas.current[index] = item; });
     onChange(next);
     setErro('');
@@ -29,11 +32,12 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
     event.stopPropagation();
     if (conflito) return;
     if (Number(quantidade) !== parcelas.length || !Number.isInteger(Number(quantidade)) || Number(quantidade) < 1 || Number(quantidade) > 60) {
-      setErro('Informe de 1 a 60 cheques por título.'); return;
+      setErro('Informe de 1 a 60 cheques por pagamento.'); return;
     }
     if (soma !== Math.round(Number(total) * 100) || parcelas.some(item => !(Number(item.valor_pago) > 0))) {
-      setErro('A soma dos cheques deve ser igual ao valor pago do título.'); return;
+      setErro('A soma dos cheques deve ser igual ao total deste pagamento.'); return;
     }
+    if (parcelas.some(item => !origemCheque(item))) { setErro('Selecione a origem de cada cheque.'); return; }
     const ids = parcelas.filter(item => item.usar_cheque_terceiro).map(item => String(item.cheque_terceiro_id));
     if (new Set(ids).size !== ids.length) { setErro('Escolha cheques diferentes para cada parcela.'); return; }
     onConfirmar(parcelas);
@@ -69,9 +73,10 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
                 onChange={event => alterar(index, { valor_pago: event.target.value })} />
             </label>
             <label className="text-sm">Origem do cheque {index + 1}
-              <select aria-label={`Origem do cheque ${index + 1}`} className="input w-full" value={item.usar_cheque_terceiro ? 'CARTEIRA' : 'PROPRIO'}
+              <select aria-label={`Origem do cheque ${index + 1}`} required className="input w-full" value={origemCheque(item)}
                 onChange={event => onChange(parcelas.map((parcela, i) => i === index ? { valor_pago: parcela.valor_pago,
-                  usar_cheque_terceiro: event.target.value === 'CARTEIRA' } : parcela))}>
+                  origem_cheque: event.target.value, usar_cheque_terceiro: event.target.value === 'CARTEIRA' } : parcela))}>
+                <option value="">Selecione a origem</option>
                 <option value="PROPRIO">Cheque próprio</option><option value="CARTEIRA">Cheque de terceiro — carteira</option>
               </select>
             </label>
@@ -84,7 +89,7 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
               {cheques.filter(row => !row.empresa_id || Number(row.empresa_id) === Number(conta?.empresa_id)).map(row =>
                 <option key={row.id} value={row.id}>{row.codigo} · {row.numero_cheque} · {row.titular_nome} · {money(row.valor)}</option>)}
             </select>
-          </label> : <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
+          </label> : origemCheque(item) === 'PROPRIO' && <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
         </section>)}
       </fieldset>
       <p className="text-xs text-[var(--c-muted)]">Cheques de terceiros precisam estar cadastrados e disponíveis na carteira. O valor de cada um deve ser usado integralmente.

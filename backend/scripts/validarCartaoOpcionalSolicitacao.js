@@ -70,9 +70,10 @@ const dependencies = {
   crypto: require('node:crypto'),
   sequelize: { Op: new Proxy({}, { get: (_, key) => Symbol.for(key) }) },
   '../models': models,
-  './authorizationService': { canAccessFinanceiro: async () => true, getFinanceiroObraScopeIds: async () => null },
+  './authorizationService': { canAccessFinanceiro: async () => true, getFinanceiroObraScopeIds: async user => user.scope ?? null },
   './apropriacaoSelecaoService': {},
   './faturaCartaoFinanceiroService': {
+    recalcularFaturaCartao: async () => {},
     obterOuCriarFaturaCartao: async (data) => { const fatura = { id: state.faturas.length + 1, ...data }; state.faturas.push(fatura); return { fatura }; },
     vincularTituloAFatura: async ({ titulo, fatura, leituraCorrente }) => {
       fatura.leituraCorrente = leituraCorrente;
@@ -84,7 +85,7 @@ const dependencies = {
   '../constants/intercompany': require('../src/constants/intercompany'),
   './tituloIntercompanyCartaoHelper': require('../src/services/tituloIntercompanyCartaoHelper'),
   './solicitacaoFinanceiroStatusService': { sincronizarStatusSolicitacaoPorBaixaTitulos: async () => {} },
-  './conciliacaoEstornoService': {},
+  './conciliacaoEstornoService': { reabrirConciliacoesPorMovimentos: async () => [] },
   './tituloBloqueioRetornoObraService': require('../src/services/tituloBloqueioRetornoObraPolicy'),
   './rhPagamentoRevisaoPolicy': require('../src/services/rhPagamentoRevisaoPolicy'),
   '../utils/tituloFinanceiroStatusFilter': {},
@@ -95,6 +96,10 @@ dependencies['./solicitacaoFavorecidosService'] = { listarFavorecidos: async () 
 dependencies['./adiantamentoService'] = { ehAdiantamento: async () => false };
 dependencies['./instrucaoFinanceiraFavorecidoService'] = { anexarInstrucoes: async () => {} };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
+// Pontos substituiveis pela suite de rateio: servico de titulo permanece real.
+const faturaMocks = dependencies['./faturaCartaoFinanceiroService'];
+dependencies['./faturaCartaoFinanceiroService'] = Object.fromEntries(Object.keys(faturaMocks)
+  .map(key => [key, (...args) => faturaMocks[key](...args)]));
 const saldoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/pagamentoFilaSaldoService.js'), 'utf8'), {
   module: saldoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia nao isolada: ${id}`); return dependencies[id]; }
@@ -387,4 +392,6 @@ async function main() {
   console.log('Cartao opcional na solicitacao: aberto sem cartao, quitacao com cartao, parcelas e baixa obrigatoria validados sem banco real.');
   console.log('Fila + baixa reais: juros/multa separados, edicao e aprovacao de divergencia, credito/fatura, debito, PIX, cheques, replay e rollback. Banco simulado.');
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+module.exports = { state, models, dependencies, queueDependencies, isolated, queueModule,
+  registro, formas, cartoes, conta, solicitacao, req, reset, gerar, pagamento, colocarNaFila, itemFila, faturaMocks };
+if (require.main === module) main().catch((error) => { console.error(error); process.exitCode = 1; });

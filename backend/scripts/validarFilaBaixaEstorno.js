@@ -48,7 +48,11 @@ async function transaction(callback) {
 const models = {
   sequelize: { transaction },
   PagamentoManualFilaItem: {
-    findByPk: async (id, options) => { txRequired(options); assert(options.lock); return filas.find(row => row.id === Number(id)); },
+    findByPk: async (id, options) => {
+      if (options?.attributes) assert.equal(JSON.stringify(options.attributes), '["instrumento_pagamento_json"]');
+      else { txRequired(options); assert(options.lock); }
+      return filas.find(row => row.id === Number(id));
+    },
     findAll: async options => { txRequired(options); return filas.filter(row => options.where.id[Op.in].includes(row.id)); },
     create: async (data, options) => { txRequired(options); const row = registro({ id: filas.length + 1, ...data }); filas.push(row); return row; }
   },

@@ -28,7 +28,7 @@ const models = {
     if (options.lock) locks.push('fatura'); return fatura;
   } }
 };
-const deps = { '../models': models, './authorizationService': {}, './financeiroCaixaSessionHelper': {},
+const deps = { sequelize: { Op: { ne: Symbol('ne') } }, '../models': models, './authorizationService': {}, './financeiroCaixaSessionHelper': {},
   './securityLogService': {}, '../constants/intercompany': {}, './solicitacaoFinanceiroStatusService': {}, './comercialService': {} };
 const mod = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/faturaCartaoFinanceiroService.js'), 'utf8'), {
@@ -50,6 +50,9 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/fatu
   await mod.exports.vincularTituloAFatura({ titulo: { id: 2, update: async () => {} }, fatura,
     transaction: input.transaction, leituraCorrente: true });
   assert.equal(fatura.valor_total, 413, 'Fatura inclui encargos da compra sem aumentar principal do titulo');
+  encargosFatura.push({ fila_liquidacao_id: 7, valor_quitacao: 123.45, juros: 5, multa: 0, desconto: 0 });
+  await mod.exports.recalcularFaturaCartao(fatura.id, { transaction: input.transaction, leituraCorrente: true });
+  assert.equal(fatura.valor_total, 536.45, 'Parte rateada entra uma vez, sem duplicar principal/encargos');
   const migration = require('../migrations/202610080001_fila_pagamentos_instrumento');
   const columns = new Set(), added = [];
   const fake = { DataTypes: { JSON: 'JSON', INTEGER: 'INTEGER' },

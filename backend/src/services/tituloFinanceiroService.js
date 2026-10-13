@@ -3913,6 +3913,9 @@ async function sincronizarRealizacaoCompraPorTitulo({
 
 
 async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
+  if (options.filaLiquidacaoId && (!options.transaction || options.autorizadoPorFilaPagamento !== true)) {
+    throw createHttpError(403, 'Liquidacao compartilhada exige transacao interna da fila.');
+  }
   const valorBaixa = roundCurrency(payload.valor);
   const juros = roundCurrency(payload.juros || 0);
   const multa = roundCurrency(payload.multa || 0);
@@ -4020,6 +4023,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     const movimento = await MovimentoFinanceiro.create({
       titulo_financeiro_id: titulo.id,
       conta_bancaria_id: contaEfetivaMovimento?.id || null,
+      ...(options.filaLiquidacaoId ? { fila_liquidacao_id: options.filaLiquidacaoId } : {}),
       baixa_grupo_id: payload.baixa_grupo_id || null,
       baixa_componente_id: payload.baixa_componente_id || null,
       fatura_cartao_id: cartaoBaixa.fatura?.id || null,
@@ -4061,7 +4065,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
             transaction
           });
         }
-      } else if (tipoTitulo === 'PAGAR' && payload.usar_cheque_terceiro) {
+      } else if (tipoTitulo === 'PAGAR' && payload.usar_cheque_terceiro && !options.filaLiquidacaoId) {
         await consumirChequeTerceiroPagamento({
           req,
           chequeTerceiroId: payload.cheque_terceiro_id,
@@ -4078,8 +4082,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
 
     await titulo.update({
       empresa_id: empresaTituloId,
-      cartao_id: cartaoBaixa.cartao?.id || titulo.cartao_id || null,
-      fatura_cartao_id: cartaoBaixa.fatura?.id || titulo.fatura_cartao_id || null,
+      cartao_id: options.filaLiquidacaoId ? titulo.cartao_id : cartaoBaixa.cartao?.id || titulo.cartao_id || null,
+      fatura_cartao_id: options.filaLiquidacaoId ? titulo.fatura_cartao_id : cartaoBaixa.fatura?.id || titulo.fatura_cartao_id || null,
       ...tituloIntercompanyUpdate,
       valor_baixado: novoValorBaixado,
       valor_saldo: novoEstado.valor_saldo,
@@ -4110,7 +4114,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     });
 
     if (cartaoBaixa.fatura) {
-      await vincularTituloAFatura({
+      if (options.filaLiquidacaoId) await recalcularFaturaCartao(cartaoBaixa.fatura.id, { transaction, leituraCorrente: true });
+      else await vincularTituloAFatura({
         titulo,
         fatura: cartaoBaixa.fatura,
         transaction,
@@ -4751,12 +4756,16 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
         'Este movimento pertence a uma baixa com multiplas fontes. Estorne o grupo completo na tela de Baixas com Multiplas Fontes.'
       );
     }
+    if (movimento.fila_liquidacao_id && Number(internalOptions.filaLiquidacaoId) !== Number(movimento.fila_liquidacao_id)) {
+      throw createHttpError(409, 'Este pagamento possui instrumentos compartilhados. Estorne o grupo completo pela fila de pagamentos.');
+    }
 
     let faturaEstornoFila;
     if (internalOptions.estornoFila && movimento.fatura_cartao_id) {
       faturaEstornoFila = await FaturaCartaoFinanceiro.findByPk(movimento.fatura_cartao_id,
         { transaction, lock: transaction.LOCK.UPDATE });
-      if (!faturaEstornoFila || faturaEstornoFila.status !== 'ABERTA' || Number(titulo.fatura_cartao_id) !== Number(faturaEstornoFila.id)) {
+      if (!faturaEstornoFila || faturaEstornoFila.status !== 'ABERTA' ||
+        (!movimento.fila_liquidacao_id && Number(titulo.fatura_cartao_id) !== Number(faturaEstornoFila.id))) {
         throw createHttpError(409, 'A fatura do cartao ja possui processamento posterior. Reverta a fatura antes de estornar este pagamento.');
       }
     }
@@ -4778,7 +4787,7 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
     }, { transaction });
 
     const tipoTitulo = getTituloTipo(titulo);
-    if (tipoTitulo === 'PAGAR') {
+    if (tipoTitulo === 'PAGAR' && !movimento.fila_liquidacao_id) {
       const chequeUtilizado = await ChequeTerceiro.findOne({
         where: {
           status: 'UTILIZADO',
@@ -4861,7 +4870,7 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
 
     await titulo.update({
       valor_baixado: valorBaixadoNormalizado,
-      ...(faturaEstornoFila ? { fatura_cartao_id: null } : {}),
+      ...(faturaEstornoFila && !movimento.fila_liquidacao_id ? { fatura_cartao_id: null } : {}),
       valor_saldo: novoEstado.valor_saldo,
       status: novoEstado.status,
       data_quitacao: novoEstado.status === 'QUITADO' ? titulo.data_quitacao : null,
@@ -4870,7 +4879,7 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
     }, { transaction });
 
     if (faturaEstornoFila) {
-      await FaturaCartaoTitulo.destroy({ where: { titulo_financeiro_id: titulo.id, fatura_cartao_id: faturaEstornoFila.id }, transaction });
+      if (!movimento.fila_liquidacao_id) await FaturaCartaoTitulo.destroy({ where: { titulo_financeiro_id: titulo.id, fatura_cartao_id: faturaEstornoFila.id }, transaction });
       await recalcularFaturaCartao(faturaEstornoFila.id, { transaction, leituraCorrente: true });
     }
 
@@ -5400,6 +5409,7 @@ async function listarChequesTerceirosDisponiveis(req, filters = {}) {
 }
 
 module.exports = {
+  consumirChequeTerceiroPagamento,
   resolverCompetenciaCriacaoSolicitacao,
   atualizarCobrancaTitulo,
   atualizarTitulo,

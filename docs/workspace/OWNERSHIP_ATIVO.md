@@ -1,5 +1,45 @@
 # Ownership Ativo
 
+## Publicacao dos instrumentos compartilhados da fila - 2026-10-13
+
+- Usuario autorizou commit e push das alteracoes pendentes em refactor/frontend.
+- Agente desta conversa, sem delegacao; conferencia de staging reservada
+  nesta publicacao e liberada apos verificacao.
+- Inclui origem explicita, conjunto unico de cheques, multicartao, faturas,
+  estorno atomico, migration aditiva preparada, testes e documentacao.
+- outputs/ excluido do commit. Sem aplicar migration, operar banco/EC2,
+  reiniciar processos ou promover main. Homologacao MySQL continua pendente.
+- Push pode iniciar deploy automatico do frontend dev. Schema e backend
+  compativeis devem ser atualizados antes de usar os novos instrumentos.
+
+## Fila - liquidacao compartilhada confirmada - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Usuario confirmou conjunto unico de cheques rateado e cartoes/valores separados.
+- Reserva: servicos pagamentoManualFila, tituloFinanceiro, faturaCartao,
+  novo dominio/servico de liquidacao compartilhada; validators de pagamento;
+  model/migration aditivos de grupo e movimento; componentes de instrumentos
+  da fila, pagina fila/faturas, testes focados e docs deste fluxo.
+- Registros legados preservados. Estorno atomico de todo grupo, ACL por titulo,
+  faturas apenas com valor alocado. Sem banco real, deploy ou EC2.
+- Migration 202610130002_fila_liquidacao_rateada.js preparada, NAO aplicada.
+- Testes backend, UI desktop/mobile, faturas, navegacao, docs e build aprovados.
+  MySQL/concorrencia entre processos ainda precisam de homologacao em dev.
+- Handoff: docs/handoffs/2026-10-13-fila-origem-instrumentos-massa.md.
+
+## Fila - origem explicita e instrumentos em massa - 2026-10-13
+
+- Agente desta conversa, sem delegacao; primeira etapa local concluida,
+  ownership liberado; ampliacao confirmada e concluida no registro acima.
+- Reserva: InstrumentoPagamentoFila.jsx, ChequesParceladosFilaModal.jsx,
+  BaixaMassaFilaModal.jsx, filaWorkspaceDraft.js, validarFilaInstrumentosUI.mjs,
+  README financeiro e handoff correspondente.
+- Mapear antes de ampliar backend: atualmente cheque e carteira sao unicos por
+  lote e cartao de credito vincula valor integral do titulo a uma unica fatura.
+- Primeira etapa: origem explicita, sem abrir cheque proprio ao escolher forma.
+- Extensao de rateio/multicartao confirmada pelo usuario e implementada acima.
+- Sem banco, migration aplicada, deploy, commit/push ou EC2 nesta tarefa.
+
 ## Publicacao da quantidade automatica de cheques - 2026-10-13
 
 - Pedido explicito nesta conversa: commitar as alteracoes pendentes e publicar

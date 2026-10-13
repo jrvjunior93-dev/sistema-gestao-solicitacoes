@@ -20,7 +20,7 @@ export const getCartoesFinanceiros=async()=>[window.fatura.cartao];
 export const getFaturasCartaoFinanceiro=async params=>{window.reads.push({kind:'list',params});await wait();if(window.denied)throw new Error('Faturas negadas QA');return [copy(window.fatura)]};
 export const getFaturaCartaoFinanceiro=async()=>{window.reads.push({kind:'detail'});await wait();if(window.denied)throw new Error('Fatura negada QA');return copy(window.fatura)};
 export const getContasBancarias=async()=>[{id:1,nome:'Conta real QA',ativo:true}];
-export const baixarFaturaCartaoFinanceiro=async(id,data)=>{window.writes.push({id,data});await wait();window.fatura.status='PAGA';window.fatura.titulos[0].status='QUITADO';window.fatura.titulos[0].valor_saldo=0;return copy(window.fatura)};`;
+export const baixarFaturaCartaoFinanceiro=async(id,data)=>{window.writes.push({id,data});await wait();window.fatura.status='PAGA';if(window.fatura.titulos[0]){window.fatura.titulos[0].status='QUITADO';window.fatura.titulos[0].valor_saldo=0;}return copy(window.fatura)};`;
 const server=await createServer({root,configFile:false,logLevel:'error',server:{host:'127.0.0.1',port:0},plugins:[{name:'qa-faturas',enforce:'pre',
   resolveId(id){if(id==='/fixture.jsx')return '\0qa-faturas.jsx'},
   async load(id){if(id==='\0qa-faturas.jsx')return transformWithEsbuild(entry,'fixture.jsx',{loader:'jsx',jsx:'transform'})},
@@ -58,6 +58,20 @@ try{
     assert.equal(await page.evaluate(()=>window.writes[0].data.observacoes),'Baixa explícita QA');await alternate();await page.getByText('Fatura 2026-10',{exact:true}).waitFor();assert.equal(await obs.count(),0);assert.equal(await page.evaluate(()=>window.writes.length),1);
     await goto(true);await conta.waitFor();await conta.selectOption('1');await obs.fill('Não exibir sem permissão');await page.evaluate(()=>window.readonly=true);await alternate();await page.getByText('Consulta disponível. A baixa da fatura exige permissão específica.',{exact:true}).waitFor();assert.equal(await obs.count(),0);
     await page.evaluate(()=>window.denied=true);await alternate();await page.getByText('Fatura não encontrada.',{exact:true}).waitFor();assert.equal(await page.getByText('TIT-FATURA-QA',{exact:true}).count(),0);assert.equal(await page.evaluate(()=>window.writes.length),0);
+    await goto(true);await conta.waitFor();
+    await page.evaluate(()=>{window.fatura.titulos=[];window.fatura.compras_rateadas=[
+      {id:10,titulo_financeiro_id:10,valor_quitacao:45,data_movimento:'2026-10-13',titulo:{codigo:'TIT-RATEIO-A',descricao:'Parte A',parceiro:{nome:'Credor A'}}},
+      {id:11,titulo_financeiro_id:11,valor_quitacao:55,data_movimento:'2026-10-13',titulo:{codigo:'TIT-RATEIO-B',descricao:'Parte B',parceiro:{nome:'Credor B'}}}];});
+    await alternate();await page.getByText('TIT-RATEIO-A',{exact:true}).waitFor();await page.getByText('TIT-RATEIO-B',{exact:true}).waitFor();
+    await page.getByText('Compras rateadas nesta fatura',{exact:true}).waitFor();
+    assert.equal(await page.getByText(/^R\$\s45,00$/).count(),1);
+    assert.equal(await page.getByText(/^R\$\s55,00$/).count(),1);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:path.join(root,`../outputs/fatura-rateada-${width}.png`),fullPage:true});
+    await conta.selectOption('1');await page.locator('form').evaluate(el=>el.requestSubmit());
+    await page.getByRole('dialog',{name:'Registrar o pagamento desta fatura?',exact:true}).getByRole('button',{name:'Baixar fatura',exact:true}).click();
+    await page.getByText(/Pagamento da fatura registrado/).waitFor();assert.equal(await page.evaluate(()=>window.writes.length),1);
+    assert.equal(await conta.count(),0,'Fatura so de rateios pode pagar, mas nao oferece segunda baixa depois de PAGA');
     console.log('OK faturas '+width+'px: busca/origem, GET atual, conta/observacoes, conflito, permissao/negativa e baixa unica sem replay.');
   }
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);

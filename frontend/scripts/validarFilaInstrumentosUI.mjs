@@ -55,8 +55,8 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         return{data:status==='NAO_PAGO'?[new URLSearchParams(location.search).has('naopago')?{...row,status:'NAO_PAGO',movimento_financeiro_id:null}: {id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
       };
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
-      export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2}]});
-      export const registrarBaixasFilaPagamentos=async(itens,key)=>{window.__settles.push({itens,key});if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
+      export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:11,nome:'Crédito outra conta',tipo:'CREDITO',conta_bancaria_id:6},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2}]});
+      export const registrarBaixasFilaPagamentos=async(itens,key,instrumentos_lote)=>{window.__settles.push({itens,key,instrumentos_lote});if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
         ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
@@ -112,6 +112,9 @@ try {
   assert.equal(payload.forma_pagamento_id, 3); assert.equal(payload.cartao_id, undefined);
   await forma.waitFor(); await forma.selectOption('4');
   const chequeModal=page.getByRole('dialog',{name:'Dados do cheque próprio de TIT-QA',exact:true});
+  assert.equal(await chequeModal.count(), 0, 'Escolher cheque nao presume origem nem abre dados proprios');
+  assert.equal(await page.getByLabel('Origem do cheque de TIT-QA', { exact: true }).inputValue(), '');
+  await page.getByLabel('Origem do cheque de TIT-QA', { exact: true }).selectOption('PROPRIO');
   await chequeModal.waitFor();
   await page.getByLabel('Numero do cheque *',{exact:true}).fill('NAO-SALVAR');
   await page.keyboard.press('Escape');
@@ -336,9 +339,13 @@ try {
     const abrirMassa = () => page.getByRole('button', { name: 'Baixa em massa (2)', exact: true }).click();
     await abrirMassa();
     const bulk = page.getByRole('dialog', { name: 'Baixa em massa', exact: true });
+    await bulk.getByLabel('Conta pagadora', { exact: true }).selectOption('5');
     await bulk.getByLabel('Aplicar forma aos selecionados', { exact: true }).selectOption('4');
     await bulk.getByRole('button', { name: 'Aplicar forma', exact: true }).click();
-    assert.equal(await bulk.getByLabel('Forma de pagamento de TIT-MASSA-1', { exact: true }).inputValue(), '4');
+    const sharedCancel = page.getByRole('dialog', { name: 'Cheques do pagamento de lote selecionado', exact: true });
+    await sharedCancel.waitFor();
+    await sharedCancel.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+    assert.equal(await bulk.getByLabel('Forma de pagamento de TIT-MASSA-1', { exact: true }).inputValue(), '3');
     await bulk.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
     await bulk.waitFor({ state: 'hidden' });
     assert.equal(await page.getByLabel('Forma de pagamento de TIT-MASSA-1', { exact: true }).inputValue(), '3', 'Cancelar nao altera a forma da fila');
@@ -354,9 +361,13 @@ try {
     assert((await bulk.getByRole('alert').textContent()).includes('outra conta'), 'Cartao incompatível com a conta bloqueia o lote');
     assert.equal(await page.evaluate(() => window.__settles.length), 0);
     await bulk.getByLabel('Conta pagadora', { exact: true }).selectOption('5');
-    await bulk.getByLabel('Data do pagamento', { exact: true }).fill('13/10/2026');
-    await bulk.getByLabel('Aplicar forma aos selecionados', { exact: true }).selectOption('4');
+    await bulk.getByLabel('Cartão para os selecionados', { exact: true }).selectOption('10');
     await bulk.getByRole('button', { name: 'Aplicar forma', exact: true }).click();
+    assert.equal(await bulk.getByLabel('Cartão de TIT-MASSA-1', { exact: true }).inputValue(), '10');
+    assert.equal(await bulk.getByLabel('Cartão de TIT-MASSA-2', { exact: true }).inputValue(), '10');
+    assert.equal(await bulk.getByLabel('Cartão para os selecionados', { exact: true }).locator('option[value="20"]').count(), 0);
+    await bulk.getByLabel('Data do pagamento', { exact: true }).fill('13/10/2026');
+    await bulk.getByLabel('Forma de pagamento de TIT-MASSA-1', { exact: true }).selectOption('4');
     await bulk.getByLabel('Forma de pagamento de TIT-MASSA-2', { exact: true }).selectOption('3');
     await bulk.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).click();
     assert((await bulk.getByRole('alert').textContent()).includes('TIT-MASSA-1'), 'Falta de cheque explicada no proprio modal');
@@ -377,6 +388,9 @@ try {
     await page.screenshot({ path: path.join(root, `../outputs/fila-cheques-quantidade-automatica-${width}.png`) });
     await chequesMassa.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
     const proprio = chequesMassa.getByRole('region', { name: 'Dados do cheque 1', exact: true });
+    assert.equal(await proprio.getByLabel('Origem do cheque 1', { exact: true }).inputValue(), '');
+    assert.equal(await proprio.getByLabel('Numero do cheque *', { exact: true }).count(), 0);
+    await proprio.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
     await proprio.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('113');
     await proprio.getByLabel('Numero do cheque *', { exact: true }).fill('BULK-101');
     await proprio.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
@@ -420,6 +434,71 @@ try {
     assert.equal(envio.itens[1].forma_pagamento_id, 3);
     assert.equal(envio.itens[1].parcelas_cheque, undefined);
   }
+  // Conjunto unico compartilhado: nenhuma copia de cheque/cartao por titulo.
+  for (const width of [1366, 390]) for (const tipo of ['CHEQUE', 'CARTAO']) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&parcelas=1&status=TODOS');
+    await page.getByLabel('Selecionar TIT-MASSA-1', { exact: true }).check();
+    await page.getByLabel('Selecionar TIT-MASSA-2', { exact: true }).check();
+    await page.getByRole('button', { name: 'Baixa em massa (2)', exact: true }).click();
+    const bulk = page.getByRole('dialog', { name: 'Baixa em massa', exact: true });
+    await bulk.getByLabel('Conta pagadora', { exact: true }).selectOption('5');
+    await bulk.getByLabel('Aplicar forma aos selecionados', { exact: true }).selectOption(tipo === 'CHEQUE' ? '4' : '1');
+    await bulk.getByRole('button', { name: tipo === 'CHEQUE' ? 'Aplicar forma' : 'Mais de um cartão para o lote', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: `${tipo === 'CHEQUE' ? 'Cheques' : 'Cartões'} do pagamento de lote selecionado`, exact: true });
+    await editor.waitFor();
+    assert.equal(await page.evaluate(() => window.__settles.length), 0);
+    if (tipo === 'CHEQUE') {
+      await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
+      await editor.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
+      await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326');
+      await editor.getByLabel('Numero do cheque *', { exact: true }).fill('LOTE-1');
+      await editor.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
+      await editor.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
+      await editor.getByLabel('Cheque da carteira 2', { exact: true }).selectOption('77');
+    } else {
+      await editor.getByLabel('Quantidade de cartões', { exact: true }).fill('2');
+      await editor.getByLabel('Cartão 1', { exact: true }).selectOption('10');
+      await editor.getByLabel('Valor no cartão 1 (R$)', { exact: true }).fill('126');
+      await editor.getByLabel('Cartão 2', { exact: true }).selectOption('11');
+      await editor.getByLabel('Valor no cartão 2 (R$)', { exact: true }).fill('300');
+      await editor.getByLabel('Quantidade de cartões', { exact: true }).fill('1');
+      await editor.getByLabel('Quantidade de cartões', { exact: true }).fill('2');
+      assert.equal(await editor.getByLabel('Cartão 2', { exact: true }).inputValue(), '11');
+      assert.equal(await editor.getByLabel('Valor no cartão 2 (R$)', { exact: true }).inputValue(), '300');
+      assert.equal(await editor.getByLabel('Cartão 1', { exact: true }).locator('option[value="20"]').count(), 0);
+    }
+    await page.screenshot({ path: path.join(root, `../outputs/fila-lote-${tipo.toLowerCase()}-${width}.png`) });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await editor.getByRole('button', { name: tipo === 'CHEQUE' ? 'Confirmar cheques' : 'Confirmar cartões', exact: true }).click();
+    await editor.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => window.__settles.length), 0, 'Confirmar instrumentos nao dispara baixa');
+    await bulk.getByRole('status').getByText(/Conjunto único/).waitFor();
+    await bulk.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).evaluate(button => { button.click(); button.click(); });
+    await page.waitForFunction(() => window.__settles.length === 1);
+    const envio = await page.evaluate(() => window.__settles[0]);
+    assert.equal(envio.instrumentos_lote.tipo, tipo); assert.equal(envio.instrumentos_lote.componentes.length, 2);
+    assert.equal(envio.instrumentos_lote.componentes.reduce((sum, item) => sum + item.valor_pago, 0), 426);
+    assert(envio.itens.every(item => !item.cartao_id && !item.parcelas_cheque && !item.parcelas_cartao && !item.cheque_numero));
+  }
+  // Multicartao por titulo continua separado do conjunto global.
+  await page.goto('http://127.0.0.1:5308/qa-fila');
+  await forma.waitFor();
+  await page.getByRole('button', { name: 'Mais de um cartão', exact: true }).click();
+  const cards = page.getByRole('dialog', { name: 'Cartões do pagamento de TIT-QA', exact: true });
+  await cards.getByLabel('Quantidade de cartões', { exact: true }).fill('2');
+  await cards.getByLabel('Cartão 1', { exact: true }).selectOption('10');
+  await cards.getByLabel('Valor no cartão 1 (R$)', { exact: true }).fill('100');
+  await cards.getByLabel('Cartão 2', { exact: true }).selectOption('11');
+  await cards.getByLabel('Valor no cartão 2 (R$)', { exact: true }).fill('100');
+  await cards.getByRole('button', { name: 'Confirmar cartões', exact: true }).click();
+  await cards.waitFor({ state: 'hidden' });
+  assert.equal(await page.evaluate(() => window.__settles.length), 0);
+  await page.getByRole('button', { name: 'Registrar baixa', exact: true }).click();
+  await page.waitForFunction(() => window.__settles.length === 1);
+  const cartoesIndividuais = await page.evaluate(() => window.__settles[0]);
+  assert.equal(cartoesIndividuais.itens[0].parcelas_cartao.length, 2); assert.equal(cartoesIndividuais.itens[0].cartao_id, undefined);
+  assert.equal(cartoesIndividuais.instrumentos_lote, null);
   await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&readonly=1&status=TODOS');
   await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).waitFor();
   assert(await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).isDisabled());
@@ -432,11 +511,12 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('http://127.0.0.1:5308/qa-fila?parcelas=1');
     await forma.waitFor(); await forma.selectOption('4');
-    await chequeModal.waitFor(); await chequeModal.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+    assert.equal(await chequeModal.count(), 0);
     await conta.selectOption('5');
     await page.getByRole('button', { name: 'Mais de um cheque / parcelar', exact: true }).click();
     const parcelas = page.getByRole('dialog', { name: 'Cheques do pagamento de TIT-QA', exact: true });
     await parcelas.waitFor();
+    await parcelas.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
     await parcelas.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('100');
     await parcelas.getByLabel('Numero do cheque *', { exact: true }).fill('101');
     await parcelas.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
