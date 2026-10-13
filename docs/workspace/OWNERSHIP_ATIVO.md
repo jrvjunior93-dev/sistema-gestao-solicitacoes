@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Promocao completa incluindo DP — 2026-10-12
+
+- Agente desta conversa, sem delegacao, em checkout isolado; integra todos os
+  commits publicados de refactor/frontend, preservando hotfixes da main.
+- Main congelada: 528e8c838a383c71be76f00b21fa8fe54d6c4e8d. Alvo:
+  1d7951b9da9abf41c0b7dfab0b685ae55b76b53c.
+- Reserva: arquivos com conflitos backend/frontend/testes/documentacao deste
+  merge, e docs/handoffs/2026-10-12-promocao-completa-main.md.
+- Backup no Drive/timer confirmado pelo usuario. Consulta na producao valida:
+  264 migrations no alvo, 259 registradas, cinco novas pendentes.
+- Sem executar migration, restart ou deploy EC2; publicar main somente apos
+  schema/backend compativeis e testes. Arquivos de auditoria/outputs preservados.
+
 ## Promocao isolada aviso de entregas - 2026-10-09
 
 - Responsavel: agente desta conversa, sem delegacao; estado: integracao validada,
