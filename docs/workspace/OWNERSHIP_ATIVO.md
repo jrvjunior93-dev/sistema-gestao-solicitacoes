@@ -3597,3 +3597,22 @@ handoff RH desta tarefa. Sem deploy ou acesso ao banco real.
   aprovados. Handoff: docs/handoffs/2026-10-13-estorno-fila-permissao.md.
 - Publicacao autorizada pelo usuario na refactor/frontend, somente este ajuste;
   sem promover main ou executar atualizacao na EC2 pelo agente.
+
+## Ticket por conta cadastrada - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: frontend/src/components/rh/RhTicketPagamentoCampos.jsx;
+  frontend/src/pages/RhDpColaboradores.jsx; frontend/src/services/rhDp.js;
+  backend/src/controllers/RhTicketController.js; backend/src/services/rhTicketService.js;
+  backend/scripts/validarRhTicketPix.js; frontend/scripts/validarRhTicketPix.mjs;
+  docs/handoffs/2026-10-13-ticket-conta-cadastrada.md.
+- Escopo: transferencia para conta cadastrada do colaborador, conferencia local,
+  titulos individuais e snapshots. Preservar Boleto/Pix, ACL, idempotencia e GEO.
+- Sem banco real, migration, EC2, commit, push ou deploy nesta tarefa.
+- Testes Boleto/Pix/Conta, escopo/regras RH, UI desktop/mobile, build e diff
+  aprovados. Handoff: docs/handoffs/2026-10-13-ticket-conta-cadastrada.md.
+- Publicacao autorizada pelo usuario na refactor/frontend; reserva documental
+  temporaria desta tarefa para commit/push e comandos dev. Sem promocao main,
+  deploy/EC2 ou escrita em banco pelo agente. outputs/ fora do commit.
+- Validacoes locais repetidas para publicacao; reserva documental encerrada,
+  ownership liberado. Atualizacao da EC2 sera executada pelo usuario.
