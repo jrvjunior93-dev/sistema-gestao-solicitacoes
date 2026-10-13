@@ -8,10 +8,11 @@ import { createServer } from 'vite';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// A pagina continua usando o mesmo total/payload; so o card generico deixa de renderizar.
+// A pagina usa o mesmo total/payload, com o total somente leitura antes dos cartoes.
 const pagina = await readFile(path.join(root, 'src/pages/NovaSolicitacao.jsx'), 'utf8');
 assert.match(pagina, /value=\{recargasCartoes\}\s+totalSolicitado=\{form\.valor\}/);
-assert.match(pagina, /!usaFluxoRecargaCartao && \(exibirValor \|\| usaFluxoDespesaEventual \|\| exibirCampoApropriacao\) && \(/);
+assert.match(pagina, /readOnly=\{usaFluxoRecargaCartao \|\| Boolean\(pagamentosFavorecidos\)\}/);
+assert.match(pagina, /mostrarTotal=\{false\}/);
 assert.match(pagina, /const total = Math\.round\(linhas\.reduce\([\s\S]*?setForm\(\(atual\) => \(\{ \.\.\.atual, valor: total \}\)\)/);
 assert.match(pagina, /const payload = \{\s+\.\.\.form,/);
 assert.match(pagina, /recargas_cartoes: usaFluxoRecargaCartao \? recargasCartoes\.map\(\(linha\) => \(\{ cartao_recarga_id: Number\(linha\.cartao_recarga_id\), valor: numeroDoCampo\(linha\.valor\) \}\)\)/);

@@ -152,7 +152,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       frete_favorecido_chave_pix: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true
       }
     },

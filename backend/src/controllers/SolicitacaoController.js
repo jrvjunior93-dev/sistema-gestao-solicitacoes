@@ -418,6 +418,8 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
   ]);
 
   const atencaoPorSolicitacao = new Map(atencoesPendentes.map((linha) => [Number(linha.solicitacao_id), linha]));
+  const interacoesPorSolicitacao = await require('../services/solicitacaoInteracoesService')
+    .listarInteracoes(idsSolicitacoes, usuarioId);
   const entregaService = require('../services/pedidoEntregaService');
   const entregasPendentes = (await Promise.all(['OBRA', 'COMPRAS'].map((setor) =>
     entregaService.pendenciasEntrega({ solicitacaoIds: idsSolicitacoes, setor })
@@ -501,6 +503,7 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
       solicitacao.atencao_pendente = atencao
         ? { tipo: atencao.tipo, resumo: atencao.resumo, evento_em: atencao.evento_em }
         : null;
+      solicitacao.interacoes_pendentes = interacoesPorSolicitacao.get(Number(item.id)) || [];
       return solicitacao;
     })
     .sort((a, b) => (ordemIds.get(Number(a.id)) || 0) - (ordemIds.get(Number(b.id)) || 0));
@@ -558,6 +561,9 @@ async function buscarResumoListaSolicitacaoPorId(id) {
 }
 
 async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLeituraGlobal = false } = {}) {
+  if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
+    return { allowed: false, status: 404, error: 'Solicitacao nao encontrada' };
+  }
   const areaUsuario = await obterAreaUsuario(req);
   const tokensSetorUsuario = expandirTokensComAliasesGeo(
     await obterTokensSetorPrincipalUsuario(req, areaUsuario)
@@ -885,11 +891,15 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLei
 }
 
 async function avaliarContextoInteracaoSolicitacao(req, solicitacao, acessoExistente = null) {
+  if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
+    return { allowed: false, status: 404, error: 'Solicitacao nao encontrada' };
+  }
   const acesso = acessoExistente || await verificarAcessoDetalheSolicitacao(req, solicitacao);
   if (!acesso.allowed) return acesso;
 
   // Qualquer vinculo adicional serve apenas para VISUALIZAR. Para escrever, anexar, medir ou
-  // pedir aditivo vale exclusivamente o SETOR PRINCIPAL do usuario. Antes, `obterTokensSetorUsuario`
+  // pedir aditivo vale o SETOR PRINCIPAL do usuario, com excecao funcional de SUPERADMIN.
+  // Antes, `obterTokensSetorUsuario`
   // acrescentava `usuario_setores`; assim, Joao (setor principal OBRA) conseguia comentar uma
   // solicitacao em GEO apenas por possuir um vinculo secundario historico com GEO. Esse mesmo
   // falso positivo escondia o botao Solicitar retorno.
@@ -899,7 +909,10 @@ async function avaliarContextoInteracaoSolicitacao(req, solicitacao, acessoExist
 
   return {
     ...acesso,
-    estaNoSetorUsuario: setorPertenceAoUsuario(tokensOperacionais, solicitacao.area_responsavel),
+    // O bypass e de autorizacao funcional; nao altera o setor persistido,
+    // a sessao efetiva ou as validacoes de integridade nos services.
+    estaNoSetorUsuario: String(req.user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN'
+      || setorPertenceAoUsuario(tokensOperacionais, solicitacao.area_responsavel),
     setorUsuario: acesso.areaUsuario || null,
     tokensOperacionais
   };
@@ -914,6 +927,9 @@ async function enviarSolicitacaoParaSetorInterno({
   destacarAtencao = false,
   ignorarPermissaoEnvioManual = false
 }) {
+  if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
+    return { ok: false, status: 404, error: 'Solicitacao nao encontrada' };
+  }
   const acessoObra = await validarAcessoObra(req, solicitacao);
   if (!acessoObra) {
     return { ok: false, status: 403, error: 'Acesso negado. Vincule o usuario a obra para continuar.' };
@@ -994,6 +1010,7 @@ async function enviarSolicitacaoParaSetorInterno({
     usuario_responsavel_id: usuarioId,
     setor: setorDestino,
     acao: 'ENVIADA_SETOR',
+    metadata: JSON.stringify({ envio_manual: destacarAtencao }),
     observacao: `De ${setorOrigem} para ${setorDestino}`
   });
 
@@ -2498,13 +2515,13 @@ module.exports = {
           WHERE sau.solicitacao_id = Solicitacao.id
             AND sau.usuario_id = ${Number(usuarioId) || -1}
             AND sau.lido_em IS NULL
-        ) THEN 0 ELSE 1 END`), 'ASC'],
-        [Sequelize.literal(`(
+        ) OR ${require('../services/solicitacaoInteracoesService').sqlExistePendente(usuarioId)} THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(`GREATEST(COALESCE((
           SELECT sau.evento_em FROM solicitacao_atencoes_usuario sau
           WHERE sau.solicitacao_id = Solicitacao.id
             AND sau.usuario_id = ${Number(usuarioId) || -1}
             AND sau.lido_em IS NULL
-        )`), 'DESC'],
+        ), '1970-01-01'), COALESCE(${require('../services/solicitacaoInteracoesService').sqlUltimoPendente(usuarioId)}, '1970-01-01'))`), 'DESC'],
         [Sequelize.literal(`CASE WHEN EXISTS (
           SELECT 1
           FROM solicitacao_pedidos_retorno spr
@@ -3157,6 +3174,7 @@ module.exports = {
         favorecido_chave_pix,
         dados_pagamento,
         boleto_anexo_nome,
+        pagamentos_favorecidos,
         despesa_eventual_declaracoes,
         cartao_recarga_id,
         recargas_cartoes,
@@ -3267,20 +3285,27 @@ module.exports = {
         if (!subtipoRecarga) return res.status(400).json({ error: 'Subtipo invalido para o tipo de solicitacao selecionado.' });
       }
       const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado) || subtipoRecarga?.usa_fluxo_recarga_cartao === true;
+      const usaFluxoAdiantamento = subtipoRecarga?.usa_fluxo_adiantamento === true;
+      if (usaFluxoAdiantamento && (!require('../services/adiantamentoDomain').tipoPermiteAdiantamento(tipoSelecionado) || usaFluxoRecargaCartao)) return res.status(400).json({ error: 'Adiantamento exige um tipo de despesa administrativa, comercial ou marketing, sem recarga simultanea.' });
+      if (usaFluxoAdiantamento) {
+        try {
+          if (require('../services/adiantamentoDomain').centavos(valor) <= 0) throw new Error('Informe um valor de adiantamento maior que zero.');
+        } catch (error) { return res.status(400).json({ error: error.message }); }
+      }
       if (!usaFluxoRecargaCartao && recargas_cartoes !== undefined) return res.status(400).json({ error: 'Os cartoes exigem um tipo ou subtipo configurado para recarga.' });
       const possuiSubtipoRecarga = Boolean(await TipoSubContrato.findOne({
-        where: { ativo: true, usa_fluxo_recarga_cartao: true },
+        where: { ativo: true, [Op.or]: [{ usa_fluxo_recarga_cartao: true }, { usa_fluxo_adiantamento: true }] },
         include: [{ model: TipoSolicitacao, as: 'tiposSolicitacao', where: { id: tipo_solicitacao_id }, attributes: ['id'], through: { attributes: [] }, required: true }]
       }));
-      if (usaFluxoRecargaCartao && (usaFluxoCadastroObra || comportamentoBase.usa_fluxo_contrato_novo || comportamentoBase.mostrar_periodo_medicao)) {
+      if ((usaFluxoRecargaCartao || usaFluxoAdiantamento) && (usaFluxoCadastroObra || comportamentoBase.usa_fluxo_contrato_novo || comportamentoBase.mostrar_periodo_medicao || comportamentoBase.somente_sistema)) {
         return res.status(400).json({ error: 'Vincule o subtipo de recarga a um tipo comum, sem fluxo de contrato, medicao ou cadastro de obra.' });
       }
-      if (usaFluxoRecargaCartao) {
+      if (usaFluxoRecargaCartao || usaFluxoAdiantamento) {
         comportamentoBase.usa_apropriacao_automatica_obra = false;
         usaFluxoDespesaEventual = false;
       }
       if (
-        (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao) &&
+        (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao || usaFluxoAdiantamento) &&
         setorDestinoSelecionado.eh_setor_geo !== true &&
         ![
           setorDestinoSelecionado.codigo,
@@ -3380,8 +3405,10 @@ module.exports = {
         }
       );
       const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento', ...(subtipoRecarga?.usa_fluxo_recarga_cartao ? ['subtipo'] : [])]);
+      const camposFixosAdiantamento = new Set(['subtipo', 'valor', 'data_vencimento', 'favorecido', 'forma_pagamento', 'descricao']);
       const campoVisivel = (campo) => (
         (campo === 'subtipo' && possuiSubtipoRecarga)
+        || (usaFluxoAdiantamento && camposFixosAdiantamento.has(campo))
         ||
         (usaFluxoRecargaCartao && camposFixosRecargaCartao.has(campo))
         || (!usaFluxoRecargaCartao && camposNovaSolicitacao?.[campo]?.visivel !== false)
@@ -3427,6 +3454,7 @@ module.exports = {
         // de contrato. Configuracao de campos legada nao exige um segundo pagamento.
         if (ehMedicaoFluxoNovo && ['forma_pagamento', 'favorecido'].includes(campo)) return false;
         if (usaFluxoRecargaCartao) return camposFixosRecargaCartao.has(campo);
+        if (usaFluxoAdiantamento && camposFixosAdiantamento.has(campo)) return true;
         return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
       };
       const rateioApropriacoes = (campoVisivel('contrato') || (registroSelecionadoEhObra && campoVisivel('apropriacao_principal')))
@@ -3976,12 +4004,12 @@ module.exports = {
       // Boleto usa o anexo obrigatorio, sem favorecido separado, em qualquer
       // tipo da Nova Solicitacao. PIX e outras formas preservam a exigencia.
       const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
-      const favorecidoEhObrigatorio = !pagamentoViaBoleto
-        && (campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada));
+      const favorecidoEhObrigatorio = usaFluxoAdiantamento || (!pagamentoViaBoleto
+        && (campoObrigatorio('favorecido') || Boolean(formaPagamentoSelecionada)));
       if (favorecidoEhObrigatorio && !favorecido_id) {
         return res.status(400).json({ error: 'Selecione o favorecido do pagamento.' });
       }
-      if (!pagamentoViaBoleto && (campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
+      if ((!pagamentoViaBoleto || usaFluxoAdiantamento) && (campoVisivel('favorecido') || formaPagamentoSelecionada) && favorecido_id) {
         favorecido = await Parceiro.findByPk(Number(favorecido_id), {
           attributes: ['id', 'nome', 'cpf_cnpj', 'ativo']
         });
@@ -4014,6 +4042,7 @@ module.exports = {
       }
       if (
         exibeFormaPagamentoNaNovaSolicitacao
+        && !usaFluxoAdiantamento
         && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
         && nomesAnexosPendentes.length === 0
       ) {
@@ -4026,8 +4055,24 @@ module.exports = {
         ? null
         : (valor === '' || valor === undefined ? null : valor);
 
+      let pagamentosFavorecidosValidados = [];
+      if (pagamentos_favorecidos !== undefined) {
+        if (usaFluxoRecargaCartao || usaFluxoCadastroObra || !campoVisivel('forma_pagamento')) {
+          return res.status(400).json({ error: 'Divisao por favorecido nao disponivel neste fluxo.' });
+        }
+        pagamentosFavorecidosValidados = await require('../services/solicitacaoFavorecidosService').validarFavorecidos(
+          pagamentos_favorecidos, { valorTotal: valorPersistido,
+            formas: (await listarFormasDosFluxos()).formas, anexosPendentes: nomesAnexosPendentes }
+        );
+        const primeiro = pagamentosFavorecidosValidados[0];
+        if (Number(primeiro?.forma_pagamento_id) !== Number(formaPagamentoIdPersistida)
+          || Number(primeiro?.favorecido_id) !== Number(favorecido_id)) {
+          return res.status(400).json({ error: 'O primeiro favorecido deve corresponder aos dados principais de pagamento.' });
+        }
+      }
+
       let distribuicaoCentroCustoValidada = null;
-      if (!usaFluxoCadastroObra && !registroSelecionadoEhObra) {
+      if (!usaFluxoCadastroObra && !registroSelecionadoEhObra && !usaFluxoAdiantamento) {
         distribuicaoCentroCustoValidada = await validarDistribuicaoCentroCusto({
           centroCustoId: obra_id,
           usuario: req.user,
@@ -4036,7 +4081,9 @@ module.exports = {
         });
       } else if (distribuicaoCentroCusto) {
         return res.status(400).json({
-          error: 'A distribuicao gerencial por obras e exclusiva para solicitacoes de Centro de Custo.'
+          error: usaFluxoAdiantamento
+            ? 'Adiantamento nao recebe distribuicao por obras na abertura. Informe os destinos na prestacao de contas.'
+            : 'A distribuicao gerencial por obras e exclusiva para solicitacoes de Centro de Custo.'
         });
       }
 
@@ -4122,12 +4169,12 @@ module.exports = {
       };
 
       const criarSolicitacaoComRateio = async () => {
-        if (rateioApropriacoesDetalhado.length === 0) {
+        if (rateioApropriacoesDetalhado.length === 0 && pagamentosFavorecidosValidados.length === 0) {
           return Solicitacao.create(dadosSolicitacao);
         }
         return sequelize.transaction(async (transaction) => {
           const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
-          await SolicitacaoApropriacao.bulkCreate(
+          if (rateioApropriacoesDetalhado.length > 0) await SolicitacaoApropriacao.bulkCreate(
             rateioApropriacoesDetalhado.map((item) => ({
               solicitacao_id: resultado.id,
               contrato_id: item.contrato_id || null,
@@ -4139,12 +4186,18 @@ module.exports = {
             })),
             { transaction }
           );
+          if (pagamentosFavorecidosValidados.length) await require('../services/solicitacaoFavorecidosService').registrarFavorecidos(
+            pagamentosFavorecidosValidados, { solicitacaoId: resultado.id, usuarioId, transaction }
+          );
           return resultado;
         });
       };
 
       const criarSolicitacaoComDistribuicao = async () => sequelize.transaction(async (transaction) => {
         const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
+        if (pagamentosFavorecidosValidados.length) await require('../services/solicitacaoFavorecidosService').registrarFavorecidos(
+          pagamentosFavorecidosValidados, { solicitacaoId: resultado.id, usuarioId, transaction }
+        );
         await SolicitacaoCentroCustoDistribuicao.bulkCreate(
           distribuicaoCentroCustoValidada.linhas.map((item) => ({
             solicitacao_id: resultado.id,
@@ -4421,7 +4474,8 @@ module.exports = {
           'criado_por',
           'obra_id',
           'tipo_solicitacao_id',
-          'area_responsavel'
+          'area_responsavel',
+          'cancelada'
         ]
       });
 
@@ -4476,7 +4530,7 @@ module.exports = {
           {
             model: TipoSubContrato,
             as: 'tipoSubSolicitacao',
-            attributes: ['id', 'nome', 'usa_fluxo_recarga_cartao']
+            attributes: ['id', 'nome', 'usa_fluxo_recarga_cartao', 'usa_fluxo_adiantamento']
           },
           { model: require('../models').SolicitacaoRecargaCartao, as: 'recargasCartao', attributes: ['id', 'cartao_recarga_id'] },
           // CONTRATO
@@ -4739,8 +4793,13 @@ module.exports = {
         contextoInteracaoBase
       );
 
+      payload.interacoes_pendentes = (await require('../services/solicitacaoInteracoesService')
+        .listarInteracoes([solicitacao.id], req.user.id)).get(Number(solicitacao.id)) || [];
+      // Apenas o aviso legado e consumido ao abrir. Eventos independentes
+      // permanecem ate o conteudo correspondente ser realmente visualizado.
       await marcarAtencaoLida(solicitacao.id, req.user.id);
 
+      payload.pagamentos_favorecidos = await require('../services/solicitacaoFavorecidosService').listarFavorecidos(solicitacao.id);
       return res.json(payload);
 
     } catch (error) {
@@ -4865,7 +4924,7 @@ module.exports = {
         }
       }
 
-      await solicitacao.update({ status_global: status });
+      await require('../services/adiantamentoService').atualizarPrincipalComProtecao(solicitacao, { status_global: status });
 
       await sincronizarTituloComStatusSolicitacao(solicitacao.id, status, usuarioId);
       await sincronizarTicketComSolicitacao(solicitacao.id, status, usuarioId);
@@ -5014,7 +5073,7 @@ module.exports = {
 
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao atualizar status' });
+      return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Erro ao atualizar status' });
     }
   },
 
@@ -5530,8 +5589,7 @@ module.exports = {
       }
 
       const valorAnterior = solicitacao.valor ?? null;
-
-      await solicitacao.update({
+      await require('../services/adiantamentoService').atualizarPrincipalComProtecao(solicitacao, {
         valor: novoValor
       });
 
@@ -5576,7 +5634,7 @@ module.exports = {
       return res.sendStatus(204);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao atualizar valor' });
+      return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Erro ao atualizar valor' });
     }
   },
 
@@ -6644,6 +6702,18 @@ module.exports = {
     }
   },
 
+  async marcarInteracoesLidas(req, res) {
+    try {
+      await require('../services/solicitacaoRetornoService').assertPodeVisualizarSolicitacao(req, req.params.id);
+      const grupos = await require('../services/solicitacaoInteracoesService').marcarInteracoesLidas({
+        solicitacaoId: req.params.id, usuarioId: req.user.id, historicoIds: req.body?.historico_ids
+      });
+      return res.json({ interacoes_pendentes: grupos, usuario_id: Number(req.user.id) });
+    } catch (error) {
+      return res.status(Number(error.statusCode) || 500).json({ error: error.message || 'Erro ao registrar leitura.' });
+    }
+  },
+
   async removerComentario(req, res) {
     try {
       const perfil = String(req.user?.perfil || '').trim().toUpperCase();
@@ -6850,7 +6920,7 @@ module.exports = {
 
       for (const id of idsUnicos) {
         const solicitacao = map.get(Number(id));
-        if (!solicitacao) {
+        if (!solicitacao || solicitacao.cancelada === true || solicitacao.cancelada === 1) {
           resultado.erros.push({ id, error: 'Solicitacao nao encontrada' });
           continue;
         }
@@ -7009,14 +7079,22 @@ module.exports = {
         });
       }
 
-      const titulosVinculados = await TituloFinanceiro.count({
-        where: {
-          solicitacao_id: id
-        }
-      });
-
       const transaction = await Solicitacao.sequelize.transaction();
       try {
+        const registroBloqueado = await Solicitacao.findByPk(id, {
+          transaction, lock: transaction.LOCK.UPDATE
+        });
+        if (!registroBloqueado) {
+          await transaction.rollback();
+          return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+        }
+        if (registroBloqueado.cancelada === true) {
+          await transaction.commit();
+          return res.sendStatus(204);
+        }
+        const titulosVinculados = await TituloFinanceiro.count({
+          where: { solicitacao_id: id }, transaction
+        });
         await LogExclusao.create({
           entidade: 'SOLICITACAO',
           entidade_id: Number(id),
@@ -7026,17 +7104,17 @@ module.exports = {
           setor: req.user.area || null,
           motivo: isSuperadmin ? 'Exclusao realizada por SUPERADMIN' : 'Exclusao realizada por ADMIN GEO',
           payload_json: JSON.stringify({
-            codigo: solicitacao.codigo,
-            obra_id: solicitacao.obra_id,
-            area_responsavel: solicitacao.area_responsavel,
-            valor: solicitacao.valor,
-            status_global: solicitacao.status_global,
+            codigo: registroBloqueado.codigo,
+            obra_id: registroBloqueado.obra_id,
+            area_responsavel: registroBloqueado.area_responsavel,
+            valor: registroBloqueado.valor,
+            status_global: registroBloqueado.status_global,
             titulos_vinculados: titulosVinculados,
             exclusao_logica: true
           })
         }, { transaction });
 
-        await solicitacao.update({ cancelada: true }, { transaction });
+        await registroBloqueado.update({ cancelada: true }, { transaction });
         await transaction.commit();
       } catch (error) {
         await transaction.rollback();

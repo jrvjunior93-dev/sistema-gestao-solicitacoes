@@ -13,16 +13,19 @@ const fixture = {
     quantidade_pedido: 10, recebimentos: [], entrega: { previsto: 10, recebido: 0, restante: 10, situacao: 'NAO_ENTREGUE', versao: 1,
       previsao: '2026-09-18', estado: 'OBRA', responsavel: 'OBRA' } }))
 };
-const js = `import React, {useState} from 'react';
+const js = `import React, {useState,useMemo} from 'react';
 import {createRoot} from 'react-dom/client';
+import{WorkspacePageContext,createWorkspaceMemory}from'/src/navigation/WorkspaceContext.jsx';
 import PedidoEntrega from '/src/pages/SolicitacaoDetalhe/PedidoEntrega.jsx';
 window.envios=[]; window.fixture=${JSON.stringify(fixture)};
 function App(){const [pedido,setPedido]=useState(window.fixture); const [compras,setCompras]=useState(false);
-return React.createElement('main',{style:{maxWidth:'100%',padding:12}},
+const[active,setActive]=useState(true);window.qaTab=val=>{if(val)setPedido(structuredClone(window.fixture));setActive(val)};
+const memory=useMemo(()=>createWorkspaceMemory(),[]);window.qaMemory=memory;
+return React.createElement(WorkspacePageContext.Provider,{value:{key:'entrega-qa',memory,snapshot:true,active:true}},React.createElement('main',{style:{maxWidth:'100%',padding:12}},
  React.createElement('button',{onClick:()=>setCompras(!compras)}, 'Trocar papel'),
- React.createElement(PedidoEntrega,{pedido,solicitacaoId:10,podeReceber:!compras,podeProgramar:compras,
+ active?React.createElement(PedidoEntrega,{pedido,solicitacaoId:10,podeReceber:!compras&&!window.readonly,podeProgramar:compras&&!window.readonly,
  renderComentarios:(item)=>React.createElement('p',{},'Comentário preservado '+item.id),
- onUpdated:async()=>{setPedido(structuredClone(window.fixture))}}));}
+ onUpdated:async()=>{setPedido(structuredClone(window.fixture))}}):React.createElement('p',{},'Consulta auxiliar')));}
 createRoot(document.getElementById('root')).render(React.createElement(App));`;
 const api = `export async function registrarEntregaPedido(s,p,data){window.envios.push({s,p,data});
  if(window.falhar){throw new Error('Falha simulada de rede');}
@@ -75,6 +78,34 @@ try {
   await page.getByRole('textbox',{name:'Motivo / observação'}).fill('Fornecedor confirmou nova data');
   await page.getByRole('button',{name:'Aplicar aos selecionados'}).click();
   await page.getByText(/Previsão: 25\/09\/2026/).waitFor();
+  // Retorno: inputs do usuario, nunca snapshot de saldo/status ou replay.
+  const alternate=async()=>{await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();await page.evaluate(()=>window.qaTab(true));await page.getByRole('region',{name:'Entregas do pedido 8'}).waitFor()};
+  for(const width of [1366,390]) {
+    await page.setViewportSize({width,height:900});
+    await page.getByRole('checkbox',{name:'Selecionar Areia fina'}).check();
+    await page.getByLabel('Data para selecionados').fill('28/09/2026');await page.getByLabel('Data para selecionados').blur();
+    await page.getByRole('textbox',{name:'Motivo / observação'}).fill('Retorno final Z');
+    const count=await page.evaluate(()=>window.envios.length);
+    await alternate();assert.equal(await page.getByRole('textbox',{name:'Motivo / observação'}).inputValue(),'Retorno final Z');
+    assert.equal(await page.getByLabel('Data para selecionados').inputValue(),'28/09/2026');assert.ok(await page.getByRole('checkbox',{name:'Selecionar Areia fina'}).isChecked());
+    assert.equal(await page.evaluate(()=>window.envios.length),count);
+    await page.evaluate(()=>window.fixture.itens[1].entrega.versao++);await alternate();
+    await page.getByRole('alert').waitFor();assert.ok(await page.getByRole('button',{name:'Aplicar aos selecionados'}).isDisabled());
+    await page.getByRole('button',{name:'Usar entrega atual'}).click();
+    assert.equal(await page.getByRole('textbox',{name:'Motivo / observação'}).inputValue(),'');
+    await page.getByRole('button',{name:'Trocar papel'}).click();
+    const qty=page.getByRole('textbox',{name:'Quantidade de Areia fina'});await qty.fill('3');
+    await page.evaluate(()=>window.falhar=true);await page.getByRole('button',{name:'Marcar como entregue'}).nth(1).click();await page.getByRole('alert').waitFor();
+    const failed=await page.evaluate(()=>window.envios.at(-1));await alternate();assert.equal(await qty.inputValue(),'3');
+    assert.equal(await page.evaluate(()=>window.envios.length),count+1);
+    await page.getByRole('button',{name:'Marcar como entregue'}).nth(1).click();await page.getByRole('alert').waitFor();
+    assert.equal((await page.evaluate(()=>window.envios.at(-1))).data.idempotency_key,failed.data.idempotency_key);
+    await page.evaluate(()=>window.falhar=false);await page.getByRole('button',{name:'Marcar como entregue'}).nth(1).click();
+    await page.getByRole('status').waitFor();const after=await page.evaluate(()=>window.envios.length);await alternate();assert.equal(await page.evaluate(()=>window.envios.length),after);
+    await page.evaluate(()=>window.readonly=true);await alternate();assert.equal(await qty.count(),0);assert.equal(await page.getByRole('button',{name:'Registrar recebimento',exact:true}).count(),0);
+    await page.evaluate(()=>window.readonly=false);await alternate();await page.getByRole('button',{name:'Trocar papel'}).click();
+    console.log('OK entrega workspace '+width+'px: inputs, saldo/versao, permissao, retry idempotente e sem replay.');
+  }
   for(const width of [1200,700,375]){
     await page.setViewportSize({width,height:1000});
     const size=await page.evaluate(()=>({viewport:innerWidth,body:document.documentElement.scrollWidth}));

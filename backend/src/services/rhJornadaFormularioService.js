@@ -1,4 +1,5 @@
 'use strict';
+const { PIX_TEXTO_MAX } = require('../utils/pix');
 
 const { createHash } = require('crypto');
 const { Op } = require('sequelize');
@@ -79,7 +80,7 @@ function pagamentoDoTituloDaJornada(linha, pagamentoCadastrado, colaboradorNome)
   const alterado = chaveIndicada !== chaveCadastrada;
   const nome = String(linha.favorecido_pix_nome || '').trim();
   const cpf = onlyDigits(linha.favorecido_pix_cpf || '');
-  if (chaveIndicada.length > 120) {
+  if (chaveIndicada.length > PIX_TEXTO_MAX) {
     throw new ValidationError(`${colaboradorNome}: a chave PIX excede o limite permitido.`);
   }
   if (alterado && (!chaveIndicada || !nome || !isValidCpf(cpf))) {
@@ -298,8 +299,9 @@ async function registrarJornadaEmTransacao(dados = {}, contexto = {}, transactio
       throw new ValidationError('A etapa de pagamento da jornada nao esta habilitada ou e invalida.', 409);
     }
     const periodo = normalizarPeriodo(dados, competencia, etapaPagamento);
-    const idempotencyKey = etapaPagamento ? String(dados.idempotency_key || '').trim() : '';
-    if (etapaPagamento && !/^[A-Za-z0-9-]{16,80}$/.test(idempotencyKey)) {
+    const independente = dados.solicitacao_independente === true || dados.solicitacao_independente === 'true';
+    const idempotencyKey = etapaPagamento || independente ? String(dados.idempotency_key || '').trim() : '';
+    if ((etapaPagamento || independente) && !/^[A-Za-z0-9-]{16,80}$/.test(idempotencyKey)) {
       throw new ValidationError('Identificador de envio da jornada invalido. Atualize a tela e tente novamente.');
     }
     const envioHash = idempotencyKey
@@ -923,12 +925,14 @@ async function registrarJornadaEmTransacao(dados = {}, contexto = {}, transactio
       const detalhes = typeof pedido.dados_json === 'string'
         ? JSON.parse(pedido.dados_json)
         : (pedido.dados_json || {});
-      return String(detalhes.competencia || '') === competencia
+      return detalhes.solicitacao_independente !== true
+        && String(detalhes.competencia || '') === competencia
         && String(detalhes.periodo_inicio || '') === periodo.inicio
         && String(detalhes.periodo_fim || '') === periodo.fim;
     });
     const dadosSolicitacao = {
       importacao_id: importacao.id,
+      solicitacao_independente: independente,
       modo_gerencial_v2: modoGerencialV2,
       competencia,
       etapa_pagamento: etapaPagamento,
@@ -941,7 +945,7 @@ async function registrarJornadaEmTransacao(dados = {}, contexto = {}, transactio
       observacoes: dados.observacoes || null
     };
     let solicitacao;
-    if (existente && !etapaPagamento) {
+    if (existente && !etapaPagamento && !independente) {
       solicitacao = existente;
       await solicitacao.update({ dados_json: dadosSolicitacao }, { transaction });
       await RhSolicitacaoHistorico.create({

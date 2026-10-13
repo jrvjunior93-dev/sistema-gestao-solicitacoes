@@ -1,5 +1,7 @@
 import DateInputBR from '../components/DateInputBR';
+import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork, useWorkspaceClearPage } from '../navigation/WorkspaceContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import { getMinhasObras } from '../services/obras';
@@ -39,7 +41,6 @@ import {
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
-const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
 const TIPOS_INTERCOMPANY = [
   ['APORTE', 'Aporte'],
   ['EMPRESTIMO', 'Emprestimo'],
@@ -405,7 +406,7 @@ export default function FinanceiroTituloNovo() {
   const moduloApropriacoesHabilitado = hasEnabledModule(user, 'OBRAS');
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTipo = resolveTipo(searchParams.get('tipo'));
-  const [form, setForm] = useState(() => buildDefaultForm(initialTipo));
+  const [form, setForm] = useWorkspaceState('novoTitulo:campos', () => buildDefaultForm(initialTipo));
   const [obras, setObras] = useState([]);
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -421,15 +422,15 @@ export default function FinanceiroTituloNovo() {
   // valor do título" — continua no fluxo, ao lado do campo que a descreve.
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
-  const [parceiroBusca, setParceiroBusca] = useState('');
-  const [categoriaBusca, setCategoriaBusca] = useState('');
-  const [categoriaModalOpen, setCategoriaModalOpen] = useState(false);
-  const [categoriaModalBusca, setCategoriaModalBusca] = useState('');
+  const [parceiroBusca, setParceiroBusca] = useWorkspaceState('novoTitulo:parceiroBusca', '');
+  const [categoriaBusca, setCategoriaBusca] = useWorkspaceState('novoTitulo:categoriaBusca', '');
+  const [categoriaModalOpen, setCategoriaModalOpen] = useWorkspaceState('novoTitulo:categoriaModal', false);
+  const [categoriaModalBusca, setCategoriaModalBusca] = useWorkspaceState('novoTitulo:categoriaModalBusca', '');
   const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [beneficiaries, setBeneficiaries] = useState([]);
-  const [paymentDraft, setPaymentDraft] = useState({
+  const [paymentDraft, setPaymentDraft] = useWorkspaceState('novoTitulo:pix', {
     preparar_pagamento_pix: false,
     usar_credor_como_favorecido: false,
     payment_beneficiary_id: '',
@@ -440,7 +441,9 @@ export default function FinanceiroTituloNovo() {
     payment_account_id: '',
     data_pagamento: today()
   });
-  const [prefillAplicado, setPrefillAplicado] = useState(false);
+  const [prefillAplicado, setPrefillAplicado] = useWorkspaceState('novoTitulo:prefill', false);
+  const limparWorkspace = useWorkspaceClearPage();
+  useWorkspaceWork(Boolean(form.descricao || form.valor || parceiroBusca || paymentDraft.pix_chave), saving);
 
   useEffect(() => {
     let active = true;
@@ -673,7 +676,7 @@ export default function FinanceiroTituloNovo() {
         const lista = Array.isArray(data) ? data : [];
         setBeneficiaries(lista);
         const beneficiary = lista.find((item) => item.ativo !== false) || lista[0];
-        if (beneficiary) {
+        if (beneficiary && !paymentDraft.nome && !paymentDraft.pix_chave) {
           setPaymentDraft((current) => ({
             ...current,
             payment_beneficiary_id: current.usar_credor_como_favorecido ? '' : String(beneficiary.id),
@@ -961,7 +964,12 @@ export default function FinanceiroTituloNovo() {
       // já era zerado aqui — texto sobrando no campo com o vínculo vazio era
       // o que fazia a validação acusar "selecione o credor" com o nome à
       // vista.
-      setSearchParams({ tipo: value });
+      // Tipo pertence ao formulario atual, nao cria outra origem de trabalho.
+      // Preservar origem_frete_id e demais parametros evita trocar o slot e
+      // perder os campos ao atualizar a URL.
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('tipo', value);
+      setSearchParams(nextParams, { replace: true });
       setParceiroBusca('');
       setCategoriaBusca('');
       setBeneficiaries([]);
@@ -1524,6 +1532,7 @@ export default function FinanceiroTituloNovo() {
         rotuloConfirmar: quantidadeCriada > 1 ? 'Abrir o primeiro titulo' : 'Abrir o título criado',
         rotuloCancelar: `Voltar para ${tituloListLabel}`
       });
+      limparWorkspace();
       navigate(abrirTitulo ? `/financeiro/titulos/${titulo.id}` : tituloListPath);
     } catch (err) {
       // O que falhou E o que fazer — e, antes de tudo, o estado do dinheiro:
@@ -2721,7 +2730,7 @@ export default function FinanceiroTituloNovo() {
                             value={paymentDraft.pix_tipo_chave}
                             onChange={(event) => setPaymentDraft((current) => ({ ...current, pix_tipo_chave: event.target.value }))}
                           >
-                            {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+                            {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{pixTipoLabel(tipo)}</option>)}
                           </select>
                         </CampoForm>
 

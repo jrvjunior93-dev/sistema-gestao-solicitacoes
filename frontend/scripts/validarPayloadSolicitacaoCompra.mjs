@@ -9,6 +9,7 @@ const { validateCompraCreateBody } = require('../../backend/src/validators/opera
 
 const rascunhoLegado = {
   obra_id: 42,
+  titulo: '  Materiais para a cobertura  ',
   necessario_para: '2099-10-06',
   observacoes: 'Comprar após cotação',
   link_geral: null,
@@ -33,7 +34,8 @@ const rascunhoLegado = {
 
 assert.throws(() => validateCompraCreateBody(rascunhoLegado), /campos nao permitidos/);
 const payload = prepararPayloadSolicitacaoCompra(rascunhoLegado);
-assert.deepEqual(Object.keys(payload), ['obra_id', 'necessario_para', 'observacoes', 'link_geral', 'itens']);
+assert.deepEqual(Object.keys(payload), ['obra_id', 'titulo', 'necessario_para', 'observacoes', 'link_geral', 'itens']);
+assert.equal(validateCompraCreateBody(payload).titulo, 'Materiais para a cobertura');
 assert.equal(payload.itens[0].frete_valor, undefined);
 assert.equal(payload.itens[0].valor_unitario, undefined);
 assert.deepEqual(payload.itens[0].apropriacoes, rascunhoLegado.itens[0].apropriacoes);

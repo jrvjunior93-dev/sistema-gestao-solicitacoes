@@ -1,6 +1,6 @@
 # Modulo RH/DP
 
-Para o percurso completo das sete abas da tela Pessoal, suas permissões,
+Para o percurso completo da tela Pessoal, suas permissões,
 situações, cálculos e integração financeira, consulte o
 [Guia operacional de Pessoal](GUIA_OPERACIONAL_PESSOAL.md).
 
@@ -22,6 +22,107 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 - usuario operacional do setor OBRA acessa somente a porta `Pessoal` do modulo;
 - para usuario de OBRA, listas, detalhes, solicitacoes e jornada ficam limitados as obras vinculadas em `usuarios_obras`, inclusive quando a API e chamada diretamente;
 - o cadastro geral de colaboradores, documentos, importacoes, fechamentos e relatorios permanece restrito ao RH/DP e aos administradores autorizados.
+
+## Pessoal por local e conferencia por solicitacao
+
+- Para usuarios do setor OBRA, o modulo RH/DP aparece no menu como
+  `Colaboradores`, com descricao `Solicitações e Pagamentos`. Desde 11/10/2026,
+  o DP tambem usa esse nome e a mesma entrada por locais. O id `rhdp`,
+  as rotas e as permissoes permanecem os mesmos.
+- O menu possui Obras / Centros de Custo, Documentos globais, Relatorios
+  globais e Importacoes, conforme permissoes. Cadastro e Fechamentos continuam
+  acessiveis por acoes na entrada de locais, URLs antigas e busca Ctrl+K.
+- Usuarios do DP e usuarios operacionais entram em
+  `Pessoal` pelas obras/centros vinculados. `Abrir` exibe Gestao de Colaboradores
+  com Colaboradores, Solicitacoes, Transferencias, Eventos recorrentes,
+  Documentos e Relatorios, conforme permissoes. Os tres ultimos nao ampliam
+  as autorizacoes existentes: documentos e relatorios continuam restritos
+  aos perfis autorizados. Transferencias permanecem apenas entre obras.
+- Documentos e Relatorios dentro de um local fixam `obra_id` em todas as
+  consultas, inclusive ao limpar/atualizar filtros. Na entrada global nao
+  ha local predefinido. Eventos e transferencias tambem aplicam o local no
+  servidor, sem substituir o escopo de leitura do usuario; transferencias
+  incluem origem ou destino e sua leitura nao marca avisos de outros locais.
+- O DP autorizado pode editar o cadastro pelo icone da linha do colaborador,
+  no mesmo formulario/endpoint de cadastro, sem sair do local selecionado.
+- O primeiro icone de cada colaborador solicita pagamento individual. O botao
+  acima da lista abre o envio coletivo do local. Competencia e vinculos
+  historicos determinam quem pode ser informado; dias, faltas, acrescimos,
+  descontos e observacao usam o mesmo servico de jornada ja existente.
+- Os novos modais criam pedidos independentes mesmo no modo legado sem etapas:
+  `solicitacao_independente=true` exige chave de idempotencia. Um envio posterior
+  nao substitui o pedido de outro colaborador; repeticao da mesma chave/hash
+  retorna o envio anterior. Correcoes continuam exigindo autorizacao do DP.
+- O DP preserva o acesso legado a Jornada/Apuracao/Fechamentos. Ao abrir uma solicitacao de jornada, consulta
+  e prepara explicitamente a apuracao daquela fonte, ajusta, marca Conferido,
+  conclui a conferencia e fecha/gera titulos no mesmo modal. Abrir o modal nao
+  grava nem recalcula. Permissoes de editar e fechar continuam separadas.
+- A preparacao geral exclui linhas ja reservadas por apuracoes independentes.
+  Apuracoes legadas compartilhadas sao somente leitura no modal; o atalho
+  `Abrir consolidacao geral` preserva o tratamento multiobra, sem reconstruir
+  registros ou pagar duas vezes a base mensal. Jornadas exclusivamente multiobra
+  continuam exigindo todas as partes e consolidacao antes do fechamento.
+- As flags 40/60 e gerencial v2 nao sao ativadas por esta alteracao. Titulos
+  continuam sujeitos a empresa, categoria, PIX, conferencia, bloqueios de
+  conversao contabil e protecoes financeiras existentes. Gerar nao e baixar.
+
+Testes sem banco/rede externa: `node scripts/validarRhPessoalPorSolicitacao.js`
+no backend e `node scripts/validarRhPessoalPorLocal.mjs` no frontend (tambem
+com `--etapas` e `--gerencial`).
+
+## Modal independente de pagamento (10/10/2026)
+
+O modal `Solicitar pagamento` / `Conferir pagamento` usa o fluxo
+`PAGAMENTO_POR_SOLICITACAO`, separado das apuracoes legadas descritas acima.
+O botao da linha abre apenas aquele colaborador. A primeira coluna da tabela
+permite marcar colaboradores ativos do mesmo local: o botao geral abre apenas
+os marcados, ja selecionados no modal; sem marcacao abre todos do local.
+Busca preserva a marcacao; trocar usuario/obra/filtro de obra limpa a selecao.
+O rascunho guarda somente o grupo escolhido, tambem na conferencia do DP.
+Mesmo usuario/local/grupo reabre seu rascunho sob lock, sem duplicar pedido;
+grupos diferentes nao reaproveitam linhas ou edicoes de outro grupo.
+Rascunhos legados sao preservados: os individuais que continham toda a equipe
+nao sao cortados ou regravados; o novo botao cria um rascunho restrito separado.
+O ajuste usa dados_json e nao exige migration.
+
+Mensalista: salario base multiplicado pelo percentual 40%, 60% ou 100%; dias e
+faltas sao informativos. Diarista: diaria multiplicada pelos dias informados;
+faltas tambem sao informativas. Acrescimos e descontos informados entram no
+liquido integralmente. Os controles de dias/faltas avancam de um em um.
+
+Acrescimos e descontos usam mascara BRL durante digitacao, seguindo os
+formatters compartilhados do sistema (digitos entram como centavos).
+Apagar todo o campo mostra `R$ 0,00`; o PUT envia numeros, inclusive ao
+normalizar campos vazios de rascunhos antigos, nunca strings com `R$`.
+O calculo do liquido e as validacoes financeiras permanecem no dominio.
+
+Reembolso de vale e opcional e solicitado pelo link `Solicitar reembolso`
+sob o desconto. Digitar, pausar ou sair do campo nao abre modal, nem o envio
+exige uma pergunta para descontos comuns. O link abre diretamente responsavel
+e dados para pagamento; confirmar solicita o reembolso, cancelar/Voltar/Escape
+conserva o desconto sem nova solicitacao de reembolso. Vales do mesmo
+responsavel/empresa continuam agrupados em um titulo com discriminacao.
+O modal permite informar o `Valor do reembolso`, em moeda, separado do desconto.
+Deve ser positivo e nao ultrapassar o desconto daquele colaborador.
+O rodape do editor tem apenas `Cancelar` e `Confirmar`. Cancelar/Voltar/Escape
+descartam a edicao do modal sem apagar um reembolso anteriormente confirmado.
+O desconto integral continua no liquido salarial. Somente o valor reembolsavel
+entra na soma por responsavel/empresa e nas origens discriminadas do titulo.
+Escolher o mesmo responsavel reutiliza dados bancarios, nao o valor de outra
+pessoa. O DP pode ajustar o reembolso e reconferir a linha antes de enviar.
+Pedidos legados sem valor explicito conservam o reembolso integral; titulos
+ja gerados nao sao recalculados. Campo guardado em dados_json, sem migration.
+Frontend e backend devem ser atualizados juntos. Antes do envio, a tela exige
+que a resposta do salvamento confirme o valor; backend antigo que ignora a
+parcela parcial bloqueia o envio, em vez de gerar reembolso integral indevido.
+O retorno aos cards do local se chama `Voltar para Obras`, mantendo tambem
+os centros de custo na mesma lista.
+
+O salvamento automatico e em segundo plano, sem desabilitar campos ou substituir
+edicoes em voo. Fechar, salvar manualmente e enviar aguardam a ultima gravacao;
+falha conserva o formulario. Pagamentos ja gerados conservam o snapshot aprovado
+e os titulos, sem recalculo retroativo. Nenhuma regra da jornada legada muda.
+Detalhes e testes: [handoff de dias e salvamento](../../handoffs/2026-10-10-dp-dias-salvamento.md).
 
 ## Obra ou centro de custo no cadastro
 
@@ -80,8 +181,31 @@ Validacao local, sem banco: `node scripts/validarRhColaboradoresPlanilha.js` no 
 ## Admissao e contatos adicionais
 
 - o pedido de admissao permite informar, opcionalmente, um segundo telefone e um segundo endereco completo;
+- o cadastro direto e a edicao pelo DP dentro do local tambem exibem os dois
+  telefones e os dois enderecos, preservando os campos ao reabrir a ficha;
+- admissao e cadastro mostram os dois telefones e os dois enderecos desde a
+  abertura, sem botoes de adicionar/remover. Os campos secundarios permanecem
+  opcionais; limpar seus campos no cadastro remove apenas os dados secundarios;
+- DP e administradores podem usar `Usar o mesmo endereco` no cadastro/admissao:
+  copia os sete campos e acompanha alteracoes enquanto marcado; desmarcar
+  preserva a copia e libera edicao independente;
+- Obra operacional nao tem opcao de copiar. Na abertura/reenvio da admissao,
+  quando preenchido, o segundo endereco precisa ser diferente do primeiro:
+  comparacao dos sete campos ignora caixa, acentos, espacos e pontuacao.
+  API usa usuario autenticado e regras de setor existentes (nao flag do payload).
+  Pedidos legados ja registrados continuam aprovaveis pelo DP;
+- admissao usa FormSecao para identificacao/lotacao, contrato/calculo,
+  contato, filiacao, enderecos e dados de pagamento, sem alterar permissoes,
+  obrigatoriedade dos campos primarios, anexos ou fluxo de rascunho/checklist;
 - os dados adicionais ficam no pedido para conferencia e, apos aprovacao, no cadastro do colaborador; o cadastro exige a migration de esquema `202610020001_rh_colaborador_contatos_adicionais.js` antes de usar esses campos;
-- ao informar o segundo endereco, logradouro e municipio sao obrigatorios; o segundo telefone, quando preenchido, deve ter DDD.
+- ao informar o segundo endereco, logradouro e municipio sao obrigatorios; o
+  segundo telefone, quando preenchido, deve ter DDD e ser diferente do primeiro,
+  ignorando mascara e prefixo brasileiro +55. Cadastro, edicao parcial, abertura,
+  reenvio e aprovacao da admissao validam no backend; nenhum saneamento automatico
+  de dados legados e feito. Edicoes nao relacionadas preservam o legado;
+- o ajuste de 11/10/2026 reutiliza as colunas existentes, sem migration nova.
+  Validacao isolada: `node scripts/validarRhColaboradorContatos.js` no backend
+  e `node scripts/validarRhColaboradorContatos.mjs` no frontend.
 
 ## Colaborador em mais de uma obra
 
@@ -116,6 +240,51 @@ contra dia repetido entre 40% e 60% e por soma de quantidades, nao por data.
 - na mudanca de mensalista para diarista no meio da competencia, o mensal vale ate a vespera da data efetiva, com divisor fixo de 30 dias (limitado a 30 dias). A partir da data efetiva, cada envio de diaria e independente. A apuracao calcula o proporcional mensal devido, subtrai os pagamentos mensais ja fechados e mostra o saldo ou credito a compensar com diarias da competencia. Um credito restante ao fim do mes nao migra automaticamente: o DP deve fazer acerto manual documentado. Por seguranca, fechamento financeiro com acerto misto ou credito fica bloqueado ate a apropriacao contabil por obra e fora de obra estar implementada e homologada; nao gera titulo incorreto nem negativo;
 - a obra informa dias e ajustes somente do seu periodo. Para mensalista multiobra, o DP consolida por etapa; no fechamento dos 60%, os rateios de custo dos dois titulos sao reconciliados pelos dias das duas etapas. A baixa e o valor dos 40% nao mudam. O rateio anterior e registrado no fechamento e restaurado se os 60% forem reabertos;
 - enquanto a flag estiver `OFF`, o frontend nao mostra etapas nem campo de vigencia, o backend rejeita envios/geracoes/fechamentos em etapa, e os fluxos legados permanecem disponiveis. O deploy ainda requer a migration antes do backend atualizado, pois o modelo inclui as novas colunas anulaveis. A conversao com compensacao e o rateio contabil dos titulos mistos precisam de homologacao integrada antes de ativar a flag.
+
+## Pagamento por solicitacao: envio parcial e revisao (11/10/2026)
+
+Este fluxo e o modal atual de Solicitar/Conferir pagamento, separado da
+apuracao gerencial legada. Nao altera flags de etapas nem titulos de outros fluxos.
+
+- O andamento e registrado por colaborador. Depois de enviar apenas uma parte,
+  a solicitacao mostra **Envio parcial para pagamento** (`ENVIO_PARCIAL`) e permite
+  selecionar, conferir e enviar os restantes, sem gerar os anteriores novamente.
+  Ao enviar todos, permanece `APROVADA`; isso nao significa baixa financeira.
+- O DP com permissao de conferir/gerar titulos e preparar a fila pode usar
+  **Editar e reenviar** ou **Cancelar pagamento**, informando motivo. Escopo de
+  obra/centro de custo e revisao otimista continuam obrigatorios no backend.
+- Editar muda a solicitacao para `EM_REVISAO` e as linhas para `EM_EDICAO`.
+  O titulo RH/DP recebe o marcador reservado `EM EDICAO DP`; o item da fila
+  fica `EM_EDICAO`, destacado e sem baixa, novo envio ou edicao financeira
+  generica. O bloqueio permanece ao fechar o modal. Reenvio apos conferencia
+  atualiza os mesmos IDs de salario e fila, exige nova conferencia financeira
+  e conserva comprovantes. Dados bancarios recebem snapshot independente.
+- Revisar um reembolso agrupado bloqueia os salarios dos colaboradores
+  envolvidos e o reembolso; todos precisam ser conferidos no reenvio.
+  Se o responsavel/agrupamento mudar, o reembolso antigo deixa de ser pagavel
+  e um novo pode ser criado, sem duplicar os salarios nem pagar ambos.
+- Cancelar tira o pagamento da fila operacional, sem apagar seu registro,
+  titulo, comprovantes ou historico. Num vale agrupado, remove somente a parte
+  do colaborador cancelado e recalcula o restante; cancela o titulo do vale
+  apenas quando nao restar contribuinte. Titulos desta jornada devem ser
+  cancelados na solicitacao, nao pela exclusao generica do Financeiro.
+- Qualquer baixa, inclusive parcial/estornada, ou pagamento bancario ativo
+  impede revisao/cancelamento. Locks seguem titulo -> fila, com transacao,
+  controle de revisao, replay e auditoria financeira/RH atomicos.
+- Legados `APROVADA` com colaboradores sem titulo sao projetados como parciais
+  na leitura/lista/filtro; nao ha reconciliacao ou escrita automatica na consulta.
+  A Obra envia ao DP apenas os colaboradores selecionados no pedido novo.
+  O contador de pedidos em aberto inclui parciais e em revisao. O recorte
+  `EM_ANDAMENTO` da consulta agrega esses estados e `ABERTA`, sem ser status gravado.
+- Estados cabem nas colunas STRING existentes; esta alteracao nao requer
+  migration. `EM_EDICAO` conta como pendente no resumo da fila e possui filtro
+  proprio. O indice gerado legado de fila ativa nao inclui esse estado;
+  a reserva durante revisao e garantida pelo lock do titulo e a busca de
+  estados ativos na API canonica, nao por uma promessa de novo indice SQL.
+- Validacoes isoladas: `npm run test:rhdp-envio-parcial`,
+  `node scripts/validarRhPagamentoSolicitacao.js`,
+  `node scripts/validarRhPessoalPorSolicitacao.js` (backend), testes reais de UI
+  `validarRhPagamentoSolicitacaoUI.mjs` e `validarFilaInstrumentosUI.mjs`.
 
 ## Ticket de beneficio
 

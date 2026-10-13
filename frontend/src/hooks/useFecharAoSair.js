@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useWorkspaceActive } from '../navigation/WorkspaceContext';
 
 // Todo menu/painel suspenso fecha ao clicar fora dele e com Esc.
 // Nascido no menu "Colunas" do ListaAvancada; compartilhado com os
@@ -80,6 +81,7 @@ import { useEffect, useRef } from 'react';
 // `fechar` NÃO reassina o listener a cada render — e continua sempre
 // enxergando o valor mais novo.
 export function useFecharAoSair(refOuRefs, aberto, fechar, opcoes) {
+  const active = useWorkspaceActive();
   const apenasEsc = Boolean(opcoes && opcoes.apenasEsc);
   const refsVivos = useRef(refOuRefs);
   refsVivos.current = refOuRefs;
@@ -87,7 +89,7 @@ export function useFecharAoSair(refOuRefs, aberto, fechar, opcoes) {
   fecharVivo.current = fechar;
 
   useEffect(() => {
-    if (!aberto) return undefined;
+    if (!aberto || !active) return undefined;
 
     const dentroDeAlgum = (alvo) => {
       const atual = refsVivos.current;
@@ -116,7 +118,7 @@ export function useFecharAoSair(refOuRefs, aberto, fechar, opcoes) {
       }
       document.removeEventListener('keydown', aoTeclar);
     };
-  }, [aberto, apenasEsc]);
+  }, [aberto, apenasEsc, active]);
 }
 
 export default useFecharAoSair;

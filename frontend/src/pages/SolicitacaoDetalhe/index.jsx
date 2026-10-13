@@ -1,5 +1,9 @@
+import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useWorkspaceTitle, useWorkspaceState, useWorkspaceEdicaoSolicitacao, useWorkspaceWork } from '../../navigation/WorkspaceContext';
+import { useSafeNavigateBack } from '../../utils/navigation';
+import AtencaoPendente, { gruposInteracoes } from '../Solicitacoes/AtencaoPendente';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLiveUpdateSubscription } from '../../contexts/LiveUpdatesContext';
 
@@ -12,6 +16,7 @@ import FinanceiroCard from './FinanceiroCard';
 import AcoesContrato from './AcoesContrato';
 import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
 import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
+import AdiantamentoDetalhe from './AdiantamentoDetalhe';
 import ObraCadastroModal from '../../components/obras/ObraCadastroModal';
 import CompraEtapas from './CompraEtapas';
 import { descricaoItensCompraDireta } from './estadoItensCompraDireta';
@@ -289,6 +294,8 @@ function mapearItemManualCompraDireta(item) {
 }
 
 export default function SolicitacaoDetalhe() {
+  const voltarWorkspace = useSafeNavigateBack('/solicitacoes');
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -353,7 +360,30 @@ export default function SolicitacaoDetalhe() {
   const podeCatalogarItensManuaisCompra = moduloComprasHabilitado && canCatalogarItensManuaisCompras(user);
 
   const [solicitacao, setSolicitacao] = useState(null);
-  const [edicaoDados, setEdicaoDados] = useState(null);
+  const paginaMontadaRef = useRef(true);
+  const versaoCargaRef = useRef(0);
+  useEffect(() => { paginaMontadaRef.current = true; return () => { paginaMontadaRef.current = false; }; }, []);
+  useWorkspaceTitle(solicitacao?.codigo || 'Solicitação');
+  const versaoLeituraInteracoesRef = useRef(0);
+  const locationInteracao = useLocation();
+  const queryInteracao = new URLSearchParams(locationInteracao.search);
+  const tipoInteracaoFoco = queryInteracao.get('interacao');
+  const eventoInteracaoFoco = Number(queryInteracao.get('evento')) || null;
+  useEffect(() => {
+    if (tipoInteracaoFoco) setAbaMobile(['COMENTARIO_ITEM', 'RETORNO_PENDENTE', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco) ? 'detalhes' : 'historico');
+  }, [tipoInteracaoFoco, eventoInteracaoFoco]);
+  useEffect(() => {
+    const leitura = (event) => {
+      if (Number(event.detail?.id) !== Number(id)) return;
+      if (event.detail.usuario_id && Number(event.detail.usuario_id) !== Number(user?.id)) return;
+      versaoLeituraInteracoesRef.current++;
+      setSolicitacao((atual) => atual && Number(atual.id) === Number(id)
+        ? { ...atual, interacoes_pendentes: event.detail.interacoes_pendentes } : atual);
+    };
+    window.addEventListener('fluxy:interacoes-lidas', leitura);
+    return () => window.removeEventListener('fluxy:interacoes-lidas', leitura);
+  }, [id, user?.id]);
+  const [edicaoDados, setEdicaoDados] = useWorkspaceEdicaoSolicitacao();
   const permissoesEdicao = permissoesEdicaoSolicitacao(user);
   // PI-16: o contrato do fluxo novo vive DENTRO desta solicitacao. O estado dele decide o que a
   // barra de acoes oferece — e e o contrato quem tem a maquina de estados; a solicitacao espelha.
@@ -361,6 +391,12 @@ export default function SolicitacaoDetalhe() {
   // Por que o contrato nao carregou. Vazio quando carregou ou quando a solicitacao nem tem contrato.
   const [falhaContrato, setFalhaContrato] = useState('');
   const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (loading || !['RETORNO_PENDENTE', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco)) return;
+    const timer = setTimeout(() => document.getElementById(tipoInteracaoFoco === 'RETORNO_PENDENTE'
+      ? 'sol-detail-retorno' : 'sol-detail-itens')?.scrollIntoView({ block: 'start' }), 100);
+    return () => clearTimeout(timer);
+  }, [loading, tipoInteracaoFoco, id]);
   const [modalStatus, setModalStatus] = useState(false);
   const [modalCadastroObraAberto, setModalCadastroObraAberto] = useState(false);
   const [statusDependenciasVersao, setStatusDependenciasVersao] = useState(0);
@@ -385,7 +421,7 @@ export default function SolicitacaoDetalhe() {
   const [isMobileDetalhe, setIsMobileDetalhe] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   ));
-  const [abaMobile, setAbaMobile] = useState('detalhes');
+  const [abaMobile, setAbaMobile] = useWorkspaceState('detalhe:abaMobile', 'detalhes');
   useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)');
     const listener = (event) => setIsMobileDetalhe(event.matches);
@@ -419,6 +455,7 @@ export default function SolicitacaoDetalhe() {
   const [quantidadeItemCompra, setQuantidadeItemCompra] = useState('');
   const [motivoQuantidadeItemCompra, setMotivoQuantidadeItemCompra] = useState('');
   const [salvandoCompraDireta, setSalvandoCompraDireta] = useState(false);
+  useWorkspaceWork(false, salvandoCompraDireta || salvandoApropriacoes || salvandoPendenciaFinanceira, 'detalhe:operacao');
   const [acaoItemCompraDireta, setAcaoItemCompraDireta] = useState('APROPRIAR');
   const localMutationsRef = useRef(new Map());
 
@@ -441,9 +478,9 @@ export default function SolicitacaoDetalhe() {
   // ninguem consome — deixa-lo aberto convidava a criar uma segunda verdade sobre o mesmo contrato.
   const solicitacaoEhContrato = Boolean(contratoDoFluxo);
   const contextoInteracao = solicitacao?.contexto_interacao || null;
-  const podeInteragirSolicitacao = contextoInteracao
+  const podeInteragirSolicitacao = isSuperadmin || (contextoInteracao
     ? contextoInteracao.pode_interagir === true
-    : Boolean(solicitacao?.area_responsavel && solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user));
+    : Boolean(solicitacao?.area_responsavel && solicitacaoEstaNoSetorDoUsuario(solicitacao.area_responsavel, user)));
   const podeEditarApropriacoesSolicitacaoNormal = podeEditarApropriacoes
     && podeInteragirSolicitacao
     && !isSolicitacaoCompra
@@ -482,7 +519,7 @@ export default function SolicitacaoDetalhe() {
 
   useEffect(() => {
     carregar();
-  }, [id]);
+  }, [id, user?.id]);
 
   useEffect(() => {
     if (!isCompraDiretaSolicitacao || !solicitacao?.id) {
@@ -589,13 +626,19 @@ export default function SolicitacaoDetalhe() {
   }
 
   async function carregar({ silent = false } = {}) {
+    const carga = ++versaoCargaRef.current;
+    const aindaAtual = () => paginaMontadaRef.current && carga === versaoCargaRef.current;
+    const versaoLeitura = versaoLeituraInteracoesRef.current;
     try {
       if (!silent) {
         setLoading(true);
       }
 
       const data = await getSolicitacaoById(id);
-      setSolicitacao(data);
+      if (!aindaAtual()) return;
+      setSolicitacao((atual) => versaoLeitura !== versaoLeituraInteracoesRef.current
+        && Number(atual?.id) === Number(data?.id)
+        ? { ...data, interacoes_pendentes: atual.interacoes_pendentes } : data);
 
       // PI-16: carrega o contrato quando esta solicitacao E a solicitacao DELE.
       //
@@ -610,10 +653,12 @@ export default function SolicitacaoDetalhe() {
       if (data?.contrato_id) {
         try {
           const doContrato = await getContratoParcelas(data.contrato_id);
+          if (!aindaAtual()) return;
           const c = doContrato?.contrato;
           setContratoDoFluxo(c?.fluxo_novo && String(c.solicitacao_id) === String(data.id) ? c : null);
           setFalhaContrato('');
         } catch (erroContrato) {
+          if (!aindaAtual()) return;
           setContratoDoFluxo(null);
           setFalhaContrato(erroContrato?.message || 'Nao foi possivel carregar o contrato desta solicitacao.');
         }
@@ -622,6 +667,7 @@ export default function SolicitacaoDetalhe() {
         setFalhaContrato('');
       }
     } catch (err) {
+      if (!aindaAtual()) return;
       console.error(err);
       const status = Number(err?.status || 0);
       if (status === 403 || status === 404) {
@@ -633,7 +679,7 @@ export default function SolicitacaoDetalhe() {
         avisar.erro(err?.message || 'Erro ao carregar solicitacao');
       }
     } finally {
-      if (!silent) {
+      if (!silent && aindaAtual()) {
         setLoading(false);
       }
     }
@@ -1138,7 +1184,7 @@ export default function SolicitacaoDetalhe() {
         <PageHeader
           titulo="Solicitação"
           descricao="Carregando o registro..."
-          voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
+          voltar={{ onClick: () => voltarWorkspace(), title: 'Voltar' }}
         />
         <Avisos avisos={avisos} aoFechar={fecharAviso} />
         <BlocoConteudo>Carregando...</BlocoConteudo>
@@ -1168,7 +1214,7 @@ export default function SolicitacaoDetalhe() {
   const podeEnviarSetor =
     podeInteragirSolicitacao &&
     !usaFluxoAprovacaoDiretoria &&
-    !isSetorObra &&
+    (isSuperadmin || !isSetorObra) &&
     (
       isSuperadmin ||
       podeEnviarQualquerSetor ||
@@ -1236,21 +1282,16 @@ export default function SolicitacaoDetalhe() {
 
   async function abrirBoletoCompraDireta(boleto) {
     try {
-      let url = fileUrl(boleto.caminho);
-      if (String(boleto.caminho).startsWith('http')) {
-        const params = new URLSearchParams({ url: String(boleto.caminho).replace(/%(?![0-9A-Fa-f]{2})/g, '%25'), historico_id: String(boleto.id) });
-        const response = await fetch(`${API_URL}/anexos/presign?${params}`, { headers: authHeaders() });
-        if (!response.ok) throw new Error('Não foi possível abrir o boleto.');
-        url = (await response.json()).url;
-      }
-      if (!url) throw new Error('Boleto indisponível.');
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await abrirPreview(async () => {
+        let url = fileUrl(boleto.caminho);
+        if (String(boleto.caminho).startsWith('http')) {
+          const params = new URLSearchParams({ url: String(boleto.caminho).replace(/%(?![0-9A-Fa-f]{2})/g, '%25'), historico_id: String(boleto.id) });
+          const response = await fetch(API_URL + '/anexos/presign?' + params, { headers: authHeaders() });
+          if (!response.ok) throw new Error('Não foi possível abrir o boleto.');
+          url = (await response.json()).url;
+        }
+        return url;
+      }, { nome: boleto.nome || 'Boleto.pdf', caminho: boleto.caminho });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o boleto.');
     }
@@ -1590,6 +1631,11 @@ export default function SolicitacaoDetalhe() {
 
     historico: (
       <Timeline
+        key={`timeline-${solicitacao.id}-${user?.id}`}
+        solicitacaoId={solicitacao.id}
+        interacoesPendentes={solicitacao.interacoes_pendentes}
+        abrirPorInteracao={Boolean(tipoInteracaoFoco && !['COMENTARIO_ITEM', 'RETORNO_PENDENTE', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco))}
+        eventoFoco={tipoInteracaoFoco !== 'COMENTARIO_ITEM' && tipoInteracaoFoco ? eventoInteracaoFoco : null}
         ordem={historicoOrdem}
         aoMudarOrdem={definirOrdemHistorico}
         historicos={montarHistoricosComJustificativa(solicitacao)}
@@ -1607,7 +1653,7 @@ export default function SolicitacaoDetalhe() {
           podeAcessarModuloFinanceiro={podeAcessarModuloFinanceiro}
           podeOperarAbaFinanceiro={podeOperarAbaFinanceiro}
           podeVisualizarTitulos={isFinanceiro}
-          somenteLeitura={isSetorObra}
+          somenteLeitura={isSetorObra && !isSuperadmin}
           onSolicitacaoAtualizada={() => {
             registrarMutacaoLocal(id);
             return carregar({ silent: true });
@@ -1717,7 +1763,7 @@ export default function SolicitacaoDetalhe() {
   };
 
   const blocosVisiveis = ordemBlocos
-    .filter((blocoId) => !blocosOcultos.has(blocoId))
+    .filter((blocoId) => !blocosOcultos.has(blocoId) || (tipoInteracaoFoco && blocoId === (['COMENTARIO_ITEM', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco) ? 'itens_compra_direta' : 'historico')))
     .map((blocoId) => ({ id: blocoId, conteudo: conteudoBlocos[blocoId] }))
     .filter((bloco) => bloco.conteudo);
 
@@ -1754,7 +1800,7 @@ export default function SolicitacaoDetalhe() {
   }));
   const arranjoBlocos = {
     ordem: ordemBlocos,
-    ocultos: blocosOcultos,
+    ocultos: tipoInteracaoFoco ? new Set([...blocosOcultos].filter((bloco) => bloco !== (['COMENTARIO_ITEM', 'ENTREGA_PENDENTE'].includes(tipoInteracaoFoco) ? 'itens_compra_direta' : 'historico'))) : blocosOcultos,
     recolhidos: blocosRecolhidos,
     larguras: largurasBlocos
   };
@@ -1775,7 +1821,7 @@ export default function SolicitacaoDetalhe() {
         titulo={tituloRegistro}
         contagem={formatarValorSolicitacao(solicitacao.valor) || undefined}
         descricao={apoioRegistro || undefined}
-        voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
+        voltar={{ onClick: () => voltarWorkspace(), title: 'Voltar' }}
         acaoPrincipal={acaoPrincipalCabecalho
           ? {
             rotulo: acaoPrincipalCabecalho.rotulo,
@@ -1809,7 +1855,7 @@ export default function SolicitacaoDetalhe() {
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
       {edicaoDados ? <ModalEditarDadosSolicitacao
         key={`${user?.id}:${edicaoDados.solicitacao.id}:${edicaoDados.campo}`}
-        {...edicaoDados} onFechar={() => setEdicaoDados(null)}
+        {...edicaoDados} solicitacao={solicitacao} onFechar={() => setEdicaoDados(null)}
         onSalvo={async ({ campo, codigo }) => {
           avisar.sucesso(`${campo === 'valor' ? 'Valor' : 'Vencimento'} de ${codigo} atualizado.`);
           await carregar({ silent: true });
@@ -1817,10 +1863,13 @@ export default function SolicitacaoDetalhe() {
 
       {/* O que TRAVA a decisão vem antes de qualquer dado: pedido de
           retorno da Obra e falha de acesso ao contrato. */}
-      <RetornoSolicitacaoBar
+      {gruposInteracoes(solicitacao).length > 0 && <div id="sol-detail-interacoes" className="flex items-center gap-2 text-sm">
+        <AtencaoPendente solicitacao={solicitacao} />
+      </div>}
+      {contextoInteracao && (!contextoInteracao.pode_interagir || contextoInteracao.pedidos_retorno_para_decisao?.length || contextoInteracao.retorno_aprovado || contextoInteracao.devolucao_retorno) && <div id="sol-detail-retorno"><RetornoSolicitacaoBar
         solicitacao={solicitacao}
         onMudou={() => carregar({ silent: true })}
-      />
+      /></div>}
 
       {/* A resposta imediata: em que pé está, com quem, para quando.
           Os três ladrilhos vinham do cabeçalho antigo (Status, Setor,
@@ -1907,6 +1956,9 @@ export default function SolicitacaoDetalhe() {
           podeInteragir={podeInteragirSolicitacao}
         />
       )}
+      {solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && <AdiantamentoDetalhe
+        key={`adiantamento-${id}-${statusDependenciasVersao}`} solicitacaoId={id}
+        podeInteragir={podeInteragirSolicitacao} onAtualizado={() => carregar({ silent: true })} />}
 
       {/* Barra fixa do mobile: a ação principal sempre visível. */}
       {isMobileDetalhe && (acaoPrincipalResolvida || podeAlterarStatus) && (
@@ -2433,6 +2485,7 @@ export default function SolicitacaoDetalhe() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

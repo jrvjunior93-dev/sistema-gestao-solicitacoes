@@ -40,7 +40,7 @@ const { pendenteComprovanteFila, wherePendenteComprovante, podeAnexarComprovante
 const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
 const { calcularValoresFila, filaSemBaixaAtualizavel } = require('./pagamentoFilaValoresDomain');
 
-const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
+const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
 
 function createHttpError(statusCode, message) {
@@ -71,7 +71,7 @@ function filaInclude() {
         'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
-        'cartao_id', 'fatura_cartao_id'
+        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -138,7 +138,8 @@ function matchesSearch(item, rawTerm) {
 async function listarFilaPagamentos(req, filters = {}) {
   const status = String(filters.status || 'PENDENTE').trim().toUpperCase();
   const where = status === 'PENDENTE_COMPROVANTE' ? wherePendenteComprovante()
-    : (status && status !== 'TODOS' ? { status } : {});
+    : status === 'PENDENTE' ? { status: { [Op.in]: ['PENDENTE', 'EM_EDICAO'] } }
+      : (status && status !== 'TODOS' ? { status } : { status: { [Op.ne]: 'CANCELADO' } });
   const rows = await PagamentoManualFilaItem.findAll({
     where,
     include: filaInclude(),
@@ -150,6 +151,12 @@ async function listarFilaPagamentos(req, filters = {}) {
     .map((item) => ({ ...item.toJSON(),
       // Leitura tambem cobre filas antigas, sem reescrever historico de pagamentos.
       valor_previsto: filaSemBaixaAtualizavel(item) ? roundCurrency(item.titulo.valor_saldo) : item.valor_previsto,
+      // Filas antigas podem ter sido criadas antes dos encargos do titulo.
+      // Pagamentos executados preservam o snapshot; saldo parcial nao repete encargos.
+      juros: item.status === 'PENDENTE' && filaSemBaixaAtualizavel(item)
+        ? (Number(item.titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(item.titulo.juros)) : item.juros,
+      multa: item.status === 'PENDENTE' && filaSemBaixaAtualizavel(item)
+        ? (Number(item.titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(item.titulo.multa)) : item.multa,
       pendente_comprovante: pendenteComprovanteFila(item) }));
   // Rejeicao e uma decisao, nao um pagamento executavel. Projecao somente leitura:
   // nenhum registro de fila e criado e o id negativo nunca passa no validator de baixa.
@@ -202,6 +209,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     if (!solicitacao) return;
     solicitacao.boletos = boletosPorSolicitacao.get(Number(solicitacao.id)) || [];
   });
+  await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes(data.map(item => item.titulo).filter(Boolean));
   const counts = await PagamentoManualFilaItem.findAll({
     attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'total']],
     group: ['status'],
@@ -212,6 +220,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     return acc;
   }, {});
   resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitados.length;
+  resumo.PENDENTE = Number(resumo.PENDENTE || 0) + Number(resumo.EM_EDICAO || 0);
   resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: wherePendenteComprovante(),
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [] }] });
   return { data, resumo };
@@ -324,7 +333,10 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const itemKeys = tituloIds.map((tituloId) => `${requestKey}:${tituloId}`.slice(0, 120));
 
-  const resultado = await sequelize.transaction(async (transaction) => {
+  const executar = options.transaction
+    ? callback => callback(options.transaction)
+    : callback => sequelize.transaction(callback);
+  const resultado = await executar(async (transaction) => {
     // Lock do titulo serializa as duas vias; escopo e conferido inclusive no replay.
     const titulos = await TituloFinanceiro.findAll({
       where: { id: { [Op.in]: tituloIds } },
@@ -339,6 +351,10 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       }
       if (String(titulo.tipo || '').toUpperCase() !== 'PAGAR') {
         throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao pertence ao Contas a Pagar.`);
+      }
+      // Acesso primeiro; nem replay/enqueue alternativo pode contornar a revisao.
+      if (titulo.origem_titulo === 'RH_DP' && titulo.status_interno_pagar === 'EM EDICAO DP') {
+        assertTituloDisponivelParaBaixa(titulo);
       }
     }
     const repetidos = await PagamentoManualFilaItem.findAll({
@@ -454,7 +470,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
 
   const items = resultado.itens;
 
-  await registrarEventoSeguranca({
+  const registrarEnvio = () => registrarEventoSeguranca({
     req,
     usuarioId: req.user?.id || null,
     tipoEvento: 'MANUAL_PAYMENT_QUEUE_CREATED',
@@ -469,6 +485,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       origem: options.autorizacaoInterna ? 'AUTORIZACAO_DIGITAL' : 'ENVIO_DIRETO'
     }
   });
+  if (options.transaction) options.transaction.afterCommit(registrarEnvio);
+  else await registrarEnvio();
 
   return {
     quantidade: items.length,

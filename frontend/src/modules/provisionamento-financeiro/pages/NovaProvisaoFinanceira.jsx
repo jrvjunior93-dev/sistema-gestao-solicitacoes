@@ -1,6 +1,10 @@
 import DateInputBR from '../../../components/DateInputBR';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../contexts/AuthContext';
+import { canCreateProvisionamentos } from '../../../utils/acessoProduto';
+import { useWorkspaceClearPage, useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
 import {
   Avisos,
   BlocoConteudo,
@@ -33,65 +37,73 @@ function formatarObra(obra) {
   return `${obra.codigo ? `${obra.codigo} - ` : ''}${obra.nome}`;
 }
 
+const FORM_INICIAL = { obra_id: '', data_prevista_desembolso: '', item_macro: '',
+  descricao: '', valor_previsto: '', fornecedor_texto: '', prioridade: '' };
+
 export default function NovaProvisaoFinanceira() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const permitido = canCreateProvisionamentos(user);
+  const consulta = useQueryRevision(permitido);
+  const mutex = useRef(false);
+  const limparWorkspace = useWorkspaceClearPage();
   const { avisos, avisar, fechar } = useAvisos();
   const [contexto, setContexto] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [valorPrevistoTexto, setValorPrevistoTexto] = useState('');
-  const [arquivosPendentes, setArquivosPendentes] = useState([]);
-  const [form, setForm] = useState({
-    obra_id: '',
-    data_prevista_desembolso: '',
-    item_macro: '',
-    descricao: '',
-    valor_previsto: '',
-    fornecedor_texto: '',
-    prioridade: ''
-  });
+  const [erroCarregamento, setErroCarregamento] = useState('');
+  const [arquivosPendentes, setArquivosPendentes] = useWorkspaceState('provisao:nova:arquivos', []);
+  const [form, setForm] = useWorkspaceState('provisao:nova:inputs', FORM_INICIAL);
+  const valorPrevistoTexto = form.valor_previsto === '' ? '' : formatarMoedaBRL(form.valor_previsto);
+  useWorkspaceWork(arquivosPendentes.length > 0 || Object.values(form).some(value => value !== ''), saving, 'provisao:nova:work');
 
   useEffect(() => {
+    const token = consulta.begin();
+    if (!permitido) { setContexto(null); setCategorias([]); setLoading(false); return; }
     async function carregar() {
       try {
         setLoading(true);
+        setErroCarregamento('');
         const [contextoData, categoriasData] = await Promise.all([
           getProvisionamentoFinanceiroContexto(),
           listarCategoriasMacroProvisionamento()
         ]);
+        if (!consulta.isCurrent(token)) return;
         setContexto(contextoData);
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       } catch (error) {
+        if (!consulta.isCurrent(token)) return;
         console.error(error);
+        setContexto(null); setCategorias([]);
+        setErroCarregamento(error?.message || 'Erro ao carregar formulario de provisao.');
         avisar.erro(error?.message || 'Erro ao carregar formulario de provisao.');
       } finally {
-        setLoading(false);
+        if (consulta.isCurrent(token)) setLoading(false);
       }
     }
 
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [permitido, consulta.begin, consulta.isCurrent]);
 
   const obrasCriacao = useMemo(() => (
     Array.isArray(contexto?.obras_criacao) ? contexto.obras_criacao : []
   ), [contexto]);
+  const disponivel = permitido && !loading && !erroCarregamento && contexto?.permissoes?.pode_criar === true;
+  const obraAtualDisponivel = !form.obra_id || obrasCriacao.some(obra => String(obra.id) === String(form.obra_id));
 
   function atualizarCampo(campo, valor) {
+    if (mutex.current || !disponivel || !Object.hasOwn(FORM_INICIAL, campo)) return;
     setForm((atual) => ({ ...atual, [campo]: valor }));
   }
 
   function atualizarValorPrevisto(raw) {
-    const { textoFormatado, valorNumerico } = normalizarEntradaMoeda(raw);
-    setValorPrevistoTexto(textoFormatado);
-    setForm((atual) => ({
-      ...atual,
-      valor_previsto: valorNumerico
-    }));
+    atualizarCampo('valor_previsto', normalizarEntradaMoeda(raw).valorNumerico);
   }
 
   function adicionarArquivos(files) {
+    if (mutex.current || !disponivel) return;
     const { arquivos: proximoEstado, rejeitados } = concatenarAnexosPendentes(arquivosPendentes, files, {
       maxFileSizeMb: UPLOAD_MAX_FILE_SIZE_MB_PADRAO
     });
@@ -102,30 +114,36 @@ export default function NovaProvisaoFinanceira() {
   }
 
   function removerArquivoPendente(index) {
+    if (mutex.current || !disponivel) return;
     setArquivosPendentes((atual) => atual.filter((_, itemIndex) => itemIndex !== index));
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (saving) return;
+    if (mutex.current || !disponivel || !obraAtualDisponivel) return;
 
     if (!form.obra_id || !form.data_prevista_desembolso || !form.item_macro.trim() || !form.descricao.trim() || !form.valor_previsto) {
       avisar.erro('Preencha obra, data prevista, item macro, descrição e valor previsto.');
       return;
     }
 
+    // Fixar campos e arquivos antes do primeiro await. Nenhuma criacao ou
+    // upload acontece por restauracao; o servidor continua validando o escopo.
+    const payload = { ...form, obra_id: Number(form.obra_id) };
+    const files = extrairFilesAnexosPendentes(arquivosPendentes);
+    const token = consulta.capture();
+    mutex.current = true;
     try {
       setSaving(true);
-      const provisao = await criarProvisaoFinanceira({
-        ...form,
-        obra_id: Number(form.obra_id)
-      });
+      const provisao = await criarProvisaoFinanceira(payload);
+      if (!consulta.isCurrent(token)) return;
 
-      if (arquivosPendentes.length) {
+      if (files.length) {
         try {
-          await uploadAnexosProvisaoFinanceira(provisao.id, extrairFilesAnexosPendentes(arquivosPendentes));
+          await uploadAnexosProvisaoFinanceira(provisao.id, files);
         } catch (uploadError) {
+          if (!consulta.isCurrent(token)) return;
           console.error(uploadError);
           /*
             O aviso do anexo NÃO pode virar a única notícia: a provisão já
@@ -137,14 +155,24 @@ export default function NovaProvisaoFinanceira() {
         }
       }
 
+      if (!consulta.isCurrent(token)) return;
+      setForm(FORM_INICIAL); setArquivosPendentes([]); limparWorkspace();
       navigate(`/provisoes-financeiras/${provisao.id}`);
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao criar provisao.');
     } finally {
-      setSaving(false);
+      mutex.current = false;
+      if (consulta.isCurrent(token)) setSaving(false);
     }
   }
+
+  if (!loading && !disponivel) return (
+    <Pagina><PageHeader titulo="Nova Provisão" voltar={{ to: '/provisoes-financeiras', title: 'Voltar para provisoes' }} />
+      <BlocoConteudo>{erroCarregamento || 'Criação de provisão indisponível para este usuário.'}</BlocoConteudo>
+    </Pagina>
+  );
 
   if (loading) {
     return (
@@ -178,11 +206,13 @@ export default function NovaProvisaoFinanceira() {
       />
 
       <Avisos avisos={avisos} aoFechar={fechar} />
+      {!obraAtualDisponivel && <p role="alert" className="app-note">A obra selecionada não está disponível no contexto atual. Selecione uma obra disponível antes de criar a provisão.</p>}
 
       {/* R10: o ritmo vertical vem da escala — `gap-4` é o degrau de 16px, o
           mesmo vão que o `Pagina` dá entre blocos. O <form> precisa envolver
           os três blocos para que o submit alcance todos os campos. */}
       <form className="grid gap-4" onSubmit={handleSubmit}>
+        <fieldset disabled={saving || !disponivel} className="grid min-w-0 gap-4">
         {/*
           R9 (revista em 04/09) — FORMULÁRIO INLINE, NÃO EM MODAL.
           Esta tela EXISTE para cadastrar a provisão: pelo teste da regra,
@@ -200,6 +230,7 @@ export default function NovaProvisaoFinanceira() {
               {/* R12: select de FORMULÁRIO (entrada de dado do registro) é
                   legítimo — a regra vale para filtro de LISTA. */}
               <select
+                aria-label="Obra"
                 className="input w-full"
                 value={form.obra_id}
                 onChange={(event) => atualizarCampo('obra_id', event.target.value)}
@@ -214,6 +245,8 @@ export default function NovaProvisaoFinanceira() {
 
             <CampoForm label="Data prevista de desembolso" obrigatorio>
               <DateInputBR
+                chaveWorkspace="provisao:nova:desembolso"
+                aria-label="Data prevista de desembolso"
                 className="input w-full"
                 value={form.data_prevista_desembolso}
                 onChange={(event) => atualizarCampo('data_prevista_desembolso', event.target.value)}
@@ -224,6 +257,7 @@ export default function NovaProvisaoFinanceira() {
             <CampoForm label="Item macro" obrigatorio hint="Escolha uma categoria macro cadastrada ou digite uma nova.">
               <input
                 type="text"
+                aria-label="Item macro"
                 className="input w-full"
                 list="provisao-item-macro-opcoes"
                 value={form.item_macro}
@@ -239,6 +273,7 @@ export default function NovaProvisaoFinanceira() {
 
             <CampoForm label="Prioridade">
               <select
+                aria-label="Prioridade"
                 className="input w-full"
                 value={form.prioridade}
                 onChange={(event) => atualizarCampo('prioridade', event.target.value)}
@@ -259,6 +294,7 @@ export default function NovaProvisaoFinanceira() {
             <CampoForm label="Valor previsto" obrigatorio>
               <input
                 type="text"
+                aria-label="Valor previsto"
                 inputMode="numeric"
                 className="input input-moeda w-full"
                 value={valorPrevistoTexto}
@@ -269,6 +305,7 @@ export default function NovaProvisaoFinanceira() {
 
             <CampoForm label="Credor" hint="Opcional.">
               <input
+                aria-label="Credor"
                 className="input w-full"
                 value={form.fornecedor_texto}
                 onChange={(event) => atualizarCampo('fornecedor_texto', event.target.value)}
@@ -280,6 +317,7 @@ export default function NovaProvisaoFinanceira() {
               {/* R10: a altura do textarea vem da folha do sistema
                   (textarea.input), não do `min-h-[110px]` que estava aqui. */}
               <textarea
+                aria-label="Descrição"
                 className="input w-full"
                 value={form.descricao}
                 onChange={(event) => atualizarCampo('descricao', event.target.value)}
@@ -324,14 +362,15 @@ export default function NovaProvisaoFinanceira() {
 
         <BlocoConteudo>
           <div className="app-actionbar">
-            <button type="button" className="btn btn-outline" onClick={() => navigate('/provisoes-financeiras')}>
+            <button type="button" className="btn btn-outline" disabled={saving} onClick={() => { if (!mutex.current) navigate('/provisoes-financeiras'); }}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="submit" className="btn btn-primary" disabled={saving || !obraAtualDisponivel}>
               {saving ? 'Salvando...' : 'Criar provisao'}
             </button>
           </div>
         </BlocoConteudo>
+        </fieldset>
       </form>
     </Pagina>
   );

@@ -72,6 +72,7 @@ const models = {
   ContratoAditivo: { findOne: async () => null }
 };
 const mocks = {
+  './solicitacaoDisponibilidade': require('../src/services/solicitacaoDisponibilidade'),
   sequelize: { Op },
   '../models': models,
   './authorizationService': { userHasAreaPermission: async (user) => !user.semPermissao },
@@ -160,8 +161,14 @@ const usuarioObra = { user: { id: 11, setor: 'OBRA' } };
   await assert.rejects(service.devolverAoSetorAnterior(usuarioObra, 42), /cancelada/);
   reiniciar();
   solicitacao.cancelada = true;
-  assert.equal((await service.montarContextoInteracao(usuarioObra, solicitacao)).retorno_aprovado.pode_devolver, false);
-  await assert.rejects(service.devolverAoSetorAnterior(usuarioObra, 42), /cancelada/);
+  assert.equal((await service.montarContextoInteracao(usuarioObra, solicitacao)).status, 404);
+  await assert.rejects(service.devolverAoSetorAnterior(usuarioObra, 42), err => err.statusCode === 404);
+  await assert.rejects(service.solicitarRetorno(usuarioObra, 42, 'Corrigir'), err => err.statusCode === 404);
+  pedido.status = 'PENDENTE';
+  await assert.rejects(service.decidirRetorno({ user: { id: 99, setor: 'OBRA' } }, 17,
+    { aprovar: true }), err => err.statusCode === 404);
+  await assert.rejects(service.cancelarRetorno(usuarioObra, 17), err => err.statusCode === 404);
+  assert.equal(criados.length, 0, 'Excluida nao pode gerar historico de retorno');
   reiniciar();
   // Ciclo completo: pedido -> aprovacao -> ajustes/status -> reconsulta -> devolucao.
   solicitacao.area_responsavel = 'FINANCEIRO';

@@ -1,4 +1,10 @@
 // Apresentacao do snapshot: nao modifica o dossie assinado nem sua descricao.
+export function motivosAjusteAutorizacao(lot = {}) {
+  return (lot.itens || []).filter(item => ['REJEITADO', 'INVALIDADO'].includes(item.status) && String(item.motivo_decisao || '').trim())
+    .map(item => ({ id: item.id, motivo: item.motivo_decisao,
+      referencia: [item.snapshot_json?.solicitacao?.codigo, item.snapshot_json?.codigo].filter(Boolean).join(' · ') || `Título #${item.snapshot_json?.titulo_id || item.titulo_financeiro_id || item.id}` }));
+}
+
 // Alias de exibicao para legados: nao altera codigo persistido, anexos ou hash.
 export function codigoLoteAutorizacao(lot = {}) {
   const id = Number(lot.id);

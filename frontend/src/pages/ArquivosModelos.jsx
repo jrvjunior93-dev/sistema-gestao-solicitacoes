@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Pagina,
@@ -52,6 +53,7 @@ function formatarTamanho(bytes) {
 }
 
 export default function ArquivosModelos() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const podeGerenciarBiblioteca = canManageBiblioteca(user);
   const [contexto, setContexto] = useState(null);
@@ -114,14 +116,13 @@ export default function ArquivosModelos() {
       .finally(() => setCarregando(false));
   }, [paginaSelecionada]);
 
-  async function abrirArquivo(id) {
+  async function abrirArquivo(item, baixar = false) {
     try {
-      const url = await getLinkArquivoModelo(id);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error.message || 'Erro ao abrir arquivo');
-    }
+      if (baixar) {
+        const url = await getLinkArquivoModelo(item.id);
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      } else await abrirPreview(() => getLinkArquivoModelo(item.id), { nome: item.nome_original, caminho: item.caminho_arquivo });
+    } catch (error) { avisar.erro(error.message || 'Erro ao abrir arquivo'); }
   }
 
   async function handleUpload(event) {
@@ -305,10 +306,10 @@ export default function ArquivosModelos() {
                 exige aprovação do cliente (Disciplina de regras, item 2):
                 fica como está e vai no relatório como proposta.
               */}
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item.id)}>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item)}>
                 Visualizar
               </button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item.id)}>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivo(item, true)}>
                 Baixar
               </button>
               {podeUploadAtual && (
@@ -326,6 +327,7 @@ export default function ArquivosModelos() {
       </BlocoConteudo>
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

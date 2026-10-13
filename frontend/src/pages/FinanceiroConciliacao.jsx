@@ -625,7 +625,7 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
   useEffect(() => {
     Promise.all([
       getCategoriasFinanceiras().catch(() => []),
-      getMinhasObras().catch(() => [])
+      getMinhasObras({ escopo: 'TODOS' }).catch(() => [])
     ]).then(([cats, obs]) => {
       const catList = Array.isArray(cats) ? cats : [];
       const obraList = Array.isArray(obs) ? obs : [];
@@ -670,7 +670,7 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
     if (!form.valor || valor <= 0) { setErro('Informe um valor válido.'); return; }
     if (!form.conta_bancaria_id) { setErro('Selecione a conta bancária.'); return; }
     if (!form.empresa_id) { setErro('A conta bancária precisa estar vinculada a uma empresa pagadora.'); return; }
-    if (!form.obra_id) { setErro('Selecione a obra.'); return; }
+    if (!form.obra_id) { setErro('Selecione a obra / centro de custo.'); return; }
     if (!form.parceiro_id) { setErro('Selecione um parceiro (obrigatório).'); return; }
     if (!form.categoria_financeira_id) { setErro('Selecione a categoria financeira do título.'); return; }
     if (form.considera_dre && !categoriaClassificadaDre) { setErro('Para considerar na DRE, selecione uma categoria financeira com grupo DRE classificado.'); return; }
@@ -730,7 +730,7 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
               </select>
             </label>
             <label className="app-filter-field">
-              <span className="app-filter-label">Obra *</span>
+              <span className="app-filter-label">Obra / Centro de Custo *</span>
               <select className="input w-full" value={form.obra_id}
                 onChange={(e) => setForm((c) => ({ ...c, obra_id: e.target.value }))}>
                 <option value="">Selecione</option>

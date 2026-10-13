@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ApropriacaoAutocomplete from '../../../components/ui/ApropriacaoAutocomplete';
@@ -141,6 +142,7 @@ function combinarItensSolicitacaoCompra(solicitacao, apropriacoes = []) {
 }
 
 export default function SolicitacaoCompraDetalheView() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { id } = useParams();
   const navigate = useNavigate();
   const navigateBack = useSafeNavigateBack('/solicitacoes-compra');
@@ -259,18 +261,13 @@ export default function SolicitacaoCompraDetalheView() {
     : null;
 
   async function handleAbrirPdf() {
+    if (baixando) return;
     try {
       setBaixando(true);
-      const blob = await baixarPdfSolicitacaoCompra(id);
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => window.URL.revokeObjectURL(url), 10000);
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error.message || 'Erro ao abrir PDF');
-    } finally {
-      setBaixando(false);
-    }
+      await abrirPreview(async () => ({ url: URL.createObjectURL(await baixarPdfSolicitacaoCompra(id)), revogarUrl: true }),
+        { nome: 'Solicitação de compra ' + id + '.pdf', mime: 'application/pdf' });
+    } catch (error) { avisar.erro(error.message || 'Erro ao abrir PDF'); }
+    finally { setBaixando(false); }
   }
 
   async function handleCadastrarUnidadeItem(item) {
@@ -1071,6 +1068,7 @@ export default function SolicitacaoCompraDetalheView() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

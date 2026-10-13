@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useQueryRevision from '../navigation/useQueryRevision';
+import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import { Link } from 'react-router-dom';
 import {
   Avisos,
@@ -73,7 +77,7 @@ function validadeLabel(status) {
 const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
   { id: 'empresa_grupo_id', rotulo: 'Empresa' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'tipo_vinculo', rotulo: 'Vínculo' },
   { id: 'tipo_documento_id', rotulo: 'Tipo de documento' },
   { id: 'status', rotulo: 'Status' },
@@ -81,8 +85,14 @@ const FILTROS_DA_TELA = [
   { id: 'incluir_historico', rotulo: 'Histórico' }
 ];
 
-export default function RhDpDocumentos() {
+export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
+  const Moldura = comoAba ? 'section' : Pagina;
   const { user } = useAuth();
+  const openRecord = useWorkspaceOpenRecord(message => avisar.erro(message));
+  const query = useQueryRevision(obraId);
+  const baseQuery = useQueryRevision(obraId);
+  const trava = useRef(false);
   const podeEditar = canManageRhDpDocumentos(user);
   // R3/R19: aviso e confirmação do sistema — nada de caixa do navegador.
   const { avisos, avisar, fechar } = useAvisos();
@@ -94,11 +104,11 @@ export default function RhDpDocumentos() {
   const [empresas, setEmpresas] = useState([]);
   const [obras, setObras] = useState([]);
   const [tipos, setTipos] = useState([]);
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = useWorkspaceState('rh-documentos:busca', '');
   // R12: cada recorte é um conjunto MARCÁVEL (vazio = todos). A API aceita
   // um valor por recorte, então uma marca vira o parâmetro e nenhuma marca
   // deixa o parâmetro de fora — exatamente o que o select fazia antes.
-  const [ativos, setAtivos] = useState({});
+  const [ativos, setAtivos] = useWorkspaceState('rh-documentos:ativos', {});
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -117,7 +127,7 @@ export default function RhDpDocumentos() {
     TIPO. Sem `legado`: esta faixa nunca gravou a escolha em lugar nenhum,
     então não há chave antiga de onde migrar.
   */
-  const visibilidadeFiltros = useFiltrosVisiveis('tabela:rh-dp-documentos', FILTROS_DA_TELA, {
+  const visibilidadeFiltros = useFiltrosVisiveis(obraId ? 'tabela:rh-dp-documentos:local' : 'tabela:rh-dp-documentos', FILTROS_DA_TELA.filter(filtro => !obraId || filtro.id !== 'obra_id'), {
     preenchidos: filtrosPreenchidos,
     /*
       Contrato 1 do painel: esconder LIMPA o valor. Filtro fora da faixa que
@@ -131,7 +141,8 @@ export default function RhDpDocumentos() {
       setAtivos((atuais) => ({ ...atuais, [id]: new Set() }));
     }
   });
-  const [pagina, setPagina] = useState(1);
+  const [pagina, setPagina] = useWorkspaceState('rh-documentos:pagina', 1);
+  useWorkspaceWork(false, substituindoId !== null, 'rh-documentos:work');
 
   useEffect(() => {
     carregarBase();
@@ -148,20 +159,24 @@ export default function RhDpDocumentos() {
       });
     }, 350);
     return () => clearTimeout(atraso);
-  }, [busca, ativos, pagina]);
+  }, [busca, ativos, pagina, obraId]);
 
   async function carregarBase() {
+    const token = baseQuery.begin();
     try {
       const [listaEmpresas, listaObras, listaTipos] = await Promise.all([
         getRhEmpresasGrupo({ ativo: true }),
-        getObras(),
+        getObras({ escopo: 'TODOS' }),
         getRhDocumentoTipos({ ativo: true })
       ]);
 
+      if (!baseQuery.isCurrent(token)) return;
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
       setObras(Array.isArray(listaObras) ? listaObras : []);
       setTipos(Array.isArray(listaTipos) ? listaTipos : []);
     } catch (error) {
+      if (!baseQuery.isCurrent(token)) return;
+      setEmpresas([]); setObras([]); setTipos([]);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar base documental RH/DP');
     }
@@ -174,12 +189,13 @@ export default function RhDpDocumentos() {
   }
 
   async function carregarDocumentos() {
+    const token = query.begin();
     setCarregando(true);
     try {
       const resposta = await getRhDocumentos({
         q: busca || undefined,
         empresa_grupo_id: valorUnico('empresa_grupo_id'),
-        obra_id: valorUnico('obra_id'),
+        obra_id: obraId || valorUnico('obra_id'),
         tipo_vinculo: valorUnico('tipo_vinculo'),
         tipo_documento_id: valorUnico('tipo_documento_id'),
         status: valorUnico('status'),
@@ -189,6 +205,7 @@ export default function RhDpDocumentos() {
         limit: LIMITE_PAGINA
       });
 
+      if (!query.isCurrent(token)) return;
       setDocumentos(Array.isArray(resposta?.data) ? resposta.data : []);
       setMeta({
         page: Number(resposta?.meta?.page || pagina || 1),
@@ -196,8 +213,12 @@ export default function RhDpDocumentos() {
         total: Number(resposta?.meta?.total || 0),
         limit: Number(resposta?.meta?.limit || LIMITE_PAGINA)
       });
+    } catch (error) {
+      if (!query.isCurrent(token)) return;
+      setDocumentos([]); setMeta({ page: pagina, total_pages: 0, total: 0, limit: LIMITE_PAGINA });
+      throw error;
     } finally {
-      setCarregando(false);
+      if (query.isCurrent(token)) setCarregando(false);
     }
   }
 
@@ -215,21 +236,15 @@ export default function RhDpDocumentos() {
     setPagina(1);
   }
 
-  async function abrirDocumento(id) {
-    try {
-      const url = await getRhDocumentoLink(id);
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao abrir documento RH/DP');
-    }
+  async function abrirDocumento(item) {
+    try { await abrirPreview(() => getRhDocumentoLink(item.id), { nome: item.nome_original, caminho: item.caminho_arquivo, mime: item.mimetype || item.mime_type }); }
+    catch (error) { avisar.erro(error?.message || 'Erro ao abrir documento RH/DP'); }
   }
 
   async function onSelecionarSubstituicao(documento, file) {
-    if (!file) return;
-
+    if (!file || trava.current || !podeEditar || !documento.ativo || carregando) return;
+    trava.current = true; setSubstituindoId(documento.id);
+    try {
     const { ok } = await confirmar({
       titulo: 'Substituir documento',
       mensagem: `Substituir o documento "${documento.nome_original}"?`,
@@ -237,8 +252,6 @@ export default function RhDpDocumentos() {
     });
     if (!ok) return;
 
-    try {
-      setSubstituindoId(documento.id);
       await substituirRhDocumento(documento.id, {
         tipo_documento_id: documento.documento_tipo_id,
         validade: documento.validade || undefined,
@@ -252,6 +265,7 @@ export default function RhDpDocumentos() {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao substituir documento RH/DP');
     } finally {
+      trava.current = false;
       setSubstituindoId(null);
     }
   }
@@ -270,7 +284,7 @@ export default function RhDpDocumentos() {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       // O serviço aceita UM valor por recorte (getRhDocumentos).
       unico: true,
       opcoes: obras.map((item) => ({
@@ -330,12 +344,15 @@ export default function RhDpDocumentos() {
   const totalPaginas = Number(meta.total_pages || 0);
 
   return (
-    <Pagina className="rhdp-page">
-      <PageHeader
+    <Moldura className={comoAba ? 'rhdp-local-conteudo' : 'rhdp-page'}>
+      {comoAba ? <div className="app-page-actions">
+        <h2 className="app-bloco-titulo">Documentos</h2>
+        <span className="app-note">{carregando ? 'Carregando...' : `${meta.total} documento(s)`}</span>
+      </div> : <PageHeader
         titulo="Documentos"
         contagem={carregando ? null : `${meta.total} documento(s)`}
-        descricao="Painel geral de documentos por colaborador, com busca, validade, histórico e acesso por link assinado."
-      />
+        descricao={obraId ? 'Documentos dos colaboradores deste local.' : 'Painel geral de documentos por colaborador, com busca, validade, histórico e acesso por link assinado.'}
+      />}
 
       <Avisos avisos={avisos} aoFechar={fechar} />
 
@@ -346,7 +363,7 @@ export default function RhDpDocumentos() {
             aoMudar: (valor) => { setBusca(valor); setPagina(1); },
             placeholder: 'Buscar por colaborador, CPF, matrícula, arquivo ou observação'
           } : null}
-          filtros={dimensoes.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
+          filtros={dimensoes.filter((dim) => (!obraId || dim.id !== 'obra_id') && visibilidadeFiltros.ehVisivel(dim.id))}
           ativos={ativos}
           aoAlternar={alternarFiltro}
           aoLimpar={limparFiltros}
@@ -354,6 +371,8 @@ export default function RhDpDocumentos() {
         />
 
         <TabelaPadrao
+          chaveWorkspace="rh-documentos:tabela"
+          consultaWorkspace={`${obraId || ''}|${busca}|${JSON.stringify(Object.entries(ativos).map(([key,value])=>[key,Array.from(value)]))}`}
           colunas={[
             {
               id: 'colaborador',
@@ -411,11 +430,14 @@ export default function RhDpDocumentos() {
           vazio="Nenhum documento localizado"
           acoesLinha={(item) => (
             <>
-              <button type="button" className="btn btn-outline" onClick={() => abrirDocumento(item.id)}>
+              <button type="button" className="btn btn-outline" onClick={() => abrirDocumento(item)}>
                 Abrir
               </button>
               <Link
                 to={`/rh-dp/colaboradores?colaborador_id=${item.colaborador_id}`}
+                onClick={event => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                  event.preventDefault(); openRecord(`/rh-dp/colaboradores?colaborador_id=${item.colaborador_id}`, 'Colaborador');
+                } }}
                 className="btn btn-outline"
               >
                 Colaborador
@@ -431,7 +453,7 @@ export default function RhDpDocumentos() {
                       e.target.value = '';
                       onSelecionarSubstituicao(item, file);
                     }}
-                    disabled={substituindoId === item.id}
+                    disabled={substituindoId !== null || carregando}
                   />
                 </label>
               )}
@@ -469,6 +491,7 @@ export default function RhDpDocumentos() {
       )}
 
       {elementoConfirmacao}
-    </Pagina>
+      {modalPreview}
+    </Moldura>
   );
 }

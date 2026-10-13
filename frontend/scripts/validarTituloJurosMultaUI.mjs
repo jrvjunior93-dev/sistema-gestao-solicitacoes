@@ -25,10 +25,10 @@ const plugin = { name: 'qa-titulo-encargos', enforce: 'pre',
     if (id === prefix + 'api') return `
       const parceiro={id:1,nome:'Credor QA',fornecedor:true};
       const categoria={id:1,nome:'Despesa QA',tipo:'DESPESA',considera_dre:false};
-      export const getTituloFinanceiroById=async()=>({id:1,codigo:'TIT-QA',tipo:'PAGAR',status:window.__blocked?'QUITADO':'ABERTO',
+      export const getTituloFinanceiroById=async()=>{if(window.__denied)throw new Error('Acesso negado');return({id:1,codigo:'TIT-QA',tipo:'PAGAR',status:window.__blocked?'QUITADO':'ABERTO',
         obra_id:1,parceiro_id:1,categoria_financeira_id:1,empresa_id:1,descricao:'Pagamento QA',valor_original:200,
-        valor_bruto:200,valor_saldo:200,valor_baixado:window.__blocked?200:0,juros:10,multa:3,
-        data_vencimento:'2026-10-20',competencia_data:'2026-10-08',parceiro,categoriaFinanceira:categoria,movimentos:[],paymentIntents:[]});
+        valor_bruto:200,valor_saldo:window.__changed?190:200,valor_baixado:window.__blocked?200:0,juros:10,multa:3,
+        data_vencimento:'2026-10-20',competencia_data:'2026-10-08',parceiro,categoriaFinanceira:categoria,movimentos:[],paymentIntents:[]});};
       export const getMinhasObras=async()=>[{id:1,nome:'Obra QA',empresa_grupo_id:1}];
       export const getCategoriasFinanceiras=async()=>[categoria];
       export const getEmpresasGrupo=async()=>[{id:1,nome:'Empresa QA'}];
@@ -38,7 +38,16 @@ const plugin = { name: 'qa-titulo-encargos', enforce: 'pre',
   },
   configureServer(server) { server.middlewares.use('/qa-titulo-encargos', async (_, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.end(await server.transformIndexHtml('/qa-titulo-encargos', `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter,Routes,Route}from'react-router-dom';import Page from '/src/pages/FinanceiroTituloEditar.jsx';import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import '/src/styles/responsive-system.css';window.__saves=[];window.__avisos=[];window.__blocked=new URLSearchParams(location.search).has('blocked');createRoot(document.getElementById('root')).render(React.createElement(BrowserRouter,null,React.createElement(Routes,null,React.createElement(Route,{path:'*',element:React.createElement(Page)}))));</script></body></html>`));
+    res.end(await server.transformIndexHtml('/qa-titulo-encargos', `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
+      import React,{useState,useMemo} from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter,Routes,Route}from'react-router-dom';
+      import Page from '/src/pages/FinanceiroTituloEditar.jsx';import{WorkspacePageContext,createWorkspaceMemory}from'/src/navigation/WorkspaceContext.jsx';
+      import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import '/src/styles/responsive-system.css';
+      window.__saves=[];window.__avisos=[];window.__blocked=new URLSearchParams(location.search).has('blocked');
+      function App(){const[active,A]=useState(true);const[owner,O]=useState(1);const memory=useMemo(()=>createWorkspaceMemory(),[owner]);
+        window.__qaTab=A;window.__qaOwner=O;window.__memory=memory;
+        return React.createElement(WorkspacePageContext.Provider,{value:{key:'titulo-'+owner,snapshot:true,active:true,memory}},active?React.createElement(Page):React.createElement('p',null,'Consulta auxiliar'));}
+      createRoot(document.getElementById('root')).render(React.createElement(BrowserRouter,null,React.createElement(Routes,null,React.createElement(Route,{path:'*',element:React.createElement(App)}))));
+    </script></body></html>`));
   }); }
 };
 const server = await createServer({ root, plugins: [plugin], cacheDir: 'node_modules/.vite-qa-titulo-encargos',
@@ -53,6 +62,19 @@ try {
   const juros = page.getByLabel('Juros do título', { exact: true }), multa = page.getByLabel('Multa do título', { exact: true });
   await juros.waitFor(); assert.match(await juros.inputValue(), /10,00$/); assert.match(await multa.inputValue(), /3,00$/);
   await juros.fill('15,50'); await multa.fill('4,25');
+  await page.evaluate(()=>window.__qaTab(false));
+  await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+  await page.evaluate(()=>window.__qaTab(true));
+  await juros.waitFor(); assert.match(await juros.inputValue(),/15,50$/); assert.match(await multa.inputValue(),/4,25$/);
+  assert.equal(await page.evaluate(()=>window.__saves.length),0,'Restaurar nao salva');
+  await page.evaluate(()=>{window.__changed=true;window.__qaTab(false);});
+  await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+  await page.evaluate(()=>window.__qaTab(true));
+  await page.getByRole('alert').getByText(/O título mudou/).waitFor();
+  assert.match(await juros.inputValue(),/15,50$/);
+  assert.ok(await page.getByRole('button',{name:/Salvar/}).last().isDisabled());
+  await page.getByRole('button',{name:'Descartar rascunho conflitante',exact:true}).click();
+  assert.match(await juros.inputValue(),/10,00$/);await juros.fill('15,50');await multa.fill('4,25');
   await page.getByText(/Total previsto com juros e multa:.*219,75/).waitFor();
   await page.setViewportSize({width:390,height:844});
   await juros.scrollIntoViewIfNeeded();
@@ -64,6 +86,10 @@ try {
   await page.waitForFunction(() => window.__saves.length === 1);
   const payload = await page.evaluate(() => window.__saves[0]);
   assert.equal(payload.juros, 15.5); assert.equal(payload.multa, 4.25); assert.equal(payload.valor, 200);
+  await page.evaluate(()=>window.__qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();
+  await page.evaluate(()=>{window.__denied=true;window.__qaTab(true);});
+  await page.waitForFunction(()=>window.__avisos.includes('Acesso negado'));
+  assert.equal(await juros.count(),0,'GET negado nao exibe campos privados');
   await page.goto('http://127.0.0.1:5319/qa-titulo-encargos?blocked=1');
   await juros.waitFor(); assert(await juros.isDisabled()); assert(await multa.isDisabled());
   assert.deepEqual(errors, []); assert.deepEqual(external, []);

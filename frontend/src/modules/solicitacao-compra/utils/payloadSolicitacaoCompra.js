@@ -1,10 +1,11 @@
 // A solicitacao comum ainda nao tem fornecedor, preco ou frete definidos.
 // Montar explicitamente os campos aceitos tambem corrige rascunhos antigos.
 export function prepararPayloadSolicitacaoCompra(payload = {}) {
-  const { obra_id, necessario_para, observacoes, link_geral, itens } = payload;
+  const { obra_id, titulo, necessario_para, observacoes, link_geral, itens } = payload;
 
   return {
     obra_id,
+    titulo,
     necessario_para,
     observacoes,
     link_geral,

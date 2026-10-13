@@ -1,0 +1,142 @@
+'use strict';
+
+const { ValidationError } = require('../middlewares/validation');
+const FLUXO = 'PAGAMENTO_POR_SOLICITACAO';
+const dinheiro = v => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+const texto = (v, max = 180) => String(v ?? '').trim().slice(0, max);
+
+function numero(v, campo, max = 999999999) {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n) || n < 0 || n > max) throw new ValidationError(`${campo}: valor invalido.`);
+  return dinheiro(n);
+}
+
+function calcularLinha(linha, cadastro) {
+  const diaria = cadastro.forma_calculo_gerencial === 'DIARIA';
+  const percentual = diaria || Boolean(linha.parcela_40) === Boolean(linha.parcela_60)
+    ? 100 : linha.parcela_40 ? 40 : 60;
+  const dias = numero(linha.dias, 'Dias', 31);
+  const faltas = numero(linha.faltas, 'Faltas', 31);
+  const base = numero(diaria ? cadastro.valor_diaria : cadastro.salario_base, 'Salario');
+  const acrescimos = numero(linha.acrescimos, 'Acrescimos');
+  const descontos = numero(linha.descontos, 'Descontos');
+  // Faltas sao informativas. Dias afetam apenas diaristas; ajustes nao sao rateados.
+  const bruto = dinheiro(diaria ? base * dias : base * percentual / 100);
+  const liquido = dinheiro(bruto + acrescimos - descontos);
+  if (liquido < 0) throw new ValidationError(`Descontos maiores que o pagamento de ${cadastro.nome}.`);
+  return { percentual, dias, faltas, acrescimos, descontos, bruto, liquido, diaria, base };
+}
+
+function recebimento(linha, cadastro, pagamento = {}, exigir = false) {
+  const modo = ['PIX', 'CONTA_SALARIO', 'OUTRA_CONTA'].includes(linha.modo_recebimento)
+    ? linha.modo_recebimento : 'PIX';
+  const contaSalario = modo === 'CONTA_SALARIO';
+  const salario = cadastro.conta_salario || {
+    favorecido_nome: pagamento.favorecido_nome || cadastro.nome,
+    favorecido_documento: pagamento.favorecido_documento || cadastro.cpf,
+    banco: pagamento.banco || cadastro.banco, agencia: pagamento.agencia || cadastro.agencia,
+    conta: pagamento.conta || cadastro.conta, tipo_conta: pagamento.tipo_conta || cadastro.conta_tipo
+  };
+  const dados = {
+    modo_recebimento: modo,
+    favorecido_nome: texto(contaSalario ? salario.favorecido_nome : linha.favorecido_nome || cadastro.nome),
+    favorecido_documento: texto(contaSalario ? salario.favorecido_documento : linha.favorecido_documento || cadastro.cpf, 20),
+    chave_pix: modo === 'PIX' ? texto(linha.chave_pix ?? pagamento.chave_pix ?? cadastro.pix_chave, 8192) : '',
+    banco: modo === 'PIX' ? '' : texto(contaSalario ? salario.banco : linha.banco, 10),
+    agencia: modo === 'PIX' ? '' : texto(contaSalario ? salario.agencia : linha.agencia, 20),
+    conta: modo === 'PIX' ? '' : texto(contaSalario ? salario.conta : linha.conta, 30),
+    tipo_conta: texto(contaSalario ? salario.tipo_conta : linha.tipo_conta, 30)
+  };
+  if (exigir && (!dados.favorecido_nome || ![11, 14].includes(dados.favorecido_documento.replace(/\D/g, '').length)
+    || (modo === 'PIX' ? !dados.chave_pix : !dados.banco || !dados.agencia || !dados.conta))) {
+    throw new ValidationError(`Informe os dados de recebimento de ${cadastro.nome}.`);
+  }
+  return dados;
+}
+
+function valorReembolso(linha) {
+  const descontos = numero(linha.descontos, 'Descontos');
+  // Compatibilidade: pedidos anteriores sem este campo reembolsavam o desconto integral.
+  const informado = Object.prototype.hasOwnProperty.call(linha.reembolso, 'valor')
+    ? linha.reembolso.valor : descontos;
+  const valor = numero(informado, 'Reembolso');
+  if (valor <= 0 || valor > descontos) {
+    throw new ValidationError(`O reembolso de ${linha.nome} deve ser maior que zero e nao ultrapassar o desconto.`);
+  }
+  return valor;
+}
+
+function agruparReembolsos(linhas) {
+  const grupos = new Map();
+  for (const linha of linhas.filter(l => l.selecionado && l.reembolso && Number(l.descontos) > 0)) {
+    const responsavelId = Number(linha.reembolso.responsavel_id);
+    const conta = recebimento(linha.reembolso, {
+      nome: linha.reembolso.favorecido_nome, cpf: linha.reembolso.favorecido_documento
+    }, {}, true);
+    conta.favorecido_documento = conta.favorecido_documento.replace(/\D/g, '');
+    // Nunca misturar empresas em um titulo; dados distintos nao podem ser escolhidos silenciosamente.
+    const chave = `${responsavelId}:${linha.empresa_grupo_id}`;
+    let grupo = grupos.get(chave);
+    if (grupo && JSON.stringify(grupo.dados) !== JSON.stringify(conta)) {
+      throw new ValidationError(`Os vales de ${conta.favorecido_nome} possuem dados para pagamento diferentes. Unifique os dados do responsavel nesta solicitacao.`);
+    }
+    if (!grupo) {
+      grupo = { responsavel_id: responsavelId, empresa_id: linha.empresa_grupo_id,
+        dados: conta, linha, valor: 0, origens: [] };
+      grupos.set(chave, grupo);
+    }
+    const valor = valorReembolso(linha);
+    grupo.valor = dinheiro(grupo.valor + valor);
+    grupo.origens.push({ colaborador_id: linha.colaborador_id, nome: linha.nome, valor });
+  }
+  return [...grupos.values()];
+}
+
+function validarPeriodo(dados) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(dados.competencia || '')) throw new ValidationError('Informe a competencia.');
+  const vencimento = String(dados.data_vencimento || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)
+    || !Number.isFinite(Date.parse(`${vencimento}T12:00:00Z`))
+    || new Date(`${vencimento}T12:00:00Z`).toISOString().slice(0, 10) !== vencimento) {
+    throw new ValidationError('Informe um vencimento valido.');
+  }
+}
+
+function normalizarAndamento(dados) {
+  const titulos = dados.titulos || [];
+  const linhas = (dados.linhas || []).map(l => {
+    const salario = titulos.find(t => t.tipo === 'SALARIO' && Number(t.colaborador_id) === Number(l.colaborador_id));
+    const estado = l.pagamento_estado || (salario ? (salario.cancelado ? 'CANCELADO' : 'ENVIADO') : 'PENDENTE');
+    return { ...l, pagamento_estado: estado,
+      // Selecao e conferencia de um envio anterior nao autorizam um novo envio.
+      selecionado: ['ENVIADO', 'CANCELADO'].includes(estado) ? false : Boolean(l.selecionado) };
+  });
+  return { ...dados, titulos, linhas };
+}
+
+function situacaoPagamento(dados, atual) {
+  if (['RASCUNHO', 'CANCELADA', 'REJEITADA'].includes(atual)) return atual;
+  const linhas = normalizarAndamento(dados).linhas;
+  if (linhas.some(l => l.pagamento_estado === 'EM_EDICAO')) return 'EM_REVISAO';
+  const enviados = linhas.some(l => l.pagamento_estado === 'ENVIADO');
+  const pendentes = linhas.some(l => l.pagamento_estado === 'PENDENTE');
+  if (enviados && pendentes) return 'ENVIO_PARCIAL';
+  if (!pendentes && linhas.length) return linhas.every(l => l.pagamento_estado === 'CANCELADO') ? 'CANCELADA' : 'APROVADA';
+  return 'ABERTA';
+}
+
+function grupoRevisao(dados, colaboradorId) {
+  const ids = new Set([Number(colaboradorId)]);
+  let mudou;
+  do {
+    mudou = false;
+    for (const t of dados.titulos || []) {
+      if (t.cancelado || t.tipo !== 'REEMBOLSO' || !t.origens?.some(o => ids.has(Number(o.colaborador_id)))) continue;
+      for (const o of t.origens) if (!ids.has(Number(o.colaborador_id))) { ids.add(Number(o.colaborador_id)); mudou = true; }
+    }
+  } while (mudou);
+  return [...ids];
+}
+
+module.exports = { FLUXO, dinheiro, texto, calcularLinha, recebimento, validarPeriodo, valorReembolso, agruparReembolsos,
+  normalizarAndamento, situacaoPagamento, grupoRevisao };

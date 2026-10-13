@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { findActiveNode, resolveLabel } from './navigationConfig';
+import useWorkspaceController from './useWorkspaceController';
 
 export const MAX_WORKSPACE_TABS = 12;
 
@@ -75,7 +76,7 @@ function loadStoredState(userId) {
   if (typeof window === 'undefined') return null;
   try {
     const parsed = JSON.parse(window.sessionStorage.getItem(storageKey(userId)) || 'null');
-    if (parsed?.version !== STORAGE_VERSION || !Array.isArray(parsed.tabs)) return null;
+    if (![STORAGE_VERSION, 2].includes(parsed?.version) || !Array.isArray(parsed.tabs)) return null;
     const tabs = parsed.tabs
       .map(sanitizeStoredTab)
       .filter(Boolean)
@@ -143,7 +144,8 @@ export function routeFromInternalAnchor(anchor) {
   }
 }
 
-export default function useWorkspaceTabs(user) {
+// Mantido somente como referencia do ensaio comparativo, sem uso no Layout.
+export function useLegacyWorkspaceTabs(user) {
   const location = useLocation();
   const navigate = useNavigate();
   const currentRoute = useMemo(() => workspaceRouteFromLocation(location), [location]);
@@ -257,3 +259,7 @@ export default function useWorkspaceTabs(user) {
     closeTab
   };
 }
+
+const useWorkspaceTabs = import.meta.env.VITE_WORKSPACE_PILOT === 'off'
+  ? useLegacyWorkspaceTabs : useWorkspaceController;
+export default useWorkspaceTabs;

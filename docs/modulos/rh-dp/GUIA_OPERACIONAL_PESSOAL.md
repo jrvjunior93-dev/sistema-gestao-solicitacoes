@@ -4,6 +4,13 @@ Este guia partiu da revisão do código da `refactor/frontend` em 02/10/2026 (co
 
 ## Visão do processo
 
+Atualizacao de 11/10/2026: o modal atual de pagamento por solicitacao permite
+**Envio parcial para pagamento**, revisao com bloqueio persistente da fila e
+cancelamento individual sem baixa. Consulte as regras atuais em
+[Pagamento por solicitacao no README](README.md#pagamento-por-solicitacao-envio-parcial-e-revisao-11102026).
+As sessoes de jornada/apuracao abaixo descrevem tambem fluxos legados e nao
+devem ser usadas para substituir o modal atual ou ativar suas flags.
+
 | Momento | Quem inicia ou atua | Resultado no sistema |
 | --- | --- | --- |
 | Admissão ou movimentação | Obra ou usuário autorizado cria e envia; DP decide | Cadastro, situação funcional ou vínculo são alterados **somente após a aprovação**. |
@@ -15,6 +22,36 @@ Este guia partiu da revisão do código da `refactor/frontend` em 02/10/2026 (co
 O RH/DP mantém cadastro funcional, vínculos, documentação, competência e cálculo. O Financeiro é responsável pela obrigação monetária e pela baixa; SST mantém seu domínio de saúde e segurança. A obra enxerga colaboradores e solicitações no escopo das obras vinculadas ao usuário. Esconder uma aba ou um botão não é a única barreira: as rotas do backend conferem permissões e os serviços aplicam o escopo da obra.
 
 ## Acesso às abas e poderes
+
+### Atualizacao de 08/10/2026: entrada por local
+
+Para usuarios operacionais fora do DP e dos perfis administrativos, a entrada
+padrao passa a listar obras e centros de custo vinculados. Ao clicar em **Abrir**,
+**Gestao de Colaboradores** oferece tres abas: **Colaboradores**, **Solicitacoes**
+e **Transferencias entre obras**. O DP mantem a visao global descrita abaixo;
+links antigos com aba explicita continuam atendidos.
+
+**Solicitar pagamento** no colaborador abre um formulario individual; a acao
+acima da tabela abre o coletivo. Escolha competencia/pagamento e informe dias,
+faltas, acrescimos, descontos e observacao. Campos de PIX, 13o e controles de
+correcao existentes ficam nos detalhes. A lista respeita vigencias e elegibilidade
+do periodo, inclusive para centros de custo. O fluxo formal de transferencia
+entre obras nao passa a aceitar centros apenas por eles aparecerem no catalogo.
+
+O envio gera uma solicitacao independente. No modo gerencial, pagamentos de
+etapas diferentes podem gerar pedidos separados, como ja ocorre nesse fluxo.
+Nao repetir o envio para corrigir: solicite retorno/autorizacao ao DP.
+
+O DP abre a solicitacao e executa a conferencia e o fechamento no mesmo modal:
+preparar explicitamente, ajustar, marcar Conferido, concluir conferencia e
+**Fechar e gerar titulos**. Marcacoes/ajustes ficam salvos no servidor, e reabrir
+o modal nao gera novamente. A preparacao fica restrita a origem daquela
+solicitacao, em vez de incluir outros pedidos mensais da obra.
+
+Excecao de seguranca: apuracoes antigas que ja misturam pedidos e consolidacoes
+multiobra nao sao separadas automaticamente. O modal sinaliza consulta somente
+leitura; **Abrir consolidacao geral** leva ao fluxo existente para reunir partes
+e fechar sem duplicar salario. Abertura e consulta nao migraram dados antigos.
 
 A rota `/rh-dp/pessoal?aba=...` usa a aba **Solicitações** como padrão. Na interface, a ordem é esta:
 

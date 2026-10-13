@@ -12,6 +12,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       unique: true
     },
     status_interno_pagar: { type: DataTypes.STRING(80), allowNull: true },
+    valor_despesa_prestacao: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
     juros: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
     multa: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
     renegociacao_id: { type: DataTypes.INTEGER, allowNull: true },

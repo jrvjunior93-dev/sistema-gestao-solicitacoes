@@ -136,6 +136,11 @@ export function apoioDoRegistro(solicitacao, contratoDoFluxo) {
   return String(exibida || '').trim();
 }
 
+export function favorecidosDoRegistro(solicitacao, contratoDoFluxo) {
+  return solicitacao?.pagamentos_favorecidos?.length
+    ? solicitacao.pagamentos_favorecidos : (contratoDoFluxo?.pagamentos_medicao_atual || []);
+}
+
 export default function Header({
   solicitacao,
   // PI-16: o contrato do fluxo novo vive nesta solicitacao. O FAVORECIDO e a CHAVE PIX vem dele,
@@ -149,6 +154,7 @@ export default function Header({
   const [contratoSelecionadoId, setContratoSelecionadoId] = useState('');
   const [salvandoRef, setSalvandoRef] = useState(false);
   const { avisos, avisar, fechar } = useAvisos();
+  const pagamentosFavorecidos = favorecidosDoRegistro(solicitacao, contratoDoFluxo);
 
   useEffect(() => {
     setContratoSelecionadoId(solicitacao?.contrato_id ? String(solicitacao.contrato_id) : '');
@@ -350,7 +356,15 @@ export default function Header({
         alternarAoClicar
       >
         <Avisos avisos={avisos} aoFechar={fechar} />
-        <CamposComVazios colunas={4} campos={campos} />
+        <CamposComVazios colunas={4} campos={pagamentosFavorecidos.length
+          ? campos.filter(c => !['Favorecido', 'Forma de pagamento', 'Chave PIX informada', 'Dados para pagamento'].includes(c.label)) : campos} />
+        {pagamentosFavorecidos.length > 0 && <section className="mt-3 border-t border-[var(--c-border)] divide-y divide-[var(--c-border)]" aria-label="Favorecidos e dados para pagamento">
+          {!solicitacao?.pagamentos_favorecidos?.length && <p className="py-2 text-xs text-[var(--c-muted)]">Pagamentos da medição ativa mais recente</p>}
+          {pagamentosFavorecidos.map(f => <div key={f.id} className="py-2 text-sm">
+            <span className="font-semibold">{f.nome_favorecido}</span>{f.cpf_cnpj ? ` · ${f.cpf_cnpj}` : ''} · {Number(f.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · {f.forma_pagamento_nome}
+            <p className="whitespace-pre-wrap break-all">{f.favorecido_chave_pix || f.dados_pagamento || (f.boleto_nomes || []).join(', ')}</p>
+          </div>)}
+        </section>}
 
         {representanteLegal && (
           <section className="mt-4 border-t border-[var(--c-border)] pt-3" aria-label="Qualificação do representante legal">

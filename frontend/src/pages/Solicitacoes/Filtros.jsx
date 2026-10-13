@@ -77,7 +77,7 @@ import { StatTile } from '../../components/padrao/StatGrid';
 const FILTROS_DISPONIVEIS = [
   { id: 'descricao', rotulo: 'Descrição', obrigatorio: true },
   { id: 'status', rotulo: 'Status' },
-  { id: 'obra_ids', rotulo: 'Obra' },
+  { id: 'obra_ids', rotulo: 'Obra / Centro de Custo' },
   { id: 'area', rotulo: 'Setor' },
   { id: 'tipo_solicitacao_id', rotulo: 'Tipo de solicitação' },
   { id: 'codigo', rotulo: 'Código da solicitação', padrao: false },
@@ -269,7 +269,7 @@ export default function Filtros({
   const dimensoes = [
     isFiltroVisivel('obra_ids') && {
       id: 'obra_ids',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       vazio: 'Nenhuma obra disponível para filtrar.',
       opcoes: obrasOptions.map((obra) => ({ valor: String(obra.value), rotulo: obra.label }))
     },

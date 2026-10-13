@@ -165,7 +165,7 @@ export default function ContratosRelatorioOperacional() {
 
   useEffect(() => {
     carregar();
-    getObras()
+    getObras({ escopo: 'TODOS' })
       .then((lista) => setObras(Array.isArray(lista) ? lista : []))
       .catch((error) => console.error(error));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,7 +413,7 @@ export default function ContratosRelatorioOperacional() {
               />
               <BlocoGrupo
                 titulo="Contratos por obra/centro"
-                descricao="Todas as obras/centros do recorte."
+                descricao="Todas as obras / centros de custo/centros do recorte."
                 rows={data?.por_obra || []}
                 storageKey="tabela:contratos-relatorio-operacional:obras"
                 labelHeader="Obra/Centro"

@@ -1,5 +1,92 @@
 # Modulo SOLICITACOES
 
+## Piloto de navegacao e estado das abas - 2026-10-12
+
+Base de historico por aba e piloto em Nova Solicitacao, lista e detalhes.
+Rascunhos ficam apenas em memoria por usuario/escopo; nao sobrevivem a
+F5/logout. Lista/detalhes consultam novamente os endpoints autorizados,
+sem cache de DTO nem alteracao de ACL. Apenas um formulario novo fica
+retido; as demais paginas usam snapshots leves. Modais criticos e outros
+modulos continuam fora da expansao do piloto. Rollback por build com
+VITE_WORKSPACE_PILOT=off. Sem migration ou restart para este pacote.
+
+Contrato, cobertura, limites e homologacao:
+[piloto de navegacao](../../arquitetura/2026-10-11-piloto-navegacao-solicitacoes.md).
+
+Correcao de homologacao em 12/10: identidade das abas sincronizada tambem
+com BrowserRouter/startTransition e paginas lazy. Abrir/trocar aba registra
+historico para Voltar do navegador; fechamento/retorno interno substituem
+a entrada. Login substitui a entrada apos sucesso e nao reapresenta o
+formulario com sessao ativa. Restauracao, logout e MFA continuam sob as
+validacoes existentes; nenhuma mudanca em AuthProvider ou ACL backend.
+
+## Interacoes pendentes por usuario - 2026-10-11
+
+- Na lista (tabela/cards/celular), o balao junto ao codigo agrupa as
+  interacoes pendentes e informa a quantidade por motivo. Inclui comentarios
+  gerais, de itens/etapas, pedidos/cotacoes, arquivos/comprovantes, envio manual
+  e devolucao apos retorno. Entrega e aprovacao de retorno pendentes continuam
+  sendo condicoes operacionais, nao avisos consumidos por leitura.
+- Os atalhos abrem o evento no Historico, a conversa compartilhada do item
+  ou a area de retorno/pedidos. No celular selecionam a aba correspondente;
+  bloco oculto por preferencia fica temporariamente acessivel pelo atalho,
+  sem gravar alteracao de layout. O atalho de item e somente consulta; as
+  acoes existentes permanecem na etapa atual, com suas permissoes.
+- Abrir o detalhe nao reconhece as novas interacoes. Historico reconhece
+  apenas eventos realmente visiveis com janela ativa, sem modal cobrindo a
+  leitura. Comentarios de itens sao reconhecidos ao abrir sua conversa,
+  mantendo o cursor de leitura ja existente nos cards. Um mesmo historico
+  compartilhado entre etapas conta uma unica vez por usuario.
+- O autor nao recebe o proprio destaque. Destinatarios seguem criador,
+  participantes, setores envolvidos e mencoes ativos; isso nao amplia o
+  escopo de leitura/listagem. O POST de leitura valida o mesmo acesso dos
+  detalhes, usa apenas o usuario autenticado e reconhece IDs concretos.
+- A prioridade e calculada no SQL antes da paginacao: entrega operacional,
+  atencao/interacoes, retorno pendente e ordenacao existente. Ler uma parte
+  preserva as demais e uma tela antiga nao reconhece eventos novos. Retorno
+  e entrega permanecem ate tratamento. Filtros/arquivamento sao preservados.
+- Novos eventos avisam os destinatarios pelo canal realtime existente, sem
+  texto/URL de arquivo no payload. A lista rebusca a janela para incluir
+  solicitacao antes fora da pagina; avisos central/especifico sao agrupados
+  por 150 ms. Leituras notificam somente o proprio usuario (outras sessoes).
+- Historico registra o fan-out depois do commit, com chave usuario/historico
+  idempotente; rollback nao envia, replay nao apaga leitura. Falha desse
+  fan-out e logada sem transformar uma operacao de negocio ja concluida em
+  erro de gravacao. Remocao de comentario/anexo elimina a pendencia respectiva.
+- Migration estrutural `202610110002_solicitacao_interacoes_usuario.js`
+  deve preceder o restart. Nao foi aplicada em banco real. Nao faz seed ou
+  reabre todo o acervo como nao lido: registros anteriores mantem o aviso
+  legado; contagem independente inicia nos eventos apos a implantacao.
+- Validacao: `node backend/scripts/validarInteracoesSolicitacao.js` e,
+  em frontend, `node scripts/validarInteracoesSolicitacao.mjs` (transporte
+  isolado, paginas/componentes reais em desktop/celular). Sem EC2 ou banco.
+- Detalhes e limites: [handoff das interacoes](../../handoffs/2026-10-11-interacoes-solicitacoes.md).
+
+## Adiantamento e obras para rateio - 2026-10-11
+
+ADIANTAMENTO e subtipo de DESPESA ADMINISTRATIVA, DESPESA COMERCIAL e DESPESA
+DE MARKETING. Exige valor, vencimento, descricao, favorecido e dados de
+pagamento. GEO define a categoria ao gerar um unico titulo PAGAR/ABERTO.
+A prestacao fica disponivel depois do pagamento integral e retorna a GEO
+para conferencia; sobra permanece pendente ate o recebimento da devolucao.
+Na abertura do Adiantamento nao se exibe, exige ou envia distribuicao gerencial
+por obra. Os destinos e valores gastos sao definidos na prestacao. Despesas
+normais conservam a distribuicao obrigatoria do centro de custo. Payload com
+distribuicao antecipada no Adiantamento e recusado, sem persistir rateio.
+
+SUPERADMIN configura Obras para rateio na linha do centro em Obras/Centros
+de Custo. Administrativo/DP podem distribuir entre obras ativas sem vinculos
+usuario-obra; Comercial/Marketing somente privadas. Usuarios OBRA mantem
+seus vinculos. Isso nao amplia visibilidade de solicitacoes. TODAS continua
+um agrupamento gerencial, nao um rateio financeiro automatico igualitario.
+
+Migration 202610110001_adiantamento_prestacao.js deve preceder o restart do
+backend no ambiente de homologacao. Nao foi executada em banco real nesta
+entrega. Fluxo e limites: [handoff de adiantamento](../../handoffs/2026-10-11-adiantamento-centros-custo.md).
+Ela e exclusivamente estrutural. Apos o deploy, SUPERADMIN cria o subtipo
+ADIANTAMENTO na tela Subtipos, seleciona fluxo Adiantamento e vincula os tres
+tipos de despesa permitidos. Nenhum subtipo e criado por migration.
+
 ## Documentacao operacional relacionada
 
 - [Fluxos de solicitacoes iniciais do setor OBRA](./FLUXOS_INICIAIS_OBRA.md): matriz de producao, campos, destinos, automacoes, fluxogramas e separacao entre regra vigente e legado.
@@ -256,5 +343,29 @@ de retorno e as validacoes de escrita continuam obrigatorios.
 Visibilidade combina perfil, setores, obra, autoria, atribuicao, historico e configuracoes especiais. Filtros e exportacao devem usar o mesmo universo autorizado da listagem. O frontend apenas oculta acoes; o backend revalida detalhe, anexos, status, envio, assuncao e exportacao.
 
 ## Mudanca segura
+
+### Excecao funcional e exclusao (12/10/2026)
+
+SUPERADMIN efetivo pode interagir fora de seu setor principal, inclusive
+com setor OBRA. Acompanhamento dos demais perfis continua somente leitura;
+vinculos secundarios nao concedem escrita. Testar usuario na sessao de
+impersonacao usa suas proprias permissoes, nao as do superadmin original.
+
+Na lista ativa/arquivada, selecionar exatamente uma solicitacao mostra
+Excluir para SUPERADMIN ou ADMIN GEO, conforme a regra existente da API.
+Confirmacao fixa o alvo, impede cliques simultaneos e aborta se o recorte
+mudar. DELETE faz exclusao logica auditada em transacao com lock; repetir
+o pedido nao duplica auditoria. Titulos, movimentos e historico financeiro
+permanecem preservados, sem cascade. Nenhuma exclusao real foi executada
+na validacao: `node backend/scripts/validarSuperadminInteracaoExclusao.js`.
+
+A revisao central validou 173 predicados can* backend e 166 frontend.
+Preparar/aprovar/enviar pagamentos agora incluem a excecao SUPERADMIN;
+segregacao dos demais perfis nao foi ampliada. Nao confundir permissao com
+autenticacao, MFA/passkey, autorizador nominal, integracao em OFF, recurso
+inexistente ou integridade financeira: esses requisitos permanecem.
+Essa cobertura nao representa homologacao de todos os fluxos/endpoints
+do sistema; bloqueios especificos de dominio devem ser revisados antes
+de qualquer flexibilizacao adicional.
 
 Alteracoes em status, area, tipo, obra, parceiro ou apropriacao exigem testes do catalogo comum de Obras, catalogo explicito de Centro de Custo, Cadastro de Obra sem origem, criacao inicial em GEO/PENDENTE, rejeicao de payload com tipo nao permitido, compatibilidade de registros antigos de diretoria, detalhe, listagem, filtros, exportacao, prioridades, automacao, compras, contratos, financeiro, notificacoes e usuarios multissetor.

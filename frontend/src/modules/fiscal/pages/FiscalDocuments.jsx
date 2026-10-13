@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -132,6 +133,7 @@ const FILTROS_DA_TELA = [
 ];
 
 export default function FiscalDocuments() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const [documents, setDocuments] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [filters, setFilters] = useState(FILTROS_VAZIOS);
@@ -251,8 +253,10 @@ export default function FiscalDocuments() {
   const openFile = async (documentId, type) => {
     setOpeningFile(`${documentId}-${type}`);
     try {
-      const result = await getFiscalDocumentFileUrl(documentId, type);
-      if (result?.url) window.open(result.url, '_blank', 'noopener,noreferrer');
+      if (type === 'xml') {
+        const result = await getFiscalDocumentFileUrl(documentId, type);
+        if (result?.url) window.open(result.url, '_blank', 'noopener,noreferrer');
+      } else await abrirPreview(() => getFiscalDocumentFileUrl(documentId, type), { nome: 'Documento fiscal ' + documentId + '.pdf', mime: 'application/pdf' });
     } catch (err) {
       avisar.erro(err.message || 'Erro ao abrir arquivo fiscal');
     } finally {
@@ -264,7 +268,7 @@ export default function FiscalDocuments() {
     setGeneratingDanfe(String(documentId));
     try {
       const result = await generateFiscalDocumentDanfe(documentId);
-      if (result?.url) window.open(result.url, '_blank', 'noopener,noreferrer');
+      if (result?.url) await abrirPreview({ url: result.url, nome: 'DANFE ' + documentId + '.pdf', mime: 'application/pdf' });
       await load();
     } catch (err) {
       avisar.erro(err.message || 'Erro ao gerar DANFE fiscal');
@@ -645,6 +649,7 @@ export default function FiscalDocuments() {
           )}
         />
       </BlocoConteudo>
+      {modalPreview}
     </Pagina>
   );
 }

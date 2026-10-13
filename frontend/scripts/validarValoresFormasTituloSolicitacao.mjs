@@ -8,6 +8,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = await createServer({ root, configFile: false, logLevel: 'error', server: { middlewareMode: true } });
 
 try {
+  const { somarValoresFavorecidos } = await server.ssrLoadModule('/src/components/solicitacoes/PagamentosFavorecidos.jsx');
+  const valoresSomados = [{ valor: '1,01', contrato_parcela_id: 1 }, { valor: '2,02', contrato_parcela_id: 1 }, { valor: '30,00', contrato_parcela_id: 2 }, { valor: '' }];
+  assert.equal(somarValoresFavorecidos(valoresSomados), 33.03);
+  assert.equal(somarValoresFavorecidos(valoresSomados, 1), 3.03);
+  assert.equal(somarValoresFavorecidos(valoresSomados, 2), 30);
+  assert.equal(somarValoresFavorecidos(valoresSomados, 3), 0);
   const { buildDefaultForm, prepararPagamentoParaForma, calcularValorPagamento } = await server.ssrLoadModule('/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx');
   const solicitacao = { valor: 1234.56, forma_pagamento_id: 1, data_vencimento: '2026-09-30' };
   const pagamentoInicial = buildDefaultForm(solicitacao).pagamentos[0];
@@ -52,6 +58,24 @@ try {
   const preparados = doisPagamentos.map((pagamento) => prepararPagamentoParaForma(pagamento, formas[0]));
   assert.equal(preparados.length, 2);
   assert.equal(Number(preparados.reduce((total, pagamento) => total + parseCurrencyInput(pagamento.parcelas[0].valor), 0).toFixed(2)), 1254.56);
+  const partes = [
+    { id: 8, favorecido_id: 71, nome_favorecido: 'Primeiro', valor: 300, forma_pagamento_id: 1, favorecido_chave_pix: 'pix-primeiro' },
+    { id: 9, favorecido_id: 72, nome_favorecido: 'Segundo', valor: 200, forma_pagamento_id: 2, dados_pagamento: 'Conta propria' }
+  ];
+  const { favorecidosDoRegistro } = await server.ssrLoadModule('/src/pages/SolicitacaoDetalhe/Header.jsx');
+  assert.equal(favorecidosDoRegistro({ pagamentos_favorecidos: partes }, null), partes);
+  assert.equal(favorecidosDoRegistro({}, { pagamentos_medicao_atual: partes }), partes);
+  assert.equal(favorecidosDoRegistro({ pagamentos_favorecidos: partes }, { pagamentos_medicao_atual: [] }), partes);
+  assert.deepEqual(favorecidosDoRegistro({}, null), []);
+  const dividido = buildDefaultForm({ ...solicitacao, valor: 500, parceiro: { id: 50, nome: 'Credor do contrato' },
+    pagamentos_favorecidos: partes });
+  assert.equal(dividido.pagamentos.length, 2);
+  assert.deepEqual(dividido.pagamentos.map(p => p.favorecido_pagamento_id), ['71', '72']);
+  assert.deepEqual(dividido.pagamentos.map(p => p.forma_pagamento_id), ['1', '2']);
+  assert.deepEqual(dividido.pagamentos.map(p => p.parceiro_id), ['50', '50']);
+  assert.deepEqual(dividido.pagamentos.map(p => p.observacoes), ['PIX: pix-primeiro', 'Conta propria']);
+  assert.deepEqual(dividido.pagamentos.map((p, i) => calcularValorPagamento(prepararPagamentoParaForma(p, formas[i]), formas[i])), [300, 200]);
+  assert.deepEqual(dividido.pagamentos.map(p => p.instrucao_favorecido.id), [8, 9]);
   console.log('OK: valores predefinidos para boleto, PIX, cheque, outros, cartao, transferencia, parcelas e frete separado.');
 } finally {
   await server.close();

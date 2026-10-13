@@ -1726,9 +1726,22 @@ const allowIntegracaoSiengeConfigManage = permit({
 // SOLICITAÇÕES
 // -------------------------------------------------------------------
 
+router.use([
+  '/solicitacoes/:solicitacaoOperacionalId',
+  '/recargas-cartao/solicitacoes/:solicitacaoOperacionalId',
+  '/adiantamentos/solicitacoes/:solicitacaoOperacionalId',
+  '/compras/solicitacoes/por-solicitacao/:solicitacaoOperacionalId',
+  '/compras/solicitacoes-diretas/por-solicitacao/:solicitacaoOperacionalId'
+], require('./middlewares/solicitacaoDisponivel'));
+
 router.post('/solicitacoes', validateRequest({ body: validateSolicitacaoCreateBody }), SolicitacaoController.create);
 router.get('/solicitacoes/centros-custo/:id/obras-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.obrasElegiveis);
+router.get('/solicitacoes/centros-custo/:id/configuracao-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.configuracao);
+router.put('/solicitacoes/centros-custo/:id/configuracao-distribuicao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.salvarConfiguracao);
 router.get('/recargas-cartao/meus-cartoes', RecargaCartaoController.meusCartoes);
+router.get('/adiantamentos/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').contexto);
+router.post('/adiantamentos/solicitacoes/:id/prestacao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').enviar);
+router.post('/adiantamentos/solicitacoes/:id/prestacao/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').decidir);
 router.get('/recargas-cartao/cartoes/:id/contexto', validateRequest({ params: validateNumericIdParam('id', 'Cartao de recarga') }), RecargaCartaoController.contextoCartao);
 router.get('/recargas-cartao/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.contextoSolicitacao);
 router.patch('/recargas-cartao/solicitacoes/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.editarPendente);
@@ -1751,6 +1764,7 @@ router.get('/solicitacoes/resumo', SolicitacaoController.resumo);
 router.get('/solicitacoes/relatorios/operacional', allowSolicitacoesRelatorioOperacional, RelatorioSolicitacoesController.operacional);
 router.get('/solicitacoes/:id/resumo-lista', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.resumoLista);
 router.get('/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.show);
+router.post('/solicitacoes/:id/interacoes/leitura', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.marcarInteracoesLidas);
 router.get('/solicitacoes/:id/compra-etapas', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.listar);
 router.patch('/solicitacoes/:id/compra-itens/aprovacao-lote', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.aprovarItensEmLote);
 router.patch('/solicitacoes/:id/compra-itens/:tipo/:itemId/decisao', criticalRateLimit, validateRequest({ params: validateCompraItemDecisionParams }), SolicitacaoCompraEtapasController.decidirItem);
@@ -2082,6 +2096,17 @@ router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacao
 
 // --- Jornada por formulario, pagamento individual e historicos (Fases 4 e 5) ---
 router.get('/rh/jornada/modelo', allowRhDpSolicitacaoVer, RhJornadaController.modelo);
+// Pagamento independente por solicitacao; permissao/escopo e conferidos novamente no servico.
+const RhPagamentoSolicitacaoController = require('./controllers/RhPagamentoSolicitacaoController');
+const allowRhDpPagamentoWrite = permit({ resource: 'RH_DP_SOLICITACOES', custom: async req =>
+  (await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.abrir'])
+    || await require('./services/rhPagamentoSolicitacaoService').ehDp(req.user))
+    ? true : 'Acesso negado ao pagamento RH/DP' });
+router.post('/rh/pagamentos-solicitacao', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.iniciar);
+router.get('/rh/pagamentos-solicitacao/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.mostrar);
+router.put('/rh/pagamentos-solicitacao/:id', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.salvar);
+router.post('/rh/pagamentos-solicitacao/:id/enviar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.enviar);
+router.post('/rh/pagamentos-solicitacao/:id/revisar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.revisar);
 router.post('/rh/jornada/importar', allowRhDpSolicitacaoAbrir, uploadRateLimit, criticalRateLimit, uploadComprovantes.fields([{ name: 'planilha', maxCount: 1 }, { name: 'fichas', maxCount: 20 }]), RhJornadaController.importar);
 router.get('/rh/jornada/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetencia);
 router.get('/rh/jornada/gerencial/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetenciaGerencial);

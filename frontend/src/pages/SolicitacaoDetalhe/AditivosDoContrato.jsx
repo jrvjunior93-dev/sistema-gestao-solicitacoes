@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import { useCallback, useEffect, useState } from 'react';
 import {
   listarAditivosContrato,
@@ -48,6 +49,7 @@ const ROTULO_TIPO = {
 };
 
 export default function AditivosDoContrato({ contrato, onMudou }) {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const [aditivos, setAditivos] = useState([]);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(null);
@@ -77,20 +79,10 @@ export default function AditivosDoContrato({ contrato, onMudou }) {
   async function abrirNegociacao(aditivo) {
     const anexo = aditivo?.negociacao_detalhada;
     if (!anexo?.caminho_arquivo || abrindoAnexoId) return;
-    const janela = typeof window !== 'undefined' ? window.open('', '_blank') : null;
-    setErro('');
-    setAbrindoAnexoId(anexo.id);
-    try {
-      const url = await getLinkSeguroAnexoSolicitacao(anexo.caminho_arquivo);
-      if (!janela) throw new Error('O navegador bloqueou a abertura do arquivo. Libere pop-ups e tente novamente.');
-      janela.opener = null;
-      janela.location.href = url;
-    } catch (e) {
-      janela?.close();
-      setErro(e.message || 'Nao foi possivel abrir a Negociacao Detalhada.');
-    } finally {
-      setAbrindoAnexoId(null);
-    }
+    setErro(''); setAbrindoAnexoId(anexo.id);
+    try { await abrirPreview(() => getLinkSeguroAnexoSolicitacao(anexo.caminho_arquivo), { nome: anexo.nome_original, caminho: anexo.caminho_arquivo }); }
+    catch (e) { setErro(e.message || 'Nao foi possivel abrir a Negociacao Detalhada.'); }
+    finally { setAbrindoAnexoId(null); }
   }
 
   async function agir(aditivo, acao) {
@@ -247,6 +239,7 @@ export default function AditivosDoContrato({ contrato, onMudou }) {
         />
       </div>
       {elementoConfirmacao}
+      {modalPreview}
     </BlocoConteudo>
   );
 }

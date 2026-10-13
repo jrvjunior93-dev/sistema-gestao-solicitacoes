@@ -1,4 +1,6 @@
+import VisualizadorArquivoModal from '../components/ui/VisualizadorArquivoModal';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceRestored, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -49,6 +51,7 @@ import {
 } from '../utils/acessoProduto';
 import FinanceiroTitulosImportacaoPanel from '../components/financeiro/FinanceiroTitulosImportacaoPanel';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
+import titulosWorkspaceRevision from '../navigation/titulosWorkspaceRevision';
 import TituloNegociacaoModal, { podeNegociarTitulos } from '../components/financeiro/TituloNegociacaoModal';
 import ChequePagamentoFields from '../components/financeiro/ChequePagamentoFields';
 import {
@@ -151,7 +154,7 @@ const NATUREZAS_INTERCOMPANY_BAIXA = [
 const FILTER_DEFINITIONS = [
   { id: 'q', rotulo: 'Busca rápida', group: 'basic', span: 'xl:col-span-4', obrigatorio: true },
   { id: 'status', rotulo: 'Status', group: 'basic', span: 'xl:col-span-2' },
-  { id: 'obra_id', rotulo: 'Obra', group: 'basic', span: 'xl:col-span-4' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo', group: 'basic', span: 'xl:col-span-4' },
   { id: 'vencimento_inicial', rotulo: 'Vencimento início', group: 'basic', span: 'xl:col-span-2' },
   { id: 'vencimento_final', rotulo: 'Vencimento fim', group: 'basic', span: 'xl:col-span-2' },
   { id: 'codigo', rotulo: 'Título', group: 'basic', span: 'xl:col-span-2', padrao: false },
@@ -1089,7 +1092,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const canEditarTitulo = hasPermissao(user, 'financeiro.titulos.editar');
   const canBaixarTitulo = hasPermissao(user, 'financeiro.titulos.baixar');
   const canNegociar = hasPermissao(user, 'financeiro.titulos.renegociar');
-  const [titulosNegociacao, setTitulosNegociacao] = useState(null);
+  const [titulosNegociacaoIds, setTitulosNegociacaoIds] = useWorkspaceState('titulos:negociacaoIds', []);
+  const setTitulosNegociacao = rows => setTitulosNegociacaoIds((rows || []).map(row => Number(row.id)));
   const canImportTitulos = canImportTitulosFinanceiros(user);
   const canPrepareFila = canPrepareFilaPagamentos(user);
   const canPrepareAutorizacao = hasPermissao(user, 'financeiro.autorizacoes_pagamento.preparar');
@@ -1147,8 +1151,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   */
   const chavePreferencias = `tabela:financeiro-titulos:${fixedTipo ? String(fixedTipo).toLowerCase() : 'geral'}`;
   const [filtroGravado, definirFiltroGravado] = usePreferenciaDeLista(chavePreferencias, TIPO_GERAL);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [draftFilters, setDraftFilters] = useState(() => {
+  const filtrosRestaurados = useWorkspaceRestored('titulos:filtros');
+  const [advancedOpen, setAdvancedOpen] = useWorkspaceState('titulos:avancados', false);
+  const [draftFilters, setDraftFilters] = useWorkspaceState('titulos:filtros', () => {
     /* Sem a máscara de visibilidade aqui (05/09): ela precisa da escolha do
        usuário, e a escolha agora vem do `PreferenciasContext` — que é um
        hook, e hook não roda dentro do inicializador de outro estado. Quem
@@ -1163,7 +1168,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       return getDefaultFilters(fixedTipo || 'RECEBER');
     }
   });
-  const [appliedFilters, setAppliedFilters] = useState(null);
+  const [appliedFilters, setAppliedFilters] = useWorkspaceState('titulos:consulta', null);
   /*
     N53 (05/09) — filtro com valor é filtro VISÍVEL, nas DUAS fontes.
 
@@ -1216,8 +1221,19 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [cartoes, setCartoes] = useState([]);
   const [chequesTerceiros, setChequesTerceiros] = useState([]);
   const [titulos, setTitulos] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: '25', total: 0, total_pages: 0 });
-  const [ordenacao, setOrdenacao] = useState(null);
+  const [paginaAtual, setPaginaAtual] = useWorkspaceState('titulos:pagina', 1);
+  const [limiteAtual, setLimiteAtual] = useWorkspaceState('titulos:limite', '25');
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, total_pages: 0 });
+  const pagination = { ...paginationMeta, page: paginaAtual, limit: limiteAtual };
+  const paginationRef = useRef(pagination);
+  paginationRef.current = pagination;
+  const setPagination = useCallback(update => {
+    const next = typeof update === 'function' ? update(paginationRef.current) : update;
+    paginationRef.current = next;
+    setPaginaAtual(next.page); setLimiteAtual(next.limit);
+    setPaginationMeta({ total: next.total, total_pages: next.total_pages });
+  }, [setPaginaAtual, setLimiteAtual]);
+  const [ordenacao, setOrdenacao] = useWorkspaceState('titulos:ordenacao', null);
   const ordenarTitulos = useCallback((coluna, direcao) => {
     const proxima = coluna && direcao ? { coluna, direcao } : null;
     setOrdenacao((atual) => atual?.coluna === proxima?.coluna && atual?.direcao === proxima?.direcao ? atual : proxima);
@@ -1226,15 +1242,19 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState('');
-  const [selectedTituloIds, setSelectedTituloIds] = useState([]);
+  const [selectedTituloIds, setSelectedTituloIds] = useWorkspaceState('titulos:selecionados', []);
   const [statusInternosPagar, setStatusInternosPagar] = useState([]);
-  const [statusEmMassa, setStatusEmMassa] = useState('');
+  const [statusEmMassa, setStatusEmMassa] = useWorkspaceState('titulos:statusEmMassa', '');
   const [alterandoStatusInterno, setAlterandoStatusInterno] = useState(false);
   const statusInternoPendenteRef = useRef(false);
-  const [modalBaixaMassaOpen, setModalBaixaMassaOpen] = useState(false);
-  const [modalBaixaCompostaOpen, setModalBaixaCompostaOpen] = useState(false);
-  const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm());
+  const [modalBaixaMassaOpen, setModalBaixaMassaOpen] = useWorkspaceState('titulos:baixaMassaModal', false);
+  const [baixaMassaRevision, setBaixaMassaRevision] = useWorkspaceState('titulos:baixaMassaRevision', null);
+  const [baixaCompostaIds, setBaixaCompostaIds] = useWorkspaceState('titulos:baixaCompostaIds', []);
+  const modalBaixaCompostaOpen = baixaCompostaIds.length > 0;
+  const [loadingChequesComposta, setLoadingChequesComposta] = useState(false);
+  const [baixaMassaForm, setBaixaMassaForm] = useWorkspaceState('titulos:baixaMassaInputs', () => buildBaixaMassaForm());
   const [savingBaixaMassa, setSavingBaixaMassa] = useState(false);
+  const baixaMassaPendenteRef = useRef(false);
   const [sendingFilaPagamentos, setSendingFilaPagamentos] = useState(false);
   const envioPagamentoPendenteRef = useRef(false);
   const envioPagamentoChaveRef = useRef(null);
@@ -1251,6 +1271,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [relatorioFilename, setRelatorioFilename] = useState('relatorio-titulos-financeiros.pdf');
   const [relatorioSelecaoCount, setRelatorioSelecaoCount] = useState(0);
   const relatorioRequestIdRef = useRef(0);
+  useWorkspaceWork(Boolean(selectedTituloIds.length || modalBaixaMassaOpen), savingBaixaMassa || sendingFilaPagamentos
+    || alterandoStatusInterno || importandoCodigos || relatorioLoading);
 
   useEffect(() => {
     let active = true;
@@ -1290,14 +1312,15 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   useEffect(() => {
     if (!modalBaixaCompostaOpen) return undefined;
     let active = true;
+    setLoadingChequesComposta(true);
 
     getChequesTerceiros({ status: 'EM_CARTEIRA', limit: 300 })
       .then((data) => {
         if (active) setChequesTerceiros(normalizeOptionList(data));
       })
       .catch(() => {
-        if (active) setError('Nao foi possivel atualizar os cheques de terceiros em carteira.');
-      });
+        if (active) { setChequesTerceiros([]); setError('Nao foi possivel atualizar os cheques de terceiros em carteira.'); }
+      }).finally(() => { if (active) setLoadingChequesComposta(false); });
 
     return () => {
       active = false;
@@ -1308,23 +1331,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     if (relatorioPdfUrl) URL.revokeObjectURL(relatorioPdfUrl);
   }, [relatorioPdfUrl]);
 
-  useEffect(() => {
-    if (!relatorioModalOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        relatorioRequestIdRef.current += 1;
-        setRelatorioModalOpen(false);
-        setRelatorioPdfUrl('');
-      }
-    };
-    document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [relatorioModalOpen]);
+
 
   /*
     O efeito que RELIA a escolha na troca de usuário saiu (05/09): a
@@ -1338,6 +1345,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
        CARTEIRA: ele zera consulta, seleção e paginação, e por isso não pode
        reagir à visibilidade — esconder um campo apagaria a consulta que a
        pessoa está lendo, o oposto do que a N53 pede. */
+    if (filtrosRestaurados) return;
     const defaults = getDefaultFilters(fixedTipo || 'RECEBER');
     let nextFilters = defaults;
 
@@ -1385,7 +1393,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const escolhidosFiltros = visibilidadeFiltros.escolhidos;
   const assinaturaEscolhidos = escolhidosFiltros.join(',');
   useEffect(() => {
-    if (appliedFilters) return;
+    if (appliedFilters || filtrosRestaurados) return;
     const padraoDoSistema = getDefaultFilters(fixedTipo || 'RECEBER');
     setDraftFilters((atual) => {
       const vazios = {};
@@ -1412,7 +1420,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   */
   const filtroGravadoAplicadoRef = useRef(null);
   useEffect(() => {
-    if (appliedFilters) return;
+    if (appliedFilters || filtrosRestaurados) return;
     const valores = filtroGravado?.valores;
     if (!valores || typeof valores !== 'object') return;
     const assinatura = `${chavePreferencias}|${JSON.stringify(valores)}`;
@@ -1435,6 +1443,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   // ?vencidos=1 (vencimento até ontem) ou ?vencendo_ate=AAAA-MM-DD
   // (vencimento entre hoje e a data limite). Títulos em aberto.
   useEffect(() => {
+    if (filtrosRestaurados) return;
     const params = new URLSearchParams(location.search);
     const vencidos = params.get('vencidos') === '1';
     const vencendoAte = params.get('vencendo_ate');
@@ -1529,11 +1538,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               limit: data?.pagination?.limit || current.limit
             }));
           }
-          setSelectedTituloIds([]);
+          const autorizados = Array.isArray(data) ? data : data?.data || [];
+          setSelectedTituloIds(current => current.filter(id => autorizados.some(titulo => Number(titulo.id) === Number(id))));
         }
       })
       .catch((err) => {
         if (active) {
+          setTitulos([]); setSelectedTituloIds([]);
           setError(err?.message || 'Erro ao carregar titulos financeiros');
         }
       })
@@ -1585,6 +1596,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }, [cartoes, filtroFormaPagamentoUsaCartao, formaPagamentoFiltroSelecionada]);
 
   useEffect(() => {
+    if (loadingOptions) return;
     if (!draftFilters.cartao_id) return;
     if (!filtroFormaPagamentoUsaCartao) {
       setDraftFilters((current) => ({ ...current, cartao_id: '' }));
@@ -1594,7 +1606,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     if (!exists) {
       setDraftFilters((current) => ({ ...current, cartao_id: '' }));
     }
-  }, [cartoesFiltro, draftFilters.cartao_id, filtroFormaPagamentoUsaCartao]);
+  }, [cartoesFiltro, draftFilters.cartao_id, filtroFormaPagamentoUsaCartao, loadingOptions]);
 
   const parceirosFiltrados = useMemo(() => {
     const tipo = String(draftFilters.tipo || '').toUpperCase();
@@ -1623,6 +1635,10 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }), [titulos]);
 
   const hasConsulted = Boolean(appliedFilters);
+  // Apenas os IDs viajam com a aba. Saldos/permissoes sao os da consulta
+  // autorizada atual, nunca os objetos que abriram o modal anteriormente.
+  const titulosNegociacao = titulosNegociacaoIds.map(id => titulos.find(titulo => Number(titulo.id) === id)).filter(Boolean);
+  const titulosBaixaComposta = baixaCompostaIds.map(id => titulos.find(titulo => Number(titulo.id) === id)).filter(Boolean);
   /*
     C2/B3 — a contagem da TELA mora na faixa fixa, e mora só lá. O que o
     bloco de resultado diz é outra coisa: em que página se está. Antes o
@@ -1686,6 +1702,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     [titulos, selectedTituloSet]
   );
   const selectedTitulosBaixaveis = useMemo(() => selectedTitulos.filter(isTituloBaixavel), [selectedTitulos]);
+  const baixaMassaConflito = Boolean(modalBaixaMassaOpen && baixaMassaRevision && !loading
+    && baixaMassaRevision !== titulosWorkspaceRevision(selectedTitulosBaixaveis));
   const selectedTitulosExcluiveis = useMemo(() => selectedTitulos.filter(isTituloExcluivel), [selectedTitulos]);
   const selectedSaldo = useMemo(() => selectedTitulosBaixaveis.reduce(
     (total, titulo) => total + Number(titulo.valor_saldo || 0),
@@ -1988,6 +2006,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
     setError('');
     setBaixaMassaForm(buildBaixaMassaForm(selectedSaldo, baixaMassaEmpresasTitulo[0]));
+    setBaixaMassaRevision(titulosWorkspaceRevision(selectedTitulosBaixaveis));
     setModalBaixaMassaOpen(true);
   }
 
@@ -2159,6 +2178,10 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
   async function handleBaixaMassaSubmit(event) {
     event.preventDefault();
+    if (baixaMassaPendenteRef.current) return;
+    if (baixaMassaConflito || loading || !canBaixarTitulo) {
+      setError('Os títulos mudaram. Confira a seleção atual antes de baixar.'); return;
+    }
     if (selectedTitulosBaixaveis.length === 0) {
       setError('Selecione ao menos um titulo em aberto ou parcial para baixar.');
       return;
@@ -2251,6 +2274,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       }
     }
 
+    baixaMassaPendenteRef.current = true;
     try {
       setSavingBaixaMassa(true);
       setError('');
@@ -2334,6 +2358,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     } catch (err) {
       setError(err?.message || 'Erro ao registrar baixas em massa.');
     } finally {
+      baixaMassaPendenteRef.current = false;
       setSavingBaixaMassa(false);
     }
   }
@@ -2461,20 +2486,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     }
   }
 
-  function baixarRelatorio() {
-    if (!relatorioPdfUrl) return;
-    const link = document.createElement('a');
-    link.href = relatorioPdfUrl;
-    link.download = relatorioFilename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
 
-  function abrirRelatorioNovaAba() {
-    if (!relatorioPdfUrl) return;
-    window.open(relatorioPdfUrl, '_blank', 'noopener,noreferrer');
-  }
+
+
 
   function exportarTitulos() {
     const columns = getTituloExportColumns();
@@ -2686,13 +2700,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             key={filter.id}
             className={commonClass}
             inputClassName="input w-full input-sm"
-            label="Obra"
+            label="Obra / Centro de Custo"
             value={draftFilters.obra_id}
             options={obras}
             onChange={(nextValue) => setFilter('obra_id', nextValue)}
             disabled={loadingOptions}
             placeholder="Digite nome ou código da obra"
-            allLabel="Todas as obras"
+            allLabel="Todas as obras / centros de custo"
             emptyLabel="Nenhuma obra encontrada"
             getLabel={(obra) => [obra?.codigo, obra?.nome].filter(Boolean).join(' - ') || obra?.nome || ''}
             getDescription={(obra) => [obra?.cidade, obra?.uf].filter(Boolean).join(' - ')}
@@ -3116,7 +3130,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 },
                 {
                   id: 'obra',
-                  titulo: 'Obra',
+                  titulo: 'Obra / Centro de Custo',
                   tipo: 'texto',
                   render: (frete) => <span className="text-[var(--c-muted)]">{frete.obra?.nome || '-'}</span>
                 },
@@ -3258,7 +3272,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => setModalBaixaCompostaOpen(true)}
+                onClick={() => { setLoadingChequesComposta(true); setBaixaCompostaIds(selectedTitulosBaixaveis.map(titulo => Number(titulo.id))); }}
                 disabled={selectedTitulosBaixaveis.length === 0 || savingBaixaMassa}
                 title={`Combinar mais de uma conta, forma ou cheque no mesmo ${baixaMassaTipoSelecionado === 'RECEBER' ? 'recebimento' : 'pagamento'}`}
               >
@@ -3459,7 +3473,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               },
               {
                 id: 'obra',
-                titulo: 'Obra',
+                titulo: 'Obra / Centro de Custo',
                 ordenavel: true,
                 tipo: 'texto',
                   render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || (titulo.renegociacao_id && titulo.possui_rateio ? 'Várias obras · rateado' : '-')}</span>
@@ -3562,6 +3576,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             colunasConfiguraveis
             aoMudarColunas={aoMudarColunas}
             storageKey={tabelaStorageKey}
+            chaveWorkspace={tabelaStorageKey}
+            consultaWorkspace={JSON.stringify(appliedFilters)}
             rotuloRolagem={`Titulos ${tipoLabel}`}
             selecao={(canBaixarTitulo || canNegociar || canPrepareFila || canPrepareAutorizacao || canAlterarStatusInterno || canCreateBaixaComposta || canDeleteTitulos) ? {
               selecionados: selectedTituloIds.map((id) => Number(id)),
@@ -3661,96 +3677,14 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         ) : null}
       </BlocoConteudo>
 
-      {relatorioModalOpen ? (
-        <div
-          className="fixed inset-0 z-modal flex items-center justify-center bg-[var(--modal-overlay)] p-0 backdrop-blur-sm sm:p-4"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) fecharRelatorio();
-          }}
-        >
-          <section
-            className="flex h-full w-full flex-col overflow-hidden bg-[var(--c-surface)] shadow-2xl sm:h-[min(92vh,920px)] sm:max-w-[min(96vw,1500px)] sm:rounded-2xl sm:border sm:border-[var(--c-border)]"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="relatorio-titulos-title"
-          >
-            <header className="flex shrink-0 flex-col gap-3 border-b border-[var(--c-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--sem-info-bg)] text-[var(--sem-info)]">
-                    <HiOutlineDocumentText className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <h2 id="relatorio-titulos-title" className="truncate text-lg font-semibold text-[var(--c-text)]">
-                      Relatorio de {pageTitle}
-                    </h2>
-                    <p className="text-xs text-[var(--c-muted)]">
-                      {relatorioSelecaoCount > 0
-                        ? `${relatorioSelecaoCount} titulo(s) selecionado(s), respeitando os filtros e seu escopo de acesso.`
-                        : 'Todos os títulos encontrados pelos filtros aplicados, respeitando seu escopo de acesso.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                {relatorioPdfUrl ? (
-                  <>
-                    <button type="button" className="btn btn-outline btn-sm gap-2" onClick={abrirRelatorioNovaAba}>
-                      <HiOutlineEye className="h-4 w-4" />
-                      <span className="hidden sm:inline">Abrir em nova aba</span>
-                      <span className="sm:hidden">Abrir</span>
-                    </button>
-                    <button type="button" className="btn btn-primary btn-sm gap-2" onClick={baixarRelatorio}>
-                      <HiOutlineArrowDownTray className="h-4 w-4" />
-                      Baixar PDF
-                    </button>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={fecharRelatorio}
-                  title="Fechar relatório"
-                  aria-label="Fechar relatório"
-                >
-                  <HiOutlineXMark className="h-4 w-4" />
-                </button>
-              </div>
-            </header>
+      {relatorioModalOpen ? <VisualizadorArquivoModal
+        arquivo={{ nome: relatorioFilename, titulo: 'Relatório de ' + pageTitle, descricao: relatorioSelecaoCount > 0 ? relatorioSelecaoCount + ' título(s) selecionado(s)' : 'Filtros aplicados', url: relatorioPdfUrl, mime: 'application/pdf', carregando: relatorioLoading, erro: relatorioError }}
+        onClose={fecharRelatorio}
+        fecharAoClicarFora
+        acoes={relatorioError ? <button type="button" className="btn btn-outline btn-sm" onClick={abrirRelatorio}>Tentar novamente</button> : null}
+      /> : null}
 
-            <div className="min-h-0 flex-1 bg-[var(--c-bg)] p-2 sm:p-3">
-              {relatorioLoading ? (
-                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
-                  <div className="text-center">
-                    <span className="loading loading-spinner loading-md text-primary" aria-hidden="true" />
-                    <p className="mt-3 text-sm font-semibold text-[var(--c-text)]">Preparando o relatório completo...</p>
-                    <p className="mt-1 text-xs text-[var(--c-muted)]">{relatorioSelecaoCount > 0 ? 'Aguarde enquanto os títulos selecionados são consolidados.' : 'Aguarde enquanto os títulos filtrados são consolidados.'}</p>
-                  </div>
-                </div>
-              ) : relatorioError ? (
-                <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-[var(--sem-danger-border)] bg-[var(--c-surface)] p-4">
-                  <div className="max-w-md text-center">
-                    <h3 className="text-sm font-semibold text-[var(--sem-danger)]">Não foi possível gerar o relatório</h3>
-                    <p className="mt-2 text-sm text-[var(--c-muted)]">{relatorioError}</p>
-                    <button type="button" className="btn btn-outline btn-sm mt-4" onClick={abrirRelatorio}>
-                      Tentar novamente
-                    </button>
-                  </div>
-                </div>
-              ) : relatorioPdfUrl ? (
-                <iframe
-                  src={relatorioPdfUrl}
-                  title={`Visualização do relatório de ${pageTitle.toLowerCase()}`}
-                  className="h-full min-h-64 w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]"
-                />
-              ) : null}
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {modalBaixaMassaOpen ? (
+      {modalBaixaMassaOpen && !loading && !loadingOptions && canBaixarTitulo && selectedTitulosBaixaveis.length > 0 ? (
         <div className="modal-overlay finance-operation-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="baixa-massa-titulo">
           <form
             className="modal-dialog finance-operation-modal finance-operation-modal--medium"
@@ -3775,6 +3709,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             </div>
 
             <div className="modal-body min-h-0 space-y-4 overflow-y-auto">
+              {baixaMassaConflito && <div role="alert" className="app-note">Saldo ou situação dos títulos mudou. Seu preenchimento foi preservado; a baixa está bloqueada.
+                <button type="button" className="btn btn-outline btn-sm" onClick={async () => {
+                  const { ok } = await confirmar({ titulo: 'Descartar preenchimento', mensagem: 'Descartar os campos desta baixa e conferir os títulos atuais?', destrutiva: true });
+                  if (ok) abrirModalBaixaMassa();
+                }}>Conferir títulos atuais</button></div>}
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="app-filter-field">
                   <span className="app-filter-label">Data da baixa</span>
@@ -4247,7 +4186,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   type="submit"
                   className="btn btn-primary"
                   disabled={
-                    savingBaixaMassa ||
+                    savingBaixaMassa || baixaMassaConflito ||
                     (baixaMassaUsaCartao && !baixaMassaForm.cartao_id) ||
                     (baixaMassaParcelada && !baixaMassaForm.conta_bancaria_id) ||
                     (!baixaMassaParcelada && baixaMassaCartaoDebito && !baixaMassaForm.conta_bancaria_id) ||
@@ -4266,14 +4205,17 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         </div>
       ) : null}
 
-      {modalBaixaCompostaOpen ? (
+      {modalBaixaCompostaOpen && canCreateBaixaComposta && !error && titulosBaixaComposta.length === baixaCompostaIds.length ? (
         <BaixaCompostaModal
-          titulos={selectedTitulosBaixaveis}
+          key={baixaCompostaIds.join(':')}
+          titulos={titulosBaixaComposta}
+          ready={hasConsulted && !loading && !loadingOptions && !loadingChequesComposta}
+          eligible={titulosBaixaComposta.every(isTituloBaixavel)}
           formas={formasPagamentoBaixaMassa}
           contas={contasBancarias}
           cartoes={cartoes}
           cheques={chequesTerceirosDisponiveis}
-          onClose={() => setModalBaixaCompostaOpen(false)}
+          onClose={() => setBaixaCompostaIds([])}
           onConfirmed={() => {
             setSelectedTituloIds([]);
             setAppliedFilters((current) => (current ? { ...current } : current));
@@ -4290,7 +4232,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       ) : null}
 
       {/* R19: modal de confirmação do sistema (exclusão em massa). */}
-      {titulosNegociacao && <TituloNegociacaoModal titulos={titulosNegociacao}
+      {canNegociar && !error && titulosNegociacaoIds.length > 0 && titulosNegociacao.length === titulosNegociacaoIds.length && <TituloNegociacaoModal
+        key={titulosNegociacaoIds.join(':')} titulos={titulosNegociacao} ready={!loading && hasConsulted}
         onClose={() => setTitulosNegociacao(null)} onConfirmed={() => {
           setSelectedTituloIds([]);
           setAppliedFilters(current => current ? { ...current } : current);

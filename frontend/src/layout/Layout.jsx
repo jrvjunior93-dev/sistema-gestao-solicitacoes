@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Suspense, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import AppRouteFallback from '../components/AppRouteFallback';
@@ -35,6 +35,13 @@ import ControleDiarioCaixa from '../components/ControleDiarioCaixa';
 import PrazosOperacionais from '../components/PrazosOperacionais';
 import cscLogo from '../assets/CSC_logo_lockup_cropped.png';
 import fluxyMark from '../assets/fluxy_mark_cropped.png';
+import WorkspaceView from '../navigation/WorkspaceView';
+import { WorkspaceContext, createWorkspaceMemory } from '../navigation/WorkspaceContext';
+import { workspaceAccessIdentity } from '../navigation/workspaceModel';
+// Imports diretos: o shell nao deve antecipar os chunks das tabelas/paginas.
+import { useConfirmacao } from '../components/padrao/Confirmacao';
+import Avisos, { useAvisos } from '../components/padrao/Avisos';
+import { closeTopWorkspaceModal } from '../components/ui/ModalPortal';
 
 const COMPRAS_RESPONSIVE_ROUTES = [
   '/solicitacoes-compra',
@@ -142,23 +149,58 @@ export default function Layout() {
   const comprasResponsiveRoute = isComprasResponsiveRoute(location.pathname);
   const custosRecebiveisResponsiveRoute = location.pathname.startsWith('/custos-recebiveis');
   const compactAuthorizationPwa = isAutorizacaoPwaCompacta(user, location.pathname);
+  const workspace = useWorkspaceTabs(user);
+  const accessIdentity = workspaceAccessIdentity(user);
+  const memory = useMemo(() => createWorkspaceMemory(), [accessIdentity]);
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const { avisos, avisar, fechar } = useAvisos();
+  const pilotEnabled = import.meta.env.VITE_WORKSPACE_PILOT !== 'off';
   const {
     tabs: workspaceTabs,
     activeId: activeWorkspaceTabId,
     canOpen: canOpenWorkspaceTab,
-    activateTab: activateWorkspaceTab,
-    openTab: openWorkspaceTab,
-    closeTab: closeWorkspaceTab
-  } = useWorkspaceTabs(user);
+    activateTab: activateWorkspaceTabRaw,
+    openTab: openWorkspaceTabRaw,
+    closeTab: closeWorkspaceTabRaw
+  } = workspace;
+  const podeSairWorkspace = () => {
+    if ([...memory.busy].some(key => key.startsWith(activeWorkspaceTabId + '|'))) {
+      avisar.erro('Aguarde a operação em andamento antes de mudar de página.');
+      return false;
+    }
+    return true;
+  };
+  const activateWorkspaceTab = id => podeSairWorkspace() && activateWorkspaceTabRaw(id);
+  const openWorkspaceTab = (route, title) => podeSairWorkspace() && openWorkspaceTabRaw(route, title);
+  const workspaceFacade = { ...workspace, openTab: openWorkspaceTab, activateTab: activateWorkspaceTab,
+    back: fallback => { if (closeTopWorkspaceModal()) return; if (podeSairWorkspace()) workspace.back(fallback); } };
+  useEffect(() => {
+    const proteger = event => {
+      if (!memory.dirty.size && !memory.busy.size) return;
+      event.preventDefault(); event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', proteger);
+    return () => window.removeEventListener('beforeunload', proteger);
+  }, [memory]);
+  const closeWorkspaceTab = async id => {
+    if ([...memory.busy].some(key => key.startsWith(id + '|'))) {
+      avisar.erro('Aguarde a operação em andamento antes de fechar esta aba.'); return;
+    }
+    if ([...memory.dirty].some(key => key.startsWith(id + '|'))) {
+      const { ok } = await confirmar({
+      titulo: 'Fechar aba com alterações?',
+      mensagem: 'O trabalho ainda não enviado nesta aba será descartado.',
+      rotuloConfirmar: 'Descartar e fechar', destrutiva: true
+      });
+      if (!ok) return;
+    }
+    if (closeWorkspaceTabRaw(id)) memory.deleteTab(id);
+  };
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('theme', theme);
   }, [theme]);
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
-  }, [location.pathname]);
 
   // Atalho global Ctrl+K / Cmd+K para a busca de telas.
   useEffect(() => {
@@ -179,6 +221,8 @@ export default function Layout() {
       onCloseMenu: () => setBuscaAberta(false),
       canNavigateBack: () => location.pathname !== '/',
       onNavigateBack: () => {
+        if (closeTopWorkspaceModal()) return;
+        if (pilotEnabled) { if (podeSairWorkspace()) workspace.back(getFallbackRoute(location.pathname)); return; }
         if (hasSafeBrowserHistory()) {
           navigate(-1);
           return;
@@ -186,7 +230,7 @@ export default function Layout() {
         navigate(getFallbackRoute(location.pathname), { replace: true });
       }
     });
-  }, [location.pathname, buscaAberta, navigate]);
+  }, [location.pathname, buscaAberta, navigate, workspace.back, pilotEnabled, activeWorkspaceTabId, memory]);
 
   useEffect(() => {
     const userId = Number(user?.id);
@@ -264,6 +308,7 @@ export default function Layout() {
     setBuscaAberta(true);
   }, [canOpenWorkspaceTab]);
   const navegarDaBusca = useCallback((link, { title = '' } = {}) => {
+    if (!podeSairWorkspace()) return;
     if (buscaModo === 'new-tab') {
       openWorkspaceTab(link, title);
       return;
@@ -279,6 +324,9 @@ export default function Layout() {
 
     const anchor = event.target?.closest?.('a[href]');
     if (!anchor) return;
+    if (routeFromInternalAnchor(anchor) && !podeSairWorkspace()) {
+      event.preventDefault(); event.stopPropagation(); return;
+    }
 
     const cliqueModificado = event.ctrlKey || event.metaKey;
     const cliqueDoMeio = event.type === 'auxclick' && event.button === 1;
@@ -289,10 +337,9 @@ export default function Layout() {
     if (!route) return;
 
     const title = anchor.dataset.workspaceTitle || anchor.textContent || '';
-    if (!openWorkspaceTab(route, title)) return;
-
     event.preventDefault();
     event.stopPropagation();
+    if (!openWorkspaceTab(route, title)) avisar.erro('Limite de 12 abas atingido. Feche uma aba para abrir outra.');
   }, [openWorkspaceTab]);
 
   const perfilUpper = String(user?.perfil || '').toUpperCase();
@@ -308,6 +355,7 @@ export default function Layout() {
   }, [tituloDocumento]);
 
   return (
+    <WorkspaceContext.Provider value={pilotEnabled ? workspaceFacade : null}>
     <AtalhosProvider>
     <div className={theme === 'dark' ? 'dark' : ''}>
       {/* overflow-x-CLIP, não hidden: hidden acopla overflow-y:auto e o shell
@@ -517,7 +565,7 @@ export default function Layout() {
               <PrazosOperacionais>
                 <CrObrasTravadasAviso />
                 <Suspense fallback={<AppRouteFallback />}>
-                  <Outlet />
+                  <WorkspaceView key={accessIdentity} workspace={workspace} memory={memory} enabled={pilotEnabled} />
                 </Suspense>
               </PrazosOperacionais>
             </ControleDiarioCaixa>
@@ -530,8 +578,11 @@ export default function Layout() {
           mode={buscaModo}
           onNavigate={navegarDaBusca}
         />
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        {elementoConfirmacao}
       </div>
     </div>
     </AtalhosProvider>
+    </WorkspaceContext.Provider>
   );
 }

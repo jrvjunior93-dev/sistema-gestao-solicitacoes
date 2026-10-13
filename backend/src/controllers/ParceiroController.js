@@ -259,7 +259,7 @@ async function montarWorkbookParceiros(parceiros = [], categorias = []) {
     ['CPF/CNPJ', 'Obrigatorio. Mantenha como texto para preservar zeros a esquerda.'],
     ['Cliente/Credor/Fornecedor', 'Informe sim ou nao para classificar a pessoa. Uma pessoa pode ser cliente e credor ao mesmo tempo.'],
     ['Categorias', 'Separe multiplas categorias por ponto e virgula, por exemplo: Cliente; Fornecedor; Empreiteiro. Categorias novas serao criadas.'],
-    ['PIX tipo', 'Valores aceitos: CPF, CNPJ, EMAIL, TELEFONE, ALEATORIA.'],
+    ['PIX tipo', 'Valores aceitos: CPF, CNPJ, EMAIL, TELEFONE, ALEATORIA, COPIA_COLA.'],
     ['Importacao', 'Se o CPF/CNPJ ja existir, o sistema atualiza o cadastro e as categorias.']
   ];
   return createWorkbookBuffer([

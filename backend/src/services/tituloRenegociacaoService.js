@@ -38,6 +38,7 @@ async function carregarOrigens(req,ids,transaction) {
   for(const id of ids){
     const t=await db.TituloFinanceiro.findByPk(id,{transaction,lock:transaction.LOCK.UPDATE});
     if(!t)falhar(404,'Título não encontrado.');
+    if(['ADIANTAMENTO','DEVOLUCAO_ADIANTAMENTO'].includes(t.origem_titulo))falhar(409,'Adiantamento e devolucao devem preservar a prestacao de contas; renegociacao nao suportada neste fluxo.');
     await assertEscopoTitulo(req,t,transaction);
     if(!['PAGAR','RECEBER'].includes(t.tipo))falhar(409,'Tipo de título não suportado para negociação.');
     if(!['ABERTO','PARCIAL'].includes(t.status)||centavos(t.valor_saldo)<=0)falhar(409,`${t.codigo}: somente saldo em aberto ou parcial pode ser negociado.`);

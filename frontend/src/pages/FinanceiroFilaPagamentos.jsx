@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -10,6 +11,9 @@ import {
   HiOutlineMagnifyingGlass
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useQueryRevision from '../navigation/useQueryRevision';
+import { camposFila, revisaoFila } from '../navigation/filaWorkspaceDraft';
 import {
   anexarComprovanteFilaPagamento,
   aprovarDivergenciasFilaPagamentos,
@@ -34,9 +38,12 @@ import DateInputBR from '../components/DateInputBR';
 import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
+import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
 import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
+import useRolagemModal from '../hooks/useRolagemModal';
+import useColunasOperacionais, { LinhaColunasOperacionais } from '../hooks/useColunasOperacionais';
 import {
   Avisos,
   BlocoConteudo,
@@ -51,6 +58,7 @@ const STATUS_OPTIONS = [
   ['PENDENTE_COMPROVANTE', 'Pendentes de comprovante'],
   ['NAO_PAGO', 'Não pagos'],
   ['DIVERGENTE', 'Divergentes'],
+  ['EM_EDICAO', 'Em edição pelo DP'],
   ['BAIXADO', 'Baixados'],
   ['RESOLVIDO', 'Resolvidos'],
   ['TODOS', 'Todos']
@@ -80,21 +88,22 @@ const RECEIPT_PREVIEW_COLUMNS = [
 ];
 
 const PAYMENT_QUEUE_COLUMNS = [
-  { key: 'selecao', size: 'selection' },
-  { key: 'titulo', size: 'wider' },
-  { key: 'credor', size: 'wide' },
-  { key: 'dados', size: 'wide' },
-  { key: 'vencimento', size: 'compact' },
-  { key: 'saldo', size: 'standard' },
-  { key: 'data', size: 'standard' },
-  { key: 'conta', size: 'wide' },
-  { key: 'instrumento', size: 'wider' },
-  { key: 'empresa', size: 'standard' },
-  { key: 'juros', size: 'compact' },
-  { key: 'multa', size: 'compact' },
-  { key: 'valor', size: 'standard' },
-  { key: 'justificativa', size: 'wider' },
-  { key: 'acoes', size: 'wider' }
+  { key: 'selecao', titulo: 'Seleção', size: 'selection', sempreVisivel: true },
+  { key: 'titulo', titulo: 'Título / documento', size: 'wider', sempreVisivel: true },
+  { key: 'local', titulo: 'Obra / Centro de Custo', size: 'wide' },
+  { key: 'credor', titulo: 'Credor / favorecido', size: 'wide' },
+  { key: 'dados', titulo: 'Dados para pagamento', size: 'wide' },
+  { key: 'vencimento', titulo: 'Vencimento', size: 'compact' },
+  { key: 'saldo', titulo: 'Previsto / saldo', size: 'standard' },
+  { key: 'data', titulo: 'Data da baixa', size: 'standard' },
+  { key: 'conta', titulo: 'Conta pagadora', size: 'wide' },
+  { key: 'instrumento', titulo: 'Forma / instrumento', size: 'wider' },
+  { key: 'empresa', titulo: 'Empresa', size: 'standard' },
+  { key: 'juros', titulo: 'Juros (R$)', size: 'compact' },
+  { key: 'multa', titulo: 'Multa (R$)', size: 'compact' },
+  { key: 'valor', titulo: 'Valor pago', size: 'standard' },
+  { key: 'justificativa', titulo: 'Motivo / justificativa', size: 'wider' },
+  { key: 'acoes', titulo: 'Status / ações', size: 'wider', sempreVisivel: true }
 ];
 
 function splitIntoBatches(items, size = RECEIPT_BATCH_SIZE) {
@@ -147,6 +156,7 @@ function idempotencyKey(prefix) {
 }
 
 function statusKind(status) {
+  if (status === 'EM_EDICAO') return 'warning';
   if (status === 'DIVERGENTE') return 'danger';
   if (status === 'NAO_PAGO') return 'warning';
   if (status === 'BAIXADO' || status === 'RESOLVIDO') return 'success';
@@ -155,7 +165,11 @@ function statusKind(status) {
 
 function beneficiaryData(titulo) {
   const beneficiary = titulo?.paymentBeneficiary;
-  const solicitacao = titulo?.solicitacao || {};
+  const instrucao = titulo?.instrucao_favorecido;
+  const solicitacao = instrucao ? { ...titulo?.solicitacao,
+    favorecido: { nome: instrucao.nome_favorecido, cpf_cnpj: instrucao.cpf_cnpj },
+    favorecido_chave_pix: instrucao.favorecido_chave_pix, dados_pagamento: instrucao.dados_pagamento,
+    boletos: (instrucao.boleto_nomes || []).map(nome => ({ nome })) } : titulo?.solicitacao || {};
   const formaPagamento = titulo?.formaPagamento || solicitacao?.formaPagamento;
   const form = [formaPagamento?.tipo, formaPagamento?.codigo, formaPagamento?.nome]
     .filter(Boolean).join(' ').toUpperCase();
@@ -166,7 +180,8 @@ function beneficiaryData(titulo) {
     let pagamento = 'Sem dados bancários cadastrados';
     if (form.includes('BOLETO') && boletoData) pagamento = `Boleto: ${boletoData}`;
     else if (form.includes('BOLETO') && boletoAnexado) pagamento = `Boleto anexado: ${boletoAnexado.nome}`;
-    else if (beneficiary.pix_chave) pagamento = `PIX ${beneficiary.pix_tipo_chave || ''}: ${beneficiary.pix_chave}`;
+    else if (beneficiary.pix_chave && beneficiary.pix_tipo_chave !== 'DADOS_BANCARIOS'
+      && beneficiary.metodo_preferencial !== 'CONTA_BANCARIA') pagamento = `PIX ${beneficiary.pix_tipo_chave || ''}: ${beneficiary.pix_chave}`;
     else if (form.includes('PIX') && solicitacao.favorecido_chave_pix) pagamento = `PIX: ${solicitacao.favorecido_chave_pix}`;
     else if (beneficiary.banco_codigo || beneficiary.agencia || beneficiary.conta) {
       pagamento = `Banco ${beneficiary.banco_codigo || '—'} · Ag. ${beneficiary.agencia || '—'} · Conta ${beneficiary.conta || '—'}`;
@@ -308,14 +323,28 @@ function bancoLabel(value) {
 }
 
 function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
-  const [files, setFiles] = useState([]);
+  // Somente arquivos locais e escolhas manuais sobrevivem a troca de aba.
+  // A previa autorizada nunca e restaurada nem relida automaticamente.
+  const [files, setFiles] = useWorkspaceState('fila:pdfFiles', []);
+  const [manualLinks, setManualLinks] = useWorkspaceState('fila:pdfLinks', {});
   const [preview, setPreview] = useState(null);
   const [links, setLinks] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useWorkspaceWork(files.length > 0, busy, 'fila:pdfWork');
+
+  function cancelar() {
+    if (lock.current) return;
+    setFiles([]); setManualLinks({});
+    onFechar();
+  }
 
   async function readFiles() {
+    if (lock.current) return;
     if (!files.length) {
       setError('Selecione ao menos um comprovante PDF.');
       return;
@@ -334,6 +363,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
       setError(`O arquivo ${oversizedFile.name} excede o limite de 12 MB.`);
       return;
     }
+    lock.current = true;
     setBusy(true);
     setError('');
     setPreview(null);
@@ -346,6 +376,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
         const batch = batches[batchIndex];
         setProgress(`Lendo lote ${batchIndex + 1} de ${batches.length} · ${Math.min(fileOffset + batch.length, files.length)} de ${files.length} arquivos`);
         const result = await previewComprovantesFilaPagamentos(batch);
+        if (!mounted.current) return;
         (result?.arquivos || []).forEach((item, itemIndex) => allFiles.push({
           ...item,
           _file_index: fileOffset + itemIndex
@@ -362,24 +393,39 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
       if (repeated) throw new Error(`O arquivo ${repeated.arquivo_nome} está repetido na seleção.`);
 
       const initialLinks = {};
+      const validManualLinks = {};
+      let invalidated = 0;
       allFiles.forEach((item) => {
         const suggestedId = Number(item.fila_sugerida_id);
-        const canUseSuggestion = !item.duplicado && suggestedId > 0;
-        initialLinks[item.arquivo_hash] = canUseSuggestion ? suggestedId : '';
+        const eligible = (id) => titleOptions.has(Number(id)) && !item.duplicado;
+        if (Object.prototype.hasOwnProperty.call(manualLinks, item.arquivo_hash)) {
+          const ownId = manualLinks[item.arquivo_hash];
+          const value = eligible(ownId) ? ownId : '';
+          if (Number(ownId) && !value) invalidated += 1;
+          initialLinks[item.arquivo_hash] = value;
+          validManualLinks[item.arquivo_hash] = value;
+        } else {
+          initialLinks[item.arquivo_hash] = eligible(suggestedId) ? suggestedId : '';
+        }
       });
       setPreview({ arquivos: allFiles, titulos_pendentes: [...titleOptions.values()] });
       setLinks(initialLinks);
+      setManualLinks(validManualLinks);
+      if (invalidated) setError(`${invalidated} vínculo(s) não estão mais disponíveis. Confira os títulos atuais antes de vincular.`);
     } catch (readError) {
+      if (!mounted.current) return;
       setError(readError?.message || 'Não foi possível ler os comprovantes.');
     } finally {
-      setProgress('');
-      setBusy(false);
+      lock.current = false;
+      if (mounted.current) { setProgress(''); setBusy(false); }
     }
   }
 
   async function linkFiles() {
+    if (lock.current || !preview) return;
+    const eligible = new Set(preview.titulos_pendentes.map((item) => Number(item.fila_id)));
     const selectedItems = (preview?.arquivos || [])
-      .filter((item) => !item.duplicado && Number(links[item.arquivo_hash]))
+      .filter((item) => !item.duplicado && eligible.has(Number(links[item.arquivo_hash])))
       .map((item) => ({
         file: files[item._file_index],
         mapping: { arquivo_hash: item.arquivo_hash, fila_id: Number(links[item.arquivo_hash]) }
@@ -392,6 +438,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
       setError('A seleção de arquivos mudou. Leia os comprovantes novamente.');
       return;
     }
+    lock.current = true;
     setBusy(true);
     setError('');
     let linkedCount = 0;
@@ -404,10 +451,21 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
           batch.map((item) => item.file),
           batch.map((item) => item.mapping)
         );
+        if (!mounted.current) return;
         linkedCount += Number(result?.quantidade || batch.length);
+        // Retirar lotes concluidos evita reenviar comprovantes apos falha parcial.
+        const completedFiles = new Set(batch.map((item) => item.file));
+        const completedHashes = new Set(batch.map((item) => item.mapping.arquivo_hash));
+        setFiles((current) => current.filter((file) => !completedFiles.has(file)));
+        setManualLinks((current) => Object.fromEntries(Object.entries(current)
+          .filter(([hash]) => !completedHashes.has(hash))));
       }
+      setPreview(null); setLinks({});
       await onVinculados(linkedCount);
     } catch (linkError) {
+      if (!mounted.current) return;
+      // Resultado incerto ou parcial exige nova consulta explicita de duplicidade.
+      setPreview(null); setLinks({});
       if (linkedCount > 0) {
         await onParcial?.(linkedCount);
         setError(`${linkedCount} comprovante(s) foram vinculados antes da falha. Atualize e reabra a importação para continuar. ${linkError?.message || ''}`.trim());
@@ -415,16 +473,17 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
         setError(linkError?.message || 'Não foi possível vincular os comprovantes.');
       }
     } finally {
-      setProgress('');
-      setBusy(false);
+      lock.current = false;
+      if (mounted.current) { setProgress(''); setBusy(false); }
     }
   }
 
   const options = preview?.titulos_pendentes || [];
-  const selectedCount = Object.values(links).filter((value) => Number(value)).length;
+  const selectedCount = (preview?.arquivos || []).filter((item) => !item.duplicado
+    && options.some((option) => Number(option.fila_id) === Number(links[item.arquivo_hash]))).length;
 
   return (
-    <OverlayModal rotulo="Importar comprovantes PDF" largura="var(--modal-max-w-xl, 1420px)" onFechar={busy ? undefined : onFechar}>
+    <OverlayModal rotulo="Importar comprovantes PDF" largura="var(--modal-max-w-xl, 1420px)" onFechar={busy ? undefined : cancelar}>
       <div className="flex max-h-[calc(100dvh-8rem)] min-h-96 flex-col">
         <div className="border-b border-[var(--c-border)] p-4">
           <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar comprovantes para a fila</h2>
@@ -448,16 +507,20 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                 setFiles(nextFiles);
                 setPreview(null);
                 setLinks({});
+                setManualLinks({});
                 setError('');
               }}
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs text-[var(--c-muted)]">Selecione até 500 PDFs. O sistema processa blocos seguros de 10 arquivos automaticamente; limite de 12 MB por PDF. Use um pagamento por arquivo.</span>
               <button className="btn btn-outline" type="button" onClick={readFiles} disabled={busy || !files.length}>
-                {busy && !preview ? (progress || 'Lendo PDFs...') : 'Ler comprovantes'}
+                {busy && !preview ? (progress || 'Lendo PDFs...') : Object.keys(manualLinks).length ? 'Revalidar comprovantes' : 'Ler comprovantes'}
               </button>
             </div>
-            {files.length ? <div className="mt-2 text-xs font-medium text-[var(--c-text)]">{files.length} arquivo(s) selecionado(s)</div> : null}
+            {files.length ? <div className="mt-2 text-xs font-medium text-[var(--c-text)]">
+              {files.length} arquivo(s) selecionado(s)
+              <ul className="mt-1 max-h-24 overflow-auto">{files.map((file, index) => <li key={index}>{file.name}</li>)}</ul>
+            </div> : null}
           </div>
 
           {error ? (
@@ -506,7 +569,11 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                             <select
                               className="input input-sm min-w-0 w-full"
                               value={links[item.arquivo_hash] || ''}
-                              onChange={(event) => setLinks((current) => ({ ...current, [item.arquivo_hash]: event.target.value }))}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setLinks((current) => ({ ...current, [item.arquivo_hash]: value }));
+                                setManualLinks((current) => ({ ...current, [item.arquivo_hash]: value }));
+                              }}
                               disabled={busy}
                               aria-label={`Título para ${item.arquivo_nome}`}
                             >
@@ -546,7 +613,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] p-4">
           <span className="text-xs text-[var(--c-muted)]">{preview ? `${selectedCount} comprovante(s) pronto(s) para vincular` : 'Nenhum comprovante lido'}</span>
           <div className="flex gap-2">
-            <button className="btn btn-outline" type="button" onClick={onFechar} disabled={busy}>Cancelar</button>
+            <button className="btn btn-outline" type="button" onClick={cancelar} disabled={busy}>Cancelar</button>
             <button className="btn btn-primary" type="button" onClick={linkFiles} disabled={busy || !preview || selectedCount === 0}>
               {busy && preview ? (progress || 'Vinculando...') : 'Vincular comprovantes'}
             </button>
@@ -558,6 +625,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
 }
 
 export default function FinanceiroFilaPagamentos() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
@@ -566,22 +634,32 @@ export default function FinanceiroFilaPagamentos() {
     ? String(searchParams.get('status')).toUpperCase()
     : 'PENDENTE';
   const initialSearch = String(searchParams.get('q') || '');
-  const [status, setStatus] = useState(initialStatus);
-  const [search, setSearch] = useState(initialSearch);
-  const [appliedSearch, setAppliedSearch] = useState(initialSearch);
+  const [status, setStatus] = useWorkspaceState('fila:status', initialStatus);
+  const [search, setSearch] = useWorkspaceState('fila:busca', initialSearch);
+  const [appliedSearch, setAppliedSearch] = useWorkspaceState('fila:buscaAplicada', initialSearch);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
   const [accounts, setAccounts] = useState([]);
   const [instrumentos, setInstrumentos] = useState({ formas: [], cartoes: [], cheques: [] });
   const settleLockRef = useRef(false);
   const [drafts, setDrafts] = useState({});
-  const [selected, setSelected] = useState([]);
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  const [edicoesFila, setEdicoesFila] = useWorkspaceState('fila:edicoes', {});
+  const edicoesFilaRef = useRef(edicoesFila);
+  edicoesFilaRef.current = edicoesFila;
+  const consultaFila = useQueryRevision(`${status}|${appliedSearch}`);
+  const [selected, setSelected] = useWorkspaceState('fila:selecionados', []);
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState('');
-  const [reasonOpenId, setReasonOpenId] = useState(null);
+  const [reasonOpenId, setReasonOpenId] = useWorkspaceState('fila:motivoId', null);
   const [erroBaixa, setErroBaixa] = useState(null);
-  const [comprovantesOpen, setComprovantesOpen] = useState(false);
+  const [comprovantesOpen, setComprovantesOpen] = useWorkspaceState('fila:pdfOpen', false);
+  const [filaAutorizada, setFilaAutorizada] = useState(false);
   const [solicitacaoArquivos, setSolicitacaoArquivos] = useState(null);
+  const guardarRolagemArquivos = useRolagemModal(Boolean(solicitacaoArquivos));
+  const colunasConfiguradas = useColunasOperacionais(PAYMENT_QUEUE_COLUMNS, 'financeiro-fila-pagamentos');
+  useWorkspaceWork(Boolean(Object.keys(edicoesFila).length || selected.length), Boolean(actionKey));
 
   const canSettle = canBaixarFilaPagamentos(user);
   const canOpenTitle = hasPermissao(user, 'financeiro.titulos.visualizar');
@@ -600,6 +678,7 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   const load = useCallback(async () => {
+    const token = consultaFila.begin();
     setLoading(true);
     try {
       const [queueResult, accountResult, instrumentResult] = await Promise.all([
@@ -607,12 +686,15 @@ export default function FinanceiroFilaPagamentos() {
         getContasFilaPagamentos(),
         canSettle ? getInstrumentosFilaPagamentos() : Promise.resolve({ formas: [], cartoes: [], cheques: [] })
       ]);
+      if (!consultaFila.isCurrent(token)) return;
+      setFilaAutorizada(true);
       const nextRows = queueResult?.data || [];
       setRows(nextRows);
       setSummary(queueResult?.resumo || {});
       setAccounts(Array.isArray(accountResult) ? accountResult : accountResult?.data || []);
       setInstrumentos(instrumentResult);
-      setSelected((current) => current.filter((id) => nextRows.some((row) => Number(row.id) === Number(id))));
+      setSelected((current) => current.filter((id) => nextRows.some((row) => Number(row.id) === Number(id)
+        && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE'))));
       setDrafts((current) => {
         const next = { ...current };
         nextRows.forEach((row) => {
@@ -646,29 +728,51 @@ export default function FinanceiroFilaPagamentos() {
               valor_pago: row.status === 'PENDENTE' && valorEmCentavos(draft.valor_pago) === valorEmCentavos(anterior)
                 ? valorParaInput(totalPrevistoFila(row, atualizado)) : draft.valor_pago };
           }
+          const propria = edicoesFilaRef.current[row.id];
+          if (propria) next[row.id] = { ...next[row.id], ...propria.campos };
         });
         return next;
       });
     } catch (error) {
+      if (!consultaFila.isCurrent(token)) return;
+      setFilaAutorizada(false);
+      setRows([]); setAccounts([]); setSummary({}); setSelected([]);
+      setInstrumentos({ formas: [], cartoes: [], cheques: [] }); setDrafts({});
       avisar.erro(error?.message || 'Erro ao carregar a fila de pagamentos.');
     } finally {
-      setLoading(false);
+      if (consultaFila.isCurrent(token)) setLoading(false);
     }
   }, [status, appliedSearch, avisar, canSettle]);
 
   useEffect(() => { load(); }, [load]);
 
   function updateDraft(id, patch) {
-    setDrafts((current) => {
-      const previous = current[id] || {};
+      const previous = draftsRef.current[id] || {};
       const next = { ...previous, ...patch };
+      const ownFields = camposFila(patch);
       const row = rows.find(item => Number(item.id) === Number(id));
       if (row && ('juros' in patch || 'multa' in patch)
         && valorEmCentavos(previous.valor_pago) === valorEmCentavos(totalPrevistoFila(row, previous))) {
         next.valor_pago = valorParaInput(totalPrevistoFila(row, next));
+        ownFields.valor_pago = next.valor_pago;
       }
-      return { ...current, [id]: next };
-    });
+      if (!row) return;
+      draftsRef.current = { ...draftsRef.current, [id]: next };
+      setDrafts(current => ({ ...current, [id]: next }));
+      setEdicoesFila(current => ({ ...current, [id]: {
+        revisao: current[id]?.revisao || revisaoFila(row),
+        campos: { ...current[id]?.campos, ...ownFields }
+      } }));
+  }
+
+  function limparEdicoes(ids) {
+    const removidos = new Set(ids.map(String));
+    edicoesFilaRef.current = Object.fromEntries(Object.entries(edicoesFilaRef.current)
+      .filter(([id]) => !removidos.has(id)));
+    setEdicoesFila(edicoesFilaRef.current);
+    draftsRef.current = Object.fromEntries(Object.entries(draftsRef.current)
+      .filter(([id]) => !removidos.has(id)));
+    setDrafts(draftsRef.current);
   }
 
   function compatibleAccounts(row) {
@@ -684,13 +788,17 @@ export default function FinanceiroFilaPagamentos() {
 
   function validateRows(targetRows) {
     for (const row of targetRows) {
+      if (edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)) {
+        return { mensagem: 'O saldo ou status mudou desde a edição.',
+          correcao: 'Descarte o rascunho conflitante e confira os dados atuais antes de baixar.', filaId: row.id };
+      }
       const draft = drafts[row.id] || {};
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
-      if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id };
+      if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
       const tipo = tipoInstrumentoFila(forma);
-      if (tipo === 'CARTAO' && !draft.cartao_id) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id };
+      if (tipo === 'CARTAO' && !draft.cartao_id) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id, campo: 'forma_pagamento_id' };
       if (tipo === 'CHEQUE' && (draft.usar_cheque_terceiro ? !draft.cheque_terceiro_id : (!draft.cheque_numero || !draft.cheque_emitente))) {
-        return { mensagem: 'Informe o cheque usado no pagamento.', correcao: 'Selecione um cheque da carteira ou preencha número e emitente do cheque próprio.', filaId: row.id };
+        return { mensagem: 'Informe o cheque usado no pagamento.', correcao: 'Selecione um cheque da carteira ou preencha número e emitente do cheque próprio.', filaId: row.id, campo: 'forma_pagamento_id' };
       }
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
       if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
@@ -712,6 +820,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function anexarComprovante(row, arquivos) {
+    if (!canSettle || !arquivos?.length) return;
+    return executarOperacao(() => performAnexarComprovante(row, arquivos));
+  }
+
+  async function performAnexarComprovante(row, arquivos) {
     if (!arquivos?.length || actionKey) return;
     setActionKey(`comprovante-${row.id}`);
     let enviados = 0;
@@ -729,16 +842,9 @@ export default function FinanceiroFilaPagamentos() {
     }
   }
 
-  async function abrirComprovante(filaId, comprovanteId) {
+  async function abrirComprovante(filaId, comprovanteId, nome) {
     try {
-      const resposta = await getComprovanteFilaPagamento(filaId, comprovanteId);
-      const link = document.createElement('a');
-      link.href = resposta.url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await abrirPreview(() => getComprovanteFilaPagamento(filaId, comprovanteId), { nome: nome || 'Comprovante.pdf', mime: 'application/pdf' });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
     }
@@ -749,14 +855,26 @@ export default function FinanceiroFilaPagamentos() {
       ? `[data-fila-id="${erroBaixa.filaId}"][data-fila-campo="${erroBaixa.campo}"]`
       : '';
     setErroBaixa(null);
-    if (alvo) requestAnimationFrame(() => document.querySelector(alvo)?.focus());
+    const colunaErro = { conta_bancaria_id: 'conta', valor_pago: 'valor', motivo: 'justificativa',
+      data_baixa: 'data', juros: 'juros', multa: 'multa', forma_pagamento_id: 'instrumento',
+      cartao_id: 'instrumento', cheque_terceiro_id: 'instrumento', numero_cheque: 'instrumento' }[erroBaixa?.campo];
+    if (colunaErro) colunasConfiguradas.mostrar(colunaErro);
+    const filaId = erroBaixa?.filaId;
+    if (alvo) requestAnimationFrame(() => (document.querySelector(alvo) ||
+      document.querySelector(`[data-fila-linha="${filaId}"] [data-coluna="${colunaErro}"] select`))?.focus());
+  }
+
+  async function executarOperacao(callback) {
+    if (settleLockRef.current || actionKey) return;
+    settleLockRef.current = true;
+    setActionKey('conferencia');
+    try { await callback(); }
+    finally { settleLockRef.current = false; setActionKey(''); }
   }
 
   async function settle(targetRows) {
-    if (settleLockRef.current || !targetRows.length || !canSettle) return;
-    settleLockRef.current = true;
-    try { await performSettle(targetRows); }
-    finally { settleLockRef.current = false; }
+    if (!targetRows.length || !canSettle) return;
+    return executarOperacao(() => performSettle(targetRows));
   }
 
   async function performSettle(targetRows) {
@@ -790,6 +908,7 @@ export default function FinanceiroFilaPagamentos() {
       avisar.sucesso(`${result?.baixados || 0} baixa(s) registrada(s). ${result?.divergentes || 0} divergência(s) sinalizada(s).`);
       if (result?.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante. Anexe os PDFs pelo card Pendentes de comprovante.`);
       setSelected([]);
+      limparEdicoes(targetRows.map(row => row.id));
       await load();
     } catch (error) {
       const detalhe = orientarErroRegistroBaixa(error);
@@ -804,6 +923,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function approveDivergences(targetRows) {
+    if (!canResolve || !targetRows.length) return;
+    return executarOperacao(() => performApproveDivergences(targetRows));
+  }
+
+  async function performApproveDivergences(targetRows) {
     if (targetRows.length === 0) return;
     const total = targetRows.reduce((sum, row) => sum + Number(row.valor_informado || 0), 0);
     const { ok, texto } = await confirmar({
@@ -825,6 +949,7 @@ export default function FinanceiroFilaPagamentos() {
       );
       avisar.sucesso(`${result?.quantidade || 0} divergência(s) aprovada(s). ${result?.baixas_registradas || 0} baixa(s) registrada(s) agora.`);
       setSelected([]);
+      limparEdicoes(targetRows.map(row => row.id));
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao aprovar as divergências. Nenhum item do lote foi alterado.');
@@ -834,6 +959,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function reportNotPaid(row) {
+    if (!canReport) return;
+    return executarOperacao(() => performReportNotPaid(row));
+  }
+
+  async function performReportNotPaid(row) {
     const reason = String(drafts[row.id]?.motivo || '').trim();
     if (!reason) {
       avisar.alerta(`Informe o motivo de não pagamento do título ${row.titulo?.codigo || row.id}.`);
@@ -845,6 +975,7 @@ export default function FinanceiroFilaPagamentos() {
       await informarNaoPagamentoFila(row.id, reason);
       avisar.sucesso('Título mantido em aberto e sinalizado como não pago.');
       setReasonOpenId(null);
+      limparEdicoes([row.id]);
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao informar o não pagamento.');
@@ -854,6 +985,11 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function resolve(row, action) {
+    if (!canResolve) return;
+    return executarOperacao(() => performResolve(row, action));
+  }
+
+  async function performResolve(row, action) {
     const reabrir = action === 'REABRIR';
     const { ok, texto } = await confirmar({
       titulo: reabrir ? 'Devolver título para pagamento?' : 'Encerrar esta pendência?',
@@ -868,6 +1004,7 @@ export default function FinanceiroFilaPagamentos() {
     try {
       await resolverFilaPagamento(row.id, action, reabrir ? '' : String(texto || '').trim());
       avisar.sucesso(reabrir ? 'Título devolvido para pagamento.' : 'Pendência encerrada.');
+      limparEdicoes([row.id]);
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao resolver a pendência.');
@@ -876,22 +1013,37 @@ export default function FinanceiroFilaPagamentos() {
     }
   }
 
-  const pendingRows = useMemo(() => rows.filter((row) => row.status === 'PENDENTE'), [rows]);
+  const pendingRows = useMemo(() => rows.filter((row) => row.status === 'PENDENTE' && !row.somente_consulta
+    && Number(row.id) > 0 && !Number(row.movimento_financeiro_id)), [rows]);
   const divergentRows = useMemo(() => rows.filter((row) => row.status === 'DIVERGENTE'), [rows]);
   const selectableRows = status === 'DIVERGENTE' && canResolve
     ? divergentRows
-    : (status === 'PENDENTE' && canSettle ? pendingRows : []);
+    : (['PENDENTE', 'TODOS'].includes(status) && canSettle ? pendingRows : []);
   const selectedRows = useMemo(
     () => selectableRows.filter((row) => selected.includes(Number(row.id))),
     [selectableRows, selected]
   );
   const approvingDivergences = status === 'DIVERGENTE';
-  const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (status === 'PENDENTE' && canSettle);
-  const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'TODOS', 'RESOLVIDO'].includes(status);
+  const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (['PENDENTE', 'TODOS'].includes(status) && canSettle);
+  const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'EM_EDICAO', 'TODOS', 'RESOLVIDO'].includes(status);
   const busy = Boolean(actionKey);
+  const colunasOriginais = PAYMENT_QUEUE_COLUMNS.filter(column => showReasonColumn || column.key !== 'justificativa');
+  const colunasVisiveis = colunasConfiguradas.disponiveis(colunasOriginais);
 
   return (
     <Pagina>
+      {rows.some(row => edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)) &&
+        <div className="app-empty-card" role="alert">
+          Saldo ou status alterado. Os campos digitados foram preservados; confira os dados atuais antes da baixa.
+          <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(actionKey)} onClick={async () => {
+            const { ok } = await confirmar({ titulo: 'Descartar rascunhos conflitantes',
+              mensagem: 'Descartar somente os campos dos títulos que mudaram?', rotuloConfirmar: 'Descartar', destrutiva: true });
+            if (!ok) return;
+            const ids = rows.filter(row => edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)).map(row => String(row.id));
+            limparEdicoes(ids);
+            await load();
+          }}>Descartar rascunhos conflitantes</button>
+        </div>}
       <PageHeader
         titulo="Fila de Pagamentos"
         contagem={`${rows.length} título(s) à vista`}
@@ -899,9 +1051,9 @@ export default function FinanceiroFilaPagamentos() {
         acaoPrincipal={hasBulkAction ? {
           rotulo: busy
             ? 'Processando...'
-            : `${approvingDivergences ? 'Autorizar' : 'Registrar'} selecionados${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
+            : `${approvingDivergences ? 'Autorizar selecionados' : 'Baixa em massa'}${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
           onClick: () => approvingDivergences ? approveDivergences(selectedRows) : settle(selectedRows),
-          desabilitada: busy || selectedRows.length === 0,
+          desabilitada: loading || busy || selectedRows.length === 0,
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
         secundarias={[
@@ -945,6 +1097,7 @@ export default function FinanceiroFilaPagamentos() {
         descricao="A empresa é determinada pela conta bancária selecionada; não há escolha separada."
         controles={(
           <div className="flex flex-wrap items-end gap-2">
+            {colunasConfiguradas.painel}
             <label className="text-sm">
               <span className="sr-only">Status</span>
               <select className="input input-sm" value={status} onChange={(event) => applyFilters(event.target.value, appliedSearch)} disabled={busy}>
@@ -959,7 +1112,7 @@ export default function FinanceiroFilaPagamentos() {
                 className="input input-sm min-w-0 flex-1"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Título, credor, documento ou obra"
+                placeholder="Título, credor, obra ou centro de custo"
               />
               <button className="btn btn-outline btn-sm" type="submit" title="Pesquisar">
                 <HiOutlineMagnifyingGlass className="h-4 w-4" aria-hidden="true" />
@@ -968,25 +1121,37 @@ export default function FinanceiroFilaPagamentos() {
           </div>
         )}
       >
+        {hasBulkAction && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" aria-label="Selecionar todos os elegíveis desta lista"
+              ref={(elemento) => { if (elemento) elemento.indeterminate = selectedRows.length > 0 && selectedRows.length < selectableRows.length; }}
+              checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
+              disabled={loading || busy || !selectableRows.length}
+              onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])} />
+            {approvingDivergences ? 'Todas as divergências desta lista' : 'Todos os pendentes desta lista'}
+          </label>
+          <span className="text-[var(--c-muted)]" role="status">{selectedRows.length} selecionado(s) · {currency(selectedRows.reduce((total, row) => total + Number(drafts[row.id]?.valor_pago || 0), 0))}</span>
+        </div>}
         <div className="min-w-0 rounded-xl border border-[var(--c-border)]">
           <ResizableTable
-            columns={PAYMENT_QUEUE_COLUMNS.filter((column) => showReasonColumn || column.key !== 'justificativa')}
+            columns={colunasVisiveis}
             storageKey="financeiro-fila-pagamentos"
             className="w-full border-collapse text-sm"
             scrollLabel="Tabela da fila de pagamentos"
           >
             <thead className="bg-[var(--ui-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
-              <tr>
+              <LinhaColunasOperacionais cabecalho originais={colunasOriginais} visiveis={colunasVisiveis} configuracao={colunasConfiguradas}>
                 <ResizableTh columnKey="selecao" className="px-3 py-3">
                   <input
                     type="checkbox"
                     aria-label={approvingDivergences ? 'Selecionar todas as divergências' : 'Selecionar todos os títulos pendentes'}
                     checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
                     onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])}
-                    disabled={selectableRows.length === 0 || busy}
+                    disabled={selectableRows.length === 0 || loading || busy}
                   />
                 </ResizableTh>
                 <ResizableTh columnKey="titulo" className="px-3 py-3">Título / documento</ResizableTh>
+                <ResizableTh columnKey="local" className="px-3 py-3">Obra / Centro de Custo</ResizableTh>
                 <ResizableTh columnKey="credor" className="px-3 py-3">Credor / favorecido</ResizableTh>
                 <ResizableTh columnKey="dados" className="px-3 py-3">Dados para pagamento</ResizableTh>
                 <ResizableTh columnKey="vencimento" className="px-3 py-3">Vencimento</ResizableTh>
@@ -1000,13 +1165,13 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="valor" className="px-3 py-3">Valor pago</ResizableTh>
                 {showReasonColumn ? <ResizableTh columnKey="justificativa" className="px-3 py-3">Motivo / justificativa</ResizableTh> : null}
                 <ResizableTh columnKey="acoes" className="px-3 py-3">Status / ações</ResizableTh>
-              </tr>
+              </LinhaColunasOperacionais>
             </thead>
             <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
               {loading ? (
-                <tr><td colSpan={showReasonColumn ? 15 : 14} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
+                <tr><td colSpan={colunasVisiveis.length} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={showReasonColumn ? 15 : 14} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
+                <tr><td colSpan={colunasVisiveis.length} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
                 const title = row.titulo || {};
                 const solicitacaoId = Number(title.solicitacao_id || title.solicitacao?.id);
@@ -1028,16 +1193,18 @@ export default function FinanceiroFilaPagamentos() {
                 const podeAnexarMais = !row.somente_consulta && canSettle && (['PENDENTE', 'DIVERGENTE'].includes(row.status) ||
                   (['BAIXADO', 'RESOLVIDO'].includes(row.status) && (Number(row.movimento_financeiro_id) > 0 || Boolean(row.comprovante_hash))));
                 return (
-                  <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : row.status === 'NAO_PAGO' ? 'bg-[var(--sem-warning-bg)]' : ''}>
+                  <LinhaColunasOperacionais key={row.id} originais={colunasOriginais} visiveis={colunasVisiveis}
+                    data-fila-linha={row.id}
+                    className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : ['NAO_PAGO', 'EM_EDICAO'].includes(row.status) ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
                       <input
                         type="checkbox"
                         aria-label={`Selecionar ${title.codigo || row.id}`}
-                        checked={selected.includes(Number(row.id))}
+                        checked={selectable && selected.includes(Number(row.id))}
                         onChange={(event) => setSelected((current) => event.target.checked
                           ? [...new Set([...current, Number(row.id)])]
                           : current.filter((id) => id !== Number(row.id)))}
-                        disabled={!selectable || busy}
+                        disabled={!selectable || loading || busy}
                       />
                     </td>
                     <td className="px-3 py-3 align-top">
@@ -1047,7 +1214,6 @@ export default function FinanceiroFilaPagamentos() {
                         <span className="font-semibold text-[var(--c-text)]">{title.codigo || `#${title.id}`}</span>
                       )}
                       <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
-                      <div className="text-xs text-[var(--c-muted)]">{title.numero_documento || 'Sem documento'} · {title.formaPagamento?.nome || 'Forma não informada'}</div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label={`Ações e comprovantes de ${title.codigo || row.id}`}>
                       {solicitacaoVinculada ? (
                         <>
@@ -1055,7 +1221,10 @@ export default function FinanceiroFilaPagamentos() {
                             title={`Abrir solicitação ${solicitacaoVinculada.codigo}`} aria-label={`Abrir solicitação ${solicitacaoVinculada.codigo}`}>
                             <HiOutlineDocumentText className="h-4 w-4" aria-hidden="true" />
                           </Link>
-                          <button type="button" className="btn btn-outline btn-sm btn-icon-only" onClick={() => setSolicitacaoArquivos(solicitacaoVinculada)}
+                          <button type="button" className="btn btn-outline btn-sm btn-icon-only" onClick={(event) => {
+                            guardarRolagemArquivos(event.currentTarget);
+                            setSolicitacaoArquivos(solicitacaoVinculada);
+                          }}
                             title={`Abrir ${solicitacaoVinculada.temBoleto ? 'boleto e arquivos' : 'arquivos'} de ${solicitacaoVinculada.codigo}`}
                             aria-label={`Abrir arquivos de ${solicitacaoVinculada.codigo}`}>
                             <HiOutlineFolderOpen className="h-4 w-4" aria-hidden="true" />
@@ -1069,7 +1238,7 @@ export default function FinanceiroFilaPagamentos() {
                               type="button" className="btn btn-outline btn-sm btn-icon-only"
                               title={comprovante.nome}
                               aria-label={`Abrir comprovante ${comprovante.nome}`}
-                              onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
+                              onClick={() => abrirComprovante(comprovante.filaId, comprovante.id, comprovante.nome)}>
                               <HiOutlineDocumentText className="h-4 w-4" aria-hidden="true" />
                             </button>
                           ))}
@@ -1098,11 +1267,18 @@ export default function FinanceiroFilaPagamentos() {
                       </div>
                     </td>
                     <td className="px-3 py-3 align-top">
+                      <div className="max-w-60 font-medium" title={title.obra?.nome}>{[title.obra?.codigo, title.obra?.nome].filter(Boolean).join(' · ') || 'Não informado'}</div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
                       <div className="max-w-60 font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
                       <div className="text-xs text-[var(--c-muted)]">{beneficiary.documento || 'Documento não informado'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-64 break-all text-xs" title={beneficiary.pagamento}>{beneficiary.pagamento}</div>
+                      <DadosPagamentoFila texto={beneficiary.pagamento} titulo={title.codigo || `#${row.id}`} favorecido={beneficiary.nome} />
+                      {title.observacoes?.includes('\nReembolsos de vale:\n') && <details className="mt-2 max-w-64 text-xs">
+                        <summary className="cursor-pointer">Ver colaboradores do reembolso</summary>
+                        <div className="mt-1 whitespace-pre-wrap">{title.observacoes.split('\nReembolsos de vale:\n')[1]}</div>
+                      </details>}
                     </td>
                     <td className="px-3 py-3 align-top whitespace-nowrap">{dateBR(title.data_vencimento || row.data_vencimento_prevista)}</td>
                     <td className="px-3 py-3 align-top text-right whitespace-nowrap">
@@ -1197,7 +1373,8 @@ export default function FinanceiroFilaPagamentos() {
                       </td>
                     ) : null}
                     <td className="px-3 py-3 align-top">
-                      <StatusBadge status={String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
+                      <StatusBadge status={row.status === 'EM_EDICAO' ? 'Em edição pelo DP' : String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
+                      {row.status === 'EM_EDICAO' && <div className="mt-1 text-xs font-semibold text-[var(--sem-warning)]">Baixa bloqueada até o reenvio pelo DP</div>}
                       {row.pendente_comprovante && <div className="mt-1 text-xs font-semibold text-[var(--sem-warning)]">Pagamento registrado · pendente de comprovante</div>}
                       {row.somente_consulta && <div className="mt-1 text-xs text-[var(--sem-danger)]">Rejeitado pelo proprietário · somente consulta</div>}
                       {!showReasonColumn && row.motivo ? <div className="mt-2 max-w-64 text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}
@@ -1231,7 +1408,7 @@ export default function FinanceiroFilaPagamentos() {
                         </div>
                       ) : null}
                     </td>
-                  </tr>
+                  </LinhaColunasOperacionais>
                 );
               })}
             </tbody>
@@ -1242,7 +1419,7 @@ export default function FinanceiroFilaPagamentos() {
         </p>
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
-      {comprovantesOpen ? (
+      {comprovantesOpen && canImportReceipts && filaAutorizada ? (
         <ComprovantesPdfModal
           onFechar={() => setComprovantesOpen(false)}
           onVinculados={async (quantidade) => {
@@ -1266,6 +1443,7 @@ export default function FinanceiroFilaPagamentos() {
         />
       ) : null}
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

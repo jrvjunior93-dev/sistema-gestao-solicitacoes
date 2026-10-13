@@ -1,3 +1,4 @@
+import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -109,6 +110,7 @@ function CompactHeaderMetric({ label, value, serie }) {
 }
 
 export default function ObraGestao() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const navigate = useNavigate();
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -244,17 +246,8 @@ export default function ObraGestao() {
   }
 
   async function abrirArquivo(item) {
-    try {
-      const url = await obterUrlArquivoObra(item.caminho_arquivo);
-      if (!url) {
-        avisar.erro('Arquivo indisponível.');
-        return;
-      }
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error.message || 'Erro ao abrir arquivo');
-    }
+    try { await abrirPreview(() => obterUrlArquivoObra(item.caminho_arquivo), { nome: item.nome_original || item.nome, caminho: item.caminho_arquivo }); }
+    catch (error) { avisar.erro(error.message || 'Erro ao abrir arquivo'); }
   }
 
   const dashboardCategorias = useMemo(
@@ -872,6 +865,7 @@ export default function ObraGestao() {
       )}
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

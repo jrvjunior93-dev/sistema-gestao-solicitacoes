@@ -24,7 +24,13 @@ const semPermissao = location.search.includes('consulta');
 const removido = location.search.includes('removido');
 const historicos = ${JSON.stringify([{ ...h, descricao: 'ativo.pdf' },
   { ...h, id: 3, descricao: 'antigo.pdf', metadata: { anexo_id: 9, caminho: 'https://fixture.invalid/antigo.pdf' } },
-  { ...r, id: 4, descricao: 'antigo.pdf', metadata: { anexo_id: 9, caminho: 'https://fixture.invalid/antigo.pdf' } }])};
+  { ...r, id: 4, descricao: 'antigo.pdf', metadata: { anexo_id: 9, caminho: 'https://fixture.invalid/antigo.pdf' } },
+  { id: 5, acao: 'STATUS_ALTERADO', status_anterior: 'EM ANÁLISE DO PROPRIETÁRIO', status_novo: 'AGUARDANDO AJUSTE',
+    observacao: 'Analise digital de pagamento rejeitada: Corrigir favorecido.\nConferir o valor <script>literal</script>.',
+    usuario: { nome: 'Proprietario QA' }, createdAt: '2026-10-07T12:00:00Z' },
+  { id: 6, acao: 'AUTORIZACAO_PAGAMENTO_REJEITADA', observacao: 'Segundo titulo: corrigir vencimento.', createdAt: '2026-10-07T12:01:00Z' },
+  { id: 7, acao: 'STATUS_ALTERADO', status_novo: 'APROVADA', observacao: 'Texto sem duplicacao.', descricao: 'Texto sem duplicacao.', createdAt: '2026-10-07T12:02:00Z' }
+])};
 if (removido) historicos[0].metadata.removido = true;
 window.recarregou=0;
 createRoot(document.getElementById('root')).render(<MemoryRouter><div className="layout-shell"><main className="layout-main">
@@ -74,6 +80,15 @@ try {
   const row = () => page.locator('.sol-detail-timeline-item').filter({ has: page.getByText('ativo.pdf', { exact: true }) });
   const antigo = () => page.locator('.sol-detail-timeline-item').filter({ has: page.getByText('ANEXO_ADICIONADO', { exact: true }) }).filter({ hasText: 'antigo.pdf' });
   await abrir(); assert.equal(await antigo().getByRole('button').count(), 0);
+  const recusa = page.locator('.sol-detail-timeline-item').filter({ hasText: 'Corrigir favorecido.' });
+  assert.equal(await recusa.locator('.sol-detail-timeline-text').textContent(),
+    'Analise digital de pagamento rejeitada: Corrigir favorecido.\nConferir o valor <script>literal</script>.');
+  assert.equal(await recusa.locator('script').count(), 0);
+  assert.equal(await recusa.getByText(/Status:.*AGUARDANDO AJUSTE/).count(), 1);
+  assert.equal(await recusa.getByText(/Proprietario QA/).count(), 1);
+  await page.getByText('Segundo titulo: corrigir vencimento.', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Texto sem duplicacao.', { exact: true }).count(), 1);
+  assert.equal(chamadas, 0, 'Consultar motivo nao altera arquivos ou solicitacao');
   await row().getByRole('button', { name: 'Remover', exact: true }).evaluate(el => { el.click(); el.click(); });
   assert.equal(await page.getByRole('dialog').count(), 1, 'Duplo clique nao abre duas confirmacoes');
   await page.getByRole('dialog').getByRole('button', { name: 'Cancelar', exact: true }).click();

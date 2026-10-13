@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useComprasCadastroWorkspace from '../utils/useComprasCadastroWorkspace';
 import {
   Pagina,
   PageHeader,
@@ -30,6 +33,12 @@ const initialForm = {
   unidade_manual: '',
   categoria_id: ''
 };
+const project = item => ({
+  nome: item.nome || '', codigo: item.codigo || '', descricao: item.descricao || '',
+  unidade_id: item.unidade_id ? String(item.unidade_id) : '',
+  unidade_manual: item.unidade_manual || '',
+  categoria_id: item.categoria_id ? String(item.categoria_id) : ''
+});
 
 export default function GestaoInsumos() {
   const [insumos, setInsumos] = useState([]);
@@ -37,6 +46,11 @@ export default function GestaoInsumos() {
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [autorizado, setAutorizado] = useState(false);
+  const draft = useComprasCadastroWorkspace('insumos', insumos, autorizado, initialForm, project);
+  const editandoId = draft.editingId;
+  const form = draft.value || initialForm;
+  const setForm = draft.setValue;
   /*
     R12 — o recorte da lista deixa de ser <select> de escolha única e passa a
     ser MARCAÇÃO na BarraFiltros: busca larga em cima, filtro marcável
@@ -48,13 +62,11 @@ export default function GestaoInsumos() {
     lista). Com marcação múltipla o usuário veria duas etiquetas e a lista
     não estreitaria — capacidade aparente sem efeito, a família da R15.
   */
-  const [filtros, setFiltros] = useState({ q: '', categoria: new Set() });
-  const [editandoId, setEditandoId] = useState(null);
-  const [form, setForm] = useState(initialForm);
-  const [importacaoAberta, setImportacaoAberta] = useState(false);
-  const [importacaoTexto, setImportacaoTexto] = useState('');
-  const [importacaoUnidadeId, setImportacaoUnidadeId] = useState('');
-  const [importacaoCategoriaId, setImportacaoCategoriaId] = useState('');
+  const [filtros, setFiltros] = useWorkspaceState('insumos:filtros', () => ({ q: '', categoria: new Set() }));
+  const [importacaoAberta, setImportacaoAberta] = useWorkspaceState('insumos:importacaoAberta', false);
+  const [importacaoTexto, setImportacaoTexto] = useWorkspaceState('insumos:importacaoTexto', '');
+  const [importacaoUnidadeId, setImportacaoUnidadeId] = useWorkspaceState('insumos:importacaoUnidade', '');
+  const [importacaoCategoriaId, setImportacaoCategoriaId] = useWorkspaceState('insumos:importacaoCategoria', '');
   const [importandoEmMassa, setImportandoEmMassa] = useState(false);
   const [resultadoImportacao, setResultadoImportacao] = useState(null);
 
@@ -66,12 +78,20 @@ export default function GestaoInsumos() {
   // referência leva o foco ao formulário inline (que fica ACIMA da lista);
   // não mede nada.
   const campoNomeRef = useRef(null);
+  const trava = useRef(false);
+  useWorkspaceWork(draft.dirty || Boolean(importacaoTexto), salvando || importandoEmMassa);
 
   // A dimensão é `unico`, então o conjunto tem no máximo um valor — e é ele
   // que vai para o serviço. Declarado ANTES do efeito que o cita (TDZ).
   const categoriaSelecionada = [...filtros.categoria][0] || '';
+  const query = useQueryRevision(categoriaSelecionada);
+  const ocupado = salvando || importandoEmMassa;
+  const idsDisponiveis = (unidade, categoria) => (!unidade || unidades.some(item => String(item.id) === String(unidade)))
+    && (!categoria || categorias.some(item => String(item.id) === String(categoria)));
 
   async function carregarContexto() {
+    const token = query.begin();
+    setLoading(true); setAutorizado(false);
     try {
       const [listaInsumos, listaUnidades, listaCategorias] = await Promise.all([
         listarInsumos(categoriaSelecionada ? { categoria_id: categoriaSelecionada } : {}),
@@ -79,21 +99,25 @@ export default function GestaoInsumos() {
         listarCategorias()
       ]);
 
+      if (!query.isCurrent(token)) return;
       setInsumos(Array.isArray(listaInsumos) ? listaInsumos : []);
       setUnidades(Array.isArray(listaUnidades) ? listaUnidades : []);
       setCategorias(Array.isArray(listaCategorias) ? listaCategorias : []);
+      setAutorizado(true);
     } catch (error) {
+      if (!query.isCurrent(token)) return;
+      setInsumos([]); setUnidades([]); setCategorias([]);
+      setAutorizado(false); draft.conceal(initialForm);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar cadastros de insumos');
     } finally {
-      setLoading(false);
+      if (query.isCurrent(token)) setLoading(false);
     }
   }
 
   // R23: o recorte aplica AO MARCAR — uma dimensão, uma requisição, longe do
   // critério de "consulta cara" que pediria botão de aplicar.
   useEffect(() => {
-    setLoading(true);
     carregarContexto();
   }, [categoriaSelecionada]);
 
@@ -117,31 +141,29 @@ export default function GestaoInsumos() {
   }
 
   function abrirNovo() {
-    setEditandoId(null);
-    setForm(initialForm);
+    if (trava.current) return;
+    draft.clear();
     focarFormulario();
   }
 
   function abrirEdicao(item) {
-    setEditandoId(item.id);
-    setForm({
-      nome: item.nome || '',
-      codigo: item.codigo || '',
-      descricao: item.descricao || '',
-      unidade_id: item.unidade_id ? String(item.unidade_id) : '',
-      unidade_manual: item.unidade_manual || '',
-      categoria_id: item.categoria_id ? String(item.categoria_id) : ''
-    });
+    if (trava.current || loading || !autorizado) return;
+    draft.open(item);
     focarFormulario();
   }
 
   function limparFormulario() {
-    setEditandoId(null);
-    setForm(initialForm);
+    if (trava.current) return;
+    draft.clear();
   }
 
   async function handleSalvar(event) {
     event.preventDefault();
+    if (trava.current || loading || !draft.available || draft.conflict) return;
+    if (!idsDisponiveis(form.unidade_id, form.categoria_id)) {
+      avisar.alerta('Selecione unidade e categoria disponíveis no cadastro atual.');
+      return;
+    }
 
     if (!form.nome.trim()) {
       avisar.alerta('Informe o nome.');
@@ -162,6 +184,7 @@ export default function GestaoInsumos() {
       categoria_id: form.categoria_id ? Number(form.categoria_id) : null
     };
 
+    trava.current = true;
     try {
       setSalvando(true);
       if (editandoId) {
@@ -170,18 +193,19 @@ export default function GestaoInsumos() {
         await criarInsumo(payload);
       }
       avisar.sucesso(editandoId ? 'Insumo atualizado.' : 'Insumo cadastrado.');
-      limparFormulario();
-      setLoading(true);
+      draft.clear();
       await carregarContexto();
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar insumo');
     } finally {
+      trava.current = false;
       setSalvando(false);
     }
   }
 
   async function handleExcluir(item) {
+    if (trava.current || loading || !autorizado || !insumos.some(row => row.id === item.id)) return;
     /*
       R26 — o alvo é fixado numa `const` ANTES do `await`. O modal do sistema
       NÃO congela a página (o `window.confirm` congelava): com o formulário
@@ -190,40 +214,40 @@ export default function GestaoInsumos() {
       A `const` abaixo é o que impede isso; nunca reler o estado depois.
     */
     const alvo = item;
-    // R21: o retorno é `{ ok, texto }` — objeto é sempre truthy, então
-    // desestruturar não é estilo, é o que faz o "Cancelar" cancelar.
-    const { ok } = await confirmar({
-      titulo: 'Excluir insumo',
-      mensagem: `Excluir o insumo "${alvo.nome}"? Esta acao nao pode ser desfeita.`,
-      rotuloConfirmar: 'Excluir',
-      destrutiva: true
-    });
-    if (!ok) return;
-
+    trava.current = true; setSalvando(true);
     try {
+      // R21: desestruturar e o que faz o "Cancelar" cancelar.
+      const { ok } = await confirmar({
+        titulo: 'Excluir insumo',
+        mensagem: `Excluir o insumo "${alvo.nome}"? Esta acao nao pode ser desfeita.`,
+        rotuloConfirmar: 'Excluir',
+        destrutiva: true
+      });
+      if (!ok) return;
+
       await deletarInsumo(alvo.id);
       avisar.sucesso('Insumo excluído.');
       // O formulário inline fica ACIMA da lista: se o registro aberto nele
       // acabou de ser apagado, salvar depois recriaria/atualizaria um id que
       // não existe mais.
-      if (editandoId === alvo.id) limparFormulario();
-      setLoading(true);
+      if (editandoId === alvo.id) draft.clear();
       await carregarContexto();
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao excluir insumo');
+    } finally {
+      trava.current = false; setSalvando(false);
     }
   }
 
   function abrirImportacao() {
-    setImportacaoTexto('');
-    setImportacaoUnidadeId('');
-    setImportacaoCategoriaId('');
+    if (trava.current) return;
     setResultadoImportacao(null);
     setImportacaoAberta(true);
   }
 
   function fecharImportacao() {
+    if (trava.current) return;
     setImportacaoAberta(false);
     setImportacaoTexto('');
     setImportacaoUnidadeId('');
@@ -233,6 +257,11 @@ export default function GestaoInsumos() {
 
   async function handleImportarEmMassa(event) {
     event.preventDefault();
+    if (trava.current || loading || !autorizado) return;
+    if (!idsDisponiveis(importacaoUnidadeId, importacaoCategoriaId)) {
+      avisar.alerta('Selecione unidade e categoria disponíveis no cadastro atual.');
+      return;
+    }
 
     const linhas = importacaoTexto
       .split('\n')
@@ -244,6 +273,7 @@ export default function GestaoInsumos() {
       return;
     }
 
+    trava.current = true;
     try {
       setImportandoEmMassa(true);
       const resultado = await importarInsumosEmMassa({
@@ -253,10 +283,18 @@ export default function GestaoInsumos() {
       });
 
       setResultadoImportacao(resultado);
+      // O contrato da importacao identifica falhas pelo numero da linha.
+      // Retirar somente linhas cuja conclusao foi confirmada; retorno de
+      // aba nunca reenvia as que ja foram importadas.
+      const falhas = (resultado.erros || []).map(erro => Number(String(erro).match(/^Linha (\d+):/)?.[1]) - 1);
+      const falhasConhecidas = falhas.every(index => Number.isInteger(index) && index >= 0 && index < linhas.length);
+      if (falhasConhecidas && Number(resultado.sucesso) + falhas.length === linhas.length) {
+        const restantes = new Set(falhas);
+        setImportacaoTexto(linhas.filter((_, index) => restantes.has(index)).join('\n'));
+      }
 
       if (resultado.sucesso > 0) {
         avisar.sucesso(`${resultado.sucesso} de ${resultado.total} insumos importados com sucesso.`);
-        setLoading(true);
         await carregarContexto();
       } else {
         avisar.erro(`Nenhum insumo importado (${resultado.sucesso} de ${resultado.total}).`);
@@ -265,6 +303,7 @@ export default function GestaoInsumos() {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao importar insumos em massa');
     } finally {
+      trava.current = false;
       setImportandoEmMassa(false);
     }
   }
@@ -349,6 +388,8 @@ export default function GestaoInsumos() {
 
       {/* R16: UM dono para a faixa de avisos, logo abaixo do cabeçalho. */}
       <Avisos avisos={avisos} aoFechar={fechar} />
+      {draft.conflict && <div role="alert" className="app-note">O cadastro foi alterado. Confira os dados atuais antes de salvar. <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={async () => { const { ok } = await confirmar({ titulo: 'Descartar edição', mensagem: 'Descartar os campos digitados e usar o cadastro atual?', rotuloConfirmar: 'Usar dados atuais' }); if (ok) draft.discard(); }}>Usar dados atuais</button></div>}
+      {!loading && autorizado && editandoId != null && !draft.item && <p role="alert" className="app-note">Insumo não disponível para edição. Inicie um novo cadastro ou selecione outro registro.</p>}
 
       {/*
         R9 (revista em 04/09) — FORMULÁRIO INLINE, E NÃO EM MODAL.
@@ -362,10 +403,12 @@ export default function GestaoInsumos() {
       */}
       <BlocoConteudo titulo={editandoId ? 'Editar insumo' : 'Novo insumo'}>
         <form className="space-y-4" onSubmit={handleSalvar}>
+          <fieldset disabled={ocupado || loading || !draft.available || draft.conflict}>
           <FormSecao legenda="Identificação" colunas={2}>
             <CampoForm label="Nome" obrigatorio>
               <input
                 ref={campoNomeRef}
+                aria-label="Nome do insumo"
                 className="input w-full"
                 value={form.nome}
                 onChange={(event) => setForm((atual) => ({ ...atual, nome: event.target.value }))}
@@ -374,6 +417,7 @@ export default function GestaoInsumos() {
 
             <CampoForm label="Código">
               <input
+                aria-label="Código do insumo"
                 className="input w-full"
                 value={form.codigo}
                 onChange={(event) => setForm((atual) => ({ ...atual, codigo: event.target.value }))}
@@ -389,6 +433,7 @@ export default function GestaoInsumos() {
               {/* R12: select de FORMULÁRIO (entrada de dado do registro) —
                   legítimo. O filtro da lista, esse sim, virou marcação. */}
               <select
+                aria-label="Unidade do insumo"
                 className="input w-full"
                 value={form.unidade_id}
                 onChange={(event) => setForm((atual) => ({ ...atual, unidade_id: event.target.value }))}
@@ -413,6 +458,7 @@ export default function GestaoInsumos() {
 
             <CampoForm label="Categoria">
               <select
+                aria-label="Categoria do insumo"
                 className="input w-full"
                 value={form.categoria_id}
                 onChange={(event) => setForm((atual) => ({ ...atual, categoria_id: event.target.value }))}
@@ -428,6 +474,7 @@ export default function GestaoInsumos() {
               {/* R10: a altura do textarea vem da folha do sistema
                   (textarea.input), não do `min-h-[110px]` que estava aqui. */}
               <textarea
+                aria-label="Descrição do insumo"
                 className="input w-full"
                 value={form.descricao}
                 onChange={(event) => setForm((atual) => ({ ...atual, descricao: event.target.value }))}
@@ -443,6 +490,7 @@ export default function GestaoInsumos() {
               Limpar
             </button>
           </div>
+          </fieldset>
         </form>
       </BlocoConteudo>
 
@@ -453,7 +501,7 @@ export default function GestaoInsumos() {
         quando o botão do cabeçalho abre/fecha (o estado de recolhido é
         interno ao BlocoConteudo).
       */}
-      {importacaoAberta && (
+      {importacaoAberta && autorizado && (
         <BlocoConteudo
           key="importacao-aberta"
           titulo="Importar insumos em massa"
@@ -461,12 +509,14 @@ export default function GestaoInsumos() {
           variante="secundario"
         >
           <form onSubmit={handleImportarEmMassa} className="space-y-4">
+            <fieldset disabled={ocupado || loading || !autorizado}>
             <FormSecao legenda="Padrão aplicado a todas as linhas" colunas={2}>
               <CampoForm
                 label="Unidade (opcional)"
                 hint="Selecione uma unidade pre-cadastrada ou deixe em branco para preencher depois."
               >
                 <select
+                  aria-label="Unidade da importação"
                   className="input w-full"
                   value={importacaoUnidadeId}
                   onChange={(event) => setImportacaoUnidadeId(event.target.value)}
@@ -485,6 +535,7 @@ export default function GestaoInsumos() {
                 hint="Todos os insumos colados recebem esta categoria."
               >
                 <select
+                  aria-label="Categoria da importação"
                   className="input w-full"
                   value={importacaoCategoriaId}
                   onChange={(event) => setImportacaoCategoriaId(event.target.value)}
@@ -504,6 +555,7 @@ export default function GestaoInsumos() {
               >
                 {/* R10: a altura vem de `rows`, não do `min-h-[200px]`. */}
                 <textarea
+                  aria-label="Insumos para importar"
                   className="input w-full font-mono"
                   rows={8}
                   placeholder="Parafuso M8&#10;Prego 2.5&#10;Cimento Portland&#10;Areia média&#10;Brita 1"
@@ -552,6 +604,7 @@ export default function GestaoInsumos() {
                 Fechar
               </button>
             </div>
+            </fieldset>
           </form>
         </BlocoConteudo>
       )}
@@ -586,6 +639,8 @@ export default function GestaoInsumos() {
             inteira é acionável por teclado (o TabelaPadrao dá tabIndex +
             Enter/Espaço quando recebe aoClicarLinha). */}
         <TabelaPadrao
+          chaveWorkspace="insumos:tabela"
+          consultaWorkspace={[filtros.q, categoriaSelecionada]}
           colunas={colunas}
           itens={insumosFiltrados}
           carregando={loading}
@@ -597,13 +652,14 @@ export default function GestaoInsumos() {
           aoClicarLinha={abrirEdicao}
           acoesLinha={(item) => (
             <>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirEdicao(item)}>
+              <button type="button" className="btn btn-outline btn-sm" disabled={ocupado || loading || !autorizado} onClick={() => abrirEdicao(item)}>
                 Editar
               </button>
               <button
                 type="button"
                 className="btn btn-outline btn-sm btn-perigo-suave"
                 onClick={() => handleExcluir(item)}
+                disabled={ocupado || loading || !autorizado}
               >
                 Excluir
               </button>

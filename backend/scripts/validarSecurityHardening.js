@@ -102,7 +102,11 @@ function validateFinancialTitleGranularActions() {
       && routes.includes("router.post('/financeiro/titulos/importar-codigos-barras', allowTituloImportarCodigos"),
     'Importacao de codigos nao esta protegida pela permissao granular.'
   );
-  assert(frontend.includes("hasPermissao(user, 'financeiro.cadastros.visualizar')"), 'Botao Cadastros nao respeita permissao granular.');
+  const app = read('frontend/src/App.jsx');
+  assert(app.includes('path="financeiro/cadastros" element={<FinanceiroRoute permissionKey="financeiro.cadastros.visualizar">'),
+    'Acesso direto a Cadastros nao respeita permissao granular.');
+  assert(app.includes('permissionKey ? !canAccessFinanceiroArea(user, permissionKey) : !canAccessFinanceiro(user)'),
+    'FinanceiroRoute nao verifica sua permissao granular.');
   assert(frontend.includes("hasPermissao(user, 'financeiro.titulos.exportar')"), 'Botao Exportar titulos nao respeita permissao granular.');
   assert(frontend.includes("hasPermissao(user, 'financeiro.titulos.importar_codigos')"), 'Botao Importar codigos nao respeita permissao granular.');
 }

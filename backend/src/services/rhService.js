@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { parecePixCopiaCola } = require('../utils/pix');
 const {
   Obra,
   Parceiro,
@@ -14,6 +15,7 @@ const {
 const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
 const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
+const { normalizarContatos } = require('./rhColaboradorContatosDomain');
 
 /**
  * Importado por funcao, e nao no topo: `rhSolicitacaoService` requer `rhVinculoObraService`, que
@@ -478,6 +480,7 @@ function inferTipoPessoaParceiro(documento) {
 function inferPixTipoChave(chavePix, documentoFallback) {
   const raw = String(chavePix || '').trim();
   if (!raw) return null;
+  if (parecePixCopiaCola(raw)) return 'COPIA_COLA';
   if (raw.includes('@')) return 'EMAIL';
 
   const digits = normalizeDigits(raw);
@@ -969,10 +972,10 @@ async function listarColaboradoresRh(filters = {}) {
   if (filters.empresa_grupo_id) {
     where.empresa_grupo_id = filters.empresa_grupo_id;
   }
-  if (Array.isArray(obraIdsPermitidas)) {
+  if (filters.obra_id) {
+    where.obra_id = Number(filters.obra_id);
+  } else if (Array.isArray(obraIdsPermitidas)) {
     where.obra_id = { [Op.in]: obraIdsPermitidas };
-  } else if (filters.obra_id) {
-    where.obra_id = filters.obra_id;
   }
   if (filters.setor_id) {
     where.setor_id = filters.setor_id;
@@ -1063,6 +1066,7 @@ async function detalharColaboradorRh(id, options = {}) {
 }
 
 async function criarColaboradorRh(data, user) {
+  data = { ...data, ...normalizarContatos(data) };
   return sequelize.transaction(async (transaction) => {
     if (data.forma_calculo_gerencial === 'DIARIA' && !(Number(data.valor_diaria) > 0)) {
       throw new ValidationError('Informe o valor da diaria para colaboradores com calculo por diaria.');
@@ -1123,6 +1127,8 @@ async function atualizarColaboradorRh(id, data, user) {
       throw new ValidationError('Colaborador nao encontrado.', 404);
     }
 
+    const contatos = normalizarContatos(data, colaborador.get({ plain: true }));
+    data = { ...data, ...contatos };
     if (data.empresa_grupo_id) {
       await ensureEmpresaGrupoExists(data.empresa_grupo_id, transaction);
     }
@@ -1198,6 +1204,7 @@ async function atualizarColaboradorRh(id, data, user) {
         matricula: data.matricula,
         rg: data.rg,
         telefone: data.telefone,
+        ...contatos,
         email: data.email,
         cargo: data.cargo,
         tipo_vinculo: data.tipo_vinculo,

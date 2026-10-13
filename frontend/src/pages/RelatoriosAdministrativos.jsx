@@ -248,7 +248,7 @@ const FILTROS_DA_TELA = [
   { id: 'q', rotulo: 'Busca', obrigatorio: true },
   { id: 'pedido_id', rotulo: 'Pedido' },
   { id: 'item_id', rotulo: 'Item' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'acao', rotulo: 'Ação' }
 ];
 
@@ -350,7 +350,7 @@ export default function RelatoriosAdministrativos() {
   const dimensoes = useMemo(() => [
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }))
     },

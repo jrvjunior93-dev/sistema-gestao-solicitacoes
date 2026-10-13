@@ -12,6 +12,34 @@
 - Somente publicacao Git. EC2/schema ainda exigem preflight e procedimento
   de deploy; inclui 202610080001_fila_pagamentos_instrumento.js nao aplicada.
 - Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+## Base e piloto de navegacao em Solicitacoes 2026-10-11
+
+- QA isolada desktop/mobile revalidada em 12/10; commit/push autorizado na
+  refactor/frontend. Sem main, banco ou deploy executado pelo agente.
+- Memoria por usuario/escopo/aba/registro; backend/src/ACL inalterados;
+  negativas de acesso e ausencia de novas escritas de negocio conferidas.
+- Historico/origem, Nova unica, lista/scroll, comentarios e edicao com conflito;
+  modais criticos e demais modulos ainda precisam adesao por fluxo.
+- Handoff: docs/handoffs/2026-10-11-piloto-navegacao-solicitacoes.md.
+- Auditoria financeira alheia preservada; proximo gate e homologacao em dev.
+
+## Mapa de navegacao e estado das abas 2026-10-11
+
+- Sessao codex-mapa-navegacao-estado-20261011: finalizado, ownership liberado.
+- Inventario de 221 declaracoes e 1420 fontes; diagnostico isolado do hook
+  real confirma perda de campo local no retorno entre abas. Plano E0-E8
+  com preservacao de contexto, historico por aba, codigo SOL, Delegacao,
+  limites de memoria e ensaios de desempenho antes de ampliar o piloto.
+- Cobertura estatica integral nao equivale a homologacao de todos os fluxos.
+  Sem runtime, banco, commit/push, main ou EC2. Aguardar autorizacao E0/E1/E2.
+- Handoff: docs/handoffs/2026-10-11-mapa-navegacao-estado.md.
+
+## Interacoes de solicitacoes - 2026-10-11
+- Sessao codex-interacoes-solicitacoes-20261011: finalizado, ownership liberado.
+- Balao por usuario/evento, atalhos, leitura efetiva, realtime/prioridade,
+  anexos e retorno preservando escopo/status/financeiro. Tests/build/docs/diff
+  aprovados. Migration estrutural preparada; sem banco real, EC2 ou publicacao.
+- Handoff: docs/handoffs/2026-10-11-interacoes-solicitacoes.md.
 
 ## Fila sem PDF e publicacao dev 08/10/2026
 

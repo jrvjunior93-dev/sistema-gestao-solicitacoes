@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork, useWorkspaceForget } from '../../navigation/WorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import OverlayModal from '../ui/OverlayModal';
 import DateInputBR, { dataISOParaBR } from '../DateInputBR';
@@ -11,10 +12,11 @@ import { hojeSolicitacaoSP, parseValorSolicitacaoBR, permissoesEdicaoSolicitacao
 export default function ModalEditarDadosSolicitacao({ solicitacao, campo, onFechar, onSalvo }) {
   const { user } = useAuth();
   const formId = useId();
-  const [alvo] = useState(() => ({ id: solicitacao.id, codigo: solicitacao.codigo,
+  const prefix = 'editar:' + solicitacao.id + ':' + campo;
+  const [alvo] = useWorkspaceState(prefix + ':base', () => ({ id: solicitacao.id, codigo: solicitacao.codigo,
     valor: solicitacao.valor, data_vencimento: vencimentoSolicitacaoParaEdicao(solicitacao),
     data_vencimento_medicao: solicitacao.data_vencimento_medicao }));
-  const [entrada, setEntrada] = useState(() => campo === 'valor'
+  const [entrada, setEntrada] = useWorkspaceState(prefix + ':entrada', () => campo === 'valor'
     ? valorSolicitacaoParaEdicao(alvo.valor) : String(alvo.data_vencimento || '').slice(0, 10));
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -23,11 +25,17 @@ export default function ModalEditarDadosSolicitacao({ solicitacao, campo, onFech
   const permissao = permissoesEdicaoSolicitacao(user)[campo] === true;
   const titulo = campo === 'valor' ? 'Editar valor' : 'Editar vencimento';
   const codigo = alvo.codigo || `#${alvo.id}`;
+  const esquecer = useWorkspaceForget([prefix + ':base', prefix + ':entrada', prefix]);
+  const inicial = campo === 'valor' ? valorSolicitacaoParaEdicao(alvo.valor) : String(alvo.data_vencimento || '').slice(0, 10);
+  const conflito = campo === 'valor' ? String(solicitacao.valor ?? '') !== String(alvo.valor ?? '')
+    : String(vencimentoSolicitacaoParaEdicao(solicitacao) || '').slice(0, 10) !== String(alvo.data_vencimento || '').slice(0, 10);
+  useWorkspaceWork(entrada !== inicial, salvando, prefix);
 
-  function fechar() { if (!trava.current) onFechar(); }
+  function fechar() { if (!trava.current) { esquecer(); onFechar(); } }
   async function salvar(event) {
     event.preventDefault();
     if (trava.current || concluido.current) return;
+    if (conflito) { setErro('Este dado foi alterado desde o início da edição. Feche e confira o valor atual antes de editar novamente.'); return; }
     if (!permissao) { setErro('Você não possui permissão para esta alteração.'); return; }
     let novo;
     try {
@@ -51,7 +59,7 @@ export default function ModalEditarDadosSolicitacao({ solicitacao, campo, onFech
     // PATCH ja concluida: falha de recarga nao pode convidar a salvar de novo.
     try { await onSalvo?.({ id: alvo.id, campo, codigo }); }
     catch (error) { console.error('Alteracao salva; falha ao atualizar a tela:', error); }
-    finally { trava.current = false; setSalvando(false); onFechar(); }
+    finally { trava.current = false; setSalvando(false); esquecer(); onFechar(); }
   }
 
   return <OverlayModal rotulo={`${titulo} · ${codigo}`} largura="480px" onFechar={fechar}>
@@ -65,7 +73,7 @@ export default function ModalEditarDadosSolicitacao({ solicitacao, campo, onFech
       <CampoForm label={campo === 'valor' ? 'Valor da solicitação (R$)' : 'Vencimento da solicitação'}
         hint={campo === 'valor' ? 'Use vírgula para centavos: 2.000,00. Deixe vazio para retirar o valor.'
           : 'Informe hoje ou uma data futura. Deixe vazio para retirar o vencimento.'}>
-        {campo === 'valor' ? <input className="input" inputMode="decimal" value={entrada}
+        {campo === 'valor' ? <input className="input" inputMode="decimal" aria-label="Valor da solicitação (R$)" value={entrada}
           disabled={salvando || !permissao} onChange={e => { setEntrada(e.target.value); setErro(''); }} autoFocus />
           : <DateInputBR className="input" value={entrada} min={hojeSolicitacaoSP()}
             disabled={salvando || !permissao} onChange={e => { setEntrada(e.target.value); setErro(''); }} autoFocus />}
@@ -75,10 +83,11 @@ export default function ModalEditarDadosSolicitacao({ solicitacao, campo, onFech
         A lista usa o vencimento da medição ({dataISOParaBR(alvo.data_vencimento_medicao)}).
         Editar esta data não altera o vencimento das parcelas da medição.</p> : null}
       {erro ? <p role="alert" className="form-error">{erro}</p> : null}
+      {conflito ? <p role="alert" className="form-error">Este dado foi alterado. Feche e confira o valor atual antes de editar novamente.</p> : null}
       {!permissao ? <p role="alert">Você não possui permissão para esta alteração.</p> : null}
     </form>
     <div data-modal="rodape" className="app-actionbar border-t p-4">
-      <button type="submit" form={formId} className="btn btn-primary btn-sm" disabled={salvando || !permissao}>
+      <button type="submit" form={formId} className="btn btn-primary btn-sm" disabled={salvando || !permissao || conflito}>
         {salvando ? 'Salvando...' : 'Salvar alteração'}</button>
       <button type="button" className="btn btn-outline btn-sm" disabled={salvando} onClick={fechar}>Cancelar</button>
     </div>

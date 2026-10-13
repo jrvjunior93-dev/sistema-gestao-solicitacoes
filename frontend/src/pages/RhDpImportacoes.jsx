@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import useQueryRevision from '../navigation/useQueryRevision';
 import { HiOutlineEye } from 'react-icons/hi2';
 import {
   Avisos,
@@ -222,7 +224,7 @@ const FILTROS_DA_TELA = [
   { id: 'competencia', rotulo: 'Competência' },
   { id: 'tipo', rotulo: 'Tipo' },
   { id: 'empresa_grupo_id', rotulo: 'Empresa do grupo' },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'tipo_vinculo', rotulo: 'Vínculo' },
   { id: 'status', rotulo: 'Status' }
 ];
@@ -240,6 +242,11 @@ export default function RhDpImportacoes() {
   const [obras, setObras] = useState([]);
   const [importacoes, setImportacoes] = useState([]);
   const [detalhe, setDetalhe] = useState(null);
+  const [detalheId, setDetalheId] = useWorkspaceState('rh-importacoes:detalheId', null);
+  const queryLista = useQueryRevision();
+  const queryBase = useQueryRevision();
+  const queryDetalhe = useQueryRevision();
+  const trava = useRef(false);
   // A ação primária do cabeçalho abre o seletor de arquivo; o input fica no
   // bloco do lote (é dele que os campos do envio saem).
   const inputArquivoRef = useRef(null);
@@ -255,7 +262,7 @@ export default function RhDpImportacoes() {
     })),
     [detalhe]
   );
-  const [filtros, setFiltros] = useState({
+  const [filtros, setFiltros] = useWorkspaceState('rh-importacoes:filtros', {
     competencia: '',
     tipo: new Set(),
     empresa_grupo_id: new Set(),
@@ -293,7 +300,7 @@ export default function RhDpImportacoes() {
       setFiltros((atual) => ({ ...atual, [id]: atual[id] instanceof Set ? new Set() : '' }));
     }
   });
-  const [form, setForm] = useState({
+  const [form, setForm] = useWorkspaceState('rh-importacoes:inputs', {
     tipo: 'JORNADA',
     competencia: '',
     empresa_grupo_id: '',
@@ -301,6 +308,8 @@ export default function RhDpImportacoes() {
     tipo_vinculo: '',
     observacoes: ''
   });
+  useWorkspaceWork(Object.entries(form).some(([key,value]) => key !== 'tipo' && Boolean(value)),
+    gerandoPreview || confirmando, 'rh-importacoes:work');
 
   // R12/R16: os seis selects do cartão de filtros viram uma faixa só.
   // Competência é contínua e mora em `campos`; tipo, empresa, obra, vínculo
@@ -320,7 +329,7 @@ export default function RhDpImportacoes() {
     },
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((item) => ({ valor: String(item.id), rotulo: rotuloObra(item) }))
     },
@@ -341,6 +350,10 @@ export default function RhDpImportacoes() {
   useEffect(() => {
     carregarBase();
   }, []);
+  useEffect(() => {
+    if (detalheId) selecionarImportacao(detalheId);
+    else { queryDetalhe.begin(); setDetalhe(null); }
+  }, [detalheId]);
 
   // Filtro marcado aplica na hora (padrão Solicitações, R12); a competência
   // digitada espera 350ms para não martelar a API a cada tecla. É o mesmo
@@ -353,24 +366,29 @@ export default function RhDpImportacoes() {
   }, [filtros]);
 
   async function carregarBase() {
+    const token = queryBase.begin();
     try {
       setCarregandoBase(true);
       const [listaEmpresas, listaObras] = await Promise.all([
         getRhEmpresasGrupo({ ativo: true }),
-        getObras()
+        getObras({ escopo: 'TODOS' })
       ]);
 
+      if (!queryBase.isCurrent(token)) return;
       setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
       setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
+      if (!queryBase.isCurrent(token)) return;
+      setEmpresas([]); setObras([]);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar base de importações RH/DP');
     } finally {
-      setCarregandoBase(false);
+      if (queryBase.isCurrent(token)) setCarregandoBase(false);
     }
   }
 
   async function carregarImportacoes(filtrosAtuais = filtros) {
+    const token = queryLista.begin();
     try {
       setCarregandoLista(true);
       const data = await getRhImportacoes({
@@ -382,20 +400,28 @@ export default function RhDpImportacoes() {
         status: valorUnico(filtrosAtuais.status)
       });
 
-      setImportacoes(Array.isArray(data) ? data : []);
+      if (queryLista.isCurrent(token)) setImportacoes(Array.isArray(data) ? data : []);
     } catch (error) {
+      if (!queryLista.isCurrent(token)) return;
+      setImportacoes([]);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao filtrar importações RH/DP');
     } finally {
-      setCarregandoLista(false);
+      if (queryLista.isCurrent(token)) setCarregandoLista(false);
     }
   }
 
   async function selecionarImportacao(id) {
+    if (trava.current) return;
+    if (String(id) !== String(detalheId)) { setDetalhe(null); setDetalheId(id); return; }
+    const token = queryDetalhe.begin();
+    setDetalhe(null);
     try {
       const data = await getRhImportacao(id);
-      setDetalhe(data);
+      if (queryDetalhe.isCurrent(token)) setDetalhe(data);
     } catch (error) {
+      if (!queryDetalhe.isCurrent(token)) return;
+      setDetalhe(null);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar detalhe da importação RH/DP');
     }
@@ -405,12 +431,13 @@ export default function RhDpImportacoes() {
     const file = event.target.files?.[0];
     event.target.value = '';
 
-    if (!file) return;
+    if (!file || trava.current || !podeEditar || carregandoBase) return;
     if (!form.competencia || !form.tipo || !form.obra_id) {
       avisar.alerta('Preencha tipo, competência e obra antes de subir a planilha.');
       return;
     }
 
+    trava.current = true;
     try {
       setGerandoPreview(true);
       const data = await criarPreviewRhImportacao({
@@ -425,19 +452,23 @@ export default function RhDpImportacoes() {
 
       await carregarImportacoes();
       setDetalhe(data);
+      setDetalheId(data.id);
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao gerar preview da importação RH/DP');
     } finally {
+      trava.current = false;
       setGerandoPreview(false);
     }
   }
 
   async function confirmarImportacao() {
-    if (!detalhe?.id || detalhe?.status !== 'PREVIEW') {
+    if (trava.current || !podeEditar || !detalhe?.id || detalhe?.status !== 'PREVIEW') {
       return;
     }
 
+    trava.current = true; setConfirmando(true);
+    try {
     // A confirmação congela as linhas válidas e fecha o lote — não há como
     // reabrir por esta tela. Ela NÃO apaga nem substitui dado já gravado
     // (o serviço só marca as linhas como CONFIRMADA), então não é
@@ -451,8 +482,6 @@ export default function RhDpImportacoes() {
     });
     if (!ok) return;
 
-    try {
-      setConfirmando(true);
       const atualizado = await confirmarRhImportacao(detalhe.id);
       setDetalhe(atualizado);
       await carregarImportacoes();
@@ -461,6 +490,7 @@ export default function RhDpImportacoes() {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao confirmar importação RH/DP');
     } finally {
+      trava.current = false;
       setConfirmando(false);
     }
   }
@@ -479,7 +509,7 @@ export default function RhDpImportacoes() {
         acaoPrincipal={podeEditar ? {
           rotulo: gerandoPreview ? 'Gerando preview...' : 'Selecionar planilha',
           onClick: () => inputArquivoRef.current?.click(),
-          desabilitada: gerandoPreview
+          desabilitada: gerandoPreview || confirmando || carregandoBase
         } : undefined}
         secundarias={TIPOS_IMPORTACAO.map((item) => ({
           rotulo: `Modelo ${item.label}`,
@@ -520,7 +550,7 @@ export default function RhDpImportacoes() {
               disabled={!podeEditar}
             />
           </CampoForm>
-          <CampoForm label="Obra" obrigatorio>
+          <CampoForm label="Obra / Centro de Custo" obrigatorio>
             <select
               className="input w-full"
               value={form.obra_id}
@@ -528,7 +558,7 @@ export default function RhDpImportacoes() {
               disabled={!podeEditar}
               required
             >
-              <option value="">Selecione a obra</option>
+              <option value="">Selecione a obra / centro de custo</option>
               {obras.map((item) => (
                 <option key={item.id} value={item.id}>{rotuloObra(item)}</option>
               ))}
@@ -573,6 +603,7 @@ export default function RhDpImportacoes() {
               className="input w-full"
               rows={3}
               placeholder="Observações do lote"
+              aria-label="Observações do lote"
               value={form.observacoes}
               onChange={(e) => setForm((prev) => ({ ...prev, observacoes: e.target.value }))}
               disabled={!podeEditar}
@@ -587,7 +618,7 @@ export default function RhDpImportacoes() {
             accept=".csv,.xls,.xlsx"
             className="hidden"
             onChange={onSelecionarArquivo}
-            disabled={gerandoPreview}
+            disabled={gerandoPreview || confirmando || !podeEditar || carregandoBase}
           />
         )}
       </BlocoConteudo>
@@ -658,7 +689,7 @@ export default function RhDpImportacoes() {
               },
               {
                 id: 'obra',
-                titulo: 'Obra',
+                titulo: 'Obra / Centro de Custo',
                 tipo: 'texto',
                 render: (item) => rotuloObra(item.obra) || '-'
               },
@@ -679,6 +710,8 @@ export default function RhDpImportacoes() {
             ]}
             itens={importacoes}
             storageKey="tabela:rh-dp-importacoes:lotes"
+            chaveWorkspace="rh-importacoes:lotes"
+            consultaWorkspace={JSON.stringify(Object.entries(filtros).map(([key,value])=>[key,value instanceof Set?Array.from(value):value]))}
             rotuloRolagem="Lotes de importação RH/DP"
             carregando={carregandoBase || carregandoLista}
             vazio="Nenhuma importação RH/DP localizada"
@@ -688,6 +721,7 @@ export default function RhDpImportacoes() {
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
+                disabled={gerandoPreview || confirmando}
                 onClick={() => selecionarImportacao(item.id)}
                 title="Ver preview"
                 aria-label={`Ver preview da importação ${item.id}`}
@@ -711,7 +745,7 @@ export default function RhDpImportacoes() {
           cor="var(--c-primary)"
           acoes={detalhe ? (
             <>
-              <button type="button" className="btn btn-outline" onClick={() => setDetalhe(null)}>
+              <button type="button" className="btn btn-outline" disabled={gerandoPreview || confirmando} onClick={() => { setDetalheId(null); setDetalhe(null); }}>
                 Voltar para lista
               </button>
               {podeEditar && detalhe.status === 'PREVIEW' && (
@@ -787,6 +821,8 @@ export default function RhDpImportacoes() {
                 ]}
                 itens={detalhe.linhas || []}
                 storageKey="tabela:rh-dp-importacoes:preview"
+                chaveWorkspace={`rh-importacoes:preview:${detalhe.id}`}
+                key={`rh-importacoes:preview:${detalhe.id}`}
                 rotuloRolagem="Linhas do preview da importação"
                 vazio="Sem linhas registradas"
                 urgencia={(linha) => (linha.erro_mensagem ? 'danger' : null)}

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineArrowDownTray, HiOutlineEye, HiOutlinePaperAirplane, HiOutlineTrash } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -38,6 +39,9 @@ import {
   rotuloStatusCompra
 } from '../utils/statusCompras';
 import useComprasRealtimeRefresh from '../hooks/useComprasRealtimeRefresh';
+import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
+import useQueryRevision from '../../../navigation/useQueryRevision';
+import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
 
 function formatarData(data) {
   if (!data) {
@@ -83,22 +87,27 @@ function codigoSolicitacao(solicitacao) {
 */
 const FILTROS_DA_TELA = [
   { id: 'busca', rotulo: 'Busca', obrigatorio: true },
-  { id: 'obra_id', rotulo: 'Obra' },
+  { id: 'obra_id', rotulo: 'Obra / Centro de Custo' },
   { id: 'status', rotulo: 'Status' }
 ];
 
 export default function SolicitacoesCompra() {
+  const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { avisos, avisar, fechar } = useAvisos();
+  const abrirRegistro = useWorkspaceOpenRecord(avisar.alerta);
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [obras, setObras] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [consultaPronta, setConsultaPronta] = useState(false);
   const [inativando, setInativando] = useState(false);
   const [encaminhando, setEncaminhando] = useState(false);
-  const [busca, setBusca] = useState('');
-  const [selecionadas, setSelecionadas] = useState([]);
+  const [busca, setBusca] = useWorkspaceState('compras:busca', '');
+  const [selecionadas, setSelecionadas] = useWorkspaceState('compras:selecao', []);
+  const operacaoRef = useRef(false);
+  useWorkspaceWork(false, inativando || encaminhando);
 
   /*
     FILTRO QUE VEIO DA URL PRECISA APARECER (defeito de 05/09).
@@ -116,7 +125,7 @@ export default function SolicitacoesCompra() {
     carregados e o valor que veio da URL (ver `opcoesStatus`). Assim é
     impossível haver filtro aplicado sem etiqueta.
   */
-  const [ativos, setAtivos] = useState(() => {
+  const [ativos, setAtivos] = useWorkspaceState('compras:filtros', () => {
     const daUrl = chaveStatusCompra(new URLSearchParams(window.location.search).get('status'));
     return {
       obra_id: new Set(),
@@ -168,28 +177,44 @@ export default function SolicitacoesCompra() {
     () => [...(ativos.obra_id || [])][0] || '',
     [ativos.obra_id]
   );
+  const consulta = useQueryRevision(obraId);
+  const catalogo = useQueryRevision();
+  useLayoutEffect(() => {
+    setSolicitacoes([]); setLoading(true); setConsultaPronta(false);
+  }, [obraId]);
 
   async function carregarObras() {
+    const token = catalogo.begin();
     try {
       const data = await getMinhasObras({ modo: 'CRIACAO' });
+      if (!catalogo.isCurrent(token)) return;
       setObras(Array.isArray(data) ? data : []);
     } catch (error) {
+      if (!catalogo.isCurrent(token)) return;
+      if ([401, 403].includes(Number(error?.status))) setObras([]);
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar obras');
     }
   }
 
   async function carregarSolicitacoes() {
+    const token = consulta.begin();
     try {
       setLoading(true);
       const params = { visao: 'resumo', ...(obraId ? { obra_id: obraId } : {}) };
       const data = await listarSolicitacoesCompra(params);
+      if (!consulta.isCurrent(token)) return;
       setSolicitacoes(Array.isArray(data) ? data : []);
+      setConsultaPronta(true);
     } catch (error) {
+      if (!consulta.isCurrent(token)) return;
+      if ([401, 403].includes(Number(error?.status))) {
+        setSolicitacoes([]); setSelecionadas([]); setConsultaPronta(false);
+      }
       console.error(error);
       avisar.erro(error?.message || 'Erro ao carregar solicitacoes de compra');
     } finally {
-      setLoading(false);
+      if (consulta.isCurrent(token)) setLoading(false);
     }
   }
 
@@ -229,7 +254,7 @@ export default function SolicitacoesCompra() {
   const dimensoes = useMemo(() => [
     {
       id: 'obra_id',
-      rotulo: 'Obra',
+      rotulo: 'Obra / Centro de Custo',
       unico: true,
       opcoes: obras.map((obra) => ({
         valor: String(obra.id),
@@ -300,8 +325,9 @@ export default function SolicitacoesCompra() {
   }, [selecionadas, solicitacoesFiltradas]);
 
   useEffect(() => {
+    if (!consultaPronta) return;
     setSelecionadas((atuais) => atuais.filter((id) => idsFiltrados.includes(id)));
-  }, [idsFiltrados]);
+  }, [idsFiltrados, consultaPronta]);
 
   function toggleSelecionada(id) {
     const key = Number(id);
@@ -316,19 +342,13 @@ export default function SolicitacoesCompra() {
 
   async function handleBaixarPdf(id) {
     try {
-      const blob = await baixarPdfSolicitacaoCompra(id);
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 10000);
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao gerar PDF');
-    }
+      await abrirPreview(async () => ({ url: URL.createObjectURL(await baixarPdfSolicitacaoCompra(id)), revogarUrl: true }),
+        { nome: 'Solicitação de compra ' + id + '.pdf', mime: 'application/pdf' });
+    } catch (error) { avisar.erro(error?.message || 'Erro ao gerar PDF'); }
   }
 
   async function handleInativar(ids) {
+    if (operacaoRef.current || loading || !consultaPronta) return;
     /*
       R26: o alvo é FIXADO numa `const` ANTES do `await` da confirmação. O
       modal do sistema NÃO congela a página (o `window.confirm` congelava):
@@ -342,6 +362,7 @@ export default function SolicitacoesCompra() {
         .map((id) => Number(id))
         .filter(Boolean)
     )];
+    if (!podeInativar || alvo.some(id => !idsFiltrados.includes(id))) return;
 
     if (!alvo.length) {
       avisar.alerta('Selecione ao menos uma solicitação de compra.');
@@ -350,6 +371,7 @@ export default function SolicitacoesCompra() {
 
     // R21: `confirmar` devolve `{ ok, texto }` — objeto é SEMPRE truthy.
     // Sem desestruturar, o "Cancelar" seguiria com a inativação.
+    const revisaoConfirmada = consulta.capture();
     const { ok } = await confirmar({
       titulo: 'Inativar solicitações de compra',
       mensagem: `Inativar ${alvo.length} solicitacao(oes) de compra selecionada(s)? As solicitacoes saem da fila operacional.`,
@@ -357,9 +379,11 @@ export default function SolicitacoesCompra() {
       rotuloCancelar: 'Manter',
       destrutiva: true
     });
-    if (!ok) {
+    if (!ok || !consulta.isCurrent(revisaoConfirmada)) {
       return;
     }
+    if (operacaoRef.current) return;
+    operacaoRef.current = true;
 
     try {
       setInativando(true);
@@ -375,31 +399,38 @@ export default function SolicitacoesCompra() {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao inativar solicitacao de compra');
     } finally {
+      operacaoRef.current = false;
       setInativando(false);
     }
   }
 
   async function handleEncaminharCompras(ids) {
+    if (operacaoRef.current || loading || !consultaPronta) return;
     // R26: mesma disciplina do `handleInativar` — alvo fixado antes do await.
     const alvo = [...new Set(
       (Array.isArray(ids) ? ids : [ids])
         .map((id) => Number(id))
         .filter(Boolean)
     )];
+    if (!podeEncaminharCompras || alvo.some(id => !solicitacoesFiltradas.some(s =>
+      Number(s.id) === id && estaAguardandoRevisaoGeo(s.status)))) return;
 
     if (!alvo.length) {
       avisar.alerta('Selecione ao menos uma solicitação de compra.');
       return;
     }
 
+    const revisaoConfirmada = consulta.capture();
     const { ok } = await confirmar({
       titulo: 'Enviar para a fila de Compras',
       mensagem: `Enviar ${alvo.length} solicitacao(oes) para a fila do setor de Compras?`,
       rotuloConfirmar: 'Enviar'
     });
-    if (!ok) {
+    if (!ok || !consulta.isCurrent(revisaoConfirmada)) {
       return;
     }
+    if (operacaoRef.current) return;
+    operacaoRef.current = true;
 
     try {
       setEncaminhando(true);
@@ -415,6 +446,7 @@ export default function SolicitacoesCompra() {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao enviar solicitacao para Compras');
     } finally {
+      operacaoRef.current = false;
       setEncaminhando(false);
     }
   }
@@ -428,7 +460,7 @@ export default function SolicitacoesCompra() {
     },
     {
       id: 'obra',
-      titulo: 'Obra',
+      titulo: 'Obra / Centro de Custo',
       tipo: 'identidade',
       noCard: 'titulo',
       render: (solicitacao) => (
@@ -562,6 +594,8 @@ export default function SolicitacoesCompra() {
           carregando={loading}
           vazio="Nenhuma solicitação de compra encontrada."
           storageKey="tabela:solicitacoes-compra"
+          chaveWorkspace="compras:solicitacoes"
+          consultaWorkspace={JSON.stringify([busca, [...ativos.status], obraId])}
           rotuloRolagem="Solicitacoes de compra"
           /*
             A marcação em lote (com o "todos" no cabeçalho e o estado
@@ -579,7 +613,7 @@ export default function SolicitacoesCompra() {
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => navigate(`/solicitacoes-compra/${solicitacao.id}`)}
+                onClick={() => abrirRegistro(`/solicitacoes-compra/${solicitacao.id}`, codigoSolicitacao(solicitacao))}
                 title="Abrir detalhes"
                 aria-label={`Abrir detalhes da solicitação ${codigoSolicitacao(solicitacao)}`}
               >
@@ -625,6 +659,7 @@ export default function SolicitacoesCompra() {
       </BlocoConteudo>
 
       {elementoConfirmacao}
+      {modalPreview}
     </Pagina>
   );
 }

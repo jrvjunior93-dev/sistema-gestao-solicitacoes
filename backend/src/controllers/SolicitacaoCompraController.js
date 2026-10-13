@@ -3997,6 +3997,7 @@ module.exports = {
       const {
         obra_id,
         necessario_para,
+        titulo,
         observacoes,
         dados_pagamento,
         link_geral,
@@ -4353,7 +4354,7 @@ module.exports = {
       const solicitacaoCompra = await SolicitacaoCompra.create(
         {
           origem: compraDireta ? 'COMPRA_DIRETA' : 'NORMAL',
-          titulo: compraDireta ? 'Compra Direta' : null,
+          titulo: titulo || (compraDireta ? 'Compra Direta' : null),
           obra_id,
           solicitante_id: usuario.id,
           status: statusInicialCompra,
@@ -4471,6 +4472,7 @@ module.exports = {
       }));
 
       const descricao = [
+        titulo || null,
         compraDireta ? 'Compra Direta' : 'Solicitação de Compra',
         resumoItens ? `Itens: ${resumoItens}` : null,
         compraDireta && parceiroCompraDireta ? `Credor: ${parceiroCompraDireta.nome || parceiroCompraDireta.cpf_cnpj || parceiroCompraDireta.id}` : null,

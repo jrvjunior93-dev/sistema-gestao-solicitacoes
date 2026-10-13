@@ -562,8 +562,8 @@ export const NAV_MODULES = [
   },
   {
     id: 'rhdp',
-    label: 'RH/DP',
-    desc: 'Colaboradores, apuração e fechamentos.',
+    label: 'Colaboradores',
+    desc: 'Solicitações e Pagamentos',
     icon: HiOutlineUsers,
     gate: (user) => canAccessRhDp(user),
     children: [
@@ -576,16 +576,17 @@ export const NAV_MODULES = [
           aba certa (App.jsx), então link salvo e favorito continuam valendo.
         - Empresas do grupo nunca esteve aqui e agora existe uma vez só, em
           Cadastros.
-        Pessoal é a porta do dia a dia; Colaboradores é o cadastro.
+        Colaboradores é o módulo para todos os perfis. Pessoal é a porta por
+        obras/centros; cadastro e fechamentos continuam em ações e Ctrl+K.
       */
-      { id: 'rhdp-pessoal', ordem: 10, label: 'Pessoal', desc: 'Solicitações, colaboradores, pagamento de mão de obra, apuração e fechamentos — o dia a dia do DP.', icon: HiOutlineUserGroup, to: '/rh-dp/pessoal', can: (user) => canViewRhDpColaboradores(user) },
-      { id: 'rhdp-colaboradores', ordem: 20, label: 'Colaboradores', desc: 'Cadastro de colaboradores.', icon: HiOutlineUsers, to: '/rh-dp/colaboradores', can: (user) => canAccessRhDpCadastroColaboradores(user) },
-      { id: 'rhdp-importacoes', ordem: 50, label: 'Importações', desc: 'Importações de jornada e eventos.', icon: HiOutlineCloudArrowUp, to: '/rh-dp/importacoes', can: (user) => canExecuteRhDpImportacoes(user) },
-      { id: 'rhdp-documentos', ordem: 60, label: 'Documentos', desc: 'Documentos dos colaboradores.', icon: HiOutlineFolderOpen, to: '/rh-dp/documentos', can: (user) => canViewRhDpDocumentos(user) },
-      { id: 'rhdp-fechamentos', ordem: 40, label: 'Fechamentos', desc: 'Fechamentos que geram títulos financeiros.', icon: HiOutlineBanknotes, to: '/rh-dp/fechamentos', can: (user) => canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO') },
-      { id: 'rhdp-relatorios', ordem: 70, label: 'Relatórios', desc: 'Relatórios de RH/DP.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios', can: (user) => canAccessRhDpDashboard(user) }
+      { id: 'rhdp-pessoal', ordem: 10, label: 'Obras / Centros de Custo', desc: 'Colaboradores, solicitações e pagamentos por local.', icon: HiOutlineUserGroup, to: '/rh-dp/pessoal', can: (user) => canViewRhDpColaboradores(user) },
+      { id: 'rhdp-documentos', ordem: 20, label: 'Documentos', desc: 'Documentos globais dos colaboradores.', icon: HiOutlineFolderOpen, to: '/rh-dp/documentos', can: (user) => canViewRhDpDocumentos(user) },
+      { id: 'rhdp-relatorios', ordem: 30, label: 'Relatórios', desc: 'Relatórios globais de colaboradores.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios', can: (user) => canAccessRhDpDashboard(user) },
+      { id: 'rhdp-importacoes', ordem: 40, label: 'Importações', desc: 'Importações de jornada e eventos.', icon: HiOutlineCloudArrowUp, to: '/rh-dp/importacoes', can: (user) => canExecuteRhDpImportacoes(user) }
     ],
     commandItems: [
+      { id: 'rhdp-colaboradores', fixavel: true, label: 'Cadastro de colaboradores', desc: 'Cadastro global de colaboradores.', icon: HiOutlineUsers, to: '/rh-dp/colaboradores', can: (user) => canAccessRhDpCadastroColaboradores(user) },
+      { id: 'rhdp-fechamentos', fixavel: true, label: 'Fechamentos', desc: 'Fechamentos que geram títulos financeiros.', icon: HiOutlineBanknotes, to: '/rh-dp/fechamentos', can: (user) => canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO') },
       { id: 'rhdp-relatorio-operacional', label: 'Painel Operacional RH/DP', desc: 'Relatório de colaboradores, documentos, apurações e fechamentos.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios/operacional', can: (user) => canAccessRhDpDashboard(user) && canViewRhDpColaboradores(user) }
     ]
   },
@@ -781,7 +782,8 @@ export function getVisibleModules(user) {
         .slice()
         .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
       if (children.length === 0) return null;
-      return { ...mod, children };
+      return { ...mod, label: resolveLabel(mod, user),
+        desc: typeof mod.getDesc === 'function' ? mod.getDesc(user) : mod.desc, children };
     })
     .filter(Boolean);
 }
@@ -894,7 +896,10 @@ export function getAllDestinations() {
 
 // Destinos fixáveis visíveis ao usuário, indexados prontos para consumo.
 export function getFixableItems(user) {
-  return getVisibleItems(user).filter((item) => item.fixavel !== false && item.to);
+  // Portas movidas para ações/Ctrl+K mantêm favoritos e tela inicial antigos.
+  // Só opt-in explícito: os demais commandItems continuam não fixáveis.
+  const itens = [...getVisibleItems(user), ...getVisibleCommandItems(user).filter(item => item.fixavel === true)];
+  return [...new Map(itens.filter(item => item.fixavel !== false && item.to).map(item => [item.id, item])).values()];
 }
 
 // Resolve uma lista de IDs de atalho em destinos visíveis, preservando a

@@ -16,6 +16,7 @@ const state = {
     { id: 2, titulo_origem_id: 2, titulo_destino_id: 3, obra_id: 4, valor: '220.00', principal: '200.00', juros: '20.00', multa: '0.00' }
   ],
   MovimentoFinanceiro: [], Obra: [{ id: 3 }, { id: 4 }], CategoriaFinanceira: [],
+  Setor: [{ id: 1, codigo: 'OBRA', ativo: true, eh_setor_obra: true }],
   PedidoCompraTitulo: [{ id: 1, pedido_compra_id: 21, titulo_financeiro_id: 1, status_liberacao: 'LIBERADO' }],
   PedidoCompraFrete: [],
   PedidoCompra: [{ id: 21, solicitacao_compra_id: 31, status: 'FECHADO_FORNECEDOR', financeiro_fluxo_versao: 1, status_financeiro: 'LIBERADO_FINANCEIRO' }],
@@ -27,6 +28,7 @@ const state = {
   ],
   Solicitacao: [11, 12, 13].map(id => ({ id, status_global: 'TITULO_CADASTRADO', area_responsavel: 'FINANCEIRO' })),
   Contrato: [{ id: 41, codigo: 'CT-41', solicitacao_id: 13, fluxo_novo: true }],
+  ContratoMedicao: [], SolicitacaoFavorecido: [], PagamentoManualFilaItem: [],
   ContratoParcela: [{ id: 51, contrato_id: 41, titulo_financeiro_id: 1, valor: 150, numero: 1 }],
   MedicaoParcela: [{ id: 61, contrato_parcela_id: 51, devolvido_em: null }],
   ContratoComercial: [{ id: 71, numero: 'CC-71', status: 'ATIVO' }],

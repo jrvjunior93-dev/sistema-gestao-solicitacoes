@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { Obra, UsuarioObra } = require('../models');
+const { Obra, UsuarioObra, ConfiguracaoSistema, sequelize } = require('../models');
 const { isObraCentroCusto, TIPO_CENTRO_CUSTO_OBRA } = require('../constants/centroCusto');
 const { obterTokensSetoresUsuario } = require('./usuariosSetores');
 const { userHasSetorCapability } = require('./setorCapabilityService');
@@ -38,6 +38,53 @@ function centroCustoPermiteTodasPrivadas(centroCusto) {
   return tokens.has('MARKETING') || tokens.has('COMERCIAL');
 }
 
+function centroCustoPermiteTodasObras(centroCusto) {
+  const tokens = tokensDoCadastro(centroCusto);
+  return ['ADMINISTRATIVO', 'ADMINISTRATIVA', 'ESCRITORIO', 'DP', 'RH', 'DEPARTAMENTO_PESSOAL'].some(token => tokens.has(token));
+}
+
+async function lerConfiguracao(centroCustoId, transaction = null) {
+  const registro = await ConfiguracaoSistema.findOne({ where: { chave: `CENTRO_CUSTO_OBRAS_DISTRIBUICAO_${Number(centroCustoId)}` }, transaction });
+  if (!registro) return { obras_ids: null };
+  try {
+    const valor = JSON.parse(registro.valor);
+    if (valor.obras_ids === null || (Array.isArray(valor.obras_ids) && valor.obras_ids.every(id => Number.isInteger(id) && id > 0))) return valor;
+  } catch { /* Configuracao invalida nao pode ampliar o escopo. */ }
+  throw erroNegocio('Configuracao de obras do centro de custo invalida. Solicite a revisao ao administrador.', 409);
+}
+
+async function configurarObrasDistribuicao(centroCustoId, payload, usuario) {
+  if (normalizarToken(usuario?.perfil) !== 'SUPERADMIN') throw erroNegocio('Somente SUPERADMIN pode configurar as obras de distribuicao.', 403);
+  const ids = payload?.obras_ids;
+  if (ids !== null && (!Array.isArray(ids) || ids.length > 1000 || ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length)) {
+    throw erroNegocio('Informe obras distintas e validas ou todas as obras elegiveis.');
+  }
+  return sequelize.transaction(async transaction => {
+    const centro = await carregarCentroCusto(centroCustoId, transaction);
+    // Lock do cadastro serializa inclusive a primeira criacao da chave.
+    await Obra.findByPk(centro.id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (ids?.length) {
+      const where = { id: { [Op.in]: ids }, ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA };
+      if (centroCustoPermiteTodasPrivadas(centro)) where.classificacao = 'PRIVADA';
+      if (await Obra.count({ where, transaction }) !== ids.length) throw erroNegocio('Selecione somente obras ativas elegiveis para este centro de custo.');
+    }
+    const chave = `CENTRO_CUSTO_OBRAS_DISTRIBUICAO_${centro.id}`;
+    const valor = JSON.stringify({ obras_ids: ids === null ? null : [...ids].sort((a, b) => a - b) });
+    const atual = await ConfiguracaoSistema.findOne({ where: { chave }, transaction, lock: transaction.LOCK.UPDATE });
+    if (atual) await atual.update({ valor }, { transaction });
+    else await ConfiguracaoSistema.create({ chave, valor }, { transaction });
+    return JSON.parse(valor);
+  });
+}
+
+async function contextoConfiguracao(centroCustoId, usuario) {
+  if (normalizarToken(usuario?.perfil) !== 'SUPERADMIN') throw erroNegocio('Acesso negado.', 403);
+  const centro = await carregarCentroCusto(centroCustoId);
+  const where = { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA };
+  if (centroCustoPermiteTodasPrivadas(centro)) where.classificacao = 'PRIVADA';
+  return { ...await lerConfiguracao(centro.id), obras: await Obra.findAll({ where, attributes: ['id', 'codigo', 'nome', 'classificacao'], order: [['nome', 'ASC']] }) };
+}
+
 async function carregarCentroCusto(centroCustoId, transaction = null) {
   const id = Number(centroCustoId);
   if (!Number.isInteger(id) || id <= 0) throw erroNegocio('Centro de custo invalido.');
@@ -53,6 +100,10 @@ async function carregarCentroCusto(centroCustoId, transaction = null) {
 
 async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transaction = null }) {
   const centroCusto = await carregarCentroCusto(centroCustoId, transaction);
+  const auth = require('./authorizationService');
+  if (!await auth.hasObraAccess(usuario, centroCusto.id) && !await auth.userCanCreateInAllObras(usuario)) {
+    throw erroNegocio('Acesso negado a este centro de custo.', 403);
+  }
   const perfil = normalizarToken(usuario?.perfil);
   const [tokensSetor, possuiCapacidadeObra] = await Promise.all([
     obterTokensSetoresUsuario(usuario),
@@ -60,10 +111,12 @@ async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transa
   ]);
   const usuarioDoSetorObra = possuiCapacidadeObra
     || tokensSetor.map(normalizarToken).includes('OBRA');
-  const podeListarPrivadas = centroCustoPermiteTodasPrivadas(centroCusto) && !usuarioDoSetorObra;
+  const somentePrivadas = centroCustoPermiteTodasPrivadas(centroCusto);
+  const podeListarPrivadas = somentePrivadas && !usuarioDoSetorObra;
+  const configuracao = await lerConfiguracao(centroCustoId, transaction);
 
   const deveRestringirVinculadas = usuarioDoSetorObra
-    || (perfil !== 'SUPERADMIN' && !podeListarPrivadas);
+    || (perfil !== 'SUPERADMIN' && !podeListarPrivadas && !centroCustoPermiteTodasObras(centroCusto) && configuracao.obras_ids === null);
 
   let idsVinculados = null;
   if (deveRestringirVinculadas) {
@@ -79,7 +132,11 @@ async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transa
     ativo: true,
     tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA
   };
-  if (podeListarPrivadas) where.classificacao = 'PRIVADA';
+  if (somentePrivadas) where.classificacao = 'PRIVADA';
+  if (configuracao.obras_ids !== null) {
+    const elegiveis = idsVinculados ? configuracao.obras_ids.filter(id => idsVinculados.includes(id)) : configuracao.obras_ids;
+    idsVinculados = elegiveis;
+  }
   if (idsVinculados) where.id = idsVinculados.length ? { [Op.in]: idsVinculados } : -1;
 
   const obras = await Obra.findAll({
@@ -91,7 +148,7 @@ async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transa
 
   return {
     centro_custo: centroCusto.get({ plain: true }),
-    regra: podeListarPrivadas
+    regra: configuracao.obras_ids !== null ? 'CONFIGURADAS_CENTRO_CUSTO' : somentePrivadas
       ? 'TODAS_PRIVADAS'
       : (deveRestringirVinculadas ? 'VINCULADAS_USUARIO' : 'TODAS'),
     obras: obras.map((obra) => obra.get({ plain: true }))
@@ -209,6 +266,9 @@ async function validarDistribuicaoCentroCusto({
 
 module.exports = {
   CRITERIOS_DISTRIBUICAO,
+  configurarObrasDistribuicao,
+  contextoConfiguracao,
+  centroCustoPermiteTodasObras,
   centroCustoPermiteTodasPrivadas,
   listarObrasElegiveisDistribuicao,
   validarDistribuicaoCentroCusto

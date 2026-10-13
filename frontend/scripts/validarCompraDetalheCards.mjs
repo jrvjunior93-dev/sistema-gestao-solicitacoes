@@ -12,7 +12,7 @@ const pedido = { id: 12, status: 'FECHADO_FORNECEDOR', valor_total: 110, valor_t
   fornecedor: { id: 8, nome: 'Fornecedor teste', parceiro_id: 90 },
   itens: [{ id: 91, solicitacao_compra_item_id: 1, descricao: 'Arame', quantidade_pedido: 2, unidade: 'KG', preco_unitario: 50, valor_total: 100, frete_rateado: 10 },
     { id: 92, descricao: 'Item removido', removido: true }],
-  financeiro: { status: 'AGUARDANDO_PREVISAO', titulos: [], opcoes: { categorias: [{id: 4, nome: 'Material'}] } } };
+  financeiro: { status: 'AGUARDANDO_PREVISAO', titulos: [], opcoes: { categorias: [{id: 4, nome: 'Material'}], formas_pagamento: [{id:7,nome:'Dinheiro',tipo:'DINHEIRO'}] } } };
 const dados = { solicitacao_compra_id: 2, status_compra: 'COTACAO', pedidos: [pedido], comentarios: [
   {id:1,escopo:'ITEM',referencia_id:1,item_tipo:'CADASTRADO',descricao:'Comentário na análise'},
   {id:2,escopo:'PEDIDO_ITEM',referencia_id:91,descricao:'Comentário na entrega'},
@@ -36,6 +36,7 @@ mostrarCotacao={papel==='SUPERADMIN'} podeGerenciarCotacao={interagir}
 onGerenciarItens={papel==='SUPERADMIN' ? item=>window.edicoes.push(item || 'TODOS') : null}/></main></MemoryRouter>}
 createRoot(document.getElementById('root')).render(<App/>);`;
 const api = `export async function obterEtapasCompraSolicitacao(){return structuredClone(window.fixture)}
+export async function marcarComentariosEtapaCompraComoLidos(id,data){window.fixture.leituras_comentarios={...(window.fixture.leituras_comentarios||{}),[data.alvo_chave]:data.historico_id};return data}
 export async function comentarEtapaCompraSolicitacao(id,data){if(window.falharComentario)throw new Error('Falha simulada no comentário');window.comentariosEnviados=(window.comentariosEnviados||[]).concat(data);await new Promise(r=>setTimeout(r,100));window.fixture.comentarios.push({id:window.fixture.comentarios.length+1,...data})}
 export async function registrarEntregaPedido(){throw new Error('Entrega fora do escopo deste teste')}
 export async function obterPedidoCompra(id){return structuredClone(window.fixture.pedidos.find(p=>p.id===id))}
@@ -65,14 +66,18 @@ try {
   const page=await browser.newPage({viewport:{width:1200,height:900}});
   const erros=[];page.on('pageerror',e=>erros.push(e.message));
   await page.route('**/usuarios-lista',r=>r.fulfill({json:[]}));
+  await page.route('**/interacoes/leitura',r=>r.fulfill({json:{interacoes_pendentes:[]}}));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture`);
   const css=fs.readFileSync(path.join(root,'dist/index.html'),'utf8').match(/href="\/assets\/([^\"]+\.css)"/)[1];
   await page.addStyleTag({path:path.join(root,'dist/assets',css)});
-  await page.getByRole('button',{name:'Gerenciar todos os itens'}).click();
+  await page.getByRole('button',{name:'Gerenciar todos os itens',exact:true}).click();
+  await page.getByRole('button',{name:/^Itens não aprovados/}).click();
   await page.getByRole('button',{name:'Editar Areia manual',exact:true}).first().click();
   const edicoes=await page.evaluate(()=>window.edicoes);
   assert.equal(edicoes[0],'TODOS');assert.equal(edicoes[1].item_tipo,'MANUAL');assert.equal(edicoes[1].id,1);
   assert.equal(await page.getByText('Comentário na análise',{exact:true}).count(),0);
+  await page.getByRole('button',{name:/^Itens aprovados/}).click();
+  await page.getByRole('button',{name:/^Itens da solicitação/}).click();
   await page.getByRole('button',{name:'Comentários: Arame',exact:true}).first().click();
   const comentarios=page.getByRole('dialog',{name:'Comentários: Arame',exact:true});
   await comentarios.getByText('Comentário na análise',{exact:true}).waitFor();
@@ -81,7 +86,7 @@ try {
   await comentarios.getByRole('textbox',{name:'Comentário',exact:true}).fill('Mensagem preservada entre etapas');
   await page.evaluate(()=>{window.falharComentario=true});
   await comentarios.getByRole('button',{name:'Enviar',exact:true}).click();
-  await comentarios.getByText('Falha simulada no comentário',{exact:true}).waitFor();
+  await page.getByText('Falha simulada no comentário',{exact:true}).first().waitFor();
   assert.equal(await comentarios.getByRole('textbox',{name:'Comentário',exact:true}).inputValue(),'Mensagem preservada entre etapas');
   await page.evaluate(()=>{window.falharComentario=false});
   await comentarios.getByRole('button',{name:'Enviar',exact:true}).dblclick();
@@ -110,18 +115,20 @@ try {
   await comentarios.getByRole('button',{name:'Fechar comentários',exact:true}).click();
   await page.getByRole('button',{name:'Criar / gerenciar títulos deste pedido'}).click();
   const modal=page.getByRole('dialog');
-  await modal.getByText('Credor (fornecedor do pedido)').waitFor();
+  await modal.getByText('Credor',{exact:true}).waitFor();
   assert.equal(await modal.getByText('Fornecedor teste',{exact:true}).count(),1);
   assert.equal(await modal.getByText('Obra teste',{exact:true}).count(),1);
   assert.equal(await modal.locator('tbody input').first().inputValue(),'100,00');
   await modal.getByLabel('Categoria financeira').selectOption('4');
-  await modal.getByRole('button',{name:'Criar previsões',exact:true}).dblclick();
+  await modal.getByLabel('Forma de pagamento negociada').selectOption('7');
+  await modal.getByLabel('Dados para pagamento',{exact:true}).fill('Pagamento em dinheiro na obra (fixture)');
+  await modal.getByRole('button',{name:'Criar títulos',exact:true}).dblclick();
   await modal.getByText('TIT-700',{exact:true}).waitFor();
   const saida=path.join(root,'../outputs/compra-detalhe-cards-qa');fs.mkdirSync(saida,{recursive:true});
   await page.screenshot({path:path.join(saida,'titulos-por-pedido.png'),fullPage:true});
   const envios=await page.evaluate(()=>window.envios);
   assert.equal(envios.length,1);assert.equal(envios[0].id,12);assert.equal(envios[0].data.parcelas[0].valor,100);
-  assert.equal(await modal.getByRole('button',{name:'Criar previsões',exact:true}).count(),0);
+  assert.equal(await modal.getByRole('button',{name:'Criar títulos',exact:true}).count(),0);
   await modal.getByRole('button',{name:'Fechar títulos do pedido',exact:true}).click();
   await page.getByRole('button',{name:'Somente consulta',exact:true}).click();
   await page.getByRole('button',{name:'Criar / gerenciar títulos deste pedido'}).click();
@@ -141,10 +148,10 @@ try {
   const datas=page.getByRole('dialog',{name:'Confirmar entrega dos pedidos'});
   const gerar=datas.getByRole('button',{name:'Confirmar datas e gerar pedidos'});
   assert.equal(await gerar.isDisabled(),true);
-  assert.equal(await datas.getByLabel('Entrega de Fornecedor A',{exact:true}).inputValue(),'2026-09-23');
-  assert.equal(await datas.getByLabel('Entrega de Fornecedor B',{exact:true}).inputValue(),'2026-09-22');
+  assert.equal(await datas.getByLabel('Entrega de Fornecedor A',{exact:true}).inputValue(),'23/09/2026');
+  assert.equal(await datas.getByLabel('Entrega de Fornecedor B',{exact:true}).inputValue(),'22/09/2026');
   await datas.getByLabel('Confirmo a data de Fornecedor A').check();
-  await datas.getByLabel('Entrega de Fornecedor A',{exact:true}).fill('2026-09-25');
+  await datas.getByLabel('Entrega de Fornecedor A',{exact:true}).fill('25/09/2026');
   assert.equal(await datas.getByLabel('Confirmo a data de Fornecedor A').isChecked(),false);
   await datas.getByLabel('Confirmo a data de Fornecedor A').check();
   await datas.getByLabel('Confirmo a data de Fornecedor B').check();

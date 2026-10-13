@@ -33,6 +33,7 @@ import {
 } from '../components/padrao';
 import StatusBadge from '../components/StatusBadge';
 import './Obras.css';
+import DistribuicaoCentroCustoConfig from '../components/obras/DistribuicaoCentroCustoConfig';
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -185,7 +186,8 @@ function ObraCadastroCard({
   podeGerenciarCadastro,
   onGerenciar,
   onEditar,
-  onToggleAtivo
+  onToggleAtivo,
+  onConfigurarDistribuicao
 }) {
   const cadastroEhObra = isCadastroObra(obra);
   const classificacao = String(obra.classificacao || '').trim().toUpperCase();
@@ -314,6 +316,7 @@ function ObraCadastroCard({
       )}
 
       <footer className="obra-cadastro-card__acoes">
+        {!cadastroEhObra && onConfigurarDistribuicao && <button type="button" className="btn btn-outline btn-sm" onClick={onConfigurarDistribuicao}>Obras para rateio</button>}
         {gestaoObrasHabilitada && cadastroEhObra ? (
           <button type="button" className="btn btn-primary obra-cadastro-card__gerenciar" onClick={onGerenciar}>
             Gerenciar obra
@@ -387,6 +390,7 @@ export default function Obras() {
     new URLSearchParams(window.location.search).get('q') || ''
   ));
   const [modalAberto, setModalAberto] = useState(false);
+  const [centroDistribuicao, setCentroDistribuicao] = useState(null);
   const [form, setForm] = useState(initialFormState());
   const { avisos, avisar, fechar } = useAvisos();
 
@@ -652,6 +656,7 @@ export default function Obras() {
                 onGerenciar={() => navigate(`/obras/${obra.id}`)}
                 onEditar={() => abrirModalEditarObra(obra)}
                 onToggleAtivo={() => toggleAtivo(obra)}
+                onConfigurarDistribuicao={String(user?.perfil).toUpperCase() === 'SUPERADMIN' ? () => setCentroDistribuicao(obra) : undefined}
               />
             ))}
           </section>
@@ -659,6 +664,7 @@ export default function Obras() {
       </BlocoConteudo>
 
       {/* Modal */}
+      {centroDistribuicao && <DistribuicaoCentroCustoConfig centro={centroDistribuicao} onFechar={() => setCentroDistribuicao(null)} />}
       {modalAberto && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && fecharModal()}>
           <div

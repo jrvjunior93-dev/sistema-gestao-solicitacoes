@@ -1,5 +1,7 @@
 import DateInputBR from '../components/DateInputBR';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWorkspaceWork, useWorkspaceTitle } from '../navigation/WorkspaceContext';
+import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao } from '../utils/acessoProduto';
@@ -86,6 +88,14 @@ function countTitulosAbertos(fatura) {
   return (fatura?.titulos || []).filter((titulo) => ['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase())).length;
 }
 
+const formFatura = data => ({
+  conta_bancaria_id: String(data.status || '').toUpperCase() === 'PAGA' ? data.conta_bancaria_id || '' : '',
+  data_pagamento: today(), observacoes: ''
+});
+const revisaoFatura = data => JSON.stringify([data.id, data.status, data.valor_total,
+  data.conta_bancaria_id, data.updatedAt, data.updated_at,
+  (data.titulos || []).map(t => [t.id, t.status, t.valor_saldo, t.valor_original])]);
+
 export default function FinanceiroFaturaCartaoDetalhe() {
   const { user } = useAuth();
   const podeRegistrarBaixa = hasPermissao(user, 'financeiro.cartoes.baixar_fatura');
@@ -97,29 +107,26 @@ export default function FinanceiroFaturaCartaoDetalhe() {
   const [processing, setProcessing] = useState(false);
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
-  const [baixaForm, setBaixaForm] = useState({
-    conta_bancaria_id: '',
-    data_pagamento: today(),
-    observacoes: ''
-  });
+  const draft = useWorkspaceRecordDraft(`fatura:${id}:baixa`, formFatura({}));
+  const baixaForm = draft.value || formFatura({});
+  const setBaixaForm = draft.setValue;
+  const processingRef = useRef(false);
+  useWorkspaceWork(draft.dirty, processing);
+  useWorkspaceTitle(fatura ? `Fatura ${fatura.competencia || fatura.id}` : '');
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setFatura(null); draft.conceal();
 
     getFaturaCartaoFinanceiro(id)
       .then((data) => {
         if (!active) return;
         setFatura(data);
-        setBaixaForm((current) => ({
-          ...current,
-          conta_bancaria_id: String(data.status || '').toUpperCase() === 'PAGA'
-            ? data.conta_bancaria_id || ''
-            : ''
-        }));
+        draft.hydrate(formFatura(data), revisaoFatura(data));
       })
       .catch((err) => {
-        if (active) avisar.erro(err?.message || 'Erro ao carregar fatura de cartao');
+        if (active) { setFatura(null); draft.conceal(); avisar.erro(err?.message || 'Erro ao carregar fatura de cartao'); }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -159,7 +166,12 @@ export default function FinanceiroFaturaCartaoDetalhe() {
 
   async function baixarFatura(event) {
     event.preventDefault();
-    if (!fatura || processing) return;
+    if (!canBaixar || processingRef.current || draft.conflict || loadingOptions) return;
+    if (!contas.some(conta => String(conta.id) === String(baixaForm.conta_bancaria_id))) {
+      avisar.erro('Selecione uma conta disponível antes de baixar a fatura.'); return;
+    }
+    processingRef.current = true; setProcessing(true);
+    try {
 
     /*
       R26 (04/09) — a referência é FIXADA antes do `await`. O modal do
@@ -183,14 +195,14 @@ export default function FinanceiroFaturaCartaoDetalhe() {
     });
     if (!ok) return;
 
-    try {
-      setProcessing(true);
       const data = await baixarFaturaCartaoFinanceiro(faturaAlvo.id, dados);
       setFatura(data);
+      draft.hydrate(formFatura(data), revisaoFatura(data), { discard: true });
       avisar.sucesso('Pagamento da fatura registrado. A conta real recebeu a saída e a conta do cartão recebeu o crédito de compensação.');
     } catch (err) {
       avisar.erro(err?.message || 'Erro ao baixar fatura de cartao');
     } finally {
+      processingRef.current = false;
       setProcessing(false);
     }
   }
@@ -251,7 +263,15 @@ export default function FinanceiroFaturaCartaoDetalhe() {
               cor="var(--module-financeiro)"
               descricao="A baixa registra a saída na conta real e credita a conta de controle do cartão."
             >
+              {draft.conflict && <div role="alert" className="mb-3 text-sm text-[var(--sem-warning)]">
+                O saldo ou status da fatura mudou. Os campos digitados foram preservados; confira os dados atuais antes de baixar.
+                <button type="button" className="btn btn-outline btn-sm ml-2" disabled={processing} onClick={async () => {
+                  const { ok } = await confirmar({ titulo: 'Usar dados atuais', mensagem: 'Descartar a edição pendente desta baixa?', rotuloConfirmar: 'Usar dados atuais', destrutiva: true });
+                  if (ok) draft.discard();
+                }}>Usar dados atuais</button>
+              </div>}
               <form onSubmit={baixarFatura}>
+                <fieldset disabled={processing || draft.conflict || loadingOptions}>
                 {/* R2/R7 — campos da mesma linha com a mesma altura e o mesmo
                     alinhamento: quem mede é o form-grid do FormSecao, não a
                     tela. As classes `app-filter-field` (faixa de filtro) num
@@ -260,6 +280,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
                   <CampoForm label="Conta bancária" obrigatorio>
                     <select
                       className="input"
+                      aria-label="Conta bancária da fatura"
                       value={baixaForm.conta_bancaria_id}
                       onChange={(event) => setBaixaForm((current) => ({ ...current, conta_bancaria_id: event.target.value }))}
                       disabled={loadingOptions}
@@ -295,6 +316,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
                     {processing ? 'Baixando…' : 'Baixar fatura'}
                   </button>
                 </div>
+                </fieldset>
               </form>
             </BlocoConteudo>
           ) : (
@@ -345,6 +367,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
               itens={fatura.titulos || []}
               vazio="Nenhum título vinculado a esta fatura."
               storageKey="tabela:fatura-cartao-detalhe:titulos"
+              chaveWorkspace="fatura:titulos"
               rotuloRolagem="Titulos da fatura"
             />
           </BlocoConteudo>

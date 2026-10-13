@@ -209,7 +209,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       allowNull: true
     },
     pix_chave: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.TEXT,
       allowNull: true
     },
     responsavel_contratacao_id: {

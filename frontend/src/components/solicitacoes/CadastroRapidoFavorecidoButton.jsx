@@ -131,7 +131,6 @@ export default function CadastroRapidoFavorecidoButton({
                 <input
                   className="input input-sm"
                   value={form.chave_pix}
-                  maxLength={255}
                   required
                   autoComplete="off"
                   onChange={(event) => alterar('chave_pix', event.target.value)}
