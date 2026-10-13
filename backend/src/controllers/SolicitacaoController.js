@@ -4441,7 +4441,8 @@ module.exports = {
       const criacaoUploadToken = gerarTokenUploadCriacaoSolicitacao({
         solicitacaoId: solicitacao.id,
         usuarioId,
-        tipos: tiposUploadInicial
+        tipos: tiposUploadInicial,
+        solicitacaoNova: true
       });
       const respostaSolicitacaoBase = solicitacao?.toJSON ? solicitacao.toJSON() : solicitacao;
       const respostaSolicitacao = criacaoUploadToken

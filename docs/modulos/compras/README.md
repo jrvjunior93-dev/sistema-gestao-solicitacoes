@@ -1,5 +1,39 @@
 # Modulo COMPRAS
 
+## Remocao isolada de arquivo financeiro do pedido - 2026-10-13
+
+Documentos financeiros possuem vinculo proprio; excluir titulos nao remove
+boletos do pedido. Remover anexo agora abre confirmacao e desvincula somente
+arquivo_url/arquivo_nome do documento, com auditoria no historico da solicitacao.
+Preserva metadados, titulos, baixas, anexos da solicitacao e objeto armazenado.
+Boleto sem arquivo sai da lista; notas/comprovacoes sem arquivo podem continuar
+como registro de numero/documento. Nao e exclusao global do arquivo.
+
+DELETE `/compras/pedidos/:id/financeiro/documentos/:documentoId/arquivo` exige
+as permissoes existentes de anexar documento financeiro do pedido E excluir
+anexo de solicitacao, alem do mesmo escopo/ACL do pedido. O documento deve
+pertencer ao pedido da URL. Transacao e locks tornam repeticao idempotente;
+falha de auditoria reverte a desvinculacao. Confirmacao tem mutex/botao bloqueado.
+Atualizar documentos preserva pagamentos em preenchimento se seus dados-base
+nao mudaram. Sem nova permissao, migration, consulta real ou exclusao fisica.
+
+Testes: `validarPedidoDocumentoRemocao.js`, `validarPedidoBoletoOpcional.js`,
+`validarPedidoBoletoOpcionalUI.mjs` e `validarWorkspacePiloto.mjs --pedido-only`.
+[Handoff](../../handoffs/2026-10-13-pedido-anexos-fila-cabecalho.md).
+
+## Boleto opcional na criacao de titulos do pedido - 2026-10-13
+
+Compras pode criar titulos do pedido com forma Boleto sem anexar o arquivo,
+tanto para o fornecedor quanto para frete pago a terceiro. Se informados,
+os boletos continuam registrados no pedido e na solicitacao pela mesma
+transacao, aceitando multiplos arquivos. Categoria, favorecido, valores,
+vencimentos, permissoes e escopo continuam obrigatorios conforme o fluxo atual.
+Nao altera exigencias da Nova Solicitacao, autorizacao/baixa de pagamentos,
+comprovantes nem dados existentes. Sem migration.
+
+Testes locais: `node scripts/validarPedidoBoletoOpcional.js` no backend e
+`node scripts/validarPedidoBoletoOpcionalUI.mjs` no frontend, sem banco real.
+
 ## Delegacao: abrir em outra aba - 2026-10-12
 
 Abrir preserva a Delegacao e abre uma aba interna para a solicitacao
@@ -204,6 +238,16 @@ Reabrir um pedido libera ajustes operacionais, mas preserva as alocacoes ja comp
 - a rotina de regularizacao de pedidos cancelados existe para corrigir registros historicos em que o status do pedido foi cancelado, mas itens ou alocacoes permaneceram ativos; ela deve ser executada primeiro em simulacao e somente no banco explicitamente confirmado.
 
 ## Mudanca segura
+
+### Acoes granulares e cartoes do pedido (13/10/2026)
+
+- O rodape do comparativo tambem aparece quando nao ha respostas comparaveis. Cada acao e exibida pela sua permissao granular; `encerrar_sem_pedido` nao concede geracao de pedidos.
+- Bloqueios de contexto, setor, status ou saldo mantem a acao desabilitada com explicacao. As regras de escrita do backend e a visibilidade da solicitacao nao foram ampliadas.
+- O formulario financeiro do pedido autorizado recebe somente identificacao minima dos cartoes ativos (id, nome, tipo e ultimos digitos). Resumos leves nao consultam cartoes.
+- Credito/debito permitem escolher o cartao compativel e informar a data da compra, inclusive no frete de terceiro. O backend revalida os instrumentos e usa a criacao financeira canonica: credito vincula parcelas as faturas, debito usa a conta cadastrada no cartao.
+- A curadoria existente das formas de pagamento permanece igual; apenas a propriedade `gera_fatura` foi incluida na resposta para descrever corretamente o fluxo de credito.
+- Os testes simulam usuario comum de Compras com permissoes explicitas, sem acesso ao cadastro real de Luiz Afonso Pirovani Barradas. Homologar esse usuario em dev antes da publicacao.
+- Validacoes: `validarPedidoBoletoOpcional.js`, `validarCartaoOpcionalSolicitacao.js`, `validarPedidoBoletoOpcionalUI.mjs` e `validarWorkspacePiloto.mjs --correcoes-only`, com regressoes de escopo/seguranca e build. Sem migration de Compras. Handoff: `docs/handoffs/2026-10-13-compras-acoes-granulares-cartoes.md`.
 
 ### Comparativo e superadmin (12/10/2026)
 

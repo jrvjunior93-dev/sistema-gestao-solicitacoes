@@ -2236,6 +2236,9 @@ function SecaoComparativo({
   podeComprar,
   podeEncerrar,
   podeEncerrarSemPedido,
+  exibirEncerrar = podeEncerrar,
+  exibirEncerrarSemPedido = podeEncerrarSemPedido,
+  motivoBloqueioEncerramento,
   podeEditarResposta,
   vencedoresSelecionados,
   onVencedorChange,
@@ -2456,6 +2459,22 @@ function SecaoComparativo({
     );
   }
 
+  // Permissao define a presenca da acao; contexto/status definem se pode executar.
+  // O rodape nao depende de respostas nem da permissao genérica de editar cotacoes.
+  const rodapeEncerramento = (exibirEncerrar || exibirEncerrarSemPedido) ? <div className="mt-3">
+    {motivoBloqueioEncerramento ? <p className="mb-2 text-sm text-[var(--c-muted)]">{motivoBloqueioEncerramento}</p> : null}
+    <div className="app-page-actions app-actionbar-apartada justify-end">
+      {exibirEncerrarSemPedido ? <button type="button" className="btn btn-outline btn-perigo-suave"
+        onClick={onEncerrarSemPedido} disabled={!podeEncerrarSemPedido || encerrando || encerrandoSemPedido}>
+        {encerrandoSemPedido ? 'Encerrando...' : 'Encerrar sem pedido'}
+      </button> : null}
+      {exibirEncerrar ? <button type="button" className="btn btn-primary"
+        onClick={onEncerrar} disabled={!podeEncerrar || encerrando || encerrandoSemPedido}>
+        {encerrando ? 'Atualizando...' : 'Gerar pedidos selecionados'}
+      </button> : null}
+    </div>
+  </div> : null;
+
   if (!comparativo?.itens?.length) {
     return (
       <BlocoConteudo
@@ -2466,6 +2485,7 @@ function SecaoComparativo({
         <div className="app-empty-card">
           O comparativo aparece assim que os fornecedores responderem a cotação.
         </div>
+        {rodapeEncerramento}
       </BlocoConteudo>
     );
   }
@@ -2815,31 +2835,7 @@ function SecaoComparativo({
         </div>
         )}
 
-          {(podeEncerrar || podeEncerrarSemPedido) && String(solicitacao.status || '').toUpperCase() !== 'RECUSADO' && (
-            /* C5: um primário sólido; a destrutiva fica APARTADA, em vermelho
-               suave (`.btn-perigo-suave`), nunca pintada à mão. */
-            <div className="app-page-actions app-actionbar-apartada justify-end">
-              {podeEncerrarSemPedido ? (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-perigo-suave"
-                  onClick={onEncerrarSemPedido}
-                  disabled={encerrando || encerrandoSemPedido}
-                >
-                  {encerrandoSemPedido ? 'Encerrando...' : 'Encerrar sem pedido'}
-                </button>
-              ) : null}
-              {podeEncerrar ? (
-                <button type="button" className="btn btn-primary" onClick={onEncerrar} disabled={encerrando || encerrandoSemPedido}>
-                  {encerrando
-                    ? 'Atualizando...'
-                    : String(solicitacao.status || '').toUpperCase() === 'ENCERRADO'
-                      ? 'Atualizar vencedores e pedidos'
-                      : 'Gerar pedidos selecionados'}
-                </button>
-              ) : null}
-            </div>
-          )}
+          {rodapeEncerramento}
       </BlocoConteudo>
 
     </>
@@ -3770,6 +3766,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
        comprar outro — consentimento válido para uma ação que ninguém deu.
   */
   async function handleEncerrar() {
+    if (somenteLeitura || !(podeFecharParcialCotacao || podeEncerrarCotacao)) return;
     if (encerramentoEmCursoRef.current) return;
     encerramentoEmCursoRef.current = true;
     setEncerrando(true);
@@ -4468,6 +4465,13 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         podeComprar={podeOperarFluxo}
         podeEncerrar={(podeFecharParcialCotacao || podeEncerrarCotacao) && !fluxoTerminal}
         podeEncerrarSemPedido={podeEncerrarSemPedidoCotacao && !fluxoTerminal && cotacoesAtivas.length > 0 && resumoEncerramentoSemPedido.saldoTotal > 0.0001}
+        exibirEncerrar={canFecharParcialComprasCotacoes(user) || canEncerrarComprasCotacoes(user)}
+        exibirEncerrarSemPedido={canEncerrarSemPedidoComprasCotacoes(user)}
+        motivoBloqueioEncerramento={somenteLeitura
+          ? 'Para encerrar ou gerar pedidos, solicite o retorno da solicitação ao setor de Compras.'
+          : fluxoTerminal ? 'A cotação está encerrada, recusada ou cancelada. Não é possível gerar novos pedidos ou encerrar novamente.'
+            : !cotacoesAtivas.length ? 'Não há cotação ativa para encerrar sem pedido.'
+              : resumoEncerramentoSemPedido.saldoTotal <= 0.0001 ? 'Não há saldo restante para encerrar sem pedido.' : null}
         podeEditarResposta={podeEditarRespostas}
         vencedoresSelecionados={vencedoresSelecionados}
         onVencedorChange={handleVencedorChange}

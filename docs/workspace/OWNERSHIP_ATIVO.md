@@ -79,6 +79,264 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Publicacao: carteira sem conta e cadastro de favorecido - 2026-10-13
+
+- Usuario autorizou commit e push das duas correcoes em refactor/frontend.
+- Agente desta conversa, sem delegacao; conferencia/staging dos arquivos das
+  correcoes, testes e docs reservados e liberados apos verificacao.
+- Revalidacao de cadastro/origem, liquidacao rateada, estorno, credor e docs
+  aprovada. Build e UI desktop/mobile aprovados nas etapas locais.
+- outputs/ preservado fora do commit. Sem nova migration, escrita em banco,
+  EC2, reinicio ou promocao main. Comandos dev exigem UUID e schema prontos.
+- Homologacao MySQL e fluxos reais permanecem para o ambiente dev.
+
+## Cadastro rapido de favorecido - contexto da origem - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Reservados: operationalValidators.js, novo teste de cadastro de favorecido,
+  backend/package.json, README de Solicitacoes e handoff. Alteracoes anteriores
+  da fila preservadas.
+- Escopo: aceitar obra_id validado como contexto de configuracao dos campos;
+  preservar bloqueios por tipo/subtipo, idempotencia e visibilidade existentes.
+- Sem banco real, migration, EC2, commit ou push.
+- Cadastro/PIX/credor, UI de Medicao desktop/mobile, sintaxe, documentacao e
+  diff aprovados. Handoff: docs/handoffs/2026-10-13-cadastro-favorecido-origem.md.
+
+## Fila - cheque de terceiros sem conta bancaria - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Reservados: paymentValidators, pagamentoFilaLiquidacaoService,
+  pagamentoManualFilaService, componentes financeiros da baixa em massa,
+  FinanceiroFilaPagamentos, testes isolados/UI e documentacao/handoff.
+- Escopo confirmado: empresa da carteira para cheque de terceiro; conta somente
+  para cheque proprio. Preservar ACL, rateio, idempotencia e estorno atomico.
+- Sem banco real, migration, EC2, commit ou push.
+- Validacoes isoladas backend, UI desktop/mobile, navegacao financeira, build,
+  documentacao e diff aprovados. Handoff: docs/handoffs/2026-10-13-fila-carteira-sem-conta.md.
+
+## Publicacao: pedido anexos e cabecalho da baixa - 2026-10-13
+
+- Usuario autorizou commit e push das alteracoes pendentes em refactor/frontend.
+- Agente desta conversa, sem delegacao; staging limitado aos arquivos da correcao,
+  testes e documentacao, liberado apos conferencia. outputs/ nao sera versionado.
+- Comandos EC2 fornecidos com identidade UUID dev e preflight somente leitura;
+  nenhuma operacao de banco/EC2 nem reinicio executado pelo agente.
+- Sem migration nova. Se houver schema anterior pendente, parar antes do restart.
+  Nao tocar main nem backend-solicitacoes; push pode iniciar frontend dev na Vercel.
+
+## Correcao do cabecalho de baixa e remocao isolada de anexos do pedido - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Reserva: BaixaMassaFilaModal, ChequesParceladosFilaModal, testes UI da fila;
+  PedidoCompraFinanceiro, services/compras, routes, PedidoCompraFinanceiroController,
+  pedidoCompraFinanceiroService, testes de documentos e UI do pedido, docs/handoff.
+- Escopo: pagamento definido somente no cabecalho da massa; remover vinculo de
+  arquivo do pedido com auditoria, sem titulo/baixa/exclusao fisica do objeto.
+- Preservar ACL de pedido e exigir permissoes existentes de anexar documento
+  financeiro e excluir anexo. Sem banco real, migration, commit/push ou EC2.
+- Testes backend, UI desktop/mobile, navegacao, build e documentacao aprovados.
+  Handoff: docs/handoffs/2026-10-13-pedido-anexos-fila-cabecalho.md.
+
+## Publicacao dos instrumentos compartilhados da fila - 2026-10-13
+
+- Usuario autorizou commit e push das alteracoes pendentes em refactor/frontend.
+- Agente desta conversa, sem delegacao; conferencia de staging reservada
+  nesta publicacao e liberada apos verificacao.
+- Inclui origem explicita, conjunto unico de cheques, multicartao, faturas,
+  estorno atomico, migration aditiva preparada, testes e documentacao.
+- outputs/ excluido do commit. Sem aplicar migration, operar banco/EC2,
+  reiniciar processos ou promover main. Homologacao MySQL continua pendente.
+- Push pode iniciar deploy automatico do frontend dev. Schema e backend
+  compativeis devem ser atualizados antes de usar os novos instrumentos.
+
+## Fila - liquidacao compartilhada confirmada - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Usuario confirmou conjunto unico de cheques rateado e cartoes/valores separados.
+- Reserva: servicos pagamentoManualFila, tituloFinanceiro, faturaCartao,
+  novo dominio/servico de liquidacao compartilhada; validators de pagamento;
+  model/migration aditivos de grupo e movimento; componentes de instrumentos
+  da fila, pagina fila/faturas, testes focados e docs deste fluxo.
+- Registros legados preservados. Estorno atomico de todo grupo, ACL por titulo,
+  faturas apenas com valor alocado. Sem banco real, deploy ou EC2.
+- Migration 202610130002_fila_liquidacao_rateada.js preparada, NAO aplicada.
+- Testes backend, UI desktop/mobile, faturas, navegacao, docs e build aprovados.
+  MySQL/concorrencia entre processos ainda precisam de homologacao em dev.
+- Handoff: docs/handoffs/2026-10-13-fila-origem-instrumentos-massa.md.
+
+## Fila - origem explicita e instrumentos em massa - 2026-10-13
+
+- Agente desta conversa, sem delegacao; primeira etapa local concluida,
+  ownership liberado; ampliacao confirmada e concluida no registro acima.
+- Reserva: InstrumentoPagamentoFila.jsx, ChequesParceladosFilaModal.jsx,
+  BaixaMassaFilaModal.jsx, filaWorkspaceDraft.js, validarFilaInstrumentosUI.mjs,
+  README financeiro e handoff correspondente.
+- Mapear antes de ampliar backend: atualmente cheque e carteira sao unicos por
+  lote e cartao de credito vincula valor integral do titulo a uma unica fatura.
+- Primeira etapa: origem explicita, sem abrir cheque proprio ao escolher forma.
+- Extensao de rateio/multicartao confirmada pelo usuario e implementada acima.
+- Sem banco, migration aplicada, deploy, commit/push ou EC2 nesta tarefa.
+
+## Publicacao da quantidade automatica de cheques - 2026-10-13
+
+- Pedido explicito nesta conversa: commitar as alteracoes pendentes e publicar
+  em refactor/frontend. Agente desta conversa, sem delegacao; conferencia de
+  staging reservada nesta publicacao e liberada apos verificacao.
+- Escopo restrito ao ajuste frontend, testes e documentacao de cheques.
+- UI desktop/mobile, build e validacoes financeiras isoladas aprovados.
+- Evidencias outputs/ ficam fora do commit; sem banco, migration, reinicio
+  de processos, EC2 ou promocao para main.
+
+## Cheques - quantidade automatica - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: ChequesParceladosFilaModal.jsx, validarFilaInstrumentosUI.mjs,
+  README financeiro e handoff. Sem alteracoes aos outros fluxos.
+- Escopo: quantidade valida gera campos automaticamente, sem aplicar/adicionar
+  um a um; preservar preenchimentos durante a edicao e limites de 1 a 60.
+- Payload, soma em centavos, carteira, ACL e submissao/confirmacao preservados.
+- Sem backend, banco, migration, commit/push ou EC2 nesta tarefa.
+- Handoff: docs/handoffs/2026-10-13-cheques-quantidade-automatica.md.
+
+## Publicacao Ticket, Compras e modal de baixa - 2026-10-13
+
+- Pedido explicito nesta conversa: commitar todas as alteracoes pendentes e
+  publicar em refactor/frontend. Agente desta conversa, sem delegacao;
+  ownership da conferencia de staging liberado apos verificacao.
+- Inclui Ticket Boleto/Pix, acoes granulares e cartoes no pedido, formas/cheques
+  no modal de baixa em massa, testes e documentacao correspondentes.
+- Testes focados backend/ACL reexecutados; UI desktop/mobile e build aprovados
+  nas etapas locais. Evidencias outputs/ ficam fora do commit.
+- Migration 202610130001_rh_ticket_pix_colaboradores.js apenas publicada como
+  codigo, nao aplicada. Precisa preceder a inicializacao do backend atualizado.
+- Push pode iniciar deploy automatico do frontend de dev; sem promover main,
+  aplicar migration/banco, reiniciar processos ou operar EC2 nesta tarefa.
+
+## Baixa em massa - formas e cheques no modal - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: BaixaMassaFilaModal.jsx, InstrumentoPagamentoFila.jsx,
+  ChequesParceladosFilaModal.jsx, FinanceiroFilaPagamentos.jsx (integracao
+  do modal), validarFilaInstrumentosUI.mjs, README financeiro e handoff.
+- Escopo: forma efetivamente paga por titulo ou aplicada aos selecionados,
+  cheques proprios/terceiros em carteira, quantidade e dados no fluxo do modal.
+- Reutilizar payload/validacoes, ACL, transacao e mutex existentes. Preservar
+  alteracoes pendentes de Ticket/Compras. Sem banco, EC2, commit ou deploy.
+- Handoff: docs/handoffs/2026-10-13-fila-massa-formas-cheques-modal.md.
+
+## Compras - acoes granulares e cartoes do pedido - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: GerenciarCotacaoSolicitacao.jsx (rodape do comparativo),
+  PedidoCompraFinanceiro.jsx, pedidoCompraFinanceiroService.js,
+  operationalValidators.js (payload do pedido), formasPagamentoMedicaoService.js
+  (projecao aditiva de gera_fatura), testes focados e handoff.
+- Mapear permissoes individuais, contexto de interacao e status; nao conceder
+  gerar pedidos a quem possui somente encerrar sem pedido.
+- Cartoes ativos em projecao minima do pedido autorizado; envio ao servico
+  financeiro canonico para fatura/baixa, sem novas permissoes de cadastro.
+- Sem banco real, migrations aplicadas, publicacao ou deploy.
+- Handoff: docs/handoffs/2026-10-13-compras-acoes-granulares-cartoes.md.
+
+## Ticket Boleto/Pix por colaborador - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: rhTicketService.js, RhTicketController.js, RhTicketLote.js,
+  RhTicketLoteItem.js, models/index.js (associacao ticket), nova migration
+  estrutural e testes ticket; RhDpColaboradores.jsx, services/rhDp.js,
+  novo componente do modal, validarRhColaboradorContatos.mjs (sincronizacao
+  da abertura do modal no teste), README RH/DP e handoff.
+- Autorizado: boleto obrigatorio somente ao escolher Boleto, escolha Boleto/Pix, revisao das chaves,
+  titulo por colaborador no Pix e estrutura compativel com lotes existentes.
+- Preservar ACL, conferencia GEO, valores/empresa/lotacao e idempotencia.
+- Sem banco real, aplicacao de migration, commit/push, EC2 ou deploy.
+- Handoff: docs/handoffs/2026-10-13-ticket-boleto-pix-colaboradores.md.
+
+## Publicacao das alteracoes pendentes - 2026-10-13
+
+- Pedido explicito: commitar e publicar em refactor/frontend.
+- Agente desta conversa, sem delegacao; conferencia de staging concluida,
+  ownership liberado, sem nova mudanca funcional.
+- Pacote: filtros/Ctrl+clique em Solicitacoes; baixa em massa, desconto,
+  cheques e estorno na fila; interacoes sem anexos iniciais; modal so boletos.
+- Artefatos outputs/ fora do commit. Sem promover main, operar banco,
+  executar migrations ou reiniciar EC2. Push pode disparar deploy automatico
+  do frontend; backend-dev ainda exige atualizacao/homologacao separadas.
+- Testes focados backend, negativas de seguranca e documentacao reexecutados
+  antes do commit; build e UI desktop/mobile aprovadas nas entregas locais.
+
+## Modal da fila somente boletos - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: solicitacaoFilaPagamentoAcessoService.js, ArquivosSolicitacaoFilaModal.jsx,
+  validarFilaPagamentoSolicitacaoAcesso.js, validarArquivosSolicitacaoFila.mjs,
+  validarFilaInstrumentosUI.mjs (fixture), README financeiro e handoff.
+- Escopo: listar somente anexos BOLETO no modal da fila. Preservar ACL,
+  visualizacao/download, comprovantes nos botoes proprios e demais anexos no detalhe.
+- Sem exclusao de arquivos, banco, migration, commit/push ou deploy.
+- Testes de acesso/seguranca, modal, fila desktop/mobile e build aprovados.
+  Handoff: docs/handoffs/2026-10-13-fila-modal-somente-boletos.md.
+
+## Interacoes sem anexos da criacao - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: solicitacaoCriacaoUploadTokenService.js, AnexoController.js,
+  SolicitacaoController.js (somente token da criacao nova), solicitacaoInteracoesService.js,
+  validarInteracoesSolicitacao.js, novo teste de upload inicial, README e handoff.
+- Escopo: criacao e arquivos do mesmo ato nao geram balao/prioridade de
+  interacao; anexos posteriores e medicoes em solicitacao existente preservados.
+- Sem alterar ACL, historico, banco, notificacao geral, migrations ou deploy.
+- Testes de criacao/anexos/interacoes, seguranca e UI desktop/mobile aprovados.
+  Handoff: docs/handoffs/2026-10-13-interacoes-anexos-criacao.md.
+
+## Fila de pagamentos - baixa, cheques, desconto e estorno - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: implementacao local concluida, ownership liberado.
+- Reserva: FinanceiroFilaPagamentos.jsx, InstrumentoPagamentoFila.jsx, novos
+  componentes/helpers de baixa/cheques, filaWorkspaceDraft.js, services/financeiro.js;
+  useColunasOperacionais.jsx (ancora opt-in para coluna nova, sem resetar preferencias);
+  pagamentoManualFilaService.js, pagamentoFilaValoresDomain.js,
+  pagamentoFilaInstrumentoDomain.js, tituloFinanceiroService.js, paymentValidators.js,
+  pagamentoFilaComprovanteDomain.js, financeiroRotaPermissoesService.js,
+  PagamentoManualFilaController.js, routes.js, testes da fila, README financeiro e handoff.
+- Escopo autorizado: modal de baixa em massa, varios cheques por titulo,
+  desconto antes de juros, estorno e devolucao de nao pagos com autorizacao valida.
+- Preservar ACL/visibilidade e registros anteriores; testes isolados sem banco
+  real, migrations, EC2, deploy ou publicacao. Alteracoes anteriores de Solicitacoes preservadas.
+- Handoff: docs/handoffs/2026-10-13-fila-baixa-cheques-estorno-desconto.md.
+
+## Filtros e Ctrl+clique em Solicitacoes - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reserva: pages/Solicitacoes/index.jsx, novo helper consultaSessao.js,
+  componente ListaAvancada.jsx (propagar evento, sem mudar outros consumidores),
+  Layout.jsx (excecao explicita de link nativo, sem mudar demais links),
+  validarWorkspacePiloto.mjs, README de Solicitacoes e handoff desta tarefa.
+- Escopo: restaurar somente parametros de consulta por usuario/escopo/lista;
+  links reais e Ctrl+clique, mantendo clique comum e regras de acesso.
+  Sem DTO cacheado, alteracao de backend/ACL, banco, commit, push ou deploy.
+- Validacoes UI desktop/mobile, negativa 403/usuario/escopo, seguranca backend,
+  correcoes existentes e build aprovadas. Handoff:
+  docs/handoffs/2026-10-13-solicitacoes-filtros-ctrl-clique.md.
+
+## Boleto opcional nos titulos do pedido - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reserva: PedidoCompraFinanceiro.jsx, pedidoCompraFinanceiroService.js,
+  novos testes validarPedidoBoletoOpcional.js e validarPedidoBoletoOpcionalUI.mjs,
+  README de Compras e handoff desta tarefa.
+- Escopo: somente anexo de boleto na criacao de titulos da compra/frete no pedido.
+  Preservar valores, formas, favorecidos, parcelas, permissoes, escopo e idempotencia.
+  Sem banco real, migration, commit, push ou deploy.
+- Testes novos backend/UI, financeiro do pedido, escopo de acesso, resumo de
+  compras, sintaxe, documentacao e build aprovados. Handoff:
+  docs/handoffs/2026-10-13-pedido-boleto-opcional.md.
+- Commit e push em refactor/frontend autorizados pelo usuario nesta etapa.
+  Commit isolado incorporado na base 1d7951b9 de refactor/frontend e testes
+  novos backend/UI/documentacao reexecutados com sucesso. Reserva encerrada;
+  publicar fast-forward, sem promover main nem executar deploy.
+  Sujeira de outros checkouts e outputs/ preservados.
+
 ## Seguranca de acesso direto e exclusao - 2026-10-12
 
 - Sessao codex-seguranca-acesso-direto-20261012, sem delegacao.

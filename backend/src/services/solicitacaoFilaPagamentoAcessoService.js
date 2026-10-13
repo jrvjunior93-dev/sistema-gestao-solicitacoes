@@ -1,4 +1,4 @@
-const { Anexo, Comprovante, PagamentoManualFilaItem, TituloFinanceiro } = require('../models');
+const { Anexo, PagamentoManualFilaItem, TituloFinanceiro } = require('../models');
 const { canAccessFilaPagamentos } = require('./authorizationService');
 
 // A fila concede apenas leitura da solicitacao vinculada a um titulo que
@@ -29,16 +29,12 @@ async function listarArquivosSolicitacaoPelaFila(user, solicitacaoId) {
     throw error;
   }
 
-  const [anexos, comprovantes] = await Promise.all([
-    Anexo.findAll({
-      where: { solicitacao_id: id, deleted_at: null },
-      attributes: ['id', 'nome_original', 'caminho_arquivo', 'tipo', 'createdAt']
-    }),
-    Comprovante.findAll({
-      where: { solicitacao_id: id, deleted_at: null },
-      attributes: ['id', 'nome_original', 'caminho_arquivo', 'createdAt']
-    })
-  ]);
+  // BOLETO identifica o campo de pagamento; nome/extensao do arquivo nao
+  // determinam a origem. Demais anexos/comprovantes seguem no fluxo proprio.
+  const anexos = await Anexo.findAll({
+    where: { solicitacao_id: id, tipo: 'BOLETO', deleted_at: null },
+    attributes: ['id', 'nome_original', 'caminho_arquivo', 'tipo', 'createdAt']
+  });
 
   return [
     ...anexos.map((arquivo) => ({
@@ -46,13 +42,6 @@ async function listarArquivosSolicitacaoPelaFila(user, solicitacaoId) {
       nome_original: arquivo.nome_original,
       caminho_arquivo: arquivo.caminho_arquivo,
       tipo: arquivo.tipo || 'Anexo',
-      createdAt: arquivo.createdAt
-    })),
-    ...comprovantes.map((arquivo) => ({
-      id: `comprovante-${arquivo.id}`,
-      nome_original: arquivo.nome_original,
-      caminho_arquivo: arquivo.caminho_arquivo,
-      tipo: 'Comprovante',
       createdAt: arquivo.createdAt
     }))
   ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));

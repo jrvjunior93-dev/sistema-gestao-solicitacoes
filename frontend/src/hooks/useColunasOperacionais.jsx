@@ -9,7 +9,12 @@ export default function useColunasOperacionais(colunas, storageKey) {
   const ids = colunas.map(c => c.key);
   const conhecidas = value => [...new Set(Array.isArray(value) ? value.filter(id => ids.includes(id)) : [])];
   const ordemSalva = conhecidas(preferencia?.ordem);
-  const ordem = [...ordemSalva, ...ids.filter(id => !ordemSalva.includes(id))];
+  const ordem = [...ordemSalva];
+  for (const coluna of colunas.filter(item => !ordemSalva.includes(item.key))) {
+    const ancora = coluna.antesDe ? ordem.indexOf(coluna.antesDe) : -1;
+    if (ancora >= 0) ordem.splice(ancora, 0, coluna.key);
+    else ordem.push(coluna.key);
+  }
   const ocultas = conhecidas(preferencia?.ocultas);
   const visiveisSalvas = conhecidas(preferencia?.visiveis);
   const visiveis = ids.filter(id => !Array.isArray(preferencia?.visiveis) || visiveisSalvas.includes(id)

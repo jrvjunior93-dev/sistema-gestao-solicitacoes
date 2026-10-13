@@ -15,8 +15,9 @@ function calcularTotalComEncargos(saldo, dados = {}) {
   const saldoCents = centavos(saldo, 'Saldo');
   const juros = centavos(dados.juros, 'Juros');
   const multa = centavos(dados.multa, 'Multa');
-  const totalEsperado = centavos((saldoCents + juros + multa) / 100, 'Total previsto') / 100;
-  return { juros: juros / 100, multa: multa / 100, totalEsperado };
+  const desconto = centavos(dados.desconto, 'Desconto');
+  const totalEsperado = centavos((saldoCents + juros + multa - desconto) / 100, 'Total previsto') / 100;
+  return { juros: juros / 100, multa: multa / 100, desconto: desconto / 100, totalEsperado };
 }
 
 // Valor pago e o desembolso TOTAL; apenas o principal abate o saldo do titulo.
@@ -26,7 +27,7 @@ function calcularValoresFila(valorPago, saldo, dados = {}) {
   const encargos = calcularTotalComEncargos(saldo, dados);
   const juros = centavos(encargos.juros, 'Juros');
   const multa = centavos(encargos.multa, 'Multa');
-  const principal = pago - juros - multa;
+  const principal = pago - juros - multa + centavos(encargos.desconto, 'Desconto');
   if (principal <= 0) {
     const error = new Error('Valor pago deve ser maior que a soma de juros e multa.');
     error.statusCode = 400;

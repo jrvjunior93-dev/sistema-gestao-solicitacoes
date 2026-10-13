@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useWorkspace, useWorkspaceState, useWorkspaceRestored, useWorkspaceEdicaoSolicitacao, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import Filtros from './Filtros';
 import { consultarJanela } from './consultarJanela';
+import { lerConsultaSessao, salvarConsultaSessao } from './consultaSessao';
 import { API_URL, authHeaders } from '../../services/api';
 import { getSetores } from '../../services/setores';
 import { getTiposSolicitacao } from '../../services/tiposSolicitacao';
@@ -179,6 +180,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const [consultaSessaoInicial] = useState(() => lerConsultaSessao(user, arquivadas, location.search));
   // R19: nada de caixa do navegador. Faixa de aviso dentro da página e
   // modal de confirmação do sistema — os dois vindos dos padrões.
   const { avisos, avisar, fechar } = useAvisos();
@@ -269,11 +271,11 @@ export default function Solicitacoes({ arquivadas = false }) {
 
   // Filtro por ids vindo da faixa de pendências do Hub (?ids=1,2,3):
   // leva o usuário direto às solicitações citadas no contador.
-  const [filtroIdsUrl, setFiltroIdsUrl] = useState([]);
+  const [filtroIdsUrl, setFiltroIdsUrl] = useWorkspaceState('lista:ids-url', []);
   // Visão nomeada vinda dos cartões de pendência do Hub (?visao=...):
   // o backend aplica o MESMO recorte SQL do contador — o número do
   // cartão e esta lista sempre batem.
-  const [filtroVisaoUrl, setFiltroVisaoUrl] = useState('');
+  const [filtroVisaoUrl, setFiltroVisaoUrl] = useWorkspaceState('lista:visao-url', '');
 
   // Estado de consulta vindo da ListaAvancada (visão, filtros rápidos,
   // busca única, ordenação). A página continua dona dos DADOS.
@@ -285,18 +287,18 @@ export default function Solicitacoes({ arquivadas = false }) {
   // janela carregada, e só as visões cujos parâmetros o controller atual
   // entende ficam visíveis. Religar trocando a constante.
   const B3_DISPONIVEL = true;
-  const [consultaWorkspace, setConsultaWorkspace] = useWorkspaceState('lista:consulta', { visao: null, filtros: {}, busca: '', ordenacao: { campo: 'createdAt', direcao: 'desc' } });
+  const [consultaWorkspace, setConsultaWorkspace] = useWorkspaceState('lista:consulta', consultaSessaoInicial?.consulta || { visao: null, filtros: {}, busca: '', ordenacao: { campo: 'createdAt', direcao: 'desc' } });
   const consultaListaRef = useRef(consultaWorkspace);
   const [versaoConsulta, setVersaoConsulta] = useState(0);
   const acumularProximaRef = useRef(false);
   // ?q= e ?obra_ids= chegam da busca universal (Ctrl+K) e das ações
   // rápidas de obra: a lista abre já filtrada. Lidos uma vez, no mount.
   const [buscaUrlInicial] = useState(() => (
-    new URLSearchParams(window.location.search).get('q') || ''
+    new URLSearchParams(location.search).get('q') ?? consultaSessaoInicial?.consulta.busca ?? ''
   ));
   const [filtrosUrlIniciais] = useState(() => {
-    const csv = String(new URLSearchParams(window.location.search).get('obra_ids') || '').trim();
-    if (!csv) return null;
+    const csv = String(new URLSearchParams(location.search).get('obra_ids') || '').trim();
+    if (!csv) return consultaSessaoInicial?.consulta.filtros || null;
     return { obra: csv.split(',').map((v) => v.trim()).filter(Boolean) };
   });
   const pularDebounceRef = useRef(false);
@@ -315,7 +317,8 @@ export default function Solicitacoes({ arquivadas = false }) {
     data_vencimento: '',
     data_vencimento_inicio: '',
     data_vencimento_fim: '',
-    responsavel: ''
+    responsavel: '',
+    ...consultaSessaoInicial?.filtros
   });
 
   const filtrosStorageKey = useMemo(() => {
@@ -354,7 +357,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   }, [filtros, arquivadas, paginaAtual, limitePorPagina, filtrosDataValidos, filtroIdsUrl, filtroVisaoUrl, versaoConsulta]);
 
   useEffect(() => {
-    if (restored) { setFiltrosStoragePronto(true); return; }
+    if (restored || consultaSessaoInicial) { setFiltrosStoragePronto(true); return; }
     try {
       const salvo = localStorage.getItem(filtrosStorageKey);
       if (salvo) {
@@ -439,6 +442,10 @@ export default function Solicitacoes({ arquivadas = false }) {
       console.error('Erro ao salvar filtros', error);
     }
   }, [filtros, filtrosStorageKey, filtrosStoragePronto]);
+
+  useEffect(() => {
+    if (filtrosStoragePronto) salvarConsultaSessao(user, arquivadas, { filtros, consulta: consultaWorkspace });
+  }, [user, arquivadas, filtros, consultaWorkspace, filtrosStoragePronto]);
 
   useEffect(() => {
     carregarSetores();
@@ -821,13 +828,27 @@ export default function Solicitacoes({ arquivadas = false }) {
     });
   }
 
-  function abrirSolicitacao(item) {
+  function abrirSolicitacao(item, event) {
+    if (event?.ctrlKey || event?.metaKey || event?.shiftKey || event?.button === 1) {
+      window.open(`/solicitacoes/${item.id}`, '_blank', 'noopener');
+      return;
+    }
     if (!item?.interacoes_pendentes?.length) marcarAtencaoComoLidaNaLista(item?.id);
     if (workspace) {
       if (!workspace.openTab(`/solicitacoes/${item.id}`, item.codigo || 'Solicitação')) {
         avisar.erro('Limite de 12 abas atingido. Feche uma aba para abrir a solicitação.');
       }
     } else navigate(`/solicitacoes/${item.id}`);
+  }
+
+  function linkSolicitacao(item) {
+    return <a href={`/solicitacoes/${item.id}`} data-native-tab="true" onKeyDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        event.preventDefault();
+        abrirSolicitacao(item);
+      }}>{formatarMaiusculas(item.codigo || `#${item.id}`)}</a>;
   }
 
   async function atualizarSolicitacaoDaLista(id, { permitirInsercao = false } = {}) {
@@ -1924,7 +1945,7 @@ export default function Solicitacoes({ arquivadas = false }) {
         ordenavel: true,
         larguraPadrao: 130,
         render: (item) => <span className="flex min-w-0 flex-col gap-1">
-          <span>{formatarMaiusculas(item.codigo || `#${item.id}`)}</span>
+          {linkSolicitacao(item)}
           <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
           <ContadorPrazo prazo={item.prazo_operacional} />
         </span>
@@ -2041,7 +2062,7 @@ export default function Solicitacoes({ arquivadas = false }) {
     <div className="sol-card-compacto">
       <div className="sol-card-compacto-topo">
         <span className="sol-card-compacto-codigo">
-          {formatarMaiusculas(item.codigo || `#${item.id}`)}
+          {linkSolicitacao(item)}
           {item.retorno_solicitado_pendente && (
             <span
               className="sol-retorno-pendente"
@@ -2226,7 +2247,8 @@ export default function Solicitacoes({ arquivadas = false }) {
           onPageRequest={handlePageRequestLista}
           fetchContadores={arquivadas || !B3_DISPONIVEL ? null : getContadoresSolicitacoes}
           visoes={visoesLista}
-          visaoInicial="todas"
+          visaoInicial={consultaSessaoInicial?.consulta.visao?.id || 'todas'}
+          ordenacaoPadrao={consultaSessaoInicial?.consulta.ordenacao || { campo: 'createdAt', direcao: 'desc' }}
           filtrosRapidos={filtrosRapidosLista}
           filtrosAvancadosAtivos={filtrosAvancadosAtivos}
           filtrosAvancados={() => (

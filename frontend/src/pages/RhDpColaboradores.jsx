@@ -60,6 +60,7 @@ import { formatCurrencyInput, getCpfCnpjError, maskCpfCnpj, maskPhone, normalize
 import DateInputBR from '../components/DateInputBR';
 import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
 import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
+import RhTicketPagamentoCampos from '../components/rh/RhTicketPagamentoCampos';
 import { CAMPOS_ENDERECO, erroTelefoneSecundario, telefoneComparavel } from '../utils/rhColaboradorContatos';
 
 function emptyForm() {
@@ -338,10 +339,12 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   const [statusTicket, setStatusTicket] = useState(new Map());
   const [modalTicketAberto, setModalTicketAberto] = useState(false);
   const [gerandoTicket, setGerandoTicket] = useState(false);
+  const gerandoTicketRef = useRef(false);
   const [categoriasTicket, setCategoriasTicket] = useState([]);
   const [ticketForm, setTicketForm] = useState(() => {
     const competencia = new Date().toISOString().slice(0, 7);
-    return { competencia, parceiro: null, categoria_financeira_id: '', data_vencimento: vencimentoTicket(competencia), boleto: null, idempotency_key: crypto.randomUUID() };
+    return { competencia, parceiro: null, categoria_financeira_id: '', data_vencimento: vencimentoTicket(competencia), boleto: null,
+      forma_pagamento: 'BOLETO', pagamentos_pix: [], pix_revisado: false, idempotency_key: crypto.randomUUID() };
   });
   const cadastroDraft = useWorkspaceRecordDraft('cadastro:inputs', emptyForm());
   const { value: form, setValue: setForm } = cadastroDraft;
@@ -551,13 +554,15 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
       return;
     }
     if (new Set(itens.map((item) => Number(item.empresa_grupo_id))).size > 1) {
-      avisar.alerta('Selecione colaboradores da mesma empresa para gerar o boleto.');
+      avisar.alerta('Selecione colaboradores da mesma empresa para gerar o lote de ticket.');
       return;
     }
     try {
       const categorias = await getRhCategoriasFinanceiras();
       setCategoriasTicket(Array.isArray(categorias) ? categorias : []);
-      setTicketForm((prev) => ({ ...prev, idempotency_key: crypto.randomUUID(), boleto: null }));
+      setTicketForm((prev) => ({ ...prev, idempotency_key: crypto.randomUUID(), boleto: null, forma_pagamento: 'BOLETO', pix_revisado: false,
+        pagamentos_pix: itens.map(c => ({ colaborador_id: Number(c.id), chave_pix: c.pagamento?.chave_pix
+          || c.pagamento?.chave_pix_secundaria || c.pagamento?.chave_pix_variavel || c.pix_chave || '' })) }));
       setModalTicketAberto(true);
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao carregar categorias financeiras.');
@@ -566,28 +571,39 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
 
   async function gerarTicket(event) {
     event.preventDefault();
-    if (!ticketForm.parceiro || !ticketForm.categoria_financeira_id || !ticketForm.boleto) {
-      avisar.erro('Informe fornecedor, categoria financeira e boleto.');
+    if (gerandoTicketRef.current) return;
+    const pix = ticketForm.forma_pagamento === 'PIX';
+    if (!ticketForm.categoria_financeira_id || (!pix && (!ticketForm.parceiro || !ticketForm.boleto))) {
+      avisar.erro('Informe a categoria financeira e, para boleto, o fornecedor e o arquivo.');
+      return;
+    }
+    if (pix && (!ticketForm.pix_revisado || ticketForm.pagamentos_pix.some(p => !p.chave_pix.trim()))) {
+      avisar.erro('Informe e confira todas as chaves Pix antes de gerar os títulos.');
       return;
     }
     try {
+      gerandoTicketRef.current = true;
       setGerandoTicket(true);
       const resultado = await gerarLoteRhTicket({
         competencia: ticketForm.competencia,
-        parceiro_id: ticketForm.parceiro.id,
+        parceiro_id: pix ? null : ticketForm.parceiro.id,
+        forma_pagamento: ticketForm.forma_pagamento,
+        pagamentos_pix: pix ? ticketForm.pagamentos_pix : [],
+        pix_revisado: pix && ticketForm.pix_revisado,
         categoria_financeira_id: ticketForm.categoria_financeira_id,
         data_vencimento: ticketForm.data_vencimento,
         colaborador_ids: [...selecionadosTicket],
-        boleto: ticketForm.boleto,
+        boleto: pix ? null : ticketForm.boleto,
         idempotency_key: ticketForm.idempotency_key
       });
       setModalTicketAberto(false);
       setSelecionadosTicket(new Set());
       await recarregarColaboradores();
-      avisar.sucesso(`Lote criado na solicitação ${resultado?.solicitacao?.codigo || resultado?.solicitacao?.id}. O título ficará em previsão até a liberação do GEO.`);
+      avisar.sucesso(`Lote criado na solicitação ${resultado?.solicitacao?.codigo || resultado?.solicitacao?.id}. Os títulos ficarão em previsão até a liberação do GEO.`);
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao gerar lote de ticket.');
     } finally {
+      gerandoTicketRef.current = false;
       setGerandoTicket(false);
     }
   }
@@ -1105,9 +1121,10 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
             <div>
               <h2 className="text-lg font-semibold">Gerar lote de ticket</h2>
               <p className="app-bloco-lead">
-                {selecionadosTicket.size} colaborador(es). O custo será rateado pela obra atual e o título ficará em previsão até o GEO liberar a solicitação.
+                {selecionadosTicket.size} colaborador(es). O custo será atribuído à lotação atual; os títulos ficarão em previsão até o GEO liberar a solicitação.
               </p>
             </div>
+            <fieldset disabled={gerandoTicket} className="min-w-0 space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
               <CampoForm label="Competência" obrigatorio>
                 <input
@@ -1129,27 +1146,18 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                 />
                 <span className="app-note">Dia 10, antecipado automaticamente no fim de semana. Ajuste aqui quando houver feriado informado.</span>
               </CampoForm>
-              <ParceiroBuscaRemota
+              {ticketForm.forma_pagamento === 'BOLETO' && <ParceiroBuscaRemota
                 label="Fornecedor do ticket"
                 selecionado={ticketForm.parceiro}
                 onSelecionar={(parceiro) => setTicketForm((prev) => ({ ...prev, parceiro }))}
                 somenteFornecedor
                 obrigatorio
-              />
+              />}
               <CategoriaFinanceiraAutocomplete
                 value={ticketForm.categoria_financeira_id}
                 options={categoriasTicket}
                 onChange={(categoria_financeira_id) => setTicketForm((prev) => ({ ...prev, categoria_financeira_id }))}
               />
-              <CampoForm label="Boleto" obrigatorio>
-                <input
-                  className="form-control"
-                  type="file"
-                  accept=".pdf,image/*"
-                  onChange={(e) => setTicketForm((prev) => ({ ...prev, boleto: e.target.files?.[0] || null }))}
-                  required
-                />
-              </CampoForm>
               <div className="rounded-lg border p-3" style={{ borderColor: 'var(--c-border)' }}>
                 <span className="app-note block">Valor total calculado</span>
                 <strong>
@@ -1159,9 +1167,12 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                 </strong>
               </div>
             </div>
+            <RhTicketPagamentoCampos form={ticketForm} colaboradores={colaboradores.filter(c => selecionadosTicket.has(Number(c.id)))}
+              onChange={setTicketForm} disabled={gerandoTicket} />
+            </fieldset>
             <div className="flex justify-end gap-2 border-t pt-3" style={{ borderColor: 'var(--c-border)' }}>
               <button type="button" className="btn btn-outline" disabled={gerandoTicket} onClick={() => setModalTicketAberto(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={gerandoTicket}>{gerandoTicket ? 'Gerando...' : 'Gerar solicitação e título'}</button>
+              <button type="submit" className="btn btn-primary" disabled={gerandoTicket}>{gerandoTicket ? 'Gerando...' : 'Gerar solicitação e títulos'}</button>
             </div>
           </form>
         </OverlayModal>

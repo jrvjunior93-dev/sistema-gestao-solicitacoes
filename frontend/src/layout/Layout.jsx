@@ -324,6 +324,10 @@ export default function Layout() {
 
     const anchor = event.target?.closest?.('a[href]');
     if (!anchor) return;
+    // Esta lista permite comparar registros em abas do navegador sem sair
+    // da consulta atual. A excecao e opt-in, somente para clique modificado.
+    if (anchor.dataset.nativeTab === 'true'
+      && (event.ctrlKey || event.metaKey || (event.type === 'auxclick' && event.button === 1))) return;
     if (routeFromInternalAnchor(anchor) && !podeSairWorkspace()) {
       event.preventDefault(); event.stopPropagation(); return;
     }

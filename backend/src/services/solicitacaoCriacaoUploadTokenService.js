@@ -18,7 +18,7 @@ function normalizarTipos(tipos = []) {
   ));
 }
 
-function gerarTokenUploadCriacaoSolicitacao({ solicitacaoId, usuarioId, tipos }) {
+function gerarTokenUploadCriacaoSolicitacao({ solicitacaoId, usuarioId, tipos, solicitacaoNova = false }) {
   const tiposNormalizados = normalizarTipos(tipos);
   if (!Number(solicitacaoId) || !Number(usuarioId) || tiposNormalizados.length === 0) {
     return null;
@@ -29,7 +29,8 @@ function gerarTokenUploadCriacaoSolicitacao({ solicitacaoId, usuarioId, tipos })
       escopo: ESCOPO,
       solicitacao_id: Number(solicitacaoId),
       usuario_id: Number(usuarioId),
-      tipos: tiposNormalizados
+      tipos: tiposNormalizados,
+      solicitacao_nova: solicitacaoNova === true
     },
     env.jwtSecret,
     {
@@ -39,7 +40,7 @@ function gerarTokenUploadCriacaoSolicitacao({ solicitacaoId, usuarioId, tipos })
   );
 }
 
-function validarTokenUploadCriacaoSolicitacao({ token, solicitacaoId, usuarioId, tipo }) {
+function validarTokenUploadCriacaoSolicitacao({ token, solicitacaoId, usuarioId, tipo, exigirSolicitacaoNova = false }) {
   const tokenNormalizado = String(token || '').trim();
   const tipoNormalizado = String(tipo || '').trim().toUpperCase();
   if (!tokenNormalizado || !TIPOS_PERMITIDOS.has(tipoNormalizado)) return false;
@@ -49,7 +50,8 @@ function validarTokenUploadCriacaoSolicitacao({ token, solicitacaoId, usuarioId,
     return payload?.escopo === ESCOPO
       && Number(payload?.solicitacao_id) === Number(solicitacaoId)
       && Number(payload?.usuario_id) === Number(usuarioId)
-      && normalizarTipos(payload?.tipos).includes(tipoNormalizado);
+      && normalizarTipos(payload?.tipos).includes(tipoNormalizado)
+      && (!exigirSolicitacaoNova || payload?.solicitacao_nova === true);
   } catch {
     return false;
   }

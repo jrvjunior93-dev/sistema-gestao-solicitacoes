@@ -130,6 +130,7 @@ db.FormaPagamentoFinanceira = require('./FormaPagamentoFinanceira')(sequelize, S
 db.CartaoFinanceiro = require('./CartaoFinanceiro')(sequelize, Sequelize);
 db.FaturaCartaoFinanceiro = require('./FaturaCartaoFinanceiro')(sequelize, Sequelize);
 db.FaturaCartaoTitulo = require('./FaturaCartaoTitulo')(sequelize, Sequelize);
+  db.PagamentoFilaLiquidacao = require('./PagamentoFilaLiquidacao')(sequelize, Sequelize);
 db.TituloFinanceiro = require('./TituloFinanceiro')(sequelize, Sequelize);
 db.TituloRenegociacao = require('./TituloRenegociacao')(sequelize, Sequelize);
 db.TituloRenegociacaoAlocacao = require('./TituloRenegociacaoAlocacao')(sequelize, Sequelize);
@@ -1783,6 +1784,7 @@ db.RhTicketLote.hasMany(db.RhTicketLoteItem, {
   onDelete: 'CASCADE'
 });
 db.RhTicketLoteItem.belongsTo(db.RhTicketLote, { foreignKey: 'lote_id', as: 'lote' });
+db.RhTicketLoteItem.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
 db.RhTicketLoteItem.belongsTo(db.RhColaborador, { foreignKey: 'colaborador_id', as: 'colaborador' });
 db.RhTicketLoteItem.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra', constraints: false });
 db.RhTicketLote.belongsTo(db.RhEmpresaGrupo, { foreignKey: 'empresa_grupo_id', as: 'empresaGrupo' });

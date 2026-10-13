@@ -153,6 +153,7 @@ try {
   assert.equal(dados.telefone_secundario.replace(/\D/g, ''), '27988884321'); assert.equal(dados.mesmo_endereco, undefined);
   await page.goto(base + '?admissao=1&obra=1&local_id=7&aba=colaboradores');
   await page.getByRole('button', { name: 'Pedir admissao', exact: true }).click();
+  await adm.getByLabel('Segundo telefone', { exact: true }).waitFor();
   assert.equal(await a2.getByLabel('Usar o mesmo endereço', { exact: true }).count(), 0);
   assert.equal(await adm.getByLabel('Segundo telefone', { exact: true }).count(), 1);
   assert.equal(await a2.getByLabel('Logradouro', { exact: true }).isEditable(), true);

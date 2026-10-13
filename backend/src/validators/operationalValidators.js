@@ -1242,10 +1242,17 @@ function validateCompraPedidoReabrirBody(body = {}) {
 }
 
 function validateCompraPedidoPrevisoesBody(body = {}) {
+  const validarDataCompra = (value, contexto) => {
+    const data = parseDateOnly(value, contexto);
+    if (data && new Date(`${data}T12:00:00Z`).toISOString().slice(0, 10) !== data) {
+      throw new ValidationError(`${contexto} invalida.`);
+    }
+    return data;
+  };
   ensureAllowedKeys(body, [
     'categoria_financeira_id', 'descricao', 'parcelas', 'comprovacao',
     'forma_pagamento_id', 'favorecido_pagamento_id', 'chave_pix', 'dados_pagamento',
-    'boletos', 'fretes'
+    'boletos', 'fretes', 'cartao_id', 'data_compra'
   ], 'Previsoes financeiras do pedido');
   if (!Array.isArray(body.parcelas) || body.parcelas.length === 0) {
     throw new ValidationError('Informe ao menos uma parcela da previsao.');
@@ -1298,13 +1305,15 @@ function validateCompraPedidoPrevisoesBody(body = {}) {
     favorecido_pagamento_id: parseInteger(body.favorecido_pagamento_id, 'Favorecido', { required: true }),
     chave_pix: parseOptionalText(body.chave_pix, 'Chave PIX', PIX_TEXTO_MAX),
     dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
+    cartao_id: parseInteger(body.cartao_id, 'Cartao utilizado', { positiveOnly: true }),
+    data_compra: validarDataCompra(body.data_compra, 'Data da compra'),
     boletos: validarBoletos(body.boletos, 'Boletos da compra'),
     comprovacao,
     parcelas: validarParcelas(body.parcelas, 'a compra'),
     fretes: fretes.map((frete, freteIndex) => {
       ensureAllowedKeys(frete || {}, [
         'frete_id', 'descricao', 'forma_pagamento_id', 'favorecido_pagamento_id',
-        'chave_pix', 'dados_pagamento', 'boletos', 'parcelas'
+        'chave_pix', 'dados_pagamento', 'boletos', 'parcelas', 'cartao_id', 'data_compra'
       ], `Frete ${freteIndex + 1}`);
       return {
         frete_id: parseInteger(frete?.frete_id, `Frete ${freteIndex + 1}`, { required: true }),
@@ -1313,6 +1322,8 @@ function validateCompraPedidoPrevisoesBody(body = {}) {
         favorecido_pagamento_id: parseInteger(frete?.favorecido_pagamento_id, `Favorecido do frete ${freteIndex + 1}`, { required: true }),
         chave_pix: parseOptionalText(frete?.chave_pix, `Chave PIX do frete ${freteIndex + 1}`, PIX_TEXTO_MAX),
         dados_pagamento: parseOptionalText(frete?.dados_pagamento, `Dados para pagamento do frete ${freteIndex + 1}`, 2000),
+        cartao_id: parseInteger(frete?.cartao_id, `Cartao utilizado no frete ${freteIndex + 1}`, { positiveOnly: true }),
+        data_compra: validarDataCompra(frete?.data_compra, `Data da compra do frete ${freteIndex + 1}`),
         boletos: validarBoletos(frete?.boletos, `Boletos do frete ${freteIndex + 1}`),
         parcelas: validarParcelas(frete?.parcelas, `o frete ${freteIndex + 1}`)
       };
@@ -2044,14 +2055,22 @@ function validateCompraDiretaCredorCreateBody(body = {}) {
 function validateSolicitacaoFavorecidoCreateBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['nome', 'telefone', 'chave_pix', 'tipo_chave_pix', 'area_responsavel', 'tipo_solicitacao_id', 'tipo_sub_id'],
+    ['nome', 'telefone', 'chave_pix', 'tipo_chave_pix', 'area_responsavel', 'tipo_solicitacao_id', 'tipo_sub_id', 'obra_id'],
     'Cadastro rapido de favorecido'
   );
 
   const tipoChavePix = sanitizeString(body.tipo_chave_pix, 'Tipo da chave PIX', { max: 20 });
+  if (body.obra_id != null && !['string', 'number'].includes(typeof body.obra_id)) {
+    throw new ValidationError('Obra/Centro de Custo invalido.');
+  }
+  const obraId = parseInteger(body.obra_id, 'Obra/Centro de Custo');
+  if (obraId !== undefined && !Number.isSafeInteger(obraId)) throw new ValidationError('Obra/Centro de Custo invalido.');
 
   return {
     nome: sanitizeString(body.nome, 'Nome do favorecido', { required: true, max: 255 }),
+    // Contexto usado pelo controller para resolver regras da origem; nao e
+    // atributo cadastral do parceiro nem concede acesso a solicitacoes/obras.
+    obra_id: obraId,
     telefone: sanitizeString(body.telefone, 'Telefone do favorecido', { required: true, max: 32 }),
     chave_pix: parsePixDocument(body.chave_pix, tipoChavePix, 'Chave PIX do favorecido', { required: true }),
     tipo_chave_pix: tipoChavePix,

@@ -26,9 +26,11 @@ const fixture = `
 const financeiroServices = `
   export async function getArquivosSolicitacaoFila(id) {
     window.consultas = [...(window.consultas || []), id];
-    return id === 43 ? [] : [
-      { id: 'anexo-1', nome_original: 'nota.pdf', tipo: 'SOLICITACAO', caminho_arquivo: 'https://s3.test/nota.pdf', createdAt: '2026-09-18T10:00:00Z' },
-      { id: 'comprovante-2', nome_original: 'comprovante.png', tipo: 'Comprovante', caminho_arquivo: '/uploads/comprovante.png', createdAt: '2026-09-18T11:00:00Z' }
+    return id === 43 ? [{ id:'nao-boleto', nome_original:'outro.pdf',tipo:'SOLICITACAO'}] : [
+      { id: 'anexo-1', nome_original: 'nota.pdf', tipo: 'BOLETO', caminho_arquivo: 'https://s3.test/nota.pdf', createdAt: '2026-09-18T10:00:00Z' },
+      { id: 'anexo-2', nome_original: 'segundo.png', tipo: 'BOLETO', caminho_arquivo: '/uploads/segundo.png', createdAt: '2026-09-18T11:00:00Z' },
+      { id: 'comprovante-3', nome_original: 'comprovante.png', tipo: 'Comprovante', caminho_arquivo: '/uploads/comprovante.png' },
+      { id: 'anexo-4', nome_original: 'boleto-informativo.pdf', tipo: 'SOLICITACAO', caminho_arquivo: '/uploads/boleto-informativo.pdf' }
     ];
   }
 `;
@@ -79,8 +81,10 @@ try {
   await page.goto(`${base}/fixture`);
   const modal = page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-42' });
   await modal.getByText('nota.pdf').waitFor();
-  await modal.getByText('comprovante.png').waitFor();
-  await modal.getByText(/^Comprovante ·/).waitFor();
+  await modal.getByText('segundo.png').waitFor();
+  assert.equal(await modal.getByText('comprovante.png', {exact:true}).count(), 0);
+  assert.equal(await modal.getByText('boleto-informativo.pdf', {exact:true}).count(), 0);
+  assert.equal(await modal.getByRole('listitem').count(), 2);
   assert.deepEqual(await page.evaluate(() => window.consultas), [42]);
   assert.equal(await page.evaluate(() => (window.links || []).length), 0, 'Link seguro so deve ser solicitado ao abrir');
   await modal.getByRole('button', { name: 'Visualizar' }).first().click();
@@ -94,9 +98,10 @@ try {
   await page.waitForFunction(() => (window.abertos || []).length === 1);
   assert.equal(await page.evaluate(() => window.abertos[0].download), 'nota.pdf');
   await page.goto(`${base}/fixture?empty=1`);
-  await page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-43' }).getByText('Nenhum arquivo anexado a esta solicitação.').waitFor();
+  await page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-43' }).getByText('Nenhum arquivo enviado pelo campo de boleto desta solicitação.').waitFor();
+  assert.equal(await page.getByRole('button', {name:/Visualizar/}).count(), 0);
   assert.deepEqual(errors, []);
-  console.log('OK: acesso no titulo, modal lista anexos e comprovantes, abre link seguro sob demanda e trata lista vazia.');
+  console.log('OK: modal somente boletos (PDF/imagem), exclui comprovantes/anexos comuns mesmo em resposta antiga, presign sob demanda, preview/download e vazio.');
 } finally {
   await browser.close();
   await server.close();

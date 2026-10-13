@@ -16,7 +16,12 @@ const edit = { tipo: 'PAGAR', obra_id: 1, parceiro_id: 1, valor: 200, data_venci
   descricao: 'QA', categoria_financeira_id: 1, competencia_data: '2026-10-08', juros: 10, multa: 3 };
 assert.equal(validateFinanceTituloUpdateBody(edit).multa, 3);
 assert.throws(() => validateFinanceTituloUpdateBody({ ...edit, juros: -1 }));
-assert.deepEqual(calcularValoresFila(213, 200, base), { principal: 200, juros: 10, multa: 3, totalEsperado: 213, divergencia: '' });
+assert.deepEqual(calcularValoresFila(213, 200, base), { principal: 200, juros: 10, multa: 3, desconto: 0, totalEsperado: 213, divergencia: '' });
+assert.deepEqual(calcularValoresFila(193, 200, { ...base, desconto: 20 }),
+  { principal: 200, juros: 10, multa: 3, desconto: 20, totalEsperado: 193, divergencia: '' });
+assert.equal(calcularValoresFila(183, 200, { ...base, desconto: 20 }).divergencia, 'PARCIAL');
+assert.throws(() => calcularValoresFila(193, 200, { desconto: -1 }), /Desconto/);
+assert.throws(() => calcularValoresFila(193, 200, { desconto: 201 }), /Total previsto/);
 assert.equal(calcularValoresFila(163, 200, base).divergencia, 'PARCIAL');
 assert.equal(calcularValoresFila(263, 200, base).divergencia, 'ACIMA_SALDO');
 assert.equal(calcularValoresFila(.33, .3, { juros: .01, multa: .02 }).divergencia, '');
