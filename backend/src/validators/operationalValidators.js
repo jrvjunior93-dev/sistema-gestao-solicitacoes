@@ -2055,14 +2055,22 @@ function validateCompraDiretaCredorCreateBody(body = {}) {
 function validateSolicitacaoFavorecidoCreateBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['nome', 'telefone', 'chave_pix', 'tipo_chave_pix', 'area_responsavel', 'tipo_solicitacao_id', 'tipo_sub_id'],
+    ['nome', 'telefone', 'chave_pix', 'tipo_chave_pix', 'area_responsavel', 'tipo_solicitacao_id', 'tipo_sub_id', 'obra_id'],
     'Cadastro rapido de favorecido'
   );
 
   const tipoChavePix = sanitizeString(body.tipo_chave_pix, 'Tipo da chave PIX', { max: 20 });
+  if (body.obra_id != null && !['string', 'number'].includes(typeof body.obra_id)) {
+    throw new ValidationError('Obra/Centro de Custo invalido.');
+  }
+  const obraId = parseInteger(body.obra_id, 'Obra/Centro de Custo');
+  if (obraId !== undefined && !Number.isSafeInteger(obraId)) throw new ValidationError('Obra/Centro de Custo invalido.');
 
   return {
     nome: sanitizeString(body.nome, 'Nome do favorecido', { required: true, max: 255 }),
+    // Contexto usado pelo controller para resolver regras da origem; nao e
+    // atributo cadastral do parceiro nem concede acesso a solicitacoes/obras.
+    obra_id: obraId,
     telefone: sanitizeString(body.telefone, 'Telefone do favorecido', { required: true, max: 32 }),
     chave_pix: parsePixDocument(body.chave_pix, tipoChavePix, 'Chave PIX do favorecido', { required: true }),
     tipo_chave_pix: tipoChavePix,

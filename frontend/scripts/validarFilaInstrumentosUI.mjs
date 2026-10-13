@@ -55,7 +55,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         return{data:status==='NAO_PAGO'?[new URLSearchParams(location.search).has('naopago')?{...row,status:'NAO_PAGO',movimento_financeiro_id:null}: {id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
       };
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
-      export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:11,nome:'Crédito outra conta',tipo:'CREDITO',conta_bancaria_id:6},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2}]});
+      export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:11,nome:'Crédito outra conta',tipo:'CREDITO',conta_bancaria_id:6},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2},{id:89,codigo:'CH-LOTE',valor:426,empresa_id:2,empresa:{id:2,nome:'Empresa carteira QA',ativo:true}},{id:90,codigo:'CH-LEGADO',valor:426,empresa_id:null}]});
       export const registrarBaixasFilaPagamentos=async(itens,key,instrumentos_lote)=>{window.__settles.push({itens,key,instrumentos_lote});if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
@@ -349,6 +349,9 @@ try {
     assert.equal(await editor.getByLabel('Origem do cheque 1', { exact: true }).inputValue(), '');
     assert.equal(await editor.getByLabel('Numero do cheque *', { exact: true }).count(), 0);
     await editor.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+    await bulk.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).click();
+    assert((await bulk.getByRole('alert').textContent()).includes('confirme os cheques'), 'Sem instrumentos pede cheque, nao uma conta oculta');
+    assert.equal(await page.evaluate(() => window.__settles.length), 0);
     await bulk.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
     assert.equal(await page.getByLabel('Forma de pagamento de TIT-MASSA-1', { exact: true }).inputValue(), '3');
     assert.equal(await page.evaluate(() => window.__settles.length), 0);
@@ -368,7 +371,7 @@ try {
     await page.goto(url); await abrirMassa();
     await bulk.getByLabel('Forma de pagamento do lote', { exact: true }).selectOption('4');
     await editor.waitFor();
-    await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).selectOption('5');
+    assert.equal(await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).count(), 0, 'Nao exige banco antes de escolher origem');
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('61');
     assert((await editor.getByRole('alert').textContent()).includes('1 a 60'));
     assert.equal(await editor.getByRole('region', { name: /^Dados do cheque / }).count(), 1);
@@ -376,12 +379,13 @@ try {
     await editor.getByRole('region', { name: 'Dados do cheque 4', exact: true }).waitFor();
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
     await editor.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
+    await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).selectOption('5');
     await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326');
     await editor.getByLabel('Numero do cheque *', { exact: true }).fill('BULK-101');
     await editor.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
     await editor.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
     const carteira = editor.getByLabel('Cheque da carteira 2', { exact: true });
-    assert.equal(await carteira.locator('option[value="88"]').count(), 0);
+    assert.equal(await carteira.locator('option[value="88"]').count(), 1, 'Carteira nao e filtrada pela conta do cheque proprio');
     await carteira.selectOption('77');
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('1');
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('12');
@@ -390,7 +394,7 @@ try {
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('1');
     await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).selectOption('6');
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
-    assert.equal(await carteira.inputValue(), '', 'Trocar empresa invalida inclusive cheque ocultado');
+    assert.equal(await carteira.inputValue(), '77', 'Conta do proprio nao altera a empresa nem os dados da carteira, inclusive linha ocultada');
     assert.equal(await editor.getByLabel('Numero do cheque *', { exact: true }).inputValue(), 'BULK-101');
     await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).selectOption('5');
     await carteira.selectOption('77');
@@ -407,6 +411,42 @@ try {
     assert.equal(envio.instrumentos_lote.componentes[0].cheque_numero, 'BULK-101');
     assert.equal(envio.instrumentos_lote.componentes[1].cheque_terceiro_id, 77);
     assert(envio.itens.every(item => item.forma_pagamento_id === 4 && !item.cartao_id && !item.parcelas_cheque));
+  }
+  // Carteira no cabecalho sem conta; legado solicita empresa, nao banco.
+  for (const width of [1366, 390]) for (const chequeId of ['89', '90']) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&parcelas=1&status=TODOS');
+    await page.getByLabel('Selecionar TIT-MASSA-1', { exact: true }).check();
+    await page.getByLabel('Selecionar TIT-MASSA-2', { exact: true }).check();
+    await page.getByRole('button', { name: 'Baixa em massa (2)', exact: true }).click();
+    const bulk = page.getByRole('dialog', { name: 'Baixa em massa', exact: true });
+    // Uma conta preenchida antes nao deve vazar ao payload exclusivo de carteira.
+    await bulk.getByLabel('Conta pagadora', { exact: true }).selectOption('5');
+    await bulk.getByLabel('Forma de pagamento do lote', { exact: true }).selectOption('4');
+    const editor = page.getByRole('dialog', { name: 'Cheques do pagamento de lote selecionado', exact: true });
+    await editor.getByLabel('Origem do cheque 1', { exact: true }).selectOption('CARTEIRA');
+    assert.equal(await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).count(), 0);
+    assert(await editor.getByLabel('Cheque da carteira 1', { exact: true }).isEnabled());
+    await editor.getByLabel('Cheque da carteira 1', { exact: true }).selectOption(chequeId);
+    if (chequeId === '90') {
+      const empresa = editor.getByLabel('Empresa responsável pelo cheque 1', { exact: true });
+      assert.equal(await empresa.inputValue(), '');
+      await editor.getByRole('button', { name: 'Confirmar cheques', exact: true }).click();
+      assert.equal(await page.evaluate(() => window.__settles.length), 0);
+      assert(await editor.isVisible());
+      await empresa.selectOption('2');
+    } else await editor.getByText('Empresa da carteira: Empresa carteira QA. Sem débito em conta bancária.', { exact: true }).waitFor();
+    await page.screenshot({ path: path.join(root, `../outputs/fila-carteira-sem-conta-${chequeId}-${width}.png`) });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await editor.getByRole('button', { name: 'Confirmar cheques', exact: true }).click();
+    await editor.waitFor({ state: 'hidden' });
+    assert.equal(await bulk.getByLabel('Conta pagadora', { exact: true }).count(), 0);
+    await bulk.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).evaluate(button => { button.click(); button.click(); });
+    await page.waitForFunction(() => window.__settles.length === 1);
+    const envio = await page.evaluate(() => window.__settles[0]);
+    assert(envio.itens.every(item => !item.conta_bancaria_id));
+    assert.equal(envio.instrumentos_lote.componentes[0].cheque_terceiro_id, Number(chequeId));
+    assert.equal(envio.instrumentos_lote.componentes[0].empresa_id, chequeId === '90' ? 2 : undefined);
   }
   // Conjunto unico compartilhado: nenhuma copia de cheque/cartao por titulo.
   for (const width of [1366, 390]) for (const tipo of ['CHEQUE', 'CARTAO']) {

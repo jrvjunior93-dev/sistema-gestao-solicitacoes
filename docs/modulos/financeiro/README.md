@@ -1,5 +1,21 @@
 # Modulo FINANCEIRO
 
+## Fila: carteira de terceiros sem conta na massa - 2026-10-13
+
+- Conta pagadora exigida somente para cheques proprios do conjunto. Terceiros
+  usam a empresa do cheque cadastrado na carteira, sem debito bancario, inclusive
+  em lote misto. Trocar a conta dos proprios nao limpa os cheques da carteira.
+- Carteira legada sem empresa pede selecao explicita da empresa entre as opcoes
+  ja presentes nas contas/cheques acessiveis da fila. Nao infere empresa da conta
+  nem altera o cadastro legado. Empresa existente nao pode ser substituida.
+- Backend resolve carteira/empresa sob lock; excecao de conta apenas no grupo
+  interno validado. Pix, boleto, cartao, proprio e baixa individual conservam
+  validacoes anteriores. Conta null no snapshot/movimento de terceiro; empresa
+  e componentes preservados no grupo. Carteira consumida uma vez por documento.
+- Sem nova migration ou mudanca de ACL. Testes locais backend/UI e build;
+  homologacao integrada MySQL/EC2 continua separada. Detalhes no
+  [handoff](../../handoffs/2026-10-13-fila-carteira-sem-conta.md).
+
 ## Fila: cabecalho unico da baixa em massa - 2026-10-13
 
 - Forma de pagamento do lote vale para todos os titulos; nao existe mais
@@ -9,8 +25,8 @@
 - Selecionar Cheque abre o editor do conjunto unico imediatamente, mesmo
   antes de selecionar conta. O editor permite escolher conta pagadora,
   quantidade e origem explicita de cada cheque (proprio/carteira).
-  Trocar conta invalida carteira inclusive em linhas temporariamente ocultadas;
-  o conjunto confirmado tambem precisa ser reconferido apos trocar conta.
+  Conta pagadora se refere somente aos cheques proprios; empresa da carteira
+  independe dela. O conjunto confirmado precisa ser reconferido apos trocar conta.
 - Um cartao usa automaticamente sua conta vinculada; varios cartoes usam
   suas respectivas contas. Forma/instrumentos so alteram os rascunhos da fila
   na confirmacao da baixa. Cancelar nao aplica alteracoes nem registra pagamento.

@@ -29,6 +29,7 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
   const contaSelecionada = accounts.find(item => Number(item.id) === Number(conta));
   const formaSelecionada = instrumentos.formas.find(item => Number(item.id) === Number(formaTodos));
   const tipoTodos = tipoInstrumentoFila(formaSelecionada);
+  const somenteCarteira = instrumentosLote?.tipo === 'CHEQUE' && instrumentosLote.componentes.every(item => item.usar_cheque_terceiro);
   function alterarConta(value) {
     setConta(value); setErro('');
     if (instrumentosLote?.tipo === 'CHEQUE') setInstrumentosLote(null);
@@ -47,15 +48,15 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
     event.preventDefault();
     if (busy || enviando.current) return;
     if (!formaSelecionada) { setErro('Selecione a forma de pagamento de todo o lote.'); return; }
-    if (!conta || !data) { setErro('Informe a conta pagadora e a data do pagamento.'); return; }
     if (tipoTodos === 'CHEQUE' && !instrumentosLote) { setErro('Informe e confirme os cheques do lote no cabeçalho.'); return; }
+    if ((!somenteCarteira && !conta) || !data) { setErro('Informe a conta pagadora e a data do pagamento.'); return; }
     if (tipoTodos === 'CARTAO' && !instrumentosLote && !cartaoTodos) { setErro('Selecione o cartão usado ou informe os cartões do lote.'); return; }
     enviando.current = true; setErro('');
     try {
       const pagamentos = Object.fromEntries(rows.map(row => [row.id, {
         ...trocarForma(formaTodos), cartao_id: instrumentosLote ? '' : cartaoTodos
       }]));
-      const problem = await onConfirmar({ conta_bancaria_id: Number(conta), data_baixa: data, pagamentos,
+      const problem = await onConfirmar({ conta_bancaria_id: somenteCarteira ? null : Number(conta), data_baixa: data, pagamentos,
         instrumentos_lote: instrumentosLote });
       if (problem) setErro(problem);
     } finally { enviando.current = false; }
@@ -63,7 +64,8 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
   function confirmarLote(componentes) {
     const { tipo, forma } = editorLote;
     const normalizados = tipo === 'CHEQUE' ? componentes.map(item => ({ valor_pago: Number(item.valor_pago),
-      ...payloadInstrumentoFila({ ...item, forma_pagamento_id: forma }, instrumentos.formas), forma_pagamento_id: undefined }))
+      ...payloadInstrumentoFila({ ...item, forma_pagamento_id: forma }, instrumentos.formas),
+      ...(item.usar_cheque_terceiro && item.empresa_id ? { empresa_id: Number(item.empresa_id) } : {}), forma_pagamento_id: undefined }))
       : componentes.map(item => ({ cartao_id: Number(item.cartao_id), valor_pago: Number(item.valor_pago) }));
     if (tipo === 'CARTAO') {
       const card = instrumentos.cartoes.find(item => Number(item.id) === Number(componentes[0].cartao_id));
@@ -79,14 +81,14 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
     </header>
     <form id="baixa-massa-fila" className="p-4 space-y-4" onSubmit={enviar}>
       <fieldset disabled={busy} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="text-sm">Conta pagadora
+        {(tipoTodos !== 'CHEQUE' || (instrumentosLote && !somenteCarteira)) && <label className="text-sm">Conta pagadora
           <select aria-label="Conta pagadora" autoFocus required disabled={instrumentosLote?.tipo === 'CARTAO' || Boolean(cartaoTodos)}
             className="input w-full" value={conta} onChange={event => alterarConta(event.target.value)}>
             <option value="">Selecione</option>
             {accounts.filter(item => item.ativo !== false && item.empresa_id).map(item =>
               <option key={item.id} value={item.id}>{item.nome} · {item.empresa?.nome || item.empresa?.razao_social || `Empresa #${item.empresa_id}`}</option>)}
           </select>
-        </label>
+        </label>}
         <label className="text-sm">Data do pagamento
           <DateInputBR aria-label="Data do pagamento" required value={data} onChange={event => setData(event.target.value)} className="input w-full" />
         </label>
@@ -125,6 +127,7 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
         </div>}
       </fieldset>
       <p className="text-xs text-[var(--c-muted)]">Forma, instrumentos e data do cabeçalho valem para todos os títulos abaixo. Valores, descontos, juros e multas permanecem os conferidos na fila. Cada cartão usa sua conta vinculada. Trocar a forma limpa os instrumentos anteriores.</p>
+      {somenteCarteira && <p className="text-xs">Cheques de terceiros: empresa definida pela carteira, sem conta pagadora e sem débito bancário.</p>}
       {rows.length > 200 && <p role="alert" className="text-sm text-[var(--sem-danger)]">Selecione no máximo 200 títulos por baixa em massa.</p>}
       <details open className="border-t border-[var(--c-border)] pt-3">
         <summary className="text-sm font-semibold">Conferir títulos selecionados · {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</summary>

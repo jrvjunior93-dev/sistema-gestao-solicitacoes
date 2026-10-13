@@ -24,7 +24,7 @@ const contas = [h.conta, { id: 6, empresa_id: 2, ativo: true }];
 cartoes.push({ id: 11, nome: 'Credito outra conta', tipo: 'CREDITO', ativo: true, conta_bancaria_id: 6, dia_fechamento: 15, dia_vencimento: 25 });
 cartoes.forEach(card => { card.dia_fechamento = 15; card.dia_vencimento = 25; });
 models.ContaBancaria.findByPk = async id => contas.find(item => item.id === Number(id));
-models.EmpresaGrupo.findByPk = async id => ({ id: Number(id), ativo: true });
+models.EmpresaGrupo.findByPk = async id => Number(id) === 999 ? null : ({ id: Number(id), ativo: Number(id) !== 99 });
 models.PagamentoFilaLiquidacao = {
   findOne: async ({ where }) => state.grupos.find(item => matches(item, where)),
   findByPk: async id => state.grupos.find(item => item.id === Number(id)),
@@ -139,6 +139,69 @@ async function main() {
   itens = await preparar(); wallet(); state.cheques[0].status = 'UTILIZADO';
   await assert.rejects(queueModule.exports.registrarBaixasFila(req, payloadCheque(itens)), /indisponivel/);
   assert.equal(state.movimentos.length, 0);
+  // Carteira compartilhada nao depende de conta bancaria, inclusive entre empresas.
+  itens = await preparar(); wallet(); state.cheques[0].empresa_id = 2; state.cheques[0].valor = 400;
+  itens.forEach(item => { delete item.conta_bancaria_id; });
+  const carteiraSemConta = (empresa) => validate({ idempotency_key: 'carteira-sem-conta', itens,
+    instrumentos_lote: { tipo: 'CHEQUE', forma_pagamento_id: 4, componentes: [
+      { valor_pago: 400, usar_cheque_terceiro: true, cheque_terceiro_id: 77, ...(empresa ? { empresa_id: empresa } : {}) }] } });
+  const buscarConta = models.ContaBancaria.findByPk;
+  models.ContaBancaria.findByPk = async () => { throw Error('Carteira nao deve consultar conta pagadora'); };
+  try { await queueModule.exports.registrarBaixasFila(req, carteiraSemConta()); }
+  finally { models.ContaBancaria.findByPk = buscarConta; }
+  assert(state.movimentos.every(row => row.conta_bancaria_id === null && row.empresa_id === 2));
+  assert(state.fila.every(row => row.conta_bancaria_id === null && row.status === 'BAIXADO'));
+  assert(state.titulos.every(row => row.empresa_id === 1), 'Carteira nao reclassifica a empresa da divida');
+  assert.equal(state.chequeEventos.length, 1);
+  await queueModule.exports.registrarBaixasFila(req, carteiraSemConta());
+  assert.equal(state.movimentos.length, 2); assert.equal(state.chequeEventos.length, 1);
+  await queueModule.exports.estornarBaixaFila(req, 1, { motivo: 'QA carteira sem banco', idempotency_key: 'carteira-r' });
+  assert.equal(state.cheques[0].status, 'EM_CARTEIRA'); assert.equal(state.chequeEventos.length, 2);
+  assert(state.titulos.every(row => row.valor_saldo === 200));
+  // Legado sem empresa exige selecao explicita; nunca infere da conta.
+  itens = await preparar(); wallet(); state.cheques[0].valor = 400; state.cheques[0].empresa_id = null;
+  await assert.rejects(queueModule.exports.registrarBaixasFila(req, carteiraSemConta()), /empresa ativa/);
+  for (const empresa of [99, 999]) await assert.rejects(queueModule.exports.registrarBaixasFila(req, carteiraSemConta(empresa)), /empresa ativa/);
+  assert.equal(state.movimentos.length, 0); assert.equal(state.grupos.length, 0);
+  itens.forEach(item => { delete item.conta_bancaria_id; });
+  await queueModule.exports.registrarBaixasFila(req, carteiraSemConta(2));
+  assert(state.movimentos.every(row => row.conta_bancaria_id === null && row.empresa_id === 2));
+  assert.equal(state.cheques[0].empresa_id, null, 'Empresa selecionada e snapshot do pagamento, nao altera cadastro legado');
+  await queueModule.exports.estornarBaixaFila(req, 2, { motivo: 'QA legado', idempotency_key: 'legado-r' });
+  assert.equal(state.cheques[0].status, 'EM_CARTEIRA');
+  // Empresa existente nao pode ser substituida; propria conta nao filtra carteira.
+  itens = await preparar(); wallet(); state.cheques[0].valor = 400;
+  await assert.rejects(queueModule.exports.registrarBaixasFila(req, carteiraSemConta(2)), /Empresa diferente/);
+  state.cheques[0].empresa_id = 99;
+  await assert.rejects(queueModule.exports.registrarBaixasFila(req, carteiraSemConta()), /empresa ativa/);
+  assert.equal(state.movimentos.length, 0);
+  itens = await preparar(); wallet(); state.cheques[0].empresa_id = 2;
+  await queueModule.exports.registrarBaixasFila(req, payloadCheque(itens));
+  assert(state.movimentos.filter(row => row.conta_bancaria_id !== null).every(row => row.conta_bancaria_id === 5 && row.empresa_id === 1));
+  assert(state.movimentos.filter(row => row.conta_bancaria_id === null).every(row => row.empresa_id === 2));
+  await queueModule.exports.estornarBaixaFila(req, 1, { motivo: 'QA misto', idempotency_key: 'misto-r' });
+  assert.equal(state.cheques[0].status, 'EM_CARTEIRA');
+  // Duas carteiras/empresas independentes: fontes preservadas e consumo unico.
+  itens = await preparar(); wallet(); state.cheques[0].valor = 250;
+  state.cheques.push(registro({ id: 88, empresa_id: 2, status: 'EM_CARTEIRA', valor: 150 }));
+  itens.forEach(item => { delete item.conta_bancaria_id; });
+  const duasCarteiras = validate({ idempotency_key: 'duas-carteiras', itens,
+    instrumentos_lote: { tipo: 'CHEQUE', forma_pagamento_id: 4, componentes: [
+      { valor_pago: 250, usar_cheque_terceiro: true, cheque_terceiro_id: 77 },
+      { valor_pago: 150, usar_cheque_terceiro: true, cheque_terceiro_id: 88 }] } });
+  await queueModule.exports.registrarBaixasFila(req, duasCarteiras);
+  assert.equal(state.chequeEventos.length, 2); assert(state.movimentos.every(row => row.conta_bancaria_id === null));
+  assert.equal(cents(state.movimentos.filter(row => row.empresa_id === 1).reduce((sum, row) => sum + row.valor, 0)), 25000);
+  assert.equal(cents(state.movimentos.filter(row => row.empresa_id === 2).reduce((sum, row) => sum + row.valor, 0)), 15000);
+  await queueModule.exports.estornarBaixaFila(req, 2, { motivo: 'QA duas carteiras', idempotency_key: 'duas-r' });
+  assert(state.cheques.every(row => row.status === 'EM_CARTEIRA')); assert.equal(state.chequeEventos.length, 4);
+  // Excecao e apenas carteira compartilhada, nao Pix/cartao/proprio ou flag publica.
+  const semConta = { ...base, conta_bancaria_id: undefined };
+  assert.throws(() => validate({ itens: [{ ...semConta, forma_pagamento_id: 3 }] }), /Conta pagadora/);
+  assert.throws(() => payloadCheque([semConta]), /Conta pagadora/);
+  assert.throws(() => validate({ itens: [{ ...base, empresa_id: 2, usar_cheque_terceiro: true, cheque_terceiro_id: 77 }] }), /empresa_id/);
+  assert.throws(() => validate({ idempotency_key: 'x', itens: [base], instrumentos_lote: { tipo: 'CHEQUE', forma_pagamento_id: 4,
+    componentes: [{ valor_pago: 200, cheque_numero: 'QA', cheque_emitente: 'QA', empresa_id: 2 }] } }), /Empresa explicita/);
   // Cartoes com contas/empresas distintas, somente cada parte na propria fatura.
   itens = await preparar(); itens.forEach(item => { item.valor_pago = 193; item.juros = 10; item.multa = 3; item.desconto = 20; });
   const cards = validate({ idempotency_key: 'cards-group', itens, instrumentos_lote: { tipo: 'CARTAO', forma_pagamento_id: 1,

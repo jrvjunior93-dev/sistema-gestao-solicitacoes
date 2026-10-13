@@ -792,6 +792,7 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   function validateRows(targetRows, dados = drafts, instrumentosLote = null) {
+    const somenteCarteira = instrumentosLote?.tipo === 'CHEQUE' && instrumentosLote.componentes.length > 0 && instrumentosLote.componentes.every(item => item.usar_cheque_terceiro === true);
     if (instrumentosLote && instrumentosLote.componentes.reduce((sum, item) => sum + valorEmCentavos(item.valor_pago), 0)
       !== targetRows.reduce((sum, row) => sum + valorEmCentavos(dados[row.id]?.valor_pago), 0)) return {
         mensagem: 'O total do lote mudou.', correcao: 'Confira novamente os instrumentos compartilhados e seus valores.', filaId: targetRows[0]?.id };
@@ -818,7 +819,7 @@ export default function FinanceiroFilaPagamentos() {
         return { mensagem: 'Confira os cheques e seus valores.', correcao: 'A soma dos cheques deve ser igual ao valor pago do título.', filaId: row.id, campo: 'forma_pagamento_id' };
       }
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
-      if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
+      if (!somenteCarteira && !Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
       if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
       for (const campo of ['desconto', 'juros', 'multa']) {
         if (!Number.isFinite(Number(draft[campo] || 0)) || Number(draft[campo] || 0) < 0) {
@@ -919,7 +920,7 @@ export default function FinanceiroFilaPagamentos() {
         fila_id: row.id,
         ...(instrumentosLote ? { forma_pagamento_id: instrumentosLote.forma_pagamento_id } : payloadInstrumentoFila(dados[row.id], instrumentos.formas)),
         data_baixa: dados[row.id].data_baixa,
-        conta_bancaria_id: Number(dados[row.id].conta_bancaria_id),
+        conta_bancaria_id: Number(dados[row.id].conta_bancaria_id) || undefined,
         valor_pago: Number(dados[row.id].valor_pago),
         desconto: Number(dados[row.id].desconto || 0),
         juros: Number(dados[row.id].juros || 0),
@@ -1135,7 +1136,7 @@ export default function FinanceiroFilaPagamentos() {
         titulo={status === 'PENDENTE_COMPROVANTE' ? 'Pagamentos pendentes de comprovante' : 'Pagamentos preparados'}
         variante="primario"
         cor="var(--module-financeiro)"
-        descricao="A empresa é determinada pela conta bancária selecionada; não há escolha separada."
+        descricao="A empresa vem da conta ou do cartão; na baixa em massa com cheque de terceiro, vem da carteira, sem conta bancária."
         controles={(
           <div className="flex flex-wrap items-end gap-2">
             {colunasConfiguradas.painel}
@@ -1362,7 +1363,11 @@ export default function FinanceiroFilaPagamentos() {
                         onChange={patch => updateDraft(row.id, patch)} />
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-48 text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
+                      <div className="max-w-48 text-xs font-medium">{row.instrumento_pagamento_json?.instrumentos?.some(item => item.usar_cheque_terceiro)
+                        ? `Lote · empresas ${[...new Set(row.instrumento_pagamento_json.instrumentos.map(item => item.empresa_id))].map(id =>
+                          accounts.find(item => Number(item.empresa_id) === Number(id))?.empresa?.nome ||
+                          instrumentos.cheques.find(item => Number(item.empresa_id) === Number(id))?.empresa?.nome || `#${id}`).join(', ')}`
+                        : account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
                     </td>
                     {['desconto', 'juros', 'multa'].map(campo => (
                       <td key={campo} className="px-3 py-3 align-top">

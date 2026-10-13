@@ -1,5 +1,40 @@
 # Ownership Ativo
 
+## Publicacao: carteira sem conta e cadastro de favorecido - 2026-10-13
+
+- Usuario autorizou commit e push das duas correcoes em refactor/frontend.
+- Agente desta conversa, sem delegacao; conferencia/staging dos arquivos das
+  correcoes, testes e docs reservados e liberados apos verificacao.
+- Revalidacao de cadastro/origem, liquidacao rateada, estorno, credor e docs
+  aprovada. Build e UI desktop/mobile aprovados nas etapas locais.
+- outputs/ preservado fora do commit. Sem nova migration, escrita em banco,
+  EC2, reinicio ou promocao main. Comandos dev exigem UUID e schema prontos.
+- Homologacao MySQL e fluxos reais permanecem para o ambiente dev.
+
+## Cadastro rapido de favorecido - contexto da origem - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Reservados: operationalValidators.js, novo teste de cadastro de favorecido,
+  backend/package.json, README de Solicitacoes e handoff. Alteracoes anteriores
+  da fila preservadas.
+- Escopo: aceitar obra_id validado como contexto de configuracao dos campos;
+  preservar bloqueios por tipo/subtipo, idempotencia e visibilidade existentes.
+- Sem banco real, migration, EC2, commit ou push.
+- Cadastro/PIX/credor, UI de Medicao desktop/mobile, sintaxe, documentacao e
+  diff aprovados. Handoff: docs/handoffs/2026-10-13-cadastro-favorecido-origem.md.
+
+## Fila - cheque de terceiros sem conta bancaria - 2026-10-13
+
+- Agente desta conversa, sem delegacao; concluido localmente, ownership liberado.
+- Reservados: paymentValidators, pagamentoFilaLiquidacaoService,
+  pagamentoManualFilaService, componentes financeiros da baixa em massa,
+  FinanceiroFilaPagamentos, testes isolados/UI e documentacao/handoff.
+- Escopo confirmado: empresa da carteira para cheque de terceiro; conta somente
+  para cheque proprio. Preservar ACL, rateio, idempotencia e estorno atomico.
+- Sem banco real, migration, EC2, commit ou push.
+- Validacoes isoladas backend, UI desktop/mobile, navegacao financeira, build,
+  documentacao e diff aprovados. Handoff: docs/handoffs/2026-10-13-fila-carteira-sem-conta.md.
+
 ## Publicacao: pedido anexos e cabecalho da baixa - 2026-10-13
 
 - Usuario autorizou commit e push das alteracoes pendentes em refactor/frontend.

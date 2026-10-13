@@ -254,6 +254,7 @@ async function listarInstrumentosFila() {
       attributes: ['id', 'nome', 'tipo', 'conta_bancaria_id'], order: [['nome', 'ASC']] }),
     ChequeTerceiro.findAll({ where: { status: 'EM_CARTEIRA' },
       attributes: ['id', 'codigo', 'numero_cheque', 'titular_nome', 'valor', 'empresa_id', 'data_vencimento'],
+      include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome', 'ativo'], required: false }],
       order: [['data_vencimento', 'ASC'], ['id', 'ASC']] })
   ]);
   return { formas, cartoes, cheques };
@@ -666,16 +667,20 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   }
   assertTituloDisponivelParaBaixa(titulo);
 
-  const conta = await ContaBancaria.findByPk(itemPayload.conta_bancaria_id, {
+  // Somente a liquidacao interna ja validada pode usar a empresa da carteira.
+  // Nao ha flag no payload publico que dispense a conta dos demais pagamentos.
+  const carteiraCompartilhada = liquidacao?.fonte?.usar_cheque_terceiro === true;
+  const conta = carteiraCompartilhada ? null : await ContaBancaria.findByPk(itemPayload.conta_bancaria_id, {
     transaction,
     lock: transaction.LOCK.UPDATE
   });
-  if (!conta || conta.ativo === false || !conta.empresa_id) {
+  if (!carteiraCompartilhada && (!conta || conta.ativo === false || !conta.empresa_id)) {
     throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} e invalida ou nao possui empresa.`);
   }
 
+  const empresaPagadoraId = carteiraCompartilhada ? liquidacao.fonte.empresa_id : conta.empresa_id;
   const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
-  const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
+  const baixaEntreEmpresas = Boolean(empresaTituloId && Number(empresaPagadoraId) !== empresaTituloId);
 
   const valorPago = roundCurrency(itemPayload.valor_pago);
   const encargos = { juros: itemPayload.juros ?? filaItem.juros, multa: itemPayload.multa ?? filaItem.multa,
@@ -706,7 +711,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
     valor_previsto: saldoAtual,
     valor_informado: valorPago,
     data_baixa: itemPayload.data_baixa,
-    conta_bancaria_id: conta.id,
+    conta_bancaria_id: conta?.id || null,
     processado_por: req.user?.id || null,
     processado_em: new Date(),
     idempotency_key: itemKey
@@ -718,8 +723,8 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   }
 
   const payloadBaixa = {
-    empresa_id: conta.empresa_id,
-    conta_bancaria_id: conta.id,
+    empresa_id: empresaPagadoraId,
+    conta_bancaria_id: conta?.id || null,
     ...instrumento,
     forma_recebimento: instrumento.forma_pagamento_id ? undefined : 'TRANSFERENCIA',
     valor: valores.principal,

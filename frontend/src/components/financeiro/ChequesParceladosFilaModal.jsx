@@ -14,6 +14,13 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
   // cheques preenchidos nesse estado intermediario; so as visiveis sao enviadas.
   const reservaParcelas = useRef([...parcelas]);
   const soma = parcelas.reduce((sum, item) => sum + Math.round(Number(item.valor_pago || 0) * 100), 0);
+  const compartilhado = Boolean(accounts);
+  const temProprio = parcelas.some(item => origemCheque(item) === 'PROPRIO');
+  // Somente empresas ja presentes nas contas/cheques acessiveis nesta fila.
+  const empresas = [...new Map([...(accounts || []).filter(item => item.ativo !== false && item.empresa_id).map(item =>
+    [Number(item.empresa_id), { id: item.empresa_id, nome: item.empresa?.nome || `Empresa #${item.empresa_id}` }]),
+    ...cheques.filter(item => item.empresa_id && item.empresa?.ativo !== false).map(item =>
+      [Number(item.empresa_id), { id: item.empresa_id, nome: item.empresa?.nome || `Empresa #${item.empresa_id}` }])]).values()];
   const money = valor => Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   function alterar(index, patch) { onChange(parcelas.map((item, i) => i === index ? { ...item, ...patch } : item)); }
   function definirQuantidade(value) {
@@ -31,7 +38,7 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
     event.preventDefault();
     event.stopPropagation();
     if (conflito) return;
-    if (accounts && !conta?.empresa_id) { setErro('Selecione a conta pagadora dos cheques do lote.'); return; }
+    if (compartilhado && temProprio && !conta?.empresa_id) { setErro('Selecione a conta pagadora dos cheques próprios do lote.'); return; }
     if (Number(quantidade) !== parcelas.length || !Number.isInteger(Number(quantidade)) || Number(quantidade) < 1 || Number(quantidade) > 60) {
       setErro('Informe de 1 a 60 cheques por pagamento.'); return;
     }
@@ -39,6 +46,11 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
       setErro('A soma dos cheques deve ser igual ao total deste pagamento.'); return;
     }
     if (parcelas.some(item => !origemCheque(item))) { setErro('Selecione a origem de cada cheque.'); return; }
+    if (compartilhado && parcelas.some(item => item.usar_cheque_terceiro &&
+      (!cheques.some(row => Number(row.id) === Number(item.cheque_terceiro_id)) ||
+      (!cheques.find(row => Number(row.id) === Number(item.cheque_terceiro_id))?.empresa_id && !item.empresa_id)))) {
+      setErro('Selecione o cheque da carteira e informe a empresa quando o cadastro não tiver empresa.'); return;
+    }
     const ids = parcelas.filter(item => item.usar_cheque_terceiro).map(item => String(item.cheque_terceiro_id));
     if (new Set(ids).size !== ids.length) { setErro('Escolha cheques diferentes para cada parcela.'); return; }
     onConfirmar(parcelas);
@@ -51,14 +63,9 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
       <p className="text-sm">Valor pago: {money(total)} · Soma dos cheques: {money(soma / 100)}</p>
       {conflito && <p role="alert">O título mudou. Feche este modal e confira os dados atuais antes de confirmar.</p>}
       <fieldset disabled={conflito} className="space-y-4">
-        {accounts && <label className="block text-sm">Conta pagadora dos cheques
+        {compartilhado && temProprio && <label className="block text-sm">Conta pagadora dos cheques próprios
           <select aria-label="Conta pagadora dos cheques" required className="input w-full" value={conta?.id || ''}
-            onChange={event => { onContaChange(event.target.value); setErro('');
-              parcelas.forEach((item, index) => { reservaParcelas.current[index] = item; });
-              const limparCarteira = item => item.usar_cheque_terceiro
-                ? { valor_pago: '', origem_cheque: 'CARTEIRA', usar_cheque_terceiro: true } : item;
-              reservaParcelas.current = reservaParcelas.current.map(limparCarteira);
-              onChange(parcelas.map(limparCarteira)); }}>
+            onChange={event => { onContaChange(event.target.value); setErro(''); }}>
             <option value="">Selecione a conta</option>{accounts.filter(item => item.ativo !== false && item.empresa_id).map(item =>
               <option key={item.id} value={item.id}>{item.nome} · {item.empresa?.nome || `Empresa #${item.empresa_id}`}</option>)}
           </select>
@@ -94,18 +101,31 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
               </select>
             </label>
           </div>
-          {item.usar_cheque_terceiro ? <label className="block text-sm">Cheque da carteira {index + 1}
-            <select aria-label={`Cheque da carteira ${index + 1}`} required className="input w-full" disabled={!conta?.empresa_id} value={item.cheque_terceiro_id || ''}
+          {item.usar_cheque_terceiro ? <div className="space-y-2"><label className="block text-sm">Cheque da carteira {index + 1}
+            <select aria-label={`Cheque da carteira ${index + 1}`} required className="input w-full" disabled={!compartilhado && !conta?.empresa_id} value={item.cheque_terceiro_id || ''}
               onChange={event => { const cheque = cheques.find(row => Number(row.id) === Number(event.target.value));
-                alterar(index, { cheque_terceiro_id: event.target.value, valor_pago: cheque?.valor || '', data_vencimento: cheque?.data_vencimento || '' }); }}>
-              <option value="">{conta?.empresa_id ? 'Selecione um cheque já cadastrado' : 'Selecione a conta pagadora primeiro'}</option>
-              {cheques.filter(row => !row.empresa_id || Number(row.empresa_id) === Number(conta?.empresa_id)).map(row =>
-                <option key={row.id} value={row.id}>{row.codigo} · {row.numero_cheque} · {row.titular_nome} · {money(row.valor)}</option>)}
+                alterar(index, { cheque_terceiro_id: event.target.value, valor_pago: cheque?.valor || '', empresa_id: '', data_vencimento: cheque?.data_vencimento || '' }); }}>
+              <option value="">{compartilhado || conta?.empresa_id ? 'Selecione um cheque já cadastrado' : 'Selecione a conta pagadora primeiro'}</option>
+              {cheques.filter(row => compartilhado || !row.empresa_id || Number(row.empresa_id) === Number(conta?.empresa_id)).map(row =>
+                <option key={row.id} value={row.id} disabled={compartilhado && row.empresa?.ativo === false}>{row.codigo} · {row.numero_cheque} · {row.titular_nome} · {money(row.valor)}{compartilhado && row.empresa_id ? ` · ${row.empresa?.nome || `Empresa #${row.empresa_id}`}${row.empresa?.ativo === false ? ' (empresa inativa)' : ''}` : ''}</option>)}
             </select>
-          </label> : origemCheque(item) === 'PROPRIO' && <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
+          </label>
+            {compartilhado && item.cheque_terceiro_id && (() => {
+              const cheque = cheques.find(row => Number(row.id) === Number(item.cheque_terceiro_id));
+              return cheque?.empresa_id ? <p className="text-xs">Empresa da carteira: {cheque.empresa?.nome || `Empresa #${cheque.empresa_id}`}. Sem débito em conta bancária.</p>
+                : <label className="block text-sm">Empresa responsável pelo cheque {index + 1}
+                  <select aria-label={`Empresa responsável pelo cheque ${index + 1}`} required className="input w-full" value={item.empresa_id || ''}
+                    onChange={event => alterar(index, { empresa_id: event.target.value })}>
+                    <option value="">Cadastro legado sem empresa: selecione</option>
+                    {empresas.map(empresa => <option key={empresa.id} value={empresa.id}>{empresa.nome}</option>)}
+                  </select>
+                </label>;
+            })()}
+          </div> : origemCheque(item) === 'PROPRIO' && <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
         </section>)}
       </fieldset>
       <p className="text-xs text-[var(--c-muted)]">Cheques de terceiros precisam estar cadastrados e disponíveis na carteira. O valor de cada um deve ser usado integralmente.
+        {compartilhado && ' A empresa vem da carteira, sem selecionar conta bancária. Cheques próprios usam a conta pagadora informada.'}
         {podeCadastrar && <> <Link className="underline" to="/financeiro/cheques-terceiros" target="_blank" rel="noopener noreferrer">Abrir carteira para cadastrar</Link>.</>}
         {' '}Após cadastrar, feche este modal e atualize a fila para carregar o cheque.</p>
       {erro && <p role="alert" className="text-sm text-[var(--sem-danger)]">{erro}</p>}

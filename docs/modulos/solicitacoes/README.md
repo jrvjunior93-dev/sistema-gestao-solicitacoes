@@ -1,5 +1,18 @@
 # Modulo SOLICITACOES
 
+## Cadastro rapido de favorecido: contexto da origem - 2026-10-13
+
+- POST /solicitacoes/favorecidos aceita obra_id opcional, ID positivo/seguro,
+  como contexto para resolver campos por origem/tipo/subtipo. O modal ja enviava
+  esse campo, mas a allowlist o recusava antes de chegar ao controller.
+- Nao altera formulario, visibilidade, permissoes, vinculos contratuais nem
+  atributos do parceiro. Legado sem origem continua compativel. Mantidos
+  rate limit, auditoria, idempotencia, transacao e reutilizacao por chave PIX.
+- Teste isolado: npm run test:cadastro-favorecido-origem em backend/; executa
+  handler real do modal, validador, controller, configuracao, parceiro e
+  idempotencia com modelos em memoria. Sem migration ou banco real.
+  [Handoff](../../handoffs/2026-10-13-cadastro-favorecido-origem.md).
+
 ## Piloto de navegacao e estado das abas - 2026-10-12
 
 Base de historico por aba e piloto em Nova Solicitacao, lista e detalhes.

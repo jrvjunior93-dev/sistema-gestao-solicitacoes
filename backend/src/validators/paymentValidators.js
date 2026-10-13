@@ -233,6 +233,8 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
   }
   if (payload.itens.length > 200) throw new ValidationError('Registre no maximo 200 baixas por operacao.');
 
+  const instrumentos = payload.instrumentos_lote == null ? undefined : validarInstrumentosLote(payload.instrumentos_lote);
+  const somenteCarteira = instrumentos?.tipo === 'CHEQUE' && instrumentos.componentes.every(item => item.usar_cheque_terceiro);
   const ids = new Set();
   const itens = payload.itens.map((item, index) => {
     ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'desconto', 'juros', 'multa', 'motivo',
@@ -259,7 +261,7 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
       data_emissao: parseDateOnly(item.data_emissao, 'Emissao do cheque'),
       data_vencimento: parseDateOnly(item.data_vencimento, 'Vencimento do cheque'),
       data_baixa: parseDateOnly(item.data_baixa, `Data da baixa do item ${index + 1}`, { required: true }),
-      conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: true }),
+      conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: !somenteCarteira }),
       valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),
       juros: parseDecimal(item.juros, `Juros do item ${index + 1}`, { min: 0 }),
       multa: parseDecimal(item.multa, `Multa do item ${index + 1}`, { min: 0 }),
@@ -268,7 +270,6 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
     });
   });
 
-  const instrumentos = payload.instrumentos_lote == null ? undefined : validarInstrumentosLote(payload.instrumentos_lote);
   if (itens.some(item => item.parcelas_cartao && (item.cartao_id || item.parcelas_cheque || item.cheque_numero
     || item.cheque_terceiro_id || item.usar_cheque_terceiro))) throw new ValidationError('Cartoes rateados nao podem ser misturados com outro instrumento individual.');
   if (itens.some(item => item.parcelas_cartao && !item.forma_pagamento_id)) throw new ValidationError('Informe a forma de pagamento dos cartoes rateados.');
@@ -295,7 +296,7 @@ function validarInstrumentosLote(config) {
   ensureAllowedKeys(config, ['tipo', 'forma_pagamento_id', 'componentes'], 'Instrumentos do lote');
   const tipo = parseEnum(config.tipo, 'Tipo dos instrumentos', ['CHEQUE', 'CARTAO'], { required: true });
   return { tipo, forma_pagamento_id: parseInteger(config.forma_pagamento_id, 'Forma do lote', { required: true }),
-    componentes: tipo === 'CHEQUE' ? validarParcelasChequeFila(config.componentes) : validarCartoesFila(config.componentes) };
+    componentes: tipo === 'CHEQUE' ? validarParcelasChequeFila(config.componentes, true) : validarCartoesFila(config.componentes) };
 }
 
 function validateManualPaymentQueueResultBody(payload = {}) {
@@ -306,16 +307,18 @@ function validateManualPaymentQueueResultBody(payload = {}) {
   };
 }
 
-function validarParcelasChequeFila(parcelas) {
+function validarParcelasChequeFila(parcelas, compartilhado = false) {
   if (!Array.isArray(parcelas) || !parcelas.length || parcelas.length > 60) throw new ValidationError('Informe entre 1 e 60 cheques.');
   return parcelas.map((parcela, index) => {
     ensureAllowedKeys(parcela, ['valor_pago', 'usar_cheque_terceiro', 'cheque_terceiro_id',
       'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
-      'cheque_conta', 'data_emissao', 'data_vencimento'], `Cheque ${index + 1}`);
-    const normalizado = validateManualPaymentQueueProcessBody({ itens: [{ ...parcela,
+      'cheque_conta', 'data_emissao', 'data_vencimento', ...(compartilhado ? ['empresa_id'] : [])], `Cheque ${index + 1}`);
+    const { empresa_id, ...instrumento } = parcela;
+    if (empresa_id != null && !parseBoolean(parcela.usar_cheque_terceiro)) throw new ValidationError('Empresa explicita somente para cheque da carteira.');
+    const normalizado = validateManualPaymentQueueProcessBody({ itens: [{ ...instrumento,
       fila_id: 1, data_baixa: '2000-01-01', conta_bancaria_id: 1 }] }).itens[0];
     const { fila_id, conta_bancaria_id, data_baixa, ...campos } = normalizado;
-    return campos;
+    return cleanUndefined({ ...campos, ...(compartilhado ? { empresa_id: parseInteger(empresa_id, 'Empresa do cheque da carteira') } : {}) });
   });
 }
 

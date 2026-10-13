@@ -1,7 +1,7 @@
 'use strict';
 const { Op } = require('sequelize');
 const { PagamentoFilaLiquidacao, PagamentoManualFilaItem, MovimentoFinanceiro, TituloFinanceiro,
-  ContaBancaria, CartaoFinanceiro, ChequeTerceiro, ChequeTerceiroMovimento } = require('../models');
+  ContaBancaria, CartaoFinanceiro, ChequeTerceiro, ChequeTerceiroMovimento, EmpresaGrupo } = require('../models');
 const { baixarTitulo, consumirChequeTerceiroPagamento, carregarTituloPorId } = require('./tituloFinanceiroService');
 const { planejarRateioFila, hashLiquidacao } = require('./pagamentoFilaRateioDomain');
 const { conferirChequesUnicosLote } = require('./pagamentoFilaChequesDomain');
@@ -38,18 +38,25 @@ async function registrarLiquidacaoFila(req, itens, config, key, transaction, { p
   const carteiras = new Set();
   for (const [index, value] of config.componentes.entries()) {
     const card = value.cartao_id ? await CartaoFinanceiro.findByPk(value.cartao_id, { transaction }) : null;
-    const contaId = card?.conta_bancaria_id || itens[0].conta_bancaria_id;
-    const conta = await ContaBancaria.findByPk(contaId, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!conta || conta.ativo === false || !conta.empresa_id) erro(400, 'Conta do instrumento invalida ou sem empresa.');
+    let conta = null;
+    let empresaId;
     if (config.tipo === 'CARTAO' && (!card || card.ativo === false)) erro(400, 'Selecione um cartao ativo em cada parte.');
     if (config.tipo === 'CHEQUE' && value.usar_cheque_terceiro) {
       if (carteiras.has(value.cheque_terceiro_id)) erro(400, 'O mesmo cheque aparece mais de uma vez.');
       carteiras.add(value.cheque_terceiro_id);
       const cheque = await ChequeTerceiro.findByPk(value.cheque_terceiro_id, { transaction, lock: transaction.LOCK.UPDATE });
-      if (!cheque || cheque.status !== 'EM_CARTEIRA' || Number(cheque.valor) !== Number(value.valor_pago)
-        || (cheque.empresa_id && Number(cheque.empresa_id) !== Number(conta.empresa_id))) erro(409, 'Cheque indisponivel, de outra empresa ou valor diferente do documento.');
+      if (!cheque || cheque.status !== 'EM_CARTEIRA' || Number(cheque.valor) !== Number(value.valor_pago)) erro(409, 'Cheque indisponivel ou valor diferente do documento.');
+      if (cheque.empresa_id && value.empresa_id && Number(cheque.empresa_id) !== Number(value.empresa_id)) erro(409, 'Empresa diferente da empresa do cheque na carteira.');
+      empresaId = cheque.empresa_id || value.empresa_id;
+      const empresa = empresaId && await EmpresaGrupo.findByPk(empresaId, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!empresa || empresa.ativo === false) erro(400, 'Informe uma empresa ativa para o cheque da carteira sem empresa cadastrada.');
+    } else {
+      const contaId = card?.conta_bancaria_id || itens[0].conta_bancaria_id;
+      conta = contaId && await ContaBancaria.findByPk(contaId, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!conta || conta.ativo === false || !conta.empresa_id) erro(400, 'Conta do instrumento invalida ou sem empresa.');
+      empresaId = conta.empresa_id;
     }
-    componentes.push({ ...value, forma_pagamento_id: config.forma_pagamento_id, conta_bancaria_id: conta.id, empresa_id: conta.empresa_id });
+    componentes.push({ ...value, forma_pagamento_id: config.forma_pagamento_id, conta_bancaria_id: conta?.id || null, empresa_id: empresaId });
     for (const [rowIndex, item] of itens.entries()) {
       if (!plano[rowIndex].some(parte => parte.componente === index)) continue;
       const titulo = titulos.get(Number(item.fila_id));
@@ -65,8 +72,9 @@ async function registrarLiquidacaoFila(req, itens, config, key, transaction, { p
   for (const [index, item] of itens.entries()) {
     // Conta principal do snapshot deve corresponder a uma fonte realmente usada;
     // os demais movimentos preservam as respectivas contas, nao a conta do form.
-    const contaPrincipal = componentes[plano[index][0].componente].conta_bancaria_id;
-    const result = await processarItemFila(req, { ...item, conta_bancaria_id: contaPrincipal }, key, transaction, {
+    const fontePrincipal = componentes[plano[index][0].componente];
+    const result = await processarItemFila(req, { ...item, conta_bancaria_id: fontePrincipal.conta_bancaria_id }, key, transaction, {
+      fonte: fontePrincipal,
       instrumento: { forma_pagamento_id: config.forma_pagamento_id, liquidacao_id: grupo.id, instrumentos: componentes,
         quantidade_titulos: itens.length },
       baixar: async (titulo, valores, payload, options) => {
