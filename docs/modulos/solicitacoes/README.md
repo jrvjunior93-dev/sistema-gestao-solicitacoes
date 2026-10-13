@@ -1,5 +1,18 @@
 # Modulo SOLICITACOES
 
+## Cadastro rapido de favorecido: contexto da origem - 2026-10-13
+
+- POST /solicitacoes/favorecidos aceita obra_id opcional, ID positivo/seguro,
+  como contexto para resolver campos por origem/tipo/subtipo. O modal ja enviava
+  esse campo, mas a allowlist o recusava antes de chegar ao controller.
+- Nao altera formulario, visibilidade, permissoes, vinculos contratuais nem
+  atributos do parceiro. Legado sem origem continua compativel. Mantidos
+  rate limit, auditoria, idempotencia, transacao e reutilizacao por chave PIX.
+- Teste isolado: npm run test:cadastro-favorecido-origem em backend/; executa
+  handler real do modal, validador, controller, configuracao, parceiro e
+  idempotencia com modelos em memoria. Sem migration ou banco real.
+  [Handoff](../../handoffs/2026-10-13-cadastro-favorecido-origem.md).
+
 ## Piloto de navegacao e estado das abas - 2026-10-12
 
 Base de historico por aba e piloto em Nova Solicitacao, lista e detalhes.
@@ -20,7 +33,44 @@ a entrada. Login substitui a entrada apos sucesso e nao reapresenta o
 formulario com sessao ativa. Restauracao, logout e MFA continuam sob as
 validacoes existentes; nenhuma mudanca em AuthProvider ou ACL backend.
 
+## Filtros no retorno e Ctrl+clique - 2026-10-13
+
+A lista ativa e a arquivada preservam busca, filtros rapidos/avancados,
+visao e ordenacao ao abrir uma solicitacao e retornar. O snapshot por aba
+continua prioritario; uma consulta leve em sessionStorage complementa o
+retorno sem snapshot e o recarregamento, separada por usuario/lista e
+invalidada quando muda o escopo informado pela sessao. Guarda somente campos
+de consulta permitidos, nao registros, arquivos, credenciais ou parametros
+arbitrarios de API. Links com filtros explicitos prevalecem sobre a consulta
+de sessao; os recortes `ids`/`visao` do Hub tambem integram o snapshot.
+
+O codigo e um link real: clique comum conserva a abertura em aba interna
+(ou navegacao comum com piloto desligado). Ctrl/Cmd+clique e clique do meio
+no codigo abrem uma aba do navegador sem substituir a lista. Ctrl+clique na
+linha tambem abre outra aba. A excecao `data-native-tab` no Layout e opt-in;
+os demais links continuam com o comportamento existente. Nao ha abertura
+duplicada em aba interna e externa. Menu de contexto/copiar link continuam
+disponiveis, e nao se reconhece uma interacao apenas ao abrir a nova aba.
+
+Falha de storage nao impede navegação; consulta restaurada nao concede acesso.
+Lista/detalhe fazem GET autorizado atual, e respostas 401/403 continuam
+eliminando os registros. Nenhum endpoint, ACL, migration ou DTO cacheado foi
+adicionado. Validacao isolada: `cd frontend && node
+scripts/validarWorkspacePiloto.mjs --solicitacoes-filtros-only` (1366/390 px,
+Layout real com/sem snapshots, transporte interceptado). Homologacao em dev
+autenticado continua sendo etapa posterior a publicacao.
+
 ## Interacoes pendentes por usuario - 2026-10-11
+
+- Ajuste de 13/10: SOLICITACAO_CRIADA nao gera interacao. Anexos do ato de
+  criacao nova recebem origem CRIACAO_SOLICITACAO no historico, apenas quando
+  comprovada pelo token assinado de upload inicial; nao geram balao/destaque/
+  prioridade de interacao. Nao usa heuristica de tempo ou flag livre do cliente.
+  Anexos posteriores e novas medicoes em solicitacao existente permanecem
+  notificaveis. Historico, arquivos, notificacao geral e ACL preservados.
+  Tokens antigos mantem autorizacao sem presumir origem; avisos antigos nao
+  sao apagados nem classificados retroativamente. Sem migration/backfill.
+  [Handoff](../../handoffs/2026-10-13-interacoes-anexos-criacao.md).
 
 - Na lista (tabela/cards/celular), o balao junto ao codigo agrupa as
   interacoes pendentes e informa a quantidade por motivo. Inclui comentarios

@@ -19,12 +19,15 @@ const record = data => ({ ...data, async update(changes) { Object.assign(this, c
 function matches(row, where = {}) {
   return Reflect.ownKeys(where).every(key => {
     if (key === Op.or) return where[key].some(clause => matches(row, clause));
+    if (key === Op.and && where[key]?.val?.startsWith('JSON_EXTRACT')) return !row.instrumento_pagamento_json?.estorno;
     const value = where[key];
+    const actual = typeof key === 'string' && key.includes('.') ? key.split('.').reduce((item, part) => item?.[part], row) : row[key];
     if (!value || typeof value !== 'object') return (row[key] ?? null) === value;
     return Reflect.ownKeys(value).every(operator => {
       if (operator === Op.in) return value[operator].includes(row[key]);
       if (operator === Op.gt) return Number(row[key]) > value[operator];
       if (operator === Op.ne) return row[key] !== value[operator];
+      if (operator === Op.is) return (actual ?? null) === value[operator];
       throw new Error(`Operador nao isolado: ${String(operator)}`);
     });
   });
@@ -82,6 +85,9 @@ const deps = {
   './securityLogService': { registrarEventoSeguranca: async () => {} },
   './pagamentoFilaComprovanteDomain': domain,
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
+  './pagamentoFilaChequesDomain': require('../src/services/pagamentoFilaChequesDomain'),
+  './pagamentoAutorizacaoEventosService': {},
+  './instrucaoFinanceiraFavorecidoService': { anexarInstrucoes: async () => {} },
   './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),
   './tituloFinanceiroService': { baixarTitulo: async (_, id, payload, options) => {
     if (!allowSettlement) throw new Error('Anexo nao pode baixar titulo'); assert(options.transaction); settlements++;
@@ -158,6 +164,11 @@ async function main() {
     assert.equal(domain.pendenteComprovanteFila(rows[0]), false);
   }
   reset('DIVERGENTE', null); assert.equal(domain.pendenteComprovanteFila(rows[0]), false);
+  reset('RESOLVIDO'); rows[0].instrumento_pagamento_json = { estorno: { reaberto_id: 2 } };
+  assert.equal(domain.pendenteComprovanteFila(rows[0]), false);
+  assert.equal((await fila.listarFilaPagamentos(req, { status: 'PENDENTE_COMPROVANTE' })).data.length, 0);
+  assert.equal((await fila.listarFilaPagamentos(req, { status: 'BAIXADO' })).data.length, 0);
+  reset('RESOLVIDO'); assert.equal((await fila.listarFilaPagamentos(req, { status: 'BAIXADO' })).data.length, 1);
   reset('PENDENTE', null); assert.equal(domain.pendenteComprovanteFila(rows[0]), false);
   for (const status of ['NAO_PAGO', 'CANCELADO', 'BAIXADO', 'RESOLVIDO']) {
     reset(status, null); await assert.rejects(fila.anexarComprovanteFila(req, 1, file('invalid.pdf')), /nao permite/);

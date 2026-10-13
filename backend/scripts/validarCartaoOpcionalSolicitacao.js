@@ -37,7 +37,7 @@ const models = new Proxy({
   Obra: { findByPk: async () => ({ id: 1, nome: 'Obra QA', empresa_grupo_id: 1, ativo: true }) },
   TituloFinanceiroImposto: { destroy: async () => {} },
   Parceiro: { findByPk: async () => ({ id: 1, ativo: true, fornecedor: true, cliente: true }) },
-  CategoriaFinanceira: { findByPk: async () => ({ id: 1, ativo: true, natureza: 'DESPESA', classificacao_dre: 'CUSTO' }) },
+  CategoriaFinanceira: { findByPk: async () => ({ id: 1, ativo: true, natureza: 'DESPESA', classificacao_dre: 'CUSTO', dre_grupo: 'CUSTOS' }) },
   Solicitacao: { findByPk: async () => solicitacao },
   Historico: { create: async (data) => { state.historico.push(data); return data; } },
   ChequeTerceiro: { findOne: async ({ where }) => state.cheques.find(row => row.id === where.id && row.status === where.status) },
@@ -70,9 +70,10 @@ const dependencies = {
   crypto: require('node:crypto'),
   sequelize: { Op: new Proxy({}, { get: (_, key) => Symbol.for(key) }) },
   '../models': models,
-  './authorizationService': { canAccessFinanceiro: async () => true, getFinanceiroObraScopeIds: async () => null },
+  './authorizationService': { canAccessFinanceiro: async () => true, getFinanceiroObraScopeIds: async user => user.scope ?? null },
   './apropriacaoSelecaoService': {},
   './faturaCartaoFinanceiroService': {
+    recalcularFaturaCartao: async () => {},
     obterOuCriarFaturaCartao: async (data) => { const fatura = { id: state.faturas.length + 1, ...data }; state.faturas.push(fatura); return { fatura }; },
     vincularTituloAFatura: async ({ titulo, fatura, leituraCorrente }) => {
       fatura.leituraCorrente = leituraCorrente;
@@ -84,7 +85,7 @@ const dependencies = {
   '../constants/intercompany': require('../src/constants/intercompany'),
   './tituloIntercompanyCartaoHelper': require('../src/services/tituloIntercompanyCartaoHelper'),
   './solicitacaoFinanceiroStatusService': { sincronizarStatusSolicitacaoPorBaixaTitulos: async () => {} },
-  './conciliacaoEstornoService': {},
+  './conciliacaoEstornoService': { reabrirConciliacoesPorMovimentos: async () => [] },
   './tituloBloqueioRetornoObraService': require('../src/services/tituloBloqueioRetornoObraPolicy'),
   './rhPagamentoRevisaoPolicy': require('../src/services/rhPagamentoRevisaoPolicy'),
   // Este teste cobre pagamentos antigos sem divisao nem adiantamento.
@@ -99,12 +100,19 @@ const dependencies = {
   './comercialService': { sincronizarContratoComercialPorTituloFinanceiro: async () => {} }
 };
 dependencies['./comercialService'].sincronizarContratoComercialPorTituloEditado = async () => {};
+dependencies['./solicitacaoFavorecidosService'] = { listarFavorecidos: async () => [] };
+dependencies['./adiantamentoService'] = { ehAdiantamento: async () => false };
+dependencies['./instrucaoFinanceiraFavorecidoService'] = { anexarInstrucoes: async () => {} };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
 const instrucaoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/instrucaoFinanceiraFavorecidoService.js'), 'utf8'), {
   module: instrucaoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia de instrucao nao isolada: ${id}`); return dependencies[id]; }
 });
 dependencies['./instrucaoFinanceiraFavorecidoService'] = instrucaoModule.exports;
+// Pontos substituiveis pela suite de rateio: servico de titulo permanece real.
+const faturaMocks = dependencies['./faturaCartaoFinanceiroService'];
+dependencies['./faturaCartaoFinanceiroService'] = Object.fromEntries(Object.keys(faturaMocks)
+  .map(key => [key, (...args) => faturaMocks[key](...args)]));
 const saldoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/pagamentoFilaSaldoService.js'), 'utf8'), {
   module: saldoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia nao isolada: ${id}`); return dependencies[id]; }
@@ -115,7 +123,7 @@ vm.runInNewContext(fs.readFileSync(file, 'utf8') + '\nmodule.exports.test = { va
   module: isolated, console, Date, Intl,
   require(id) { if (!(id in dependencies)) throw new Error(`Dependencia nao isolada: ${id}`); return dependencies[id]; }
 }, { filename: file });
-const { criarTituloPorSolicitacao, atualizarTitulo, baixarTitulo, test } = isolated.exports;
+const { criarTituloPorSolicitacao, criarTituloManual, atualizarTitulo, baixarTitulo, test } = isolated.exports;
 const queueFile = path.resolve(__dirname, '../src/services/pagamentoManualFilaService.js');
 const queueModule = { exports: {} };
 const vinculoModule = { exports: {} };
@@ -129,6 +137,8 @@ const queueDependencies = { ...dependencies,
   './s3': {}, './fileAccessService': {}, '../config/env': { env: {} },
   './paymentOwnerApprovalPolicy': {},
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
+  './pagamentoFilaChequesDomain': require('../src/services/pagamentoFilaChequesDomain'),
+  './pagamentoAutorizacaoEventosService': {},
   './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),
   './pagamentoFilaComprovanteDomain': require('../src/services/pagamentoFilaComprovanteDomain'),
   // Historico de arquivos e exercitado com o helper real em validarFilaComprovantePendente.
@@ -153,6 +163,24 @@ const itemFila = (fila, instrumento = {}) => ({ fila_id: fila.id, conta_bancaria
   data_baixa: '2026-10-08', valor_pago: 200, ...instrumento });
 
 async function main() {
+  // Mesmo servico canonico usado pelo pedido de Compras; sem banco/fatura real.
+  for (const [formaId, cartaoId, quantidade] of [[1,10,2],[2,20,1]]) {
+    reset();
+    const transaction={LOCK:{UPDATE:'UPDATE'}};
+    const result=await criarTituloManual(req,{tipo:'PAGAR',status:'ABERTO',obra_id:1,parceiro_id:1,descricao:'Pedido QA com cartao',
+      categoria_financeira_id:1,forma_pagamento_id:formaId,cartao_id:cartaoId,data_compra:'2026-10-12',
+      valor:200,data_emissao:'2026-10-12',data_vencimento:'2026-10-20',quantidade_parcelas:quantidade,
+      parcelas:Array.from({length:quantidade},(_,i)=>({valor:200/quantidade,data_vencimento:i?'2026-11-20':'2026-10-20'}))},
+      {transaction,origemTitulo:'PEDIDO_COMPRA',pularAcessoFinanceiro:true,registrarSeguranca:false,retornarTitulosCriados:true});
+    assert.equal(result.titulos.length,quantidade);
+    assert.equal(state.movimentos.length,quantidade);
+    assert.equal(state.faturas.length,formaId===1?quantidade:0);
+    assert.ok(state.titulos.every(t=>t.cartao_id===cartaoId&&t.status==='QUITADO'&&t.data_compra==='2026-10-12'));
+    assert.ok(state.movimentos.every(m=>m.valor===200/quantidade&&m.data_movimento==='2026-10-12'));
+    if(formaId===1){assert.deepEqual(state.faturas.map(f=>f.parcelaOffset),[0,1]);assert(state.titulos.every(t=>t.fatura_cartao_id));}
+    assert.equal(state.commits,0,'Transacao do pedido permanece atomica sob seu chamador');
+  }
+  reset();
   const validado = validateFinanceTituloCreateFromSolicitacaoBody({ categoria_financeira_id: 1, pagamentos: [pagamento(1)] });
   assert.equal(validado.pagamentos[0].cartao_id, undefined);
   assert.throws(() => validateFinanceTituloCreateFromSolicitacaoBody({ categoria_financeira_id: 1, permitirCartaoPendente: true }), /campos nao permitidos/);
@@ -269,6 +297,28 @@ async function main() {
     cheque_emitente: 'Empresa QA', cheque_banco: '001', data_emissao: '2026-10-08', data_vencimento: '2026-10-10' })] });
   assert.equal(state.movimentos[0].cheque_numero, '123'); assert.equal(state.movimentos[0].cheque_emitente, 'Empresa QA');
   assert.equal(state.movimentos[0].cheque_data_vencimento, '2026-10-10');
+  // Fila E baixarTitulo reais: varios cheques no mesmo titulo com desconto.
+  for (const indisponivel of [false, true]) {
+    reset(); titulo = await gerar([pagamento(3)]); fila = colocarNaFila(titulo);
+    state.cheques.push(registro({ id: 77, status: indisponivel ? 'DEPOSITADO' : 'EM_CARTEIRA', valor: 103, empresa_id: 1 }));
+    const multi = { idempotency_key: 'multiplos-reais', itens: [itemFila(fila, {
+      forma_pagamento_id: 4, valor_pago: 193, juros: 10, multa: 3, desconto: 20,
+      parcelas_cheque: [{ valor_pago: 90, cheque_numero: '101', cheque_emitente: 'Empresa QA', data_vencimento: '2026-11-10' },
+        { valor_pago: 103, usar_cheque_terceiro: true, cheque_terceiro_id: 77 }] })] };
+    if (indisponivel) {
+      await assert.rejects(registrarBaixasFila(req, multi), /indisponivel ou ja utilizado/);
+      assert.equal(state.movimentos.length, 0); assert.equal(state.titulos[0].valor_saldo, 200);
+      assert.equal(state.fila[0].status, 'PENDENTE'); assert.equal(state.cheques[0].status, 'DEPOSITADO');
+    } else {
+      await registrarBaixasFila(req, multi);
+      assert.equal(state.movimentos.length, 2); assert.equal(titulo.valor_saldo, 0); assert.equal(titulo.valor_baixado, 200);
+      assert.equal(fila.instrumento_pagamento_json.movimentos_financeiros_ids.length, 2);
+      assert.equal(Math.round(state.movimentos.reduce((sum, row) => sum + row.valor_quitacao, 0) * 100), 19300);
+      assert.equal(Math.round(state.movimentos.reduce((sum, row) => sum + row.desconto, 0) * 100), 2000);
+      assert.equal(state.cheques[0].status, 'UTILIZADO'); assert.equal(state.movimentos[1].conta_bancaria_id, null);
+      await registrarBaixasFila(req, multi); assert.equal(state.movimentos.length, 2);
+    }
+  }
   for (const duplicado of [false, true]) {
     reset();
     solicitacao.valor = duplicado ? 400 : 200;
@@ -277,7 +327,7 @@ async function main() {
     const payload = { itens: state.titulos.map(title => itemFila(colocarNaFila(title), {
       forma_pagamento_id: 4, usar_cheque_terceiro: true, cheque_terceiro_id: 77 })) };
     if (duplicado) {
-      await assert.rejects(registrarBaixasFila(req, payload), /indisponivel ou ja utilizado/);
+      await assert.rejects(registrarBaixasFila(req, payload), /indisponivel ou ja utilizado|mesmo cheque/);
       assert.equal(state.movimentos.length, 0); assert.equal(state.chequeEventos.length, 0);
       assert(state.titulos.every(row => row.status === 'ABERTO')); assert(state.fila.every(row => row.status === 'PENDENTE'));
       assert.equal(state.cheques[0].status, 'EM_CARTEIRA');
@@ -355,4 +405,6 @@ async function main() {
   console.log('Cartao opcional na solicitacao: aberto sem cartao, quitacao com cartao, parcelas e baixa obrigatoria validados sem banco real.');
   console.log('Fila + baixa reais: juros/multa separados, edicao e aprovacao de divergencia, credito/fatura, debito, PIX, cheques, replay e rollback. Banco simulado.');
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+module.exports = { state, models, dependencies, queueDependencies, isolated, queueModule,
+  registro, formas, cartoes, conta, solicitacao, req, reset, gerar, pagamento, colocarNaFila, itemFila, faturaMocks };
+if (require.main === module) main().catch((error) => { console.error(error); process.exitCode = 1; });

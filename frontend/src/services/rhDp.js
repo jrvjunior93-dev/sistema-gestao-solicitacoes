@@ -672,15 +672,21 @@ export async function getRhTicketStatus(competencia, colaboradorIds = []) {
   return parseJson(response, 'Erro ao consultar os tickets dos colaboradores');
 }
 
-export async function gerarLoteRhTicket({ competencia, parceiro_id, categoria_financeira_id, data_vencimento, colaborador_ids, boleto, idempotency_key }) {
+export async function gerarLoteRhTicket({ competencia, parceiro_id, categoria_financeira_id, data_vencimento, colaborador_ids, boleto, idempotency_key,
+  forma_pagamento = 'BOLETO', pagamentos_pix = [], pix_revisado = false }) {
   const formData = new FormData();
   formData.append('competencia', competencia);
-  formData.append('parceiro_id', parceiro_id);
+  if (parceiro_id) formData.append('parceiro_id', parceiro_id);
   formData.append('categoria_financeira_id', categoria_financeira_id);
   formData.append('data_vencimento', data_vencimento);
   formData.append('colaborador_ids', JSON.stringify(colaborador_ids));
   formData.append('idempotency_key', idempotency_key);
-  formData.append('boleto', boleto);
+  formData.append('forma_pagamento', forma_pagamento);
+  if (forma_pagamento === 'PIX') {
+    formData.append('pagamentos_pix', JSON.stringify(pagamentos_pix));
+    formData.append('pix_revisado', String(pix_revisado));
+  }
+  if (boleto && forma_pagamento === 'BOLETO') formData.append('boleto', boleto);
   const response = await fetch(`${API_URL}/rh/tickets`, { method: 'POST', headers: authHeaders(), body: formData });
   return parseJson(response, 'Erro ao gerar o lote de ticket');
 }

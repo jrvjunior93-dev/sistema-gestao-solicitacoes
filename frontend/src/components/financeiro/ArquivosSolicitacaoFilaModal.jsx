@@ -31,7 +31,8 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
     previewDisparadorRef.current = null;
     getArquivosSolicitacaoFila(solicitacao.id)
       .then((dados) => {
-        if (ativo) setArquivos(Array.isArray(dados) ? dados : []);
+        if (ativo) setArquivos(Array.isArray(dados)
+          ? dados.filter(arquivo => String(arquivo?.tipo || '').trim().toUpperCase() === 'BOLETO') : []);
       })
       .catch((error) => {
         if (ativo) setErro(error?.message || 'Não foi possível carregar os arquivos.');
@@ -88,7 +89,7 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
       <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-[var(--c-text)]">Arquivos da solicitação {solicitacao.codigo || `#${solicitacao.id}`}</h2>
-          <p className="text-xs text-[var(--c-muted)]">Anexos e comprovantes disponíveis para consulta.</p>
+          <p className="text-xs text-[var(--c-muted)]">Arquivos enviados pelo campo de boleto da solicitação.</p>
         </div>
         <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={onFechar}>Fechar</button>
       </div>
@@ -102,7 +103,7 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
         ) : null}
         {carregando ? <p className="py-6 text-sm text-[var(--c-muted)]">Carregando arquivos...</p> : null}
         {!carregando && !erro && arquivos.length === 0 ? (
-          <p className="py-6 text-sm text-[var(--c-muted)]">Nenhum arquivo anexado a esta solicitação.</p>
+          <p className="py-6 text-sm text-[var(--c-muted)]">Nenhum arquivo enviado pelo campo de boleto desta solicitação.</p>
         ) : null}
         {!carregando && arquivos.length > 0 ? (
           <ul className="divide-y divide-[var(--c-border)] border-y border-[var(--c-border)]">

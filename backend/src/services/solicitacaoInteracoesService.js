@@ -23,6 +23,9 @@ function metadata(linha) {
 }
 
 function tipoInteracao(linha) {
+  // Arquivos do envio inicial permanecem auditados, mas nao sao uma nova
+  // interacao que deva gerar balao, destaque ou prioridade na lista.
+  if (linha.acao === 'ANEXO_ADICIONADO' && metadata(linha).origem === 'CRIACAO_SOLICITACAO') return null;
   if (linha.acao === 'COMENTARIO_ETAPA_COMPRA') {
     const escopo = metadata(linha).escopo;
     if (escopo === 'COTACAO') return 'COMENTARIO_COTACAO';

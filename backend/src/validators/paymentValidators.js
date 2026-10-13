@@ -227,23 +227,27 @@ function validateManualPaymentQueueQuery(payload = {}) {
 }
 
 function validateManualPaymentQueueProcessBody(payload = {}) {
-  ensureAllowedKeys(payload, ['itens', 'idempotency_key'], 'Baixa da fila de pagamentos');
+  ensureAllowedKeys(payload, ['itens', 'idempotency_key', 'instrumentos_lote'], 'Baixa da fila de pagamentos');
   if (!Array.isArray(payload.itens) || payload.itens.length === 0) {
     throw new ValidationError('Selecione ao menos um item da fila para registrar a baixa.');
   }
   if (payload.itens.length > 200) throw new ValidationError('Registre no maximo 200 baixas por operacao.');
 
+  const instrumentos = payload.instrumentos_lote == null ? undefined : validarInstrumentosLote(payload.instrumentos_lote);
+  const somenteCarteira = instrumentos?.tipo === 'CHEQUE' && instrumentos.componentes.every(item => item.usar_cheque_terceiro);
   const ids = new Set();
   const itens = payload.itens.map((item, index) => {
-    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'juros', 'multa', 'motivo',
+    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'desconto', 'juros', 'multa', 'motivo',
       'forma_pagamento_id', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
       'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
-      'cheque_conta', 'data_emissao', 'data_vencimento'], `Item ${index + 1}`);
+      'cheque_conta', 'data_emissao', 'data_vencimento', 'parcelas_cheque', 'parcelas_cartao'], `Item ${index + 1}`);
     const filaId = parseInteger(item.fila_id, `Item ${index + 1}`, { required: true });
     if (ids.has(filaId)) throw new ValidationError(`O item ${filaId} foi informado mais de uma vez.`);
     ids.add(filaId);
     return cleanUndefined({
       fila_id: filaId,
+      parcelas_cheque: item.parcelas_cheque == null ? undefined : validarParcelasChequeFila(item.parcelas_cheque),
+      parcelas_cartao: item.parcelas_cartao == null ? undefined : validarCartoesFila(item.parcelas_cartao),
       forma_pagamento_id: parseInteger(item.forma_pagamento_id, 'Forma de pagamento'),
       cartao_id: parseInteger(item.cartao_id, 'Cartao'),
       usar_cheque_terceiro: parseBoolean(item.usar_cheque_terceiro),
@@ -257,18 +261,42 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
       data_emissao: parseDateOnly(item.data_emissao, 'Emissao do cheque'),
       data_vencimento: parseDateOnly(item.data_vencimento, 'Vencimento do cheque'),
       data_baixa: parseDateOnly(item.data_baixa, `Data da baixa do item ${index + 1}`, { required: true }),
-      conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: true }),
+      conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: !somenteCarteira }),
       valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),
       juros: parseDecimal(item.juros, `Juros do item ${index + 1}`, { min: 0 }),
       multa: parseDecimal(item.multa, `Multa do item ${index + 1}`, { min: 0 }),
+      desconto: parseDecimal(item.desconto, `Desconto do item ${index + 1}`, { min: 0 }),
       motivo: parseOptionalText(item.motivo, `Observacao do item ${index + 1}`, 500)
     });
   });
 
+  if (itens.some(item => item.parcelas_cartao && (item.cartao_id || item.parcelas_cheque || item.cheque_numero
+    || item.cheque_terceiro_id || item.usar_cheque_terceiro))) throw new ValidationError('Cartoes rateados nao podem ser misturados com outro instrumento individual.');
+  if (itens.some(item => item.parcelas_cartao && !item.forma_pagamento_id)) throw new ValidationError('Informe a forma de pagamento dos cartoes rateados.');
+  if (instrumentos && itens.some(item => item.parcelas_cheque || item.parcelas_cartao || item.cartao_id
+    || item.cheque_numero || item.cheque_terceiro_id || item.usar_cheque_terceiro)) throw new ValidationError('Instrumentos do lote nao podem ser misturados com instrumentos individuais.');
+  if ((instrumentos || itens.some(item => item.parcelas_cartao)) && isBlank(payload.idempotency_key)) throw new ValidationError('Chave de idempotencia obrigatoria para liquidacao compartilhada.');
+  if (instrumentos && itens.some(item => item.forma_pagamento_id && item.forma_pagamento_id !== instrumentos.forma_pagamento_id)) throw new ValidationError('Forma individual diferente da forma do lote.');
   return cleanUndefined({
     itens,
+    instrumentos_lote: instrumentos,
     idempotency_key: parseOptionalText(payload.idempotency_key, 'Chave de idempotencia', 80)
   });
+}
+
+function validarCartoesFila(partes) {
+  if (!Array.isArray(partes) || !partes.length || partes.length > 20) throw new ValidationError('Informe entre 1 e 20 cartoes.');
+  return partes.map(item => {
+    ensureAllowedKeys(item, ['cartao_id', 'valor_pago'], 'Cartao do pagamento');
+    return { cartao_id: parseInteger(item.cartao_id, 'Cartao', { required: true }),
+      valor_pago: parseDecimal(item.valor_pago, 'Valor no cartao', { required: true, min: 0.01 }) };
+  });
+}
+function validarInstrumentosLote(config) {
+  ensureAllowedKeys(config, ['tipo', 'forma_pagamento_id', 'componentes'], 'Instrumentos do lote');
+  const tipo = parseEnum(config.tipo, 'Tipo dos instrumentos', ['CHEQUE', 'CARTAO'], { required: true });
+  return { tipo, forma_pagamento_id: parseInteger(config.forma_pagamento_id, 'Forma do lote', { required: true }),
+    componentes: tipo === 'CHEQUE' ? validarParcelasChequeFila(config.componentes, true) : validarCartoesFila(config.componentes) };
 }
 
 function validateManualPaymentQueueResultBody(payload = {}) {
@@ -277,6 +305,27 @@ function validateManualPaymentQueueResultBody(payload = {}) {
     status: parseEnum(payload.status, 'Status', ['NAO_PAGO'], { required: true }),
     motivo: parseRequiredText(payload.motivo, 'Justificativa', 500)
   };
+}
+
+function validarParcelasChequeFila(parcelas, compartilhado = false) {
+  if (!Array.isArray(parcelas) || !parcelas.length || parcelas.length > 60) throw new ValidationError('Informe entre 1 e 60 cheques.');
+  return parcelas.map((parcela, index) => {
+    ensureAllowedKeys(parcela, ['valor_pago', 'usar_cheque_terceiro', 'cheque_terceiro_id',
+      'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
+      'cheque_conta', 'data_emissao', 'data_vencimento', ...(compartilhado ? ['empresa_id'] : [])], `Cheque ${index + 1}`);
+    const { empresa_id, ...instrumento } = parcela;
+    if (empresa_id != null && !parseBoolean(parcela.usar_cheque_terceiro)) throw new ValidationError('Empresa explicita somente para cheque da carteira.');
+    const normalizado = validateManualPaymentQueueProcessBody({ itens: [{ ...instrumento,
+      fila_id: 1, data_baixa: '2000-01-01', conta_bancaria_id: 1 }] }).itens[0];
+    const { fila_id, conta_bancaria_id, data_baixa, ...campos } = normalizado;
+    return cleanUndefined({ ...campos, ...(compartilhado ? { empresa_id: parseInteger(empresa_id, 'Empresa do cheque da carteira') } : {}) });
+  });
+}
+
+function validateManualPaymentQueueReverseBody(payload = {}) {
+  ensureAllowedKeys(payload, ['motivo', 'idempotency_key'], 'Estorno da fila');
+  return { motivo: parseRequiredText(payload.motivo, 'Motivo do estorno', 500),
+    idempotency_key: parseRequiredText(payload.idempotency_key, 'Chave de idempotencia', 80) };
 }
 
 function validateManualPaymentQueueResolveBody(payload = {}) {
@@ -312,6 +361,7 @@ module.exports = {
   validateManualPaymentQueueProcessBody,
   validateManualPaymentQueueQuery,
   validateManualPaymentQueueResolveBody,
+  validateManualPaymentQueueReverseBody,
   validateManualPaymentQueueResultBody,
   validatePaymentCancelBody,
   validatePaymentRejectBody,

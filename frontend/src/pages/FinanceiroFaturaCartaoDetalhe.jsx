@@ -78,6 +78,7 @@ function contaLabel(conta) {
 }
 
 function getValorAberto(fatura) {
+  if (fatura?.compras_rateadas?.length) return String(fatura.status).toUpperCase() === 'PAGA' ? 0 : Number(fatura.valor_total || 0);
   return (fatura?.titulos || []).reduce((total, titulo) => {
     if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase())) return total;
     return total + Number(titulo.valor_saldo || titulo.valor_original || 0);
@@ -94,7 +95,8 @@ const formFatura = data => ({
 });
 const revisaoFatura = data => JSON.stringify([data.id, data.status, data.valor_total,
   data.conta_bancaria_id, data.updatedAt, data.updated_at,
-  (data.titulos || []).map(t => [t.id, t.status, t.valor_saldo, t.valor_original])]);
+  (data.titulos || []).map(t => [t.id, t.status, t.valor_saldo, t.valor_original]),
+  (data.compras_rateadas || []).map(item => [item.id, item.status, item.valor_quitacao])]);
 
 export default function FinanceiroFaturaCartaoDetalhe() {
   const { user } = useAuth();
@@ -160,7 +162,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
   const resumo = useMemo(() => ({
     total: Number(fatura?.valor_total || 0),
     aberto: getValorAberto(fatura),
-    titulos: (fatura?.titulos || []).length,
+    titulos: new Set([...(fatura?.titulos || []).map(item => item.id), ...(fatura?.compras_rateadas || []).map(item => item.titulo_financeiro_id)]).size,
     titulosAbertos: countTitulosAbertos(fatura)
   }), [fatura]);
 
@@ -371,6 +373,17 @@ export default function FinanceiroFaturaCartaoDetalhe() {
               rotuloRolagem="Titulos da fatura"
             />
           </BlocoConteudo>
+          {Boolean(fatura.compras_rateadas?.length) && <BlocoConteudo titulo="Compras rateadas nesta fatura"
+            descricao="Somente a parte paga neste cartão. O título pode ter outras partes em outros instrumentos.">
+            <TabelaPadrao colunas={[
+              { id: 'titulo', titulo: 'Título', tipo: 'codigo', render: item => item.titulo?.codigo || `#${item.titulo_financeiro_id}` },
+              { id: 'descricao', titulo: 'Descrição', render: item => item.titulo?.descricao || '—' },
+              { id: 'parceiro', titulo: 'Parceiro', tipo: 'identidade', render: item => item.titulo?.parceiro?.nome || '—' },
+              { id: 'data', titulo: 'Data da compra', tipo: 'data', render: item => formatDate(item.data_movimento) },
+              { id: 'valor', titulo: 'Valor neste cartão', tipo: 'valor', render: item => formatCurrency(item.valor_quitacao) }
+            ]} itens={fatura.compras_rateadas} vazio="Nenhuma compra rateada." storageKey="tabela:fatura-cartao-detalhe:rateios"
+              chaveWorkspace="fatura:rateios" rotuloRolagem="Compras rateadas nesta fatura" />
+          </BlocoConteudo>}
         </>
       )}
 

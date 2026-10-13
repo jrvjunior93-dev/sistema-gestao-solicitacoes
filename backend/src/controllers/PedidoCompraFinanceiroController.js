@@ -7,6 +7,7 @@ const {
   obterResumoFinanceiroPedido,
   reparcelarPrevisoesPedido,
   registrarDocumentoFinanceiro,
+  removerArquivoDocumentoFinanceiro,
   solicitarReaberturaGeo
 } = require('../services/pedidoCompraFinanceiroService');
 const { responderErroController } = require('../utils/controllerError');
@@ -68,6 +69,12 @@ module.exports = {
       idempotencyKey: chaveIdempotencia(req),
       transaction
     }), 'Erro ao registrar o documento financeiro do pedido', 201);
+  },
+
+  async removerArquivo(req, res) {
+    return executarComTransacao(req, res, transaction => removerArquivoDocumentoFinanceiro({
+      req, pedidoId: req.params.id, documentoId: req.params.documentoId, transaction
+    }), 'Erro ao remover o anexo do pedido');
   },
 
   async liberarTitulos(req, res) {

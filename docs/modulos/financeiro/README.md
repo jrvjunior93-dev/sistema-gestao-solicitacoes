@@ -1,5 +1,138 @@
 # Modulo FINANCEIRO
 
+## Fila: carteira de terceiros sem conta na massa - 2026-10-13
+
+- Conta pagadora exigida somente para cheques proprios do conjunto. Terceiros
+  usam a empresa do cheque cadastrado na carteira, sem debito bancario, inclusive
+  em lote misto. Trocar a conta dos proprios nao limpa os cheques da carteira.
+- Carteira legada sem empresa pede selecao explicita da empresa entre as opcoes
+  ja presentes nas contas/cheques acessiveis da fila. Nao infere empresa da conta
+  nem altera o cadastro legado. Empresa existente nao pode ser substituida.
+- Backend resolve carteira/empresa sob lock; excecao de conta apenas no grupo
+  interno validado. Pix, boleto, cartao, proprio e baixa individual conservam
+  validacoes anteriores. Conta null no snapshot/movimento de terceiro; empresa
+  e componentes preservados no grupo. Carteira consumida uma vez por documento.
+- Sem nova migration ou mudanca de ACL. Testes locais backend/UI e build;
+  homologacao integrada MySQL/EC2 continua separada. Detalhes no
+  [handoff](../../handoffs/2026-10-13-fila-carteira-sem-conta.md).
+
+## Fila: cabecalho unico da baixa em massa - 2026-10-13
+
+- Forma de pagamento do lote vale para todos os titulos; nao existe mais
+  Aplicar forma nem edicao individual de forma/instrumento dentro deste modal.
+  As linhas sao somente conferencia de titulo, descricao e valor pago.
+  Edicao individual continua na tabela da fila, fora da baixa em massa.
+- Selecionar Cheque abre o editor do conjunto unico imediatamente, mesmo
+  antes de selecionar conta. O editor permite escolher conta pagadora,
+  quantidade e origem explicita de cada cheque (proprio/carteira).
+  Conta pagadora se refere somente aos cheques proprios; empresa da carteira
+  independe dela. O conjunto confirmado precisa ser reconferido apos trocar conta.
+- Um cartao usa automaticamente sua conta vinculada; varios cartoes usam
+  suas respectivas contas. Forma/instrumentos so alteram os rascunhos da fila
+  na confirmacao da baixa. Cancelar nao aplica alteracoes nem registra pagamento.
+- Preservados valores/encargos, ACL por titulo, soma em centavos, conjunto
+  compartilhado sem duplicar documentos e estorno do grupo completo.
+  Esta correcao nao cria migration nem modifica o motor financeiro.
+- Testes locais de fila desktop/mobile, rateio/estorno, navegacao de pedido
+  e build aprovados, sem banco/rede externos. Homologacao real continua separada.
+  [Handoff](../../handoffs/2026-10-13-pedido-anexos-fila-cabecalho.md).
+
+## Fila: origem explicita, instrumentos compartilhados e multicartao - 2026-10-13
+
+- Escolher forma Cheque nao presume cheque proprio nem abre seu editor.
+  Origem inicia vazia; escolher Proprio abre dados, Carteira mostra somente
+  cheques disponiveis da empresa. Novas linhas de cheques tambem exigem origem.
+  Dados de cheques ja confirmados continuam reconhecidos por compatibilidade.
+- Modal em massa define forma/cartao no cabecalho para todos os selecionados.
+  Tipos credito/debito filtrados pelo mesmo helper das linhas. Edicao por titulo
+  continua disponivel somente fora do modal em massa.
+- Selecionar Cheque no cabecalho abre o editor para um conjunto unico que
+  paga o total do lote. Quantidade gera campos automaticamente; origem deve
+  ser escolhida em cada linha. Terceiro precisa existir na carteira e seu
+  valor integral e utilizado uma unica vez, mesmo pagando varios titulos.
+- Mais de um cartao permite informar cartao e valor por parte, por titulo
+  ou pelo total do lote. A soma deve fechar exatamente em centavos. Cada
+  cartao usa sua conta vinculada; credito entra apenas com sua parte na
+  fatura e debito registra a saida na respectiva conta. O titulo conserva
+  seus vinculos anteriores, sem multiplicar a compra nas faturas.
+- Backend aceita instrumentos_lote no endpoint existente de baixa em massa
+  ou parcelas_cartao por item. Grupo exige chave de idempotencia, transacao,
+  locks e validacao dos instrumentos; falha reverte todas as partes. Limites:
+  200 titulos, 60 cheques, 20 cartoes e 1000 movimentos por grupo. Pagamento
+  compartilhado acima do saldo ou parte sem principal positivo e recusado.
+- Estornar uma linha de grupo estorna o conjunto inteiro, com aviso previo.
+  Exige as permissoes/escopos existentes para todos os titulos; reabre a fila
+  preservando historico/autorizacao valida e devolve terceiros uma unica vez.
+  Fatura nao aberta ou cheque com processamento posterior bloqueia o grupo.
+  Estorno individual de movimento pertencente ao grupo e bloqueado.
+- Migration aditiva 202610130002_fila_liquidacao_rateada.js cria o grupo e
+  referencia nullable no movimento, sem DML/backfill de registros de negocio.
+  Foi preparada/testada em simulacao, NAO aplicada. Schema deve preceder o
+  backend atualizado; frontend somente apos backend compativel. Nenhuma
+  operacao na EC2, commit/push ou mudanca de visibilidade nesta tarefa.
+- Testes isolados de rateio, servicos, faturas, estorno/ACL e UI desktop/mobile
+  aprovados, incluindo navegacao e build. MySQL real, concorrencia entre
+  processos e homologacao financeira em dev continuam como gate de deploy.
+  [Handoff](../../handoffs/2026-10-13-fila-origem-instrumentos-massa.md).
+
+## Fila: modal somente boletos da solicitacao - 2026-10-13
+
+- Modal de arquivos da solicitacao lista apenas anexos ativos classificados
+  como BOLETO, enviados pelo campo de boleto. Aceita multiplos PDF/imagens;
+  nao infere origem por nome ou extensao. Sem boleto, exibe mensagem especifica.
+- Backend filtra na consulta; frontend tambem filtra respostas antigas/mistas.
+  Preservados ACL da fila, presign sob demanda, preview interno, download,
+  foco e rolagem. Demais anexos continuam no detalhe da solicitacao;
+  comprovantes de pagamento continuam nos botoes proprios da fila.
+- Sem exclusao/reclassificacao de arquivos, migration, banco real ou deploy.
+  Testes isolados de acesso, modal, fila desktop/mobile e build aprovados.
+  [Handoff](../../handoffs/2026-10-13-fila-modal-somente-boletos.md).
+
+## Fila: baixa em massa, desconto, cheques e estorno - 2026-10-13
+
+- Baixa em massa abre modal de conta pagadora e data efetiva. Aplica esses
+  dados aos selecionados (maximo 200), preservando valor/encargos por
+  titulo. A forma efetivamente paga e unica no cabecalho do modal; trocar forma
+  limpa instrumentos anteriores. A tabela da fila permite baixa individual.
+  Cheques proprios/da carteira e seu parcelamento sao editaveis no mesmo
+  fluxo, com quantidade de 1 a 60 e dados por cheque. A quantidade valida gera
+  os campos automaticamente, sem aplicar/adicionar um a um; reducoes mantem
+  os dados ocultados em memoria somente enquanto o modal estiver aberto.
+  Apenas cheques visiveis/confirmados entram no payload. Exige conferencia final;
+  cancelar o modal descarta suas alteracoes, sem registrar baixa. Cartao deve
+  continuar compativel com a conta. Falha em uma linha reverte o lote inteiro.
+- Coluna Desconto, inicialmente antes de Juros, aceita valor nao negativo.
+  Total esperado = saldo + juros + multa - desconto. Principal liquidado =
+  valor pago - juros - multa + desconto. Preferencias existentes recebem a
+  coluna sem resetar a ordem; permanece configuravel/ocultavel. Regras proprias
+  de adiantamento/devolucao continuam recusando desconto na baixa.
+- Cheque aceita editor de 1 a 60 parcelas por titulo, misturando proprios e
+  terceiros disponiveis da carteira. Soma exata em centavos; juros/multa/desconto
+  rateados com residuo no ultimo cheque. Terceiro deve estar previamente
+  cadastrado e seu valor e usado integralmente; a conta/empresa e disponibilidade
+  sao novamente verificadas pelo fluxo existente. Link de cadastro somente
+  para quem ja possui permissao. Nao gera novos titulos/autorizacoes; registra
+  um movimento por cheque na mesma transacao. Repeticao no lote e bloqueada.
+- Baixados inclui pagamentos registrados em pendencias resolvidas. Estornar
+  baixa exige motivo e as permissoes existentes de resolver fila E estornar
+  titulos; aplica a mesma ACL/escopo do estorno do titulo. Reverte os movimentos
+  do pagamento completo, devolve terceiros a carteira e reabre o saldo na fila.
+  Registro antigo fica resolvido, preservando movimentos/comprovantes/historico.
+  Nao exige comprovante de pagamento ja estornado. Fatura aberta e recalculada;
+  fatura com processamento posterior e baixa composta exigem reversao no fluxo
+  proprio, sem bypass. Conciliacoes seguem a rotina existente de reabertura.
+- Devolver para fila em Nao pagos preserva a autorizacao do mesmo ciclo:
+  transfere somente o vinculo operacional, com evento auditado. Autorizacao
+  revogada/substituida/pendente ou titulo bloqueado pelo DP impede o retorno.
+  Fila direta/legada nao recebe aprovacao digital fabricada.
+- Mutex de UI, payload estrito, chave de estorno, locks e transacao protegem
+  contra duplo envio. Sem nova migration, mudanca de visibilidade, banco real
+  ou deploy nesta implementacao. Testes locais isolados backend/UI desktop e
+  celular, build e negativos de escopo aprovados; homologacao MySQL/EC2 e
+  concorrencia entre processos ainda precisam de janela de staging.
+  [Handoff](../../handoffs/2026-10-13-fila-baixa-cheques-estorno-desconto.md).
+  Complemento de UI: [formas e cheques no modal](../../handoffs/2026-10-13-fila-massa-formas-cheques-modal.md).
+
 ## Motivo de ajuste nas autorizacoes - 2026-10-11
 
 - Historico do detalhe mostra observacao de STATUS_ALTERADO (incluindo motivos

@@ -155,6 +155,13 @@ class AnexoController {
         usuarioId: req.user.id,
         tipo: tipoNormalizado
       });
+      // A medicao nova em uma solicitacao ja existente tambem usa token de
+      // upload, mas continua sendo interacao. Somente a criacao nova assinada
+      // pelo servidor identifica arquivos de abertura (nao flag do cliente).
+      const anexoDaCriacao = uploadInicialAutorizado && validarTokenUploadCriacaoSolicitacao({
+        token: req.body?.criacao_upload_token, solicitacaoId: solicitacao.id,
+        usuarioId: req.user.id, tipo: tipoNormalizado, exigirSolicitacaoNova: true
+      });
 
       // Recuperacao de anexo ausente: OBRA pode completar exclusivamente os arquivos de uma
       // medicao ainda pendente e pertencente a esta solicitacao. O acesso base acima continua
@@ -233,7 +240,8 @@ class AnexoController {
           metadata: JSON.stringify({
             anexo_id: anexo.id,
             caminho: url,
-            medicao_id: medicaoId
+            medicao_id: medicaoId,
+            ...(anexoDaCriacao ? { origem: 'CRIACAO_SOLICITACAO' } : {})
           })
         });
       }

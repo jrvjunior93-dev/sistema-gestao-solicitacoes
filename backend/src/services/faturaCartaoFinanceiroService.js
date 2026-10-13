@@ -8,6 +8,7 @@ const {
   sequelize,
   TituloFinanceiro
 } = require('../models');
+const { Op } = require('sequelize');
 const { canAccessFinanceiro, getFinanceiroObraScopeIds } = require('./authorizationService');
 const { obterSessaoAbertaParaConta } = require('./financeiroCaixaSessionHelper');
 const { registrarEventoSeguranca } = require('./securityLogService');
@@ -89,11 +90,12 @@ async function recalcularFaturaCartao(faturaId, { transaction = null, leituraCor
   // principal do titulo. A fatura deve refletir o total efetivamente usado.
   const movimentos = await MovimentoFinanceiro.findAll({
     where: { fatura_cartao_id: faturaId, tipo_movimento: 'BAIXA', status: 'ATIVO', forma_recebimento: 'CARTAO_CREDITO' },
-    attributes: ['juros', 'multa', 'desconto'], transaction,
+    attributes: ['juros', 'multa', 'desconto', 'valor_quitacao', 'fila_liquidacao_id'], transaction,
     ...(leituraCorrente && transaction ? { lock: transaction.LOCK.UPDATE } : {})
   });
-  const encargos = movimentos.reduce((total, movimento) => roundCurrency(total + Number(movimento.juros || 0)
-    + Number(movimento.multa || 0) - Number(movimento.desconto || 0)), 0);
+  const encargos = movimentos.reduce((total, movimento) => roundCurrency(total + (movimento.fila_liquidacao_id
+    ? Number(movimento.valor_quitacao || 0) : Number(movimento.juros || 0)
+    + Number(movimento.multa || 0) - Number(movimento.desconto || 0))), 0);
   const totalComEncargos = roundCurrency(valorTotal + encargos);
   await FaturaCartaoFinanceiro.update(
     { valor_total: totalComEncargos },
@@ -161,7 +163,7 @@ async function listarFaturasCartao(req, filters = {}) {
   if (filters.status) where.status = String(filters.status).toUpperCase();
   if (filters.cartao_id) where.cartao_id = Number(filters.cartao_id);
 
-  return FaturaCartaoFinanceiro.findAll({
+  const faturas = await FaturaCartaoFinanceiro.findAll({
     where,
     include: [
       { model: CartaoFinanceiro, as: 'cartao', include: [{ model: ContaBancaria, as: 'contaBancaria', attributes: ['id', 'nome'] }] },
@@ -173,6 +175,30 @@ async function listarFaturasCartao(req, filters = {}) {
     ],
     order: [['data_vencimento', 'DESC'], ['id', 'DESC']]
   });
+  const scope = await getFinanceiroObraScopeIds(req.user);
+  await incluirComprasRateadas(faturas);
+  const result = [];
+  for (const fatura of faturas) {
+    // Preservar lista legada; nao expor novos rateios fora do mesmo escopo
+    // exigido no detalhe. Uma consulta em lote evita N+1 por fatura.
+    if (scope === null || (fatura.compras_rateadas || []).map(item => item.titulo)
+      .every(titulo => titulo && scope.includes(Number(titulo.obra_id || 0)))) result.push(fatura);
+  }
+  return result;
+}
+
+async function incluirComprasRateadas(faturas, transaction = null) {
+  if (!faturas.length) return;
+  const compras = await MovimentoFinanceiro.findAll({ where: { fatura_cartao_id: { [Op.in]: faturas.map(item => item.id) },
+    fila_liquidacao_id: { [Op.ne]: null }, status: 'ATIVO', tipo_movimento: 'BAIXA', forma_recebimento: 'CARTAO_CREDITO' },
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true,
+      include: [{ model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] }] }], transaction });
+  for (const fatura of faturas) {
+    const partes = compras.filter(item => Number(item.fatura_cartao_id) === Number(fatura.id));
+    fatura.setDataValue('compras_rateadas', partes);
+    // Sequelize nao cria getter para campos dinamicos nao mapeados.
+    fatura.compras_rateadas = partes;
+  }
 }
 
 async function carregarFaturaCartao(req, faturaId, { transaction = null, leituraCorrente = false } = {}) {
@@ -191,10 +217,12 @@ async function carregarFaturaCartao(req, faturaId, { transaction = null, leitura
   });
 
   if (!fatura) throw createHttpError(404, 'Fatura de cartao nao encontrada.');
+  await incluirComprasRateadas([fatura], transaction);
 
   const obraIds = await getFinanceiroObraScopeIds(req.user);
   if (obraIds !== null) {
-    const foraDoEscopo = (fatura.titulos || []).some((titulo) => !obraIds.includes(Number(titulo.obra_id || 0)));
+    const foraDoEscopo = [...(fatura.titulos || []), ...(fatura.compras_rateadas || []).map(item => item.titulo)]
+      .some((titulo) => !titulo || !obraIds.includes(Number(titulo.obra_id || 0)));
     if (foraDoEscopo) throw createHttpError(403, 'Acesso negado para titulos desta fatura.');
   }
 

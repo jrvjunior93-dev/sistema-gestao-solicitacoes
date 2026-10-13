@@ -155,11 +155,11 @@ export async function enviarTitulosFilaPagamentos(tituloIds, idempotencyKey) {
   return parseJson(response, 'Erro ao enviar os titulos para pagamento');
 }
 
-export async function registrarBaixasFilaPagamentos(itens, idempotencyKey) {
+export async function registrarBaixasFilaPagamentos(itens, idempotencyKey, instrumentosLote) {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/baixar`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ itens, idempotency_key: idempotencyKey })
+    body: JSON.stringify({ itens, idempotency_key: idempotencyKey, instrumentos_lote: instrumentosLote || undefined })
   });
   return parseJson(response, 'Erro ao registrar as baixas da fila');
 }
@@ -189,6 +189,14 @@ export async function resolverFilaPagamento(id, acao, motivo = '') {
     body: JSON.stringify({ acao, motivo })
   });
   return parseJson(response, 'Erro ao resolver a pendencia de pagamento');
+}
+
+export async function estornarBaixaFilaPagamento(id, motivo, idempotency_key) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${id}/estornar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo, idempotency_key })
+  });
+  return parseJson(response, 'Erro ao estornar a baixa da fila');
 }
 
 export async function gerarRelatorioTitulosFinanceirosPdf(params = {}, tituloIds = []) {

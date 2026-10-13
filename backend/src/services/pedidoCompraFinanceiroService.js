@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const {
   Anexo,
+  CartaoFinanceiro,
   FormaPagamentoFinanceira,
   FornecedorCompra,
   Historico,
@@ -23,6 +24,7 @@ const {
   validarCategoriaTituloPedido
 } = require('./pedidoCompraTituloConfigService');
 const { listarFormasDosFluxos } = require('./formasPagamentoMedicaoService');
+const { canAnexarDocumentoPedidoCompraFinanceiro, canDeleteSolicitacaoAnexo } = require('./authorizationService');
 
 const STATUS_FLUXO = Object.freeze({
   AGUARDANDO_GEO: 'AGUARDANDO_GEO',
@@ -258,7 +260,7 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
   };
   if (!incluirDetalhes) return resumo;
 
-  const [documentos, categoriasConfig, formasPagamentoConfig] = await Promise.all([
+  const [documentos, categoriasConfig, formasPagamentoConfig, cartoes] = await Promise.all([
     PedidoCompraDocumentoFinanceiro.findAll({
       where: { pedido_compra_id: Number(pedido.id) },
       include: [{ model: User, as: 'criadoPor', attributes: ['id', 'nome'] }],
@@ -266,19 +268,28 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
       transaction
     }),
     obterConfiguracaoCategoriasTituloPedido({ transaction }),
-    listarFormasDosFluxos({ transaction })
+    listarFormasDosFluxos({ transaction }),
+    // Projecao operacional do pedido ja autorizado, nao acesso ao cadastro financeiro.
+    CartaoFinanceiro.findAll({
+      where: { ativo: true },
+      attributes: ['id', 'nome', 'tipo', 'ultimos_digitos'],
+      order: [['nome', 'ASC']],
+      transaction
+    })
   ]);
   return {
     ...resumo,
     titulos,
-    documentos: documentos.map((documento) => documento.toJSON()),
+    documentos: documentos.filter(documento => !['BOLETO_COMPRA', 'BOLETO_FRETE'].includes(documento.tipo) || documento.arquivo_url)
+      .map((documento) => documento.toJSON()),
     opcoes: {
       categorias: categoriasConfig.categorias,
       categoria_padrao_id: categoriasConfig.categoria_padrao_id,
       categorias_configuradas: categoriasConfig.configurada,
       // A mesma curadoria administrativa usada na Nova Solicitacao. Assim,
       // habilitar ou desabilitar uma forma muda os dois fluxos juntos.
-      formas_pagamento: formasPagamentoConfig.formas
+      formas_pagamento: formasPagamentoConfig.formas,
+      cartoes
     }
   };
 }
@@ -524,6 +535,7 @@ function tipoOperacionalFormaPagamento(forma) {
     .toUpperCase();
   if (forma?.gera_boleto === true || texto.includes('BOLETO')) return 'BOLETO';
   if (texto.includes('PIX')) return 'PIX';
+  if (forma?.exige_cartao || forma?.gera_fatura || texto.includes('CARTAO')) return 'CARTAO';
   return 'OUTRA';
 }
 
@@ -549,16 +561,40 @@ async function validarPagamentoNegociado(payload = {}, contexto, formasPermitida
   const chavePix = String(payload.chave_pix || '').trim();
   const dadosPagamento = String(payload.dados_pagamento || '').trim();
   const boletos = Array.isArray(payload.boletos) ? payload.boletos : [];
+  let cartao = null;
+  if (tipo === 'CARTAO') {
+    cartao = Number.isSafeInteger(Number(payload.cartao_id)) && Number(payload.cartao_id) > 0
+      ? await CartaoFinanceiro.findByPk(Number(payload.cartao_id), {
+          transaction, lock: transaction?.LOCK?.UPDATE
+        }) : null;
+    if (!cartao || cartao.ativo === false) throw httpError(400, `Selecione um cartao ativo para ${contexto}.`);
+    const textoForma = normalize(`${forma.tipo || ''} ${forma.codigo || ''} ${forma.nome || ''}`)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tipoEsperado = textoForma.includes('DEBITO') ? 'DEBITO'
+      : textoForma.includes('CREDITO') || forma.gera_fatura ? 'CREDITO' : null;
+    if (tipoEsperado && normalize(cartao.tipo || 'CREDITO') !== tipoEsperado) {
+      throw httpError(400, `Selecione um cartao de ${tipoEsperado === 'DEBITO' ? 'debito' : 'credito'} para ${contexto}.`);
+    }
+    const dataCompra = new Date(`${payload.data_compra}T12:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.data_compra || '')
+      || !Number.isFinite(dataCompra.getTime()) || dataCompra.toISOString().slice(0, 10) !== payload.data_compra) {
+      throw httpError(400, `Informe uma data de compra valida para ${contexto}.`);
+    }
+  } else if (payload.cartao_id) {
+    throw httpError(400, `Cartao informado para uma forma de pagamento sem cartao em ${contexto}.`);
+  }
   if (tipo === 'PIX' && !chavePix) throw httpError(400, `Informe a chave PIX de ${contexto}.`);
-  if (tipo === 'BOLETO' && !boletos.length) throw httpError(400, `Anexe ao menos um boleto de ${contexto}.`);
   if (tipo === 'OUTRA' && !dadosPagamento) throw httpError(400, `Informe os dados para pagamento de ${contexto}.`);
 
   const observacoes = tipo === 'PIX'
     ? `Favorecido: ${favorecido.nome}. Chave PIX: ${chavePix}`
     : tipo === 'BOLETO'
       ? `Favorecido: ${favorecido.nome}. ${boletos.length} boleto(s) anexado(s) ao pedido.`
-      : `Favorecido: ${favorecido.nome}. Dados para pagamento: ${dadosPagamento}`;
-  return { forma, favorecido, tipo, chavePix, dadosPagamento, boletos, observacoes };
+      : tipo === 'CARTAO'
+        ? `Favorecido: ${favorecido.nome}. Cartao: ${cartao.nome}. Data da compra: ${payload.data_compra}.`
+        : `Favorecido: ${favorecido.nome}. Dados para pagamento: ${dadosPagamento}`;
+  return { forma, favorecido, tipo, chavePix, dadosPagamento, boletos, observacoes,
+    cartaoId: cartao?.id || null, dataCompra: cartao ? payload.data_compra : null };
 }
 
 async function registrarBoletosPedido({ pedido, boletos, tipo, usuarioId, idempotencyKey, transaction }) {
@@ -697,6 +733,8 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     parceiro_id: pedido.fornecedor.parceiro_id,
     categoria_financeira_id: categoriaId,
     forma_pagamento_id: pagamentoCompra.forma.id,
+    cartao_id: pagamentoCompra.cartaoId,
+    data_compra: pagamentoCompra.dataCompra,
     favorecido_pagamento_id: pagamentoCompra.favorecido.id,
     tipo: 'PAGAR',
     // Compras cria o titulo ja operacional. A autorizacao do pagamento acontece depois,
@@ -759,6 +797,8 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
       favorecido_pagamento_id: pagamentoFrete.favorecido.id,
       categoria_financeira_id: categoriaId,
       forma_pagamento_id: pagamentoFrete.forma.id,
+      cartao_id: pagamentoFrete.cartaoId,
+      data_compra: pagamentoFrete.dataCompra,
       tipo: 'PAGAR',
       status: 'ABERTO',
       valor: Number(frete.valor_total),
@@ -961,6 +1001,31 @@ async function registrarDocumentoFinanceiro({ pedidoId, payload, usuarioId, idem
     idempotency_key: chaveDocumento,
     criado_por: usuarioId
   }, { transaction });
+}
+
+async function removerArquivoDocumentoFinanceiro({ req, pedidoId, documentoId, transaction }) {
+  if (!(await canAnexarDocumentoPedidoCompraFinanceiro(req.user)) || !(await canDeleteSolicitacaoAnexo(req.user))) {
+    throw httpError(403, 'Sem permissao para remover anexos do pedido.');
+  }
+  const pedido = await PedidoCompra.findByPk(Number(pedidoId), {
+    include: [{ model: SolicitacaoCompra, as: 'solicitacao', attributes: ['id', 'solicitacao_principal_id'] }],
+    transaction, lock: transaction.LOCK.UPDATE
+  });
+  if (!pedido) throw httpError(404, 'Pedido de compra nao encontrado.');
+  const documento = await PedidoCompraDocumentoFinanceiro.findOne({
+    where: { id: Number(documentoId), pedido_compra_id: pedido.id }, transaction, lock: transaction.LOCK.UPDATE
+  });
+  if (!documento) throw httpError(404, 'Documento nao encontrado neste pedido.');
+  if (!documento.arquivo_url) return { ok: true, ja_removido: true };
+  // Desvincular somente do pedido; nao destruir o objeto S3, Anexo da solicitacao,
+  // titulos, movimentos ou vinculos externos que possam usar o mesmo arquivo.
+  const anterior = { arquivo_url: documento.arquivo_url, arquivo_nome: documento.arquivo_nome };
+  await documento.update({ arquivo_url: null, arquivo_nome: null }, { transaction });
+  await registrarHistorico({ pedido, solicitacao: pedido.solicitacao, usuarioId: req.user.id,
+    acao: 'PEDIDO_COMPRA_ARQUIVO_DESVINCULADO',
+    descricao: `Arquivo ${anterior.arquivo_nome || 'do documento'} removido de ${buildPedidoCodigo(pedido.id)}. Titulos e pagamentos preservados.`,
+    metadata: { documento_id: documento.id, tipo_documento: documento.tipo, arquivo_desvinculado: anterior }, transaction });
+  return { ok: true, ja_removido: false };
 }
 
 async function liberarTitulosPedido({ pedidoId, tituloIds, formaPagamentoId, usuarioId, transaction }) {
@@ -1203,6 +1268,7 @@ module.exports = {
   liberarTitulosPedido,
   obterResumoFinanceiroPedido,
   registrarDocumentoFinanceiro,
+  removerArquivoDocumentoFinanceiro,
   sincronizarStatusFinanceiroPedidos,
   sincronizarPedidoFinanceiroAoFechar,
   solicitarReaberturaGeo

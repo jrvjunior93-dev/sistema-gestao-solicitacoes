@@ -6,8 +6,13 @@ export const revisaoFila = row => JSON.stringify([
 ]);
 // Lista explicita de inputs, nao comprovantes, URLs, DTOs ou permissoes.
 const campos = ['data_baixa', 'conta_bancaria_id', 'valor_pago', 'motivo', 'forma_pagamento_id',
-  'juros', 'multa', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
+  'desconto', 'juros', 'multa', 'parcelas_cheque', 'parcelas_cartao', 'cartao_id', 'origem_cheque', 'usar_cheque_terceiro', 'cheque_terceiro_id',
   'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia', 'cheque_conta',
   'data_emissao', 'data_vencimento'];
 export const camposFila = draft => Object.fromEntries(campos.filter(key => key in draft)
-  .map(key => [key, draft[key]]));
+  .map(key => [key, key === 'parcelas_cheque' && Array.isArray(draft[key])
+    ? draft[key].slice(0, 60).map(parcela => Object.fromEntries(campos
+      .filter(campo => campo === 'valor_pago' || campo.startsWith('cheque_')
+        || ['origem_cheque', 'usar_cheque_terceiro', 'titular_documento', 'data_emissao', 'data_vencimento'].includes(campo))
+      .filter(campo => campo in parcela).map(campo => [campo, parcela[campo]])))
+    : key === 'parcelas_cartao' && Array.isArray(draft[key]) ? draft[key].slice(0, 20).map(item => ({ cartao_id: item.cartao_id, valor_pago: item.valor_pago })) : draft[key]]));
