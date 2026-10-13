@@ -1,5 +1,21 @@
 # Ownership Ativo
 
+## Modal de titulo e atualizacao automatica - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx;
+  frontend/scripts/validarTituloSolicitacaoAtualizacao.mjs;
+  docs/handoffs/2026-10-13-modal-titulo-atualizacao.md.
+- Escopo: preservar formulario aberto durante refresh da mesma solicitacao;
+  descartar somente ao fechar, concluir ou trocar de registro. Validacoes,
+  permissoes, endpoints e escopos existentes preservados.
+- Sem banco real, migrations, commit/push, EC2 ou deploy nesta tarefa.
+- SSE/fallback e fluxo real do modal aprovados em desktop/mobile; calculos,
+  negociacao, seguranca, permissoes, build e docs conferidos no handoff.
+- Usuario autorizou commit/push desta correcao na refactor/frontend e comandos
+  para EC2 dev. Reserva documental para conferencia/publicacao; liberada apos
+  validacoes. Sem incluir outputs/ ou promover main.
+
 ## Publicacao: carteira sem conta e cadastro de favorecido - 2026-10-13
 
 - Usuario autorizou commit e push das duas correcoes em refactor/frontend.
