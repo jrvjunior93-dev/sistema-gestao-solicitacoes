@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao incremental para main - 2026-10-13
+
+- Agente desta conversa, sem delegacao. Reserva: conflitos da integracao,
+  runner restrito de schema/release, testes do runner e handoff da promocao.
+- Main congelada em 0efa82ce; refactor/frontend em 447a1dca. Preservar ambos
+  os historicos e as evidencias outputs/ fora do commit.
+- Usuario confirmou backup conferido/timer ativo, homologacao dos fluxos em
+  dev e autorizou apenas as duas migrations estruturais de 20261013.
+- Nenhuma EC2/banco/reinicio sera executado pelo agente. Publicar candidato
+  primeiro; promover main/frontend somente apos schema/backend/health de
+  producao conferidos pelo usuario. Sem copiar flags/configuracoes de dev.
+
 ## Promocao completa incluindo DP — 2026-10-12
 
 - Agente desta conversa, sem delegacao, em checkout isolado; integra todos os
