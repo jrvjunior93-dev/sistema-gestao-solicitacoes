@@ -88,7 +88,10 @@ das cinco migrations em homologacao/copia isolada antes de producao.
 
 ## Estado e proximo passo exato
 
-Integracao pronta para commit/push na branch de preparacao, com tag de backup.
+Integracao commitada como 918b3b2b0b424af6083642aca2c85e7af4807f07 e publicada
+na branch codex/promocao-completa-main-20261012, junto da tag de backup, em push
+atomico. Ambas as historias sao ancestrais do merge. Main remota continua no
+SHA congelado 528e8c838a383c71be76f00b21fa8fe54d6c4e8d.
 Nao mover main antes de schema/backend compativeis. Conferir na EC2 dev,
 somente leitura, identidade diferente de producao, SHA do backend e registros
 das cinco migrations. Se faltarem, homologar o DDL em staging na janela
