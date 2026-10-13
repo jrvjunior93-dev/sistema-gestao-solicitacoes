@@ -23,12 +23,17 @@ const sandbox = {
       Anexo: { async findAll(options) {
         fileCalls += 1;
         assert.equal(options.where.solicitacao_id, 42);
-        return [{ id: 1, nome_original: 'nota.pdf', caminho_arquivo: 'nota', tipo: 'SOLICITACAO', createdAt: '2026-09-18T10:00:00Z' }];
+        assert.equal(options.where.tipo, 'BOLETO'); assert.equal(options.where.deleted_at, null);
+        return [
+          { id: 1, solicitacao_id: 42, deleted_at: null, nome_original: 'boleto-informativo.pdf', tipo: 'SOLICITACAO' },
+          { id: 2, solicitacao_id: 42, deleted_at: null, nome_original: 'boleto-1.pdf', caminho_arquivo: 'boleto1', tipo: 'BOLETO', createdAt: '2026-09-18T10:00:00Z' },
+          { id: 3, solicitacao_id: 42, deleted_at: null, nome_original: 'boleto-2.png', caminho_arquivo: 'boleto2', tipo: 'BOLETO', createdAt: '2026-09-18T11:00:00Z' },
+          { id: 4, solicitacao_id: 42, deleted_at: '2026-09-19', nome_original: 'removido.pdf', tipo: 'BOLETO' },
+          { id: 5, solicitacao_id: 99, deleted_at: null, nome_original: 'outra.pdf', tipo: 'BOLETO' }
+        ].filter(row => row.solicitacao_id === options.where.solicitacao_id && row.tipo === options.where.tipo && row.deleted_at === options.where.deleted_at);
       } },
       Comprovante: { async findAll(options) {
-        fileCalls += 1;
-        assert.equal(options.where.solicitacao_id, 42);
-        return [{ id: 2, nome_original: 'comprovante.pdf', caminho_arquivo: 'comprovante', createdAt: '2026-09-18T11:00:00Z' }];
+        throw new Error('Modal de boletos nao pode consultar comprovantes');
       } },
       PagamentoManualFilaItem: {
         async findOne(options) {
@@ -60,11 +65,12 @@ const { podeVisualizarSolicitacaoPelaFila, listarArquivosSolicitacaoPelaFila } =
   await assert.rejects(listarArquivosSolicitacaoPelaFila({ id: 1 }, 43), { statusCode: 403 });
   assert.equal(fileCalls, 0, 'Solicitacao fora da fila nao deve consultar arquivos');
   const arquivos = await listarArquivosSolicitacaoPelaFila({ id: 1 }, 42);
-  assert.equal(fileCalls, 2);
-  assert.deepEqual(Array.from(arquivos, (arquivo) => arquivo.nome_original), ['comprovante.pdf', 'nota.pdf']);
+  assert.equal(fileCalls, 1);
+  assert.deepEqual(Array.from(arquivos, (arquivo) => arquivo.nome_original), ['boleto-2.png', 'boleto-1.pdf']);
+  assert(arquivos.every(arquivo => arquivo.tipo === 'BOLETO'));
   assert(controller.includes('permitirLeituraGlobal && await podeVisualizarSolicitacaoPelaFila(req.user, solicitacao.id)'), 'Detalhe deve liberar apenas leitura pelo vinculo da fila');
   assert(files.includes('await podeVisualizarSolicitacaoPelaFila(req.user, solicitacao.id)'), 'Anexos devem usar o mesmo limite de acesso');
   assert(queue.includes("'solicitacao_id'") && queue.includes("as: 'solicitacao'"), 'Fila deve expor o vinculo com a solicitacao');
   assert(routes.includes("'/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead"), 'Rota de arquivos deve exigir acesso a fila');
-  console.log('OK: detalhe e arquivos da solicitacao restritos a fila; anexos e comprovantes listados.');
+  console.log('OK: mesmo acesso da fila, somente BOLETO, multiplos PDF/imagem, removidos/outra solicitacao excluidos, nenhuma consulta a comprovantes.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -1,5 +1,72 @@
 # Ownership Ativo
 
+## Publicacao das alteracoes pendentes - 2026-10-13
+
+- Pedido explicito: commitar e publicar em refactor/frontend.
+- Agente desta conversa, sem delegacao; conferencia de staging concluida,
+  ownership liberado, sem nova mudanca funcional.
+- Pacote: filtros/Ctrl+clique em Solicitacoes; baixa em massa, desconto,
+  cheques e estorno na fila; interacoes sem anexos iniciais; modal so boletos.
+- Artefatos outputs/ fora do commit. Sem promover main, operar banco,
+  executar migrations ou reiniciar EC2. Push pode disparar deploy automatico
+  do frontend; backend-dev ainda exige atualizacao/homologacao separadas.
+- Testes focados backend, negativas de seguranca e documentacao reexecutados
+  antes do commit; build e UI desktop/mobile aprovadas nas entregas locais.
+
+## Modal da fila somente boletos - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: solicitacaoFilaPagamentoAcessoService.js, ArquivosSolicitacaoFilaModal.jsx,
+  validarFilaPagamentoSolicitacaoAcesso.js, validarArquivosSolicitacaoFila.mjs,
+  validarFilaInstrumentosUI.mjs (fixture), README financeiro e handoff.
+- Escopo: listar somente anexos BOLETO no modal da fila. Preservar ACL,
+  visualizacao/download, comprovantes nos botoes proprios e demais anexos no detalhe.
+- Sem exclusao de arquivos, banco, migration, commit/push ou deploy.
+- Testes de acesso/seguranca, modal, fila desktop/mobile e build aprovados.
+  Handoff: docs/handoffs/2026-10-13-fila-modal-somente-boletos.md.
+
+## Interacoes sem anexos da criacao - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: solicitacaoCriacaoUploadTokenService.js, AnexoController.js,
+  SolicitacaoController.js (somente token da criacao nova), solicitacaoInteracoesService.js,
+  validarInteracoesSolicitacao.js, novo teste de upload inicial, README e handoff.
+- Escopo: criacao e arquivos do mesmo ato nao geram balao/prioridade de
+  interacao; anexos posteriores e medicoes em solicitacao existente preservados.
+- Sem alterar ACL, historico, banco, notificacao geral, migrations ou deploy.
+- Testes de criacao/anexos/interacoes, seguranca e UI desktop/mobile aprovados.
+  Handoff: docs/handoffs/2026-10-13-interacoes-anexos-criacao.md.
+
+## Fila de pagamentos - baixa, cheques, desconto e estorno - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: implementacao local concluida, ownership liberado.
+- Reserva: FinanceiroFilaPagamentos.jsx, InstrumentoPagamentoFila.jsx, novos
+  componentes/helpers de baixa/cheques, filaWorkspaceDraft.js, services/financeiro.js;
+  useColunasOperacionais.jsx (ancora opt-in para coluna nova, sem resetar preferencias);
+  pagamentoManualFilaService.js, pagamentoFilaValoresDomain.js,
+  pagamentoFilaInstrumentoDomain.js, tituloFinanceiroService.js, paymentValidators.js,
+  pagamentoFilaComprovanteDomain.js, financeiroRotaPermissoesService.js,
+  PagamentoManualFilaController.js, routes.js, testes da fila, README financeiro e handoff.
+- Escopo autorizado: modal de baixa em massa, varios cheques por titulo,
+  desconto antes de juros, estorno e devolucao de nao pagos com autorizacao valida.
+- Preservar ACL/visibilidade e registros anteriores; testes isolados sem banco
+  real, migrations, EC2, deploy ou publicacao. Alteracoes anteriores de Solicitacoes preservadas.
+- Handoff: docs/handoffs/2026-10-13-fila-baixa-cheques-estorno-desconto.md.
+
+## Filtros e Ctrl+clique em Solicitacoes - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reserva: pages/Solicitacoes/index.jsx, novo helper consultaSessao.js,
+  componente ListaAvancada.jsx (propagar evento, sem mudar outros consumidores),
+  Layout.jsx (excecao explicita de link nativo, sem mudar demais links),
+  validarWorkspacePiloto.mjs, README de Solicitacoes e handoff desta tarefa.
+- Escopo: restaurar somente parametros de consulta por usuario/escopo/lista;
+  links reais e Ctrl+clique, mantendo clique comum e regras de acesso.
+  Sem DTO cacheado, alteracao de backend/ACL, banco, commit, push ou deploy.
+- Validacoes UI desktop/mobile, negativa 403/usuario/escopo, seguranca backend,
+  correcoes existentes e build aprovadas. Handoff:
+  docs/handoffs/2026-10-13-solicitacoes-filtros-ctrl-clique.md.
+
 ## Boleto opcional nos titulos do pedido - 2026-10-13
 
 - Agente desta conversa, sem delegacao; estado: concluido, ownership liberado.

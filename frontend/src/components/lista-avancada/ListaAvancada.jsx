@@ -1088,9 +1088,9 @@ const ListaAvancada = forwardRef(function ListaAvancada({
                       className={`la-card la-urgencia-${urgenciaDe(item) || 'nenhuma'}`}
                       role="button"
                       tabIndex={0}
-                      onClick={() => aoAbrirItem && aoAbrirItem(item)}
+                      onClick={(event) => aoAbrirItem && aoAbrirItem(item, event)}
                       onKeyDown={(event) => {
-                        if (event.key === 'Enter' && aoAbrirItem) aoAbrirItem(item);
+                        if (event.key === 'Enter' && aoAbrirItem) aoAbrirItem(item, event);
                       }}
                     >
                       <input
@@ -1311,10 +1311,10 @@ function GrupoLinhas({ grupo, colunas, selecao, getItemId, alternarSelecao, aoAb
           <tr
             key={itemId}
             className={`la-linha la-urgencia-${urgenciaDe(item) || 'nenhuma'} ${selecao.has(itemId) ? 'selecionada' : ''}`}
-            onClick={() => aoAbrirItem && aoAbrirItem(item)}
+            onClick={(event) => aoAbrirItem && aoAbrirItem(item, event)}
             tabIndex={0}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && aoAbrirItem) aoAbrirItem(item);
+              if (event.key === 'Enter' && aoAbrirItem) aoAbrirItem(item, event);
             }}
           >
             <td className="la-td-check" onClick={(event) => event.stopPropagation()}>

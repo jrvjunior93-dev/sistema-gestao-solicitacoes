@@ -25,6 +25,7 @@ import {
   previewComprovantesFilaPagamentos,
   registrarBaixasFilaPagamentos,
   resolverFilaPagamento,
+  estornarBaixaFilaPagamento,
   vincularComprovantesFilaPagamentos
 } from '../services/financeiro';
 import {
@@ -39,6 +40,7 @@ import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
 import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
+import BaixaMassaFilaModal from '../components/financeiro/BaixaMassaFilaModal';
 import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
@@ -99,6 +101,7 @@ const PAYMENT_QUEUE_COLUMNS = [
   { key: 'conta', titulo: 'Conta pagadora', size: 'wide' },
   { key: 'instrumento', titulo: 'Forma / instrumento', size: 'wider' },
   { key: 'empresa', titulo: 'Empresa', size: 'standard' },
+  { key: 'desconto', titulo: 'Desconto (R$)', size: 'compact', antesDe: 'juros' },
   { key: 'juros', titulo: 'Juros (R$)', size: 'compact' },
   { key: 'multa', titulo: 'Multa (R$)', size: 'compact' },
   { key: 'valor', titulo: 'Valor pago', size: 'standard' },
@@ -221,7 +224,7 @@ function tipoDivergenciaPagamento(row, draft = {}) {
   const juros = valorEmCentavos(draft.juros || 0);
   const multa = valorEmCentavos(draft.multa || 0);
   if (!valorPago || saldo === null || juros === null || multa === null) return '';
-  const principal = valorPago - juros - multa;
+  const principal = valorPago - juros - multa + (valorEmCentavos(draft.desconto || 0) || 0);
   if (principal < saldo) return 'PARCIAL';
   if (principal > saldo) return 'ACIMA_SALDO';
   return '';
@@ -231,14 +234,14 @@ function totalPrevistoFila(row, draft = {}) {
   const base = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(row.status) && !Number(row.movimento_financeiro_id)
     ? row.titulo?.valor_saldo : row.valor_previsto;
   return ((valorEmCentavos(base) || 0) + (valorEmCentavos(draft.juros || 0) || 0)
-    + (valorEmCentavos(draft.multa || 0) || 0)) / 100;
+    + (valorEmCentavos(draft.multa || 0) || 0) - (valorEmCentavos(draft.desconto || 0) || 0)) / 100;
 }
 
 function mensagemJustificativaDivergencia(tipo) {
   if (tipo === 'PARCIAL') return 'Justifique por que o pagamento será parcial.';
   if (tipo === 'ACIMA_SALDO') return 'Justifique por que o pagamento será maior que o saldo.';
   if (tipo === 'DIFERENTE_PREVISTO') return 'Justifique a diferença em relação ao valor previsto.';
-  return 'Opcional quando o valor pago corresponde ao saldo + juros + multa.';
+  return 'Opcional quando o valor pago corresponde ao saldo + juros + multa − desconto.';
 }
 
 function orientarErroRegistroBaixa(error) {
@@ -654,6 +657,7 @@ export default function FinanceiroFilaPagamentos() {
   const [actionKey, setActionKey] = useState('');
   const [reasonOpenId, setReasonOpenId] = useWorkspaceState('fila:motivoId', null);
   const [erroBaixa, setErroBaixa] = useState(null);
+  const [baixaMassa, setBaixaMassa] = useState(null);
   const [comprovantesOpen, setComprovantesOpen] = useWorkspaceState('fila:pdfOpen', false);
   const [filaAutorizada, setFilaAutorizada] = useState(false);
   const [solicitacaoArquivos, setSolicitacaoArquivos] = useState(null);
@@ -707,6 +711,7 @@ export default function FinanceiroFilaPagamentos() {
               forma_pagamento_id: row.titulo?.forma_pagamento_id || '',
               juros: valorParaInput(row.juros || 0),
               multa: valorParaInput(row.multa || 0),
+              desconto: valorParaInput(row.instrumento_pagamento_json?.desconto || 0),
               _saldo_referencia: Number(row.titulo?.valor_saldo || 0),
               _juros_referencia: Number(row.juros || 0),
               _multa_referencia: Number(row.multa || 0),
@@ -751,7 +756,7 @@ export default function FinanceiroFilaPagamentos() {
       const next = { ...previous, ...patch };
       const ownFields = camposFila(patch);
       const row = rows.find(item => Number(item.id) === Number(id));
-      if (row && ('juros' in patch || 'multa' in patch)
+      if (row && ('juros' in patch || 'multa' in patch || 'desconto' in patch)
         && valorEmCentavos(previous.valor_pago) === valorEmCentavos(totalPrevistoFila(row, previous))) {
         next.valor_pago = valorParaInput(totalPrevistoFila(row, next));
         ownFields.valor_pago = next.valor_pago;
@@ -786,30 +791,35 @@ export default function FinanceiroFilaPagamentos() {
     return accounts.find((account) => Number(account.id) === id) || null;
   }
 
-  function validateRows(targetRows) {
+  function validateRows(targetRows, dados = drafts) {
     for (const row of targetRows) {
       if (edicoesFila[row.id] && edicoesFila[row.id].revisao !== revisaoFila(row)) {
         return { mensagem: 'O saldo ou status mudou desde a edição.',
           correcao: 'Descarte o rascunho conflitante e confira os dados atuais antes de baixar.', filaId: row.id };
       }
-      const draft = drafts[row.id] || {};
+      const draft = dados[row.id] || {};
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
       if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
       const tipo = tipoInstrumentoFila(forma);
       if (tipo === 'CARTAO' && !draft.cartao_id) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id, campo: 'forma_pagamento_id' };
-      if (tipo === 'CHEQUE' && (draft.usar_cheque_terceiro ? !draft.cheque_terceiro_id : (!draft.cheque_numero || !draft.cheque_emitente))) {
+      if (tipo === 'CHEQUE' && !draft.parcelas_cheque?.length && (draft.usar_cheque_terceiro ? !draft.cheque_terceiro_id : (!draft.cheque_numero || !draft.cheque_emitente))) {
         return { mensagem: 'Informe o cheque usado no pagamento.', correcao: 'Selecione um cheque da carteira ou preencha número e emitente do cheque próprio.', filaId: row.id, campo: 'forma_pagamento_id' };
+      }
+      if (tipo === 'CHEQUE' && draft.parcelas_cheque?.length && (draft.parcelas_cheque.some(item =>
+        !(Number(item.valor_pago) > 0) || (item.usar_cheque_terceiro ? !item.cheque_terceiro_id : !item.cheque_numero || !item.cheque_emitente))
+        || draft.parcelas_cheque.reduce((sum, item) => sum + valorEmCentavos(item.valor_pago), 0) !== valorEmCentavos(draft.valor_pago))) {
+        return { mensagem: 'Confira os cheques e seus valores.', correcao: 'A soma dos cheques deve ser igual ao valor pago do título.', filaId: row.id, campo: 'forma_pagamento_id' };
       }
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
       if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
       if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
-      for (const campo of ['juros', 'multa']) {
+      for (const campo of ['desconto', 'juros', 'multa']) {
         if (!Number.isFinite(Number(draft[campo] || 0)) || Number(draft[campo] || 0) < 0) {
-          return { mensagem: `${campo === 'juros' ? 'Juros' : 'Multa'} inválidos.`, correcao: 'Informe um valor em reais maior ou igual a zero.', filaId: row.id, campo };
+          return { mensagem: `${campo === 'desconto' ? 'Desconto' : campo === 'juros' ? 'Juros' : 'Multa'} inválidos.`, correcao: 'Informe um valor em reais maior ou igual a zero.', filaId: row.id, campo };
         }
       }
-      if (valorEmCentavos(draft.valor_pago) <= (valorEmCentavos(draft.juros || 0) + valorEmCentavos(draft.multa || 0))) {
-        return { mensagem: 'Valor pago deve ser maior que a soma de juros e multa.', correcao: 'Confira o total pago e os encargos em reais.', filaId: row.id, campo: 'valor_pago' };
+      if (valorEmCentavos(draft.valor_pago) + valorEmCentavos(draft.desconto || 0) <= (valorEmCentavos(draft.juros || 0) + valorEmCentavos(draft.multa || 0))) {
+        return { mensagem: 'O valor pago mais o desconto deve superar juros e multa.', correcao: 'Confira o total pago, o desconto e os encargos em reais.', filaId: row.id, campo: 'valor_pago' };
       }
       const tipoDivergencia = tipoDivergenciaPagamento(row, draft);
       if (tipoDivergencia && !String(draft.motivo || '').trim()) {
@@ -856,7 +866,7 @@ export default function FinanceiroFilaPagamentos() {
       : '';
     setErroBaixa(null);
     const colunaErro = { conta_bancaria_id: 'conta', valor_pago: 'valor', motivo: 'justificativa',
-      data_baixa: 'data', juros: 'juros', multa: 'multa', forma_pagamento_id: 'instrumento',
+      data_baixa: 'data', desconto: 'desconto', juros: 'juros', multa: 'multa', forma_pagamento_id: 'instrumento',
       cartao_id: 'instrumento', cheque_terceiro_id: 'instrumento', numero_cheque: 'instrumento' }[erroBaixa?.campo];
     if (colunaErro) colunasConfiguradas.mostrar(colunaErro);
     const filaId = erroBaixa?.filaId;
@@ -877,13 +887,14 @@ export default function FinanceiroFilaPagamentos() {
     return executarOperacao(() => performSettle(targetRows));
   }
 
-  async function performSettle(targetRows) {
-    const problem = validateRows(targetRows);
+  async function performSettle(targetRows, dados = draftsRef.current) {
+    const problem = validateRows(targetRows, dados);
     if (problem) {
+      setBaixaMassa(null);
       setErroBaixa({ ...problem, lote: targetRows.length > 1 });
       return;
     }
-    const total = targetRows.reduce((sum, row) => sum + Number(drafts[row.id]?.valor_pago || 0), 0);
+    const total = targetRows.reduce((sum, row) => sum + Number(dados[row.id]?.valor_pago || 0), 0);
     const { ok } = await confirmar({
       titulo: targetRows.length === 1 ? 'Registrar baixa deste título?' : 'Registrar baixas selecionadas?',
       mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. O comprovante pode ser anexado depois; a baixa sem PDF será listada em Pendentes de comprovante. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
@@ -897,21 +908,24 @@ export default function FinanceiroFilaPagamentos() {
     try {
       const result = await registrarBaixasFilaPagamentos(targetRows.map((row) => ({
         fila_id: row.id,
-        ...payloadInstrumentoFila(drafts[row.id], instrumentos.formas),
-        data_baixa: drafts[row.id].data_baixa,
-        conta_bancaria_id: Number(drafts[row.id].conta_bancaria_id),
-        valor_pago: Number(drafts[row.id].valor_pago),
-        juros: Number(drafts[row.id].juros || 0),
-        multa: Number(drafts[row.id].multa || 0),
-        motivo: String(drafts[row.id].motivo || '').trim() || undefined
+        ...payloadInstrumentoFila(dados[row.id], instrumentos.formas),
+        data_baixa: dados[row.id].data_baixa,
+        conta_bancaria_id: Number(dados[row.id].conta_bancaria_id),
+        valor_pago: Number(dados[row.id].valor_pago),
+        desconto: Number(dados[row.id].desconto || 0),
+        juros: Number(dados[row.id].juros || 0),
+        multa: Number(dados[row.id].multa || 0),
+        motivo: String(dados[row.id].motivo || '').trim() || undefined
       })), key);
       avisar.sucesso(`${result?.baixados || 0} baixa(s) registrada(s). ${result?.divergentes || 0} divergência(s) sinalizada(s).`);
       if (result?.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante. Anexe os PDFs pelo card Pendentes de comprovante.`);
       setSelected([]);
       limparEdicoes(targetRows.map(row => row.id));
+      setBaixaMassa(null);
       await load();
     } catch (error) {
       const detalhe = orientarErroRegistroBaixa(error);
+      setBaixaMassa(null);
       const linhaRelacionada = targetRows.find((row) => {
         const codigo = String(row.titulo?.codigo || '').trim();
         return codigo && detalhe.mensagem.includes(codigo);
@@ -989,6 +1003,22 @@ export default function FinanceiroFilaPagamentos() {
     return executarOperacao(() => performResolve(row, action));
   }
 
+  async function estornar(row) {
+    if (!canResolve || !hasPermissao(user, 'financeiro.titulos.estornar') || row.somente_consulta) return;
+    await executarOperacao(async () => {
+      const { ok, texto } = await confirmar({ titulo: `Estornar baixa de ${row.titulo?.codigo || row.id}?`,
+        mensagem: 'Os movimentos deste pagamento serão estornados, cheques de terceiros voltarão à carteira e o saldo retornará à fila. O histórico e os comprovantes anteriores serão preservados.',
+        rotuloConfirmar: 'Estornar e devolver para fila', destrutiva: true,
+        campo: { rotulo: 'Motivo do estorno', obrigatorio: true, multilinha: true } });
+      if (!ok) return;
+      try {
+        await estornarBaixaFilaPagamento(row.id, String(texto || '').trim(), idempotencyKey('fila-estorno'));
+        avisar.sucesso('Baixa estornada. Saldo devolvido para a fila de pagamentos.');
+        limparEdicoes([row.id]); setSelected([]); await load();
+      } catch (error) { avisar.erro(error?.message || 'Não foi possível estornar a baixa. Nenhum movimento foi alterado.'); }
+    });
+  }
+
   async function performResolve(row, action) {
     const reabrir = action === 'REABRIR';
     const { ok, texto } = await confirmar({
@@ -1052,7 +1082,8 @@ export default function FinanceiroFilaPagamentos() {
           rotulo: busy
             ? 'Processando...'
             : `${approvingDivergences ? 'Autorizar selecionados' : 'Baixa em massa'}${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
-          onClick: () => approvingDivergences ? approveDivergences(selectedRows) : settle(selectedRows),
+          onClick: () => approvingDivergences ? approveDivergences(selectedRows) : setBaixaMassa({
+            ids: selectedRows.map(row => row.id), revisoes: selectedRows.map(revisaoFila) }),
           desabilitada: loading || busy || selectedRows.length === 0,
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
@@ -1160,6 +1191,7 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="conta" className="px-3 py-3">Conta pagadora</ResizableTh>
                 <ResizableTh columnKey="instrumento" className="px-3 py-3">Forma / instrumento</ResizableTh>
                 <ResizableTh columnKey="empresa" className="px-3 py-3">Empresa</ResizableTh>
+                <ResizableTh columnKey="desconto" className="px-3 py-3 text-right">Desconto (R$)</ResizableTh>
                 <ResizableTh columnKey="juros" className="px-3 py-3 text-right">Juros (R$)</ResizableTh>
                 <ResizableTh columnKey="multa" className="px-3 py-3 text-right">Multa (R$)</ResizableTh>
                 <ResizableTh columnKey="valor" className="px-3 py-3">Valor pago</ResizableTh>
@@ -1284,7 +1316,7 @@ export default function FinanceiroFilaPagamentos() {
                     <td className="px-3 py-3 align-top text-right whitespace-nowrap">
                       <div>{currency(totalPrevistoFila(row, drafts[row.id]))}</div>
                       <div className="text-xs font-semibold text-[var(--c-muted)]">Saldo {currency(title.valor_saldo)}</div>
-                      <div className="text-xs text-[var(--c-muted)]">Previsto com juros e multa</div>
+                      <div className="text-xs text-[var(--c-muted)]">Previsto com encargos e desconto</div>
                     </td>
                     <td className="px-3 py-3 align-top">
                       <DateInputBR
@@ -1316,19 +1348,20 @@ export default function FinanceiroFilaPagamentos() {
                     </td>
                     <td className="px-3 py-3 align-top">
                       <InstrumentoPagamentoFila row={row} draft={drafts[row.id]} instrumentos={instrumentos}
-                        conta={account} disabled={!editable || busy} onChange={patch => updateDraft(row.id, patch)} />
+                        conta={account} disabled={!editable || busy} podeCadastrarCheque={hasPermissao(user, 'financeiro.cheques.cadastrar') && hasPermissao(user, 'financeiro.cheques.visualizar')}
+                        onChange={patch => updateDraft(row.id, patch)} />
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-48 text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
                     </td>
-                    {['juros', 'multa'].map(campo => (
+                    {['desconto', 'juros', 'multa'].map(campo => (
                       <td key={campo} className="px-3 py-3 align-top">
                             <input className="input input-sm input-moeda min-w-0 w-full text-right" style={{ minWidth: 0 }}
                               type="number" min="0" step="0.01" data-fila-id={row.id} data-fila-campo={campo}
                               value={drafts[row.id]?.[campo] ?? row[campo] ?? '0.00'}
                               onChange={event => updateDraft(row.id, { [campo]: event.target.value })}
                               disabled={!editable || busy}
-                              aria-label={`${campo === 'juros' ? 'Juros' : 'Multa'} de ${title.codigo || row.id}`} />
+                              aria-label={`${campo === 'desconto' ? 'Desconto' : campo === 'juros' ? 'Juros' : 'Multa'} de ${title.codigo || row.id}`} />
                       </td>
                     ))}
                     <td className="px-3 py-3 align-top">
@@ -1382,6 +1415,9 @@ export default function FinanceiroFilaPagamentos() {
                         {editable && canSettle ? (
                           <button className="btn btn-primary btn-sm" type="button" onClick={() => settle([row])} disabled={busy}>Registrar baixa</button>
                         ) : null}
+                        {['BAIXADO', 'RESOLVIDO'].includes(row.status) && !row.instrumento_pagamento_json?.estorno && canResolve && hasPermissao(user, 'financeiro.titulos.estornar') && !row.somente_consulta && row.movimento_financeiro_id ? (
+                          <button className="btn btn-outline btn-sm" type="button" disabled={busy} onClick={() => estornar(row)}>Estornar baixa</button>
+                        ) : null}
                         {row.status === 'PENDENTE' && canReport ? (
                           <button className="btn btn-outline btn-sm" type="button" onClick={() => setReasonOpenId(reasonVisible ? null : row.id)} disabled={busy}>Não pago</button>
                         ) : null}
@@ -1390,7 +1426,7 @@ export default function FinanceiroFilaPagamentos() {
                         ) : null}
                         {!row.somente_consulta && ['NAO_PAGO', 'DIVERGENTE'].includes(row.status) && canResolve ? (
                           <>
-                            {Number(title.valor_saldo || 0) > 0 ? <button className="btn btn-outline btn-sm" type="button" onClick={() => resolve(row, 'REABRIR')} disabled={busy}>Reabrir</button> : null}
+                            {Number(title.valor_saldo || 0) > 0 ? <button className="btn btn-outline btn-sm" type="button" onClick={() => resolve(row, 'REABRIR')} disabled={busy}>Devolver para fila</button> : null}
                             <button className="btn btn-outline btn-sm" type="button" onClick={() => resolve(row, 'ENCERRAR')} disabled={busy}>Encerrar</button>
                           </>
                         ) : null}
@@ -1419,6 +1455,18 @@ export default function FinanceiroFilaPagamentos() {
         </p>
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
+      {baixaMassa && <BaixaMassaFilaModal rows={rows.filter(row => baixaMassa.ids.includes(row.id))}
+        accounts={accounts} busy={Boolean(actionKey)} onFechar={() => setBaixaMassa(null)}
+        onConfirmar={async patch => {
+          const atuais = baixaMassa.ids.map(id => rows.find(row => row.id === id));
+          if (!canSettle || !filaAutorizada || atuais.some((row, i) => !row || row.status !== 'PENDENTE'
+            || row.somente_consulta || revisaoFila(row) !== baixaMassa.revisoes[i])) return 'A seleção mudou. Feche o modal, atualize e confira a fila.';
+          if (atuais.some(row => { const card = instrumentos.cartoes.find(item => Number(item.id) === Number(draftsRef.current[row.id]?.cartao_id));
+            return card && Number(card.conta_bancaria_id) !== patch.conta_bancaria_id; })) return 'Há cartão vinculado a outra conta. Separe os títulos por conta pagadora.';
+          atuais.forEach(row => updateDraft(row.id, patch));
+          await executarOperacao(() => performSettle(atuais, draftsRef.current));
+          return null;
+        }} />}
       {comprovantesOpen && canImportReceipts && filaAutorizada ? (
         <ComprovantesPdfModal
           onFechar={() => setComprovantesOpen(false)}

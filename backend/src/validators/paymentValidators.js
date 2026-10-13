@@ -235,15 +235,16 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
 
   const ids = new Set();
   const itens = payload.itens.map((item, index) => {
-    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'juros', 'multa', 'motivo',
+    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'desconto', 'juros', 'multa', 'motivo',
       'forma_pagamento_id', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
       'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
-      'cheque_conta', 'data_emissao', 'data_vencimento'], `Item ${index + 1}`);
+      'cheque_conta', 'data_emissao', 'data_vencimento', 'parcelas_cheque'], `Item ${index + 1}`);
     const filaId = parseInteger(item.fila_id, `Item ${index + 1}`, { required: true });
     if (ids.has(filaId)) throw new ValidationError(`O item ${filaId} foi informado mais de uma vez.`);
     ids.add(filaId);
     return cleanUndefined({
       fila_id: filaId,
+      parcelas_cheque: item.parcelas_cheque == null ? undefined : validarParcelasChequeFila(item.parcelas_cheque),
       forma_pagamento_id: parseInteger(item.forma_pagamento_id, 'Forma de pagamento'),
       cartao_id: parseInteger(item.cartao_id, 'Cartao'),
       usar_cheque_terceiro: parseBoolean(item.usar_cheque_terceiro),
@@ -261,6 +262,7 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
       valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),
       juros: parseDecimal(item.juros, `Juros do item ${index + 1}`, { min: 0 }),
       multa: parseDecimal(item.multa, `Multa do item ${index + 1}`, { min: 0 }),
+      desconto: parseDecimal(item.desconto, `Desconto do item ${index + 1}`, { min: 0 }),
       motivo: parseOptionalText(item.motivo, `Observacao do item ${index + 1}`, 500)
     });
   });
@@ -277,6 +279,25 @@ function validateManualPaymentQueueResultBody(payload = {}) {
     status: parseEnum(payload.status, 'Status', ['NAO_PAGO'], { required: true }),
     motivo: parseRequiredText(payload.motivo, 'Justificativa', 500)
   };
+}
+
+function validarParcelasChequeFila(parcelas) {
+  if (!Array.isArray(parcelas) || !parcelas.length || parcelas.length > 60) throw new ValidationError('Informe entre 1 e 60 cheques.');
+  return parcelas.map((parcela, index) => {
+    ensureAllowedKeys(parcela, ['valor_pago', 'usar_cheque_terceiro', 'cheque_terceiro_id',
+      'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
+      'cheque_conta', 'data_emissao', 'data_vencimento'], `Cheque ${index + 1}`);
+    const normalizado = validateManualPaymentQueueProcessBody({ itens: [{ ...parcela,
+      fila_id: 1, data_baixa: '2000-01-01', conta_bancaria_id: 1 }] }).itens[0];
+    const { fila_id, conta_bancaria_id, data_baixa, ...campos } = normalizado;
+    return campos;
+  });
+}
+
+function validateManualPaymentQueueReverseBody(payload = {}) {
+  ensureAllowedKeys(payload, ['motivo', 'idempotency_key'], 'Estorno da fila');
+  return { motivo: parseRequiredText(payload.motivo, 'Motivo do estorno', 500),
+    idempotency_key: parseRequiredText(payload.idempotency_key, 'Chave de idempotencia', 80) };
 }
 
 function validateManualPaymentQueueResolveBody(payload = {}) {
@@ -312,6 +333,7 @@ module.exports = {
   validateManualPaymentQueueProcessBody,
   validateManualPaymentQueueQuery,
   validateManualPaymentQueueResolveBody,
+  validateManualPaymentQueueReverseBody,
   validateManualPaymentQueueResultBody,
   validatePaymentCancelBody,
   validatePaymentRejectBody,

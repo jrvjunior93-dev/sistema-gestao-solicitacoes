@@ -31,8 +31,8 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
     if (id === stub + 'auth') return `export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
-    if (id === stub + 'permissoes') return `export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=()=>true,canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>true;`;
-    if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
+    if (id === stub + 'permissoes') return `export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&window.__noReverse),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly;`;
+    if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       export const getFilaPagamentos=async({status})=>{
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
@@ -52,15 +52,17 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         if(new URLSearchParams(location.search).has('edicao')){row.status='EM_EDICAO';row.titulo.origem_titulo='RH_DP';row.titulo.status_interno_pagar='EM EDICAO DP';row.motivo='Revisao solicitada pelo DP';}
         const rh=new URLSearchParams(location.search).get('rh');
         if(rh){row.titulo.paymentBeneficiary={nome:'Responsavel RH',cpf_cnpj:'52998224725',metodo_preferencial:rh==='pix'?'PIX_CHAVE':'CONTA_BANCARIA',pix_tipo_chave:rh==='pix'?'EMAIL':'DADOS_BANCARIOS',pix_chave:rh==='pix'?'responsavel@example.test':'104:1234:23456',banco_codigo:'104',agencia:'1234',conta:'23456'};row.titulo.observacoes='Solicitacao RH: RH-24\\nReembolsos de vale:\\nAna QA: R$ 100,00\\nBruno QA: R$ 50,00';}
-        return{data:status==='NAO_PAGO'?[{id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
+        return{data:status==='NAO_PAGO'?[new URLSearchParams(location.search).has('naopago')?{...row,status:'NAO_PAGO',movimento_financeiro_id:null}: {id:-7,status:'NAO_PAGO',somente_consulta:true,motivo:'Documento divergente',titulo:{id:7,codigo:'TIT-REJEITADO',valor_saldo:200}}]:status==='PENDENTE_COMPROVANTE'?(paid&&!receipt?[row]:[]):status==='PENDENTE'&&paid?[]:[row],resumo:{PENDENTE:paid?0:1,PENDENTE_COMPROVANTE:paid&&!receipt?1:0,NAO_PAGO:1,BAIXADO:paid?1:0}};
       };
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
-      export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2}]});
+      export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2}]});
       export const registrarBaixasFilaPagamentos=async(itens,key)=>{window.__settles.push({itens,key});if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
-        ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:'Anexo',createdAt:'2026-10-08T12:00:00Z'})) : [];
-      export const aprovarDivergenciasFilaPagamentos=async()=>{},getComprovanteFilaPagamento=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{},resolverFilaPagamento=async()=>{},vincularComprovantesFilaPagamentos=async()=>{};`;
+        ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
+      export const estornarBaixaFilaPagamento=async(id,motivo,key)=>{window.__reverseCalls=(window.__reverseCalls||0)+1;window.__reversed={id,motivo,key};};
+      export const resolverFilaPagamento=async(id,action,motivo)=>{window.__returned={id,action,motivo};};
+      export const aprovarDivergenciasFilaPagamentos=async()=>{},getComprovanteFilaPagamento=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{},vincularComprovantesFilaPagamentos=async()=>{};`;
   },
   configureServer(server) { server.middlewares.use('/qa-fila', async (_, res) => {
     res.setHeader('Content-Type', 'text/html');
@@ -287,10 +289,17 @@ try {
     assert(await page.getByLabel('Selecionar TIT-MASSA-31',{exact:true}).isDisabled());
     assert(await page.getByLabel('Selecionar TIT-MASSA-32',{exact:true}).isDisabled());
     await page.getByRole('button',{name:'Baixa em massa (30)',exact:true}).evaluate(button=>{button.click();button.click();});
+    const bulkDialog = page.getByRole('dialog', { name: 'Baixa em massa', exact: true });
+    await bulkDialog.waitFor();
+    assert.equal(await page.evaluate(() => window.__settles.length), 0, 'Abrir modal nao registra baixa');
+    await bulkDialog.getByLabel('Conta pagadora', { exact: true }).selectOption('5');
+    await bulkDialog.getByLabel('Data do pagamento', { exact: true }).fill('12/10/2026');
+    await bulkDialog.getByRole('button', { name: 'Conferir e registrar baixas', exact: true }).evaluate(button => { button.click(); button.click(); });
     await page.waitForFunction(()=>window.__settles.length===1);
     const bulk=await page.evaluate(()=>window.__settles[0]);
     assert(bulk.key); assert.equal(bulk.itens.length,30);
     assert(bulk.itens.every(item=>item.valor_pago===213 && item.juros===10 && item.multa===3));
+    assert(bulk.itens.every(item=>item.data_baixa==='2026-10-12' && item.conta_bancaria_id===5 && item.desconto===0));
     assert.equal(await page.locator('th[data-coluna="local"]').count(),1);
     assert((await page.locator('th[data-coluna="local"]').textContent()).includes('Obra / Centro de Custo'));
     assert.equal(await page.getByText('CC-3 · Centro de custo QA',{exact:true}).count(),32);
@@ -325,6 +334,60 @@ try {
   await validarColunasFila(browser);
   await validarArquivosPreviewFila(browser);
   await validarDadosPagamentoFila(browser);
+  // Parcelas proprias + carteira, desconto e estorno na pagina real.
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('http://127.0.0.1:5308/qa-fila?parcelas=1');
+    await forma.waitFor(); await forma.selectOption('4');
+    await chequeModal.waitFor(); await chequeModal.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+    await conta.selectOption('5');
+    await page.getByRole('button', { name: 'Mais de um cheque / parcelar', exact: true }).click();
+    const parcelas = page.getByRole('dialog', { name: 'Cheques do pagamento de TIT-QA', exact: true });
+    await parcelas.waitFor();
+    await parcelas.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('100');
+    await parcelas.getByLabel('Numero do cheque *', { exact: true }).fill('101');
+    await parcelas.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
+    await parcelas.getByRole('button', { name: 'Adicionar cheque / parcela', exact: true }).click();
+    await parcelas.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
+    await parcelas.getByLabel('Cheque da carteira 2', { exact: true }).selectOption('77');
+    assert.equal(await parcelas.getByLabel('Cheque da carteira 2', { exact: true }).locator('option[value="88"]').count(), 0);
+    assert.equal(await parcelas.getByLabel('Valor do cheque 2 (R$)', { exact: true }).inputValue(), '100');
+    assert.equal(await parcelas.getByRole('link', { name: 'Abrir carteira para cadastrar', exact: true }).getAttribute('href'), '/financeiro/cheques-terceiros');
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({ path: path.join(root, `../outputs/fila-cheques-parcelas-${width}.png`), fullPage: true });
+    await parcelas.getByRole('button', { name: 'Confirmar cheques', exact: true }).click();
+    await parcelas.waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Registrar baixa', exact: true }).click();
+    await page.waitForFunction(() => window.__settles.length === 1);
+    const multi = await page.evaluate(() => window.__settles[0].itens[0]);
+    assert.equal(multi.parcelas_cheque.length, 2); assert.equal(multi.parcelas_cheque[0].cheque_numero, '101');
+    assert.equal(multi.parcelas_cheque[1].cheque_terceiro_id, 77); assert.equal(multi.parcelas_cheque[1].usar_cheque_terceiro, true);
+    assert.equal(multi.cheque_numero, undefined);
+    await forma.selectOption('3'); await conta.selectOption('5');
+    await page.getByLabel('Desconto de TIT-QA', { exact: true }).fill('20');
+    assert.equal(await page.getByLabel('Valor pago de TIT-QA', { exact: true }).inputValue(), '180.00');
+    await page.getByRole('button', { name: 'Registrar baixa', exact: true }).click();
+    await page.waitForFunction(() => window.__settles.length === 2);
+    const discount = await page.evaluate(() => window.__settles[1].itens[0]);
+    assert.equal(discount.desconto, 20); assert.equal(discount.valor_pago, 180);
+    await page.evaluate(() => { window.__paid = true; });
+    await page.getByRole('button', { name: /^Baixados/ }).click();
+    const reverse = page.getByRole('button', { name: 'Estornar baixa', exact: true }); await reverse.waitFor();
+    await reverse.evaluate(button => { button.click(); button.click(); });
+    await page.waitForFunction(() => window.__reversed);
+    const reversed = await page.evaluate(() => window.__reversed);
+    assert.equal(reversed.id, 1); assert.equal(reversed.motivo, 'Correção QA'); assert(reversed.key);
+    assert.equal(await page.evaluate(() => window.__reverseCalls), 1, 'Duplo clique nao duplica estorno');
+  }
+  await page.goto('http://127.0.0.1:5308/qa-fila?sem-estorno=1');
+  await forma.waitFor(); await page.evaluate(() => { window.__paid = true; window.__noReverse = true; });
+  await page.getByRole('button', { name: /^Baixados/ }).click();
+  await page.getByText('TIT-QA', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Estornar baixa', exact: true }).count(), 0, 'Resolver fila nao concede estorno');
+  await page.goto('http://127.0.0.1:5308/qa-fila?naopago=1&status=NAO_PAGO');
+  await page.getByRole('button', { name: 'Devolver para fila', exact: true }).click();
+  await page.waitForFunction(() => window.__returned);
+  assert.deepEqual(await page.evaluate(() => window.__returned), { id: 1, action: 'REABRIR', motivo: '' });
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('OK: fila real, local, selecao parcial/todos elegiveis, baixa em massa com juros/multa e duplo clique, rolagem vertical/horizontal no fechamento/Esc desktop/mobile, instrumentos e baixa sem PDF. APIs isoladas.');
+  console.log('OK: fila real desktop/mobile, modal massa conta/data, desconto, multiplos cheques, estorno com motivo/permissao/mutex, devolver nao pago, selecao/colunas e rolagem. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }

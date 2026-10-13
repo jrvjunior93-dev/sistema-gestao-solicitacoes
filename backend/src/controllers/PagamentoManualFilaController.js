@@ -9,6 +9,7 @@ const {
   obterComprovanteFila,
   obterComprovanteAdicionalFila,
   registrarBaixasFila,
+  estornarBaixaFila,
   resolverItemFila
 } = require('../services/pagamentoManualFilaService');
 const {
@@ -23,6 +24,10 @@ function responderErro(res, error, fallback) {
 }
 
 module.exports = {
+  async estornar(req, res) {
+    try { return res.json(await estornarBaixaFila(req, req.params.id, req.body)); }
+    catch (error) { return responderErro(res, error, 'Erro ao estornar baixa da fila'); }
+  },
   async instrumentos(req, res) {
     try { return res.json(await listarInstrumentosFila(req)); }
     catch (error) { return responderErro(res, error, 'Erro ao carregar instrumentos de pagamento'); }

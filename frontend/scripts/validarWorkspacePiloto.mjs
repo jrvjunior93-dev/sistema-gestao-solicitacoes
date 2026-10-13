@@ -12,6 +12,7 @@ import tailwindConfig from '../tailwind.config.js';
 import { chromium } from 'playwright';
 import { makeTab, makeEntry, moveTab, recordIdentity } from '../src/navigation/workspaceModel.js';
 import { consultarJanela } from '../src/pages/Solicitacoes/consultarJanela.js';
+import { lerConsultaSessao, salvarConsultaSessao } from '../src/pages/Solicitacoes/consultaSessao.js';
 import { camposRespostaDraft, restaurarRespostaDraft, revisaoRespostaDraft } from '../src/modules/solicitacao-compra/utils/cotacaoWorkspaceDraft.js';
 import { camposFila, revisaoFila } from '../src/navigation/filaWorkspaceDraft.js';
 assert.deepEqual(camposFila({ motivo: 'Digitado', comprovante_url: 'privado', _saldo_referencia: 9, titular_documento: '123', data_emissao: '2026-01-01' }),
@@ -27,6 +28,24 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const financeiroOnly = process.argv.includes('--financeiro-only');
 const pedidoOnly = process.argv.includes('--pedido-only');
 const provisaoOnly = process.argv.includes('--provisao-only');
+const solicitacoesOnly = process.argv.includes('--solicitacoes-filtros-only');
+if (solicitacoesOnly) process.argv.push('--table-only');
+const consultaStorage = new Map();
+const storageQA = { getItem: key => consultaStorage.get(key), setItem: (key, value) => consultaStorage.set(key, value) };
+const ownerQA = { id: 35, areas_permissoes: ['solicitacoes.visualizar'] };
+salvarConsultaSessao(ownerQA, false, { filtros: { codigo: 'SOL-QA', token: 'segredo' },
+  consulta: { busca: 'Busca QA', filtros: { obra: ['7'], status: ['PENDENTE'], token: ['segredo'] },
+    visao: { id: 'todas', params: { acesso: 'TODOS' } }, ordenacao: { campo: 'codigo', direcao: 'asc' }, dto: { arquivo_url: 'privado' } } }, storageQA);
+const restoredQA = lerConsultaSessao(ownerQA, false, '', storageQA);
+assert.equal(restoredQA.consulta.busca, 'Busca QA');assert.deepEqual(restoredQA.consulta.filtros.obra, ['7']);
+assert(!JSON.stringify(restoredQA).includes('segredo'));assert(!JSON.stringify(restoredQA).includes('privado'));
+assert(!restoredQA.consulta.visao.params);
+assert.equal(lerConsultaSessao({ ...ownerQA, id: 36 }, false, '', storageQA), null);
+assert.equal(lerConsultaSessao({ ...ownerQA, areas_permissoes: [] }, false, '', storageQA), null);
+assert.equal(lerConsultaSessao(ownerQA, true, '', storageQA), null);
+assert.equal(lerConsultaSessao(ownerQA, false, '?status=PAGA', storageQA), null);
+assert.equal(lerConsultaSessao(ownerQA, false, '', { getItem() { throw Error('Storage bloqueado'); } }), null);
+salvarConsultaSessao(ownerQA, false, {}, { setItem() { throw Error('Storage bloqueado'); } });
 if (provisaoOnly) process.argv.push('--table-only'); // O modo integral continua incluindo o contrato real de provisao.
 if (pedidoOnly) process.argv.push('--table-only'); // Base leve + contrato do pedido, sem ocultar casos no modo integral.
 let tab = makeTab(makeEntry('/a', 'A'));
@@ -86,7 +105,7 @@ if(params.has('financeiroqa')){user.modulos_habilitados=[{key:'FINANCEIRO',enabl
 if(params.has('provisaoqa')||params.has('provisaolistqa')||params.has('provisaoconsultasqa'))user.modulos_habilitados=[{key:'PROVISOES',enabled:true}];
 function TestAuth({children}){const[effective,set]=useState(params.has('anon')?null:params.has('mfa')?{...user,mfa_setup_pending:true}:user);const[ready,R]=useState(!params.has('restoring'));useEffect(()=>{window.qaAuth={ready:()=>R(true),logout:()=>set(null),switch:()=>set({...user,id:2,nome:'Outro usuario'}),restrict:()=>set(current=>({...current,areas_permissoes_configuradas:true,areas_permissoes:[]}))}},[]);return <AuthContext.Provider value={{user:effective,authReady:ready,isAuthenticated:!!effective,login:async data=>set(data.user),logout:()=>set(null)}}>{children}</AuthContext.Provider>}
 function ItemsFixture(){return <><Toolbar/><CompraEtapas solicitacaoId={useParams().id} user={user} podeDecidir podeReceber={false} podeProgramarEntrega={false} podeAnexar={false} mostrarCotacao={params.has('cotacoesqa')} podeGerenciarCotacao={!params.has('readonlyqa')}/></>}
-function Toolbar(){const w=useWorkspace();const nav=useNavigate();useEffect(()=>{window.qa={...w}},[w]);return <div style={{position:'sticky',top:0,zIndex:90,background:'#fff'}}><button onClick={()=>w.openTab('/consulta/1')}>QA consulta</button><button onClick={()=>w.back('/solicitacoes')}>QA voltar</button><button onClick={()=>nav('/compras/delegacao')}>QA delegacao</button><button onClick={()=>w.openTab('/consulta-lenta')}>QA aba lenta</button></div>}
+function Toolbar(){const w=useWorkspace();const nav=useNavigate();useEffect(()=>{window.qa=w?{...w}:{tabs:[],fallback:true}},[w]);return <div style={{position:'sticky',top:0,zIndex:90,background:'#fff'}}><button onClick={()=>w?w.openTab('/consulta/1'):nav('/consulta/1')}>QA consulta</button><button onClick={()=>w?w.back('/solicitacoes'):nav(-1)}>QA voltar</button><button onClick={()=>nav('/compras/delegacao')}>QA delegacao</button><button onClick={()=>w?w.openTab('/consulta-lenta'):nav('/consulta-lenta')}>QA aba lenta</button></div>}
 const ConsultaLenta=React.lazy(()=>new Promise(resolve=>setTimeout(()=>resolve({default:()=> <><Toolbar/><p>Consulta lenta pronta</p></>}),400)));
 function CoreForm(){const[text,set]=useWorkspaceState('texto','');const[busy,B]=useState(false);useWorkspaceWork(!!text,busy);useWorkspaceTitle('SOL-CORE-'+(useParams().id||'NOVA'));return <><input aria-label="Rascunho" value={text} onChange={e=>set(e.target.value)}/><button onClick={()=>{B(true);setTimeout(()=>B(false),700)}}>QA ocupado</button><div style={{height:2500}}>Formulario</div></>}
 function TableFixture(){const[q,Q]=useWorkspaceState('tableqa:query','');const[loading,L]=useState(true);useEffect(()=>{const timer=setTimeout(()=>L(false),80);return()=>clearTimeout(timer)},[]);return <><Toolbar/><input aria-label="Filtro tabela QA" value={q} onChange={e=>Q(e.target.value)}/><Tabela itens={loading?[]:Array.from({length:120},(_,i)=>({id:i+1,nome:'Linha '+String(i+1).padStart(3,'0')}))} colunas={[{id:'nome',titulo:'Nome',tipo:'texto',largura:2000,minWidth:2000,ordenavel:true,render:r=>r.nome}]} linhaExpansivel={r=><p>Detalhe linha {r.id}</p>} storageKey="qa:tabela" chaveWorkspace={params.has('notableoptin')?null:'qa:tabela'} consultaWorkspace={q} carregando={loading}/></>}
@@ -131,6 +150,8 @@ const server = await createServer({ root, configFile:false,logLevel:'error',
     resolveId(id){if(id==='/qa.jsx')return '\0workspace-qa.jsx'},
     async load(id){if(id==='\0workspace-qa.jsx')return transformWithEsbuild(fixture,'qa.jsx',{loader:'jsx',jsx:'transform'})},
     transform(code,id){
+      // Testar tambem a lista sem snapshots (equivalente ao piloto em OFF).
+      if(solicitacoesOnly&&id.endsWith('/src/layout/Layout.jsx')) return code.replace("const pilotEnabled = import.meta.env.VITE_WORKSPACE_PILOT !== 'off';", "const pilotEnabled = !window.qaLegacy;");
       if(process.argv.includes('--baseline-controller')&&id.endsWith('/src/navigation/useWorkspaceController.js')) return execFileSync('git',['show','0fb4822d:frontend/src/navigation/useWorkspaceController.js'],{cwd:root,encoding:'utf8'});
       if(id.endsWith('/src/contexts/AuthContext.jsx')) return `import{createContext,useContext}from'react';export const AuthContext=createContext({});export const useAuth=()=>useContext(AuthContext);`;
       if(id.endsWith('/src/contexts/LiveUpdatesContext.jsx')) return `export function useLiveUpdateSubscription(){};`;
@@ -145,12 +166,12 @@ let browser;
 const results=[];
 try{
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH,channel:process.env.PLAYWRIGHT_EXECUTABLE_PATH?undefined:'chrome'});
- const install=async page=>{
+ const install=async (page, { context = false } = {})=>{
    const waitForURL = page.waitForURL.bind(page);
    page.waitForURL = async (...args) => {
      await waitForURL(...args);
      // history muda antes do commit do Router em startTransition.
-     await page.waitForFunction(()=>location.pathname==='/login'||window.qa?.tabs.find(t=>t.id===window.qa.activeId)?.route===location.pathname+location.search+location.hash);
+     await page.waitForFunction(()=>location.pathname==='/login'||window.qa?.fallback||window.qa?.tabs.find(t=>t.id===window.qa.activeId)?.route===location.pathname+location.search+location.hash);
    };
    // O formulario retido fica hidden/inert; interagir apenas com a pagina ativa.
    page.getByLabel = (text, opts) => page.locator('[data-workspace-page]:not([hidden])').getByLabel(text, opts);
@@ -159,7 +180,7 @@ try{
    const obra={id:7,codigo:'07',nome:'Obra QA',tipo_centro_custo:'OBRA',ativo:true};
    const tipo={id:5,nome:'DESPESA EVENTUAL',ativo:true};
    const record=id=>({id,codigo:'SOL-QA'+id,obra_id:7,obra,tipo,valor:1000,valor_exibicao:1000,descricao:'Solicitacao QA',status_global:'PENDENTE',area_responsavel:'GEO',anexos:[],historicos:[],interacoes_pendentes:[],contexto_interacao:{pode_interagir:true},createdAt:'2026-10-01T12:00:00Z'});
-   await page.route('**/*',async route=>{
+   await (context ? page.context() : page).route('**/*',async route=>{
     const req=route.request(),u=new URL(req.url());
     if(u.origin!==base)return route.abort();
     if(!u.pathname.startsWith('/api/'))return route.continue();
@@ -178,6 +199,8 @@ try{
     else if(p==='/tipos-solicitacao')data=[tipo];
     else if(p==='/tipos-solicitacao/disponiveis')data={tipos:[tipo],destino_inicial:{codigo:'GEO',nome:'GEO'},tipo_automatico:false};
     else if(p==='/solicitacoes')data={items:[record(90),record(91)],meta:{page:Number(u.searchParams.get('page'))||1,total:50,total_pages:2,limit:25}};
+    else if(p==='/solicitacoes/filtros/status')data=['PENDENTE'];
+    else if(p==='/solicitacoes/filtros/obras')data=[obra];
     else if(/^\/solicitacoes\/\d+\/compra-etapas$/.test(p))data={solicitacao_compra_id:8,status_compra:'PENDENTE',pedidos:[],comentarios:[],leituras_comentarios:{},itens:[{id:5,item_tipo:'CADASTRADO',nome:'Arame',quantidade:1,status_aprovacao:'PENDENTE'}]};
     else if(/^\/solicitacoes\/\d+(?:\/resumo-lista)?$/.test(p))data=record(Number(p.split('/')[2]));
     else if(p.includes('contadores'))data={todas:50};
@@ -188,6 +211,107 @@ try{
     return route.fulfill({json:data});
    });return{errors,writes,reads,queries,navigationAudit};
  };
+ if (solicitacoesOnly) {
+  for (const width of [1366, 390]) for (const legacy of [false, true]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const audit = await install(page, { context: true });
+    await page.addInitScript(value => { window.qaLegacy = value; }, legacy);
+    const origem = base + '/solicitacoes' + (legacy ? '?legacy' : '');
+    await page.goto(origem);
+    const search = page.getByPlaceholder('Buscar por código, obra, descrição ou fornecedor…');
+    await search.fill('SOL-QA');
+    const mobileFilter = page.getByRole('button', { name: /^Filtrar/ });
+    const openMobile = async () => { if (width < 768) await mobileFilter.click(); };
+    const closeMobile = async () => { if (width < 768) await page.locator('.la-busca input').click(); };
+    await openMobile();
+    await page.locator('.la-rapido-wrap').getByRole('button', { name: 'Status', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'PENDENTE', exact: true }).check();
+    await page.locator('.la-rapido-wrap').getByRole('button', { name: /Status \(1\)/ }).click();
+    await page.getByRole('button', { name: /Mais filtros/ }).click();
+    await page.getByLabel('Descrição', { exact: true }).fill('Solicitacao QA');
+    await closeMobile();
+    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('solicitacoes:consulta-sessao:1:ativas') || 'null')?.consulta?.filtros?.status?.includes('PENDENTE'));
+    await page.waitForResponse(r => r.url().includes('/api/solicitacoes?') && r.url().includes('descricao=Solicitacao') && r.url().includes('q=SOL-QA'));
+    const beforeTabs = await page.evaluate(() => window.qa.tabs.length);
+    const link = page.getByRole('link', { name: 'SOL-QA90', exact: true });
+    assert.equal(await link.getAttribute('href'), '/solicitacoes/90');
+    const popupPromise = page.context().waitForEvent('page');
+    await link.click({ modifiers: ['Control'] });
+    const popup = await popupPromise;
+    await popup.waitForURL('**/solicitacoes/90');
+    await popup.getByRole('heading', { name: /SOL-QA90/ }).waitFor();
+    assert.equal(page.url(), origem, 'Ctrl+clique nao muda a lista atual');
+    assert.equal(await page.evaluate(() => window.qa.tabs.length), beforeTabs, 'Nao abre simultaneamente aba interna');
+    assert.equal(await search.inputValue(), 'SOL-QA');
+    await popup.close();
+
+    if (width >= 768 && !legacy) {
+      const middlePromise = page.context().waitForEvent('page');
+      await link.click({ button: 'middle' });
+      const middle = await middlePromise;await middle.waitForURL('**/solicitacoes/90');
+      assert.equal(page.url(), origem);await middle.close();
+      const rowPromise = page.context().waitForEvent('page');
+      await link.locator('xpath=ancestor::tr').locator('td').nth(2).click({ modifiers: ['Control'] });
+      const rowPage = await rowPromise;await rowPage.waitForURL('**/solicitacoes/90');
+      assert.equal(page.url(), origem);await rowPage.close();
+    }
+
+    await link.click();await page.waitForURL('**/solicitacoes/90');
+    assert.equal(await page.evaluate(() => window.qa.tabs.length), beforeTabs + (legacy ? 0 : 1));
+    await page.getByRole('button', { name: 'QA voltar', exact: true }).click();
+    await page.waitForURL(origem);
+    assert.equal(await search.inputValue(), 'SOL-QA');
+    await openMobile();
+    await page.getByRole('button', { name: /Mais filtros/ }).click();
+    // O painel avançado pode ter sido restaurado aberto pela aba.
+    if (!(await page.getByLabel('Descrição', { exact: true }).isVisible())) {
+      await page.getByRole('button', { name: /Mais filtros/ }).click();
+    }
+    assert.equal(await page.getByLabel('Descrição', { exact: true }).inputValue(), 'Solicitacao QA');
+    await closeMobile();
+    assert.ok(audit.queries.some(q => q.p === '/solicitacoes' && q.params.status === 'PENDENTE' && q.params.q === 'SOL-QA' && q.params.descricao === 'Solicitacao QA'));
+    await page.reload();
+    assert.equal(await search.inputValue(), 'SOL-QA', 'Sessao complementa retorno sem snapshot/F5');
+    await page.getByRole('link', { name: 'SOL-QA90', exact: true }).waitFor();
+    assert.deepEqual(audit.errors, []);assert.deepEqual(audit.writes, []);
+    await page.close();
+    console.log('OK filtros/Ctrl+clique ' + width + 'px, ' + (legacy ? 'legado' : 'workspace') + ': retorno, sessao e popup sem trocar lista; sem escrita de negocio.');
+  }
+  const page = await browser.newPage(); const audit = await install(page);
+  await page.goto(base + '/solicitacoes?ids=90&visao=paradas-no-setor');
+  await page.getByRole('link', { name: 'SOL-QA90', exact: true }).click();
+  await page.waitForURL('**/solicitacoes/90');
+  await page.getByRole('button', { name: 'QA voltar', exact: true }).click();
+  await page.waitForURL('**/solicitacoes?ids=90&visao=paradas-no-setor');
+  await page.waitForResponse(r => r.url().includes('/api/solicitacoes?') && new URL(r.url()).searchParams.get('ids') === '90');
+  assert.equal(audit.queries.filter(q => q.p === '/solicitacoes').at(-1).params.visao, 'paradas-no-setor');
+  assert.deepEqual(audit.errors, []);assert.deepEqual(audit.writes, []);await page.close();
+  {
+    const page = await browser.newPage();const audit = await install(page);let denied = false;
+    await page.route('**/api/solicitacoes?*', r => denied
+      ? r.fulfill({ status: 403, json: { error: 'Consulta QA negada' } }) : r.fallback());
+    await page.goto(base + '/solicitacoes');
+    const search = page.getByPlaceholder('Buscar por código, obra, descrição ou fornecedor…');
+    await search.fill('Consulta do usuario 1');
+    await page.waitForResponse(r => r.url().includes('/api/solicitacoes?') && r.url().includes('q=Consulta'));
+    await page.getByRole('link', { name: 'SOL-QA90', exact: true }).click();
+    await page.waitForURL('**/solicitacoes/90');denied = true;
+    const forbidden = page.waitForResponse(r => r.url().includes('/api/solicitacoes?') && r.status() === 403);
+    await page.getByRole('button', { name: 'QA voltar', exact: true }).click();await forbidden;
+    await page.getByRole('link', { name: 'SOL-QA90', exact: true }).waitFor({ state: 'detached' });
+    assert.equal(await search.inputValue(), 'Consulta do usuario 1');
+    assert.equal(await page.getByRole('link', { name: 'SOL-QA90', exact: true }).count(), 0, 'Filtro restaurado nao concede acesso nem restaura DTO');
+    denied = false;await page.evaluate(() => window.qaAuth.switch());
+    await page.waitForFunction(() => document.querySelector('.la-busca input')?.value === '');
+    await page.getByRole('link', { name: 'SOL-QA90', exact: true }).waitFor();
+    await search.fill('Consulta usuario 2');
+    await page.waitForResponse(r => r.url().includes('/api/solicitacoes?') && r.url().includes('q=Consulta'));
+    await page.evaluate(() => window.qaAuth.restrict());
+    await page.waitForFunction(() => document.querySelector('.la-busca input')?.value === '');
+    assert.deepEqual(audit.errors, []);assert.deepEqual(audit.writes, []);await page.close();
+    console.log('OK consulta segura: retorno 403 nao restaura registros; outro usuario e mudanca de escopo descartam busca anterior.');
+  }
+ }
  if(!financeiroOnly&&!process.argv.includes('--cotacao-only')&&!process.argv.includes('--compras-only')&&!process.argv.includes('--table-only')&&!process.argv.includes('--correcoes-only')&&!process.argv.includes('--wizard-only')){
  for(const width of[1366,390]){
   const page=await browser.newPage({viewport:{width,height:900}});const audit=await install(page);

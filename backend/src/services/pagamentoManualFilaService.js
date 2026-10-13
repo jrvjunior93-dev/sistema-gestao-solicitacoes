@@ -22,7 +22,8 @@ const {
   User,
   sequelize
 } = require('../models');
-const { baixarTitulo } = require('./tituloFinanceiroService');
+const { baixarTitulo, estornarMovimentoTitulo } = require('./tituloFinanceiroService');
+const { recordEvent } = require('./pagamentoAutorizacaoEventosService');
 const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
 const { registrarEventoSeguranca, getRequestIp } = require('./securityLogService');
 const { atualizarAnaliseAoEnfileirar } = require('./analiseProprietarioService');
@@ -36,9 +37,10 @@ const { env } = require('../config/env');
 const { userHasNominalAreaPermission } = require('./authorizationService');
 const { resolvePaymentQueueGate } = require('./paymentOwnerApprovalPolicy');
 const { tipoInstrumento, instrumentoPayload } = require('./pagamentoFilaInstrumentoDomain');
-const { pendenteComprovanteFila, wherePendenteComprovante, podeAnexarComprovanteFila } = require('./pagamentoFilaComprovanteDomain');
+const { pendenteComprovanteFila, wherePendenteComprovante, whereSemEstornoFila, podeAnexarComprovanteFila } = require('./pagamentoFilaComprovanteDomain');
 const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
 const { calcularValoresFila, filaSemBaixaAtualizavel } = require('./pagamentoFilaValoresDomain');
+const { distribuirCheques, conferirChequesUnicosLote } = require('./pagamentoFilaChequesDomain');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -138,6 +140,8 @@ function matchesSearch(item, rawTerm) {
 async function listarFilaPagamentos(req, filters = {}) {
   const status = String(filters.status || 'PENDENTE').trim().toUpperCase();
   const where = status === 'PENDENTE_COMPROVANTE' ? wherePendenteComprovante()
+    : status === 'BAIXADO' ? { status: { [Op.in]: ['BAIXADO', 'RESOLVIDO'] },
+      movimento_financeiro_id: { [Op.gt]: 0 }, [Op.and]: whereSemEstornoFila() }
     : status === 'PENDENTE' ? { status: { [Op.in]: ['PENDENTE', 'EM_EDICAO'] } }
       : (status && status !== 'TODOS' ? { status } : { status: { [Op.ne]: 'CANCELADO' } });
   const rows = await PagamentoManualFilaItem.findAll({
@@ -149,6 +153,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   const data = rows
     .filter((item) => matchesSearch(item, filters.q))
     .map((item) => ({ ...item.toJSON(),
+      desconto: Number(item.instrumento_pagamento_json?.desconto || 0),
       // Leitura tambem cobre filas antigas, sem reescrever historico de pagamentos.
       valor_previsto: filaSemBaixaAtualizavel(item) ? roundCurrency(item.titulo.valor_saldo) : item.valor_previsto,
       // Filas antigas podem ter sido criadas antes dos encargos do titulo.
@@ -221,6 +226,10 @@ async function listarFilaPagamentos(req, filters = {}) {
   }, {});
   resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitados.length;
   resumo.PENDENTE = Number(resumo.PENDENTE || 0) + Number(resumo.EM_EDICAO || 0);
+  resumo.BAIXADO = await PagamentoManualFilaItem.count({ where: {
+    status: { [Op.in]: ['BAIXADO', 'RESOLVIDO'] }, movimento_financeiro_id: { [Op.gt]: 0 },
+    [Op.and]: whereSemEstornoFila()
+  }, include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [] }] });
   resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: wherePendenteComprovante(),
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [] }] });
   return { data, resumo };
@@ -261,7 +270,7 @@ async function resolverInstrumentoFila(titulo, payload, transaction) {
   const tipo = tipoInstrumento(forma);
   const temCheque = Object.keys(instrumento).some(key => key.startsWith('cheque_') ||
     ['titular_documento', 'data_emissao', 'data_vencimento'].includes(key));
-  if (tipo !== 'CHEQUE' && (temCheque || instrumento.usar_cheque_terceiro)) {
+  if (tipo !== 'CHEQUE' && (temCheque || instrumento.usar_cheque_terceiro || instrumento.parcelas_cheque)) {
     throw createHttpError(400, 'Dados de cheque permitidos somente para pagamento em cheque.');
   }
   if (tipo !== 'CARTAO' && instrumento.cartao_id) throw createHttpError(400, 'Cartao permitido somente para pagamento com cartao.');
@@ -285,6 +294,15 @@ async function resolverInstrumentoFila(titulo, payload, transaction) {
     }
   }
   if (tipo === 'CHEQUE') {
+    if (instrumento.parcelas_cheque) {
+      if (temCheque || instrumento.usar_cheque_terceiro) throw createHttpError(400, 'Informe os cheques nas parcelas, sem dados de cheque unico.');
+      distribuirCheques(instrumento.parcelas_cheque, payload.valor_pago, calcularValoresFila(payload.valor_pago, titulo.valor_saldo, payload));
+      instrumento.parcelas_cheque = await Promise.all(instrumento.parcelas_cheque.map(async parcela => {
+        const campos = await resolverInstrumentoFila(titulo, { ...parcela, forma_pagamento_id: instrumento.forma_pagamento_id }, transaction);
+        return { ...campos, valor_pago: parcela.valor_pago };
+      }));
+      return instrumento;
+    }
     if (instrumento.usar_cheque_terceiro) {
       if (!instrumento.cheque_terceiro_id) throw createHttpError(400, 'Selecione um cheque disponivel da carteira.');
       if (temCheque && Object.keys(instrumento).some(key => key !== 'cheque_terceiro_id' &&
@@ -659,7 +677,8 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
   const valorPago = roundCurrency(itemPayload.valor_pago);
-  const encargos = { juros: itemPayload.juros ?? filaItem.juros, multa: itemPayload.multa ?? filaItem.multa };
+  const encargos = { juros: itemPayload.juros ?? filaItem.juros, multa: itemPayload.multa ?? filaItem.multa,
+    desconto: itemPayload.desconto ?? filaItem.instrumento_pagamento_json?.desconto ?? 0 };
   const valores = calcularValoresFila(itemPayload.valor_pago, titulo.valor_saldo, encargos);
   const instrumento = await resolverInstrumentoFila(titulo, { ...itemPayload, ...encargos }, transaction);
   const saldoAtual = roundCurrency(titulo.valor_saldo);
@@ -680,7 +699,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   }
 
   const commonUpdate = {
-    instrumento_pagamento_json: instrumento,
+    instrumento_pagamento_json: { ...instrumento, desconto: valores.desconto },
     juros: valores.juros,
     multa: valores.multa,
     valor_previsto: saldoAtual,
@@ -697,7 +716,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
     return { filaItem, titulo, baixaRegistrada: false, divergente: true };
   }
 
-  const baixa = await baixarTitulo(req, titulo.id, {
+  const baixa = await baixarInstrumentosFila(req, titulo.id, instrumento, valorPago, valores, {
     empresa_id: conta.empresa_id,
     conta_bancaria_id: conta.id,
     ...instrumento,
@@ -705,7 +724,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
     valor: valores.principal,
     juros: valores.juros,
     multa: valores.multa,
-    desconto: 0,
+    desconto: valores.desconto,
     data_movimento: itemPayload.data_baixa,
     observacoes: motivo || `Baixa registrada pela fila de pagamentos #${filaItem.id}.`,
     intercompany: baixaEntreEmpresas,
@@ -722,6 +741,8 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
 
   await filaItem.update({
     ...commonUpdate,
+    instrumento_pagamento_json: { ...commonUpdate.instrumento_pagamento_json,
+      movimentos_financeiros_ids: baixa.movimentos_financeiros_ids },
     status: divergente ? 'DIVERGENTE' : 'BAIXADO',
     motivo: motivo || null,
     movimento_financeiro_id: baixa.movimento_financeiro_id || baixa.movimento?.id || null
@@ -731,7 +752,25 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   return { filaItem, titulo, baixa, baixaRegistrada: true, divergente };
 }
 
+async function baixarInstrumentosFila(req, tituloId, instrumento, totalPago, valores, payload, options) {
+  if (!instrumento.parcelas_cheque) {
+    const baixa = await baixarTitulo(req, tituloId, payload, options);
+    return { ...baixa, movimentos_financeiros_ids: [baixa.movimento_financeiro_id || baixa.movimento?.id].filter(Boolean) };
+  }
+  const { parcelas_cheque, ...base } = instrumento;
+  const parcelas = distribuirCheques(parcelas_cheque, totalPago, valores);
+  const ids = [];
+  let primeira;
+  for (const parcela of parcelas) {
+    const baixa = await baixarTitulo(req, tituloId, { ...payload, ...base, ...parcela }, options);
+    primeira ||= baixa;
+    ids.push(baixa.movimento_financeiro_id || baixa.movimento?.id);
+  }
+  return { ...primeira, movimentos_financeiros_ids: ids };
+}
+
 async function registrarBaixasFila(req, payload = {}) {
+  conferirChequesUnicosLote(payload.itens);
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const resultados = await sequelize.transaction(async (transaction) => {
     await bloquearTitulosDaFila(payload.itens.map(item => item.fila_id), transaction);
@@ -829,21 +868,24 @@ async function aprovarDivergenciasFila(req, payload = {}) {
         const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
         const valorPago = roundCurrency(current.valor_informado);
-        const valores = calcularValoresFila(current.valor_informado, titulo.valor_saldo, current);
+        const valores = calcularValoresFila(current.valor_informado, titulo.valor_saldo, {
+          juros: current.juros, multa: current.multa, desconto: current.instrumento_pagamento_json?.desconto || 0 });
         if (valorPago <= 0 || !current.data_baixa) {
           throw createHttpError(409, `A divergencia do titulo ${titulo.codigo || titulo.id} nao possui dados completos para a baixa.`);
         }
 
-        const baixa = await baixarTitulo(req, titulo.id, {
+        const instrumento = await resolverInstrumentoFila(titulo, { ...(current.instrumento_pagamento_json || {}),
+          conta_bancaria_id: conta.id, valor_pago: valorPago, juros: current.juros, multa: current.multa,
+          desconto: valores.desconto }, transaction);
+        const baixa = await baixarInstrumentosFila(req, titulo.id, instrumento, valorPago, valores, {
           empresa_id: conta.empresa_id,
           conta_bancaria_id: conta.id,
-          ...await resolverInstrumentoFila(titulo, { ...(current.instrumento_pagamento_json || {}),
-            conta_bancaria_id: conta.id, valor_pago: valorPago, juros: current.juros, multa: current.multa }, transaction),
+          ...instrumento,
           forma_recebimento: (current.instrumento_pagamento_json?.forma_pagamento_id || titulo.forma_pagamento_id) ? undefined : 'TRANSFERENCIA',
           valor: valores.principal,
           juros: valores.juros,
           multa: valores.multa,
-          desconto: 0,
+          desconto: valores.desconto,
           data_movimento: current.data_baixa,
           observacoes: `Baixa divergente autorizada na fila #${current.id}. ${payload.justificativa}`,
           intercompany: baixaEntreEmpresas,
@@ -859,6 +901,8 @@ async function aprovarDivergenciasFila(req, payload = {}) {
           skipSecurityEvent: true
         });
         movimentoId = baixa.movimento_financeiro_id || baixa.movimento?.id || null;
+        await current.update({ instrumento_pagamento_json: { ...current.instrumento_pagamento_json,
+          movimentos_financeiros_ids: baixa.movimentos_financeiros_ids } }, { transaction });
         baixaRegistrada = true;
       }
 
@@ -953,6 +997,8 @@ async function resolverItemFila(req, id, payload = {}) {
     if (!titulo || !['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()) || roundCurrency(titulo.valor_saldo) <= 0) {
       throw createHttpError(409, 'O titulo nao possui saldo aberto para retornar a fila.');
     }
+    assertTituloDisponivelParaBaixa(titulo);
+    const autorizacao = await conferirAutorizacaoRetorno(current, transaction);
     await current.update({
       status: 'RESOLVIDO',
       motivo: current.motivo,
@@ -970,6 +1016,7 @@ async function resolverItemFila(req, id, payload = {}) {
       selecionado_por: req.user?.id || null,
       selecionado_em: new Date()
     }, { transaction });
+    await transferirAutorizacaoRetorno(req, autorizacao, current, reaberto, transaction, 'DEVOLUCAO_NAO_PAGO');
     return { item: current, reaberto };
   });
   const item = result.item;
@@ -991,6 +1038,67 @@ async function resolverItemFila(req, id, payload = {}) {
   return { item, reaberto: result.reaberto };
 }
 
+async function conferirAutorizacaoRetorno(item, transaction) {
+  const candidato = await PagamentoAutorizacaoItem.findOne({ where: { titulo_financeiro_id: item.titulo_financeiro_id },
+    order: [['id', 'DESC']], transaction });
+  if (!candidato) return null; // Fila legada/direta: nao fabrica aprovacao digital.
+  const lote = await PagamentoAutorizacaoLote.findByPk(candidato.lote_id, { transaction, lock: transaction.LOCK.UPDATE });
+  const atual = await PagamentoAutorizacaoItem.findByPk(candidato.id, { transaction, lock: transaction.LOCK.UPDATE });
+  if (!lote || !['AGUARDANDO', 'AUTORIZADO', 'CONCLUIDO'].includes(lote.status)
+    || !atual || atual.status !== 'ENFILEIRADO' || Number(atual.fila_item_id) !== Number(item.id)) {
+    throw createHttpError(409, 'A autorizacao deste titulo mudou. Confira o lote atual antes de devolver para a fila.');
+  }
+  return atual;
+}
+
+async function transferirAutorizacaoRetorno(req, autorizacao, anterior, novo, transaction, origem) {
+  if (!autorizacao) return;
+  await autorizacao.update({ fila_item_id: novo.id }, { transaction });
+  await recordEvent({ loteId: autorizacao.lote_id, itemId: autorizacao.id, userId: req.user.id,
+    type: 'ITEM_DEVOLVIDO_FILA', data: { fila_item_anterior_id: anterior.id, fila_item_id: novo.id, origem }, transaction });
+}
+
+async function estornarBaixaFila(req, id, payload) {
+  const key = `${payload.idempotency_key}:${id}`.slice(0, 120);
+  const result = await sequelize.transaction(async transaction => {
+    await bloquearTitulosDaFila([Number(id)], transaction);
+    const current = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!current) throw createHttpError(404, 'Item da fila nao encontrado.');
+    const anterior = current.instrumento_pagamento_json || {};
+    if (anterior.estorno?.chave === key) return { item: current, reaberto_id: anterior.estorno.reaberto_id, idempotente: true };
+    if (!['BAIXADO', 'DIVERGENTE', 'RESOLVIDO'].includes(current.status) || !current.movimento_financeiro_id || anterior.estorno) {
+      throw createHttpError(409, 'Este item nao possui baixa ativa para estornar.');
+    }
+    const autorizacao = await conferirAutorizacaoRetorno(current, transaction);
+    const ids = [...new Set(anterior.movimentos_financeiros_ids?.length ? anterior.movimentos_financeiros_ids : [current.movimento_financeiro_id])].sort((a, b) => a - b);
+    let titulo;
+    for (const movimentoId of ids) {
+      titulo = await estornarMovimentoTitulo(req, current.titulo_financeiro_id, movimentoId,
+        { observacoes: payload.motivo }, { transaction, skipSecurityEvent: true, estornoFila: true });
+    }
+    assertTituloDisponivelParaBaixa(titulo);
+    if (!['ABERTO', 'PARCIAL'].includes(titulo.status) || roundCurrency(titulo.valor_saldo) <= 0) {
+      throw createHttpError(409, 'O titulo nao ficou disponivel para retornar a fila.');
+    }
+    await current.update({ status: 'RESOLVIDO', resolvido_por: req.user.id, resolvido_em: new Date(),
+      motivo: `${String(current.motivo || '').trim()}\nEstorno: ${payload.motivo}`.trim() }, { transaction });
+    const reaberto = await PagamentoManualFilaItem.create({ titulo_financeiro_id: titulo.id, status: 'PENDENTE',
+      valor_previsto: roundCurrency(titulo.valor_saldo), data_vencimento_prevista: titulo.data_vencimento,
+      juros: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.juros),
+      multa: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.multa),
+      selecionado_por: req.user.id, selecionado_em: new Date() }, { transaction });
+    await current.update({ instrumento_pagamento_json: { ...anterior,
+      estorno: { chave: key, motivo: payload.motivo, usuario_id: req.user.id, em: new Date().toISOString(), reaberto_id: reaberto.id } } }, { transaction });
+    await transferirAutorizacaoRetorno(req, autorizacao, current, reaberto, transaction, 'ESTORNO_BAIXA');
+    await SecurityEventLog.create({ usuario_id: req.user.id, tipo_evento: 'MANUAL_PAYMENT_QUEUE_REVERSED',
+      recurso_tipo: 'PAGAMENTO_MANUAL_FILA', recurso_id: String(current.id), status: 'SUCCESS',
+      descricao: 'Baixa estornada e saldo devolvido para a fila', ip_origem: getRequestIp(req),
+      metadata: { movimentos_ids: ids, reaberto_id: reaberto.id, motivo: payload.motivo } }, { transaction });
+    return { item: current, reaberto_id: reaberto.id, idempotente: false };
+  });
+  return { fila_id: result.item.id, reaberto_id: result.reaberto_id, idempotente: result.idempotente };
+}
+
 module.exports = {
   anexarComprovanteFila,
   aprovarDivergenciasFila,
@@ -1005,5 +1113,6 @@ module.exports = {
   obterComprovanteFila,
   obterComprovanteAdicionalFila,
   registrarBaixasFila,
+  estornarBaixaFila,
   resolverItemFila
 };

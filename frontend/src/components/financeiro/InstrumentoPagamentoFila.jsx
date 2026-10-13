@@ -3,6 +3,7 @@ import ChequePagamentoFields from './ChequePagamentoFields';
 import OverlayModal from '../ui/OverlayModal';
 import { useWorkspaceState, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { revisaoFila } from '../../navigation/filaWorkspaceDraft';
+import ChequesParceladosFilaModal from './ChequesParceladosFilaModal';
 
 const CHEQUE_FIELDS = ['cheque_numero', 'cheque_emitente', 'titular_documento',
   'cheque_banco', 'cheque_agencia', 'cheque_conta', 'data_emissao', 'data_vencimento'];
@@ -20,6 +21,9 @@ export function payloadInstrumentoFila(draft, formas) {
   const result = { forma_pagamento_id: Number(draft.forma_pagamento_id) || undefined };
   if (tipo === 'CARTAO') return { ...result, cartao_id: Number(draft.cartao_id) || undefined };
   if (tipo === 'CHEQUE') {
+    if (draft.parcelas_cheque?.length) return { ...result, parcelas_cheque: draft.parcelas_cheque.map(parcela => ({
+      valor_pago: Number(parcela.valor_pago), ...payloadInstrumentoFila({ ...parcela, forma_pagamento_id: draft.forma_pagamento_id }, formas),
+      forma_pagamento_id: undefined })) };
     if (draft.usar_cheque_terceiro) return { ...result, usar_cheque_terceiro: true,
       cheque_terceiro_id: Number(draft.cheque_terceiro_id) || undefined };
     for (const key of ['cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco',
@@ -30,7 +34,9 @@ export function payloadInstrumentoFila(draft, formas) {
   return result;
 }
 
-export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos, conta, disabled, onChange }) {
+export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos, conta, disabled, onChange, podeCadastrarCheque = false }) {
+  const [edicaoParcelas, setEdicaoParcelas] = useWorkspaceState(`fila:parcelasCheque:${row.id}`, null);
+  useWorkspaceWork(Boolean(edicaoParcelas), false, `fila:parcelasChequeWork:${row.id}`);
   const [edicaoCheque, setEdicaoCheque] = useWorkspaceState(`fila:chequeEditor:${row.id}`, null);
   const chequeDraft = edicaoCheque?.campos || null;
   const conflitoCheque = Boolean(edicaoCheque && edicaoCheque.revisao !== revisaoFila(row));
@@ -66,7 +72,8 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
   if (disabled) return <span className="text-xs">{forma?.nome || row.titulo?.formaPagamento?.nome || '—'}
     {draft.cartao_id ? ` · ${cartoes.find(item => Number(item.id) === Number(draft.cartao_id))?.nome || `Cartão #${draft.cartao_id}`}` : ''}
     {draft.cheque_numero ? ` · Cheque ${draft.cheque_numero}` : ''}
-    {draft.cheque_terceiro_id ? ` · Cheque da carteira #${draft.cheque_terceiro_id}` : ''}</span>;
+    {draft.cheque_terceiro_id ? ` · Cheque da carteira #${draft.cheque_terceiro_id}` : ''}
+    {draft.parcelas_cheque?.length ? ` · ${draft.parcelas_cheque.length} cheque(s)` : ''}</span>;
   const texto = `${forma?.tipo} ${forma?.codigo} ${forma?.nome}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   const compativeis = cartoes.filter(card => (!texto.includes('DEBITO') || card.tipo === 'DEBITO') &&
     (!(texto.includes('CREDITO') || forma?.gera_fatura) || card.tipo === 'CREDITO'));
@@ -75,7 +82,7 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
       <select className="input input-sm w-full" aria-label={`Forma de pagamento de ${label}`}
         value={draft.forma_pagamento_id || ''} onChange={event => {
           onChange({ forma_pagamento_id: event.target.value, conta_bancaria_id: '',
-          cartao_id: '', usar_cheque_terceiro: false, cheque_terceiro_id: '', cheque_numero: '', cheque_emitente: '',
+          parcelas_cheque: [], cartao_id: '', usar_cheque_terceiro: false, cheque_terceiro_id: '', cheque_numero: '', cheque_emitente: '',
           titular_documento: '', cheque_banco: '', cheque_agencia: '', cheque_conta: '', data_emissao: '', data_vencimento: '' });
           if (tipoInstrumentoFila(formas.find(item => Number(item.id) === Number(event.target.value))) === 'CHEQUE') abrirCheque({});
           else setChequeDraft(null);
@@ -94,6 +101,14 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
       <p className="text-xs text-[var(--c-muted)]">Crédito: baixa do título e lançamento na fatura. Débito: saída da conta vinculada.</p>
     </>}
     {tipo === 'CHEQUE' && <>
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => {
+        setChequeDraft(null);
+        setEdicaoParcelas({ revisao: revisaoFila(row), parcelas: draft.parcelas_cheque?.length ? draft.parcelas_cheque : [{
+          valor_pago: draft.valor_pago, ...Object.fromEntries(CHEQUE_FIELDS.map(key => [key, draft[key] || ''])),
+          usar_cheque_terceiro: Boolean(draft.usar_cheque_terceiro), cheque_terceiro_id: draft.cheque_terceiro_id || '' }] });
+      }}>{draft.parcelas_cheque?.length ? `Editar ${draft.parcelas_cheque.length} cheque(s)` : 'Mais de um cheque / parcelar'}</button>
+      {draft.parcelas_cheque?.length ? <p className="text-xs">{draft.parcelas_cheque.length} cheque(s) informado(s).
+        <button type="button" className="underline ml-2" onClick={() => onChange({ parcelas_cheque: [] })}>Usar cheque único</button></p> : <>
       <label className="block text-xs">Origem do cheque
         <select className="input input-sm w-full" aria-label={`Origem do cheque de ${label}`}
           value={draft.usar_cheque_terceiro ? 'CARTEIRA' : 'PROPRIO'} onChange={event => {
@@ -117,7 +132,17 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
         </button>
         {draft.cheque_numero && <p className="text-xs text-[var(--c-muted)]">Emitente: {draft.cheque_emitente}</p>}
       </>}
+      </>}
     </>}
+    {edicaoParcelas && tipo === 'CHEQUE' && <ChequesParceladosFilaModal label={label}
+      parcelas={edicaoParcelas.parcelas} total={draft.valor_pago} cheques={cheques} conta={conta} podeCadastrar={podeCadastrarCheque}
+      conflito={disabled || edicaoParcelas.revisao !== revisaoFila(row)}
+      onChange={parcelas => setEdicaoParcelas(current => ({ ...current, parcelas }))}
+      onFechar={() => setEdicaoParcelas(null)} onConfirmar={parcelas => {
+        onChange({ parcelas_cheque: parcelas, usar_cheque_terceiro: false, cheque_terceiro_id: '',
+          ...Object.fromEntries(CHEQUE_FIELDS.map(key => [key, ''])) });
+        setEdicaoParcelas(null);
+      }} />}
     {chequeDraft && tipo === 'CHEQUE' && !draft.usar_cheque_terceiro && <OverlayModal
       rotulo={`Dados do cheque próprio de ${label}`} largura="var(--modal-max-w-md, 680px)"
       onFechar={() => setChequeDraft(null)}>

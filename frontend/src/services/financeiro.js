@@ -191,6 +191,14 @@ export async function resolverFilaPagamento(id, acao, motivo = '') {
   return parseJson(response, 'Erro ao resolver a pendencia de pagamento');
 }
 
+export async function estornarBaixaFilaPagamento(id, motivo, idempotency_key) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${id}/estornar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo, idempotency_key })
+  });
+  return parseJson(response, 'Erro ao estornar a baixa da fila');
+}
+
 export async function gerarRelatorioTitulosFinanceirosPdf(params = {}, tituloIds = []) {
   const query = new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')

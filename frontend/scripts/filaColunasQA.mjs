@@ -48,13 +48,13 @@ export async function validarColunasFila(browser) {
     const menu = page.getByRole('menu'); await menu.waitFor(); return menu;
   };
   const aguardarGravacao = async page => {
-    await page.waitForFunction(() => JSON.parse(localStorage.getItem('financeiro-fila-pagamentos:colunas'))?.ordem?.length === 16);
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('financeiro-fila-pagamentos:colunas'))?.ordem?.length === 17);
     // Debounce existente e mock de servidor. Nenhuma escrita em banco real.
     await page.waitForResponse(response => response.request().method() === 'PUT' && response.url().endsWith('/preferencias/colunas'));
   };
   try {
     const page = await abrir(71);
-    const original = await ordem(page); assert.equal(original.length, 16);
+    const original = await ordem(page); assert.equal(original.length, 17);
     await page.getByLabel('Selecionar TIT-MASSA-1', { exact: true }).check();
     const juros = page.getByLabel('Juros de TIT-MASSA-1', { exact: true });
     await juros.fill('25');
@@ -93,6 +93,13 @@ export async function validarColunasFila(browser) {
     assert.deepEqual(await ordem(outroDispositivo), personalizada, 'Preferencia vem do servidor em navegador sem armazenamento local');
     const outroUsuario = await abrir(72);
     assert.deepEqual(await ordem(outroUsuario), original, 'Outro usuario nao recebe a configuracao');
+    const legado = ['local', ...original.filter(key => key !== 'local' && key !== 'desconto')];
+    banco.set(73, { [lista]: { colunas: { ordem: legado, visiveis: legado, ocultas: [] } } });
+    const usuarioLegado = await abrir(73);
+    await usuarioLegado.waitForFunction(() => document.querySelector('thead th')?.dataset.coluna === 'local');
+    const migrada = await ordem(usuarioLegado);
+    assert.equal(migrada.indexOf('desconto') + 1, migrada.indexOf('juros'), 'Coluna nova entra antes de Juros nas preferencias antigas');
+    assert.deepEqual(migrada.filter(key => key !== 'desconto'), legado, 'Ordem personalizada antiga permanece intacta');
 
     // Campo necessario oculto precisa reaparecer sem bloquear a operacao.
     await page.getByRole('button', { name: 'Colunas', exact: true }).click();

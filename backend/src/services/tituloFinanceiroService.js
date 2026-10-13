@@ -14,6 +14,7 @@ const {
   sequelize,
   CategoriaFinanceira,
   FaturaCartaoFinanceiro,
+  FaturaCartaoTitulo,
   FormaPagamentoFinanceira,
   Historico,
   IntegracaoSiengeFila,
@@ -47,6 +48,7 @@ const {
 const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 const {
   obterOuCriarFaturaCartao,
+  recalcularFaturaCartao,
   vincularTituloAFatura
 } = require('./faturaCartaoFinanceiroService');
 const { contaExigeSessao, obterSessaoAbertaParaConta } = require('./financeiroCaixaSessionHelper');
@@ -4717,43 +4719,55 @@ async function baixarTituloPorConciliacoes(req, tituloId, payload = {}) {
 }
 
 async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {}, internalOptions = {}) {
-  const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: false });
-  const movimento = await MovimentoFinanceiro.findOne({
-    where: {
-      id: movimentoId,
-      titulo_financeiro_id: titulo.id
-    }
-  });
-
-  if (!movimento) {
-    throw createHttpError(404, 'Movimento financeiro nao encontrado.');
-  }
-
-  if (String(movimento.tipo_movimento || '').toUpperCase() !== 'BAIXA') {
-    throw createHttpError(400, 'Somente baixas podem ser estornadas.');
-  }
-
-  if (String(movimento.status || '').toUpperCase() !== 'ATIVO') {
-    throw createHttpError(400, 'Esta baixa ja foi estornada.');
-  }
-
-  if (movimento.baixa_grupo_id) {
-    throw createHttpError(
-      409,
-      'Este movimento pertence a uma baixa com multiplas fontes. Estorne o grupo completo na tela de Baixas com Multiplas Fontes.'
-    );
-  }
-
-  const novoValorBaixado = roundCurrency(Number(titulo.valor_baixado || 0) - Number(movimento.valor || 0));
-  const valorBaixadoNormalizado = novoValorBaixado < 0 ? 0 : novoValorBaixado;
-  const novoEstado = calcularStatusTitulo({
-    valorOriginal: Number(titulo.valor_original || 0),
-    valorBaixado: valorBaixadoNormalizado
-  });
-
-  const transaction = await sequelize.transaction();
+  const ownTransaction = !internalOptions.transaction;
+  const transaction = internalOptions.transaction || await sequelize.transaction();
   let conciliacoesReabertas = [];
   try {
+    // Mesma ACL/escopo do estorno original; saldo e movimento agora sao lidos
+    // sob lock, tambem quando a fila estorna varios cheques atomicamente.
+    const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: false, transaction });
+    const movimento = await MovimentoFinanceiro.findOne({
+      where: {
+        id: movimentoId,
+        titulo_financeiro_id: titulo.id
+      }, transaction, lock: transaction.LOCK.UPDATE
+    });
+
+    if (!movimento) {
+      throw createHttpError(404, 'Movimento financeiro nao encontrado.');
+    }
+
+    if (String(movimento.tipo_movimento || '').toUpperCase() !== 'BAIXA') {
+      throw createHttpError(400, 'Somente baixas podem ser estornadas.');
+    }
+
+    if (String(movimento.status || '').toUpperCase() !== 'ATIVO') {
+      throw createHttpError(400, 'Esta baixa ja foi estornada.');
+    }
+
+    if (movimento.baixa_grupo_id) {
+      throw createHttpError(
+        409,
+        'Este movimento pertence a uma baixa com multiplas fontes. Estorne o grupo completo na tela de Baixas com Multiplas Fontes.'
+      );
+    }
+
+    let faturaEstornoFila;
+    if (internalOptions.estornoFila && movimento.fatura_cartao_id) {
+      faturaEstornoFila = await FaturaCartaoFinanceiro.findByPk(movimento.fatura_cartao_id,
+        { transaction, lock: transaction.LOCK.UPDATE });
+      if (!faturaEstornoFila || faturaEstornoFila.status !== 'ABERTA' || Number(titulo.fatura_cartao_id) !== Number(faturaEstornoFila.id)) {
+        throw createHttpError(409, 'A fatura do cartao ja possui processamento posterior. Reverta a fatura antes de estornar este pagamento.');
+      }
+    }
+
+    const novoValorBaixado = roundCurrency(Number(titulo.valor_baixado || 0) - Number(movimento.valor || 0));
+    const valorBaixadoNormalizado = novoValorBaixado < 0 ? 0 : novoValorBaixado;
+    const novoEstado = calcularStatusTitulo({
+      valorOriginal: Number(titulo.valor_original || 0),
+      valorBaixado: valorBaixadoNormalizado
+    });
+
     await movimento.update({
       status: 'ESTORNADO',
       observacoes: payload.observacoes
@@ -4847,12 +4861,18 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
 
     await titulo.update({
       valor_baixado: valorBaixadoNormalizado,
+      ...(faturaEstornoFila ? { fatura_cartao_id: null } : {}),
       valor_saldo: novoEstado.valor_saldo,
       status: novoEstado.status,
       data_quitacao: novoEstado.status === 'QUITADO' ? titulo.data_quitacao : null,
       status_cobranca: titulo.forma_cobranca ? 'EMITIDO' : titulo.status_cobranca,
       atualizado_por: req.user?.id || null
     }, { transaction });
+
+    if (faturaEstornoFila) {
+      await FaturaCartaoTitulo.destroy({ where: { titulo_financeiro_id: titulo.id, fatura_cartao_id: faturaEstornoFila.id }, transaction });
+      await recalcularFaturaCartao(faturaEstornoFila.id, { transaction, leituraCorrente: true });
+    }
 
     await sincronizarContratoComercialPorTituloFinanceiro({
       tituloId: titulo.id,
@@ -4881,7 +4901,7 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
         usuario_responsavel_id: req.user?.id || null,
         setor: getSetorUsuario(req),
         acao: 'TITULO_FINANCEIRO_ESTORNADO',
-        observacao: `Estorno da baixa ${movimento.id} registrado no titulo financeiro #${titulo.id}`
+        observacao: `Estorno da baixa ${movimento.id} registrado no titulo financeiro #${titulo.id}${payload.observacoes ? `. Motivo: ${payload.observacoes}` : ''}`
       }, { transaction });
     }
 
@@ -4891,9 +4911,9 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
       transaction
     });
 
-    await transaction.commit();
+    if (ownTransaction) await transaction.commit();
 
-    await registrarEventoSeguranca({
+    if (!internalOptions.skipSecurityEvent) await registrarEventoSeguranca({
       req,
       usuarioId: req.user?.id || null,
       tipoEvento: 'FINANCIAL_TITLE_REVERSAL',
@@ -4908,9 +4928,9 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
       }
     });
 
-    return carregarTituloPorId(req, titulo.id, { includeMovimentos: true });
+    return ownTransaction ? carregarTituloPorId(req, titulo.id, { includeMovimentos: true }) : titulo;
   } catch (error) {
-    await transaction.rollback();
+    if (ownTransaction && !transaction.finished) await transaction.rollback();
     throw error;
   }
 }

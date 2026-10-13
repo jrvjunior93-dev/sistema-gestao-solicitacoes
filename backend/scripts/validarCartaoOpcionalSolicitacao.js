@@ -91,6 +91,9 @@ const dependencies = {
   './comercialService': { sincronizarContratoComercialPorTituloFinanceiro: async () => {} }
 };
 dependencies['./comercialService'].sincronizarContratoComercialPorTituloEditado = async () => {};
+dependencies['./solicitacaoFavorecidosService'] = { listarFavorecidos: async () => [] };
+dependencies['./adiantamentoService'] = { ehAdiantamento: async () => false };
+dependencies['./instrucaoFinanceiraFavorecidoService'] = { anexarInstrucoes: async () => {} };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
 const saldoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/pagamentoFilaSaldoService.js'), 'utf8'), {
@@ -116,6 +119,8 @@ const queueDependencies = { ...dependencies,
   './s3': {}, './fileAccessService': {}, '../config/env': { env: {} },
   './paymentOwnerApprovalPolicy': {},
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
+  './pagamentoFilaChequesDomain': require('../src/services/pagamentoFilaChequesDomain'),
+  './pagamentoAutorizacaoEventosService': {},
   './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),
   './pagamentoFilaComprovanteDomain': require('../src/services/pagamentoFilaComprovanteDomain'),
   // Historico de arquivos e exercitado com o helper real em validarFilaComprovantePendente.
@@ -256,6 +261,28 @@ async function main() {
     cheque_emitente: 'Empresa QA', cheque_banco: '001', data_emissao: '2026-10-08', data_vencimento: '2026-10-10' })] });
   assert.equal(state.movimentos[0].cheque_numero, '123'); assert.equal(state.movimentos[0].cheque_emitente, 'Empresa QA');
   assert.equal(state.movimentos[0].cheque_data_vencimento, '2026-10-10');
+  // Fila E baixarTitulo reais: varios cheques no mesmo titulo com desconto.
+  for (const indisponivel of [false, true]) {
+    reset(); titulo = await gerar([pagamento(3)]); fila = colocarNaFila(titulo);
+    state.cheques.push(registro({ id: 77, status: indisponivel ? 'DEPOSITADO' : 'EM_CARTEIRA', valor: 103, empresa_id: 1 }));
+    const multi = { idempotency_key: 'multiplos-reais', itens: [itemFila(fila, {
+      forma_pagamento_id: 4, valor_pago: 193, juros: 10, multa: 3, desconto: 20,
+      parcelas_cheque: [{ valor_pago: 90, cheque_numero: '101', cheque_emitente: 'Empresa QA', data_vencimento: '2026-11-10' },
+        { valor_pago: 103, usar_cheque_terceiro: true, cheque_terceiro_id: 77 }] })] };
+    if (indisponivel) {
+      await assert.rejects(registrarBaixasFila(req, multi), /indisponivel ou ja utilizado/);
+      assert.equal(state.movimentos.length, 0); assert.equal(state.titulos[0].valor_saldo, 200);
+      assert.equal(state.fila[0].status, 'PENDENTE'); assert.equal(state.cheques[0].status, 'DEPOSITADO');
+    } else {
+      await registrarBaixasFila(req, multi);
+      assert.equal(state.movimentos.length, 2); assert.equal(titulo.valor_saldo, 0); assert.equal(titulo.valor_baixado, 200);
+      assert.equal(fila.instrumento_pagamento_json.movimentos_financeiros_ids.length, 2);
+      assert.equal(Math.round(state.movimentos.reduce((sum, row) => sum + row.valor_quitacao, 0) * 100), 19300);
+      assert.equal(Math.round(state.movimentos.reduce((sum, row) => sum + row.desconto, 0) * 100), 2000);
+      assert.equal(state.cheques[0].status, 'UTILIZADO'); assert.equal(state.movimentos[1].conta_bancaria_id, null);
+      await registrarBaixasFila(req, multi); assert.equal(state.movimentos.length, 2);
+    }
+  }
   for (const duplicado of [false, true]) {
     reset();
     solicitacao.valor = duplicado ? 400 : 200;
@@ -264,7 +291,7 @@ async function main() {
     const payload = { itens: state.titulos.map(title => itemFila(colocarNaFila(title), {
       forma_pagamento_id: 4, usar_cheque_terceiro: true, cheque_terceiro_id: 77 })) };
     if (duplicado) {
-      await assert.rejects(registrarBaixasFila(req, payload), /indisponivel ou ja utilizado/);
+      await assert.rejects(registrarBaixasFila(req, payload), /indisponivel ou ja utilizado|mesmo cheque/);
       assert.equal(state.movimentos.length, 0); assert.equal(state.chequeEventos.length, 0);
       assert(state.titulos.every(row => row.status === 'ABERTO')); assert(state.fila.every(row => row.status === 'PENDENTE'));
       assert.equal(state.cheques[0].status, 'EM_CARTEIRA');

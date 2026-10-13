@@ -1,5 +1,55 @@
 # Modulo FINANCEIRO
 
+## Fila: modal somente boletos da solicitacao - 2026-10-13
+
+- Modal de arquivos da solicitacao lista apenas anexos ativos classificados
+  como BOLETO, enviados pelo campo de boleto. Aceita multiplos PDF/imagens;
+  nao infere origem por nome ou extensao. Sem boleto, exibe mensagem especifica.
+- Backend filtra na consulta; frontend tambem filtra respostas antigas/mistas.
+  Preservados ACL da fila, presign sob demanda, preview interno, download,
+  foco e rolagem. Demais anexos continuam no detalhe da solicitacao;
+  comprovantes de pagamento continuam nos botoes proprios da fila.
+- Sem exclusao/reclassificacao de arquivos, migration, banco real ou deploy.
+  Testes isolados de acesso, modal, fila desktop/mobile e build aprovados.
+  [Handoff](../../handoffs/2026-10-13-fila-modal-somente-boletos.md).
+
+## Fila: baixa em massa, desconto, cheques e estorno - 2026-10-13
+
+- Baixa em massa abre modal de conta pagadora e data efetiva. Aplica esses
+  dados aos selecionados (maximo 200), preservando valor/forma/encargos por
+  titulo. Exige conferencia final; cancelar nao registra baixa. Cartao deve
+  continuar compativel com a conta. Falha em uma linha reverte o lote inteiro.
+- Coluna Desconto, inicialmente antes de Juros, aceita valor nao negativo.
+  Total esperado = saldo + juros + multa - desconto. Principal liquidado =
+  valor pago - juros - multa + desconto. Preferencias existentes recebem a
+  coluna sem resetar a ordem; permanece configuravel/ocultavel. Regras proprias
+  de adiantamento/devolucao continuam recusando desconto na baixa.
+- Cheque aceita editor de 1 a 60 parcelas por titulo, misturando proprios e
+  terceiros disponiveis da carteira. Soma exata em centavos; juros/multa/desconto
+  rateados com residuo no ultimo cheque. Terceiro deve estar previamente
+  cadastrado e seu valor e usado integralmente; a conta/empresa e disponibilidade
+  sao novamente verificadas pelo fluxo existente. Link de cadastro somente
+  para quem ja possui permissao. Nao gera novos titulos/autorizacoes; registra
+  um movimento por cheque na mesma transacao. Repeticao no lote e bloqueada.
+- Baixados inclui pagamentos registrados em pendencias resolvidas. Estornar
+  baixa exige motivo e as permissoes existentes de resolver fila E estornar
+  titulos; aplica a mesma ACL/escopo do estorno do titulo. Reverte os movimentos
+  do pagamento completo, devolve terceiros a carteira e reabre o saldo na fila.
+  Registro antigo fica resolvido, preservando movimentos/comprovantes/historico.
+  Nao exige comprovante de pagamento ja estornado. Fatura aberta e recalculada;
+  fatura com processamento posterior e baixa composta exigem reversao no fluxo
+  proprio, sem bypass. Conciliacoes seguem a rotina existente de reabertura.
+- Devolver para fila em Nao pagos preserva a autorizacao do mesmo ciclo:
+  transfere somente o vinculo operacional, com evento auditado. Autorizacao
+  revogada/substituida/pendente ou titulo bloqueado pelo DP impede o retorno.
+  Fila direta/legada nao recebe aprovacao digital fabricada.
+- Mutex de UI, payload estrito, chave de estorno, locks e transacao protegem
+  contra duplo envio. Sem nova migration, mudanca de visibilidade, banco real
+  ou deploy nesta implementacao. Testes locais isolados backend/UI desktop e
+  celular, build e negativos de escopo aprovados; homologacao MySQL/EC2 e
+  concorrencia entre processos ainda precisam de janela de staging.
+  [Handoff](../../handoffs/2026-10-13-fila-baixa-cheques-estorno-desconto.md).
+
 ## Motivo de ajuste nas autorizacoes - 2026-10-11
 
 - Historico do detalhe mostra observacao de STATUS_ALTERADO (incluindo motivos

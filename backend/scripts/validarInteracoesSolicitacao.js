@@ -74,6 +74,11 @@ async function testar() {
   capturado = false;
   await destinatarios.registrarAtencaoSolicitacao(aviso); assert.equal(avisosLegados, 1, 'fallback legado se captura nao ocorreu');
   assert.equal(service.tipoInteracao(evento(1, 'STATUS_ALTERADO')), null);
+  assert.equal(service.tipoInteracao(evento(7, 'SOLICITACAO_CRIADA')), null);
+  const inicial = evento(8, 'ANEXO_ADICIONADO', '{"origem":"CRIACAO_SOLICITACAO"}');
+  assert.equal(service.tipoInteracao(inicial), null);
+  await service.registrarInteracao(inicial);
+  assert.equal(registros.size, 0); assert.equal(destinatariosConsultados, 0); assert.equal(avisos.length, 0);
   assert.equal(service.tipoInteracao(evento(2, 'ENVIADA_SETOR')), null);
   assert.equal(service.tipoInteracao(evento(3, 'ENVIADA_SETOR', '{"envio_manual":true}')), 'ENVIO_MANUAL');
   assert.equal(service.tipoInteracao(evento(4, 'COMENTARIO_ETAPA_COMPRA', '{"escopo":"COTACAO"}')), 'COMENTARIO_COTACAO');
