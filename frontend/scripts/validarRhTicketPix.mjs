@@ -27,10 +27,35 @@ assert.equal(multipart.get('pix_revisado'), 'true'); assert.equal(JSON.parse(mul
 await transport.gerar({ competencia:'2026-10', parceiro_id: 9, categoria_financeira_id:4, colaborador_ids:[1], idempotency_key:'qa-ticket-0002',
   boleto: new Blob(['qa'], { type:'application/pdf' }) });
 assert.equal(multipart.get('forma_pagamento'), 'BOLETO'); assert.equal(multipart.get('boleto').size, 2); assert.equal(multipart.has('pagamentos_pix'), false);
+await transport.gerar({competencia:'2026-10',categoria_financeira_id:4,colaborador_ids:[1],idempotency_key:'qa-ticket-conta-0001',
+  forma_pagamento:'TRANSFERENCIA',pagamentos_conta:[{colaborador_id:1,banco:'001',agencia:'1234-5',conta:'001234-5',tipo_conta:'CORRENTE'}],contas_revisadas:true,
+  pagamentos_pix:[{colaborador_id:1,chave_pix:'obsoleto'}],pix_revisado:true,boleto:new Blob(['obsoleto'])});
+assert.equal(multipart.has('boleto'),false);assert.equal(multipart.has('parceiro_id'),false);
+assert.equal(multipart.has('pagamentos_pix'),false);assert.equal(multipart.has('pix_revisado'),false);
+assert.equal(multipart.get('contas_revisadas'),'true');assert.equal(JSON.parse(multipart.get('pagamentos_conta'))[0].conta,'001234-5');
 const colaboradores = [
-  { id:1,nome:'Ana Ticket QA',cpf:'52998224725',empresa_grupo_id:2,obra_id:7,status:'ATIVO',tipo_vinculo:'CLT',valor_ticket:250.10,pagamento:{chave_pix:'ana@pix.test'} },
-  { id:2,nome:'Bia Ticket QA',cpf:'11144477735',empresa_grupo_id:2,obra_id:8,status:'ATIVO',tipo_vinculo:'CLT',valor_ticket:180.25,pagamento:{chave_pix_secundaria:'bia@pix.test',favorecido_nome:'Bia Favorecida QA'} }
+  { id:1,nome:'Ana Ticket QA',cpf:'52998224725',empresa_grupo_id:2,obra_id:7,status:'ATIVO',tipo_vinculo:'CLT',valor_ticket:250.10,
+    pagamento:{chave_pix:'ana@pix.test',banco:'001',agencia:'1234-5',conta:'001234-5',tipo_conta:'CORRENTE'} },
+  { id:2,nome:'Bia Ticket QA',cpf:'11144477735',empresa_grupo_id:2,obra_id:8,status:'ATIVO',tipo_vinculo:'CLT',valor_ticket:180.25,
+    banco:'104',agencia:'5678',conta:'009876-5',conta_tipo:'POUPANCA',pagamento:{chave_pix_secundaria:'bia@pix.test',favorecido_nome:'Bia Favorecida QA'} }
 ];
+const camposSource=readFileSync(path.join(root,'src/components/rh/RhTicketPagamentoCampos.jsx'),'utf8');
+const contaSandbox={};
+vm.runInNewContext(camposSource.slice(camposSource.indexOf('function usaContaPagamento('),camposSource.indexOf('// Revisao local'))
+  .replaceAll('export function','function')+'\nglobalThis.carregar=contaTicketCadastrada;globalThis.validar=contaTicketValida;',contaSandbox);
+assert.equal(contaSandbox.carregar(colaboradores[0]).conta,'001234-5');assert.equal(contaSandbox.carregar(colaboradores[1]).banco,'104');
+const incompleto=contaSandbox.carregar({...colaboradores[1],pagamento:{banco:'001'}});
+assert.equal(incompleto.agencia,'','Cadastro parcial nao mistura outra agencia/conta');assert.equal(contaSandbox.validar(incompleto),false);
+assert.equal(contaSandbox.validar({...contaSandbox.carregar(colaboradores[0]),banco:'Banco com nome longo'}),false);
+// Formatador real da fila: o snapshot bancario nunca e exibido como chave Pix.
+const filaSource=readFileSync(path.join(root,'src/pages/FinanceiroFilaPagamentos.jsx'),'utf8');
+const filaSandbox={};
+vm.runInNewContext(filaSource.slice(filaSource.indexOf('function beneficiaryData('),filaSource.indexOf('\nfunction valorParaInput('))
+  +'\nglobalThis.dados=beneficiaryData;',filaSandbox);
+const tituloConta={formaPagamento:{tipo:'TRANSFERENCIA',nome:'Transferência bancária'},paymentBeneficiary:{nome:'Ana',cpf_cnpj:'52998224725',
+  metodo_preferencial:'CONTA_BANCARIA',pix_tipo_chave:'DADOS_BANCARIOS',pix_chave:'001:1234-5:001234-5',banco_codigo:'001',agencia:'1234-5',conta:'001234-5'}};
+assert.equal(filaSandbox.dados(tituloConta).pagamento,'Banco 001 · Ag. 1234-5 · Conta 001234-5');
+assert.equal(filaSandbox.dados({...tituloConta,paymentBeneficiary:null,observacoes:'Banco: 001; Conta: 001234-5'}).pagamento,'Banco: 001; Conta: 001234-5');
 const overrides = {
   getRhColaboradores:'async()=>window.colaboradores',getRhEmpresasGrupo:`async()=>[{id:2,nome:'Empresa QA'}]`,
   getRhTicketStatus:'async()=>[]', getRhCategoriasFinanceiras:`async()=>[{id:6,nome:'Ticket QA',tipo:'PAGAR'}]`,
@@ -106,6 +131,45 @@ try {
   const payload=await page.evaluate(()=>window.enviados[0]);assert.equal(payload.boleto,null);assert.equal(payload.parceiro_id,null);assert.equal(payload.forma_pagamento,'PIX');assert.equal(payload.pagamentos_pix[0].chave_pix,chave);
   assert.equal(await page.evaluate(()=>window.colaboradores[0].pagamento.chave_pix),'ana@pix.test');
   await page.evaluate(()=>window.qaResolve({solicitacao:{id:33,codigo:'SOL-QA'}}));await modal.waitFor({state:'hidden'});
+  // Conta cadastral e fallback integral, revisao obrigatoria, edicao local e mutex.
+  await page.goto(base);modal=await abrir();
+  await modal.getByLabel('Categoria financeira',{exact:true}).fill('Ticket');await modal.getByRole('option',{name:/Ticket QA/}).click();
+  await modal.getByLabel('Forma de pagamento do ticket',{exact:true}).selectOption('TRANSFERENCIA');
+  assert.equal(await modal.getByLabel(/Fornecedor do ticket/).count(),0);assert.equal(await modal.locator('input[type=file]').count(),0);
+  assert.equal(await modal.getByLabel('Banco (código) de Ana Ticket QA',{exact:true}).inputValue(),'001');
+  assert.equal(await modal.getByLabel('Agência de Ana Ticket QA',{exact:true}).inputValue(),'1234-5');
+  assert.equal(await modal.getByLabel('Conta com dígito de Ana Ticket QA',{exact:true}).inputValue(),'001234-5');
+  assert.equal(await modal.getByLabel('Banco (código) de Bia Ticket QA',{exact:true}).inputValue(),'104');
+  assert.equal(await modal.getByLabel('Conta com dígito de Bia Ticket QA',{exact:true}).inputValue(),'009876-5');
+  assert.equal(await modal.getByLabel('Tipo de conta de Bia Ticket QA',{exact:true}).inputValue(),'POUPANCA');
+  await modal.getByText('Titular: Bia Ticket QA · 11144477735',{exact:true}).waitFor();
+  const contaConfirm=modal.getByRole('checkbox',{name:'Conferi os titulares e as contas bancárias deste lote',exact:true});
+  await modal.getByRole('button',{name:'Gerar solicitação e títulos',exact:true}).click();assert.equal(await page.evaluate(()=>window.enviados.length),0);
+  await contaConfirm.check();await modal.getByLabel('Conta com dígito de Ana Ticket QA',{exact:true}).fill('001234-6');
+  assert.equal(await contaConfirm.isChecked(),false,'Editar conta invalida conferencia anterior');
+  await contaConfirm.check();await modal.getByLabel('Forma de pagamento do ticket',{exact:true}).selectOption('PIX');
+  await modal.getByLabel('Forma de pagamento do ticket',{exact:true}).selectOption('TRANSFERENCIA');
+  assert.equal(await contaConfirm.isChecked(),false,'Trocar forma exige nova conferencia');
+  assert.equal(await modal.getByLabel('Conta com dígito de Ana Ticket QA',{exact:true}).inputValue(),'001234-6','Trocar forma preserva edicao local');
+  await modal.getByLabel('Agência de Ana Ticket QA',{exact:true}).fill('');await contaConfirm.check();
+  await modal.getByRole('button',{name:'Gerar solicitação e títulos',exact:true}).click();assert.equal(await page.evaluate(()=>window.enviados.length),0,'Conta incompleta nao gera titulos');
+  await modal.getByLabel('Agência de Ana Ticket QA',{exact:true}).fill('1234-5');await contaConfirm.check();
+  for(const width of [1366,390]){
+    await page.setViewportSize({width,height:900});await modal.getByLabel('Banco (código) de Ana Ticket QA',{exact:true}).scrollIntoViewIfNeeded();
+    const box=await modal.boundingBox();assert(box.x>=0&&box.x+box.width<=width+1);
+    for(const label of ['Banco (código) de Ana Ticket QA','Conta com dígito de Bia Ticket QA']){
+      const campo=modal.getByLabel(label,{exact:true});const b=await campo.boundingBox();assert(b.x>=0&&b.x+b.width<=width+1,'Conta cabe no viewport');
+    }
+    await page.screenshot({path:path.join(output,`ticket-conta-${width}.png`)});
+  }
+  await modal.getByRole('button',{name:'Gerar solicitação e títulos',exact:true}).click();await page.waitForFunction(()=>window.enviados.length===1);
+  await modal.locator('form').evaluate(f=>f.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(await page.evaluate(()=>window.enviados.length),1);assert.equal(await modal.getByLabel('Conta com dígito de Ana Ticket QA',{exact:true}).isDisabled(),true);
+  const contaPayload=await page.evaluate(()=>window.enviados[0]);assert.equal(contaPayload.forma_pagamento,'TRANSFERENCIA');
+  assert.equal(contaPayload.boleto,null);assert.equal(contaPayload.parceiro_id,null);assert.equal(contaPayload.pagamentos_pix.length,0);
+  assert.equal(contaPayload.contas_revisadas,true);assert.equal(contaPayload.pagamentos_conta[0].conta,'001234-6');
+  assert.deepEqual(await page.evaluate(()=>window.colaboradores),colaboradores,'Cadastro permanece intacto');
+  await page.evaluate(()=>window.qaResolve({solicitacao:{id:34,codigo:'SOL-CONTA-QA'}}));await modal.waitFor({state:'hidden'});
   await page.goto(base);modal=await abrir();
   await modal.getByLabel(/Fornecedor do ticket/).fill('Fornecedor');await modal.getByRole('button',{name:/Fornecedor QA/}).click();
   await modal.getByLabel('Categoria financeira',{exact:true}).fill('Ticket');await modal.getByRole('option',{name:/Ticket QA/}).click();
@@ -117,5 +181,5 @@ try {
   await page.goto(base+'?readonly=1');await page.getByText('Ana Ticket QA',{exact:true}).first().waitFor();
   assert.equal(await page.getByRole('button',{name:/Gerar lote de ticket/}).count(),0);assert.equal(await page.getByRole('checkbox',{name:/Selecionar ticket/}).count(),0);
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  console.log('OK: pagina real Boleto/Pix, obrigatoriedade condicional, revisao/chave longa sem alterar cadastro, multipart, mutex/erro, desktop/mobile e permissao negativa. APIs isoladas.');
+  console.log('OK: pagina real Boleto/Pix/Conta, autoload/fallback sem misturar contas, revisao obrigatoria, edicao sem alterar cadastro, multipart, mutex/erro, desktop/mobile e permissao negativa. APIs isoladas.');
 } finally {if(browser)await browser.close();await server.close();}

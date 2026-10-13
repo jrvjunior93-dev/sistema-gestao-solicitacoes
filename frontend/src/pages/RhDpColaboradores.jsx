@@ -60,7 +60,7 @@ import { formatCurrencyInput, getCpfCnpjError, maskCpfCnpj, maskPhone, normalize
 import DateInputBR from '../components/DateInputBR';
 import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
 import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
-import RhTicketPagamentoCampos from '../components/rh/RhTicketPagamentoCampos';
+import RhTicketPagamentoCampos, { contaTicketCadastrada, contaTicketValida } from '../components/rh/RhTicketPagamentoCampos';
 import { CAMPOS_ENDERECO, erroTelefoneSecundario, telefoneComparavel } from '../utils/rhColaboradorContatos';
 
 function emptyForm() {
@@ -344,7 +344,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   const [ticketForm, setTicketForm] = useState(() => {
     const competencia = new Date().toISOString().slice(0, 7);
     return { competencia, parceiro: null, categoria_financeira_id: '', data_vencimento: vencimentoTicket(competencia), boleto: null,
-      forma_pagamento: 'BOLETO', pagamentos_pix: [], pix_revisado: false, idempotency_key: crypto.randomUUID() };
+      forma_pagamento: 'BOLETO', pagamentos_pix: [], pix_revisado: false, pagamentos_conta: [], contas_revisadas: false, idempotency_key: crypto.randomUUID() };
   });
   const cadastroDraft = useWorkspaceRecordDraft('cadastro:inputs', emptyForm());
   const { value: form, setValue: setForm } = cadastroDraft;
@@ -561,6 +561,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
       const categorias = await getRhCategoriasFinanceiras();
       setCategoriasTicket(Array.isArray(categorias) ? categorias : []);
       setTicketForm((prev) => ({ ...prev, idempotency_key: crypto.randomUUID(), boleto: null, forma_pagamento: 'BOLETO', pix_revisado: false,
+        contas_revisadas: false, pagamentos_conta: itens.map(contaTicketCadastrada),
         pagamentos_pix: itens.map(c => ({ colaborador_id: Number(c.id), chave_pix: c.pagamento?.chave_pix
           || c.pagamento?.chave_pix_secundaria || c.pagamento?.chave_pix_variavel || c.pix_chave || '' })) }));
       setModalTicketAberto(true);
@@ -573,7 +574,9 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
     event.preventDefault();
     if (gerandoTicketRef.current) return;
     const pix = ticketForm.forma_pagamento === 'PIX';
-    if (!ticketForm.categoria_financeira_id || (!pix && (!ticketForm.parceiro || !ticketForm.boleto))) {
+    const conta = ticketForm.forma_pagamento === 'TRANSFERENCIA';
+    const boleto = ticketForm.forma_pagamento === 'BOLETO';
+    if (!ticketForm.categoria_financeira_id || (boleto && (!ticketForm.parceiro || !ticketForm.boleto))) {
       avisar.erro('Informe a categoria financeira e, para boleto, o fornecedor e o arquivo.');
       return;
     }
@@ -581,19 +584,26 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
       avisar.erro('Informe e confira todas as chaves Pix antes de gerar os títulos.');
       return;
     }
+    if (conta && (!ticketForm.contas_revisadas || ticketForm.pagamentos_conta.length !== selecionadosTicket.size
+      || ticketForm.pagamentos_conta.some(p => !contaTicketValida(p)))) {
+      avisar.erro('Informe e confira todas as contas. Use o código do banco (até 10 caracteres), agência (até 20), conta com dígito (até 30) e tipo de conta.');
+      return;
+    }
     try {
       gerandoTicketRef.current = true;
       setGerandoTicket(true);
       const resultado = await gerarLoteRhTicket({
         competencia: ticketForm.competencia,
-        parceiro_id: pix ? null : ticketForm.parceiro.id,
+        parceiro_id: boleto ? ticketForm.parceiro.id : null,
         forma_pagamento: ticketForm.forma_pagamento,
         pagamentos_pix: pix ? ticketForm.pagamentos_pix : [],
         pix_revisado: pix && ticketForm.pix_revisado,
+        pagamentos_conta: conta ? ticketForm.pagamentos_conta : [],
+        contas_revisadas: conta && ticketForm.contas_revisadas,
         categoria_financeira_id: ticketForm.categoria_financeira_id,
         data_vencimento: ticketForm.data_vencimento,
         colaborador_ids: [...selecionadosTicket],
-        boleto: pix ? null : ticketForm.boleto,
+        boleto: boleto ? ticketForm.boleto : null,
         idempotency_key: ticketForm.idempotency_key
       });
       setModalTicketAberto(false);
