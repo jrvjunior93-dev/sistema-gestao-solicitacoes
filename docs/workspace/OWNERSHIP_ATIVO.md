@@ -3763,3 +3763,9 @@ Main e producao nao serao alteradas; sem EC2, banco ou reinicio pelo agente.
 Integracao seletiva em e5dd4c9f e testes repetidos aprovados; apenas conflito
 documental resolvido preservando Ticket/estorno. Reserva documental encerrada
 e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
+
+Promocao main: integracao seletiva e testes de seguranca/UI/navegacao/build
+aprovados; reserva documental encerrada e ownership liberado para publicacao.
+Snapshot tag/bundle de 50e08848 verificado. Usuario homologou dev e confirmou
+backup/timer nesta janela. Sem EC2, banco ou reinicio pelo agente; ativacao
+real ainda depende do deploy pelo usuario e smoke de producao.
