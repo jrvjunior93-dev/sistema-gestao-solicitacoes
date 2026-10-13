@@ -3583,3 +3583,17 @@ do GitHub. Main nao alterada. Snapshot local main/tag e bundle verificado;
 publicacao e promocao aguardam login GitHub e confirmacao backup/timer.
 Reserva documental encerrada; ownership liberado. Proximo passo detalhado no
 handoff RH desta tarefa. Sem deploy ou acesso ao banco real.
+
+## Estorno da fila independente de resolver divergencias - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: backend/src/routes.js; frontend/src/pages/FinanceiroFilaPagamentos.jsx;
+  backend/scripts/validarFilaEstornoPermissao.js; frontend/scripts/validarFilaInstrumentosUI.mjs;
+  docs/handoffs/2026-10-13-estorno-fila-permissao.md.
+- Escopo: exigir somente financeiro.titulos.estornar para a acao de estorno,
+  preservando acesso/escopo dos titulos e permissoes das demais acoes.
+- Sem banco real, migrations, EC2, commit, push ou deploy nesta tarefa.
+- Testes backend, seguranca/escopo, UI desktop/mobile, build e documentacao
+  aprovados. Handoff: docs/handoffs/2026-10-13-estorno-fila-permissao.md.
+- Publicacao autorizada pelo usuario na refactor/frontend, somente este ajuste;
+  sem promover main ou executar atualizacao na EC2 pelo agente.

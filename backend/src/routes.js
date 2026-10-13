@@ -2207,7 +2207,7 @@ router.post('/financeiro/fila-pagamentos/baixar', allowFilaPagamentosBaixa, crit
 router.post('/financeiro/fila-pagamentos/aprovar-divergencias', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueApproveBody }), PagamentoManualFilaController.aprovarDivergencias);
 router.post('/financeiro/fila-pagamentos/:id/resultado', allowFilaPagamentosReportar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResultBody }), PagamentoManualFilaController.resultado);
 router.post('/financeiro/fila-pagamentos/:id/resolver', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResolveBody }), PagamentoManualFilaController.resolver);
-router.post('/financeiro/fila-pagamentos/:id/estornar', allowFilaPagamentosResolver, allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueReverseBody }), PagamentoManualFilaController.estornar);
+router.post('/financeiro/fila-pagamentos/:id/estornar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueReverseBody }), PagamentoManualFilaController.estornar);
 router.get('/financeiro/autorizacoes-pagamento/capabilities', PagamentoAutorizacaoController.capabilities);
 router.get('/financeiro/autorizacoes-pagamento', PagamentoAutorizacaoController.index);
 router.post('/financeiro/autorizacoes-pagamento', criticalRateLimit, PagamentoAutorizacaoController.create);
