@@ -1,25 +1,36 @@
 import OverlayModal from '../ui/OverlayModal';
 import ChequePagamentoFields from './ChequePagamentoFields';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 export default function ChequesParceladosFilaModal({ label, parcelas, onChange, onFechar, onConfirmar,
   total, conta, cheques, conflito, podeCadastrar }) {
   const [erro, setErro] = useState('');
   const [quantidade, setQuantidade] = useState(String(parcelas.length));
+  // Digitar "12" pode passar por "1". Guardar as linhas ocultadas evita perder
+  // cheques preenchidos nesse estado intermediario; so as visiveis sao enviadas.
+  const reservaParcelas = useRef([...parcelas]);
   const soma = parcelas.reduce((sum, item) => sum + Math.round(Number(item.valor_pago || 0) * 100), 0);
   const money = valor => Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   function alterar(index, patch) { onChange(parcelas.map((item, i) => i === index ? { ...item, ...patch } : item)); }
-  function definirQuantidade() {
-    const count = Number(quantidade);
+  function definirQuantidade(value) {
+    setQuantidade(value);
+    if (value === '') { setErro(''); return; }
+    const count = Number(value);
     if (!Number.isInteger(count) || count < 1 || count > 60) { setErro('Informe de 1 a 60 cheques por título.'); return; }
-    onChange(Array.from({ length: count }, (_, index) => parcelas[index] || { valor_pago: '', usar_cheque_terceiro: false }));
+    parcelas.forEach((item, index) => { reservaParcelas.current[index] = item; });
+    const next = Array.from({ length: count }, (_, index) => reservaParcelas.current[index] || { valor_pago: '', usar_cheque_terceiro: false });
+    next.forEach((item, index) => { reservaParcelas.current[index] = item; });
+    onChange(next);
     setErro('');
   }
   function confirmar(event) {
     event.preventDefault();
     event.stopPropagation();
     if (conflito) return;
+    if (Number(quantidade) !== parcelas.length || !Number.isInteger(Number(quantidade)) || Number(quantidade) < 1 || Number(quantidade) > 60) {
+      setErro('Informe de 1 a 60 cheques por título.'); return;
+    }
     if (soma !== Math.round(Number(total) * 100) || parcelas.some(item => !(Number(item.valor_pago) > 0))) {
       setErro('A soma dos cheques deve ser igual ao valor pago do título.'); return;
     }
@@ -37,16 +48,20 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
       <fieldset disabled={conflito} className="space-y-4">
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm">Quantidade de cheques
-            <input aria-label="Quantidade de cheques" className="input w-28 block" type="number" min="1" max="60" step="1"
-              value={quantidade} onChange={event => setQuantidade(event.target.value)} />
+            <input aria-label="Quantidade de cheques" aria-describedby={`quantidade-cheques-ajuda-${label}`} required className="input w-28 block" type="number" min="1" max="60" step="1"
+              value={quantidade} onChange={event => definirQuantidade(event.target.value)} />
           </label>
-          <button type="button" className="btn btn-outline btn-sm" onClick={definirQuantidade}>Aplicar quantidade</button>
         </div>
-        {Number(quantidade) < parcelas.length && <p className="text-xs text-[var(--sem-warning)]">Aplicar essa quantidade removerá os últimos {parcelas.length - Number(quantidade)} cheque(s) deste preenchimento.</p>}
+        <p id={`quantidade-cheques-ajuda-${label}`} className="text-xs text-[var(--c-muted)]">Os campos aparecem automaticamente. Ao reduzir a quantidade, os dados ocultados podem ser recuperados aumentando-a antes de fechar este modal.</p>
         {parcelas.map((item, index) => <section key={index} aria-label={`Dados do cheque ${index + 1}`} className="border-b border-[var(--c-border)] pb-4 space-y-3">
           <div className="flex justify-between items-center"><strong className="text-sm">Cheque {index + 1}</strong>
             <button type="button" className="btn btn-outline btn-sm" disabled={parcelas.length === 1}
-              onClick={() => { setQuantidade(String(parcelas.length - 1)); onChange(parcelas.filter((_, i) => i !== index)); }}>Remover cheque {index + 1}</button>
+              onClick={() => {
+                const next = parcelas.filter((_, i) => i !== index);
+                parcelas.forEach((item, i) => { reservaParcelas.current[i] = item; });
+                reservaParcelas.current.splice(index, 1);
+                setQuantidade(String(next.length)); setErro(''); onChange(next);
+              }}>Remover cheque {index + 1}</button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="text-sm">Valor do cheque {index + 1} (R$)
@@ -71,8 +86,6 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
             </select>
           </label> : <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
         </section>)}
-        <button type="button" className="btn btn-outline btn-sm" disabled={parcelas.length >= 60}
-          onClick={() => { setQuantidade(String(parcelas.length + 1)); onChange([...parcelas, { valor_pago: '', usar_cheque_terceiro: false }]); }}>Adicionar cheque / parcela</button>
       </fieldset>
       <p className="text-xs text-[var(--c-muted)]">Cheques de terceiros precisam estar cadastrados e disponíveis na carteira. O valor de cada um deve ser usado integralmente.
         {podeCadastrar && <> <Link className="underline" to="/financeiro/cheques-terceiros" target="_blank" rel="noopener noreferrer">Abrir carteira para cadastrar</Link>.</>}

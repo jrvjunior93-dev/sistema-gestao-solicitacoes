@@ -1,5 +1,26 @@
 # Ownership Ativo
 
+## Publicacao da quantidade automatica de cheques - 2026-10-13
+
+- Pedido explicito nesta conversa: commitar as alteracoes pendentes e publicar
+  em refactor/frontend. Agente desta conversa, sem delegacao; conferencia de
+  staging reservada nesta publicacao e liberada apos verificacao.
+- Escopo restrito ao ajuste frontend, testes e documentacao de cheques.
+- UI desktop/mobile, build e validacoes financeiras isoladas aprovados.
+- Evidencias outputs/ ficam fora do commit; sem banco, migration, reinicio
+  de processos, EC2 ou promocao para main.
+
+## Cheques - quantidade automatica - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido localmente, ownership liberado.
+- Reserva: ChequesParceladosFilaModal.jsx, validarFilaInstrumentosUI.mjs,
+  README financeiro e handoff. Sem alteracoes aos outros fluxos.
+- Escopo: quantidade valida gera campos automaticamente, sem aplicar/adicionar
+  um a um; preservar preenchimentos durante a edicao e limites de 1 a 60.
+- Payload, soma em centavos, carteira, ACL e submissao/confirmacao preservados.
+- Sem backend, banco, migration, commit/push ou EC2 nesta tarefa.
+- Handoff: docs/handoffs/2026-10-13-cheques-quantidade-automatica.md.
+
 ## Publicacao Ticket, Compras e modal de baixa - 2026-10-13
 
 - Pedido explicito nesta conversa: commitar todas as alteracoes pendentes e

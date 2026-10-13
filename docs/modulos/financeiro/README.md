@@ -20,7 +20,10 @@
   titulo. A forma efetivamente paga pode ser ajustada por titulo dentro do
   modal ou aplicada a todos; trocar forma limpa instrumentos anteriores.
   Cheques proprios/da carteira e seu parcelamento sao editaveis no mesmo
-  fluxo, com quantidade de 1 a 60 e dados por cheque. Exige conferencia final;
+  fluxo, com quantidade de 1 a 60 e dados por cheque. A quantidade valida gera
+  os campos automaticamente, sem aplicar/adicionar um a um; reducoes mantem
+  os dados ocultados em memoria somente enquanto o modal estiver aberto.
+  Apenas cheques visiveis/confirmados entram no payload. Exige conferencia final;
   cancelar o modal descarta suas alteracoes, sem registrar baixa. Cartao deve
   continuar compativel com a conta. Falha em uma linha reverte o lote inteiro.
 - Coluna Desconto, inicialmente antes de Juros, aceita valor nao negativo.
