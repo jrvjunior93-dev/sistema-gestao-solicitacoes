@@ -15,7 +15,8 @@
 - Integracao resolvida/validada; ownership funcional liberado no commit.
   Reserva documental deste handoff e do registro continua para evidencias da
   janela. Dois testes isolados atualizados para novas dependencias; sem mudar
-  runtime do alvo. Falta confirmar DDL real em homologacao antes de producao.
+  runtime do alvo. Staging confirmado pelo usuario: UUID distinto de producao,
+  264 migrations registradas/zero pendentes e backend identico ao alvo.
 
 ## Promocao isolada aviso de entregas - 2026-10-09
 

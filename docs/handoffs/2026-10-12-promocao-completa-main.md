@@ -83,8 +83,20 @@ schema_migrations. DDL pode bloquear/reconstruir tabelas no MySQL: schema-only
 nao significa operacao sem risco ou sem escrita fisica no banco.
 
 Testes de migrations locais simulam o banco. MySQL real local nao disponivel;
-Docker instalado mas daemon inativo, nao iniciado. Falta evidenciar execucao
-das cinco migrations em homologacao/copia isolada antes de producao.
+Docker instalado mas daemon inativo, nao iniciado. Usuario forneceu depois
+conferencia real de staging: UUID 60f043e9-4025-11f1-9a61-06d8a063012d,
+banco gestao_solicitacoes, checkout ae27d3e3f5c987874b81c9e88359bd2a6c7a46d9,
+264 arquivos, 264 registradas, zero pendentes. Backend/src, migrations e
+dependencias/lockfile desse SHA identicos ao alvo 1d7951b9; unico commit
+posterior e posicionamento visual do icone +. Evidencia fornecida pelo usuario,
+nao execucao direta do agente. Nao significa smoke autenticado de producao.
+
+O nome gestao_solicitacoes e igual em staging e producao, mas as instancias
+tem UUIDs distintos. Guarda anterior por nome isolado bloqueou apenas a
+consulta; corrigida para identidade composta UUID/banco. O manual operacional
+DOCX fornecido pelo usuario confirma a separacao de pastas/processos/portas
+e hosts RDS; orientacoes dev-v2 e migration automatica estao desatualizadas.
+Documento consultado com trechos sensiveis omitidos; nao copiado ao Git.
 
 ## Estado e proximo passo exato
 
@@ -92,10 +104,11 @@ Integracao commitada como 918b3b2b0b424af6083642aca2c85e7af4807f07 e publicada
 na branch codex/promocao-completa-main-20261012, junto da tag de backup, em push
 atomico. Ambas as historias sao ancestrais do merge. Main remota continua no
 SHA congelado 528e8c838a383c71be76f00b21fa8fe54d6c4e8d.
-Nao mover main antes de schema/backend compativeis. Conferir na EC2 dev,
-somente leitura, identidade diferente de producao, SHA do backend e registros
-das cinco migrations. Se faltarem, homologar o DDL em staging na janela
-autorizada antes de fornecer bloco de aplicacao em producao.
+Nao mover main antes de schema/backend compativeis. Conferencia de staging
+concluida pelo usuario: identidade, SHA/backend compativel e zero pendentes.
+Preparar comandos guardados de producao na janela aprovada, sem executa-los
+daqui. Confirmar processo PM2/cwd/watch/env efetivo, identidade e cinco
+pendentes imediatamente antes de qualquer aplicacao.
 
 Depois: conferir backup recente/restauravel, identidade prod UUID
 5ed4b970-009f-11f1-809c-0ad0e0c90c53/banco gestao_solicitacoes, SHA/processo e
