@@ -3769,3 +3769,15 @@ aprovados; reserva documental encerrada e ownership liberado para publicacao.
 Snapshot tag/bundle de 50e08848 verificado. Usuario homologou dev e confirmou
 backup/timer nesta janela. Sem EC2, banco ou reinicio pelo agente; ativacao
 real ainda depende do deploy pelo usuario e smoke de producao.
+
+## Consolidacao main com checkout EC2 - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva ativa.
+- Usuario autorizou consolidar f123f9f0 (Ticket conta/estorno ja na EC2) e
+  main 4f8f02f1 (modal/troca de usuario), preservando os quatro fluxos.
+- Backup/timer confirmados nesta mesma janela. Sem EC2, banco, migrations ou
+  reinicio pelo agente; comandos de deploy serao executados pelo usuario.
+- Reservados: conflito documental OWNERSHIP_ATIVO.md, novo handoff desta
+  consolidacao e testes de integracao/permissoes se precisarem alinhar fixtures.
+- Manter os dois ancestrais no historico remoto: nao squash nem reset, para
+  permitir fast-forward seguro do checkout f123f9f0 da EC2 para main consolidada.
