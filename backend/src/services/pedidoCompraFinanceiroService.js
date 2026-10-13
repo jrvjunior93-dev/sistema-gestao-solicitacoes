@@ -550,7 +550,6 @@ async function validarPagamentoNegociado(payload = {}, contexto, formasPermitida
   const dadosPagamento = String(payload.dados_pagamento || '').trim();
   const boletos = Array.isArray(payload.boletos) ? payload.boletos : [];
   if (tipo === 'PIX' && !chavePix) throw httpError(400, `Informe a chave PIX de ${contexto}.`);
-  if (tipo === 'BOLETO' && !boletos.length) throw httpError(400, `Anexe ao menos um boleto de ${contexto}.`);
   if (tipo === 'OUTRA' && !dadosPagamento) throw httpError(400, `Informe os dados para pagamento de ${contexto}.`);
 
   const observacoes = tipo === 'PIX'

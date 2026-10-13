@@ -129,7 +129,7 @@ function PagamentoTituloFields({ titulo, descricao, valorTotal, config, onChange
           {pix ? <CampoForm label="Chave PIX" obrigatorio><input className="input w-full" maxLength={PIX_TEXTO_MAX} value={config.chave_pix} onChange={(event) => onChange({ ...config, chave_pix: event.target.value })} placeholder="Informe a chave PIX negociada" /></CampoForm> : null}
           {forma && !pix && !boleto ? <div style={{ gridColumn: '1 / -1' }}><CampoForm label="Dados para pagamento" obrigatorio><textarea className="input min-h-20 w-full" value={config.dados_pagamento} onChange={(event) => onChange({ ...config, dados_pagamento: event.target.value })} placeholder="Informe banco, agência, conta ou demais orientações para pagamento." /></CampoForm></div> : null}
           {boleto ? <div style={{ gridColumn: '1 / -1' }}>
-            <CampoForm label="Boletos" obrigatorio hint="É possível selecionar mais de um arquivo.">
+            <CampoForm label="Boletos" hint="Opcional na criação dos títulos. É possível selecionar mais de um arquivo.">
               <input className="input w-full" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={(event) => onChange({ ...config, boletos: [...config.boletos, ...Array.from(event.target.files || [])] })} />
             </CampoForm>
             {config.boletos.length ? <div className="mt-2 flex flex-wrap gap-2">{config.boletos.map((arquivo, index) => (
@@ -220,7 +220,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     if (!config.parcelas.length || config.parcelas.some((parcela) => numeroMoeda(parcela.valor) <= 0 || !parcela.data_vencimento)) return `Informe valor e vencimento válidos em todas as parcelas de ${contexto}.`;
     if (Math.abs(somaParcelas(config) - valorTotal) >= 0.01) return `A soma das parcelas de ${contexto} precisa ser igual a ${moeda(valorTotal)}.`;
     if (formaPagamentoEhPix(forma) && !config.chave_pix.trim()) return `Informe a chave PIX de ${contexto}.`;
-    if (formaPagamentoEhBoleto(forma) && !config.boletos.length) return `Anexe ao menos um boleto de ${contexto}.`;
     if (!formaPagamentoEhPix(forma) && !formaPagamentoEhBoleto(forma) && !config.dados_pagamento.trim()) return `Informe os dados para pagamento de ${contexto}.`;
     return '';
   }

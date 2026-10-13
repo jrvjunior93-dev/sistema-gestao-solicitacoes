@@ -1,5 +1,18 @@
 # Modulo COMPRAS
 
+## Boleto opcional na criacao de titulos do pedido - 2026-10-13
+
+Compras pode criar titulos do pedido com forma Boleto sem anexar o arquivo,
+tanto para o fornecedor quanto para frete pago a terceiro. Se informados,
+os boletos continuam registrados no pedido e na solicitacao pela mesma
+transacao, aceitando multiplos arquivos. Categoria, favorecido, valores,
+vencimentos, permissoes e escopo continuam obrigatorios conforme o fluxo atual.
+Nao altera exigencias da Nova Solicitacao, autorizacao/baixa de pagamentos,
+comprovantes nem dados existentes. Sem migration.
+
+Testes locais: `node scripts/validarPedidoBoletoOpcional.js` no backend e
+`node scripts/validarPedidoBoletoOpcionalUI.mjs` no frontend, sem banco real.
+
 ## Delegacao: abrir em outra aba - 2026-10-12
 
 Abrir preserva a Delegacao e abre uma aba interna para a solicitacao

@@ -1,5 +1,23 @@
 # Ownership Ativo
 
+## Boleto opcional nos titulos do pedido - 2026-10-13
+
+- Agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reserva: PedidoCompraFinanceiro.jsx, pedidoCompraFinanceiroService.js,
+  novos testes validarPedidoBoletoOpcional.js e validarPedidoBoletoOpcionalUI.mjs,
+  README de Compras e handoff desta tarefa.
+- Escopo: somente anexo de boleto na criacao de titulos da compra/frete no pedido.
+  Preservar valores, formas, favorecidos, parcelas, permissoes, escopo e idempotencia.
+  Sem banco real, migration, commit, push ou deploy.
+- Testes novos backend/UI, financeiro do pedido, escopo de acesso, resumo de
+  compras, sintaxe, documentacao e build aprovados. Handoff:
+  docs/handoffs/2026-10-13-pedido-boleto-opcional.md.
+- Commit e push em refactor/frontend autorizados pelo usuario nesta etapa.
+  Commit isolado incorporado na base 1d7951b9 de refactor/frontend e testes
+  novos backend/UI/documentacao reexecutados com sucesso. Reserva encerrada;
+  publicar fast-forward, sem promover main nem executar deploy.
+  Sujeira de outros checkouts e outputs/ preservados.
+
 ## Seguranca de acesso direto e exclusao - 2026-10-12
 
 - Sessao codex-seguranca-acesso-direto-20261012, sem delegacao.
