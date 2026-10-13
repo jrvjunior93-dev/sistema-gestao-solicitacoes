@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
-import { HiOutlinePlus, HiOutlineXMark, HiPaperClip } from 'react-icons/hi2';
+import { HiOutlineXMark, HiPaperClip } from 'react-icons/hi2';
+import AdicionarFavorecidoButton from './AdicionarFavorecidoButton';
 import ParceiroBuscaRemota from './ParceiroBuscaRemota';
 import CadastroRapidoFavorecidoButton from './CadastroRapidoFavorecidoButton';
 import PendingAttachmentsList from '../attachments/PendingAttachmentsList';
@@ -69,7 +70,9 @@ export default function PagamentosFavorecidos({ linhas, onChange, formas, parcel
         </div>
         <div className="grid min-w-0 gap-3 md:grid-cols-2">
           <ParceiroBuscaRemota label={`Favorecido ${index + 1}`} obrigatorio selecionado={l.parceiro} onSelecionar={escolher}
-            acaoFinal={<CadastroRapidoFavorecidoButton {...cadastro} onCadastrado={escolher} />} />
+            acaoFinal={<><CadastroRapidoFavorecidoButton {...cadastro} onCadastrado={escolher} />
+              {index === linhas.length - 1 && !boleto && <AdicionarFavorecidoButton disabled={linhas.length >= 50} onClick={() => onChange([...linhas, novaParteFavorecido({ contrato_parcela_id: parcelas[0]?.id })])} />}
+            </>} />
           <label className="grid gap-1 text-sm" htmlFor={`${id}-valor-${index}`}>Valor do favorecido {index + 1} *
             <input id={`${id}-valor-${index}`} className="input input-sm" inputMode="decimal" required value={l.valor}
               onChange={e => alterar(l.chave, { valor: normalizeCurrencyTyping(e.target.value) })}
@@ -92,19 +95,22 @@ export default function PagamentosFavorecidos({ linhas, onChange, formas, parcel
           {forma && !pix && !boleto && <label className="grid gap-1 text-sm md:col-span-2">Dados para pagamento do favorecido {index + 1} *
             <textarea className="input w-full" maxLength={2000} required value={l.dados_pagamento} onChange={e => alterar(l.chave, { dados_pagamento: e.target.value })} />
           </label>}
-          {boleto && <div className="space-y-1 md:col-span-2"><label className="btn btn-outline btn-sm"><HiPaperClip className="h-4 w-4" />Boletos do favorecido {index + 1}
+          {boleto && <div className="space-y-1 md:col-span-2"><div className="flex flex-wrap items-center gap-2"><label className="btn btn-outline btn-sm"><HiPaperClip className="h-4 w-4" />Boletos do favorecido {index + 1}
             <input type="file" multiple className="sr-only" aria-label={`Boletos do favorecido ${index + 1}`} accept=".pdf,.png,.jpg,.jpeg" onChange={e => {
               const files = Array.from(e.target.files || []); e.target.value = '';
               const permitidos = files.filter(f => /\.(pdf|png|jpe?g)$/i.test(f.name) && arquivoDocumentoPermitido(f));
               const { arquivos, rejeitados } = concatenarAnexosPendentes(l.boletos, permitidos, { maxFileSizeMb: 50 });
               setErroArquivo(permitidos.length !== files.length || rejeitados.length ? 'Use PDF/PNG/JPG de até 50 MB por arquivo.' : '');
               alterar(l.chave, { boletos: arquivos });
-            }} /></label><PendingAttachmentsList items={l.boletos} onRemove={i => alterar(l.chave, { boletos: l.boletos.filter((_, j) => i !== j) })} /></div>}
+            }} /></label>
+            {index === linhas.length - 1 && <AdicionarFavorecidoButton disabled={linhas.length >= 50} onClick={() => onChange([...linhas, novaParteFavorecido({ contrato_parcela_id: parcelas[0]?.id })])} />}
+            </div>
+            <PendingAttachmentsList items={l.boletos} onRemove={i => alterar(l.chave, { boletos: l.boletos.filter((_, j) => i !== j) })} /></div>}
         </div>
       </div>;
     })}
     {erroArquivo && <p role="alert" className="form-error">{erroArquivo}</p>}
-    <div className="flex gap-2"><button type="button" className="btn btn-outline btn-sm" disabled={linhas.length >= 50} aria-label="Adicionar novo favorecido" onClick={() => onChange([...linhas, novaParteFavorecido({ contrato_parcela_id: parcelas[0]?.id })])}><HiOutlinePlus className="h-4 w-4" />Favorecido</button>
+    <div className="flex gap-2">
       <button type="button" className="btn btn-ghost btn-sm" onClick={onCancelar}>Usar apenas o primeiro favorecido</button>
     </div>
   </fieldset>;

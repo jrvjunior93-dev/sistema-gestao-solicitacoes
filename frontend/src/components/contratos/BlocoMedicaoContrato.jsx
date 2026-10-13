@@ -7,6 +7,7 @@ import { HiPaperClip } from 'react-icons/hi2';
 import { chavePixPreferencial, formaPagamentoEhBoleto, formaPagamentoEhPix } from '../../utils/formaPagamento';
 import DateInputBR from '../DateInputBR';
 import CadastroRapidoFavorecidoButton from '../solicitacoes/CadastroRapidoFavorecidoButton';
+import AdicionarFavorecidoButton from '../solicitacoes/AdicionarFavorecidoButton';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import PendingAttachmentsList from '../attachments/PendingAttachmentsList';
 import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos, somarValoresFavorecidos } from '../solicitacoes/PagamentosFavorecidos';
@@ -543,6 +544,7 @@ export default function BlocoMedicaoContrato({
 
         {formaPagamentoId && (
           <div className="space-y-2" data-testid="pagamento-medicao-favorecido">
+            <div className="flex min-w-0 items-center gap-2">
             <label className="flex min-w-0 items-start gap-2 text-sm">
               <input
                 type="checkbox"
@@ -563,6 +565,8 @@ export default function BlocoMedicaoContrato({
               />
               <span className="min-w-0 break-words">O favorecido e o proprio credor do contrato{credorDoContrato ? ` (${credorDoContrato.nome})` : ''}</span>
             </label>
+            {usarCredor && credorDoContrato && !pagamentoViaBoleto && <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />}
+            </div>
 
             {(!usarCredor || !credorDoContrato) && (
               <div className="space-y-2">
@@ -591,6 +595,7 @@ export default function BlocoMedicaoContrato({
                     areaResponsavel={areaResponsavel}
                     onCadastrado={escolherFavorecido}
                   />
+                  {!pagamentoViaBoleto && <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />}
                 </div>
                 {carregandoFavorecido && (
                   <p className="text-xs" style={{ color: 'var(--c-muted)' }}>Buscando favorecidos...</p>
@@ -683,6 +688,7 @@ export default function BlocoMedicaoContrato({
                   }}
                 />
               </label>
+              <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />
               {boletos.length === 0 && <span className="text-xs text-[var(--c-muted)]">Nenhum boleto selecionado</span>}
             </div>
             <PendingAttachmentsList items={boletos} onRemove={(index) => { onRemoverBoleto?.(index); setConfirmado(false); }} />
@@ -690,7 +696,7 @@ export default function BlocoMedicaoContrato({
         )}
 
         </>}
-        {!divisao && <button type="button" className="btn btn-outline btn-sm" aria-label="Adicionar novo favorecido" disabled={!itens.length} onClick={iniciarDivisao}>+ Favorecido</button>}
+        {!divisao && !formaPagamentoId && <AdicionarFavorecidoButton disabled={!itens.length} onClick={iniciarDivisao} />}
         {divisao && <PagamentosFavorecidos linhas={divisao} onChange={alterarDivisao} formas={formas}
           parcelas={itens.map(i => ({ id: i.contrato_parcela_id, numero: parcelas.find(p => p.id === i.contrato_parcela_id)?.numero }))}
           cadastro={{ tipoSolicitacaoId, tipoSubId, areaResponsavel }} onCancelar={() => {

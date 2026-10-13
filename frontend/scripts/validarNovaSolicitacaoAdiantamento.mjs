@@ -60,8 +60,13 @@ try {
   assert.equal(await dados.locator('[name="forma_pagamento_id"]').count(), 0);
   assert.equal(await pagamento.locator('[name="valor"]').count(), 1);
   assert.equal(await pagamento.locator('[name="forma_pagamento_id"]').count(), 1);
+  const adicionar = pagamento.getByRole('button', { name: 'Adicionar novo favorecido', exact: true });
+  assert.equal(await adicionar.count(), 1, 'Um unico gatilho para adicionar');
+  assert.equal((await adicionar.innerText()).trim(), '', 'Gatilho somente icone');
+  assert.equal(await adicionar.getAttribute('title'), 'Adicionar novo favorecido');
+  assert.equal(await adicionar.evaluate(el => el.type === 'button' && !el.closest('label') && Boolean(el.parentElement.querySelector('[aria-label="Cadastrar favorecido"]')) && Boolean(el.parentElement.querySelector('input[role="combobox"]'))), true, 'Icone junto ao campo/cadastro, fora do label');
   if (!comDistribuicaoResidual) {
-    const saida = path.resolve(root, '../outputs/qa-nova-solicitacao-dados-pagamento-20261012');
+    const saida = path.resolve(root, '../outputs/qa-icone-favorecido-20261012');
     await mkdir(saida, { recursive: true });
     await page.screenshot({ path: path.join(saida, 'adiantamento-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -78,7 +83,7 @@ try {
     await partes.nth(1).getByRole('combobox', { name: /^Forma de pagamento do favorecido 2/ }).selectOption('1');
     await partes.nth(1).getByLabel('Valor do favorecido 2 *', { exact: true }).fill('200,00');
     assert.equal((await pagamento.locator('[name="valor"]').inputValue()).replace(/[^\d,]/g, ''), '1200,00');
-    const saida = path.resolve(root, '../outputs/qa-nova-solicitacao-dados-pagamento-20261012');
+    const saida = path.resolve(root, '../outputs/qa-icone-favorecido-20261012');
     await page.screenshot({ path: path.join(saida, 'favorecidos-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

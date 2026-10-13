@@ -44,6 +44,7 @@ import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import OverlayModal from '../components/ui/OverlayModal';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
 import CadastroRapidoFavorecidoButton from '../components/solicitacoes/CadastroRapidoFavorecidoButton';
+import AdicionarFavorecidoButton from '../components/solicitacoes/AdicionarFavorecidoButton';
 import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos, somarValoresFavorecidos } from '../components/solicitacoes/PagamentosFavorecidos';
 import DadosEmpresaParceiro from '../components/parceiros/DadosEmpresaParceiro';
 import { getDadosEmpresaParceiroError } from '../utils/dadosEmpresaParceiro';
@@ -3865,7 +3866,8 @@ export default function NovaSolicitacao() {
               )}
 
               {exibirFavorecidoPagamento && exibirCampoCredor && !pagamentosFavorecidos && (
-                <label className="form-campo--linha flex items-center gap-2 text-sm">
+                <div className="form-campo--linha flex items-center gap-2">
+                <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={usarCredorComoFavorecido}
@@ -3889,6 +3891,10 @@ export default function NovaSolicitacao() {
                   />
                   <span>Usar o credor como favorecido do pagamento</span>
                 </label>
+                {usarCredorComoFavorecido && !pagamentoViaBoleto && !usaFluxoRecargaCartao && (
+                  <AdicionarFavorecidoButton disabled={criandoSolicitacao} onClick={iniciarDivisaoFavorecidos} />
+                )}
+                </div>
               )}
 
               {exibirFavorecidoPagamento && !usarCredorComoFavorecido && !pagamentosFavorecidos && (
@@ -3903,6 +3909,7 @@ export default function NovaSolicitacao() {
                     obrigatorio={favorecidoObrigatorio}
                     placeholder="Buscar por nome, telefone, CPF/CNPJ ou PIX"
                     acaoFinal={(
+                      <>
                       <CadastroRapidoFavorecidoButton
                         tipoSolicitacaoId={form.tipo_solicitacao_id}
                         tipoSubId={form.tipo_sub_id}
@@ -3920,6 +3927,10 @@ export default function NovaSolicitacao() {
                           }));
                         }}
                       />
+                      {!pagamentoViaBoleto && !usaFluxoRecargaCartao && (
+                        <AdicionarFavorecidoButton disabled={criandoSolicitacao} onClick={iniciarDivisaoFavorecidos} />
+                      )}
+                      </>
                     )}
                     onSelecionar={(parceiro) => {
                       limparErroCampo('favorecido');
@@ -3999,14 +4010,17 @@ export default function NovaSolicitacao() {
                         }}
                       />
                     </label>
+                    {!usaFluxoRecargaCartao && (
+                      <AdicionarFavorecidoButton disabled={criandoSolicitacao} onClick={iniciarDivisaoFavorecidos} />
+                    )}
                     {boletoArquivos.length === 0 && <span className="text-xs text-[var(--c-muted)]">Nenhum boleto selecionado</span>}
                   </div>
                   <PendingAttachmentsList items={boletoArquivos} onRemove={removerArquivoBoleto} />
                   {errosCampo.boleto ? <span className="form-error">{errosCampo.boleto}</span> : null}
                 </div>
               )}
-              {exibirFormaPagamento && !usaFluxoRecargaCartao && !pagamentosFavorecidos && <div className="form-campo--linha">
-                <button type="button" className="btn btn-outline btn-sm" aria-label="Adicionar novo favorecido" onClick={iniciarDivisaoFavorecidos}>+ Favorecido</button>
+              {exibirFormaPagamento && !formaPagamentoSelecionada && !usaFluxoRecargaCartao && !pagamentosFavorecidos && <div className="form-campo--linha">
+                <AdicionarFavorecidoButton disabled={criandoSolicitacao} onClick={iniciarDivisaoFavorecidos} />
               </div>}
               {exibirFormaPagamento && pagamentosFavorecidos && <div className="form-campo--linha">
                 <PagamentosFavorecidos linhas={pagamentosFavorecidos} onChange={alterarPagamentosFavorecidos} formas={formasPagamentoDisponiveis}

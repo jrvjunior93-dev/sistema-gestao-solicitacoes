@@ -181,6 +181,9 @@ try {
       // Boleto conta como documento da medicao; upload e API sao simulados, sem escrita externa.
       const blocoPagamento = page.getByTestId('nova-solicitacao-pagamento').getByRole('group', { name: 'Pagamento', exact: true });
       const seletor = blocoPagamento.locator('input[type="file"]');
+      const adicionar = blocoPagamento.getByRole('button', { name: 'Adicionar novo favorecido', exact: true });
+      assert.equal((await adicionar.innerText()).trim(), '');
+      assert.equal(await adicionar.evaluate(el => !el.closest('label') && Boolean(el.parentElement.querySelector('input[type="file"]'))), true, 'Icone ao lado do seletor de boletos legado');
       assert.equal(await seletor.evaluate(el => el.multiple), true);
       const pdf = name => ({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\nteste') });
       await seletor.setInputFiles([pdf('boleto.pdf'), pdf('boleto-2.pdf')]);
@@ -288,6 +291,7 @@ try {
     }
     await multi.getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).click();
     const partes = multi.getByTestId('parte-favorecido');
+    assert.equal(await partes.nth(1).getByRole('button', { name: 'Adicionar novo favorecido', exact: true }).count(), 1, 'Proximo favorecido na ultima linha');
     await partes.nth(0).getByLabel('Valor do favorecido 1 *', { exact: true }).fill('300,00');
     if (novo) await multi.getByLabel('Chave PIX / Copia e Cola do favorecido 1 *', { exact: true }).fill('credor@pix');
     if (!novo) {
