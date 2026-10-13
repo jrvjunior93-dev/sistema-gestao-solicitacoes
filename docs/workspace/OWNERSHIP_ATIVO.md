@@ -3769,3 +3769,71 @@ aprovados; reserva documental encerrada e ownership liberado para publicacao.
 Snapshot tag/bundle de 50e08848 verificado. Usuario homologou dev e confirmou
 backup/timer nesta janela. Sem EC2, banco ou reinicio pelo agente; ativacao
 real ainda depende do deploy pelo usuario e smoke de producao.
+
+## Consolidacao main com checkout EC2 - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva ativa.
+- Usuario autorizou consolidar f123f9f0 (Ticket conta/estorno ja na EC2) e
+  main 4f8f02f1 (modal/troca de usuario), preservando os quatro fluxos.
+- Backup/timer confirmados nesta mesma janela. Sem EC2, banco, migrations ou
+  reinicio pelo agente; comandos de deploy serao executados pelo usuario.
+- Reservados: conflito documental OWNERSHIP_ATIVO.md, novo handoff desta
+  consolidacao e testes de integracao/permissoes se precisarem alinhar fixtures.
+- Manter os dois ancestrais no historico remoto: nao squash nem reset, para
+  permitir fast-forward seguro do checkout f123f9f0 da EC2 para main consolidada.
+## Promocao Ticket por conta e estorno independente - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: candidato integrado; aguarda preflight/health de producao.
+- Reservados: este registro, novo handoff de promocao e eventuais conflitos
+  documentais da integracao. Sem alteracao funcional adicional.
+- Base main fe6d9c5c, origem homologada refactor/frontend 31490a0d. Preservar
+  hotfixes, scripts de release e historias exclusivas da main.
+- Usuario confirmou backup recente conferido no Drive cifrado e timer ativo;
+  Ticket por Conta testado em dev. Sem novas migrations ou dependencias.
+- Snapshot local em tag backup/main-pre-ticket-conta-20261013-fe6d9c5c e bundle
+  verificado tmp/main-code-backup-20261013-ticket-conta/main-fe6d9c5c.bundle,
+  fora da EC2. SHA256: 7B48375479EF49113EEEA9C20AE98ADF01C23DFD57CABF1D741E37B19CE1C150.
+- Publicar candidato/PR draft; main/Vercel somente apos usuario conferir schema
+  somente leitura, atualizar backend-solicitacoes e retornar health de producao.
+- Nenhum banco real, migration, restart ou EC2 sera executado pelo agente.
+- Ownership liberado apos validacoes e publicacao do candidato. Continuidade:
+  docs/handoffs/2026-10-13-promocao-ticket-conta-estorno-main.md.
+
+## Estorno da fila independente de resolver divergencias - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: backend/src/routes.js; frontend/src/pages/FinanceiroFilaPagamentos.jsx;
+  backend/scripts/validarFilaEstornoPermissao.js; frontend/scripts/validarFilaInstrumentosUI.mjs;
+  docs/handoffs/2026-10-13-estorno-fila-permissao.md.
+- Escopo: exigir somente financeiro.titulos.estornar para a acao de estorno,
+  preservando acesso/escopo dos titulos e permissoes das demais acoes.
+- Sem banco real, migrations, EC2, commit, push ou deploy nesta tarefa.
+- Testes backend, seguranca/escopo, UI desktop/mobile, build e documentacao
+  aprovados. Handoff: docs/handoffs/2026-10-13-estorno-fila-permissao.md.
+- Publicacao autorizada pelo usuario na refactor/frontend, somente este ajuste;
+  sem promover main ou executar atualizacao na EC2 pelo agente.
+
+## Ticket por conta cadastrada - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: frontend/src/components/rh/RhTicketPagamentoCampos.jsx;
+  frontend/src/pages/RhDpColaboradores.jsx; frontend/src/services/rhDp.js;
+  backend/src/controllers/RhTicketController.js; backend/src/services/rhTicketService.js;
+  backend/scripts/validarRhTicketPix.js; frontend/scripts/validarRhTicketPix.mjs;
+  docs/handoffs/2026-10-13-ticket-conta-cadastrada.md.
+- Escopo: transferencia para conta cadastrada do colaborador, conferencia local,
+  titulos individuais e snapshots. Preservar Boleto/Pix, ACL, idempotencia e GEO.
+- Sem banco real, migration, EC2, commit, push ou deploy nesta tarefa.
+- Testes Boleto/Pix/Conta, escopo/regras RH, UI desktop/mobile, build e diff
+  aprovados. Handoff: docs/handoffs/2026-10-13-ticket-conta-cadastrada.md.
+- Publicacao autorizada pelo usuario na refactor/frontend; reserva documental
+  temporaria desta tarefa para commit/push e comandos dev. Sem promocao main,
+  deploy/EC2 ou escrita em banco pelo agente. outputs/ fora do commit.
+- Validacoes locais repetidas para publicacao; reserva documental encerrada,
+  ownership liberado. Atualizacao da EC2 sera executada pelo usuario.
+
+Consolidacao main/EC2: suites de Ticket/estorno/troca/modal, seguranca, escopo
+RH, navegacao, UI desktop/mobile e build aprovadas. Nenhum conflito funcional
+ou mudanca de migration/dependencia. Reserva encerrada e ownership liberado;
+publicar mantendo f123 e 4f8f02f1 como ancestrais, sem reset ou squash.
+Handoff: docs/handoffs/2026-10-13-consolidacao-main-ec2.md.

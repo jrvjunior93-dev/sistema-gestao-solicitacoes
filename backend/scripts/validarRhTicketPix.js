@@ -31,7 +31,7 @@ const model = {
   SolicitacaoFavorecido: { create: create('favorecidos') },
   CategoriaFinanceira: { findByPk: async id => ({ id }) },
   Parceiro: { findByPk: async id => ({ id, nome: 'Fornecedor' }) },
-  FormaPagamentoFinanceira: { findOne: async ({ where }) => activeForma ? { id: where.tipo === 'PIX' ? 4 : 5, nome: where.tipo, tipo: where.tipo } : null },
+  FormaPagamentoFinanceira: { findOne: async ({ where }) => activeForma ? { id: where.tipo === 'PIX' ? 4 : where.tipo === 'TRANSFERENCIA' ? 6 : 5, nome: where.tipo, tipo: where.tipo } : null },
   RhColaboradorPagamento: {},
   RhColaborador: { findAll: async ({ where, lock, attributes }) => {
     if(attributes)assert.deepEqual(Array.from(attributes),['id','obra_id']);
@@ -65,6 +65,16 @@ const model = {
     catch (e) { store = Object.fromEntries(Object.entries(backup).map(([k,v]) => [k,v.map(row)])); throw e; }
   } }
 };
+// Para Conta, executar tambem o helper financeiro real: nenhum digito truncado,
+// nenhum beneficiario/cadastro existente alterado pelo snapshot isolado.
+const beneficiarioExistente = { id:900, banco_codigo:'999', agencia:'9999', conta:'ORIGINAL',
+  update:()=>{ throw new Error('Cadastro bancario existente nao pode ser sobrescrito'); } };
+const bankSandbox = { PaymentBeneficiary: {findOne:async()=>beneficiarioExistente,create:create('beneficiarios')},
+  ValidationError:require('../src/middlewares/validation').ValidationError,
+  normalizeDigits:v=>String(v||'').replace(/\D/g,'') };
+const fechamentoSource = fs.readFileSync(path.join(__dirname,'../src/services/rhFechamentoService.js'),'utf8');
+vm.runInNewContext(fechamentoSource.slice(fechamentoSource.indexOf('async function syncFavorecidoBancarioRh('),
+  fechamentoSource.indexOf('\nfunction buildTituloRhPayload('))+'\nglobalThis.sync=syncFavorecidoBancarioRh;',bankSandbox);
 const serviceFile = path.join(__dirname, '../src/services/rhTicketService.js');
 const sandbox = { module: { exports: {} }, require(id) {
   if (id === 'sequelize') return { Op };
@@ -78,6 +88,7 @@ const sandbox = { module: { exports: {} }, require(id) {
     syncParceiroFavorecido: async p => { assert(p.favorecidoDocumento); return { id: p.colaborador.id + 20 }; },
     syncFavorecidoBancarioRh: async (p, transaction) => {
       assert.equal(transaction, tx); assert.equal(p.isolado, true);
+      if (p.banco) return bankSandbox.sync(p, transaction);
       return create('beneficiarios')({ nome: p.favorecidoNome, cpf_cnpj: p.favorecidoDocumento, pix_chave: p.chavePix }, { transaction });
     }
   };
@@ -90,6 +101,9 @@ const base = { competencia: '2026-10', colaborador_ids: [1,2], parceiro_id: 99, 
   idempotency_key: 'rh-ticket-teste-0001' };
 const pixBase = { ...base, forma_pagamento: 'PIX', parceiro_id: null, pix_revisado: true,
   pagamentos_pix: [{ colaborador_id: 1, chave_pix: 'ana@pix.test' }, { colaborador_id: 2, chave_pix: '000201' + 'A'.repeat(1000) }] };
+const contaBase = { ...base, forma_pagamento:'TRANSFERENCIA', parceiro_id:null, contas_revisadas:true,
+  pagamentos_conta:[{colaborador_id:1,banco:'001',agencia:'1234-5',conta:'123456-7',tipo_conta:'CORRENTE'},
+    {colaborador_id:2,banco:'104',agencia:'5678',conta:'98765-4',tipo_conta:'POUPANCA'}] };
 const arquivo = { originalname: 'boleto.pdf' };
 (async () => {
   reset();scope=[7];
@@ -98,6 +112,9 @@ const arquivo = { originalname: 'boleto.pdf' };
   reset();
   await assert.rejects(service.criarLoteTicket(base, null, user), /Anexe o boleto/); assert.equal(uploads, 0);
   const boleto = await service.criarLoteTicket(base, arquivo, user);
+  const hashAntigo = require('node:crypto').createHash('sha256').update(JSON.stringify({competencia:'2026-10',colaboradorIds:[1,2],
+    formaPagamento:'BOLETO',parceiroId:99,categoriaId:6,dataVencimento:service.vencimentoPadrao('2026-10'),pix:[null,null]})).digest('hex');
+  assert.equal(boleto.lote.request_hash,hashAntigo,'Hash legado de boleto preservado');
   assert.equal(boleto.total, 430.35); assert.equal(boleto.titulos.length, 1); assert.equal(boleto.titulo.forma_pagamento_id, 5);
   assert.equal(store.anexos[0].tipo, 'BOLETO'); assert.equal(store.rateios.length, 2);
   assert.deepEqual(store.rateios.map(r => r.valor_rateio), [250.1,180.25]);
@@ -105,6 +122,9 @@ const arquivo = { originalname: 'boleto.pdf' };
   await service.sincronizarTicketComSolicitacao(1, 'LIBERADO', user.id); assert.equal(store.titulos[0].status, 'ABERTO');
   reset();
   const pix = await service.criarLoteTicket(pixBase, null, user);
+  assert.equal(pix.lote.request_hash,require('node:crypto').createHash('sha256').update(JSON.stringify({competencia:'2026-10',colaboradorIds:[1,2],
+    formaPagamento:'PIX',parceiroId:null,categoriaId:6,dataVencimento:service.vencimentoPadrao('2026-10'),pix:pixBase.pagamentos_pix.map(p=>p.chave_pix)})).digest('hex'),
+    'Hash legado Pix preservado');
   assert.equal(pix.titulos.length, 2); assert.equal(uploads, 0); assert.equal(store.anexos.length, 0); assert.equal(store.rateios.length, 0);
   assert.deepEqual(store.titulos.map(t => [t.valor_original,t.obra_id,t.status,t.forma_pagamento_id,t.possui_rateio]), [[250.1,7,'PREVISAO',4,false],[180.25,8,'PREVISAO',4,false]]);
   assert.equal(store.favorecidos.length, 2); assert.equal(store.beneficiarios[1].pix_chave.length, 1006);
@@ -139,6 +159,54 @@ const arquivo = { originalname: 'boleto.pdf' };
   await assert.rejects(service.criarLoteTicket(pixBase, arquivo, user), /nao utiliza boleto/);
   activeForma = false; await assert.rejects(service.criarLoteTicket(pixBase, null, user), /ativa/);
   assert.equal(store.titulos.length, 0);
+  reset();
+  // Favorecido cadastrado junto da conta prevalece. Sem dados bancarios nela,
+  // a conta do colaborador usa o proprio titular, nao o favorecido de outro Pix.
+  colaboradores[1].pagamento.banco='104';
+  const cadastroAntes=JSON.stringify(colaboradores);
+  const conta=await service.criarLoteTicket(contaBase,null,user);
+  assert.equal(conta.total,430.35);assert.equal(conta.titulos.length,2);
+  assert.deepEqual(store.titulos.map(t=>[t.forma_pagamento_id,t.obra_id,t.valor_original,t.status,t.possui_rateio]),
+    [[6,7,250.1,'PREVISAO',false],[6,8,180.25,'PREVISAO',false]]);
+  assert.deepEqual(store.itens.map(i=>i.titulo_financeiro_id),[1,2]);
+  assert.equal(store.anexos.length,0);assert.equal(uploads,0);assert.equal(store.rateios.length,0);
+  assert.equal(store.beneficiarios[0].metodo_preferencial,'CONTA_BANCARIA');
+  assert.equal(store.beneficiarios[0].banco_codigo,'001');assert.equal(store.beneficiarios[0].agencia,'1234-5');
+  assert.equal(store.beneficiarios[0].conta,'123456-7');assert.equal(store.beneficiarios[0].tipo_conta,'CORRENTE');
+  assert.equal(store.beneficiarios[1].nome,'Bia Favorecida');
+  assert.equal(store.favorecidos[1].forma_pagamento_tipo,'TRANSFERENCIA');assert.equal(store.favorecidos[1].favorecido_chave_pix,null);
+  assert.match(store.favorecidos[1].dados_pagamento,/Banco: 104; Agencia: 5678; Conta: 98765-4/);
+  assert.match(store.titulos[0].observacoes,/Conta: 123456-7/);
+  assert.equal(JSON.parse(store.historicos[0].metadata).contas.length,2);
+  assert.equal(JSON.stringify(colaboradores),cadastroAntes);assert.equal(beneficiarioExistente.conta,'ORIGINAL');
+  assert.equal((await service.criarLoteTicket(contaBase,null,user)).idempotent_replay,true);assert.equal(store.titulos.length,2);
+  await assert.rejects(service.criarLoteTicket({...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,conta:'OUTRA'}))},null,user),/outro envio/);
+  scope=[7];await assert.rejects(service.criarLoteTicket(contaBase,null,user),/fora das obras/);scope=null;
+  await assert.rejects(service.criarLoteTicket(contaBase,null,{id:11}),/outro usuario/);
+  await assert.rejects(service.criarLoteTicket({...contaBase,idempotency_key:'outra-conta-ticket'},null,user),/ja possuem ticket/);
+  await service.sincronizarTicketComSolicitacao(1,'LIBERADO',user.id);assert(store.titulos.every(t=>t.status==='ABERTO'));
+  await service.sincronizarTicketComSolicitacao(1,'CANCELADA',user.id);assert(store.titulos.every(t=>t.status==='CANCELADO'));
+  reset();failTitle=2;await assert.rejects(service.criarLoteTicket(contaBase,null,user),/falha titulo/);
+  assert(Object.values(store).every(v=>v.length===0),'Falha de um titulo desfaz lote/beneficiarios/solicitacao');
+  reset();scope=[7];await assert.rejects(service.criarLoteTicket(contaBase,null,user),/Acesso negado/);assert.equal(store.titulos.length,0);
+  reset();
+  for(const invalid of [
+    {...contaBase,contas_revisadas:false}, {...contaBase,pagamentos_conta:[]},
+    {...contaBase,pagamentos_conta:[contaBase.pagamentos_conta[0],contaBase.pagamentos_conta[0]]},
+    {...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,colaborador_id:999}))},
+    ...['banco','agencia','conta','tipo_conta'].map(campo=>({...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,[campo]:''}))})),
+    ...[['banco',11],['agencia',21],['conta',31]].map(([campo,n])=>({...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,[campo]:'1'.repeat(n)}))})),
+    {...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,tipo_conta:'OUTRO'}))},
+    {...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,conta:123}))},
+    {...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,conta:'1\n2'}))},
+    {...contaBase,pagamentos_conta:contaBase.pagamentos_conta.map(p=>({...p,empresa_id:999}))}
+  ]) await assert.rejects(service.criarLoteTicket(invalid,null,user));
+  await assert.rejects(service.criarLoteTicket(contaBase,arquivo,user),/nao utiliza boleto/);assert.equal(uploads,0);
+  activeForma=false;await assert.rejects(service.criarLoteTicket(contaBase,null,user),/ativa/);assert.equal(store.titulos.length,0);
+  reset();delete colaboradores[1].pagamento.banco;
+  const unica=await service.criarLoteTicket({...contaBase,colaborador_ids:[2],pagamentos_conta:[contaBase.pagamentos_conta[1]]},null,user);
+  assert.match(unica.solicitacao.dados_pagamento,/Conta: 98765-4/);assert.equal(unica.solicitacao.favorecido_chave_pix,null);
+  assert.equal(store.beneficiarios[0].nome,'Bia','Fallback sem conta de pagamento usa o proprio colaborador');
   // Legado: item sem titulo continua usando o titulo unico do lote.
   reset(); await service.criarLoteTicket(base, arquivo, user); store.itens.forEach(i => { i.titulo_financeiro_id = null; });
   store.lotes[0].forma_pagamento = null; store.lotes[0].request_hash = null;
@@ -172,6 +240,13 @@ const arquivo = { originalname: 'boleto.pdf' };
   const req = {user,body:{...pixBase,colaborador_ids:'[1,2]',pagamentos_pix:JSON.stringify(pixBase.pagamentos_pix),pix_revisado:'true'}};
   await controllerSandbox.module.exports.create(req,res);assert.equal(res.statusCode,201);assert.equal(parsed.pix_revisado,true);assert.equal(parsed.pagamentos_pix.length,2);
   parsed=null;await controllerSandbox.module.exports.create({...req,body:{...req.body,pagamentos_pix:'{' }},res);assert.equal(res.statusCode,400);assert.equal(parsed,null);
+  const reqConta={user,body:{...contaBase,colaborador_ids:'[1,2]',pagamentos_conta:JSON.stringify(contaBase.pagamentos_conta),contas_revisadas:'true'}};
+  await controllerSandbox.module.exports.create(reqConta,res);assert.equal(res.statusCode,201);assert.equal(parsed.contas_revisadas,true);assert.equal(parsed.pagamentos_conta.length,2);
+  for(const malformado of ['{','{}','null']) {
+    parsed=null;await controllerSandbox.module.exports.create({...reqConta,body:{...reqConta.body,pagamentos_conta:malformado}},res);
+    assert.equal(res.statusCode,400);assert.equal(parsed,null);
+  }
   blocked=true;await controllerSandbox.module.exports.create(req,res);assert.equal(parsed,null);assert.equal(res.body.erro,'Obra travada');
-  console.log('OK: ticket Boleto/Pix, documento obrigatorio/BOLETO, titulos/snapshots individuais, centavos/lotacao/GEO, status por item, legado, ACL, replay e rollback. Sem banco/S3.');
+  await controllerSandbox.module.exports.create(reqConta,res);assert.equal(parsed,null);assert.equal(res.body.erro,'Obra travada');
+  console.log('OK: ticket Boleto/Pix/Conta, contas revisadas sem truncamento, helper financeiro real, titulos/snapshots individuais, cadastro intacto, centavos/lotacao/GEO, legado/hash, ACL, replay e rollback. Sem banco/S3.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

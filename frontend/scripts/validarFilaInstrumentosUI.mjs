@@ -31,13 +31,15 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
     if (id === stub + 'auth') return `export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
-    if (id === stub + 'permissoes') return `export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&window.__noReverse),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly;`;
+    if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
+      const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
       export const getFilaPagamentos=async({status})=>{
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
+        row.somente_consulta=onlyConsult;
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
         if(new URLSearchParams(location.search).has('dados')) row.titulo.observacoes=window.__paymentText || ('PIX: 000201ABC/Pix@EXEMPLO.COM +'+'aB:0123456789/'.repeat(500));
@@ -570,6 +572,24 @@ try {
     assert.equal(reversed.id, 1); assert.equal(reversed.motivo, 'Correção QA'); assert(reversed.key);
     assert.equal(await page.evaluate(() => window.__reverseCalls), 1, 'Duplo clique nao duplica estorno');
   }
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('http://127.0.0.1:5308/qa-fila?sem-resolver=1');
+    await forma.waitFor(); await page.evaluate(() => { window.__paid = true; });
+    await page.getByRole('button', { name: /^Baixados/ }).click();
+    await page.getByRole('button', { name: 'Estornar baixa', exact: true }).click();
+    await page.waitForFunction(() => window.__reversed);
+    assert.equal(await page.evaluate(() => window.__reverseCalls), 1, 'Estornar movimento basta, sem resolver divergencias');
+    await page.goto('http://127.0.0.1:5308/qa-fila?sem-resolver=1&naopago=1&status=NAO_PAGO');
+    await page.getByText('TIT-QA', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Devolver para fila', exact: true }).count(), 0, 'Estorno nao libera resolver pendencias');
+  }
+  await page.goto('http://127.0.0.1:5308/qa-fila?somente-consulta=1');
+  await forma.waitFor(); await page.evaluate(() => { window.__paid = true; });
+  await page.getByRole('button', { name: /^Baixados/ }).click();
+  await page.getByText('Rejeitado pelo proprietário · somente consulta', { exact: true }).waitFor();
+  await page.getByText('BAIXADO', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Estornar baixa', exact: true }).count(), 0, 'Registro somente consulta nao permite estorno');
   await page.goto('http://127.0.0.1:5308/qa-fila?sem-estorno=1');
   await forma.waitFor(); await page.evaluate(() => { window.__paid = true; window.__noReverse = true; });
   await page.getByRole('button', { name: /^Baixados/ }).click();

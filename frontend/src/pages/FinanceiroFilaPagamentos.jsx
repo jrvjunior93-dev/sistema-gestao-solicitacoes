@@ -1014,7 +1014,7 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function estornar(row) {
-    if (!canResolve || !hasPermissao(user, 'financeiro.titulos.estornar') || row.somente_consulta) return;
+    if (!hasPermissao(user, 'financeiro.titulos.estornar') || row.somente_consulta) return;
     await executarOperacao(async () => {
       const grupo = row.instrumento_pagamento_json?.liquidacao_id;
       const { ok, texto } = await confirmar({ titulo: grupo ? 'Estornar o grupo completo de pagamento?' : `Estornar baixa de ${row.titulo?.codigo || row.id}?`,
@@ -1430,7 +1430,7 @@ export default function FinanceiroFilaPagamentos() {
                         {editable && canSettle ? (
                           <button className="btn btn-primary btn-sm" type="button" onClick={() => settle([row])} disabled={busy}>Registrar baixa</button>
                         ) : null}
-                        {['BAIXADO', 'RESOLVIDO'].includes(row.status) && !row.instrumento_pagamento_json?.estorno && canResolve && hasPermissao(user, 'financeiro.titulos.estornar') && !row.somente_consulta && row.movimento_financeiro_id ? (
+                        {['BAIXADO', 'RESOLVIDO'].includes(row.status) && !row.instrumento_pagamento_json?.estorno && hasPermissao(user, 'financeiro.titulos.estornar') && !row.somente_consulta && row.movimento_financeiro_id ? (
                           <button className="btn btn-outline btn-sm" type="button" disabled={busy} onClick={() => estornar(row)}>Estornar baixa</button>
                         ) : null}
                         {row.status === 'PENDENTE' && canReport ? (

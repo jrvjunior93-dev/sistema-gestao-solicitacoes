@@ -673,7 +673,7 @@ export async function getRhTicketStatus(competencia, colaboradorIds = []) {
 }
 
 export async function gerarLoteRhTicket({ competencia, parceiro_id, categoria_financeira_id, data_vencimento, colaborador_ids, boleto, idempotency_key,
-  forma_pagamento = 'BOLETO', pagamentos_pix = [], pix_revisado = false }) {
+  forma_pagamento = 'BOLETO', pagamentos_pix = [], pix_revisado = false, pagamentos_conta = [], contas_revisadas = false }) {
   const formData = new FormData();
   formData.append('competencia', competencia);
   if (parceiro_id) formData.append('parceiro_id', parceiro_id);
@@ -685,6 +685,10 @@ export async function gerarLoteRhTicket({ competencia, parceiro_id, categoria_fi
   if (forma_pagamento === 'PIX') {
     formData.append('pagamentos_pix', JSON.stringify(pagamentos_pix));
     formData.append('pix_revisado', String(pix_revisado));
+  }
+  if (forma_pagamento === 'TRANSFERENCIA') {
+    formData.append('pagamentos_conta', JSON.stringify(pagamentos_conta));
+    formData.append('contas_revisadas', String(contas_revisadas));
   }
   if (boleto && forma_pagamento === 'BOLETO') formData.append('boleto', boleto);
   const response = await fetch(`${API_URL}/rh/tickets`, { method: 'POST', headers: authHeaders(), body: formData });
