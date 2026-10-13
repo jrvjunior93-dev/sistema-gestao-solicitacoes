@@ -3725,3 +3725,15 @@ do comando de push atomico no terminal autenticado do usuario; sem deploy.
 - Testes do modal/formas/negociacao, seguranca de acesso direto e build aprovados.
   Falha anterior da tabela de rotas financeiras registrada no handoff
   docs/handoffs/2026-10-13-promocao-modal-titulo-main.md. Publicacao seletiva via PR.
+
+## Promocao troca de usuario homologada - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva documental ativa.
+- Usuario homologou d17c3aa7 em dev e autorizou promover esta correcao para main
+  e comandos para habilitar somente SUPERADMIN em producao. Backup recente no
+  Drive cifrado conferido e timer ativo confirmados nesta janela.
+- Base main 50e08848. Integracao seletiva dos 15 arquivos da troca de usuario,
+  testes e handoff; nao incluir Ticket/estorno independentes da branch dev.
+- Reservados: arquivos da troca ja homologados, OWNERSHIP_ATIVO.md e handoff.
+- Sem EC2, banco real, migration, seeds ou reinicio pelo agente. Publicacao
+  com snapshot de codigo, testes repetidos e verificacao dos deploys Vercel.
