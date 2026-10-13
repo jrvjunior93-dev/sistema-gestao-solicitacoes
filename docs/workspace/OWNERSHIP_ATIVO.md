@@ -3712,3 +3712,16 @@ Integracao RH local validada sem conflitos; seis arquivos no delta da main,
 sem backend/migrations/dependencias. Testes RH, documentacao e build aprovados.
 Reserva documental encerrada e ownership liberado. Publicacao remota depende
 do comando de push atomico no terminal autenticado do usuario; sem deploy.
+
+## Promocao seletiva do modal de titulo - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva concluida e liberada.
+- Arquivos: FinanceiroCard.jsx, validarTituloSolicitacaoAtualizacao.mjs,
+  handoff desta promocao e este registro.
+- Base: origin/main fe6d9c5c. Origem homologada: e5dd4c9f, somente correcao
+  do rascunho durante SSE/fallback. Nao incluir a promocao Ticket/estorno pendente.
+- Backup/timer confirmados pelo usuario nesta janela. Tag/bundle da mesma main
+  conferidos localmente; sem EC2, banco, migrations ou reinicio pelo agente.
+- Testes do modal/formas/negociacao, seguranca de acesso direto e build aprovados.
+  Falha anterior da tabela de rotas financeiras registrada no handoff
+  docs/handoffs/2026-10-13-promocao-modal-titulo-main.md. Publicacao seletiva via PR.

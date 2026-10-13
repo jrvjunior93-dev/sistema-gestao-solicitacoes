@@ -1128,6 +1128,7 @@ export default function FinanceiroCard({
   const [credorSelecionado, setCredorSelecionado] = useState(solicitacao?.parceiro || null);
   const [parceiroFinanceiro, setParceiroFinanceiro] = useState(solicitacao?.parceiro || null);
   const [form, setForm] = useState(() => buildDefaultForm(solicitacao));
+  const solicitacaoDoFormularioRef = useRef(solicitacao?.id);
   const [selectedPartner, setSelectedPartner] = useState(solicitacao?.parceiro || null);
   const [partnerSearch, setPartnerSearch] = useState('');
   const [partnerOptions, setPartnerOptions] = useState([]);
@@ -1222,12 +1223,22 @@ export default function FinanceiroCard({
   }
 
   useEffect(() => {
+    const mudouRegistro = String(solicitacaoDoFormularioRef.current) !== String(solicitacao?.id);
+    solicitacaoDoFormularioRef.current = solicitacao?.id;
+    // SSE e fallback substituem o objeto mesmo sem mudar o registro. Nao
+    // sobrescrever o rascunho aberto; a validacao usa os dados atuais no envio.
+    if (!mudouRegistro && (modalOpen || saving)) return;
+    if (mudouRegistro) {
+      setModalOpen(false);
+      setCredorModalOpen(false);
+      setCadastroCredorModalOpen(false);
+    }
     resetModalState(solicitacao);
     setCredorSelecionado(solicitacao?.parceiro || null);
     setParceiroFinanceiro(solicitacao?.parceiro || null);
     setCredorSearch('');
     setCredorOptions([]);
-  }, [solicitacao]);
+  }, [solicitacao, modalOpen, saving]);
 
   useEffect(() => {
     const parceiroId = solicitacao?.parceiro?.id;
@@ -2025,6 +2036,9 @@ export default function FinanceiroCard({
   }
 
   function validarGeracaoConta() {
+    if (roundCurrency(currencyToNumber(form.valor)) !== roundCurrency(Number(solicitacao?.valor || 0))) {
+      return 'O valor da solicitacao mudou durante o preenchimento. Feche e reabra o formulario para conferir os dados atualizados antes de criar o titulo.';
+    }
     if (!form.empresa_id) {
       return 'A obra/centro de custo da solicitacao nao possui empresa vinculada.';
     }
