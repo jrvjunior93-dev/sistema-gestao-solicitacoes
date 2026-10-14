@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao saldo contratual e transferencia OBRA para main - 2026-10-14
+
+- Sessao codex-promocao-saldo-transferencia-main-20261014, sem delegacao.
+- Usuario autorizou promocao e confirmou homologacao em dev, backup conferido
+  no Drive cifrado e timer ativo. Main c5beb5b9, refactor homologada 9bc50308.
+- Reserva: conflito documental de OWNERSHIP_ATIVO e handoff desta promocao;
+  incorporar commit homologado sem remover hotfixes/scripts/evidencias da main.
+- Sem schema/dependencia/flag nova, .env, banco real, EC2 ou reinicio pelo agente.
+  Caixa nao commitado em outro worktree e outputs/ continuam fora do release.
+- Tag/bundle do codigo anterior, testes do candidato, PR para main e comandos
+  guardados ao usuario, reiniciando somente backend-solicitacoes.
+
 ## Promocao DP global e salario para main - 2026-10-14
 
 - Sessao codex-promocao-dp-global-salario-main-20261014, sem delegacao.
