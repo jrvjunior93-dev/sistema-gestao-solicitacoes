@@ -127,6 +127,7 @@ import {
   canViewFinanceiroRelatorio,
   hasPermissao,
   canViewRhDpColaboradores,
+  canViewRhDpSolicitacoesGlobais,
   canAccessRhDpCadastroColaboradores,
   canViewRhDpDocumentos,
   canViewRhDpObrigacoes,
@@ -580,6 +581,7 @@ export const NAV_MODULES = [
         obras/centros; cadastro e fechamentos continuam em ações e Ctrl+K.
       */
       { id: 'rhdp-pessoal', ordem: 10, label: 'Obras / Centros de Custo', desc: 'Colaboradores, solicitações e pagamentos por local.', icon: HiOutlineUserGroup, to: '/rh-dp/pessoal', can: (user) => canViewRhDpColaboradores(user) },
+      { id: 'rhdp-solicitacoes-globais', ordem: 15, label: 'Solicitações globais', desc: 'Solicitações de todas as obras e centros de custo.', icon: HiOutlineClipboardDocumentList, to: '/rh-dp/pessoal?visao=global&aba=solicitacoes', can: (user) => canViewRhDpSolicitacoesGlobais(user) },
       { id: 'rhdp-documentos', ordem: 20, label: 'Documentos', desc: 'Documentos globais dos colaboradores.', icon: HiOutlineFolderOpen, to: '/rh-dp/documentos', can: (user) => canViewRhDpDocumentos(user) },
       { id: 'rhdp-relatorios', ordem: 30, label: 'Relatórios', desc: 'Relatórios globais de colaboradores.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios', can: (user) => canAccessRhDpDashboard(user) },
       { id: 'rhdp-importacoes', ordem: 40, label: 'Importações', desc: 'Importações de jornada e eventos.', icon: HiOutlineCloudArrowUp, to: '/rh-dp/importacoes', can: (user) => canExecuteRhDpImportacoes(user) }

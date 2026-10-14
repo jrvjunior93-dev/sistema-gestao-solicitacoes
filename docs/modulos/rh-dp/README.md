@@ -10,9 +10,11 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 ## Regras
 
-- Entrada em Pessoal para DP/administradores autorizados abre solicitacoes globais.
-  Obras/Centros de Custo continua disponivel para consulta local; usuarios de OBRA
-  conservam o escopo estrito de suas obras, inclusive se acumularem setor DP.
+- No hub de Colaboradores, Solicitacoes globais e um card separado para DP e
+  demais usuarios com acesso global autorizado. Obras/Centros de Custo abre os
+  cards de locais; abrir um local mostra seus colaboradores e suas solicitacoes.
+  Usuarios de OBRA conservam o escopo estrito de suas obras, inclusive se
+  acumularem setor DP; nao recebem o card global.
 - Rascunho de pagamento por solicitacao e privado do autor, inclusive frente ao
   superadmin. Destaque em colaborador segue a mesma visibilidade da lista e do modal.
   Pagamentos coletivos sao reconhecidos pelas linhas do snapshot; consultas nao

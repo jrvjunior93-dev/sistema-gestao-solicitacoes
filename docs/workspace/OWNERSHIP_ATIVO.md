@@ -1,5 +1,25 @@
 # Ownership Ativo
 
+## RH/DP: cards global e locais no hub - 2026-10-14
+
+- Agente desta conversa, sem delegacao; implementacao local concluida, ownership liberado.
+- Pedido: card Solicitacoes globais no hub de Colaboradores, separado de
+  Obras/Centros de Custo; esta porta abre cards de locais e abas locais.
+- Reserva: frontend/src/navigation/navigationConfig.jsx,
+  frontend/src/utils/acessoProduto.js, frontend/src/pages/RhDpPessoal.jsx,
+  frontend/scripts/validarRhPessoalPorLocal.mjs, teste novo do hub,
+  backend/src/generated/navegacaoFonteUnica.cjs (regeneracao pelo script),
+  README RH/DP e handoff. Sem redesenho nem mudar endpoints/financeiro.
+- Branch codex/rhdp-hub-global-locais-20261014 sobre commit 22120eaa.
+- Preservar escopo OBRA, permissoes, rascunhos privados e ajustes salariais.
+  Sem banco real, migration, EC2, commit/push ou promocao main nesta etapa.
+- Validacao: hub real em desktop/mobile, card global/local, abas por obra/centro,
+  reload/voltar, teclado, ACL negativa, catalogo/atalhos, build e docs.
+  Handoff: docs/handoffs/2026-10-14-rhdp-hub-global-locais.md.
+- Usuario autorizou commit/push deste ajuste na refactor/frontend e comandos
+  para EC2 dev. Reserva documental para conferencia/staging/publicacao, liberada
+  apos validacoes. Sem outputs/, main, migration, banco real ou reinicio pelo agente.
+
 ## DP: consulta global e jornada nas listas - 2026-10-14
 
 - Agente desta conversa, sem delegacao; implementacao local concluida, ownership liberado.

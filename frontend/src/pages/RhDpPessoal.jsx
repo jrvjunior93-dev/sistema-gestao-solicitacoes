@@ -66,6 +66,7 @@ import {
   canAccessRhDpDashboard,
   canManageRhDpColaboradores,
   canAccessRhDpCadastroColaboradores,
+  canViewRhDpSolicitacoesGlobais,
   canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   hasAnyExplicitPermissao,
@@ -429,6 +430,7 @@ export default function RhDpPessoal() {
   const podeVerEventosRecorrentes = canViewRhDpEventosRecorrentes(user);
   const podeVerFechamentos = canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO');
   const usuarioDoDp = userBelongsToDpSetor(user);
+  const podeVerSolicitacoesGlobais = canViewRhDpSolicitacoesGlobais(user);
   const porLocal = !usuarioDoDp && !isBusinessAdmin(user);
   const localId = parametros.get('local_id') || '';
   const localSelecionado = obras.find((item) => String(item.id) === localId);
@@ -1262,18 +1264,18 @@ export default function RhDpPessoal() {
   }
   function voltarAosLocais() {
     setBusca(''); setColaboradores([]); setMarcados({ obra_id: new Set() });
-    setParametros(porLocal ? {} : { visao: 'locais' });
+    setParametros({});
   }
   function abrirSolicitacoesGlobais() {
+    if (!podeVerSolicitacoesGlobais) return;
     setBusca(''); setMarcados({ obra_id: new Set() });
-    setParametros({ aba: 'solicitacoes' });
+    setParametros({ visao: 'global', aba: 'solicitacoes' });
   }
   if (!parametros.get('solicitacao') && !localSelecionado
-    && (!parametros.get('aba') || localId)
-    && (porLocal || localId || parametros.get('visao') === 'locais')) {
+    && (!parametros.get('aba') || localId)) {
     return <Pagina className="rhdp-page rh-pessoal-page">
       <PageHeader titulo="Pessoal" descricao="Obras / Centros de Custo" secundarias={[
-        ...(!porLocal ? [{ rotulo: 'Solicitações de todas as obras', onClick: abrirSolicitacoesGlobais }] : []),
+        ...(podeVerSolicitacoesGlobais ? [{ rotulo: 'Solicitações de todas as obras', onClick: abrirSolicitacoesGlobais }] : []),
         { rotulo: 'Atualizar', onClick: carregar, desabilitada: carregando },
         ...(canAccessRhDpCadastroColaboradores(user) ? [{ rotulo: 'Cadastro de colaboradores', onClick: () => navigate('/rh-dp/colaboradores') }] : []),
         ...(podeVerFechamentos ? [{ rotulo: 'Fechamentos', onClick: () => navigate('/rh-dp/fechamentos') }] : [])
@@ -1294,16 +1296,17 @@ export default function RhDpPessoal() {
   return (
     <Pagina className="rhdp-page rh-pessoal-page">
       <PageHeader
-        titulo={localSelecionado ? 'Gestão de Colaboradores' : 'Pessoal'}
+        titulo={localSelecionado ? 'Gestão de Colaboradores'
+          : podeVerSolicitacoesGlobais && abaAtiva === 'solicitacoes' ? 'Solicitações globais' : 'Pessoal'}
         contagem={contagemDaAba}
         descricao={localSelecionado ? `${localSelecionado.codigo} · ${localSelecionado.nome}`
-          : !porLocal && abaAtiva === 'solicitacoes' ? 'Solicitações de todas as obras / centros de custo'
+          : podeVerSolicitacoesGlobais && abaAtiva === 'solicitacoes' ? 'Solicitações de todas as obras / centros de custo'
           : ABAS.find((aba) => aba.id === abaAtiva)?.apoio}
         acaoPrincipal={abaAtiva === 'colaboradores' && podeAbrir
           ? { rotulo: 'Pedir admissao', onClick: () => novoPedido('ADMISSAO') }
           : undefined}
         secundarias={[
-          ...(!porLocal && localSelecionado ? [{ rotulo: 'Solicitações de todas as obras', onClick: abrirSolicitacoesGlobais }] : []),
+          ...(podeVerSolicitacoesGlobais && localSelecionado ? [{ rotulo: 'Solicitações de todas as obras', onClick: abrirSolicitacoesGlobais }] : []),
           ...(!porLocal || localSelecionado ? [{ rotulo: localSelecionado ? 'Voltar para Obras' : 'Obras / Centros de Custo', onClick: voltarAosLocais }] : []),
           ...acoesDaAba]}
       />
