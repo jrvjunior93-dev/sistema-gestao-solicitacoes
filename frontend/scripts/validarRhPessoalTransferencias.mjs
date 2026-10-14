@@ -16,14 +16,14 @@ obra_aprovadora_id:1,situacao:'ABERTA',nao_lida:true,pode_decidir:true,pode_canc
 const colaboradores=Array.from({length:51},(_,i)=>({id:i+7,nome:i===0?'Ana Teste':i===1?'Sem Local':i===50?'Zilda Teste':'Colaborador '+String(i).padStart(2,'0'),matricula:'M'+(i+7),cargo:'Pedreira',obra_id:i===1?null:1,obra:i===1?null:obras[0]}));
 export async function rhTransferencias(path='',opts={}){
 if(path==='/leituras')return {};
-if(path==='/configuracao')return {obras,obras_responsavel_ids:[1]};
+if(path==='/configuracao')return {obras,obras_responsavel_ids:location.search?[]:[1],obras_solicitacao_ids:location.search.includes('comum')?[1]:location.search.includes('dp')?[]:[1],bypass_decisao:location.search.includes('dp'),acesso_global:location.search.includes('dp')};
 if(path==='/diretorio'){
 const busca=String(opts.params?.busca||'').toLowerCase();const pagina=Number(opts.params?.pagina||1);
 window.consultasDiretorio=[...(window.consultasDiretorio||[]),{busca,pagina}];
 const itens=colaboradores.filter(c=>[c.nome,c.matricula,c.cargo].some(v=>v.toLowerCase().includes(busca)));
 return {itens:itens.slice((pagina-1)*50,pagina*50),total:itens.length,pagina};}
 if(opts.method==='POST'){window.envios=(window.envios||[]);window.envios.push({path,...opts});await new Promise(r=>setTimeout(r,200));return {id:10};}
-if(path==='/10')return s;
+if(path==='/10')return {...s,pode_decidir:!location.search.includes('comum')};
 return {itens:[s],total:1,pagina:1,total_paginas:1,nao_lidas:1};}`;
 const server = await createServer({ root, configFile: false, logLevel: 'error', server: { host: '127.0.0.1', port: 0 },
   plugins: [{ name: 'fixture-rh-transferencia', enforce: 'pre',
@@ -31,7 +31,7 @@ const server = await createServer({ root, configFile: false, logLevel: 'error', 
     async load(id) { if (id === '\0fixture-rh-transferencia.jsx') return transformWithEsbuild(fixture, 'fixture.jsx', { loader: 'jsx', jsx: 'transform' }); },
     transform(code, id) { if (id.endsWith('/src/services/rhDp.js')) return mocks; },
     configureServer(s) { s.middlewares.use(async (req, res, next) => {
-      if (req.url !== '/fixture') return next();
+      if (req.url.split('?')[0] !== '/fixture') return next();
       res.setHeader('Content-Type', 'text/html');
       res.end(await s.transformIndexHtml('/fixture', '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/fixture.jsx"></script></body></html>'));
     }); }
@@ -94,5 +94,25 @@ try {
   await page.getByRole('dialog', { name: 'Solicitar transferência entre obras' }).waitFor({ state: 'hidden' });
   assert.equal((await page.evaluate(() => window.envios)).at(-1).data.colaborador_id, 8);
   assert.deepEqual(errors, []);
+  for (const perfil of ['comum', 'dp']) {
+    const outra = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+    await outra.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
+    await outra.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture?${perfil}`);
+    await outra.addStyleTag({ path: path.join(root, 'dist/assets', css) });
+    await outra.getByText('Ana Teste', { exact: true }).first().waitFor();
+    if (perfil === 'comum') {
+      await outra.getByRole('button', { name: 'Solicitar transferência', exact: true }).first().click();
+      await outra.getByLabel('Obra de destino', { exact: true }).selectOption('2');
+      await outra.getByLabel('Justificativa', { exact: true }).fill('Solicitado por usuario comum da obra');
+      assert.equal(await outra.getByRole('button', { name: 'Confirmar transferência', exact: true }).count(), 0, 'Usuario comum nao transfere automaticamente');
+      await outra.getByRole('button', { name: 'Enviar para aprovação', exact: true }).click();
+      await outra.getByRole('dialog', { name: 'Solicitar transferência entre obras' }).waitFor({ state: 'hidden' });
+      assert.equal(await outra.evaluate(() => window.envios.length), 1);
+    }
+    await outra.getByRole('tab', { name: /Transferências das minhas obras|Transferências entre obras/ }).click();
+    await outra.getByRole('button', { name: 'Abrir', exact: true }).click();
+    assert.equal(await outra.getByRole('button', { name: 'Aprovar transferência', exact: true }).count(), perfil === 'dp' ? 1 : 0);
+    await outra.close();
+  }
   console.log('OK: transferencia na UI, diretorio global paginado desde a abertura, busca, envio e responsividade desktop/mobile. Sem API externa.');
 } finally { await browser.close(); await server.close(); }

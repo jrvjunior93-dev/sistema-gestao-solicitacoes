@@ -12,6 +12,7 @@ import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import PendingAttachmentsList from '../attachments/PendingAttachmentsList';
 import PagamentosFavorecidos, { novaParteFavorecido, payloadFavorecidos, erroDivisaoFavorecidos, somarValoresFavorecidos } from '../solicitacoes/PagamentosFavorecidos';
 import { formatCurrencyInput } from '../../utils/formatters';
+import ReprogramarSaldoContrato from './ReprogramarSaldoContrato';
 
 /**
  * Bloco de MEDICAO (wireframe 2), montado dentro da Nova Solicitacao quando o contrato
@@ -378,6 +379,10 @@ export default function BlocoMedicaoContrato({
         </div>
       )}
 
+      {dados?.contrato?.medivel && saldo?.saldo > 0 && <ReprogramarSaldoContrato
+        key={contratoId} contratoId={contratoId} onConcluido={novosDados => setDados(novosDados)}
+      />}
+
       {!carregando && parcelas.length === 0 && !erro && (
         <p className="text-xs" style={{ color: 'var(--c-muted)' }}>
           Este contrato não possui parcelas para medir.
@@ -400,6 +405,7 @@ export default function BlocoMedicaoContrato({
               render: (p) => (
                 <input
                   type="checkbox"
+                  aria-label={`Medir parcela ${p.numero}`}
                   checked={Boolean(selecao[p.id]?.marcada)}
                   // Quitado e parcialmente pago ficam fechados: o saldo ja foi
                   // redistribuido no pagamento (PI-7).

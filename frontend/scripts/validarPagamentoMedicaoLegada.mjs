@@ -65,6 +65,8 @@ const modules = {
   };`,
   tiposSubContrato: 'export const getTiposSubContrato = async () => [];',
   contratos: `export const getContratos = async () => ${JSON.stringify(contratos)};
+    export const getSaldoReprogramacaoContrato = async () => ({ pode_reprogramar: false });
+    export const reprogramarSaldoContrato = async () => { throw new Error('Nao usar reprogramacao em medicao legada'); };
     export const getContratoParcelas = async () => ({
       contrato: { id: 11, codigo: 'CT-NOV', fluxo_novo: true, contratados: [{ id: 71, nome: 'Credor QA', chave_pix: 'credor@pix' }] },
       saldo: { saldo: 500, comprometido: 0 },

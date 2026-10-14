@@ -276,6 +276,22 @@ export async function getContratoParcelas(id) {
   return json;
 }
 
+export async function getSaldoReprogramacaoContrato(id) {
+  const res = await fetch(`${API_URL}/contratos/${id}/saldo-reprogramacao`, { headers: authHeaders(), cache: 'no-store' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Erro ao consultar o saldo para reprogramação.');
+  return json;
+}
+
+export async function reprogramarSaldoContrato(id, data) {
+  const res = await fetch(`${API_URL}/contratos/${id}/saldo-reprogramacao`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Erro ao reprogramar o saldo do contrato.');
+  return json;
+}
+
 export async function getContratoDetalheOperacional(id) {
   const res = await fetch(`${API_URL}/contratos/${id}/detalhe-operacional`, {
     headers: authHeaders()
