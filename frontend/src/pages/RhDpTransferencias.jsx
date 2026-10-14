@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Avisos, TabelaPadrao, useAvisos, useConfirmacao } from '../components/padrao';
+import { Avisos, BarraFiltros, TabelaPadrao, alternarValorFiltro, useAvisos, useConfirmacao } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
 import { rhTransferencias } from '../services/rhDp';
 import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
@@ -10,6 +10,11 @@ import '../styles/rh-pessoal-atividade.css';
 const data = v => v ? new Date(v).toLocaleString('pt-BR') : '—';
 const dataDia = v => v ? new Date(`${String(v).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—';
 const paginaVazia = { itens: [], total: 0, pagina: 1, limite: 20, total_paginas: 1, nao_lidas: 0 };
+const filtrosVazios = { busca: '', situacoes: [], origem_id: [], destino_id: [] };
+const situacoesFiltro = [
+  ['ABERTA', 'Aberta (aguardando aprovação)'], ['RASCUNHO', 'Rascunho'],
+  ['APROVADA', 'Aprovada'], ['REJEITADA', 'Rejeitada'], ['CANCELADA', 'Cancelada']
+].map(([valor, rotulo]) => ({ valor, rotulo }));
 
 export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
   const { avisos, avisar, fechar } = useAvisos();
@@ -23,6 +28,9 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
   const [buscaAplicada, setBuscaAplicada] = useWorkspaceState('transferencias:buscaAplicada', '');
   const [paginaDiretorio, setPaginaDiretorio] = useWorkspaceState('transferencias:paginaDiretorio', 1);
   const [paginaSalva, setPaginaSalva] = useWorkspaceState('transferencias:pagina', 1);
+  const [filtros, setFiltros] = useWorkspaceState('transferencias:filtros', filtrosVazios);
+  const filtrosRef = useRef(filtros);
+  const timerBusca = useRef(null);
   const [carregando, setCarregando] = useState(false);
   const [carregandoTransferencias, setCarregandoTransferencias] = useState(false);
   const [formInputs, setFormInputs] = useWorkspaceState('transferencias:inputs', null);
@@ -64,11 +72,10 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     const destino = Number(formulario.obra_destino_id);
     const responsavelOrigem = config.obras_responsavel_ids.includes(origem);
     const responsavelDestino = config.obras_responsavel_ids.includes(destino);
-    const automatico = Boolean(destino && responsavelDestino && (!origem || responsavelOrigem));
+    const automatico = Boolean(destino && (config.transferencia_administrativa || (responsavelDestino && (!origem || responsavelOrigem))));
     const solicitanteOrigem = idsSolicitacao.includes(origem);
     const solicitanteDestino = idsSolicitacao.includes(destino);
-    const solicitante = responsavelOrigem ? origem : responsavelDestino ? destino
-      : solicitanteOrigem ? origem : solicitanteDestino ? destino : null;
+    const solicitante = solicitanteOrigem ? origem : solicitanteDestino ? destino : null;
     return { origem, destino, responsavelOrigem, responsavelDestino, automatico, solicitante,
       solicitanteOrigem, aprovadora: automatico ? null : (!origem ? destino : solicitante === origem ? destino : origem) };
   };
@@ -80,7 +87,10 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     setPaginaSalva(pagina);
     setCarregandoTransferencias(true);
     try {
-      const resultado = await rhTransferencias('', { params: { grupo: 'TODAS', pagina, limite: 20, obra_id: obraId } });
+      const recorte = filtrosRef.current;
+      const resultado = await rhTransferencias('', { params: { grupo: 'TODAS', pagina, limite: 20, obra_id: obraId,
+        busca: recorte.busca.trim() || undefined, situacoes: recorte.situacoes.join(',') || undefined,
+        origem_id: recorte.origem_id[0] || undefined, destino_id: recorte.destino_id[0] || undefined } });
       if (!consultaTransferencias.isCurrent(token)) return null;
       if (resultado.pagina > resultado.total_paginas) {
         return atualizar(resultado.total_paginas);
@@ -96,6 +106,24 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
       if (consultaTransferencias.isCurrent(token)) setCarregandoTransferencias(false);
     }
   }, [avisar, obraId, consultaTransferencias.begin, consultaTransferencias.isCurrent, setPaginaSalva]);
+
+  function filtrar(proximo, espera = 0) {
+    filtrosRef.current = proximo;
+    setFiltros(proximo);
+    paginaTransferencias.current = 1;
+    setPaginaSalva(1);
+    consultaTransferencias.begin(); // Uma resposta anterior nao pode desfazer o filtro novo.
+    setCarregandoTransferencias(true);
+    clearTimeout(timerBusca.current);
+    if (espera) timerBusca.current = setTimeout(() => atualizar(1), espera);
+    else atualizar(1);
+  }
+  useEffect(() => () => clearTimeout(timerBusca.current), [obraId]);
+
+  const filtrosAtivos = Object.fromEntries(['situacoes', 'origem_id', 'destino_id']
+    .map(id => [id, new Set(filtros[id])]));
+  const opcoesLocais = config.obras.map(o => ({ valor: String(o.id),
+    rotulo: `${o.codigo || o.id} · ${o.nome}${o.tipo_centro_custo === 'CENTRO_CUSTO' ? ' · Centro de custo' : ''}` }));
 
   const reconhecerTransferencias = useCallback(async () => {
     try {
@@ -253,9 +281,26 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
           <h3 className="app-bloco-titulo">{config.acesso_global ? 'Transferências entre obras' : 'Transferências das minhas obras'}</h3>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => atualizar(transferencias.pagina)}>Atualizar</button>
         </div>
+        <BarraFiltros
+          busca={{ valor: filtros.busca, aoMudar: busca => filtrar({ ...filtrosRef.current, busca }, 300),
+            placeholder: 'Buscar colaborador por nome ou matrícula' }}
+          filtros={[
+            { id: 'situacoes', rotulo: 'Situação', opcoes: situacoesFiltro },
+            { id: 'origem_id', rotulo: 'Origem', unico: true, opcoes: opcoesLocais },
+            { id: 'destino_id', rotulo: 'Destino', unico: true, opcoes: opcoesLocais }
+          ]}
+          ativos={filtrosAtivos}
+          aoAlternar={(id, valor, opcoes) => {
+            const atuais = Object.fromEntries(['situacoes', 'origem_id', 'destino_id']
+              .map(chave => [chave, new Set(filtrosRef.current[chave])]));
+            const ativos = alternarValorFiltro(atuais, id, valor, opcoes);
+            filtrar({ ...filtrosRef.current, [id]: [...ativos[id]] });
+          }}
+          aoLimpar={() => filtrar(filtrosVazios)} />
+        {filtros.busca && <button type="button" className="la-link" onClick={() => filtrar(filtrosVazios)}>Limpar todos os filtros</button>}
         <TabelaPadrao chaveWorkspace="transferencias:tabela" storageKey="tabela:rh-transferencias-todas" itens={transferencias.itens} carregando={carregandoTransferencias}
           urgencia={s => s.nao_lida ? 'warning' : null} classeLinha={s => s.nao_lida ? 'rh-solicitacao-nao-lida' : ''}
-          vazio={config.acesso_global ? 'Nenhuma transferência entre obras encontrada.' : 'Nenhuma transferência encontrada para os responsáveis deste usuário.'}
+          vazio="Nenhuma transferência encontrada para os filtros e locais acessíveis."
           colunas={colunasTransferencias} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s)}>Abrir</button>} />
         {paginacao(transferencias, atualizar)}
       </section>
@@ -307,9 +352,14 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
             })}
           </select>
         </label>
+        {!config.transferencia_administrativa && <p className="form-hint">
+          {fluxoForm?.solicitanteOrigem
+            ? 'O colaborador está em um local vinculado a você. Pode solicitar a saída para qualquer obra ou centro de custo ativo, sem vínculo com o destino.'
+            : 'Para trazer um colaborador de outro local, selecione uma obra ou centro de custo vinculado a você.'}
+        </p>}
         {fluxoForm?.destino ? <div className={`alert ${fluxoForm.automatico ? 'alert-success' : 'alert-info'}`}>
           {fluxoForm.automatico
-            ? <>{fluxoForm.origem ? 'Você responde pela obra atual e pela obra de destino.' : 'O colaborador está sem obra e você responde pela obra de destino.'} A transferência será aprovada automaticamente e terá vigência hoje.</>
+            ? <>{config.transferencia_administrativa ? 'Transferência administrativa autorizada para DP/SUPERADMIN.' : fluxoForm.origem ? 'Você responde pela obra atual e pela obra de destino.' : 'O colaborador está sem obra e você responde pela obra de destino.'} A transferência será aplicada automaticamente e terá vigência hoje.</>
             : <>Solicitação feita pela obra <strong>{nomeObra(fluxoForm.solicitante)}</strong>. Aprovação pelo responsável da obra <strong>{nomeObra(fluxoForm.aprovadora)}</strong>, ou pelo DP/SUPERADMIN; a vigência começa na aprovação.</>}
         </div> : null}
         <label className="form-field"><span className="form-label">Justificativa</span><textarea className="form-control" aria-label="Justificativa" required maxLength={2000} value={form.justificativa} onChange={e => setForm(f => ({ ...f, justificativa: e.target.value }))} /></label>

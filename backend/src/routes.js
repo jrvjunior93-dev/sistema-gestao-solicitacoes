@@ -2120,6 +2120,9 @@ const allowRhDpPagamentoWrite = permit({ resource: 'RH_DP_SOLICITACOES', custom:
     || await require('./services/rhPagamentoSolicitacaoService').ehDp(req.user))
     ? true : 'Acesso negado ao pagamento RH/DP' });
 router.post('/rh/pagamentos-solicitacao', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.iniciar);
+router.post('/rh/pagamentos-solicitacao/preparar', allowRhDpSolicitacaoAbrir, RhPagamentoSolicitacaoController.preparar);
+router.post('/rh/pagamentos-solicitacao/salvar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.salvarNovo);
+router.delete('/rh/pagamentos-solicitacao/:id/rascunho', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Rascunho de pagamento') }), RhPagamentoSolicitacaoController.excluirRascunho);
 router.get('/rh/pagamentos-solicitacao/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.mostrar);
 router.put('/rh/pagamentos-solicitacao/:id', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.salvar);
 router.post('/rh/pagamentos-solicitacao/:id/enviar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.enviar);

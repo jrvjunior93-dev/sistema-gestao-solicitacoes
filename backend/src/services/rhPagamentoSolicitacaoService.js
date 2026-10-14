@@ -1,6 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
+const { createHash } = require('node:crypto');
 const { sequelize, RhSolicitacao, RhSolicitacaoHistorico, RhColaborador, RhColaboradorPagamento,
   Obra, CrResponsavelObra, User, TituloFinanceiro, FormaPagamentoFinanceira } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
@@ -61,6 +62,7 @@ async function buscar(req, id, transaction, bloquear = false) {
   const s = await RhSolicitacao.findByPk(id, { transaction, ...(bloquear ? { lock: transaction.LOCK.UPDATE } : {}) });
   if (!s || dadosDe(s).fluxo_pagamento !== FLUXO) throw new ValidationError('Solicitacao de pagamento nao encontrada.', 404);
   await exigirLocal(req.user, s.obra_id, transaction);
+  if (dadosDe(s).rascunho_excluido) throw new ValidationError('Rascunho excluido.', 404);
   if (s.situacao === 'RASCUNHO' && Number(s.criada_por) !== Number(req.user.id)) {
     throw new ValidationError('Este rascunho pertence a outro usuario.', 403);
   }
@@ -90,11 +92,13 @@ async function mostrar(req, id) {
       where: { id: { [Op.in]: dados.titulos.map(t => t.id) } },
       attributes: ['id', 'status', 'valor_baixado', 'status_interno_pagar'] })).map(plain) : [],
     avisos: (await avisosAnteriores(dadosDe(s), undefined, req.user)).map(plain), pode_conferir: await ehDp(req.user),
+    pode_excluir_rascunho: s.situacao === 'RASCUNHO' && Number(s.criada_por) === Number(req.user.id)
+      && !dados.titulos.length && await auth.userHasAreaPermission(req.user, ['rh_dp.solicitacoes.abrir']),
     pode_enviar_fila: await ehDp(req.user) && await auth.canExecuteRhDpFechamento(req.user)
       && await auth.userHasNominalAreaPermission(req.user, ['financeiro.fila_pagamentos.preparar']) };
 }
 
-async function iniciar(req, payload) {
+async function iniciar(req, payload, { persistir = true, transactionExterna = null, novo = false } = {}) {
   const individual = payload.colaborador_id == null ? null : Number(payload.colaborador_id);
   const ids = payload.colaborador_ids == null ? (individual == null ? null : [individual])
     : Array.isArray(payload.colaborador_ids) ? payload.colaborador_ids.map(Number) : [];
@@ -106,9 +110,9 @@ async function iniciar(req, payload) {
   }
   const escopo = ids ? [...ids].sort((a, b) => a - b) : null;
   const colaboradorId = escopo?.length === 1 ? escopo[0] : null;
-  const id = await sequelize.transaction(async transaction => {
+  const preparar = async transaction => {
     // Lock do local serializa a criacao/reabertura do rascunho do mesmo usuario.
-    const obra = await exigirLocal(req.user, Number(payload.obra_id), transaction, true);
+    const obra = await exigirLocal(req.user, Number(payload.obra_id), transaction, persistir);
     const lista = await colaboradores(obra.id, transaction);
     if (escopo && escopo.some(id => !lista.some(c => Number(c.id) === id))) {
       throw new ValidationError('O colaborador nao esta ativo neste local.', 409);
@@ -125,9 +129,12 @@ async function iniciar(req, payload) {
         || (s.colaborador_id ? (dados.linhas || []).map(l => Number(l.colaborador_id)) : []);
       return JSON.stringify([...anteriores].sort((a, b) => a - b)) === JSON.stringify(escopo);
     });
-    if (existente) return existente.id;
+    if (existente) {
+      if (novo) throw new ValidationError('Ja existe um rascunho salvo para este grupo. Reabra antes de editar.', 409);
+      return existente.id;
+    }
     const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-    const s = await RhSolicitacao.create({ tipo: 'JORNADA', subtipo: FLUXO, obra_id: obra.id,
+    const plano = { tipo: 'JORNADA', subtipo: FLUXO, obra_id: obra.id,
       colaborador_id: colaboradorId,
       criada_por: req.user.id, setor_origem: codigoDoSetor(req.user), situacao: 'RASCUNHO',
       dados_json: { fluxo_pagamento: FLUXO, solicitacao_independente: true, colaboradores_escopo: escopo,
@@ -137,18 +144,27 @@ async function iniciar(req, payload) {
           salario_base: Number(c.salario_base || 0), valor_diaria: Number(c.valor_diaria || 0),
           selecionado: Boolean(escopo),
           dias: c.forma_calculo_gerencial === 'DIARIA' ? 0 : 30, faltas: 0, acrescimos: 0, descontos: 0,
-          parcela_40: false, parcela_60: false, conferido_obra: false, conferido_dp: false,
+          parcela_40: false, parcela_50: false, parcela_60: false, conferido_obra: false, conferido_dp: false,
           conta_salario: recebimento({ modo_recebimento: 'CONTA_SALARIO' }, c, c.pagamento || {}),
-          ...recebimento({ modo_recebimento: c.pagamento?.chave_pix || c.pix_chave ? 'PIX' : 'CONTA_SALARIO' }, c, c.pagamento || {}) })) } }, { transaction });
+          ...recebimento({ modo_recebimento: c.pagamento?.chave_pix || c.pix_chave ? 'PIX' : 'CONTA_SALARIO' }, c, c.pagamento || {}) })) } };
+    if (!persistir) return { solicitacao: { ...plano, id: null, codigo: null, dados_json: normalizarAndamento(plano.dados_json) },
+      responsaveis: (await responsaveis(obra.id, transaction)).map(plain), pagamentos_financeiros: [],
+      avisos: (await avisosAnteriores(plano.dados_json, transaction, req.user)).map(plain),
+      pode_conferir: await ehDp(req.user), pode_enviar_fila: await ehDp(req.user)
+        && await auth.canExecuteRhDpFechamento(req.user)
+        && await auth.userHasNominalAreaPermission(req.user, ['financeiro.fila_pagamentos.preparar']) };
+    const s = await RhSolicitacao.create(plano, { transaction });
     await garantirCodigoRhSolicitacao(s, transaction);
     await historico(s, req, 'RASCUNHO', 'Rascunho de pagamento criado.', null, transaction);
     return s.id;
-  });
-  return mostrar(req, id);
+  };
+  const resultado = transactionExterna ? await preparar(transactionExterna)
+    : persistir ? await sequelize.transaction(preparar) : await preparar(undefined);
+  return transactionExterna ? resultado : typeof resultado === 'object' ? resultado : mostrar(req, resultado);
 }
 
-async function salvar(req, id, payload) {
-  await sequelize.transaction(async transaction => {
+async function salvar(req, id, payload, transactionExterna = null) {
+  const gravar = async transaction => {
     const s = await buscar(req, id, transaction, true);
     const dp = await ehDp(req.user);
     if (!['RASCUNHO', 'ABERTA', 'APROVADA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(s.situacao)
@@ -188,9 +204,11 @@ async function salvar(req, id, payload) {
       const campos = { selecionado: Boolean(l.selecionado), dias: calculo.dias, faltas: calculo.faltas,
         acrescimos: calculo.acrescimos, descontos: calculo.descontos,
         parcela_40: !calculo.diaria && Boolean(l.parcela_40), parcela_60: !calculo.diaria && Boolean(l.parcela_60),
+        parcela_50: !calculo.diaria && Boolean(l.parcela_50),
         observacoes: texto(l.observacoes, 1000), ...dadosConta, reembolso,
         desconto_sem_reembolso: calculo.descontos > 0 && !reembolso };
-      const mudou = Object.keys(campos).some(k => JSON.stringify(campos[k] ?? null) !== JSON.stringify(original[k] ?? null));
+      const mudou = Object.keys(campos).some(k => JSON.stringify(campos[k] ?? null)
+        !== JSON.stringify((k === 'parcela_50' ? Boolean(original[k]) : original[k]) ?? null));
       // Alterar dados invalida a conferencia anterior. A marcacao explicita pode conferir a nova versao.
       return { ...original, ...campos, ...calculo,
         conferido_obra: dp ? original.conferido_obra : Boolean(l.conferido_obra),
@@ -202,8 +220,52 @@ async function salvar(req, id, payload) {
     const situacaoAnterior = s.situacao;
     await s.update({ situacao: situacaoPagamento(dados, s.situacao), dados_json: dados }, { transaction });
     await historico(s, req, 'PAGAMENTO_AJUSTADO', `Pagamento salvo (revisao ${anterior.revisao + 1}).`, situacaoAnterior, transaction);
+  };
+  if (transactionExterna) { await gravar(transactionExterna); return; }
+  await sequelize.transaction(gravar);
+  return mostrar(req, id);
+}
+
+const preparar = (req, payload) => iniciar(req, payload, { persistir: false });
+async function salvarNovo(req, payload) {
+  const chave = String(payload.chave_idempotencia || '');
+  if (!/^[a-zA-Z0-9-]{16,100}$/.test(chave)) throw new ValidationError('Chave do rascunho invalida.');
+  const hash = createHash('sha256').update(JSON.stringify(payload.dados || {})).digest('hex');
+  const id = await sequelize.transaction(async transaction => {
+    await exigirLocal(req.user, payload.obra_id, transaction, true);
+    const pedidos = await RhSolicitacao.findAll({ where: { obra_id: Number(payload.obra_id), criada_por: req.user.id,
+      tipo: 'JORNADA', subtipo: FLUXO }, transaction });
+    const replay = pedidos.find(s => dadosDe(s).chave_rascunho === chave);
+    if (replay) {
+      if (dadosDe(replay).hash_rascunho !== hash || dadosDe(replay).rascunho_excluido) {
+        throw new ValidationError('O primeiro salvamento ja foi processado. Reabra o pagamento antes de editar.', 409);
+      }
+      return replay.id;
+    }
+    const novoId = await iniciar(req, payload, { transactionExterna: transaction, novo: true });
+    await salvar(req, novoId, payload.dados || {}, transaction);
+    const s = await buscar(req, novoId, transaction);
+    await s.update({ dados_json: { ...dadosDe(s), chave_rascunho: chave, hash_rascunho: hash } }, { transaction });
+    return novoId;
   });
   return mostrar(req, id);
+}
+
+async function excluirRascunho(req, id) {
+  return sequelize.transaction(async transaction => {
+    const s = await RhSolicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!s || dadosDe(s).fluxo_pagamento !== FLUXO) throw new ValidationError('Rascunho nao encontrado.', 404);
+    await exigirLocal(req.user, s.obra_id, transaction);
+    if (Number(s.criada_por) !== Number(req.user.id)) throw new ValidationError('Somente o autor pode excluir este rascunho.', 403);
+    if (dadosDe(s).rascunho_excluido) return { id: s.id, excluido: true };
+    if (s.situacao !== 'RASCUNHO' || dadosDe(s).titulos.length) {
+      throw new ValidationError('Somente rascunhos sem pagamento enviado podem ser excluidos.', 409);
+    }
+    await s.update({ situacao: 'CANCELADA', dados_json: { ...dadosDe(s), rascunho_excluido: true,
+      excluido_por: req.user.id, excluido_em: new Date().toISOString() } }, { transaction });
+    await historico(s, req, 'RASCUNHO_EXCLUIDO', 'Rascunho excluido pelo autor; historico preservado.', 'RASCUNHO', transaction);
+    return { id: s.id, excluido: true };
+  });
 }
 
 async function enviar(req, id, payload) {
@@ -369,4 +431,4 @@ async function revisar(req, id, payload) {
   return mostrar(req, id);
 }
 
-module.exports = { iniciar, mostrar, salvar, enviar, revisar, ehDp };
+module.exports = { iniciar, preparar, salvarNovo, excluirRascunho, mostrar, salvar, enviar, revisar, ehDp };

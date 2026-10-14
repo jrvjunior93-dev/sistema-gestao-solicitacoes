@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Publicacao dev: pendencias RH/DP - 2026-10-14
+
+- Usuario autorizou commit/push de todas as pendencias RH/DP desta conversa:
+  pagamento50, DP automatico/saida para outro local, filtros de transferencias,
+  previa sem criar registro e exclusao de rascunhos proprios.
+- Reserva documental/staging/testes dos arquivos desses tres handoffs, sem
+  incluir outputs/ ou caixa de outro worktree. Base remota e4ab208f, treinamento
+  ja publicado e preservado. Sem main, banco real, EC2 ou migration nova.
+- Validar codigo funcional completo, conferir remoto e push normal sem force.
+- Backend/ACL/rollback/replay, previas/exclusao/50% em tres modos desktop/mobile,
+  transferencia/filtros, regressao pagamento/workspace, treinamento, build,
+  navegacao/docs e diff aprovados. Reserva liberada para publicacao autorizada.
+  Sem novas migrations; deploy nao executado. Depois do commit somente outputs/
+  devera permanecer fora do Git neste worktree.
+
 ## Publicacao dev: Treinamento - 2026-10-14
 
 - Usuario autorizou commit/push dos ajustes de Treinamento na refactor/frontend
@@ -44,6 +59,51 @@
   regressao do visualizador, ACL, build/navegacao/docs. Handoff:
   docs/handoffs/2026-10-14-treinamento-edicao-video.md. Sem publicacao/EC2.
 
+## Pagamento RH: previa e exclusao de rascunho - 2026-10-14
+
+- Sessao atual sem delegacao. Usuario pediu abrir sem criar rascunho; persistir
+  somente ao Salvar/Conferido e permitir exclusao de rascunhos.
+- Reserva: rhPagamentoSolicitacaoService.js/controller, routes.js somente rotas
+  dedicadas, RhDpPagamentoModal.jsx, RhDpPessoalSolicitacoes.jsx se necessario,
+  testes de pagamento/ACL/UI, README RH/DP e handoff. Preservar alteracoes pendentes.
+- Usuario confirmou: cada usuario exclui somente seus proprios rascunhos.
+  Sem banco real, migration, commit/push ou EC2. Proteger titulos enviados/historico,
+  salvamento inicial atomico, replay/duplo clique e workspace sem escrita automatica.
+- Reserva ampliada: rhSolicitacaoConsultaDomain.js e RhSolicitacaoController.js
+  para ocultar excluidos e negar detalhe/acoes genericas sem expor rascunho privado.
+- Implementacao/testes concluidos; ownership liberado. Handoff:
+  docs/handoffs/2026-10-14-previa-exclusao-rascunhos-pagamento.md. Sem publicacao/EC2.
+
+## Filtros de transferencias RH - 2026-10-14
+
+- Sessao atual, sem delegacao. Pedido: filtros nas transferencias, sobretudo situacao.
+- Reserva: RhDpTransferencias.jsx, rhTransferenciaService.js, testes focados
+  backend/frontend, README RH/DP e handoff. Preservar ajustes locais anteriores.
+- Consultas filtradas no servidor antes da paginacao, mantendo escopo local/ACL,
+  polling, acoes/historico e fluxo de notificacoes. Sem banco real, migration,
+  commit/push, EC2 ou mudanca de permissao.
+- Concluido/ownership liberado apos backend/ACL, UI desktop/mobile, build,
+  navegacao e docs. Handoff: docs/handoffs/2026-10-14-filtros-transferencias-rh.md.
+
+## Pagamento RH 50% e transferencia automatica DP - 2026-10-14
+
+- Sessao codex-rhdp-pagamento50-transferencia-dp-20261014, sem delegacao.
+- Usuario pediu opcao 50% no pagamento individual/coletivo (todos/selecionados)
+  e DP solicitar transferencia global com efetivacao automatica como SUPERADMIN.
+- Reserva: RhDpPagamentoModal.jsx, rhPagamentoWorkspaceDraft.js, dominio/service
+  de pagamento por solicitacao e testes; rhTransferenciaService.js,
+  RhDpTransferencias.jsx e testes de escopo/transferencia. README RH/DP e handoff.
+- Base refactor/frontend 1b9101df em worktree isolado reutilizado. Sem banco real,
+  migration, .env, usuarios/configuracoes, commit/push/main ou EC2 nesta etapa.
+- Preservar escopo OBRA, pagamentos anteriores/diaristas, autoria e historico,
+  lock/transacao/replay; caixa em outro worktree e outputs/ fora do release.
+- Reserva ampliada: rh-pagamento-solicitacao.css (indices da coluna de dias/faltas),
+  teste UI dedicado 50% e scripts de pagamento/transferencia com casos novos.
+- Usuario confirmou saida de colaborador da obra vinculada para qualquer local
+  ativo, sem vinculo com destino; responsavel do destino/DP/SUPERADMIN decide.
+  Preservar entrada de outra obra para a propria e bloquear terceiros->terceiros.
+- Implementacao/testes locais concluidos. Ownership liberado; handoff em
+  docs/handoffs/2026-10-14-pagamento50-transferencia-dp.md. Sem publicacao/EC2.
 
 ## Cadastro RH: salario DP, lotacao SUPERADMIN e centros em transferencias - 2026-10-14
 

@@ -61,6 +61,7 @@ function load(nome, extras = {}) {
 }
 const revisaoService = load('rhPagamentoSolicitacaoRevisaoService.js');
 const service = load('rhPagamentoSolicitacaoService.js', {
+  'node:crypto': require('node:crypto'),
   './authorizationService': auth, './setorCapabilityService': { userBelongsToDpSetor: async u => u.dp },
   '../utils/codigoDoSetor': { codigoDoSetor: u => u.dp ? 'DP' : 'OBRA' },
   './rhSolicitacaoCodigoService': { garantirCodigoRhSolicitacao: async () => {} },

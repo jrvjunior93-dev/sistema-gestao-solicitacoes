@@ -99,6 +99,10 @@ async function exigirColaboradorNoEscopoDoUsuario(req, colaboradorId, { permitir
 async function exigirSolicitacaoNoEscopoDoUsuario(req, solicitacaoId) {
   const pedido = await RhSolicitacao.findByPk(solicitacaoId);
   if (!pedido) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+  if (pedido.subtipo === 'PAGAMENTO_POR_SOLICITACAO'
+    && (typeof pedido.dados_json === 'string' ? JSON.parse(pedido.dados_json) : pedido.dados_json)?.rascunho_excluido) {
+    throw new ValidationError('Rascunho excluido.', 404);
+  }
   if (pedido.subtipo === 'PAGAMENTO_POR_SOLICITACAO' && pedido.situacao === 'RASCUNHO'
     && Number(pedido.criada_por) !== Number(req.user.id)) {
     throw new ValidationError('Este rascunho pertence a outro usuario.', 403);
