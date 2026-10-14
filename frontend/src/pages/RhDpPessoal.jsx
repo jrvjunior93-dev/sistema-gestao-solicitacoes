@@ -66,6 +66,7 @@ import {
   canAccessRhDpDashboard,
   canManageRhDpColaboradores,
   canAccessRhDpCadastroColaboradores,
+  canViewRhDpSolicitacoesGlobais,
   canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   hasAnyExplicitPermissao,
@@ -429,6 +430,7 @@ export default function RhDpPessoal() {
   const podeVerEventosRecorrentes = canViewRhDpEventosRecorrentes(user);
   const podeVerFechamentos = canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO');
   const usuarioDoDp = userBelongsToDpSetor(user);
+  const podeVerSolicitacoesGlobais = canViewRhDpSolicitacoesGlobais(user);
   const porLocal = !usuarioDoDp && !isBusinessAdmin(user);
   const localId = parametros.get('local_id') || '';
   const localSelecionado = obras.find((item) => String(item.id) === localId);
@@ -863,7 +865,7 @@ export default function RhDpPessoal() {
         novo_cargo_id: f.subtipo === 'ALTERACAO_SALARIAL'
           ? (f.altera_funcao ? Number(f.novo_cargo_id) || undefined : undefined)
           : Number(f.novo_cargo_id) || undefined,
-        novo_salario: normalizeCurrencyTyping(f.novo_salario) || undefined,
+        novo_salario: parseCurrencyInput(f.novo_salario) || undefined,
         motivo: f.motivo || undefined,
         altera_funcao: f.subtipo === 'ALTERACAO_SALARIAL' ? Boolean(f.altera_funcao) : undefined
       });
@@ -901,7 +903,7 @@ export default function RhDpPessoal() {
     }
     if (f.tipo === 'ALTERACAO_SALARIAL') {
       Object.assign(dados, {
-        novo_salario: normalizeCurrencyTyping(f.novo_salario),
+        novo_salario: parseCurrencyInput(f.novo_salario),
         data_vigencia: f.data_vigencia || undefined,
         motivo: f.motivo
       });
@@ -1264,10 +1266,16 @@ export default function RhDpPessoal() {
     setBusca(''); setColaboradores([]); setMarcados({ obra_id: new Set() });
     setParametros({});
   }
+  function abrirSolicitacoesGlobais() {
+    if (!podeVerSolicitacoesGlobais) return;
+    setBusca(''); setMarcados({ obra_id: new Set() });
+    setParametros({ visao: 'global', aba: 'solicitacoes' });
+  }
   if (!parametros.get('solicitacao') && !localSelecionado
     && (!parametros.get('aba') || localId)) {
     return <Pagina className="rhdp-page rh-pessoal-page">
       <PageHeader titulo="Pessoal" descricao="Obras / Centros de Custo" secundarias={[
+        ...(podeVerSolicitacoesGlobais ? [{ rotulo: 'Solicitações de todas as obras', onClick: abrirSolicitacoesGlobais }] : []),
         { rotulo: 'Atualizar', onClick: carregar, desabilitada: carregando },
         ...(canAccessRhDpCadastroColaboradores(user) ? [{ rotulo: 'Cadastro de colaboradores', onClick: () => navigate('/rh-dp/colaboradores') }] : []),
         ...(podeVerFechamentos ? [{ rotulo: 'Fechamentos', onClick: () => navigate('/rh-dp/fechamentos') }] : [])
@@ -1288,14 +1296,19 @@ export default function RhDpPessoal() {
   return (
     <Pagina className="rhdp-page rh-pessoal-page">
       <PageHeader
-        titulo={localSelecionado ? 'Gestão de Colaboradores' : 'Pessoal'}
+        titulo={localSelecionado ? 'Gestão de Colaboradores'
+          : podeVerSolicitacoesGlobais && abaAtiva === 'solicitacoes' ? 'Solicitações globais' : 'Pessoal'}
         contagem={contagemDaAba}
         descricao={localSelecionado ? `${localSelecionado.codigo} · ${localSelecionado.nome}`
+          : podeVerSolicitacoesGlobais && abaAtiva === 'solicitacoes' ? 'Solicitações de todas as obras / centros de custo'
           : ABAS.find((aba) => aba.id === abaAtiva)?.apoio}
         acaoPrincipal={abaAtiva === 'colaboradores' && podeAbrir
           ? { rotulo: 'Pedir admissao', onClick: () => novoPedido('ADMISSAO') }
           : undefined}
-        secundarias={[...(localSelecionado ? [{ rotulo: 'Voltar para Obras', onClick: voltarAosLocais }] : []), ...acoesDaAba]}
+        secundarias={[
+          ...(podeVerSolicitacoesGlobais && localSelecionado ? [{ rotulo: 'Solicitações de todas as obras', onClick: abrirSolicitacoesGlobais }] : []),
+          ...(!porLocal || localSelecionado ? [{ rotulo: localSelecionado ? 'Voltar para Obras' : 'Obras / Centros de Custo', onClick: voltarAosLocais }] : []),
+          ...acoesDaAba]}
       />
 
       {!algumModalAberto && faixaAvisos}

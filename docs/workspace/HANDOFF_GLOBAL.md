@@ -1,5 +1,16 @@
 # Handoff Global
 
+## Promocao DP global e salario - 2026-10-14
+
+- codex-promocao-dp-global-salario-main-20261014: finalizado, ownership liberado.
+- Main 4fd60afc + refactor/frontend 208ae8e2 integradas preservando hotfixes,
+  scripts e ambos os historicos. Backup/timer e dev confirmados pelo usuario.
+- Consulta global/rascunhos, card global e fluxo por local, salario SUPERADMIN
+  homologados; backend/ACL, UI desktop/mobile, build e docs aprovados.
+- Sem schema/dependencias/flags novos, banco, EC2 ou reinicio pelo agente.
+- Publicacao via PR autorizada; usuario atualiza apenas backend-solicitacoes.
+- Evidencias e rollback: docs/handoffs/2026-10-14-promocao-dp-global-salario-main.md.
+
 ## Promocao operacional para main em 08/10/2026
 
 - Sessao codex-promocao-operacional-main-20261008 finalizada; ownership liberado.

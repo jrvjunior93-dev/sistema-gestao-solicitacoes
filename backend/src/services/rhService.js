@@ -23,9 +23,9 @@ const { normalizarContatos } = require('./rhColaboradorContatosDomain');
  * modulo inteiro aqui em cima fecha um ciclo de require, e o sintoma de ciclo em CommonJS e um
  * objeto vazio em tempo de execucao, nao um erro no boot: falha longe da causa.
  */
-function pedidosAbertosPorColaborador(obraIds) {
+function pedidosAbertosPorColaborador(obraIds, usuarioId) {
   // eslint-disable-next-line global-require
-  return require('./rhSolicitacaoService').pedidosAbertosPorColaborador(obraIds);
+  return require('./rhSolicitacaoService').pedidosAbertosPorColaborador(obraIds, usuarioId);
 }
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
@@ -1013,7 +1013,9 @@ async function listarColaboradoresRh(filters = {}) {
    * alfabetica, depois quem nao tem em ordem alfabetica. Sem isso a lista mudaria de ordem a cada
    * pedido novo e ninguem acharia mais ninguem.
    */
-  const abertosPorColaborador = await pedidosAbertosPorColaborador(obraIdsPermitidas);
+  const abertosPorColaborador = await pedidosAbertosPorColaborador(
+    filters.solicitacoes_obra_ids === undefined ? obraIdsPermitidas : filters.solicitacoes_obra_ids,
+    filters.usuario_id_consulta);
 
   const comPedido = [];
   const semPedido = [];
@@ -1174,18 +1176,37 @@ async function atualizarColaboradorRh(id, data, user) {
      * Na Fase 2 deixei esta porta aberta de proposito: a alteracao salarial ainda nao tinha fluxo, e
      * fechar antes teria deixado o salario impossivel de corrigir por qualquer caminho. Agora o
      * pedido ALTERACAO_SALARIAL existe, exige a permissao de Diretoria e grava historico com
-     * vigencia — entao a edicao direta deixa de ter justificativa.
+     * vigencia. Excecao administrativa explicita: SUPERADMIN pode ajustar
+     * diretamente com motivo e vigencia, pelo mesmo historico salarial.
      *
      * O que muda em relacao a obra: aqui a mensagem cita a DIRETORIA, porque quem decide nao e o DP.
      */
+    let salarioDireto = null;
     if (Object.prototype.hasOwnProperty.call(data, 'salario_base')) {
       const pedido = data.salario_base === null || data.salario_base === '' ? null : Number(data.salario_base);
       const atual = colaborador.salario_base === null ? null : Number(colaborador.salario_base);
       if (pedido !== atual) {
-        throw new ValidationError(
+        const { isSuperadmin } = require('./authorizationService');
+        if (!isSuperadmin(user)) throw new ValidationError(
           'O salario nao e alterado pelo cadastro. Abra uma solicitacao de alteracao salarial: '
-          + 'a decisao e da Diretoria.'
-        );
+          + 'a decisao e da Diretoria.', 403);
+        if (!Number.isFinite(pedido) || !(pedido > 0)) throw new ValidationError('Informe um salario maior que zero.');
+        if (!data.salario_vigencia_inicio || !String(data.salario_motivo || '').trim()) {
+          throw new ValidationError('Informe a vigencia e o motivo do ajuste salarial.');
+        }
+        const vigencia = String(data.salario_vigencia_inicio);
+        const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(vigencia) ? new Date(`${vigencia}T00:00:00Z`) : null;
+        if (!dataVigencia || Number.isNaN(dataVigencia.getTime()) || dataVigencia.toISOString().slice(0, 10) !== vigencia) {
+          throw new ValidationError('Informe uma data de vigencia salarial valida.');
+        }
+        const admissao = String(colaborador.data_admissao || colaborador.data_inicio || '').slice(0, 10);
+        if (admissao && data.salario_vigencia_inicio < admissao) {
+          throw new ValidationError('A vigencia do salario nao pode ser anterior a admissao.');
+        }
+        salarioDireto = { colaboradorId: colaborador.id, valor: pedido,
+          vigenciaInicio: data.salario_vigencia_inicio, motivo: 'AJUSTE',
+          observacoes: `Ajuste direto SUPERADMIN: ${String(data.salario_motivo).trim()}`,
+          criadoPor: user.id, ajusteCadastroSuperadmin: true };
       }
     }
 
@@ -1213,7 +1234,7 @@ async function atualizarColaboradorRh(id, data, user) {
         data_demissao: data.data_demissao,
         data_nascimento: data.data_nascimento,
         status: data.status,
-        salario_base: data.salario_base,
+        salario_base: salarioDireto ? undefined : data.salario_base,
         valor_contratual: data.valor_contratual,
         forma_calculo_gerencial: data.forma_calculo_gerencial,
         valor_diaria: data.valor_diaria,
@@ -1238,6 +1259,13 @@ async function atualizarColaboradorRh(id, data, user) {
     }
 
     const calculoAnterior = colaborador.get({ plain: true });
+    if (salarioDireto) {
+      // O lock do colaborador serializa salario e cadastro na mesma transacao.
+      await require('./rhSalarioService').registrarSalario(salarioDireto, transaction);
+      if (salarioDireto.vigenciaInicio <= new Date().toISOString().slice(0, 10)) {
+        collaboratorPayload.salario_base = salarioDireto.valor.toFixed(2);
+      }
+    }
     await colaborador.update(collaboratorPayload, { transaction });
     if (String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON') {
       await rhCalculoHistoricoService.registrarMudanca(

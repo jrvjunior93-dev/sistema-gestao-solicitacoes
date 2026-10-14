@@ -1,4 +1,4 @@
-import { userHasSetorCapability } from './setor';
+import { userBelongsToDpSetor, userHasSetorCapability } from './setor';
 import { normalizeRhDpPermissionList } from '../constants/rhDpPermissions';
 
 export function normalizeToken(value) {
@@ -1231,6 +1231,16 @@ export function canViewRhDpColaboradores(user) {
     hasRhDpCapability(user, 'rh_dp_colaboradores_view') ||
     hasRhDpCapability(user, 'rh_dp_colaboradores_edit')
   );
+}
+
+// Mesma porta de leitura do backend; nao concede permissao de operar.
+// OBRA permanece estrita mesmo quando o usuario acumula setor DP.
+export function canViewRhDpSolicitacoesGlobais(user) {
+  if (!canViewRhDpColaboradores(user)) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (userHasSetorCapability(user, 'eh_setor_obra')) return false;
+  return userBelongsToDpSetor(user)
+    || hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.ver_todas']);
 }
 
 export function canManageRhDpColaboradores(user) {

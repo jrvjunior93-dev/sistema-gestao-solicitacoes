@@ -23,7 +23,7 @@ async function ehDp(user) {
 async function exigirLocal(user, obraId, transaction, bloquear = false) {
   const estrito = await auth.getRhDpObraScopeIds(user);
   const ids = Array.isArray(estrito) ? estrito
-    : await auth.userHasAreaPermission(user, ['rh_dp.solicitacoes.ver_todas']) ? null : await auth.getUserObraIds(user);
+    : await userBelongsToDpSetor(user) || await auth.userHasAreaPermission(user, ['rh_dp.solicitacoes.ver_todas']) ? null : await auth.getUserObraIds(user);
   if (!Number.isSafeInteger(Number(obraId)) || Number(obraId) <= 0
     || (Array.isArray(ids) && !ids.includes(Number(obraId)))) {
     throw new ValidationError('Acesso negado a esta obra/centro de custo.', 403);
@@ -72,7 +72,7 @@ async function avisosAnteriores(dados, transaction, user) {
   if (!ids.length) return [];
   const estrito = await auth.getRhDpObraScopeIds(user);
   const obrasIds = Array.isArray(estrito) ? estrito
-    : await auth.userHasAreaPermission(user, ['rh_dp.solicitacoes.ver_todas']) ? null : await auth.getUserObraIds(user);
+    : await userBelongsToDpSetor(user) || await auth.userHasAreaPermission(user, ['rh_dp.solicitacoes.ver_todas']) ? null : await auth.getUserObraIds(user);
   // Apenas leitura: nova solicitacao nunca acumula nem reaproveita um titulo anterior.
   return TituloFinanceiro.findAll({ where: { origem_titulo: 'RH_DP', tipo: 'PAGAR',
     ...(Array.isArray(obrasIds) ? { obra_id: { [Op.in]: obrasIds } } : {}),

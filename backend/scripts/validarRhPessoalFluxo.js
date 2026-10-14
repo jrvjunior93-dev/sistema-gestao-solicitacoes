@@ -236,6 +236,7 @@ async function validarFilaDp() {
     '../services/authorizationService': { getRhDpObraScopeIds: async () => [1], getUserObraIds: async () => [1], userHasAreaPermission: async () => false },
     '../middlewares/validation': { ValidationError },
     '../services/rhPessoalDomain': domain,
+    '../services/rhSolicitacaoConsultaDomain': require('../src/services/rhSolicitacaoConsultaDomain'),
     '../services/rhSolicitacaoAtividadeService': { comAtividade: async s => s, marcarLida: async (...args) => { reconhecidos = args; } }
   });
   const res = { status(n) { this.codigo = n; return this; }, json(d) { this.dados = d; return d; } };

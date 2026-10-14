@@ -1,6 +1,7 @@
 # Sessoes Ativas
 
-- codex-promocao-dp-global-salario-main-20261014: validando promocao autorizada
+- codex-promocao-dp-global-salario-main-20261014: finalizado, ownership liberado;
+  promocao autorizada
   4fd60afc + 208ae8e2, backup/timer e dev confirmados; sem banco/EC2/delegacao.
 
 Sessao codex-promocao-operacional-main-20261008: finalizado no checkout
