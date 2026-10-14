@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao cadastro DP salario lotacao e centros para main - 2026-10-14
+
+- Sessao codex-promocao-cadastro-dp-main-20261014, sem delegacao.
+- Usuario autorizou promocao de 1b9101df, confirmou dev aprovado e backup
+  recente no Drive cifrado conferido/timer ativo. Main base 218cc4dd.
+- Reserva documental: conflito de OWNERSHIP_ATIVO e handoff desta promocao.
+  Integrar por merge preservando ambos os historicos e hotfixes de producao.
+- Sem nova migration/dependencia/flag, .env, banco real, usuarios/configuracoes,
+  execucao EC2 ou reinicio pelo agente. Caixa nao commitada e outputs/ excluidos.
+- Publicacao por PR apos testes; comandos somente para backend-solicitacoes,
+  com branch/SHA/UUID/schema/ambiente/porta/processo conferidos pelo usuario.
+
 ## Promocao saldo contratual e transferencia OBRA para main - 2026-10-14
 
 - Sessao codex-promocao-saldo-transferencia-main-20261014, sem delegacao.
