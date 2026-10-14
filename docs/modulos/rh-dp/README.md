@@ -10,6 +10,22 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 ## Regras
 
+- Entrada em Pessoal para DP/administradores autorizados abre solicitacoes globais.
+  Obras/Centros de Custo continua disponivel para consulta local; usuarios de OBRA
+  conservam o escopo estrito de suas obras, inclusive se acumularem setor DP.
+- Rascunho de pagamento por solicitacao e privado do autor, inclusive frente ao
+  superadmin. Destaque em colaborador segue a mesma visibilidade da lista e do modal.
+  Pagamentos coletivos sao reconhecidos pelas linhas do snapshot; consultas nao
+  regravam rascunhos nem normalizam status legados no banco.
+- Alteracao salarial pelo fluxo envia novo salario numerico, nao texto BRL.
+- SUPERADMIN pode ajustar salario no cadastro com vigencia e motivo obrigatorios,
+  usando historico salarial e transacao/lock do colaborador. Demais perfis continuam
+  usando solicitacao e aprovacao salarial; nao ganharam acesso direto.
+- Ajuste nao altera titulos existentes; vigencia futura nao antecipa salario atual.
+  Data anterior a admissao ou ao inicio do salario vigente e recusada. Correcao na
+  mesma vigencia conserva evidencia do valor anterior/autor nas observacoes, sem
+  criar intervalo negativo. Reenvio do mesmo valor nao cria historico adicional.
+
 - Transferencias: a aba Todos Colaboradores lista todos os ativos, inclusive sem obra,
   com somente identificacao profissional. O local aberto nao filtra esse diretorio.
 - Sem obra atual, o responsavel vigente do destino pode confirmar a alocacao com

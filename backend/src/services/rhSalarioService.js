@@ -101,6 +101,17 @@ async function registrarSalario(dados = {}, transaction = null) {
       );
     }
 
+    if (vigente && inicio === paraDataIso(vigente.vigencia_inicio) && dados.ajusteCadastroSuperadmin === true) {
+      // Correcao intradiaria administrativa: nao gerar intervalo negativo nem
+      // apagar a evidencia do valor anterior. Flag interna, nunca lida do body.
+      const evidencia = `Ajuste ${new Date().toISOString()} por usuario #${dados.criadoPor}: ${vigente.valor} -> ${valor.toFixed(2)}. ${dados.observacoes || ''}`;
+      await vigente.update({ valor: valor.toFixed(2),
+        observacoes: [vigente.observacoes, evidencia].filter(Boolean).join('\n') }, { transaction: tx });
+      if (inicio <= hojeIso()) await RhColaborador.update({ salario_base: valor.toFixed(2) },
+        { where: { id: colaboradorId }, transaction: tx });
+      return vigente;
+    }
+
     if (vigente) {
       await vigente.update({ vigencia_fim: diaAnterior(inicio) }, { transaction: tx });
     }

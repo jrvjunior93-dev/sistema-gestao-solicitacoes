@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## DP: consulta global e jornada nas listas - 2026-10-14
+
+- Agente desta conversa, sem delegacao; implementacao local concluida, ownership liberado.
+- Escopo: entrada/lista global de solicitacoes para DP e consistencia entre
+  solicitacoes em curso do colaborador e listagem/detalhe. Preservar escopo
+  OBRA, rascunhos privados, permissoes e fluxos de pagamento existentes.
+- Reserva: RhDpPessoal.jsx, RhDpPessoalSolicitacoes.jsx, RhSolicitacaoController.js,
+  rhSolicitacaoService.js, rhService.js se necessario; testes locais backend/frontend,
+  README RH/DP e handoff de 2026-10-14. Sem editar rotas/permissoes centrais.
+- Branch codex/rhdp-solicitacoes-globais-20261014 sobre refactor/frontend 3a1b2300.
+- Reserva ampliada: RhColaboradorController.js (identidade autenticada no destaque),
+  rhSolicitacaoConsultaDomain.js (regra unica de consulta), rhPagamentoSolicitacaoService.js
+  (escopo de consulta do DP consistente com a lista), validarRhPessoalPorLocal.mjs,
+  validarRhPessoalPorSolicitacao.js e validarRhPessoalFluxo.js (mocks do helper).
+- Sem banco real, migration, EC2, commit/push ou deploy nesta etapa.
+- Usuario adicionou correcao de moeda na alteracao salarial e autorizou edicao
+  direta exclusiva do SUPERADMIN, com data de vigencia informada. Reserva ampliada:
+  RhDpColaboradores.jsx, rhValidators.js, rhSalarioService.js e testes especificos.
+- Testes/mocks adicionais: validarRhConsultaSalario.js, validarRhColaboradorContatos.js,
+  validarRhColaboradoresPlanilha.js e validarRhPrimeiraLotacao.js. Evidencias e proximo
+  passo em docs/handoffs/2026-10-14-dp-consulta-global-salario.md. Sem publicacao.
+- Usuario autorizou commit/push destas alteracoes na refactor/frontend e comandos
+  para EC2 dev. Reserva documental para conferencia/staging/publicacao, liberada
+  apos validacoes. Sem outputs/, main, migration, banco real ou reinicio pelo agente.
+
 ## Modal de titulo e atualizacao automatica - 2026-10-13
 
 - Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.

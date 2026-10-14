@@ -33,6 +33,7 @@ async function validarController() {
       aprovarSolicitacao: async () => ({ situacao: 'APROVADA' })
     },
     '../services/rhChecklistService': {},
+    '../services/rhSolicitacaoConsultaDomain': require('../src/services/rhSolicitacaoConsultaDomain'),
     sequelize: { Op },
     '../models': {
       RhSolicitacao: {
@@ -59,7 +60,7 @@ async function validarController() {
       isSuperadmin: () => false,
       userHasAreaPermission: async () => false
     },
-    '../services/setorCapabilityService': {},
+    '../services/setorCapabilityService': { userBelongsToDpSetor: async () => false },
     '../middlewares/validation': { ValidationError },
     '../services/rhPessoalDomain': { ehTransferencia },
     '../services/rhSolicitacaoAtividadeService': {

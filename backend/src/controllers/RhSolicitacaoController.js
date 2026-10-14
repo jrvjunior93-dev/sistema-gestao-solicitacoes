@@ -28,6 +28,7 @@ const {
 const { userBelongsToDpSetor } = require('../services/setorCapabilityService');
 const { ValidationError } = require('../middlewares/validation');
 const { ehTransferencia } = require('../services/rhPessoalDomain');
+const { visivelNaConsulta, normalizarConsulta, colaboradoresDoPedido } = require('../services/rhSolicitacaoConsultaDomain');
 const { comAtividade, marcarLida } = require('../services/rhSolicitacaoAtividadeService');
 
 /**
@@ -56,6 +57,10 @@ function contextoDe(req) {
 async function obrasVisiveis(req) {
   const escopoEstritoDaObra = await getRhDpObraScopeIds(req.user);
   if (Array.isArray(escopoEstritoDaObra)) return escopoEstritoDaObra;
+
+  // O DP acompanha os pedidos enviados de todas as obras. O escopo estrito
+  // de OBRA acima prevalece, inclusive quando o usuario acumula setores.
+  if (await userBelongsToDpSetor(req.user)) return null;
 
   /**
    * NAO ESTRITO, pela mesma razao das rotas (26/08): estrito nega ate o SUPERADMIN, e o frontend
@@ -124,7 +129,14 @@ module.exports = {
         ? { [Op.in]: [...emAndamento, 'APROVADA'] }
         : ['ENVIO_PARCIAL', 'EM_REVISAO'].includes(filtroSituacao) ? { [Op.in]: [filtroSituacao, 'APROVADA'] } : filtroSituacao;
       if (req.query.tipo) where.tipo = String(req.query.tipo).toUpperCase();
-      if (req.query.colaborador_id) where.colaborador_id = Number(req.query.colaborador_id);
+      const colaboradorId = req.query.colaborador_id ? Number(req.query.colaborador_id) : null;
+      if (colaboradorId !== null) {
+        if (!Number.isSafeInteger(colaboradorId) || colaboradorId <= 0) throw new ValidationError('Colaborador invalido.');
+        // AND preserva o OR de visibilidade por obra. O snapshot e conferido
+        // abaixo: nunca devolver todos os pagamentos coletivos ao colaborador.
+        where[Op.and] = [{ [Op.or]: [{ colaborador_id: colaboradorId },
+          { tipo: 'JORNADA', subtipo: 'PAGAMENTO_POR_SOLICITACAO', colaborador_id: null }] }];
+      }
 
       const escopoEstritoDaObra = await getRhDpObraScopeIds(req.user);
       const obraIds = Array.isArray(escopoEstritoDaObra)
@@ -176,17 +188,9 @@ module.exports = {
        * Uma consulta para todos os destinos da pagina, e nao uma por linha.
        */
       const planos = dados.filter(linha => !ehTransferencia(linha)
-        && !(linha.subtipo === 'PAGAMENTO_POR_SOLICITACAO' && linha.situacao === 'RASCUNHO'
-          && Number(linha.criada_por) !== Number(req.user.id)))
-        .map((linha) => {
-          const plano = linha.get({ plain: true });
-          if (plano.subtipo === 'PAGAMENTO_POR_SOLICITACAO') {
-            const { normalizarAndamento, situacaoPagamento } = require('../services/rhPagamentoSolicitacaoDomain');
-            plano.dados_json = normalizarAndamento(typeof plano.dados_json === 'string' ? JSON.parse(plano.dados_json) : plano.dados_json || {});
-            plano.situacao = situacaoPagamento(plano.dados_json, plano.situacao);
-          }
-          return plano;
-        }).filter(linha => !filtroSituacao || (filtroSituacao === 'EM_ANDAMENTO'
+        && visivelNaConsulta(linha, req.user.id)
+        && (colaboradorId === null || colaboradoresDoPedido(linha).includes(colaboradorId)))
+        .map(normalizarConsulta).filter(linha => !filtroSituacao || (filtroSituacao === 'EM_ANDAMENTO'
           ? emAndamento.includes(linha.situacao) : linha.situacao === filtroSituacao));
       const idsDestino = Array.from(new Set(
         planos

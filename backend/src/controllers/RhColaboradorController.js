@@ -6,7 +6,8 @@ const {
   listarColaboradoresRh
 } = require('../services/rhService');
 const { responderErroController } = require('../utils/controllerError');
-const { getRhDpObraScopeIds } = require('../services/authorizationService');
+const { getRhDpObraScopeIds, userHasAreaPermission, getUserObraIds } = require('../services/authorizationService');
+const { userBelongsToDpSetor } = require('../services/setorCapabilityService');
 const { gerarPlanilhaColaboradores } = require('../services/rhColaboradoresPlanilhaService');
 
 async function baixarPlanilha(req, res, modelo) {
@@ -32,7 +33,11 @@ module.exports = {
   async index(req, res) {
     try {
       const obraIds = await getRhDpObraScopeIds(req.user);
-      const data = await listarColaboradoresRh({ ...(req.query || {}), obra_ids: obraIds });
+      const solicitacoesObraIds = Array.isArray(obraIds) || await userBelongsToDpSetor(req.user)
+        || await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.ver_todas'])
+        ? obraIds : await getUserObraIds(req.user);
+      const data = await listarColaboradoresRh({ ...(req.query || {}), obra_ids: obraIds,
+        solicitacoes_obra_ids: solicitacoesObraIds, usuario_id_consulta: req.user.id });
       return res.json(data);
     } catch (error) {
       console.error(error);

@@ -476,6 +476,8 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'valor_ticket',
       'pagamento_automatico_40_60',
       'calculo_vigencia_inicio',
+      'salario_vigencia_inicio',
+      'salario_motivo',
       'observacoes',
       'pagamento'
     ],
@@ -514,6 +516,8 @@ function validateRhColaboradorUpdateBody(body = {}) {
         || String(body.pagamento_automatico_40_60 || '').toLowerCase() === 'true'
       : undefined,
     calculo_vigencia_inicio: parseDateOnly(body.calculo_vigencia_inicio, 'Data efetiva da forma de calculo'),
+    salario_vigencia_inicio: parseDateOnly(body.salario_vigencia_inicio, 'Vigencia do salario'),
+    salario_motivo: parseOptionalText(body.salario_motivo, 'Motivo do ajuste salarial', 1000),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
     pagamento: Object.prototype.hasOwnProperty.call(body, 'pagamento')
       ? normalizePagamentoPayload(body.pagamento)
