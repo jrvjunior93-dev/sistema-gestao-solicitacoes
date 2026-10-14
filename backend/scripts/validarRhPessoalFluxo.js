@@ -46,8 +46,16 @@ function reset() {
   aberto = instancia({ obra_id: 1, vigencia_inicio: '2026-09-01' });
 }
 const db = {
-  sequelize: { transaction: async fn => fn({ LOCK: { UPDATE: 'UPDATE' } }),
-    where: () => ({}), cast: () => ({}), json: () => ({}) },
+  sequelize: { transaction: async fn => {
+    const anterior = plain({ requests, history, colaborador, aberto, atualizacoes, proximoId });
+    try { return await fn({ LOCK: { UPDATE: 'UPDATE' } }); }
+    catch (e) {
+      requests = anterior.requests.map(instancia); history = anterior.history;
+      colaborador = instancia(anterior.colaborador); aberto = anterior.aberto ? instancia(anterior.aberto) : null;
+      atualizacoes = anterior.atualizacoes; proximoId = anterior.proximoId; throw e;
+    }
+  },
+    where: (campo, valor) => ({ comparacao: { campo, valor } }), cast: campo => ({ cast: campo }), json: caminho => ({ json: caminho }) },
   RhColaborador: {
     findByPk: async (id, options) => { assert.equal(options.lock, 'UPDATE'); return Number(id) === 7 ? colaborador : null; },
     findAndCountAll: async options => {
@@ -57,6 +65,11 @@ const db = {
     }
   },
   RhSolicitacao: {
+    findAndCountAll: async options => {
+      ultimaConsulta = options;
+      const filtradas = requests.filter(s => atende(s, options.where));
+      return { count: filtradas.length, rows: filtradas.slice(options.offset, options.offset + options.limit) };
+    },
     create: async dados => { const s = instancia({ ...dados, id: proximoId++ }); requests.push(s); return s; },
     findOne: async () => requests.find(s => ['ABERTA', 'RASCUNHO'].includes(s.situacao)),
     findByPk: async id => requests.find(s => s.id === Number(id)),
@@ -71,12 +84,27 @@ const db = {
   Obra: { findAll: async ({ where }) => obras.filter(o => o.ativo && (!where.id || where.id.includes(o.id))
     && (!where.tipo_centro_custo || where.tipo_centro_custo[Op.in].includes(o.tipo_centro_custo))), findByPk: async id => obras.find(o => o.id === Number(id)) }
 };
+function atende(s, where) {
+  return Reflect.ownKeys(where).every(chave => {
+    const valor = where[chave];
+    if (chave === Op.and) return valor.every(v => atende(s, v));
+    if (chave === Op.or) return valor.some(v => atende(s, v));
+    if (chave === 'comparacao') return Number(s.dados_json.obra_destino_id) === Number(valor.valor);
+    const campo = chave.startsWith('$colaborador.') ? s.colaborador[chave.slice(13, -1)] : s[chave];
+    if (valor && typeof valor === 'object') {
+      if (valor[Op.in]) return valor[Op.in].includes(campo);
+      if (valor[Op.like]) return String(campo).toLowerCase().includes(valor[Op.like].slice(1, -1).toLowerCase());
+      throw new Error('Operador nao coberto no teste');
+    }
+    return campo === valor;
+  });
+}
 const service = carregar('rhTransferenciaService.js', {
   sequelize: { Op }, '../models': db, '../middlewares/validation': { ValidationError },
   './authorizationService': { getUserObraIds: async user => [33, 66, 99].includes(user.id) ? [] : user.id === 55 ? [2] : [1],
     isSuperadmin: u => u.id === 99, getRhDpObraScopeIds: async u => [44, 55, 67, 77].includes(u.id) ? [1] : null,
-    userHasAreaPermission: async (u, keys) => keys.includes('rh_dp.solicitacoes.abrir') && u.id !== 77 },
-  './setorCapabilityService': { userBelongsToDpSetor: async u => [66, 67].includes(u.id),
+    userHasAreaPermission: async (u, keys) => keys.includes('rh_dp.solicitacoes.abrir') && ![68, 77].includes(u.id) },
+  './setorCapabilityService': { userBelongsToDpSetor: async u => [66, 67, 68].includes(u.id),
     userHasSetorCapability: async u => [44, 55, 67, 77].includes(u.id) },
   './notificacoes': { criarNotificacaoDireta: async () => {} },
   './rhSolicitacaoCodigoService': { garantirCodigoRhSolicitacao: async () => {} },
@@ -227,6 +255,90 @@ async function validarTransferencias() {
   reset(); destino.ativo = false;
   await assert.rejects(service.abrir({ id: 44 }, payload), /ativos/);
   destino.ativo = true; destino.tipo_centro_custo = 'OBRA';
+  // Uma unica obra vinculada habilita saida para TODOS os outros locais ativos.
+  for (const destinoId of [2, 3]) for (const aprovadorId of [22, 66, 99]) {
+    reset(); obras[2].tipo_centro_custo = 'CENTRO_CUSTO';
+    responsabilidades.push({ obra_id: destinoId, user_id: 22 });
+    const config = await service.configuracao({ id: 44 });
+    assert.deepEqual(Array.from(config.obras_solicitacao_ids), [1]);
+    assert.equal(config.obras.some(o => o.id === destinoId), true);
+    const saida = await service.abrir({ id: 44 }, { ...payload, obra_destino_id: destinoId });
+    assert.equal(saida.aprovacao_automatica, false);
+    assert.equal(requests[0].dados_json.obra_solicitante_id, 1);
+    assert.equal(requests[0].dados_json.obra_aprovadora_id, destinoId);
+    assert.equal(colaborador.obra_id, 1, 'Saida nao efetiva antes de aprovar');
+    await assert.rejects(service.agir({ id: 44 }, saida.id, 'aprovar'), /restrito/);
+    await assert.rejects(service.agir({ id: 11 }, saida.id, 'aprovar'), /outro responsavel/);
+    await service.agir({ id: aprovadorId }, saida.id, 'aprovar');
+    await service.agir({ id: aprovadorId }, saida.id, 'aprovar');
+    assert.equal(colaborador.obra_id, destinoId); assert.equal(atualizacoes, 1);
+  }
+  reset(); colaborador.obra_id = 3; aberto.obra_id = 3;
+  responsabilidades.push({ obra_id: 3, user_id: 22 });
+  const entrada = await service.abrir({ id: 44 }, { ...payload, obra_destino_id: 1 });
+  assert.equal(requests[0].dados_json.obra_aprovadora_id, 3);
+  await service.agir({ id: 22 }, entrada.id, 'aprovar'); assert.equal(colaborador.obra_id, 1);
+  reset(); colaborador.obra_id = 2; aberto.obra_id = 2;
+  await assert.rejects(service.abrir({ id: 44 }, { ...payload, obra_destino_id: 3,
+    obra_solicitante_id: 1, aprovacao_automatica: true }), /vinculado/);
+  assert.equal(requests.length, 0, 'Sem transferencia entre dois locais de terceiros');
+  reset(); responsabilidades.push({ obra_id: 2, user_id: 44 });
+  const ambasLigadas = await service.abrir({ id: 44 }, payload);
+  assert.equal(ambasLigadas.aprovacao_automatica, false, 'Ser usuario da origem e responsavel apenas do destino nao efetiva');
+  assert.equal(requests[0].dados_json.obra_aprovadora_id, 2);
+  await assert.rejects(service.agir({ id: 44 }, ambasLigadas.id, 'aprovar'), /outro responsavel/);
+  await service.agir({ id: 22 }, ambasLigadas.id, 'aprovar'); assert.equal(colaborador.obra_id, 2);
+  obras[2].tipo_centro_custo = 'OBRA';
+  for (const id of [66, 99]) {
+    reset(); responsabilidades = [];
+    const config = await service.configuracao({ id });
+    assert.equal(config.transferencia_administrativa, true);
+    assert.deepEqual(Array.from(config.obras_solicitacao_ids), [1, 2, 3]);
+    if (id === 66) assert.equal(config.obras_responsavel_ids.length, 0, 'DP nao vira responsavel ficticio');
+    const automatica = await service.abrir({ id }, payload);
+    assert.equal(automatica.situacao, 'APROVADA'); assert.equal(colaborador.obra_id, 2);
+    assert.equal(requests[0].dados_json.aprovacao_administrativa, true);
+    assert.match(history.at(-1).descricao, /administrativa autorizada/);
+    await assert.rejects(service.abrir({ id }, payload), /diferente/); assert.equal(requests.length, 1);
+    reset(); responsabilidades = []; colaborador.obra_id = null; aberto = null;
+    const semOrigemDp = await service.abrir({ id }, payload); assert.equal(semOrigemDp.aprovacao_automatica, true);
+  }
+  reset(); assert.equal((await service.configuracao({ id: 68 })).transferencia_administrativa, false);
+  await assert.rejects(service.abrir({ id: 68 }, payload), /permissao/);
+  assert.equal((await service.configuracao({ id: 67 })).transferencia_administrativa, false);
+  const forjada = await service.abrir({ id: 67 }, { ...payload, transferencia_administrativa: true, aprovacao_automatica: true });
+  assert.equal(forjada.aprovacao_automatica, false); assert.equal(colaborador.obra_id, 1);
+  reset(); colaborador.data_admissao = '2099-01-01';
+  await assert.rejects(service.abrir({ id: 66 }, payload), /vinculo atual/);
+  assert.equal(requests.length, 0); assert.equal(history.length, 0);
+  assert.equal(colaborador.obra_id, 1); assert.equal(aberto.obra_id, 1);
+  assert.equal(atualizacoes, 0, 'Falha administrativa reverte pedido/historico/lotacao');
+  reset();
+  requests = Array.from({ length: 43 }, (_, i) => instancia({
+    id: i + 1, tipo: 'MOVIMENTACAO', subtipo: 'TRANSFERENCIA_OBRA',
+    situacao: i % 2 ? 'APROVADA' : 'ABERTA', obra_id: i === 42 ? 2 : 1,
+    colaborador: { id: i + 1, nome: `Ana ${i}`, matricula: `M${i}` },
+    criada_por: 11, dados_json: { obra_destino_id: 3, obra_aprovadora_id: 3 }
+  }));
+  const aprovadas = await service.listar({ id: 44 }, { grupo: 'TODAS', situacoes: 'APROVADA', pagina: 2 });
+  assert.equal(aprovadas.total, 21); assert.equal(aprovadas.total_paginas, 2); assert.equal(aprovadas.itens.length, 1);
+  assert(aprovadas.itens.every(s => s.situacao === 'APROVADA'));
+  assert.equal(ultimaConsulta.offset, 20); assert.equal(ultimaConsulta.subQuery, false);
+  const combinado = await service.listar({ id: 66 }, { grupo: 'TODAS', situacoes: 'ABERTA,APROVADA',
+    obra_id: 1, origem_id: 1, destino_id: 3, busca: 'M41' });
+  assert.equal(combinado.total, 1); assert.equal(combinado.itens[0].id, 42);
+  const restrito = await service.listar({ id: 44 }, { grupo: 'TODAS', origem_id: 2, destino_id: 3 });
+  assert.equal(restrito.total, 0, 'Filtrar terceiros nao substitui a ACL');
+  assert.equal((await service.listar({ id: 66 }, { grupo: 'TODAS', origem_id: 2, destino_id: 3 })).total, 1);
+  assert.equal((await service.listar({ id: 44 }, { grupo: 'TODAS' })).total, 42, 'Limpar conserva escopo');
+  assert.equal((await service.listar({ id: 33 }, { grupo: 'TODAS' })).total, 0);
+  for (const filtro of [{ situacoes: 'INVALIDA' }, { origem_id: '1 OR 1=1' }, { destino_id: '-2' }]) {
+    await assert.rejects(service.listar({ id: 66 }, filtro), /invalido|invalida/);
+  }
+  const antesConsulta = ultimaConsulta;
+  await service.listar({ id: 66 }, { grupo: 'TODAS', busca: "%' OR 1=1 --" });
+  assert.notEqual(ultimaConsulta, antesConsulta);
+  assert.equal(ultimaConsulta.where[Op.and].at(-1)[Op.or][0]['$colaborador.nome$'][Op.like], "%\\%' OR 1=1 --%");
 }
 
 async function validarAtividades() {

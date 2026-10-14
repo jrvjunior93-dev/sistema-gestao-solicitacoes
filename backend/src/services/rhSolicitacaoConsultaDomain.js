@@ -9,6 +9,7 @@ const ehPagamento = pedido => pedido?.subtipo === FLUXO;
 // Uma unica regra para lista, modal e destaque. Rascunho de pagamento nao
 // enviado permanece privado do autor, mesmo para DP e administradores.
 function visivelNaConsulta(pedido, usuarioId) {
+  if (ehPagamento(pedido) && dadosDe(pedido).rascunho_excluido) return false;
   return !(ehPagamento(pedido) && pedido.situacao === 'RASCUNHO'
     && (!usuarioId || Number(pedido.criada_por) !== Number(usuarioId)));
 }

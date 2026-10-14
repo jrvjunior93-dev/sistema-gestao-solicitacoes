@@ -335,6 +335,7 @@ const {
   canManageRhDpEmpresas,
   canManageUsers,
   canManageTreinamento,
+  canViewTreinamentoRelatorios,
   canReopenRhDpFechamento,
   canRetryIntegracaoSienge,
   canReadComercialBaseData,
@@ -903,6 +904,11 @@ const allowTreinamentoManage = permit({
   )
 });
 
+const allowTreinamentoReport = permit({
+  resource: 'TREINAMENTO',
+  custom: async req => (await canViewTreinamentoRelatorios(req.user)) ? true : 'Acesso negado aos relatorios de treinamento'
+});
+
 function allowPaymentAction(resource, checker, message) {
   return permit({
     resource,
@@ -1376,6 +1382,9 @@ const allowEmpresasGrupoRead = permit({
 });
 
 router.get('/treinamento/resumo', allowTreinamentoRead, TreinamentoController.resumo);
+router.get('/treinamento/relatorios/videos', allowTreinamentoReport, TreinamentoController.relatorioVideo);
+router.post('/treinamento/:id/video/sessoes', allowTreinamentoRead, validateRequest({ params: validateNumericIdParam('id', 'Conteudo de treinamento') }), TreinamentoController.iniciarVideo);
+router.post('/treinamento/:id/video/eventos', allowTreinamentoRead, validateRequest({ params: validateNumericIdParam('id', 'Conteudo de treinamento') }), TreinamentoController.registrarVideo);
 router.get('/treinamento', allowTreinamentoRead, TreinamentoController.index);
 router.post('/treinamento', allowTreinamentoManage, criticalRateLimit, TreinamentoController.create);
 router.get('/treinamento/:id', allowTreinamentoRead, validateRequest({ params: validateNumericIdParam('id', 'Conteudo de treinamento') }), TreinamentoController.show);
@@ -2111,6 +2120,9 @@ const allowRhDpPagamentoWrite = permit({ resource: 'RH_DP_SOLICITACOES', custom:
     || await require('./services/rhPagamentoSolicitacaoService').ehDp(req.user))
     ? true : 'Acesso negado ao pagamento RH/DP' });
 router.post('/rh/pagamentos-solicitacao', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.iniciar);
+router.post('/rh/pagamentos-solicitacao/preparar', allowRhDpSolicitacaoAbrir, RhPagamentoSolicitacaoController.preparar);
+router.post('/rh/pagamentos-solicitacao/salvar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.salvarNovo);
+router.delete('/rh/pagamentos-solicitacao/:id/rascunho', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Rascunho de pagamento') }), RhPagamentoSolicitacaoController.excluirRascunho);
 router.get('/rh/pagamentos-solicitacao/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.mostrar);
 router.put('/rh/pagamentos-solicitacao/:id', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.salvar);
 router.post('/rh/pagamentos-solicitacao/:id/enviar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.enviar);

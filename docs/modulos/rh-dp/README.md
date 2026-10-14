@@ -32,15 +32,38 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 - Transferencias: a aba Todos Colaboradores lista todos os ativos, inclusive sem obra,
   com somente identificacao profissional. O local aberto nao filtra esse diretorio.
+- Na lista Transferencias entre obras, os filtros de Situacao permitem marcar
+  uma ou mais opcoes: Aberta (aguardando aprovacao), Rascunho, Aprovada, Rejeitada
+  e Cancelada. Sem marcas, mostra todas as situacoes. Origem e Destino aceitam
+  um local cada, incluindo centros de custo; a busca usa nome/matricula.
+  Filtros combinam-se no servidor antes da contagem/paginacao, nunca substituem
+  o escopo de acesso nem o local aberto. Alterar filtro volta a pagina 1;
+  Atualizar, paginacao e polling conservam o recorte. Etiquetas removiveis e
+  Limpar tudo retomam a consulta sem filtros, ainda dentro do acesso autorizado.
+  A leitura de notificacoes permanece no escopo global/local existente, nao
+  fica limitada apenas aos registros que corresponderam ao filtro visual.
 - Destinos incluem Obras e Centros de Custo ativos. Origem em centro de custo
   tambem e aceita; vinculacao/responsavel/aprovacao, autor e escopo seguem iguais.
 - Todos os usuarios vinculados a Obra, com rh_dp.solicitacoes.abrir, podem solicitar
   transferencias no diretorio de ativos, sem cadastro de responsavel. Participam
   pela origem quando vinculados a ela; caso contrario pedem para seu proprio destino.
+- Na saida de colaborador do local vinculado, todos os destinos ativos ficam
+  disponiveis, inclusive centros de custo sem vinculo do usuario. Aprova o
+  responsavel/substituto do destino, DP ou SUPERADMIN. Na entrada de outra obra,
+  o destino deve ser vinculado e aprova o responsavel da origem ou DP/SUPERADMIN.
+  Transferencia entre dois locais de terceiros continua bloqueada. A origem
+  vinculada prevalece na definicao do lado solicitante, mesmo quando o usuario
+  tambem e responsavel apenas pelo destino.
 - Usuario comum nao efetiva a lotacao: aprova o responsavel/substituto vigente da
   outra obra. Sem origem, aprova o responsavel do destino. DP/SUPERADMIN podem decidir
   por bypass administrativo; isso nao libera cancelamento de terceiros para DP.
-- Autor nao aprova o proprio pedido. Aprovacao automatica anterior dos responsaveis
+- DP autorizado a abrir solicitacoes pode solicitar transferencias entre todos
+  os locais ativos, com efetivacao automatica no mesmo ato, como SUPERADMIN.
+  A excecao e determinada no servidor, nao por flag enviada pelo navegador;
+  nao cria responsabilidade ficticia. Usuario operacional OBRA que acumule DP
+  continua no escopo estrito, com aprovacao da outra obra.
+- Autor nao aprova o proprio pedido pendente. Efetivacao administrativa DP/SUPERADMIN
+  na abertura e auditada como automatica. Aprovacao automatica dos responsaveis
   por ambas as obras (ou destino sem origem) permanece. Vigencia na aprovacao,
   justificativa/historico, transacao/lock, duplicacao e datas da admissao preservados.
 - Diretorio continua somente profissional; lista/detalhe de transferencias para
@@ -75,7 +98,7 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
   com Colaboradores, Solicitacoes, Transferencias, Eventos recorrentes,
   Documentos e Relatorios, conforme permissoes. Os tres ultimos nao ampliam
   as autorizacoes existentes: documentos e relatorios continuam restritos
-  aos perfis autorizados. Transferencias permanecem apenas entre obras.
+  aos perfis autorizados. Transferencias incluem obras e centros de custo ativos.
 - Documentos e Relatorios dentro de um local fixam `obra_id` em todas as
   consultas, inclusive ao limpar/atualizar filtros. Na entrada global nao
   ha local predefinido. Eventos e transferencias tambem aplicam o local no
@@ -119,14 +142,49 @@ Busca preserva a marcacao; trocar usuario/obra/filtro de obra limpa a selecao.
 O rascunho guarda somente o grupo escolhido, tambem na conferencia do DP.
 Mesmo usuario/local/grupo reabre seu rascunho sob lock, sem duplicar pedido;
 grupos diferentes nao reaproveitam linhas ou edicoes de outro grupo.
+Abrir o pagamento agora consulta uma previa em `POST /rh/pagamentos-solicitacao/preparar`,
+sem criar registro/codigo/historico. Se ja existir rascunho proprio daquele grupo,
+reabre-o apenas para leitura. Antes da primeira persistencia, editar, trocar de
+aba ou fechar nao grava solicitacao. Campos podem permanecer na memoria local
+do workspace, mas isso nao e um rascunho no banco.
+
+Salvar ou marcar Conferido (na linha ou Aplicar aos selecionados) cria o
+primeiro rascunho e salva os campos na mesma transacao, com chave idempotente
+por tentativa e lock do local. Falha de validacao nao deixa rascunho vazio;
+repeticao/duplo clique nao cria outro registro. Depois disso, o autosave existente
+continua protegendo as edicoes. Enviar exige primeiro Salvar ou Conferido;
+nao cria registro implicitamente. Campos cadastrais sao revalidados na criacao.
+
+Cada autor, com permissao Abrir solicitacao de pessoal, pode usar Excluir
+rascunho dentro do pagamento, com confirmacao. Somente RASCUNHO sem titulos
+gerados: pedido enviado/aberto, parcial ou aprovado nao e excluido por essa acao.
+Exclusao e logica/auditada: sai das listas e bloqueia detalhe/acoes, mas conserva
+historico, autor e snapshot. Nem DP nem SUPERADMIN excluem rascunhos de terceiros.
+Repetir a exclusao nao cria outro evento; novo pagamento apos excluir usa outra
+chave, sem ressuscitar o rascunho anterior. Titulos/baixas existentes nao mudam.
+
+Frontend e backend precisam ser atualizados juntos. Rotas novas: POST
+`/rh/pagamentos-solicitacao/salvar` (primeiro save atomico) e DELETE
+`/rh/pagamentos-solicitacao/:id/rascunho`. A rota POST antiga permanece compativel
+para clientes legados; a tela atual nao a usa ao abrir. Sem migration.
 Rascunhos legados sao preservados: os individuais que continham toda a equipe
 nao sao cortados ou regravados; o novo botao cria um rascunho restrito separado.
 O ajuste usa dados_json e nao exige migration.
 
-Mensalista: salario base multiplicado pelo percentual 40%, 60% ou 100%; dias e
+Mensalista: salario base multiplicado pelo percentual 40%, 50%, 60% ou 100%; dias e
 faltas sao informativos. Diarista: diaria multiplicada pelos dias informados;
 faltas tambem sao informativas. Acrescimos e descontos informados entram no
 liquido integralmente. Os controles de dias/faltas avancam de um em um.
+
+50% esta disponivel na linha individual e em Aplicar aos selecionados, tanto
+no grupo completo quanto no grupo de colaboradores marcados. Marcar 50% limpa
+40/60; escolher 40/60/100% retira 50%. DIARIA nao usa percentuais e conserva
+diaria x dias. O percentual fica no snapshot JSON da solicitacao; pagamentos
+ja gerados nao mudam. Nao habilita parcelas automaticas 50/50 no cadastro nem
+altera jornada/apuracao legadas. Backend e frontend devem ser atualizados juntos:
+se o servidor nao confirmar 50% no salvamento, o envio fica bloqueado.
+Testes locais: validarRhPagamentoSolicitacao.js (backend),
+validarRhPagamento50UI.mjs e validarRhPessoalTransferencias.mjs (frontend).
 
 Acrescimos e descontos usam mascara BRL durante digitacao, seguindo os
 formatters compartilhados do sistema (digitos entram como centavos).

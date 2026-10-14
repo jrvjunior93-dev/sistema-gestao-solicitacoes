@@ -13,8 +13,12 @@ function numero(v, campo, max = 999999999) {
 
 function calcularLinha(linha, cadastro) {
   const diaria = cadastro.forma_calculo_gerencial === 'DIARIA';
-  const percentual = diaria || Boolean(linha.parcela_40) === Boolean(linha.parcela_60)
-    ? 100 : linha.parcela_40 ? 40 : 60;
+  if (linha.parcela_50 != null && typeof linha.parcela_50 !== 'boolean') throw new ValidationError('Opcao 50% invalida.');
+  if (!diaria && linha.parcela_50 && (linha.parcela_40 || linha.parcela_60)) {
+    throw new ValidationError('Selecione somente 50%, sem combinar com 40% ou 60%.');
+  }
+  const percentual = diaria ? 100 : linha.parcela_50 ? 50
+    : Boolean(linha.parcela_40) === Boolean(linha.parcela_60) ? 100 : linha.parcela_40 ? 40 : 60;
   const dias = numero(linha.dias, 'Dias', 31);
   const faltas = numero(linha.faltas, 'Faltas', 31);
   const base = numero(diaria ? cadastro.valor_diaria : cadastro.salario_base, 'Salario');

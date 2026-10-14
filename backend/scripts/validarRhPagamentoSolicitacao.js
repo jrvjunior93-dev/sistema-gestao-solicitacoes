@@ -14,6 +14,15 @@ assert.equal(domain.calcularLinha(dados, cadastro).liquido, 1100);
 assert.equal(domain.calcularLinha({ ...dados, parcela_60: true }, cadastro).bruto, 3000);
 assert.equal(domain.calcularLinha({ ...dados, parcela_40: false }, cadastro).bruto, 3000);
 assert.equal(domain.calcularLinha({ ...dados, parcela_40: false, parcela_60: true }, cadastro).liquido, 1700);
+const metade = { ...dados, parcela_40: false, parcela_50: true, acrescimos: 25.25, descontos: 100 };
+assert.equal(domain.calcularLinha(metade, cadastro).percentual, 50);
+assert.equal(domain.calcularLinha(metade, cadastro).bruto, 1500);
+assert.equal(domain.calcularLinha(metade, cadastro).liquido, 1425.25, 'Ajustes integrais, como 40/60, nao divididos por dois');
+assert.equal(domain.calcularLinha({ ...metade, descontos: 0, acrescimos: 0 }, { ...cadastro, salario_base: 3000.01 }).bruto, 1500.01);
+assert.equal(domain.calcularLinha({ ...metade, dias: 5 }, { ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }).bruto, 500);
+for (const patch of [{ parcela_40: true }, { parcela_60: true }, { parcela_50: 'false' }]) {
+  assert.throws(() => domain.calcularLinha({ ...metade, ...patch }, cadastro), /50%/);
+}
 assert.equal(domain.calcularLinha({ ...dados, dias: 5, faltas: 1 }, { ...cadastro, forma_calculo_gerencial: 'DIARIA', valor_diaria: 100 }).liquido, 400);
 for (const dias of [0, 1, 15, 30, 31]) {
   for (const faltas of [0, 10, 31]) {
@@ -71,6 +80,7 @@ const models = {
   }
 };
 const deps = {
+  'node:crypto': require('node:crypto'),
   sequelize: { Op }, '../models': models, '../middlewares/validation': { ValidationError },
   './rhPagamentoSolicitacaoDomain': domain,
   '../utils/codigoDoSetor': { codigoDoSetor: u => u.dp ? 'DP' : 'OBRA' },
@@ -135,7 +145,56 @@ async function filaCanonicaTransacaoExterna() {
   nominal = true;gate = 'AUTHORIZATION_REQUIRED';
   await assert.rejects(enfileirar(dp, { titulo_ids: [701] }, { transaction: tx }), /proprietario/);
 }
+async function validarPreviaRascunho() {
+  const estadoInicial = JSON.stringify(store);
+  const visivel = require('../src/services/rhSolicitacaoConsultaDomain').visivelNaConsulta;
+  try {
+    const params = { obra_id: 7, colaborador_id: 11 };
+    for (let i = 0; i < 3; i++) {
+      const previa = await service.preparar(obra, params);
+      assert.equal(previa.solicitacao.id, null); assert.equal(previa.solicitacao.codigo, null);
+      assert.equal(previa.solicitacao.dados_json.linhas.length, 1);
+      assert.equal(store.requests.length, 0); assert.equal(store.historicos.length, 0);
+    }
+    const previa = await service.preparar(obra, params);
+    const payload = { ...params, chave_idempotencia: 'rascunho-qa-chave-0001', dados: {
+      ...previa.solicitacao.dados_json, linhas: previa.solicitacao.dados_json.linhas.map(l => ({ ...l,
+        parcela_50: true, conferido_obra: true, acrescimos: 25 })) } };
+    const invalido = { ...payload, dados: { ...payload.dados, data_vencimento: '2026-02-30' } };
+    await assert.rejects(service.salvarNovo(obra, invalido), /vencimento/);
+    assert.equal(store.requests.length, 0); assert.equal(store.historicos.length, 0, 'Criacao e primeiro save atomicos');
+    const [a, b] = await Promise.all([service.salvarNovo(obra, payload), service.salvarNovo(obra, payload)]);
+    assert.equal(a.solicitacao.id, b.solicitacao.id); assert.equal(store.requests.length, 1);
+    assert.equal(a.solicitacao.dados_json.linhas[0].liquido, 1525);
+    assert.equal(a.solicitacao.dados_json.linhas[0].conferido_obra, true);
+    assert.equal(a.pode_excluir_rascunho, true);
+    const consultaAntes = JSON.stringify(store);
+    assert.equal((await service.preparar(obra, params)).solicitacao.id, a.solicitacao.id);
+    assert.equal(JSON.stringify(store), consultaAntes, 'Reabrir rascunho nao grava');
+    await assert.rejects(service.excluirRascunho(dp, a.solicitacao.id), /autor/);
+    await assert.rejects(service.salvarNovo(obra, { ...payload, dados: { ...payload.dados, competencia: '2026-11' } }), /processado/);
+    await assert.rejects(service.salvarNovo(obra, { ...payload, chave_idempotencia: 'outra-chave-rascunho-002' }), /Ja existe/);
+    const titulosAntes = JSON.stringify(store.titles);
+    await Promise.all([service.excluirRascunho(obra, a.solicitacao.id), service.excluirRascunho(obra, a.solicitacao.id)]);
+    assert.equal(store.historicos.filter(h => h.acao === 'RASCUNHO_EXCLUIDO').length, 1);
+    assert.equal(JSON.stringify(store.titles), titulosAntes);
+    assert.equal(visivel(store.requests[0], obra.user.id), false);
+    assert.equal(visivel(store.requests[0], dp.user.id), false);
+    await assert.rejects(service.mostrar(obra, a.solicitacao.id), /excluido/);
+    await assert.rejects(service.salvarNovo(obra, payload), /processado/);
+    assert.equal((await service.preparar(obra, params)).solicitacao.id, null);
+    const novamente = await service.salvarNovo(obra, { ...payload, chave_idempotencia: 'rascunho-qa-chave-0002' });
+    await service.enviar(obra, novamente.solicitacao.id, { revisao: novamente.solicitacao.dados_json.revisao });
+    await assert.rejects(service.excluirRascunho(obra, novamente.solicitacao.id), /Somente rascunhos/);
+    scope = [];
+    await assert.rejects(service.preparar(obra, params), /Acesso negado/);
+    await assert.rejects(service.excluirRascunho(obra, novamente.solicitacao.id), /Acesso negado/);
+    scope = [7];
+    console.log('Previa sem escrita; primeiro save atomico/idempotente; exclusao propria, historico, privacidade e negativas aprovados.');
+  } finally { store = JSON.parse(estadoInicial); hydrate(); scope = [7]; }
+}
 (async () => {
+  await validarPreviaRascunho();
   await filaCanonicaTransacaoExterna();
   const [primeiro, replay] = await Promise.all([service.iniciar(obra, { obra_id: 7 }), service.iniciar(obra, { obra_id: 7 })]);
   assert.equal(primeiro.solicitacao.id, replay.solicitacao.id); assert.equal(store.requests.length, 1);
@@ -314,6 +373,42 @@ async function filaCanonicaTransacaoExterna() {
   assert.notEqual(novoIndividual.solicitacao.id, individual.solicitacao.id);
   assert.equal(novoIndividual.solicitacao.dados_json.linhas.length, 1);
   assert.equal(JSON.stringify(store.requests.find(s => s.id === individual.solicitacao.id).dados_json), legadoAntes);
+  // Introduzir a flag desligada nao invalida conferencias antigas de 40/60/100%.
+  const sem50 = await service.iniciar(obra, { obra_id: 7, colaborador_id: 13 });
+  const sem50Salvo = await service.salvar(obra, sem50.solicitacao.id, { ...sem50.solicitacao.dados_json,
+    linhas: sem50.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_obra: true })) });
+  await service.enviar(obra, sem50.solicitacao.id, { revisao: sem50Salvo.solicitacao.dados_json.revisao });
+  const sem50Dp = await service.mostrar(dp, sem50.solicitacao.id);
+  await service.salvar(dp, sem50.solicitacao.id, { ...sem50Dp.solicitacao.dados_json,
+    linhas: sem50Dp.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+  store.requests.find(s => s.id === sem50.solicitacao.id).dados_json.linhas.forEach(l => delete l.parcela_50);
+  const legadoConferido = await service.mostrar(dp, sem50.solicitacao.id);
+  const legadoResalvo = await service.salvar(dp, sem50.solicitacao.id, legadoConferido.solicitacao.dados_json);
+  assert.equal(legadoResalvo.solicitacao.dados_json.linhas[0].conferido_dp, true);
+  assert.equal(legadoResalvo.solicitacao.dados_json.linhas[0].percentual, 100);
+  // Mesmo dominio de 50% para individual, geral e selecionados, sem alterar titulos anteriores.
+  const titulosAntes50 = JSON.stringify(store.titles);
+  for (const selecao of [{ colaborador_id: 11 }, {}, { colaborador_ids: [11, 12] }]) {
+    const pedido50 = await service.iniciar(obra, { obra_id: 7, ...selecao });
+    const salvo50 = await service.salvar(obra, pedido50.solicitacao.id, { ...pedido50.solicitacao.dados_json,
+      linhas: pedido50.solicitacao.dados_json.linhas.map(l => ({ ...l, selecionado: true,
+        parcela_40: false, parcela_60: false, parcela_50: true, conferido_obra: true,
+        acrescimos: 0, descontos: 0, reembolso: null })) });
+    for (const l of salvo50.solicitacao.dados_json.linhas) {
+      assert.equal(l.percentual, 50); assert.equal(l.parcela_50, true); assert.equal(l.bruto, domain.dinheiro(l.salario_base / 2));
+    }
+    await service.enviar(obra, pedido50.solicitacao.id, { revisao: salvo50.solicitacao.dados_json.revisao });
+    const recebido50 = await service.mostrar(dp, pedido50.solicitacao.id);
+    const conferido50 = await service.salvar(dp, pedido50.solicitacao.id, { ...recebido50.solicitacao.dados_json,
+      linhas: recebido50.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+    const antesFila50 = store.titles.length;
+    await Promise.all([service.enviar(dp, pedido50.solicitacao.id, { revisao: conferido50.solicitacao.dados_json.revisao }),
+      service.enviar(dp, pedido50.solicitacao.id, { revisao: conferido50.solicitacao.dados_json.revisao })]);
+    assert.equal(store.titles.length - antesFila50, conferido50.solicitacao.dados_json.linhas.length);
+    assert.deepEqual(store.titles.slice(antesFila50).map(t => t.valor_original), Array.from(conferido50.solicitacao.dados_json.linhas, l => l.liquido));
+    assert.ok(store.titles.slice(antesFila50).every(t => t.descricao.includes('50%')));
+  }
+  assert.equal(JSON.stringify(store.titles.slice(0, JSON.parse(titulosAntes50).length)), titulosAntes50);
   const outroRascunho = await service.iniciar(obra, { obra_id: 7 });
   ativo = false;
   await assert.rejects(service.salvar(obra, outroRascunho.solicitacao.id, { ...outroRascunho.solicitacao.dados_json,
