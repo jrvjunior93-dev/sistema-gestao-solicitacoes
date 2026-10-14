@@ -32,10 +32,28 @@
 - Rollback por revert do PR/artefato Vercel e codigo anterior compativel;
   preservar previsoes/transferencias/historicos novos. Sem down/restauracao de dados.
 
+## Validacoes do candidato
+
+- Integracao 6a5a2351 preservou ambos os historicos; conflito apenas documental
+  em ownership resolvido por uniao das evidencias. Nenhum arquivo removido.
+- Runtime backend/src e frontend/src igual a refactor homologada; sem delta
+  de migrations, packages/lockfiles, .env ou configuracao.
+- Backend saldo/centavos/ACL/idempotencia/rollback e transferencias/escopos
+  aprovados; seguranca direta com 2304 comparacoes, 66 escopos e 47 rotas HTTP.
+- Regressao DP global/salario, estorno granular, Ticket Conta/Pix/Boleto,
+  troca de usuario exclusiva do SUPERADMIN e medicao/recarga aprovadas.
+- UI saldo/transferencias desktop/mobile, moeda, duplo clique e legado de
+  medicao com multiplos boletos/PIX/transferencia aprovados, APIs simuladas.
+- Navegacao: 220 rotas/218 destinos, sem links mortos, catalogos consistentes.
+  Build aprovado (587 modulos), avisos preexistentes de Browserslist/bundle.
+- Documentacao: 523 Markdown/19 canonicos. Sintaxe e diff/check aprovados.
+  Nenhum banco real foi acessado nestes testes; homologacao dev confirmada pelo usuario.
+- Ownership liberado para publicacao do candidato por PR.
+
 ## Estado e proximo passo
 
-- Preparacao: tag/bundle, reserva documental e integracao por merge da fonte.
-  Validar backend/ACL/financeiro, UI desktop/mobile, build/navegacao/docs antes do PR.
+- Tag anterior publicada e bundle completo verificado fora da EC2.
+  Integracao/testes concluidos; publicar candidato e conferir checks antes do merge.
 - Publicacao por PR e merge sem force/squash. Conferir remotos/checks.
 - Usuario atualiza somente checkout producao por fast-forward com SHA congelado,
   arquivos versionados limpos e sem delta de migrations/dependencias.

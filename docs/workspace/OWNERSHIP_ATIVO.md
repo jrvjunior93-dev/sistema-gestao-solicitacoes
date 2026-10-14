@@ -11,6 +11,9 @@
   Caixa nao commitado em outro worktree e outputs/ continuam fora do release.
 - Tag/bundle do codigo anterior, testes do candidato, PR para main e comandos
   guardados ao usuario, reiniciando somente backend-solicitacoes.
+- Integracao e validacoes concluidas; ownership liberado para publicacao autorizada.
+  Conflito somente documental, ambas as evidencias preservadas. Runtime igual
+  a refactor homologada; handoff 2026-10-14-promocao-saldo-transferencia-main.md.
 
 ## Promocao DP global e salario para main - 2026-10-14
 
