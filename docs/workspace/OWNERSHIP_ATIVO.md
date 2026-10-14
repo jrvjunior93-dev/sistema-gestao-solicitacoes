@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao DP transferencias para main - 2026-10-14
+
+- Responsavel: agente desta conversa, sem delegacao; reserva ativa.
+- Usuario confirmou backup recente no Drive cifrado/timer ativo e homologacao dev.
+- Base main 5936d3fb; commit homologado 3a1b2300 na refactor/frontend.
+- Reservados: integracao seletiva dos sete arquivos DP desse commit,
+  OWNERSHIP_ATIVO e novo handoff de promocao. Sem alterar fluxo adicional.
+- Obra obrigatoria em caixa permanece nao commitada no worktree anterior,
+  fora da promocao. Adiantamento para Obra ainda nao implementado.
+- Sem migration/dependencia nova, EC2, banco real ou reinicio pelo agente.
+- Snapshot de codigo preservado em tag/bundle fora da EC2, verificado.
+
 ## Promocao incremental para main - 2026-10-13
 
 - Agente desta conversa, sem delegacao. Reserva: conflitos da integracao,
