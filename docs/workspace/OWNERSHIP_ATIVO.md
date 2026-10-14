@@ -2,7 +2,7 @@
 
 ## Promocao DP transferencias para main - 2026-10-14
 
-- Responsavel: agente desta conversa, sem delegacao; reserva ativa.
+- Responsavel: agente desta conversa, sem delegacao; candidato validado e ownership liberado.
 - Usuario confirmou backup recente no Drive cifrado/timer ativo e homologacao dev.
 - Base main 5936d3fb; commit homologado 3a1b2300 na refactor/frontend.
 - Reservados: integracao seletiva dos sete arquivos DP desse commit,
@@ -11,6 +11,7 @@
   fora da promocao. Adiantamento para Obra ainda nao implementado.
 - Sem migration/dependencia nova, EC2, banco real ou reinicio pelo agente.
 - Snapshot de codigo preservado em tag/bundle fora da EC2, verificado.
+- Evidencias e proximo passo: docs/handoffs/2026-10-14-promocao-dp-main.md.
 
 ## Promocao incremental para main - 2026-10-13
 
