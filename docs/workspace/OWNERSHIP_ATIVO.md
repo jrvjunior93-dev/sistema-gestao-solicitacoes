@@ -11,6 +11,9 @@
   execucao EC2 ou reinicio pelo agente. Caixa nao commitada e outputs/ excluidos.
 - Publicacao por PR apos testes; comandos somente para backend-solicitacoes,
   com branch/SHA/UUID/schema/ambiente/porta/processo conferidos pelo usuario.
+- Integracao/testes concluidos, ownership liberado. Conflito apenas documental,
+  ambos os historicos preservados; runtime identico ao homologado em dev.
+  Handoff: docs/handoffs/2026-10-14-promocao-cadastro-dp-main.md.
 
 ## Promocao saldo contratual e transferencia OBRA para main - 2026-10-14
 

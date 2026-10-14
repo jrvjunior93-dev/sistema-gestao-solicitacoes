@@ -34,10 +34,29 @@
 - Rollback por revert do PR/artefato Vercel e codigo anterior compativel com
   218cc4dd, preservando salarios/vinculos/historicos novos. Sem down ou restore de dados.
 
+## Validacoes do candidato
+
+- Integracao 49602cf4: conflito somente OWNERSHIP_ATIVO, resolvido preservando
+  as duas linhas documentais. Nenhum arquivo removido; runtime backend/src e
+  frontend/src identico a refactor homologada; sem delta de schema/dependencias.
+- Backend consulta/salario DP nominal, lotacao SUPERADMIN, transferencias/centros,
+  escopos positivos/negativos, primeira lotacao, contatos e planilha aprovados.
+- Seguranca direta: 2304 comparacoes, 66 casos de escopo e 47 rotas HTTP.
+  Regressao saldo contratual, Ticket Conta/Pix/Boleto, estorno granular e troca
+  de usuario producao exclusiva do SUPERADMIN aprovadas.
+- UI real com APIs simuladas: cadastro DP autorizado/negado, lotacao SUPERADMIN,
+  vigencia/motivo/payload, desktop/mobile, contatos, remount/revisao/403 e
+  transferencias para Centro aprovados. Sem banco/rede externa.
+- Navegacao 220 rotas/218 destinos, sem links mortos; catalogos consistentes.
+  Build aprovado 587 modulos, avisos preexistentes Browserslist/bundle.
+- Docs 525 Markdown/19 canonicos; sintaxe e diff/check aprovados.
+- Tag anterior publicada, bundle completo verificado fora da EC2.
+  Nenhum banco real/EC2 acessado nestes testes; dev aprovado pelo usuario.
+- Ownership liberado para publicacao autorizada.
+
 ## Estado e proximo passo
 
-- Integrar, resolver somente conflitos documentais, executar backend/ACL/legado,
-  UI desktop/mobile, build/navegacao/docs e conferir delta antes do PR.
+- Candidato validado; publicar por PR e conferir checks antes do merge.
 - Publicar/merge por PR sem force/squash apos checks. Nao modificar refactor/frontend.
 - Usuario atualiza checkout producao por ff com SHA congelado, branch main,
   arquivos versionados limpos e sem delta de schema/dependencias nao autorizado.
