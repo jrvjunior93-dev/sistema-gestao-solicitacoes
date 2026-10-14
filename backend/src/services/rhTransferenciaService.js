@@ -11,7 +11,7 @@ const { vinculoAberto, registrarVinculo } = require('./rhVinculoObraService');
 const { comAtividade, marcarLida, marcarListaLida: registrarListaLida } = require('./rhSolicitacaoAtividadeService');
 const { criarNotificacaoDireta } = require('./notificacoes');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
-const { TIPO_CENTRO_CUSTO_OBRA, isObraCentroCusto } = require('../constants/centroCusto');
+const { TIPOS_CENTRO_CUSTO } = require('../constants/centroCusto');
 const { userBelongsToDpSetor, userHasSetorCapability } = require('./setorCapabilityService');
 
 const camposColaborador = ['id', 'nome', 'matricula', 'cargo', 'obra_id'];
@@ -45,7 +45,7 @@ async function responsaveis(usuarioId, transaction) {
 async function obrasResponsavel(user, transaction) {
   if (isSuperadmin(user)) {
     const obras = await Obra.findAll({
-      where: { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA },
+      where: { ativo: true, tipo_centro_custo: { [Op.in]: TIPOS_CENTRO_CUSTO } },
       attributes: ['id'],
       transaction
     });
@@ -79,7 +79,7 @@ async function configuracao(user) {
   const ids = await obrasResponsavel(user);
   const solicitantes = await obrasSolicitacao(user);
   const obras = await Obra.findAll({
-    where: { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA },
+    where: { ativo: true, tipo_centro_custo: { [Op.in]: TIPOS_CENTRO_CUSTO } },
     attributes: camposObra,
     order: [['nome', 'ASC']]
   });
@@ -301,8 +301,8 @@ async function efetivarTransferencia(s, user, transaction) {
   }
   const destino = await Obra.findByPk(d.obra_destino_id, { transaction });
   if (!destino?.ativo) throw new ValidationError('A obra de destino nao esta ativa.');
-  if (!isObraCentroCusto(destino.tipo_centro_custo)) {
-    throw new ValidationError('O destino da transferencia precisa ser um cadastro do tipo Obra.');
+  if (!TIPOS_CENTRO_CUSTO.includes(destino.tipo_centro_custo || 'OBRA')) {
+    throw new ValidationError('O destino precisa ser uma Obra ou Centro de Custo.');
   }
   const aberto = await vinculoAberto(colaborador.id, transaction);
   const hoje = hojeLocal();
@@ -343,12 +343,12 @@ async function abrir(user, payload) {
       where: {
         id: origem ? [origem, destino] : [destino],
         ativo: true,
-        tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA
+        tipo_centro_custo: { [Op.in]: TIPOS_CENTRO_CUSTO }
       },
       transaction
     });
     if (obras.length !== (origem ? 2 : 1)) {
-      throw new ValidationError('A origem e o destino precisam ser cadastros ativos do tipo Obra.');
+      throw new ValidationError('A origem e o destino precisam ser Obras ou Centros de Custo ativos.');
     }
     // Sem responsavel na outra obra, DP/SUPERADMIN podem decidir por excecao;
     // nao inventar responsabilidade nem efetivar no pedido do usuario comum.

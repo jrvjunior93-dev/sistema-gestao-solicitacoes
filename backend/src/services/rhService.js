@@ -1143,30 +1143,33 @@ async function atualizarColaboradorRh(id, data, user) {
 
     await assertUniqueColaborador(data, colaborador.id, transaction);
 
-    /**
-     * A PORTA DOS FUNDOS FECHA AQUI (Fase 2 do modulo DP, 25/08).
-     *
-     * Decisao do cliente: trocar a obra de um colaborador passa a exigir solicitacao formal — a
-     * Obra pede, o DP decide. Enquanto a edicao direta continuasse existindo ao lado do fluxo, o
-     * processo seria OPCIONAL, e opcional e o mesmo que inexistente: bastaria abrir o cadastro
-     * para contornar a aprovacao, e o historico de lotacao nasceria com buracos.
-     *
-     * Fecha SEM periodo de convivencia porque o modulo RH/DP nao e operado pela empresa hoje —
-     * nao ha usuario para quebrar. Em modulo vivo isto exigiria transicao.
-     *
-     * A via nova e `rhSolicitacaoService`, tipo TROCA_OBRA, provada pela suite 50.
-     *
-     * `salario_base` NAO e fechado aqui, de proposito: a alteracao salarial so ganha fluxo na
-     * Fase 5, e fechar antes deixaria o salario impossivel de corrigir por qualquer caminho.
-     */
+    // Transferencia continua formal para os perfis operacionais. Excecao
+    // autorizada: SUPERADMIN ajusta cadastro com vigencia, motivo e historico.
+    let lotacaoDireta = false;
     if (Object.prototype.hasOwnProperty.call(data, 'obra_id')) {
       const obraPedida = data.obra_id === null || data.obra_id === '' ? null : Number(data.obra_id);
-      const obraAtual = colaborador.obra_id === null ? null : Number(colaborador.obra_id);
+      const obraAtual = colaborador.obra_id == null ? null : Number(colaborador.obra_id);
       if (obraPedida !== obraAtual) {
-        throw new ValidationError(
+        const { isSuperadmin } = require('./authorizationService');
+        if (!isSuperadmin(user)) throw new ValidationError(
           'A obra do colaborador nao e alterada pelo cadastro. Abra uma solicitacao de troca de '
-          + 'obra pela aba Transferencias entre obras, para aprovacao do outro responsavel.'
+          + 'obra pela aba Transferencias entre obras, para aprovacao do outro responsavel.', 403
         );
+        const destino = obraPedida ? await Obra.findByPk(obraPedida, { transaction }) : null;
+        if (obraPedida && (!destino?.ativo || !['OBRA', 'CENTRO_CUSTO'].includes(destino.tipo_centro_custo || 'OBRA'))) {
+          throw new ValidationError('Selecione uma Obra ou Centro de Custo ativo.');
+        }
+        const { RhSolicitacao } = require('../models');
+        const pendente = await RhSolicitacao.findOne({ where: { colaborador_id: colaborador.id,
+          situacao: { [Op.in]: ['ABERTA', 'RASCUNHO'] }, [Op.or]: [
+            { tipo: 'TROCA_OBRA' }, { tipo: 'MOVIMENTACAO', subtipo: 'TRANSFERENCIA_OBRA' }
+          ] }, transaction });
+        if (pendente) throw new ValidationError('Resolva ou cancele a transferencia pendente antes de ajustar a lotacao pelo cadastro.', 409);
+        await rhVinculoObraService.ajustarLotacaoCadastro(colaborador, {
+          obraId: obraPedida, setorId: data.setor_id ?? colaborador.setor_id,
+          vigenciaInicio: data.obra_vigencia_inicio, observacoes: data.obra_motivo, criadoPor: user.id
+        }, transaction);
+        lotacaoDireta = true;
       }
     }
 
@@ -1176,8 +1179,8 @@ async function atualizarColaboradorRh(id, data, user) {
      * Na Fase 2 deixei esta porta aberta de proposito: a alteracao salarial ainda nao tinha fluxo, e
      * fechar antes teria deixado o salario impossivel de corrigir por qualquer caminho. Agora o
      * pedido ALTERACAO_SALARIAL existe, exige a permissao de Diretoria e grava historico com
-     * vigencia. Excecao administrativa explicita: SUPERADMIN pode ajustar
-     * diretamente com motivo e vigencia, pelo mesmo historico salarial.
+     * vigencia. Excecao autorizada: SUPERADMIN ou DP com permissoes nominais
+     * de editar colaboradores e aprovar salario ajustam pelo mesmo historico.
      *
      * O que muda em relacao a obra: aqui a mensagem cita a DIRETORIA, porque quem decide nao e o DP.
      */
@@ -1187,13 +1190,21 @@ async function atualizarColaboradorRh(id, data, user) {
       const atual = colaborador.salario_base === null ? null : Number(colaborador.salario_base);
       if (pedido !== atual) {
         const { isSuperadmin } = require('./authorizationService');
-        if (!isSuperadmin(user)) throw new ValidationError(
-          'O salario nao e alterado pelo cadastro. Abra uma solicitacao de alteracao salarial: '
-          + 'a decisao e da Diretoria.', 403);
+        const { userHasNominalAreaPermission } = require('./authorizationService');
+        let dpAutorizado = false;
+        if (!isSuperadmin(user)) {
+          const { userBelongsToDpSetor, userHasSetorCapability } = require('./setorCapabilityService');
+          dpAutorizado = await userBelongsToDpSetor(user) && !await userHasSetorCapability(user, 'eh_setor_obra')
+            && await userHasNominalAreaPermission(user, ['rh_dp.colaboradores.editar', 'rh_dp.salario.aprovar']);
+        }
+        if (!isSuperadmin(user) && !dpAutorizado) throw new ValidationError(
+          'A edicao direta do salario exige SUPERADMIN ou DP com Editar colaboradores e Aprovar alteracao salarial. '
+          + 'Para os demais perfis, abra uma solicitacao salarial para decisao da Diretoria.', 403);
         if (!Number.isFinite(pedido) || !(pedido > 0)) throw new ValidationError('Informe um salario maior que zero.');
         if (!data.salario_vigencia_inicio || !String(data.salario_motivo || '').trim()) {
           throw new ValidationError('Informe a vigencia e o motivo do ajuste salarial.');
         }
+        if (String(data.salario_motivo).trim().length > 1000) throw new ValidationError('O motivo do ajuste salarial deve ter ate 1000 caracteres.');
         const vigencia = String(data.salario_vigencia_inicio);
         const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(vigencia) ? new Date(`${vigencia}T00:00:00Z`) : null;
         if (!dataVigencia || Number.isNaN(dataVigencia.getTime()) || dataVigencia.toISOString().slice(0, 10) !== vigencia) {
@@ -1205,7 +1216,7 @@ async function atualizarColaboradorRh(id, data, user) {
         }
         salarioDireto = { colaboradorId: colaborador.id, valor: pedido,
           vigenciaInicio: data.salario_vigencia_inicio, motivo: 'AJUSTE',
-          observacoes: `Ajuste direto SUPERADMIN: ${String(data.salario_motivo).trim()}`,
+          observacoes: `Ajuste direto ${isSuperadmin(user) ? 'SUPERADMIN' : 'DP autorizado'}: ${String(data.salario_motivo).trim()}`,
           criadoPor: user.id, ajusteCadastroSuperadmin: true };
       }
     }
@@ -1284,7 +1295,7 @@ async function atualizarColaboradorRh(id, data, user) {
     // contornada por um caminho novo. Se algum dia a obra mudar por aqui, o vinculo e gravado em
     // vez de o historico perder a transferencia em silencio.
     const obraNova = colaborador.obra_id === null ? null : Number(colaborador.obra_id);
-    if (obraNova !== obraAnterior) {
+    if (obraNova !== obraAnterior && !lotacaoDireta) {
       await rhVinculoObraService.registrarVinculo(
         {
           colaboradorId: colaborador.id,

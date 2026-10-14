@@ -129,7 +129,9 @@ async function salarios() {
   const service = load('services/rhService.js', { sequelize: { Op }, '../models': models,
     '../utils/pix': require('../src/utils/pix'), '../middlewares/validation': validation,
     './rhColaboradorContatosDomain': require('../src/services/rhColaboradorContatosDomain'),
-    './rhSalarioService': salarioService, './authorizationService': { isSuperadmin: u => u.perfil === 'SUPERADMIN' },
+    './rhSalarioService': salarioService, './authorizationService': { isSuperadmin: u => u.perfil === 'SUPERADMIN',
+      userHasNominalAreaPermission: async (u, keys) => keys.every(k => (u.permissoes || []).includes(k)) },
+    './setorCapabilityService': { userBelongsToDpSetor: async u => u.area === 'DP', userHasSetorCapability: async u => Boolean(u.obra) },
     './rhVinculoObraService': {}, './rhCalculoHistoricoService': {}, './s3': {},
     '../utils/fileName': {}, '../constants/empresaGrupo': {}, '../utils/excelWorkbook': {} });
   const body = { salario_base: 'R$ 1.881,00', salario_vigencia_inicio: '2020-06-01', salario_motivo: 'Correcao cadastral' };
@@ -152,12 +154,20 @@ async function salarios() {
   assert.equal(history.length, 2); assert.equal(history[1].vigencia_fim, null);
   assert.match(history[1].observacoes, /1881.00 -> 1950.00/);
   assert.match(history[1].observacoes, /usuario #1/);
+  const dp = { id: 2, perfil: 'USUARIO', area: 'DP', permissoes: ['rh_dp.colaboradores.editar', 'rh_dp.salario.aprovar'] };
+  for (const negado of [{ ...dp, permissoes: ['rh_dp.colaboradores.editar'] }, { ...dp, area: 'COMPRAS' },
+    { ...dp, obra: true }, { ...dp, perfil: 'ADMINISTRADOR', permissoes: [] }]) {
+    await assert.rejects(service.atualizarColaboradorRh(218, { ...payload, salario_base: 2000 }, negado), /Diretoria/);
+  }
+  await service.atualizarColaboradorRh(218, { ...payload, salario_base: 2000 }, dp);
+  assert.equal(history.length, 2, 'Ajuste DP na mesma vigencia nao gera intervalo negativo');
+  assert.match(history[1].observacoes, /DP autorizado/); assert.match(history[1].observacoes, /usuario #2/);
   await service.atualizarColaboradorRh(218, { ...payload, salario_base: 2100, salario_vigencia_inicio: '2099-01-01' }, admin);
-  assert.equal(person.salario_base, '1950.00', 'Vigencia futura nao antecipa salario corrente');
+  assert.equal(person.salario_base, '2000.00', 'Vigencia futura nao antecipa salario corrente');
   assert.equal(history.length, 3);
   await assert.rejects(service.atualizarColaboradorRh(218, { ...payload, salario_base: 2200, salario_vigencia_inicio: '2020-07-01' }, admin), /anterior ao inicio/);
   assert.equal(history.length, 3, 'Rollback preserva historico');
   assert.throws(() => validators.validateRhColaboradorUpdateBody({ ...body, perfil: 'SUPERADMIN' }), /nao permitidos/);
 }
-(async () => { await consultas(); await salarios(); console.log('DP global, escopo OBRA, rascunho privado, coletivos, destaque, salario SUPERADMIN, vigencia, auditoria, concorrencia e rollback aprovados. Sem banco/rede.'); })()
+(async () => { await consultas(); await salarios(); console.log('DP global, escopo OBRA, rascunho privado, coletivos, destaque, salario SUPERADMIN/DP nominal, vigencia, auditoria, concorrencia e rollback aprovados. Sem banco/rede.'); })()
   .catch(e => { console.error(e); process.exitCode = 1; });

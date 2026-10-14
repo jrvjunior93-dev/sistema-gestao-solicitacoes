@@ -478,6 +478,8 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'calculo_vigencia_inicio',
       'salario_vigencia_inicio',
       'salario_motivo',
+      'obra_vigencia_inicio',
+      'obra_motivo',
       'observacoes',
       'pagamento'
     ],
@@ -486,7 +488,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
 
   const payload = {
     empresa_grupo_id: parseInteger(body.empresa_grupo_id, 'Empresa do grupo'),
-    obra_id: parseInteger(body.obra_id, 'Obra'),
+    obra_id: body.obra_id === null ? null : parseInteger(body.obra_id, 'Obra'),
     setor_id: parseInteger(body.setor_id, 'Setor'),
     nome: parseOptionalText(body.nome, 'Nome', 180),
     cpf: parseCpf(body.cpf, 'CPF'),
@@ -518,6 +520,8 @@ function validateRhColaboradorUpdateBody(body = {}) {
     calculo_vigencia_inicio: parseDateOnly(body.calculo_vigencia_inicio, 'Data efetiva da forma de calculo'),
     salario_vigencia_inicio: parseDateOnly(body.salario_vigencia_inicio, 'Vigencia do salario'),
     salario_motivo: parseOptionalText(body.salario_motivo, 'Motivo do ajuste salarial', 1000),
+    obra_vigencia_inicio: parseDateOnly(body.obra_vigencia_inicio, 'Vigencia da lotacao'),
+    obra_motivo: parseOptionalText(body.obra_motivo, 'Motivo do ajuste da lotacao', 1000),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
     pagamento: Object.prototype.hasOwnProperty.call(body, 'pagamento')
       ? normalizePagamentoPayload(body.pagamento)
