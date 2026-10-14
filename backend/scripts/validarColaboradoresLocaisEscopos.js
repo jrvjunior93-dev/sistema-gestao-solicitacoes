@@ -52,6 +52,7 @@ const modelos = {
 const transferencias = load('rhTransferenciaService.js', {
   sequelize: { Op }, '../models': modelos, '../middlewares/validation': { ValidationError },
   './authorizationService': { isSuperadmin:u=>u.id===1,getRhDpObraScopeIds:async u=>u.id===1?null:[7],getUserObraIds:async()=>[7],userHasAreaPermission:async()=>true },
+  './setorCapabilityService': { userBelongsToDpSetor:async()=>false,userHasSetorCapability:async()=>true },
   '../utils/codigoDoSetor': { codigoDoSetor:()=> 'OBRA' },
   './rhPessoalDomain': require('../src/services/rhPessoalDomain'),
   './rhVinculoObraService': {}, './rhSolicitacaoCodigoService': {}, './notificacoes': {},
@@ -62,9 +63,10 @@ async function executar() {
   assert.deepEqual(plain((await transferencias.listar({id:1},{grupo:'TODAS',obra_id:7})).itens.map(p=>p.id)), [1,2]);
   assert.deepEqual(plain((await transferencias.listar({id:2},{grupo:'TODAS',obra_id:8})).itens.map(p=>p.id)), [1,2], 'Filtro local intersecta a responsabilidade vigente; não revela transferência 4');
   assert.equal((await transferencias.listar({id:2},{grupo:'TODAS',obra_id:9})).total,0);
-  assert.equal((await transferencias.listar({id:3},{grupo:'TODAS',obra_id:7})).total,0,'Sem responsabilidade, lista permanece vazia');
+  assert.equal((await transferencias.listar({id:3},{grupo:'TODAS',obra_id:7})).total,2,'Usuario vinculado acompanha transferencias da obra sem poder decidir');
+  assert.equal((await transferencias.listar({id:3},{grupo:'TODAS',obra_id:7})).itens.some(p=>p.pode_decidir),false);
   for (const obra_id of ['abc',0,-1,1.5]) await assert.rejects(transferencias.listar({id:1},{obra_id}),/invalido/);
-  assert.deepEqual(plain((await transferencias.diretorio({id:1},{obra_id:7})).itens.map(p=>p.id)),[11]);
+  assert.deepEqual(plain((await transferencias.diretorio({id:1},{obra_id:7})).itens.map(p=>p.id)),[11,12], 'Diretorio de ativos e global; dados pessoais seguem fora');
   await transferencias.marcarListaLida({id:2},{obra_id:8});
   assert.deepEqual(plain(marcadas),[1,2]);
   assert.deepEqual(plain(notificacoesMarcadas),[101,102], 'Não marca avisos de outro local nem metadata inválida');

@@ -121,6 +121,31 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Saldo remanescente do contrato e transferencia OBRA - 2026-10-14
+
+- Sessao codex-contrato-saldo-transferencia-obra-20261014, sem delegacao.
+- Usuario autorizou reprogramar saldo sem parcela medivel; analisar/corrigir
+  ausencia de acao de transferencia na lista de todos os colaboradores.
+- Reserva: novo servico/dominio/controller de reprogramacao e testes;
+  routes.js somente rota dedicada; contratoFluxoNovoService.js somente projecao;
+  BlocoMedicaoContrato.jsx e novo componente de reprogramacao; services/contratos.js;
+  RhDpTransferencias.jsx e testes focados se diagnostico indicar defeito;
+  README Contratos/RH e handoff. Preservar permissoes e financeiro existentes.
+- Base refactor/frontend 208ae8e2, checkout isolado reutilizado. Sem banco real,
+  migration, EC2, commit/push ou promocao main. Ownership concluido/liberado
+  apos backend/ACL, UI desktop/mobile, legado, build, navegacao e docs.
+- Usuario ampliou: Obra pode reprogramar sem Editar contratos; todos usuarios
+  vinculados a Obra podem pedir transferencia, responsavel da outra obra aprova;
+  sem origem aprova destino. DP/SUPERADMIN com bypass administrativo de decisao.
+- Bypass DP apenas na decisao, sem liberar cancelamento de terceiros; autoria
+  continua impedindo autoaprovacao. Setor OBRA com DP acumulado segue estrito.
+- Reserva ampliada: rhTransferenciaService.js, testes de transferencias/escopos,
+  fixtures frontend de Medicao e consultas especificas, mantendo salario/carteira.
+- Handoff: docs/handoffs/2026-10-14-saldo-contrato-transferencia-obra.md.
+- Usuario autorizou commit/push destes ajustes na refactor/frontend e comandos dev.
+  Reserva documental de publicacao/conferencia/staging, liberada apos validacoes.
+  Sem outputs/, caixa de outro worktree, main, banco real, migration ou execucao EC2.
+
 ## RH/DP: cards global e locais no hub - 2026-10-14
 
 - Agente desta conversa, sem delegacao; implementacao local concluida, ownership liberado.

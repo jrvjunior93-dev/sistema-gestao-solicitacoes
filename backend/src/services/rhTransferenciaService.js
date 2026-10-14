@@ -12,6 +12,7 @@ const { comAtividade, marcarLida, marcarListaLida: registrarListaLida } = requir
 const { criarNotificacaoDireta } = require('./notificacoes');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
 const { TIPO_CENTRO_CUSTO_OBRA, isObraCentroCusto } = require('../constants/centroCusto');
+const { userBelongsToDpSetor, userHasSetorCapability } = require('./setorCapabilityService');
 
 const camposColaborador = ['id', 'nome', 'matricula', 'cargo', 'obra_id'];
 const camposObra = ['id', 'nome', 'codigo', 'tipo_centro_custo'];
@@ -57,11 +58,26 @@ async function podeLerGlobalmente(user) {
   if (isSuperadmin(user)) return true;
   const escopoEstritoDaObra = await getRhDpObraScopeIds(user);
   if (Array.isArray(escopoEstritoDaObra)) return false;
-  return userHasAreaPermission(user, ['rh_dp.solicitacoes.ver_todas']);
+  return await userBelongsToDpSetor(user) || userHasAreaPermission(user, ['rh_dp.solicitacoes.ver_todas']);
+}
+
+async function bypassDecisao(user) {
+  if (isSuperadmin(user)) return true;
+  // Acumular DP nao remove o escopo operacional de um usuario de OBRA.
+  if (Array.isArray(await getRhDpObraScopeIds(user))) return false;
+  return userBelongsToDpSetor(user);
+}
+
+async function obrasSolicitacao(user, transaction) {
+  if (!await userHasAreaPermission(user, ['rh_dp.solicitacoes.abrir'])) return [];
+  const ids = await obrasResponsavel(user, transaction);
+  if (await userHasSetorCapability(user, 'eh_setor_obra')) ids.push(...await getUserObraIds(user));
+  return [...new Set(ids.map(Number))];
 }
 
 async function configuracao(user) {
   const ids = await obrasResponsavel(user);
+  const solicitantes = await obrasSolicitacao(user);
   const obras = await Obra.findAll({
     where: { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA },
     attributes: camposObra,
@@ -71,6 +87,8 @@ async function configuracao(user) {
   return {
     obras: obras.map(o => o.get({ plain: true })),
     obras_responsavel_ids: ids.filter((id) => obrasDisponiveis.has(Number(id))),
+    obras_solicitacao_ids: solicitantes.filter(id => obrasDisponiveis.has(Number(id))),
+    bypass_decisao: await bypassDecisao(user),
     acesso_global: await podeLerGlobalmente(user)
   };
 }
@@ -100,27 +118,30 @@ function ladoAprovador(s) {
   return Number(d.obra_aprovadora_id || d.obra_destino_id);
 }
 
-function resolverFluxoTransferencia(origem, destino, idsResponsavel = []) {
+function resolverFluxoTransferencia(origem, destino, idsResponsavel = [], idsSolicitacao = idsResponsavel) {
   const responsavelOrigem = idsResponsavel.includes(Number(origem));
   const responsavelDestino = idsResponsavel.includes(Number(destino));
-  if (!responsavelOrigem && !responsavelDestino) {
-    throw new ValidationError('Somente o responsavel vigente da obra atual ou da obra de destino pode solicitar a transferencia.', 403);
+  const solicitanteOrigem = idsSolicitacao.includes(Number(origem));
+  const solicitanteDestino = idsSolicitacao.includes(Number(destino));
+  if (!solicitanteOrigem && !solicitanteDestino) {
+    throw new ValidationError('Somente usuario vinculado a obra atual ou de destino, com permissao de abrir solicitacao de pessoal, pode solicitar a transferencia.', 403);
   }
 
   const aprovacaoAutomatica = responsavelDestino && (!origem || responsavelOrigem);
-  const obraSolicitanteId = responsavelOrigem ? Number(origem) : Number(destino);
+  const obraSolicitanteId = responsavelOrigem ? Number(origem) : responsavelDestino ? Number(destino)
+    : solicitanteOrigem ? Number(origem) : Number(destino);
   return {
     aprovacaoAutomatica,
     obraSolicitanteId,
     obraAprovadoraId: aprovacaoAutomatica
       ? null
-      : (obraSolicitanteId === Number(origem) ? Number(destino) : Number(origem))
+      : (!origem ? Number(destino) : obraSolicitanteId === Number(origem) ? Number(destino) : Number(origem))
   };
 }
 
-async function exigirAcesso(s, user, transaction) {
+async function exigirAcesso(s, user, transaction, permitirBypassDecisao = false) {
   if (!s || !ehTransferencia(s)) throw new ValidationError('Transferencia nao encontrada.', 404);
-  if (isSuperadmin(user)) {
+  if (isSuperadmin(user) || (permitirBypassDecisao && await bypassDecisao(user))) {
     return [...new Set([Number(s.obra_id), Number(dadosDe(s).obra_destino_id)].filter(Number.isFinite))];
   }
   const ids = await obrasResponsavel(user, transaction);
@@ -138,12 +159,14 @@ async function exigirLeitura(s, user, transaction) {
   const ids = await obrasResponsavel(user, transaction);
   if (ids.includes(Number(s.obra_id)) || ids.includes(Number(dadosDe(s).obra_destino_id))) return ids;
   if (await podeLerGlobalmente(user)) return ids;
-  throw new ValidationError('Acesso restrito aos responsaveis vigentes das obras envolvidas.', 403);
+  const vinculadas = await getUserObraIds(user);
+  if (vinculadas.includes(Number(s.obra_id)) || vinculadas.includes(Number(dadosDe(s).obra_destino_id))) return ids;
+  throw new ValidationError('Acesso restrito aos usuarios vinculados ou responsaveis das obras envolvidas.', 403);
 }
 
 // Projeção explícita: nunca devolver dados_json arbitrário, salário ou documentos
 // do colaborador, inclusive em pedidos legados.
-function resumo(s, ids, usuarioId) {
+function resumo(s, ids, usuarioId, bypass = false) {
   const d = dadosDe(s);
   return { id: s.id, codigo: s.codigo || `RH-${String(s.id).padStart(6, '0')}`, colaborador_id: s.colaborador_id, colaborador: s.colaborador,
     obra_id: s.obra_id, obra: s.obra, obra_destino_id: Number(d.obra_destino_id),
@@ -153,10 +176,10 @@ function resumo(s, ids, usuarioId) {
     situacao: s.situacao,
     justificativa: s.justificativa, motivo_rejeicao: s.motivo_rejeicao,
     createdAt: s.createdAt, updatedAt: s.updatedAt, decidida_em: s.decidida_em,
-    pode_decidir: s.situacao === 'ABERTA' && ids.includes(ladoAprovador(s)) && Number(s.criada_por) !== Number(usuarioId),
+    pode_decidir: s.situacao === 'ABERTA' && (bypass || ids.includes(ladoAprovador(s))) && Number(s.criada_por) !== Number(usuarioId),
     pode_cancelar: ['ABERTA', 'RASCUNHO'].includes(s.situacao)
-      && ids.includes(Number(d.obra_solicitante_id || s.obra_id)),
-    pode_enviar: s.situacao === 'RASCUNHO' && ids.includes(Number(d.obra_solicitante_id || s.obra_id)) };
+      && (ids.includes(Number(d.obra_solicitante_id || s.obra_id)) || Number(s.criada_por) === Number(usuarioId)),
+    pode_enviar: s.situacao === 'RASCUNHO' && (ids.includes(Number(d.obra_solicitante_id || s.obra_id)) || Number(s.criada_por) === Number(usuarioId)) };
 }
 
 const includes = [
@@ -186,17 +209,19 @@ async function listar(user, filtros = {}) {
   const localId = localDoFiltro(filtros);
   const acessoGlobal = await podeLerGlobalmente(user);
   const ids = await obrasResponsavel(user);
+  const leituraIds = [...new Set([...ids, ...await getUserObraIds(user)])];
+  const bypass = await bypassDecisao(user);
   const grupo = String(filtros.grupo || 'PENDENTES').trim().toUpperCase();
   if (!['PENDENTES', 'RESOLVIDAS', 'TODAS'].includes(grupo)) {
     throw new ValidationError('Grupo de transferencias invalido.');
   }
   const pagina = Math.max(1, Math.min(100000, Number.parseInt(filtros.pagina, 10) || 1));
   const limite = Math.max(1, Math.min(50, Number.parseInt(filtros.limite, 10) || 20));
-  if (!acessoGlobal && !ids.length) {
+  if (!acessoGlobal && !leituraIds.length) {
     return { itens: [], total: 0, pagina, limite, total_paginas: 1, nao_lidas: 0 };
   }
-  // JSON é parametrizado pelo Sequelize. A busca global e exclusiva do SUPERADMIN.
-  const where = montarEscopoTransferencias(acessoGlobal, ids, grupo, localId);
+  // JSON parametrizado; DP/SUPERADMIN leem globalmente, OBRA mantem recorte.
+  const where = montarEscopoTransferencias(acessoGlobal, leituraIds, grupo, localId);
   const { count, rows: solicitacoes } = await RhSolicitacao.findAndCountAll({
     where,
     include: includes,
@@ -210,7 +235,7 @@ async function listar(user, filtros = {}) {
     const idsPermitidos = isSuperadmin(user)
       ? [...new Set([Number(s.obra_id), Number(dadosDe(s).obra_destino_id)].filter(Number.isFinite))]
       : ids;
-    return resumo(s, idsPermitidos, user.id);
+    return resumo(s, idsPermitidos, user.id, bypass);
   });
   const destinos = [...new Set(linhas.map(s => s.obra_destino_id))];
   const obras = destinos.length ? await Obra.findAll({ where: { id: destinos }, attributes: camposObra }) : [];
@@ -312,7 +337,8 @@ async function abrir(user, payload) {
       throw new ValidationError('Informe uma obra de destino diferente da obra atual.');
     }
     const ids = await obrasResponsavel(user, transaction);
-    const fluxo = resolverFluxoTransferencia(origem, destino, ids);
+    const solicitantes = await obrasSolicitacao(user, transaction);
+    const fluxo = resolverFluxoTransferencia(origem, destino, ids, solicitantes);
     const obras = await Obra.findAll({
       where: {
         id: origem ? [origem, destino] : [destino],
@@ -324,12 +350,8 @@ async function abrir(user, payload) {
     if (obras.length !== (origem ? 2 : 1)) {
       throw new ValidationError('A origem e o destino precisam ser cadastros ativos do tipo Obra.');
     }
-    if (!fluxo.aprovacaoAutomatica) {
-      const ativos = await responsaveis(null, transaction);
-      if (!ativos.some(r => Number(r.obra_id) === fluxo.obraAprovadoraId && Number(r.user_id) !== Number(user.id))) {
-        throw new ValidationError('Cadastre outro responsavel ou substituto vigente na obra que aprovara a transferencia.');
-      }
-    }
+    // Sem responsavel na outra obra, DP/SUPERADMIN podem decidir por excecao;
+    // nao inventar responsabilidade nem efetivar no pedido do usuario comum.
     const existente = await RhSolicitacao.findOne({ where: { colaborador_id: colaborador.id,
       situacao: { [Op.in]: ['ABERTA', 'RASCUNHO'] }, ...tiposTransferencia }, transaction });
     if (existente) throw new ValidationError(`Ja existe uma transferencia em andamento (#${existente.id}).`, 409);
@@ -363,7 +385,10 @@ async function agir(user, id, acao, texto) {
   if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0) throw new ValidationError('Transferencia invalida.');
   return sequelize.transaction(async transaction => {
     const s = await RhSolicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-    const ids = await exigirAcesso(s, user, transaction);
+    const autor = Number(s?.criada_por) === Number(user.id);
+    const ids = autor && ['comentar', 'cancelar', 'enviar'].includes(acao)
+      ? await exigirLeitura(s, user, transaction) : await exigirAcesso(s, user, transaction, ['aprovar', 'rejeitar'].includes(acao));
+    const bypass = await bypassDecisao(user);
     const d = dadosDe(s);
     const motivo = String(texto || '').trim();
     if (motivo.length > 2000) throw new ValidationError('O texto deve ter ate 2000 caracteres.');
@@ -374,8 +399,11 @@ async function agir(user, id, acao, texto) {
       return { id: s.id };
     }
     if (['enviar', 'cancelar'].includes(acao)) {
-      if (!ids.includes(Number(d.obra_solicitante_id || s.obra_id))) throw new ValidationError('Somente a obra solicitante pode executar esta acao.', 403);
-    } else if (!ids.includes(ladoAprovador(s)) || Number(s.criada_por) === Number(user.id)) {
+      if (!autor && !ids.includes(Number(d.obra_solicitante_id || s.obra_id))) throw new ValidationError('Somente a obra solicitante pode executar esta acao.', 403);
+      if (acao === 'enviar' && !await userHasAreaPermission(user, ['rh_dp.solicitacoes.abrir'])) {
+        throw new ValidationError('Enviar transferencia exige permissao de abrir solicitacao de pessoal.', 403);
+      }
+    } else if ((!bypass && !ids.includes(ladoAprovador(s))) || Number(s.criada_por) === Number(user.id)) {
       throw new ValidationError('A decisao deve ser feita por outro responsavel da obra aprovadora.', 403);
     }
     const novoStatus = { aprovar: 'APROVADA', rejeitar: 'REJEITADA', cancelar: 'CANCELADA', enviar: 'ABERTA' }[acao];
@@ -400,7 +428,7 @@ async function agir(user, id, acao, texto) {
 async function marcarListaLida(user, filtros = {}) {
   const localId = localDoFiltro(filtros);
   const acessoGlobal = await podeLerGlobalmente(user);
-  const ids = await obrasResponsavel(user);
+  const ids = [...new Set([...await obrasResponsavel(user), ...await getUserObraIds(user)])];
   if (!acessoGlobal && !ids.length) return { marcadas: 0 };
 
   const acessiveis = await RhSolicitacao.findAll({
@@ -439,7 +467,7 @@ async function detalhe(user, id) {
   const eventos = await RhSolicitacaoHistorico.findAll({ where: { solicitacao_id: id }, order: [['id', 'ASC']] });
   const max = eventos.reduce((n, h) => Math.max(n, Number(h.id)), 0);
   await marcarLida(id, user.id, max);
-  return { ...resumo(s.get({ plain: true }), ids, user.id), historicos: eventos };
+  return { ...resumo(s.get({ plain: true }), ids, user.id, await bypassDecisao(user)), historicos: eventos };
 }
 
 module.exports = { configuracao, diretorio, listar, abrir, agir, detalhe, marcarListaLida, exigirAcesso,

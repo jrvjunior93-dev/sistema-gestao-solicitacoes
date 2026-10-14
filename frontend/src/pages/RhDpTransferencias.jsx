@@ -54,6 +54,8 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     String(obra?.tipo_centro_custo || 'OBRA').trim().toUpperCase() === 'OBRA'
   ));
   const minhas = obrasTransferiveis.filter(o => config.obras_responsavel_ids.includes(Number(o.id)));
+  const idsSolicitacao = config.obras_solicitacao_ids || config.obras_responsavel_ids;
+  const obrasSolicitacao = obrasTransferiveis.filter(o => idsSolicitacao.includes(Number(o.id)));
   const nomeObra = id => !id ? 'Sem obra vinculada' : config.obras.find(o => Number(o.id) === Number(id))?.nome || `Obra #${id}`;
 
   const fluxoDoFormulario = formulario => {
@@ -63,9 +65,12 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     const responsavelOrigem = config.obras_responsavel_ids.includes(origem);
     const responsavelDestino = config.obras_responsavel_ids.includes(destino);
     const automatico = Boolean(destino && responsavelDestino && (!origem || responsavelOrigem));
-    const solicitante = responsavelOrigem ? origem : (responsavelDestino ? destino : null);
+    const solicitanteOrigem = idsSolicitacao.includes(origem);
+    const solicitanteDestino = idsSolicitacao.includes(destino);
+    const solicitante = responsavelOrigem ? origem : responsavelDestino ? destino
+      : solicitanteOrigem ? origem : solicitanteDestino ? destino : null;
     return { origem, destino, responsavelOrigem, responsavelDestino, automatico, solicitante,
-      aprovadora: automatico ? null : (solicitante === origem ? destino : origem) };
+      solicitanteOrigem, aprovadora: automatico ? null : (!origem ? destino : solicitante === origem ? destino : origem) };
   };
   const fluxoForm = fluxoDoFormulario(form);
 
@@ -205,9 +210,9 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
   }
 
   function selecionar(c) {
-    if (carregando || ocupado || !minhas.length) return;
-    const souOrigem = config.obras_responsavel_ids.includes(Number(c.obra_id));
-    const destino = souOrigem ? '' : String(minhas.find(o => Number(o.id) !== Number(c.obra_id))?.id || '');
+    if (carregando || ocupado || !obrasSolicitacao.length) return;
+    const souOrigem = idsSolicitacao.includes(Number(c.obra_id));
+    const destino = souOrigem ? '' : String(obrasSolicitacao.find(o => Number(o.id) !== Number(c.obra_id))?.id || '');
     setForm({ colaborador: c, obra_destino_id: destino, justificativa: '' });
   }
 
@@ -242,7 +247,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
       <p className="form-hint">{obraId ? 'Transferências com origem ou destino neste local. A aprovação continua com os responsáveis das obras envolvidas.' : config.acesso_global
         ? 'Consulte as transferências pendentes e resolvidas de todas as obras. A decisão continua com os responsáveis das obras envolvidas.'
         : 'Acompanhe na mesma lista as transferências pendentes e as já resolvidas entre suas obras.'}</p>
-      {!config.acesso_global && !minhas.length && <p className="alert alert-info">Para solicitar ou aprovar, configure o responsável ou substituto vigente em Configurações → Responsáveis por obra.</p>}
+      {!minhas.length && !config.bypass_decisao && <p className="app-note">A aprovação cabe ao responsável da outra obra ou ao DP/SUPERADMIN. Usuários vinculados à Obra podem solicitar, mas não aprovar.</p>}
       <section aria-label="Transferências entre obras">
         <div className="app-page-actions">
           <h3 className="app-bloco-titulo">{config.acesso_global ? 'Transferências entre obras' : 'Transferências das minhas obras'}</h3>
@@ -256,6 +261,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
       </section>
     </> : <section aria-label="Todos Colaboradores">
       <p className="form-hint">Somente identificação profissional e obra atual. Sem dados financeiros ou documentos pessoais.</p>
+      {!obrasSolicitacao.length && <p role="status" className="app-note">Para solicitar transferência, é necessário vínculo com uma Obra e permissão Abrir solicitação de pessoal. A aprovação cabe ao responsável da outra obra ou ao DP/SUPERADMIN.</p>}
       <form className="app-page-actions" onSubmit={e => { e.preventDefault(); pesquisar(1, busca.trim()); }}>
         <label className="form-field flex-1 min-w-0"><span className="form-label">Nome, matrícula ou função</span>
           <input className="form-control" value={busca} onChange={e => setBusca(e.target.value)} maxLength={100} /></label>
@@ -268,7 +274,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
           { id: 'matricula', titulo: 'Matrícula', tipo: 'codigo', render: c => c.matricula || '—' },
           { id: 'cargo', titulo: 'Função', tipo: 'texto', render: c => c.cargo || '—' },
           { id: 'obra', titulo: 'Obra atual', tipo: 'texto', render: c => c.obra?.nome || 'Sem obra' }
-        ]} acoesLinha={c => minhas.length ? <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionar(c)}>Solicitar transferência</button> : null} />
+        ]} acoesLinha={c => obrasSolicitacao.length ? <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionar(c)}>Solicitar transferência</button> : null} />
       <div className="app-page-actions">
         <span aria-live="polite">{diretorio.total} colaborador(es) · Página {diretorio.pagina} de {Math.max(1, Math.ceil(diretorio.total / 50))}</span>
         <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina <= 1} onClick={() => pesquisar(diretorio.pagina - 1, buscaAplicada)}>Anterior</button>
@@ -294,9 +300,9 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
             onChange={e => setForm(f => ({ ...f, obra_destino_id: e.target.value }))}>
             <option value="">Selecione</option>
             {obrasTransferiveis.filter(o => Number(o.id) !== Number(form.colaborador.obra_id)).map(o => {
-              const habilitada = fluxoForm?.responsavelOrigem || config.obras_responsavel_ids.includes(Number(o.id));
+              const habilitada = fluxoForm?.solicitanteOrigem || idsSolicitacao.includes(Number(o.id));
               return <option key={o.id} value={o.id} disabled={!habilitada}>
-                {o.codigo} · {o.nome}{habilitada ? '' : ' · sem responsabilidade atribuída'}
+                {o.codigo} · {o.nome}{habilitada ? '' : ' · sem vínculo de solicitação'}
               </option>;
             })}
           </select>
@@ -304,7 +310,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
         {fluxoForm?.destino ? <div className={`alert ${fluxoForm.automatico ? 'alert-success' : 'alert-info'}`}>
           {fluxoForm.automatico
             ? <>{fluxoForm.origem ? 'Você responde pela obra atual e pela obra de destino.' : 'O colaborador está sem obra e você responde pela obra de destino.'} A transferência será aprovada automaticamente e terá vigência hoje.</>
-            : <>Solicitação feita pela obra <strong>{nomeObra(fluxoForm.solicitante)}</strong>. Aprovação necessária pela obra <strong>{nomeObra(fluxoForm.aprovadora)}</strong>; a vigência começa na aprovação.</>}
+            : <>Solicitação feita pela obra <strong>{nomeObra(fluxoForm.solicitante)}</strong>. Aprovação pelo responsável da obra <strong>{nomeObra(fluxoForm.aprovadora)}</strong>, ou pelo DP/SUPERADMIN; a vigência começa na aprovação.</>}
         </div> : null}
         <label className="form-field"><span className="form-label">Justificativa</span><textarea className="form-control" aria-label="Justificativa" required maxLength={2000} value={form.justificativa} onChange={e => setForm(f => ({ ...f, justificativa: e.target.value }))} /></label>
         <div className="app-page-actions"><button className="btn btn-primary" disabled={ocupado || formConflito || !fluxoForm?.destino || !fluxoForm?.solicitante}>{ocupado ? 'Processando…' : fluxoForm?.automatico ? 'Confirmar transferência' : 'Enviar para aprovação'}</button><button type="button" className="btn btn-outline" disabled={ocupado} onClick={() => setForm(null)}>Cancelar</button></div>

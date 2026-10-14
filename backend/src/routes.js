@@ -430,6 +430,7 @@ const SetorPermissaoController = require('./controllers/SetorPermissaoController
 const ConfiguracaoSistemaController = require('./controllers/ConfiguracaoSistemaController');
 const ObraTipoApropriacaoController = require('./controllers/ObraTipoApropriacaoController');
 const ContratoFluxoNovoController = require('./controllers/ContratoFluxoNovoController');
+const ContratoSaldoReprogramacaoController = require('./controllers/ContratoSaldoReprogramacaoController');
 const UiVisibilityConfigController = require('./controllers/UiVisibilityConfigController');
 const ConversaInternaController = require('./controllers/ConversaInternaController');
 const ArquivoModeloController = require('./controllers/ArquivoModeloController');
@@ -2065,12 +2066,12 @@ router.patch('/rh/colaboradores/:id', allowRhDpColaboradoresWrite, criticalRateL
 router.post('/rh/colaboradores/importar-massa', allowRhDpColaboradoresWrite, uploadRateLimit, uploadComprovantes.single('file'), RhColaboradorController.importarMassa);
 
 // --- Pedido de pessoal: a Obra pede, o DP decide (Fase 6 do modulo DP, 26/08) ---
-// Aprovação de transferência usa os responsáveis vigentes, não a permissão de decidir do DP.
+// Obra vinculada solicita; responsavel da outra obra decide, com bypass DP/SUPERADMIN.
 router.get('/rh/transferencias/configuracao', allowRhDpSolicitacaoVer, RhTransferenciaController.configuracao);
 router.get('/rh/transferencias/diretorio', allowRhDpSolicitacaoVer, RhTransferenciaController.diretorio);
 router.get('/rh/transferencias', allowRhDpSolicitacaoVer, RhTransferenciaController.index);
 router.post('/rh/transferencias/leituras', allowRhDpSolicitacaoVer, RhTransferenciaController.marcarListaLida);
-router.post('/rh/transferencias', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.create);
+router.post('/rh/transferencias', allowRhDpSolicitacaoVer, allowRhDpSolicitacaoAbrir, criticalRateLimit, RhTransferenciaController.create);
 router.get('/rh/transferencias/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Transferencia') }), RhTransferenciaController.show);
 router.post('/rh/transferencias/:id/:acao', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.agir);
 router.get('/rh/solicitacoes', allowRhDpSolicitacaoVer, RhSolicitacaoController.index);
@@ -2762,6 +2763,8 @@ router.get('/contratos/:id/solicitacoes', validateRequest({ params: validateNume
 router.get('/contratos/:id/anexos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.listarAnexos);
 // Parcelas do contrato (leitura) — usada pela Medicao para decidir a trilha e montar a lista.
 router.get('/contratos/:id/parcelas', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoFluxoNovoController.listarParcelas);
+router.get('/contratos/:id/saldo-reprogramacao', requireEnabledModule('CONTRATOS'), validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoSaldoReprogramacaoController.consultar);
+router.post('/contratos/:id/saldo-reprogramacao', requireEnabledModule('CONTRATOS'), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoSaldoReprogramacaoController.reprogramar);
 router.post('/contratos', validateRequest({ body: validateContratoCreateBody }), requireContratoBodyObraAccess, ContratoController.create);
 // Fluxo novo de contratos (wireframe 1). Permissoes e regras no servico, auditadas.
 // Opcoes do formulario de contrato (responsaveis e condicoes de pagamento). Sem permissao
