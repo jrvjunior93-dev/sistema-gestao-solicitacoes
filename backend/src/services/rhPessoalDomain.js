@@ -20,7 +20,7 @@ function diasVinculados(vinculos, colaborador, periodo) {
 function ehTransferencia(s) {
   const dados = typeof s?.dados_json === 'string' ? JSON.parse(s.dados_json) : s?.dados_json;
   if (dados?.primeira_lotacao === true) return false;
-  return Boolean(s?.obra_id) && (s.tipo === 'TROCA_OBRA'
+  return (Boolean(s?.obra_id) || dados?.origem_sem_obra === true) && (s.tipo === 'TROCA_OBRA'
     || (s.tipo === 'MOVIMENTACAO' && s.subtipo === 'TRANSFERENCIA_OBRA'));
 }
 

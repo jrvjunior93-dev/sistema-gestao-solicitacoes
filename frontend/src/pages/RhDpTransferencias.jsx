@@ -54,7 +54,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     String(obra?.tipo_centro_custo || 'OBRA').trim().toUpperCase() === 'OBRA'
   ));
   const minhas = obrasTransferiveis.filter(o => config.obras_responsavel_ids.includes(Number(o.id)));
-  const nomeObra = id => config.obras.find(o => Number(o.id) === Number(id))?.nome || `Obra #${id}`;
+  const nomeObra = id => !id ? 'Sem obra vinculada' : config.obras.find(o => Number(o.id) === Number(id))?.nome || `Obra #${id}`;
 
   const fluxoDoFormulario = formulario => {
     if (!formulario) return null;
@@ -62,7 +62,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     const destino = Number(formulario.obra_destino_id);
     const responsavelOrigem = config.obras_responsavel_ids.includes(origem);
     const responsavelDestino = config.obras_responsavel_ids.includes(destino);
-    const automatico = Boolean(destino && responsavelOrigem && responsavelDestino);
+    const automatico = Boolean(destino && responsavelDestino && (!origem || responsavelOrigem));
     const solicitante = responsavelOrigem ? origem : (responsavelDestino ? destino : null);
     return { origem, destino, responsavelOrigem, responsavelDestino, automatico, solicitante,
       aprovadora: automatico ? null : (solicitante === origem ? destino : origem) };
@@ -111,7 +111,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     const versao = consultaDiretorio.begin();
     setCarregando(true);
     try {
-      const resultado = await rhTransferencias('/diretorio', { params: { busca: termo, pagina, obra_id: obraId } });
+      const resultado = await rhTransferencias('/diretorio', { params: { busca: termo, pagina } });
       if (consultaDiretorio.isCurrent(versao)) {
         setDiretorio(resultado);
         setBuscaAplicada(termo);
@@ -205,7 +205,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
   }
 
   function selecionar(c) {
-    if (carregando || ocupado || !c.obra_id || !minhas.length) return;
+    if (carregando || ocupado || !minhas.length) return;
     const souOrigem = config.obras_responsavel_ids.includes(Number(c.obra_id));
     const destino = souOrigem ? '' : String(minhas.find(o => Number(o.id) !== Number(c.obra_id))?.id || '');
     setForm({ colaborador: c, obra_destino_id: destino, justificativa: '' });
@@ -231,7 +231,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
   return <div className="space-y-4 min-w-0">
     <Avisos avisos={avisos} aoFechar={fechar} />
     <div className="rh-pessoal-abas rh-transferencias-subabas" role="tablist" aria-label="Consultas de transferências">
-      <button type="button" role="tab" aria-selected={secao === 'global'} className={`rh-pessoal-aba${secao === 'global' ? ' rh-pessoal-aba--ativa' : ''}`} onClick={() => trocarSecao('global')}>{obraId ? 'Colaboradores do local' : 'Lista global de colaboradores'}</button>
+      <button type="button" role="tab" aria-selected={secao === 'global'} className={`rh-pessoal-aba${secao === 'global' ? ' rh-pessoal-aba--ativa' : ''}`} onClick={() => trocarSecao('global')}>Todos Colaboradores</button>
       <button type="button" role="tab" aria-selected={secao === 'transferencias'} className={`rh-pessoal-aba${secao === 'transferencias' ? ' rh-pessoal-aba--ativa' : ''}`} onClick={() => trocarSecao('transferencias')}>
         {obraId ? 'Transferências deste local' : config.acesso_global ? 'Transferências entre obras' : 'Transferências das minhas obras'}
         {transferencias.nao_lidas > 0 ? <span className="rh-pessoal-aba-contador">{transferencias.nao_lidas}</span> : null}
@@ -254,7 +254,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
           colunas={colunasTransferencias} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s)}>Abrir</button>} />
         {paginacao(transferencias, atualizar)}
       </section>
-    </> : <section aria-label={obraId ? 'Colaboradores do local' : 'Diretório global de colaboradores'}>
+    </> : <section aria-label="Todos Colaboradores">
       <p className="form-hint">Somente identificação profissional e obra atual. Sem dados financeiros ou documentos pessoais.</p>
       <form className="app-page-actions" onSubmit={e => { e.preventDefault(); pesquisar(1, busca.trim()); }}>
         <label className="form-field flex-1 min-w-0"><span className="form-label">Nome, matrícula ou função</span>
@@ -268,7 +268,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
           { id: 'matricula', titulo: 'Matrícula', tipo: 'codigo', render: c => c.matricula || '—' },
           { id: 'cargo', titulo: 'Função', tipo: 'texto', render: c => c.cargo || '—' },
           { id: 'obra', titulo: 'Obra atual', tipo: 'texto', render: c => c.obra?.nome || 'Sem obra' }
-        ]} acoesLinha={c => c.obra_id && minhas.length ? <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionar(c)}>Solicitar transferência</button> : null} />
+        ]} acoesLinha={c => minhas.length ? <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionar(c)}>Solicitar transferência</button> : null} />
       <div className="app-page-actions">
         <span aria-live="polite">{diretorio.total} colaborador(es) · Página {diretorio.pagina} de {Math.max(1, Math.ceil(diretorio.total / 50))}</span>
         <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina <= 1} onClick={() => pesquisar(diretorio.pagina - 1, buscaAplicada)}>Anterior</button>
@@ -303,7 +303,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
         </label>
         {fluxoForm?.destino ? <div className={`alert ${fluxoForm.automatico ? 'alert-success' : 'alert-info'}`}>
           {fluxoForm.automatico
-            ? <>Você responde pela obra atual e pela obra de destino. A transferência será aprovada automaticamente e terá vigência hoje.</>
+            ? <>{fluxoForm.origem ? 'Você responde pela obra atual e pela obra de destino.' : 'O colaborador está sem obra e você responde pela obra de destino.'} A transferência será aprovada automaticamente e terá vigência hoje.</>
             : <>Solicitação feita pela obra <strong>{nomeObra(fluxoForm.solicitante)}</strong>. Aprovação necessária pela obra <strong>{nomeObra(fluxoForm.aprovadora)}</strong>; a vigência começa na aprovação.</>}
         </div> : null}
         <label className="form-field"><span className="form-label">Justificativa</span><textarea className="form-control" aria-label="Justificativa" required maxLength={2000} value={form.justificativa} onChange={e => setForm(f => ({ ...f, justificativa: e.target.value }))} /></label>
@@ -314,7 +314,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     {aberta && <OverlayModal rotulo={`Transferência #${aberta.id}`} onFechar={() => { if (!ocupado) setAberta(null); }}>
       <div className="space-y-3 p-4">
         <div className="app-page-actions"><h2 className="app-bloco-titulo">Transferência #{aberta.id}</h2><button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={() => setAberta(null)}>Fechar</button></div>
-        <p><strong>{aberta.colaborador?.nome}</strong> · {aberta.obra?.nome} → {nomeObra(aberta.obra_destino_id)}</p>
+        <p><strong>{aberta.colaborador?.nome}</strong> · {aberta.obra?.nome || nomeObra(aberta.obra_id)} → {nomeObra(aberta.obra_destino_id)}</p>
         <p>{aberta.situacao} · Aprovação: {aberta.aprovacao_automatica ? 'Automática' : nomeObra(aberta.obra_aprovadora_id)}{aberta.data_vigencia ? ` · Vigência: ${dataDia(aberta.data_vigencia)}` : ''}</p>
         <p>{aberta.justificativa}</p>
         <ul className="rh-pessoal-historico">{(aberta.historicos || []).map(h => <li key={h.id}><small>{data(h.createdAt)} · Usuário #{h.usuario_id} · {h.setor}</small><div>{h.descricao}</div></li>)}</ul>

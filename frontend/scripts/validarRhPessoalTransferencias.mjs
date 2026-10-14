@@ -13,8 +13,9 @@ createRoot(document.getElementById('root')).render(<MemoryRouter><main className
 const mocks = `const obras=[{id:1,nome:'Obra de origem',codigo:'101'},{id:2,nome:'Obra de destino',codigo:'102'}];
 const s={id:10,colaborador:{id:7,nome:'Ana Teste'},obra:obras[0],obra_id:1,obra_destino_id:2,obra_destino_nome:obras[1].nome,
 obra_aprovadora_id:1,situacao:'ABERTA',nao_lida:true,pode_decidir:true,pode_cancelar:false,atividade_em:'2026-09-18T15:00:00Z',historicos:[{id:1,descricao:'Transferência solicitada',usuario_id:22,createdAt:'2026-09-18T15:00:00Z'}]};
-const colaboradores=Array.from({length:51},(_,i)=>({id:i+7,nome:i===0?'Ana Teste':i===50?'Zilda Teste':'Colaborador '+String(i).padStart(2,'0'),matricula:'M'+(i+7),cargo:'Pedreira',obra_id:1,obra:obras[0]}));
+const colaboradores=Array.from({length:51},(_,i)=>({id:i+7,nome:i===0?'Ana Teste':i===1?'Sem Local':i===50?'Zilda Teste':'Colaborador '+String(i).padStart(2,'0'),matricula:'M'+(i+7),cargo:'Pedreira',obra_id:i===1?null:1,obra:i===1?null:obras[0]}));
 export async function rhTransferencias(path='',opts={}){
+if(path==='/leituras')return {};
 if(path==='/configuracao')return {obras,obras_responsavel_ids:[1]};
 if(path==='/diretorio'){
 const busca=String(opts.params?.busca||'').toLowerCase();const pagina=Number(opts.params?.pagina||1);
@@ -23,7 +24,7 @@ const itens=colaboradores.filter(c=>[c.nome,c.matricula,c.cargo].some(v=>v.toLow
 return {itens:itens.slice((pagina-1)*50,pagina*50),total:itens.length,pagina};}
 if(opts.method==='POST'){window.envios=(window.envios||[]);window.envios.push({path,...opts});await new Promise(r=>setTimeout(r,200));return {id:10};}
 if(path==='/10')return s;
-return [s];}`;
+return {itens:[s],total:1,pagina:1,total_paginas:1,nao_lidas:1};}`;
 const server = await createServer({ root, configFile: false, logLevel: 'error', server: { host: '127.0.0.1', port: 0 },
   plugins: [{ name: 'fixture-rh-transferencia', enforce: 'pre',
     resolveId(id) { if (id === '/fixture.jsx') return '\0fixture-rh-transferencia.jsx'; },
@@ -44,7 +45,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture`);
   const css = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8').match(/href="\/assets\/([^\"]+\.css)"/)[1];
   await page.addStyleTag({ path: path.join(root, 'dist/assets', css) });
-  const diretorio = page.getByRole('region', { name: 'Diretório global de colaboradores' });
+  const diretorio = page.getByRole('region', { name: 'Todos Colaboradores' });
   await diretorio.getByText('51 colaborador(es) · Página 1 de 2').waitFor();
   await diretorio.getByText('Ana Teste').waitFor();
   assert.deepEqual((await page.evaluate(() => window.consultasDiretorio))[0], { busca: '', pagina: 1 }, 'Diretório deve carregar automaticamente sem busca');
@@ -53,11 +54,13 @@ try {
   await diretorio.getByText('51 colaborador(es) · Página 2 de 2').waitFor();
   await diretorio.getByRole('button', { name: 'Anterior' }).click();
   await diretorio.getByText('Ana Teste').waitFor();
+  await page.getByRole('tab', { name: /Transferências das minhas obras|Transferências deste local|Todas as transferências/ }).click();
   await page.getByRole('button', { name: 'Abrir', exact: true }).click();
   await page.getByRole('button', { name: 'Aprovar transferência', exact: true }).click();
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   assert.equal(await page.evaluate(() => (window.envios || []).length), 0, 'Cancelar confirmacao nao deve aprovar');
   await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await page.getByRole('tab', { name: 'Todos Colaboradores', exact: true }).click();
   await diretorio.getByRole('textbox', { name: 'Nome, matrícula ou função' }).fill('Ana');
   await page.getByRole('button', { name: 'Pesquisar', exact: true }).click();
   await diretorio.getByText('1 colaborador(es) · Página 1 de 1').waitFor();
@@ -78,8 +81,18 @@ try {
   await page.getByRole('dialog', { name: 'Solicitar transferência entre obras' }).waitFor({ state: 'hidden' });
   const envios = await page.evaluate(() => window.envios);
   assert.equal(envios.length, 1);
-  assert.equal(envios[0].data.obra_solicitante_id, 1); assert.equal(envios[0].data.obra_destino_id, 2);
+  assert.equal(envios[0].data.colaborador_id, 7); assert.equal(envios[0].data.obra_destino_id, 2);
+  assert(!('obra_solicitante_id' in envios[0].data), 'Responsabilidade e origem sao resolvidas pelo servidor');
   assert(!('data_vigencia' in envios[0].data));
+  await diretorio.getByRole('textbox', { name: 'Nome, matrícula ou função' }).fill('Sem Local');
+  await page.getByRole('button', { name: 'Pesquisar', exact: true }).click();
+  await diretorio.getByText('Sem Local', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Solicitar transferência', exact: true }).click();
+  await page.getByLabel('Obra de destino', { exact: true }).selectOption('1');
+  await page.getByLabel('Justificativa', { exact: true }).fill('Primeira alocação na obra');
+  await page.getByRole('button', { name: 'Confirmar transferência', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Solicitar transferência entre obras' }).waitFor({ state: 'hidden' });
+  assert.equal((await page.evaluate(() => window.envios)).at(-1).data.colaborador_id, 8);
   assert.deepEqual(errors, []);
   console.log('OK: transferencia na UI, diretorio global paginado desde a abertura, busca, envio e responsividade desktop/mobile. Sem API externa.');
 } finally { await browser.close(); await server.close(); }

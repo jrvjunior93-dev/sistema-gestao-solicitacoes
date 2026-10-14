@@ -86,8 +86,6 @@ async function diretorio(user, filtros = {}) {
   const busca = String(filtros.busca || '').trim().slice(0, 100);
   const pagina = Math.max(1, Math.min(100000, Number.parseInt(filtros.pagina, 10) || 1));
   const where = { status: 'ATIVO' };
-  const localId = localDoFiltro(filtros);
-  if (localId) where.obra_id = localId;
   if (busca) where[Op.or] = ['nome', 'matricula', 'cargo'].map(campo => ({ [campo]: { [Op.like]: `%${busca}%` } }));
   const { count, rows } = await RhColaborador.findAndCountAll({ where,
     attributes: camposColaborador,
@@ -109,7 +107,7 @@ function resolverFluxoTransferencia(origem, destino, idsResponsavel = []) {
     throw new ValidationError('Somente o responsavel vigente da obra atual ou da obra de destino pode solicitar a transferencia.', 403);
   }
 
-  const aprovacaoAutomatica = responsavelOrigem && responsavelDestino;
+  const aprovacaoAutomatica = responsavelDestino && (!origem || responsavelOrigem);
   const obraSolicitanteId = responsavelOrigem ? Number(origem) : Number(destino);
   return {
     aprovacaoAutomatica,
@@ -283,12 +281,12 @@ async function efetivarTransferencia(s, user, transaction) {
   }
   const aberto = await vinculoAberto(colaborador.id, transaction);
   const hoje = hojeLocal();
-  if (!aberto || Number(aberto.obra_id) !== Number(s.obra_id) || dataIso(aberto.vigencia_inicio) > hoje
+  if ((s.obra_id && !aberto) || (aberto && (Number(aberto.obra_id) !== Number(s.obra_id) || dataIso(aberto.vigencia_inicio) > hoje))
       || dataIso(colaborador.data_admissao || colaborador.data_inicio) > hoje
       || (colaborador.data_demissao && dataIso(colaborador.data_demissao) < hoje)) {
     throw new ValidationError('O vinculo atual nao permite transferencia hoje. Confira a admissao e o historico de lotacao.', 409);
   }
-  if (dataIso(aberto.vigencia_inicio) === hoje) {
+  if (aberto && dataIso(aberto.vigencia_inicio) === hoje) {
     // Não gerar intervalo negativo quando ocorrerem duas mudanças no mesmo dia.
     // A trajetória intradiária fica auditada no histórico das solicitações.
     await aberto.update({ obra_id: destino.id, motivo: 'TROCA_OBRA', solicitacao_id: s.id }, { transaction });
@@ -305,8 +303,8 @@ async function efetivarTransferencia(s, user, transaction) {
 async function abrir(user, payload) {
   return sequelize.transaction(async transaction => {
     const colaborador = await RhColaborador.findByPk(payload.colaborador_id, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!colaborador || colaborador.status !== 'ATIVO' || !colaborador.obra_id) {
-      throw new ValidationError('Selecione um colaborador ativo que ja esteja vinculado a uma obra.');
+    if (!colaborador || colaborador.status !== 'ATIVO') {
+      throw new ValidationError('Selecione um colaborador ativo.');
     }
     const origem = Number(colaborador.obra_id);
     const destino = Number(payload.obra_destino_id);
@@ -317,13 +315,13 @@ async function abrir(user, payload) {
     const fluxo = resolverFluxoTransferencia(origem, destino, ids);
     const obras = await Obra.findAll({
       where: {
-        id: [origem, destino],
+        id: origem ? [origem, destino] : [destino],
         ativo: true,
         tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA
       },
       transaction
     });
-    if (obras.length !== 2) {
+    if (obras.length !== (origem ? 2 : 1)) {
       throw new ValidationError('A origem e o destino precisam ser cadastros ativos do tipo Obra.');
     }
     if (!fluxo.aprovacaoAutomatica) {
@@ -338,20 +336,20 @@ async function abrir(user, payload) {
     const motivo = String(payload.justificativa || '').trim();
     if (!motivo || motivo.length > 2000) throw new ValidationError('Informe a justificativa (ate 2000 caracteres).');
     const s = await RhSolicitacao.create({ tipo: 'MOVIMENTACAO', subtipo: 'TRANSFERENCIA_OBRA',
-      colaborador_id: colaborador.id, obra_id: origem, situacao: 'ABERTA', criada_por: user.id,
+      colaborador_id: colaborador.id, obra_id: origem || null, situacao: 'ABERTA', criada_por: user.id,
       setor_origem: codigoDoSetor(user), justificativa: motivo,
-      dados_json: { obra_destino_id: destino, obra_solicitante_id: fluxo.obraSolicitanteId,
+      dados_json: { origem_sem_obra: !origem, obra_destino_id: destino, obra_solicitante_id: fluxo.obraSolicitanteId,
         obra_aprovadora_id: fluxo.obraAprovadoraId, aprovacao_automatica: fluxo.aprovacaoAutomatica }
     }, { transaction });
     await garantirCodigoRhSolicitacao(s, transaction);
     if (fluxo.aprovacaoAutomatica) {
       await historico(s, user, 'ABERTURA',
-        `Transferencia da obra ${origem} para ${destino} aberta com aprovacao automatica.`, transaction);
+        `Transferencia ${origem ? `da obra ${origem}` : 'sem obra de origem'} para ${destino} aberta com aprovacao automatica.`, transaction);
       const vigencia = await efetivarTransferencia(s, user, transaction);
       await s.update({ situacao: 'APROVADA', dados_json: s.dados_json,
         decidida_por: user.id, decidida_em: new Date() }, { transaction });
       await historico(s, user, 'APROVACAO_AUTOMATICA',
-        `Transferencia da obra ${origem} para ${destino} efetivada em ${vigencia}; o solicitante responde pelas duas obras.`, transaction);
+        `Transferencia ${origem ? `da obra ${origem}` : 'sem obra de origem'} para ${destino} efetivada em ${vigencia}; o solicitante responde ${origem ? 'pelas duas obras' : 'pelo destino'}.`, transaction);
       return { id: s.id, situacao: s.situacao, aprovacao_automatica: true, data_vigencia: vigencia };
     }
     await historico(s, user, 'ABERTURA',

@@ -72,7 +72,11 @@ const db = {
 };
 const service = carregar('rhTransferenciaService.js', {
   sequelize: { Op }, '../models': db, '../middlewares/validation': { ValidationError },
-  './authorizationService': { getUserObraIds: async user => user.id === 33 ? [] : [1] },
+  './authorizationService': { getUserObraIds: async user => user.id === 33 ? [] : [1],
+    isSuperadmin: () => false, getRhDpObraScopeIds: async () => null, userHasAreaPermission: async () => false },
+  './notificacoes': { criarNotificacaoDireta: async () => {} },
+  './rhSolicitacaoCodigoService': { garantirCodigoRhSolicitacao: async () => {} },
+  '../constants/centroCusto': { TIPO_CENTRO_CUSTO_OBRA: 'OBRA', isObraCentroCusto: () => true },
   '../utils/codigoDoSetor': { codigoDoSetor: () => 'OBRA' },
   './rhPessoalDomain': { ...domain, hojeLocal: () => hoje },
   './rhVinculoObraService': { vinculoAberto: async () => aberto, registrarVinculo: async d => {
@@ -127,11 +131,11 @@ async function validarTransferencias() {
   reset();
   responsabilidades.push({ obra_id: 2, user_id: 11 });
   const propria = await service.abrir(usuarios[0], payload);
-  await assert.rejects(service.agir(usuarios[0], propria.id, 'aprovar'), /outro responsavel/);
+  assert.equal(propria.aprovacao_automatica, true);
+  assert.equal(colaborador.obra_id, 2);
   await service.agir(usuarios[1], propria.id, 'comentar', 'Chegada combinada');
   assert.equal(history.at(-1).acao, 'COMENTARIO');
-  await service.agir(usuarios[0], propria.id, 'cancelar');
-  assert.equal(colaborador.obra_id, 1);
+  await assert.rejects(service.agir(usuarios[0], propria.id, 'cancelar'), /decidida/);
 
   reset();
   aberto.vigencia_inicio = hoje;
@@ -141,11 +145,32 @@ async function validarTransferencias() {
 
   reset();
   await assert.rejects(service.diretorio(usuarios[2]), /vinculados/);
-  const diretorio = await service.diretorio(usuarios[0], { busca: 'Ana' });
+  const diretorio = await service.diretorio(usuarios[0], { busca: 'Ana', obra_id: 99 });
+  assert.equal(ultimaConsulta.where.obra_id, undefined, 'Diretorio lista todos os ativos mesmo na tela de uma obra');
   assert(!JSON.stringify(diretorio).includes('SECRETO'));
   assert(!JSON.stringify(diretorio).includes('salario'));
   assert.deepEqual(plain(ultimaConsulta.attributes), ['id', 'nome', 'matricula', 'cargo', 'obra_id']);
   assert.equal(ultimaConsulta.limit, 50);
+
+  reset();
+  colaborador.obra_id = null;
+  aberto = null;
+  await assert.rejects(service.abrir(usuarios[0], payload), /responsavel vigente/);
+  const inicial = await service.abrir(usuarios[1], payload);
+  assert.equal(inicial.aprovacao_automatica, true);
+  assert.equal(colaborador.obra_id, 2);
+  assert.equal(requests[0].obra_id, null, 'Nao inventar obra de origem');
+  assert.equal(aberto.obra_id, 2);
+  assert.equal(atualizacoes, 1, 'Criar vinculo inicial uma unica vez');
+  await assert.rejects(service.agir(usuarios[1], inicial.id, 'aprovar'), /outro responsavel/);
+  await assert.rejects(service.abrir(usuarios[1], payload), /diferente/);
+  assert.equal(atualizacoes, 1);
+
+  reset();
+  colaborador.obra_id = null;
+  aberto = null;
+  colaborador.status = 'INATIVO';
+  await assert.rejects(service.abrir(usuarios[1], payload), /ativo/);
 }
 
 async function validarAtividades() {
@@ -227,7 +252,12 @@ async function validarFilaDp() {
 }
 
 (async () => {
-  await validarTransferencias(); await validarAtividades(); await validarJornada(); await validarFilaDp();
+  await validarTransferencias();
+  if (process.argv.includes('--transferencias')) {
+    console.log('Transferencias: diretorio global, sem origem, permissao e protecao contra repeticao aprovados; nenhum banco acessado.');
+    return;
+  }
+  await validarAtividades(); await validarJornada(); await validarFilaDp();
   const migration = fs.readFileSync(path.join(__dirname, '../migrations/202609180003_rh_solicitacoes_leituras.js'), 'utf8');
   assert(!/\b(?:INSERT|UPDATE|DELETE)\s+/i.test(migration), 'Migration somente estrutural');
   console.log('OK: jornada por vinculo, transferencias bilaterais, permissoes, privacidade, idempotencia e leitura individual (sem banco).');
