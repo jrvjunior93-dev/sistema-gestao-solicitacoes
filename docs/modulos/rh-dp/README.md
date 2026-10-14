@@ -10,6 +10,12 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 ## Regras
 
+- Transferencias: a aba Todos Colaboradores lista todos os ativos, inclusive sem obra,
+  com somente identificacao profissional. O local aberto nao filtra esse diretorio.
+- Sem obra atual, o responsavel vigente do destino pode confirmar a alocacao com
+  justificativa, vigencia na data da operacao e historico, sem inventar uma origem.
+  Entre obras, permanecem as regras de responsabilidade e aprovacao entre envolvidos.
+
 - colaborador deve estar vinculado a empresa e possuir identificadores consistentes;
 - lotacao em obra e periodo de vigencia precisam ser rastreaveis;
 - documentos privados exigem permissao e URL assinada;
