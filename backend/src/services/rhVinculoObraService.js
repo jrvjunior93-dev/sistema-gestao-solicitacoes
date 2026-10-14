@@ -252,6 +252,39 @@ async function encerrarVinculo(dados = {}, transaction = null) {
   return transaction ? executar(transaction) : sequelize.transaction(executar);
 }
 
+// Entrada exclusiva do cadastro SUPERADMIN, apos ACL e lock do colaborador.
+// Nunca antecipar obra futura nem substituir periodos antigos silenciosamente.
+async function ajustarLotacaoCadastro(colaborador, dados, transaction) {
+  const inicio = String(dados.vigenciaInicio || '');
+  const motivo = String(dados.observacoes || '').trim();
+  const data = /^\d{4}-\d{2}-\d{2}$/.test(inicio) ? new Date(`${inicio}T00:00:00Z`) : null;
+  if (!data || Number.isNaN(data.getTime()) || data.toISOString().slice(0, 10) !== inicio) {
+    throw new ValidationError('Informe uma data de vigencia da lotacao valida.');
+  }
+  if (!motivo || motivo.length > 1000) throw new ValidationError('Informe o motivo do ajuste da lotacao (ate 1000 caracteres).');
+  const hoje = require('./rhPessoalDomain').hojeLocal();
+  if (inicio > hoje) throw new ValidationError('A lotacao pelo cadastro deve ter vigencia ate hoje; nao antecipe uma transferencia futura.');
+  const admissao = paraDataIso(colaborador.data_admissao || colaborador.data_inicio);
+  if (admissao && inicio < admissao) throw new ValidationError('A vigencia da lotacao nao pode ser anterior a admissao.');
+  if (colaborador.status !== 'ATIVO' || colaborador.data_demissao) {
+    throw new ValidationError('O ajuste de lotacao exige colaborador ativo e sem desligamento.', 409);
+  }
+  const aberto = await vinculoAberto(colaborador.id, transaction);
+  if ((colaborador.obra_id && !aberto) || (aberto && Number(aberto.obra_id || 0) !== Number(colaborador.obra_id || 0))) {
+    throw new ValidationError('O historico de lotacao diverge do cadastro. Confira o vinculo antes de alterar.', 409);
+  }
+  if (aberto && inicio < paraDataIso(aberto.vigencia_inicio)) {
+    throw new ValidationError('A vigencia da lotacao nao pode ser anterior ao inicio do vinculo atual.');
+  }
+  const evidencia = `Ajuste direto SUPERADMIN ${new Date().toISOString()} por usuario #${dados.criadoPor}: local ${colaborador.obra_id ?? 'sem local'} -> ${dados.obraId ?? 'sem local'}. ${motivo}`;
+  if (aberto && inicio === paraDataIso(aberto.vigencia_inicio)) {
+    await aberto.update({ obra_id: dados.obraId, setor_id: dados.setorId,
+      motivo: 'AJUSTE', observacoes: [aberto.observacoes, evidencia].filter(Boolean).join('\n') }, { transaction });
+    return aberto;
+  }
+  return registrarVinculo({ ...dados, colaboradorId: colaborador.id, motivo: 'AJUSTE', observacoes: evidencia }, transaction);
+}
+
 module.exports = {
   MOTIVOS,
   diaAnterior,
@@ -260,5 +293,6 @@ module.exports = {
   historicoDoColaborador,
   colaboradoresDaObraEm,
   registrarVinculo,
-  encerrarVinculo
+  encerrarVinculo,
+  ajustarLotacaoCadastro
 };

@@ -20,9 +20,11 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
   Pagamentos coletivos sao reconhecidos pelas linhas do snapshot; consultas nao
   regravam rascunhos nem normalizam status legados no banco.
 - Alteracao salarial pelo fluxo envia novo salario numerico, nao texto BRL.
-- SUPERADMIN pode ajustar salario no cadastro com vigencia e motivo obrigatorios,
-  usando historico salarial e transacao/lock do colaborador. Demais perfis continuam
-  usando solicitacao e aprovacao salarial; nao ganharam acesso direto.
+- SUPERADMIN e DP autorizado podem ajustar salario no cadastro com vigencia e
+  motivo obrigatorios, historico salarial e transacao/lock do colaborador.
+  DP exige concessao nominal de rh_dp.colaboradores.editar e rh_dp.salario.aprovar;
+  perfil administrativo/legado sozinho nao concede esta excecao. Usuario
+  operacional OBRA que acumule DP segue bloqueado; demais usam solicitacao salarial.
 - Ajuste nao altera titulos existentes; vigencia futura nao antecipa salario atual.
   Data anterior a admissao ou ao inicio do salario vigente e recusada. Correcao na
   mesma vigencia conserva evidencia do valor anterior/autor nas observacoes, sem
@@ -30,6 +32,8 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 - Transferencias: a aba Todos Colaboradores lista todos os ativos, inclusive sem obra,
   com somente identificacao profissional. O local aberto nao filtra esse diretorio.
+- Destinos incluem Obras e Centros de Custo ativos. Origem em centro de custo
+  tambem e aceita; vinculacao/responsavel/aprovacao, autor e escopo seguem iguais.
 - Todos os usuarios vinculados a Obra, com rh_dp.solicitacoes.abrir, podem solicitar
   transferencias no diretorio de ativos, sem cadastro de responsavel. Participam
   pela origem quando vinculados a ela; caso contrario pedem para seu proprio destino.
@@ -166,9 +170,13 @@ usa o mesmo catalogo e inclui centros de custo. O vinculo continua opcional e
 grava o ID em `obra_id`, sem novo campo ou migration. Limpar a pesquisa retira
 a selecao no formulario. Esc fecha primeiro as sugestoes, sem fechar o cadastro.
 
-As permissoes de consulta/edicao, datas de admissao/vigencia e o fluxo formal
-de transferencia permanecem inalterados: selecionar outro destino na edicao
-nao dispensa a solicitacao de transferencia exigida pelo backend.
+Consulta/edicao, admissao e fluxo formal permanecem para usuarios operacionais.
+Na edicao de existente, somente SUPERADMIN altera obra/centro ou remove o local:
+vigencia ate hoje e motivo obrigatorios, admissao/vinculo atual respeitados,
+historico e autor preservados, sem antecipar lotacao futura nem recalcular titulos.
+Transferencia pendente ou historico divergente bloqueia o ajuste. Correcao no
+mesmo dia conserva evidencia do local anterior, sem intervalo negativo.
+Demais usuarios veem o campo bloqueado e usam Transferencias entre obras.
 
 Teste isolado da tela, catalogo HTTP local e persistencia simulada:
 `node scripts/validarRhColaboradorCentroCusto.mjs` no frontend. Nao acessa banco

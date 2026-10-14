@@ -47,6 +47,7 @@ import {
 import { getSetores } from '../services/setores';
 import {
   canManageRhDpColaboradores,
+  canAdjustRhDpSalarioCadastro,
   canViewRhDpColaboradores,
   canManageRhDpDocumentos,
   canGenerateRhDpTicket,
@@ -69,6 +70,9 @@ function emptyForm() {
     id: null,
     empresa_grupo_id: '',
     obra_id: '',
+    obra_original_id: '',
+    obra_vigencia_inicio: '',
+    obra_motivo: '',
     setor_id: '',
     nome: '',
     cpf: '',
@@ -174,6 +178,9 @@ function toFormData(data) {
     id: data?.id || null,
     empresa_grupo_id: data?.empresa_grupo_id ? String(data.empresa_grupo_id) : '',
     obra_id: data?.obra_id ? String(data.obra_id) : '',
+    obra_original_id: data?.obra_id ? String(data.obra_id) : '',
+    obra_vigencia_inicio: '',
+    obra_motivo: '',
     setor_id: data?.setor_id ? String(data.setor_id) : '',
     nome: data?.nome || '',
     cpf: maskCpfCnpj(data?.cpf),
@@ -220,7 +227,9 @@ function toFormData(data) {
 function buildPayload(form) {
   return {
     empresa_grupo_id: Number(form.empresa_grupo_id),
-    obra_id: form.obra_id ? Number(form.obra_id) : undefined,
+    obra_id: form.obra_id ? Number(form.obra_id) : form.id ? null : undefined,
+    obra_vigencia_inicio: form.id && form.obra_id !== form.obra_original_id ? form.obra_vigencia_inicio : undefined,
+    obra_motivo: form.id && form.obra_id !== form.obra_original_id ? form.obra_motivo : undefined,
     setor_id: form.setor_id ? Number(form.setor_id) : undefined,
     nome: form.nome,
     cpf: onlyDigits(form.cpf),
@@ -322,6 +331,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const podeEditar = canManageRhDpColaboradores(user);
+  const podeAjustarSalario = canAdjustRhDpSalarioCadastro(user);
   const podeGerirDocumentos = canManageRhDpDocumentos(user);
   const podeGerarTicket = canGenerateRhDpTicket(user);
   // R3: aviso e confirmação do SISTEMA — nenhuma caixa do navegador.
@@ -1255,13 +1265,27 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                       value={form.obra_id}
                       options={obras}
                       onChange={(obraId) => setForm((prev) => ({ ...prev, obra_id: obraId }))}
-                      disabled={!podeEditar || carregando || salvando}
+                      disabled={!podeEditar || carregando || salvando || (Boolean(form.id) && !isSuperadmin(user))}
                       placeholder="Não vinculada — pesquise por código ou nome..."
                       disabledPlaceholder="Obra / centro de custo"
                       emptyText="Nenhuma obra ou centro de custo encontrado"
                     />
                   </div>
                 </CampoForm>
+
+                {form.id && !isSuperadmin(user) ? <p className="form-hint">Para mudar a lotação, solicite uma transferência entre obras/centros de custo.</p> : null}
+                {form.id && podeEditar && isSuperadmin(user) && form.obra_id !== form.obra_original_id ? <>
+                  <CampoForm label="Vigência da lotação" obrigatorio>
+                    <DateInputBR className="form-control" aria-label="Vigência da lotação" value={form.obra_vigencia_inicio}
+                      onChange={e => setForm(prev => ({ ...prev, obra_vigencia_inicio: e.target.value }))} disabled={salvando} required
+                      min={form.data_admissao || undefined} max={new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())} />
+                    <p className="form-hint">Até hoje, respeitando admissão e vínculo atual. Não recalcula pagamentos existentes.</p>
+                  </CampoForm>
+                  <CampoForm label="Motivo do ajuste da lotação" obrigatorio>
+                    <input className="form-control" aria-label="Motivo do ajuste da lotação" maxLength={1000} value={form.obra_motivo}
+                      onChange={e => setForm(prev => ({ ...prev, obra_motivo: e.target.value }))} disabled={salvando} required />
+                  </CampoForm>
+                </> : null}
 
                 <CampoForm label="Nome" obrigatorio>
                   <input
@@ -1394,19 +1418,19 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                     value={form.salario_base}
                     onChange={(e) => setForm((prev) => ({ ...prev, salario_base: normalizeCurrencyTyping(e.target.value) }))}
                     onBlur={(e) => setForm((prev) => ({ ...prev, salario_base: formatCurrencyInput(e.target.value) }))}
-                    disabled={!podeEditar || (Boolean(form.id) && !isSuperadmin(user))}
+                    disabled={!podeEditar || salvando || (Boolean(form.id) && !podeAjustarSalario)}
                   />
-                  {form.id && !isSuperadmin(user) ? <p className="form-hint">Altere o salário pelo fluxo de solicitação salarial.</p> : null}
+                  {form.id && !podeAjustarSalario ? <p className="form-hint">Altere o salário pelo fluxo de solicitação salarial. Edição direta exige DP com Editar colaboradores e Aprovar alteração salarial, ou SUPERADMIN.</p> : null}
                 </CampoForm>
-                {form.id && podeEditar && isSuperadmin(user) ? <>
+                {form.id && podeEditar && podeAjustarSalario ? <>
                   <CampoForm label="Vigência do salário">
                     <DateInputBR className="form-control" aria-label="Vigência do salário" value={form.salario_vigencia_inicio}
-                      onChange={e => setForm(prev => ({ ...prev, salario_vigencia_inicio: e.target.value }))} />
+                      onChange={e => setForm(prev => ({ ...prev, salario_vigencia_inicio: e.target.value }))} disabled={salvando} />
                     <p className="form-hint">Obrigatória ao alterar o salário. Não recalcula títulos existentes.</p>
                   </CampoForm>
                   <CampoForm label="Motivo do ajuste salarial">
                     <input className="form-control" aria-label="Motivo do ajuste salarial" maxLength={1000} value={form.salario_motivo}
-                      onChange={e => setForm(prev => ({ ...prev, salario_motivo: e.target.value }))} />
+                      onChange={e => setForm(prev => ({ ...prev, salario_motivo: e.target.value }))} disabled={salvando} />
                   </CampoForm>
                 </> : null}
                 <CampoForm label="Valor contratual">

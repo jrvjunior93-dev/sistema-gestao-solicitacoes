@@ -1,7 +1,7 @@
 const assert = require('assert');
 const { Op } = require('sequelize');
 const { sequelize, Obra, RhColaborador, RhColaboradorVinculo, RhSolicitacao,
-  RhSolicitacaoHistorico, RhSolicitacaoAnexo, CrResponsavelObra, UsuarioObra } = require('../src/models');
+  RhSolicitacaoHistorico, RhSolicitacaoAnexo, CrResponsavelObra, UsuarioObra, ConfiguracaoSistema } = require('../src/models');
 const {
   canAccessRhDp,
   canManageRhDpColaboradores,
@@ -23,6 +23,9 @@ const rhTransferenciaService = require('../src/services/rhTransferenciaService')
 const { hojeLocal } = require('../src/services/rhPessoalDomain');
 
 async function executar() {
+  // Fixture sem banco: a regra de abertura passou a consultar permissoes/vinculos.
+  sequelize.query = async () => { throw new Error('Consulta nao simulada bloqueada; teste nao acessa banco.'); };
+  ConfiguracaoSistema.findOne = async () => null;
   assert.strictEqual(rhServiceTest.normalizeCpfSearch('QA-RHDP-001'), '',
     'matricula alfanumerica nao pode virar pesquisa parcial de CPF');
   assert.strictEqual(rhServiceTest.normalizeCpfSearch('123.456.789-01'), '12345678901',
@@ -150,14 +153,15 @@ async function executar() {
 
   const originalObraFindAll = Obra.findAll;
   Obra.findAll = async ({ where }) => {
-    assert.strictEqual(
-      where.tipo_centro_custo,
-      'OBRA',
-      'a configuracao da transferencia nao deve consultar centros de custo'
+    assert.deepStrictEqual(
+      where.tipo_centro_custo[require('sequelize').Op.in],
+      ['OBRA', 'CENTRO_CUSTO'],
+      'a configuracao deve incluir centros de custo sem remover Obras'
     );
     return [
       { id: 12, get: () => ({ id: 12, nome: 'Obra A', codigo: 'A', tipo_centro_custo: 'OBRA' }) },
-      { id: 35, get: () => ({ id: 35, nome: 'Obra B', codigo: 'B', tipo_centro_custo: 'OBRA' }) }
+      { id: 35, get: () => ({ id: 35, nome: 'Obra B', codigo: 'B', tipo_centro_custo: 'OBRA' }) },
+      { id: 77, get: () => ({ id: 77, nome: 'Centro A', codigo: 'C', tipo_centro_custo: 'CENTRO_CUSTO' }) }
     ];
   };
 
@@ -165,7 +169,7 @@ async function executar() {
     const configuracao = await rhTransferenciaService.configuracao(superadmin);
     assert.deepStrictEqual(
       configuracao.obras_responsavel_ids,
-      [12, 35],
+      [12, 35, 77],
       'a tela de transferencias deve tratar todas as obras ativas como acessiveis pelo SUPERADMIN'
     );
   } finally {
@@ -201,6 +205,7 @@ async function executar() {
     solicitacaoCreate: RhSolicitacao.create,
     historicoCreate: RhSolicitacaoHistorico.create,
     responsavelFindAll: CrResponsavelObra.findAll,
+    usuarioObraFindAll: UsuarioObra.findAll,
     obraFindAll: Obra.findAll,
     obraFindByPk: Obra.findByPk
   };
@@ -229,11 +234,12 @@ async function executar() {
     { obra_id: 12, user_id: 44 },
     { obra_id: 35, user_id: 44 }
   ];
+  UsuarioObra.findAll = async () => [{ obra_id: 12 }, { obra_id: 35 }];
   Obra.findAll = async ({ where }) => {
-    assert.strictEqual(
-      where.tipo_centro_custo,
-      'OBRA',
-      'a abertura deve validar que origem e destino sao do tipo Obra'
+    assert.deepStrictEqual(
+      where.tipo_centro_custo[require('sequelize').Op.in],
+      ['OBRA', 'CENTRO_CUSTO'],
+      'origem/destino admitem Obras e Centros de Custo sem ampliar escopo'
     );
     return [
       { id: 12, ativo: true, tipo_centro_custo: 'OBRA' },
@@ -257,7 +263,7 @@ async function executar() {
 
   try {
     const resultado = await rhTransferenciaService.abrir(
-      { id: 44, perfil: 'USUARIO', setor: { codigo: 'OBRA' } },
+      { id: 44, perfil: 'USUARIO', setor: { codigo: 'OBRA' }, areas_permissoes: ['rh_dp.solicitacoes.abrir'] },
       { colaborador_id: 91, obra_destino_id: 35, justificativa: 'Transferencia operacional.' }
     );
     assert.strictEqual(resultado.aprovacao_automatica, true);
@@ -278,6 +284,7 @@ async function executar() {
     RhSolicitacao.create = originaisTransferencia.solicitacaoCreate;
     RhSolicitacaoHistorico.create = originaisTransferencia.historicoCreate;
     CrResponsavelObra.findAll = originaisTransferencia.responsavelFindAll;
+    UsuarioObra.findAll = originaisTransferencia.usuarioObraFindAll;
     Obra.findAll = originaisTransferencia.obraFindAll;
     Obra.findByPk = originaisTransferencia.obraFindByPk;
   }
