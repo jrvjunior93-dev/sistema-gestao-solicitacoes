@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao DP global e salario para main - 2026-10-14
+
+- Sessao codex-promocao-dp-global-salario-main-20261014, sem delegacao.
+- Usuario autorizou promocao dos commits publicados, confirmou backup cifrado,
+  timer ativo e homologacao em dev. Reserva documental e de conflitos da integracao:
+  README RH/DP, handoffs, quadro, sessoes, ownership e catalogo backend gerado.
+- Partir da main 4fd60afc e integrar refactor/frontend 208ae8e2 preservando
+  hotfixes, historico e scripts de producao; sem .env, banco, migration ou EC2.
+- Caixa/obra ainda local em outro worktree e outputs/ ficam fora do release.
+- Publicacao por PR e comandos para reiniciar apenas backend-solicitacoes
+  apos UUID/schema/processo/porta conferidos pelo usuario. Estado: validando.
+
 ## Promocao DP transferencias para main - 2026-10-14
 
 - Responsavel: agente desta conversa, sem delegacao; candidato validado e ownership liberado.
