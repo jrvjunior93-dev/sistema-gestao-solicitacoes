@@ -8,6 +8,10 @@
 - Repetir testes na arvore exata do commit; conferir remoto antes do push normal.
   Comandos do operador conferem banco staging e somente a migration nova.
   Sem main, EC2, banco, reinicio ou migration executados pelo agente.
+- Arvore funcional 51b96744 validada isoladamente de RH/DP: backend/HTTP/ACL,
+  player/relatorio desktop/mobile, regressoes do visualizador, build/navegacao/docs.
+  Script ops/deploy/atualizar-dev-treinamento-20261014.sh preparado para operador,
+  com gate staging/PM2/migration unica e health. Reserva documental liberada.
 
 ## Treinamento: rastreio e relatorio granular - 2026-10-14
 

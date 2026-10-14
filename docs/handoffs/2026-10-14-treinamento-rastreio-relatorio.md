@@ -98,3 +98,15 @@ ficam preservados fora deste commit. Base remota conferida em 1b9101df.
 Repetir validacoes na arvore exata antes de publicar; nenhum deploy ou migration
 sera executado pelo agente. Atualizacao sera feita pelo operador somente no
 checkout dev, banco UUID 60f043e9-4025-11f1-9a61-06d8a063012d, backend-dev.
+
+Commit funcional 51b96744 criado somente com Treinamento. Ajustes RH/DP foram
+preservados temporariamente em stash nomeado para validar a arvore exata, sem
+inclui-los no release. Backend/HTTP/ACL, UI/tracker, player real, visualizadores,
+build/navegacao/docs aprovados novamente. Publicacao normal (sem force-push)
+destinada a origin/refactor/frontend, a partir de origin/refactor/frontend 1b9101df.
+Comandos versionados em ops/deploy/atualizar-dev-treinamento-20261014.sh:
+confere checkout/branch, arvore limpa, commit funcional, processo/porta dev,
+compatibilidade das variaveis PM2 com terminal/.env, UUID/banco/endpoint staging;
+permite somente a migration nova, reinicia backend-dev e verifica health.
+Se outro schema estiver pendente ou identidade divergir, parar e enviar a saida
+sem segredos; nunca liberar todas as migrations para contornar o gate.
