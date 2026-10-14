@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Promocao DP global e salario para main - 2026-10-14
+
+- Sessao codex-promocao-dp-global-salario-main-20261014, sem delegacao.
+- Usuario autorizou promocao dos commits publicados, confirmou backup cifrado,
+  timer ativo e homologacao em dev. Reserva documental e de conflitos da integracao:
+  README RH/DP, handoffs, quadro, sessoes, ownership e catalogo backend gerado.
+- Partir da main 4fd60afc e integrar refactor/frontend 208ae8e2 preservando
+  hotfixes, historico e scripts de producao; sem .env, banco, migration ou EC2.
+- Caixa/obra ainda local em outro worktree e outputs/ ficam fora do release.
+- Publicacao por PR e comandos para reiniciar apenas backend-solicitacoes
+  apos UUID/schema/processo/porta conferidos pelo usuario. Estado: finalizado,
+  ownership liberado; validacoes no handoff da promocao DP global/salario.
+
 ## Promocao DP transferencias para main - 2026-10-14
 
 - Responsavel: agente desta conversa, sem delegacao; candidato validado e ownership liberado.
@@ -96,6 +109,67 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## RH/DP: cards global e locais no hub - 2026-10-14
+
+- Agente desta conversa, sem delegacao; implementacao local concluida, ownership liberado.
+- Pedido: card Solicitacoes globais no hub de Colaboradores, separado de
+  Obras/Centros de Custo; esta porta abre cards de locais e abas locais.
+- Reserva: frontend/src/navigation/navigationConfig.jsx,
+  frontend/src/utils/acessoProduto.js, frontend/src/pages/RhDpPessoal.jsx,
+  frontend/scripts/validarRhPessoalPorLocal.mjs, teste novo do hub,
+  backend/src/generated/navegacaoFonteUnica.cjs (regeneracao pelo script),
+  README RH/DP e handoff. Sem redesenho nem mudar endpoints/financeiro.
+- Branch codex/rhdp-hub-global-locais-20261014 sobre commit 22120eaa.
+- Preservar escopo OBRA, permissoes, rascunhos privados e ajustes salariais.
+  Sem banco real, migration, EC2, commit/push ou promocao main nesta etapa.
+- Validacao: hub real em desktop/mobile, card global/local, abas por obra/centro,
+  reload/voltar, teclado, ACL negativa, catalogo/atalhos, build e docs.
+  Handoff: docs/handoffs/2026-10-14-rhdp-hub-global-locais.md.
+- Usuario autorizou commit/push deste ajuste na refactor/frontend e comandos
+  para EC2 dev. Reserva documental para conferencia/staging/publicacao, liberada
+  apos validacoes. Sem outputs/, main, migration, banco real ou reinicio pelo agente.
+
+## DP: consulta global e jornada nas listas - 2026-10-14
+
+- Agente desta conversa, sem delegacao; implementacao local concluida, ownership liberado.
+- Escopo: entrada/lista global de solicitacoes para DP e consistencia entre
+  solicitacoes em curso do colaborador e listagem/detalhe. Preservar escopo
+  OBRA, rascunhos privados, permissoes e fluxos de pagamento existentes.
+- Reserva: RhDpPessoal.jsx, RhDpPessoalSolicitacoes.jsx, RhSolicitacaoController.js,
+  rhSolicitacaoService.js, rhService.js se necessario; testes locais backend/frontend,
+  README RH/DP e handoff de 2026-10-14. Sem editar rotas/permissoes centrais.
+- Branch codex/rhdp-solicitacoes-globais-20261014 sobre refactor/frontend 3a1b2300.
+- Reserva ampliada: RhColaboradorController.js (identidade autenticada no destaque),
+  rhSolicitacaoConsultaDomain.js (regra unica de consulta), rhPagamentoSolicitacaoService.js
+  (escopo de consulta do DP consistente com a lista), validarRhPessoalPorLocal.mjs,
+  validarRhPessoalPorSolicitacao.js e validarRhPessoalFluxo.js (mocks do helper).
+- Sem banco real, migration, EC2, commit/push ou deploy nesta etapa.
+- Usuario adicionou correcao de moeda na alteracao salarial e autorizou edicao
+  direta exclusiva do SUPERADMIN, com data de vigencia informada. Reserva ampliada:
+  RhDpColaboradores.jsx, rhValidators.js, rhSalarioService.js e testes especificos.
+- Testes/mocks adicionais: validarRhConsultaSalario.js, validarRhColaboradorContatos.js,
+  validarRhColaboradoresPlanilha.js e validarRhPrimeiraLotacao.js. Evidencias e proximo
+  passo em docs/handoffs/2026-10-14-dp-consulta-global-salario.md. Sem publicacao.
+- Usuario autorizou commit/push destas alteracoes na refactor/frontend e comandos
+  para EC2 dev. Reserva documental para conferencia/staging/publicacao, liberada
+  apos validacoes. Sem outputs/, main, migration, banco real ou reinicio pelo agente.
+
+## Modal de titulo e atualizacao automatica - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
+- Reservados: frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx;
+  frontend/scripts/validarTituloSolicitacaoAtualizacao.mjs;
+  docs/handoffs/2026-10-13-modal-titulo-atualizacao.md.
+- Escopo: preservar formulario aberto durante refresh da mesma solicitacao;
+  descartar somente ao fechar, concluir ou trocar de registro. Validacoes,
+  permissoes, endpoints e escopos existentes preservados.
+- Sem banco real, migrations, commit/push, EC2 ou deploy nesta tarefa.
+- SSE/fallback e fluxo real do modal aprovados em desktop/mobile; calculos,
+  negociacao, seguranca, permissoes, build e docs conferidos no handoff.
+- Usuario autorizou commit/push desta correcao na refactor/frontend e comandos
+  para EC2 dev. Reserva documental para conferencia/publicacao; liberada apos
+  validacoes. Sem incluir outputs/ ou promover main.
+
 ## Publicacao: carteira sem conta e cadastro de favorecido - 2026-10-13
 
 - Usuario autorizou commit e push das duas correcoes em refactor/frontend.
@@ -3850,3 +3924,29 @@ RH, navegacao, UI desktop/mobile e build aprovadas. Nenhum conflito funcional
 ou mudanca de migration/dependencia. Reserva encerrada e ownership liberado;
 publicar mantendo f123 e 4f8f02f1 como ancestrais, sem reset ou squash.
 Handoff: docs/handoffs/2026-10-13-consolidacao-main-ec2.md.
+
+## Troca de usuario em producao exclusiva do SUPERADMIN - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva concluida e liberada.
+- Base: origin/main 50e08848. Usuario autorizou recurso em producao e acoes reais
+  com permissoes do usuario assumido. Sem permissao administrativa herdada.
+- Reservados: env.js/.env.example, devUserSwitchService/Controller, auth.js,
+  validarDevUserSwitch.js e novo teste HTTP isolado, DevUserSwitcher,
+  ConfiguracaoUsuariosTesteRapido, navigationConfig, LiveUpdatesContext,
+  teste frontend de isolamento e handoff desta tarefa.
+- Catalogo backend gerado pela compilacao tambem reservado: somente descricao
+  do destino de configuracao, sem mudanca de regra/menu/permissao.
+- Produção requer flag propria, desligada por padrao. Nao disfarcar producao
+  como dev. Validar token de MFA, SUPERADMIN real/ativo, CSRF, revogacao,
+  restauracao, auditoria e reconexao SSE ao trocar identidade.
+- Sem EC2, banco real, migration ou reinicio; outputs/ preservado e fora do Git.
+- Implementacao/testes locais concluidos; reserva liberada. Publicacao/ativacao
+  pendentes. Proximo passo em docs/handoffs/2026-10-13-troca-usuario-producao-segura.md.
+
+Publicacao dev autorizada em 13/10/2026: reserva documental temporaria para
+commit, integracao seletiva, repeticao dos testes e push na refactor/frontend.
+Main e producao nao serao alteradas; sem EC2, banco ou reinicio pelo agente.
+
+Integracao seletiva em e5dd4c9f e testes repetidos aprovados; apenas conflito
+documental resolvido preservando Ticket/estorno. Reserva documental encerrada
+e ownership liberado para publicacao dev. outputs/ permanece fora do commit.

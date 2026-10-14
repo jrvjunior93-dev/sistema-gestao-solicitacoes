@@ -186,6 +186,7 @@ const base = { CPF: '01234567890', Matricula: '001', Empresa_Codigo: 'EMP-01' };
   registros.splice(cadastrosAntesDoTesteLocal);
   let scopeController = [51], optionsList;
   const controller = load('controllers/RhColaboradorController.js', {
+    '../services/setorCapabilityService': { userBelongsToDpSetor: async () => false },
     '../services/rhService': { ...service, listarColaboradoresRh: async options => { optionsList = options; return service.listarColaboradoresRh(options); } },
     '../services/authorizationService': { getRhDpObraScopeIds: async () => scopeController },
     '../services/rhColaboradoresPlanilhaService': { gerarPlanilhaColaboradores },

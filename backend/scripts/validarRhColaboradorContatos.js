@@ -43,6 +43,7 @@ function carregar(nome) {
   const deps = {
     sequelize: { Op }, '../models': models, '../middlewares/validation': validation,
     './rhColaboradorContatosDomain': contatos,
+    './rhSolicitacaoConsultaDomain': require('../src/services/rhSolicitacaoConsultaDomain'),
     './rhVinculoObraService': { registrarVinculo: async d => vinculos.push(d), encerrarVinculo: async () => {} },
     './rhCalculoHistoricoService': {}, './s3': {}, '../utils/fileName': {}, '../utils/excelWorkbook': {},
     '../constants/empresaGrupo': {}, '../utils/codigoDoSetor': { setorParaHistorico: v => typeof v === 'object' ? v.codigo : v },

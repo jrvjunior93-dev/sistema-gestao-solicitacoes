@@ -28,7 +28,7 @@ const cadastrosExtras = [
   { id: 23, nome: 'Inativo escritório QA', obra_id: 51, obra: locais[1], status: 'INATIVO' },
   { id: 24, nome: 'Ativo sem local QA', obra_id: null, status: 'ATIVO' }
 ];
-const solicitacao = { id: 55, codigo: 'RHP-55', tipo: 'JORNADA', situacao: 'ABERTA', obra_id: 7,
+const solicitacao = { id: 55, codigo: 'RHP-55', tipo: 'JORNADA', colaborador_id: 11, situacao: 'ABERTA', obra_id: 7,
   obra: locais[0], dados_json: { importacao_id: 19, competencia: '2026-09' }, historicos: [] };
 const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7, obra: locais[0],
   status: 'RASCUNHO', dias_base: 30, total_colaboradores: 2, total_liquido: 2000,
@@ -38,6 +38,7 @@ const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7
     ajuste_credito_manual: 0, ajuste_debito_manual: 0, revisao_conferencia: 'qa-' + index,
     detalhes_json: { importacao_ids: [19] } })) };
 const overrides = {
+  abrirRhSolicitacao: `async p=>{window.chamadas.push(['criar-rascunho',p]);return {id:88,situacao:'RASCUNHO'};}`,
   getRhColaborador: `async id=>{window.chamadas.push(['cadastro',id]);return {...window.pessoas.find(p=>p.id===Number(id)),cpf:'52998224725',empresa_grupo_id:3};}`,
   atualizarRhColaborador: `async(id,p)=>{window.chamadas.push(['salvar-cadastro',id,p]);await new Promise(ok=>setTimeout(ok,150));Object.assign(window.pessoas.find(i=>i.id===id),p);return {...window.pessoas.find(i=>i.id===id),cpf:'52998224725'};}`,
   getRhDocumentos: `async p=>{window.chamadas.push(['documentos',p]);const data=window.pessoas.filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.colaborador_id||i.id===Number(p.colaborador_id))).map(i=>({id:i.id,colaborador_id:i.id,colaborador:i,nome_original:'Documento '+i.nome,status:'ENVIADO',ativo:true}));return {data,meta:{page:1,total_pages:1,total:data.length}};}`,
@@ -50,7 +51,7 @@ const overrides = {
     return structuredClone({solicitacao:window.pagamento,pode_conferir:false,pode_enviar_fila:false,responsaveis:[],avisos:[]});
   }`,
   getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return [...window.pessoas,...window.cadastrosExtras].filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.status||i.status===p.status)&&(!p.q||i.nome.toLowerCase().includes(p.q.toLowerCase())));}`,
-  listarRhSolicitacoes: `async p=>{window.chamadas.push(['solicitacoes',p]);return [window.pedido];}`,
+  listarRhSolicitacoes: `async p=>{window.chamadas.push(['solicitacoes',p]);return window.pedidos.filter(s=>(!p.obra_id||s.obra_id===Number(p.obra_id))&&(!p.colaborador_id||s.colaborador_id===Number(p.colaborador_id))&&(!p.tipo||s.tipo===p.tipo));}`,
   getRhSolicitacao: `async()=>window.pedido`,
   conferirDocumentacaoRhSolicitacao: `async()=>({exigeConferencia:false,faltando:[],entregues:[]})`,
   getRhChecklistDoTipo: `async()=>({itens:[]})`,
@@ -69,14 +70,16 @@ const overrides = {
   rhTransferencias: `async(p,o)=>{window.chamadas.push(['transferencias',p,o]);return p==='/configuracao'?{obras:window.locais,obras_responsavel_ids:[7]}:{itens:[],total:0,total_paginas:1,pagina:1};}`
 };
 const rhModule = exportsRh.map(name => `export const ${name}=${overrides[name] || 'async()=>[]'};`).join('\n');
-const fixture = `import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';
+const fixture = `import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter,Routes,Route}from'react-router-dom';
   import Pessoal from '/src/pages/RhDpPessoal.jsx';import Documentos from '/src/pages/RhDpDocumentos.jsx';import Relatorio from '/src/pages/RhDpRelatorioOperacional.jsx';import{ThemeContext,TEMA_PADRAO}from'/src/contexts/ThemeContext.jsx';
+  import ModuleHub from '/src/navigation/ModuleHub.jsx';
   const modo=new URLSearchParams(location.search).get('global');const Page=modo==='docs'?Documentos:modo==='relatorio'?Relatorio:Pessoal;
   import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import '/src/styles/escala.css';import '/src/styles/responsive-system.css';
   window.locais=${JSON.stringify(locais)};window.pessoas=${JSON.stringify(pessoas)};window.pedido=${JSON.stringify(solicitacao)};
   window.cadastrosExtras=${JSON.stringify(cadastrosExtras)};
+  window.pedidos=[window.pedido,{id:56,codigo:'RHP-56',tipo:'MOVIMENTACAO',subtipo:'FERIAS',situacao:'ABERTA',obra_id:51,colaborador_id:13,colaborador:window.pessoas[2],obra:window.locais[1],dados_json:{},historicos:[]}];
   window.apuracao=${JSON.stringify(apuracao)};window.chamadas=[];window.envios=[];window.compartilhada=new URLSearchParams(location.search).has('compartilhada');
-  createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><div className="fx-topbar" style={{position:'fixed',top:0,height:96}}/><main className="layout-main" style={{paddingTop:96}}><Page/></main></ThemeContext.Provider></BrowserRouter>);`;
+  createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><div className="fx-topbar" style={{position:'fixed',top:0,height:96}}/><main className="layout-main" style={{paddingTop:96}}><Routes><Route path="/fixture" element={<Page/>}/><Route path="/hub/:moduleId" element={<ModuleHub/>}/><Route path="/rh-dp/pessoal" element={<Pessoal/>}/></Routes></main></ThemeContext.Provider></BrowserRouter>);`;
 let browser;
 const errors = [];
 const pages = [];
@@ -88,9 +91,9 @@ const server = await createServer({ root, configFile: false, logLevel: 'error',
     resolveId(id) { if (id === '/fixture.jsx') return '\0qa-local.jsx'; },
     async load(id) { if (id === '\0qa-local.jsx') return transformWithEsbuild(fixture, 'fixture.jsx', { loader: 'jsx', jsx: 'transform' }); },
     transform(code, id) {
-      if (id.endsWith('/src/contexts/AuthContext.jsx')) return `const dp=new URLSearchParams(location.search).has('dp');const readonly=new URLSearchParams(location.search).has('readonly');
-        const user={id:2,perfil:'USUARIO',area:dp?'DP':'OBRA',setor:{codigo:dp?'DP':'OBRA'},areas_permissoes_configuradas:true,modulos_habilitados:['RH_DP','FINANCEIRO'],
-          areas_permissoes:readonly?['rh_dp.colaboradores.visualizar','rh_dp.solicitacoes.visualizar']:['rh_dp.colaboradores.visualizar','rh_dp.solicitacoes.visualizar','rh_dp.solicitacoes.abrir',...(dp?['rh_dp.colaboradores.editar','rh_dp.documentos.visualizar','rh_dp.relatorios.visualizar','rh_dp.eventos_recorrentes.visualizar','rh_dp.solicitacoes.ver_todas','rh_dp.apuracao.visualizar','rh_dp.apuracao.editar','rh_dp.fechamento.executar','rh_dp.obrigacoes.visualizar']:[])]};export const useAuth=()=>({user});`;
+      if (id.endsWith('/src/contexts/AuthContext.jsx')) return `import {createContext} from 'react';const dp=new URLSearchParams(location.search).has('dp')||sessionStorage.getItem('qaDp')==='1';if(dp)sessionStorage.setItem('qaDp','1');const readonly=new URLSearchParams(location.search).has('readonly');
+        const user={id:2,perfil:new URLSearchParams(location.search).has('admin')?'SUPERADMIN':'USUARIO',area:dp?'DP':'OBRA',setor:{codigo:dp?'DP':'OBRA'},areas_permissoes_configuradas:true,modulos_habilitados:['RH_DP','FINANCEIRO'],
+          areas_permissoes:readonly?['rh_dp.colaboradores.visualizar','rh_dp.solicitacoes.visualizar']:['rh_dp.colaboradores.visualizar','rh_dp.solicitacoes.visualizar','rh_dp.solicitacoes.abrir',...(dp?['rh_dp.colaboradores.editar','rh_dp.documentos.visualizar','rh_dp.relatorios.visualizar','rh_dp.eventos_recorrentes.visualizar','rh_dp.solicitacoes.ver_todas','rh_dp.apuracao.visualizar','rh_dp.apuracao.editar','rh_dp.fechamento.executar','rh_dp.obrigacoes.visualizar']:[])]};export const AuthContext=createContext({user});export const useAuth=()=>({user});`;
       if (id.endsWith('/src/services/rhDp.js')) return rhModule;
       if (id.endsWith('/src/services/obras.js')) return `export const getObras=async p=>{window.chamadas.push(['obras',p]);return window.locais;};export const getMinhasObras=async p=>{window.chamadas.push(['minhas',p]);return window.locais;};`;
       if (id.endsWith('/src/services/notificacoes.js')) return `export const getNotificacoes=async()=>({total_nao_lidas:0});`;
@@ -98,7 +101,7 @@ const server = await createServer({ root, configFile: false, logLevel: 'error',
       if (id.endsWith('/src/hooks/useUiVisibility.js')) return `export const useUiVisibility=()=>({isVisible:()=>true});`;
     },
     configureServer(vite) { vite.middlewares.use(async (req, res, next) => {
-      if (new URL(req.url, 'http://localhost').pathname !== '/fixture') return next();
+      if (!['/fixture','/hub/rhdp','/rh-dp/pessoal'].includes(new URL(req.url, 'http://localhost').pathname)) return next();
       res.setHeader('Content-Type', 'text/html');res.end(await vite.transformIndexHtml('/fixture',
         '<html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/fixture.jsx"></script></body></html>'));
     }); }
@@ -115,7 +118,7 @@ try {
     page.on('pageerror', e => errors.push(e.message));
     await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:') ? route.continue() : route.abort());
     await page.goto(base + query, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('heading', { name: /Pessoal|Gestão de Colaboradores|Documentos|Relatório Operacional/ }).first().waitFor({ timeout: 30000 });
+    await page.getByRole('heading', { name: /Pessoal|Solicitações globais|Gestão de Colaboradores|Documentos|Relatório Operacional/ }).first().waitFor({ timeout: 30000 });
     return page;
   }
   const page = await abrir();
@@ -190,7 +193,8 @@ try {
   await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
   await modal.waitFor({ state: 'hidden' });
   await page.getByRole('tab', { name: 'Solicitações', exact: true }).click();
-  await page.getByText('Nenhuma solicitação neste filtro.').waitFor();
+  await page.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Abrir: solicitação #55',exact:true}).count(),0,'OBRA ve somente solicitacoes do local');
   const cadastroGlobal = await abrir('?dp=1&aba=colaboradores');
   await cadastroGlobal.getByText('Inativo obra QA', { exact: true }).waitFor();
   for (const item of cadastrosExtras) await cadastroGlobal.getByText(item.nome, { exact: true }).waitFor();
@@ -203,6 +207,14 @@ try {
   assert.ok(await cadastroGlobal.evaluate(() => window.chamadas.filter(c => c[0] === 'colaboradores').every(c => !c[1].status)),
     'Cadastro geral do DP preserva consulta a inativos, afastados e sem local');
   const dpLocais = await abrir('?dp=1');
+  await dpLocais.getByRole('button',{name:'Abrir Obra QA',exact:true}).waitFor();
+  assert.equal(await dpLocais.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).count(),0,'Porta de obras abre cards, nao solicitacoes globais');
+  await dpLocais.getByRole('button',{name:'Solicitações de todas as obras',exact:true}).click();
+  await dpLocais.getByRole('button', { name: 'Abrir: solicitação #55', exact: true }).waitFor();
+  await dpLocais.getByRole('button', { name: 'Abrir: solicitação #56', exact: true }).waitFor();
+  assert.ok(await dpLocais.evaluate(()=>window.chamadas.filter(c=>c[0]==='solicitacoes').every(c=>!c[1].obra_id)), 'DP entra em solicitacoes globais');
+  await dpLocais.screenshot({path:path.join(output,'dp-solicitacoes-globais.png'),fullPage:true});
+  await dpLocais.getByRole('button', { name: 'Obras / Centros de Custo', exact: true }).click();
   await dpLocais.getByRole('button', { name: 'Abrir Obra QA', exact: true }).click();
   await dpLocais.getByText('Ana QA', { exact: true }).waitFor();
   assert.equal(await dpLocais.getByText('Caio QA',{exact:true}).count(),0,'Não mostra linhas globais durante a troca de local');
@@ -294,6 +306,10 @@ try {
   await modalMobile.getByLabel('Dias: Caio QA', { exact: true }).waitFor();
   await modalMobile.screenshot({ path: path.join(output, 'pagamento-selecionados-mobile.png') });
   const dpMobile = await abrir('?dp=1',390);
+  await dpMobile.getByRole('button',{name:'Abrir Escritório QA',exact:true}).waitFor();
+  await dpMobile.getByRole('button',{name:'Solicitações de todas as obras',exact:true}).click();
+  await dpMobile.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).waitFor();
+  await dpMobile.getByRole('button',{name:'Obras / Centros de Custo',exact:true}).click();
   await dpMobile.getByRole('button',{name:'Abrir Escritório QA',exact:true}).click();
   await dpMobile.getByRole('button',{name:'Editar cadastro: Caio QA',exact:true}).click();
   await dpMobile.getByRole('dialog',{name:'Detalhe do colaborador',exact:true}).waitFor();
@@ -305,6 +321,53 @@ try {
   await dpMobile.getByRole('tab',{name:'Relatórios',exact:true}).click();
   await dpMobile.waitForFunction(()=>window.chamadas.some(c=>c[0]==='relatorio'&&Number(c[1].obra_id)===51));
   await dpMobile.screenshot({path:path.join(output,'dp-relatorio-local-mobile.png'),fullPage:true});
+  await dpMobile.getByRole('button',{name:'Solicitações de todas as obras',exact:true}).click();
+  await dpMobile.getByRole('button',{name:'Abrir: solicitação #55',exact:true}).waitFor();
+  await dpMobile.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).waitFor();
+  assert.equal(new URL(dpMobile.url()).searchParams.has('local_id'),false,'Visao global remove somente o recorte local');
+  await dpMobile.screenshot({path:path.join(output,'dp-solicitacoes-globais-mobile.png'),fullPage:true});
+  assert.ok(await dpMobile.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Lista global sem transbordamento');
+  const admin = await abrir('?admin=1&visao=global&aba=solicitacoes');
+  await admin.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).waitFor();
+  const acompanhamento = await abrir('?dp=1&local_id=7&aba=colaboradores');
+  await acompanhamento.getByRole('button',{name:'Acompanhar solicitacoes de Ana QA',exact:true}).click();
+  const pedidos = acompanhamento.getByRole('dialog',{name:'Solicitacoes do colaborador',exact:true});
+  await pedidos.getByText('JORNADA',{exact:true}).waitFor();
+  await pedidos.getByRole('button',{name:'Abrir detalhes',exact:true}).click();
+  await acompanhamento.getByRole('dialog',{name:'Jornada RHP-55',exact:true}).waitFor();
+  const salario = await abrir('?admin=1&local_id=7&aba=colaboradores');
+  await salario.getByRole('button',{name:'Movimentacoes: Ana QA',exact:true}).click();
+  const movimentacao = salario.getByRole('dialog',{name:'Movimentacao',exact:true});
+  await movimentacao.getByLabel(/Tipo da movimentacao/).selectOption('ALTERACAO_SALARIAL');
+  await movimentacao.getByLabel(/Novo salario/).fill('188100');
+  await movimentacao.getByLabel(/Vale a partir de/).fill('01/06/2020');
+  await movimentacao.getByLabel(/^Motivo/).fill('Ajuste QA');
+  await movimentacao.getByRole('button',{name:'Criar rascunho',exact:true}).click();
+  await salario.waitForFunction(()=>window.chamadas.some(c=>c[0]==='criar-rascunho'));
+  assert.equal(await salario.evaluate(()=>window.chamadas.find(c=>c[0]==='criar-rascunho')[1].dados.novo_salario),1881,'Moeda BR enviada como numero');
+  await movimentacao.waitFor({state:'hidden'});
+  await salario.getByRole('button',{name:'Editar cadastro: Ana QA',exact:true}).click();
+  const salarioEditor = salario.getByRole('dialog',{name:'Detalhe do colaborador',exact:true});
+  await salarioEditor.getByLabel('Salário base',{exact:true}).fill('188100');
+  await salarioEditor.getByLabel('Vigência do salário',{exact:true}).fill('01/06/2020');
+  await salarioEditor.getByLabel('Motivo do ajuste salarial',{exact:true}).fill('Ajuste direto QA');
+  await salarioEditor.getByRole('button',{name:'Salvar alteracoes',exact:true}).click();
+  await salarioEditor.locator('form#rh-colaborador-form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  await salario.waitForFunction(()=>window.chamadas.some(c=>c[0]==='salvar-cadastro'));
+  const salarioPayload = await salario.evaluate(()=>window.chamadas.find(c=>c[0]==='salvar-cadastro')[2]);
+  assert.equal(salarioPayload.salario_vigencia_inicio,'2020-06-01');
+  assert.equal(salarioPayload.salario_motivo,'Ajuste direto QA');
+  assert.equal(await salario.evaluate(()=>window.chamadas.filter(c=>c[0]==='salvar-cadastro').length),1,'Salario direto bloqueia duplo envio');
+  await salario.screenshot({path:path.join(output,'superadmin-salario-vigencia.png'),fullPage:true});
+  await salario.setViewportSize({width:390,height:900});
+  await salarioEditor.getByLabel('Vigência do salário',{exact:true}).scrollIntoViewIfNeeded();
+  await salario.screenshot({path:path.join(output,'superadmin-salario-vigencia-mobile.png'),fullPage:true});
+  assert.ok(await salario.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Editor salarial responsivo');
+  const dpSalario = await abrir('?dp=1&local_id=7&aba=colaboradores');
+  await dpSalario.getByRole('button',{name:'Editar cadastro: Ana QA',exact:true}).click();
+  const editorDp = dpSalario.getByRole('dialog',{name:'Detalhe do colaborador',exact:true});
+  assert.equal(await editorDp.getByLabel('Salário base',{exact:true}).isDisabled(),true,'DP nao ganha edicao direta salarial');
+  assert.equal(await editorDp.getByLabel('Vigência do salário',{exact:true}).count(),0);
   const dpLeitura = await abrir('?dp=1&readonly=1&local_id=7&aba=colaboradores');
   await dpLeitura.getByText('Ana QA',{exact:true}).waitFor();
   assert.equal(await dpLeitura.getByRole('button',{name:'Editar cadastro: Ana QA',exact:true}).count(),0);
@@ -315,6 +378,44 @@ try {
   await readonly.getByText('Ana QA', { exact: true }).waitFor();
   assert.equal(await readonly.getByRole('button', { name: 'Solicitar pagamento', exact: true }).count(), 0);
   assert.equal(await readonly.getByLabel('Selecionar linha 11', { exact: true }).count(), 0);
+  // Percurso real pelo hub solicitado: o link de locais nao pode cair na
+  // lista global, e a aba do local nunca deve listar outra obra/centro.
+  for (const largura of [1366, 390]) {
+    const hub = await abrir('?dp=1', largura);
+    await hub.goto(base.replace('/fixture','/hub/rhdp')+'?dp=1',{waitUntil:'domcontentloaded'});
+    await hub.getByRole('heading',{name:'Colaboradores',exact:true}).waitFor();
+    const cardGlobal = hub.getByRole('link',{name:/^Solicitações globais —/});
+    const cardLocais = hub.getByRole('link',{name:/^Obras \/ Centros de Custo —/});
+    assert.equal(await cardLocais.getAttribute('href'),'/rh-dp/pessoal');
+    assert.equal(await cardGlobal.getAttribute('href'),'/rh-dp/pessoal?visao=global&aba=solicitacoes');
+    await cardGlobal.focus();
+    await hub.screenshot({path:path.join(output,`hub-global-locais-${largura}.png`),fullPage:true});
+    await hub.keyboard.press('Enter');
+    await hub.getByRole('heading',{name:'Solicitações globais',exact:true}).waitFor();
+    await hub.getByRole('button',{name:'Abrir: solicitação #55',exact:true}).waitFor();
+    await hub.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).waitFor();
+    assert.equal(new URL(hub.url()).searchParams.has('local_id'),false);
+    await hub.reload({waitUntil:'domcontentloaded'});
+    // O login da fixture deve permanecer DP ao recarregar como na sessao real.
+    await hub.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).waitFor();
+    await hub.goBack();
+    await hub.getByRole('link',{name:/^Obras \/ Centros de Custo —/}).click();
+    await hub.getByRole('button',{name:'Abrir Obra QA',exact:true}).waitFor();
+    assert.equal(await hub.getByRole('button',{name:'Abrir: solicitação #55',exact:true}).count(),0);
+    await hub.getByRole('button',{name:'Abrir Obra QA',exact:true}).click();
+    await hub.getByText('Ana QA',{exact:true}).waitFor();
+    await hub.getByRole('tab',{name:'Solicitações',exact:true}).click();
+    await hub.getByRole('button',{name:'Abrir: solicitação #55',exact:true}).waitFor();
+    assert.equal(await hub.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).count(),0);
+    await hub.getByRole('button',{name:'Voltar para Obras',exact:true}).click();
+    await hub.getByRole('button',{name:'Abrir Escritório QA',exact:true}).click();
+    await hub.getByText('Caio QA',{exact:true}).waitFor();
+    await hub.getByRole('tab',{name:'Solicitações',exact:true}).click();
+    await hub.getByRole('button',{name:'Abrir: solicitação #56',exact:true}).waitFor();
+    assert.equal(await hub.getByRole('button',{name:'Abrir: solicitação #55',exact:true}).count(),0);
+    await hub.screenshot({path:path.join(output,`centro-solicitacoes-${largura}.png`),fullPage:true});
+    assert.ok(await hub.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
+  }
   await page.screenshot({ path: path.join(output, `local-${gerencial ? 'gerencial' : etapas ? 'etapas' : 'legado'}.png`), fullPage: true });
   await dp.screenshot({ path: path.join(output, 'dp-modal.png'), fullPage: true });
   assert.deepEqual(errors, []);

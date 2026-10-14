@@ -22,6 +22,7 @@ const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
 const { normalizarContatos, enderecosIguais } = require('./rhColaboradorContatosDomain');
+const { visivelNaConsulta, normalizarConsulta, colaboradoresDoPedido } = require('./rhSolicitacaoConsultaDomain');
 
 /**
  * O PEDIDO DE PESSOAL: a Obra pede, o DP decide (Fase 2 do modulo DP, 25/08).
@@ -1321,8 +1322,10 @@ async function cancelarSolicitacao(id, motivo, contexto = {}) {
  * alguem perguntar. Aparecer com a situacao a vista e o que permite a tela dizer "falta enviar" em
  * vez de "aguardando o DP".
  */
-async function pedidosAbertosPorColaborador(obraIds = null) {
-  const where = { situacao: { [Op.in]: [SITUACOES.RASCUNHO, SITUACOES.ABERTA] } };
+async function pedidosAbertosPorColaborador(obraIds = null, usuarioId = null) {
+  const emCurso = ['RASCUNHO', 'ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'];
+  // Legados APROVADA podem representar envio parcial; somente leitura.
+  const where = { situacao: { [Op.in]: [...emCurso, 'APROVADA'] } };
   if (Array.isArray(obraIds)) where.obra_id = { [Op.in]: obraIds };
 
   const abertas = await RhSolicitacao.findAll({
@@ -1334,10 +1337,14 @@ async function pedidosAbertosPorColaborador(obraIds = null) {
   const porColaborador = new Map();
   for (const pedido of abertas) {
     if (require('./rhPessoalDomain').ehTransferencia(pedido)) continue;
-    if (!pedido.colaborador_id) continue;
-    const lista = porColaborador.get(pedido.colaborador_id) || [];
-    lista.push(pedido);
-    porColaborador.set(pedido.colaborador_id, lista);
+    if (!visivelNaConsulta(pedido, usuarioId)) continue;
+    const plano = normalizarConsulta(pedido);
+    if (!emCurso.includes(plano.situacao)) continue;
+    for (const colaboradorId of colaboradoresDoPedido(pedido)) {
+      const lista = porColaborador.get(colaboradorId) || [];
+      lista.push(plano);
+      porColaborador.set(colaboradorId, lista);
+    }
   }
   return porColaborador;
 }

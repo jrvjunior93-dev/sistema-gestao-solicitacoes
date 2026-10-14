@@ -50,7 +50,8 @@ import {
   canViewRhDpColaboradores,
   canManageRhDpDocumentos,
   canGenerateRhDpTicket,
-  isBusinessAdmin
+  isBusinessAdmin,
+  isSuperadmin
 } from '../utils/acessoProduto';
 import { userBelongsToDpSetor } from '../utils/setor';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
@@ -86,6 +87,8 @@ function emptyForm() {
     data_nascimento: '',
     status: 'ATIVO',
     salario_base: '',
+    salario_vigencia_inicio: '',
+    salario_motivo: '',
     valor_contratual: '',
     forma_calculo_gerencial: 'MENSAL',
     calculo_vigencia_inicio: '',
@@ -190,6 +193,8 @@ function toFormData(data) {
     data_nascimento: data?.data_nascimento || '',
     status: data?.status || 'ATIVO',
     salario_base: formatCurrencyInput(data?.salario_base),
+    salario_vigencia_inicio: '',
+    salario_motivo: '',
     valor_contratual: formatCurrencyInput(data?.valor_contratual),
     forma_calculo_gerencial: data?.forma_calculo_gerencial || 'MENSAL',
     calculo_vigencia_inicio: '',
@@ -234,6 +239,8 @@ function buildPayload(form) {
     data_nascimento: form.data_nascimento || undefined,
     status: form.status,
     salario_base: form.salario_base === '' ? undefined : form.salario_base,
+    salario_vigencia_inicio: form.id && form.salario_vigencia_inicio || undefined,
+    salario_motivo: form.id && form.salario_motivo || undefined,
     valor_contratual: form.valor_contratual === '' ? undefined : form.valor_contratual,
     forma_calculo_gerencial: form.forma_calculo_gerencial,
     calculo_vigencia_inicio: form.id && form.calculo_vigencia_inicio
@@ -1382,13 +1389,26 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                 <CampoForm label="Salário base">
                   <input
                     className="form-control"
+                    aria-label="Salário base"
                     inputMode="decimal"
                     value={form.salario_base}
                     onChange={(e) => setForm((prev) => ({ ...prev, salario_base: normalizeCurrencyTyping(e.target.value) }))}
                     onBlur={(e) => setForm((prev) => ({ ...prev, salario_base: formatCurrencyInput(e.target.value) }))}
-                    disabled={!podeEditar}
+                    disabled={!podeEditar || (Boolean(form.id) && !isSuperadmin(user))}
                   />
+                  {form.id && !isSuperadmin(user) ? <p className="form-hint">Altere o salário pelo fluxo de solicitação salarial.</p> : null}
                 </CampoForm>
+                {form.id && podeEditar && isSuperadmin(user) ? <>
+                  <CampoForm label="Vigência do salário">
+                    <DateInputBR className="form-control" aria-label="Vigência do salário" value={form.salario_vigencia_inicio}
+                      onChange={e => setForm(prev => ({ ...prev, salario_vigencia_inicio: e.target.value }))} />
+                    <p className="form-hint">Obrigatória ao alterar o salário. Não recalcula títulos existentes.</p>
+                  </CampoForm>
+                  <CampoForm label="Motivo do ajuste salarial">
+                    <input className="form-control" aria-label="Motivo do ajuste salarial" maxLength={1000} value={form.salario_motivo}
+                      onChange={e => setForm(prev => ({ ...prev, salario_motivo: e.target.value }))} />
+                  </CampoForm>
+                </> : null}
                 <CampoForm label="Valor contratual">
                   <input
                     className="form-control"

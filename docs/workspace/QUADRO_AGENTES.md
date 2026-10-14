@@ -1,5 +1,15 @@
 # Quadro de Agentes
 
+## Promocao DP global e salario - 2026-10-14
+
+- Sessao codex-promocao-dp-global-salario-main-20261014: finalizado, sem delegacao,
+  ownership liberado; testes backend/ACL, UI desktop/mobile, build e docs aprovados.
+- Plano: preservar main 4fd60afc e incorporar refactor/frontend 208ae8e2;
+  revalidar consulta/salario/hub, ACL e fluxos RH; publicar PR e comandos EC2.
+- Backup/timer e homologacao dev confirmados pelo usuario. Sem banco/migrations
+  ou deploy pelo agente; caixa/obra ainda local e outputs/ nao incluidos.
+- Handoff: docs/handoffs/2026-10-14-promocao-dp-global-salario-main.md.
+
 ## Promocao operacional para main em 08/10/2026
 
 - Sessao: codex-promocao-operacional-main-20261008; status: finalizado;
