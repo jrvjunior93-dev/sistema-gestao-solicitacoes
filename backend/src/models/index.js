@@ -121,6 +121,8 @@ db.ConversaInternaArquivoUsuario = require('./ConversaInternaArquivoUsuario')(se
 db.ArquivoModelo = require('./ArquivoModelo')(sequelize, Sequelize);
 db.TreinamentoConteudo = require('./TreinamentoConteudo')(sequelize, Sequelize);
 db.TreinamentoLeituraUsuario = require('./TreinamentoLeituraUsuario')(sequelize, Sequelize);
+db.TreinamentoVideoProgresso = require('./TreinamentoVideoProgresso')(sequelize, Sequelize);
+db.TreinamentoVideoSessao = require('./TreinamentoVideoSessao')(sequelize, Sequelize);
 db.SecurityEventLog = require('./SecurityEventLog')(sequelize, Sequelize);
 db.ContaBancaria = require('./ContaBancaria')(sequelize, Sequelize);
 db.PainelGestorSaldoDiario = require('./PainelGestorSaldoDiario')(sequelize, Sequelize);
@@ -5320,5 +5322,7 @@ db.TreinamentoConteudo.belongsTo(db.User, { foreignKey: 'publicado_por', as: 'pu
 db.TreinamentoConteudo.hasMany(db.TreinamentoLeituraUsuario, { foreignKey: 'conteudo_id', as: 'leituras' });
 db.TreinamentoLeituraUsuario.belongsTo(db.TreinamentoConteudo, { foreignKey: 'conteudo_id', as: 'conteudo' });
 db.TreinamentoLeituraUsuario.belongsTo(db.User, { foreignKey: 'usuario_id', as: 'usuario' });
+db.TreinamentoVideoProgresso.belongsTo(db.User, { foreignKey: 'usuario_id', as: 'usuario' });
+db.TreinamentoVideoProgresso.belongsTo(db.User, { foreignKey: 'ator_id', as: 'ator', constraints: false });
 
 module.exports = db;

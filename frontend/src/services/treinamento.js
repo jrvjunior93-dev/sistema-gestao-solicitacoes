@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from './api';
+import { API_URL, authHeaders, fileUrl } from './api';
 import { mensagemDeErro } from './erroDeResposta';
 
 /* A escolha da mensagem é do `erroDeResposta` — ver a nota lá. */
@@ -79,7 +79,8 @@ export async function getTreinamentoArquivoUrl(id, tipoArquivo = 'DOCUMENTO') {
   const response = await fetch(`${API_URL}/treinamento/${id}/arquivo${buildQuery({ tipo_arquivo: tipoArquivo })}`, {
     headers: authHeaders()
   });
-  return parseJson(response, 'Erro ao abrir arquivo de treinamento');
+  const data = await parseJson(response, 'Erro ao abrir arquivo de treinamento');
+  return data?.url?.startsWith('/uploads/') ? { ...data, url: fileUrl(data.url) } : data;
 }
 
 export async function marcarTreinamentoLeitura(id, concluido = false) {
@@ -89,4 +90,14 @@ export async function marcarTreinamentoLeitura(id, concluido = false) {
     body: JSON.stringify({ concluido })
   });
   return parseJson(response, 'Erro ao registrar leitura');
+}
+
+export async function getTreinamentoRelatorioVideo(params = {}) {
+  return parseJson(await fetch(`${API_URL}/treinamento/relatorios/videos${buildQuery(params)}`, { headers: authHeaders() }), 'Erro ao consultar relatorio de reproducao');
+}
+export async function iniciarTreinamentoVideo(id, sessaoId) {
+  return parseJson(await fetch(`${API_URL}/treinamento/${id}/video/sessoes`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ sessao_id: sessaoId }) }), 'Rastreio de video indisponivel');
+}
+export async function registrarTreinamentoVideo(id, payload) {
+  return parseJson(await fetch(`${API_URL}/treinamento/${id}/video/eventos`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload), keepalive: true }), 'Erro ao registrar reproducao');
 }

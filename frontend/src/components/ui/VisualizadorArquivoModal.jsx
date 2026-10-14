@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import OverlayModal from './OverlayModal';
 
 // srcDocInterno e reservado a previa HTML produzida pelo fluxo de compras,
@@ -7,10 +7,19 @@ export function tipoPreviewArquivo(arquivo = {}) {
   const referencias = [arquivo.nome, arquivo.caminho, arquivo.url].filter(Boolean);
   const mime = String(arquivo.mime || arquivo.mimetype || arquivo.mime_type || '').split(';')[0].trim().toLowerCase();
   if (['text/html', 'application/xhtml+xml', 'image/svg+xml'].includes(mime)) return 'outro';
+  if (['video/mp4', 'video/webm'].includes(mime)
+    || referencias.some(ref => /\.(mp4|webm)(?:[?#]|$)/i.test(ref))) return 'video';
   if (mime === 'application/pdf' || referencias.some(ref => /\.pdf(?:[?#]|$)/i.test(ref))) return 'pdf';
   if (['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'].includes(mime)
     || referencias.some(ref => /\.(jpe?g|png|gif|webp|bmp)(?:[?#]|$)/i.test(ref))) return 'imagem';
   return 'outro';
+}
+
+function VideoArquivo({ arquivo, altura, onError }) {
+  const ref = useRef(null);
+  useEffect(() => arquivo?.rastrearVideo?.(ref.current), [arquivo?.rastrearVideo, arquivo?.url]);
+  return <video ref={ref} src={arquivo.url} aria-label={`Vídeo ${arquivo.nome || 'Arquivo'}`} controls playsInline preload="metadata"
+    className="w-full" style={{ height: altura, objectFit: 'contain', background: '#101820' }} onError={onError} />;
 }
 
 export default function VisualizadorArquivoModal({
@@ -41,6 +50,8 @@ export default function VisualizadorArquivoModal({
             <iframe title={arquivo.titulo || nome} srcDoc={arquivo.srcDocInterno} className="w-full" style={{ height: alturaPreview }} />
           ) : indisponivel ? (
             <p role="status" className="app-file-preview__meta py-6">{arquivo?.erro || 'Não foi possível exibir o arquivo nesta tela.'}</p>
+          ) : tipo === 'video' ? (
+            <VideoArquivo arquivo={arquivo} altura={alturaPreview} onError={() => setFalhou(true)} />
           ) : tipo === 'pdf' ? (
             <iframe src={url} title={`Pre-visualização de ${nome}`} className="w-full" style={{ height: alturaPreview }} onError={() => setFalhou(true)} />
           ) : tipo === 'imagem' ? (

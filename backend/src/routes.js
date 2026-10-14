@@ -335,6 +335,7 @@ const {
   canManageRhDpEmpresas,
   canManageUsers,
   canManageTreinamento,
+  canViewTreinamentoRelatorios,
   canReopenRhDpFechamento,
   canRetryIntegracaoSienge,
   canReadComercialBaseData,
@@ -903,6 +904,11 @@ const allowTreinamentoManage = permit({
   )
 });
 
+const allowTreinamentoReport = permit({
+  resource: 'TREINAMENTO',
+  custom: async req => (await canViewTreinamentoRelatorios(req.user)) ? true : 'Acesso negado aos relatorios de treinamento'
+});
+
 function allowPaymentAction(resource, checker, message) {
   return permit({
     resource,
@@ -1376,6 +1382,9 @@ const allowEmpresasGrupoRead = permit({
 });
 
 router.get('/treinamento/resumo', allowTreinamentoRead, TreinamentoController.resumo);
+router.get('/treinamento/relatorios/videos', allowTreinamentoReport, TreinamentoController.relatorioVideo);
+router.post('/treinamento/:id/video/sessoes', allowTreinamentoRead, validateRequest({ params: validateNumericIdParam('id', 'Conteudo de treinamento') }), TreinamentoController.iniciarVideo);
+router.post('/treinamento/:id/video/eventos', allowTreinamentoRead, validateRequest({ params: validateNumericIdParam('id', 'Conteudo de treinamento') }), TreinamentoController.registrarVideo);
 router.get('/treinamento', allowTreinamentoRead, TreinamentoController.index);
 router.post('/treinamento', allowTreinamentoManage, criticalRateLimit, TreinamentoController.create);
 router.get('/treinamento/:id', allowTreinamentoRead, validateRequest({ params: validateNumericIdParam('id', 'Conteudo de treinamento') }), TreinamentoController.show);

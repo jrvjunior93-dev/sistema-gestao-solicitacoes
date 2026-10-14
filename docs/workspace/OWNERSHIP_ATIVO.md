@@ -1,5 +1,46 @@
 # Ownership Ativo
 
+## Publicacao dev: Treinamento - 2026-10-14
+
+- Usuario autorizou commit/push dos ajustes de Treinamento na refactor/frontend
+  e comandos EC2 dev com migration estrutural. Reserva documental/staging desta
+  publicacao; nao incluir ajustes RH/DP pendentes nem outputs/.
+- Repetir testes na arvore exata do commit; conferir remoto antes do push normal.
+  Comandos do operador conferem banco staging e somente a migration nova.
+  Sem main, EC2, banco, reinicio ou migration executados pelo agente.
+
+## Treinamento: rastreio e relatorio granular - 2026-10-14
+
+- Sessao atual sem delegacao. Usuario autorizou relatorio de reproducao,
+  mantendo Concluir manual e sem percentual minimo obrigatorio.
+- Reserva: novos dominio/service/models/migration/testes de rastreio; index.js
+  somente modelos/associacoes; TreinamentoController/routes somente endpoints;
+  authorizationService/acessoProduto somente helper de relatorios;
+  Treinamento.jsx, VisualizadorArquivoModal.jsx somente callback opcional de video;
+  services/treinamento.js, novo componente de relatorio/helper de player e testes;
+  README Treinamento e handoff. Preservar ajustes locais anteriores.
+- Permissao existente treinamento.relatorios.visualizar, sem conceder acessos.
+  Migration apenas preparada; sem banco real, EC2, commit/push ou deploy.
+- Implementacao e validacoes locais concluidas; ownership liberado. Backend/ACL,
+  player/relatorio desktop/mobile, regressoes, build/navegacao/docs aprovados.
+  Handoff: docs/handoffs/2026-10-14-treinamento-rastreio-relatorio.md.
+
+## Treinamento: edicao, exclusao e player interno - 2026-10-14
+
+- Sessao atual sem delegacao. Pedido: editar/excluir conteudo e trocar video;
+  verificar reproducao dentro do sistema em modal amplo.
+- Reserva: Treinamento.jsx, VisualizadorArquivoModal.jsx (suporte MP4/WebM),
+  treinamentoService.js se necessario, testes isolados, README Treinamento e handoff.
+- Manter permissoes e S3 privado, exclusao reversivel por arquivamento/leituras
+  preservadas; sem redesenho, banco real, bucket/.env, migrations, commit/push/EC2.
+- Reserva ampliada: services/treinamento.js (normalizar links /uploads legados
+  com origem da API, sem alterar links S3 assinados).
+- Preservar todas as alteracoes locais RH/DP ainda nao commitadas.
+- Concluido/ownership liberado apos backend, player real desktop/mobile,
+  regressao do visualizador, ACL, build/navegacao/docs. Handoff:
+  docs/handoffs/2026-10-14-treinamento-edicao-video.md. Sem publicacao/EC2.
+
+
 ## Cadastro RH: salario DP, lotacao SUPERADMIN e centros em transferencias - 2026-10-14
 
 - Sessao codex-rhdp-cadastro-salario-lotacao-20261014, sem delegacao.
